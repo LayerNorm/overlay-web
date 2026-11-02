@@ -8,6 +8,7 @@ import {
   ChevronRight,
   Loader2,
   Plus,
+  Pin,
 } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, Button } from '@overlay/ui/primitives'
@@ -43,6 +44,10 @@ import {
   type AgentsPanelView,
 } from './sidebar-nav'
 import { AgentThreadRows } from './AppSidebarAgentThreads'
+import { isChief, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identity'
+import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-workspace'
+import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
+import { useAgentExpansion } from './sidebar/useAgentExpansion'
 
 type AgentBundleMap = Record<string, WorkspaceAgentBundle | 'loading' | 'error'>
 
@@ -139,12 +144,7 @@ function useExpandedAgents({
   bundles: AgentBundleMap
   loadBundle: (agentId: string) => Promise<void>
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-
-  // The agent in the URL stays expanded so its threads remain in view.
-  if (activeAgentId && !expanded.has(activeAgentId)) {
-    setExpanded((current) => new Set(current).add(activeAgentId))
-  }
+  const { expanded, toggle } = useAgentExpansion(activeAgentId)
   // Fetch the URL agent's bundle once it is known absent. Reloading when the
   // bundle is already present re-triggers on every setBundles and loops
   // forever — directory-change events handle refreshes instead.
@@ -154,15 +154,10 @@ function useExpandedAgents({
   }, [activeAgentId, bundles, loadBundle])
 
   const toggleExpanded = useCallback((agentId: string) => {
-    setExpanded((current) => {
-      const next = new Set(current)
-      if (next.has(agentId)) next.delete(agentId)
-      else next.add(agentId)
-      return next
-    })
+    toggle(agentId)
     const state = bundles[agentId]
     if (state === undefined || state === 'error') void loadBundle(agentId)
-  }, [bundles, loadBundle])
+  }, [bundles, loadBundle, toggle])
 
   return { expanded, toggleExpanded }
 }
@@ -462,6 +457,8 @@ function useAgentActions({
 
 function AgentListRow({
   agent,
+  pinned,
+  ownerLabel,
   isExpanded,
   isActive,
   anyOpening,
@@ -478,6 +475,8 @@ function AgentListRow({
   onDeleteThread,
 }: {
   agent: WorkspaceAgentDirectoryItem
+  pinned: boolean
+  ownerLabel: string
   isExpanded: boolean
   isActive: boolean
   anyOpening: boolean
@@ -500,7 +499,7 @@ function AgentListRow({
           isActive={isActive}
           disabled={anyOpening}
           // Reserve both actions on touch too; they are always visible below md.
-          className="h-[38px] text-sm font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14"
+          className={`${isChief(agent) ? 'h-12' : 'h-[38px]'} text-sm font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14`}
           onClick={() => {
             if (!isExpanded) onToggleExpanded(agent.id)
             onOpenAgent(agent)
@@ -511,13 +510,16 @@ function AgentListRow({
               ? <Loader2 size={16} className="animate-spin" />
               : <AgentCreature isDefault={agent.isDefault} agent={agent} size={24} />}
           </span>
-          <span className="truncate">{agent.name}</span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5"><span className="truncate">{agent.name}</span>{pinned ? <Pin size={11} className="shrink-0 text-(--muted)" aria-label="Pinned chief of staff" /> : null}</span>
+            {isChief(agent) ? <span className="block truncate text-[11px] leading-4 text-(--muted)">{ownerLabel}</span> : null}
+          </span>
         </SidebarMenuButton>
         <SidebarMenuAction
           aria-label={`New thread with ${agent.name}`}
           title="New thread"
           disabled={creatingThread}
-          className="right-7 top-[9px]"
+          className={`right-7 ${isChief(agent) ? 'top-[14px]' : 'top-[9px]'}`}
           onClick={(event) => {
             event.stopPropagation()
             if (!isExpanded) onToggleExpanded(agent.id)
@@ -527,7 +529,7 @@ function AgentListRow({
           {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
         </SidebarMenuAction>
         <SidebarMenuAction
-          className="top-[9px]"
+          className={isChief(agent) ? 'top-[14px]' : 'top-[9px]'}
           aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
           aria-expanded={isExpanded}
           onClick={(event) => {
@@ -571,6 +573,7 @@ export function AgentsInlinePanel({
   const activeConversationId = searchParams?.get('id') ?? null
   // Member count is independent of the creator-relative Personal/Workspace views.
   const solo = useIsSoloWorkspace()
+  const workspaceName = useOptionalWorkspace()?.activeWorkspace?.name ?? 'Workspace'
   const buildWorkspaceHref = useWorkspaceHref()
   const scopedBaseHref = buildWorkspaceHref(workspaceId, baseHref, view)
 
@@ -606,8 +609,8 @@ export function AgentsInlinePanel({
 
   // Most recently used first; agents with no recorded use stay alphabetical.
   const sortedAgents = useMemo(
-    () => sortAgentsByRecency(tabAgents, getAgentOpenedAt(workspaceId)),
-    [tabAgents, workspaceId],
+    () => pinChiefs(sortAgentsByRecency(tabAgents, getAgentOpenedAt(workspaceId)), viewerPrincipalId),
+    [tabAgents, workspaceId, viewerPrincipalId],
   )
 
   const {
@@ -657,7 +660,7 @@ export function AgentsInlinePanel({
     const viewParam = searchParams.get('scope') ?? searchParams.get('view')
     const active = agents.find((agent) => agent.id === activeAgentId)
     if (!active || active.archivedAt) return
-    const correctView: AgentsPanelView = active.createdByPrincipalId === viewerPrincipalId
+    const correctView: AgentsPanelView = agentBelongsToCreatorScope(active, viewerPrincipalId, 'personal')
         ? 'personal'
         : 'workspace'
     const pathScope = readWorkspacePathScope(pathname)
@@ -683,6 +686,8 @@ export function AgentsInlinePanel({
             <AgentListRow
               key={agent.id}
               agent={agent}
+              pinned={isPinnedChief(agent, viewerPrincipalId)}
+              ownerLabel={agent.agentRole === 'workspace_chief' ? `${workspaceName} · Workspace` : `${agent.createdByDisplayName || 'Member'}${agent.createdByPrincipalId === viewerPrincipalId ? ' · You' : ''}`}
               isExpanded={isExpanded}
               isActive={activeAgentId === agent.id && !activeConversationId}
               anyOpening={Boolean(openingAgentId)}

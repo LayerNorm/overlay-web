@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildWorkspaceAgentInput, isAgentEditorValid } from './agent-editor-input'
+import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from './agent-editor-input'
+
+test('chief protection follows explicit role or legacy flag, never display name', () => {
+  assert.equal(isDefaultMasterAgent({ name: 'Overlay' }), false)
+  assert.equal(isDefaultMasterAgent({ name: 'Atlas', agentRole: 'personal_chief' }), true)
+  assert.equal(isDefaultMasterAgent({ name: 'Team', agentRole: 'workspace_chief' }), true)
+  assert.equal(isDefaultMasterAgent({ name: 'Renamed legacy', isDefault: true }), true)
+})
 
 test('overlay input trims fields and maps tool groups', () => {
   const input = buildWorkspaceAgentInput({
@@ -17,7 +24,7 @@ test('overlay input trims fields and maps tool groups', () => {
     visibility: 'creator',
   })
   assert.equal(input.name, 'Scout')
-  assert.equal(input.description, undefined)
+  assert.equal(input.description, '')
   assert.equal(input.instructions, 'Find evidence.')
   assert.equal(input.harness, 'overlay')
   assert.equal(input.modelId, 'test-model')

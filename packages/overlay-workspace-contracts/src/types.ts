@@ -622,7 +622,16 @@ export type WorkspaceAgentDefinition = {
   updatedAt: number
   archivedAt?: number
   isDefault?: boolean
+  agentRole?: WorkspaceAgentRole
+  chiefOwnerUserId?: string
+  chiefScope?: WorkspaceAgentChiefScope
 }
+
+export const WORKSPACE_AGENT_ROLES = ['workspace_chief', 'personal_chief', 'agent'] as const
+export type WorkspaceAgentRole = (typeof WORKSPACE_AGENT_ROLES)[number]
+
+export const WORKSPACE_AGENT_CHIEF_SCOPES = ['personal', 'workspace'] as const
+export type WorkspaceAgentChiefScope = (typeof WORKSPACE_AGENT_CHIEF_SCOPES)[number]
 
 export type WorkspaceAgentCreateInput = {
   name: string
@@ -648,6 +657,7 @@ export type WorkspaceAgentDirectoryItem = WorkspaceAgentDefinition & {
   roomCount: number
   /** Creator display name for directory attribution; resolved server-side, absent when unknown. */
   createdByDisplayName?: string
+  canEdit?: boolean
 }
 
 export type WorkspaceAgentListResponse = {

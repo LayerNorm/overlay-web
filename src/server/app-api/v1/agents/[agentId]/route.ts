@@ -31,10 +31,12 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
 export async function PATCH(_request: Request, context: AppApiRouteContext) {
   try {
     const body = context.parsedJson as Record<string, unknown>
-    const agent = await getOverlayServerContext().workspaceAgentService.update({
+    const service = getOverlayServerContext().workspaceAgentService
+    const agentId = requiredAgentId(await context.params)
+    const agent = await service.update({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
-      agentId: requiredAgentId(await context.params),
+      agentId,
       input: updateInput(body),
     })
     return NextResponse.json({ agent })

@@ -7,6 +7,21 @@ description: "Product UI decisions every surface follows: toggles-only controls,
 
 MCP and Skills use shared Card surfaces with explicit Manage actions and confirmation before deletion. Editors use shared Dialog, Select, Switch and AlertDialog primitives, compact content-width Configuration/Tools tabs and spacing instead of internal dividers. Preserve OAuth connection status, tool policy, scope and existing mutation callbacks. Docked left/right panel resize handles occupy the gutter outside the framed surface; floating panels retain inset handles.
 
+## Chief identity and Organization
+
+Workspace Agents pins the workspace chief first and the viewer's workspace-scoped
+personal chief second; Personal pins the private personal chief first. Keep thread
+expansion and per-agent new-thread controls; manual collapse survives rerenders.
+Work → Organization sits directly below Timeline in both scoped desktop/mobile
+lists, retains the selected subpage when switching scopes and closes the mobile drawer.
+
+Organization details use one hero avatar. Only the personal-chief owner can edit
+name, description, shape and color, with explicit save/error feedback. Peers and
+workspace admins see read-only owner details. Workspace chiefs use the Overlay
+mark; personal chiefs use customizable creatures even when an adopted legacy row
+retains `isDefault`. Other legacy defaults still use the mark. Identity follows
+explicit role/flags, never the agent name. See Bring Your Own Agents for isolation.
+
 ## Double-sidebar shell
 
 The web shell's **Double sidebar** setting uses `DoubleSidebar` from `@overlay/shell-react`: a fixed 60px primary rail and a 272px contextual panel, resizable between 220px and 360px. The active rail destination toggles only its panel without navigating; another destination opens its panel and uses the existing scope-aware navigation handler. Files, Extensions, and Automations stay in More when their existing gates allow them.

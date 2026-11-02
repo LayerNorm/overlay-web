@@ -6,6 +6,12 @@ This document records the design decisions behind the Cache Components migration
 including which routes were converted, which were intentionally left with
 `instant = false`, and why.
 
+## Work Organization route
+
+`/app/work/organization` renders the client Organization view inside a page-level
+`Suspense` boundary with `WorkRouteSkeleton`. Scope/search-param hooks stay within
+that boundary; no `instant = false` opt-out is added.
+
 ## Migration approach
 
 The migration uses Next.js's incremental `instant = false` opt-out path. All

@@ -131,7 +131,6 @@ export default defineSchema({
     offSessionConsentAt: v.optional(v.number()),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
-    // Legacy Stripe-migrated rows can carry this field; not written by current code.
     paidPeriodStart: v.optional(v.number()),
     paidPeriodEnd: v.optional(v.number()),
     paidInvoiceId: v.optional(v.string()),
@@ -925,6 +924,16 @@ export default defineSchema({
       searchField: 'name',
       filterFields: ['userId', 'workspaceId'],
     }),
+
+  personalChiefIdentities: defineTable({
+    userId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    avatarColor: v.string(),
+    avatarShape: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_userId', ['userId']),
 
   // Work: tasks shown as a list, a board and a timeline. Personal / Workspace / Archived like other content; see
   // Dates are `YYYY-MM-DD` strings (no timezone shift); `rank` is a fractional string.
@@ -2205,6 +2214,8 @@ export default defineSchema({
     serviceId: v.optional(v.string()),
     displayName: v.string(),
     displayNameOverride: v.optional(v.string()),
+    avatarColor: v.optional(v.string()),
+    avatarShape: v.optional(v.string()),
     photoObjectKey: v.optional(v.string()),
     email: v.optional(v.string()),
     createdByPrincipalId: v.optional(v.string()),
@@ -2391,12 +2402,16 @@ export default defineSchema({
     teamIds: v.optional(v.array(v.string())),
     roomCount: v.optional(v.number()),
     isDefault: v.optional(v.boolean()),
+    agentRole: v.optional(v.union(v.literal('workspace_chief'), v.literal('personal_chief'), v.literal('agent'))),
+    chiefOwnerUserId: v.optional(v.string()),
+    chiefScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     // Compatibility-only field for agent rows written by external-surface
     // releases on shared deployments; not read or written here.
     platforms: v.optional(v.array(v.string())),
   })
     .index('by_agentId', ['agentId'])
-    .index('by_workspaceId', ['workspaceId']),
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_chiefOwnerUserId', ['chiefOwnerUserId']),
 
   workspaceAuditExports: defineTable({
     exportId: v.string(),

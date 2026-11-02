@@ -13,7 +13,15 @@ import { parseByoModelId } from '@/shared/agents/agent-model'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import type { WorkspaceAgentRepository } from './WorkspaceAgentRepository'
 import { externalAgentPolicyAllowsRecord, type ExternalAgentPolicyDecision, type ExternalAgentPolicyRecord } from './external-agent-policy'
-import { canCreateAgent, canSeeAgent, mapThreadError } from './WorkspaceAgentService.helpers'
+import {
+  assertChiefBindingUpdateAllowed,
+  canCreateAgent,
+  canSeeAgent,
+  mapThreadError,
+  validateWorkspaceAgentTeamIds,
+  withAgentDirectoryMetadata,
+} from './WorkspaceAgentService.helpers'
+import { applyChiefIdentityUpdate } from './WorkspaceAgentService.identity'
 import { WorkspaceAgentServiceError, assertSupportedWorkspaceAgentHarness, assertSupportedAgentConfiguration, assertValidOverlayPermissionMode, normalizeVisibility, required, optional, color, shape, unique } from './workspace-agent-validation'
 export { WorkspaceAgentServiceError } from './workspace-agent-validation'
 export { canCreateAgent, canSeeAgent } from './WorkspaceAgentService.helpers'
@@ -36,12 +44,24 @@ export class WorkspaceAgentService {
 
   async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    await this.ensureDefaultAgent({ workspaceId: access.workspace.id, creatorPrincipalId: access.principal.id })
+    if (access.membership.role !== 'guest') {
+      await this.repository.ensureChiefs({
+        workspaceId: access.workspace.id,
+        actorUserId: args.actorUserId,
+        actorPrincipalId: access.principal.id,
+        now: this.now(),
+      })
+    }
     const agents = await this.repository.list({
       workspaceId: access.workspace.id,
       includeArchived: args.includeArchived,
     })
     const visible = agents.filter((agent) => canSeeAgent(agent, access.principal.id))
+    const viewer = {
+      actorUserId: args.actorUserId,
+      principalId: access.principal.id,
+      role: access.membership.role,
+    }
     // Attribute tiles to their creator. Resolved best-effort: an unknown
     // principal simply yields no owner line.
     const creators = await Promise.all(
@@ -54,10 +74,10 @@ export class WorkspaceAgentService {
       }).catch((_error) => [] as WorkspaceArchivedAgentThread[])
       : []
     return {
-      agents: visible.map((agent, index) => {
-        const displayName = creators[index]?.displayName
-        return displayName ? { ...agent, createdByDisplayName: displayName } : agent
-      }),
+      agents: visible.map((agent, index) => withAgentDirectoryMetadata(agent, {
+        ...viewer,
+        createdByDisplayName: creators[index]?.displayName,
+      })),
       canCreate: canCreateAgent(access.membership.role),
       viewerPrincipalId: access.principal.id,
       archivedThreads,
@@ -66,19 +86,32 @@ export class WorkspaceAgentService {
 
   async get(args: { actorUserId: string; workspaceId: string; agentId: string }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
-    await this.ensureDefaultAgent({ workspaceId: access.workspace.id, creatorPrincipalId: access.principal.id })
+    if (access.membership.role !== 'guest') {
+      await this.repository.ensureChiefs({
+        workspaceId: access.workspace.id,
+        actorUserId: args.actorUserId,
+        actorPrincipalId: access.principal.id,
+        now: this.now(),
+      })
+    }
     const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
     // Invisible agents report as not found so their existence does not leak to
     // other members.
     if (!agent || agent.archivedAt || !canSeeAgent(agent, access.principal.id)) {
       throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     }
-    return agent
+    const creator = await this.workspaces.resolvePrincipal(agent.createdByPrincipalId)
+    return withAgentDirectoryMetadata(agent, {
+      actorUserId: args.actorUserId,
+      principalId: access.principal.id,
+      role: access.membership.role,
+      createdByDisplayName: creator?.displayName,
+    })
   }
 
   async ensureDefaultAgent(args: { workspaceId: string; creatorPrincipalId: string }) {
     const existing = await this.repository.list({ workspaceId: args.workspaceId })
-    const currentDefault = existing.find((a) => a.isDefault || a.name.toLowerCase() === 'overlay')
+    const currentDefault = existing.find((a) => a.isDefault)
     if (currentDefault) {
       if (currentDefault.isDefault && isRetiredHostedModelId(currentDefault.modelId)) {
         await this.repository.update({
@@ -194,6 +227,7 @@ export class WorkspaceAgentService {
     input: WorkspaceAgentUpdateInput
   }) {
     const { access, agent } = await this.requireEditor(args)
+    assertChiefBindingUpdateAllowed(agent, args.input)
     if (args.input.modelId !== undefined || args.input.harness !== undefined) {
       const harness = args.input.harness ?? agent.harness
       assertSupportedWorkspaceAgentHarness(harness)
@@ -224,23 +258,17 @@ export class WorkspaceAgentService {
       harness: agent.harness,
       modelId: agent.modelId,
     })
-    let teamIds: string[] | undefined
-    if (args.input.teamIds !== undefined) {
-      teamIds = unique(args.input.teamIds)
-      const teams = await this.workspaces.listTeams({
-        actorUserId: args.actorUserId,
-        workspaceId: access.workspace.id,
-      })
-      const available = new Set(teams.map(({ team }) => team.id))
-      if (teamIds.some((teamId) => !available.has(teamId))) {
-        throw new WorkspaceAgentServiceError('validation', 'One or more teams do not exist in this workspace')
-      }
-    }
+    const teamIds = await validateWorkspaceAgentTeamIds(
+      args.input.teamIds,
+      args.actorUserId,
+      access.workspace.id,
+      this.workspaces.listTeams.bind(this.workspaces),
+    )
     const updated = await this.repository.update({
       agentId: agent.id,
       workspaceId: access.workspace.id,
       ...(args.input.name === undefined ? {} : { name: required(args.input.name, 'Agent name', 80) }),
-      ...(args.input.description === undefined ? {} : { description: optional(args.input.description, 240) }),
+      ...(args.input.description === undefined ? {} : { description: optional(args.input.description, 240) ?? '' }),
       ...(args.input.instructions === undefined
         ? {}
         : { instructions: required(args.input.instructions, 'Agent instructions', 20_000) }),
@@ -257,7 +285,13 @@ export class WorkspaceAgentService {
       now: this.now(),
     })
     if (!updated) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
-    return updated
+    const creator = await this.workspaces.resolvePrincipal(updated.createdByPrincipalId)
+    return withAgentDirectoryMetadata(updated, {
+      actorUserId: args.actorUserId,
+      principalId: access.principal.id,
+      role: access.membership.role,
+      createdByDisplayName: creator?.displayName,
+    })
   }
 
   private async assertExternalAgentAllowed(record: ExternalAgentPolicyRecord): Promise<void> {
@@ -268,7 +302,8 @@ export class WorkspaceAgentService {
 
   async archive(args: { actorUserId: string; workspaceId: string; agentId: string }) {
     const { access, agent } = await this.requireArchiver(args)
-    if (agent.isDefault || agent.name.toLowerCase() === 'overlay') {
+    if (agent.isDefault || agent.id === `default-overlay-${access.workspace.id}`
+      || agent.agentRole === 'workspace_chief' || agent.agentRole === 'personal_chief') {
       throw new WorkspaceAgentServiceError('forbidden', 'The default Overlay agent cannot be deleted or archived')
     }
     if (!await this.repository.archive({
@@ -292,7 +327,8 @@ export class WorkspaceAgentService {
     if (!isManager && agent.createdByPrincipalId !== access.principal.id) {
       throw new WorkspaceAgentServiceError('forbidden', 'Only the creator or a workspace manager can delete this agent')
     }
-    if (agent.isDefault || agent.name.toLowerCase() === 'overlay') {
+    if (agent.isDefault || agent.id === `default-overlay-${access.workspace.id}`
+      || agent.agentRole === 'workspace_chief' || agent.agentRole === 'personal_chief') {
       throw new WorkspaceAgentServiceError('forbidden', 'The default Overlay agent cannot be deleted')
     }
     if (!await this.repository.deleteArchived({
@@ -310,10 +346,31 @@ export class WorkspaceAgentService {
       throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     }
     const isManager = access.membership.role === 'owner' || access.membership.role === 'admin'
+    if (access.membership.role === 'guest'
+      && (agent.agentRole === 'personal_chief' || agent.agentRole === 'workspace_chief')) {
+      throw new WorkspaceAgentServiceError('forbidden', 'Guests cannot edit chief agents')
+    }
+    if (agent.agentRole === 'personal_chief'
+      && (access.membership.role === 'guest' || agent.chiefOwnerUserId !== args.actorUserId)) {
+      throw new WorkspaceAgentServiceError('forbidden', 'Only the personal chief owner can change this agent')
+    }
     if (!isManager && agent.createdByPrincipalId !== access.principal.id) {
       throw new WorkspaceAgentServiceError('forbidden', 'Only the creator or a workspace manager can change this agent')
     }
     return agent
+  }
+
+  updateChiefIdentity(args: {
+    actorUserId: string
+    workspaceId: string
+    agentId: string
+    updatedByPrincipalId: string
+    name?: string
+    description?: string
+    avatarColor?: string
+    avatarShape?: WorkspaceAgentDirectoryItem['avatarShape']
+  }): Promise<void> {
+    return applyChiefIdentityUpdate(this.repository, this.workspaces, this.now, args)
   }
 
   async unarchive(args: { actorUserId: string; workspaceId: string; agentId: string }) {
@@ -467,6 +524,13 @@ export class WorkspaceAgentService {
       throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     }
     const isManager = access.membership.role === 'owner' || access.membership.role === 'admin'
+    if (access.membership.role === 'guest'
+      && (agent.agentRole === 'personal_chief' || agent.agentRole === 'workspace_chief')) {
+      throw new WorkspaceAgentServiceError('forbidden', 'Guests cannot edit chief agents')
+    }
+    if (agent.agentRole === 'personal_chief' && agent.chiefOwnerUserId !== args.actorUserId) {
+      throw new WorkspaceAgentServiceError('forbidden', 'Only the personal chief owner can edit this agent')
+    }
     if (!isManager && agent.createdByPrincipalId !== access.principal.id) {
       throw new WorkspaceAgentServiceError('forbidden', 'Only the creator or a workspace manager can edit this agent')
     }

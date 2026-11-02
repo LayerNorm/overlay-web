@@ -276,7 +276,7 @@ export function resolveSecondaryPanelNav({
 }: {
   panelKind: SidebarRouteState['panelKind']
 
-  routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'scope' | 'toolsView' | 'workView' | 'notesOpen' | 'settingsSection'>
+  routeState: Pick<SidebarRouteState, 'chatsView' | 'filesView' | 'scope' | 'toolsView' | 'workView' | 'organizationOpen' | 'notesOpen' | 'settingsSection'>
   effectivePendingSecondaryNavId: string | null
   totalUnread: number
   collaborationUnread: { dms: number; channels: number; total: number }
@@ -373,6 +373,7 @@ export function resolveSecondaryPanelNav({
     return buildWorkPanelNav({
       scope: routeState.scope,
       workView: routeState.workView,
+      organizationOpen: routeState.organizationOpen,
       effectivePendingSecondaryNavId,
       currentSearchParams,
       activeWorkspaceId,

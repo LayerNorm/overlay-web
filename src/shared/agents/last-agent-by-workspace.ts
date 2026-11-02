@@ -13,18 +13,24 @@ const STORAGE_KEY = 'overlay:last-agent-by-workspace'
 
 const MAX_ENTRIES = 200
 
-export function agentBelongsToCreatorScope<T extends { createdByPrincipalId: string }>(
+type ScopedAgent = { createdByPrincipalId: string; agentRole?: string; chiefScope?: 'personal' | 'workspace' }
+
+export function agentBelongsToCreatorScope<T extends ScopedAgent>(
   agent: T,
   viewerPrincipalId: string | null | undefined,
   scope: 'personal' | 'workspace',
 ): boolean {
   if (!viewerPrincipalId) return false
+  if (agent.agentRole === 'workspace_chief') return scope === 'workspace'
+  if (agent.agentRole === 'personal_chief') {
+    return agent.chiefScope === scope && (scope === 'workspace' || agent.createdByPrincipalId === viewerPrincipalId)
+  }
   return scope === 'personal'
     ? agent.createdByPrincipalId === viewerPrincipalId
     : agent.createdByPrincipalId !== viewerPrincipalId
 }
 
-export function agentsForCreatorScope<T extends { createdByPrincipalId: string }>(
+export function agentsForCreatorScope<T extends ScopedAgent>(
   agents: readonly T[],
   viewerPrincipalId: string | null | undefined,
   scope: 'personal' | 'workspace',

@@ -54,6 +54,19 @@ beforeEach(() => {
   mocks.run.mockImplementation(async () => completed())
 })
 
+test('serialized personal failures retain their cause without retrying the run', async () => {
+  const reason = 'STREAM_ERROR: Stream failed. Caused by: Connection closed.'
+  mocks.run.mockRejectedValue({ code: 'STREAM_ERROR', message: 'Stream failed.', cause: { message: 'Connection closed.' } })
+  mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: reason })
+  await expect(personalHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed', terminalReason: reason })
+  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+    type: 'terminate', status: 'failed', reason,
+  })
+  expect(mocks.run).toHaveBeenCalledOnce()
+  expect(mocks.finish).toHaveBeenCalledOnce()
+  expect(mocks.close).toHaveBeenCalledWith(reason)
+})
+
 test('root registers wakeups before executing and persists authoritative delivery before closing', async () => {
   expect(await personalHarnessWorkflow(input)).toEqual({ runId: 'root', status: 'completed' })
   expect(mocks.conflict.mock.invocationCallOrder[0]).toBeLessThan(mocks.run.mock.invocationCallOrder[0])

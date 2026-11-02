@@ -30,7 +30,7 @@ Custom identity images use authenticated media routes, never public object URLs.
 Reads require active shared membership; writes require the matching account/member,
 or owner/admin access for workspace icons. Uploads accept PNG/JPEG/WebP up to 5 MB,
 authorize before decoding, and re-encode to bounded 512px WebP without metadata.
-Agent identity uses creature avatars, except the default Overlay agent identified by its record's `isDefault` flag.
+Agent identity uses creature avatars. Workspace chiefs and unclassified legacy defaults use the Overlay mark; personal chiefs keep customizable creatures even when an adopted row retains `isDefault`. A personal chief's name, description and appearance are owner-only and global; scoped instructions, tools and histories remain independent. Work → Organization provides the appearance editor; see [Interface Design](./interface-design.md) and [Bring Your Own Agents](./bring-your-own-agents.md#chief-identities-and-scoped-bindings).
 
 `src/overlay.config.ts` is a serializable app registry. It can replace brand metadata, add navigation destinations, hide feature-gated surfaces, register settings panels, and describe custom tools or integrations.
 

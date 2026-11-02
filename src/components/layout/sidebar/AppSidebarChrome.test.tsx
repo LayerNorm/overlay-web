@@ -3,7 +3,34 @@ import test from 'node:test'
 import React from 'react'
 import { Circle } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { getDesktopSidebarViewportSnapshot, MobileNavStep, SidebarBrandLink, SidebarRailBrand, subscribeToDesktopSidebarViewport } from './AppSidebarChrome'
+import { buildWorkPanelNav } from './workPanelNav'
+import { getDesktopSidebarViewportSnapshot, MobileNavStep, MobilePanelStep, SidebarBrandLink, SidebarRailBrand, subscribeToDesktopSidebarViewport } from './AppSidebarChrome'
+
+test('mobile Work panel renders Organization below Timeline and closes the drawer on navigation', () => {
+  for (const scope of ['personal', 'workspace'] as const) {
+    let closed = false
+    let href = ''
+    const nav = buildWorkPanelNav({
+      scope, workView: 'timeline', organizationOpen: false,
+      effectivePendingSecondaryNavId: null, currentSearchParams: new URLSearchParams(),
+      activeWorkspaceId: null, buildWorkspaceHref: (_id, path) => path,
+      router: { push: path => { href = path } },
+      closeMobileDrawer: () => { closed = true }, beginSecondaryNavigation() {},
+    })
+    const html = renderToStaticMarkup(
+      <MobilePanelStep
+        panelTitle="Work" onBack={() => {}} onClose={() => {}}
+        nav={nav}
+      />,
+    )
+    assert.equal(nav.activeChildId, `${scope}:timeline`)
+    assert.match(html, />Organization</)
+    assert.ok(html.indexOf('>Organization<') > html.indexOf('>Timeline<'))
+    nav.onSelect(`${scope}:organization`)
+    assert.equal(closed, true)
+    assert.equal(href, `/app/work/organization?view=timeline&scope=${scope}`)
+  }
+})
 
 test('mobile drawer viewport subscription tracks the desktop breakpoint and cleans up', () => {
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')

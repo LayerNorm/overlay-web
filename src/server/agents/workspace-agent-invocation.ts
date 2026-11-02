@@ -397,7 +397,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
       effort: agent.effort,
       toolGrant: {
         allowedToolIds: [...agent.allowedToolIds],
-        isDefaultMaster: Boolean(agent.isDefault || agent.name.toLowerCase() === 'overlay'),
+        isDefaultMaster: Boolean(agent.isDefault),
       },
       externalAgent,
       ...(target && adapterId && workingDirectory ? {

@@ -77,3 +77,24 @@ test('unfunded, foreign or live-preview evidence never changes a wallet', async 
   expect((await t.action(migrate, { expectedDeploymentUrl: deployment, apply: true })).outcomes[0].reason).toBe('live_subscription_in_preview')
   expect(await snapshot()).toEqual(before)
 })
+
+test('an empty candidate page still advances to paid workspaces on the next page', async () => {
+  const { t } = await fixture()
+  await t.run(async ctx => {
+    const row = (await ctx.db.query('billingAccountSubscriptions').first())!
+    const { _id, _creationTime: creationTime, ...subscription } = row
+    void creationTime
+    await ctx.db.delete(_id)
+    for (let index = 0; index < 25; index++) {
+      await ctx.db.insert('billingAccountSubscriptions', {
+        ...subscription, billingAccountId: `ba_free_${index}`, planKind: 'free', planAmountCents: 0,
+      })
+    }
+    await ctx.db.insert('billingAccountSubscriptions', subscription)
+  })
+  const first = await t.action(migrate, { expectedDeploymentUrl: deployment, cursor: null })
+  expect(first).toMatchObject({ dryRun: true, isDone: false, outcomes: [] })
+  expect(retrieve).not.toHaveBeenCalled()
+  const last = await t.action(migrate, { expectedDeploymentUrl: deployment, cursor: first.continueCursor })
+  expect(last).toMatchObject({ dryRun: true, isDone: true, outcomes: [{ billingAccountId: 'ba_paid', status: 'eligible' }] })
+})

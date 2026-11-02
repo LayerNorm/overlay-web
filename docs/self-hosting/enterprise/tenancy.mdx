@@ -108,6 +108,7 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `authorizationUserRoles` | `userId` | Deployment boundary | Add `tenantId`; role assignment queries must enforce tenant context. |
 | `conversationEvents` | `userId` | Deployment boundary | Add `tenantId`; event stream and presence queries must be tenant-scoped. |
 | `workspacePrincipals` | `userId` | Deployment boundary | Add `tenantId`; principal identity and directory queries must enforce tenant context. |
+| `personalChiefIdentities` | `userId` | The owner’s global chief appearance profile; executable settings remain on separate workspace bindings. | Add `tenantId`; scope profile lookups and owner-authorized edits to the tenant and user. |
 | `workspaceConnectors` | `userId` | Deployment boundary; Deployment-wide | Add `tenantId`; connector mappings, provider keys, and account ownership must be tenant-scoped. |
 | `workspaceUserPreferences` | `userId` | Deployment boundary | Add `tenantId`; per-user workspace preferences must be tenant-scoped. |
 | `billingAccounts` | `userId`; optional `workspaceId` | Personal accounts remain user-owned; workspace accounts are bound to the exact workspace | Require a deployment tenant identifier in addition to the current account subject, and keep every Stripe identifier unique within that tenant. |

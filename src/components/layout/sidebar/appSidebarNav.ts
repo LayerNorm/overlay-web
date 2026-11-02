@@ -106,6 +106,7 @@ export interface SidebarRouteState {
   toolsView: string
   /** List, Board, or Timeline (`?view=`). */
   workView: WorkView
+  organizationOpen?: boolean
   filesView: FilesCategory
   agentsView: AgentsPanelView
   chatViewParam: string | null
@@ -244,6 +245,7 @@ export function resolveSidebarRouteState({
     settingsSection,
     toolsView,
     workView,
+    organizationOpen: workOpen && pathname.endsWith('/organization'),
     filesView,
     agentsView,
     chatViewParam,

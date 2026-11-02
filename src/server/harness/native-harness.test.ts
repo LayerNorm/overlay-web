@@ -135,6 +135,35 @@ test('execution failure terminates and finalizes an owning native Harness run', 
   expect(mocks.finish).toHaveBeenCalledOnce()
 })
 
+test('serialized execution failures retain their cause without retrying the native run', async () => {
+  const reason = 'STREAM_ERROR: Stream failed. Caused by: Connection closed.'
+  mocks.run.mockRejectedValue({ code: 'STREAM_ERROR', message: 'Stream failed.', cause: { message: 'Connection closed.' } })
+  mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: reason })
+  await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed' })
+  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+    type: 'terminate', status: 'failed', reason,
+  })
+  expect(mocks.run).toHaveBeenCalledOnce()
+  expect(mocks.finish).toHaveBeenCalledOnce()
+})
+
+test('provider content-filter rejection terminates once with its actual reason', async () => {
+  const reason = 'The model provider blocked this response with its content filter (data_inspection_failed). Any partial response is incomplete.'
+  mocks.run.mockRejectedValue({ name: 'AI_TypeValidationError',
+    cause: { name: 'ZodError', message: 'Invalid input: expected array, received undefined at choices' },
+    value: { error: { code: 'data_inspection_failed' } },
+  })
+  const failed = { ...state, status: 'failed' as const, terminalReason: reason }
+  mocks.apply.mockResolvedValue(failed)
+  await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed' })
+  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+    type: 'terminate', status: 'failed', reason,
+  })
+  expect(mocks.run).toHaveBeenCalledOnce()
+  expect(mocks.finish).toHaveBeenCalledOnce()
+  expect(mocks.fallback).not.toHaveBeenCalled()
+})
+
 test.each([
   ['mismatched native identity', true, true],
   ['unregistered child lineage', false, false],

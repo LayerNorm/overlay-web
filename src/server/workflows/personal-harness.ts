@@ -17,6 +17,7 @@ import { applyHarnessOperation, claimHarnessState, readHarnessState } from '@/se
 import { harnessToolResultEvidence } from '@/server/harness/tool-evidence'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
 import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
+import { harnessExecutionFailureReason } from '@/server/harness/execution-failure'
 import { stripTextualToolCalls } from '@/server/harness/textual-tool-calls'
 import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
 import type { PersonalHarnessWorkflowInput } from '@/server/harness/personal-workflow-input'
@@ -176,7 +177,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       })
     }
   } catch (error) {
-    const reason = (error instanceof Error ? error.message : 'Harness execution failed.').slice(0, 2_000)
+    const reason = harnessExecutionFailureReason(error)
     const state = await readHarnessState(access)
     const snapshot = ['completed', 'failed', 'cancelled'].includes(state.status) ? state
       : await applyHarnessOperation(access, 'execution-failed', { type: 'terminate', status: 'failed', reason })
