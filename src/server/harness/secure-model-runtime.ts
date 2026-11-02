@@ -4,6 +4,7 @@ import { getLanguageModel } from '@/server/ai/model-runtime'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError, OverlayFreeRouteUnavailableError } from '@/server/ai/gateway/overlay-free-router-errors'
 import type { HarnessModelReference } from './secure-model'
+import { preserveHarnessSDKFailure } from './execution-failure'
 
 async function model(reference: HarnessModelReference) {
   const provider = await getLanguageModel(reference.modelId, undefined, reference.credentialOwnerId, {
@@ -27,21 +28,22 @@ async function recordConfirmedRejection(reference: HarnessModelReference, error:
   if (isConfirmedHarnessModelRejection(error)) await recordHarnessModelRejection(reference, 'model_unavailable')
 }
 
-function captureRouteInterruption(
+function captureModelFailure(
   reference: HarnessModelReference,
   stream: ReadableStream<LanguageModelV4StreamPart>,
 ): ReadableStream<LanguageModelV4StreamPart> {
-  if ((!reference.personal && !reference.native) || isByokModelId(reference.modelId)) return stream
   const reader = stream.getReader()
   return new ReadableStream({
     async pull(controller) {
       try {
         const result = await reader.read()
         if (result.done) controller.close()
-        else controller.enqueue(result.value)
+        else controller.enqueue(result.value.type === 'error'
+          ? { ...result.value, error: preserveHarnessSDKFailure(result.value.error) } : result.value)
       } catch (error) {
         try {
-          if (error instanceof OverlayFreeRouteInterruptedError) {
+          if ((reference.personal || reference.native) && !isByokModelId(reference.modelId)
+            && error instanceof OverlayFreeRouteInterruptedError) {
             const { recordHarnessModelRejection } = await import('./model-rejection')
             await recordHarnessModelRejection(reference, 'route_interrupted')
           }
@@ -49,7 +51,7 @@ function captureRouteInterruption(
           controller.error(receiptError)
           return
         }
-        controller.error(error)
+        controller.error(preserveHarnessSDKFailure(error))
       }
     },
     cancel(reason) {
@@ -64,9 +66,9 @@ export async function secureModelDoStream(reference: HarnessModelReference, opti
     result = await (await model(reference)).doStream(options)
   } catch (error) {
     await recordConfirmedRejection(reference, error)
-    throw error
+    throw preserveHarnessSDKFailure(error)
   }
-  const stream = captureRouteInterruption(reference, result.stream)
+  const stream = captureModelFailure(reference, result.stream)
   if (!reference.native?.streamToDelivery) return { ...result, stream }
   const { projectNativeHarnessStream } = await import('./native-model-stream')
   const toolNames = new Set((options.tools ?? []).flatMap(tool => (
@@ -80,6 +82,6 @@ export async function secureModelDoGenerate(reference: HarnessModelReference, op
     return await (await model(reference)).doGenerate(options)
   } catch (error) {
     await recordConfirmedRejection(reference, error)
-    throw error
+    throw preserveHarnessSDKFailure(error)
   }
 }

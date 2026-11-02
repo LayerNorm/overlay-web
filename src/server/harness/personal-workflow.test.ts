@@ -94,6 +94,20 @@ test('serialized personal failures retain their cause without retrying the run',
   expect(mocks.close).toHaveBeenCalledWith(reason)
 })
 
+test('SDK streaming failures close personal delivery descriptively without retry or fallback', async () => {
+  const reason = 'The model provider encountered a server error. Any partial response is incomplete. (AI_StreamProviderError, HTTP 503)'
+  mocks.run.mockRejectedValue({ name: 'AI_StreamProviderError', statusCode: 503, isRetryable: true, message: 'private payload' })
+  mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: reason })
+  await expect(personalHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed', terminalReason: reason })
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+    type: 'terminate', status: 'failed', reason,
+  })
+  expect(mocks.run).toHaveBeenCalledOnce()
+  expect(mocks.finish).toHaveBeenCalledOnce()
+  expect(mocks.close).toHaveBeenCalledWith(reason)
+  expect(mocks.fallback).not.toHaveBeenCalled()
+})
+
 test('root registers wakeups before executing and persists authoritative delivery before closing', async () => {
   expect(await personalHarnessWorkflow(input)).toEqual({ runId: 'root', status: 'completed' })
   expect(mocks.conflict.mock.invocationCallOrder[0]).toBeLessThan(mocks.run.mock.invocationCallOrder[0])
