@@ -6,6 +6,18 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Prepare paid workspaces for paid-first execution with verified invoice funding and an operator-only, dry-run-first migration that preserves existing balances. Execution access and free-tier infrastructure are unchanged in this preparation release.
 
+- Clear the room and native-agent composer after an acknowledged send, including submitted attachments, without erasing newer drafts or drafts in a reopened conversation.
+- Preserve bounded, credential-redacted Harness error messages and causes across serialized and cross-realm exceptions, without changing retry or termination behavior.
+- Report provider content-filter rejections hidden inside serialized SDK validation errors explicitly, instead of presenting them as generic Harness failures.
+- Retain document filename chips when reloading native-agent and room conversation history.
+
+- Place Organization directly below Timeline in both Work scopes and use one editable header avatar in Organization agent details.
+
+- Separate personal-chief appearance identity from workspace-scoped executable bindings, provisioning distinct private and workspace-scope bindings per eligible owner, with conservative legacy adoption, atomic mixed appearance/config saves, and owner-only profile updates.
+- Pin workspace and personal chiefs in the threaded Agents sidebar, preserve owner labels through customization, and add read-only Work → Organization views without changing permissions or introducing delegation.
+- Allow the selected agent's thread list to stay collapsed until a different agent is selected, rather than reopening it on every render.
+- Include the scoped Organization link in the mobile Work drawer and close the drawer when navigating to it.
+
 - Redesign the operator console to match the app: bordered panels, grouped sidebar (Growth; People and Audit log; Roles, Groups and Catalog), light and dark themes. Growth gains a weekly-active chart, shaded retention and a 4/12/26-week range. People shows each person's name, email, user ID, sign-up date, last active day and plan, with search by name, email or ID. Fixes package styles missing from the admin build.
 
 - Stop sending usage events to PostHog now that growth is counted from Convex. Removed: the `overlay.metrics.*` client and server metrics (BFF requests, model tokens, cache, chat-open latency, duplicate requests, run recovery, session refresh), `retention.engaged`, `auth.session.signed_in`, chat, Work, integration, auth-callback and sign-out events, and the billing, automation and workspace lifecycle mappings. PostHog keeps pageviews, identify/reset, feature flags and one signup event, renamed from `activation.completed` to `user.signed_up`. The unused Convex `withMetrics` wrapper is gone; its table stays until the cleanup cron empties it.

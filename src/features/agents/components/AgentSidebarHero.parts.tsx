@@ -4,6 +4,8 @@ import { useRef, useState } from 'react'
 import { Button, Input } from '@overlay/ui/primitives'
 import type { useAgentEditorController } from './AgentEditorPage'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
+import { AgentCreature } from '@/components/orb/Creature'
+import { chiefRoleLabel, isChief, usesOverlayMark } from '@/shared/agents/chief-identity'
 
 type Controller = ReturnType<typeof useAgentEditorController>
 
@@ -14,12 +16,14 @@ export function AgentSidebarHero({
   editor: Controller
   onBlurSave(): void
 }) {
-  const { form, agent, isDefaultMaster } = editor
+  const { form, agent } = editor
   const name = form.name || agent?.name || 'Agent'
+  const readOnly = agent?.canEdit === false
+  const fixedIdentity = usesOverlayMark(agent)
   return {
-    avatar: (
+    avatar: readOnly && agent ? <AgentCreature agent={agent} isDefault={agent.isDefault} size={72} /> : (
       <AgentAvatarPicker
-        isDefault={agent?.isDefault}
+        isDefault={fixedIdentity}
         shape={form.avatarShape}
         color={form.avatarColor}
         onShapeChange={(shape) => {
@@ -33,7 +37,7 @@ export function AgentSidebarHero({
         size={72}
       />
     ),
-    title: isDefaultMaster ? (
+    title: fixedIdentity || readOnly ? (
       <span>{name}</span>
     ) : (
       <InlineEditor
@@ -49,6 +53,9 @@ export function AgentSidebarHero({
     ),
     titleText: name,
     subtitle: (
+      <div className="space-y-1">
+      {agent && isChief(agent) ? <p className="text-xs text-(--muted)">{agent.agentRole === 'personal_chief' ? `${agent.createdByDisplayName || 'Member'} · ` : ''}{chiefRoleLabel(agent)}</p> : null}
+      {readOnly ? <p className="text-[13px] text-(--muted)">{agent?.description}</p> : (
       <InlineEditor
         ariaLabel="Edit agent description"
         value={form.description}
@@ -60,6 +67,8 @@ export function AgentSidebarHero({
         }}
         onBlurSave={onBlurSave}
       />
+      )}
+      </div>
     ),
   }
 }

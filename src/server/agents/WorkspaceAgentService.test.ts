@@ -102,6 +102,8 @@ function serviceFor(
   const store = new Map(seed.map((agent) => [agent.id, agent]))
   const created: CreateWorkspaceAgentRecord[] = []
   const updated: UpdateWorkspaceAgentRecord[] = []
+  const ensured: Array<{ workspaceId: string; actorUserId: string; actorPrincipalId: string }> = []
+  const identityUpdates: Parameters<WorkspaceAgentRepository['updateChiefIdentity']>[0][] = []
   const archived: Array<{ agentId: string; workspaceId: string }> = []
   const unarchived: Array<{ agentId: string; workspaceId: string }> = []
   const threadStore = [...(options.threads ?? [])]
@@ -112,6 +114,9 @@ function serviceFor(
   let idCounter = 0
   const service = new WorkspaceAgentService(
     {
+      async ensureChiefs(input: { workspaceId: string; actorUserId: string; actorPrincipalId: string }) {
+        ensured.push(input)
+      },
       async list({ includeArchived }: { includeArchived?: boolean } = {}) {
         return [...store.values()].filter((agent) => includeArchived || !agent.archivedAt)
       },
@@ -145,6 +150,9 @@ function serviceFor(
         const next = { ...current, ...input, id: current.id, updatedAt: NOW }
         store.set(next.id, next)
         return next
+      },
+      async updateChiefIdentity(input: Parameters<WorkspaceAgentRepository['updateChiefIdentity']>[0]) {
+        identityUpdates.push(input)
       },
       async archive({ agentId, workspaceId }: { agentId: string; workspaceId: string }) {
         archived.push({ agentId, workspaceId })
@@ -209,7 +217,7 @@ function serviceFor(
     () => NOW,
     options.externalAgentPolicy,
   )
-  return { service, created, updated, archived, unarchived, deletedThreads, deletedAgents, archivedThreads }
+  return { service, created, updated, identityUpdates, archived, unarchived, deletedThreads, deletedAgents, archivedThreads, ensured }
 }
 
 async function serviceError(promise: Promise<unknown>): Promise<WorkspaceAgentServiceError> {
@@ -236,6 +244,13 @@ test('list hides creator-only agents from other members but shows them to the cr
   assert.deepEqual(creatorIds.sort(), ['agent-default', 'agent-private', 'agent-shared'])
 })
 
+test('guest directory reads do not lazily provision agents', async () => {
+  const { service, created } = serviceFor(OTHER_PRINCIPAL_ID, 'guest')
+  const result = await service.list({ actorUserId: 'user-other', workspaceId: WORKSPACE_ID })
+  assert.deepEqual(result.agents, [])
+  assert.deepEqual(created, [])
+})
+
 test('list hides creator-only agents from workspace admins', async () => {
   const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-private', visibility: 'creator' })]
   const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'admin', seed)
@@ -255,6 +270,134 @@ test('get returns a creator-only agent to its creator', async () => {
   const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', seed)
   const agent = await service.get({ actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: 'agent-private' })
   assert.equal(agent.id, 'agent-private')
+})
+
+test('peer personal chiefs stay visible but read-only, including to workspace admins', async () => {
+  const chief = agentFixture({
+    id: 'personal-chief-team-user-owner',
+    agentRole: 'personal_chief',
+    chiefScope: 'workspace',
+    chiefOwnerUserId: 'user-owner',
+    visibility: 'workspace',
+  })
+  const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'admin', [chief])
+  const listed = await service.list({ actorUserId: 'user-admin', workspaceId: WORKSPACE_ID })
+  assert.equal(listed.agents.find((agent) => agent.id === chief.id)?.canEdit, false)
+  const direct = await service.get({ actorUserId: 'user-admin', workspaceId: WORKSPACE_ID, agentId: chief.id })
+  assert.equal(direct.canEdit, false)
+  const error = await serviceError(service.update({
+    actorUserId: 'user-admin',
+    workspaceId: WORKSPACE_ID,
+    agentId: chief.id,
+    input: { instructions: 'Changed by a peer.' },
+  }))
+  assert.equal(error.code, 'forbidden')
+})
+
+test('a private personal chief remains hidden from peers and workspace managers', async () => {
+  const chief = agentFixture({
+    id: 'personal-chief-private',
+    agentRole: 'personal_chief',
+    chiefScope: 'personal',
+    chiefOwnerUserId: 'user-owner',
+    visibility: 'creator',
+  })
+  const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'admin', [defaultAgentFixture(), chief])
+  assert.deepEqual(
+    (await service.list({ actorUserId: 'user-admin', workspaceId: WORKSPACE_ID })).agents.map((agent) => agent.id),
+    ['agent-default'],
+  )
+  const error = await serviceError(service.get({ actorUserId: 'user-admin', workspaceId: WORKSPACE_ID, agentId: chief.id }))
+  assert.equal(error.code, 'not_found')
+  const threadError = await serviceError(service.resolveMainThread({
+    actorUserId: 'user-admin', workspaceId: WORKSPACE_ID, agentId: chief.id,
+  }))
+  assert.equal(threadError.code, 'not_found')
+})
+
+test('a peer cannot target another owner through the personal-chief identity service', async () => {
+  const chief = agentFixture({
+    id: 'personal-chief-identity-owner',
+    agentRole: 'personal_chief',
+    chiefScope: 'personal',
+    chiefOwnerUserId: 'user-owner',
+    visibility: 'creator',
+  })
+  const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'admin', [defaultAgentFixture(), chief])
+  const error = await serviceError(service.updateChiefIdentity({
+    actorUserId: 'user-admin',
+    workspaceId: WORKSPACE_ID,
+    agentId: chief.id,
+    updatedByPrincipalId: OTHER_PRINCIPAL_ID,
+    name: 'Peer takeover',
+  }))
+  assert.equal(error.code, 'forbidden')
+})
+
+test('the personal chief owner can edit global appearance with the bound owner principal', async () => {
+  const chief = agentFixture({
+    id: 'personal-chief-owner',
+    agentRole: 'personal_chief',
+    chiefOwnerUserId: 'user-creator',
+    chiefScope: 'personal',
+    visibility: 'creator',
+  })
+  const { service, identityUpdates } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [chief])
+  const visible = await service.get({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    agentId: chief.id,
+  })
+  assert.equal(visible.canEdit, true)
+  await service.updateChiefIdentity({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    agentId: chief.id,
+    updatedByPrincipalId: CREATOR_PRINCIPAL_ID,
+    name: 'New appearance',
+  })
+  assert.equal(identityUpdates[0]?.ownerUserId, 'user-creator')
+  assert.equal(identityUpdates[0]?.updatedByPrincipalId, CREATOR_PRINCIPAL_ID)
+  assert.equal(identityUpdates[0]?.name, 'New appearance')
+})
+
+test('get and update retain personal owner display metadata and editability', async () => {
+  const chief = agentFixture({
+    id: 'personal-chief-metadata',
+    agentRole: 'personal_chief',
+    chiefOwnerUserId: 'user-creator',
+    chiefScope: 'personal',
+    visibility: 'creator',
+  })
+  const { service } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [chief], {
+    [CREATOR_PRINCIPAL_ID]: { type: 'human' },
+  })
+  const visible = await service.get({
+    actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: chief.id,
+  })
+  assert.equal(visible.createdByDisplayName, CREATOR_PRINCIPAL_ID)
+  assert.equal(visible.canEdit, true)
+  const updated = await service.update({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    agentId: chief.id,
+    input: { instructions: 'Updated binding instructions' },
+  })
+  assert.equal(updated.createdByDisplayName, CREATOR_PRINCIPAL_ID)
+  assert.equal(updated.canEdit, true)
+})
+
+test('clearing a chief description sends an explicit empty value to persistence', async () => {
+  const chief = agentFixture({
+    id: 'personal-chief-clear', agentRole: 'personal_chief', chiefOwnerUserId: 'user-creator',
+    chiefScope: 'personal', visibility: 'creator', description: 'Old description',
+  })
+  const { service, updated } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [chief])
+  await service.update({
+    actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: chief.id,
+    input: { description: '' },
+  })
+  assert.equal(updated[0]?.description, '')
 })
 
 test('a manager cannot probe a creator-only agent through update', async () => {
@@ -496,11 +639,38 @@ test('update passes a visibility flip through to the repository', async () => {
 })
 
 test('the default master agent is workspace-visible', async () => {
-  const { service, created } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [])
+  const { service, ensured } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [])
   await service.list({ actorUserId: 'user-creator', workspaceId: WORKSPACE_ID })
-  const master = created.find((input) => input.isDefault)
-  assert.ok(master)
-  assert.equal(master.visibility, 'workspace')
+  assert.deepEqual(ensured, [{
+    workspaceId: WORKSPACE_ID,
+    actorUserId: 'user-creator',
+    actorPrincipalId: CREATOR_PRINCIPAL_ID,
+    now: NOW,
+  }])
+})
+
+test('renamed workspace chiefs remain protected from archive', async () => {
+  const chief = agentFixture({
+    id: 'workspace-chief-test',
+    agentRole: 'workspace_chief',
+    chiefScope: 'workspace',
+    isDefault: false,
+  })
+  const { service, archived } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [chief])
+  const renamed = await service.update({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    agentId: chief.id,
+    input: { name: 'Renamed chief' },
+  })
+  assert.equal(renamed.name, 'Renamed chief')
+  const error = await serviceError(service.archive({
+    actorUserId: 'user-creator',
+    workspaceId: WORKSPACE_ID,
+    agentId: chief.id,
+  }))
+  assert.equal(error.code, 'forbidden')
+  assert.deepEqual(archived, [])
 })
 
 const DM_PRIVATE_AGENT_PRINCIPAL_ID = 'agent-principal-private'

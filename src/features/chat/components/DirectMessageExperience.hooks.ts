@@ -1467,6 +1467,11 @@ export function useRoomComposer({
   const modeMenuRef = useRef<HTMLDivElement>(null)
   const composerRef = useRef<import('./chat-interface/MentionInput').MentionInputHandle>(null)
   const lastTypingSentAt = useRef(0)
+  const draftScopeRef = useRef<object | null>(null)
+  useLayoutEffect(() => {
+    draftScopeRef.current = {}
+    return () => { draftScopeRef.current = null }
+  }, [activeWorkspaceId, conversationId])
   const {
     handleComposerInputChange,
     hasComposerText,
@@ -1562,6 +1567,7 @@ export function useRoomComposer({
 
     const submittedInput = inputRef.current ?? input
     const submittedState = latestDraftStateRef.current
+    const submittedScope = draftScopeRef.current
     const result = await sendMessage(`${text}${documentMarker}`, {
       existing: { turnId, clientNonce: crypto.randomUUID(), createdAt: Date.now(), parts: payload.partsForModel },
       parts: payload.partsForModel,
@@ -1570,7 +1576,7 @@ export function useRoomComposer({
     })
     if (!result.accepted) return
     const latest = latestDraftStateRef.current
-    const draftStillMatches = sessionIdRef.current === conversationId
+    const draftStillMatches = submittedScope !== null && draftScopeRef.current === submittedScope
       && latest.conversationId === conversationId
       && latest.activeWorkspaceId === activeWorkspaceId
       && inputRef.current === submittedInput

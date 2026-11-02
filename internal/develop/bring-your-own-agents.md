@@ -738,6 +738,30 @@ architecture doc — environment topology, protocol layers, enrollment, the
 Agent Host loop, ACP adapters, durable run flow, memory, package boundaries,
 trust boundaries, and the implementation map.
 
+### Chief identities and scoped bindings
+
+`collaboration/agents:ensureChiefsByServer` transactionally provisions one workspace
+chief and separate personal/workspace personal-chief bindings for active non-guest
+human members. Deterministic IDs make retries idempotent. Adopt only explicit
+legacy defaults or canonical default IDs, preserving IDs, executable settings and
+threads; never infer authority from a name. Removed owners disappear from directories.
+
+`personalChiefIdentities` stores only the owner's global name, description and
+creature appearance. Bindings keep independent instructions, models, tools, teams
+and histories. Appearance and addressed-binding edits commit atomically; active
+owner membership is rechecked at both service and Convex boundaries, including
+against workspace admins. Private bindings remain creator-visible. Chief role,
+scope, visibility and Overlay harness are server-managed, and chiefs cannot be
+archived/deleted. New personal chiefs receive explicit standard tool grants;
+role metadata grants no capabilities or inference. Existing default-master
+capability follows `isDefault`, never the editable name.
+
+Work → Organization visualizes the authorized Personal/Workspace directory.
+Coordination lines grant no permissions. Task routing, delegation, graph editing
+and swarm execution remain outside this feature. Verify legacy adoption, distinct
+bindings/threads, owner saves across scopes, peer/admin denial and mobile navigation
+on the current isolated PR Preview before release.
+
 ### Mental model
 
 Overlay is the control plane, the Agent Host is the bridge, and the selected harness performs the
