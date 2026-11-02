@@ -147,7 +147,7 @@ export function useAgentEditorController({
   ])
 
   const isDefaultMaster = isDefaultMasterAgent(agent)
-  const valid = isAgentEditorValid({
+  const valid = agent?.canEdit !== false && isAgentEditorValid({
     name: form.name, instructions: form.instructions, modelId: form.modelId,
     agentType: runtime.agentType, legacyHostedRuntime: runtime.legacyHostedRuntime, connectedAgentsEnabled,
     bindingValid: byo.bindingValid || runtime.cloudAgent,

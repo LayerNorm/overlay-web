@@ -1,6 +1,7 @@
 import 'server-only'
 
 import type {
+  WorkspaceAgentCreatureShape,
   WorkspaceAgentAutomation,
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentThread,
@@ -22,6 +23,27 @@ type ConvexAgent = Omit<WorkspaceAgentDirectoryItem, 'id'> & { agentId: string }
 export class ConvexWorkspaceAgentRepository implements WorkspaceAgentRepository {
   async create(input: CreateWorkspaceAgentRecord) {
     return agent(await requiredMutation<ConvexAgent>('createByServer', input))
+  }
+
+  async ensureChiefs(args: {
+    workspaceId: string
+    actorUserId: string
+    actorPrincipalId: string
+    now: number
+  }) {
+    await requiredMutation<ConvexAgent[]>('ensureChiefsByServer', args)
+  }
+
+  async updateChiefIdentity(args: {
+    ownerUserId: string
+    updatedByPrincipalId: string
+    name?: string
+    description?: string
+    avatarColor?: string
+    avatarShape?: WorkspaceAgentCreatureShape
+    now: number
+  }) {
+    await requiredMutation<unknown>('updateChiefIdentityByServer', args)
   }
 
   async get(args: { agentId: string; workspaceId: string }) {

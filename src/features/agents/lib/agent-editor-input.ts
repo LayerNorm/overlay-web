@@ -29,7 +29,7 @@ export function buildWorkspaceAgentInput(args: {
   const byo = args.agentType === 'byo'
   return {
     name: args.name.trim(),
-    description: args.description.trim() || undefined,
+    description: args.description.trim(),
     instructions: byo ? generatedByoInstructions(args.harnessLabel) : args.instructions.trim(),
     harness: byo ? workspaceHarnessForByo(args.adapterId) : 'overlay',
     modelId: byo ? byoModelId(args.adapterId, args.byoModel) : args.modelId.trim(),
@@ -45,9 +45,9 @@ export function buildWorkspaceAgentInput(args: {
 
 /** The built-in master agent renders the master notice and skips deletion. */
 export function isDefaultMasterAgent(
-  agent: { isDefault?: boolean; name: string } | null | undefined,
+  agent: { isDefault?: boolean; agentRole?: string; name: string } | null | undefined,
 ): boolean {
-  return Boolean(agent && (agent.isDefault || agent.name.toLowerCase() === 'overlay'))
+  return Boolean(agent && (agent.isDefault || agent.agentRole === 'workspace_chief' || agent.agentRole === 'personal_chief'))
 }
 
 /** Mirrors the editor's save gating: identity plus either overlay behavior or a valid BYO binding. */

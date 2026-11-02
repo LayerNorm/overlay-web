@@ -124,12 +124,12 @@ export function AgentCreature({
   animated = false,
   isDefault = false,
 }: {
-  agent: { name: string; avatarColor?: string; avatarShape?: string }
+  agent: { name: string; avatarColor?: string; avatarShape?: string; agentRole?: string }
   size?: number
   animated?: boolean
   isDefault?: boolean
 }) {
-  if (isDefault) {
+  if (agent.agentRole === 'workspace_chief' || (isDefault && agent.agentRole !== 'personal_chief')) {
     return (
       <span style={{
         display: 'inline-flex',

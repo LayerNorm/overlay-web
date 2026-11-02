@@ -8,7 +8,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { buildScopedPanelNav } from './scopedPanelNav'
 import { chatScopeForView, resolveSidebarRouteState, scopePanelAction, type PanelCreateRules } from './appSidebarNav'
 import { buildChatPanelNav, resolveRecentChatHref } from './chatPanelNav'
-import { workInlineItems } from './workPanelNav'
+import { buildWorkPanelNav, workInlineItems } from './workPanelNav'
 import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -17,6 +17,21 @@ const FILE_ROWS = [
   { id: 'all', label: 'All' },
   { id: 'notes', label: 'Notes' },
 ]
+
+test('Organization retains its subpage when switching scope and can return to a task view', () => {
+  let href = ''
+  const nav = buildWorkPanelNav({
+    scope: 'personal', workView: 'list', organizationOpen: true,
+    effectivePendingSecondaryNavId: null, currentSearchParams: new URLSearchParams(),
+    activeWorkspaceId: 'team',
+    buildWorkspaceHref: (_id, path, scope) => buildWorkspaceHandleHref('team', path, scope),
+    router: { push: path => { href = path } }, closeMobileDrawer() {}, beginSecondaryNavigation() {},
+  })
+  nav.onSelect('workspace')
+  assert.equal(href, '/w/team/workspace/work/organization?view=list')
+  nav.onSelect('personal:list')
+  assert.equal(href, '/w/team/personal/work?view=list')
+})
 
 test('switching agent scope drops the selected agent and thread in either direction', () => {
   for (const scope of ['personal', 'workspace'] as const) {
@@ -336,10 +351,10 @@ test('Work opens a nav-only panel with List, Board, and Timeline under the scope
   assert.equal(routeState('/app/tools', 'view=board').workOpen, false)
 })
 
-test('the Work panel shows the three views under the selected scope and reports the choice', () => {
+test('the Work panel shows Organization after Timeline under the selected scope', () => {
   const rows = workInlineItems
-  assert.deepEqual(rows.map((row) => row.id), ['list', 'board', 'timeline'])
-  assert.deepEqual(rows.map((row) => row.label), ['List', 'Board', 'Timeline'])
+  assert.deepEqual(rows.map((row) => row.id), ['list', 'board', 'timeline', 'organization'])
+  assert.deepEqual(rows.map((row) => row.label), ['List', 'Board', 'Timeline', 'Organization'])
   const calls: Array<[string, string | null]> = []
   const built = buildScopedPanelNav({
     scope: 'workspace',
@@ -349,7 +364,7 @@ test('the Work panel shows the three views under the selected scope and reports 
     onSelect: (scope, sub) => { calls.push([scope, sub]) },
   })
   assert.equal(built.activeChildId, 'workspace:board')
-  assert.deepEqual(built.items[1]!.children?.map((child) => child.id), ['workspace:list', 'workspace:board', 'workspace:timeline'])
+  assert.deepEqual(built.items[1]!.children?.map((child) => child.id), ['workspace:list', 'workspace:board', 'workspace:timeline', 'workspace:organization'])
   built.onSelect('personal:timeline')
   assert.deepEqual(calls, [['personal', 'timeline']])
 })
@@ -364,5 +379,5 @@ test('a workspace of one person keeps both Work scope tabs', () => {
   })
   assert.deepEqual(built.items.map((item) => item.id), ['personal', 'workspace'])
   assert.equal(built.activeId, 'personal')
-  assert.deepEqual(built.items[0]!.children?.map((item) => item.id), ['personal:list', 'personal:board', 'personal:timeline'])
+  assert.deepEqual(built.items[0]!.children?.map((item) => item.id), ['personal:list', 'personal:board', 'personal:timeline', 'personal:organization'])
 })

@@ -31,6 +31,15 @@ import { CloudAgentPanel } from './CloudAgentPanel'
 import { CloudAgentAccess } from './CloudAgentAccess'
 import { ConnectedAgentSettings } from './ConnectedAgentSettings'
 import { AgentEditorSkeleton, EditorLoadGate, useEditorLoad } from './EditorLoadGate'
+import { usesOverlayMark } from '@/shared/agents/chief-identity'
+
+function getAgentEditorControls(agent: WorkspaceAgentDirectoryItem | null, isDefaultMaster: boolean) {
+  return {
+    canEdit: agent?.canEdit !== false,
+    showMasterNotice: isDefaultMaster && agent?.agentRole !== 'personal_chief',
+    showAccessSelector: !agent?.agentRole || agent.agentRole === 'agent',
+  }
+}
 
 type AgentEditorFormSectionProps = {
   mode: 'new' | 'edit'
@@ -149,13 +158,16 @@ function AgentEditorFormSection({
     deleteAgentComputer,
   } = computer
 
+  const controls = getAgentEditorControls(agent, isDefaultMaster)
+  if (!controls.canEdit) return <p className="px-5 py-6 text-sm text-(--muted)">You do not have permission to edit this agent.</p>
+
   return (
     <div className="mx-auto w-full max-w-2xl">
-      {isDefaultMaster ? <MasterAgentNotice /> : null}
+      {controls.showMasterNotice ? <MasterAgentNotice /> : null}
 
       <div className="mt-5 space-y-5">
         <AgentAvatar
-          isDefault={agent?.isDefault}
+          isDefault={usesOverlayMark(agent)}
           color={avatarColor}
           shape={avatarShape}
           name={name}
@@ -242,7 +254,7 @@ function AgentEditorFormSection({
             <AgentSurfacesField agentName={name} hasAgent={Boolean(agent)} surfaces={surfaces} />
           ) : null}
 
-          <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} />
+          {controls.showAccessSelector ? <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} /> : null}
 
           {mode === 'edit' && agent?.principalId ? (
             <AgentMemoriesSection agentPrincipalId={agent.principalId} />

@@ -11,6 +11,7 @@ import {
 import { cn } from '@overlay/ui'
 import { DelayedTooltip } from '@overlay/ui/overlays'
 import type { InlineNavItem, SecondaryPanelNav } from '../types'
+import { useShellAdapter } from '../adapter'
 
 export function badgeLabel(count: number) {
   return count > 99 ? '99+' : String(count)
@@ -27,6 +28,8 @@ interface PageSection {
   active: boolean
   badgeCount?: number
   locked?: boolean
+  href?: string
+  onNavigate?: () => void
 }
 
 function pageSections(
@@ -37,7 +40,7 @@ function pageSections(
 ): PageSection[] {
   if (rows.length > 0) {
     const activeId = nav ? nav.activeChildId ?? nav.activeId : undefined
-    return rows.map((row) => ({ id: row.id, label: row.label, active: activeId === row.id, badgeCount: row.badgeCount, locked: row.locked }))
+    return rows.map((row) => ({ id: row.id, label: row.label, active: activeId === row.id || (Boolean(row.href) && sectionViewId(activeId ?? '') === row.id), badgeCount: row.badgeCount, locked: row.locked, href: row.href, onNavigate: row.onNavigate }))
   }
   return hasContent && title ? [{ id: 'page', label: title, active: true }] : []
 }
@@ -61,6 +64,7 @@ export function PageSections({
   children?: ReactNode
 }) {
   const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set())
+  const { Link } = useShellAdapter()
   const sections = pageSections(nav, rows, title, Boolean(children || action))
   if (sections.length === 0) return null
   const multi = rows.length > 0
@@ -75,6 +79,11 @@ export function PageSections({
   return (
     <SidebarGroup className="mt-3">
       {sections.map((section, index) => {
+        if (section.href) return (
+          <SidebarMenuButton key={section.id} asChild isActive={section.active} className="h-8 text-sm">
+            <Link href={section.href} onClick={section.onNavigate} aria-current={section.active ? 'page' : undefined}>{section.label}</Link>
+          </SidebarMenuButton>
+        )
         const open = (independent || section.active) && !closed.has(section.id)
         const pending = !independent && nav?.pendingId === section.id
         const sectionAction = multi ? sectionActions?.[sectionViewId(section.id)] ?? (section.active ? action : null) : action

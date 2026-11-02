@@ -6,6 +6,8 @@ import type {
   WorkspaceAgentDefinition,
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentHarness,
+  WorkspaceAgentChiefScope,
+  WorkspaceAgentRole,
   WorkspaceAgentThread,
   WorkspaceArchivedAgentThread,
   WorkspaceAgentVisibility,
@@ -30,6 +32,9 @@ export type CreateWorkspaceAgentRecord = {
   createdByPrincipalId: string
   now: number
   isDefault?: boolean
+  agentRole?: WorkspaceAgentRole
+  chiefOwnerUserId?: string
+  chiefScope?: WorkspaceAgentChiefScope
 }
 
 export type UpdateWorkspaceAgentRecord = Partial<Pick<
@@ -63,4 +68,19 @@ export interface WorkspaceAgentRepository {
   deleteArchived(args: { agentId: string; workspaceId: string; now: number }): Promise<boolean>
   setThreadArchived(args: { conversationId: string; agentId: string; userId: string; archived: boolean }): Promise<void>
   deleteThread(args: { conversationId: string; agentId: string; userId: string }): Promise<void>
+  ensureChiefs(args: {
+    workspaceId: string
+    actorUserId: string
+    actorPrincipalId: string
+    now: number
+  }): Promise<void>
+  updateChiefIdentity(args: {
+    ownerUserId: string
+    updatedByPrincipalId: string
+    name?: string
+    description?: string
+    avatarColor?: string
+    avatarShape?: WorkspaceAgentCreatureShape
+    now: number
+  }): Promise<void>
 }

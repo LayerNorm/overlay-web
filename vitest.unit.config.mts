@@ -27,6 +27,7 @@ export default defineConfig({
       'src/server/app-api/v1/conversations/act/model-candidates.test.ts',
       'src/server/app-api/v1/conversations/act/personal-harness-turn.test.ts',
       'src/server/app-api/v1/conversations/stop/route.test.ts',
+      'src/server/app-api/v1/conversations/route.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**'],
     passWithNoTests: false,
