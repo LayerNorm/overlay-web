@@ -5,7 +5,7 @@ import { nativeHarnessChildInput, nativeHarnessWorkflow, startNativeHarnessChild
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), claim: vi.fn(), apply: vi.fn(), run: vi.fn(), ports: vi.fn(),
   tools: vi.fn(), waits: vi.fn(), attach: vi.fn(), finish: vi.fn(), notify: vi.fn(), child: vi.fn(),
-  admit: vi.fn(), start: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), fallback: vi.fn(), repositoryGet: vi.fn() }))
+  admit: vi.fn(), start: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), repositoryGet: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('workflow', () => ({
   FatalError: class extends Error {}, getWorkflowMetadata: () => ({ workflowRunId: 'workflow' }),
@@ -147,6 +147,18 @@ test('serialized execution failures retain their cause without retrying the nati
   expect(mocks.finish).toHaveBeenCalledOnce()
 })
 
+test('SDK rate limits terminate once with descriptive delivery and no new retry or fallback', async () => {
+  const reason = 'The model provider rate limit or quota was exceeded. Check provider limits before trying again. (AI_APICallError, HTTP 429)'
+  mocks.run.mockRejectedValue({ name: 'AI_APICallError', statusCode: 429, isRetryable: true, message: 'private payload' })
+  mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: reason })
+  await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed' })
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+    type: 'terminate', status: 'failed', reason,
+  })
+  expect(mocks.run).toHaveBeenCalledOnce()
+  expect(mocks.finish).toHaveBeenCalledOnce()
+})
+
 test('provider content-filter rejection terminates once with its actual reason', async () => {
   const reason = 'The model provider blocked this response with its content filter (data_inspection_failed). Any partial response is incomplete.'
   mocks.run.mockRejectedValue({ name: 'AI_TypeValidationError',
@@ -161,7 +173,6 @@ test('provider content-filter rejection terminates once with its actual reason',
   })
   expect(mocks.run).toHaveBeenCalledOnce()
   expect(mocks.finish).toHaveBeenCalledOnce()
-  expect(mocks.fallback).not.toHaveBeenCalled()
 })
 
 test.each([
