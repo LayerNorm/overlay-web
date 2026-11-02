@@ -128,6 +128,7 @@ export function parseCreateFileRequest(
   for (const field of CREATE_FILE_STRING_FIELDS) {
     if (typeof body[field] === 'string') fileArgs[field] = body[field]
   }
+  if (body.byAgent === true) fileArgs.byAgent = true
   if (isFileKind(body.kind)) fileArgs.kind = body.kind
   if (body.parentId) fileArgs.parentId = body.parentId
   const scope = parseResourceScope(body.scope)
@@ -182,6 +183,7 @@ export function buildUpdateFileArgs(
   if (name !== undefined) updateArgs.name = name
   if (parentId !== undefined) updateArgs.parentId = parentId || null
   if (typeof body.expectedUpdatedAt === 'number') updateArgs.expectedUpdatedAt = body.expectedUpdatedAt
+  if (body.byAgent === true) updateArgs.byAgent = true
   const nextContent = textContent ?? content
   if (typeof nextContent === 'string') {
     updateArgs.content = nextContent

@@ -122,6 +122,7 @@ export async function generatePresignedUploadUrl(
   mimeType: string,
   sizeBytes: number,
   ttlSeconds?: number,
+  constraints?: Pick<UploadConstraints, 'checksumSha256' | 'createOnly'>,
 ): Promise<string> {
   const client = getR2Client()
   const bucket = getR2BucketName()
@@ -136,8 +137,20 @@ export async function generatePresignedUploadUrl(
       Key: key,
       ContentType: mimeType,
       ContentLength: contentLength,
+      ...(constraints?.checksumSha256
+        ? { ChecksumSHA256: Buffer.from(constraints.checksumSha256, 'hex').toString('base64') }
+        : {}),
+      ...(constraints?.createOnly ? { IfNoneMatch: '*' } : {}),
     }),
-    { expiresIn: ttl },
+    {
+      expiresIn: ttl,
+      ...(constraints?.checksumSha256 || constraints?.createOnly
+        ? { unhoistableHeaders: new Set([
+          ...(constraints?.checksumSha256 ? ['x-amz-checksum-sha256'] : []),
+          ...(constraints?.createOnly ? ['if-none-match'] : []),
+        ]) }
+        : {}),
+    },
   )
 
   logger.info(`[R2] generatePresignedUploadUrl key=${key} mimeType=${mimeType} size=${contentLength}B ttl=${ttl}s duration=${Date.now() - t0}ms`)
@@ -313,11 +326,17 @@ export class R2ObjectStore implements ObjectStore {
           ContentType: contentType,
           ...(constraints?.contentLength !== undefined ? { ContentLength: constraints.contentLength } : {}),
           ...(constraints?.checksumSha256 ? { ChecksumSHA256: Buffer.from(constraints.checksumSha256, 'hex').toString('base64') } : {}),
+          ...(constraints?.createOnly ? { IfNoneMatch: '*' } : {}),
         }),
         { expiresIn: Math.min(this.presignTtlSeconds(), constraints?.expiresIn ?? this.presignTtlSeconds()),
           // The drive sends this header. R2 rejects a query-hoisted checksum
           // duplicated in request headers, so bind it as a signed header.
-          ...(constraints?.checksumSha256 ? { unhoistableHeaders: new Set(['x-amz-checksum-sha256']) } : {}),
+          ...(constraints?.checksumSha256 || constraints?.createOnly
+            ? { unhoistableHeaders: new Set([
+              ...(constraints?.checksumSha256 ? ['x-amz-checksum-sha256'] : []),
+              ...(constraints?.createOnly ? ['if-none-match'] : []),
+            ]) }
+            : {}),
         },
       ),
     }

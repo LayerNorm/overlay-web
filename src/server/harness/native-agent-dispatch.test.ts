@@ -36,7 +36,7 @@ const access = {
 }
 const context = { modelId: 'model', memoryEnabled: true, sharedRoom: true, requestFingerprint: 'fingerprint' }
 const parent = {
-  runId: access.runId, workflowRunId: access.workflowRunId, policy: {
+  runId: access.runId, rootRunId: access.runId, workflowRunId: access.workflowRunId, policy: {
     actorUserId: access.actorUserId, workspaceId: access.workspaceId, allowedToolIds: ['read_file'], maxCostMicros: 100,
   }, usage: { costMicros: 0 }, children: [], revision: 1,
 }
@@ -131,6 +131,17 @@ test('free native routes reserve no child budget', async () => {
     agent: 'Target', message: 'inspect this', wait: true,
   })
   expect(mocks.apply.mock.calls[0]![0].operation.child.maxCostMicros).toBe(0)
+})
+
+test('a descendant dispatch uses the original root workflow for surface preparation', async () => {
+  const root = { ...parent, runId: 'workspace:source', rootRunId: 'workspace:source', workflowRunId: 'source-workflow' }
+  mocks.get.mockImplementation(async ({ runId }) => runId === root.runId ? root : { ...parent, rootRunId: root.runId })
+  await dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
+    agent: 'Target', message: 'inspect this',
+  })
+  expect(mocks.build).toHaveBeenCalledWith(expect.objectContaining({
+    conversationId: 'target-room', surfaceRootRunId: root.runId, expectedSurfaceWorkflowRunId: 'source-workflow',
+  }))
 })
 
 test('native asks refuse external targets before creating a delivery', async () => {

@@ -3,6 +3,9 @@ import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 
 import {
   useCallback,
+  useLayoutEffect,
+  useMemo,
+  useRef,
   type Dispatch,
   type MutableRefObject,
   type RefObject,
@@ -50,6 +53,9 @@ import { getBlockedSendNotice } from './chat-composer-blocking'
 export { TEMPORARY_CHAT_ID, PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
 
 export function useChatSendController({
+  ensureWritable,
+  isCurrentScope,
+  nativeThreadReadOnly = false,
   activeChatId,
   activeChatIdRef,
   activeChatTitle,
@@ -122,6 +128,9 @@ export function useChatSendController({
   userId,
   videoSubMode,
 }: {
+  ensureWritable: () => Promise<boolean>
+  isCurrentScope: () => boolean
+  nativeThreadReadOnly?: boolean
   activeChatId: string | null
   activeChatIdRef: MutableRefObject<string | null>
   activeChatTitle: string | null
@@ -205,6 +214,13 @@ export function useChatSendController({
   userId: string | null
   videoSubMode: VideoSubMode
 }) {
+  const preflightInFlight = useRef(false)
+  const composerState = useMemo(() => ({ attachedImages, pendingChatDocuments, replyContext, mentions }),
+    [attachedImages, pendingChatDocuments, replyContext, mentions])
+  const latestComposerStateRef = useRef(composerState)
+  useLayoutEffect(() => {
+    latestComposerStateRef.current = composerState
+  }, [composerState])
   const isStreamChatActive = useCallback((
     chatId: string,
     temporaryChatSnapshot: boolean,
@@ -324,12 +340,15 @@ export function useChatSendController({
   }, [completeSession, createNewChat, pendingFirstSendRef, tryActivatePendingFirstSend])
 
   const handleSend = useCallback(async () => {
+    if (nativeThreadReadOnly) return
     if (!userId && !authUser) {
       try { sessionStorage.setItem('overlay:guest-draft', inputRef.current) } catch { /* ignore */ }
       requireAuth('send')
       return
     }
     const replyCtxSnapshot = replyContext
+    const submittedInput = inputRef.current
+    const submittedComposerState = latestComposerStateRef.current
     const snapshot = buildSubmittedComposerSnapshot({
       selectedModels,
       selectedActModel,
@@ -343,7 +362,7 @@ export function useChatSendController({
       mode,
       selectedToolIds,
       memoryEnabled,
-      text: inputRef.current.trim(),
+      text: submittedInput.trim(),
     })
     const clearSubmittedComposer = () => {
       textareaRef.current?.clear()
@@ -375,6 +394,28 @@ export function useChatSendController({
       }))
       return
     }
+
+    if (preflightInFlight.current) return
+    const originalChatId = activeChatIdRef.current
+    const originalTemporary = isTemporaryChatRef.current
+    preflightInFlight.current = true
+    let writable = false
+    try {
+      writable = await ensureWritable()
+    } catch {
+      writable = false
+    } finally {
+      preflightInFlight.current = false
+    }
+    if (
+      !writable
+      || !isCurrentScope()
+      || activeChatIdRef.current !== originalChatId
+      || isTemporaryChatRef.current !== originalTemporary
+      || inputRef.current !== submittedInput
+      || latestComposerStateRef.current !== submittedComposerState
+    ) return
+
 
     beginTtftClientTurn({
       model: snapshot.selectedActModelSnapshot,
@@ -452,6 +493,9 @@ export function useChatSendController({
       updateRuntimeUiState,
     })
   }, [
+    nativeThreadReadOnly,
+    ensureWritable,
+    isCurrentScope,
     activeChatId,
     activeChatIdRef,
     activeChatTitle,

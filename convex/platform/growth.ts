@@ -113,12 +113,22 @@ async function recordSignup(ctx: MutationCtx, userId: string, day: string) {
   if (user) await creditRetention(ctx, user)
 }
 
-/** Marks each person active on `day` and credits any retention window that day falls in. */
+/** Whether the person still has an account; deletion removes their subscriptions row. */
+async function accountExists(ctx: MutationCtx, userId: string): Promise<boolean> {
+  const subscription = await ctx.db.query('subscriptions')
+    .withIndex('by_userId', (q) => q.eq('userId', userId)).first()
+  return subscription !== null
+}
+
+/**
+ * Marks each person active on `day` and credits any retention window that day
+ * falls in. Activity kept after an account is deleted is not credited back.
+ */
 async function creditActive(ctx: MutationCtx, userIds: Iterable<string>, day: string) {
   for (const userId of new Set(userIds)) {
     const userDay = await ctx.db.query('growthUserDays')
       .withIndex('by_userId_day', (q) => q.eq('userId', userId).eq('day', day)).unique()
-    if (userDay) continue
+    if (userDay || !(await accountExists(ctx, userId))) continue
     await ctx.db.insert('growthUserDays', { userId, day })
     const user = await growthUser(ctx, userId)
     if (user) await creditRetention(ctx, user)
@@ -238,7 +248,7 @@ const STEPS: Step[] = [
       .withIndex('by_creation_time', (q) => q.gte('_creationTime', start).lt('_creationTime', end))
       .paginate({ cursor, numItems: 100 })
     counts.automationsCreated += page.page.length
-    await creditActive(ctx, page.page.map((automation) => automation.userId), day)
+    await creditActive(ctx, page.page.filter((automation) => !automation.createdByAgent).map((automation) => automation.userId), day)
     return page
   },
   // Files can carry up to 1 MiB of text each, so their pages stay small.
@@ -500,8 +510,9 @@ export const startDaily = internalMutation({
     const state = await getState(ctx)
     if (state?.day && now - state.updatedAt < STALE_RUN_MS) return null
     if (state?.day) {
-      // A stopped run: count that day again from the start.
-      await beginDay(ctx, state.day, state.untilDay ?? yesterday)
+      // A stopped run: count that day again from the start, through yesterday.
+      const untilDay = state.untilDay && state.untilDay > yesterday ? state.untilDay : yesterday
+      await beginDay(ctx, state.day, untilDay)
       return null
     }
     if (state?.lastCompletedDay && state.lastCompletedDay >= yesterday) return null

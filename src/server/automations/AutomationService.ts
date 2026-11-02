@@ -80,6 +80,7 @@ type CreateAutomationBody = {
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
   scope?: 'personal' | 'workspace'
+  byAgent?: boolean
 }
 
 type UpdateAutomationBody = {
@@ -326,6 +327,7 @@ export class AutomationService {
       concurrencyPolicy: body.concurrencyPolicy,
       workspaceId: args.workspaceId,
       ...(body.scope === 'workspace' || body.scope === 'personal' ? { scope: body.scope } : {}),
+      ...(body.byAgent === true ? { byAgent: true } : {}),
     })
     if (!id) throw new Error('Automation create returned no id')
     return { success: true, id }
@@ -810,12 +812,14 @@ export class AutomationService {
     userId: string
     conversationId?: string
     turnId?: string
+    expectedWorkflowRunId?: string
   }): Promise<void> {
     await this.deps.repository.markManualRunStarted({
       runId: args.runId,
       userId: args.userId,
       conversationId: args.conversationId,
       turnId: args.turnId ?? `automation-${args.runId}-${Date.now()}`,
+      ...(args.expectedWorkflowRunId ? { expectedWorkflowRunId: args.expectedWorkflowRunId } : {}),
       now: this.clock.now(),
     })
   }
@@ -824,6 +828,8 @@ export class AutomationService {
     runId: string
     userId: string
     conversationId?: string
+    expectedWorkflowRunId?: string
+    expectedTurnId?: string
   }): Promise<void> {
     await this.deps.repository.markManualRunCompleted({
       runId: args.runId,
@@ -831,6 +837,8 @@ export class AutomationService {
       // Pass undefined (not '') so Convex's v.optional(v.id()) validator
       // accepts it. An empty string is not a valid Convex ID and will throw.
       conversationId: args.conversationId || undefined,
+      ...(args.expectedWorkflowRunId ? { expectedWorkflowRunId: args.expectedWorkflowRunId } : {}),
+      ...(args.expectedTurnId ? { expectedTurnId: args.expectedTurnId } : {}),
       now: this.clock.now(),
     })
   }
@@ -839,13 +847,33 @@ export class AutomationService {
     runId: string
     userId: string
     error: string
+    expectedWorkflowRunId?: string
+    expectedTurnId?: string
+    status?: 'failed' | 'cancelled' | 'skipped'
   }): Promise<void> {
     await this.deps.repository.markManualRunFailed({
       runId: args.runId,
       userId: args.userId,
       error: args.error,
+      ...(args.expectedWorkflowRunId ? { expectedWorkflowRunId: args.expectedWorkflowRunId } : {}),
+      ...(args.expectedTurnId ? { expectedTurnId: args.expectedTurnId } : {}),
+      ...(args.status ? { status: args.status } : {}),
       now: this.clock.now(),
     })
+  }
+
+  async settleRun(args: {
+    conversationId?: string
+    error?: string
+    expectedWorkflowRunId: string
+    expectedStatus: 'queued' | 'running' | 'completed' | 'succeeded' | 'failed' | 'cancel_requested' | 'cancelled' | 'skipped' | 'dead_letter'
+    expectedTurnId?: string
+    runId: string
+    status: 'completed' | 'failed' | 'cancelled' | 'skipped'
+    userId: string
+  }): Promise<boolean> {
+    if (!this.deps.repository.settleManualRun) throw new Error('Owner-fenced automation settlement is unavailable.')
+    return await this.deps.repository.settleManualRun(args)
   }
 
   private assertScheduleAllowed(schedule: AutomationSchedule | undefined): void {

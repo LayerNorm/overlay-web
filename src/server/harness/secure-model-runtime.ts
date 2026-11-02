@@ -2,7 +2,7 @@ import type { LanguageModelV4CallOptions, LanguageModelV4StreamPart } from '@ai-
 import { extractReasoningMiddleware, wrapLanguageModel } from 'ai'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
-import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError } from '@/server/ai/gateway/overlay-free-router-errors'
+import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError, OverlayFreeRouteUnavailableError } from '@/server/ai/gateway/overlay-free-router-errors'
 import type { HarnessModelReference } from './secure-model'
 
 async function model(reference: HarnessModelReference) {
@@ -18,6 +18,10 @@ async function recordConfirmedRejection(reference: HarnessModelReference, error:
   const { isConfirmedHarnessModelRejection, recordHarnessModelRejection } = await import('./model-rejection')
   if (error instanceof OverlayFreeRouteBusyError) {
     await recordHarnessModelRejection(reference, 'route_capacity')
+    return
+  }
+  if (error instanceof OverlayFreeRouteUnavailableError) {
+    await recordHarnessModelRejection(reference, 'route_unavailable')
     return
   }
   if (isConfirmedHarnessModelRejection(error)) await recordHarnessModelRejection(reference, 'model_unavailable')

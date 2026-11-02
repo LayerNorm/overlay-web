@@ -16,6 +16,7 @@ import type {
 } from '@overlay/workspace-contracts'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { requireNativeThreadCompatibilityBackend } from './native-thread-compatibility-backend'
 import type { Id } from '../../../convex/_generated/dataModel'
 import type { ConversationCollaborationRepository } from './ConversationCollaborationRepository'
 import type {
@@ -87,6 +88,7 @@ implements ConversationCollaborationRepository {
     turnId: string
     workspaceId: string
   }) {
+    await requireNativeThreadCompatibilityBackend(args.actorUserId)
     const id = await convex.mutation<string>('collaboration/directMessages:addMessage', {
       ...args,
       conversationId: args.conversationId as Id<'conversations'>,
@@ -98,6 +100,7 @@ implements ConversationCollaborationRepository {
   }
 
   async addAgentMessage(args: {
+    messagePurpose: 'greeting' | 'prepared_onboarding' | 'agent_request'
     actorUserId: string
     authorPrincipalId: string
     clientNonce: string
@@ -110,6 +113,7 @@ implements ConversationCollaborationRepository {
     turnId: string
     workspaceId: string
   }) {
+    await requireNativeThreadCompatibilityBackend(args.actorUserId)
     const id = await convex.mutation<string>('collaboration/directMessages:addAgentMessage', {
       ...args,
       conversationId: args.conversationId as Id<'conversations'>,
@@ -137,23 +141,25 @@ implements ConversationCollaborationRepository {
     }, { throwOnError: true })
   }
 
-  async startAgentMessage(args: {
+  async recordAgentStartFailure(args: {
     actorUserId: string
     authorPrincipalId: string
     clientNonce: string
+    content: string
     conversationId: string
     modelId: string
     threadRootMessageId?: string
     turnId: string
     workspaceId: string
   }) {
-    const id = await convex.mutation<string>('collaboration/directMessages:startAgentMessage', {
+    await requireNativeThreadCompatibilityBackend(args.actorUserId)
+    const id = await convex.mutation<string>('collaboration/directMessages:recordAgentStartFailure', {
       ...args,
       conversationId: args.conversationId as Id<'conversations'>,
       threadRootMessageId: args.threadRootMessageId as Id<'conversationMessages'> | undefined,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
-    if (!id) throw new Error('Failed to open collaboration agent message')
+    if (!id) throw new Error('Failed to record agent-start failure')
     return id
   }
 
@@ -171,6 +177,7 @@ implements ConversationCollaborationRepository {
     userMessageId: string
     workspaceId: string
   }) {
+    await requireNativeThreadCompatibilityBackend(args.actorUserId)
     const result = await convex.mutation<{ messageId: string; resumed: boolean; runId: string }>(
       'collaboration/directMessages:startAgentTurn',
       {
@@ -493,6 +500,7 @@ implements ConversationCollaborationRepository {
     messageId: string
     workspaceId: string
   }) {
+    await requireNativeThreadCompatibilityBackend(args.actorUserId)
     return await convex.mutation<boolean>('collaboration/directMessages:editMessage', {
       ...args,
       conversationId: args.conversationId as Id<'conversations'>,
@@ -507,6 +515,7 @@ implements ConversationCollaborationRepository {
     messageId: string
     workspaceId: string
   }) {
+    await requireNativeThreadCompatibilityBackend(args.actorUserId)
     return await convex.mutation<boolean>('collaboration/directMessages:deleteMessage', {
       ...args,
       conversationId: args.conversationId as Id<'conversations'>,

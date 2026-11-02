@@ -1,0 +1,19 @@
+@import '../../../packages/overlay-ui/src/styles.css' layer(base);
+@import 'tailwindcss' source(none);
+@source './harness-resource-pause-mockup.tsx';
+@source '../../../packages/overlay-ui/src/components/ui/{button,input,textarea,label,select,card,breadcrumb}.tsx';
+
+@theme inline {
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted-foreground: var(--muted-foreground);
+}
+
+@layer base {
+  body { margin: 0; background: var(--surface-elevated); color: var(--foreground); font-family: var(--font-sans); }
+  :root { color-scheme: light; }
+  [data-theme='dark'] { color-scheme: dark; }
+}

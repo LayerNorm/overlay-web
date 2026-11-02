@@ -23,7 +23,9 @@ test('rechecks authorization for both approval and execution and namespaces chil
   expect(mocks.refresh).toHaveBeenCalledTimes(2)
   expect(mocks.execute).toHaveBeenCalledWith({}, expect.objectContaining({ context: expect.objectContaining({
     paid: false, agentRunId: 'agent-run', harnessRunId: 'child', toolName: 'read_file',
-  }) }))
+  }), artifactPublicationAuthority: {
+    kind: 'personal', access: input.access, context: input.context,
+  } }))
   mocks.refresh.mockRejectedValueOnce(new Error('revoked'))
   await expect(definition.execute!({}, options)).rejects.toThrow(/revoked/)
   expect(mocks.execute).toHaveBeenCalledTimes(1)

@@ -320,7 +320,7 @@ export class ConversationalOnboardingService {
     for (const message of state.outbox) {
       const base = { actorUserId: state.userId, clientNonce: message.clientNonce, content: message.content, conversationId: state.session.conversationId, turnId: `onboarding:${state.userId}:${state.session.runId}:${state.session.revision}`, workspaceId: state.session.workspaceId }
       if (message.kind === 'user') await this.deps.effects.collaboration.addMessage(base)
-      else await this.deps.effects.collaboration.addAgentMessage({ ...base, authorPrincipalId: state.session.agentPrincipalId, modelId: 'onboarding:prepared' })
+      else await this.deps.effects.collaboration.addAgentMessage({ ...base, messagePurpose: 'prepared_onboarding', authorPrincipalId: state.session.agentPrincipalId, modelId: 'onboarding:prepared' })
     }
     if (!state.outbox.length) return
     if (!await this.deps.repository.clearOutbox({

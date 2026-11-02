@@ -4,6 +4,66 @@ import {
   ChatTransportHttpError,
   createChatDiagnosticFetch,
 } from './direct-chat-transport'
+import {
+  observeNativeThreadSafetyResponseForRequest,
+  shouldObserveNativeThreadSafetyResponse,
+} from '@/shared/app/overlay-app-client'
+import {
+  NATIVE_THREAD_SAFETY_CHANGED,
+  nativeThreadSafetyErrorStatus,
+} from './native-thread-safety'
+
+test('chat compatibility errors retain codes and request a scope recheck rather than losing the cause', async (t) => {
+  browser(t)
+  const events: Event[] = []
+  Object.assign(window, { dispatchEvent: (event: Event) => { events.push(event); return true } })
+  for (const [status, code] of [[410, 'native_runner_retired'], [503, 'native_thread_compatibility_unavailable']] as const) {
+    const diagnosticFetch = createChatDiagnosticFetch(async () => Response.json({ code, error: 'Precise failure' }, { status }))
+    await assert.rejects(diagnosticFetch('/api/v1/conversations/act', { method: 'POST', body: '{}' }), (error: unknown) => {
+      assert.ok(error instanceof ChatTransportHttpError)
+      assert.equal(error.status, status)
+      assert.equal(error.code, code)
+      assert.equal(error.message, 'Precise failure')
+      return true
+    })
+  }
+  assert.deepEqual(events.map((event) => event.type), [NATIVE_THREAD_SAFETY_CHANGED, NATIVE_THREAD_SAFETY_CHANGED])
+})
+
+test('compatibility GET failures do not dispatch a feedback-loop recheck', async (t) => {
+  browser(t)
+  assert.equal(shouldObserveNativeThreadSafetyResponse('/api/v1/conversations/compatibility'), false)
+  assert.equal(shouldObserveNativeThreadSafetyResponse(
+    '/api/v1/conversations/compatibility',
+    { method: 'POST' },
+  ), true)
+  assert.equal(shouldObserveNativeThreadSafetyResponse(
+    new Request('https://example.test/', { method: 'POST' }),
+  ), true)
+  let requests = 0
+  const events: Event[] = []
+  Object.assign(window, { dispatchEvent: (event: Event) => { events.push(event); return true } })
+  const response = Response.json({
+    code: 'native_thread_compatibility_unavailable',
+    error: 'Backend overlap',
+  }, { status: 503 })
+  const getCompatibility = async () => {
+    requests++
+    const result = response.clone()
+    await observeNativeThreadSafetyResponseForRequest(
+      '/api/v1/conversations/compatibility',
+      undefined,
+      result,
+    )
+    const payload = await result.json() as { code?: string }
+    return payload
+  }
+
+  const payload = await getCompatibility()
+  assert.equal(nativeThreadSafetyErrorStatus(payload), 'unavailable')
+  assert.equal(requests, 1)
+  assert.deepEqual(events.map((event) => event.type), [])
+})
 
 function browser(t: TestContext) {
   const original = Object.getOwnPropertyDescriptor(globalThis, 'window')

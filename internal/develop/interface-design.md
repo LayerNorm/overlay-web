@@ -3,6 +3,10 @@ title: "Interface Design"
 description: "Product UI decisions every surface follows: toggles-only controls, one-control-per-row layouts, and editors without save bars."
 ---
 
+## Extension cards and dialogs
+
+MCP and Skills use shared Card surfaces with explicit Manage actions and confirmation before deletion. Editors use shared Dialog, Select, Switch and AlertDialog primitives, compact content-width Configuration/Tools tabs and spacing instead of internal dividers. Preserve OAuth connection status, tool policy, scope and existing mutation callbacks. Docked left/right panel resize handles occupy the gutter outside the framed surface; floating panels retain inset handles.
+
 ## Double-sidebar shell
 
 The web shell's **Double sidebar** setting uses `DoubleSidebar` from `@overlay/shell-react`: a fixed 60px primary rail and a 272px contextual panel, resizable between 220px and 360px. The active rail destination toggles only its panel without navigating; another destination opens its panel and uses the existing scope-aware navigation handler. Files, Extensions, and Automations stay in More when their existing gates allow them.

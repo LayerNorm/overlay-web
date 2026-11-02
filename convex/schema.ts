@@ -3,6 +3,8 @@ import { remoteLifecycleValidator } from './agents/remoteRunModel'
 import {nativeStartAdmissionValidator} from './lib/nativeStartAdmission'
 import { agentMcpCallState } from './lib/agentMcpCallSchema'
 import { growthTables } from './lib/growthSchema'
+import { nativeAgentErrorPart } from './lib/nativeAgentErrorPart'
+import { agentRunResourceRequestValidator } from './harness/resourceValidators'
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
@@ -851,6 +853,33 @@ export default defineSchema({
     .index('by_connectionId_channelId', ['connectionId', 'channelId'])
     .index('by_agentId', ['agentId']),
 
+  surfaceTurnExecutions: defineTable({
+    turnId: v.string(),
+    workflowRunId: v.string(),
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    creatorPrincipalId: v.string(),
+    agentId: v.string(),
+    agentPrincipalId: v.string(),
+    platform: v.literal('slack'),
+    teamId: v.string(),
+    channelId: v.string(),
+    threadId: v.string(),
+    messageId: v.string(),
+    bindingId: v.string(),
+    connectionId: v.string(),
+    conversationId: v.id('conversations'),
+    agentRunId: v.id('conversationAgentRuns'),
+    userMessageId: v.id('conversationMessages'),
+    assistantMessageId: v.id('conversationMessages'),
+    harnessRunId: v.string(),
+    placeholderTs: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_turnId', ['turnId'])
+    .index('by_harnessRunId', ['harnessRunId']),
+
   // Chat SDK state for surfaces (installations and bot tokens, thread
   // subscriptions, locks, dedupe keys, lists, queues). Serverless instances
   // share it through surfaces/chatState; values are JSON strings. List and
@@ -913,6 +942,17 @@ export default defineSchema({
     rank: v.string(),
     /** A workspace principal: a person now, an agent later. */
     assigneePrincipalId: v.optional(v.string()),
+    assignmentExecution: v.optional(v.object({
+      assignedByUserId: v.string(),
+      assigneePrincipalId: v.string(),
+      generation: v.number(),
+      status: v.union(v.literal('pending'), v.literal('starting'), v.literal('started'), v.literal('failed')),
+      conversationId: v.optional(v.id('conversations')),
+      messageId: v.optional(v.id('conversationMessages')),
+      turnId: v.optional(v.string()),
+      clientNonce: v.optional(v.string()),
+      error: v.optional(v.string()),
+    })),
     reviewerUserId: v.optional(v.string()),
     startDate: v.optional(v.string()),
     dueDate: v.optional(v.string()),
@@ -949,6 +989,8 @@ export default defineSchema({
 
   automations: defineTable({
     // Personal / Workspace / Archived. Absent `scope` means personal.
+    /** Made by an agent, API key or service rather than the person: counted, but not their activity. */
+    createdByAgent: v.optional(v.boolean()),
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     archivedAt: v.optional(v.number()),
     archivedBy: v.optional(v.string()),
@@ -1313,6 +1355,7 @@ export default defineSchema({
       v.literal('waiting_for_approval'),
       v.literal('waiting_for_input'),
       v.literal('waiting_for_children'),
+      v.literal('waiting_for_resources'),
       v.literal('completed'),
       v.literal('failed'),
       v.literal('cancelled'),
@@ -1346,6 +1389,7 @@ export default defineSchema({
         input: v.any(),
       })),
     })),
+    resourceRequest: v.optional(agentRunResourceRequestValidator),
     metrics: v.optional(v.object({
       firstTokenAt: v.optional(v.number()),
       inputTokens: v.optional(v.number()),
@@ -1390,6 +1434,7 @@ export default defineSchema({
   })
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
+    .index('by_conversationId_runner_executionEngine', ['conversationId', 'runner', 'executionEngine'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_environmentId_createdAt', ['environmentId', 'createdAt'])
     .index('by_agentId_status', ['agentId', 'status'])
@@ -1522,6 +1567,18 @@ export default defineSchema({
               })),
             }),
           }),
+          v.object({
+            type: v.literal('data-native-agent-input'),
+            data: v.object({
+              runId: v.string(),
+              conversationId: v.string(),
+              userId: v.string(),
+              token: v.string(),
+              requestedAt: v.number(),
+              question: v.string(),
+            }),
+          }),
+          nativeAgentErrorPart,
           v.object({
             type: v.literal('tool-invocation'),
             toolInvocation: v.object({
@@ -1742,6 +1799,29 @@ export default defineSchema({
   })
     .index('by_r2Key', ['r2Key'])
     .index('by_userId_status_expiresAt', ['userId', 'status', 'expiresAt']),
+
+  harnessArtifacts: defineTable({
+    artifactId: v.string(),
+    sourcePath: v.string(),
+    name: v.string(),
+    parentId: v.optional(v.string()),
+    scope: v.union(v.literal('personal'), v.literal('workspace')),
+    userId: v.string(),
+    workspaceId: v.string(),
+    rootRunId: v.string(),
+    sourceComputerId: v.string(),
+    stagingPath: v.string(),
+    checksumSha256: v.string(),
+    sizeBytes: v.number(),
+    mimeType: v.string(),
+    r2Key: v.string(),
+    uploadExpiresAt: v.number(),
+    fileId: v.optional(v.id('files')),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_rootRunId_artifactId', ['rootRunId', 'artifactId'])
+    .index('by_fileId', ['fileId']),
 
   // Durable document ingestion jobs. The client uploads to R2 via a presigned
   // URL, then creates an ingestion job. The job is processed asynchronously
@@ -2888,6 +2968,27 @@ export default defineSchema({
     .index('by_runId_resolvedAt', ['runId', 'resolvedAt', 'createdAt'])
     .index('by_rootRunId_resolvedAt', ['rootRunId', 'resolvedAt', 'createdAt']),
 
+  harnessResourceRequests: defineTable({
+    runId: v.string(),
+    rootRunId: v.string(),
+    workflowRunId: v.string(),
+    token: v.string(),
+    policyRevision: v.number(),
+    stateRevisionAtRequest: v.number(),
+    requestJson: v.string(),
+    previousStatus: v.union(v.literal('running'), v.literal('waiting_for_input'), v.literal('waiting_for_approval')),
+    previousBlockerJson: v.optional(v.string()),
+    authorityJson: v.string(),
+    state: v.union(v.literal('pending'), v.literal('accepted'), v.literal('consumed')),
+    receiptJson: v.optional(v.string()),
+    wakePending: v.boolean(),
+    consumedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_token', ['token'])
+    .index('by_runId_pending', ['runId', 'state', 'createdAt'])
+    .index('by_rootRunId_state', ['rootRunId', 'state', 'createdAt']),
+
   /** Immutable ledger of committed operations, keyed by the caller's operation id. */
   harnessOperations: defineTable({
     runId: v.string(),
@@ -2903,6 +3004,7 @@ export default defineSchema({
     revision: v.number(),
     metadataJson: v.string(),
     planRevision: v.number(),
+    purpose: v.optional(v.union(v.literal('continuation'), v.literal('compaction'))),
     createdAt: v.number(),
   }).index('by_runId_revision', ['runId', 'revision']),
 })

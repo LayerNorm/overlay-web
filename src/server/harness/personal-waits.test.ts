@@ -4,8 +4,9 @@ import { createPersonalHarnessWaitPorts } from './personal-waits'
 import { createHarnessWaitPorts } from './waits'
 
 const mocks = vi.hoisted(() => ({ hook: vi.fn(), sleep: vi.fn(), read: vi.fn(), apply: vi.fn(),
-  publish: vi.fn(), resolve: vi.fn(), list: vi.fn(), notify: vi.fn(), project: vi.fn(), child: vi.fn() }))
+  publish: vi.fn(), resolve: vi.fn(), list: vi.fn(), notify: vi.fn(), project: vi.fn(), child: vi.fn(), humanReply: vi.fn() }))
 vi.mock('workflow', () => ({ createHook: mocks.hook, sleep: mocks.sleep, FatalError: class extends Error {} }))
+vi.mock('./resource-boundary', () => ({ waitForHarnessHumanReply: mocks.humanReply }))
 vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, applyHarnessOperation: mocks.apply }))
 vi.mock('./personal-wait-steps', () => ({ publishHarnessWait: mocks.publish, resolveHarnessWait: mocks.resolve,
   listHarnessWaits: mocks.list, notifyHarnessAncestors: mocks.notify, projectPersonalHarnessWait: mocks.project,
@@ -149,6 +150,46 @@ test('deadline expiry leaves the request unresolved instead of inventing a respo
   await expect(ports.waitForInput(state)).rejects.toThrow('Harness deadline reached')
   expect(mocks.resolve).not.toHaveBeenCalled()
   expect(mocks.apply).not.toHaveBeenCalled()
+  expect(disposed).toHaveBeenCalledOnce()
+})
+
+test.each(['input', 'approval'] as const)('versioned %s waits retain their original hook until resource authorization returns', async kind => {
+  state.policy.resourcePauseVersion = 1
+  state.policy.deadlineAt = 0
+  state.status = kind === 'input' ? 'waiting_for_input' : 'waiting_for_approval'
+  state.blocker = { kind, question: 'Continue?' }
+  let grant!: (value: unknown) => void
+  mocks.humanReply.mockImplementation(async (reference, pending, waitKind, read) => {
+    expect(reference).toBe(access)
+    expect(pending).toBe(mocks.hook.mock.results[0].value)
+    expect(waitKind).toBe(kind)
+    expect(await read()).toBe(state)
+    return new Promise(resolve => { grant = resolve })
+  })
+  const ports = createPersonalHarnessWaitPorts({ access, wake: { next: vi.fn() } })
+  const result = kind === 'input' ? ports.waitForInput(state) : ports.waitForApproval([
+    { approvalId: 'one', toolCallId: 'call-one', toolName: 'send', input: {} },
+  ])
+  await vi.waitFor(() => expect(grant).toBeTypeOf('function'))
+  expect(mocks.resolve).not.toHaveBeenCalled()
+  expect(mocks.project).not.toHaveBeenCalledWith(access, { status: 'running' })
+  grant(kind === 'input' ? { text: 'The quarterly report.' } : { approved: false, reason: 'Do not send.' })
+  const reply = await result
+  expect(reply).toEqual(kind === 'input' ? [{ role: 'user', content: 'The quarterly report.' }]
+    : [{ approvalId: 'one', approved: false, reason: 'Do not send.' }])
+  expect(mocks.resolve).toHaveBeenCalledExactlyOnceWith(access, 'harness:wait:workflow:0')
+  expect(mocks.sleep).not.toHaveBeenCalled()
+  expect(disposed).toHaveBeenCalledOnce()
+})
+
+test('cancellation during a versioned resource wait leaves ordinary input unresolved', async () => {
+  state.policy.resourcePauseVersion = 1
+  mocks.humanReply.mockResolvedValue(null)
+  const ports = createPersonalHarnessWaitPorts({ access, wake: { next: vi.fn() } })
+  expect(await ports.waitForInput(state)).toBeNull()
+  expect(mocks.resolve).not.toHaveBeenCalled()
+  expect(mocks.apply).not.toHaveBeenCalled()
+  expect(mocks.project).not.toHaveBeenCalledWith(access, { status: 'running' })
   expect(disposed).toHaveBeenCalledOnce()
 })
 

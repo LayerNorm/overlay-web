@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
  * Whether an editor text change must refresh the React `input` state. Normal
@@ -14,7 +14,7 @@ export function shouldSyncSlashInput(text: string, previous: string): boolean {
   return /^\/\S*$/.test(text) || /^\/\S*$/.test(previous)
 }
 
-export function useComposerTextState() {
+export function useComposerTextState(suspended = false) {
   const [input, setInputState] = useState('')
   const [inputRevision, setInputRevision] = useState(0)
   const [hasComposerText, setHasComposerText] = useState(false)
@@ -33,6 +33,12 @@ export function useComposerTextState() {
     setHasComposerText(resolved.trim().length > 0)
     setInputRevision((value) => value + 1)
   }, [])
+
+  useEffect(() => {
+    // Normal typing lives in the editor and ref; a remounted editor needs a current value.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- sync DOM-owned draft before the editor remounts
+    if (suspended) setInput((current) => current)
+  }, [setInput, suspended])
 
   const handleComposerInputChange = useCallback((text: string) => {
     const previous = inputRef.current

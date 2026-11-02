@@ -37,6 +37,7 @@ test('computer approval policy requires approval only for consequential input ac
 test('Ask requires approval for command starts and Executor actions that are risky or unknown', () => {
   const cases: Array<[string, unknown, Parameters<typeof toolRequiresApproval>[2], boolean]> = [
     ['computer_exec', { command: 'ls' }, {}, true],
+    ['computer_publish_file', { sourcePath: '/tmp/video.mp4' }, {}, false],
     ['computer_terminal', { action: 'start', command: 'ls' }, {}, true],
     ['computer_terminal', { action: 'read', id: 't-000000000000' }, {}, false],
     ['computer_terminal', { action: 'list' }, {}, false],

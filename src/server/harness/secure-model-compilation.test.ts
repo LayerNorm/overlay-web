@@ -5,6 +5,7 @@ import { applySwcTransform } from '@workflow/builders'
 import { WORKFLOW_DESERIALIZE, WORKFLOW_SERIALIZE } from '@workflow/serde'
 import { transform } from 'esbuild'
 import { expect, test, vi } from 'vitest'
+import { serializePersonalHarnessAuthentication } from './personal-authentication'
 import type { HarnessLanguageModel } from './secure-model'
 
 test.each([
@@ -15,6 +16,7 @@ test.each([
   ['native-child-steps.ts', ['admitNativeHarnessChild']],
   ['native-delivery-steps.ts', ['writeNativeHarnessFallback', 'attachNativeHarnessDelivery',
     'projectNativeHarnessWait', 'finishNativeHarnessDelivery']],
+  ['resource-wait-steps.ts', ['createHarnessResourceToken', 'publishHarnessResourceWait', 'consumeHarnessResourceWait']],
 ] as const)('compiled %s exposes only durable server steps', async (filename, exports) => {
   const path = fileURLToPath(new URL(`./${filename}`, import.meta.url))
   const source = await readFile(path, 'utf8')
@@ -83,6 +85,7 @@ test.each([false, true])('compiled workflow can load and dispatch the credential
     module: compiledModule,
     exports: compiledModule.exports,
     require: (id: string) => {
+      if (id === './personal-authentication') return { serializePersonalHarnessAuthentication }
       if (id !== '@workflow/serde') throw new Error(`Unexpected workflow import: ${id}`)
       return { WORKFLOW_SERIALIZE, WORKFLOW_DESERIALIZE }
     },

@@ -791,6 +791,9 @@
                     "type": "string"
                   },
                   "schedule": {},
+                  "byAgent": {
+                    "type": "boolean"
+                  },
                   "automationId": {
                     "type": "string",
                     "minLength": 1
@@ -884,7 +887,10 @@
                   "prompt": {
                     "type": "string"
                   },
-                  "schedule": {}
+                  "schedule": {},
+                  "byAgent": {
+                    "type": "boolean"
+                  }
                 },
                 "additionalProperties": true
               }
@@ -3094,6 +3100,165 @@
         }
       }
     },
+    "/api/v1/conversations/run/resources": {
+      "post": {
+        "operationId": "postConversationsRunResources",
+        "summary": "Grant additional resources to an authorized personal Harness AgentRun",
+        "tags": [
+          "Conversations"
+        ],
+        "security": [
+          {
+            "browserSession": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response. Stable response schemas are documented in workflow guides when available.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "description": "Response shape is route-specific and may be backed by @overlay/app-core contracts."
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or invalid authentication.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected server error.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "conversationId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "agentRunId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "token": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "policyRevision": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "maximum": 9007199254740991
+                  },
+                  "grant": {
+                    "anyOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "model_spend"
+                            ]
+                          },
+                          "newMaxCostMicros": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 100000000
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "newMaxCostMicros"
+                        ],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "kind": {
+                            "type": "string",
+                            "enum": [
+                              "time"
+                            ]
+                          },
+                          "durationMs": {
+                            "anyOf": [
+                              {
+                                "type": "number",
+                                "enum": [
+                                  3600000
+                                ]
+                              },
+                              {
+                                "type": "number",
+                                "enum": [
+                                  86400000
+                                ]
+                              },
+                              {
+                                "type": "number",
+                                "enum": [
+                                  604800000
+                                ]
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "durationMs"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "conversationId",
+                  "agentRunId",
+                  "token",
+                  "policyRevision",
+                  "grant"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/conversations/share": {
       "patch": {
         "operationId": "patchConversationsShare",
@@ -3655,6 +3820,9 @@
                     "type": "string",
                     "minLength": 1
                   },
+                  "byAgent": {
+                    "type": "boolean"
+                  },
                   "name": {
                     "type": "string",
                     "minLength": 1
@@ -3760,6 +3928,9 @@
                   "userId": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "byAgent": {
+                    "type": "boolean"
                   },
                   "name": {
                     "type": "string",
@@ -6353,6 +6524,9 @@
                     "type": "string",
                     "maxLength": 200
                   },
+                  "byAgent": {
+                    "type": "boolean"
+                  },
                   "content": {
                     "type": "string"
                   },
@@ -6451,6 +6625,9 @@
                   "title": {
                     "type": "string",
                     "maxLength": 200
+                  },
+                  "byAgent": {
+                    "type": "boolean"
                   },
                   "content": {
                     "type": "string"

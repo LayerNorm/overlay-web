@@ -12,14 +12,14 @@ export function isConfirmedHarnessModelRejection(error: unknown): boolean {
   return GatewayModelNotFoundError.isInstance(error) && error.statusCode === 404 && !error.generationId
 }
 
-type HarnessModelRejectionReason = 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted'
+type HarnessModelRejectionReason = 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'route_unavailable'
 
 function assertModelRejectionAuthority(reference: HarnessModelReference, reason: HarnessModelRejectionReason) {
   if (reference.personal && reference.native) throw new FatalError('Model rejection has ambiguous execution authority.')
   const input = reference.personal ?? reference.native
   if (!input || isByokModelId(reference.modelId)) throw new FatalError('Cannot reject an external model dispatch.')
   const isFreeModel = reference.modelId === OPENROUTER_FREE_MODEL_ID || reference.modelId === OVERLAY_FREE_MODEL_ID
-  if ((reason === 'route_capacity' || reason === 'route_interrupted') && !isFreeModel) {
+  if ((reason === 'route_capacity' || reason === 'route_interrupted' || reason === 'route_unavailable') && !isFreeModel) {
     throw new FatalError(reason === 'route_capacity'
       ? 'Only the free router can confirm a capacity rejection.'
       : 'Only the free router can record this rejection.')
@@ -39,16 +39,16 @@ function assertMatchingModelDispatch(
     || (reason !== 'budget' && hold.dispatch?.modelId !== reference.modelId)) {
     throw new FatalError('Model rejection has no matching dispatch.')
   }
-  if (reason === 'route_interrupted'
+  if ((reason === 'route_interrupted' || reason === 'route_unavailable')
     && (hold.maxCostMicros !== 0 || hold.dispatch?.billingReservationId !== null)) {
-    throw new FatalError('A route interruption requires a zero-cost dispatch without a billing reservation.')
+    throw new FatalError('This route rejection requires a zero-cost dispatch without a billing reservation.')
   }
   return hold
 }
 
 function providerForRejection(reason: HarnessModelRejectionReason) {
   if (reason === 'budget') return 'overlay-admission'
-  if (reason === 'route_capacity' || reason === 'route_interrupted') return 'overlay-free-router'
+  if (reason === 'route_capacity' || reason === 'route_interrupted' || reason === 'route_unavailable') return 'overlay-free-router'
   return 'gateway'
 }
 

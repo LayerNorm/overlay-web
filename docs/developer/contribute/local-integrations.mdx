@@ -72,6 +72,8 @@ Connector visibility is workspace-scoped through `workspaceConnectors`. On the f
 
 ## MCP tools
 
+MCP create/update and Test connection preserve the OAuth authentication choice. Testing a saved server uses its stored OAuth session through the runtime auth provider; client-supplied OAuth tokens are ignored. Inaccessible saved servers are rejected before discovery. Connect the server before expecting authenticated tool discovery to succeed.
+
 The MCP OAuth adapter preserves the SDK's authorization-server `issuer` binding
 on both client information and tokens, inside the existing encrypted JSON
 credential fields. Credentials loaded without an issuer are withheld from the

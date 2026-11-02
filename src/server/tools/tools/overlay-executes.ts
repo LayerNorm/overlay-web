@@ -20,6 +20,7 @@ import type { Computer, ComputerOwnerType } from '@overlay/workspace-contracts/c
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
 import { toolRequiresApproval } from '@overlay/tools-core/policy'
+import { publishComputerFile } from '@/server/files/computer-publication'
 
 /**
  * Memory writes carry an explicit owner when an agent is driving the turn, so
@@ -108,7 +109,13 @@ export async function executePresentGeneratedUi(
     version: GENERATED_UI_VERSION,
   })
   if (!generatedUi) {
-    return { success: false, error: 'Invalid generated UI payload.' }
+    return {
+      success: false,
+      code: 'tool_validation_failure',
+      error: 'Invalid generated UI payload.',
+      issues: [{ path: 'generatedUi', code: 'normalization_failed', message: 'The payload could not be normalized to an allowed generated UI card.' }],
+      hint: 'Correct the generated UI fields and retry. For a question, ask it in plain text and call harness_report_blocker to create a durable wait.',
+    }
   }
   return {
     success: true,
@@ -598,6 +605,7 @@ export async function executeCreateAutomation(
         ...(automationId ? { automationId } : {}),
         sourceConversationId: input.sourceConversationId ?? options.conversationId,
         enabled: input.enabled ?? true,
+        ...(automationId ? {} : { byAgent: true }),
         ...toolAuthBody(options),
       },
       options.accessToken,
@@ -993,7 +1001,7 @@ function computerErrorResult(err: unknown, fallback: string) {
   return { success: false as const, error: err instanceof Error ? err.message : fallback }
 }
 
-async function computerInstanceFor(
+export async function computerInstanceFor(
   options: OverlayToolsOptions,
 ): Promise<
   | {
@@ -1069,6 +1077,26 @@ async function computerInstanceFor(
     }
     return { ok: false, error: computerErrorResult(err, 'Computer unavailable').error ?? 'Computer unavailable' }
   }
+}
+
+export async function executeComputerPublishFile(
+  options: OverlayToolsOptions,
+  input: {
+    sourcePath: string
+    name: string
+    artifactId: string
+    mimeType: string
+    parentId?: string
+    scope: 'personal' | 'workspace'
+  },
+) {
+  return await publishComputerFile({
+    request: { ...input, scope: roomListScope(options, input.scope) ?? input.scope },
+    authority: options.artifactPublicationAuthority,
+    userId: options.userId,
+    workspaceId: options.workspaceId,
+    resolveComputer: () => computerInstanceFor(options),
+  })
 }
 
 export async function executeComputerExec(

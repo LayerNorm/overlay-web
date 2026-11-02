@@ -23,6 +23,7 @@ export type HarnessModelDispatch = {
 type DispatchAuthority = {
   entitlements: Parameters<typeof reserveProviderBudget>[0]['entitlements']
   requiresZeroDataRetention?: boolean
+  billingProgrammaticSubjectId?: string
 }
 
 function assertPreparedDispatch(
@@ -94,7 +95,8 @@ export async function authorizeHarnessModelDispatch(
   const operationId = `harness-model:${createHash('sha256').update(JSON.stringify([input.access.runId, input.receiptId])).digest('hex')}`
   const reservation = await reserveProviderBudget({
     userId: input.access.actorUserId, workspaceId: input.access.workspaceId,
-    programmaticSubjectId: input.billingProgrammaticSubjectId, entitlements: refreshed.entitlements,
+    programmaticSubjectId: refreshed.billingProgrammaticSubjectId ?? input.billingProgrammaticSubjectId,
+    entitlements: refreshed.entitlements,
     providerCostUsd: estimate / 1_000_000, kind: 'agent', modelId: reference.modelId,
     operationId, reservationId: operationId, requestFingerprint: input.requestFingerprint,
   })

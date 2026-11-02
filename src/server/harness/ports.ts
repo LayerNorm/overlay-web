@@ -34,6 +34,7 @@ export interface HarnessExecutionPorts {
   read(): Promise<HarnessSnapshot>
   apply(operationId: string, operation: HarnessOperation): Promise<HarnessSnapshot>
   readEvidence(evidenceId: string): Promise<HarnessEvidence | null>
+  waitForResources?(requiredCostMicros: number): Promise<HarnessSnapshot>
   authorizeTool(toolName: string): Promise<void>
   prepareModel(input: {
     receiptId: string

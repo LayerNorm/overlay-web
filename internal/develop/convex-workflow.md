@@ -203,23 +203,25 @@ Convex code may import browser-safe shared modules from `src/shared`. Convex mus
 
 ## Overlay Harness storage
 
+The initial recovery slice keeps compaction checkpoints additive and non-blocking. Continuation stagnation is owned by the runner: after two unchanged segments it adds a trusted recovery instruction, and after six it persists an actionable `stuck` blocker through the existing authenticated input-wait path. A reply resumes the same root run and resets its stagnation counter. Do not use checkpoint or model-receipt writes as progress, and do not deploy Convex from feature worktrees while validating this path.
+
 ### Personal workflow integration
 
 `src/server/workflows/personal-harness.ts` composes `runOverlayHarness` with personal
 authorization, model billing, tool reconstruction, durable waits and transcript
 delivery. Eligible personal Chat requests use this workflow when the backend
-reports the Harness capability. A successful readiness response from an older
-backend selects the existing durable `personal-chat-work` workflow instead.
-Readiness errors fail closed. In-flight runs and internal service or automation
-execution remain on their retained runners. Other surfaces and hosted parity QA
-remain pending.
-`mode: 'automate'` alone remains a configuration chat; only the automation
-execution flags keep a request on the legacy path.
+reports the Harness capability. Missing, old, unknown, or unreadable capability
+state returns a truthful unavailable response instead of selecting a legacy
+workflow. The personal Act route returns `410 legacy_execution_retired` for
+automation execution flags; `mode: 'automate'` alone remains a configuration
+chat. Automation run-backed and scheduled turns use the personal Harness adapter;
+Slack surface turns use the native Harness adapter with source/workflow ownership
+fences. This source cutover does not drain already-deployed legacy workers.
 
-Native Harness room turns are available only behind the default-off
-`OVERLAY_NATIVE_HARNESS=1` server flag and only for overlay Harness agents;
-remote and external turns remain on legacy runners. App traffic intentionally
-stays on the old runners until routing/media/artifact parity is finished.
+Native Overlay room turns always dispatch through the native Harness. There is
+no environment-flag fallback to the retired workspace-agent workflow. Remote
+and external turns retain their connected-agent dispatch and never fall back
+to native execution. Unsupported runtime identities fail closed.
 Native Harness named-agent asks/posts use H2 shared-root dispatch; the HTTP
 route continues to refuse Harness callers. Delivery owners persist bounded
 tool-invocation snapshots while tools run, and finalization replaces those
@@ -400,7 +402,7 @@ and catalog grants at execution time. Admission grants are an upper bound, not a
 cached permission decision. Each child namespaces its tool effects by harness run
 ID while retaining the delivery AgentRun ID. The personal adapter requires
 interactive approval policy and cannot stand in for an agent or automation
-principal. These adapters are not yet connected to production entrypoints.
+principal. Personal chat, automations and Slack entrypoints use these adapters.
 
 Before provider dispatch, `bind_model_dispatch` associates the held model call
 with its selected model and billing reservation (explicitly `null` for calls
@@ -416,8 +418,8 @@ quote even if the account write succeeds before the harness write fails. Billing
 uses the persisted dispatch binding and original workspace, accepts late usage
 after cancellation, and never counts internal calls as additional requests. BYOK
 writes a token audit with unknown external cost, without an Overlay charge. A
-failed account write leaves the harness hold unresolved. Production entrypoint
-wiring remains pending.
+failed account write leaves the harness hold unresolved. Production entrypoints
+use these settlement steps through the Harness workflows.
 
 Personal `HarnessLanguageModel` references can carry an allowlisted dispatch
 reference, without credentials or persisted entitlements. Inside the provider
@@ -449,8 +451,8 @@ Compaction summaries use the same secure model and `WorkflowAgent`, with separat
 checkpointing or quoting the main call, without consuming another root request.
 Failed or truncated summaries preserve the original history and stop preparation;
 an unresolved summary billing hold cannot be followed by another paid call.
-Hosted execution validation and migration of the remaining legacy runners are
-still pending.
+Hosted video delivery was accepted by the owner. Multi-day reliability, deployed
+legacy-worker drain and uncertain-effect reconciliation remain follow-up work.
 
 `compactHarnessPrompt` extends the existing chat compaction policy for SDK
 provider prompts. It preserves the latest user request and complete tool
@@ -471,13 +473,16 @@ reconciliation rather than a fabricated zero-cost charge. Existing callers keep
 their uncached behavior until they supply these fields; BYOK external charges
 must not be inferred from Overlay's zero billing for user-owned credentials.
 
-Authenticated personal Chat uses the shared controller when the backend publishes
-its Harness capability marker. After a successful readiness response from an older
-backend, all eligible personal calls use the existing durable
-`personal-chat-work` workflow instead. Readiness failures remain fail-closed; they
-do not fall back to a direct tool loop. Native agents additionally require the
-default-off server setting `OVERLAY_NATIVE_HARNESS=1`. Automations, messaging and
-notebook loops remain on their retained implementations until adapter parity.
+Personal HTTP admission requires the backend Harness capability marker and
+fails closed with a truthful availability response when it is missing or stale;
+it does not fall back to `personal-chat-work` or a direct tool loop. Named-room
+turns dispatch through native Harness, but this slice does not add a capability
+readiness check to named-room admission. Native agents additionally use native
+Harness dispatch without an environment flag. Automation and Slack source
+adapters refresh their bound authority before execution. Recorded retired native
+threads reject new writes while preserving history and an editable new-thread
+handoff. Untracked history and draining already-deployed legacy workers remain
+follow-up work; resource-renewal admission stays disabled.
 Its focused QA uses
 the real SDK with a mock provider, including more than twenty calls, natural early
 return, input suspension, approval/denial, revoked authorization, cancellation,

@@ -36,6 +36,7 @@ async function executeAuthorizedTool(args: {
     context: { ...context, agentRunId: args.access.agentRunId, harnessRunId: args.access.runId, toolName: args.toolName },
     messages: args.messages,
     toolCallId: args.toolCallId,
+    artifactPublicationAuthority: { kind: 'personal', access: args.access, context: args.context },
   })
 }
 

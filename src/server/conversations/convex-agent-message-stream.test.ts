@@ -95,6 +95,9 @@ test('Convex agent replies stream into a durable transcript row', {
 
     const clientNonce = `agent:${humanMessageId}:${agentId}`
     const openArgs = {
+      agentId,
+      executionEngine: 'overlay_harness' as const,
+      userMessageId: humanMessageId,
       actorUserId: ownerUserId,
       authorPrincipalId: agentPrincipalId,
       clientNonce,
@@ -103,7 +106,7 @@ test('Convex agent replies stream into a durable transcript row', {
       turnId: `agent_${humanMessageId}_${agentId}`,
       workspaceId,
     }
-    const messageId = await collaboration.startAgentMessage(openArgs)
+    const { messageId } = await collaboration.startAgentTurn(openArgs)
 
     const readRow = async (id: string) => (await collaboration.listMessages({
       actorUserId: ownerUserId,
@@ -117,7 +120,7 @@ test('Convex agent replies stream into a durable transcript row', {
     assert.equal(opened?.authorKind, 'agent')
     assert.equal(opened?.content, '')
 
-    assert.equal(await collaboration.startAgentMessage(openArgs), messageId)
+    assert.equal((await collaboration.startAgentTurn(openArgs)).messageId, messageId)
 
     const appendArgs = {
       actorUserId: ownerUserId,

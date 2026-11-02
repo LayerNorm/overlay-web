@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import { ConvexError } from 'convex/values'
@@ -23,7 +23,9 @@ test('readiness is available only to the authenticated server', async () => {
   const convex = convexTest(schema, modules)
   const settings = makeFunctionReference<'query'>('platform/uiSettings:getByServer')
   expect(await convex.query(settings, { userId: 'alice', serverSecret: secret }))
-    .toMatchObject({ harnessRevision: 'overlay-harness-v1' })
+    .toMatchObject({ harnessRevision: 'overlay-harness-v1', harnessModelRecoveryRevision: 'settled-retry-v1',
+      nativeThreadCompatibilityRevision: 'tracked-native-v1',
+      harnessArtifactPublicationRevision: 'binary-artifact-v1' })
   await expect(convex.query(settings, { userId: 'alice', serverSecret: 'invalid' })).rejects.toThrow('Unauthorized')
 })
 
@@ -100,6 +102,99 @@ function oneStep(id: string, requiresVerification = false, evidenceTools = ['too
 }
 
 describe('durable harness runs', () => {
+  test('persists completed work after authorization expires without authorizing more work', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('late-completion', await seedConversation(convex), { requiresPlan: false })
+    const clock = vi.spyOn(Date, 'now')
+    try {
+      let state = await admit(convex, input)
+      state = (await apply(convex, input, 'reserve-final', state.revision, {
+        type: 'reserve_model', id: 'final', maxCostMicros: input.policy.maxCostMicros,
+      })).snapshot
+      clock.mockReturnValue(input.policy.deadlineAt + 1)
+      await expect(apply(convex, input, 'finish-held', state.revision, { type: 'finish' }))
+        .rejects.toThrow(/reconciliation/)
+      state = (await apply(convex, input, 'settle-final', state.revision, {
+        type: 'record_receipt', receipt: {
+          id: 'final', modelId: 'fixture/model', provider: 'fixture', inputTokens: 10, outputTokens: 1,
+          reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000,
+          costMicros: input.policy.maxCostMicros + 1, costSource: 'provider',
+        },
+      })).snapshot
+      await expect(apply(convex, input, 'reserve-more', state.revision, {
+        type: 'reserve_model', id: 'extra', maxCostMicros: 0,
+      })).rejects.toThrow(/deadline/)
+      await expect(apply(convex, input, 'foreign-finish', state.revision, { type: 'finish' }, 'bob'))
+        .rejects.toThrow()
+      const operation = { type: 'finish' as const, resultSummary: 'The work is complete.' }
+      const finished = await apply(convex, input, 'finish', state.revision, operation)
+      expect(finished.snapshot.status).toBe('completed')
+      expect(finished.snapshot.policy).toEqual(state.policy)
+      expect(finished.snapshot.usage).toEqual(state.usage)
+      expect(await get(convex, input.runId)).toEqual(finished.snapshot)
+      const replay = await apply(convex, input, 'finish', state.revision, operation)
+      expect(replay.applied).toBe(false)
+      expect(replay.snapshot).toEqual(finished.snapshot)
+    } finally {
+      clock.mockRestore()
+    }
+  })
+
+  test.each(['model', 'summary:model'])('persists settled %s recovery metadata and clears it after a usable response', async prefix => {
+    const convex = convexTest(schema, modules)
+    const input = admission('model-recovery', await seedConversation(convex))
+    const recoveryKey = prefix === 'model' ? 'modelRecovery' : 'summaryRecovery'
+    await admit(convex, input)
+    let state = (await apply(convex, input, 'reserve-empty', 0, {
+      type: 'reserve_model', id: `${prefix}:0`, maxCostMicros: 100,
+    })).snapshot
+    state = (await apply(convex, input, 'dispatch-empty', state.revision, {
+      type: 'bind_model_dispatch', id: `${prefix}:0`, modelId: 'fixture/model', billingReservationId: 'billing-empty',
+    })).snapshot
+    const emptyReceipt = {
+      id: `${prefix}:0`, modelId: 'fixture/model', provider: 'fixture',
+      inputTokens: 10, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+      contextWindow: 32_000, costMicros: 1, costSource: 'provider' as const, responseFailure: 'empty_response' as const,
+    }
+    const first = await apply(convex, input, 'settle-empty', state.revision, {
+      type: 'record_receipt', receipt: emptyReceipt,
+    })
+    const loaded = await get(convex, input.runId)
+    expect(loaded?.modelReservation).toBeUndefined()
+    expect(loaded?.latestReceipt).toEqual(emptyReceipt)
+    expect(loaded?.[recoveryKey]).toMatchObject({
+      receiptId: `${prefix}:0`, modelId: 'fixture/model', code: 'empty_response', attempt: 1,
+    })
+    expect(loaded?.[recoveryKey]?.nextRetryAt).toBe(loaded!.updatedAt + 5_000)
+    expect(loaded?.usage.costMicros).toBe(1)
+
+    const replay = await apply(convex, input, 'settle-empty-replay', loaded!.revision, {
+      type: 'record_receipt', receipt: emptyReceipt,
+    })
+    expect(replay.applied).toBe(false)
+    expect(replay.snapshot[recoveryKey]).toEqual(loaded?.[recoveryKey])
+    expect(replay.snapshot.usage.costMicros).toBe(1)
+
+    state = (await apply(convex, input, 'reserve-usable', replay.snapshot.revision, {
+      type: 'reserve_model', id: `${prefix}:1`, maxCostMicros: 100,
+    })).snapshot
+    state = (await apply(convex, input, 'dispatch-usable', state.revision, {
+      type: 'bind_model_dispatch', id: `${prefix}:1`, modelId: 'fixture/model', billingReservationId: 'billing-usable',
+    })).snapshot
+    const usableReceipt = {
+      id: `${prefix}:1`, modelId: 'fixture/model', provider: 'fixture',
+      inputTokens: 10, outputTokens: 5, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+      contextWindow: 32_000, costMicros: 2, costSource: 'provider' as const,
+    }
+    const usable = await apply(convex, input, 'settle-usable', state.revision, {
+      type: 'record_receipt', receipt: usableReceipt,
+    })
+    expect(usable.snapshot[recoveryKey]).toBeUndefined()
+    expect((await get(convex, input.runId))?.[recoveryKey]).toBeUndefined()
+    expect((await get(convex, input.runId))?.usage.costMicros).toBe(3)
+    expect(first.snapshot[recoveryKey]).toEqual(loaded?.[recoveryKey])
+  })
+
   test.each(['budget', 'model_unavailable', 'route_capacity'] as const)('persists a zero-usage %s rejection through the mutation boundary', async rejectionReason => {
     const convex = convexTest(schema, modules)
     const input = admission('rejection', await seedConversation(convex))
@@ -127,7 +222,7 @@ describe('durable harness runs', () => {
     expect(replay.snapshot.latestReceipt).toEqual(receipt)
   })
 
-  test('accepts free route interruptions with a released zero-cost hold and rejects paid or BYOK models', async () => {
+  test.each(['route_interrupted', 'route_unavailable'] as const)('accepts %s with a released zero-cost hold and rejects paid or BYOK models', async rejectionReason => {
     const convex = convexTest(schema, modules)
     const input = admission('route-interruption', await seedConversation(convex))
     await admit(convex, input)
@@ -151,7 +246,7 @@ describe('durable harness runs', () => {
         contextWindow: null,
         costMicros: 0,
         costSource: 'catalog' as const,
-        rejectionReason: 'route_interrupted' as const,
+        rejectionReason,
       }
       if (index > 0) {
         state = (await apply(convex, input, `route-interruption-reserve-${index}`, state.revision, {
@@ -165,9 +260,10 @@ describe('durable harness runs', () => {
         type: 'record_receipt', receipt,
       })).snapshot
       expect(state.modelReservation).toBeUndefined()
-      expect(state.routeInterruptionCount).toBe(index + 1)
+      expect(state.routeInterruptionCount ?? 0).toBe(rejectionReason === 'route_interrupted' ? index + 1 : 0)
+      expect(state.modelRecovery).toMatchObject({ code: rejectionReason, attempt: index + 1 })
     }
-    expect((await get(convex, input.runId))?.routeInterruptionCount).toBe(3)
+    expect((await get(convex, input.runId))?.modelRecovery).toMatchObject({ code: rejectionReason, attempt: 3 })
 
     for (const [index, modelId] of ['fixture/paid', 'byok/connection/model'].entries()) {
       const rejectedConvex = convexTest(schema, modules)
@@ -184,9 +280,9 @@ describe('durable harness runs', () => {
         receipt: {
           id: 'model:0', modelId, provider: 'overlay-free-router',
           inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
-          contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'route_interrupted',
+          contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason,
         },
-      })).rejects.toThrow(/route interruption requires/i)
+      })).rejects.toThrow(/route rejection requires/i)
     }
   })
 
@@ -542,6 +638,27 @@ describe('durable harness runs', () => {
     expect(persisted.operations).toHaveLength(1)
     expect(persisted.checkpoints).toHaveLength(0)
     expect(persisted.evidence).toHaveLength(0)
+  })
+
+  test('persists compaction purpose without counting it as an execution continuation', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-compaction', await seedConversation(convex))
+    let state = await admit(convex, input)
+    for (const [index, summary] of ['First compaction', 'Repeated compaction'].entries()) {
+      state = (await apply(convex, input, `compact-${index}`, state.revision, {
+        type: 'checkpoint', summary, purpose: 'compaction',
+      })).snapshot
+      expect(state.status).toBe('running')
+      expect(state.continuations).toBe(0)
+      expect(state.progressRevision).toBe(0)
+    }
+    const checkpoints = await convex.run(ctx => ctx.db.query('harnessCheckpoints')
+      .withIndex('by_runId_revision', q => q.eq('runId', input.runId)).collect())
+    expect(checkpoints.map(checkpoint => checkpoint.purpose)).toEqual(['compaction', 'compaction'])
+    state = (await apply(convex, input, 'continuation', state.revision, {
+      type: 'checkpoint', summary: 'Continue normally.',
+    })).snapshot
+    expect(state.continuations).toBe(1)
   })
 
   test('deduplicates receipt A, B, A across operation ids', async () => {

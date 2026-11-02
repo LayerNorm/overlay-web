@@ -10,6 +10,7 @@ export type { AutomationSchedule } from '@overlay/app-core'
 
 export type AutomationRecord = AutomationSummary & {
   userId: string
+  workspaceId?: string
 }
 
 export type AutomationForUpdateNote = AutomationRecord
@@ -38,9 +39,11 @@ export type CreateAutomationInput = {
   concurrencyPolicy?: 'skip' | 'queue'
   workspaceId?: string
   scope?: 'personal' | 'workspace'
+  /** An agent, API key or service made it, not the person. */
+  byAgent?: boolean
 }
 
-export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId'>> & {
+export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId' | 'byAgent'>> & {
   automationId: string
   userId: string
 }
@@ -118,19 +121,35 @@ export interface AutomationRepository {
     runId: string
     turnId: string
     userId: string
+    expectedWorkflowRunId?: string
   }): Promise<void>
   markManualRunCompleted(args: {
     conversationId?: string
     now: number
     runId: string
     userId: string
+    expectedWorkflowRunId?: string
+    expectedTurnId?: string
   }): Promise<void>
   markManualRunFailed(args: {
     error: string
     now: number
     runId: string
     userId: string
+    expectedWorkflowRunId?: string
+    expectedTurnId?: string
+    status?: 'failed' | 'cancelled' | 'skipped'
   }): Promise<void>
+  settleManualRun?(args: {
+    conversationId?: string
+    error?: string
+    expectedWorkflowRunId: string
+    expectedStatus: 'queued' | 'running' | 'completed' | 'succeeded' | 'failed' | 'cancel_requested' | 'cancelled' | 'skipped' | 'dead_letter'
+    expectedTurnId?: string
+    runId: string
+    status: 'completed' | 'failed' | 'cancelled' | 'skipped'
+    userId: string
+  }): Promise<boolean>
   getRunForExecution(args: {
     runId: string
   }): Promise<AutomationExecutionPayload | null>

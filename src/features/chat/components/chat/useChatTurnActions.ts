@@ -23,6 +23,7 @@ import type { MentionInputHandle } from '../chat-interface/MentionInput'
 type Runtimes = ReturnType<typeof useChatRuntimes>
 
 export function useChatTurnActions({
+  nativeThreadReadOnly = false,
   activeRuntime,
   isActiveLoading,
   setReplyContext,
@@ -43,6 +44,7 @@ export function useChatTurnActions({
   activeChatTitle,
   setExitingTurnIds,
 }: {
+  nativeThreadReadOnly?: boolean
   activeRuntime: Runtimes['activeRuntime']
   isActiveLoading: boolean
   setReplyContext: ReturnType<typeof useComposerTools>['setReplyContext']
@@ -207,20 +209,23 @@ export function useChatTurnActions({
   }
 
   async function handleDeleteTurnById(turnId: string) {
+    if (nativeThreadReadOnly) return
     const cid = activeChatIdRef.current ?? activeChatId
     if (!cid || !turnId) {
       toast.error('Cannot delete this message right now.')
       return
     }
-    const EXIT_MS = 300
-    setExitingTurnIds((prev) => (prev.includes(turnId) ? prev : [...prev, turnId]))
-    await new Promise((r) => window.setTimeout(r, EXIT_MS))
     try {
       const res = await overlayAppClient.conversations.deleteMessageResponse({ conversationId: cid, turnId })
       const payload = (await res.json().catch(() => ({}))) as { error?: string }
       if (!res.ok) {
         toast.error(payload.error || 'Could not delete this turn.')
         return
+      }
+      const EXIT_MS = 300
+      if (activeChatIdRef.current === cid) {
+        setExitingTurnIds((prev) => (prev.includes(turnId) ? prev : [...prev, turnId]))
+        await new Promise((r) => window.setTimeout(r, EXIT_MS))
       }
       removeTurnFromRuntime(cid, turnId)
     } catch {

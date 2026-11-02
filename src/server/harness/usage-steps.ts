@@ -5,6 +5,7 @@ import type { HarnessReceipt } from '@overlay/agent-runtime/harness-state'
 import { getOrCreateGateway } from '@/server/ai/gateway/gateway-runtime'
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { harnessCostMicros, type HarnessModelObservation } from './model-usage'
 
 const GATEWAY_USAGE_MAX_RETRIES = 14
@@ -40,8 +41,18 @@ export async function resolveHarnessModelUsage(input: {
 }): Promise<HarnessModelUsageResolution> {
   'use step'
 
-  const { generationId, ...observation } = input.observation
+  const { generationId, freeCostVerified, ...observation } = input.observation
   const base = { ...observation, id: input.receiptId, contextWindow: input.contextWindow }
+  if (isFreeTierChatModelId(input.requestedModelId)) {
+    if (freeCostVerified !== true || observation.modelId !== input.requestedModelId || observation.provider !== 'overlay-free-router') {
+      throw new FatalError('Free provider cost is unconfirmed; reconcile the model reservation.')
+    }
+    return {
+      receipt: { ...base, costMicros: 0, costSource: 'provider' },
+      providerCostUsd: 0,
+      catalogCostUsd: null,
+    }
+  }
   if (isByokModelId(input.requestedModelId)) {
     return {
       receipt: { ...base, costMicros: 0, costSource: 'external', externalCostMicros: null },

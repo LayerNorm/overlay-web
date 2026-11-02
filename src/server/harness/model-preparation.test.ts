@@ -45,6 +45,26 @@ test('enforces fresh ZDR routing without losing other provider settings', async 
     anthropic: { thinking: { type: 'disabled' } } })
 })
 
+test('automation preparation preserves the original turn and grant snapshot for provider reauthorization', async () => {
+  const automationAccess = { ...access, authentication: {
+    type: 'automation' as const, automationId: 'automation', automationRunId: 'automation-run',
+    originWorkflowRunId: 'workflow',
+  } }
+  const automationContext = {
+    ...context, turnId: 'automation-run:automation-run', automationExecution: true,
+    automationId: 'automation', automationRunId: 'automation-run',
+    billingProgrammaticSubjectId: 'automation:automation',
+    accountAllowedToolIds: ['read_file'], accountAllowedConnectorIds: ['gmail'], integrationToolIds: ['gmail_send'],
+  }
+  const prepared = await preparePersonalHarnessModel({ ...input, access: automationAccess, context: automationContext })
+  expect(prepared.model.personal?.automationContext).toEqual({
+    turnId: automationContext.turnId, accountAllowedToolIds: ['read_file'],
+    accountAllowedConnectorIds: ['gmail'], integrationToolIds: ['gmail_send'],
+  })
+  expect(prepared.model.personal?.receiptId).toBe('model:0')
+  expect(JSON.stringify(prepared)).not.toContain('must-not-persist')
+})
+
 test('forces ZDR for each supported active candidate even when account policy does not require it', async () => {
   mocks.zdr.mockReturnValue(true)
   mocks.refresh.mockResolvedValue({ ...context, requiresZeroDataRetention: false })

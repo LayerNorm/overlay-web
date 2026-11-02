@@ -272,6 +272,63 @@ describe('nightly growth rollups', () => {
   })
 })
 
+test('a stopped run is restarted through the current yesterday', async () => {
+  vi.useFakeTimers()
+  const convex = convexTest(schema, modules)
+  await seed(convex)
+  // Monday's run stopped part-way through Sunday; Tuesday's cron restarts it.
+  const sunday = addDays(DAY1, 6)
+  const tuesday = addDays(DAY1, 8)
+  await convex.run(async (ctx) => {
+    await ctx.db.insert('growthJobState', { key: 'daily', day: sunday, untilDay: sunday, step: 1, updatedAt: at(addDays(DAY1, 7), 1) })
+  })
+  vi.setSystemTime(at(tuesday, 1))
+  await convex.mutation(startDaily, {})
+  await runAll(convex)
+  const state = await convex.run(ctx => ctx.db.query('growthJobState').withIndex('by_key', (q) => q.eq('key', 'daily')).unique())
+  expect(state).toMatchObject({ lastCompletedDay: addDays(DAY1, 7) })
+  expect(await totals(convex, addDays(DAY1, 7))).not.toBeNull()
+  vi.useRealTimers()
+})
+
+test('an automation an agent made is counted but is not the person\'s activity', async () => {
+  vi.useFakeTimers()
+  const convex = convexTest(schema, modules)
+  await insertAt(convex, DAY1, async (ctx) => {
+    const now = at(DAY1)
+    await ctx.db.insert('subscriptions', { userId: 'user-d' })
+    await ctx.db.insert('automations', { userId: 'user-d', createdByAgent: true, createdAt: now, updatedAt: now })
+  })
+  vi.setSystemTime(at(addDays(DAY1, 1), 1))
+  await convex.mutation(startBackfill, {})
+  await runAll(convex)
+  expect(await totals(convex, DAY1)).toMatchObject({ automationsCreated: 1, activeUsers: 0 })
+  vi.useRealTimers()
+})
+
+test('agent-created notes and text uploads count as files without making their owner active', async () => {
+  vi.useFakeTimers()
+  try {
+    const convex = convexTest(schema, modules)
+    vi.setSystemTime(at(DAY1))
+    await convex.run(ctx => ctx.db.insert('subscriptions', { userId: 'passive-owner' }))
+    const create = makeFunctionReference<'mutation'>('files/files:create')
+    for (const kind of ['note', 'upload'] as const) {
+      const fileId = await convex.mutation(create, {
+        userId: 'passive-owner', serverSecret: secret, name: `${kind}.md`,
+        type: 'file', kind, byAgent: true,
+      })
+      expect(await convex.run(ctx => ctx.db.get(fileId))).toMatchObject({ createdByAgent: true })
+    }
+    vi.setSystemTime(at(addDays(DAY1, 1), 1))
+    await convex.mutation(startBackfill, {})
+    await runAll(convex)
+    expect(await totals(convex, DAY1)).toMatchObject({ filesCreated: 2, activeUsers: 0 })
+  } finally {
+    vi.useRealTimers()
+  }
+})
+
 describe('file edit tracking', () => {
   test('each text change is kept per file and day with every editor; indexing updates and unchanged saves are not edits', async () => {
     vi.useFakeTimers()
@@ -312,7 +369,11 @@ describe('file edit tracking', () => {
     vi.setSystemTime(at(addDays(DAY1, 1), 0))
     await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId, content: 'Fourth' })
     expect(await edits()).toEqual([{ day: DAY1 }, { day: addDays(DAY1, 1) }])
-    // Every editor is credited for the day they edited; the agent write credits no one.
+    // An agent editing through the person's own access is an edit, but not the person's activity.
+    vi.setSystemTime(at(addDays(DAY1, 2), 0))
+    await convex.mutation(updateFile, { userId: 'user_1', serverSecret: secret, fileId, content: 'Fifth', byAgent: true })
+    expect((await edits()).map(({ day }) => day)).toContain(addDays(DAY1, 2))
+    // Every editor is credited for the day they edited; agent writes credit no one.
     expect(await userDays()).toEqual([`user_1@${DAY1}`, `user_1@${addDays(DAY1, 1)}`, `user_2@${DAY1}`])
     vi.useRealTimers()
   })
@@ -336,6 +397,13 @@ describe('account deletion', () => {
     expect(await rowsFor('user-b')).toEqual({ users: 0, days: 0 })
     expect(await rowsFor('user-a')).toMatchObject({ users: 1 })
     expect(await totals(convex, DAY1)).toMatchObject({ usersCreated: 2, activeUsers: 2 })
+
+    // A's task events and principal outlive the account; a recount must not bring A back.
+    await convex.mutation(makeFunctionReference<'mutation'>('auth/users:deleteUserAccountByServer'), { serverSecret: secret, userId: 'user-a' })
+    await convex.mutation(startBackfill, { fromDay: DAY1, force: true })
+    await runAll(convex)
+    expect(await rowsFor('user-a')).toEqual({ users: 0, days: 0 })
+    expect(await rowsFor('user-b')).toEqual({ users: 0, days: 0 })
     vi.useRealTimers()
   })
 })

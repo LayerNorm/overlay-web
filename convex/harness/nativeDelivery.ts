@@ -5,6 +5,37 @@ import type { HarnessAdmission, HarnessSource } from '../../packages/overlay-age
 
 type ReadContext = Pick<QueryCtx, 'db'>
 
+async function assertPreboundSurfaceDelivery(
+  ctx: ReadContext,
+  admission: HarnessAdmission,
+  conversation: Doc<'conversations'>,
+  delivery: Doc<'conversationAgentRuns'>,
+): Promise<void> {
+  if (delivery.harnessRunId === undefined) return
+  const execution = await ctx.db.query('surfaceTurnExecutions')
+    .withIndex('by_harnessRunId', q => q.eq('harnessRunId', admission.runId))
+    .unique()
+  const valid = delivery.harnessRunId === admission.runId
+    && execution?.harnessRunId === admission.runId
+    && execution.agentRunId === delivery._id
+    && execution.actorUserId === delivery.userId
+    && execution.workspaceId === conversation.workspaceId
+    && execution.creatorPrincipalId === delivery.initiatorPrincipalId
+    && execution.agentId === delivery.agentId
+    && execution.agentPrincipalId === delivery.agentPrincipalId
+    && execution.conversationId === conversation._id
+    && execution.turnId === delivery.turnId
+    && execution.userMessageId === delivery.userMessageId
+    && execution.assistantMessageId === delivery.assistantMessageId
+    && execution.turnId === `surface:slack:${execution.bindingId}:${execution.messageId}`
+    && conversation.createdByPrincipalId === execution.creatorPrincipalId
+    && conversation.externalPlatform === execution.platform
+    && conversation.externalChannelId === execution.channelId
+    && conversation.externalThreadId === execution.threadId
+    && conversation.surfaceBindingId === execution.bindingId
+  if (!valid) throw new Error('HARNESS_DELIVERY_TARGET_DENIED')
+}
+
 export function isHarnessDeliveryConversation(
   conversation: Doc<'conversations'> | null,
   delivery: Doc<'conversationAgentRuns'>,
@@ -36,10 +67,11 @@ export async function validateNativeHarnessDelivery(
   }
   if (delivery.userId !== admission.policy.actorUserId || delivery.runner !== 'workflow'
     || delivery.status !== 'queued' || delivery.startedAt !== undefined
-    || delivery.workflowRunId !== undefined || delivery.harnessRunId !== undefined
+    || delivery.workflowRunId !== undefined
     || delivery.completedAt !== undefined || delivery.failedAt !== undefined || delivery.cancelledAt !== undefined) {
     throw new Error('HARNESS_DELIVERY_TARGET_DENIED')
   }
+  await assertPreboundSurfaceDelivery(ctx, admission, conversation!, delivery)
   await requireAgentAuthor(ctx, {
     actorUserId: admission.policy.actorUserId, authorPrincipalId: delivery.agentPrincipalId!,
     conversationId: conversation!._id, workspaceId: conversation!.workspaceId!, serverSecret,

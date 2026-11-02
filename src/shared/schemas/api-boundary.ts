@@ -20,6 +20,7 @@ import {
   ActConversationRequest,
   AgentRunApprovalRequest,
   AgentRunInputRequest,
+  AgentRunResourceRequest,
   AgentRunMetricEventRequest,
   AgentRunMetricsQuery,
   AddConversationMessageRequest,
@@ -107,6 +108,7 @@ export type WebApiBoundaryDefinition = {
   summary: string
   description?: string
   tag: string
+  security?: readonly Record<string, readonly string[]>[]
   routePath?: string
   pattern?: RegExp
   publicReference?: boolean
@@ -640,6 +642,14 @@ export const webApiBoundaryDefinitions = [
     schema: { json: AgentRunInputRequest },
     summary: 'Provide requested input to a waiting personal or native Harness AgentRun',
     tag: 'Conversations',
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/conversations/run/resources',
+    schema: { json: AgentRunResourceRequest },
+    summary: 'Grant additional resources to an authorized personal Harness AgentRun',
+    tag: 'Conversations',
+    security: [{ browserSession: [] }],
   },
   {
     method: 'GET',

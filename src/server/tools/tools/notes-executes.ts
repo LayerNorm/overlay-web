@@ -63,7 +63,7 @@ async function writeNote(
 ): Promise<WriteResult> {
   const res = await callInternalApi(
     NOTES_PATH,
-    { ...body, ...toolAuthBody(options) },
+    { ...body, byAgent: true, ...toolAuthBody(options) },
     options.accessToken,
     options.baseUrl,
     { method: 'PATCH', forwardCookie: options.forwardCookie },
@@ -220,6 +220,7 @@ export async function executeCreateNote(
       NOTES_PATH,
       {
         title,
+        byAgent: true,
         content: input.content,
         ...(input.tags ? { tags: input.tags } : {}),
         ...(options.conversationId ? { conversationId: options.conversationId } : {}),

@@ -31,12 +31,14 @@ type ConvexAgentRunDoc = {
   _id: string
   _creationTime: number
   conversationId: string
+  userId: string
   status: string
   updatedAt: number
   createdAt: number
   terminalError?: { code: string; message: string; retryable: boolean }
   approval?: AgentRunResource['approval']
   inputRequest?: AgentRunResource['inputRequest']
+  resourceRequest?: AgentRunResource['resourceRequest']
   metrics?: {
     browserDisconnectedAt?: number
     browserReconnectedAt?: number
@@ -94,11 +96,13 @@ export function toAgentRunResource(doc: ConvexAgentRunDoc): AgentRunResource | n
   return {
     id: doc._id,
     conversationId: doc.conversationId,
+    userId: doc.userId,
     status: doc.status as AgentRunResource['status'],
     updatedAt: doc.updatedAt,
     terminalError: doc.terminalError,
     approval: doc.approval,
     inputRequest: doc.inputRequest,
+    resourceRequest: doc.resourceRequest,
     metrics: doc.metrics as AgentRunResource['metrics'],
   } as unknown as AgentRunResource
 }
