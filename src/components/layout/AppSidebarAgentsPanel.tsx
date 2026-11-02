@@ -47,6 +47,7 @@ import { AgentThreadRows } from './AppSidebarAgentThreads'
 import { isChief, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identity'
 import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-workspace'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
+import { useAgentExpansion } from './sidebar/useAgentExpansion'
 
 type AgentBundleMap = Record<string, WorkspaceAgentBundle | 'loading' | 'error'>
 
@@ -143,12 +144,7 @@ function useExpandedAgents({
   bundles: AgentBundleMap
   loadBundle: (agentId: string) => Promise<void>
 }) {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set())
-
-  // The agent in the URL stays expanded so its threads remain in view.
-  if (activeAgentId && !expanded.has(activeAgentId)) {
-    setExpanded((current) => new Set(current).add(activeAgentId))
-  }
+  const { expanded, toggle } = useAgentExpansion(activeAgentId)
   // Fetch the URL agent's bundle once it is known absent. Reloading when the
   // bundle is already present re-triggers on every setBundles and loops
   // forever — directory-change events handle refreshes instead.
@@ -158,15 +154,10 @@ function useExpandedAgents({
   }, [activeAgentId, bundles, loadBundle])
 
   const toggleExpanded = useCallback((agentId: string) => {
-    setExpanded((current) => {
-      const next = new Set(current)
-      if (next.has(agentId)) next.delete(agentId)
-      else next.add(agentId)
-      return next
-    })
+    toggle(agentId)
     const state = bundles[agentId]
     if (state === undefined || state === 'error') void loadBundle(agentId)
-  }, [bundles, loadBundle])
+  }, [bundles, loadBundle, toggle])
 
   return { expanded, toggleExpanded }
 }
