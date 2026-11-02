@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Remove microphone discovery from desktop dictation's shortcut path and avoid a redundant native cloud-session check after an admitted take.
 - Use saved OAuth sessions when testing MCP connections and keep the MCP editor tabs sized to their labels.
 
 - Standardize MCP and Skills cards and editors on shared shadcn components with flat layouts, accessible Active switches, explicit Manage actions, and deletion confirmation.
