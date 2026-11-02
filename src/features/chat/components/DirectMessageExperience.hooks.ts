@@ -1566,8 +1566,7 @@ export function useRoomComposer({
     const submittedState = latestDraftStateRef.current
     const clearSubmittedDraft = () => {
       const latest = latestDraftStateRef.current
-      const draftStillMatches = sessionIdRef.current === conversationId
-        && latest.conversationId === conversationId
+      const draftStillMatches = latest.conversationId === conversationId
         && latest.activeWorkspaceId === activeWorkspaceId
         && inputRef.current === submittedInput
         && latest.attachedImages === submittedState.attachedImages

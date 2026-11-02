@@ -178,12 +178,12 @@ function roomArgs(): Parameters<typeof useSendMessage>[0] {
   }
 }
 
-test('mounted room admission preserves draft, prevents duplicate saves and retains newer attachments', async (t) => {
+test('mounted room admission clears drafts with a distinct presence session and retains newer attachments', async (t) => {
   browser(t)
   const saved = deferred<unknown>()
   const post = t.mock.method(overlayAppClient.conversations, 'addMessage', () => saved.promise)
   const args = roomArgs()
-  const sessionIdRef = { current: 'room' }
+  const sessionIdRef = { current: 'presence-session' }
   let allowed = false
   args.ensureCanSendToThread = async () => ({ accepted: allowed, status: allowed ? 'writable' : 'unavailable' })
   const hook = await mount(t, (input: typeof args) => {
@@ -227,7 +227,7 @@ test('failed room submission keeps attachments on the retryable optimistic messa
     return {}
   })
   const args = roomArgs()
-  const sessionIdRef = { current: 'room' }
+  const sessionIdRef = { current: 'presence-session' }
   const hook = await mount(t, (input: typeof args) => {
     const sendMessage = useSendMessage(input)
     const composer = useRoomComposer({
