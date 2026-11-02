@@ -402,36 +402,29 @@ function ComputerSizePicker({ size, onSizeChange, disabled }: {
   )
 }
 
-function ComputerCardActions({ status, canTogglePower, canDeleteComputer, powerLabel, openBusy, lifecycleBusy, onOpenDesktop, onTogglePower, onDelete }: {
-  status: Computer['status']
+function ComputerCardActions({ canTogglePower, canDeleteComputer, powerLabel, openBusy, lifecycleBusy, onTogglePower, onDelete }: {
   canTogglePower: boolean
   canDeleteComputer: boolean
   powerLabel: string
   openBusy: boolean
   lifecycleBusy: 'start' | 'stop' | 'delete' | 'control' | null
-  onOpenDesktop(): void
   onTogglePower(): void
   onDelete(): void
 }) {
   const busy = lifecycleBusy !== null || openBusy
   return (
-    <>
-      {status === 'ready' ? (
-        <Button variant="secondary" size="sm" onClick={onOpenDesktop} disabled={openBusy || lifecycleBusy !== null}>
-          {openBusy ? 'Opening…' : 'Open desktop'}
-        </Button>
-      ) : null}
+    <div className="mt-2 flex items-center justify-between gap-2">
       {canTogglePower ? (
-        <Button variant="secondary" size="sm" onClick={onTogglePower} disabled={busy}>
+        <Button variant="ghost" size="sm" onClick={onTogglePower} disabled={busy}>
           {powerLabel}
         </Button>
       ) : null}
       {canDeleteComputer ? (
-        <Button variant="secondary" size="sm" onClick={onDelete} disabled={busy} aria-label="Delete computer">
+        <Button variant="ghost" size="sm" className="ml-auto" onClick={onDelete} disabled={busy} aria-label="Delete computer">
           {lifecycleBusy === 'delete' ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
         </Button>
       ) : null}
-    </>
+    </div>
   )
 }
 
@@ -448,7 +441,7 @@ function ProvisionedComputerCard({ computer, currentUserId, agentName, openBusy,
 }) {
   const canTogglePower = computer.status === 'ready' || computer.status === 'stopped'
   const canDeleteComputer = canTogglePower || computer.status === 'error'
-  const powerLabel = lifecycleBusy === 'stop' ? 'Stopping…' : lifecycleBusy === 'start' ? 'Starting…' : computer.status === 'ready' ? 'Stop' : 'Start'
+  const powerLabel = lifecycleBusy === 'stop' ? 'Stopping…' : lifecycleBusy === 'start' ? 'Starting…' : computer.status === 'ready' ? 'Stop computer' : 'Start computer'
   const controlledByCurrentUser = Boolean(computer.controlledByUserId && computer.controlledByUserId === currentUserId)
   const statusLine = computer.controlledByUserId
     ? controlledByCurrentUser
@@ -458,31 +451,34 @@ function ProvisionedComputerCard({ computer, currentUserId, agentName, openBusy,
       ? `${agentName} is using it`
       : null
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-(--border) p-3">
+    <div className="rounded-xl bg-(--surface-subtle) p-3">
       <div className="min-w-0">
-        <p className="flex items-center gap-1.5 text-xs font-medium text-(--foreground)"><Monitor size={13} className="shrink-0 text-(--muted)" />{computer.name ?? 'Computer'}</p>
+        <p className="flex items-start gap-1.5 text-xs font-medium text-(--foreground)"><Monitor size={13} className="mt-0.5 shrink-0 text-(--muted)" /><span className="min-w-0 break-words">{computer.name ?? 'Computer'}</span></p>
         <p className="mt-0.5 flex items-center gap-1.5 text-[11px] leading-4 text-(--muted)">
-          {statusLine ? <><span className={`h-1.5 w-1.5 rounded-full ${computer.controlledByUserId ? 'bg-blue-500' : 'bg-green-500'}`} />{statusLine}</> : `${computer.status} · ${computer.size} · size is fixed once provisioned`}
+          {statusLine ? <><span className={`h-1.5 w-1.5 shrink-0 rounded-full ${computer.controlledByUserId ? 'bg-blue-500' : 'bg-green-500'}`} />{statusLine}</> : `${computer.status} · ${computer.size} · size is fixed once provisioned`}
         </p>
       </div>
-      <div className="flex shrink-0 items-center gap-1.5">
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {computer.status === 'ready' ? (
+          <Button variant="secondary" size="sm" onClick={onOpenDesktop} disabled={openBusy || lifecycleBusy !== null}>
+            {openBusy ? 'Opening…' : 'Open desktop'}
+          </Button>
+        ) : null}
         {(computer.controlledByUserId || computer.status === 'ready') ? (
           <Button variant="secondary" size="sm" onClick={onControl} disabled={lifecycleBusy !== null || openBusy}>
             {lifecycleBusy === 'control' ? (computer.controlledByUserId ? 'Handing back…' : 'Taking control…') : computer.controlledByUserId ? 'Hand back' : 'Take control'}
           </Button>
         ) : null}
-        <ComputerCardActions
-          status={computer.status}
-          canTogglePower={canTogglePower}
-          canDeleteComputer={canDeleteComputer}
-          powerLabel={powerLabel}
-          openBusy={openBusy}
-          lifecycleBusy={lifecycleBusy}
-          onOpenDesktop={onOpenDesktop}
-          onTogglePower={onTogglePower}
-          onDelete={onDelete}
-        />
       </div>
+      <ComputerCardActions
+        canTogglePower={canTogglePower}
+        canDeleteComputer={canDeleteComputer}
+        powerLabel={powerLabel}
+        openBusy={openBusy}
+        lifecycleBusy={lifecycleBusy}
+        onTogglePower={onTogglePower}
+        onDelete={onDelete}
+      />
     </div>
   )
 }
@@ -517,7 +513,7 @@ export function AgentComputerSection({ enabled, size, onSizeChange, computer, cu
 }) {
   if (!enabled && !computer && !loadError && !provisionError) return null
   return (
-    <div className="space-y-3 border-b border-(--border) pb-3 pt-1 last:border-b-0">
+    <div className="space-y-3">
       {enabled && !computer ? <ComputerSizePicker size={size} onSizeChange={onSizeChange} disabled={disabled} /> : null}
       {enabled && computer ? (
         <ProvisionedComputerCard
@@ -587,21 +583,21 @@ export function AgentSurfacesSection({
         Reachable on
         {loading ? <Loader2 size={12} className="animate-spin text-(--muted)" /> : null}
       </p>
-      <div className="mt-1.5">
-        <div className="flex items-center gap-3 border-b border-(--border) py-2.5 last:border-b-0">
+      <div className="mt-3 space-y-3">
+        <div className="flex items-center gap-3 rounded-xl bg-(--surface-subtle) p-3">
           <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-(--foreground)">Overlay</p>
-            <p className="mt-0.5 text-[11px] leading-4 text-(--muted)">In Chats and rooms.</p>
+            <p className="mt-0.5 text-[11px] leading-4 text-(--muted)">Chats and rooms</p>
           </div>
-          <span className="shrink-0 text-[11px] text-(--muted)">always on</span>
+          <span className="shrink-0 text-[11px] text-(--muted)">Always on</span>
         </div>
 
         {slackConnections.length === 0 ? (
-          <div className="flex items-center gap-3 border-b border-(--border) py-2.5 last:border-b-0">
+          <div className="flex items-center gap-3 rounded-xl bg-(--surface-subtle) p-3">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-medium text-(--foreground)">Slack</p>
               {canBind ? (
-                <p className="mt-0.5 text-[11px] leading-4 text-(--muted)">Connect a Slack workspace so people can reach {name} there.</p>
+                <p className="mt-0.5 text-[11px] leading-4 text-(--muted)">Not connected</p>
               ) : null}
             </div>
             {canBind ? (
@@ -617,36 +613,24 @@ export function AgentSurfacesSection({
             (channel) => !boundChannelKeys.has(`${connection.id}:${channel.id}`),
           )
           return (
-            <Fragment key={connection.id}>
-              <div className="flex items-center gap-3 border-b border-(--border) py-2.5 last:border-b-0">
+            <div key={connection.id} className="rounded-xl bg-(--surface-subtle) p-3">
+              <div className="flex items-center gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-(--foreground)">Slack · {connection.externalTeamName ?? 'Slack workspace'}</p>
+                  <p className="text-xs font-medium text-(--foreground)">Slack</p>
+                  <p className="mt-0.5 break-words text-[11px] leading-4 text-(--muted)">{connection.externalTeamName ?? 'Slack workspace'}</p>
                   {connection.status !== 'active' ? (
                     <p className="mt-0.5 text-[11px] leading-4 text-amber-600 dark:text-amber-400">
                       {connection.status === 'degraded' ? 'Connection degraded. Reconnect Slack to resume.' : 'Uninstalled from Slack. Reconnect to resume.'}
                     </p>
                   ) : null}
                 </div>
-                {canBind ? (
-                  <Button variant="ghost"
-                    type="button"
-                    onClick={() => onToggleChannelPicker(connection.id)}
-                    disabled={!hasAgent || connection.status !== 'active'}
-                    className={unstyledButton(`flex shrink-0 items-center gap-1 text-[11px] font-medium text-(--muted) transition-colors hover:text-(--foreground) disabled:cursor-not-allowed disabled:opacity-50`)}
-                  >
-                    <Plus size={11} />Add channel
-                  </Button>
-                ) : null}
               </div>
 
               {connectionBindings.map((binding) => (
-                <div key={binding.id} className="flex items-center gap-3 border-b border-(--border) py-2.5 last:border-b-0">
-                  <div className="min-w-0 flex-1 pl-5">
+                <div key={binding.id} className="mt-2 flex items-center gap-3 py-1">
+                  <div className="min-w-0 flex-1">
                     <p className="flex items-center gap-1 text-xs font-medium text-(--foreground)">
-                      <Hash size={11} className="shrink-0 text-(--muted)" />{binding.channelName ?? binding.channelId}
-                    </p>
-                    <p className="mt-0.5 text-[11px] leading-4 text-(--muted)">
-                      Anyone in {binding.channelName ? `#${binding.channelName}` : 'this channel'} can reach {name} with @Overlay {name}. It acts with your access.
+                      <Hash size={11} className="shrink-0 text-(--muted)" /><span className="truncate">{binding.channelName ?? binding.channelId}</span>
                     </p>
                   </div>
                   {canBind ? (
@@ -662,8 +646,19 @@ export function AgentSurfacesSection({
                 </div>
               ))}
 
+              {connectionBindings.length === 0 ? <p className="mt-3 text-[11px] text-(--muted)">No channels added</p> : null}
+              {canBind ? (
+                <Button variant="ghost" size="sm" className="mt-2" type="button"
+                  onClick={() => onToggleChannelPicker(connection.id)}
+                  disabled={!hasAgent || connection.status !== 'active'}
+                  aria-expanded={pickerOpen}
+                >
+                  <Plus size={11} />Add channel
+                </Button>
+              ) : null}
+
               {pickerOpen && channelPicker ? (
-                <div className="border-b border-(--border) py-2.5 pl-5 last:border-b-0">
+                <div className="mt-2 space-y-2">
                   {channelPicker.loading ? (
                     <p className="flex items-center gap-1.5 text-[11px] text-(--muted)"><Loader2 size={11} className="animate-spin" />Loading channels…</p>
                   ) : channelPicker.error ? (
@@ -692,12 +687,13 @@ export function AgentSurfacesSection({
                   )}
                 </div>
               ) : null}
-            </Fragment>
+              {connectionBindings.length > 0 ? <p className="mt-2 text-[11px] leading-4 text-(--muted)">Mention @Overlay {name} in these channels. It acts with your access.</p> : null}
+            </div>
           )
         })}
 
         {canBind && slackConnections.length > 0 ? (
-          <div className="border-b border-(--border) py-2.5 last:border-b-0">
+          <div>
             <Button variant="ghost"
               type="button"
               onClick={onConnectSlack}
@@ -709,12 +705,6 @@ export function AgentSurfacesSection({
           </div>
         ) : null}
 
-        {(['Teams', 'Discord'] as const).map((platform) => (
-          <div key={platform} className="flex items-center gap-3 border-b border-(--border) py-2.5 opacity-50 last:border-b-0">
-            <p className="min-w-0 flex-1 text-xs font-medium text-(--foreground)">{platform}</p>
-            <span className="shrink-0 text-[11px] text-(--muted)">coming soon</span>
-          </div>
-        ))}
       </div>
       {error ? <p className="mt-1.5 text-[11px] leading-4 text-red-500">{error}</p> : null}
       {!hasAgent ? (

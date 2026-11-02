@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Flatten agent computer settings and connected-platform groups, keep computer actions below the status in narrow panels, and remove repeated AI-chat icons while retaining channel, participant, Slack, and automation identity.
+
 - Clear submitted agent-thread drafts and attachments immediately when they enter the transcript, without clearing newer drafts on completion. Request public agent progress updates between tool batches and distinguish task deadlines from per-task spending limits and workspace credits.
 
 - Use saved OAuth sessions when testing MCP connections and keep the MCP editor tabs sized to their labels.

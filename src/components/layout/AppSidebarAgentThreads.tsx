@@ -1,7 +1,7 @@
 'use client'
 
 import type { ComponentProps } from 'react'
-import { MessageSquare, Archive, Trash2, Workflow } from 'lucide-react'
+import { Archive, Trash2, Workflow } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
   SidebarMenuAction,
@@ -66,7 +66,6 @@ export function AgentThreadRows({
               onClick={() => onOpenThread(agent, thread.conversationId)}
               className="pr-14"
             >
-              <MessageSquare aria-hidden />
               <span className="flex-1 truncate">{thread.title}</span>
             </ThreadButton>
             <SidebarMenuAction
