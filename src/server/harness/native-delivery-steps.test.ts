@@ -1,5 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
+import { createHarnessDiagnostic, harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 import { finishNativeHarnessDelivery, attachNativeHarnessDelivery, projectNativeHarnessWait } from './native-delivery-steps'
 import { buildNativeHarnessDelivery } from './native-tool-metrics'
 
@@ -143,13 +144,31 @@ test('native failure with empty streamed content preserves reconstructed answer 
   expect(mocks.listMessages).toHaveBeenCalledWith({
     actorUserId: 'user', conversationId: 'room', messageId: 'answer', workspaceId: 'workspace', limit: 1,
   })
-  expect(mocks.agent).toHaveBeenCalledWith({ actorUserId: 'user', workspaceId: 'workspace', agentId: 'agent' })
+  expect(mocks.agent).not.toHaveBeenCalled()
   expect(mocks.failMessage).toHaveBeenCalledWith(expect.objectContaining({
     content: 'Answer',
   }))
   expect(mocks.failMessage.mock.calls[0][0].content).not.toContain('free_tier_limit_exceeded')
   expect(mocks.fail).toHaveBeenCalledOnce()
 })
+
+test.each(['MODEL_OUTCOME_UNKNOWN', 'TOOL_OUTCOME_UNKNOWN', 'UNKNOWN'] as const)(
+  'empty native failure uses safe %s guidance rather than inviting another send', async (code) => {
+    const diagnostic = createHarnessDiagnostic({
+      diagnosticId: 'diagnostic', code, stage: 'model', occurredAt: 1,
+    })
+    mocks.get.mockResolvedValue({ ...state, status: 'failed', diagnostic })
+    await finishNativeHarnessDelivery(access, { ...delivery, content: '', parts: [] }, { memoryEnabled: false })
+    expect(mocks.failMessage).toHaveBeenCalledWith(expect.objectContaining({
+      content: harnessDiagnosticMessage(diagnostic),
+    }))
+    expect(mocks.failMessage.mock.calls[0][0].content).not.toContain('try sending it again')
+    expect(mocks.fail).toHaveBeenCalledWith(expect.objectContaining({
+      error: expect.objectContaining({ retryable: false, message: harnessDiagnosticMessage(diagnostic) }),
+    }))
+    expect(mocks.agent).not.toHaveBeenCalled()
+  },
+)
 
 test('native failure with a foreign assistant row does not replace its content', async () => {
   mocks.get.mockResolvedValue({ ...state, status: 'failed', terminalReason: 'Failed.' })

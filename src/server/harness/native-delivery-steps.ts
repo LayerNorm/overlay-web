@@ -5,7 +5,6 @@ import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { compactAssistantPersistenceForConvex } from '@/shared/chat/persist-assistant-turn'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '@/shared/ai/textual-tool-calls'
-import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
 import { reconcileUnverifiedAgentActionClaims } from '@/server/agents/workspace-agent-invocation'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
@@ -202,10 +201,7 @@ export async function finishNativeHarnessDelivery(
         && (message.status === 'generating' || message.status === 'error')) {
         failureTranscript = { content: delivery.content, parts: delivery.parts }
         if (message.status === 'generating' && !message.content.trim()) {
-          const agent = await server.workspaceAgentService.get({
-            actorUserId: access.actorUserId, workspaceId: access.workspaceId, agentId: access.agentId,
-          })
-          content = delivery.content.trim() || agentStartFailureMessage(agent.name, reason)
+          content = delivery.content.trim() || reason
         }
       }
     } catch (_error) {
