@@ -3,6 +3,7 @@ import posthog from 'posthog-js'
 import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { dispatchChatCreated, isPlaceholderChatTitle } from '@/shared/chat/chat-title'
 import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
@@ -41,8 +42,8 @@ export async function createHandoffConversation({
   const response = await overlayAppClient.conversations.createResponse(
     {
       title,
-      askModelIds: ['openrouter/free'],
-      actModelId: 'openrouter/free',
+      askModelIds: [DEFAULT_MODEL_ID],
+      actModelId: DEFAULT_MODEL_ID,
       lastMode: 'act',
       ...(workspaceId ? { scope: 'workspace' as const } : {}),
     },

@@ -40,7 +40,6 @@ export type ApplyRemoteEventsResult =
         agentId: string
         conversationId: string
         environmentId: string
-        forceFreeTierLimits: boolean
         inputTokens: number
         modelId: string
         modelUsageBilling: 'byok' | 'overlay'

@@ -1,7 +1,7 @@
 import { v } from 'convex/values'
 import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
-import { ensureEmptyBalance, requireCanonicalBalanceAccount } from './accountModel'
+import { canceledPlanCreditPatch, ensureEmptyBalance, requireCanonicalBalanceAccount } from './accountModel'
 
 async function requireCanonicalAccountById(ctx: { db: MutationCtx['db'] }, billingAccountId: string) {
   const account = await ctx.db.query('billingAccounts')
@@ -35,6 +35,8 @@ const subscriptionRecord = v.object({
   offSessionConsentAt: v.optional(v.number()),
   currentPeriodStart: v.optional(v.number()),
   currentPeriodEnd: v.optional(v.number()),
+  paidPeriodStart: v.optional(v.number()),
+  paidPeriodEnd: v.optional(v.number()),
 })
 
 /** Automatic top-ups charged or being charged (pending or succeeded) since `since`, and whether one is pending. */
@@ -77,6 +79,8 @@ export const getByServer = query({
       ...(row.offSessionConsentAt === undefined ? {} : { offSessionConsentAt: row.offSessionConsentAt }),
       ...(row.currentPeriodStart === undefined ? {} : { currentPeriodStart: row.currentPeriodStart }),
       ...(row.currentPeriodEnd === undefined ? {} : { currentPeriodEnd: row.currentPeriodEnd }),
+      ...(row.paidPeriodStart === undefined ? {} : { paidPeriodStart: row.paidPeriodStart }),
+      ...(row.paidPeriodEnd === undefined ? {} : { paidPeriodEnd: row.paidPeriodEnd }),
     }
   },
 })
@@ -102,6 +106,8 @@ export const getEntitlementsByServer = query({
     creditsUsed: v.number(),
     creditsTotal: v.number(),
     billingPeriodEnd: v.optional(v.string()),
+    paidPeriodStart: v.optional(v.number()),
+    paidPeriodEnd: v.optional(v.number()),
   }), v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -129,6 +135,8 @@ export const getEntitlementsByServer = query({
       planKind: subscription?.planKind ?? 'free',
       planAmountCents: subscription?.planAmountCents ?? 0,
       status: subscription?.status ?? 'active',
+      ...(subscription?.paidPeriodStart === undefined ? {} : { paidPeriodStart: subscription.paidPeriodStart }),
+      ...(subscription?.paidPeriodEnd === undefined ? {} : { paidPeriodEnd: subscription.paidPeriodEnd }),
       budgetUsedCents: used,
       budgetTotalCents: included + topUp,
       budgetRemainingCents: Math.max(0, included + topUp - used - reserved),
@@ -187,18 +195,22 @@ export const upsertByServer = mutation({
       && args.providerEventCreatedAt !== undefined
       && args.providerEventCreatedAt < existing.providerEventCreatedAt
     ) return { billingAccountId, applied: false }
+    if (args.status !== 'canceled' && existing?.currentPeriodStart !== undefined && args.currentPeriodStart !== undefined
+      && args.stripeSubscriptionId === existing.providerSubscriptionId && args.currentPeriodStart < existing.currentPeriodStart) return { billingAccountId, applied: false }
+    if (existing?.providerSubscriptionId && args.stripeSubscriptionId && args.stripeSubscriptionId !== existing.providerSubscriptionId
+      && (args.status === 'canceled' || existing.status !== 'canceled')) return { billingAccountId, applied: false }
+    if (existing?.status === 'canceled' && args.status === 'active' && args.stripeSubscriptionId === existing.providerSubscriptionId) {
+      return { billingAccountId, applied: false }
+    }
     const now = Date.now()
     const isCancellation = args.status === 'canceled' && args.planKind === 'free' && args.planAmountCents === 0
-    // Attaching a first provider subscription is not a renewal of the local allowance.
-    const firstProviderSubscription = !existing?.providerSubscriptionId && Boolean(args.stripeSubscriptionId)
-    const periodChanged = !isCancellation && !firstProviderSubscription && existing?.currentPeriodStart !== undefined
-      && args.currentPeriodStart !== undefined
-      && args.currentPeriodStart - existing.currentPeriodStart >= 60 * 60 * 1000
     const planKind = args.planKind ?? existing?.planKind ?? 'free'
     const planAmountCents = Math.max(0, args.planAmountCents ?? existing?.planAmountCents ?? 0)
     const value = {
       billingAccountId,
       provider: args.provider ?? existing?.provider ?? 'stripe',
+      ...(args.stripeSubscriptionId && args.stripeSubscriptionId !== existing?.providerSubscriptionId
+        ? { paidPeriodStart: undefined, paidPeriodEnd: undefined, paidInvoiceId: undefined } : {}),
       ...(args.stripeCustomerId ?? existing?.providerCustomerId
         ? { providerCustomerId: args.stripeCustomerId ?? existing?.providerCustomerId }
         : {}),
@@ -238,35 +250,77 @@ export const upsertByServer = mutation({
     if (existing) await ctx.db.patch(existing._id, value)
     else await ctx.db.insert('billingAccountSubscriptions', { ...value, createdAt: now })
     const balance = await ensureEmptyBalance(ctx, billingAccountId)
-    const planIncludedMicros = planAmountCents * 10_000
-    if (periodChanged && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
-    const nextUsedMicros = periodChanged ? 0 : balance.usedMicros
-    const nextReservedMicros = periodChanged ? 0 : balance.reservedMicros
-    // Unused credit does not carry over (D2): at renewal both the plan's credit and any top-up balance start again.
-    const nextTopUpPurchasedMicros = periodChanged ? 0 : balance.topUpPurchasedMicros
-    const nextTopUpBalanceMicros = periodChanged ? 0 : balance.topUpBalanceMicros
-    // Cancellation removes unused plan credit, while retaining the historical
-    // funding needed for consumed spend and existing reservations.
-    const includedMicros = isCancellation
-      ? Math.max(0, nextUsedMicros + nextReservedMicros - balance.institutionalGrantMicros - nextTopUpPurchasedMicros)
-      : planIncludedMicros
-    if (nextUsedMicros + nextReservedMicros
-      > includedMicros + balance.institutionalGrantMicros + nextTopUpPurchasedMicros) {
-      throw new Error('Subscription change would remove already consumed or reserved credits')
-    }
-    await ctx.db.patch(balance._id, {
-      includedMicros,
-      mode: 'budgeted',
-      allowanceUsedMicros: periodChanged ? 0 : balance.allowanceUsedMicros,
-      usedMicros: nextUsedMicros,
-      reservedMicros: nextReservedMicros,
-      topUpPurchasedMicros: nextTopUpPurchasedMicros,
-      topUpBalanceMicros: nextTopUpBalanceMicros,
-      updatedAt: now,
-      version: balance.version + 1,
+    if (isCancellation) await ctx.db.patch(balance._id, {
+      ...(await canceledPlanCreditPatch(ctx, balance, balance.usedMicros, balance.reservedMicros)),
+      updatedAt: now, version: balance.version + 1,
     })
     return { billingAccountId, applied: true }
   },
+})
+
+const paidPeriodArgs = {
+  billingAccountId: v.string(),
+  stripeCustomerId: v.string(),
+  stripeSubscriptionId: v.string(),
+  paidInvoiceId: v.string(),
+  paidPeriodStart: v.number(),
+  paidPeriodEnd: v.number(),
+  amountCents: v.number(),
+}
+
+async function fundPaidPeriod(ctx: MutationCtx, args: {
+  billingAccountId: string; stripeCustomerId: string; stripeSubscriptionId: string
+  paidInvoiceId: string; paidPeriodStart: number; paidPeriodEnd: number; amountCents: number
+}) {
+  if (!args.paidInvoiceId || !Number.isSafeInteger(args.amountCents) || args.amountCents < 800 || args.amountCents > 50_000
+    || !Number.isSafeInteger(args.paidPeriodStart) || !Number.isSafeInteger(args.paidPeriodEnd)
+    || args.paidPeriodStart <= 0 || args.paidPeriodEnd <= args.paidPeriodStart) throw new Error('invalid_paid_period')
+  const account = await ctx.db.query('billingAccounts')
+    .withIndex('by_billingAccountId', q => q.eq('billingAccountId', args.billingAccountId)).unique()
+  requireCanonicalBalanceAccount(account)
+  if (!account || account.scope !== 'workspace' || account.status !== 'active') throw new Error('billing_account_inactive')
+  const subscription = await ctx.db.query('billingAccountSubscriptions')
+    .withIndex('by_billingAccountId', q => q.eq('billingAccountId', args.billingAccountId)).unique()
+  if (!subscription) throw new Error('paid_period_subscription_missing')
+  if (subscription.providerSubscriptionId !== args.stripeSubscriptionId) return { applied: false }
+  if (subscription.providerCustomerId !== args.stripeCustomerId) throw new Error('paid_period_customer_mismatch')
+  if (subscription.status !== 'active' || subscription.planKind !== 'paid'
+    || subscription.planAmountCents !== args.amountCents
+    || subscription.currentPeriodStart !== args.paidPeriodStart || subscription.currentPeriodEnd !== args.paidPeriodEnd
+    || (subscription.paidPeriodStart !== undefined && subscription.paidPeriodStart >= args.paidPeriodStart)) return { applied: false }
+  const balance = await ensureEmptyBalance(ctx, args.billingAccountId)
+  const renewal = subscription.paidPeriodStart !== undefined
+  // Retry after legitimate reservations settle, without losing the webhook receipt.
+  if (renewal && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
+  const includedMicros = args.amountCents * 10_000
+  if (!renewal && balance.includedMicros !== 0 && balance.includedMicros !== includedMicros) {
+    throw new Error('paid_period_requires_balance_reconciliation')
+  }
+  if (!renewal && balance.usedMicros + balance.reservedMicros > includedMicros + balance.institutionalGrantMicros + balance.topUpPurchasedMicros) {
+    throw new Error('paid_period_requires_balance_reconciliation')
+  }
+  const now = Date.now()
+  await ctx.db.patch(subscription._id, {
+    paidInvoiceId: args.paidInvoiceId, paidPeriodStart: args.paidPeriodStart, paidPeriodEnd: args.paidPeriodEnd, updatedAt: now,
+  })
+  await ctx.db.patch(balance._id, {
+    includedMicros, mode: 'budgeted',
+    ...(renewal ? { usedMicros: 0, reservedMicros: 0, allowanceUsedMicros: 0, topUpPurchasedMicros: 0, topUpBalanceMicros: 0 } : {}),
+    version: balance.version + 1, updatedAt: now,
+  })
+  return { applied: true }
+}
+
+export const fundPaidPeriodByServer = mutation({
+  args: { ...paidPeriodArgs, serverSecret: v.string() },
+  returns: v.object({ applied: v.boolean() }),
+  handler: async (ctx, args) => { requireServerSecret(args.serverSecret); return fundPaidPeriod(ctx, args) },
+})
+
+export const fundPaidPeriodInternal = internalMutation({
+  args: paidPeriodArgs,
+  returns: v.object({ applied: v.boolean() }),
+  handler: fundPaidPeriod,
 })
 
 export const recordTopUpByServer = mutation({
@@ -458,16 +512,18 @@ export const upsertFromStripeInternal = internalMutation({
       .unique()
     if (existing?.providerEventCreatedAt !== undefined
       && args.providerEventCreatedAt < existing.providerEventCreatedAt) return { applied: false }
+    if (args.status !== 'canceled' && existing?.currentPeriodStart !== undefined && args.currentPeriodStart !== undefined
+      && args.stripeSubscriptionId === existing.providerSubscriptionId && args.currentPeriodStart < existing.currentPeriodStart) return { applied: false }
+    if (existing?.providerSubscriptionId && args.stripeSubscriptionId && args.stripeSubscriptionId !== existing.providerSubscriptionId
+      && (args.status === 'canceled' || existing.status !== 'canceled')) return { applied: false }
+    if (existing?.status === 'canceled' && args.status === 'active' && args.stripeSubscriptionId === existing.providerSubscriptionId) return { applied: false }
     const now = Date.now()
     const isCancellation = args.status === 'canceled' && args.planKind === 'free' && args.planAmountCents === 0
-    // Attaching a first provider subscription is not a renewal of the local allowance.
-    const firstProviderSubscription = !existing?.providerSubscriptionId && Boolean(args.stripeSubscriptionId)
-    const periodChanged = !isCancellation && !firstProviderSubscription && existing?.currentPeriodStart !== undefined
-      && args.currentPeriodStart !== undefined
-      && args.currentPeriodStart - existing.currentPeriodStart >= 60 * 60 * 1000
     const value = {
       billingAccountId: args.billingAccountId,
       provider: 'stripe',
+      ...(args.stripeSubscriptionId && args.stripeSubscriptionId !== existing?.providerSubscriptionId
+        ? { paidPeriodStart: undefined, paidPeriodEnd: undefined, paidInvoiceId: undefined } : {}),
       ...(args.stripeCustomerId ?? existing?.providerCustomerId
         ? { providerCustomerId: args.stripeCustomerId ?? existing?.providerCustomerId }
         : {}),
@@ -502,31 +558,9 @@ export const upsertFromStripeInternal = internalMutation({
     if (existing) await ctx.db.patch(existing._id, value)
     else await ctx.db.insert('billingAccountSubscriptions', { ...value, createdAt: now })
     const balance = await ensureEmptyBalance(ctx, args.billingAccountId)
-    const planIncludedMicros = (args.planAmountCents ?? existing?.planAmountCents ?? 0) * 10_000
-    if (periodChanged && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
-    const nextUsedMicros = periodChanged ? 0 : balance.usedMicros
-    const nextReservedMicros = periodChanged ? 0 : balance.reservedMicros
-    // Unused credit does not carry over (D2): at renewal both the plan's credit and any top-up balance start again.
-    const nextTopUpPurchasedMicros = periodChanged ? 0 : balance.topUpPurchasedMicros
-    const nextTopUpBalanceMicros = periodChanged ? 0 : balance.topUpBalanceMicros
-    // Cancellation removes unused plan credit, while retaining the historical
-    // funding needed for consumed spend and existing reservations.
-    const includedMicros = isCancellation
-      ? Math.max(0, nextUsedMicros + nextReservedMicros - balance.institutionalGrantMicros - nextTopUpPurchasedMicros)
-      : planIncludedMicros
-    if (nextUsedMicros + nextReservedMicros
-      > includedMicros + balance.institutionalGrantMicros + nextTopUpPurchasedMicros) {
-      throw new Error('Subscription change would remove already consumed or reserved credits')
-    }
-    await ctx.db.patch(balance._id, {
-      includedMicros,
-      allowanceUsedMicros: periodChanged ? 0 : balance.allowanceUsedMicros,
-      usedMicros: nextUsedMicros,
-      reservedMicros: nextReservedMicros,
-      topUpPurchasedMicros: nextTopUpPurchasedMicros,
-      topUpBalanceMicros: nextTopUpBalanceMicros,
-      updatedAt: now,
-      version: balance.version + 1,
+    if (isCancellation) await ctx.db.patch(balance._id, {
+      ...(await canceledPlanCreditPatch(ctx, balance, balance.usedMicros, balance.reservedMicros)),
+      updatedAt: now, version: balance.version + 1,
     })
     return { applied: true }
   },

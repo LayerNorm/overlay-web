@@ -7,7 +7,7 @@ import { createHarnessWaitPorts } from '@/server/harness/waits'
 import { admitNativeHarnessChild } from '@/server/harness/native-child-steps'
 import { buildNativeHarnessDelivery } from '@/server/harness/native-tool-metrics'
 import {
-  attachNativeHarnessDelivery, finishNativeHarnessDelivery, projectNativeHarnessWait, writeNativeHarnessFallback,
+  attachNativeHarnessDelivery, finishNativeHarnessDelivery, projectNativeHarnessWait,
 } from '@/server/harness/native-delivery-steps'
 import { notifyHarnessAncestors, readHarnessChild } from '@/server/harness/personal-wait-steps'
 import { harnessWakeToken } from '@/server/harness/wait-token'
@@ -46,7 +46,7 @@ export function nativeHarnessChildInput(parent: NativeHarnessWorkflowInput, chil
     access: { ...parent.access, runId: child.runId },
     context: parent.context,
     definitions: parent.definitions.filter(definition => allowed.has(definition.name)),
-    settings: parent.settings, modelCandidates: parent.modelCandidates,
+    settings: parent.settings,
     instructions: `${parent.instructions}\n\nComplete only the assigned bounded task. Return concise findings with evidence references and any blockers. Do not expand the scope or contact the user except through the harness input mechanism.`,
     messages: [{ role: 'user', content: JSON.stringify({ goal: child.goal, constraints: child.constraints }) }],
   }
@@ -62,7 +62,6 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
   const owns = initial.runId === `workspace:${access.agentRunId}`
   using wake = createHook<unknown>({ token: harnessWakeToken(workflowRunId) })
   let result: HarnessExecutionResult | undefined
-  const fallbackNotices: string[] = []
   let activeToolNames = new Set<string>(HARNESS_CONTROL_TOOLS)
   try {
     if (await wake.getConflict()) throw new FatalError('Harness wake channel is already owned.')
@@ -88,16 +87,13 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
           type: 'record_evidence', evidence: harnessToolResultEvidence(event, Date.now()),
         })
       },
-    }, input.modelCandidates ? {
-      candidateIds: input.modelCandidates,
-      onFallback: owns ? async event => { fallbackNotices.push(await writeNativeHarnessFallback(access, event)) } : undefined,
-    } : undefined)
+    })
     const tools = createNativeHarnessTools({ access, context: input.context, definitions: input.definitions })
     activeToolNames = new Set([...activeToolNames, ...Object.keys(tools)])
     result = await runOverlayHarness({
       instructions: input.instructions, messages: input.messages, settings: input.settings,
       model: { modelId: input.context.modelId, credentialOwnerId: access.actorUserId,
-        sessionId: access.conversationId, allowLowBalanceFallback: false },
+        sessionId: access.conversationId },
       tools,
     }, ports)
     if (result.outcome === 'already_running') return { runId: initial.runId, status: 'already_running' }
@@ -114,7 +110,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
   }
   if (owns) {
-    const delivery = buildNativeHarnessDelivery(result, fallbackNotices, activeToolNames)
+    const delivery = buildNativeHarnessDelivery(result, activeToolNames)
     await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: input.context.memoryEnabled }, activeToolNames)
   }
   if (initial.parentRunId) await notifyHarnessAncestors(access)

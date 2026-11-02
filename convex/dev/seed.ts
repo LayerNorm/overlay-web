@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { internalMutation, type MutationCtx } from '../_generated/server'
 import { requireStagingSeedEnvironment } from '../lib/staging'
 import { requirePreviewDeployment } from '../lib/preview'
@@ -6,7 +7,6 @@ import { ensureEmptyBalance, ensureWorkspaceBillingAccount, uniqueWorkspaceAccou
 import { seedPreviewWorkspace } from './previewWorkspace'
 
 import { claimWorkspaceHandle } from '../lib/workspaceHandles'
-import { workspaceAllowanceSubject } from '../../src/shared/billing/free-allowance'
 
 /** Internal, idempotent fixtures. Identity comes from the sandbox account configuration. */
 export const init = internalMutation({
@@ -47,7 +47,7 @@ export const initQa = internalMutation({
   },
 })
 
-/** Explicit Computer QA fixtures; ordinary previews keep their free Personal workspace. */
+/** Explicit Computer QA fixtures; ordinary previews keep their setup workspace. */
 export const initComputerQa = internalMutation({
   args: {},
   returns: v.object({ userId: v.string(), workspaceId: v.string() }),
@@ -62,7 +62,7 @@ export const initComputerQa = internalMutation({
   },
 })
 
-/** A separate Free workspace with consumed counters, without making provider calls. */
+/** An unpaid setup-only QA workspace; no execution allowance is granted. */
 export const initExhaustedQa = internalMutation({
   args: {},
   returns: v.object({ userId: v.string(), workspaceId: v.string() }),
@@ -74,20 +74,18 @@ export const initExhaustedQa = internalMutation({
     const workspaceId = `preview-exhausted-qa-${userId}`
     const existing = await ctx.db.query('workspaces')
       .withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).unique()
-    // Recovery is explicit; a rebuild must not consume a replenished allowance.
+    // Re-seeding preserves the existing setup workspace.
     if (existing) return { userId, workspaceId }
     const now = Date.now()
     const principalId = workspaceId + '-owner'
-    const slug = 'quota-qa-' + crypto.randomUUID().replaceAll('-', '').slice(0, 16)
+    const slug = 'unfunded-qa-' + crypto.randomUUID().replaceAll('-', '').slice(0, 16)
     await claimWorkspaceHandle(ctx, { handle: slug, workspaceId, kind: 'canonical', visibility: 'public', now, allowReserved: true })
-    await ctx.db.insert('workspaces', { workspaceId, kind: 'organization', name: 'Exhausted QA', slug,
+    await ctx.db.insert('workspaces', { workspaceId, kind: 'organization', name: 'Unfunded QA', slug,
       status: 'active', createdByPrincipalId: principalId, createdAt: now, updatedAt: now })
     await ctx.db.insert('workspacePrincipals', { principalId, workspaceId, type: 'human', userId, email,
       displayName: 'Preview QA', createdAt: now, updatedAt: now })
     await ctx.db.insert('workspaceMemberships', { membershipId: workspaceId + '-membership', workspaceId, principalId,
       role: 'owner', status: 'active', joinedAt: now, updatedAt: now })
-    await ctx.db.insert('dailyUsage', { userId: workspaceAllowanceSubject(workspaceId),
-      date: new Date(now).toISOString().slice(0, 10), askCount: 15, writeCount: 15, agentCount: 15, transcriptionSeconds: 600 })
     return { userId, workspaceId }
   },
 })
@@ -189,8 +187,8 @@ async function seedFixtures(
   if (!conversation) {
     const conversationId = await ctx.db.insert('conversations', {
       userId, workspaceId, title: label + ' conversation', clientId: lane + '-seed-chat-v1',
-      conversationType: 'personal', lastMode: 'ask', askModelIds: ['openrouter/free'],
-      actModelId: 'openrouter/free', createdAt: now, lastModified: now,
+      conversationType: 'personal', lastMode: 'ask', askModelIds: [DEFAULT_MODEL_ID],
+      actModelId: DEFAULT_MODEL_ID, createdAt: now, lastModified: now,
     })
     await ctx.db.insert('conversationMessages', {
       conversationId, userId, turnId: lane + '-seed-turn-v1', mode: 'ask', contentType: 'text',

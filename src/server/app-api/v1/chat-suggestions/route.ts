@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 import { after } from 'next/server'
 import { generateText } from '@/server/ai/sdk'
 import { getLanguageModel } from '@/server/ai/model-runtime'
-import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { DEFAULT_CHAT_SUGGESTIONS } from '@/shared/chat/chat-suggestions-defaults'
 import { getOverlaySession } from '@/server/auth/session'
 import { getBillingProgrammaticSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
@@ -83,8 +83,8 @@ async function generateStartersWithLLM(args: {
   })
   if (!entitlements) return null
   const authorized = await resolveAuthorizedModelIds({ entitlements })
-  if (!authorized.chat.has(FREE_TIER_AUTO_MODEL_ID)) return null
-  const model = await getLanguageModel(FREE_TIER_AUTO_MODEL_ID, args.accessToken, args.userId)
+  if (!authorized.chat.has(DEFAULT_MODEL_ID)) return null
+  const model = await getLanguageModel(DEFAULT_MODEL_ID, args.accessToken, args.userId)
   const prompt = `Generate exactly 4 conversation starter prompts for an AI chat app. Each prompt:
 - One clear sentence, 8–22 words
 - Specific, actionable, and phrased as a task the assistant can help complete
@@ -99,7 +99,7 @@ Reply with ONLY valid JSON (no markdown fences) in this exact shape:
   const estimatedInputTokens = Math.ceil(prompt.length / 4) + 32
   const maxOutputTokens = 700
   const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
-    FREE_TIER_AUTO_MODEL_ID,
+    DEFAULT_MODEL_ID,
     estimatedInputTokens,
     0,
     maxOutputTokens,
@@ -115,7 +115,7 @@ Reply with ONLY valid JSON (no markdown fences) in this exact shape:
     entitlements,
     idempotencyKey: operationId,
     kind: 'generation',
-    modelId: FREE_TIER_AUTO_MODEL_ID,
+    modelId: DEFAULT_MODEL_ID,
     operationId: 'chat.suggestions',
     providerCostUsd: estimatedProviderCostUsd,
     requestFingerprint,
@@ -155,14 +155,14 @@ Reply with ONLY valid JSON (no markdown fences) in this exact shape:
   const inputTokens = usage?.inputTokens ?? estimatedInputTokens
   const outputTokens = usage?.outputTokens ?? maxOutputTokens
   const actualProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
-    FREE_TIER_AUTO_MODEL_ID,
+    DEFAULT_MODEL_ID,
     inputTokens,
     0,
     outputTokens,
   )
   if (actualProviderCostUsd === null) {
     await server.generationUsagePolicy.markForReconcile({
-      errorMessage: `pricing_missing:${FREE_TIER_AUTO_MODEL_ID}`,
+      errorMessage: `pricing_missing:${DEFAULT_MODEL_ID}`,
       reservationId: reservation.reservationId,
       userId: args.userId,
     }).catch((_reconcileError) => undefined)
@@ -175,7 +175,7 @@ Reply with ONLY valid JSON (no markdown fences) in this exact shape:
         actualProviderCostUsd,
         events: [{
           type: 'generation',
-          modelId: FREE_TIER_AUTO_MODEL_ID,
+          modelId: DEFAULT_MODEL_ID,
           inputTokens,
           outputTokens,
           cachedTokens: 0,
@@ -200,7 +200,7 @@ Reply with ONLY valid JSON (no markdown fences) in this exact shape:
         costCents,
         inputTokens,
         kind: 'generation',
-        modelId: FREE_TIER_AUTO_MODEL_ID,
+        modelId: DEFAULT_MODEL_ID,
         occurredAt: Date.now(),
         outputTokens,
         providerCostUsd: actualProviderCostUsd,

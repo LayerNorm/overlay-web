@@ -14,8 +14,6 @@ export interface OverlayModelInfo extends ModelInfo {
   medianOutputTokensPerSecond?: number
 }
 
-export const FREE_TIER_AUTO_MODEL_ID = 'overlay-free'
-export const OPENROUTER_FREE_MODEL_ID = 'openrouter/free'
 export const DEFAULT_MODEL_ID = 'claude-sonnet-4-6'
 
 type MinimalModelDefinition = readonly [
@@ -50,13 +48,9 @@ const MODEL_DEFINITIONS: readonly MinimalModelDefinition[] = [
   ['qwen/qwen3.6-plus', 'Qwen 3.6 Plus', 'alibaba', false, true],
   ['openai/gpt-oss-120b', 'GPT OSS 120B', 'groq', false, true],
   ['nvidia/nemotron-nano-9b-v2', 'Nemotron Nano 9B', 'nvidia'],
-  [FREE_TIER_AUTO_MODEL_ID, 'Auto', 'overlay', true, true],
-  [OPENROUTER_FREE_MODEL_ID, 'OpenRouter Free', 'openrouter', true, true],
 ]
 
 const ZERO_COST_MODEL_IDS = new Set([
-  FREE_TIER_AUTO_MODEL_ID,
-  OPENROUTER_FREE_MODEL_ID,
   'minimax/minimax-m3.1-flash',
 ])
 
@@ -105,11 +99,6 @@ export const MODEL_ID_ALIASES: Record<string, string> = {
   'gemini-2.5-flash-lite': 'google/gemma-4-26b-a4b-it',
   'zai/glm-5.1': 'z-ai/glm-5.1',
   'alibaba/qwen3.6-plus': 'qwen/qwen3.6-plus',
-  'deepseek-ai/deepseek-v3.2': FREE_TIER_AUTO_MODEL_ID,
-  'moonshotai/kimi-k2-thinking': FREE_TIER_AUTO_MODEL_ID,
-  'minimaxai/minimax-m2.7': FREE_TIER_AUTO_MODEL_ID,
-  'stepfun-ai/step-3.5-flash': FREE_TIER_AUTO_MODEL_ID,
-  'openrouter/nvidia/nemotron-3-super-120b-a12b:free': FREE_TIER_AUTO_MODEL_ID,
 }
 
 export function resolveModelId(modelId: string): string {

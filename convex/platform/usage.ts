@@ -4,10 +4,9 @@ import type { Doc } from '../_generated/dataModel'
 import { mutation, query, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireAccessToken, requireServerSecret, validateServerSecret } from '../lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from '../lib/authDebug'
-import { FREE_TIER_AUTO_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForUser } from '../files/lib/storageQuota'
 import { paidWorkspaceAccountFor } from '../billing/workspacePayer'
-import { usageCountSubject } from '../../src/shared/billing/free-allowance'
+import { workspaceExecutionAccess } from '../../src/shared/billing/execution-access'
 import { normalizeUsageReconciliationResolution } from '../../src/shared/billing/usage-reconciliation'
 import { canceledPlanCreditPatch, ensureEmptyBalance, ensurePersonalBillingAccount } from '../billing/accountModel'
 import { previewProviderBudgetAvailable, recordPreviewProviderSpend } from '../lib/previewProviderBudget'
@@ -61,25 +60,14 @@ const workspaceReservationResultValidator = v.object({
   status: usageReservationStatusValidator,
 })
 
-function getPastWeekDates(): string[] {
-  const dates: string[] = []
-  const now = new Date()
-  for (let i = 0; i < 7; i++) {
-    const date = new Date(now)
-    date.setDate(now.getDate() - i)
-    dates.push(date.toISOString().split('T')[0])
-  }
-  return dates
-}
-
-function countsTowardFreeTierMessageLimit(event: {
+function countsAsMessage(event: {
   type: 'ask' | 'write' | 'agent' | 'embedding' | 'transcription' | 'generation' | 'sandbox'
   modelId?: string
   countAsRequest?: boolean
 }): boolean {
   if (event.countAsRequest === false) return false
   if (event.type !== 'ask' && event.type !== 'write' && event.type !== 'agent') return false
-  return event.modelId !== FREE_TIER_AUTO_MODEL_ID
+  return true
 }
 
 export type UsageEvent = {
@@ -128,71 +116,32 @@ async function getDailyUsageForPatch(ctx: MutationCtx, userId: string, date: str
   return await ctx.db.get(id)
 }
 
-/**
- * Whose weekly count the usage belongs to: the workspace the person is working in, so a free workspace has one
- * allowance everyone in it shares. "Working in" is the person's active workspace, which the app sets whenever they open
- * or switch to one. See `usageCountSubject`. (A paid workspace pays for usage instead and never counts it here.)
- */
-async function usageCounterSubject(ctx: EntitlementCtx, userId: string, workspaceId?: string): Promise<string> {
-  if (workspaceId) return usageCountSubject({ userId, free: true, activeWorkspaceId: workspaceId })
-  const preference = await ctx.db
-    .query('workspaceUserPreferences')
-    .withIndex('by_userId', (q) => q.eq('userId', userId))
-    .first()
-  return usageCountSubject({ userId, free: true, activeWorkspaceId: preference?.activeWorkspaceId })
-}
-
 type EntitlementCtx = QueryCtx | MutationCtx
 
-const FREE_WEEKLY_LIMITS = { ask: 15, write: 15, agent: 15 } as const
-const FREE_WEEKLY_TRANSCRIPTION_SECONDS = 600
-
-async function weeklyFreeUsage(ctx: EntitlementCtx, countSubject: string) {
-  const records = await Promise.all(getPastWeekDates().map((date) =>
-    ctx.db
-      .query('dailyUsage')
-      .withIndex('by_userId_date', (q) => q.eq('userId', countSubject).eq('date', date))
-      .first()))
-  return records.reduce(
-    (acc, record) => ({
-      ask: acc.ask + (record?.askCount ?? 0),
-      write: acc.write + (record?.writeCount ?? 0),
-      agent: acc.agent + (record?.agentCount ?? 0),
-      transcriptionSeconds: acc.transcriptionSeconds + (record?.transcriptionSeconds ?? 0),
-    }),
-    { ask: 0, write: 0, agent: 0, transcriptionSeconds: 0 },
-  )
-}
-
-/**
- * A person's own entitlements. An account is never free or paid (plans belong to workspaces), so this is always the
- * free allowance of the workspace they are working in, plus their storage. A paid workspace's entitlements come from
- * its billing account instead.
- */
+/** Personal setup/storage has no execution allowance. Workspace funding is resolved separately. */
 async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
   const subscription = await ctx.db
     .query('subscriptions')
     .withIndex('by_userId', (q) => q.eq('userId', userId))
     .first()
-  const weekly = await weeklyFreeUsage(ctx, await usageCounterSubject(ctx, userId))
   return {
     billingAccountId: subscription?.billingAccountId,
-    ...FREE_BUDGET,
+    ...EMPTY_EXECUTION_BUDGET,
     autoTopUpConsentGranted: false,
     overlayStorageBytesUsed: getStorageBytesUsed(subscription),
     overlayStorageBytesLimit: await getStorageLimitForUser(ctx, userId),
-    dailyUsage: { ask: weekly.ask, write: weekly.write, agent: weekly.agent },
-    dailyLimits: FREE_WEEKLY_LIMITS,
-    transcriptionSecondsUsed: weekly.transcriptionSeconds,
-    transcriptionSecondsLimit: FREE_WEEKLY_TRANSCRIPTION_SECONDS,
+    dailyUsage: { ask: 0, write: 0, agent: 0 },
+    dailyLimits: { ask: 0, write: 0, agent: 0 },
+    transcriptionSecondsUsed: 0,
+    transcriptionSecondsLimit: 0,
     localTranscriptionEnabled: false,
-    resetAt: getNextWeeklyReset(),
+    resetAt: '',
     billingPeriodEnd: '',
     lastSyncedAt: Date.now()
   }
 }
 
-const FREE_BUDGET = {
+const EMPTY_EXECUTION_BUDGET = {
   tier: 'free' as const,
   planKind: 'free' as const,
   planAmountCents: 0,
@@ -213,20 +162,18 @@ export async function applyUsageEvents(
   ctx: MutationCtx,
   userId: string,
   events: UsageEvent[],
-  workspaceId?: string,
 ): Promise<{ success: true; eventsProcessed: number }> {
   const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
   const today = new Date().toISOString().split('T')[0]
-  const countSubject = await usageCounterSubject(ctx, userId, workspaceId)
 
   let dailyUsage = await ctx.db
     .query('dailyUsage')
-    .withIndex('by_userId_date', (q) => q.eq('userId', countSubject).eq('date', today))
+    .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', today))
     .first()
 
   if (!dailyUsage) {
     const id = await ctx.db.insert('dailyUsage', {
-      userId: countSubject,
+      userId,
       date: today,
       askCount: 0,
       agentCount: 0,
@@ -242,7 +189,7 @@ export async function applyUsageEvents(
   let transcriptionSecondsDelta = 0
 
   for (const event of events) {
-    if (countsTowardFreeTierMessageLimit(event)) {
+    if (countsAsMessage(event)) {
       if (event.type === 'ask') askDelta++
       else if (event.type === 'write') writeDelta++
       else if (event.type === 'agent') agentDelta++
@@ -280,7 +227,7 @@ export async function applyUsageEvents(
       .withIndex('by_userId', (q) => q.eq('userId', userId))
       .first()
 
-    // An audit tally of what free usage cost us, by calendar month; nothing is charged to the person.
+    // Historical reservations and billing-disabled installations still retain an audit tally.
     const billingPeriodStart = `${today.slice(0, 7)}-01`
 
     let tokenUsage = await ctx.db
@@ -374,7 +321,7 @@ export const getEntitlementsInternal = internalQuery({
       .first()
     return {
       billingAccountId: subscription?.billingAccountId,
-      ...FREE_BUDGET,
+      ...EMPTY_EXECUTION_BUDGET,
       overlayStorageBytesUsed: getStorageBytesUsed(subscription),
       overlayStorageBytesLimit: await getStorageLimitForUser(ctx, userId),
     }
@@ -398,41 +345,6 @@ export const initializeSubscriptionUsageByServer = mutation({
   },
 })
 
-/** Holds usage outside a paid workspace to the workspace's free weekly allowance. */
-async function enforceFreeTierUsageLimits(
-  ctx: MutationCtx,
-  userId: string,
-  events: UsageEvent[],
-  workspaceId?: string,
-): Promise<void> {
-  const weeklyUsage = await weeklyFreeUsage(ctx, await usageCounterSubject(ctx, userId, workspaceId))
-
-  let batchAsk = 0, batchWrite = 0, batchAgent = 0
-  let batchTranscriptionSeconds = 0
-  for (const event of events) {
-    if (event.type === 'transcription') {
-      batchTranscriptionSeconds += Math.max(0, Math.round(event.durationSeconds ?? 0))
-    } else if (countsTowardFreeTierMessageLimit(event)) {
-      if (event.type === 'ask') batchAsk++
-      else if (event.type === 'write') batchWrite++
-      else if (event.type === 'agent') batchAgent++
-    }
-  }
-
-  if (batchAsk > 0 && weeklyUsage.ask + batchAsk > FREE_WEEKLY_LIMITS.ask) {
-    throw new Error('free_tier_limit_exceeded: weekly ask limit reached')
-  }
-  if (batchWrite > 0 && weeklyUsage.write + batchWrite > FREE_WEEKLY_LIMITS.write) {
-    throw new Error('free_tier_limit_exceeded: weekly write limit reached')
-  }
-  if (batchAgent > 0 && weeklyUsage.agent + batchAgent > FREE_WEEKLY_LIMITS.agent) {
-    throw new Error('free_tier_limit_exceeded: weekly agent limit reached')
-  }
-  if (batchTranscriptionSeconds > 0 && weeklyUsage.transcriptionSeconds + batchTranscriptionSeconds > FREE_WEEKLY_TRANSCRIPTION_SECONDS) {
-    throw new Error('free_tier_limit_exceeded: weekly transcription limit reached')
-  }
-}
-
 // Record a batch of usage events — server-only. Clients may read entitlements
 // for display but can never mutate authoritative usage or cost.
 // Accumulates totals from all events and does a single patch to both
@@ -444,8 +356,6 @@ export const recordBatch = mutation({
     /** The workspace the usage happened in; defaults to the person's active workspace. */
     workspaceId: v.optional(v.string()),
     operationId: v.optional(v.string()),
-    /** Accepted for older callers; usage outside a paid workspace is always held to the free allowance. */
-    forceFreeTierLimits: v.optional(v.boolean()),
     events: v.array(
       v.object({
         type: v.union(
@@ -489,8 +399,7 @@ export const recordBatch = mutation({
       return { success: true, eventsProcessed: events.length, recorded: events.length, idempotent: false }
     }
     const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
-    await enforceFreeTierUsageLimits(ctx, userId, events, workspaceId)
-    const result = await applyUsageEvents(ctx, userId, events, workspaceId)
+    const result = await applyUsageEvents(ctx, userId, events)
     if (operationId) {
       const cents = events.reduce((sum, event) => sum + Math.max(0, event.cost), 0)
       await ctx.db.insert('usageOperations', {
@@ -592,7 +501,6 @@ export const reserveBudgetByServer = mutation({
     operationId,
     requestFingerprint,
     reservedCents,
-    expiresAt,
   }) => {
     requireServerSecret(serverSecret)
     const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
@@ -629,37 +537,7 @@ export const reserveBudgetByServer = mutation({
       }
     }
 
-    // A person's own account has no credit (plans belong to workspaces), so only free work can be held here.
-    const safeReservedCents = roundCreditAmount(Math.max(0, reservedCents))
-    if (safeReservedCents > 0) throw new Error('insufficient_budget: paid plan required')
-
-    const now = Date.now()
-    await ctx.db.insert('budgetReservations', {
-      userId,
-      billingAccountId: billingAccount.billingAccountId,
-      reservationId: normalizedReservationId,
-      status: 'reserved',
-      kind,
-      modelId,
-      operationId,
-      requestFingerprint,
-      reservedCents: safeReservedCents,
-      reservedAllowanceCents: 0,
-      reservedTopUpCents: 0,
-      providerWorkStarted: false,
-      providerWorkCompleted: false,
-      expiresAt: expiresAt ?? now + 30 * 60_000,
-      createdAt: now,
-      updatedAt: now,
-    })
-
-    return {
-      success: true,
-      reservationId: normalizedReservationId,
-      reservedCents: safeReservedCents,
-      status: 'reserved',
-      idempotent: false,
-    }
+    throw new Error('workspace_execution_required')
   },
 })
 
@@ -723,12 +601,21 @@ export const reserveWorkspaceBudgetByServer = mutation({
         status: existing.status,
       }
     }
-    if (account.status !== 'active') {
-      throw new Error('workspace_billing_account_inactive')
-    }
+    const subscription = await ctx.db.query('billingAccountSubscriptions')
+      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
+      .unique()
     const availableMicros = balance.mode === 'unlimited'
       ? Number.MAX_SAFE_INTEGER
       : Math.max(0, balance.includedMicros + balance.institutionalGrantMicros + balance.topUpPurchasedMicros - balance.usedMicros - balance.reservedMicros)
+    const now = Date.now()
+    const access = workspaceExecutionAccess({
+      billingEnabled: true,
+      accountStatus: account.status,
+      subscription,
+      remainingCents: availableMicros / 10_000,
+      now,
+    })
+    if (!access.canExecute) throw new Error(`workspace_execution_${access.state}`)
     const reservedMicros = Math.round(safeReservedCents * 10_000)
     if (availableMicros < reservedMicros) throw new Error('insufficient_budget')
     const limit = await ctx.db.query('billingAccountSpendLimits')
@@ -737,7 +624,6 @@ export const reserveWorkspaceBudgetByServer = mutation({
         .eq('subjectKind', args.spendSubjectKind)
         .eq('subjectId', spendSubjectId))
       .unique()
-    const now = Date.now()
     if (limit) {
       const availableLimit = now >= limit.periodStart && now < limit.periodEnd
         ? Math.max(0, limit.limitMicros - limit.usedMicros - limit.reservedMicros)
@@ -1372,9 +1258,8 @@ export const finalizeBudgetReservationByServer = mutation({
       return { success: true, status: 'finalized' as const, finalizedCents: safeActualCents }
     }
     if (!billingAccount) throw new Error('personal_billing_account_missing')
-    // A personal hold is always free work (see reserveBudgetByServer); record the usage against the free allowance.
+    // Settle historical personal holds without authorizing new personal execution.
     if (events?.length) {
-      await enforceFreeTierUsageLimits(ctx, userId, events)
       await applyUsageEvents(ctx, userId, events)
     }
 
@@ -1639,15 +1524,6 @@ export const resetTokenUsage = internalMutation({
     return { success: true, periodStart: newPeriodStart }
   }
 })
-
-function getNextWeeklyReset(): string {
-  const now = new Date()
-  const daysUntilMonday = (8 - now.getUTCDay()) % 7 || 7
-  const nextMonday = new Date(now)
-  nextMonday.setUTCDate(now.getUTCDate() + daysUntilMonday)
-  nextMonday.setUTCHours(0, 0, 0, 0)
-  return nextMonday.toISOString()
-}
 
 /** Audit log for individual chat tool calls (Perplexity, generation, Composio, etc.). */
 export const recordToolInvocation = mutation({

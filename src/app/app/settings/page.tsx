@@ -15,9 +15,7 @@ import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { SettingsSectionSkeleton } from '@overlay/ui/feedback'
 import { LIGHT_PRESETS, DARK_PRESETS } from '@/shared/app/themes'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import overlayAppConfig from '@/overlay.config'
-import type { BillingSettings } from '@overlay/app-core'
 import { resolveOverlayAppShellConfig } from '@overlay/app-core'
 import { resolveSettingsPanel } from '@overlay/app-core/settings-account'
 import { ListboxSelect } from '@overlay/ui/primitives'
@@ -61,13 +59,11 @@ type AppShellConfig = ReturnType<typeof resolveOverlayAppShellConfig>
 function GeneralSettingsSection({
   settings,
   busy,
-  billingSettings,
   billingEnabled,
   updateSettings,
 }: {
   settings: AppSettingsApi['settings']
   busy: boolean
-  billingSettings: BillingSettings | null
   billingEnabled: OverlayCapabilitiesApi['capabilities']['billing']
   updateSettings: AppSettingsApi['updateSettings']
 }) {
@@ -84,9 +80,8 @@ function GeneralSettingsSection({
       <DefaultChatModelSetting
         defaultActModelId={settings.defaultActModelId}
         defaultAskModelIds={settings.defaultAskModelIds}
-        isFreeTier={billingSettings?.planKind === 'free'}
         onlyAllowZdrModels={settings.onlyAllowZdrModels}
-        disabled={busy || (billingEnabled && !billingSettings)}
+        disabled={busy}
         onSelect={(actModelId, askModelIds) => {
           void updateSettings({
             defaultActModelId: actModelId,
@@ -98,13 +93,9 @@ function GeneralSettingsSection({
         <SettingRow
           icon={<ShieldCheck size={18} strokeWidth={1.8} />}
           title="Only allow ZDR models"
-          description={
-            billingSettings?.planKind === 'free'
-              ? 'Free models do not support zero data retention, so this is available on paid plans only.'
-              : 'Hide non-ZDR text models from the chat model picker and block stale requests that use them.'
-          }
-          checked={billingSettings?.planKind === 'free' ? false : settings.onlyAllowZdrModels}
-          disabled={busy || billingSettings?.planKind === 'free'}
+          description="Hide non-ZDR text models from the chat model picker and block stale requests that use them."
+          checked={settings.onlyAllowZdrModels}
+          disabled={busy}
           onChange={() => void updateSettings({ onlyAllowZdrModels: !settings.onlyAllowZdrModels })}
         />
       ) : null}
@@ -286,7 +277,6 @@ function SettingsSectionContent({
   section,
   settings,
   busy,
-  billingSettings,
   billingEnabled,
   workspaceTabParam,
   updateSettings,
@@ -299,7 +289,6 @@ function SettingsSectionContent({
   section: string
   settings: AppSettingsApi['settings']
   busy: boolean
-  billingSettings: BillingSettings | null
   billingEnabled: OverlayCapabilitiesApi['capabilities']['billing']
   workspaceTabParam: string | null | undefined
   updateSettings: AppSettingsApi['updateSettings']
@@ -314,7 +303,6 @@ function SettingsSectionContent({
       <GeneralSettingsSection
         settings={settings}
         busy={busy}
-        billingSettings={billingSettings}
         billingEnabled={billingEnabled}
         updateSettings={updateSettings}
       />
@@ -387,7 +375,6 @@ function SettingsPage() {
     isSaving,
     updateSettings,
   } = useAppSettings()
-  const [billingSettings, setBillingSettings] = useState<BillingSettings | null>(null)
   const [memoriesHeaderState, setMemoriesHeaderState] = useState<MemoriesHeaderState | null>(null)
 
   const busy = isLoading || isSaving
@@ -412,27 +399,6 @@ function SettingsPage() {
     }
   }, [rawSection, section, router, sectionIds, desktop])
 
-  useEffect(() => {
-    if (!capabilities.billing) return
-    if (section !== 'general') return
-    let active = true
-    void overlayAppClient.subscription.getSettingsResponse()
-      .then(async (response) => {
-        if (!response.ok) return null
-        return await response.json()
-      })
-      .then((data) => {
-        if (active && data) {
-          setBillingSettings(data)
-        }
-      })
-      .catch(() => {})
-
-    return () => {
-      active = false
-    }
-  }, [capabilities.billing, section])
-
   return (
     <SettingsPageShell
       activeLabel={sectionLabel}
@@ -451,7 +417,6 @@ function SettingsPage() {
           section={section}
           settings={settings}
           busy={busy}
-          billingSettings={billingSettings}
           billingEnabled={capabilities.billing}
           workspaceTabParam={searchParams?.get('workspace_tab')}
           updateSettings={updateSettings}

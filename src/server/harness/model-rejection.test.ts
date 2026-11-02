@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({ read: vi.fn(), apply: vi.fn(), release: vi.fn(
 vi.mock('server-only', () => ({}))
 vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, applyHarnessOperation: mocks.apply }))
 vi.mock('@/server/billing/billing-runtime', () => ({ releaseProviderBudgetReservation: mocks.release }))
-const reference: HarnessModelReference = { modelId: 'provider/model', credentialOwnerId: 'user', allowLowBalanceFallback: false,
+const reference: HarnessModelReference = { modelId: 'provider/model', credentialOwnerId: 'user',
   personal: { access: { actorUserId: 'user', runId: 'root', workflowRunId: 'workflow', conversationId: 'conversation', agentRunId: 'delivery',
     workspaceId: 'workspace', principalId: 'principal', authentication: { type: 'session' } },
   receiptId: 'model:0', memoryEnabled: false, requestFingerprint: 'request', inputTokenBudget: 100, maxOutputTokens: 100, contextWindow: 1_000 } }
@@ -51,70 +51,4 @@ test('foreign ownership and external models cannot clear a dispatch', async () =
   await expect(recordHarnessModelRejection({ ...reference, modelId: 'byok/key/model' }, 'budget')).rejects.toThrow('external')
   expect(mocks.release).not.toHaveBeenCalled()
   expect(mocks.apply).not.toHaveBeenCalled()
-})
-
-test('capacity rejection releases only a matching free-router dispatch with a zero receipt', async () => {
-  const free = { ...reference, modelId: 'openrouter/free' }
-  mocks.read.mockResolvedValue({ ...state, modelReservation: { ...hold, dispatch: { modelId: free.modelId, billingReservationId: 'billing' } } })
-  await recordHarnessModelRejection(free, 'route_capacity')
-  expect(mocks.apply).toHaveBeenCalledWith(free.personal!.access, 'rejected:model:0', expect.objectContaining({
-    receipt: expect.objectContaining({ rejectionReason: 'route_capacity', provider: 'overlay-free-router', inputTokens: 0, outputTokens: 0, costMicros: 0 }),
-  }))
-  expect(mocks.release).toHaveBeenCalledOnce()
-  await expect(recordHarnessModelRejection(reference, 'route_capacity')).rejects.toThrow('Only the free router')
-  mocks.read.mockResolvedValue(state)
-  await expect(recordHarnessModelRejection(free, 'route_capacity')).rejects.toThrow('matching dispatch')
-  expect(mocks.apply).toHaveBeenCalledOnce()
-})
-
-test.each(['route_interrupted', 'route_unavailable'] as const)('%s requires a free zero-cost unbilled dispatch and does not release billing', async reason => {
-  const free = { ...reference, modelId: 'openrouter/free' }
-  const freeHold = {
-    id: 'model:0',
-    maxCostMicros: 0,
-    dispatch: { modelId: free.modelId, billingReservationId: null },
-  }
-  mocks.read.mockResolvedValue({ ...state, modelReservation: freeHold })
-  await recordHarnessModelRejection(free, reason)
-  expect(mocks.apply).toHaveBeenCalledWith(free.personal!.access, 'rejected:model:0', expect.objectContaining({
-    receipt: expect.objectContaining({
-      rejectionReason: reason,
-      provider: 'overlay-free-router',
-      inputTokens: 0,
-      outputTokens: 0,
-      costMicros: 0,
-    }),
-  }))
-  expect(mocks.release).not.toHaveBeenCalled()
-
-  await expect(recordHarnessModelRejection(reference, reason)).rejects.toThrow('Only the free router')
-  await expect(recordHarnessModelRejection({ ...free, modelId: 'byok/key/model' }, reason)).rejects.toThrow('external')
-  mocks.read.mockResolvedValue({ ...state, modelReservation: { ...freeHold, maxCostMicros: 1 } })
-  await expect(recordHarnessModelRejection(free, reason)).rejects.toThrow('zero-cost dispatch')
-  mocks.read.mockResolvedValue({ ...state, modelReservation: {
-    ...freeHold, dispatch: { modelId: free.modelId, billingReservationId: 'billing' },
-  } })
-  await expect(recordHarnessModelRejection(free, reason)).rejects.toThrow('zero-cost dispatch')
-  expect(mocks.release).not.toHaveBeenCalled()
-})
-
-test('native confirmed rejection retains the same receipt and billing safeguards', async () => {
-  const native = {
-    access: { actorUserId: 'user', runId: 'workspace:delivery', workflowRunId: 'workflow', workspaceId: 'workspace',
-      principalId: 'human-principal', agentId: 'agent', agentPrincipalId: 'agent-principal', conversationId: 'room',
-      agentRunId: 'delivery', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
-    receiptId: 'model:0', memoryEnabled: false, sharedRoom: true, requestFingerprint: 'request',
-    inputTokenBudget: 100, maxOutputTokens: 100, contextWindow: 1_000,
-  }
-  const free: HarnessModelReference = { modelId: 'openrouter/free', credentialOwnerId: 'user', allowLowBalanceFallback: false, native }
-  mocks.read.mockResolvedValue({ ...state, modelReservation: { ...hold,
-    dispatch: { modelId: free.modelId, billingReservationId: 'billing' },
-  } })
-  await recordHarnessModelRejection(free, 'route_capacity')
-  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(native.access, 'rejected:model:0', expect.objectContaining({
-    receipt: expect.objectContaining({ rejectionReason: 'route_capacity', costMicros: 0, inputTokens: 0, outputTokens: 0 }),
-  }))
-  await expect(recordHarnessModelRejection({ ...free, personal: reference.personal }, 'route_capacity')).rejects.toThrow(/ambiguous/)
-  await expect(recordHarnessModelRejection({ ...free, modelId: 'byok/key/model' }, 'route_capacity')).rejects.toThrow(/external/)
-  expect(mocks.release).toHaveBeenCalledOnce()
 })

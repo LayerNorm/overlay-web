@@ -8,6 +8,7 @@ import {
 import type { AutomationRepository } from './AutomationRepository'
 import { LifecycleEventPublisher, LIFECYCLE_EVENT_TOPIC } from '@/server/lifecycle-events'
 import type { EventBus } from '@overlay/app-core'
+import { WorkspaceExecutionError, requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
 
 class CapturingEventBus implements EventBus {
   readonly events: Array<{ payload: unknown; topic: string }> = []
@@ -118,6 +119,7 @@ function createRepository(overrides: Partial<AutomationRepository> = {}): Automa
         automation: {
           _id: 'automation_1',
           userId: 'user_1',
+          workspaceId: 'workspace_1',
           name: 'Automation',
           instructions: 'Do the task',
           sourceConversationId: 'conversation_1',
@@ -134,6 +136,7 @@ function createService(
     async () => 'paid',
   ),
   lifecycleEvents?: LifecycleEventPublisher,
+  requireExecution: typeof requireWorkspaceExecution = async () => ({ billingEnabled: false }) as never,
 ) {
   const finishedEvents: Array<Record<string, unknown>> = []
   const failedEvents: Array<Record<string, unknown>> = []
@@ -143,6 +146,7 @@ function createService(
     service: new AutomationService({
       entitlementPolicy,
       repository,
+      requireExecution,
       clock: { now: () => 1_700_000_000_000 },
       events: {
         finished: (event) => finishedEvents.push(event),
@@ -153,6 +157,53 @@ function createService(
     }),
   }
 }
+
+test('a new durable scheduled run persists and returns a workspace payment refusal', async () => {
+  const repository = createRepository()
+  const { service } = createService(repository, undefined, undefined, async (input) => {
+    assert.equal(input.userId, 'user_1')
+    assert.equal(input.workspaceId, 'workspace_1')
+    throw new WorkspaceExecutionError({ state: 'payment_pending', canExecute: false }, true)
+  })
+
+  await assert.rejects(
+    service.startDurableScheduledRun({ runId: 'run_1', serviceUserId: 'user_1', baseUrl: 'https://app.example' }),
+    (error: unknown) => error instanceof AutomationServiceError
+      && error.statusCode === 402
+      && error.payload.code === 'payment_pending',
+  )
+  assert.equal(repository.failedRuns.length, 1)
+  assert.equal(
+    repository.failedRuns[0]?.error,
+    'Your payment has not been confirmed yet. Your draft is saved.',
+  )
+})
+
+test('an existing durable workflow replay skips new workspace admission', async () => {
+  const repository = createRepository({
+    async getRunForExecution() {
+      return {
+        run: { _id: 'run_1', status: 'running', workflowRunId: 'workflow_existing' },
+        automation: { _id: 'automation_1', userId: 'user_1', workspaceId: 'workspace_1' },
+      } as never
+    },
+  })
+  const { service } = createService(repository, undefined, undefined, async () => {
+    throw new Error('replay should not recheck new-run admission')
+  })
+
+  assert.deepEqual(await service.startDurableScheduledRun({
+    runId: 'run_1',
+    serviceUserId: 'user_1',
+    baseUrl: 'https://app.example',
+  }), {
+    ok: true,
+    durable: true,
+    runId: 'run_1',
+    workflowRunId: 'workflow_existing',
+  })
+  assert.equal(repository.failedRuns.length, 0)
+})
 
 test('AutomationService.createAutomation preserves paid-plan requirement', async () => {
   const repository = createRepository()

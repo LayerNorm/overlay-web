@@ -132,6 +132,9 @@ export default defineSchema({
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
     // Legacy Stripe-migrated rows can carry this field; not written by current code.
+    paidPeriodStart: v.optional(v.number()),
+    paidPeriodEnd: v.optional(v.number()),
+    paidInvoiceId: v.optional(v.string()),
     cancelAtPeriodEnd: v.optional(v.boolean()),
     providerEventCreatedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -758,7 +761,7 @@ export default defineSchema({
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_turnId_createdAt', ['turnId', 'createdAt']),
 
-  // Daily counters used exclusively for free-tier weekly limit enforcement.
+  // Legacy daily usage records retained for historical audit reads.
   dailyUsage: defineTable({
     userId: v.string(),
     date: v.string(), // YYYY-MM-DD format

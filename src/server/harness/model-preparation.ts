@@ -40,7 +40,7 @@ export async function preparePersonalHarnessModel(input: {
   return {
     model: {
       modelId: context.effectiveModelId, credentialOwnerId: access.actorUserId,
-      sessionId: access.conversationId, allowLowBalanceFallback: false,
+      sessionId: access.conversationId,
       personal: {
         access: {
           actorUserId: access.actorUserId, workspaceId: access.workspaceId, principalId: access.principalId,

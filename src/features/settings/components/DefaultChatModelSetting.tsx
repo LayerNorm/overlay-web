@@ -13,14 +13,12 @@ import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvi
 export function DefaultChatModelSetting({
   defaultActModelId,
   defaultAskModelIds,
-  isFreeTier,
   onlyAllowZdrModels,
   disabled,
   onSelect,
 }: {
   defaultActModelId?: string
   defaultAskModelIds?: readonly string[]
-  isFreeTier: boolean
   onlyAllowZdrModels: boolean
   disabled?: boolean
   onSelect: (actModelId: string, askModelIds: string[]) => void
@@ -30,19 +28,18 @@ export function DefaultChatModelSetting({
   const { connections: byokConnections } = useByokModels({
     enabled: appDataCapabilities.provider === 'convex',
   })
-  const effectiveOnlyAllowZdr = onlyAllowZdrModels && !isFreeTier
+  const effectiveOnlyAllowZdr = onlyAllowZdrModels
   const models = useMemo(() => {
     void catalogRevision
     void byokConnections
-    return getModelsByIntelligence(isFreeTier)
+    return getModelsByIntelligence()
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
       .filter((model) => !effectiveOnlyAllowZdr || model.supportsZeroDataRetention)
-  }, [byokConnections, catalogRevision, effectiveOnlyAllowZdr, isFreeTier])
+  }, [byokConnections, catalogRevision, effectiveOnlyAllowZdr])
 
   const currentSelection = resolveDefaultChatModelSelection({
     defaultActModelId,
     defaultAskModelIds,
-    isFreeTier,
     onlyAllowZdrModels: effectiveOnlyAllowZdr,
   })
   const currentActModelId = currentSelection.actModelId

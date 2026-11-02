@@ -2,8 +2,9 @@ import { v } from 'convex/values'
 import type Stripe from 'stripe'
 import { internal } from '../_generated/api'
 import { internalMutation, type MutationCtx } from '../_generated/server'
-import { extractPlanFromSubscription, getSubscriptionPeriodMs, mapSubscriptionStatus } from './lib/stripeOverlaySubscription'
+import { configuredPaidInvoiceFunding, extractPlanFromSubscription, getSubscriptionPeriodMs, mapSubscriptionStatus } from './lib/stripeOverlaySubscription'
 import { isPreviewDeployment } from '../lib/preview'
+import { stripeReferenceId } from '../../packages/overlay-billing/src/paid-invoice'
 
 function readBooleanMetadata(value: string | undefined): boolean | undefined {
   if (value === 'true') return true
@@ -89,6 +90,28 @@ async function syncWorkspaceSubscription(
 }
 
 const handlers = {
+    'invoice.paid': async (ctx: MutationCtx, event: Stripe.InvoicePaidEvent) => {
+      if (!(await recordAndCheckEvent(ctx, event))) return
+      const invoice = event.data.object
+      const stripeSubscriptionId = stripeReferenceId(invoice.parent?.subscription_details?.subscription)
+      const stripeCustomerId = stripeReferenceId(invoice.customer)
+      const billingAccountId = invoice.parent?.subscription_details?.metadata?.billingAccountId
+        ?? await convertedAccountId(ctx, { customer: invoice.customer, subscription: stripeSubscriptionId })
+      if (!billingAccountId || !stripeSubscriptionId || !stripeCustomerId) return
+      const funding = configuredPaidInvoiceFunding(invoice, { customerId: stripeCustomerId, subscriptionId: stripeSubscriptionId })
+      if (!funding) return
+      await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {
+        billingAccountId, stripeCustomerId, stripeSubscriptionId, stripePriceId: funding.priceId, stripeQuantity: funding.quantity,
+        planKind: 'paid', planAmountCents: funding.amountCents, status: 'active',
+        currentPeriodStart: funding.paidPeriodStart, currentPeriodEnd: funding.paidPeriodEnd,
+        providerEventCreatedAt: event.created * 1000,
+      })
+      await ctx.runMutation(internal.billing.accountSubscriptions.fundPaidPeriodInternal, {
+        billingAccountId, stripeCustomerId, stripeSubscriptionId,
+        paidInvoiceId: funding.paidInvoiceId, paidPeriodStart: funding.paidPeriodStart,
+        paidPeriodEnd: funding.paidPeriodEnd, amountCents: funding.amountCents,
+      })
+    },
     'customer.subscription.created': async (ctx: MutationCtx, event: Stripe.CustomerSubscriptionCreatedEvent) => {
       if (!(await recordAndCheckEvent(ctx, event))) return
       await syncWorkspaceSubscription(ctx, event)
@@ -117,6 +140,7 @@ const handlers = {
       if (!billingAccountId) return
       await ctx.runMutation(internal.billing.accountSubscriptions.upsertFromStripeInternal, {
         billingAccountId,
+        stripeSubscriptionId: stripeReferenceId(invoice.parent?.subscription_details?.subscription),
         status: 'past_due',
         providerEventCreatedAt: event.created * 1000,
       })
@@ -240,6 +264,9 @@ export const processEventInternal = internalMutation({
       case 'invoice.payment_failed':
         await handlers['invoice.payment_failed'](ctx, event)
         break
+      case 'invoice.paid':
+        await handlers['invoice.paid'](ctx, event)
+        break
       case 'payment_intent.succeeded':
         await handlers['payment_intent.succeeded'](ctx, event)
         break
@@ -251,6 +278,9 @@ export const processEventInternal = internalMutation({
         break
       case 'checkout.session.completed':
         await handlers['checkout.session.completed'](ctx, event)
+        break
+      case 'checkout.session.async_payment_succeeded':
+        await handlers['checkout.session.completed'](ctx, event as unknown as Stripe.CheckoutSessionCompletedEvent)
         break
     }
     return null

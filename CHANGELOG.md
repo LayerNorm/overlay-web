@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Require paid, funded workspace admission before chat and hosted execution, remove free-model fallback, and preserve manual drafts plus billing-disabled self-hosted access.
+
 - Keep agent-created notes, text files and Computer artifacts out of human activity counts while retaining file totals.
 
 - Add nightly growth rollups in Convex: daily counts of what was created and done, active users, W1/W4 retention cohorts, paid subscriptions, top-ups and billed usage, with a one-time backfill. Each file text change is now recorded per day with every person who made it.

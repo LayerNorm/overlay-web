@@ -270,14 +270,12 @@ export class ConvexUsageRepository implements UsageRepository {
 
   async recordBatch(args: {
     events: UsageEvent[]
-    forceFreeTierLimits?: boolean
     operationId: string
     userId: string
     workspaceId?: string
   }): Promise<{ recorded: number }> {
     const result = await convex.mutation<{ recorded?: number }>('platform/usage:recordBatch', {
       events: args.events.map(toConvexEvent),
-      forceFreeTierLimits: args.forceFreeTierLimits,
       operationId: args.operationId,
       serverSecret: this.serverSecret,
       userId: args.userId,

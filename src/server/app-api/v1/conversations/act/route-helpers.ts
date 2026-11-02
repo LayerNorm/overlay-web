@@ -1,28 +1,11 @@
-import type { NextResponse } from 'next/server'
 import type { UIMessage } from '@/server/ai/sdk'
-import { getChatModelDisplayName } from '@/shared/ai/gateway/model-data'
-import {
-  FREE_TIER_DEFAULT_MODEL_ID,
-  isLegacyFreeTierDefaultModelId,
-} from '@/shared/ai/gateway/model-types'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 
 export const DEFAULT_ACT_ABORT_TIMEOUT_MS = 290_000
 export const AUTOMATION_ACT_ABORT_TIMEOUT_MS = 720_000
 export const MIN_ACT_ABORT_TIMEOUT_MS = 30_000
 export const MAX_ACT_ABORT_TIMEOUT_MS = 780_000
-export const MAX_ACT_MODEL_ATTEMPTS = 5
 export const MAX_ACT_OUTPUT_TOKENS_PER_STEP = 8_192
-
-export type ActModelAttemptFailureReason = 'budget' | 'pricing' | 'provider' | 'reservation'
-
-export type ActModelAttemptFailure = {
-  modelId: string
-  reason: ActModelAttemptFailureReason
-}
-
-export type ActAttemptReservationResult<TResponse> =
-  | { ok: true }
-  | { ok: false; reason: ActModelAttemptFailureReason; response: TResponse }
 
 export function estimateToolLoopReservationTokens(args: {
   estimatedInputTokens: number
@@ -105,128 +88,10 @@ export function observeFirstTextToken(
   }))
 }
 
-export function fallbackNoticeText(
-  fromAttempts: string | ActModelAttemptFailure[],
-  toModelId: string,
-): string {
-  const attempts = typeof fromAttempts === 'string'
-    ? [{ modelId: fromAttempts, reason: 'provider' as const }]
-    : fromAttempts
-  const names = formatModelNameList(attempts.map((attempt) => attempt.modelId))
-  const target = getChatModelDisplayName(toModelId)
-  if (attempts.length > 0 && attempts.every((attempt) => attempt.reason === 'budget')) {
-    return `${names} exceeded remaining budget, switching to ${target}.`
-  }
-  if (attempts.length > 0 && attempts.every((attempt) => attempt.reason === 'provider')) {
-    return `${names} unavailable, switching to ${target}.`
-  }
-  return `${names} could not be used, switching to ${target}.`
-}
-
-export function prefixFallbackNoticeAfterStart(
-  body: ReadableStream<Uint8Array<ArrayBufferLike>> | null,
-  notice?: string,
-): ReadableStream<Uint8Array<ArrayBufferLike>> | null {
-  if (!body || !notice) return body
-  const decoder = new TextDecoder()
-  const encoder = new TextEncoder()
-  let buffer = ''
-  let inserted = false
-
-  return body.pipeThrough(new TransformStream<Uint8Array, Uint8Array>({
-    transform(chunk, controller) {
-      if (inserted) {
-        controller.enqueue(chunk)
-        return
-      }
-      buffer += decoder.decode(chunk, { stream: true })
-      const firstFrameEnd = buffer.indexOf('\n\n')
-      if (firstFrameEnd === -1) return
-      const firstFrame = buffer.slice(0, firstFrameEnd + 2)
-      const rest = buffer.slice(firstFrameEnd + 2)
-      buffer = ''
-      inserted = true
-      controller.enqueue(encoder.encode(firstFrame))
-      controller.enqueue(encoder.encode(fallbackNoticeFrames(notice)))
-      if (rest) controller.enqueue(encoder.encode(rest))
-    },
-    flush(controller) {
-      if (!inserted && buffer) {
-        controller.enqueue(encoder.encode(fallbackNoticeFrames(notice)))
-        controller.enqueue(encoder.encode(buffer))
-      }
-    },
-  })) as ReadableStream<Uint8Array<ArrayBufferLike>>
-}
-
 export function resolveEffectiveActModelId(modelId?: string): string {
-  const requestedModelId = modelId || 'claude-sonnet-4-6'
-  return isLegacyFreeTierDefaultModelId(requestedModelId)
-    ? FREE_TIER_DEFAULT_MODEL_ID
-    : requestedModelId
+  return modelId?.trim() || DEFAULT_MODEL_ID
 }
 
 export function resolveActTurnId(turnId: string | undefined, now = Date.now()): string {
   return turnId?.trim() || `act-${now}`
-}
-
-export async function runActModelAttempts<TResponse = NextResponse>(params: {
-  attemptModelIds: string[]
-  onAttemptFailure(error: unknown, modelId: string, hasFallback: boolean): Promise<void> | void
-  onFallback(previousModelId: string, attemptModelId: string, failedAttempts: ActModelAttemptFailure[]): void
-  reserveBudgetForAttempt(attemptModelId: string): Promise<ActAttemptReservationResult<TResponse>>
-  runAttempt(args: { attemptModelId: string; fallbackNotice?: string }): Promise<TResponse>
-}): Promise<TResponse> {
-  let lastAttemptError: unknown
-  let lastAttemptResponse: TResponse | null = null
-  const failedAttempts: ActModelAttemptFailure[] = []
-
-  for (let attemptIndex = 0; attemptIndex < params.attemptModelIds.length; attemptIndex++) {
-    const attemptModelId = params.attemptModelIds[attemptIndex]!
-    const fallbackNotice = failedAttempts.length > 0
-      ? fallbackNoticeText(failedAttempts, attemptModelId)
-      : undefined
-    try {
-      const reservationResponse = await params.reserveBudgetForAttempt(attemptModelId)
-      if (!reservationResponse.ok) {
-        failedAttempts.push({ modelId: attemptModelId, reason: reservationResponse.reason })
-        lastAttemptResponse = reservationResponse.response
-        continue
-      }
-      const previousModelId = failedAttempts.at(-1)?.modelId
-      if (previousModelId) params.onFallback(previousModelId, attemptModelId, [...failedAttempts])
-      return await params.runAttempt({ attemptModelId, fallbackNotice })
-    } catch (error) {
-      lastAttemptError = error
-      failedAttempts.push({ modelId: attemptModelId, reason: 'provider' })
-      await params.onAttemptFailure(
-        error,
-        attemptModelId,
-        attemptIndex < params.attemptModelIds.length - 1,
-      )
-    }
-  }
-
-  if (lastAttemptResponse) return lastAttemptResponse
-  throw lastAttemptError ?? new Error('All model attempts failed')
-}
-
-function uiStreamEvent(data: Record<string, unknown>): string {
-  return `data: ${JSON.stringify(data)}\n\n`
-}
-
-function formatModelNameList(modelIds: string[]): string {
-  const names = modelIds.map(getChatModelDisplayName)
-  if (names.length <= 1) return names[0] ?? 'Selected model'
-  if (names.length === 2) return `${names[0]} and ${names[1]}`
-  return `${names.slice(0, -1).join(', ')}, and ${names.at(-1)}`
-}
-
-function fallbackNoticeFrames(notice: string): string {
-  const id = `fallback-${globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2)}`
-  return (
-    uiStreamEvent({ type: 'text-start', id }) +
-    uiStreamEvent({ type: 'text-delta', id, delta: `${notice}\n\n` }) +
-    uiStreamEvent({ type: 'text-end', id })
-  )
 }

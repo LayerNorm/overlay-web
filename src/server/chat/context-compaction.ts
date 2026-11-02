@@ -4,8 +4,7 @@ import { logger } from '@/server/observability/logger'
 import type { UIMessage } from 'ai'
 import { getGatewayCatalogModel } from '@/server/ai/gateway/gateway-catalog'
 import {
-  FREE_TIER_DEFAULT_MODEL_ID,
-  isFreeTierChatModelId,
+  DEFAULT_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
@@ -64,8 +63,7 @@ export function summaryGenerationOptions(args: {
     : { prompt: args.prompt, temperature: 0.1, maxOutputTokens: args.targetSummaryTokens }
 }
 
-function manualContextWindow(modelId: string): number | null {
-  if (isFreeTierChatModelId(modelId)) return FALLBACK_CONTEXT_WINDOW
+function manualContextWindow(): number | null {
   return null
 }
 
@@ -73,7 +71,7 @@ export async function resolveModelContextWindow(modelId: string): Promise<number
   const model = await getGatewayCatalogModel(modelId).catch((_error) => null)
   if (model?.contextWindow && model.contextWindow > 0) return Math.floor(model.contextWindow)
 
-  return manualContextWindow(modelId) ?? FALLBACK_CONTEXT_WINDOW
+  return manualContextWindow() ?? FALLBACK_CONTEXT_WINDOW
 }
 
 export function contextSummaryScope(params: {
@@ -175,7 +173,7 @@ export async function compactMessagesForContext(params: {
     Math.min(MAX_SUMMARY_OUTPUT_TOKENS, targetTokens - preservedTokens - 256),
   )
   const summarizerModelId = params.summarizerModelId ??
-    (isByokModelId(params.targetModelId) ? params.targetModelId : FREE_TIER_DEFAULT_MODEL_ID)
+    (isByokModelId(params.targetModelId) ? params.targetModelId : DEFAULT_MODEL_ID)
 
   try {
     const prompt = buildSummaryPrompt({

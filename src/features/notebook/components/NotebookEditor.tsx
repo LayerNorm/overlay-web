@@ -66,7 +66,7 @@ export default function NotebookEditor({
   const buildWorkspaceHref = useWorkspaceHref()
   const scope = usePanelScope()
   const models = useMemo(
-    () => getModelsByIntelligence(false)
+    () => getModelsByIntelligence()
       .filter(({ id }) => !isByokModelId(id))
       .map(({ id, name }) => ({ id, name })),
     [],

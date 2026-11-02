@@ -74,8 +74,8 @@ import { useWorkApproval } from './useWorkApproval'
 import { useComposerActions } from './useComposerActions'
 import { buildChatDerivedView } from './chatDerivedView'
 import {
+  isWorkspaceBillingError,
   showUsageExhaustedToast,
-  usageExhaustionVariantForError,
 } from './usage-exhausted-toast'
 
 export type ChatExperienceProps = {
@@ -106,9 +106,8 @@ export function useChatExperienceController({
   recordRender('ChatExperience')
   const router = useRouter()
   const onUsageExhaustedError = useCallback((message: string) => {
-    const variant = usageExhaustionVariantForError(message)
-    if (!variant) return false
-    showUsageExhaustedToast(router, variant)
+    if (!isWorkspaceBillingError(message)) return false
+    showUsageExhaustedToast(router)
     return true
   }, [router])
   const pathname = usePathname()
@@ -308,7 +307,6 @@ export function useChatExperienceController({
   const {
     connectionUnavailable,
     isBudgetExhaustedPaid,
-    isFreeTier,
     isModelAccessRestricted,
     isSendBlocked,
     loadSubscription,
@@ -341,7 +339,6 @@ export function useChatExperienceController({
     applyDefaultChatModelsToView,
   } = useChatModelDefaults({
     settings,
-    isFreeTier,
     hasStoredTextModelSelection,
     selectedActModel,
     selectedModels,
@@ -807,7 +804,6 @@ export function useChatExperienceController({
     gatewayModelsLoading,
     generationMode,
     isActiveLoading,
-    isFreeTier,
     isTemporaryChat,
     reasoning,
     onReasoningChange: setReasoning,
@@ -877,7 +873,6 @@ export function useChatExperienceController({
     isActiveLoading,
     isBudgetExhaustedPaid,
     isFirstMessage,
-    isFreeTier,
     isSendBlocked,
     connectionUnavailable,
     premiumModelBlocked,
@@ -1228,7 +1223,6 @@ export function useChatExperienceController({
     dragCounterRef,
     isDragging,
     setIsDragging,
-    isFreeTier,
     isBudgetExhaustedPaid,
     isSendBlocked,
     connectionUnavailable,

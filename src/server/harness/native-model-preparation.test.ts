@@ -25,7 +25,7 @@ beforeEach(() => {
 
 test('prepares native authority without credentials and quotes the exact ZDR-routed prompt', async () => {
   const prepared = await prepareNativeHarnessModel({ ...input, access: { ...access, accessToken: 'must-not-persist' } as typeof access })
-  expect(prepared.model).toMatchObject({ modelId: context.modelId, credentialOwnerId: 'user', allowLowBalanceFallback: false,
+  expect(prepared.model).toMatchObject({ modelId: context.modelId, credentialOwnerId: 'user',
     native: { access, receiptId: 'model:0', memoryEnabled: true, sharedRoom: true, maxOutputTokens: 100, contextWindow: 32_000 } })
   expect(prepared.model).not.toHaveProperty('personal')
   expect(JSON.stringify(prepared)).not.toContain('must-not-persist')

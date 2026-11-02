@@ -129,7 +129,6 @@ export function buildChatExperienceViewProps(
               params.delete('tab')
               c.router.replace(`${c.pathname}?${params.toString()}`)
             },
-            isFreeTier: c.isFreeTier,
           }
         : null,
     upgradeModelDialogProps: {

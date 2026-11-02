@@ -10,6 +10,8 @@ import { WorkspaceBillingService } from './WorkspaceBillingService'
 import type { BillingRepository } from './BillingRepository'
 import type { UsageRepository } from '@/server/usage/UsageRepository'
 import { LegalAcceptanceError } from '@/server/legal/legal-acceptance'
+import { getOverlayCapabilities } from '@/server/capabilities'
+import { WorkspaceExecutionError } from './WorkspaceExecutionPolicy'
 
 const billingRepository = repositoryProxy<BillingRepository>(
   () => getOverlayServerContext().appData.repositories.billing,
@@ -23,6 +25,7 @@ export const billingCustomerService = new BillingCustomerService({
 })
 
 export const workspaceBillingService = new WorkspaceBillingService({
+  billingEnabled: async () => (await getOverlayCapabilities()).billing,
   repository: billingRepository,
   baseUrl: getBillingBaseUrl,
   billingProvider: () => getOverlayServerContext().billing,
@@ -39,6 +42,7 @@ function getBillingBaseUrl(): string {
 }
 
 export function billingErrorResponse(error: unknown, fallback: string) {
+  if (error instanceof WorkspaceExecutionError) return NextResponse.json(error.payload, { status: error.statusCode })
   if (error instanceof LegalAcceptanceError) {
     return NextResponse.json({ error: error.message }, { status: error.statusCode })
   }

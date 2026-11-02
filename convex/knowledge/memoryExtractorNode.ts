@@ -8,7 +8,6 @@ import type { Id } from "../_generated/dataModel";
 import { generateObject, type FlexibleSchema } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { calculateGatewayLanguageModelCostOrNull } from '../lib/gatewayCatalogPricing'
-import { isGatewayCreditLow } from '../lib/gatewayCredits'
 import { applyMarkupToDollars } from "../../src/shared/billing/billing-pricing";
 import { normalizeOpenAiCompatibleBaseUrl } from "../../src/shared/ai/gateway/openai-compatible-base-url";
 import {
@@ -149,13 +148,7 @@ export const extractFromTurn = internalAction({
       void isPaid;
       const paid = Boolean(resolvedBillingAccountId);
       const configuredModelId = process.env.OVERLAY_MEMORY_EXTRACTION_MODEL_ID?.trim();
-      const lowCredit =
-        !configuredModelId &&
-        paid &&
-        (await isGatewayCreditLow(API_KEY, GATEWAY_BASE_URL));
-      const modelId =
-        configuredModelId ||
-        (paid && !lowCredit ? "google/gemini-2.5-flash-lite" : "openrouter/free");
+      const modelId = configuredModelId || "google/gemini-2.5-flash-lite";
       const model = getExtractorModel(modelId);
       const serverSecret = process.env.INTERNAL_API_SECRET;
       const systemPrompt = targetActor === "agent" ? AGENT_MEMORY_EXTRACTION_SYSTEM_PROMPT : HUMAN_MEMORY_EXTRACTION_SYSTEM_PROMPT;

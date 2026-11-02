@@ -20,7 +20,7 @@ import {
 const DYNAMIC_MODEL_ID = 'example/new-premium-model'
 const UNKNOWN_ENABLED_ID = 'vendor/not-yet-in-static-catalog'
 
-test('new gateway models appear before the free section for paid users', () => {
+test('new gateway models appear and retired hosted models are filtered', () => {
   registerGatewayCatalogModels([{
     id: DYNAMIC_MODEL_ID,
     gatewayId: DYNAMIC_MODEL_ID,
@@ -49,14 +49,11 @@ test('new gateway models appear before the free section for paid users', () => {
   const models = getEnabledChatModels([
     'openrouter/free',
     'overlay-free',
+    'moonshotai/kimi-k2-thinking',
     DYNAMIC_MODEL_ID,
-  ], false)
-
-  assert.deepEqual(models.map((model) => model.id), [
-    DYNAMIC_MODEL_ID,
-    'overlay-free',
-    'openrouter/free',
   ])
+
+  assert.deepEqual(models.map((model) => model.id), [DYNAMIC_MODEL_ID])
 })
 
 test('registers only priced live image and video models', () => {
@@ -95,27 +92,14 @@ test('registers only priced live image and video models', () => {
   assert.deepEqual(VIDEO_MODELS[0]?.subModes, ['image-to-video'])
 })
 
-test('free models remain first for free-tier users', () => {
-  const models = getEnabledChatModels([
-    DYNAMIC_MODEL_ID,
-    'openrouter/free',
-  ], true)
-
-  assert.deepEqual(models.map((model) => model.id), [
-    'openrouter/free',
-    DYNAMIC_MODEL_ID,
-  ])
-})
-
 test('enabled ids registered from the gateway remain visible outside the static catalog', () => {
   const before = getGatewayCatalogRevision()
   const models = getEnabledChatModels(
-    ['moonshotai/kimi-k2.6', UNKNOWN_ENABLED_ID, 'openrouter/free'],
-    false,
+    ['moonshotai/kimi-k2.6', UNKNOWN_ENABLED_ID],
   )
   assert.ok(models.some((model) => model.id === UNKNOWN_ENABLED_ID))
   assert.ok(models.some((model) => model.id === 'moonshotai/kimi-k2.6'))
-  assert.equal(models.length, 3)
+  assert.equal(models.length, 2)
   // Re-registering the catalog should bump revision so React can refresh metadata.
   registerGatewayCatalogModels([{
     id: UNKNOWN_ENABLED_ID,
@@ -130,8 +114,7 @@ test('enabled ids registered from the gateway remain visible outside the static 
   }])
   assert.ok(getGatewayCatalogRevision() > before)
   const after = getEnabledChatModels(
-    ['moonshotai/kimi-k2.6', UNKNOWN_ENABLED_ID, 'openrouter/free'],
-    false,
+    ['moonshotai/kimi-k2.6', UNKNOWN_ENABLED_ID],
   )
   const resolved = after.find((model) => model.id === UNKNOWN_ENABLED_ID)
   assert.equal(resolved?.name, 'Not Yet In Static Catalog')
@@ -153,16 +136,15 @@ test('active BYOK models register without replacing hosted models and respect ex
 
   const byokId = 'byok/connection_1/vendor/model-a'
   const models = getEnabledChatModels(
-    ['openrouter/free', byokId, DYNAMIC_MODEL_ID],
-    true,
-    [byokId, 'openrouter/free'],
+    [byokId, DYNAMIC_MODEL_ID],
+    [byokId],
   )
-  assert.deepEqual(models.map((model) => model.id), [byokId, 'openrouter/free', DYNAMIC_MODEL_ID])
+  assert.deepEqual(models.map((model) => model.id), [byokId, DYNAMIC_MODEL_ID])
   assert.equal(models[0]?.provider, 'Personal OpenRouter')
 
   registerByokModels([])
-  assert.equal(getEnabledChatModels(['openrouter/free'], true)[0]?.id, 'openrouter/free')
-  assert.equal(getEnabledChatModels([byokId], true).length, 0)
+  assert.equal(getEnabledChatModels(['openrouter/free']).length, 0)
+  assert.equal(getEnabledChatModels([byokId]).length, 0)
 })
 
 test('enabled subscription models bypass the legacy global model whitelist', () => {
@@ -181,7 +163,7 @@ test('enabled subscription models bypass the legacy global model whitelist', () 
     isDeletable: true,
   }])
 
-  const models = getEnabledChatModels(['openrouter/free'], true)
+  const models = getEnabledChatModels([])
   assert.ok(models.some((model) => model.id === subscriptionModelId))
   assert.equal(models.find((model) => model.id === subscriptionModelId)?.sourceLabel, 'Subscription')
 
@@ -196,16 +178,16 @@ test('modelUsesAiGatewayTransport only flags models served by the metered gatewa
 })
 
 test('provider catalog includes older non-recommended models without enabling them', () => {
-  const oldModel = 'moonshotai/kimi-k2-thinking'
+  const oldModel = 'moonshotai/kimi-k2.4'
   registerGatewayCatalogModels([{
     id: oldModel, gatewayId: oldModel, name: 'Older Kimi', type: 'language',
     provider: 'moonshotai', tags: [], pricing: { input: '0.0000001', output: '0.0000002' },
     inputPricePerMillion: 0.1, outputPricePerMillion: 0.2,
   }])
-  assert.ok(getModelsByIntelligence(false).some((model) => model.id === oldModel))
+  assert.ok(getEnabledChatModels([oldModel]).some((model) => model.id === oldModel))
   assert.equal(getModel(oldModel)?.id, oldModel)
   assert.ok(!MODEL_RECOMMENDATIONS.text.some((id: string) => id === oldModel))
-  assert.equal(getModelsByIntelligence(true)[0].id, 'overlay-free')
+  assert.notEqual(getModelsByIntelligence()[0]?.id, 'overlay-free')
 })
 
 test('MiniMax M3.1 Flash is selectable with zero-price vision metadata', () => {
@@ -243,7 +225,7 @@ test('MiniMax M3.1 Flash is selectable with zero-price vision metadata', () => {
   assert.equal(CHAT_MODEL_QUALITY_PRIORITY[
     CHAT_MODEL_QUALITY_PRIORITY.indexOf('minimax/minimax-m2.7') + 1
   ], modelId)
-  assert.equal(getEnabledChatModels([modelId], false)[0]?.id, modelId)
+  assert.equal(getEnabledChatModels([modelId])[0]?.id, modelId)
   assert.equal(modelUsesAiGatewayTransport(modelId), true)
-  assert.equal(pickBestModelForAct([modelId, 'overlay-free']), 'overlay-free')
+  assert.equal(pickBestModelForAct([modelId, 'overlay-free']), modelId)
 })

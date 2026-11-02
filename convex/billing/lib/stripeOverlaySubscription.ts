@@ -1,4 +1,5 @@
 import type Stripe from 'stripe'
+import { paidInvoiceFunding, stripeReferenceId, type PaidInvoice } from '../../../packages/overlay-billing/src/paid-invoice'
 import { quantityToPlanAmountCents } from '../../../src/shared/billing/billing-pricing'
 
 function resolveStripeEnvValue(primary: string, devKey: string): string | undefined {
@@ -9,6 +10,18 @@ function resolveStripeEnvValue(primary: string, devKey: string): string | undefi
     return process.env[devKey] || process.env[primary]
   }
   return process.env[devKey] || process.env[primary]
+}
+
+export function configuredPaidInvoiceFunding(invoice: PaidInvoice, expected: { customerId: string; subscriptionId: string }) {
+  const priceId = stripeReferenceId(invoice.lines?.data?.[0]?.pricing?.price_details?.price)
+  const configured = [
+    { id: resolveStripeEnvValue('STRIPE_PAID_UNIT_PRICE_ID', 'DEV_STRIPE_PAID_UNIT_PRICE_ID'), unitAmountCents: 100 },
+    { id: resolveStripeEnvValue('STRIPE_PRO_PRICE_ID', 'DEV_STRIPE_PRO_PRICE_ID'), unitAmountCents: 2000 },
+    { id: resolveStripeEnvValue('STRIPE_MAX_PRICE_ID', 'DEV_STRIPE_MAX_PRICE_ID'), unitAmountCents: 10_000 },
+  ].find(price => price.id && price.id === priceId)
+  if (!configured || !priceId) return null
+  const funding = paidInvoiceFunding(invoice, { ...expected, priceId, unitAmountCents: configured.unitAmountCents })
+  return funding ? { ...funding, priceId } : null
 }
 
 export function getSubscriptionPeriodMs(subscription: Stripe.Subscription): {
@@ -114,6 +127,6 @@ export function mapSubscriptionStatus(
     case 'trialing':
       return 'trialing'
     default:
-      return 'active'
+      return 'past_due'
   }
 }

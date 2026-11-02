@@ -33,7 +33,7 @@ export async function sendMediaTurn({
   effectiveGenType,
   emptyRuntime,
   ensureConversationRuntime,
-  isFreeTier,
+  isSendBlocked,
   isFirstMessage,
   isTemporaryChatRef,
   loadChats,
@@ -60,7 +60,7 @@ export async function sendMediaTurn({
   effectiveGenType: 'image' | 'video'
   emptyRuntime: ConversationRuntime
   ensureConversationRuntime: EnsureConversationRuntime
-  isFreeTier: boolean
+  isSendBlocked: boolean
   isFirstMessage: boolean
   isTemporaryChatRef: MutableRefObject<boolean>
   loadChats: () => Promise<void>
@@ -213,18 +213,7 @@ export async function sendMediaTurn({
       ? (id === TEMPORARY_CHAT_ID && isTemporaryChatRef.current)
       : activeChatIdRef.current === id
 
-  if (isFreeTier) {
-    const { scheduleMediaGenerationUpgradeFailure } = await mediaGenerationModule
-    scheduleMediaGenerationUpgradeFailure({
-      chatId,
-      exchIdx,
-      kind: effectiveGenType,
-      isChatActive: mediaIsChatActive,
-      updateRuntimeUiState: updateMediaRuntimeUiState,
-      completeSession,
-    })
-    return
-  }
+  if (isSendBlocked) return
 
   if (effectiveGenType === 'image') {
     const { runImageGenerationBatch } = await mediaGenerationModule

@@ -117,21 +117,18 @@ export function useAgentEditorController({
   const allTextModels = useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
-    return getModelsByIntelligence(false)
+    return getModelsByIntelligence()
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
   }, [revision])
   const modelField = useMemo(() => {
     const accessUnresolved = !modelAccess.entitlements
     const selectableTextModels = modelAccess.loading || accessUnresolved
       ? buildSelectableTextModels({
-          isModelAccessRestricted: true,
           effectiveOnlyAllowZdrModels: false,
         })
       : modelAccess.selectableTextModels
     return {
       favoriteScope: authUser?.id ?? null,
-      isFreeTier: modelAccess.isFreeTier || modelAccess.loading || accessUnresolved,
-      isFreeTierWorkspace: modelAccess.isFreeTier,
       modelPickerLabel: allTextModels.find((model) => model.id === form.modelId)?.name ?? form.modelId,
       selectableTextModels,
       textModelsLoading: false,
@@ -141,7 +138,6 @@ export function useAgentEditorController({
     authUser?.id,
     form.modelId,
     modelAccess.entitlements,
-    modelAccess.isFreeTier,
     modelAccess.loading,
     modelAccess.selectableTextModels,
   ])

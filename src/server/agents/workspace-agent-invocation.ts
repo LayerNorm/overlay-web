@@ -11,8 +11,6 @@ import { hashOperationalIdentifier } from '@/server/security/operational-key-has
 import { getOverlayRuntimeConfig } from '@/server/config'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import { replaceAssistantTextForPersistence } from '@/shared/chat/persist-assistant-turn'
-import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
-import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { buildAgentTurnContext } from './agent-turn-context'
 import { resolveMentionFirstInvocations, resolveInvocableAgents } from './mention-policy'
 import { connectedAgentPolicyFor } from './ConnectedAgentPolicy'
@@ -23,6 +21,7 @@ import { AGENT_MCP_TOKEN_SLACK_MS, mintAgentMcpToken } from '@/server/agents/age
 import { getAgentFacingBaseUrl } from '@/server/web/app-url'
 import { ensureRemoteRunCoordinator } from './remote-agent-run-dispatcher'
 import { wakeCloudAgentAfterResponse } from './cloud/wake-cloud-agent'
+import { requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
 
 export function shouldPrepareConnectedAgentDrive(input: {
   enabled: boolean; environmentKind: string; optedIn: boolean; capabilities: unknown
@@ -126,17 +125,8 @@ export class WorkspaceAgentInvocationError extends Error {
   }
 }
 
-/**
- * The models an agent turn may attempt, in order.
- *
- * An agent is configured with one model, but the workspace paying for the turn
- * may not be entitled to it — a paid model on a free workspace, or a paid
- * workspace that has run out of budget. Falling back to the free router keeps
- * the agent answering instead of failing the turn outright.
- */
 export function agentModelAttempts(modelId: string): string[] {
-  if (isByokModelId(modelId)) return [modelId]
-  return isFreeTierChatModelId(modelId) ? [modelId] : [modelId, FREE_TIER_AUTO_MODEL_ID]
+  return [modelId]
 }
 
 async function loadAccessibleConversation(args: {
@@ -541,8 +531,11 @@ export async function startRemoteWorkspaceAgentTurn(args: {
   prompt: string
   threadRootMessageId?: string
   workspaceId: string
+  requireExecution?: typeof requireWorkspaceExecution
 }) {
   const server = getOverlayServerContext()
+  const requireExecution = args.requireExecution ?? requireWorkspaceExecution
+  await requireExecution({ userId: args.actorUserId, workspaceId: args.workspaceId, checkBudget: false })
   await assertRemoteAgentLaunchEnabled(args.workspaceId)
   // Managed HarnessAgent turns run through `managedHarnessAgentTurnWorkflow`
   // (see `startManagedHarnessTurn`), not the ACP command queue — fail loudly
@@ -592,19 +585,28 @@ export async function startRemoteWorkspaceAgentTurn(args: {
   if (!entitlements) throw new WorkspaceAgentInvocationError('not_entitled')
   const policy = connectedAgentPolicyFor(entitlements)
   const overlayModelUsage = args.invocation.remoteTarget.modelUsageBilling === 'overlay'
-  const reservation = await server.chatUsagePolicy.reserveForAttempt({
-    entitlements,
-    estimatedInputTokens: overlayModelUsage ? Math.max(1, Math.ceil(remotePrompt.length / 4)) : 0,
-    idempotencyKey: args.invocation.invocationNonce,
-    maxOutputTokens: overlayModelUsage ? MAX_OUTPUT_TOKENS_AGENT : 0,
-    modelId: overlayModelUsage ? args.invocation.modelId : FREE_TIER_AUTO_MODEL_ID,
-    operationId: `workspace-agent:${args.invocation.turnId}`,
-    paid: overlayModelUsage,
-    requestFingerprint,
-    userId: args.actorUserId,
-    workspaceId: args.workspaceId,
-    programmaticSubjectId: `agent:${args.invocation.agentId}`,
-  })
+  if (!overlayModelUsage) {
+    await requireExecution({
+      userId: args.actorUserId,
+      workspaceId: args.workspaceId,
+      checkBudget: true,
+    })
+  }
+  const reservation = overlayModelUsage
+    ? await server.chatUsagePolicy.reserveForAttempt({
+        entitlements,
+        estimatedInputTokens: Math.max(1, Math.ceil(remotePrompt.length / 4)),
+        idempotencyKey: args.invocation.invocationNonce,
+        maxOutputTokens: MAX_OUTPUT_TOKENS_AGENT,
+        modelId: args.invocation.modelId,
+        operationId: `workspace-agent:${args.invocation.turnId}`,
+        paid: true,
+        requestFingerprint,
+        userId: args.actorUserId,
+        workspaceId: args.workspaceId,
+        programmaticSubjectId: `agent:${args.invocation.agentId}`,
+      })
+    : { ok: true as const, reservationId: null }
   if (!reservation.ok) throw new WorkspaceAgentInvocationError(
     reservation.failure.statusCode === 402 ? 'usage_limited' : 'not_entitled',
   )

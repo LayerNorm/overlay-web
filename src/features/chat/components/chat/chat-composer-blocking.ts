@@ -4,7 +4,7 @@ export const CONNECTION_UNAVAILABLE_NOTICE =
   'This model connection is unavailable. Reconnect it in Settings > Providers or choose another model. No fallback has been selected.'
 
 const BUDGET_EXHAUSTED_NOTICE =
-  'Budget exhausted. Add a top-up to continue with paid models, or switch to Auto for free chat.'
+  'Budget exhausted. Add credit to continue model execution.'
 const PAID_MODEL_BLOCKED_NOTICE = 'This model requires a paid plan. Switch to Auto or upgrade.'
 
 export function hasUnavailableByokModel({

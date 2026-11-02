@@ -22,7 +22,7 @@ vi.mock('@/server/conversations/ActEntitlementService', () => ({
   },
 }))
 vi.mock('./workspace-agent-invocation', () => ({
-  agentModelAttempts: () => ['model-primary', 'model-fallback'],
+  agentModelAttempts: (modelId: string) => [modelId],
   loadRoomTurnContext: mocks.loadRoom,
 }))
 vi.mock('./agent-tooling', () => ({ buildWorkspaceAgentTooling: mocks.buildTooling }))
@@ -47,10 +47,7 @@ beforeEach(() => {
     conversationType: 'channel',
     participants: [{ principalId: 'human-principal', principalType: 'human' }],
   })
-  mocks.gate.mockImplementation(async ({ effectiveModelId }: { effectiveModelId: string }) => {
-    if (effectiveModelId === 'model-primary') throw new Error('not entitled')
-    return { runtimeEntitlements: { tools: ['files'] }, paid: true }
-  })
+  mocks.gate.mockResolvedValue({ runtimeEntitlements: { tools: ['files'] }, paid: true })
   mocks.buildTooling.mockResolvedValue({
     tools: {
       read_file: {
@@ -64,16 +61,15 @@ beforeEach(() => {
   mocks.buildContext.mockResolvedValue({ contextBlock: 'Saved memory', messages: [{ role: 'user', content: 'Read the file' }] })
 })
 
-test('shared preparation retains model fallback, grants and schema only without reserving usage', async () => {
+test('shared preparation uses the selected model and grants without reserving usage', async () => {
   const prepared = await prepareWorkspaceAgentInputs({
     actorUserId: 'user', agentId: 'agent', conversationId: 'room', messageId: 'question',
     memoryEnabled: true, workspaceId: 'workspace', includeAutoRetrieval: false,
   })
-  expect(prepared.modelId).toBe('model-fallback')
-  expect(prepared.modelCandidates).toEqual(['model-fallback'])
+  expect(prepared.modelId).toBe('model-primary')
   expect(mocks.buildTooling).toHaveBeenCalledWith(expect.objectContaining({
     actorUserId: 'user', agentPrincipalId: 'agent-principal', conversationId: 'room',
-    effectiveModelId: 'model-fallback', grant: { agentId: 'agent', allowedToolIds: ['files'], isDefaultMaster: false },
+    effectiveModelId: 'model-primary', grant: { agentId: 'agent', allowedToolIds: ['files'], isDefaultMaster: false },
   }))
   expect(mocks.buildContext).toHaveBeenCalledWith(expect.objectContaining({ includeAutoRetrieval: false, memoryEnabled: true }))
   expect(prepared.toolDefinitions).toEqual([expect.objectContaining({
@@ -85,12 +81,12 @@ test('shared preparation retains model fallback, grants and schema only without 
   expect(mocks.server.chatUsagePolicy.reserveForAttempt).not.toHaveBeenCalled()
 })
 
- test('an entitled primary keeps its admitted fallback order', async () => {
+test('agent preparation admits only its configured model', async () => {
   mocks.gate.mockResolvedValue({ runtimeEntitlements: { tools: ['files'] }, paid: true })
   const prepared = await prepareWorkspaceAgentInputs({
     actorUserId: 'user', agentId: 'agent', conversationId: 'room', messageId: 'question',
     memoryEnabled: true, workspaceId: 'workspace',
   })
   expect(prepared.modelId).toBe('model-primary')
-  expect(prepared.modelCandidates).toEqual(['model-primary', 'model-fallback'])
+  expect(prepared.modelId).toBe('model-primary')
  })
