@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { BillingProvider } from '@overlay/app-core'
 import { createUnsubscribedEntitlements } from '@overlay/billing'
-import { NoteService, NoteServiceError, type NoteRecord, type NoteRepository } from './NoteService'
+import { NoteService, type NoteRecord, type NoteRepository } from './NoteService'
 
 const now = Date.now()
 
@@ -52,15 +52,15 @@ test('NoteService.createNote preserves unpaid workspace setup within storage lim
     async getEntitlements() {
       return {
         ...createUnsubscribedEntitlements(),
-        dailyUsage: { ask: 0, write: 1, agent: 0 },
-        dailyLimits: { ask: 10, write: 1, agent: 10 },
+        dailyUsage: { ask: 0, write: 0, agent: 0 },
+        dailyLimits: { ask: 0, write: 0, agent: 0 },
       }
     },
   }
 
   const service = new NoteService({ billing, noteRepository: repository })
   const result = await service.createNote({ userId: 'user_1', title: 'Setup note', content: '' })
-  assert.equal(result.name, 'Setup note')
+  assert.equal(result.note?.title, 'Setup note')
   assert.equal(createCalls, 1)
 })
 

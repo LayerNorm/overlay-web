@@ -430,8 +430,14 @@ function isValidOnboardingSession(value: unknown): value is OnboardingSession {
   return isValidProfile(session.profile) &&
     isValidStoredReply(session.reply) &&
     isValidSessionCollections(session) &&
-    (session.taskDraft === undefined || boundedString(session.taskDraft, 1, 3000)) &&
-    (session.step === 'complete' || session.taskId !== undefined ? boundedString(session.taskId, 1, 200) : true)
+    isValidOnboardingTask(session)
+}
+
+function isValidOnboardingTask(session: Record<string, unknown>): boolean {
+  if (session.taskDraft !== undefined && !boundedString(session.taskDraft, 1, 3000)) return false
+  return session.taskId === undefined
+    ? session.step !== 'complete'
+    : boundedString(session.taskId, 1, 200)
 }
 
 function isValidProfile(value: unknown): value is OnboardingProfile {

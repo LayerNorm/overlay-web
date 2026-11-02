@@ -836,7 +836,7 @@ test('account billing mutations are retired behind the same-origin confirmation'
   assert.equal((await readJson(portalResponse) as { code?: string }).code, 'account_plans_retired')
 })
 
-test('conversations act preserves premium gating response shape for free users', async (t) => {
+test('conversations act rejects retired hosted models before workspace access', async (t) => {
   t.mock.method(convex, 'query', async (path: string) => {
     if (path === 'platform/usage:getEntitlementsByServer') {
       return {
@@ -868,17 +868,17 @@ test('conversations act preserves premium gating response shape for free users',
       method: 'POST',
       body: JSON.stringify({
         messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }],
-        modelId: 'claude-sonnet-4-6',
+        modelId: 'openrouter/free',
       }),
     }),
     context(),
     { authorizationService: permissiveAuthorizationService() },
   )
 
-  assert.equal(response.status, 403)
+  assert.equal(response.status, 400)
   assert.deepEqual(await readJson(response), {
-    error: 'premium_model_not_allowed',
-    message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.',
+    error: 'model_retired',
+    message: 'This model is retired. Choose a supported paid model to continue.',
   })
 })
 
@@ -930,11 +930,30 @@ test('conversations act swallows user-message persistence failure before later f
         conversationId: 'conversation_1',
         turnId: 'turn_1',
         messages: [{ role: 'user', parts: [{ type: 'text', text: 'hello' }] }],
-        modelId: 'openrouter/free',
+        modelId: 'deepseek/deepseek-v4-flash-0731',
       }),
     }),
     context(),
-    { authorizationService: permissiveAuthorizationService() },
+    {
+      authorizationService: permissiveAuthorizationService(),
+      entitlementService: {
+        gateModelAccess: async () => ({
+          appSettings: { ...DEFAULT_APP_SETTINGS, harnessRevision: 'overlay-harness-v1',
+            harnessModelRecoveryRevision: 'settled-retry-v1', nativeThreadCompatibilityRevision: 'tracked-native-v1',
+            harnessArtifactPublicationRevision: 'binary-artifact-v1' },
+          paid: true,
+          runtimeEntitlements: {
+            tier: 'paid',
+            planKind: 'paid',
+            creditsUsed: 0,
+            creditsTotal: 800,
+            budgetUsedCents: 0,
+            budgetTotalCents: 800,
+            budgetRemainingCents: 800,
+          },
+        }),
+      },
+    },
   )
 
   assert.equal(sawUserMessagePersist, true)

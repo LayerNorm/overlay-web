@@ -23,7 +23,7 @@ vi.mock('./native-tools', () => ({ createNativeHarnessTools: mocks.tools }))
 vi.mock('./waits', () => ({ createHarnessWaitPorts: mocks.waits }))
 vi.mock('./native-child-steps', () => ({ admitNativeHarnessChild: mocks.admit }))
 vi.mock('./native-delivery-steps', () => ({ attachNativeHarnessDelivery: mocks.attach,
-  finishNativeHarnessDelivery: mocks.finish, projectNativeHarnessWait: mocks.waits, writeNativeHarnessFallback: mocks.fallback }))
+  finishNativeHarnessDelivery: mocks.finish, projectNativeHarnessWait: mocks.waits }))
 vi.mock('./personal-wait-steps', () => ({ harnessWakeToken: (id: string) => `harness:wake:${id}`,
   notifyHarnessAncestors: mocks.notify, readHarnessChild: mocks.child }))
 vi.mock('@/server/harness/native-tools', () => ({ createNativeHarnessTools: mocks.tools }))

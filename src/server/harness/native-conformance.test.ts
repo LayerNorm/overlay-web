@@ -614,6 +614,7 @@ it('Native dispatch always starts a Harness run', async () => {
       prompt: 'work', memoryEnabled: false, turnId: 'human-turn', workspaceId: 'workspace',
     }, {
       resolveInvocations: async () => [invocation],
+      requireExecution: async () => undefined as never,
       getCollaboration: () => ({
         enqueueMemoryExtraction: async () => undefined,
         startAgentTurn: async (input: Record<string, unknown>) => ({ resumed: false, runId: 'run', messageId: 'reply', ...input }),

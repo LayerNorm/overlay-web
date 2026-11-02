@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { buildActAgentInstructions, type ActInstructionConstants } from './instructions'
 
 const constants: ActInstructionConstants = {
@@ -24,13 +23,10 @@ function buildInstructions(overrides: Partial<Parameters<typeof buildActAgentIns
     autoRetrieval: '\nAUTO_RETRIEVAL',
     constants,
     docContextText: 'DOC_CONTEXT',
-    effectiveModelId: 'claude-sonnet-4-6',
     exposedMediaTools: [],
-    hasPreloadedDocContext: false,
     indexedNote: '\nINDEXED_NOTE',
     memoryContext: '\nMEMORY_CONTEXT',
     mentionsContext: '\nMENTIONS_CONTEXT',
-    paid: true,
     skillsContext: '\nSKILLS_CONTEXT',
     userSystemPromptExtension: 'USER_SYSTEM',
     ...overrides,
@@ -56,7 +52,7 @@ test('buildActAgentInstructions preserves paid tool and context note composition
   assert.match(instructions, /MATH_RULES\n\nTABLE_RULES$/)
 })
 
-test('buildActAgentInstructions preserves execution and selected-model guidance', () => {
+test('buildActAgentInstructions preserves execution and document-context guidance', () => {
   const automationExecution = buildInstructions({
     automationExecution: true,
   })
@@ -65,14 +61,10 @@ test('buildActAgentInstructions preserves execution and selected-model guidance'
 
   const withDocContext = buildInstructions({
     availableToolIds: ['save_memory', 'search_knowledge'],
-    effectiveModelId: DEFAULT_MODEL_ID,
-    hasPreloadedDocContext: true,
-    paid: true,
   })
   assert.match(withDocContext, /NO_WEB_KNOWLEDGE/)
-  assert.match(withDocContext, /attached documents whose full content is provided above/)
-  assert.match(withDocContext, /inside ` thinking\.\.\.` tags/)
-  assert.match(withDocContext, /close with ` ` BEFORE/)
+  assert.match(withDocContext, /DOC_CONTEXT/)
+  assert.doesNotMatch(withDocContext, /Free-runtime access/)
 })
 
 test('buildActAgentInstructions does not advertise tools when none are registered', () => {

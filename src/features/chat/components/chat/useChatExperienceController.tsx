@@ -73,8 +73,8 @@ import { useChatTurnActions } from './useChatTurnActions'
 import { useWorkApproval } from './useWorkApproval'
 import { useComposerActions } from './useComposerActions'
 import { buildChatDerivedView } from './chatDerivedView'
+import { isWorkspaceBillingError } from './usage-exhausted-error'
 import {
-  isWorkspaceBillingError,
   showUsageExhaustedToast,
 } from './usage-exhausted-toast'
 

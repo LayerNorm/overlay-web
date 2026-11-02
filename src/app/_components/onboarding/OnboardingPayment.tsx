@@ -8,6 +8,58 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { currentLegalAcceptancePayload, LEGAL_DOCUMENTS } from '@/shared/legal/legal-documents'
 import { EXECUTION_ACCESS_MESSAGES } from '@/shared/billing/execution-access'
 
+function BillingOffer({ canManage, locked, accepted, setAccepted }: {
+  canManage: boolean
+  locked: boolean
+  accepted: boolean
+  setAccepted(value: boolean): void
+}) {
+  return <>
+    <div><p><strong className="text-2xl font-semibold">$8</strong><span className="text-sm text-muted-foreground"> / month</span></p>
+      <p className="mt-2 text-sm">$8 in usage credit for models, computers and tools.</p>
+      <p className="mt-1 text-xs text-muted-foreground">Renews monthly. Unused credit expires at renewal. Cancel in billing settings.</p>
+    </div>
+    {canManage ? <label className="flex items-start gap-2 text-xs text-muted-foreground">
+      <Checkbox checked={accepted} disabled={locked} onCheckedChange={(value) => setAccepted(value === true)} aria-label="Accept terms and privacy policy" />
+      <span>I agree to the <a className="underline" href={LEGAL_DOCUMENTS.terms.href} target="_blank" rel="noreferrer">Terms of Service</a> and <a className="underline" href={LEGAL_DOCUMENTS.privacy.href} target="_blank" rel="noreferrer">Privacy Policy</a>.</span>
+    </label> : null}
+  </>
+}
+
+function BillingStatus({ ready, pending, needsRecovery, access }: {
+  ready: boolean
+  pending: boolean
+  needsRecovery: boolean
+  access: WorkspaceBillingSummaryResponse['executionAccess'] | undefined
+}) {
+  if (ready) return <p role="status" className="text-sm">Your workspace is ready. Start when you are.</p>
+  if (pending) return <p role="status" className="text-sm">Confirming your payment. Your task won’t start automatically.</p>
+  return needsRecovery && access ? <p role="status" className="text-sm">{EXECUTION_ACCESS_MESSAGES[access.state]}</p> : null
+}
+
+function BillingActions({ workspaceId, ready, pending, needsRecovery, canManage, locked, accepted, onStart, onSubscribe, onRefresh, onEdit }: {
+  workspaceId: string
+  ready: boolean
+  pending: boolean
+  needsRecovery: boolean
+  canManage: boolean
+  locked: boolean
+  accepted: boolean
+  onStart(): void
+  onSubscribe(): void
+  onRefresh(): void
+  onEdit(): void
+}) {
+  return <div className="flex flex-wrap items-center gap-2">
+    {ready ? <Button variant="primary" size="sm" disabled={locked} onClick={onStart}><Play size={13} />Start task</Button>
+      : pending ? <Button variant="primary" size="sm" disabled={locked} onClick={onRefresh}>Check payment</Button>
+        : needsRecovery ? canManage ? <Button variant="primary" size="sm" disabled={locked} onClick={() => window.location.assign(`/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing`)}>Open billing</Button> : null
+          : <Button variant="primary" size="sm" disabled={locked || !accepted || !canManage} onClick={onSubscribe}>Subscribe<ArrowRight size={14} /></Button>}
+    <Button variant="ghost" size="sm" disabled={locked} onClick={onEdit}>Edit task</Button>
+    {!canManage || needsRecovery ? <Button variant="ghost" size="sm" disabled={locked} onClick={onRefresh}>Check billing</Button> : null}
+  </div>
+}
+
 export function OnboardingPayment({ workspaceId, title, disabled, onPrepare, onStart, onEdit }: {
   workspaceId: string
   title: string
@@ -89,29 +141,14 @@ export function OnboardingPayment({ workspaceId, title, disabled, onPrepare, onS
       <p className="mt-1 text-sm font-medium break-words">{title}</p>
       <p className="mt-1.5 text-xs text-muted-foreground">Saved as a draft. Nothing starts until you choose Start task.</p>
     </div>
-    {!ready && !pending && !needsRecovery ? <>
-      <div><p><strong className="text-2xl font-semibold">$8</strong><span className="text-sm text-muted-foreground"> / month</span></p>
-        <p className="mt-2 text-sm">$8 in usage credit for models, computers and tools.</p>
-        <p className="mt-1 text-xs text-muted-foreground">Renews monthly. Unused credit expires at renewal. Cancel in billing settings.</p>
-      </div>
-      {summary?.canManage ? <label className="flex items-start gap-2 text-xs text-muted-foreground">
-        <Checkbox checked={accepted} disabled={locked} onCheckedChange={(value) => setAccepted(value === true)} aria-label="Accept terms and privacy policy" />
-        <span>I agree to the <a className="underline" href={LEGAL_DOCUMENTS.terms.href} target="_blank" rel="noreferrer">Terms of Service</a> and <a className="underline" href={LEGAL_DOCUMENTS.privacy.href} target="_blank" rel="noreferrer">Privacy Policy</a>.</span>
-      </label> : null}
-    </> : null}
+    {!ready && !pending && !needsRecovery ? <BillingOffer canManage={summary?.canManage === true} locked={locked} accepted={accepted} setAccepted={setAccepted} /> : null}
     {checkoutReturn === 'canceled' ? <p role="status" className="text-xs text-muted-foreground">Checkout wasn’t completed. Your draft is saved.</p> : null}
-    {ready ? <p role="status" className="text-sm">Your workspace is ready. Start when you are.</p>
-      : pending ? <p role="status" className="text-sm">Confirming your payment. Your task won’t start automatically.</p>
-        : needsRecovery && access ? <p role="status" className="text-sm">{EXECUTION_ACCESS_MESSAGES[access.state]}</p> : null}
+    <BillingStatus ready={ready} pending={pending} needsRecovery={needsRecovery} access={access} />
     {summary && !summary.canManage && !ready ? <p className="text-sm">Ask a workspace owner or admin to activate billing. Your draft is saved.</p> : null}
-    <div className="flex flex-wrap items-center gap-2">
-      {ready ? <Button variant="primary" size="sm" disabled={locked} onClick={() => void run(onStart)}><Play size={13} />Start task</Button>
-        : pending ? <Button variant="primary" size="sm" disabled={locked} onClick={() => void run(async () => { await refresh() })}>Check payment</Button>
-          : needsRecovery ? summary?.canManage ? <Button variant="primary" size="sm" disabled={locked} onClick={() => window.location.assign(`/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing`)}>Open billing</Button> : null
-            : <Button variant="primary" size="sm" disabled={locked || !accepted || !summary?.canManage} onClick={() => void subscribe()}>Subscribe<ArrowRight size={14} /></Button>}
-      <Button variant="ghost" size="sm" disabled={locked} onClick={onEdit}>Edit task</Button>
-      {!summary || needsRecovery ? <Button variant="ghost" size="sm" disabled={locked} onClick={() => void run(async () => { await refresh() })}>Check billing</Button> : null}
-    </div>
+    <BillingActions workspaceId={workspaceId} ready={ready} pending={pending} needsRecovery={needsRecovery}
+      canManage={summary?.canManage === true} locked={locked} accepted={accepted}
+      onStart={() => void run(onStart)} onSubscribe={() => void subscribe()}
+      onRefresh={() => void run(async () => { await refresh() })} onEdit={onEdit} />
     <p className="text-xs text-muted-foreground">{ready ? 'Usage is charged to your workspace budget.' : 'No trial. Payment won’t start your task automatically.'}</p>
     {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
   </div>
