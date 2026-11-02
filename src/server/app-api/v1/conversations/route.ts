@@ -414,6 +414,7 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     ...(message.updatedAt ? { updatedAt: message.updatedAt } : {}),
     ...(message.eventSequence !== undefined ? { eventSequence: message.eventSequence } : {}),
     role: message.role,
+    ...(message.role === 'user' || message.authorKind === 'human' ? { content: message.content } : {}),
     parts: visibleParts,
     model: message.modelId,
     ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId } : {}),

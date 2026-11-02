@@ -6,6 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Clear the room and native-agent composer after an acknowledged send, including submitted attachments, without erasing newer drafts or drafts in a reopened conversation.
 - Preserve bounded, credential-redacted Harness error messages and causes across serialized and cross-realm exceptions, without changing retry or termination behavior.
+- Retain document filename chips when reloading native-agent and room conversation history.
 
 - Place Organization directly below Timeline in both Work scopes and use one editable header avatar in Organization agent details.
 
