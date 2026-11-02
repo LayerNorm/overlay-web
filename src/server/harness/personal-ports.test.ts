@@ -26,6 +26,10 @@ vi.mock('@/server/ai/gateway/gateway-catalog', () => ({ getGatewayCatalogModel: 
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: mocks.model }))
 vi.mock('./personal-model-dispatch', () => ({ authorizePersonalHarnessModelDispatch: mocks.authorize }))
 vi.mock('./settle-model-step', () => ({ settleHarnessModelUsage: mocks.settle }))
+vi.mock('./harness-transcript', async importOriginal => ({
+  ...(await importOriginal<typeof import('./harness-transcript')>()),
+  writeSettledHarnessTranscriptStep: vi.fn(async () => undefined),
+}))
 vi.mock('./request-usage-step', () => ({ admitHarnessRequestUsage: mocks.admit }))
 vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, applyHarnessOperation: mocks.apply,
   claimHarnessState: mocks.claim,
