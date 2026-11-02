@@ -38,6 +38,12 @@ export class AdministrativeService {
     return role === 'admin' || role === 'support'
   }
 
+  /** Aggregate growth numbers: everyone except support, who has no business need for them. */
+  async canViewGrowth(userId: string): Promise<boolean> {
+    const role = await this.activeRole(userId)
+    return role === 'admin' || role === 'auditor' || role === 'billing_admin'
+  }
+
   async assertCanManageAdministrators(userId: string): Promise<void> {
     if (!await this.canManageAdministrators(userId)) throw new AdministrativeAuthorizationError()
   }

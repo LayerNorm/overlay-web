@@ -5,7 +5,8 @@ import { internalMutation, type MutationCtx } from '../_generated/server'
 import { growthCountFields } from '../lib/growthSchema'
 
 /**
- * Nightly growth rollups (see internal/plans/GROWTH_ANALYTICS_PLAN.md).
+ * Nightly growth rollups, read by the admin Growth section (see
+ * internal/develop/admin-console.md).
  *
  * One UTC day is counted as a chain of small mutations: each reads one page of
  * one source table, adds to the running counts in `growthJobState`, and

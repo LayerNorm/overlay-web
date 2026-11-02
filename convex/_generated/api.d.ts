@@ -81,7 +81,6 @@ import type * as lib_browserConvexToken from "../lib/browserConvexToken.js";
 import type * as lib_gatewayCatalogPricing from "../lib/gatewayCatalogPricing.js";
 import type * as lib_gatewayCredits from "../lib/gatewayCredits.js";
 import type * as lib_logging from "../lib/logging.js";
-import type * as lib_metrics from "../lib/metrics.js";
 import type * as lib_preview from "../lib/preview.js";
 import type * as lib_resourceScope from "../lib/resourceScope.js";
 import type * as lib_scopeMutations from "../lib/scopeMutations.js";
@@ -200,7 +199,6 @@ declare const fullApi: ApiFromModules<{
   "lib/gatewayCatalogPricing": typeof lib_gatewayCatalogPricing;
   "lib/gatewayCredits": typeof lib_gatewayCredits;
   "lib/logging": typeof lib_logging;
-  "lib/metrics": typeof lib_metrics;
   "lib/preview": typeof lib_preview;
   "lib/resourceScope": typeof lib_resourceScope;
   "lib/scopeMutations": typeof lib_scopeMutations;

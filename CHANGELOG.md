@@ -9,6 +9,12 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Allow the selected agent's thread list to stay collapsed until a different agent is selected, rather than reopening it on every render.
 - Include the scoped Organization link in the mobile Work drawer and close the drawer when navigating to it.
 
+- Redesign the operator console to match the app: bordered panels, grouped sidebar (Growth; People and Audit log; Roles, Groups and Catalog), light and dark themes. Growth gains a weekly-active chart, shaded retention and a 4/12/26-week range. People shows each person's name, email, user ID, sign-up date, last active day and plan, with search by name, email or ID. Fixes package styles missing from the admin build.
+
+- Stop sending usage events to PostHog now that growth is counted from Convex. Removed: the `overlay.metrics.*` client and server metrics (BFF requests, model tokens, cache, chat-open latency, duplicate requests, run recovery, session refresh), `retention.engaged`, `auth.session.signed_in`, chat, Work, integration, auth-callback and sign-out events, and the billing, automation and workspace lifecycle mappings. PostHog keeps pageviews, identify/reset, feature flags and one signup event, renamed from `activation.completed` to `user.signed_up`. The unused Convex `withMetrics` wrapper is gone; its table stays until the cleanup cron empties it.
+
+- Add a Growth section to the admin console for admin, auditor and billing operators: weekly active users, new users, messages and paid subscriptions against the prior week; weekly trends for what was created, work done and usage; W1/W4 retention by signup week; and the top workspaces by spend. It reads only the nightly growth rollups.
+
 - Keep agent-created notes, text files and Computer artifacts out of human activity counts while retaining file totals.
 
 - Add nightly growth rollups in Convex: daily counts of what was created and done, active users, W1/W4 retention cohorts, paid subscriptions, top-ups and billed usage, with a one-time backfill. Each file text change is now recorded per day with every person who made it.

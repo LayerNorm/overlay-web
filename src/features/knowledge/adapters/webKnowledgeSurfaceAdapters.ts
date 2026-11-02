@@ -1,7 +1,6 @@
 'use client'
 
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import posthog from 'posthog-js'
 import { newItemScope, parsePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import { buildWorkspaceHandleHref, buildWorkspaceHref, readWorkspacePathScope, readWorkspaceRouteTarget } from '@/shared/workspaces/routing'
 import {
@@ -366,7 +365,7 @@ export function createWebKnowledgeSurfaceAdapters(options: {
   }
   const analytics: KnowledgeAnalyticsAdapter = {
     track(event, properties) {
-      ;(options.capture ?? posthog.capture.bind(posthog))(event, properties ?? {})
+      options.capture?.(event, properties ?? {})
     },
   }
   return {
