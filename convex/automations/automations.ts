@@ -253,6 +253,7 @@ export const create = mutation({
     sourceConversationId: v.optional(v.id('conversations')),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
     scope: scopeArg,
+    byAgent: v.optional(v.boolean()),
   },
   returns: v.id('automations'),
   handler: async (ctx, args) => {
@@ -295,6 +296,7 @@ export const create = mutation({
       sourceConversationId: args.sourceConversationId,
       agentId: sourceAgentId,
       concurrencyPolicy: args.concurrencyPolicy ?? 'skip',
+      createdByAgent: args.byAgent || undefined,
       createdAt: now,
       updatedAt: now,
     })

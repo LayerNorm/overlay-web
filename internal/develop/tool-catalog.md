@@ -104,3 +104,7 @@ All Work mutations, including scope/archive/restore, require server authenticati
 Task tools never delete tasks or start an agent run. Agent turns supply activity attribution only through
 service-authenticated calls, including archive/restore scope requests; other callers cannot choose their event actor. Existing full-toolbox grants
 receive the later-added Tasks group through `LATER_GROUP_MEMBERS`.
+
+Agent note/file creation and edits mark `byAgent` through the existing API path;
+Computer binary publication and agent-drive uploads set `createdByAgent` in
+Convex. Growth rollups count their output without human activity credit.

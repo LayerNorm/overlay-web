@@ -80,6 +80,7 @@ type CreateAutomationBody = {
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
   scope?: 'personal' | 'workspace'
+  byAgent?: boolean
 }
 
 type UpdateAutomationBody = {
@@ -326,6 +327,7 @@ export class AutomationService {
       concurrencyPolicy: body.concurrencyPolicy,
       workspaceId: args.workspaceId,
       ...(body.scope === 'workspace' || body.scope === 'personal' ? { scope: body.scope } : {}),
+      ...(body.byAgent === true ? { byAgent: true } : {}),
     })
     if (!id) throw new Error('Automation create returned no id')
     return { success: true, id }

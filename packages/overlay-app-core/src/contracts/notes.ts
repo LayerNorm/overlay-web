@@ -22,6 +22,8 @@ export interface NoteQueryContract extends PaginationQueryContract {
 }
 
 export interface CreateNoteRequest {
+  /** Created by automation rather than direct human activity. */
+  byAgent?: boolean
   title?: string
   content?: string
   tags?: string[]
@@ -46,6 +48,8 @@ export interface UpdateNoteRequest {
   content?: string
   tags?: string[]
   expectedUpdatedAt?: number
+  /** An agent made the change, so it earns no person activity credit. */
+  byAgent?: boolean
   accessToken?: string
   userId?: string
   workspaceId?: string

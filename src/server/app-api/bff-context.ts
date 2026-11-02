@@ -20,6 +20,11 @@ export type AppApiRouteContext = {
 
 export type AccountAppApiRouteContext = Omit<AppApiRouteContext, 'workspace'>
 
+/** API keys and internal services act for a person without being them, so their edits earn no activity credit. */
+export function isAutomatedCaller(auth: Pick<AuthenticatedAppUser, 'authType'>): boolean {
+  return auth.authType === 'api-key' || auth.authType === 'service'
+}
+
 /**
  * Returns the user id that owns the resource being mutated. Until workspace
  * sharing is fully wired, this is the authenticated user's own id.

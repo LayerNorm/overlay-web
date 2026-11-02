@@ -9,6 +9,7 @@ import { canCreateInScope } from '../../src/shared/workspaces/resource-scope'
 import { keyForFile } from '../../src/shared/storage/storage-keys'
 import { ensureStorageAvailable, applyStorageUsageDelta, StorageQuotaExceededError } from '../files/lib/storageQuota'
 import { retireDriveContent, queueDriveUploadObjects } from '../lib/agentDriveRetiredObjects'
+import { recordFileEdit } from '../lib/growthFileEdits'
 
 const MAX_FILE_BYTES = 16 * 1024 * 1024
 const MAX_RUN_BYTES = 256 * 1024 * 1024
@@ -183,8 +184,10 @@ export const commitByServer = mutation({
       await promoteDriveDuplicate(ctx, existing, now)
       await retireDriveContent(ctx, existing, now)
       await ctx.db.patch(existing._id, fields)
+      // An agent overwrite: counted as an edit, credited to no person. Identical bytes change nothing.
+      if (existing.contentHash !== upload.sha256) await recordFileEdit(ctx, existing._id, undefined, now)
       fileId = existing._id
-    } else fileId = await ctx.db.insert('files', { ...fields, userId: upload.ownerUserId,
+    } else fileId = await ctx.db.insert('files', { ...fields, userId: upload.ownerUserId, createdByAgent: true,
       workspaceId: authority.scope.workspaceId, scope: authority.scope.kind, type: 'file', kind: 'upload',
       parentId: upload.parentId, extension: name.includes('.') ? name.slice(name.lastIndexOf('.') + 1).toLowerCase() : undefined,
       createdAt: now })

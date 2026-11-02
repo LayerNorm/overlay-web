@@ -73,6 +73,8 @@ test('create_note links new notes to its conversation only when available', asyn
     const created = await executeCreateNote({ ...options, conversationId: 'conv_1' }, { title: 'Plan', content: '# Plan' })
     const personal = await executeCreateNote(options, { title: 'Personal', content: '# Personal' })
 
+    assert.equal(bodies[0]?.byAgent, true)
+    assert.equal(bodies[1]?.byAgent, true)
     assert.equal(bodies[0]?.conversationId, 'conv_1')
     assert.equal('conversationId' in (bodies[1] ?? {}), false)
     assert.deepEqual(created.saved, { title: 'Plan', tags: [] })

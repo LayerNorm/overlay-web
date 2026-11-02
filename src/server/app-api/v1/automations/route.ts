@@ -1,6 +1,6 @@
 import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
-import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { isAutomatedCaller, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { automationErrorResponse, automationService } from '@/server/automations/http'
 import { scopeForbiddenResponse } from '@/server/app-api/scope-errors'
 import { parseResourceView } from '@/shared/workspaces/resource-scope'
@@ -43,7 +43,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const result = await automationService.createAutomation({
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
-      body,
+      body: isAutomatedCaller(auth) ? { ...body, byAgent: true } : body,
     })
     return NextResponse.json(result)
   } catch (error) {
