@@ -276,6 +276,7 @@ export default function AppSidebar({
           panelAction={s.panelAction}
           panelSearch={s.panelSearch}
           panelChildren={panelChildren}
+          sectionLinks={sectionRows?.filter((row) => row.href)}
           brandLink={brandLink}
           navItems={s.mobileNavItems}
           onSelectItem={s.onSelectMobileNavItem}

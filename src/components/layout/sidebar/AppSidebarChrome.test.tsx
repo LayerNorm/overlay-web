@@ -3,7 +3,37 @@ import test from 'node:test'
 import React from 'react'
 import { Circle } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { getDesktopSidebarViewportSnapshot, MobileNavStep, SidebarBrandLink, SidebarRailBrand, subscribeToDesktopSidebarViewport } from './AppSidebarChrome'
+import { ShellAdapterProvider, type ShellLinkProps } from '@overlay/shell-react'
+import { getDesktopSidebarViewportSnapshot, MobileNavStep, MobilePanelStep, SidebarBrandLink, SidebarRailBrand, subscribeToDesktopSidebarViewport } from './AppSidebarChrome'
+
+test('mobile Work panel renders the scoped Organization link and closes the drawer on navigation', () => {
+  for (const scope of ['personal', 'workspace']) {
+    let closed = false
+    let navigate: ShellLinkProps['onClick']
+    const href = `/w/team/${scope}/work/organization`
+    const html = renderToStaticMarkup(
+      <ShellAdapterProvider value={{
+        rememberScope() {},
+        Link(props) {
+          navigate = props.onClick
+          return <a {...props} />
+        },
+      }}>
+        <MobilePanelStep
+          panelTitle="Work" onBack={() => {}} onClose={() => {}}
+          nav={{ items: [], activeId: scope, activeChildId: `${scope}:organization`, onSelect() {} }}
+          sectionLinks={[{ id: 'organization', label: 'Organization', href, onNavigate: () => { closed = true } }]}
+        />
+      </ShellAdapterProvider>,
+    )
+    assert.ok(html.includes(`href="${href}"`))
+    assert.match(html, /aria-current="page"/)
+    assert.match(html, />Organization</)
+    assert.ok(navigate)
+    navigate({} as React.MouseEvent<HTMLAnchorElement>)
+    assert.equal(closed, true)
+  }
+})
 
 test('mobile drawer viewport subscription tracks the desktop breakpoint and cleans up', () => {
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')

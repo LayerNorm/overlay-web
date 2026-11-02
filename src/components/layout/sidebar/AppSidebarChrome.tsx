@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { Suspense, useEffect, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
+import { PageSections, type InlineNavItem } from '@overlay/shell-react'
 import {
   ChevronLeft,
   ChevronRight,
@@ -642,6 +643,7 @@ export function MobilePanelStep({
   nav,
   action,
   search,
+  sectionLinks,
   children,
 }: {
   panelTitle: string
@@ -650,6 +652,7 @@ export function MobilePanelStep({
   nav?: SecondaryPanelNav
   action?: SidebarResourceAction | null
   search?: SidebarResourceSearch | null
+  sectionLinks?: ReadonlyArray<InlineNavItem>
   children?: ReactNode
 }) {
   return (
@@ -680,6 +683,7 @@ export function MobilePanelStep({
       </div>
       <SecondaryPanelContent nav={nav} action={action} search={search}>
         {children}
+        {sectionLinks?.length ? <PageSections nav={nav} rows={sectionLinks} title="" /> : null}
       </SecondaryPanelContent>
     </>
   )
@@ -697,6 +701,7 @@ export function MobileSidebar({
   panelAction,
   panelSearch,
   panelChildren,
+  sectionLinks,
   brandLink,
   navItems,
   onSelectItem,
@@ -721,6 +726,7 @@ export function MobileSidebar({
   panelAction?: SidebarResourceAction | null
   panelSearch?: SidebarResourceSearch | null
   panelChildren?: ReactNode
+  sectionLinks?: ReadonlyArray<InlineNavItem>
   brandLink: ReactNode
   navItems: MobileNavItemVm[]
   onSelectItem: (item: SidebarNavItem) => void
@@ -745,6 +751,7 @@ export function MobileSidebar({
           nav={panelNav}
           action={panelAction}
           search={panelSearch}
+          sectionLinks={sectionLinks}
         >
           {panelChildren}
         </MobilePanelStep>
