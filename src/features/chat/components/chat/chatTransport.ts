@@ -1,6 +1,5 @@
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
-import { trackChatOpenLatency } from '@/shared/observability/client-metrics'
 import { isNativeThreadSafetyError } from '@/shared/chat/native-thread-safety'
 import { toast } from '@overlay/ui/primitives'
 import { stripAssistantAfterUserTurn } from '@overlay/chat-core'
@@ -55,7 +54,6 @@ export async function loadConversationSnapshot({
   loadGeneratedOutputs: boolean
   shouldLoadMeta: boolean
 }): Promise<ConversationLoadSnapshot> {
-  const startTime = performance.now()
   const [messagesRes, outputsRes, metaRes] = await Promise.all([
     overlayAppClient.conversations.getResponse({
       conversationId: chatId,
@@ -70,21 +68,9 @@ export async function loadConversationSnapshot({
   ])
 
   if (metaRes?.status === 404 || messagesRes.status === 404) {
-    trackChatOpenLatency({
-      conversationId: chatId,
-      openLatencyMs: Math.round(performance.now() - startTime),
-      transcriptBytes: 0,
-      messageCount: 0,
-    })
     return { status: 'missing' }
   }
   if (!messagesRes.ok) {
-    trackChatOpenLatency({
-      conversationId: chatId,
-      openLatencyMs: Math.round(performance.now() - startTime),
-      transcriptBytes: 0,
-      messageCount: 0,
-    })
     return { status: 'error' }
   }
 
@@ -128,14 +114,6 @@ export async function loadConversationSnapshot({
   const meta = metaRes?.ok
     ? await metaRes.json() as ConversationMetaSnapshot
     : null
-
-  const transcriptBytes = JSON.stringify(rawMessages).length
-  trackChatOpenLatency({
-    conversationId: chatId,
-    openLatencyMs: Math.round(performance.now() - startTime),
-    transcriptBytes,
-    messageCount: rawMessages.length,
-  })
 
   return {
     status: 'ok',

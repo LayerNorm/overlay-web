@@ -5,60 +5,16 @@ import { getOverlayRuntimeConfigSync } from '@/server/config'
 import { getObservabilityContext } from './context'
 import type { LifecycleEvent, LifecycleEventSink } from '@/server/lifecycle-events'
 
-export type ProductEvent =
-  | {
-    name: 'activation.completed'
-    properties: { authProvider: 'better-auth' | 'none' | 'oidc' | 'workos' }
-    userId: string
-  }
-  | {
-    name: 'auth.session.signed_in'
-    properties: Record<never, never>
-    userId: string
-  }
-  | {
-    name: 'automation.run.failed'
-    properties: {
-      execution: 'manual' | 'scheduled'
-      failureClass: 'authorization' | 'provider' | 'transient' | 'unknown' | 'validation'
-    }
-    userId: string
-  }
-  | {
-    name: 'automation.run.succeeded'
-    properties: { execution: 'manual' | 'scheduled' }
-    userId: string
-  }
-  | {
-    name: 'billing.subscription.changed'
-    properties: {
-      changeSource: 'checkout_verification' | 'provider_webhook'
-      planKind: 'free' | 'paid'
-      provider: 'stripe'
-      status: 'active' | 'canceled' | 'past_due' | 'trialing' | 'unknown'
-    }
-    userId: string
-  }
-  | {
-    name: 'billing.topup.succeeded'
-    properties: { provider: 'stripe'; source: 'auto' | 'manual' }
-    userId: string
-  }
-  | {
-    name: 'workspace.invitation_sent'
-    properties: Record<string, unknown>
-    userId: string
-  }
-  | {
-    name: 'workspace.mention'
-    properties: Record<string, unknown>
-    userId: string
-  }
-  | {
-    name: 'workspace.dm_received'
-    properties: Record<string, unknown>
-    userId: string
-  }
+/**
+ * The only product event sent from the server. Growth numbers (activity,
+ * retention, billing, automations) are counted from Convex by the nightly
+ * growth job, so PostHog keeps just the signup that attributes a visit.
+ */
+export type ProductEvent = {
+  name: 'user.signed_up'
+  properties: { authProvider: 'better-auth' | 'none' | 'oidc' | 'workos' }
+  userId: string
+}
 
 let posthogClient: PostHog | null = null
 
@@ -129,60 +85,10 @@ function posthogEnabled(): boolean {
 }
 
 export function productEventForLifecycle(event: LifecycleEvent): ProductEvent | null {
-  switch (event.name) {
-    case 'user.created':
-      return {
-        name: 'activation.completed',
-        properties: event.attributes,
-        userId: event.userId,
-      }
-    case 'subscription.changed':
-      return {
-        name: 'billing.subscription.changed',
-        properties: event.attributes,
-        userId: event.userId,
-      }
-    case 'topup.succeeded':
-      return {
-        name: 'billing.topup.succeeded',
-        properties: event.attributes,
-        userId: event.userId,
-      }
-    case 'automation.succeeded':
-      return {
-        name: 'automation.run.succeeded',
-        properties: { execution: event.attributes.execution },
-        userId: event.userId,
-      }
-    case 'automation.failed':
-      return {
-        name: 'automation.run.failed',
-        properties: {
-          execution: event.attributes.execution,
-          failureClass: event.attributes.failureClass ?? 'unknown',
-        },
-        userId: event.userId,
-      }
-    case 'api_key.changed':
-    case 'billing.auto_topup_limit_reached':
-      return null
-    case 'workspace.invitation_sent':
-      return {
-        name: 'workspace.invitation_sent',
-        properties: event.attributes,
-        userId: event.userId,
-      }
-    case 'workspace.mention':
-      return {
-        name: 'workspace.mention',
-        properties: event.attributes,
-        userId: event.userId,
-      }
-    case 'workspace.dm_received':
-      return {
-        name: 'workspace.dm_received',
-        properties: event.attributes,
-        userId: event.userId,
-      }
+  if (event.name !== 'user.created') return null
+  return {
+    name: 'user.signed_up',
+    properties: event.attributes,
+    userId: event.userId,
   }
 }

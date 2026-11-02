@@ -4,7 +4,6 @@ import { useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import Link from "next/link";
-import posthog from "posthog-js";
 import { redactUrlForTelemetry } from "@/shared/security/safe-url";
 
 // Always use overlay:// for deep links (registered in WorkOS for both environments)
@@ -36,7 +35,6 @@ function AuthCallbackContent() {
       if (typeof window !== "undefined") {
         window.history.replaceState(null, "", redactUrlForTelemetry(window.location.href));
       }
-      posthog.capture('auth_callback_success');
       // Redirect to the Electron app via deep link (electron:// in dev, overlay:// in prod)
       const deepLink = `${APP_PROTOCOL}://auth/callback?code=${encodeURIComponent(code)}`;
       window.location.href = deepLink;
@@ -51,9 +49,6 @@ function AuthCallbackContent() {
       if (typeof window !== "undefined") {
         window.history.replaceState(null, "", redactUrlForTelemetry(window.location.href));
       }
-      posthog.capture('auth_callback_error', {
-        failure_class: error ? 'provider_error' : 'missing_code',
-      });
     }
   }, [code, error, errorDescription]);
 

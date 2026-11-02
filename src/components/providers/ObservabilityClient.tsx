@@ -6,7 +6,6 @@ import * as Sentry from '@sentry/nextjs'
 import posthog from 'posthog-js'
 import { useAuth } from '@/contexts/AuthContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { addMetricsListener } from '@/shared/observability/client-metrics'
 import { redactUrlForTelemetry, routeForTelemetry } from '@/shared/security/safe-url'
 
 function posthogConfigured(): boolean {
@@ -24,25 +23,12 @@ function clientObservabilityContext(route?: string): Record<string, string> {
   }
 }
 
-function shouldCaptureRetention(): boolean {
-  const today = new Date().toISOString().slice(0, 10)
-  const key = 'overlay:analytics:retention-date'
-  try {
-    if (window.localStorage.getItem(key) === today) return false
-    window.localStorage.setItem(key, today)
-    return true
-  } catch {
-    return true
-  }
-}
-
 export default function ObservabilityClient() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const { user } = useAuth()
   const { capabilities } = useOverlayCapabilities()
   const lastPageviewUrlRef = useRef<string | null>(null)
-  const retentionCapturedRef = useRef(false)
 
   useEffect(() => {
     if (!capabilities.analytics) return
@@ -69,7 +55,6 @@ export default function ObservabilityClient() {
 
   useEffect(() => {
     if (!user) {
-      retentionCapturedRef.current = false
       if (capabilities.errorReporting) {
         Sentry.setUser(null)
       }
@@ -97,27 +82,10 @@ export default function ObservabilityClient() {
 
     try {
       posthog.identify(user.id)
-      if (!retentionCapturedRef.current && shouldCaptureRetention()) {
-        retentionCapturedRef.current = true
-        posthog.capture('retention.engaged', { source: 'app' })
-      }
     } catch {
       // ignore
     }
   }, [capabilities.analytics, capabilities.errorReporting, pathname, user])
-
-  // Forward client-side metrics events (cache, latency, duplicates, polling)
-  // from the shared event bus to PostHog.
-  useEffect(() => {
-    if (!capabilities.analytics || !posthogConfigured()) return
-    return addMetricsListener(({ event, properties }) => {
-      try {
-        posthog.capture(event, properties)
-      } catch {
-        // ignore
-      }
-    })
-  }, [capabilities.analytics])
 
   return null
 }

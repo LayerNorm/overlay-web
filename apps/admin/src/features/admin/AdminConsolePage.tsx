@@ -1,260 +1,56 @@
 'use client'
 
-import { useCallback, useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useState } from 'react'
 import {
-  LayoutDashboard,
   ListTree,
   LogOut,
-  RefreshCw,
-  Search,
+  Moon,
+  ScrollText,
   ShieldCheck,
+  Sun,
+  TrendingUp,
   UsersRound,
+  UserRound,
   type LucideIcon,
 } from 'lucide-react'
-import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
+import { BrandLockup, OverlayMark } from '@overlay/ui'
+import { Button, IconButton } from '@overlay/ui/primitives'
+
 import { AuthorizationAdminPanel } from '@/features/admin/authorization/AuthorizationAdminPanel'
 import { CatalogPolicyAdminPanel } from '@/features/admin/catalog/CatalogPolicyAdminPanel'
-import { PanelHeader } from './PanelHeader'
+import { GrowthPanel } from '@/features/admin/growth/GrowthPanel'
+import { adminApi } from '@/shared/admin-api'
+import type { AdminUsageRow, AdministrativeRole } from '@/shared/admin-types'
+import { ADMIN_THEME_COOKIE, type AdminTheme } from './admin-theme'
+import { AdminScreen } from './AdminScreen'
+import { AuditPanel } from './audit/AuditPanel'
+import { PeoplePanel } from './people/PeoplePanel'
+import { initials } from './people/people-view'
 
-type UsageRow = {
-  userId: string
-  email?: string
+type AdminSection = 'growth' | 'people' | 'audit' | 'roles' | 'groups' | 'catalog'
+
+type NavItem = { value: AdminSection; label: string; Icon: LucideIcon }
+
+export type AdminOperator = {
+  name: string
+  email: string
+  role: AdministrativeRole
 }
 
-type AuditRow = {
-  id: string
-  action: string
-  actorUserId?: string
-  resourceType: string
-  resourceId?: string
-  outcome: string
-  createdAt: number
+const ROLE_LABELS: Record<AdministrativeRole, string> = {
+  admin: 'Admin',
+  auditor: 'Auditor',
+  billing_admin: 'Billing admin',
+  support: 'Support',
 }
 
-type AdminSection = 'overview' | 'roles' | 'groups' | 'catalog'
-
-type AdminSectionOption = {
-  value: AdminSection
-  label: string
-  Icon: LucideIcon
-}
-
-type AdminPermissions = {
-  canViewUsage: boolean
-  canViewAudit: boolean
-  canViewRoles: boolean
-  canManageRoles: boolean
-  canViewGroups: boolean
-  canManageGroups: boolean
-  canViewCatalog: boolean
-  canManageCatalog: boolean
-}
-
-function useAdminSections({
-  canViewUsage,
-  canViewAudit,
-  canViewRoles,
-  canViewGroups,
-  canViewCatalog,
-}: AdminPermissions) {
-  const [section, setSection] = useState<AdminSection>('overview')
-  const sections: AdminSectionOption[] = [
-    ...(canViewUsage || canViewAudit ? [{ value: 'overview' as const, label: 'Overview', Icon: LayoutDashboard }] : []),
-    ...(canViewRoles ? [{ value: 'roles' as const, label: 'Roles', Icon: ShieldCheck }] : []),
-    ...(canViewGroups ? [{ value: 'groups' as const, label: 'Groups', Icon: UsersRound }] : []),
-    ...(canViewCatalog ? [{ value: 'catalog' as const, label: 'Catalog', Icon: ListTree }] : []),
-  ]
-  return { section, setSection, sections }
-}
-
-function useAdminData({ canViewUsage, canViewAudit }: AdminPermissions) {
-  const [usage, setUsage] = useState<UsageRow[]>([])
-  const [events, setEvents] = useState<AuditRow[]>([])
-  const [userFilter, setUserFilter] = useState('')
-  const [auditFilter, setAuditFilter] = useState('')
-  const [forbidden, setForbidden] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    const usageUrl = new URL('/api/v1/admin/usage', window.location.origin)
-    if (userFilter.trim()) usageUrl.searchParams.set('userId', userFilter.trim())
-    const auditUrl = new URL('/api/v1/admin/audit', window.location.origin)
-    if (auditFilter.trim()) auditUrl.searchParams.set('action', auditFilter.trim())
-    const [usageResponse, auditResponse] = await Promise.all([
-      canViewUsage ? fetch(usageUrl, { cache: 'no-store' }) : Promise.resolve(null),
-      canViewAudit ? fetch(auditUrl, { cache: 'no-store' }) : Promise.resolve(null),
-    ])
-    if (usageResponse?.status === 403 || auditResponse?.status === 403) {
-      setForbidden(true)
-      return
-    }
-    if (usageResponse && !usageResponse.ok) throw new Error('Failed to load people')
-    if (auditResponse && !auditResponse.ok) throw new Error('Failed to load audit data')
-    setForbidden(false)
-    setUsage(
-      usageResponse
-        ? ((await usageResponse.json()) as { usage: UsageRow[] }).usage
-        : [],
-    )
-    setEvents(
-      auditResponse
-        ? ((await auditResponse.json()) as { events: AuditRow[] }).events
-        : [],
-    )
-  }, [auditFilter, canViewAudit, canViewUsage, userFilter])
-
-  return {
-    usage,
-    events,
-    userFilter,
-    setUserFilter,
-    auditFilter,
-    setAuditFilter,
-    forbidden,
-    error,
-    setError,
-    load,
-  }
-}
-
-function AdminSidebarNav({
-  sections,
-  section,
-  onSelectSection,
-}: {
-  sections: AdminSectionOption[]
-  section: AdminSection
-  onSelectSection: (section: AdminSection) => void
-}) {
-  return (
-    <>
-      <PanelHeader title="Admin" />
-      <nav aria-label="Administration sections" className="space-y-0.5 px-2 py-3">
-        {sections.map(({ value, label, Icon }) => (
-          <button
-            key={value}
-            type="button"
-            aria-label={label}
-            aria-current={section === value ? 'page' : undefined}
-            onClick={() => onSelectSection(value)}
-            className={`flex h-9 w-full items-center gap-2.5 rounded-md px-3 text-left text-sm transition-colors max-sm:justify-center max-sm:px-0 ${
-              section === value
-                ? 'bg-(--surface-subtle) text-(--foreground)'
-                : 'text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)'
-            }`}
-          >
-            <Icon size={15} strokeWidth={1.75} className="shrink-0" />
-            <span className="truncate max-sm:hidden">{label}</span>
-          </button>
-        ))}
-      </nav>
-    </>
-  )
-}
-
-function AdminUsageSection({
-  usage,
-  userFilter,
-  onUserFilterChange,
-  onApplyFilter,
-}: {
-  usage: UsageRow[]
-  userFilter: string
-  onUserFilterChange: (value: string) => void
-  onApplyFilter: () => void
-}) {
-  return (
-    <section data-testid="admin-usage">
-      <div className="flex items-center gap-2"><UsersRound size={17} /><h2 className="text-sm font-semibold">People</h2></div>
-      <div className="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="relative">
-          <Search className="absolute left-3 top-2.5 text-(--muted)" size={15} />
-          <input aria-label="Filter people by user ID" className="h-9 w-full rounded-md border border-(--border) bg-(--surface) pl-9 pr-3 text-sm" placeholder="User ID" value={userFilter} onChange={(event) => onUserFilterChange(event.target.value)} />
-        </div>
-        <button type="button" className="h-9 rounded-md border border-(--border) px-4 text-sm" onClick={onApplyFilter}>Apply filter</button>
-      </div>
-      <div className="mt-4 divide-y divide-(--border) border-y border-(--border)">
-        {usage.map((row) => (
-          <div key={row.userId} className="py-3 text-sm">
-            <div className="font-medium">{row.email || row.userId}</div>
-            <div className="text-xs text-(--muted)">{row.userId}</div>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function AdminAuditSection({
-  events,
-  auditFilter,
-  onAuditFilterChange,
-  onSearch,
-}: {
-  events: AuditRow[]
-  auditFilter: string
-  onAuditFilterChange: (value: string) => void
-  onSearch: () => void
-}) {
-  return (
-    <section className="mt-10" data-testid="admin-audit">
-      <div className="flex items-center gap-2"><ShieldCheck size={17} /><h2 className="text-sm font-semibold">Audit events</h2></div>
-      <div className="mt-4 flex gap-3">
-        <input aria-label="Filter audit action" className="h-9 min-w-0 flex-1 rounded-md border border-(--border) bg-(--surface) px-3 text-sm" placeholder="Exact action" value={auditFilter} onChange={(event) => onAuditFilterChange(event.target.value)} />
-        <button type="button" className="h-9 rounded-md border border-(--border) px-4 text-sm" onClick={onSearch}>Search</button>
-      </div>
-      <div className="mt-4 divide-y divide-(--border) border-y border-(--border)">
-        {events.length === 0 ? <p className="py-5 text-sm text-(--muted)">No matching audit events.</p> : events.map((event) => (
-          <div key={event.id} className="grid gap-1 py-3 text-sm md:grid-cols-[220px_1fr_100px]">
-            <div><p className="font-medium">{event.action}</p><p className="text-xs text-(--muted)">{
-              // Locale pinned to 'en-US'.
-              // react-doctor-disable-next-line react-doctor/no-locale-format-in-render
-              new Date(event.createdAt).toLocaleString('en-US')
-            }</p></div>
-            <p className="text-(--muted)">{event.resourceType}{event.resourceId ? ` · ${event.resourceId}` : ''}</p>
-            <p>{event.outcome}</p>
-          </div>
-        ))}
-      </div>
-    </section>
-  )
-}
-
-function AdminOverview({
-  forbidden,
-  canViewUsage,
-  canViewAudit,
-  usageSection,
-  auditSection,
-}: {
-  forbidden: boolean
-  canViewUsage: boolean
-  canViewAudit: boolean
-  usageSection: ReactNode
-  auditSection: ReactNode
-}) {
-  if (forbidden || (!canViewUsage && !canViewAudit)) {
-    return (
-      <div className="py-12" data-testid="admin-forbidden">
-        <ShieldCheck size={22} />
-        <h2 className="mt-4 text-lg font-semibold">Administrative access required</h2>
-        <p className="mt-2 text-sm text-(--muted)">This account cannot view people or audit data.</p>
-      </div>
-    )
-  }
-  return (
-    <>
-      {canViewUsage ? usageSection : null}
-      {canViewAudit ? auditSection : null}
-    </>
-  )
-}
-
-export function AdminConsolePage({ capabilities }: { capabilities: string[] }) {
+function permissionsFor(capabilities: string[]) {
   const can = (capability: string) => capabilities.includes(capability)
-  const permissions: AdminPermissions = {
+  return {
     canViewUsage: can('usage.read') || can('support.access'),
     canViewAudit: can('audit.read'),
+    // Growth is open to admin, auditor and billing roles (the server checks the role itself).
+    canViewGrowth: can('audit.read') || can('usage.read'),
     canViewRoles: can('roles.read'),
     canManageRoles: can('roles.manage'),
     canViewGroups: can('groups.read'),
@@ -262,124 +58,159 @@ export function AdminConsolePage({ capabilities }: { capabilities: string[] }) {
     canViewCatalog: can('roles.read'),
     canManageCatalog: can('roles.manage'),
   }
-  const { canViewRoles, canManageRoles, canViewGroups, canManageGroups, canViewCatalog, canManageCatalog } = permissions
-  const { section, setSection, sections } = useAdminSections(permissions)
-  const {
-    usage,
-    events,
-    userFilter,
-    setUserFilter,
-    auditFilter,
-    setAuditFilter,
-    forbidden,
-    error,
-    setError,
-    load,
-  } = useAdminData(permissions)
-
-  useEffect(() => {
-    void load().catch((loadError) => setError(message(loadError)))
-  }, [load, setError])
-
-  useEffect(() => {
-    if (section === 'overview' && (permissions.canViewUsage || permissions.canViewAudit)) return
-    if (section === 'roles' && canViewRoles) return
-    if (section === 'groups' && canViewGroups) return
-    if (section === 'catalog' && canViewCatalog) return
-    if (permissions.canViewUsage || permissions.canViewAudit) setSection('overview')
-    else if (canViewRoles) setSection('roles')
-    else if (canViewGroups) setSection('groups')
-    else if (canViewCatalog) setSection('catalog')
-  }, [canViewCatalog, canViewGroups, canViewRoles, permissions.canViewAudit, permissions.canViewUsage, section, setSection])
-
-  return (
-    <AppScreenShell
-      data-testid="admin-console"
-      sidebarBehavior="always"
-      sidebarClassName="w-12 p-0 sm:w-60"
-      sidebar={<AdminSidebarNav sections={sections} section={section} onSelectSection={setSection} />}
-      header={(
-        <AppScreenHeader
-          title="Administration"
-          subtitle="Workspace controls"
-          actions={
-            <>
-              <button
-                type="button"
-                aria-label="Refresh administration"
-                className="inline-flex size-8 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
-                onClick={() => void load()}
-              >
-                <RefreshCw size={15} />
-              </button>
-              <a
-                href="/auth/sign-out"
-                aria-label="Sign out"
-                title="Sign out"
-                className="inline-flex size-8 items-center justify-center rounded-md text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
-              >
-                <LogOut size={15} />
-              </a>
-            </>
-          }
-        />
-      )}
-    >
-      <AppScreenBody maxWidth="xl" padding="md">
-        {error ? (
-          <p className='mb-5 text-sm text-red-600 dark:text-red-400'>{error}</p>
-        ) : null}
-
-        {section === 'roles' && canViewRoles ? (
-          <AuthorizationAdminPanel
-            canManage={canManageRoles}
-            canManageRoles={canManageRoles}
-            canReadRoles={canViewRoles}
-            view="roles"
-            userDirectory={usage}
-          />
-        ) : null}
-        {section === 'groups' && canViewGroups ? (
-          <AuthorizationAdminPanel
-            canManage={canManageGroups}
-            canManageRoles={canManageRoles}
-            canReadRoles={canViewRoles}
-            view="groups"
-            userDirectory={usage}
-          />
-        ) : null}
-        {section === 'catalog' && canViewCatalog ? (
-          <CatalogPolicyAdminPanel canManage={canManageCatalog} />
-        ) : null}
-
-        {section === 'overview' ? (
-          <AdminOverview
-            forbidden={forbidden}
-            canViewUsage={permissions.canViewUsage}
-            canViewAudit={permissions.canViewAudit}
-            usageSection={(
-              <AdminUsageSection
-                usage={usage}
-                userFilter={userFilter}
-                onUserFilterChange={setUserFilter}
-                onApplyFilter={() => void load()}
-              />
-            )}
-            auditSection={(
-              <AdminAuditSection
-                events={events}
-                auditFilter={auditFilter}
-                onAuditFilterChange={setAuditFilter}
-                onSearch={() => void load()}
-              />
-            )}
-          />
-        ) : null}
-      </AppScreenBody>
-    </AppScreenShell>
-  )
 }
 
-function message(error: unknown): string {
-  return error instanceof Error ? error.message : 'Administration request failed'
+function navGroups(permissions: ReturnType<typeof permissionsFor>): { label: string; items: NavItem[] }[] {
+  const groups = [
+    {
+      label: 'Insights',
+      items: permissions.canViewGrowth ? [{ value: 'growth' as const, label: 'Growth', Icon: TrendingUp }] : [],
+    },
+    {
+      label: 'Operations',
+      items: [
+        ...(permissions.canViewUsage ? [{ value: 'people' as const, label: 'People', Icon: UsersRound }] : []),
+        ...(permissions.canViewAudit ? [{ value: 'audit' as const, label: 'Audit log', Icon: ScrollText }] : []),
+      ],
+    },
+    {
+      label: 'Access',
+      items: [
+        ...(permissions.canViewRoles ? [{ value: 'roles' as const, label: 'Roles', Icon: ShieldCheck }] : []),
+        ...(permissions.canViewGroups ? [{ value: 'groups' as const, label: 'Groups', Icon: UserRound }] : []),
+        ...(permissions.canViewCatalog ? [{ value: 'catalog' as const, label: 'Catalog', Icon: ListTree }] : []),
+      ],
+    },
+  ]
+  return groups.filter((group) => group.items.length > 0)
+}
+
+export function AdminConsolePage({
+  capabilities,
+  operator,
+  theme: initialTheme,
+}: {
+  capabilities: string[]
+  operator: AdminOperator
+  theme: AdminTheme
+}) {
+  const permissions = permissionsFor(capabilities)
+  const groups = navGroups(permissions)
+  const available = groups.flatMap((group) => group.items.map((item) => item.value))
+  const [selected, setSelected] = useState<AdminSection | null>(null)
+  const section = selected && available.includes(selected) ? selected : available[0] ?? null
+  const [directory, setDirectory] = useState<AdminUsageRow[]>([])
+  const [theme, setTheme] = useState<AdminTheme>(initialTheme)
+
+  // Roles and groups show people by email; load the directory once for them.
+  const { canViewUsage } = permissions
+  useEffect(() => {
+    if (!canViewUsage) return
+    const controller = new AbortController()
+    adminApi.admin.listUsage({ limit: 200 }, { signal: controller.signal }).then(setDirectory).catch(() => undefined)
+    return () => controller.abort()
+  }, [canViewUsage])
+
+  function toggleTheme() {
+    const next = theme === 'dark' ? 'light' : 'dark'
+    setTheme(next)
+    document.documentElement.dataset.theme = next
+    document.cookie = `${ADMIN_THEME_COOKIE}=${next}; path=/; max-age=31536000; samesite=lax; secure`
+  }
+
+  return (
+    <div className="admin-shell" data-testid="admin-console">
+      <aside className="admin-side">
+        <div className="admin-side-head">
+          <BrandLockup className="admin-lockup-full text-[17px] text-(--foreground)" />
+          <OverlayMark className="admin-lockup-mark size-5 text-(--foreground)" />
+          <span className="admin-tag">Admin</span>
+        </div>
+        <nav className="admin-side-body" aria-label="Administration sections">
+          {groups.map((group) => (
+            <div key={group.label}>
+              <div className="admin-nav-label">{group.label}</div>
+              {group.items.map(({ value, label, Icon }) => (
+                <Button
+                  key={value}
+                  variant="ghost"
+                  className="admin-nav-row"
+                  aria-label={label}
+                  aria-current={section === value ? 'page' : undefined}
+                  onClick={() => setSelected(value)}
+                >
+                  <Icon size={16} strokeWidth={1.6} className="shrink-0" />
+                  <span className="admin-nav-text">{label}</span>
+                </Button>
+              ))}
+            </div>
+          ))}
+        </nav>
+        <div className="admin-side-foot">
+          <div className="admin-me" title={operator.email}>
+            <div className="admin-avatar" aria-hidden>{initials(operator.name, operator.email)}</div>
+            <div className="min-w-0">
+              <div className="admin-me-name">{operator.name}</div>
+              <div className="admin-me-role">{ROLE_LABELS[operator.role]}</div>
+            </div>
+          </div>
+          <IconButton
+            className="admin-icon-btn"
+            aria-label={theme === 'dark' ? 'Use light theme' : 'Use dark theme'}
+            title={theme === 'dark' ? 'Light theme' : 'Dark theme'}
+            onClick={toggleTheme}
+          >
+            {theme === 'dark' ? <Sun size={16} strokeWidth={1.6} /> : <Moon size={16} strokeWidth={1.6} />}
+          </IconButton>
+          <Button asChild variant="ghost" size="icon" className="admin-icon-btn">
+            <a href="/auth/sign-out" aria-label="Sign out" title="Sign out">
+              <LogOut size={16} strokeWidth={1.6} />
+            </a>
+          </Button>
+        </div>
+      </aside>
+
+      <main className="admin-main">
+        {section === 'growth' ? <GrowthPanel /> : null}
+        {section === 'people' ? <PeoplePanel /> : null}
+        {section === 'audit' ? <AuditPanel /> : null}
+        {section === 'roles' ? (
+          <AdminScreen title="Roles" subtitle="What each role can do, and who has it">
+            <AuthorizationAdminPanel
+              canManage={permissions.canManageRoles}
+              canManageRoles={permissions.canManageRoles}
+              canReadRoles={permissions.canViewRoles}
+              view="roles"
+              userDirectory={directory}
+            />
+          </AdminScreen>
+        ) : null}
+        {section === 'groups' ? (
+          <AdminScreen title="Groups" subtitle="People grouped for role assignment">
+            <AuthorizationAdminPanel
+              canManage={permissions.canManageGroups}
+              canManageRoles={permissions.canManageRoles}
+              canReadRoles={permissions.canViewRoles}
+              view="groups"
+              userDirectory={directory}
+            />
+          </AdminScreen>
+        ) : null}
+        {section === 'catalog' ? (
+          <AdminScreen title="Catalog" subtitle="Models, tools and connectors people can use">
+            <CatalogPolicyAdminPanel canManage={permissions.canManageCatalog} />
+          </AdminScreen>
+        ) : null}
+        {section === null ? (
+          <AdminScreen title="Administration">
+            <div className="py-12" data-testid="admin-forbidden">
+              <ShieldCheck size={22} />
+              <h2 className="mt-4 text-lg font-semibold">Administrative access required</h2>
+              <p className="admin-muted mt-2 text-sm">This account cannot view any administration section.</p>
+            </div>
+          </AdminScreen>
+        ) : null}
+      </main>
+    </div>
+  )
 }

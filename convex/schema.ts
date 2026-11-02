@@ -2614,7 +2614,7 @@ export default defineSchema({
     .index('by_workspaceId_userId_providerKey', ['workspaceId', 'userId', 'providerKey'])
     .index('by_userId', ['userId']),
 
-  /** Function-level metrics for Convex observability. TTL-cleaned. */
+  /** Retired: nothing writes it. Kept until the cleanup cron empties it (`platform/metrics`). */
   functionMetrics: defineTable({
     functionName: v.string(),
     durationMs: v.number(),
