@@ -153,7 +153,11 @@ export default function AppSidebar({
   const renderSection = workSections
     ? (filter: string) => renderWorkSection({ filter, onNavigate: s.closeMobileDrawer })
     : renderChatSection
-  const sectionRows = workSections ? WORK_SECTION_ROWS : undefined
+  const sectionRows = workSections ? [...WORK_SECTION_ROWS, {
+    id: 'organization', label: 'Organization',
+    onNavigate: s.closeMobileDrawer,
+    href: s.activeWorkspaceId ? s.buildWorkspaceHref(s.activeWorkspaceId, '/app/work/organization') : '/app/work/organization',
+  }] : undefined
   const sectionActions = workSections ? { all: s.panelAction } : s.panelSectionActions
   const settingsHref = s.activeWorkspaceId
     ? s.buildWorkspaceHref(s.activeWorkspaceId, '/app/settings')

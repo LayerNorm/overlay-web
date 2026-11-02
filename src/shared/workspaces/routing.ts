@@ -284,11 +284,13 @@ export function isWorkspaceNavigationPending(args: {
 
 export function isSupportedWorkspaceRoute(surface: string, suffix: readonly string[]): boolean {
   if (!SCOPED_WORKSPACE_SURFACES.has(surface) && surface !== 'activity') return false
+  if (surface === 'work' && suffix.length === 1) return suffix[0] === 'organization'
   const maxSuffixParts = surface === 'agents' ? 1 : 0
   return suffix.length <= maxSuffixParts
 }
 
 export function isSupportedLegacyWorkspaceRoute(surface: string, suffix: readonly string[]): boolean {
+  if (surface === 'work' && suffix.length === 1) return suffix[0] === 'organization'
   return APP_SURFACES.has(surface) && suffix.length <= (surface === 'agents' ? 1 : 0)
 }
 

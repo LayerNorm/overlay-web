@@ -238,14 +238,14 @@ export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller })
           </section>
         </>
       ) : null}
-      <section>
+      {!agent?.agentRole || agent.agentRole === 'agent' ? <section>
         <div className="rounded-[10px] bg-(--surface-subtle) p-3">
           <AccessSelector
             value={form.visibility}
             onChange={(value) => { form.setVisibility(value); form.markDirty() }}
           />
         </div>
-      </section>
+      </section> : null}
       {agent?.principalId ? (
         <section>
           <div className="mt-2">

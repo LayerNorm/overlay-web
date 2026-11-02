@@ -293,7 +293,7 @@ export class WorkspaceAgentService {
       agentId: agent.id,
       workspaceId: access.workspace.id,
       ...(args.input.name === undefined ? {} : { name: required(args.input.name, 'Agent name', 80) }),
-      ...(args.input.description === undefined ? {} : { description: optional(args.input.description, 240) }),
+      ...(args.input.description === undefined ? {} : { description: optional(args.input.description, 240) ?? '' }),
       ...(args.input.instructions === undefined
         ? {}
         : { instructions: required(args.input.instructions, 'Agent instructions', 20_000) }),
@@ -412,7 +412,7 @@ export class WorkspaceAgentService {
       ownerUserId: agent.chiefOwnerUserId,
       updatedByPrincipalId: args.updatedByPrincipalId,
       ...(args.name === undefined ? {} : { name: required(args.name, 'Chief name', 80) }),
-      ...(args.description === undefined ? {} : { description: optional(args.description, 240) }),
+      ...(args.description === undefined ? {} : { description: optional(args.description, 240) ?? '' }),
       ...(args.avatarColor === undefined ? {} : { avatarColor: color(args.avatarColor) }),
       ...(args.avatarShape === undefined ? {} : { avatarShape: shape(args.avatarShape) }),
       now: this.now(),

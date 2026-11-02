@@ -21,6 +21,7 @@ export const workInlineItems: ReadonlyArray<InlineNavItem> = WORK_VIEWS.map((id)
 export function buildWorkPanelNav({
   scope,
   workView,
+  organizationOpen = false,
   effectivePendingSecondaryNavId,
   currentSearchParams,
   activeWorkspaceId,
@@ -31,6 +32,7 @@ export function buildWorkPanelNav({
 }: {
   scope: PanelScope
   workView: WorkView
+  organizationOpen?: boolean
   effectivePendingSecondaryNavId: string | null
   currentSearchParams: URLSearchParams
   activeWorkspaceId: string | null
@@ -41,25 +43,26 @@ export function buildWorkPanelNav({
 }): SecondaryPanelNav {
   return buildScopedPanelNav({
     scope,
-    sub: workView,
+    sub: organizationOpen ? 'organization' : workView,
     subItems: { personal: workInlineItems, workspace: workInlineItems },
     pendingId: effectivePendingSecondaryNavId,
     onSelect: (nextScope, nextSub) => {
       closeMobileDrawer()
       const nextView = parseWorkView(nextSub) ?? workView
-      if (nextScope === scope && nextView === workView) return
+      if (nextScope === scope && nextView === workView && (!organizationOpen || !nextSub)) return
       beginSecondaryNavigation(nextSub ? `${nextScope}:${nextSub}` : nextScope)
       const params = new URLSearchParams(currentSearchParams.toString())
       params.delete('scope')
       // An open task may not exist in the scope being switched to.
       params.delete('task')
       params.set(WORK_VIEW_PARAM, nextView)
-      const route = `/app/work?${params.toString()}`
+      const path = organizationOpen && !nextSub ? '/app/work/organization' : '/app/work'
+      const route = `${path}?${params.toString()}`
       if (activeWorkspaceId) {
         router.push(buildWorkspaceHref(activeWorkspaceId, route, nextScope))
       } else {
         params.set('scope', nextScope)
-        router.push(`/app/work?${params.toString()}`)
+        router.push(`${path}?${params.toString()}`)
       }
     },
   })

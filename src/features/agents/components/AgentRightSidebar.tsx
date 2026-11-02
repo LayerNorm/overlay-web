@@ -12,6 +12,7 @@ import { AgentSidebarHero } from './AgentSidebarHero.parts'
 import type { useAgentSidebarComputer } from './use-agent-sidebar-computer'
 import { createAgentAutosaveScheduler } from '../lib/agent-autosave-scheduler'
 import { isAgentEditSaveFailure } from '../lib/agent-edit-save-result'
+import { usesOverlayMark } from '@/shared/agents/chief-identity'
 
 export function AgentRightSidebar({
   conversationId,
@@ -95,7 +96,7 @@ export function AgentRightSidebar({
           agentName={agentName}
           agentColor={agent?.avatarColor}
           agentShape={agent?.avatarShape}
-          isDefault={agent?.isDefault}
+          isDefault={usesOverlayMark(agent)}
           unavailable={!computersEnabled}
           computer={computerAccess.computer}
           computerLoading={computerAccess.computerLoading}

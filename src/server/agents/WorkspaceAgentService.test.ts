@@ -387,6 +387,19 @@ test('get and update retain personal owner display metadata and editability', as
   assert.equal(updated.canEdit, true)
 })
 
+test('clearing a chief description sends an explicit empty value to persistence', async () => {
+  const chief = agentFixture({
+    id: 'personal-chief-clear', agentRole: 'personal_chief', chiefOwnerUserId: 'user-creator',
+    chiefScope: 'personal', visibility: 'creator', description: 'Old description',
+  })
+  const { service, updated } = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [chief])
+  await service.update({
+    actorUserId: 'user-creator', workspaceId: WORKSPACE_ID, agentId: chief.id,
+    input: { description: '' },
+  })
+  assert.equal(updated[0]?.description, '')
+})
+
 test('a manager cannot probe a creator-only agent through update', async () => {
   const seed = [defaultAgentFixture(), agentFixture({ id: 'agent-private', visibility: 'creator' })]
   const { service } = serviceFor(OTHER_PRINCIPAL_ID, 'admin', seed)
