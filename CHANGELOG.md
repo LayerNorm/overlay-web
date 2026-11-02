@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Clear the room and native-agent composer after an acknowledged send, including submitted attachments, without erasing newer drafts or drafts in a reopened conversation.
+
 - Place Organization directly below Timeline in both Work scopes and use one editable header avatar in Organization agent details.
 
 - Separate personal-chief appearance identity from workspace-scoped executable bindings, provisioning distinct private and workspace-scope bindings per eligible owner, with conservative legacy adoption, atomic mixed appearance/config saves, and owner-only profile updates.

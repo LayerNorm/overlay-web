@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import React, { act, type ReactElement, useEffect } from 'react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { savePendingCollaborationMessage } from '@/shared/chat/pending-collaboration-message'
+import { readDraft } from '@/shared/chat/conversation-drafts'
 import { useNativeThreadSafety } from './useNativeThreadSafety'
 import { useChatTurnActions } from './useChatTurnActions'
 import { useRoomComposer, useSendMessage, useThreadPanel } from '../DirectMessageExperience.hooks'
@@ -183,7 +184,7 @@ test('mounted room admission preserves draft, prevents duplicate saves and retai
   const saved = deferred<unknown>()
   const post = t.mock.method(overlayAppClient.conversations, 'addMessage', () => saved.promise)
   const args = roomArgs()
-  const sessionIdRef = { current: 'room' }
+  const sessionIdRef = { current: crypto.randomUUID() }
   let allowed = false
   args.ensureCanSendToThread = async () => ({ accepted: allowed, status: allowed ? 'writable' : 'unavailable' })
   const hook = await mount(t, (input: typeof args) => {
@@ -208,6 +209,67 @@ test('mounted room admission preserves draft, prevents duplicate saves and retai
   await act(async () => { saved.resolve({}); await send })
   assert.equal(hook.value.inputRef.current, 'Keep this draft')
   assert.equal(hook.value.attachedImages[0]?.name, 'new.png')
+})
+
+test('accepted room sends clear typed text, attachments and stored draft with a distinct presence session', async (t) => {
+  browser(t)
+  t.mock.method(overlayAppClient.conversations, 'updatePresence', async () => ({}))
+  const saved = deferred<unknown>()
+  const post = t.mock.method(overlayAppClient.conversations, 'addMessage', () => saved.promise)
+  const args = roomArgs()
+  const hook = await mount(t, (input: typeof args) => {
+    const sendMessage = useSendMessage(input)
+    return useRoomComposer({
+      activeWorkspaceId: 'workspace', conversationId: input.conversationId,
+      sessionIdRef: { current: 'presence-session-not-the-conversation' },
+      sendMessage, mentions: input.mentions, setMentions: noop,
+    })
+  }, args)
+  await act(() => {
+    hook.value.onComposerInput('Read these attachments')
+    hook.value.setAttachedImages([{ name: 'image.png', dataUrl: 'data:image/png;base64,AA==' }])
+    hook.value.setPendingChatDocuments([{ clientId: 'document', name: 'brief.txt', fileIds: ['file'], status: 'ready' }])
+    hook.value.setReplyContext({ snippet: 'Earlier message', bodyForModel: 'Earlier message', replyToTurnId: 'earlier' })
+  })
+  let send!: Promise<void>
+  await act(() => { send = hook.value.handleSend() })
+  assert.equal(post.mock.callCount(), 1)
+  assert.equal(args.messagesRef.current.length, 1, 'the optimistic bubble is not an acknowledgement')
+  assert.equal(hook.value.inputRef.current, 'Read these attachments')
+  assert.equal(hook.value.attachedImages.length, 1)
+  await act(async () => { saved.resolve({}); await send })
+  assert.equal(hook.value.inputRef.current, '')
+  assert.equal(hook.value.hasComposerText, false)
+  assert.deepEqual(hook.value.attachedImages, [])
+  assert.deepEqual(hook.value.pendingChatDocuments, [])
+  assert.equal(hook.value.replyContext, null)
+  assert.equal(readDraft({ workspaceId: 'workspace', conversationId: 'room' }), '')
+})
+
+test('a room send acknowledgement cannot clear a newer draft or a reopened scope', async (t) => {
+  browser(t)
+  const saved = deferred<{ accepted: boolean }>()
+  const args: Parameters<typeof useRoomComposer>[0] = {
+    activeWorkspaceId: 'workspace', conversationId: 'room', sessionIdRef: { current: 'presence' },
+    sendMessage: () => saved.promise, mentions: [], setMentions: noop,
+  }
+  const hook = await mount(t, useRoomComposer, args)
+  await act(() => { hook.value.setInput('Sent text') })
+  let send!: Promise<void>
+  await act(() => { send = hook.value.handleSend() })
+  await act(() => { hook.value.setInput('Newer draft') })
+  await act(async () => { saved.resolve({ accepted: true }); await send })
+  assert.equal(hook.value.inputRef.current, 'Newer draft')
+
+  const reopened = deferred<{ accepted: boolean }>()
+  await hook.update({ ...args, sendMessage: () => reopened.promise })
+  await act(() => { hook.value.setInput('Same text') })
+  await act(() => { send = hook.value.handleSend() })
+  await hook.update({ ...args, conversationId: 'other-room' })
+  await hook.update(args)
+  await act(() => { hook.value.setInput('Same text') })
+  await act(async () => { reopened.resolve({ accepted: true }); await send })
+  assert.equal(hook.value.inputRef.current, 'Same text')
 })
 
 test('mounted nested draft completion never clears new text or another root', async (t) => {
