@@ -24,7 +24,11 @@ const automationContext = {
 }
 const state = { workflowRunId: 'workflow', revision: 1, modelReservation: { id: 'model:0', maxCostMicros: 60 } }
 
-test('budget rejection is durably recorded before failing and never binds or starts provider execution', async () => {
+test('workspace funding remains required with an unbounded per-task cap', async () => {
+  mocks.read.mockResolvedValue({
+    ...state,
+    policy: { limitsVersion: 2, workspaceId: 'workspace', deadlineAt: null, maxCostMicros: null },
+  })
   mocks.reserve.mockResolvedValue({ ok: false, code: 'insufficient_credits' })
   await expect(authorizePersonalHarnessModelDispatch(reference, options)).rejects.toThrow('reservation declined')
   expect(mocks.reject).toHaveBeenCalledExactlyOnceWith(reference, 'budget')

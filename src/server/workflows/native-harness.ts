@@ -13,6 +13,9 @@ import { notifyHarnessAncestors, readHarnessChild } from '@/server/harness/perso
 import { harnessWakeToken } from '@/server/harness/wait-token'
 import { applyHarnessOperation, claimHarnessState, readHarnessState } from '@/server/harness/state-steps'
 import { harnessToolResultEvidence } from '@/server/harness/tool-evidence'
+import { readSettledHarnessTranscript } from '@/server/harness/harness-transcript'
+import { harnessDiagnosticForFailure } from '@/server/harness/harness-diagnostics'
+import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
 import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
 import type { NativeHarnessAccess } from '@/server/harness/native-access'
@@ -102,19 +105,44 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     }, ports)
     if (result.outcome === 'already_running') return { runId: initial.runId, status: 'already_running' }
     if (!['completed', 'failed', 'cancelled'].includes(result.snapshot.status)) {
+      const diagnostic = harnessDiagnosticForFailure(access.runId, result.snapshot,
+        new Error(result.snapshot.blocker?.question ?? ''), result.snapshot.blocker?.kind === 'stuck' ? 'tool' : 'model')
+      const reason = harnessDiagnosticMessage(diagnostic)
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
-        type: 'terminate', status: 'failed', reason: result.snapshot.blocker?.question || 'The task is blocked and cannot continue.',
+        type: 'terminate', status: 'failed', reason, diagnostic,
       })
     }
   } catch (error) {
-    const reason = (error instanceof Error ? error.message : 'Harness execution failed.').slice(0, 2_000)
     const state = await readHarnessState(access)
-    const snapshot = ['completed', 'failed', 'cancelled'].includes(state.status) ? state
-      : await applyHarnessOperation(access, 'execution-failed', { type: 'terminate', status: 'failed', reason })
+    const stage = error && typeof error === 'object'
+      && (error as { code?: unknown }).code === 'HARNESS_TOOL_OUTCOME_UNKNOWN' ? 'tool' : 'model'
+    const diagnostic = harnessDiagnosticForFailure(access.runId, state, error, stage)
+    const reason = harnessDiagnosticMessage(diagnostic)
+    const snapshot = state.status === 'cancelled' || state.status === 'completed' ? state
+      : state.status === 'failed'
+        ? state.diagnostic ? state : await applyHarnessOperation(access, 'execution-diagnostic', {
+          type: 'record_diagnostic', diagnostic,
+        })
+        : await applyHarnessOperation(access, 'execution-failed', {
+          type: 'terminate', status: 'failed', reason, diagnostic,
+        })
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
   }
   if (owns) {
-    const delivery = buildNativeHarnessDelivery(result, fallbackNotices, activeToolNames)
+    let settledTranscript: Awaited<ReturnType<typeof readSettledHarnessTranscript>> = {
+      persistence: { content: '', parts: [] }, steps: [], truncated: false,
+      newestSequence: null, oldestSequence: null,
+    }
+    try {
+      settledTranscript = await readSettledHarnessTranscript(access)
+    } catch (error) {
+      const state = await readHarnessState(access)
+      const diagnostic = harnessDiagnosticForFailure(access.runId, state, error, 'persistence')
+      const snapshot = state.diagnostic ? state : await applyHarnessOperation(access,
+        `transcript-read-failure:${diagnostic.diagnosticId}`, { type: 'record_diagnostic', diagnostic })
+      result = { ...result, snapshot }
+    }
+    const delivery = buildNativeHarnessDelivery(result, fallbackNotices, activeToolNames, settledTranscript)
     await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: input.context.memoryEnabled }, activeToolNames)
   }
   if (initial.parentRunId) await notifyHarnessAncestors(access)

@@ -16,6 +16,7 @@ import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference
 import { createHarnessCapacityWaiter } from './model-capacity'
 import { waitForHarnessModelRecovery } from './model-recovery'
 import { waitForHarnessModelResources } from './resource-boundary'
+import { publicHarnessStepPersistence, writeSettledHarnessTranscriptStep } from './harness-transcript'
 
 export type PreparedHarnessModel = {
   model: HarnessModelReference
@@ -51,6 +52,7 @@ export function createHarnessModelPorts(input: {
   const candidates = routingCandidates(input.modelId, routing)
   let candidateIndex = 0
   const { reference, prepare } = input
+  let activeToolNames = new Set<string>()
   const contextBudgetTokens = input.contextBudgetTokens ?? 32_000
   if (!Number.isSafeInteger(contextBudgetTokens) || contextBudgetTokens < 1_024) throw new Error('Invalid harness working-context budget.')
 
@@ -136,6 +138,7 @@ export function createHarnessModelPorts(input: {
       return true
     },
     prepareModel: async request => {
+      activeToolNames = new Set(request.toolNames)
       const limits = await readHarnessModelLimits(candidates[candidateIndex])
       const modelContextWindow = limits.contextWindow ?? FALLBACK_CONTEXT_WINDOW
       const contextWindow = Math.min(contextBudgetTokens, modelContextWindow)
@@ -206,6 +209,8 @@ export function createHarnessModelPorts(input: {
         throw new FatalError('Model usage has no corresponding prepared dispatch.')
       }
       await settle(step, receiptId, prepared)
+      await writeSettledHarnessTranscriptStep(reference, receiptId, step.stepNumber,
+        publicHarnessStepPersistence(step, activeToolNames))
       preparedCalls.delete(receiptId)
     },
   }

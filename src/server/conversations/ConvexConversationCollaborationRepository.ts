@@ -235,6 +235,8 @@ implements ConversationCollaborationRepository {
     messageId: string
     parts?: Array<Record<string, unknown>>
     toolNames?: string[]
+    runId?: string
+    workflowRunId?: string
     workspaceId: string
   }) {
     await convex.mutation('collaboration/directMessages:failAgentMessage', {

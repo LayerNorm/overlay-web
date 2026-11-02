@@ -2,6 +2,7 @@ import type { RemoteRunLiveness } from './remote-run-liveness'
 import type { RemoteRunState } from './remote-run'
 import type { RemoteRunStreamStats } from './remote-run-stream-stats'
 import type { HarnessResourceDeliveryProjection } from '@overlay/agent-runtime/harness-resource'
+import type { HarnessDiagnostic } from '@overlay/agent-runtime/harness-diagnostic'
 
 /**
  * `room` is a workspace-agent turn in a DM or channel. It is a distinct mode
@@ -43,6 +44,7 @@ export type AgentRunTerminalError = {
   code: string
   message: string
   retryable: boolean
+  diagnostic?: Omit<HarnessDiagnostic, 'operationId'>
 }
 
 export type AgentRunApprovalRequest = {

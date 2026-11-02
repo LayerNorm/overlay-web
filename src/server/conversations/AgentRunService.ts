@@ -157,6 +157,8 @@ export class AgentRunService {
   async fail(args: {
     error: AgentRunTerminalError
     errorText: string
+    expectedWorkflowRunId?: string
+    failureTranscript?: { content: string; parts: Array<Record<string, unknown>> }
     runId?: string
     userId?: string
     metrics?: Partial<AgentRunMetrics>
@@ -165,6 +167,8 @@ export class AgentRunService {
     return await this.repository.failAgentRun({
       error: args.error,
       errorText: args.errorText,
+      expectedWorkflowRunId: args.expectedWorkflowRunId,
+      failureTranscript: args.failureTranscript,
       metrics: args.metrics,
       runId: args.runId,
       userId: args.userId,

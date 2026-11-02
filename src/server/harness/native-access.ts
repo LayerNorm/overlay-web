@@ -43,7 +43,7 @@ function assertActiveAuthority(
   const cancelledToolProgress = allowCancelledToolProgress && state?.runId === access.runId && state.status === 'cancelled'
   if (!state?.workflowRunId || state.policy.actorUserId !== access.actorUserId
     || state.policy.workspaceId !== access.workspaceId
-    || (state.policy.deadlineAt <= Date.now() && !cancelledToolProgress)
+    || (state.policy.deadlineAt !== null && state.policy.deadlineAt <= Date.now() && !cancelledToolProgress)
     || ['completed', 'failed'].includes(state.status)
     || (state.status === 'cancelled' && !cancelledToolProgress)) {
     throw new FatalError('Native harness execution is no longer authorized.')

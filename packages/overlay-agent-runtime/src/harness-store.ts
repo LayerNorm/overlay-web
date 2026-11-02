@@ -2,6 +2,7 @@ import type {
   HarnessCheckpointPurpose, HarnessChild, HarnessEvidence, HarnessPlanInput, HarnessPolicy, HarnessReceipt,
   HarnessSnapshot, HarnessStepStatus,
 } from './harness-state'
+import type { HarnessDiagnostic } from './harness-diagnostic'
 import type {
   HarnessConsumeResourceGrantInput,
   HarnessGrantResourcesInput,
@@ -33,7 +34,8 @@ export type HarnessOperation =
   | { type: 'record_evidence'; evidence: HarnessEvidence }
   | { type: 'record_receipt'; receipt: HarnessReceipt }
   | { type: 'checkpoint'; summary: string; purpose?: HarnessCheckpointPurpose }
-  | { type: 'block'; blocker: NonNullable<HarnessSnapshot['blocker']> }
+  | { type: 'block'; blocker: NonNullable<HarnessSnapshot['blocker']>; diagnostic?: HarnessDiagnostic }
+  | { type: 'record_diagnostic'; diagnostic: HarnessDiagnostic }
   | { type: 'resume' }
   | { type: 'wait_for_children' }
   | { type: 'admit_child'; child: HarnessChild; goal: string; constraints: string[] }
@@ -47,7 +49,7 @@ export type HarnessOperation =
     }
   | { type: 'settle_child'; childRunId: string }
   | { type: 'finish'; resultSummary?: string }
-  | { type: 'terminate'; status: 'cancelled' | 'failed'; reason: string }
+  | { type: 'terminate'; status: 'cancelled' | 'failed'; reason: string; diagnostic?: HarnessDiagnostic }
 
 export type HarnessMutationInput = {
   actorUserId: string
@@ -84,6 +86,24 @@ export type HarnessWaitReference = {
   actorUserId: string
   runId: string
   workflowRunId: string
+}
+
+export type HarnessTranscriptPersistence = {
+  content: string
+  parts: Array<Record<string, unknown>>
+}
+
+export type HarnessTranscriptStep = {
+  receiptId: string
+  stepNumber: number
+  sequence: number
+  persistence: HarnessTranscriptPersistence
+}
+
+export type HarnessTranscriptPage = {
+  steps: HarnessTranscriptStep[]
+  cursor: string
+  isDone: boolean
 }
 
 export interface HarnessRepository {

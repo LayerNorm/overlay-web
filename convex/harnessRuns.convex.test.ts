@@ -1061,4 +1061,52 @@ describe('durable harness runs', () => {
     expect(persisted.revisions).toHaveLength(0)
     expect(persisted.operations).toHaveLength(0)
   })
+
+  test('writes bounded settled transcript rows idempotently and rejects conflicting replay', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('transcript-journal', await seedConversation(convex))
+    let state = await admit(convex, input)
+    state = (await apply(convex, input, 'claim-transcript', state.revision, {
+      type: 'claim_execution', workflowRunId: 'workflow-transcript',
+    })).snapshot
+    state = (await apply(convex, input, 'reserve-transcript', state.revision, {
+      type: 'reserve_model', id: 'model:0', maxCostMicros: 100,
+    })).snapshot
+    await apply(convex, input, 'settle-transcript', state.revision, {
+      type: 'record_receipt', receipt: {
+        id: 'model:0', modelId: 'fixture/model', provider: 'fixture', inputTokens: 1, outputTokens: 1,
+        reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000, costMicros: 1,
+      },
+    })
+    const write = mutation('writeTranscriptStep')
+    const args = {
+      actorUserId: input.policy.actorUserId,
+      runId: input.runId,
+      workflowRunId: 'workflow-transcript',
+      receiptId: 'model:0',
+      stepNumber: 0,
+      persistence: { content: 'A settled public update.', parts: [{ type: 'text', text: 'A settled public update.' }] },
+      serverSecret: secret,
+    }
+    expect(await convex.mutation(write, args)).toEqual({ persisted: true })
+    expect(await convex.mutation(write, args)).toEqual({ persisted: false })
+    await expect(convex.mutation(write, {
+      ...args,
+      persistence: { content: 'Different replay.', parts: [{ type: 'text', text: 'Different replay.' }] },
+    })).rejects.toThrow(/HARNESS_TRANSCRIPT_CONFLICT/)
+    await expect(convex.mutation(write, { ...args, workflowRunId: 'other-workflow' }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_ACCESS_DENIED/)
+    const page = await convex.query(query('listTranscriptSteps'), {
+      actorUserId: input.policy.actorUserId,
+      runId: input.runId,
+      workflowRunId: 'workflow-transcript',
+      paginationOpts: { cursor: null, numItems: 25 },
+      serverSecret: secret,
+    })
+    expect(page).toMatchObject({
+      steps: [{ receiptId: 'model:0', sequence: 0, stepNumber: 0,
+        persistence: { content: 'A settled public update.' } }],
+      isDone: true,
+    })
+  })
 })

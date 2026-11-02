@@ -20,6 +20,8 @@ import { postSlackAgentMessage } from '@/server/surfaces/slack-reply'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { getBaseUrl } from '@/server/web/app-url'
 import { assertPersistedSurfaceSource } from './surface-access'
+import { harnessDiagnosticForFailure, harnessDiagnosticTerminalError } from './harness-diagnostics'
+import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 
 type Delivery = ReturnType<typeof buildPersonalHarnessDelivery>
 
@@ -151,7 +153,7 @@ export async function finishNativeHarnessDelivery(
     await sanitizeStreamedMessage()
     return
   }
-  if (state.status === 'completed') {
+  if (state.status === 'completed' && state.diagnostic?.code !== 'PERSISTENCE_FAILED') {
     const persistence = compactAssistantPersistenceForConvex(reconcileUnverifiedAgentActionClaims({
       content: stripTextualToolCalls(delivery.content, activeToolNames),
       parts: stripTextualToolCallsFromParts(delivery.parts, activeToolNames)
@@ -162,8 +164,9 @@ export async function finishNativeHarnessDelivery(
       messageId: access.assistantMessageId, parts: persistence.parts, tokens: delivery.tokens,
       toolNames: [...activeToolNames], workspaceId: access.workspaceId,
     })
+    const { diagnostic: _diagnostic, ...completion } = delivery
     await agentRunService.complete({
-      ...delivery, content: persistence.content, parts: persistence.parts,
+      ...completion, content: persistence.content, parts: persistence.parts,
       runId: access.agentRunId, userId: access.actorUserId,
     })
     if (options.memoryEnabled) {
@@ -183,9 +186,12 @@ export async function finishNativeHarnessDelivery(
     })
     return
   }
-  if (state.status === 'failed') {
-    const reason = state.terminalReason || 'The harness could not complete this task.'
+  if (state.status === 'failed'
+    || (state.status === 'completed' && state.diagnostic?.code === 'PERSISTENCE_FAILED')) {
+    const diagnostic = harnessDiagnosticForFailure(state.runId, state, new Error(state.terminalReason ?? ''), 'delivery')
+    const reason = harnessDiagnosticMessage(diagnostic)
     let content: string | undefined
+    let failureTranscript: { content: string; parts: typeof delivery.parts } | undefined
     try {
       const [message] = await server.appData.repositories.conversationCollaboration.listMessages({
         actorUserId: access.actorUserId, conversationId: access.conversationId, messageId: access.assistantMessageId,
@@ -193,11 +199,14 @@ export async function finishNativeHarnessDelivery(
       })
       if (message && message._id === access.assistantMessageId && message.turnId === access.turnId
         && message.authorKind === 'agent' && message.authorPrincipalId === access.agentPrincipalId
-        && message.status === 'generating' && !message.content.trim()) {
-        const agent = await server.workspaceAgentService.get({
-          actorUserId: access.actorUserId, workspaceId: access.workspaceId, agentId: access.agentId,
-        })
-        content = agentStartFailureMessage(agent.name, reason)
+        && (message.status === 'generating' || message.status === 'error')) {
+        failureTranscript = { content: delivery.content, parts: delivery.parts }
+        if (message.status === 'generating' && !message.content.trim()) {
+          const agent = await server.workspaceAgentService.get({
+            actorUserId: access.actorUserId, workspaceId: access.workspaceId, agentId: access.agentId,
+          })
+          content = delivery.content.trim() || agentStartFailureMessage(agent.name, reason)
+        }
       }
     } catch (_error) {
       content = undefined
@@ -205,11 +214,19 @@ export async function finishNativeHarnessDelivery(
     await server.appData.repositories.conversationCollaboration.failAgentMessage({
       actorUserId: access.actorUserId, conversationId: access.conversationId,
       messageId: access.assistantMessageId, toolNames: [...activeToolNames],
-      workspaceId: access.workspaceId, ...(content ? { content } : {}),
+      runId: access.agentRunId, workflowRunId: access.workflowRunId,
+      workspaceId: access.workspaceId,
+      ...(failureTranscript ? {
+        content: delivery.content.trim() || content || '',
+        parts: failureTranscript.parts,
+      } : {}),
     })
     await agentRunService.fail({
       runId: access.agentRunId, userId: access.actorUserId, errorText: reason,
-      error: { code: 'harness_failed', message: reason, retryable: true }, metrics: delivery.metrics,
+      expectedWorkflowRunId: access.workflowRunId,
+      failureTranscript,
+      error: harnessDiagnosticTerminalError(diagnostic),
+      metrics: delivery.metrics,
     })
     return
   }

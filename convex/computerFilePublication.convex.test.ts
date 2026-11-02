@@ -28,7 +28,7 @@ const snapshot = {
   mimeType: 'video/mp4',
 }
 
-async function fixture(deadlineAt = Date.now() + 60_000) {
+async function fixture(deadlineAt: number | null = Date.now() + 60_000) {
   const convex = convexTest(schema, modules)
   const ids = await convex.run(async ctx => {
     await ctx.db.insert('workspacePrincipals', {
@@ -63,6 +63,7 @@ async function fixture(deadlineAt = Date.now() + 60_000) {
       workspaceId,
       allowedToolIds: ['computer_publish_file', 'write_file'],
       requiresPlan: true,
+      ...(deadlineAt === null ? { limitsVersion: 2 as const } : {}),
       deadlineAt,
       maxCostMicros: 100,
       maxParallelChildren: 1,
@@ -116,6 +117,46 @@ test('admitted and claimed run prepares concurrently once, then commits and repl
       userId, overlayStorageBytesUsed: snapshot.sizeBytes,
     }))
   })
+})
+
+test('unbounded authority uses request-scoped upload expiry while a finite task deadline clips it', async () => {
+  const requestStartedAt = Date.now()
+  const unbounded = await fixture(null)
+  const upload = await unbounded.convex.mutation(publicationMutation('prepare'), publicationArgs(unbounded.reference))
+  expect(upload.uploadExpiresAt).toBeGreaterThan(requestStartedAt)
+  expect(upload.uploadExpiresAt).toBeLessThanOrEqual(Date.now() + 15 * 60 * 1_000)
+  await unbounded.convex.run(async ctx => {
+    const run = await ctx.db.query('harnessRuns')
+      .withIndex('by_runId', query => query.eq('runId', unbounded.admission.runId))
+      .unique()
+    expect(run?.metadataJson).toContain('"deadlineAt":null')
+    expect(run?.metadataJson).toContain('"status":"running"')
+    const intent = await ctx.db.query('r2UploadIntents')
+      .withIndex('by_r2Key', query => query.eq('r2Key', upload.r2Key))
+      .unique()
+    expect(intent?.expiresAt).toBe(upload.uploadExpiresAt)
+  })
+  await unbounded.convex.run(async ctx => {
+    const artifact = await ctx.db.query('harnessArtifacts')
+      .withIndex('by_rootRunId_artifactId', query => query.eq('rootRunId', unbounded.admission.runId).eq('artifactId', input.artifactId))
+      .unique()
+    if (!artifact) throw new Error('Harness artifact fixture is missing')
+    await ctx.db.patch(artifact._id, { uploadExpiresAt: Date.now() - 1 })
+  })
+  await expect(unbounded.convex.query(publicationQuery, {
+    reference: unbounded.reference, input, serverSecret: secret,
+  })).rejects.toThrow('artifact_authority_expired')
+  await unbounded.convex.run(async ctx => {
+    const run = await ctx.db.query('harnessRuns')
+      .withIndex('by_runId', query => query.eq('runId', unbounded.admission.runId))
+      .unique()
+    expect(run?.metadataJson).toContain('"status":"running"')
+  })
+
+  const finiteDeadline = Date.now() + 60_000
+  const finite = await fixture(finiteDeadline)
+  const clipped = await finite.convex.mutation(publicationMutation('prepare'), publicationArgs(finite.reference))
+  expect(clipped.uploadExpiresAt).toBe(finiteDeadline)
 })
 
 test('manifest identity and frozen content metadata cannot be changed on replay', async () => {

@@ -2,14 +2,16 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   admitHarnessChild, admitHarnessNamedChild, assertHarnessRunnable, blockHarness, checkpointHarness, createHarnessSnapshot,
+  assertHarnessPolicyLimits,
   currentHarnessContext, finishHarness, harnessCompletionIssues, recordHarnessEvidence, recordHarnessReceipt, recordHarnessChildReceipt,
   replaceHarnessPlan, settleHarnessChild, terminateHarness, transitionHarnessStep, type HarnessChild, type HarnessEvidence,
   type HarnessPlanInput, type HarnessReceipt,
-  claimHarnessExecution, hasRunnableHarnessMilestones, waitForHarnessChildren, resumeHarness,
+  claimHarnessExecution, hasRunnableHarnessMilestones, waitForHarnessChildren, resumeHarness, recordHarnessDiagnostic,
   reserveHarnessModel, reservedHarnessCostMicros,
   bindHarnessModelDispatch,
   validateHarnessReceipt,
 } from './harness-state'
+import { createHarnessDiagnostic } from './harness-diagnostic'
 
 const now = 1_000
 
@@ -27,6 +29,60 @@ const make = () => createHarnessSnapshot({ runId: 'root', goal: 'Produce a check
   actorUserId: 'user', allowedToolIds: ['read', 'write'], requiresPlan: true,
   deadlineAt: 10_000, maxCostMicros: 100, maxParallelChildren: 2, maxDepth: 1,
 } }, now)
+
+test('unbounded task limits require version 2 workspace authority while finite legacy limits remain valid', () => {
+  const finiteLegacy = { ...make().policy }
+  assertHarnessPolicyLimits(finiteLegacy)
+  const unbounded = { ...finiteLegacy, workspaceId: 'workspace', limitsVersion: 2 as const, deadlineAt: null, maxCostMicros: null }
+  assertHarnessPolicyLimits(unbounded)
+  assert.throws(() => assertHarnessPolicyLimits({ ...unbounded, limitsVersion: undefined }), /version 2 workspace authority/)
+  assert.throws(() => assertHarnessPolicyLimits({ ...unbounded, workspaceId: undefined }), /version 2 workspace authority/)
+  assert.throws(() => assertHarnessPolicyLimits({ ...unbounded, resourcePauseVersion: 1 }), /version 2 workspace authority/)
+  assert.throws(() => assertHarnessPolicyLimits({ ...finiteLegacy, maxCostMicros: -1 }), /nonnegative spending authorization/)
+  assert.throws(() => assertHarnessPolicyLimits({ ...finiteLegacy, deadlineAt: -1 }), /valid task deadline/)
+})
+
+test('structured diagnostics are durable, idempotent, and replaceable by a newer identity', () => {
+  const diagnostic = createHarnessDiagnostic({
+    diagnosticId: 'hd_test',
+    code: 'UNKNOWN',
+    stage: 'delivery',
+    occurredAt: now,
+  })
+  const recorded = recordHarnessDiagnostic(make(), diagnostic, now)
+  assert.deepEqual(recorded.diagnostic, diagnostic)
+  assert.equal(recordHarnessDiagnostic(recorded, diagnostic, now), recorded)
+  const newer = createHarnessDiagnostic({
+    diagnosticId: 'hd_other',
+    code: 'TOOL_FAILED',
+    stage: 'tool',
+    occurredAt: now + 1,
+  })
+  assert.deepEqual(recordHarnessDiagnostic(recorded, newer, now + 1).diagnostic, newer)
+  assert.throws(() => recordHarnessDiagnostic(recorded, {
+    ...diagnostic, safeMessage: 'conflicting payload',
+  }, now + 1), /identity cannot be reused/)
+})
+
+test('resuming a blocker clears its diagnostic before a later failure', () => {
+  const diagnostic = createHarnessDiagnostic({
+    diagnosticId: 'hd_budget',
+    code: 'TASK_SPEND_LIMIT',
+    stage: 'model',
+    occurredAt: now,
+  })
+  let paused = recordHarnessDiagnostic(make(), diagnostic, now)
+  paused = blockHarness(paused, { kind: 'budget', question: 'Increase the task cap.' }, now)
+  const resumed = resumeHarness(paused, now + 1)
+  assert.equal(resumed.diagnostic, undefined)
+  const later = createHarnessDiagnostic({
+    diagnosticId: 'hd_later',
+    code: 'UNKNOWN',
+    stage: 'model',
+    occurredAt: now + 2,
+  })
+  assert.equal(recordHarnessDiagnostic(resumed, later, now + 2).diagnostic?.diagnosticId, 'hd_later')
+})
 
 test('route interruption receipts count durably toward the per-run retry cap', () => {
   let state = make()

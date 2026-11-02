@@ -64,7 +64,7 @@ function assertSuppliedContext(access: PersonalHarnessAccess, context: PersonalC
 function assertCurrentHarness(access: PersonalHarnessAccess, state: HarnessState): void {
   if (state.workflowRunId !== access.workflowRunId || state.status !== 'running'
     || state.policy.actorUserId !== access.actorUserId || state.policy.workspaceId !== access.workspaceId
-    || state.policy.deadlineAt <= Date.now()) {
+    || (state.policy.deadlineAt !== null && state.policy.deadlineAt <= Date.now())) {
     throw new FatalError('Personal harness execution is not authorized to continue.')
   }
 }

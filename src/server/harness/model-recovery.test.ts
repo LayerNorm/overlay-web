@@ -7,6 +7,8 @@ import {
   type HarnessSnapshot,
 } from '@overlay/agent-runtime/harness-state'
 import { waitForHarnessModelRecovery } from './model-recovery'
+import { terminateOnProviderFailure } from './model-recovery'
+import type { HarnessExecutionPorts } from './ports'
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), sleep: vi.fn() }))
 vi.mock('./state-steps', () => ({ readHarnessState: mocks.read }))
@@ -24,6 +26,22 @@ beforeEach(() => { vi.resetAllMocks(); mocks.sleep.mockResolvedValue(undefined) 
 test('rejects receipts that combine response failure and rejection', () => {
   expect(() => validateHarnessReceipt({ ...receipt('model:0'), rejectionReason: 'model_unavailable' }))
     .toThrow(/Invalid settled model response failure/)
+})
+
+test.each(['error', 'content-filter'] as const)('provider finish reason %s persists a safe structured failure', async finishReason => {
+  const state = initial()
+  const apply = vi.fn(async () => state)
+  expect(await terminateOnProviderFailure(state, finishReason, { apply } as unknown as HarnessExecutionPorts, 3)).toBe(true)
+  expect(apply).toHaveBeenCalledWith('provider-failure:3', expect.objectContaining({
+    type: 'terminate',
+    status: 'failed',
+    reason: expect.stringContaining('Diagnostic ID:'),
+    diagnostic: expect.objectContaining({
+      code: 'PROVIDER_UNAVAILABLE',
+      stage: 'model',
+      retryability: 'user_action',
+    }),
+  }))
 })
 
 test('settled failures persist exponential backoff without advancing progress, then reset on a usable response', () => {

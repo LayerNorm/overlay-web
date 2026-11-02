@@ -29,10 +29,12 @@ export function createHarnessWaitPorts(input: {
     : !state.parentRunId
   let sequence = 0
 
-  const withDeadline = async <T>(pending: PromiseLike<T>, deadlineAt: number): Promise<T> => Promise.race([
-    Promise.resolve(pending),
-    sleep(new Date(deadlineAt)).then(() => { throw new FatalError('Harness deadline reached while waiting.') }),
-  ])
+  const withDeadline = async <T>(pending: PromiseLike<T>, deadlineAt: number | null): Promise<T> => (
+    deadlineAt === null ? await pending : await Promise.race([
+      Promise.resolve(pending),
+      sleep(new Date(deadlineAt)).then(() => { throw new FatalError('Harness deadline reached while waiting.') }),
+    ])
+  )
 
   const receive = async (request: HarnessWaitRequest): Promise<unknown> => {
     using hook = createHook<unknown>({ token: request.token })

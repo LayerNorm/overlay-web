@@ -107,6 +107,7 @@ test('admits immutable identity and policy before starting the personal workflow
     policy: expect.objectContaining({
       actorUserId: 'user',
       workspaceId: 'workspace',
+      limitsVersion: 2,
       allowedToolIds: ['read'],
       deadlineAt: 1_700_000_060_000,
       maxCostMicros: 250_000,
@@ -115,6 +116,20 @@ test('admits immutable identity and policy before starting the personal workflow
   expect(onAdmitted).toHaveBeenCalledOnce()
   expect(mocks.start).toHaveBeenCalledOnce()
   expect(mocks.getRun).toHaveBeenCalledWith('winning-workflow')
+})
+
+test('paid personal admission has no default task cap or deadline under workspace authority', async () => {
+  await startPersonalHarness({ workflow, agentRun: agentRun(), paid: true, goal: 'Read the source.' })
+
+  expect(mocks.admit).toHaveBeenCalledWith(expect.objectContaining({
+    policy: expect.objectContaining({
+      actorUserId: 'user',
+      workspaceId: 'workspace',
+      limitsVersion: 2,
+      deadlineAt: null,
+      maxCostMicros: null,
+    }),
+  }))
 })
 
 test('a claimed duplicate returns the canonical workflow without starting another', async () => {

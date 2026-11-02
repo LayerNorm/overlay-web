@@ -1,6 +1,7 @@
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
 import type { HarnessExecutionResult } from './runner'
+import type { HarnessTranscriptPersistence, HarnessTranscriptStep } from '@overlay/agent-runtime/harness-store'
 
 export function nativeHarnessToolMetrics(snapshot: Pick<HarnessSnapshot, 'evidence'>) {
   const executions = snapshot.evidence.filter(evidence => evidence.kind === 'tool_result' && evidence.id.startsWith('tool:'))
@@ -15,8 +16,9 @@ export function buildNativeHarnessDelivery(
   result: HarnessExecutionResult,
   fallbackNotices: string[] = [],
   activeToolNames: ReadonlySet<string> = new Set(),
+  settledTranscript?: { persistence: HarnessTranscriptPersistence; steps: HarnessTranscriptStep[] },
 ) {
-  const delivery = buildPersonalHarnessDelivery(result, undefined, fallbackNotices, activeToolNames)
+  const delivery = buildPersonalHarnessDelivery(result, undefined, fallbackNotices, activeToolNames, settledTranscript)
   return {
     ...delivery,
     metrics: { ...delivery.metrics, ...nativeHarnessToolMetrics(result.snapshot) },

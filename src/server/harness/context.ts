@@ -1,4 +1,5 @@
 import { harnessCompletionIssues, reservedHarnessCostMicros, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { HARNESS_PUBLIC_PROGRESS_INSTRUCTION } from './public-progress'
 
 export const HARNESS_CONTROL_TOOLS = [
   'harness_set_plan',
@@ -32,6 +33,7 @@ export type HarnessInstructionContext = {
   truncatedResponse: boolean
   finalAnswerRequired?: boolean
   stagnationRecoveryAttempt?: number
+  publicProgress?: boolean
 }
 
 export function buildHarnessStepInstructions(state: HarnessSnapshot, context: HarnessInstructionContext): string {
@@ -54,6 +56,7 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
       ? `\nRecovery attempt ${context.stagnationRecoveryAttempt}: inspect recent failed tool evidence, missing capabilities and unmet dependencies; revise the approach and use different authorized tools. Do not manufacture progress by repeating the same plan, checkpoint or tool call. Call harness_report_blocker only when a genuinely missing user input, permission or resource requires a durable wait.`
       : '')
     + (context.finalAnswerRequired ? '\nAll milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.' : '')
+    + (context.publicProgress ? `\n${HARNESS_PUBLIC_PROGRESS_INSTRUCTION}` : '')
 }
 
 function safeFailedEvidenceSummary(state: HarnessSnapshot): string {
@@ -116,7 +119,9 @@ export function buildHarnessWorkingContext(state: HarnessSnapshot): string {
     blocker: state.blocker,
     budget: {
       deadlineAt: state.policy.deadlineAt,
-      remainingCostMicros: Math.max(0, state.policy.maxCostMicros - state.usage.costMicros - reservedCostMicros),
+      remainingCostMicros: state.policy.maxCostMicros === null
+        ? null
+        : Math.max(0, state.policy.maxCostMicros - state.usage.costMicros - reservedCostMicros),
       remainingDepth: state.policy.maxDepth - state.depth,
     },
   })

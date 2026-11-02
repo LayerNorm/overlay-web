@@ -44,8 +44,9 @@ function model(program: (index: number) => ProgramOutput, finishReasons: Languag
   return provider
 }
 
-function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
+function fixture(requiresPlan = true, extraAllowedToolIds: string[] = [], limitsVersion?: 2) {
   let current = state.createHarnessSnapshot({ runId: 'run', goal: 'Read the requested records', constraints: [], policy: {
+    ...(limitsVersion === undefined ? {} : { limitsVersion }),
     actorUserId: 'user', allowedToolIds: ['read', 'write', ...extraAllowedToolIds], requiresPlan,
     deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxDepth: 1, maxParallelChildren: 2,
   } }, Date.now())
@@ -60,11 +61,16 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
         case 'reserve_model': current = state.reserveHarnessModel(current, operation.id, operation.maxCostMicros, now); break
         case 'replace_plan': current = state.replaceHarnessPlan(current, operation.steps, now); break
         case 'transition_step': current = state.transitionHarnessStep(current, operation, now); break
-        case 'block': current = state.blockHarness(current, operation.blocker, now); break
+        case 'block':
+          if (operation.diagnostic) current = state.recordHarnessDiagnostic(current, operation.diagnostic, now)
+          current = state.blockHarness(current, operation.blocker, now)
+          break
         case 'resume': current = state.resumeHarness(current, now); break
         case 'checkpoint': current = state.checkpointHarness(current, operation.summary, now, operation.purpose); break
         case 'finish': current = state.finishHarness(current, now, operation.resultSummary); break
-        case 'terminate': current = state.terminateHarness(current, operation.status, operation.reason, now); break
+        case 'terminate':
+          current = state.terminateHarness(current, operation.status, operation.reason, now, operation.diagnostic)
+          break
         case 'wait_for_children': current = state.waitForHarnessChildren(current, now); break
         default: throw new Error(`Unexpected fixture operation: ${operation.type}`)
       }
@@ -120,6 +126,126 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
 }
 
 const input = { instructions: 'Use the tools to perform the requested work.', messages: [{ role: 'user' as const, content: 'Read the records.' }], model: { modelId: 'fixture/model', credentialOwnerId: 'user' } }
+
+test('v2 public progress is tool-free, retained in the transcript, and resumes work without becoming the answer', async () => {
+  const f = fixture(false, [], 2)
+  const read = vi.fn(async () => ({ record: 'found' }))
+  const provider = model(index => index === 0
+    ? 'I will read the requested records.'
+    : index === 1
+      ? [call('read', 'public-progress-read')]
+      : 'The requested record was found.')
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute: read }) },
+  }, f.ports)
+
+  expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'none' })
+  expect(read).toHaveBeenCalledOnce()
+  expect(result.steps[0]?.text).toBe('I will read the requested records.')
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('The requested record was found.')
+  expect(provider.doStreamCalls).toHaveLength(3)
+})
+
+test('a planless acknowledgement alone cannot finish the run', async () => {
+  const f = fixture(false, [], 2)
+  model(index => index === 0 ? 'I will begin now.' : '')
+
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+
+  expect(result.snapshot.status).not.toBe('completed')
+  expect(result.snapshot.resultSummary).toBeUndefined()
+  expect(result.steps[0]?.text).toBe('I will begin now.')
+})
+
+test('a provider-ignored tool-free progress choice cannot execute or request approval for a tool', async () => {
+  const f = fixture(false, [], 2)
+  const write = vi.fn(async () => ({ success: true }))
+  const waitForApproval = vi.fn(async () => [])
+  f.ports.waitForApproval = waitForApproval
+  const provider = model(index => index === 0
+    ? [call('write', 'ignored-progress-tool')]
+    : 'The task is complete.')
+
+  await expect(runOverlayHarness({
+    ...input,
+    tools: { write: tool({ inputSchema: z.object({}), needsApproval: true, execute: write }) },
+  }, f.ports)).rejects.toThrow('safe text-only update')
+
+  expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'none' })
+  expect(write).not.toHaveBeenCalled()
+  expect(waitForApproval).not.toHaveBeenCalled()
+  expect((await f.ports.read()).status).toBe('running')
+})
+
+test('v2 commentary follows three silent tool batches and does not become the final answer', async () => {
+  const f = fixture(false, [], 2)
+  const read = vi.fn(async ({ id }: { id: string }) => ({ success: true, id }))
+  const provider = model(index => {
+    if (index === 0) return 'I will check the records now.'
+    if (index >= 1 && index <= 3) return [call('read', `silent-${index}`, { id: `${index}` })]
+    if (index === 4) return 'Three checks are complete; I am verifying the result.'
+    if (index === 5) return [call('read', 'resumed-work', { id: 'verified' })]
+    return 'The records are verified.'
+  })
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({ id: z.string() }), execute: read }) },
+  }, f.ports)
+
+  expect(result.snapshot.resultSummary).toBe('The records are verified.')
+  expect(provider.doStreamCalls).toHaveLength(7)
+  expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'none' })
+  expect(provider.doStreamCalls[4]?.toolChoice).toEqual({ type: 'none' })
+  expect(read).toHaveBeenCalledTimes(4)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('The records are verified.')
+  expect(result.snapshot.resultSummary).not.toContain('Three checks are complete')
+  expect(result.steps.some(step => step.text?.includes('Three checks are complete'))).toBe(true)
+})
+
+test('a provider tool call during commentary cannot execute a mutation or enter approval', async () => {
+  const f = fixture(false, [], 2)
+  const write = vi.fn(async () => ({ success: true }))
+  f.ports.waitForApproval = vi.fn(async () => [])
+  const provider = model(() => [call('write', 'commentary-mutation')])
+  await expect(runOverlayHarness({
+    ...input,
+    tools: { write: tool({ inputSchema: z.object({}), execute: write }) },
+  }, f.ports)).rejects.toThrow('safe text-only update')
+  expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'none' })
+  expect(write).not.toHaveBeenCalled()
+  expect(f.ports.waitForApproval).not.toHaveBeenCalled()
+})
+
+test('an ambiguous write exception settles its step and stops before model retry', async () => {
+  const f = fixture(false, [], 2)
+  let applied = 0
+  const write = vi.fn(async () => {
+    applied++
+    throw new Error('private transport details')
+  })
+  const provider = model(index => index === 0
+    ? 'I will make the change.'
+    : index === 1
+      ? [call('write', 'ambiguous-write')]
+      : [call('write', 'model-requested-repeat')])
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { write: tool({ inputSchema: z.object({}), execute: write }) },
+  }, f.ports)
+
+  expect(write).toHaveBeenCalledOnce()
+  expect(applied).toBe(1)
+  expect(provider.doStreamCalls).toHaveLength(2)
+  expect(result.snapshot).toMatchObject({
+    status: 'failed',
+    diagnostic: { code: 'TOOL_OUTCOME_UNKNOWN', stage: 'tool', retryability: 'reconcile' },
+  })
+  expect(JSON.stringify(result)).not.toContain('private transport details')
+})
 
 test('reasoning stays separate from the durable final result shared with parents', async () => {
   const f = fixture(false)
@@ -492,7 +618,11 @@ test.each(['content-filter', 'error', 'other'] as const)('a provider %s finish c
   const provider = model(() => 'Partial response', [finishReason])
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
   expect(result.snapshot.status).toBe('failed')
-  expect(result.snapshot.terminalReason).toContain(finishReason)
+  expect(result.snapshot.diagnostic).toMatchObject({
+    code: 'PROVIDER_UNAVAILABLE', stage: 'model', retryability: 'user_action',
+  })
+  expect(result.snapshot.terminalReason).toContain('Diagnostic ID:')
+  expect(result.snapshot.terminalReason).not.toContain(finishReason)
   expect(provider.doStreamCalls).toHaveLength(1)
   expect(f.receipts.size).toBe(1)
 })
@@ -578,7 +708,7 @@ test('approval-resume persists the authenticated execution output once for perso
   expect(provider.doStreamCalls.length).toBe(2)
 })
 
-test('approval-resume retains the authenticated execution error', async () => {
+test('an approved tool exception requires reconciliation without exposing its raw error', async () => {
   const f = fixture(false)
   const execute = vi.fn(async () => { throw new Error('Approved execution failed.') })
   model(index => index === 0 ? [call('write', 'failed-write')] : 'The approved action failed.')
@@ -593,12 +723,17 @@ test('approval-resume retains the authenticated execution error', async () => {
   }, f.ports)
 
   expect(execute).toHaveBeenCalledTimes(1)
+  expect(result.snapshot).toMatchObject({
+    status: 'failed',
+    diagnostic: { code: 'TOOL_OUTCOME_UNKNOWN', retryability: 'reconcile' },
+  })
   expect(result.steps.flatMap(step => step.content)).toContainEqual(expect.objectContaining({
     type: 'tool-error',
     toolCallId: 'failed-write',
     toolName: 'write',
-    error: expect.stringContaining('Approved execution failed.'),
+    error: expect.stringContaining('without a confirmed outcome'),
   }))
+  expect(JSON.stringify(result)).not.toContain('Approved execution failed.')
 })
 
 test('ordinary tool results are not duplicated when callback outcomes are merged', async () => {
@@ -746,6 +881,9 @@ test('budget refusal happens before contacting the model', async () => {
   f.ports.prepareModel = async args => ({ messages: args.messages, activeToolNames: [], estimatedCostMicros: 101 })
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
   expect(result.snapshot.blocker?.kind).toBe('budget')
+  expect(result.snapshot.diagnostic).toMatchObject({
+    code: 'TASK_SPEND_LIMIT', stage: 'model', retryability: 'user_action',
+  })
   expect(result.snapshot.blocker?.question).toContain('per-task limit, not your workspace credit balance')
   expect(provider.doStreamCalls).toHaveLength(0)
 })
@@ -758,6 +896,9 @@ test('deadline refusal identifies the time limit without claiming workspace cred
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
   expect(result.snapshot.blocker?.question).toContain('authorized run deadline')
   expect(result.snapshot.blocker?.question).not.toContain('model-spend limit')
+  expect(result.snapshot.diagnostic).toMatchObject({
+    code: 'TASK_DEADLINE', stage: 'model', retryability: 'user_action',
+  })
   expect(provider.doStreamCalls).toHaveLength(0)
 })
 
@@ -910,7 +1051,7 @@ test('schema-invalid executable tool calls continue with the SDK error result', 
   expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('error-text')
 })
 
-test('tool execution errors continue with the SDK tool-error result instead of becoming approvals', async () => {
+test('confirmed safe tool failure envelopes continue without becoming approvals', async () => {
   const f = fixture(false)
   let answerSegment = false
   f.ports.prepareModel = async request => {
@@ -926,7 +1067,7 @@ test('tool execution errors continue with the SDK tool-error result instead of b
   const provider = model(index => answerSegment
     ? 'The read failed, so I did not use its result.'
     : [call('read', `read-failure-${index}`)])
-  const execute = vi.fn(async () => { throw new Error('Plain tool execution failure.') })
+  const execute = vi.fn(async () => ({ success: false, error: 'The read was safely declined.' }))
   const waitForApproval = vi.fn(async () => null)
   f.ports.waitForApproval = waitForApproval
 
@@ -937,11 +1078,13 @@ test('tool execution errors continue with the SDK tool-error result instead of b
 
   expect(result.snapshot.status).toBe('completed')
   expect(result.snapshot.resultSummary).toBe('The read failed, so I did not use its result.')
-  expect(result.steps.some(step => step.content.some(part => part.type === 'tool-error'))).toBe(true)
+  expect(result.steps.some(step => step.content.some(part => part.type === 'tool-result'
+    && part.output && typeof part.output === 'object'
+    && 'error' in part.output && part.output.error === 'The read was safely declined.'))).toBe(true)
   expect(execute).toHaveBeenCalled()
   expect(waitForApproval).not.toHaveBeenCalled()
   expect(provider.doStreamCalls.length).toBeGreaterThan(1)
-  expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('Plain tool execution failure.')
+  expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('The read was safely declined.')
 })
 
 test('a recovered stream failure does not persist its partial invocation messages or steps', async () => {

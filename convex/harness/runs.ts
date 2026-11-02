@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from 'convex/server'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { requireConversationAccess } from '../collaboration/directMessages'
@@ -14,6 +15,7 @@ import {
   checkpointHarness,
   claimHarnessExecution,
   createHarnessSnapshot,
+  assertHarnessPolicyLimits,
   finishHarness,
   applyHarnessResourceGrant,
   consumeHarnessResourcePause,
@@ -26,6 +28,7 @@ import {
   pauseHarnessForResources,
   replaceHarnessPlan,
   resumeHarness,
+  recordHarnessDiagnostic,
   settleHarnessChild,
   terminateHarness,
   transitionHarnessStep,
@@ -36,6 +39,7 @@ import {
   type HarnessReceipt,
   type HarnessSnapshot,
 } from '../../packages/overlay-agent-runtime/src/harness-state'
+import { createHarnessDiagnostic, type HarnessDiagnostic } from '../../packages/overlay-agent-runtime/src/harness-diagnostic'
 import {
   assertSafeResourceMicros,
   calculateHarnessResourceGrantReceipt,
@@ -54,6 +58,8 @@ import type {
   HarnessWait,
   HarnessWaitReference,
   HarnessWaitRequest,
+  HarnessTranscriptPage,
+  HarnessTranscriptPersistence,
 } from '../../packages/overlay-agent-runtime/src/harness-store'
 import { harnessToolsRequirePlan } from '../../packages/overlay-agent-runtime/src/harness-write-tools'
 import { ConvexError, v } from 'convex/values'
@@ -75,6 +81,7 @@ const MAX_HARNESS_DEPTH = 32
 const MAX_OPERATION_JSON_BYTES = 256 * 1024
 const MAX_PLAN_JSON_BYTES = 512 * 1024
 const MAX_WAIT_REQUESTS = 128
+const MAX_TRANSCRIPT_STEP_JSON_BYTES = 256 * 1024
 
 const waitRequestValidator = v.union(
   v.object({
@@ -103,10 +110,11 @@ const policyValidator = v.object({
   actorUserId: v.string(),
   workspaceId: v.optional(v.string()),
   resourcePauseVersion: v.optional(v.literal(1)),
+  limitsVersion: v.optional(v.literal(2)),
   allowedToolIds: v.array(v.string()),
   requiresPlan: v.boolean(),
-  deadlineAt: v.number(),
-  maxCostMicros: v.number(),
+  deadlineAt: v.union(v.number(), v.null()),
+  maxCostMicros: v.union(v.number(), v.null()),
   maxParallelChildren: v.number(),
   maxDepth: v.number(),
 })
@@ -183,7 +191,7 @@ const childValidator = v.object({
   id: v.string(),
   stepId: v.string(),
   allowedToolIds: v.array(v.string()),
-  maxCostMicros: v.number(),
+  maxCostMicros: v.union(v.number(), v.null()),
   costMicros: v.number(),
   status: v.union(v.literal('running'), v.literal('completed'), v.literal('failed'), v.literal('cancelled')),
   summary: v.optional(v.string()),
@@ -222,6 +230,37 @@ const operationValidator = v.union(
       kind: v.union(v.literal('input'), v.literal('approval'), v.literal('budget'), v.literal('stuck')),
       question: v.string(),
     }),
+    diagnostic: v.optional(v.object({
+      diagnosticId: v.string(),
+      code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
+        v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'),
+        v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
+        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
+      stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
+        v.literal('persistence'), v.literal('delivery')),
+      operationId: v.optional(v.string()),
+      retryability: v.union(v.literal('automatic'), v.literal('user_action'), v.literal('reconcile'), v.literal('none')),
+      safeMessage: v.string(),
+      nextAction: v.string(),
+      occurredAt: v.number(),
+    })),
+  }),
+  v.object({
+    type: v.literal('record_diagnostic'),
+    diagnostic: v.object({
+      diagnosticId: v.string(),
+      code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
+        v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'),
+        v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
+        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
+      stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
+        v.literal('persistence'), v.literal('delivery')),
+      operationId: v.optional(v.string()),
+      retryability: v.union(v.literal('automatic'), v.literal('user_action'), v.literal('reconcile'), v.literal('none')),
+      safeMessage: v.string(),
+      nextAction: v.string(),
+      occurredAt: v.number(),
+    }),
   }),
   v.object({ type: v.literal('resume') }),
   v.object({ type: v.literal('wait_for_children') }),
@@ -245,6 +284,20 @@ const operationValidator = v.union(
     type: v.literal('terminate'),
     status: v.union(v.literal('cancelled'), v.literal('failed')),
     reason: v.string(),
+    diagnostic: v.optional(v.object({
+      diagnosticId: v.string(),
+      code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
+        v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'),
+        v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
+        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
+      stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
+        v.literal('persistence'), v.literal('delivery')),
+      operationId: v.optional(v.string()),
+      retryability: v.union(v.literal('automatic'), v.literal('user_action'), v.literal('reconcile'), v.literal('none')),
+      safeMessage: v.string(),
+      nextAction: v.string(),
+      occurredAt: v.number(),
+    })),
   }),
 )
 
@@ -307,6 +360,7 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     planRevision: snapshot.planRevision,
     ...(snapshot.blocker === undefined ? {} : { blocker: snapshot.blocker }),
     ...(snapshot.terminalReason === undefined ? {} : { terminalReason: snapshot.terminalReason }),
+    ...(snapshot.diagnostic === undefined ? {} : { diagnostic: snapshot.diagnostic }),
     workingSummary: snapshot.workingSummary,
     ...(snapshot.resultSummary === undefined ? {} : { resultSummary: snapshot.resultSummary }),
     continuations: snapshot.continuations,
@@ -355,11 +409,9 @@ function assertBoundedAdmission(input: HarnessAdmission) {
     || input.policy.allowedToolIds.some(id => !id.trim() || id.length > MAX_TOOL_ID_LENGTH)) {
     throw new Error('Harness policy tool ids exceed their bounds.')
   }
+  assertHarnessPolicyLimits(input.policy)
   if (!input.policy.actorUserId.trim()
     || (input.policy.workspaceId !== undefined && !input.policy.workspaceId.trim())
-    || !Number.isFinite(input.policy.deadlineAt)
-    || !Number.isSafeInteger(input.policy.maxCostMicros)
-    || input.policy.maxCostMicros < 0
     || !Number.isSafeInteger(input.policy.maxParallelChildren)
     || input.policy.maxParallelChildren < 0
     || !Number.isSafeInteger(input.policy.maxDepth)
@@ -375,6 +427,8 @@ function assertBoundedAdmission(input: HarnessAdmission) {
     || input.policy.workspaceId === undefined
     || input.policy.maxDepth !== 0
     || input.policy.maxParallelChildren !== 0
+    || input.policy.deadlineAt === null
+    || input.policy.maxCostMicros === null
     || input.policy.maxCostMicros > MAX_HARNESS_RESOURCE_SPEND_MICROS
     || !input.deliveryAgentRunId
     || !('conversationId' in input.source)
@@ -571,9 +625,13 @@ function assertBoundedOperation(operation: HarnessOperation) {
       if (operation.resultSummary !== undefined && operation.resultSummary.length > MAX_WORKING_SUMMARY_LENGTH) throw new Error('Harness result summary exceeds 8,000 characters.')
       break
     case 'block':
-      if (!operation.blocker.question.trim() || operation.blocker.question.length > MAX_EVIDENCE_SUMMARY_LENGTH) {
+      if (!operation.blocker.question.trim() || operation.blocker.question.length > MAX_EVIDENCE_SUMMARY_LENGTH
+        || (operation.diagnostic && !isValidDiagnostic(operation.diagnostic))) {
         throw new Error('Harness blocker exceeds its bounds.')
       }
+      break
+    case 'record_diagnostic':
+      if (!isValidDiagnostic(operation.diagnostic)) throw new Error('Harness diagnostic exceeds its bounds.')
       break
     case 'admit_child':
       if (!operation.child.id.trim() || operation.child.id.length > MAX_ID_LENGTH
@@ -614,11 +672,28 @@ function assertBoundedOperation(operation: HarnessOperation) {
       }
       break
     case 'terminate':
-      if (!operation.reason.trim() || operation.reason.length > MAX_EVIDENCE_SUMMARY_LENGTH) {
+      if (!operation.reason.trim() || operation.reason.length > MAX_EVIDENCE_SUMMARY_LENGTH
+        || (operation.diagnostic && !isValidDiagnostic(operation.diagnostic))) {
         throw new Error('Harness termination reason exceeds its bounds.')
       }
       break
   }
+}
+
+function isValidDiagnostic(diagnostic: HarnessDiagnostic): boolean {
+  const expected = createHarnessDiagnostic({
+    diagnosticId: diagnostic.diagnosticId,
+    code: diagnostic.code,
+    stage: diagnostic.stage,
+    operationId: diagnostic.operationId,
+    occurredAt: diagnostic.occurredAt,
+  })
+  return diagnostic.diagnosticId.length <= MAX_ID_LENGTH
+    && (diagnostic.operationId === undefined || diagnostic.operationId.length <= MAX_ID_LENGTH)
+    && Number.isSafeInteger(diagnostic.occurredAt) && diagnostic.occurredAt >= 0
+    && diagnostic.safeMessage === expected.safeMessage
+    && diagnostic.nextAction === expected.nextAction
+    && diagnostic.retryability === expected.retryability
 }
 
 function requireHarnessServerSecret(secret: string) {
@@ -963,11 +1038,15 @@ export async function requireHarnessPublicationAuthority(
   if (metadata.status !== 'running' || !metadata.policy.workspaceId
     || !metadata.policy.allowedToolIds.includes('computer_publish_file')
     || !metadata.policy.allowedToolIds.includes('write_file')
-    || lineage.some(entry => entry.metadata.policy.deadlineAt <= Date.now())) {
+    || lineage.some(entry => entry.metadata.policy.deadlineAt !== null
+      && entry.metadata.policy.deadlineAt <= Date.now())) {
     throw new Error('HARNESS_PUBLICATION_NOT_AUTHORIZED')
   }
+  const finiteDeadlines = lineage
+    .map(entry => entry.metadata.policy.deadlineAt)
+    .filter((deadlineAt): deadlineAt is number => deadlineAt !== null)
   return { rootRunId: run.rootRunId, workspaceId: metadata.policy.workspaceId,
-    deadlineAt: Math.min(...lineage.map(entry => entry.metadata.policy.deadlineAt)) }
+    deadlineAt: finiteDeadlines.length ? Math.min(...finiteDeadlines) : null }
 }
 
 function waitBlockerQuestion(metadata: HarnessMetadata, kind: HarnessWaitRequest['kind']): string {
@@ -1166,6 +1245,7 @@ function childAdmission(
     ...(parent.policy.workspaceId ? { workspaceId: parent.policy.workspaceId } : {}),
     allowedToolIds: [...new Set(operation.child.allowedToolIds)].sort(),
     requiresPlan: parent.policy.requiresPlan && harnessToolsRequirePlan(operation.child.allowedToolIds),
+    ...(parent.policy.limitsVersion !== undefined ? { limitsVersion: parent.policy.limitsVersion } : {}),
     deadlineAt: parent.policy.deadlineAt,
     maxCostMicros: operation.child.maxCostMicros,
     maxParallelChildren: parent.policy.maxParallelChildren,
@@ -1352,7 +1432,10 @@ async function applyReducer(
     case 'checkpoint':
       return { snapshot: checkpointHarness(current, operation.summary, now, operation.purpose) }
     case 'block':
-      return { snapshot: blockHarness(current, operation.blocker, now) }
+      return { snapshot: blockHarness(operation.diagnostic
+        ? recordHarnessDiagnostic(current, operation.diagnostic, now) : current, operation.blocker, now) }
+    case 'record_diagnostic':
+      return { snapshot: recordHarnessDiagnostic(current, operation.diagnostic, now) }
     case 'resume':
       return { snapshot: resumeHarness(current, now) }
     case 'wait_for_children':
@@ -1459,8 +1542,9 @@ async function applyReducer(
     case 'finish':
       return { snapshot: finishHarness(current, now, operation.resultSummary) }
     case 'terminate': {
-      const settled = await recordFreeModelTerminalReceipt(ctx, run.runId, current, now)
-      return { snapshot: terminateHarness(settled, operation.status, operation.reason, now) }
+      let settled = await recordFreeModelTerminalReceipt(ctx, run.runId, current, now)
+      if (operation.diagnostic) settled = recordHarnessDiagnostic(settled, operation.diagnostic, now)
+      return { snapshot: terminateHarness(settled, operation.status, operation.reason, now, operation.diagnostic) }
     }
   }
 }
@@ -1559,6 +1643,101 @@ export const get = query({
     if (!run) return null
     const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
     return await currentSnapshot(ctx, run, lineage)
+  },
+})
+
+export const writeTranscriptStep = mutation({
+  args: {
+    actorUserId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.string(),
+    receiptId: v.string(),
+    stepNumber: v.number(),
+    persistence: v.object({ content: v.string(), parts: v.array(v.any()) }),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const sequenceMatch = /^model:(\d+)$/.exec(args.receiptId)
+    if (!args.actorUserId.trim() || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+      || !args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH
+      || !sequenceMatch || !Number.isSafeInteger(args.stepNumber) || args.stepNumber < 0
+      || args.persistence.content.length > 160_000 || args.persistence.parts.length > 80
+      || args.persistence.parts.some(part => !part || typeof part !== 'object' || part.type === 'reasoning')) {
+      throw new Error('Invalid harness transcript step.')
+    }
+    const persistenceJson = stableJson(args.persistence as HarnessTranscriptPersistence)
+    if (new TextEncoder().encode(persistenceJson).byteLength > MAX_TRANSCRIPT_STEP_JSON_BYTES) {
+      throw new Error('Harness transcript step exceeds its storage limit.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    if (lineage[0]!.metadata.workflowRunId !== args.workflowRunId) {
+      throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    }
+    const receipt = await ctx.db.query('harnessReceipts')
+      .withIndex('by_runId_receiptId', query => query.eq('runId', run.runId).eq('receiptId', args.receiptId))
+      .unique()
+    if (!receipt || parseJson<HarnessReceipt>(receipt.receiptJson).id !== args.receiptId) {
+      throw new Error('HARNESS_TRANSCRIPT_RECEIPT_NOT_FOUND')
+    }
+    const existing = await ctx.db.query('harnessTranscriptSteps')
+      .withIndex('by_runId_receiptId', query => query.eq('runId', run.runId).eq('receiptId', args.receiptId))
+      .unique()
+    if (existing) {
+      if (existing.stepNumber !== args.stepNumber || existing.persistenceJson !== persistenceJson) {
+        throw new Error('HARNESS_TRANSCRIPT_CONFLICT')
+      }
+      return { persisted: false }
+    }
+    await ctx.db.insert('harnessTranscriptSteps', {
+      runId: run.runId,
+      receiptId: args.receiptId,
+      sequence: Number(sequenceMatch[1]),
+      stepNumber: args.stepNumber,
+      persistenceJson,
+      createdAt: receipt.createdAt,
+    })
+    return { persisted: true }
+  },
+})
+
+export const listTranscriptSteps = query({
+  args: {
+    actorUserId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.string(),
+    paginationOpts: paginationOptsValidator,
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args): Promise<HarnessTranscriptPage> => {
+    requireHarnessServerSecret(args.serverSecret)
+    if (!args.actorUserId.trim() || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+      || !args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH
+      || args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 100) {
+      throw new Error('Invalid harness transcript page request.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    if (lineage[0]!.metadata.workflowRunId !== args.workflowRunId) {
+      throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    }
+    const page = await ctx.db.query('harnessTranscriptSteps')
+      .withIndex('by_runId_sequence', query => query.eq('runId', run.runId))
+      .order('desc')
+      .paginate(args.paginationOpts)
+    return {
+      steps: page.page.map(row => ({
+        receiptId: row.receiptId,
+        stepNumber: row.stepNumber,
+        sequence: row.sequence,
+        persistence: parseJson<HarnessTranscriptPersistence>(row.persistenceJson),
+      })),
+      cursor: page.continueCursor,
+      isDone: page.isDone,
+    }
   },
 })
 
@@ -2059,6 +2238,10 @@ export const pauseForResources = mutation({
     }
     const snapshot = await currentSnapshot(ctx, authority.run, authority.lineage)
     if (snapshot.revision !== args.expectedRevision) throw new Error('HARNESS_STATE_CONFLICT')
+    if (snapshot.policy.resourcePauseVersion !== 1 || snapshot.policy.deadlineAt === null
+      || snapshot.policy.maxCostMicros === null) {
+      throw new Error('HARNESS_RESOURCE_LIMITS_INVALID')
+    }
     const reserved = reservedHarnessCostMicros(snapshot)
     assertSafeResourceMicros(snapshot.usage.costMicros, 'Used cost')
     assertSafeResourceMicros(reserved, 'Reserved cost')

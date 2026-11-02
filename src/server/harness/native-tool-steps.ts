@@ -220,9 +220,10 @@ export async function dispatchNativeHarnessAgentRequest(
       throw new Error("External agents can't be asked from this run yet.")
     }
     const budgetParent = await loadNativeParentRun(repository, access)
-    const remaining = Math.max(0,
-      budgetParent.policy.maxCostMicros - budgetParent.usage.costMicros - reservedHarnessCostMicros(budgetParent))
-    const childBudget = Math.floor(remaining / (invocations.length + 1))
+    const childBudget = budgetParent.policy.maxCostMicros === null
+      ? null
+      : Math.floor(Math.max(0, budgetParent.policy.maxCostMicros - budgetParent.usage.costMicros
+        - reservedHarnessCostMicros(budgetParent)) / (invocations.length + 1))
     const started: Array<{ agentId: string; turnId: string }> = []
     for (const invocation of invocations) {
       const turn = await server.appData.repositories.conversationCollaboration.startAgentTurn({

@@ -27,6 +27,9 @@ async function waitForHarnessBoundaryResources(
   while (true) {
     const state = await read()
     if (state.policy.resourcePauseVersion !== 1) return state
+    if (state.policy.deadlineAt === null || state.policy.maxCostMicros === null) {
+      throw new FatalError('HARNESS_RESOURCE_LIMITS_INVALID')
+    }
     if (state.runId !== reference.runId || state.workflowRunId !== reference.workflowRunId
       || state.policy.actorUserId !== reference.actorUserId || state.parentRunId || state.rootRunId !== reference.runId
       || state.policy.maxDepth !== 0 || state.policy.maxParallelChildren !== 0 || state.children.length) {
@@ -77,6 +80,9 @@ export async function waitForHarnessHumanReply<T>(
     if (['completed', 'failed', 'cancelled'].includes(state.status)) return null
     if (state.policy.resourcePauseVersion !== 1 || !isHumanWait(state, kind)) {
       throw new FatalError('HARNESS_HUMAN_WAIT_CHANGED')
+    }
+    if (state.policy.deadlineAt === null || state.policy.maxCostMicros === null) {
+      throw new FatalError('HARNESS_RESOURCE_LIMITS_INVALID')
     }
     if (received) {
       if ('error' in received) throw received.error

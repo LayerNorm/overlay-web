@@ -16,7 +16,10 @@ import { INTERRUPTED_RESPONSE_NOTICE } from '../../src/shared/chat/agent-assista
 import { assertNativeHarnessRun, assertSupportedAgentExecution } from '../../src/shared/agents/native-run-retirement'
 import { assertNativeThreadWritable, nativeThreadCompatibility } from '../lib/nativeThreadCompatibility'
 import { nativeAgentErrorPart } from '../lib/nativeAgentErrorPart'
+import { harnessDiagnosticValidator } from '../lib/harnessDiagnosticValidator'
+import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
 import { NATIVE_AGENT_ERROR_PART, nativeAgentErrorMessage } from '../../src/shared/agents/native-agent-error'
+import { createHarnessDiagnostic, harnessDiagnosticMessage } from '../../packages/overlay-agent-runtime/src/harness-diagnostic'
 
 const generatedUiVariant = v.object({
   id: v.string(),
@@ -1188,25 +1191,57 @@ export const completeAgentRun = mutation({
 
 export const failAgentRun = mutation({
   args: {
-    error: v.object({ code: v.string(), message: v.string(), retryable: v.boolean() }),
+    error: v.object({
+      code: v.string(),
+      message: v.string(),
+      retryable: v.boolean(),
+      diagnostic: v.optional(harnessDiagnosticValidator),
+    }),
     errorText: v.string(),
     runId: v.id('conversationAgentRuns'),
+    expectedWorkflowRunId: v.optional(v.string()),
+    failureTranscript: v.optional(v.object({ content: v.string(), parts: v.array(v.any()) })),
     serverSecret: v.string(),
     userId: v.string(),
     metrics: v.optional(agentRunMetrics),
   },
   handler: async (ctx, args) => {
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+    if (args.error.diagnostic) {
+      const diagnostic = args.error.diagnostic
+      const expected = createHarnessDiagnostic({
+        diagnosticId: diagnostic.diagnosticId,
+        code: diagnostic.code,
+        stage: diagnostic.stage,
+        occurredAt: diagnostic.occurredAt,
+      })
+      const retryable = diagnostic.retryability === 'automatic' || diagnostic.retryability === 'user_action'
+      if (diagnostic.safeMessage !== expected.safeMessage || diagnostic.nextAction !== expected.nextAction
+        || diagnostic.retryability !== expected.retryability || args.error.retryable !== retryable
+        || args.error.message !== harnessDiagnosticMessage(diagnostic)) {
+        throw new Error('Invalid Harness terminal diagnostic.')
+      }
+    }
     const run = await ctx.db.get(args.runId)
     if (!run || run.userId !== args.userId) throw new Error('Unauthorized')
     if (!ACTIVE_AGENT_RUN_STATUSES.has(run.status)) return run
+    if (args.expectedWorkflowRunId && (run.workflowRunId !== args.expectedWorkflowRunId
+      || run.executionEngine !== 'overlay_harness')) throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
     assertSupportedAgentExecution(run)
     assertAgentRunTransition(run.status, 'failed')
     const isNative = run.runner === 'workflow' && run.executionEngine === 'overlay_harness'
     const now = Date.now()
     const message = await ctx.db.get(run.assistantMessageId)
     if (message) {
-      const parts = (message.parts ?? []).filter((part) =>
+      const merged = args.failureTranscript
+        ? mergeHarnessFailureTranscript({
+          liveContent: message.content,
+          liveParts: message.parts ?? [],
+          settledContent: args.failureTranscript.content,
+          settledParts: args.failureTranscript.parts,
+        })
+        : undefined
+      const parts = (merged?.parts ?? message.parts ?? []).filter((part) =>
         part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'
         && part.type !== NATIVE_AGENT_ERROR_PART)
       if (isNative) {
@@ -1214,16 +1249,16 @@ export const failAgentRun = mutation({
           ...args.error, message: nativeAgentErrorMessage(args.error.message), runId: String(run._id), failedAt: now,
         } })
       }
-      const content = isNative ? message.content : message.content || args.errorText
+      const content = merged?.content || (isNative ? message.content : message.content || args.errorText)
       const hasContentPart = parts.some((part) => part.type === 'text')
       await ctx.db.patch(message._id, {
-        ...(message.status === 'generating'
+        ...(message.status === 'generating' || message.status === 'error'
           ? {
               content,
               parts: hasContentPart || !content ? parts : [...parts, { type: 'text', text: content }],
               status: 'error' as const,
             }
-          : { parts, ...(isNative ? { status: 'error' as const } : {}) }),
+          : { content, parts, ...(isNative ? { status: 'error' as const } : {}) }),
         updatedAt: now,
       })
     }

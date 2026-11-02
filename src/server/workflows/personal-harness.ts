@@ -22,6 +22,9 @@ import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
 import type { PersonalHarnessWorkflowInput } from '@/server/harness/personal-workflow-input'
 import { persistPersonalChatWorkProgress } from '@/server/conversations/personal-chat-work-lifecycle'
 import { hasSamePersonalHarnessAuthentication } from '@/server/harness/personal-authentication'
+import { readSettledHarnessTranscript } from '@/server/harness/harness-transcript'
+import { harnessDiagnosticForFailure } from '@/server/harness/harness-diagnostics'
+import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 
 function hasChildExecutionIdentity(parent: PersonalHarnessAccess, input: PersonalHarnessWorkflowInput): boolean {
   return input.access.actorUserId === parent.actorUserId
@@ -175,20 +178,46 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     }, ports)
     if (result.outcome === 'already_running') return { runId: initial.runId, status: 'already_running' as const }
     if (!['completed', 'failed', 'cancelled'].includes(result.snapshot.status)) {
+      const diagnostic = harnessDiagnosticForFailure(access.runId, result.snapshot,
+        new Error(result.snapshot.blocker?.question ?? ''), result.snapshot.blocker?.kind === 'stuck' ? 'tool' : 'model')
+      const reason = harnessDiagnosticMessage(diagnostic)
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
-        type: 'terminate', status: 'failed', reason: result.snapshot.blocker?.question || 'The task is blocked and cannot continue.',
+        type: 'terminate', status: 'failed', reason, diagnostic,
       })
     }
   } catch (error) {
-    const reason = (error instanceof Error ? error.message : 'Harness execution failed.').slice(0, 2_000)
     const state = await readHarnessState(access)
-    const snapshot = ['completed', 'failed', 'cancelled'].includes(state.status) ? state
-      : await applyHarnessOperation(access, 'execution-failed', { type: 'terminate', status: 'failed', reason })
+    const stage = error && typeof error === 'object'
+      && (error as { code?: unknown }).code === 'HARNESS_TOOL_OUTCOME_UNKNOWN' ? 'tool' : 'model'
+    const diagnostic = harnessDiagnosticForFailure(access.runId, state, error, stage)
+    const reason = harnessDiagnosticMessage(diagnostic)
+    const snapshot = state.status === 'cancelled' || state.status === 'completed' ? state
+      : state.status === 'failed'
+        ? state.diagnostic ? state : await applyHarnessOperation(access, 'execution-diagnostic', {
+          type: 'record_diagnostic', diagnostic,
+        })
+        : await applyHarnessOperation(access, 'execution-failed', {
+          type: 'terminate', status: 'failed', reason, diagnostic,
+        })
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
   }
+  let settledTranscript: Awaited<ReturnType<typeof readSettledHarnessTranscript>> | undefined
   if (isRoot) {
-    const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices, activeToolNames)
-    if (!result.steps.length && progress) {
+    try {
+      settledTranscript = await readSettledHarnessTranscript(access)
+    } catch (error) {
+      const state = await readHarnessState(access)
+      const diagnostic = harnessDiagnosticForFailure(access.runId, state, error, 'persistence')
+      const snapshot = state.diagnostic ? state : await applyHarnessOperation(access,
+        `transcript-read-failure:${diagnostic.diagnosticId}`, { type: 'record_diagnostic', diagnostic })
+      result = { ...result, snapshot }
+    }
+    settledTranscript ??= {
+      persistence: { content: '', parts: [] }, steps: [], truncated: false,
+      newestSequence: null, oldestSequence: null,
+    }
+    const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices, activeToolNames, settledTranscript)
+    if (!result.steps.length && progress && settledTranscript.steps.length === 0) {
       const content = fallbackNotices.length ? `${fallbackNotices.join('\n\n')}\n\n${progress}` : progress
       delivery.content = content
       delivery.parts = [{ type: 'text', text: content }]
@@ -205,7 +234,10 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     status: result.snapshot.status,
     ...(result.snapshot.terminalReason ? { terminalReason: result.snapshot.terminalReason } : {}),
     ...(input.delivery?.closeStream === false && isRoot && result.snapshot.status === 'completed'
-      ? { replyText: buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices, activeToolNames).content }
+      ? { replyText: buildPersonalHarnessDelivery(
+        result, input.delivery?.sourceCitations, fallbackNotices, activeToolNames,
+        settledTranscript,
+      ).content }
       : {}),
   }
 }

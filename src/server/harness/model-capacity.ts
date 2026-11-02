@@ -12,7 +12,8 @@ export function createHarnessCapacityWaiter() {
         || receipt.modelId !== modelId || receipt.rejectionReason !== 'route_capacity'
         || (modelId !== OPENROUTER_FREE_MODEL_ID && modelId !== OVERLAY_FREE_MODEL_ID)) return false
       const now = Date.now()
-      deadline = Math.min(deadline ?? now + 300_000, state.policy.deadlineAt)
+      deadline = deadline ?? now + 300_000
+      if (state.policy.deadlineAt !== null) deadline = Math.min(deadline, state.policy.deadlineAt)
       if (now >= deadline) return false
       await sleep(new Date(Math.min(now + 5_000, deadline)))
       return true
