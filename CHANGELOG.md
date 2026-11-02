@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Separate personal-chief appearance identity from workspace-scoped executable bindings, with atomic provisioning, conservative legacy adoption, and owner-only profile updates.
+- Separate personal-chief appearance identity from workspace-scoped executable bindings, provisioning distinct private and workspace-scope bindings per eligible owner, with conservative legacy adoption, atomic mixed appearance/config saves, and owner-only profile updates.
 
 - Keep agent-created notes, text files and Computer artifacts out of human activity counts while retaining file totals.
 

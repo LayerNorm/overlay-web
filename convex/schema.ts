@@ -921,7 +921,7 @@ export default defineSchema({
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId'],
-  }),
+    }),
 
   personalChiefIdentities: defineTable({
     userId: v.string(),

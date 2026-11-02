@@ -33,38 +33,6 @@ export async function PATCH(_request: Request, context: AppApiRouteContext) {
     const body = context.parsedJson as Record<string, unknown>
     const service = getOverlayServerContext().workspaceAgentService
     const agentId = requiredAgentId(await context.params)
-    const current = await service.get({
-      actorUserId: context.auth.userId,
-      workspaceId: context.workspace.workspace.id,
-      agentId,
-    })
-    if (current.agentRole === 'personal_chief' && hasChiefIdentityFields(body)) {
-      if (Object.keys(body).some((key) => !['name', 'description', 'avatarColor', 'avatarShape'].includes(key))) {
-        invalid('chief identity fields must be updated separately')
-      }
-      const identity: WorkspaceAgentUpdateInput = {}
-      assignString(identity, body, 'name')
-      assignString(identity, body, 'description')
-      assignString(identity, body, 'avatarColor')
-      assignShape(identity, body)
-      await service.updateChiefIdentity({
-        actorUserId: context.auth.userId,
-        workspaceId: context.workspace.workspace.id,
-        agentId,
-        updatedByPrincipalId: context.workspace.principal.id,
-        ...(identity.name === undefined ? {} : { name: identity.name }),
-        ...(identity.description === undefined ? {} : { description: identity.description }),
-        ...(identity.avatarColor === undefined ? {} : { avatarColor: identity.avatarColor }),
-        ...(identity.avatarShape === undefined ? {} : { avatarShape: identity.avatarShape }),
-      })
-      return NextResponse.json({
-        agent: await service.get({
-          actorUserId: context.auth.userId,
-          workspaceId: context.workspace.workspace.id,
-          agentId,
-        }),
-      })
-    }
     const agent = await service.update({
       actorUserId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
@@ -75,10 +43,6 @@ export async function PATCH(_request: Request, context: AppApiRouteContext) {
   } catch (error) {
     return agentErrorResponse(error)
   }
-}
-
-function hasChiefIdentityFields(body: Record<string, unknown>) {
-  return ['name', 'description', 'avatarColor', 'avatarShape'].some((key) => body[key] !== undefined)
 }
 
 function updateInput(body: Record<string, unknown>): WorkspaceAgentUpdateInput {

@@ -52,16 +52,12 @@ export class WorkspaceAgentService {
   async list(args: { actorUserId: string; workspaceId: string; includeArchived?: boolean }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     if (access.membership.role !== 'guest') {
-      if (this.repository.ensureChiefs) {
-        await this.repository.ensureChiefs({
-          workspaceId: access.workspace.id,
-          actorUserId: args.actorUserId,
-          actorPrincipalId: access.principal.id,
-          now: this.now(),
-        })
-      } else {
-        await this.ensureDefaultAgent({ workspaceId: access.workspace.id, creatorPrincipalId: access.principal.id })
-      }
+      await this.repository.ensureChiefs({
+        workspaceId: access.workspace.id,
+        actorUserId: args.actorUserId,
+        actorPrincipalId: access.principal.id,
+        now: this.now(),
+      })
     }
     const agents = await this.repository.list({
       workspaceId: access.workspace.id,
@@ -97,16 +93,12 @@ export class WorkspaceAgentService {
   async get(args: { actorUserId: string; workspaceId: string; agentId: string }) {
     const access = await this.workspaces.resolveActiveWorkspace(args.actorUserId, args.workspaceId)
     if (access.membership.role !== 'guest') {
-      if (this.repository.ensureChiefs) {
-        await this.repository.ensureChiefs({
-          workspaceId: access.workspace.id,
-          actorUserId: args.actorUserId,
-          actorPrincipalId: access.principal.id,
-          now: this.now(),
-        })
-      } else {
-        await this.ensureDefaultAgent({ workspaceId: access.workspace.id, creatorPrincipalId: access.principal.id })
-      }
+      await this.repository.ensureChiefs({
+        workspaceId: access.workspace.id,
+        actorUserId: args.actorUserId,
+        actorPrincipalId: access.principal.id,
+        now: this.now(),
+      })
     }
     const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
     // Invisible agents report as not found so their existence does not leak to
@@ -114,8 +106,10 @@ export class WorkspaceAgentService {
     if (!agent || agent.archivedAt || !canSeeAgent(agent, access.principal.id)) {
       throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
     }
+    const creator = await this.workspaces.resolvePrincipal(agent.createdByPrincipalId)
     return {
       ...agent,
+      ...(creator?.displayName ? { createdByDisplayName: creator.displayName } : {}),
       canEdit: canEditAgent(agent, args.actorUserId, access.principal.id, access.membership.role),
     }
   }
@@ -244,13 +238,6 @@ export class WorkspaceAgentService {
     input: WorkspaceAgentUpdateInput
   }) {
     const { access, agent } = await this.requireEditor(args)
-    if (agent.agentRole === 'personal_chief') {
-      const identityUpdate = args.input.name !== undefined || args.input.description !== undefined
-        || args.input.avatarColor !== undefined || args.input.avatarShape !== undefined
-      if (identityUpdate) {
-        throw new WorkspaceAgentServiceError('validation', 'Use the personal chief identity update for appearance changes')
-      }
-    }
     const requiredVisibility = agent.chiefScope === 'personal' ? 'creator' : 'workspace'
     if ((agent.agentRole === 'personal_chief' || agent.agentRole === 'workspace_chief')
       && args.input.visibility !== undefined && args.input.visibility !== requiredVisibility) {
@@ -323,7 +310,12 @@ export class WorkspaceAgentService {
       now: this.now(),
     })
     if (!updated) throw new WorkspaceAgentServiceError('not_found', 'Agent not found')
-    return updated
+    const creator = await this.workspaces.resolvePrincipal(updated.createdByPrincipalId)
+    return {
+      ...updated,
+      ...(creator?.displayName ? { createdByDisplayName: creator.displayName } : {}),
+      canEdit: canEditAgent(updated, args.actorUserId, access.principal.id, access.membership.role),
+    }
   }
 
   private async assertExternalAgentAllowed(record: ExternalAgentPolicyRecord): Promise<void> {
@@ -406,14 +398,12 @@ export class WorkspaceAgentService {
     if (access.principal.id !== args.updatedByPrincipalId) {
       throw new WorkspaceAgentServiceError('forbidden', 'Only the personal chief owner can change its identity')
     }
-    if (this.repository.ensureChiefs) {
-      await this.repository.ensureChiefs({
-        workspaceId: access.workspace.id,
-        actorUserId: args.actorUserId,
-        actorPrincipalId: access.principal.id,
-        now: this.now(),
-      })
-    }
+    await this.repository.ensureChiefs({
+      workspaceId: access.workspace.id,
+      actorUserId: args.actorUserId,
+      actorPrincipalId: access.principal.id,
+      now: this.now(),
+    })
     const agent = await this.repository.get({ workspaceId: access.workspace.id, agentId: args.agentId })
     if (!agent || agent.agentRole !== 'personal_chief' || agent.chiefOwnerUserId !== args.actorUserId) {
       throw new WorkspaceAgentServiceError('forbidden', 'Only the personal chief owner can change its identity')

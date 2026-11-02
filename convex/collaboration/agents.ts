@@ -185,7 +185,8 @@ export const listByServer = query({
     const activeHumanOwnerIds = new Set(
       (await ctx.db.query('workspacePrincipals')
         .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect())
-        .filter((principal) => principal.type === 'human' && principal.userId && activeOwnerIds.has(principal.principalId))
+        .filter((principal) => principal.type === 'human' && principal.userId
+          && !principal.archivedAt && activeOwnerIds.has(principal.principalId))
         .map((principal) => principal.userId!),
     )
     const visible = rows
@@ -259,22 +260,38 @@ export const ensureChiefsByServer = mutation({
       const existingRows = live.filter((row) =>
         row.agentRole === 'personal_chief'
         && row.chiefOwnerUserId === owner.userId)
-      if (existingRows.length > 1) throw new Error('CHIEF_ROLE_NOT_UNIQUE')
-      const existing = existingRows[0]
-      const expectedVisibility = workspace.kind === 'personal' ? 'creator' : 'workspace'
-      if (existing && (existing.chiefScope !== 'personal'
-        || (existing.visibility ?? 'workspace') !== expectedVisibility
-        || existing.harness !== 'overlay'
-        || existing.archivedAt)) throw new Error('CHIEF_BINDING_INVARIANT')
+      if (existingRows.some((row) => row.chiefScope !== 'personal' && row.chiefScope !== 'workspace')) {
+        throw new Error('CHIEF_BINDING_INVARIANT')
+      }
+      const existingPrivateRows = existingRows.filter((row) => row.chiefScope === 'personal')
+      const existingWorkspaceRows = existingRows.filter((row) => row.chiefScope === 'workspace')
+      if (existingPrivateRows.length > 1 || existingWorkspaceRows.length > 1) {
+        throw new Error('CHIEF_ROLE_NOT_UNIQUE')
+      }
+      const existingPrivate = existingPrivateRows[0]
+      const existingWorkspace = existingWorkspaceRows[0]
+      if (existingPrivate && (existingPrivate.harness !== 'overlay' || existingPrivate.archivedAt)) {
+        throw new Error('CHIEF_BINDING_INVARIANT')
+      }
+      if (existingWorkspace && ((existingWorkspace.visibility ?? 'workspace') !== 'workspace'
+        || existingWorkspace.harness !== 'overlay' || existingWorkspace.archivedAt)) {
+        throw new Error('CHIEF_BINDING_INVARIANT')
+      }
       const oldDefault = workspace.kind === 'personal' && owner.userId === workspace.personalOwnerUserId
         ? legacy
         : undefined
       if (oldDefault?.archivedAt) throw new Error('CHIEF_BINDING_INVARIANT')
-      const personal = existing
+      const personal = existingPrivate
         ?? (oldDefault && oldDefault.agentRole === undefined
           ? await adoptChief(ctx, oldDefault, 'personal_chief', 'personal', owner.userId, args.now)
-          : await createPersonalChief(ctx, workspace, owner, args.now))
-      ensured.push(personal)
+          : await createPersonalChief(ctx, workspace, owner, 'personal', args.now))
+      const privateBinding = personal.visibility === 'creator'
+        ? personal
+        : (await ctx.db.patch(personal._id, { visibility: 'creator', updatedAt: args.now }),
+          { ...personal, visibility: 'creator' as const, updatedAt: args.now })
+      const workspaceBinding = existingWorkspace
+        ?? await createPersonalChief(ctx, workspace, owner, 'workspace', args.now)
+      ensured.push(privateBinding, workspaceBinding)
     }
     return await Promise.all(ensured.map((row) => directoryValue(ctx, row)))
   },
@@ -314,68 +331,82 @@ export const updateChiefIdentityByServer = mutation({
     if (!membership || membership.status !== 'active' || membership.role === 'guest') {
       throw new Error('CHIEF_IDENTITY_OWNER_REQUIRED')
     }
-    const existing = await ctx.db.query('personalChiefIdentities')
-      .withIndex('by_userId', (q) => q.eq('userId', args.ownerUserId)).unique()
-    const chief = await ctx.db.query('workspaceAgentDefinitions')
-      .withIndex('by_chiefOwnerUserId', (q) => q.eq('chiefOwnerUserId', args.ownerUserId)).collect()
-      .then((rows) => rows.find((row) => row.agentRole === 'personal_chief' && !row.deletedAt))
-    if (!chief && !existing) throw new Error('CHIEF_IDENTITY_NOT_FOUND')
-    const identity = existing ?? await ctx.db.insert('personalChiefIdentities', {
-      userId: args.ownerUserId,
-      name: chief!.name,
-      description: chief!.description,
-      avatarColor: chief!.avatarColor ?? '#8b5cf6',
-      avatarShape: chief!.avatarShape ?? 'squircle',
-      createdAt: args.now,
-      updatedAt: args.now,
-    }).then((id) => ctx.db.get(id))
-    if (!identity) throw new Error('CHIEF_IDENTITY_NOT_FOUND')
-    const name = args.name === undefined ? undefined : required(args.name, 'CHIEF_IDENTITY_NAME')
-    if (name && name.length > 80) throw new Error('CHIEF_IDENTITY_NAME_INVALID')
-    const description = args.description === undefined ? undefined : cleanOptional(args.description)
-    if (description && description.length > 240) throw new Error('CHIEF_IDENTITY_DESCRIPTION_INVALID')
-    const avatarColor = args.avatarColor === undefined
-      ? undefined
-      : required(args.avatarColor, 'CHIEF_IDENTITY_AVATAR_COLOR').toLowerCase()
-    if (avatarColor && !/^#[0-9a-f]{6}$/i.test(avatarColor)) throw new Error('CHIEF_IDENTITY_AVATAR_COLOR_INVALID')
-    const avatarShape = args.avatarShape === undefined ? undefined : required(args.avatarShape, 'CHIEF_IDENTITY_AVATAR_SHAPE')
-    if (avatarShape && !(WORKSPACE_AGENT_CREATURE_SHAPES as readonly string[]).includes(avatarShape)) {
-      throw new Error('CHIEF_IDENTITY_AVATAR_SHAPE_INVALID')
-    }
-    const patch = {
-      ...(name === undefined ? {} : { name }),
-      ...(args.description === undefined ? {} : { description }),
-      ...(avatarColor === undefined ? {} : { avatarColor }),
-      ...(avatarShape === undefined ? {} : { avatarShape }),
-      updatedAt: args.now,
-    }
-    await ctx.db.patch(identity._id, patch)
-    const next = { ...identity, ...patch }
-    const rows = await ctx.db.query('workspaceAgentDefinitions')
-      .withIndex('by_chiefOwnerUserId', (q) => q.eq('chiefOwnerUserId', args.ownerUserId)).collect()
-    await Promise.all(rows.filter((row) => row.agentRole === 'personal_chief').map(async (row) => {
-      const agentPrincipal = await ctx.db.query('workspacePrincipals')
-        .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
-      if (agentPrincipal) {
-        await ctx.db.patch(agentPrincipal._id, {
-          displayName: next.name,
-          avatarColor: next.avatarColor,
-          avatarShape: next.avatarShape,
-          updatedAt: args.now,
-        })
-      }
-    }))
-    return {
-      userId: next.userId,
-      name: next.name,
-      description: next.description,
-      avatarColor: next.avatarColor,
-      avatarShape: next.avatarShape,
-      createdAt: next.createdAt,
-      updatedAt: next.updatedAt,
-    }
+    return await applyChiefIdentityPatch(ctx, args)
   },
 })
+
+async function applyChiefIdentityPatch(
+  ctx: MutationCtx,
+  args: {
+    ownerUserId: string
+    name?: string
+    description?: string
+    avatarColor?: string
+    avatarShape?: string
+    now: number
+  },
+) {
+  const existing = await ctx.db.query('personalChiefIdentities')
+    .withIndex('by_userId', (q) => q.eq('userId', args.ownerUserId)).unique()
+  const chief = await ctx.db.query('workspaceAgentDefinitions')
+    .withIndex('by_chiefOwnerUserId', (q) => q.eq('chiefOwnerUserId', args.ownerUserId)).collect()
+    .then((rows) => rows.find((row) => row.agentRole === 'personal_chief' && !row.deletedAt))
+  if (!chief && !existing) throw new Error('CHIEF_IDENTITY_NOT_FOUND')
+  const identity = existing ?? await ctx.db.insert('personalChiefIdentities', {
+    userId: args.ownerUserId,
+    name: chief!.name,
+    description: chief!.description,
+    avatarColor: chief!.avatarColor ?? '#8b5cf6',
+    avatarShape: chief!.avatarShape ?? 'squircle',
+    createdAt: args.now,
+    updatedAt: args.now,
+  }).then((id) => ctx.db.get(id))
+  if (!identity) throw new Error('CHIEF_IDENTITY_NOT_FOUND')
+  const name = args.name === undefined ? undefined : required(args.name, 'CHIEF_IDENTITY_NAME')
+  if (name && name.length > 80) throw new Error('CHIEF_IDENTITY_NAME_INVALID')
+  const description = args.description === undefined ? undefined : cleanOptional(args.description)
+  if (description && description.length > 240) throw new Error('CHIEF_IDENTITY_DESCRIPTION_INVALID')
+  const avatarColor = args.avatarColor === undefined
+    ? undefined
+    : required(args.avatarColor, 'CHIEF_IDENTITY_AVATAR_COLOR').toLowerCase()
+  if (avatarColor && !/^#[0-9a-f]{6}$/i.test(avatarColor)) throw new Error('CHIEF_IDENTITY_AVATAR_COLOR_INVALID')
+  const avatarShape = args.avatarShape === undefined ? undefined : required(args.avatarShape, 'CHIEF_IDENTITY_AVATAR_SHAPE')
+  if (avatarShape && !(WORKSPACE_AGENT_CREATURE_SHAPES as readonly string[]).includes(avatarShape)) {
+    throw new Error('CHIEF_IDENTITY_AVATAR_SHAPE_INVALID')
+  }
+  const patch = {
+    ...(name === undefined ? {} : { name }),
+    ...(args.description === undefined ? {} : { description }),
+    ...(avatarColor === undefined ? {} : { avatarColor }),
+    ...(avatarShape === undefined ? {} : { avatarShape }),
+    updatedAt: args.now,
+  }
+  await ctx.db.patch(identity._id, patch)
+  const next = { ...identity, ...patch }
+  const rows = await ctx.db.query('workspaceAgentDefinitions')
+    .withIndex('by_chiefOwnerUserId', (q) => q.eq('chiefOwnerUserId', args.ownerUserId)).collect()
+  await Promise.all(rows.filter((row) => row.agentRole === 'personal_chief').map(async (row) => {
+    const agentPrincipal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
+    if (agentPrincipal) {
+      await ctx.db.patch(agentPrincipal._id, {
+        displayName: next.name,
+        avatarColor: next.avatarColor,
+        avatarShape: next.avatarShape,
+        updatedAt: args.now,
+      })
+    }
+  }))
+  return {
+    userId: next.userId,
+    name: next.name,
+    description: next.description,
+    avatarColor: next.avatarColor,
+    avatarShape: next.avatarShape,
+    createdAt: next.createdAt,
+    updatedAt: next.updatedAt,
+  }
+}
 
 export const updateByServer = mutation({
   args: {
@@ -416,10 +447,18 @@ export const updateByServer = mutation({
       if (args.harness !== undefined && args.harness !== 'overlay') throw new Error('CHIEF_BINDING_INVARIANT')
       if (row.agentRole === 'personal_chief'
         && (args.name !== undefined || args.description !== undefined || args.avatarColor !== undefined || args.avatarShape !== undefined)) {
-        throw new Error('CHIEF_IDENTITY_USE_PROFILE_MUTATION')
+        await applyChiefIdentityPatch(ctx, {
+          ownerUserId: row.chiefOwnerUserId!,
+          name: args.name,
+          description: args.description,
+          avatarColor: args.avatarColor,
+          avatarShape: args.avatarShape,
+          now: args.now,
+        })
       }
     }
     if (
+      row.agentRole !== 'personal_chief' &&
       args.name &&
       args.name.trim().toLowerCase() !== row.name.toLowerCase()
     ) {
@@ -459,15 +498,15 @@ export const updateByServer = mutation({
       visibility?: 'creator' | 'workspace'
       updatedAt: number
     } = {
-      ...(args.name === undefined ? {} : { name: args.name.trim() }),
-      ...(args.description === undefined ? {} : { description: cleanOptional(args.description) }),
+      ...(args.name === undefined || row.agentRole === 'personal_chief' ? {} : { name: args.name.trim() }),
+      ...(args.description === undefined || row.agentRole === 'personal_chief' ? {} : { description: cleanOptional(args.description) }),
       ...(args.instructions === undefined ? {} : { instructions: args.instructions.trim() }),
       ...(args.harness === undefined ? {} : { harness: args.harness }),
       ...(args.modelId === undefined ? {} : { modelId: args.modelId.trim() }),
       ...(args.permissionMode === undefined ? {} : { permissionMode: args.permissionMode.trim() }),
       ...(args.effort === undefined ? {} : { effort: args.effort.trim() }),
-      ...(args.avatarColor === undefined ? {} : { avatarColor: cleanOptional(args.avatarColor) }),
-      ...(args.avatarShape === undefined ? {} : { avatarShape: cleanOptional(args.avatarShape) }),
+      ...(args.avatarColor === undefined || row.agentRole === 'personal_chief' ? {} : { avatarColor: cleanOptional(args.avatarColor) }),
+      ...(args.avatarShape === undefined || row.agentRole === 'personal_chief' ? {} : { avatarShape: cleanOptional(args.avatarShape) }),
       ...(args.allowedToolIds === undefined ? {} : { allowedToolIds: unique(args.allowedToolIds) }),
       ...(args.visibility === undefined ? {} : { visibility: args.visibility }),
       updatedAt: args.now,
@@ -810,18 +849,23 @@ async function createPersonalChief(
   ctx: MutationCtx,
   workspace: Doc<'workspaces'>,
   owner: { userId: string; principalId: string },
+  scope: 'personal' | 'workspace',
   now: number,
 ) {
   const profile = await ensureIdentity(ctx, owner.userId, undefined, now)
   return await insertChief(ctx, {
     workspace,
-    agentId: `personal-chief-${workspace.workspaceId}-${owner.userId}`,
-    principalId: `personal-chief-principal-${workspace.workspaceId}-${owner.userId}`,
+    agentId: scope === 'personal'
+      ? `personal-chief-${workspace.workspaceId}-${owner.userId}`
+      : `personal-chief-workspace-${workspace.workspaceId}-${owner.userId}`,
+    principalId: scope === 'personal'
+      ? `personal-chief-principal-${workspace.workspaceId}-${owner.userId}`
+      : `personal-chief-principal-workspace-${workspace.workspaceId}-${owner.userId}`,
     role: 'personal_chief',
-    scope: 'personal',
+    scope,
     ownerUserId: owner.userId,
     createdByPrincipalId: owner.principalId,
-    visibility: workspace.kind === 'personal' ? 'creator' : 'workspace',
+    visibility: scope === 'personal' ? 'creator' : 'workspace',
     name: profile.name,
     description: profile.description,
     instructions: 'You are the personal chief of staff. Help the owner plan, decide, and follow through.',
