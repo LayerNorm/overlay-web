@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Clear submitted agent-thread drafts and attachments immediately when they enter the transcript, without clearing newer drafts on completion. Request public agent progress updates between tool batches and distinguish task deadlines from per-task spending limits and workspace credits.
+
 - Use saved OAuth sessions when testing MCP connections and keep the MCP editor tabs sized to their labels.
 
 - Standardize MCP and Skills cards and editors on shared shadcn components with flat layouts, accessible Active switches, explicit Manage actions, and deletion confirmation.

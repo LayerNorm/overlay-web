@@ -193,9 +193,13 @@ test('mounted room admission preserves draft, prevents duplicate saves and retai
       sendMessage, mentions: input.mentions, setMentions: noop,
     })
   }, args)
-  await act(() => { hook.value.setInput('Keep this draft') })
+  await act(() => {
+    hook.value.setInput('Keep this draft')
+    hook.value.setAttachedImages([{ name: 'sent.png', dataUrl: 'data:image/png;base64,AA==' }])
+  })
   await act(async () => { await hook.value.handleSend() })
   assert.equal(hook.value.inputRef.current, 'Keep this draft')
+  assert.equal(hook.value.attachedImages[0]?.name, 'sent.png')
   assert.equal(args.messagesRef.current.length, 0)
   assert.equal(post.mock.callCount(), 0)
   allowed = true
@@ -204,10 +208,61 @@ test('mounted room admission preserves draft, prevents duplicate saves and retai
   await act(async () => { await hook.value.handleSend() })
   assert.equal(post.mock.callCount(), 1)
   assert.equal(args.messagesRef.current.length, 1)
-  await act(() => { hook.value.setAttachedImages([{ name: 'new.png', dataUrl: 'data:image/png;base64,AA==' }]) })
+  assert.equal(hook.value.inputRef.current, '', 'clear at optimistic submission, before the server responds')
+  assert.equal(hook.value.attachedImages.length, 0)
+  await act(() => {
+    hook.value.setInput('Next draft')
+    hook.value.setAttachedImages([{ name: 'new.png', dataUrl: 'data:image/png;base64,AA==' }])
+  })
   await act(async () => { saved.resolve({}); await send })
-  assert.equal(hook.value.inputRef.current, 'Keep this draft')
+  assert.equal(hook.value.inputRef.current, 'Next draft')
   assert.equal(hook.value.attachedImages[0]?.name, 'new.png')
+})
+
+test('failed room submission keeps attachments on the retryable optimistic message', async (t) => {
+  browser(t)
+  let shouldFail = true
+  const post = t.mock.method(overlayAppClient.conversations, 'addMessage', async () => {
+    if (shouldFail) throw new Error('Temporary network failure')
+    return {}
+  })
+  const args = roomArgs()
+  const sessionIdRef = { current: 'room' }
+  const hook = await mount(t, (input: typeof args) => {
+    const sendMessage = useSendMessage(input)
+    const composer = useRoomComposer({
+      activeWorkspaceId: 'workspace', conversationId: input.conversationId, sessionIdRef,
+      sendMessage, mentions: input.mentions, setMentions: noop,
+    })
+    return { composer, sendMessage }
+  }, args)
+
+  await act(() => {
+    hook.value.composer.setInput('Keep the attachment available')
+    hook.value.composer.setAttachedImages([{ name: 'retry.png', dataUrl: 'data:image/png;base64,AA==' }])
+  })
+  await act(async () => { await hook.value.composer.handleSend() })
+
+  const failedMessage = args.messagesRef.current[0]
+  assert.ok(failedMessage)
+  assert.equal(failedMessage.delivery, 'failed')
+  assert.equal(failedMessage.deliveryError, 'Temporary network failure')
+  assert.equal(failedMessage.parts?.find((part) => part.type === 'file')?.fileName, 'retry.png')
+  assert.equal(hook.value.composer.inputRef.current, '')
+  assert.equal(hook.value.composer.attachedImages.length, 0)
+
+  shouldFail = false
+  await act(async () => {
+    await hook.value.sendMessage(failedMessage.content, {
+      existing: failedMessage,
+      threadRootMessageId: failedMessage.threadRootMessageId,
+    })
+  })
+  assert.equal(post.mock.callCount(), 2)
+  assert.equal(
+    post.mock.calls[1]?.arguments[0].parts?.find((part) => part.type === 'file')?.url,
+    'data:image/png;base64,AA==',
+  )
 })
 
 test('mounted nested draft completion never clears new text or another root', async (t) => {

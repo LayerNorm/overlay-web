@@ -1277,6 +1277,7 @@ export function useSendMessage({
       parts?: RoomMessageRecord['parts']
       attachmentNames?: string[]
       reply?: { replyToTurnId?: string; snippet: string } | null
+      onSubmitted?: () => void
     },
   ): Promise<RoomSendResult> {
     const threadRootMessageId = options?.threadRootMessageId
@@ -1312,6 +1313,7 @@ export function useSendMessage({
       } satisfies OptimisticMessage,
     ].sort(compareRoomMessageRecords))
     try {
+      options?.onSubmitted?.()
       const mentionedPrincipalIds = resolveMentionTargets(text)
       const renameAgent = soloAgentParticipantRef.current
       const titleAtSend = loadingRef.current ? null : conversationTitleRef.current
@@ -1562,31 +1564,33 @@ export function useRoomComposer({
 
     const submittedInput = inputRef.current ?? input
     const submittedState = latestDraftStateRef.current
-    const result = await sendMessage(`${text}${documentMarker}`, {
+    const clearSubmittedDraft = () => {
+      const latest = latestDraftStateRef.current
+      const draftStillMatches = sessionIdRef.current === conversationId
+        && latest.conversationId === conversationId
+        && latest.activeWorkspaceId === activeWorkspaceId
+        && inputRef.current === submittedInput
+        && latest.attachedImages === submittedState.attachedImages
+        && latest.pendingChatDocuments === submittedState.pendingChatDocuments
+        && latest.replyContext === submittedState.replyContext
+        && latest.mentions === submittedState.mentions
+      if (!draftStillMatches) return
+      setInput('')
+      composerRef.current?.clear()
+      setMentions([])
+      setAttachedImages([])
+      setPendingChatDocuments([])
+      setAttachmentError(null)
+      setReplyContext(null)
+      clearDraft({ workspaceId: activeWorkspaceId, conversationId })
+    }
+    await sendMessage(`${text}${documentMarker}`, {
       existing: { turnId, clientNonce: crypto.randomUUID(), createdAt: Date.now(), parts: payload.partsForModel },
       parts: payload.partsForModel,
       attachmentNames: payload.indexedFileNames,
+      onSubmitted: clearSubmittedDraft,
       ...(replyContext ? { reply: { replyToTurnId: replyContext.replyToTurnId, snippet: replySnippet ?? '' } } : {}),
     })
-    if (!result.accepted) return
-    const latest = latestDraftStateRef.current
-    const draftStillMatches = sessionIdRef.current === conversationId
-      && latest.conversationId === conversationId
-      && latest.activeWorkspaceId === activeWorkspaceId
-      && inputRef.current === submittedInput
-      && latest.attachedImages === submittedState.attachedImages
-      && latest.pendingChatDocuments === submittedState.pendingChatDocuments
-      && latest.replyContext === submittedState.replyContext
-      && latest.mentions === submittedState.mentions
-    if (!draftStillMatches) return
-    setInput('')
-    composerRef.current?.clear()
-    setMentions([])
-    setAttachedImages([])
-    setPendingChatDocuments([])
-    setAttachmentError(null)
-    setReplyContext(null)
-    clearDraft({ workspaceId: activeWorkspaceId, conversationId })
   }
 
   function onComposerInput(text: string) {
@@ -2184,6 +2188,7 @@ export type RoomMessageContext = {
 }
 
 export type SendMessage = (content: string, options?: {
+  onSubmitted?: () => void
   existing?: Pick<OptimisticMessage, 'clientNonce' | 'turnId' | 'createdAt' | 'parts'>
   threadRootMessageId?: string
   requireCurrentThread?: boolean

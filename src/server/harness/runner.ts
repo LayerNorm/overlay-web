@@ -305,9 +305,14 @@ async function authorizeModelBoundary(
   } else if (state.status === 'running') {
     try {
       assertHarnessRunnable(state, Date.now(), estimatedCostMicros)
-    } catch (_error) {
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : ''
+      const deadlineExhausted = reason === 'The authorized run deadline is exhausted.'
+      if (!deadlineExhausted && reason !== 'The authorized spending budget is exhausted.') throw error
       await ports.apply(operationId, {
-        type: 'block', blocker: { kind: 'budget', question: 'The authorized time or spending budget is exhausted. Review the partial result before starting more work.' },
+        type: 'block', blocker: { kind: 'budget', question: deadlineExhausted
+          ? 'This task reached its authorized run deadline. Your partial work is saved. This is a task time limit, not your workspace credit balance.'
+          : 'This task reached its authorized model-spend limit. Your partial work is saved. This is a per-task limit, not your workspace credit balance.' },
       })
       throw new HarnessYield()
     }

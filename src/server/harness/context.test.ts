@@ -28,7 +28,7 @@ test('write-capable runs receive evidence-backed planning instructions', () => {
   const instructions = buildHarnessStepInstructions(make(), {
     instructions: 'Surface instructions', continuation: false, truncatedResponse: false,
   })
-  expect(instructions).toContain('call harness_set_plan before anything else')
+  expect(instructions).toContain('make harness_set_plan your first tool call, after a brief user-facing acknowledgment')
   expect(instructions).toContain('tool:<id> evidence IDs from observations')
   expect(instructions).toContain('Give each action milestone evidenceTools listing the tools whose results prove it; cite only results from those tools.')
   expect(instructions).toContain('one answerOnly milestone')
@@ -48,6 +48,14 @@ test('write-capable runs receive evidence-backed planning instructions', () => {
   expect(instructions).toContain('Never describe actions that were not executed')
   expect(instructions).not.toContain('\u2013')
   expect(instructions).not.toContain('\u2014')
+})
+
+test('progress is public text rather than private reasoning or tool labels', () => {
+  const instructions = buildHarnessInstructions('Surface instructions')
+  expect(instructions).toContain('Before the first tool call, briefly acknowledge the request')
+  expect(instructions).toContain('Between meaningful batches of tools, explain what you found')
+  expect(instructions).toContain('When a tool fails or you change approach, explain the practical impact')
+  expect(instructions).toContain('not private reasoning or tool arguments')
 })
 
 test('goal anchoring is present for plan-optional runs', () => {

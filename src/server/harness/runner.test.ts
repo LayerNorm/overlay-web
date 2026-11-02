@@ -746,6 +746,34 @@ test('budget refusal happens before contacting the model', async () => {
   f.ports.prepareModel = async args => ({ messages: args.messages, activeToolNames: [], estimatedCostMicros: 101 })
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
   expect(result.snapshot.blocker?.kind).toBe('budget')
+  expect(result.snapshot.blocker?.question).toContain('per-task limit, not your workspace credit balance')
+  expect(provider.doStreamCalls).toHaveLength(0)
+})
+
+test('deadline refusal identifies the time limit without claiming workspace credits ran out', async () => {
+  const f = fixture()
+  const provider = model(() => 'Must not run')
+  const current = await f.ports.read()
+  current.policy.deadlineAt = Date.now() - 1
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(result.snapshot.blocker?.question).toContain('authorized run deadline')
+  expect(result.snapshot.blocker?.question).not.toContain('model-spend limit')
+  expect(provider.doStreamCalls).toHaveLength(0)
+})
+
+test('unexpected runnable-state errors propagate instead of becoming budget blockers', async () => {
+  const f = fixture()
+  const provider = model(() => 'Must not run')
+  const assertRunnable = vi.spyOn(state, 'assertHarnessRunnable').mockImplementation(() => {
+    throw new Error('Unexpected authorization failure')
+  })
+  try {
+    await expect(runOverlayHarness({ ...input, tools: {} }, f.ports))
+      .rejects.toThrow('Unexpected authorization failure')
+  } finally {
+    assertRunnable.mockRestore()
+  }
+  expect((await f.ports.read()).blocker).toBeUndefined()
   expect(provider.doStreamCalls).toHaveLength(0)
 })
 
