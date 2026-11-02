@@ -27,6 +27,13 @@ vi.mock('./personal-wait-steps', () => ({ harnessWakeToken: (id: string) => `har
   notifyHarnessAncestors: mocks.notify, readHarnessChild: mocks.child }))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.get } }))
 vi.mock('@/server/conversations/personal-chat-work-lifecycle', () => ({ persistPersonalChatWorkProgress: mocks.progress }))
+vi.mock('@/server/harness/harness-transcript', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/server/harness/harness-transcript')>()),
+  readSettledHarnessTranscript: vi.fn(async () => ({
+    persistence: { content: '', parts: [] }, steps: [], truncated: false,
+    newestSequence: null, oldestSequence: null,
+  })),
+}))
 
 const input: PersonalHarnessWorkflowInput = {
   access: { actorUserId: 'user', runId: 'root', conversationId: 'conversation', agentRunId: 'delivery',
@@ -182,6 +189,10 @@ test('execution failure is persisted before a child wakes its parent', async () 
   expect(await personalHarnessWorkflow(input)).toEqual({
     runId: 'root', status: 'failed', terminalReason: 'Access was revoked.',
   })
-  expect(mocks.apply).toHaveBeenCalledWith(expect.anything(), 'execution-failed', { type: 'terminate', status: 'failed', reason: 'Access was revoked.' })
+  expect(mocks.apply).toHaveBeenCalledWith(expect.anything(), 'execution-failed',
+    expect.objectContaining({
+      type: 'terminate', status: 'failed', reason: expect.stringContaining('Diagnostic ID:'),
+      diagnostic: expect.objectContaining({ code: 'UNKNOWN', retryability: 'reconcile' }),
+    }))
   expect(mocks.apply.mock.invocationCallOrder[0]).toBeLessThan(mocks.notify.mock.invocationCallOrder[0])
 })

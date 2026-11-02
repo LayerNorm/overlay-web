@@ -6,8 +6,8 @@ const input = { actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: [
 
 test('the default budget is shared by the root and children, not a tool-call allowance', () => {
   expect(personalHarnessPolicy(input)).toEqual({ actorUserId: 'user', workspaceId: 'workspace',
-    allowedToolIds: ['read', 'write'], requiresPlan: false, deadlineAt: 86_401_000,
-    maxCostMicros: 1_000_000, maxParallelChildren: 3, maxDepth: 2 })
+    allowedToolIds: ['read', 'write'], requiresPlan: false, limitsVersion: 2, deadlineAt: null,
+    maxCostMicros: null, maxParallelChildren: 3, maxDepth: 2 })
   expect(personalHarnessPolicy({ ...input, requiresPlan: true }).requiresPlan).toBe(true)
   expect(personalHarnessPolicy({ ...input, budget: { maxProviderCostUsd: 0.125, durationMs: 60_000 } }))
     .toMatchObject({ maxCostMicros: 125_000, deadlineAt: 61_000 })

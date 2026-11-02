@@ -27,6 +27,13 @@ vi.mock('./native-delivery-steps', () => ({ attachNativeHarnessDelivery: mocks.a
 vi.mock('./personal-wait-steps', () => ({ harnessWakeToken: (id: string) => `harness:wake:${id}`,
   notifyHarnessAncestors: mocks.notify, readHarnessChild: mocks.child }))
 vi.mock('@/server/harness/native-tools', () => ({ createNativeHarnessTools: mocks.tools }))
+vi.mock('@/server/harness/harness-transcript', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/server/harness/harness-transcript')>()),
+  readSettledHarnessTranscript: vi.fn(async () => ({
+    persistence: { content: '', parts: [] }, steps: [], truncated: false,
+    newestSequence: null, oldestSequence: null,
+  })),
+}))
 
 const input: NativeHarnessWorkflowInput = {
   access: { actorUserId: 'user', runId: 'workspace:agent', conversationId: 'room', workspaceId: 'workspace',
@@ -129,9 +136,12 @@ test('execution failure terminates and finalizes an owning native Harness run', 
   mocks.run.mockRejectedValue(new Error('Harness execution failed.'))
   mocks.apply.mockResolvedValue(failed)
   await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed' })
-  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
-    type: 'terminate', status: 'failed', reason: 'Harness execution failed.',
-  })
+  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed',
+    expect.objectContaining({
+      type: 'terminate', status: 'failed', reason: expect.stringContaining('Diagnostic ID:'),
+      diagnostic: expect.objectContaining({ code: 'UNKNOWN', retryability: 'reconcile' }),
+    }))
+  expect(mocks.apply).toHaveBeenCalledTimes(1)
   expect(mocks.finish).toHaveBeenCalledOnce()
 })
 
