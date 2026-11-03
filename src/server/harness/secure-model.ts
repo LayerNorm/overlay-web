@@ -9,6 +9,7 @@ export type HarnessModelReference = {
   credentialOwnerId: string
   sessionId?: string
   allowLowBalanceFallback?: boolean
+  purpose?: 'response' | 'summary' | 'verification'
   personal?: PersonalHarnessModelDispatch
   native?: NativeHarnessModelDispatch
 }
@@ -35,6 +36,7 @@ export class HarnessLanguageModel implements LanguageModelV4 {
       credentialOwnerId: model.reference.credentialOwnerId,
       ...(model.reference.sessionId ? { sessionId: model.reference.sessionId } : {}),
       ...(model.reference.allowLowBalanceFallback !== undefined ? { allowLowBalanceFallback: model.reference.allowLowBalanceFallback } : {}),
+      ...(model.reference.purpose ? { purpose: model.reference.purpose } : {}),
       ...(personal ? { personal: {
         access: {
           actorUserId: personal.access.actorUserId, runId: personal.access.runId, workflowRunId: personal.access.workflowRunId,

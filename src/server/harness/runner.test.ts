@@ -62,7 +62,11 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
         case 'transition_step': current = state.transitionHarnessStep(current, operation, now); break
         case 'block': current = state.blockHarness(current, operation.blocker, now); break
         case 'resume': current = state.resumeHarness(current, now); break
-        case 'checkpoint': current = state.checkpointHarness(current, operation.summary, now, operation.purpose); break
+        case 'checkpoint': current = state.checkpointHarness(
+          current, operation.summary, now, operation.purpose, operation.unverifiedNarrative,
+        ); break
+        case 'record_verification': current = state.recordHarnessVerification(current, operation.verification, now); break
+        case 'set_compaction': current = state.setHarnessCompaction(current, operation.compaction, now); break
         case 'finish': current = state.finishHarness(current, now, operation.resultSummary); break
         case 'terminate': current = state.terminateHarness(current, operation.status, operation.reason, now); break
         case 'wait_for_children': current = state.waitForHarnessChildren(current, now); break
@@ -219,6 +223,61 @@ test('runner uses only text after the last tool call as its final result', async
   expect(provider.doStreamCalls).toHaveLength(4)
 })
 
+test('unsupported final claims are corrected from persisted evidence without replaying successful reads', async () => {
+  const f = fixture(true, ['read_document'])
+  const executeRead = vi.fn(async () => ({
+    display: 'Rendered page 1 from file-1 revision rev-7.',
+    fileId: 'file-1',
+    revision: 'rev-7',
+    page: 1,
+  }))
+  const verificationCalls: Array<{ candidate: string; evidence: unknown }> = []
+  f.ports.verifyFinalAnswer = async ({ state: snapshot, candidate }) => {
+    verificationCalls.push({ candidate, evidence: snapshot.evidence })
+    return verificationCalls.length === 1
+      ? { supported: false, reason: 'The persisted render shows page 1, not zero pages.', evidenceIds: [] }
+      : { supported: true, reason: 'The corrected statement matches the exact-revision render.', evidenceIds: ['tool:render-call'] }
+  }
+  const provider = model(index => {
+    if (index === 0) return [call('harness_set_plan', 'plan', { steps: [{
+      id: 'read', title: 'Render the source page', dependsOn: [], acceptanceCriteria: ['Page 1 rendered'],
+      requiresVerification: false, evidenceTools: ['read_document'],
+    }] })]
+    if (index === 1) return { text: '0 pages processed.', calls: [call('read_document', 'render-call', { fileId: 'file-1' })] }
+    if (index === 2) return [call('harness_update_step', 'complete', {
+      id: 'read', status: 'done', evidenceRefs: ['tool:render-call'],
+    })]
+    if (index === 3) return '0 pages were processed.'
+    return 'The render confirmed page 1 of file-1 revision rev-7.'
+  })
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read_document: tool({ inputSchema: z.object({ fileId: z.string() }), execute: executeRead }) },
+  }, f.ports)
+
+  expect(result.snapshot.status, JSON.stringify({
+    blocker: result.snapshot.blocker,
+    verification: result.snapshot.finalVerification,
+    plan: result.snapshot.plan,
+    evidence: result.snapshot.evidence,
+  })).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('The render confirmed page 1 of file-1 revision rev-7.')
+  expect(executeRead).toHaveBeenCalledOnce()
+  expect(verificationCalls).toHaveLength(2)
+  expect(verificationCalls[0]?.candidate).toBe('0 pages were processed.')
+  expect(verificationCalls[1]?.candidate).toContain('confirmed page 1')
+  expect(verificationCalls[0]?.evidence).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      id: 'tool:render-call', verdict: 'observed',
+      resource: { id: 'file-1', revision: 'rev-7', page: 1 },
+    }),
+  ]))
+  const checkpoint = JSON.parse(result.snapshot.workingSummary) as { evidence: Array<{ summary: string }> }
+  expect(JSON.stringify(checkpoint)).not.toContain('0 pages processed')
+  expect(JSON.stringify(checkpoint)).toContain('rev-7')
+  expect(provider.doStreamCalls).toHaveLength(5)
+})
+
 test('runner asks for a final answer after tool-call text completes the plan', async () => {
   const f = fixture()
   let finalAnswerRequired = false
@@ -311,8 +370,11 @@ test('runner checkpoint summary falls back to sanitized step text', async () => 
   const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'
   model(() => `The capital of France is Paris.\n\n${protocol}`)
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
-  expect(result.snapshot.workingSummary).toBe('The capital of France is Paris.')
-  expect(result.snapshot.workingSummary).not.toContain('<tool_call>')
+  expect(JSON.parse(result.snapshot.workingSummary ?? '{}')).toMatchObject({
+    goal: 'Read the requested records',
+  })
+  expect(result.snapshot.unverifiedNarrative).toBe('The capital of France is Paris.')
+  expect(result.snapshot.unverifiedNarrative).not.toContain('<tool_call>')
 })
 
 test('an identical successful create is rejected with its original evidence reference', async () => {
@@ -423,7 +485,10 @@ test('the real SDK runs beyond twenty tool calls and continues after early sign-
   expect(f.sdkSteps.some(step => step >= 10)).toBe(true)
   expect(result.snapshot.continuations).toBeGreaterThan(0)
   expect(JSON.stringify(provider.doStreamCalls[0].prompt)).toContain('Preserve the original constraints after compaction.')
-  expect(result.snapshot.workingSummary).toBe('Preserve the original constraints after compaction.')
+  expect(JSON.parse(result.snapshot.workingSummary ?? '{}')).toMatchObject({
+    goal: 'Read the requested records',
+  })
+  expect(result.snapshot.unverifiedNarrative).toBe('An early response, with work still unfinished.')
   expect(result.snapshot.resultSummary).toBe('All requested records were read.')
   expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('All plan milestones and required evidence are complete')
   expect(provider.doStreamCalls.at(-1)?.toolChoice).toEqual({ type: 'none' })

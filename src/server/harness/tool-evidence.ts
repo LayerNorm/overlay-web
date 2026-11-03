@@ -42,14 +42,11 @@ export function harnessToolOutputEvidence(args: {
 }, now: number): HarnessEvidence {
   const failure = !args.success || isToolFailureOutput(args.output)
   const value = args.success ? args.output : args.error instanceof Error ? args.error.message : args.error
-  let summary = typeof value === 'string' ? value : ''
-  if (typeof value !== 'string') {
-    try {
-      summary = JSON.stringify(value) ?? ''
-    } catch (_error) {
-      summary = String(value)
-    }
-  }
+  const normalized = value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>).display ?? (value as Record<string, unknown>).overlayModelOutput ?? value
+    : value
+  const summary = summarizeWithoutBinary(normalized)
+  const resource = findResourceIdentity(args.output)
   return {
     id: `tool:${args.toolCallId}`,
     kind: 'tool_result',
@@ -58,5 +55,43 @@ export function harnessToolOutputEvidence(args: {
     verdict: failure ? 'failed' : 'observed',
     createdAt: now,
     inputDigest: harnessToolInputDigest(args.toolName, args.input),
+    ...(resource ? { resource } : {}),
+  }
+}
+
+function summarizeWithoutBinary(value: unknown): string {
+  const visit = (current: unknown): unknown => {
+    if (current instanceof Uint8Array) return '[binary content omitted]'
+    if (typeof current === 'string') {
+      if (current.startsWith('data:')) return '[binary content omitted]'
+      return current
+    }
+    if (Array.isArray(current)) return current.map(visit)
+    if (current && typeof current === 'object') {
+      const record = current as Record<string, unknown>
+      return Object.fromEntries(Object.entries(record).map(([key, item]) => [
+        key,
+        ['data', 'image', 'bytes', 'base64'].includes(key.toLowerCase())
+          ? '[binary content omitted]' : visit(item),
+      ]))
+    }
+    return current
+  }
+  try { return JSON.stringify(visit(value)) ?? '' } catch (_error) { return 'Tool output could not be normalized.' }
+}
+
+export function findResourceIdentity(value: unknown): HarnessEvidence['resource'] | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const record = value as Record<string, unknown>
+  const id = [record.resourceId, record.fileId, record.documentId, record.id]
+    .find(candidate => typeof candidate === 'string' && candidate.length > 0)
+  const nested = id ? undefined : Object.values(record).map(findResourceIdentity).find(Boolean)
+  if (!id) return nested
+  return {
+    id: id as string,
+    ...(typeof (record.revision ?? record.sourceRevision) === 'string'
+      ? { revision: (record.revision ?? record.sourceRevision) as string } : {}),
+    ...(typeof record.operation === 'string' ? { operation: record.operation } : {}),
+    ...(typeof record.page === 'number' ? { page: record.page } : {}),
   }
 }

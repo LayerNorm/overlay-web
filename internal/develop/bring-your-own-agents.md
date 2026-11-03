@@ -385,6 +385,18 @@ tool grants, entitlements, takeover protection, or deny policy. Release QA must
 cover approval denial and approval resumption, cancellation and revoked grants,
 and exact-run authorization before rollout.
 
+Harness continuity is grounded in the current goal, plan, and persisted tool
+observations; prior assistant summaries are explicitly unverified context, not
+evidence. Before accepting a nontrivial final answer with tool observations,
+Harness runs a separately metered, tool-disabled support check against the
+persisted evidence. This model-based check is a bounded safeguard, not a
+mathematical guarantee. Unsupported claims receive at most two correction
+continuations before the run pauses. Large and binary tool results are stored as
+private, run-owned artifacts and replaced in older prompt history with bounded
+references; `harness_read_artifact` rechecks the original tool permission on each
+read. Compaction preserves the full transcript on failure and keeps unresolved
+provider reservations held until their matching receipt is observed.
+
 A connected agent gets the same Overlay workspace tools a native agent with the same grant gets —
 notes (including the patch-style `edit_note`, `replace_note_section`, and `append_to_note`), files
 (`list_files`, `read_file`, `write_file`, `create_folder`, `move_file`), memory, knowledge search,

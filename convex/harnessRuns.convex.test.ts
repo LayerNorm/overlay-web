@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import { ConvexError } from 'convex/values'
+import { createHash } from 'node:crypto'
 import type {
   HarnessAdmission,
   HarnessMutationResult,
@@ -17,6 +18,7 @@ beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 const mutation = (name: string) => makeFunctionReference<'mutation'>(`harness/runs:${name}`)
 const query = (name: string) => makeFunctionReference<'query'>(`harness/runs:${name}`)
+const artifactAction = (name: string) => makeFunctionReference<'action'>(`harness/artifacts:${name}`)
 type Convex = ReturnType<typeof convexTest>
 
 test('readiness is available only to the authenticated server', async () => {
@@ -282,7 +284,7 @@ describe('durable harness runs', () => {
           inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
           contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason,
         },
-      })).rejects.toThrow(/route rejection requires/i)
+      })).rejects.toThrow(/matching zero-cost free-router dispatch without billing/i)
     }
   })
 
@@ -1061,4 +1063,56 @@ describe('durable harness runs', () => {
     expect(persisted.revisions).toHaveLength(0)
     expect(persisted.operations).toHaveLength(0)
   })
+})
+
+test('private context artifacts are run-owned, idempotent, and reject conflicting retries', async () => {
+  const convex = convexTest(schema, modules)
+  const input = admission('artifact-run', await seedConversation(convex))
+  await admit(convex, input)
+  await apply(convex, input, 'claim-artifact-run', 0, {
+    type: 'claim_execution', workflowRunId: 'artifact-workflow',
+  })
+  const bytes = new Uint8Array([0, 1, 2, 127, 255])
+  const digest = createHash('sha256').update(bytes).digest('hex')
+  const args = {
+    serverSecret: secret,
+    actorUserId: 'alice',
+    runId: input.runId,
+    workflowRunId: 'artifact-workflow',
+    toolCallId: 'render-1',
+    toolName: 'render_document',
+    artifactId: `ha_${'a'.repeat(64)}`,
+    digest,
+    data: bytes.slice().buffer as ArrayBuffer,
+    mediaPartCount: 1,
+    resource: { id: 'file-1', revision: 'rev-7', page: 1 },
+  }
+
+  const stored = await convex.action(artifactAction('put'), args) as {
+    artifactId: string; storageId: string; byteSize: number; resource: { revision: string }
+  }
+  const replay = await convex.action(artifactAction('put'), args)
+  expect(replay).toMatchObject({ artifactId: stored.artifactId, storageId: stored.storageId })
+  expect(stored.byteSize).toBe(bytes.byteLength)
+  expect(stored.resource.revision).toBe('rev-7')
+  const read = await convex.action(artifactAction('read'), {
+    serverSecret: secret, actorUserId: 'alice', runId: input.runId,
+    workflowRunId: 'artifact-workflow', artifactId: stored.artifactId,
+  }) as ArrayBuffer
+  expect(Array.from(new Uint8Array(read))).toEqual(Array.from(bytes))
+  await expect(convex.action(artifactAction('read'), {
+    serverSecret: secret, actorUserId: 'bob', runId: input.runId,
+    workflowRunId: 'artifact-workflow', artifactId: stored.artifactId,
+  })).rejects.toThrow('HARNESS_ARTIFACT_UNAUTHORIZED')
+  await expect(convex.action(artifactAction('read'), {
+    serverSecret: secret, actorUserId: 'alice', runId: 'another-run',
+    workflowRunId: 'artifact-workflow', artifactId: stored.artifactId,
+  })).rejects.toThrow('HARNESS_ARTIFACT_UNAUTHORIZED')
+  await expect(convex.action(artifactAction('put'), {
+    ...args,
+    digest: createHash('sha256').update(new Uint8Array([9])).digest('hex'),
+    data: new Uint8Array([9]).buffer as ArrayBuffer,
+  })).rejects.toThrow('HARNESS_ARTIFACT_IDENTITY_CONFLICT')
+  const rows = await convex.run(ctx => ctx.db.query('harnessContextArtifacts').collect())
+  expect(rows).toHaveLength(1)
 })

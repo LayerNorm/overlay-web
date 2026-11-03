@@ -23,6 +23,7 @@ export async function preparePersonalHarnessModel(input: {
   access: PersonalHarnessAccess
   context: Omit<PersonalChatWorkToolingContext, 'entitlements' | 'paid'>
   receiptId: string
+  purpose?: 'response' | 'summary' | 'verification'
   options: LanguageModelV4CallOptions
 }): Promise<{
   model: HarnessModelReference
@@ -41,6 +42,7 @@ export async function preparePersonalHarnessModel(input: {
     model: {
       modelId: context.effectiveModelId, credentialOwnerId: access.actorUserId,
       sessionId: access.conversationId, allowLowBalanceFallback: false,
+      ...(input.purpose ? { purpose: input.purpose } : {}),
       personal: {
         access: {
           actorUserId: access.actorUserId, workspaceId: access.workspaceId, principalId: access.principalId,

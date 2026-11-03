@@ -136,6 +136,31 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       inputSchema: z.object({ evidenceId: z.string().min(1).max(512) }),
       execute: async ({ evidenceId }) => ports.readEvidence(evidenceId),
     }),
+    harness_read_artifact: tool({
+      description: 'Reopen a private tool-result artifact using a bounded text range or a selected media-part index. Access is reauthorized against the original source tool.',
+      inputSchema: z.object({
+        artifactId: z.string().min(67).max(67).regex(/^ha_[a-f0-9]{64}$/),
+        start: z.number().int().nonnegative().optional(),
+        end: z.number().int().nonnegative().optional(),
+        mediaPart: z.number().int().nonnegative().optional(),
+      }).strict().refine(input => {
+        if (input.mediaPart !== undefined) return input.start === undefined && input.end === undefined
+        return input.end === undefined || input.start === undefined || input.end >= input.start
+      }),
+      execute: async input => {
+        if (!ports.readArtifact) throw new Error('Harness artifact reads are unavailable.')
+        return ports.readArtifact(input)
+      },
+      toModelOutput: ({ output }) => output.kind === 'media'
+        ? {
+            type: 'content',
+            value: [
+              { type: 'text', text: `Reopened media from ${output.metadata.toolName} call ${output.metadata.toolCallId}.` },
+              { type: 'file', data: { type: 'data', data: output.data }, mediaType: output.mediaType },
+            ],
+          }
+        : { type: 'text', value: output.text },
+    }),
     harness_report_blocker: tool({
       description: 'Pause for essential user input. Ask one concise question rather than guessing sensitive choices.',
       inputSchema: z.object({ question: z.string().min(1).max(2_000) }),

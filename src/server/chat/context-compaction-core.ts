@@ -49,12 +49,27 @@ function selectHarnessHistory(messages: HarnessPromptHistory): {
 }
 
 function serializeHarnessTranscript(candidates: HarnessPromptHistory): string {
+  const safe = (value: unknown): unknown => {
+    if (value instanceof Uint8Array) return `[binary content omitted; ${value.byteLength} bytes]`
+    if (Array.isArray(value)) return value.map(safe)
+    if (value && typeof value === 'object') {
+      const record = value as Record<string, unknown>
+      return Object.fromEntries(Object.entries(record).map(([key, entry]) => [
+        key,
+        ['data', 'image', 'bytes', 'base64'].includes(key.toLowerCase())
+          ? typeof entry === 'string' ? `[binary content omitted; ${entry.length} encoded characters]` : '[binary content omitted]'
+          : safe(entry),
+      ]))
+    }
+    if (typeof value === 'string' && value.startsWith('data:')) return '[binary content omitted]'
+    return value
+  }
   return candidates.map(message => ({
     role: message.role,
     content: message.content.flatMap(part => {
       if (part.type === 'text') return [{ type: 'text', text: part.text }]
-      if (part.type === 'tool-call') return [{ type: 'tool-call', text: JSON.stringify({ id: part.toolCallId, name: part.toolName, input: part.input }) }]
-      if (part.type === 'tool-result') return [{ type: 'tool-result', text: JSON.stringify({ id: part.toolCallId, name: part.toolName, output: part.output }) }]
+      if (part.type === 'tool-call') return [{ type: 'tool-call', text: JSON.stringify({ id: part.toolCallId, name: part.toolName, input: safe(part.input) }) }]
+      if (part.type === 'tool-result') return [{ type: 'tool-result', text: JSON.stringify({ id: part.toolCallId, name: part.toolName, output: safe(part.output) }) }]
       if (part.type === 'file') return [{ type: 'file', text: `Attachment: ${part.mediaType}` }]
       return []
     }),
@@ -131,6 +146,7 @@ export async function compactHarnessPrompt(params: {
   outputReserveTokens: number
   fixedOverheadTokens: number
   previousSummary?: string
+  estimatePromptTokens?: (value: unknown) => number
   generateSummaryText: (args: { prompt: string; targetSummaryTokens: number }) => Promise<string>
 }): Promise<HarnessPromptCompaction> {
   for (const value of [params.contextWindow, params.outputReserveTokens, params.fixedOverheadTokens]) {
@@ -140,8 +156,9 @@ export async function compactHarnessPrompt(params: {
   const usable = params.contextWindow - params.outputReserveTokens
   const messages = params.messages.filter(message => message.role !== 'system')
   const previousSummary = params.previousSummary ?? ''
+  const estimatePrompt = params.estimatePromptTokens ?? estimateContextTokens
   const estimate = (history: LanguageModelV4Prompt, summary: string) =>
-    estimateContextTokens(history) + estimateContextTokens(summary) + params.fixedOverheadTokens
+    estimatePrompt(history) + estimateContextTokens(summary) + params.fixedOverheadTokens
   const originalEstimatedTokens = estimate(messages, previousSummary)
   const unchanged = (summaryFailed = false): HarnessPromptCompaction => ({
     messages, summary: previousSummary, originalEstimatedTokens,
@@ -153,7 +170,7 @@ export async function compactHarnessPrompt(params: {
   const history = selectHarnessHistory(messages)
   if (!history) return unchanged()
   const { candidates, retained } = history
-  const remaining = usable - params.fixedOverheadTokens - estimateContextTokens(retained)
+  const remaining = usable - params.fixedOverheadTokens - estimatePrompt(retained)
   const targetSummaryTokens = Math.min(2_000, Math.floor(params.contextWindow * CONTEXT_TARGET_RATIO), Math.floor(remaining / 2))
   if (targetSummaryTokens < 128) return unchanged()
 

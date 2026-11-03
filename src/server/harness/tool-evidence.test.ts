@@ -48,3 +48,17 @@ test('the native step and workflow hook construct the same tool-result evidence'
     success: true,
   }, now)).toEqual(harnessToolResultEvidence(resultEvent(output), now))
 })
+
+test('long ordinary text is preserved in tool evidence', () => {
+  const text = 'A'.repeat(3_000)
+  const evidence = harnessToolOutputEvidence({
+    toolCallId: 'read-call',
+    toolName: 'read_document',
+    input: {},
+    output: { display: text },
+    success: true,
+  }, now)
+  expect(evidence.summary).toContain('A'.repeat(1_000))
+  expect(evidence.summary).not.toContain('[binary content omitted]')
+  expect(evidence.summary).toHaveLength(2_000)
+})

@@ -22,6 +22,16 @@ Model admission uses a reservation ceiling, not the headline catalog price. For 
 
 Harness terminal cancellation and failure may release a zero-cost free-router model hold only when no provider billing reservation exists. Paid, externally billed, nonzero-cost, and provider-started holds remain unresolved until authoritative usage evidence settles them.
 
+Harness summaries and final-answer verification are separately metered dispatches
+with distinct receipt IDs. A failed summary may synthesize `summary_failed` only
+for its exact zero-cost `openrouter/free` or Overlay-free reservation after the
+stream has ended and only when no billing reservation is bound. Paid, BYOK,
+unknown, mismatched, and unbound holds are never zero-settled; the run preserves
+its history and waits for the matching receipt before retrying. A final-answer
+verification failure likewise cannot complete the run: unresolved holds remain
+reserved, while settled malformed or unsupported results trigger bounded
+correction or a truthful pause.
+
 ## Stuck holds (fixed 2026-10-02)
 
 A call that failed, or finished costing more than was held, used to leave its reservation in `reconcile_required`, waiting for "provider evidence" that nothing supplied, and it counted as held forever. One account had 356 of them, $11.66 of a $20 allowance.

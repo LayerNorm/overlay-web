@@ -2956,6 +2956,29 @@ export default defineSchema({
   }).index('by_runId_evidenceId', ['runId', 'evidenceId'])
     .index('by_runId_createdAt', ['runId', 'createdAt']),
 
+  harnessContextArtifacts: defineTable({
+    runId: v.string(),
+    workflowRunId: v.string(),
+    toolCallId: v.string(),
+    toolName: v.string(),
+    digest: v.string(),
+    storageId: v.id('_storage'),
+    byteSize: v.number(),
+    mediaPartCount: v.number(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    artifactId: v.string(),
+    resource: v.optional(v.object({
+      id: v.string(),
+      revision: v.optional(v.string()),
+      operation: v.optional(v.string()),
+      page: v.optional(v.number()),
+    })),
+  }).index('by_runId_toolCallId', ['runId', 'toolCallId'])
+    .index('by_runId_artifactId', ['runId', 'artifactId'])
+    .index('by_runId_createdAt', ['runId', 'createdAt'])
+    .index('by_expiresAt', ['expiresAt']),
+
   /** Exactly-once billing: one row per (runId, receiptId). */
   harnessReceipts: defineTable({
     runId: v.string(),

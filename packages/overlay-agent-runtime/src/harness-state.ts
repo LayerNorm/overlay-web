@@ -25,7 +25,34 @@ export type HarnessEvidence = {
   verdict: 'observed' | 'passed' | 'failed'
   createdAt: number
   inputDigest?: string
+  resource?: {
+    id: string
+    revision?: string
+    operation?: string
+    page?: number
+  }
   verification?: { stepId: string; planRevision: number }
+}
+
+export type HarnessVerification = {
+  attemptId: string
+  candidateDigest: string
+  planRevision: number
+  evidenceRevision: number
+  supported: boolean
+  reason: string
+  evidenceIds: string[]
+  attempts: number
+  createdAt: number
+}
+
+export type HarnessCompaction = {
+  cycleId: string
+  attemptId: string
+  status: 'started' | 'completed' | 'interrupted' | 'awaiting_reconciliation'
+  retryCount: number
+  failureReason?: 'stream_aborted' | 'validation_failed' | 'provider_error' | 'unknown' | 'hold_unsettled'
+  updatedAt: number
 }
 
 export type HarnessResponseFailure = 'empty_response' | 'provider_error' | 'provider_other'
@@ -118,6 +145,10 @@ export type HarnessSnapshot = {
   blocker?: { kind: 'input' | 'approval' | 'budget' | 'stuck'; question: string }
   terminalReason?: string
   workingSummary: string
+  /** Model-produced continuity prose. Never authoritative evidence. */
+  unverifiedNarrative?: string
+  finalVerification?: HarnessVerification
+  compaction?: HarnessCompaction
   resultSummary?: string
   continuations: number
   lastContinuationProgressRevision: number
@@ -299,6 +330,7 @@ export function recordHarnessEvidence(state: HarnessSnapshot, evidence: HarnessE
   if (previous) {
     if (previous.kind !== evidence.kind || previous.source !== evidence.source || previous.summary !== evidence.summary || previous.verdict !== evidence.verdict
       || previous.inputDigest !== evidence.inputDigest
+      || JSON.stringify(previous.resource) !== JSON.stringify(evidence.resource)
       || JSON.stringify(previous.verification) !== JSON.stringify(evidence.verification)) throw new Error('Evidence is immutable; use a new reference for new observations.')
     return state
   }
@@ -308,6 +340,72 @@ export function recordHarnessEvidence(state: HarnessSnapshot, evidence: HarnessE
     ...(evidence.verification ? { verification: { ...evidence.verification } } : {}),
   })
   return changed(next, now, !lateToolResult)
+}
+
+export function recordHarnessVerification(
+  state: HarnessSnapshot,
+  verification: HarnessVerification,
+  now: number,
+): HarnessSnapshot {
+  assertActive(state)
+  if (!Number.isSafeInteger(verification.planRevision) || verification.planRevision !== state.planRevision
+    || !Number.isSafeInteger(verification.evidenceRevision) || verification.evidenceRevision !== state.progressRevision
+    || !verification.attemptId || verification.attemptId.length > 256
+    || !verification.candidateDigest || verification.reason.length > 1_000
+    || verification.evidenceIds.some(id => !state.evidence.some(evidence => evidence.id === id))) {
+    throw new Error('Final verification does not match the current plan and evidence.')
+  }
+  if (state.finalVerification
+    && JSON.stringify(state.finalVerification) === JSON.stringify(verification)) return state
+  if (state.finalVerification?.candidateDigest === verification.candidateDigest
+    && state.finalVerification.planRevision === verification.planRevision
+    && state.finalVerification.evidenceRevision === verification.evidenceRevision
+    && state.finalVerification.attempts >= verification.attempts) return state
+  const next = mutable(state)
+  next.finalVerification = { ...verification, evidenceIds: [...verification.evidenceIds] }
+  return changed(next, now, false)
+}
+
+export function setHarnessCompaction(
+  state: HarnessSnapshot,
+  compaction: HarnessCompaction,
+  now: number,
+): HarnessSnapshot {
+  assertActive(state)
+  if (!compaction.cycleId || !compaction.attemptId || compaction.retryCount < 0
+    || compaction.retryCount > 1 || !Number.isSafeInteger(compaction.retryCount)
+    || !Number.isFinite(compaction.updatedAt)) throw new Error('Invalid compaction attempt.')
+  const previous = state.compaction
+  if (previous?.cycleId === compaction.cycleId && previous.attemptId === compaction.attemptId
+    && JSON.stringify(previous) === JSON.stringify(compaction)) return state
+  if (compaction.status === 'started') {
+    if (state.modelReservation && state.modelReservation.id !== compaction.attemptId) {
+      throw new Error('An unrelated model reservation prevents compaction.')
+    }
+    if (previous?.status === 'started' || previous?.status === 'awaiting_reconciliation') {
+      throw new Error('The active compaction attempt must be reconciled first.')
+    }
+    if (previous?.cycleId === compaction.cycleId
+      && (previous.status !== 'interrupted' || compaction.retryCount !== previous.retryCount + 1)) {
+      throw new Error('Compaction retry order is invalid.')
+    }
+    if (previous?.cycleId !== compaction.cycleId && compaction.retryCount !== 0) {
+      throw new Error('A new compaction cycle must start at attempt zero.')
+    }
+  } else {
+    if (!previous || previous.cycleId !== compaction.cycleId || previous.attemptId !== compaction.attemptId
+      || previous.status !== 'started') throw new Error('Compaction transition does not match its active attempt.')
+    if (compaction.status === 'completed' && state.modelReservation?.id === compaction.attemptId) {
+      throw new Error('Compaction cannot complete with an unsettled model hold.')
+    }
+    if (compaction.status === 'awaiting_reconciliation'
+      && state.modelReservation?.id !== compaction.attemptId) {
+      throw new Error('Only the matching unresolved hold can await reconciliation.')
+    }
+  }
+  const next = mutable(state)
+  next.compaction = { ...compaction }
+  return changed(next, now, false)
 }
 
 function hasToolResultEvidenceAlreadyUsedByAction(
@@ -637,6 +735,7 @@ export function blockHarness(state: HarnessSnapshot, blocker: NonNullable<Harnes
 
 export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnapshot {
   assertActive(state)
+  if (state.modelReservation) throw new Error('A model hold must be reconciled before the run can resume.')
   if (state.status === 'waiting_for_resources' || state.resourceRequestToken) {
     throw new Error('A resource pause must be consumed before the run can resume.')
   }
@@ -758,12 +857,21 @@ export function checkpointHarness(
   summary: string,
   now: number,
   purpose: HarnessCheckpointPurpose = 'continuation',
+  unverifiedNarrative?: string,
 ): HarnessSnapshot {
   assertActive(state)
   if (summary.length > 8_000) throw new Error('Keep the working summary under 8,000 characters; store larger outputs as artifacts.')
+  if (unverifiedNarrative !== undefined && unverifiedNarrative.length > 8_000) {
+    throw new Error('Keep unverified narrative under 8,000 characters.')
+  }
   const next = mutable(state)
+  if (purpose === 'compaction') {
+    next.workingSummary = summary
+    next.unverifiedNarrative = summary
+    return changed(next, now, false)
+  }
   next.workingSummary = summary
-  if (purpose === 'compaction') return changed(next, now, false)
+  if (unverifiedNarrative !== undefined) next.unverifiedNarrative = unverifiedNarrative
   next.continuations++
   next.stalledContinuations = state.progressRevision === state.lastContinuationProgressRevision ? state.stalledContinuations + 1 : 0
   next.lastContinuationProgressRevision = state.progressRevision

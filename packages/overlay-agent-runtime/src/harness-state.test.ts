@@ -9,6 +9,8 @@ import {
   reserveHarnessModel, reservedHarnessCostMicros,
   bindHarnessModelDispatch,
   validateHarnessReceipt,
+  recordHarnessVerification,
+  setHarnessCompaction,
 } from './harness-state'
 
 const now = 1_000
@@ -27,6 +29,39 @@ const make = () => createHarnessSnapshot({ runId: 'root', goal: 'Produce a check
   actorUserId: 'user', allowedToolIds: ['read', 'write'], requiresPlan: true,
   deadlineAt: 10_000, maxCostMicros: 100, maxParallelChildren: 2, maxDepth: 1,
 } }, now)
+
+test('compaction transitions are replay-safe and never replace an unrelated reservation', () => {
+  let state = make()
+  const started = { cycleId: 'summary:r1', attemptId: 'summary:r1', status: 'started' as const, retryCount: 0, updatedAt: now }
+  state = setHarnessCompaction(state, started, now)
+  assert.equal(setHarnessCompaction(state, started, now), state)
+  assert.throws(() => setHarnessCompaction({
+    ...state, modelReservation: { id: 'response:r1', maxCostMicros: 1 },
+  }, { ...started, cycleId: 'summary:r2', attemptId: 'summary:r2' }, now), /unrelated model reservation/)
+  const interrupted = { ...started, status: 'interrupted' as const, failureReason: 'stream_aborted' as const, updatedAt: now + 1 }
+  state = setHarnessCompaction(state, interrupted, now + 1)
+  state = setHarnessCompaction(state, {
+    cycleId: started.cycleId, attemptId: 'summary:r1:retry:1', status: 'started', retryCount: 1, updatedAt: now + 2,
+  }, now + 2)
+  assert.equal(state.compaction?.retryCount, 1)
+})
+
+test('final verification is bound to current plan and evidence progress', () => {
+  let state = make()
+  state = recordHarnessEvidence(state, {
+    id: 'tool:read:1', kind: 'tool_result', source: 'read_document', summary: 'Read revision r1.',
+    verdict: 'observed', createdAt: now,
+  }, now)
+  const verification = {
+    attemptId: 'segment:1',
+    candidateDigest: 'digest', planRevision: state.planRevision, evidenceRevision: state.progressRevision,
+    supported: true, reason: 'Supported by the saved read.', evidenceIds: ['tool:read:1'], attempts: 1, createdAt: now,
+  }
+  state = recordHarnessVerification(state, verification, now)
+  assert.equal(recordHarnessVerification(state, verification, now), state)
+  assert.throws(() => recordHarnessVerification(state, { ...verification, evidenceRevision: 0 }, now), /does not match/)
+  assert.throws(() => recordHarnessVerification(state, { ...verification, evidenceIds: ['other'] }, now), /does not match/)
+})
 
 test('route interruption receipts count durably toward the per-run retry cap', () => {
   let state = make()
@@ -332,6 +367,15 @@ test('plan revisions reject cycles and invalidate completed downstream work', ()
   assert.deepEqual(state.plan.map(step => step.status), ['pending', 'pending'])
   assert.deepEqual(previous.plan.map(step => step.status), ['done', 'done'])
   assert.throws(() => replaceHarnessPlan(state, [steps[0]!], now), /Keep existing/)
+})
+
+test('continuation checkpoint keeps model narrative separate from authoritative summary', () => {
+  let state = make()
+  state = checkpointHarness(state, 'Authoritative checkpoint', now, 'continuation', 'Unverified model narrative.')
+  assert.equal(state.workingSummary, 'Authoritative checkpoint')
+  assert.equal(state.unverifiedNarrative, 'Unverified model narrative.')
+  state = checkpointHarness(state, 'Compacted context', now, 'compaction')
+  assert.equal(state.unverifiedNarrative, 'Compacted context')
 })
 
 test('telemetry is not progress and compaction does not count as continuation stagnation', () => {

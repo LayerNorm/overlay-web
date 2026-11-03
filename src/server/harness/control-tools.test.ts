@@ -64,6 +64,26 @@ test('completed child results become parent observations without certifying inde
   expect((await f.ports.read()).plan[0].status).toBe('done')
 })
 
+test('artifact control reads selected media as typed binary model output', async () => {
+  const readArtifact = vi.fn(async () => ({
+    kind: 'media' as const,
+    data: new Uint8Array([0, 127, 255]),
+    mediaType: 'image/png',
+    metadata: { toolName: 'render_document', toolCallId: 'render-1' },
+  }))
+  const artifactTool = createHarnessControlTools({ ...fixture().ports, readArtifact }).harness_read_artifact
+  const input = { artifactId: `ha_${'a'.repeat(64)}`, mediaPart: 0 }
+  const result = await artifactTool.execute!(input, { toolCallId: 'reopen-1', messages: [] })
+  expect(readArtifact).toHaveBeenCalledWith(input)
+  expect(artifactTool.toModelOutput?.({ output: result })).toEqual({
+    type: 'content',
+    value: [
+      { type: 'text', text: 'Reopened media from render_document call render-1.' },
+      { type: 'file', data: { type: 'data', data: new Uint8Array([0, 127, 255]) }, mediaType: 'image/png' },
+    ],
+  })
+})
+
 test('plan tools accept answer-only milestones', () => {
   const planTool = createHarnessControlTools(fixture().ports).harness_set_plan
   expect(planTool.inputSchema.parse({

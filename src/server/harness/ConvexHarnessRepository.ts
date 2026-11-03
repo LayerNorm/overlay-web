@@ -10,6 +10,7 @@ import type {
   HarnessWaitRequest,
 } from '@overlay/agent-runtime/harness-store'
 import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import type { HarnessArtifactMetadata } from './artifact-context'
 import type {
   HarnessConsumeResourceGrantInput, HarnessGrantResourcesInput, HarnessResourceConsumeResult,
   HarnessResourceGrantReceipt, HarnessResourcePauseInput, HarnessResourceRequestRecord,
@@ -23,6 +24,42 @@ import { requireNativeThreadCompatibilityBackend } from '@/server/conversations/
 export class ConvexHarnessRepository implements HarnessRepository {
   private get serverSecret(): string {
     return getInternalApiSecret()
+  }
+
+  async storeContextArtifact(input: {
+    actorUserId: string
+    runId: string
+    workflowRunId: string
+    artifactId: string
+    toolCallId: string
+    toolName: string
+    digest: string
+    data: Uint8Array
+    mediaPartCount: number
+    resource?: { id: string; revision?: string; operation?: string; page?: number }
+  }): Promise<HarnessArtifactMetadata> {
+    const result = await convex.action<HarnessArtifactMetadata>('harness/artifacts:put', {
+      ...input, data: input.data.slice().buffer as ArrayBuffer, serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!result) throw new Error('Harness artifact storage returned no metadata.')
+    return result
+  }
+
+  async getContextArtifactMetadata(input: {
+    actorUserId: string; runId: string; workflowRunId: string; artifactId: string
+  }): Promise<HarnessArtifactMetadata | null> {
+    return await convex.query<HarnessArtifactMetadata | null>('harness/artifactMetadata:getMetadata', {
+      ...input, serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
+  async readContextArtifact(input: {
+    actorUserId: string; runId: string; workflowRunId: string; artifactId: string
+  }): Promise<Uint8Array | null> {
+    const data = await convex.action<ArrayBuffer | null>('harness/artifacts:read', {
+      ...input, serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    return data ? new Uint8Array(data) : null
   }
 
   async admit(input: HarnessAdmission): Promise<HarnessSnapshot> {

@@ -1,6 +1,7 @@
 import type {
   HarnessCheckpointPurpose, HarnessChild, HarnessEvidence, HarnessPlanInput, HarnessPolicy, HarnessReceipt,
   HarnessSnapshot, HarnessStepStatus,
+  HarnessCompaction,
 } from './harness-state'
 import type {
   HarnessConsumeResourceGrantInput,
@@ -31,8 +32,10 @@ export type HarnessOperation =
   | { type: 'replace_plan'; steps: HarnessPlanInput[] }
   | { type: 'transition_step'; id: string; status: HarnessStepStatus; evidenceRefs?: string[]; skipReason?: string }
   | { type: 'record_evidence'; evidence: HarnessEvidence }
+  | { type: 'record_verification'; verification: import('./harness-state').HarnessVerification }
+  | { type: 'set_compaction'; compaction: HarnessCompaction }
   | { type: 'record_receipt'; receipt: HarnessReceipt }
-  | { type: 'checkpoint'; summary: string; purpose?: HarnessCheckpointPurpose }
+  | { type: 'checkpoint'; summary: string; purpose?: HarnessCheckpointPurpose; unverifiedNarrative?: string }
   | { type: 'block'; blocker: NonNullable<HarnessSnapshot['blocker']> }
   | { type: 'resume' }
   | { type: 'wait_for_children' }

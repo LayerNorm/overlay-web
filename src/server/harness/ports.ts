@@ -27,6 +27,23 @@ export type HarnessApprovalRequest = {
   input: unknown
 }
 
+export type HarnessAnswerVerification = {
+  supported: boolean
+  reason: string
+  evidenceIds: string[]
+}
+
+export type HarnessArtifactRead = {
+  artifactId: string
+  start?: number
+  end?: number
+  mediaPart?: number
+}
+
+export type HarnessArtifactReadResult =
+  | { kind: 'text'; text: string; metadata: { toolName: string; toolCallId: string; resource?: { id: string; revision?: string; operation?: string; page?: number } } }
+  | { kind: 'media'; data: Uint8Array; mediaType: string; metadata: { toolName: string; toolCallId: string; resource?: { id: string; revision?: string; operation?: string; page?: number } } }
+
 // These are IO seams, not execution strategies. Implementations invoke durable
 // steps/hooks; no provider instances, credentials or closures enter run storage.
 export interface HarnessExecutionPorts {
@@ -36,6 +53,7 @@ export interface HarnessExecutionPorts {
   readEvidence(evidenceId: string): Promise<HarnessEvidence | null>
   waitForResources?(requiredCostMicros: number): Promise<HarnessSnapshot>
   authorizeTool(toolName: string): Promise<void>
+  readArtifact?(input: HarnessArtifactRead): Promise<HarnessArtifactReadResult>
   prepareModel(input: {
     receiptId: string
     state: HarnessSnapshot
@@ -54,6 +72,10 @@ export interface HarnessExecutionPorts {
   }>
   recordModelStep(step: Parameters<WorkflowAgentOnStepEndCallback<ToolSet>>[0], receiptId: string): Promise<void>
   recoverModelFailure?(receiptId: string): Promise<boolean>
+  verifyFinalAnswer?(input: {
+    state: HarnessSnapshot
+    candidate: string
+  }): Promise<HarnessAnswerVerification>
   recordToolResult(event: WorkflowAgentToolExecutionEndEvent<ToolSet>): Promise<void>
   delegate(input: HarnessDelegation, toolCallId: string): Promise<HarnessChild>
   readChild(childRunId: string): Promise<HarnessSnapshot>

@@ -15,6 +15,7 @@ import {
   buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessStuckQuestion,
   HARNESS_CONTROL_TOOLS, harnessProgressFingerprint,
 } from './context'
+import { buildHarnessCheckpoint, harnessCandidateDigest } from './continuity'
 import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSettings } from './ports'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
 import { createHarnessToolApprovals, type HarnessToolApprovals, type HarnessToolExecutionOptions } from './tool-approvals'
@@ -256,6 +257,80 @@ async function finishOrCheckpointInvocation(
   const resultSummary = latestFinalAnswerText(runSteps, toolNames)
   const finalAnswerRequired = !truncatedResponse && !completionIssues.length && !resultSummary
   if (!truncatedResponse && !completionIssues.length && resultSummary) {
+    const observedToolEvidence = state.evidence.filter(evidence => evidence.kind === 'tool_result')
+    if (observedToolEvidence.length && ports.verifyFinalAnswer) {
+      const digest = await harnessCandidateDigest(resultSummary)
+      const prior = state.finalVerification
+      const attemptId = `segment:${segment}`
+      const sameAttempt = prior?.attemptId === attemptId
+        && prior.candidateDigest === digest && prior.planRevision === state.planRevision
+        && prior.evidenceRevision === state.progressRevision
+      const attempt = sameAttempt ? prior.attempts : (prior?.attempts ?? 0) + 1
+      if (attempt > 3) {
+        await ports.apply(`verify-block:${segment}`, {
+          type: 'block',
+          blocker: { kind: 'stuck', question: 'The final answer remains unsupported after two corrections. Review the persisted observations before continuing.' },
+        })
+        return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
+      }
+      let verification: Awaited<ReturnType<NonNullable<HarnessExecutionPorts['verifyFinalAnswer']>>>
+      try {
+        verification = await ports.verifyFinalAnswer({ state, candidate: resultSummary })
+      } catch (error) {
+        const afterFailure = await ports.read()
+        if (afterFailure.modelReservation?.id.startsWith('verification:')) {
+          if (afterFailure.status === 'running') {
+            await ports.apply(`verification-pending:${segment}`, {
+              type: 'block',
+              blocker: {
+                kind: 'stuck',
+                question: 'Final-answer verification is awaiting provider settlement. No answer was accepted; resume after the hold reconciles.',
+              },
+            })
+          }
+          return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
+        }
+        verification = {
+          supported: false,
+          reason: error instanceof Error ? error.message : 'Final answer verification failed.',
+          evidenceIds: [],
+        }
+      }
+      const verified = await ports.apply(`verify:${segment}:${attempt}`, {
+        type: 'record_verification',
+        verification: {
+          attemptId,
+          candidateDigest: digest,
+          planRevision: state.planRevision,
+          evidenceRevision: state.progressRevision,
+          supported: verification.supported,
+          reason: verification.reason.slice(0, 1_000),
+          evidenceIds: verification.evidenceIds,
+          attempts: attempt,
+          createdAt: Date.now(),
+        },
+      })
+      if (!verification.supported) {
+        if (attempt < 3) {
+          await ports.apply(`checkpoint:${segment}:verification`, {
+            type: 'checkpoint',
+            summary: JSON.stringify(buildHarnessCheckpoint(verified)),
+            purpose: 'continuation',
+            unverifiedNarrative: resultSummary.slice(0, 8_000),
+          })
+          return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
+        }
+        await ports.apply(`verify-block:${segment}`, {
+          type: 'block',
+          blocker: {
+            kind: 'stuck',
+            question: `Final answer could not be supported by persisted observations: ${verification.reason.slice(0, 900)}`,
+          },
+        })
+        return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
+      }
+      state = verified
+    }
     const completed = await ports.apply(`finish:${segment}`, {
       type: 'finish', ...(resultSummary ? { resultSummary: resultSummary.slice(0, 8_000) } : {}),
     })
@@ -269,9 +344,12 @@ async function finishOrCheckpointInvocation(
     })
     return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
   }
-  const summary = stripTextualToolCalls(state.workingSummary, toolNames)
-    || latestCheckpointSummaryText(runSteps, toolNames)
-  await ports.apply(`checkpoint:${segment}`, { type: 'checkpoint', summary: summary.slice(0, 8_000), purpose: 'continuation' })
+  await ports.apply(`checkpoint:${segment}`, {
+    type: 'checkpoint',
+    summary: JSON.stringify(buildHarnessCheckpoint(state)),
+    purpose: 'continuation',
+    unverifiedNarrative: latestCheckpointSummaryText(runSteps, toolNames).slice(0, 8_000),
+  })
   return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
 }
 
