@@ -55,7 +55,11 @@ export class ConvexHarnessRepository implements HarnessRepository {
 
   async readWaitReply(input: HarnessWaitReference & { token: string }): Promise<unknown> {
     return await convex.query('harness/runs:readWaitReply', {
-      ...input, serverSecret: this.serverSecret,
+      actorUserId: input.actorUserId,
+      runId: input.runId,
+      workflowRunId: input.workflowRunId,
+      token: input.token,
+      serverSecret: this.serverSecret,
     }, { throwOnError: true })
   }
 
