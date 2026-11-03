@@ -62,6 +62,31 @@ type AgentEditorFormSectionProps = {
   archiveAgent(): void
 }
 
+type AgentRuntimeFlags = Pick<ReturnType<typeof useAgentRuntime>, 'cloudAgent' | 'legacyHostedRuntime'>
+
+function RetiredHostedRuntimeNotice({ runtime }: { runtime: AgentRuntimeFlags }) {
+  if (!runtime.cloudAgent && !runtime.legacyHostedRuntime) return null
+  return <p className="rounded-xl border border-(--border) px-4 py-3 text-sm text-(--muted)">Hosted Overlay Cloud runtimes are retired. This agent and its history remain readable, but it cannot run. Archive it to revoke access and queue provider cleanup.</p>
+}
+
+function ConnectedAgentSettingsSection({
+  agent,
+  connectedAgentsEnabled,
+  runtime,
+  agentType,
+}: {
+  agent: WorkspaceAgentDirectoryItem | null
+  connectedAgentsEnabled: boolean
+  runtime: AgentRuntimeFlags
+  agentType: ReturnType<typeof useAgentRuntime>['agentType']
+}) {
+  if (!agent || !connectedAgentsEnabled || runtime.cloudAgent || runtime.legacyHostedRuntime || agentType !== 'byo') {
+    return null
+  }
+  return <ConnectedAgentSettings key={agent.id}
+    agentId={agent.id} modelId={agent.modelId} permissionMode={agent.permissionMode} effort={agent.effort} />
+}
+
 function AgentEditorFormSection({
   mode,
   agent,
@@ -183,9 +208,13 @@ function AgentEditorFormSection({
           onChange={(value) => { setAgentType(value); markDirty() }}
         />
         <div className="space-y-5">
-          {runtime.cloudAgent || runtime.legacyHostedRuntime ? <p className="rounded-xl border border-(--border) px-4 py-3 text-sm text-(--muted)">Hosted Overlay Cloud runtimes are retired. This agent and its history remain readable, but it cannot run. Archive it to revoke access and queue provider cleanup.</p> : null}
-          {agent && connectedAgentsEnabled && !runtime.cloudAgent && !runtime.legacyHostedRuntime && agentType === 'byo' ? <ConnectedAgentSettings key={agent.id}
-            agentId={agent.id} modelId={agent.modelId} permissionMode={agent.permissionMode} effort={agent.effort} /> : null}
+          <RetiredHostedRuntimeNotice runtime={runtime} />
+          <ConnectedAgentSettingsSection
+            agent={agent}
+            connectedAgentsEnabled={connectedAgentsEnabled}
+            runtime={runtime}
+            agentType={agentType}
+          />
           {runtime.cloudAgent ? null : <AgentBehaviorFields
             agentType={agentType}
             connectedAgentsEnabled={connectedAgentsEnabled}
