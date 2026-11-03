@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   ready: vi.fn(), getAppSettings: vi.fn(), assertSource: vi.fn(), ensureConversation: vi.fn(),
   markRunStarted: vi.fn(), prepare: vi.fn(), startAgentRun: vi.fn(), admit: vi.fn(),
   harnessWorkflow: vi.fn(), getRun: vi.fn(), settleRun: vi.fn(), getLatestAgentRun: vi.fn(),
-  getMessages: vi.fn(), readHarness: vi.fn(), sleep: vi.fn(), reconcileTerminal: vi.fn(), readDelivery: vi.fn(),
+  getMessages: vi.fn(), readHarness: vi.fn(), sleep: vi.fn(),
 }))
 
 vi.mock('server-only', () => ({}))
@@ -47,14 +47,6 @@ vi.mock('@/server/harness/ConvexHarnessRepository', () => ({
 vi.mock('@/server/harness/personal-admission-policy', () => ({ personalHarnessPolicy: vi.fn(() => ({})) }))
 vi.mock('@/server/harness/write-tools', () => ({ harnessToolsRequirePlan: vi.fn(() => true) }))
 vi.mock('@/server/workflows/personal-harness', () => ({ personalHarnessWorkflow: mocks.harnessWorkflow }))
-vi.mock('./automation-harness-steps', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('./automation-harness-steps')>()
-  return {
-    ...actual,
-    reconcileAutomationHarnessTerminalStep: mocks.reconcileTerminal,
-    readAutomationDeliveryStep: mocks.readDelivery,
-  }
-})
 
 const source = {
   workspaceId: 'workspace',
@@ -108,13 +100,16 @@ beforeEach(() => {
   mocks.getLatestAgentRun.mockResolvedValue({ id: 'delivery', userId: 'user', turnId: 'automation-run:run' })
   mocks.getMessages.mockResolvedValue([{ role: 'assistant', turnId: 'automation-run:run', content: 'persisted reply' }])
   mocks.sleep.mockResolvedValue(undefined)
-  mocks.reconcileTerminal.mockReset()
-  mocks.readDelivery.mockResolvedValue('persisted reply')
 })
 
 test('closeStream:false automation follows a continued task to persisted terminal delivery', async () => {
   mocks.harnessWorkflow.mockResolvedValue({ runId: 'personal:delivery', status: 'running' })
-  mocks.reconcileTerminal.mockResolvedValueOnce(null).mockResolvedValueOnce('completed')
+  mocks.readHarness.mockResolvedValueOnce(null).mockResolvedValueOnce({
+    runId: 'personal:delivery', workflowRunId: 'successor', executionGeneration: 1,
+    status: 'completed', policy: { actorUserId: 'user', workspaceId: 'workspace' },
+  })
+  mocks.sleep.mockImplementationOnce(async () => {}).mockImplementationOnce(async () => {})
+    .mockImplementation(async () => { throw new Error('Unexpected extra continuation poll') })
 
   const result = await runAutomationAgentTurn(input)
 
@@ -122,9 +117,9 @@ test('closeStream:false automation follows a continued task to persisted termina
   expect(mocks.harnessWorkflow).toHaveBeenCalledTimes(1)
   expect(mocks.harnessWorkflow.mock.calls[0]?.[0].delivery).toMatchObject({ closeStream: false })
   expect(mocks.sleep).toHaveBeenCalledTimes(2)
-  expect(mocks.readDelivery).toHaveBeenCalledWith({
-    conversationId: 'conversation', agentRunId: 'delivery', userId: 'user',
-  })
+  expect(mocks.settleRun).toHaveBeenCalledWith(expect.objectContaining({
+    expectedWorkflowRunId: 'workflow', status: 'completed', expectedTurnId: 'automation-run:run',
+  }))
 })
 
 test('readiness fails before conversation, user-message, AgentRun, or Harness admission', async () => {
@@ -227,6 +222,7 @@ test.each([
   mocks.harnessWorkflow.mockRejectedValueOnce(new Error('workflow replayed a terminal failure'))
   mocks.readHarness.mockResolvedValueOnce({
     runId: 'personal:delivery', workflowRunId: 'workflow', status, terminalReason,
+    policy: { actorUserId: 'user', workspaceId: 'workspace' },
   })
   const result = await runAutomationAgentTurn(input)
   expect(result).toMatchObject({ status, replyText: '' })

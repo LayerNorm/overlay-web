@@ -143,6 +143,50 @@ test('an unrecorded pending claim retries the same Stripe parameters and origina
   }])
 })
 
+test('changed consent or payment method keeps an unrecorded claim pending without creating an intent', async () => {
+  const pending = {
+    intentKey: 'original-intent', idempotencyKey: 'workspace-auto-topup-original-intent',
+    actorUserId: 'owner', workspaceId: 'workspace', amountCents: 800, currentPeriodStart: 100,
+    consentAt: 123, paymentMethodId: 'pm_original', customerId: 'cus_test', createdAt: Date.now(),
+  }
+  for (const changed of [
+    { subscription: { offSessionConsentAt: 124 }, paymentMethod: 'pm_original' },
+    { subscription: {}, paymentMethod: 'pm_changed' },
+  ]) {
+    let creates = 0
+    const repository = {
+      getBillingAccountSubscriptionByServer: async () => ({ ...plan, ...changed.subscription, autoTopUpPending: true }),
+      getPendingAutoTopUpIntentByServer: async () => pending,
+      claimAutoTopUpIntentByServer: async () => { throw new Error('must not create a new claim') },
+      recordBillingAccountTopUp: async () => { throw new Error('must not settle an unauthorized retry') },
+    } as unknown as BillingRepository
+    const result = await maybeAutoTopUpWorkspaceBudget(params, repository, {
+      resolvePaymentMethodId: async () => changed.paymentMethod,
+      createPaymentIntent: async () => { creates += 1; return { id: 'unexpected', status: 'succeeded' } },
+    })
+    assert.equal(result.reason, 'authorization_changed')
+    assert.equal(creates, 0)
+  }
+})
+
+test('an ambiguous claim older than 24 hours remains pending and is never retried as a new charge', async () => {
+  const repository = {
+    getBillingAccountSubscriptionByServer: async () => ({ ...plan, autoTopUpPending: true }),
+    getPendingAutoTopUpIntentByServer: async () => ({
+      intentKey: 'old-intent', idempotencyKey: 'old-key', actorUserId: 'owner', workspaceId: 'workspace',
+      amountCents: 800, currentPeriodStart: 100, consentAt: 123, paymentMethodId: 'pm_test',
+      customerId: 'cus_test', createdAt: Date.now() - 24 * 60 * 60 * 1_000,
+    }),
+  } as unknown as BillingRepository
+  let creates = 0
+  const result = await maybeAutoTopUpWorkspaceBudget(params, repository, {
+    resolvePaymentMethodId: async () => 'pm_test',
+    createPaymentIntent: async () => { creates += 1; return { id: 'unexpected', status: 'succeeded' } },
+  })
+  assert.deepEqual(result, { applied: false, reason: 'already_pending' })
+  assert.equal(creates, 0)
+})
+
 function expectTopUpRecord(stripePaymentIntentId: string, autoTopUpIntentKey?: string) {
   return {
     actorUserId: 'owner',

@@ -1,15 +1,17 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { createHarnessSnapshot, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { createPersonalHarnessWaitPorts } from './personal-waits'
-import { createHarnessWaitPorts } from './waits'
+import { createHarnessWaitPorts, HarnessWaitRollover } from './waits'
 
 const mocks = vi.hoisted(() => ({ hook: vi.fn(), sleep: vi.fn(), read: vi.fn(), apply: vi.fn(),
-  publish: vi.fn(), resolve: vi.fn(), list: vi.fn(), notify: vi.fn(), project: vi.fn(), child: vi.fn(), humanReply: vi.fn() }))
+  publish: vi.fn(), resolve: vi.fn(), list: vi.fn(), readReply: vi.fn(), notify: vi.fn(), project: vi.fn(),
+  child: vi.fn(), humanReply: vi.fn() }))
 vi.mock('workflow', () => ({ createHook: mocks.hook, sleep: mocks.sleep, FatalError: class extends Error {} }))
 vi.mock('./resource-boundary', () => ({ waitForHarnessHumanReply: mocks.humanReply }))
 vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, applyHarnessOperation: mocks.apply }))
 vi.mock('./personal-wait-steps', () => ({ publishHarnessWait: mocks.publish, resolveHarnessWait: mocks.resolve,
-  listHarnessWaits: mocks.list, notifyHarnessAncestors: mocks.notify, projectPersonalHarnessWait: mocks.project,
+  listHarnessWaits: mocks.list, readHarnessWaitReply: mocks.readReply,
+  notifyHarnessAncestors: mocks.notify, projectPersonalHarnessWait: mocks.project,
   readHarnessChild: mocks.child }))
 
 const access = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation',
@@ -218,4 +220,105 @@ test('a failed child with unresolved usage fails closed without retrying settlem
   const ports = createPersonalHarnessWaitPorts({ access, wake: { next: vi.fn() } })
   await expect(ports.waitForChildren(['child'])).rejects.toThrow('billing holds were preserved')
   expect(mocks.apply).not.toHaveBeenCalled()
+})
+
+test('a successor consumes the original durable input reply without registering another hook', async () => {
+  const previousToken = 'harness:wait:workflow:0'
+  const wait = { kind: 'input' as const, token: previousToken, runId: 'run', rootRunId: 'run',
+    workflowRunId: 'successor', question: 'Which document?', createdAt: 100 }
+  state.policy.executionPolicyVersion = 2
+  state.workflowRunId = 'successor'
+  mocks.list.mockResolvedValue([wait])
+  mocks.readReply.mockResolvedValue({ text: 'The quarterly report.' })
+
+  const successorAccess = { ...access, workflowRunId: 'successor' }
+  const ports = createPersonalHarnessWaitPorts({
+    access: successorAccess, wake: { next: vi.fn() }, renewLease: vi.fn(async () => {}),
+    checkFunding: vi.fn(async () => false),
+  })
+  await expect(ports.waitForInput(state)).resolves.toEqual([{ role: 'user', content: 'The quarterly report.' }])
+  expect(mocks.hook).not.toHaveBeenCalled()
+  expect(mocks.publish).not.toHaveBeenCalled()
+  expect(mocks.resolve).toHaveBeenCalledExactlyOnceWith(successorAccess, previousToken)
+})
+
+test('a successor validates the persisted approval request set before consuming its reply', async () => {
+  const previousToken = 'harness:wait:workflow:1'
+  const requests = [{ approvalId: 'approval-1', toolCallId: 'call-1', toolName: 'send', input: { id: 'doc' } }]
+  state.policy.executionPolicyVersion = 2
+  state.status = 'waiting_for_approval'
+  state.blocker = { kind: 'approval', question: 'Approve sending?' }
+  state.workflowRunId = 'successor'
+  mocks.list.mockResolvedValue([{
+    kind: 'approval', token: previousToken, runId: 'run', rootRunId: 'run',
+    workflowRunId: 'successor', requests, createdAt: 100,
+  }])
+  mocks.readReply.mockResolvedValue({ approved: true })
+  const successorAccess = { ...access, workflowRunId: 'successor' }
+  const ports = createPersonalHarnessWaitPorts({
+    access: successorAccess, wake: { next: vi.fn() }, renewLease: vi.fn(async () => {}),
+    checkFunding: vi.fn(async () => false),
+  })
+
+  await expect(ports.waitForApproval(requests)).resolves.toEqual([{ approvalId: 'approval-1', approved: true }])
+  expect(mocks.hook).not.toHaveBeenCalled()
+  expect(mocks.publish).not.toHaveBeenCalled()
+  expect(mocks.resolve).toHaveBeenCalledExactlyOnceWith(successorAccess, previousToken)
+
+  mocks.list.mockResolvedValueOnce([{
+    kind: 'approval', token: previousToken, runId: 'run', rootRunId: 'run',
+    workflowRunId: 'successor', requests: [{ ...requests[0]!, input: { id: 'other' } }], createdAt: 100,
+  }])
+  await expect(ports.waitForApproval(requests)).rejects.toThrow('Persisted approval request changed.')
+  expect(mocks.resolve).toHaveBeenCalledOnce()
+})
+
+test('a V2 wait rolls over after an hour without resolving its row and the successor reuses it', async () => {
+  const clock = vi.spyOn(Date, 'now')
+  let now = 1_000
+  clock.mockImplementation(() => now)
+  const previousToken = 'harness:wait:workflow:0'
+  const wait = { kind: 'input' as const, token: previousToken, runId: 'run', rootRunId: 'run',
+    workflowRunId: 'workflow', question: 'Which document?', createdAt: 100 }
+  state.policy.executionPolicyVersion = 2
+  mocks.list.mockResolvedValue([wait])
+  mocks.readReply.mockResolvedValue(null)
+  mocks.sleep.mockImplementation(async () => { now += 60 * 60_000 })
+  const original = createPersonalHarnessWaitPorts({
+    access, wake: { next: vi.fn() }, renewLease: vi.fn(async () => {}), checkFunding: vi.fn(async () => false),
+  })
+
+  try {
+    await expect(original.waitForInput(state)).rejects.toBeInstanceOf(HarnessWaitRollover)
+    expect(mocks.resolve).not.toHaveBeenCalled()
+    expect(mocks.list).toHaveBeenCalledOnce()
+
+    state.workflowRunId = 'successor'
+    mocks.list.mockResolvedValue([ { ...wait, workflowRunId: 'successor' } ])
+    mocks.readReply.mockResolvedValueOnce({ text: 'The quarterly report.' })
+    const successorAccess = { ...access, workflowRunId: 'successor' }
+    const successor = createPersonalHarnessWaitPorts({
+      access: successorAccess, wake: { next: vi.fn() }, renewLease: vi.fn(async () => {}),
+      checkFunding: vi.fn(async () => false),
+    })
+    await expect(successor.waitForInput(state)).resolves.toEqual([{ role: 'user', content: 'The quarterly report.' }])
+    expect(mocks.publish).not.toHaveBeenCalled()
+    expect(mocks.resolve).toHaveBeenCalledExactlyOnceWith(successorAccess, previousToken)
+  } finally {
+    clock.mockRestore()
+  }
+})
+
+test('an expired explicit deadline rejects a persisted input reply without resolving the wait', async () => {
+  state.policy.executionPolicyVersion = 2
+  state.policy.taskDeadlineAt = Date.now() - 1
+  mocks.list.mockResolvedValue([{ kind: 'input', token: 'old-token', runId: 'run', rootRunId: 'run',
+    workflowRunId: 'workflow', question: 'Which document?', createdAt: 100 }])
+  mocks.readReply.mockResolvedValue({ text: 'Too late.' })
+  const ports = createPersonalHarnessWaitPorts({
+    access, wake: { next: vi.fn() }, renewLease: vi.fn(async () => {}), checkFunding: vi.fn(async () => false),
+  })
+  await expect(ports.waitForInput(state)).rejects.toThrow('explicit harness task deadline')
+  expect(mocks.readReply).not.toHaveBeenCalled()
+  expect(mocks.resolve).not.toHaveBeenCalled()
 })

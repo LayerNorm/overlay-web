@@ -250,6 +250,27 @@ describe('workspace automatic top-ups', () => {
     expect(topUpBalance).toBe(800 * 10_000)
   })
 
+  test('a matched legacy pending row settles once and rejects foreign Stripe metadata', async () => {
+    const convex = convexTest(schema, modules)
+    await paidWorkspace(convex)
+    await convex.run(async (ctx) => {
+      await ctx.db.insert('budgetTopUps', {
+        userId: 'user-1', billingAccountId: 'ba-1', workspaceId: 'ws-1', stripeCustomerId: 'cus_1',
+        stripePaymentIntentId: 'pi_legacy', billingPeriodStart: 1_000, amountCents: 400,
+        source: 'auto', status: 'pending', createdAt: 1_500, updatedAt: 1_500,
+      })
+    })
+    const settle = (workspaceId: string) => convex.mutation(internal.billing.autoTopUpSettlement.settlePendingTopUpInternal, {
+      stripePaymentIntentId: 'pi_legacy', outcome: 'succeeded', billingAccountId: 'ba-1',
+      workspaceId, userId: 'user-1', customerId: 'cus_1', amountCents: 400, currency: 'usd',
+    })
+    expect(await settle('foreign-workspace')).toEqual({ settled: false, granted: false })
+    expect(await settle('ws-1')).toEqual({ settled: true, granted: true })
+    expect(await settle('ws-1')).toEqual({ settled: false, granted: false })
+    const balance = await convex.run(async (ctx) => (await ctx.db.query('billingAccountBalances').first())?.topUpBalanceMicros)
+    expect(balance).toBe(400 * 10_000)
+  })
+
   test('credit does not carry over: the plan credit and any top-up balance reset at renewal', async () => {
     const convex = convexTest(schema, modules)
     await paidWorkspace(convex)

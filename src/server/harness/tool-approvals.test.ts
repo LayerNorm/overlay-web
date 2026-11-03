@@ -12,6 +12,14 @@ test('authenticated approval is exact, single-use and independent of object key 
   expect(ledger.consume('write', 'call', request.input)).toBe(false)
 })
 
+test('a restored trusted grant is consumed once', () => {
+  const original = createHarnessToolApprovals()
+  original.record([request], decisions)
+  const restored = createHarnessToolApprovals(original.snapshot())
+  expect(restored.consume('write', 'call', request.input)).toBe(true)
+  expect(restored.consume('write', 'call', request.input)).toBe(false)
+})
+
 test('changed arguments, tool names, denied decisions and other runs cannot reuse approval', () => {
   const ledger = createHarnessToolApprovals()
   ledger.record([request], decisions)

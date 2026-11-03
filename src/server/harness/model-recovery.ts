@@ -39,7 +39,7 @@ export async function runHarnessModelInvocation(
     const state = readState()
     const message = error && typeof error === 'object' && 'message' in error
       && typeof error.message === 'string' ? error.message : ''
-    const yieldedReceiptId = /^HARNESS_SAFE_RESOURCE_PAUSE:((?:model|summary):[0-9]+)$/.exec(message)?.[1]
+    const yieldedReceiptId = /(?:^|[^\w])HARNESS_SAFE_RESOURCE_PAUSE:((?:model|summary):[0-9]+)(?:$|[^\d])/.exec(message)?.[1]
     if (yieldedReceiptId === state.preparedReceiptId && await confirmYield(yieldedReceiptId)) return {
       ...state,
       pending: [],
