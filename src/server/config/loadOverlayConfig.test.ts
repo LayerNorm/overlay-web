@@ -166,7 +166,8 @@ test('configOverridesFromEnv maps enterprise v2 feature, provider, and complianc
     remoteAgentRuns: true,
     connectedAgentArtifacts: true,
     connectedAgentDrive: true,
-    overlayCloudEnvironments: true,
+    overlayCloudEnvironments: false,
+    managedHarnessAgents: false,
   })
   assert.deepEqual(overrides.providers, {
     objectStorage: { provider: 's3' },

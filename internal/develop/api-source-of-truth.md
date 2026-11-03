@@ -194,8 +194,10 @@ Canonical transcript bytes are preserved separately from bounded prompt context.
 
 `/api/v1/agent-environments/**` is the only public control plane for connected hosts. Browser
 clients use `AgentEnvironmentsClient` for list, enrollment creation, approval, root-scope changes,
-managed `Overlay Cloud` provisioning, and revocation. The portable host uses the bridge protocol for enrollment, credential issuance
-and refresh, heartbeat, capability refresh, command polling/acknowledgement, and event batches.
+and revocation. The retired managed `Overlay Cloud` creation route returns 410; historical records
+remain readable and cleanup-only. The portable host uses the bridge protocol for BYOM enrollment,
+credential issuance and refresh, heartbeat, capability refresh, command polling/acknowledgement,
+and event batches.
 
 Browser mutations require the signed-in workspace owner or admin. Host routes accept no browser
 cookie authority: a redeemed one-time code establishes a pending environment, initial credentials

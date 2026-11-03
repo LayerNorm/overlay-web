@@ -6,6 +6,8 @@ import {
   permissionModeForConnectedHarness,
   reconcileUnverifiedAgentActionClaims,
   shouldPrepareConnectedAgentDrive,
+  startRemoteWorkspaceAgentTurn,
+  WorkspaceAgentInvocationError,
 } from './workspace-agent-invocation'
 import { isExternalAgentInvocation } from './external-agent-policy'
 
@@ -18,9 +20,9 @@ test('native permission modes are not forwarded, while connected harness values 
   assert.equal(permissionModeForConnectedHarness('claude-code', 'acceptEdits'), 'acceptEdits')
 })
 
-test('drive starts require the rollout flag, current host capability and local opt-in', () => {
+test('drive starts require rollout, host capability and opt-in, and never target retired Cloud', () => {
   const cloud = { enabled: true, environmentKind: 'overlay_cloud', optedIn: false, capabilities: { drive: { version: 1 } } }
-  assert.equal(shouldPrepareConnectedAgentDrive(cloud), true)
+  assert.equal(shouldPrepareConnectedAgentDrive(cloud), false)
   assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, enabled: false }), false)
   assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, capabilities: {} }), false)
   assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, capabilities: { drive: { version: 2 } } }), false)
@@ -28,6 +30,34 @@ test('drive starts require the rollout flag, current host capability and local o
     assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, environmentKind }), false)
     assert.equal(shouldPrepareConnectedAgentDrive({ ...cloud, environmentKind, optedIn: true }), true)
   }
+})
+
+test('direct Cloud-kind dispatch rejects before room context, memory, or credit reservation', async () => {
+  await assert.rejects(
+    startRemoteWorkspaceAgentTurn({
+      actorUserId: 'user',
+      conversationId: 'conversation',
+      initiatorPrincipalId: 'principal',
+      invocation: { remoteTarget: { environmentKind: 'overlay_cloud' } } as never,
+      messageId: 'message',
+      memoryEnabled: true,
+      prompt: 'hello',
+      workspaceId: 'workspace',
+    }),
+    (error: unknown) => error instanceof WorkspaceAgentInvocationError
+      && error.reasonCode === 'hosted_runtime_retired',
+  )
+
+  const service = await readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8')
+  const start = service.slice(service.indexOf('export async function startRemoteWorkspaceAgentTurn'))
+  const guard = start.indexOf("environmentKind === 'overlay_cloud'")
+  const sideEffectsStart = start.indexOf('const server = getOverlayServerContext()')
+  assert.ok(guard >= 0)
+  assert.ok(sideEffectsStart > guard)
+  for (const sideEffect of ['getOverlayServerContext()', 'loadRoomTurnContext(args)', 'buildAgentTurnContext({', 'reserveForAttempt({']) {
+    assert.ok(start.indexOf(sideEffect) > guard, `${sideEffect} must run after the retired-target guard`)
+  }
+  assert.match(start.slice(guard, sideEffectsStart), /hosted_runtime_retired/)
 })
 
 test('a legacy external agent with no usable target cannot be classified as native', () => {

@@ -82,6 +82,7 @@ export const createEnvironmentByServer = mutation({
   args: { serverSecret: v.string(), id: v.string(), workspaceId: v.string(), kind: v.string(), name: v.string(), status: v.string(), publicKey: v.optional(v.string()), hostVersion: v.optional(v.string()), platform: v.optional(v.string()), capabilities: anyObject, filesystemGrant: v.optional(anyObject), approvedByUserId: v.optional(v.string()), approvedAt: v.optional(v.number()), lastSeenAt: v.optional(v.number()), revokedAt: v.optional(v.number()), now: v.number() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
+    if (args.kind === 'overlay_cloud') throw new Error('HOSTED_RUNTIME_RETIRED')
     const existing = await ctx.db
       .query('agentEnvironments')
       .withIndex('by_environmentId', (q) => q.eq('environmentId', args.id))
@@ -112,6 +113,7 @@ export const createBindingByServer = mutation({
       environment.status === 'revoked'
     )
       throw new Error('AGENT_ENVIRONMENT_UNAVAILABLE')
+    if (environment.kind === 'overlay_cloud') throw new Error('HOSTED_RUNTIME_RETIRED')
     const { serverSecret, id, now, ...value } = args
     void serverSecret
     const row = { ...value, bindingId: id, createdAt: now, updatedAt: now }
@@ -139,6 +141,7 @@ export const upsertBindingByServer = mutation({
     ) {
       throw new Error('AGENT_ENVIRONMENT_UNAVAILABLE')
     }
+    if (environment.kind === 'overlay_cloud') throw new Error('HOSTED_RUNTIME_RETIRED')
     const agentPrincipal = await ctx.db
       .query('workspacePrincipals')
       .withIndex('by_workspaceId_agentId', (q) =>
@@ -415,6 +418,7 @@ export const startRemoteAgentTurnByServer = mutation({
       environment.status === 'pending' || environment.status === 'revoked') {
       throw new Error('AGENT_BINDING_UNAVAILABLE')
     }
+    if (environment.kind === 'overlay_cloud') throw new Error('HOSTED_RUNTIME_RETIRED')
     const existingMessage = await ctx.db
       .query('conversationMessages')
       .withIndex('by_conversationId_clientNonce', (q) =>
@@ -500,24 +504,6 @@ export const startRemoteAgentTurnByServer = mutation({
     ).flat()
     if (activeRuns.length >= args.maxConcurrentRuns)
       throw new Error('CONNECTED_AGENT_POLICY_LIMIT:concurrent_runs')
-    if (environment.kind === 'overlay_cloud') {
-      const activeManagedRuns = (
-        await Promise.all(
-          activeStatuses.map((status) =>
-            ctx.db
-              .query('agentRemoteSessions')
-              .withIndex('by_environmentId_status', (q) =>
-                q.eq('environmentId', args.environmentId).eq('status', status),
-              )
-              .first(),
-          ),
-        )
-      ).filter(Boolean)
-      if (activeManagedRuns.length > 0)
-        throw new Error(
-          'CONNECTED_AGENT_POLICY_LIMIT:managed_environment_concurrency',
-        )
-    }
     const online = environment.status === 'online' && (environment.lastSeenAt ?? 0) >= args.now - 45_000
     const lifecycle = args.lifecycleVersion === 2 && (environment.capabilities as { remoteLifecycleVersion?: number }).remoteLifecycleVersion === 2
       ? { version: 2 as const, revision: 0, phase: 'queued' as const, currentAttemptId: args.sessionId,
@@ -672,6 +658,9 @@ export const controlRemoteAgentTurnByServer = mutation({
       )
       .unique()
     if (!environment) return { applied: false, reason: 'missing' }
+    if (environment.kind === 'overlay_cloud' && args.action !== 'cancel') {
+      throw new Error('HOSTED_RUNTIME_RETIRED')
+    }
     const commands = await ctx.db
       .query('agentRunCommands')
       .withIndex('by_environmentId_sequence', (q) =>
@@ -963,6 +952,7 @@ export const createRemoteSessionByServer = mutation({
       environment.status === 'revoked'
     )
       throw new Error('AGENT_ENVIRONMENT_UNAVAILABLE')
+    if (environment.kind === 'overlay_cloud') throw new Error('HOSTED_RUNTIME_RETIRED')
     const binding = await ctx.db
       .query('agentBindings')
       .withIndex('by_bindingId', (q) => q.eq('bindingId', args.bindingId))
@@ -992,13 +982,13 @@ export const enqueueCommandByServer = mutation({
         q.eq('environmentId', args.environmentId),
       )
       .unique()
-    if (
-      !environment ||
-      environment.workspaceId !== args.workspaceId ||
-      environment.status === 'pending' ||
-      environment.status === 'revoked'
-    )
+    if (!environment || environment.workspaceId !== args.workspaceId)
       throw new Error('AGENT_ENVIRONMENT_UNAVAILABLE')
+    if (environment.kind === 'overlay_cloud') {
+      if (!['observe', 'cancel', 'shutdown'].includes(args.type)) throw new Error('HOSTED_RUNTIME_RETIRED')
+    } else if (environment.status === 'pending' || environment.status === 'revoked') {
+      throw new Error('AGENT_ENVIRONMENT_UNAVAILABLE')
+    }
     if (
       !args.type ||
       args.type.length > 64 ||
@@ -1292,6 +1282,15 @@ export const resolveApprovalRequestByServer = mutation({
       .withIndex('by_approvalId', (q) => q.eq('approvalId', args.approvalId))
       .unique()
     if (!current || current.workspaceId !== args.workspaceId) return null
+    const approvalRun = current.runId
+      ? await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_externalRunId', (q) => q.eq('externalRunId', current.runId!)).unique()
+      : null
+    const approvalEnvironment = approvalRun?.environmentId
+      ? await ctx.db.query('agentEnvironments')
+        .withIndex('by_environmentId', (q) => q.eq('environmentId', approvalRun.environmentId!)).unique()
+      : null
+    if (approvalEnvironment?.kind === 'overlay_cloud') return null
     if (current.resolution) {
       if (!sameResolution(current.resolution, args.resolution)) throw new Error('AGENT_APPROVAL_ALREADY_RESOLVED')
       return { ...clean(current), id: current.approvalId }
@@ -1310,8 +1309,13 @@ export const resolveRemoteRequestByServer = mutation({
       .query('conversationAgentRuns')
       .withIndex('by_externalRunId', (q) => q.eq('externalRunId', args.runId))
       .unique()
+    const environment = run?.environmentId
+      ? await ctx.db.query('agentEnvironments')
+        .withIndex('by_environmentId', (q) => q.eq('environmentId', run.environmentId!)).unique()
+      : null
     if (
       !run ||
+      environment?.kind === 'overlay_cloud' ||
       run.conversationId !== args.conversationId ||
       !['waiting_for_approval', 'running'].includes(run.status)
     )
@@ -2769,6 +2773,14 @@ export const claimCommandsByServer = mutation({
       row.workspaceId === args.workspaceId
       && (row.status === 'pending' || (row.status === 'claimed' && (row.claimExpiresAt ?? 0) <= args.now))
     ))
+    if (environment.kind === 'overlay_cloud') {
+      // Queue neutralization cannot stop a command already claimed by a live host; rollout requires the documented drain.
+      const executable = candidates.filter((row) => !['cancel', 'shutdown', 'observe'].includes(row.type))
+      await Promise.all(executable.map((row) => ctx.db.patch(row._id, {
+        status: 'cancelled', claimExpiresAt: args.now, updatedAt: args.now,
+      })))
+      candidates.splice(0, candidates.length, ...candidates.filter((row) => ['cancel', 'shutdown', 'observe'].includes(row.type)))
+    }
     const candidateRuns = await Promise.all(candidates.map((row) =>
       ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', row.runId)).unique()))
     for (let i = 0; i < candidates.length; i += 1) {

@@ -1,7 +1,9 @@
 # Bring Your Own Agents
 
-This is the living design for agents connected from user-owned computers, customer VPSs,
-hosted agent services, and Overlay-managed sandboxes. The rollout is provider-neutral:
+> **Hosted Overlay Cloud runtimes are retired.** Overlay Cloud runs Overlay Harness only; Claude Code and Codex run on user-owned laptops or VPSs and connect through Agent Host. Existing Cloud agents remain historical/read-only and must not be resumed or silently run natively. See the [retirement rollout runbook](./retire-overlay-cloud-agents.md) before deploying this code.
+
+This is the living design for agents connected from user-owned computers and customer VPSs.
+Older descriptions of hosted agent services and Overlay-managed agent sandboxes are historical:
 Convex is the canonical backend. Historical PostgreSQL rollout notes below describe retired implementation phases, not a second lifecycle authority.
 
 See the [Architecture](#architecture) section for diagrams of the environment topology, protocol
@@ -10,36 +12,29 @@ boundaries.
 
 ## Release boundary
 
-**Current public launch: native Overlay agents only.** External runtimes on both Overlay
-Cloud and user-owned machines are disabled by the default-off
-`OVERLAY_FEATURE_EXTERNAL_AGENTS` master release gate. Native agent computers and model
-provider connections remain independent. The protocol capabilities below describe the
-implemented external-agent subsystem, not public availability. See the root
-[feature inventory](../../FEATURES.md) for status, providers and re-enablement steps.
+Overlay Cloud runs the Overlay Harness only. Claude Code, Codex, and other external
+harnesses run on user-owned laptops or VPSs and connect through Agent Host. Legacy
+`overlay_cloud` records remain historical and are not runnable. Native Computers and
+provider model/subscription connections remain independent. See the [retirement rollout
+runbook](./retire-overlay-cloud-agents.md) before deploying.
 
 The agent conversation roster listens to workspace-scoped directory-change events after
 creation, editing, archive and restore. Refreshes invalidate older responses and show a
 pending state so client-side navigation cannot mistake a newly created agent for an
 unavailable one. Unmounting or changing workspace cancels publication from the old roster.
 
-The first release supports agent conversations and supervised work through one outbound-only
-Overlay Agent Host. ACP is the primary coding-agent adapter; bounded eve and native adapters
-may normalize into the same protocol. Environments are `local`, `vps`, `overlay_cloud`, or
-`external`. Overlay Cloud uses Boat, formerly Box, with an E2B adapter for self-hosting; Vercel
-Sandbox and Daytona were removed. Overlay Cloud agents use the same Agent Host
-(`internal/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`), with machine provisioning and the product UI behind
-`OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`, paid entitlements and provider configuration. The
-connected (on-your-machine) path also requires the master release gate and workspace rollout.
+User-owned external harnesses connect through one outbound-only Agent Host. ACP is the
+primary coding-agent adapter. Supported environments are user-owned local computers,
+VPSs, and other external hosts; `overlay_cloud` remains only as a historical discriminator.
+Cloud machine provisioning, waking, and host launch are retired.
 
 Product BYO choices are Claude Code and Codex. Historical OpenCode, Hermes, and Cursor records
 remain readable, and existing accounts remain visible for removal, but these providers cannot be
 selected, reconnected, bound to new agents, or sent credentials for runs. Generic custom ACP
 adapters remain available to self-hosted Agent Host configurations.
 
-The prepared source release pins Claude ACP `0.93.0`, Codex ACP `2.2.2`, Agent Host/protocol
-`0.4.3`, and agent image v10. This change prepares code only: packages and images are not
-published or rolled out. Existing machines need a later idle upgrade before they receive the
-retired-launcher removal and updated adapter pins.
+The Agent Host and bridge protocol are released in lockstep. Claude and Codex ACP pins
+are for user-owned Agent Hosts only. No managed image is built or published.
 
 The release includes `@mention` invocation, durable runs and commands, streamed transcript
 projection, approval/elicitation, cancellation, reconnect/resume, artifacts, audit, policy,
@@ -57,18 +52,11 @@ simplicity, but neither the protocol nor persistence schema enforces that cardin
 
 ## Implementation status
 
-Phases 0 through 8 are implemented. Phase 9 release controls and repeatable local evidence are
-implemented, but release acceptance still requires the current PR Preview browser matrix,
-managed-provider conformance, package/image acceptance and clean VPS conformance. Production
-activation and its stability checks follow the approved release workflow. Convex is canonical;
-the retired PostgreSQL backend and staging environment are not current acceptance lanes.
-Overlay Cloud activation remains
-gated on the configured provider's live conformance and current host/image acceptance; package
-publication and clean VPS conformance remain release gates. The connected-agent repository includes command
+The connected-agent repository includes command
 acknowledgement, immutable approval resolution, managed-lease lifecycle, binding/session scope
 validation, and a shared positive and negative provider contract. The contract passes against
-an in-process Convex runtime; the current PR's isolated Convex backend, managed provider and
-browser checks provide hosted acceptance. Historical PostgreSQL conformance is not a release gate.
+an in-process Convex runtime. Hosted Cloud runtime activation is retired; user-owned BYOM
+hosts remain subject to package compatibility and workspace policy.
 
 Phase 2 is implemented in two public AGPL-3.0-only workspace packages:
 
@@ -101,9 +89,9 @@ duplicate delivery, out-of-order rejection, fresh-state stream adoption, server 
 restart, reconnect/resume, and an actual ACP subprocess exchange.
 
 Phase 3 enrollment begins in Agents > New agent > Bring your own agent. The user selects a harness
-and either reuses an approved environment, creates one outbound connection for a local computer,
-VPS, or customer sandbox, or provisions Overlay Cloud. Settings > Environments remains the fleet
-administration surface for pending approval recovery, health, scope changes, listing, and
+and reuses an approved user-owned environment or creates an outbound connection for a local
+computer, VPS, or customer-managed host. Overlay Cloud provisioning is not available. Settings >
+Environments remains the administration surface for health, scope changes, listing, and
 revocation. Workspace owners and admins can create a ten-minute, single-use enrollment code and
 approve a pending host with one or more absolute project roots. Public host routes
 never accept browser-session authority. Initial issuance requires the one-time challenge plus an
@@ -232,23 +220,11 @@ Overlay Cloud adapter, and an E2B adapter is implemented for self-hosting. Provi
 The lease meter (`ManagedAgentSandboxBilling`) bills a lease from provider-reported usage and
 enforces the idle window and the 24-hour hard cap; Box has no idle timer, so idle-stop is ours.
 
-**Removed: managed harness agents.** Earlier phases ran AI SDK HarnessAgents (Claude Code, Codex,
-OpenCode, Pi, Hermes) inside Vercel Sandbox (`managedHarnessAgentTurnWorkflow`,
-`agentHarnessSessions`), provisioned through `POST /api/v1/agent-environments/managed`. That path,
-its Vercel adapter, the harness bridge, the editor's runtime picker, and the reset endpoint were
-deleted. `protocol: 'harness'` bindings that still exist in data are inert: dispatch posts a failed
-reply asking the user to recreate the agent, the editor shows such an agent read-only, and the
-control plane refuses new harness bindings. Hosted other-agents (Claude Code, Codex, … on Overlay
-Cloud) use the new Boat machine service, or E2B for self-hosted deployments; the
-connected-agent protocol below is the foundation, supporting an Overlay-owned
-machine running the Agent Host.
-
-Overlay Cloud model access follows a fixed priority. Overlay-funded models are the default and
-lowest-friction path. BYOK/API keys are the first customer-owned authentication path and are
-brokered at execution time rather than embedded in images, snapshots, commands, or transcripts.
-Provider-specific browser or device login may be added only when that provider officially supports
-a remote or headless flow. Overlay never copies, mounts, uploads, or imports a user's local Codex,
-Claude, or equivalent authentication directory into a managed sandbox.
+Hosted third-party runtimes in Overlay Cloud are retired. Legacy bindings remain readable but
+cannot start, resume, or recover work; Overlay never falls back to native execution for them.
+Overlay Cloud runs Overlay Harness only. Claude Code, Codex, and other external harnesses run on
+user-owned machines and connect through Agent Host. Provider-account model/subscription adapters
+remain available to supported Overlay Harness flows; hosted run-credential delivery is retired.
 
 Phase 7 makes `@layernorm/overlay-agent-host` and `@layernorm/overlay-agent-bridge-protocol` publishable packages and
 requires Node.js 24. The first production package line is `0.1.0`; Hermes support was released in
@@ -293,20 +269,11 @@ renewal. Event uploads use per-environment minute windows, and artifact creation
 bytes before issuing an object-store URL. Free, paid, and max plans also bound idle time, sandbox
 egress, and managed runtime; the existing billing ledger remains the monthly-spend gate.
 
-Host-side BYOK model tokens remain observable but never become Overlay model usage. A local or VPS
-environment has no sandbox reservation. Overlay Cloud creates a distinct pre-dispatch `sandbox`
-reservation under `agent:<agentId>` in addition to any explicitly Overlay-funded model reservation.
-Actual Box usage settles the provider-reported dollars (falling back to the rate card on billable
-seconds). The reservation ledger is the exact-once boundary, and an unavailable
-provider or failed usage read moves the reservation to reconciliation instead of guessing at a
-charge. `OVERLAY_SANDBOX_MAX_PROVIDER_COST_USD_PER_RUN` rejects an estimated run above USD 15 by
-default before provider work starts. A durable settlement marker is created atomically with each managed run and is cleared only
-after the idempotent usage ledger and lease usage record both succeed. PostgreSQL maintenance retries
-pending markers directly; the Convex scheduler calls the internal BFF reconciliation route so
-provider credentials never move into Convex. `OVERLAY_SANDBOX_PROVIDER_SPEND_ALERT_USD` controls the
-per-run provider-spend warning threshold and defaults to USD 10. Provider account-level spend alerts
-and limits remain mandatory because provider storage and aggregate monthly overages are not visible
-in a single run's SDK counters.
+Host-side BYOK model tokens remain observable but never become Overlay model usage. User-owned
+local/VPS hosts do not create a sandbox reservation. Historical Cloud sandbox reservations remain
+settleable through the shared lease meter; new hosted third-party runs and reservations are retired.
+Provider account records and supported model/subscription adapters remain separate from host
+credential delivery.
 
 Every dispatch and accepted cursor checkpoint writes a redacted audit record correlated by
 workspace, agent, environment, run, command, remote session, provider reference, reservation, and
@@ -486,9 +453,7 @@ A run that seems stuck needs evidence from both sides. Decisions (see
   current silence and longest still-open tool for an active run. `textCheckpointChars` divided by the final text
   length is the snapshot amplification that Phase 1 removes. A host whose outbox is wedged never reaches the
   server, so it shows up as a growing `currentQuietMs`, not as refused batches.
-- **Smoke.** `scripts/smoke/cloud-agent-long-horizon/harness.mts --via overlay --preview-url <PR preview>` runs a
-  real Claude Code cloud agent through the product API and reports visible progress, visible stalls (90 s with
-  nothing new on screen), the counters, and with `--cancel-after-s` whether text survives Stop.
+- Hosted third-party smoke runs are retired; use a user-owned BYOM host for connected-agent acceptance.
 
 ## Data classification and retention
 
@@ -530,7 +495,7 @@ command on macOS.
 | macOS 14+ (Apple Silicon and x64) | Supported | npm executable plus per-user LaunchAgent service commands |
 | Linux x64/arm64 (current Ubuntu/Debian/RHEL-family) | Supported | npm executable and Docker; systemd follows host hardening |
 | Windows 11 / Server 2022 x64 | Supported | npm executable; Windows service packaging may follow |
-| Overlay Cloud Linux sandbox | Deferred and unavailable in product UI | Same host image and bridge protocol after the managed-environment release gate |
+| Overlay Cloud Linux sandbox | Not supported for third-party runtimes | No managed Agent Host image is published |
 | Mobile OS, browser-only runtimes, end-of-life desktop OSs | Not supported | None |
 
 ## Rollout flags
@@ -542,17 +507,15 @@ default-off subfeature switches:
 1. `features.connectedAgentControlPlane` gates enrollment and environment management.
 2. `features.remoteAgentRuns` gates command dispatch and remote `AgentRun` execution.
 3. `features.connectedAgentArtifacts` gates agent artifact upload, completion, and download.
-4. `features.overlayCloudEnvironments` gates managed-environment provisioning.
+4. `features.overlayCloudEnvironments` is retained as permanently disabled compatibility; hosted third-party provisioning is retired.
 5. `features.connectedAgentDrive` (`OVERLAY_FEATURE_CONNECTED_AGENT_DRIVE`) gates the
    connected-host drive integration, not native Files/computer storage.
 
 The environment-variable forms are `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`,
-`OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, `OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS`, and
-`OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`.
+`OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, and `OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS`.
 They are positive, server-side switches: missing, false, or malformed values resolve to disabled.
-This makes each switch an environment-controlled, fail-closed incident control. A BYOA-only rollout
-keeps the cloud switch disabled. Internal managed-cloud activation additionally requires the
-validated image and exact eligible workspace allowlist; it does not widen artifact access.
+This makes each switch an environment-controlled, fail-closed incident control. The legacy Cloud
+capability remains false and has no activation path.
 
 Broad release also requires `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` plus the internal and invited
 workspace allowlists described above. The rollout defaults to `off`; turning on a feature flag alone
@@ -564,8 +527,7 @@ A BYOA-only production activation is intentionally narrow:
 - set `OVERLAY_FEATURE_EXTERNAL_AGENTS=1` only after isolated-preview acceptance;
 - set `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE=1` and
   `OVERLAY_FEATURE_REMOTE_AGENT_RUNS=1` in production;
-- keep `OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS=0` and
-  `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS=0`;
+- keep `OVERLAY_FEATURE_CONNECTED_AGENT_ARTIFACTS=0`;
 - set the rollout stage to `internal` or `invited` and populate only the corresponding exact
   workspace IDs; and
 - verify the public capability response, an ineligible workspace's hidden BYO editor, and a full
@@ -580,8 +542,8 @@ Setup and execution services enforce release policy before new work or provision
 Authorized history, cancellation, resource teardown, host terminal events and usage settlement
 remain available while release gates are off. These cleanup paths do not authorize queued
 starts or new runtime credentials. Existing external agents never fall back to native execution.
-Enabling a dependent feature does not implicitly enable its prerequisites: Overlay Cloud needs
-the master, control-plane, remote-run and cloud gates plus workspace eligibility. These are
+Enabling a dependent feature does not implicitly enable its prerequisites. Hosted Overlay Cloud
+runtime execution has no activation path. These are
 server policy switches, not client assertions; bootstrap exposes the resulting capability.
 
 Connected-agent artifacts remain disabled in staging and production until uploads are quarantined,
@@ -589,94 +551,11 @@ scanned in full by a production malware engine, validated by content magic, and 
 attachments after an immutable clean verdict. The existing checksum, size, tenancy, retention, and
 cleanup controls remain implemented but are not a substitute for that release gate.
 
-Overlay Cloud machines run on Boat, formerly Box (`BOAT_API_KEY`, or the legacy `BOX_API_KEY`).
-Use `BOAT_ENVIRONMENT=overlay-preview` with a separate environment-scoped key for
-hosted Preview QA. Machine creation retains `noEnv: true`, so attaching an
-environment never injects the account's credentials. Preview snapshots must also
-originate in that environment; a destination grant cannot read production images.
-The owner approved a Boat-specific expiry exception: the `overlay-preview` CI key
-expires **2027-10-15** (Boat requires expiry, maximum 365 days). Renew it in the
-same environment before that date, update shared Vercel Preview `BOAT_API_KEY`,
-verify Preview access and production denial, then revoke the predecessor. Do not
-copy the production key or treat the exception as permission to expire other
-shared Preview credentials. No automatic renewal is configured.
-
-Protected PR Preview machines receive the existing environment-scoped hosting credential in
-a mode-0600 `preview-hosting.json` under host state. Managed provisioning and host restart
-prepare it through the machine file API; commands and saved configuration carry only its path
-(`--hosting-auth-file`). A compatible host verifies ownership, mode and exact HTTPS origin,
-then consumes/unlinks it before provider startup. Windows rejects this POSIX-only Cloud path.
-The in-memory transport adds hosting authentication only to that Preview's `/api/` origin and
-refuses redirects. Provider MCP uses a loopback relay authorized by the original active run token;
-hosting access stays out of provider environment/configuration and response headers. Application
-authentication, device signing and run fences still apply. Production never receives this file.
-Candidate source tests do not prove unattended enrollment: the compatible candidate image must
-pass fresh-machine Preview provisioning and resume without a manual shim before activation.
-Only leases enrolled through this path record `previewHostingAccessVersion: 1` and receive
-a new access file on restart. Older leases retain their original restart path until explicitly
-upgraded, so an older host cannot leave a newly delivered hosting file unconsumed.
-The Boat adapter applies explicit file modes through its command channel because the file
-API does not apply them; a failed permission change fails delivery. Preview startup secures
-the dedicated host-state directory to 0700 before writing the access file, keeping its bytes
-private during upload as well as after the file becomes 0600.
-An Overlay Cloud agent uses the same connected-agent protocol and host:
-
-- **Image.** `infra/agent-image/provision.sh` adds a pinned Overlay layer (Agent Host, acpx,
-  `@agentclientprotocol/claude-agent-acp`, `@agentclientprotocol/codex-acp`) on top of Boat's
-  system layer and writes `/etc/overlay/image.json`. `publish-boat.mts` freezes it as the named
-  snapshot `overlay-agent-v<N>` (`OVERLAY_CLOUD_AGENT_IMAGE`). The image holds no credentials and
-  no enrolled identity; `overlay-agent-host image-check` enforces both and runs before a managed
-  host enrolls.
-- **Engine.** Managed hosts run ACP agents through acpx's runtime (`--engine acpx`,
-  `AcpxAgentAdapter`). Each run's Overlay MCP server and provider credentials reach the agent
-  process only; the acpx connection is closed after every turn and the session resumes on the
-  next. On-your-machine hosts keep the direct ACP adapter.
-- **Enrollment.** `POST /api/v1/agent-environments/cloud` mints the same single-use enrollment
-  code, boots the machine, and the host redeems it with its Ed25519 key. Overlay created the
-  machine, so the server approves the environment itself instead of a person confirming a phrase,
-  with the filesystem grant fixed to `/home/user/workspace`. The short-lived credential, signed
-  polling, and ACP bridge are unchanged.
-  Managed connect/restart commands propagate lifecycle v2 only when the server
-  enables it; the host persists that negotiation for subsequent restarts.
-- **Lifecycle.** A machine stops 10 minutes after its last run ends
-  (event-based; see `internal/develop/agent-machine-idle.md`). A turn queued for an offline machine
-  resumes it and restarts the host from saved state after the response is sent. Revoking the
-  environment stops and deletes the machine through the lease reaper.
-- **Startup and control.** Creating a machine returns 202 and provisions after the response;
-  `cloudAgentProvisions` (Convex) records the phase (queued, allocating, booting, connecting,
-  ready, or failed with a safe message) so any server instance can answer
-  `GET /api/v1/agents/{agentId}/machine`. That route also pauses, resumes, restarts, and deletes
-  the machine (`CloudAgentMachineService.status/control/teardown`). The new-agent dialog and the
-  agent page's Machine section are its only clients; a cloud agent's binding is never rewritten
-  by the agent editor's save (it would drop the account). Paid plans only.
-  After machine deletion, status retains the last cloud adapter and account summary as setup
-  metadata so Start a new machine can submit a normal provisioning request. Revoked environments
-  and disabled bindings do not regain execution authority; local and foreign-workspace setup is
-  excluded. Missing setup produces a visible retry error instead of a no-op.
-- **Provider accounts.** An Overlay Cloud agent runs on one of its creator's own accounts
-  (Settings → Agent accounts): a `claude setup-token` token or Anthropic API key for Claude Code,
-  a ChatGPT subscription or OpenAI API key for Codex. Codex subscription delivery follows
-  [`codex-subscription.md`](./codex-subscription.md). The secret goes to the credential vault (`ByokCredentialStore`:
-  WorkOS Vault, or AWS Secrets Manager when configured); Convex keeps `agentProviderAccounts`
-  metadata and the opaque vault reference, which no API response includes. A binding records the
-  account and the user who chose it (`adapterConfig.providerAccountId`/`providerAccountOwnerUserId`).
-  On each run the host calls `POST /api/v1/agent-environments/{id}/run-credentials` (credential
-  method `agent:run-credentials`, issued only to `overlay_cloud` environments so published hosts keep
-  parsing their credentials) and passes the result to the agent process as environment variables
-  (`CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`). The command carries only a
-  `runCredentials` flag, never a secret; the host holds the credentials in memory, creates one acpx
-  runtime per run so nothing carries over, and the control plane audits the release without the
-  value. API keys are checked against the vendor when connected; a subscription token has no public
-  check, so a bad one surfaces on first use.
-- **Auth failures.** An agent that rejects its credentials ends the run with the failure code
-  `auth_required`; the control plane marks that account `needs_reauth`, releases nothing for it until
-  it is reconnected (PATCH with a new secret clears the flag), and Settings shows "Needs reconnecting".
-- **Image v2.** The bridge protocol gained the run-credentials method, which v1 image hosts cannot
-  parse, so images are versioned: the host accepts only the image versions it was built for
-  (`SUPPORTED_OVERLAY_IMAGE_VERSIONS`) and `OVERLAY_CLOUD_AGENT_IMAGE` defaults to `overlay-agent-v5`.
-- **Boat quirk.** `~/.claude` and `~/.codex` on Boat are provider-managed mounts that fail with
-  I/O errors when no Boat credentials are linked; agent config therefore lives under `~/.overlay`
-  (Phase 4 imports go there).
+Hosted third-party runtimes, their managed images, Preview bootstrap credentials, and hosted
+provider credential delivery are retired. External Claude Code and Codex agents run on
+user-owned computers or VPSs and connect through Agent Host. Provider-account records remain
+available for supported model/subscription adapters. For historical records, status, cleanup,
+and deployment prerequisites, see the [retirement runbook](./retire-overlay-cloud-agents.md).
 
 ## Public resources and protocol policy
 
@@ -820,22 +699,13 @@ flowchart TB
         VPSAgent <--> VPSRoots
     end
 
-    subgraph Managed["Overlay-managed sandbox"]
-        ManagedHost["Same Agent Host image"]
-        ManagedAgent["Pinned agent harness"]
-        Workspace["/workspace"]
-        ManagedHost <--> ManagedAgent
-        ManagedAgent <--> Workspace
-    end
-
     LocalHost <-->|"outbound HTTPS only"| Runs
     VPSHost <-->|"outbound HTTPS only"| Runs
-    ManagedHost <-->|"outbound HTTPS only"| Runs
 ```
 
-The environment kinds are `local`, `vps`, `overlay_cloud`, and `external`. Overlay Cloud uses the
-same enrollment, credential, polling, and adapter path as a user-owned host. Its provider-specific
-lifecycle remains behind `@overlay/sandbox-runtime`.
+The historical environment kinds include `local`, `vps`, `overlay_cloud`, and `external`.
+`overlay_cloud` remains a compatibility discriminator for retained records; it cannot enroll,
+bind, or dispatch a third-party harness.
 
 Selected roots restrict valid working directories and the roots advertised to ACP. They are not an
 operating-system sandbox. Use a restricted OS account, container, VM, or managed sandbox when the
@@ -1089,8 +959,8 @@ resolves separate controls only when both values are offered. Explicit effort wi
 the suffix; changing a model retains the effective effort instead of adopting discovery defaults.
 
 `Weekly agent adapter updates` checks stable registry releases on Mondays and can be dispatched
-manually from main. It updates both adapter pins, the lockstep host/protocol patch version,
-image version/range and enrollment references, then requires `check:byo-agents:release` before
+manually from main. It updates both BYOM adapter pins, the lockstep host/protocol patch version
+and enrollment references, then requires `check:byo-agents:release` before
 creating a draft PR. Existing version branches are preserved. It never publishes or merges.
 Drafts still need ordinary required CI and subscription-provider Preview QA; the workflow token
 does not trigger normal PR workflows, so review must dispatch checks or trigger a trusted PR event.
@@ -1213,12 +1083,12 @@ continue using `@overlay/*`.
 | Package or system | Responsibility |
 | --- | --- |
 | `@layernorm/overlay-agent-bridge-protocol` | Public versioned schemas, request proofs, limits, commands, events, and acknowledgements. It does not start agents. |
-| `@layernorm/overlay-agent-host` | Public CLI and daemon that runs on a local computer, VPS, container, or managed sandbox. |
+| `@layernorm/overlay-agent-host` | Public CLI and daemon for a local computer, VPS, or customer-managed container. |
 | ACP adapter inside the Agent Host | Starts and communicates with the selected local agent process. |
 | Codex or Claude Code | Performs the actual coding and tool work. |
 | `@overlay/agent-runtime` | Internal server-side helpers for Overlay-hosted turns. It is not the BYOA CLI. |
 | `@overlay/workspace-contracts` | Internal adapter identifiers and connected-agent domain contracts. |
-| `@overlay/sandbox-runtime` | Provider-neutral lifecycle for managed sandboxes (Boat/Box and E2B). |
+| `@overlay/sandbox-runtime` | Provider-neutral lifecycle shared by native Computers and retained sandbox cleanup/metering. |
 | Overlay control plane | Workspace identity, authorization, bindings, runs, approvals, audit, transcript, memory, billing, and artifacts. |
 
 The product-qualified public names begin with the lockstep `0.3.0` release; the PATH-safe host and
@@ -1240,10 +1110,9 @@ private chain of thought.
 ### Current rollout boundary
 
 The local and VPS host architecture and the Codex and Claude Code ACP manifests are
-implemented. Managed sandboxes use the same host image and protocol and appear only when their
-cloud, run and control-plane flags and workspace rollout eligibility all pass. Broad availability
-still requires image, conformance, credential, egress, billing, cleanup, security-review and stability
-acceptance; internal eligibility does not imply a general release.
+implemented. Overlay Cloud runs Overlay Harness only; hosted third-party runtime provisioning,
+images and recovery are retired. User-owned Agent Hosts remain governed by the connected-agent
+release controls below.
 
 The server controls connected agents through independent, default-off feature flags and a separate
 workspace rollout stage. Enabling one flag does not implicitly enable its prerequisites. See
@@ -1312,7 +1181,8 @@ The bridge remains protocol v1 with an explicitly negotiated lifecycle-v2 extens
 optional execution fences and new observe/observation messages are sent only for v2
 runs. Hosts opt in using the same environment setting. Default legacy capability
 payloads omit the extension. Candidate package versions remain lockstep in their package manifests; the candidate image
-version and adapter pins live in `infra/agent-image/versions.json`. Publication is a separate
+host and protocol release pins live in the package manifests; BYOM ACP pins live in
+`packages/overlay-agent-host/src/adapter-manifests.ts`. Publication is a separate
 main-only release workflow, not evidence from a source change. Upgrade idle/drained hosts only. Rollback disables new enrollment;
 compatible active runs drain on their persisted version.
 
@@ -1621,22 +1491,9 @@ previous execution fence and stopped-provider receipt. Its independent optional
 Hosts without the completed admission path reject that payload before starting a session;
 the capability defaults off. An individual ACP/acpx adapter or manifest entry may explicitly set
 `fencedSessionRestoration: true` in its private host configuration, only with `durableLifecycle: true`.
-Protected Preview explicit machine restart, resume and recovery all renew the one-shot host access file
-before launching the managed host; legacy leases keep their original access path.
-Enrollment setup and provider selection belong to the provisioning failure boundary too: a refusal
-before machine creation records a failed phase instead of leaving allocation pending. A connected-
-environment limit is a workspace limit, not a provider capacity or credit failure; its startup error
-asks the owner to remove an unused connection before retrying.
-Managed startup can opt in the validated acpx Claude Code and Codex launchers with
-`OVERLAY_REMOTE_RUN_FENCED_RESTORATION=1`, only alongside lifecycle v2. The switch defaults
-unset and is not an acceptance claim: enable it only after native hosted recovery passes for
-the deployed image. Connect persists the selection; managed restart also applies the current
-switch before constructing adapters from the saved configuration. Explicit `0` removes the advertised capability on the next
-host boot, including saved opt-ins. Unset preserves private adapter configuration. Experimental
-adapters and custom ACP commands are never automatically enabled. Upgrade idle or drained hosts.
-Rollbacks use explicit `0` for subsequent boots and existing global feature flags for execution
-availability. Active runs use normal Stop and provider-confirmed termination. This does not enable live interrupted-turn
-continuation or approval restoration.
+Hosted Cloud machine restart, provisioning, and recovery controls are retired. User-owned
+Agent Hosts continue to use their compatible host/protocol release and owner-controlled
+restart/recovery procedures; they do not use managed images or Cloud machine credentials.
 Host admission checks the original native id, adapter, previous execution/boot, next generation,
 canonical text offset and new-attempt drive descriptor. It rejects an in-memory writer, atomically
 transfers the durable execution claim once, retains adapter identity and requires the same physical
@@ -1727,7 +1584,8 @@ returns a retryable unavailable response rather than exceeding the bound.
 
 Native Overlay agents store `ask` or `auto` in the workspace agent's existing permission-mode field. Unset values mean Ask. These values configure Overlay tool approvals and are never sent to connected harnesses, whose advertised permission values remain unchanged. Auto does not override an MCP server's `deny` policy.
 
-Long-horizon provider smoke defaults come from `infra/agent-image/versions.json`;
+Long-horizon provider smoke defaults come from the BYOM ACP pins in
+`packages/overlay-agent-host/src/adapter-manifests.ts`;
 `--adapter-version` is an explicit override for investigating a different candidate.
 Shared room run-status reads require active workspace membership and conversation
 participation; personal conversations remain owner-only. During web-first deployment,

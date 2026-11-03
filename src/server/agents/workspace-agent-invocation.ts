@@ -16,18 +16,16 @@ import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { buildAgentTurnContext } from './agent-turn-context'
 import { resolveMentionFirstInvocations, resolveInvocableAgents } from './mention-policy'
 import { connectedAgentPolicyFor } from './ConnectedAgentPolicy'
-import { ManagedAgentSandboxBilling, ManagedAgentSandboxBudgetError } from './ManagedAgentSandboxBilling'
 import type { AgentProtocolAdapter } from '@overlay/workspace-contracts'
 import type { AgentMcpToolGrant } from '@/server/agents/agent-mcp-tools'
 import { AGENT_MCP_TOKEN_SLACK_MS, mintAgentMcpToken } from '@/server/agents/agent-mcp-token'
 import { getAgentFacingBaseUrl } from '@/server/web/app-url'
 import { ensureRemoteRunCoordinator } from './remote-agent-run-dispatcher'
-import { wakeCloudAgentAfterResponse } from './cloud/wake-cloud-agent'
 
 export function shouldPrepareConnectedAgentDrive(input: {
   enabled: boolean; environmentKind: string; optedIn: boolean; capabilities: unknown
 }): boolean {
-  return input.enabled && (input.environmentKind === 'overlay_cloud' || input.optedIn)
+  return input.enabled && input.environmentKind !== 'overlay_cloud' && input.optedIn
     && z.object({ drive: z.object({ version: z.literal(1) }) }).safeParse(input.capabilities).success
 }
 
@@ -98,6 +96,7 @@ export const WORKSPACE_AGENT_INVOCATION_REASON_CODES = [
   'not_a_collaboration_room',
   'no_agent_participant',
   'not_entitled',
+  'hosted_runtime_retired',
   'usage_limited',
   'model_failed',
   'empty_response',
@@ -111,6 +110,7 @@ const USER_SAFE_MESSAGES: Record<WorkspaceAgentInvocationReasonCode, string> = {
   not_a_collaboration_room: 'Agents can only be mentioned in collaboration rooms.',
   no_agent_participant: 'No available agent participant could be resolved.',
   not_entitled: 'This agent is not available on your current plan.',
+  hosted_runtime_retired: 'This hosted Overlay Cloud runtime is retired. Connect a user-owned Agent Host to continue.',
   usage_limited: 'Agent usage is temporarily limited. Try again later.',
   model_failed: 'The agent could not generate a reply. Try again.',
   empty_response: 'The agent returned an empty response. Try again.',
@@ -390,6 +390,20 @@ export async function resolveWorkspaceAgentInvocations(args: {
   const invocations: WorkspaceAgentInvocation[] = []
   for (const [agentIndex, agent] of invocableAgents.entries()) {
     const target = targets[agentIndex]
+    if (target?.environment.kind === 'overlay_cloud') {
+      throw new WorkspaceAgentInvocationError('hosted_runtime_retired')
+    }
+    if (!target) {
+      for (const binding of bindings[agentIndex] ?? []) {
+        const environment = await server.appData.repositories.connectedAgents.getEnvironment({
+          workspaceId: args.workspaceId,
+          environmentId: binding.environmentId,
+        })
+        if (environment?.kind === 'overlay_cloud') {
+          throw new WorkspaceAgentInvocationError('hosted_runtime_retired')
+        }
+      }
+    }
     const externalAgent = isExternalAgentInvocation(agent, bindings[agentIndex]!.length > 0, target !== null)
     const configuredAdapterId = target?.binding.adapterConfig.adapterId ?? target?.binding.adapterConfig.harnessId
     const adapterId = target && typeof configuredAdapterId === 'string' ? configuredAdapterId.trim() : ''
@@ -422,8 +436,7 @@ export async function resolveWorkspaceAgentInvocations(args: {
           drive: shouldPrepareConnectedAgentDrive({ enabled: runtime.features.connectedAgentDrive === true,
             environmentKind: target.environment.kind, optedIn: target.binding.adapterConfig.connectedAgentDrive === true,
             capabilities: target.environment.capabilities }),
-          modelUsageBilling: target.environment.kind === 'overlay_cloud'
-            && target.binding.adapterConfig.modelBilling === 'overlay' ? 'overlay' : 'byok',
+          modelUsageBilling: 'byok',
           online: target.environment.status === 'online',
           usesProviderAccount: typeof target.binding.adapterConfig.providerAccountId === 'string'
             && target.binding.adapterConfig.providerAccountId.length > 0,
@@ -484,7 +497,7 @@ export function buildRemoteAgentPrompt(args: {
 
 /**
  * The Overlay MCP server a connected agent's host hands to its ACP runtime,
- * so the agent gets the same workspace tools as a managed harness. The token
+ * so the agent gets the same workspace tools as a native agent. The token
  * is scoped to this run; older hosts ignore the metadata key.
  */
 function connectedAgentModelMetadata(modelId: string): { model?: string } {
@@ -542,11 +555,11 @@ export async function startRemoteWorkspaceAgentTurn(args: {
   threadRootMessageId?: string
   workspaceId: string
 }) {
+  if (args.invocation.remoteTarget.environmentKind === 'overlay_cloud') {
+    throw new WorkspaceAgentInvocationError('hosted_runtime_retired')
+  }
   const server = getOverlayServerContext()
   await assertRemoteAgentLaunchEnabled(args.workspaceId)
-  // Managed HarnessAgent turns run through `managedHarnessAgentTurnWorkflow`
-  // (see `startManagedHarnessTurn`), not the ACP command queue — fail loudly
-  // rather than enqueue commands nothing will claim.
   if (args.invocation.remoteTarget.protocolAdapter !== 'acp') {
     throw new WorkspaceAgentInvocationError(
       'model_failed',
@@ -611,28 +624,10 @@ export async function startRemoteWorkspaceAgentTurn(args: {
   const now = Date.now()
   const runId = `agent_run_${randomUUID()}`
   const remoteSessionId = `agent_session_${randomUUID()}`
-  const sandboxBillingService = new ManagedAgentSandboxBilling({
-    policy: server.generationUsagePolicy,
-    repository: server.appData.repositories.connectedAgents,
-  })
-  let sandboxBilling: Awaited<ReturnType<ManagedAgentSandboxBilling['reserve']>> | undefined
   try {
     if (args.invocation.remoteTarget.drive) await server.connectedAgentControlPlane.prepareDriveEnvironment({
       workspaceId: args.workspaceId, environmentId: args.invocation.remoteTarget.environmentId,
     })
-    if (args.invocation.remoteTarget.environmentKind === 'overlay_cloud') {
-      sandboxBilling = await sandboxBillingService.reserve({
-        agentId: args.invocation.agentId,
-        entitlements,
-        environmentId: args.invocation.remoteTarget.environmentId,
-        idempotencyKey: `${args.invocation.invocationNonce}:sandbox`,
-        operationId: `workspace-agent-sandbox:${args.invocation.turnId}`,
-        requestFingerprint,
-        userId: args.actorUserId,
-        workspaceId: args.workspaceId,
-        activeForMs: policy.maxRunTimeMs + CONNECTED_AGENT_INTERACTIVE_QUEUE_MS,
-      })
-    }
     const started = await server.appData.repositories.connectedAgents.startRemoteAgentTurn({
       ...(process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2' ? { lifecycleVersion: 2 as const } : {}),
       actorUserId: args.actorUserId,
@@ -655,7 +650,6 @@ export async function startRemoteWorkspaceAgentTurn(args: {
       queueExpiresAt: now + CONNECTED_AGENT_INTERACTIVE_QUEUE_MS,
       reservationId: reservation.reservationId,
       runId,
-      ...(sandboxBilling ? { sandboxBilling } : {}),
       sessionId: remoteSessionId,
       startPayload: {
         bindingId: args.invocation.remoteTarget.bindingId,
@@ -666,13 +660,11 @@ export async function startRemoteWorkspaceAgentTurn(args: {
           conversationId: args.conversationId,
           messageId: args.messageId,
           initiatorPrincipalId: args.initiatorPrincipalId,
-          // A flag only: the host asks the control plane for the credentials, so no secret is stored in the command.
-          ...(args.invocation.remoteTarget.usesProviderAccount ? { runCredentials: true } : {}),
           ...(args.invocation.remoteTarget.drive ? { overlayDrive: { version: 1, sessionId: remoteSessionId,
-            location: args.invocation.remoteTarget.environmentKind === 'overlay_cloud' ? 'cloud' : 'approved-root' } } : {}),
+            location: 'approved-root' } } : {}),
           // The agent's own model id, when its owner chose one; otherwise the agent uses its default.
           ...connectedAgentModelMetadata(args.invocation.modelId),
-          permissionContext: args.invocation.remoteTarget.environmentKind === 'overlay_cloud' ? 'cloud' : 'local',
+          permissionContext: 'local',
           ...(args.invocation.permissionMode ? { permissionMode: args.invocation.permissionMode } : {}),
           ...(args.invocation.effort ? { effort: args.invocation.effort } : {}),
           ...overlayMcpMetadata({
@@ -708,34 +700,18 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         runId: started.runId,
         commandId: started.commandId,
         remoteSessionId,
-        sandboxProviderReference: sandboxBilling?.providerReference,
         reservationId: reservation.reservationId,
-        sandboxReservationId: sandboxBilling?.reservationId,
         eventCursor: 0,
       },
     }).catch((error) => logger.warn('[remote-agent-run] dispatch audit deferred', { runId: started.runId, error }))
     // Best-effort acceleration only; the transactional intent and reconciliation own delivery.
     await ensureRemoteRunCoordinator(started.runId).catch((error) => logger.warn('[remote-agent-run] start deferred', { runId: started.runId, error }))
-    // Every Overlay Cloud turn checks its machine: an idle-stopped machine can
-    // still read online for a heartbeat window. wake() is a no-op when the
-    // machine is running with a live host.
-    if (started.lifecycleVersion !== 2 && args.invocation.remoteTarget.environmentKind === 'overlay_cloud') {
-      wakeCloudAgentAfterResponse({
-        actorUserId: args.actorUserId, workspaceId: args.workspaceId, agentId: args.invocation.agentId,
-        environmentId: args.invocation.remoteTarget.environmentId,
-      })
-    }
     return started
   } catch (error) {
     await server.chatUsagePolicy.releaseReservation({
       reason: 'remote_agent_dispatch_failed',
       reservationId: reservation.reservationId,
       userId: args.actorUserId,
-    }).catch((_error) => undefined)
-    await sandboxBillingService.release({
-      billing: sandboxBilling,
-      userId: args.actorUserId,
-      reason: 'remote_agent_dispatch_failed',
     }).catch((_error) => undefined)
     await server.auditService.record({
       action: 'agent_remote_run.dispatch_failed',
@@ -751,12 +727,10 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         runId,
         remoteSessionId,
         reservationId: reservation.reservationId,
-        sandboxReservationId: sandboxBilling?.reservationId,
         errorCode: error instanceof Error ? error.message.slice(0, 160) : 'remote_agent_dispatch_failed',
       },
     }).catch((_auditError) => undefined)
-    if (error instanceof ManagedAgentSandboxBudgetError ||
-      (error instanceof Error && error.message.startsWith('CONNECTED_AGENT_POLICY_LIMIT:'))) {
+    if (error instanceof Error && error.message.startsWith('CONNECTED_AGENT_POLICY_LIMIT:')) {
       throw new WorkspaceAgentInvocationError('usage_limited')
     }
     throw error

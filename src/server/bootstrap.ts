@@ -325,11 +325,6 @@ export function createOverlayServerContext(
     agents: { requireEditable: (args) => workspaceAgentService.requireEditable(args) },
     store: byokCredentialStore,
     audit: auditService,
-    // Imported lazily: the machine service reads this context, so importing it here would be circular.
-    apply: async (args) => {
-      const { createCloudAgentMachineService } = await import('@/server/agents/cloud/create-cloud-agent-machine-service')
-      await createCloudAgentMachineService().applyProfile(args)
-    },
   })
   const agentAsks = new AgentAskService({
     collaboration: appData.repositories.conversationCollaboration,
@@ -364,20 +359,6 @@ export function createOverlayServerContext(
   })
   const connectedAgentControlPlane = new ConnectedAgentControlPlaneService({
     audit: auditService,
-    wakeMachine: async (args) => {
-      const { createCloudAgentMachineService } = await import('@/server/agents/cloud/create-cloud-agent-machine-service')
-      return createCloudAgentMachineService().wake(args)
-    },
-    admitMachine: async (args) => {
-      const { createCloudAgentMachineService } = await import('@/server/agents/cloud/create-cloud-agent-machine-service')
-      await createCloudAgentMachineService().admit(args)
-    },
-    agentSecretEnv: (agentId) => agentProfiles.envForAgent({ agentId }),
-    // Imported lazily: the machine service reads this context, so importing it here would be circular.
-    deliverMachineFiles: async (args) => {
-      const { createCloudAgentMachineService } = await import('@/server/agents/cloud/create-cloud-agent-machine-service')
-      await createCloudAgentMachineService().writeFiles(args)
-    },
     agentProviderAccounts,
     objectStore,
     providerConnections: appData.repositories.providerConnections,

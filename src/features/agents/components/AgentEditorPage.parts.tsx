@@ -27,8 +27,6 @@ import type { useAgentEditorForm } from './use-agent-editor-form'
 import type { useAgentRuntime } from './use-agent-runtime'
 import type { useAgentSurfaces } from './use-agent-surfaces'
 import { AgentSurfacesField } from './AgentSurfacesField'
-import { CloudAgentPanel } from './CloudAgentPanel'
-import { CloudAgentAccess } from './CloudAgentAccess'
 import { ConnectedAgentSettings } from './ConnectedAgentSettings'
 import { AgentEditorSkeleton, EditorLoadGate, useEditorLoad } from './EditorLoadGate'
 import { usesOverlayMark } from '@/shared/agents/chief-identity'
@@ -185,8 +183,8 @@ function AgentEditorFormSection({
           onChange={(value) => { setAgentType(value); markDirty() }}
         />
         <div className="space-y-5">
-          {runtime.cloudAgent && agent ? <><CloudAgentPanel agentId={agent.id} /><CloudAgentAccess agentId={agent.id} allowedToolIds={agent.allowedToolIds} /></> : null}
-          {agent && connectedAgentsEnabled && (runtime.cloudAgent || agentType === 'byo') ? <ConnectedAgentSettings key={agent.id}
+          {runtime.cloudAgent || runtime.legacyHostedRuntime ? <p className="rounded-xl border border-(--border) px-4 py-3 text-sm text-(--muted)">Hosted Overlay Cloud runtimes are retired. This agent and its history remain readable, but it cannot run. Archive it to revoke access and queue provider cleanup.</p> : null}
+          {agent && connectedAgentsEnabled && !runtime.cloudAgent && !runtime.legacyHostedRuntime && agentType === 'byo' ? <ConnectedAgentSettings key={agent.id}
             agentId={agent.id} modelId={agent.modelId} permissionMode={agent.permissionMode} effort={agent.effort} /> : null}
           {runtime.cloudAgent ? null : <AgentBehaviorFields
             agentType={agentType}

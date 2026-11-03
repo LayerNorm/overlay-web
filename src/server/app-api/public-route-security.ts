@@ -11,7 +11,6 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/agent-environments/enroll': agentHostException(['POST'], 'Single-use enrollment code redemption plus device public-key registration.'),
   '/api/v1/agent-environments/[environmentId]/credentials': agentHostException(['POST'], 'One-time challenge and Ed25519 proof-of-possession credential issuance.'),
   '/api/v1/agent-environments/[environmentId]/credentials/refresh': agentHostException(['POST'], 'Signed environment credential rotation.'),
-  '/api/v1/agent-environments/[environmentId]/run-credentials': agentHostException(['POST'], 'Signed release of provider credentials for one active Overlay Cloud run.'),
   '/api/v1/agent-environments/[environmentId]/drive-credentials': agentHostException(['POST'], 'Device-signed issuance or renewal of drive credentials bound to the current run, session, execution and persisted scope.'),
   '/api/v1/agent-environments/[environmentId]/heartbeat': agentHostException(['POST'], 'Signed environment heartbeat.'),
   '/api/v1/agent-environments/[environmentId]/capabilities': agentHostException(['PUT'], 'Signed environment capability refresh.'),

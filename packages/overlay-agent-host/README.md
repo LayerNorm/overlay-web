@@ -1,7 +1,7 @@
 # Overlay Agent Host
 
-`@layernorm/overlay-agent-host` runs the same outbound-only bridge on a local computer, VPS, container, or
-managed sandbox. It persists command outcomes, remote sessions, adapter stream cursors, and
+`@layernorm/overlay-agent-host` runs the same outbound-only bridge on a local computer, VPS, or
+customer-managed container. It persists command outcomes, remote sessions, adapter stream cursors, and
 unacknowledged events in SQLite, so restarting the host does not duplicate accepted work.
 
 Node.js 24 or newer is required. Overlay's one-copy command supplies a pinned Node 24 runtime even
@@ -45,13 +45,11 @@ The built-in manifests resolve to the exact, release-tested
 A custom ACP process can still use the explicit `id`, `displayName`, `protocol`, `command`, and
 `args` shape.
 
-## acpx engine and Overlay Cloud images
+## ACP adapter pins
 
-`--engine acpx` runs Claude Code and Codex through [acpx](https://github.com/openclaw/acpx)'s
-runtime instead of the host's direct ACP client. Overlay Cloud machines use it. The image they
-boot from is built by `infra/agent-image/provision.sh` in the Overlay repo;
-`overlay-agent-host image-check` verifies such an image (manifest version, pinned adapters
-installed, no credentials on disk) and runs automatically before `connect --kind overlay_cloud`.
+The built-in Claude Code and Codex adapters use the exact BYOM ACP versions pinned in
+`src/adapter-manifests.ts`. User-owned hosts install these adapters on their own machines;
+Overlay no longer publishes managed runtime images or offers hosted Cloud execution.
 
 ## Eve
 
@@ -121,8 +119,8 @@ sudo systemctl status overlay-agent-host
 The unit restarts after process or machine failure and keeps state in `/var/lib/overlay-agent-host`.
 Upgrades are `npm install -g @layernorm/overlay-agent-host@<version>` followed by `systemctl restart`; do not
 delete the state directory. `docker-compose.example.yml` provides the same persistent, outbound-only
-shape for Docker. It exposes no host ports. Mount the approved workspaces and state volume, pull a
-pinned image version, and recreate the service to upgrade.
+shape for Docker. It exposes no host ports. Mount the approved workspaces and state volume, then
+upgrade the package using the version supported by the deployment.
 
 Run diagnostics and then the host:
 

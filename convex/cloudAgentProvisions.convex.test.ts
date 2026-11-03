@@ -27,33 +27,32 @@ describe('Convex cloud agent provisions', () => {
     await expect(convex.query(query('listReclaimableByServer'), { serverSecret: 'nope', before: 2, limit: 1 })).rejects.toThrow(/Unauthorized/)
   })
 
-  test('a start is recorded once, tracks phases, and a second start does not boot another machine', async () => {
+  test('hosted provisioning phase mutations are permanently retired', async () => {
     const convex = convexTest(schema, modules)
     expect(await convex.query(query('getByServer'), key)).toBeNull()
-    expect(await convex.mutation(mutation('beginByServer'), { ...key, userId: 'u', now: 1 })).toEqual({ started: true, phase: 'queued' })
-    await convex.mutation(mutation('setPhaseByServer'), { ...key, phase: 'booting', now: 2 })
-    expect(await convex.mutation(mutation('beginByServer'), { ...key, userId: 'u', now: 3 })).toEqual({ started: false, phase: 'booting' })
-    await convex.mutation(mutation('setPhaseByServer'), { ...key, phase: 'ready', environmentId: 'env_1', now: 4 })
-    expect(await convex.query(query('getByServer'), key)).toMatchObject({ phase: 'ready', environmentId: 'env_1' })
-    expect(await convex.mutation(mutation('beginByServer'), { ...key, userId: 'u', now: 5 })).toEqual({ started: false, phase: 'ready' })
+    await expect(convex.mutation(mutation('beginByServer'), { ...key, userId: 'u', now: 1 })).rejects.toThrow('HOSTED_RUNTIME_RETIRED')
+    await expect(convex.mutation(mutation('setPhaseByServer'), { ...key, phase: 'booting', now: 2 })).rejects.toThrow('HOSTED_RUNTIME_RETIRED')
+    await expect(convex.mutation(mutation('recordAllocationByServer'), {
+      ...key, allocationKey: 'allocation', provider: 'box', providerReference: 'bx_1', now: 3,
+    })).rejects.toThrow('HOSTED_RUNTIME_RETIRED')
+    expect(await convex.query(query('getByServer'), key)).toBeNull()
   })
 
-  test('a failed start can be retried, and a start lost for ten minutes can be restarted', async () => {
+  test('legacy failed provision history remains readable but is not retryable', async () => {
     const convex = convexTest(schema, modules)
-    await convex.mutation(mutation('beginByServer'), { ...key, userId: 'u', now: 1 })
-    await convex.mutation(mutation('setPhaseByServer'), { ...key, phase: 'failed', error: 'x'.repeat(500), now: 2 })
-    const failed = await convex.query(query('getByServer'), key)
-    expect(failed?.phase).toBe('failed')
-    expect(failed?.error?.length).toBeLessThanOrEqual(300)
-    expect(await convex.mutation(mutation('beginByServer'), { ...key, userId: 'u', now: 3 })).toEqual({ started: true, phase: 'queued' })
-    expect((await convex.query(query('getByServer'), key))?.error).toBeUndefined()
-    expect(await convex.mutation(mutation('beginByServer'), { ...key, userId: 'u', now: 4 })).toEqual({ started: false, phase: 'queued' })
-    expect(await convex.mutation(mutation('beginByServer'), { ...key, userId: 'u', now: 3 + 10 * 60_000 + 1 })).toEqual({ started: true, phase: 'queued' })
+    await convex.run(ctx => ctx.db.insert('cloudAgentProvisions', {
+      workspaceId: key.workspaceId, agentId: key.agentId, userId: 'u', phase: 'failed', error: 'failed', createdAt: 1, updatedAt: 2,
+    }))
+    expect(await convex.query(query('getByServer'), key)).toMatchObject({ phase: 'failed' })
+    await expect(convex.mutation(mutation('beginByServer'), { ...key, userId: 'u', now: 3 }))
+      .rejects.toThrow('HOSTED_RUNTIME_RETIRED')
   })
 
   test('records are per agent and removable', async () => {
     const convex = convexTest(schema, modules)
-    await convex.mutation(mutation('beginByServer'), { ...key, userId: 'u', now: 1 })
+    await convex.run(ctx => ctx.db.insert('cloudAgentProvisions', {
+      workspaceId: key.workspaceId, agentId: key.agentId, userId: 'u', phase: 'failed', createdAt: 1, updatedAt: 1,
+    }))
     expect(await convex.query(query('getByServer'), { ...key, agentId: 'agent_2' })).toBeNull()
     await convex.mutation(mutation('removeByServer'), key)
     expect(await convex.query(query('getByServer'), key)).toBeNull()
@@ -73,8 +72,8 @@ describe('Convex cloud agent provisions', () => {
       createdAt: 1,
       updatedAt: 1,
     }))
-    expect(await convex.mutation(mutation('beginByServer'), { ...key, userId: 'u2', now: 10 * 60_000 + 2 }))
-      .toEqual({ started: false, phase: 'connecting' })
+    await expect(convex.mutation(mutation('beginByServer'), { ...key, userId: 'u2', now: 10 * 60_000 + 2 }))
+      .rejects.toThrow('HOSTED_RUNTIME_RETIRED')
     expect(await convex.query(query('getByServer'), key)).toMatchObject({
       phase: 'connecting',
       providerReference: 'bx_orphan',
@@ -84,20 +83,13 @@ describe('Convex cloud agent provisions', () => {
 
   test('allocation binding is keyed and provider references are immutable', async () => {
     const convex = convexTest(schema, modules)
-    await convex.mutation(mutation('beginByServer'), { ...key, userId: 'u', now: 1 })
-    expect(await convex.mutation(mutation('setPhaseByServer'), { ...key, phase: 'allocating', allocationKey: 'allocation-1', now: 2 })).toBe(true)
-    expect(await convex.mutation(mutation('setPhaseByServer'), {
-      ...key, phase: 'booting', allocationKey: 'superseded-attempt', now: 3,
-    })).toBe(false)
-    expect(await convex.mutation(mutation('recordAllocationByServer'), {
-      ...key, allocationKey: 'wrong-key', provider: 'box', providerReference: 'bx_1', now: 3,
-    })).toEqual({ bound: false })
-    expect(await convex.mutation(mutation('recordAllocationByServer'), {
-      ...key, allocationKey: 'allocation-1', provider: 'box', providerReference: 'bx_1', now: 4,
-    })).toEqual({ bound: true })
-    expect(await convex.mutation(mutation('recordAllocationByServer'), {
+    await convex.run(ctx => ctx.db.insert('cloudAgentProvisions', {
+      workspaceId: key.workspaceId, agentId: key.agentId, userId: 'u', phase: 'connecting', allocationKey: 'allocation-1',
+      provider: 'box', providerReference: 'bx_1', allocatedAt: 4, createdAt: 1, updatedAt: 4,
+    }))
+    await expect(convex.mutation(mutation('recordAllocationByServer'), {
       ...key, allocationKey: 'allocation-1', provider: 'box', providerReference: 'bx_2', now: 5,
-    })).toEqual({ bound: false })
+    })).rejects.toThrow('HOSTED_RUNTIME_RETIRED')
     expect(await convex.query(query('getByServer'), key)).toMatchObject({
       allocationKey: 'allocation-1',
       provider: 'box',
@@ -108,20 +100,19 @@ describe('Convex cloud agent provisions', () => {
 
   test('reclaim claims require the expected revision and block later phase writes', async () => {
     const convex = convexTest(schema, modules)
-    await convex.mutation(mutation('beginByServer'), { ...key, userId: 'u', now: 1 })
-    await convex.mutation(mutation('setPhaseByServer'), { ...key, phase: 'allocating', allocationKey: 'allocation-1', now: 2 })
-    await convex.mutation(mutation('recordAllocationByServer'), {
-      ...key, allocationKey: 'allocation-1', provider: 'box', providerReference: 'bx_1', now: 3,
-    })
+    await convex.run(ctx => ctx.db.insert('cloudAgentProvisions', {
+      workspaceId: key.workspaceId, agentId: key.agentId, userId: 'u', phase: 'failed', allocationKey: 'allocation-1',
+      provider: 'box', providerReference: 'bx_1', allocatedAt: 3, createdAt: 1, updatedAt: 3,
+    }))
     expect(await convex.mutation(mutation('claimReclaimByServer'), {
       ...key, expectedUpdatedAt: 2, now: 4,
     })).toBeNull()
     expect(await convex.mutation(mutation('claimReclaimByServer'), {
       ...key, expectedUpdatedAt: 3, now: 4,
     })).toMatchObject({ phase: 'failed', reclaimPending: true, providerReference: 'bx_1' })
-    expect(await convex.mutation(mutation('setPhaseByServer'), {
+    await expect(convex.mutation(mutation('setPhaseByServer'), {
       ...key, phase: 'ready', allocationKey: 'allocation-1', now: 5,
-    })).toBe(false)
+    })).rejects.toThrow('HOSTED_RUNTIME_RETIRED')
     expect(await convex.query(query('getByServer'), key)).toMatchObject({
       phase: 'failed',
       reclaimPending: true,

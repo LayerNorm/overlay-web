@@ -3,7 +3,6 @@ import { roomListScope } from './room-scope'
 
 import type { SandboxInstance } from '@overlay/sandbox-runtime'
 import { agentGatewayExecEnv } from '@/server/ai/agent-gateway/env'
-import { machineForAgent, touchEnvironmentMachine } from '@/server/agents/environment-machine'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import {
   ComputerDesktopDriverError,
@@ -1048,23 +1047,6 @@ export async function computerInstanceFor(
       }),
     }
   } catch (err) {
-    // An agent bound to an Overlay Cloud environment already has a machine —
-    // its environment sandbox. Fall back to it before reporting "no computer"
-    // so env-bound agents get machine tools without a second box.
-    if (err instanceof ComputerServiceError && err.code === 'not_found' && options.agentId) {
-      const machine = await machineForAgent({
-        workspaceId: options.workspaceId,
-        agentId: options.agentId,
-      }).catch((_error) => null)
-      if (machine) {
-        await touchEnvironmentMachine(machine)
-        return {
-          ok: true,
-          computer: { id: `env:${machine.environment.id}`, name: machine.environment.name },
-          operate: async (operation) => await operation(machine.instance, { controlledByUserId: undefined }),
-        }
-      }
-    }
     // An unbound owner is terminal — every computer tool hits it, so tell the
     // model to stop retrying and ask the user to bind one instead of looping.
     if (err instanceof ComputerServiceError && err.code === 'not_found') {

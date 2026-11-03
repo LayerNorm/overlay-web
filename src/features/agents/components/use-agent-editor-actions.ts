@@ -210,19 +210,19 @@ export function useAgentEditorActions({
   const archiveAgent = async () => {
     if (!activeWorkspaceId || !agent || busy) return
     const prompt = cloudAgent
-      ? `Archive ${agent.name}? Its machine and everything on it is deleted. Its message history will remain.`
+      ? `Archive ${agent.name}? Overlay access will be revoked and provider cleanup queued. Cleanup permanently deletes the machine and its files; export anything you need first. Its message history will remain.`
       : `Archive ${agent.name}? It will leave rooms and teams, but its message history will remain.`
     if (!window.confirm(prompt)) return
     setBusy(true)
     try {
-      // Delete the machine first so a failure leaves the agent in place to retry, not a paid machine with no owner.
+      // Revoke the hosted environment before archiving so cleanup remains attributable to the agent.
       if (cloudAgent) await overlayAppClient.cloudAgents.remove(activeWorkspaceId, agent.id)
       await overlayAppClient.agents.archive(activeWorkspaceId, agent.id)
       dispatchAgentDirectoryChanged(activeWorkspaceId)
       const workspaceId = activeWorkspaceId
       announceArchived({
         name: agent.name,
-        // An agent's machine is deleted when it is archived, so restoring a cloud agent does not bring that back.
+        // Hosted agents stay archived; restoring one does not restore its retired runtime.
         ...(cloudAgent ? {} : {
           undo: async () => { await overlayAppClient.agents.restore(workspaceId, agent.id) },
           onUndone: () => dispatchAgentDirectoryChanged(workspaceId),
