@@ -94,17 +94,43 @@ test('capabilities and capitalized providers render in model details', () => {
 test('duplicate model names retain source identity, connection labels and independent favorites', () => {
   const models = [
     { id: 'openai/gpt-5', name: 'GPT-5', provider: 'openai' },
-    { id: 'byok/personal/gpt-5', name: 'GPT-5', provider: 'openai', sourceLabel: 'Subscription', connectionName: 'Personal ChatGPT' },
+    { id: 'byok/personal/gpt-5', name: 'GPT-5', provider: 'openai', sourceLabel: 'Subscription', connectionName: 'Personal ChatGPT', subscription: { connectionId: 'personal', scopeLabel: 'Personal', recoveryHref: '/app/settings?section=providers&reconnect=personal' } },
     { id: 'byok/key/gpt-5', name: 'GPT-5', provider: 'openai', sourceLabel: 'API key', connectionName: 'My API key' },
   ]
   const sections = groupModelsByProvider(models, { favoriteIds: ['byok/personal/gpt-5'] })
-  assert.deepEqual(sections.find((section) => section.id === 'provider:openai')?.models.map((model) => model.id), models.map((model) => model.id))
+  assert.deepEqual(sections.find((section) => section.id === 'provider:openai')?.models.map((model) => model.id), ['openai/gpt-5', 'byok/key/gpt-5'])
+  assert.equal(sections[2].id, 'subscription:personal')
   assert.deepEqual(sections[0].models.map((model) => model.id), ['byok/personal/gpt-5'])
   assert.deepEqual(filterModels(models, 'subscription').map((model) => model.id), ['byok/personal/gpt-5'])
   assert.deepEqual(filterModels(models, 'personal chatgpt').map((model) => model.id), ['byok/personal/gpt-5'])
   const html = renderToStaticMarkup(<ModelSelector models={models} recommendedIds={models.map((model) => model.id)} favoriteIds={['byok/personal/gpt-5']} onToggleFavorite={() => {}} isSelected={(model) => model.id === 'byok/personal/gpt-5'} onSelect={() => {}} />)
-  assert.match(html, /Subscription/)
+  assert.match(html, /subscription-badge/)
   assert.match(html, /Personal ChatGPT/)
   assert.match(html, /API key/)
   for (const model of models) assert.ok(html.includes(`data-model-row="${model.id}"`))
+})
+
+test('connections get distinct sections below Recommended, preserving catalog order and scope search', () => {
+  const models = ['personal', 'team'].flatMap((connectionId) => ['sol', 'luna'].map((model) => ({
+    id: `byok/${connectionId}/${model}`, name: model, provider: 'openai', connectionName: 'ChatGPT',
+    sourceLabel: 'Subscription', subscription: { connectionId, scopeLabel: connectionId === 'team' ? 'Acme workspace' : 'Personal', recoveryHref: '/app/settings?section=providers' },
+  })))
+  const sections = groupModelsByProvider([...MODELS, ...models])
+  assert.deepEqual(sections.slice(0, 5).map((section) => section.id), ['favorites', 'recommended', 'subscription:personal', 'subscription:team', 'provider:openrouter'])
+  assert.deepEqual(sections[2].models.map((model) => model.name), ['sol', 'luna'])
+  assert.deepEqual(filterModels(models, 'Acme workspace').map((model) => model.id), ['byok/team/sol', 'byok/team/luna'])
+})
+
+test('unavailable subscription models retain favorites and selection but disable dispatch with a reconnect link', () => {
+  const model = { id: 'byok/expired/sol', name: 'Sol', provider: 'openai', connectionName: 'ChatGPT',
+    subscription: { connectionId: 'expired', scopeLabel: 'Personal', unavailable: true, recoveryHref: '/app/settings?section=providers&reconnect=expired' },
+    supportsVision: true, supportsReasoning: true }
+  const html = renderToStaticMarkup(<ModelSelector models={[model]} recommendedIds={[model.id]} favoriteIds={[model.id]} onToggleFavorite={() => {}} isSelected={() => true} onSelect={() => {}} />)
+  assert.match(html, /Reconnect ChatGPT/)
+  assert.match(html, /reconnect=expired/)
+  assert.match(html, /No alternate model will be used/)
+  const row = html.slice(html.indexOf('data-model-row='))
+  assert.match(row.slice(0, row.indexOf('data-slot="model-favorite"')), /disabled=""/)
+  assert.ok(row.indexOf('data-slot="model-selected"') < row.indexOf('lucide-scan-eye'))
+  assert.match(row, /lucide-sparkles/)
 })

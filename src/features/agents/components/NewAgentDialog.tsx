@@ -14,6 +14,7 @@ import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, 
 import { ChatModelPicker } from '@overlay/chat-react'
 import { MODEL_RECOMMENDATIONS, getModelsByIntelligence, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
 import { NEW_AGENT_DEFAULT_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import {
   AGENT_TOOL_GROUPS,
   AGENT_TOOL_PRESETS,
@@ -26,7 +27,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
-import { useWorkspaceTextModelAccess, buildSelectableTextModels } from '@/components/providers/useWorkspaceTextModelAccess'
+import { useWorkspaceTextModelAccess } from '@/components/providers/useWorkspaceTextModelAccess'
 import { useAuth } from '@/contexts/AuthContext'
 import type { AgentModelFieldProps } from './AgentEditorForm'
 import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
@@ -102,8 +103,9 @@ const PRESET_SUMMARY: Record<AgentToolPreset, string> = {
   readonly: 'Read-only tools',
 }
 
-/** The draft's model when it is offered, else the first enabled model (e.g. free tier without the paid default). */
+/** Keep BYOK drafts unchanged; otherwise use the draft when offered or the first enabled model. */
 export function resolveDraftModelId(modelId: string, modelIds: readonly string[]): string {
+  if (isByokModelId(modelId)) return modelId
   return modelIds.includes(modelId) ? modelId : (modelIds[0] ?? modelId)
 }
 
@@ -316,19 +318,17 @@ function useNewAgentModelField(workspaceId: string | null, draftModelId: string)
   const accessUnresolved = !modelAccess.entitlements
   const restricted = modelAccess.loading || accessUnresolved
   const selectableTextModels = useMemo(
-    () => restricted
-      ? buildSelectableTextModels({ isModelAccessRestricted: true, effectiveOnlyAllowZdrModels: false })
-      : modelAccess.selectableTextModels,
-    [restricted, modelAccess.selectableTextModels],
+    () => modelAccess.pickerTextModels.filter((model) => !(restricted || modelAccess.isModelAccessRestricted) || isByokModelId(model.id) || isFreeTierChatModelId(model.id)),
+    [restricted, modelAccess.isModelAccessRestricted, modelAccess.pickerTextModels],
   )
   const modelId = resolveDraftModelId(draftModelId, selectableTextModels.map((model) => model.id))
   const modelField = {
     favoriteScope: authUser?.id ?? null,
     isFreeTier: modelAccess.isFreeTier || restricted,
     isFreeTierWorkspace: modelAccess.isFreeTier,
-    modelPickerLabel: allTextModels.find((model) => model.id === modelId)?.name ?? modelId,
+    modelPickerLabel: selectableTextModels.find((model) => model.id === modelId)?.name ?? allTextModels.find((model) => model.id === modelId)?.name ?? modelId,
     selectableTextModels,
-    textModelsLoading: false,
+    textModelsLoading: modelAccess.connectionsLoading,
   }
   return { modelField, modelId }
 }

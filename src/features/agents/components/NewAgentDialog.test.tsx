@@ -44,6 +44,7 @@ test('an unavailable default model falls back to the first enabled one', () => {
   assert.equal(resolveDraftModelId('paid-model', models), 'test-model')
   assert.equal(resolveDraftModelId('test-model', models), 'test-model')
   assert.equal(resolveDraftModelId('paid-model', []), 'paid-model')
+  assert.equal(resolveDraftModelId('byok/personal/sol', models), 'byok/personal/sol')
 })
 
 test('fields render in order with other agents disabled', () => {

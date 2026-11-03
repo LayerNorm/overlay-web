@@ -255,6 +255,14 @@ export interface AttachmentDraft {
 export interface ChatModel {
   id: string
   name: string
+  sourceLabel?: string
+  connectionName?: string
+  subscription?: {
+    connectionId: string
+    scopeLabel: string
+    unavailable?: boolean
+    recoveryHref: string
+  }
   provider?: string
   description?: string
   intelligence?: number

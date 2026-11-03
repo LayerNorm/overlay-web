@@ -61,7 +61,7 @@ export function normalizeByokConnectionsPayload(payload: unknown): ByokConnectio
 async function loadConnections(userId: string, force = false): Promise<ByokConnectionRow[]> {
   const cache = cacheFor(userId)
   if (!force && cache.connections) return cache.connections
-  if (!force && cache.inFlight) return cache.inFlight
+  if (cache.inFlight) return cache.inFlight
   // react-doctor-disable-next-line react-doctor/no-fetch-response-used-without-status-check
   cache.inFlight = fetch('/api/v1/providers/connections', {
     cache: 'no-store',
@@ -116,6 +116,20 @@ export function useByokModels({ enabled = true }: { enabled?: boolean } = {}) {
       setError(value instanceof Error ? value.message : 'Failed to load connections')
     } finally {
       setIsLoading(false)
+    }
+  }, [enabled, userId])
+
+  useEffect(() => {
+    if (!enabled || !userId) return
+    const revalidate = () => {
+      if (document.visibilityState !== 'visible') return
+      void loadConnections(userId, true).catch(() => {})
+    }
+    window.addEventListener('focus', revalidate)
+    const timer = window.setInterval(revalidate, 60_000)
+    return () => {
+      window.removeEventListener('focus', revalidate)
+      window.clearInterval(timer)
     }
   }, [enabled, userId])
 

@@ -28,7 +28,7 @@ import { DelayedTooltip } from '@overlay/ui/overlays'
 import { AppBreadcrumbs, AppScreenHeader } from '@overlay/modules-react/shell'
 import type { ChatModelIndicatorModel } from './ModelIndicators'
 import { ModelQualitiesPanel } from './ModelQualitiesPanel'
-import { ModelSelector } from './ModelSelector'
+import { ModelProviderLogo, ModelSelector } from './ModelSelector'
 import { useFavoriteModelIds } from './useFavoriteModelIds'
 
 const TEMPORARY_CHAT_ICON_SRC = '/assets/icons/dashed-chat.png'
@@ -809,6 +809,7 @@ export function ChatModelPicker({
   const activeHoveredModelId = hoveredModelId === undefined ? internalHoveredModelId : hoveredModelId
   const activeQualitiesPos = modelQualitiesPos === undefined ? internalQualitiesPos : modelQualitiesPos
   const placementConfig = modelPickerPlacement(placement)
+  const selectedTextModel = (pickerTextModels ?? selectableTextModels).find((model) => model.id === selectedActModel)
   const handleOpenChange = (value: boolean) => {
     if (showModelPicker === undefined) setInternalOpen(value)
     onSetShowModelPicker?.(value)
@@ -835,6 +836,7 @@ export function ChatModelPicker({
               type="button"
               className={placementConfig.triggerClass}
             >
+              {activeGenerationMode === 'text' && selectedTextModel?.subscription ? <ModelProviderLogo model={selectedTextModel} /> : null}
               <span className="min-w-0 truncate">{modelPickerLabel}</span>
               <ChevronDown size={11} className="shrink-0" />
             </Button>

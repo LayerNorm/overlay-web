@@ -1,20 +1,46 @@
 'use client'
 
 import { useMemo, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react'
-import { Check, LayoutGrid, Lock, Search, Star } from 'lucide-react'
+import { Check, LayoutGrid, Lock, Plug, ScanEye, Search, Sparkles, Star } from 'lucide-react'
 import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import { Button, Input } from '@overlay/ui/primitives'
 import { ProviderLogo, providerLabel } from '@overlay/ui/ai'
+import { DelayedTooltip } from '@overlay/ui/overlays'
 import { GenerationModeToggle } from './GenerationModeToggle'
 
 type GenerationModeToggleProps = ComponentProps<typeof GenerationModeToggle>
 
-export type ModelSelectorItem = { id: string; name: string; provider?: string; sourceLabel?: string; connectionName?: string }
+export type ModelSelectorItem = {
+  id: string
+  name: string
+  provider?: string
+  sourceLabel?: string
+  connectionName?: string
+  supportsVision?: boolean
+  supportsReasoning?: boolean
+  subscription?: { connectionId: string; scopeLabel: string; unavailable?: boolean; recoveryHref: string }
+}
+
+export function ModelProviderLogo({ model, size = 14 }: { model: Pick<ModelSelectorItem, 'provider' | 'subscription'>; size?: number }) {
+  return <span className="relative inline-flex shrink-0 text-(--foreground)">
+    <ProviderLogo provider={model.provider ?? 'other'} size={size} />
+    {model.subscription ? <span className="absolute -bottom-1 -right-1 rounded-sm bg-(--surface-elevated) ring-2 ring-(--surface-elevated)" data-slot="subscription-badge"><Plug size={10} strokeWidth={1.75} aria-hidden="true" /></span> : null}
+  </span>
+}
+
+function SubscriptionRecovery({ model }: { model: ModelSelectorItem }) {
+  if (!model.subscription?.unavailable) return null
+  return <div className="mx-1 mb-2 rounded-md bg-(--surface-muted) p-2.5 text-xs leading-relaxed text-(--muted)">
+    <p>{model.connectionName} needs to be reconnected. No alternate model will be used.</p>
+    <Button asChild variant="link" className="h-auto p-0 text-xs"><a href={model.subscription.recoveryHref}>Reconnect {model.connectionName}</a></Button>
+  </div>
+}
 
 export type ModelSelectorSection<T extends ModelSelectorItem> = {
   id: string
   label: string
   provider?: string
+  subscription?: ModelSelectorItem['subscription']
   models: T[]
 }
 
@@ -36,12 +62,21 @@ export function groupModelsByProvider<T extends ModelSelectorItem>(
     ] },
   ]
   const byProvider = new Map<string, T[]>()
+  const subscriptions = new Map<string, ModelSelectorSection<T>>()
   for (const model of models) {
+    if (model.subscription) {
+      const id = `subscription:${model.subscription.connectionId}`
+      const group = subscriptions.get(id)
+      if (group) group.models.push(model)
+      else subscriptions.set(id, { id, label: `${model.connectionName ?? providerLabel(model.provider ?? 'other')} subscription`, provider: model.provider, subscription: model.subscription, models: [model] })
+      continue
+    }
     const provider = model.provider ?? 'other'
     const group = byProvider.get(provider)
     if (group) group.push(model)
     else byProvider.set(provider, [model])
   }
+  sections.push(...subscriptions.values())
   for (const [provider, group] of byProvider) {
     sections.push({ id: `provider:${provider}`, label: providerLabel(provider), provider, models: group })
   }
@@ -57,7 +92,7 @@ export function filterModels<T extends ModelSelectorItem>(models: readonly T[], 
   const needle = query.trim().toLowerCase()
   if (!needle) return [...models]
   return models.filter((model) =>
-    [model.name, model.id, model.provider ? providerLabel(model.provider) : '', model.sourceLabel ?? '', model.connectionName ?? '']
+    [model.name, model.id, model.provider ? providerLabel(model.provider) : '', model.sourceLabel ?? '', model.connectionName ?? '', model.subscription?.scopeLabel ?? '']
       .some((value) => value.toLowerCase().includes(needle)),
   )
 }
@@ -114,6 +149,9 @@ export function ModelSelector<T extends ModelSelectorItem>({
   )
   const results = useMemo(() => (searching ? filterModels(models, query) : []), [models, query, searching])
   const currentSection = sections.find((section) => section.id === activeSection) ?? sections[1]!
+  const visibleModels = searching ? results : currentSection.models
+  const recoveryModels = [...new Map(visibleModels.filter((model) => model.subscription?.unavailable)
+    .map((model) => [model.subscription!.connectionId, model])).values()]
 
   const setListRef = (node: HTMLDivElement | null) => {
     scrollRef.current = node
@@ -131,7 +169,7 @@ export function ModelSelector<T extends ModelSelectorItem>({
     const selected = isSelected(model)
     const locked = !selected && (isLocked?.(model) ?? false)
     const favorite = favoriteSet.has(model.id)
-    const disabled = isDisabled?.(model) ?? false
+    const disabled = Boolean(model.subscription?.unavailable) || (isDisabled?.(model) ?? false)
     return (
       <div
         key={`${keyPrefix}:${model.id}`}
@@ -155,9 +193,9 @@ export function ModelSelector<T extends ModelSelectorItem>({
           <ProviderLogo provider={model.provider ?? 'other'} size={14} className="text-(--foreground)" />
           <span className="min-w-0 flex-1 truncate" title={model.connectionName ? `${model.name} · ${model.connectionName}` : model.name}>
             <span className="block truncate">{model.name}</span>
-            {model.connectionName ? <span className="block truncate text-[10px] font-normal text-(--muted-light)">{model.connectionName}</span> : null}
+            {model.connectionName && (!model.subscription || searching || currentSection.id === 'favorites' || currentSection.id === 'recommended') ? <span className="block truncate text-[10px] font-normal text-(--muted-light)">{model.connectionName}{model.subscription ? ` · ${model.subscription.scopeLabel}` : ''}</span> : null}
           </span>
-          {model.sourceLabel ? <span className="shrink-0 rounded border border-(--border) px-1.5 py-0.5 text-[9px] font-normal text-(--muted)">{model.sourceLabel}</span> : null}
+          {model.sourceLabel && !model.subscription ? <span className="shrink-0 rounded border border-(--border) px-1.5 py-0.5 text-[9px] font-normal text-(--muted)">{model.sourceLabel}</span> : null}
         </Button>
         <Button
           variant="ghost"
@@ -179,12 +217,24 @@ export function ModelSelector<T extends ModelSelectorItem>({
           {selected ? <Check size={12} strokeWidth={2} aria-hidden="true" /> : null}
           {locked ? <span title="Paid plan" className="inline-flex"><Lock size={11} strokeWidth={1.75} aria-hidden="true" /><span className="sr-only">Paid plan</span></span> : null}
         </span>
+        <span className="flex shrink-0 gap-1">
+          {model.supportsVision ? <span title="Vision" className="inline-flex size-4 items-center justify-center rounded bg-(--surface-muted) text-(--muted)"><ScanEye size={11} strokeWidth={1.75} /><span className="sr-only">Vision</span></span> : null}
+          {model.supportsReasoning ? <span title="Reasoning" className="inline-flex size-4 items-center justify-center rounded bg-(--surface-muted) text-(--muted)"><Sparkles size={11} strokeWidth={1.75} /><span className="sr-only">Reasoning</span></span> : null}
+        </span>
       </div>
     )
   }
 
   return (
-    <div data-slot="model-selector" className="flex min-w-0 flex-col gap-1.5 p-1.5">
+    <div data-slot="model-selector" className="flex min-w-0 flex-col gap-1.5 p-1.5" onKeyDown={(event) => {
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+      const rows = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-model-row] > button:first-child:not(:disabled)')]
+      if (!rows.length) return
+      const index = rows.indexOf(event.target as HTMLButtonElement)
+      const next = index < 0 ? (event.key === 'ArrowDown' ? 0 : rows.length - 1) : (index + (event.key === 'ArrowDown' ? 1 : -1) + rows.length) % rows.length
+      rows[next]?.focus()
+      event.preventDefault()
+    }}>
       {mode && onModeChange ? (
         <GenerationModeToggle mode={mode} onChange={onModeChange} disabled={modeDisabled} layout="stretch" />
       ) : null}
@@ -204,16 +254,15 @@ export function ModelSelector<T extends ModelSelectorItem>({
         />
       </label>
       <div className="flex min-h-0 gap-1">
-          <div role="tablist" aria-label="Providers" aria-orientation="vertical" className="flex max-h-80 w-10 shrink-0 flex-col items-center gap-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden border-r border-(--border) pr-1">
+          <div aria-label="Model groups" className="flex max-h-80 w-10 shrink-0 flex-col items-center gap-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden pr-1">
             {sections.map((section) => (
+              <DelayedTooltip key={section.id} label={`${section.label}${section.subscription ? ` · ${section.subscription.scopeLabel}` : ''}`} side="right">
               <Button
                 key={section.id}
                 variant="ghost"
                 type="button"
-                role="tab"
-                aria-selected={!searching && currentSection.id === section.id}
-                aria-label={section.label}
-                title={section.label}
+                aria-label={`${section.label}${section.subscription ? ` · ${section.subscription.scopeLabel}` : ''}`}
+                aria-pressed={!searching && currentSection.id === section.id}
                 onClick={() => jumpTo(section.id)}
                 className={unstyledButton(`flex size-8 shrink-0 items-center justify-center rounded-md ${
                   !searching && currentSection.id === section.id
@@ -222,17 +271,19 @@ export function ModelSelector<T extends ModelSelectorItem>({
                 }`)}
               >
                 {section.provider ? (
-                  <ProviderLogo provider={section.provider} size={14} />
+                  <ModelProviderLogo model={section} />
                 ) : section.id === 'recommended' ? (
                   <LayoutGrid size={15} strokeWidth={1.75} />
                 ) : (
                   <Star size={13} strokeWidth={1.75} fill="currentColor" />
                 )}
               </Button>
+              </DelayedTooltip>
             ))}
           </div>
         <div ref={setListRef} className="relative h-80 min-w-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
           {beforeList}
+          {recoveryModels.map((model) => <SubscriptionRecovery key={model.subscription!.connectionId} model={model} />)}
           {searching ? (
             results.length ? (
               results.map((model) => renderRow(model, 'result'))
@@ -241,7 +292,7 @@ export function ModelSelector<T extends ModelSelectorItem>({
             )
           ) : (
               <section aria-label={currentSection.label}>
-                <h3 className="px-2 pb-1 pt-2 text-[11px] font-medium text-(--muted-light)">{currentSection.label}</h3>
+                <h3 className="flex items-center gap-2 px-2 pb-2 pt-2 text-[11px] font-medium text-(--muted-light)"><span className="min-w-0 truncate">{currentSection.label}</span>{currentSection.subscription ? <span className="ml-auto shrink-0 text-[10px] font-normal">{currentSection.subscription.scopeLabel}</span> : null}</h3>
                 {currentSection.models.map((model) => renderRow(model, currentSection.id))}
                 {currentSection.models.length === 0 ? (
                   <p className="px-2 py-3 text-xs text-(--muted-light)">

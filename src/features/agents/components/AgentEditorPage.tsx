@@ -11,7 +11,9 @@ import {
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
-import { useWorkspaceTextModelAccess, buildSelectableTextModels } from '@/components/providers/useWorkspaceTextModelAccess'
+import { useWorkspaceTextModelAccess } from '@/components/providers/useWorkspaceTextModelAccess'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
@@ -122,19 +124,15 @@ export function useAgentEditorController({
   }, [revision])
   const modelField = useMemo(() => {
     const accessUnresolved = !modelAccess.entitlements
-    const selectableTextModels = modelAccess.loading || accessUnresolved
-      ? buildSelectableTextModels({
-          isModelAccessRestricted: true,
-          effectiveOnlyAllowZdrModels: false,
-        })
-      : modelAccess.selectableTextModels
+    const restricted = modelAccess.loading || accessUnresolved || modelAccess.isModelAccessRestricted
+    const selectableTextModels = modelAccess.pickerTextModels.filter((model) => !restricted || isByokModelId(model.id) || isFreeTierChatModelId(model.id))
     return {
       favoriteScope: authUser?.id ?? null,
       isFreeTier: modelAccess.isFreeTier || modelAccess.loading || accessUnresolved,
       isFreeTierWorkspace: modelAccess.isFreeTier,
-      modelPickerLabel: allTextModels.find((model) => model.id === form.modelId)?.name ?? form.modelId,
+      modelPickerLabel: selectableTextModels.find((model) => model.id === form.modelId)?.name ?? allTextModels.find((model) => model.id === form.modelId)?.name ?? form.modelId,
       selectableTextModels,
-      textModelsLoading: false,
+      textModelsLoading: modelAccess.connectionsLoading,
     }
   }, [
     allTextModels,
@@ -143,7 +141,9 @@ export function useAgentEditorController({
     modelAccess.entitlements,
     modelAccess.isFreeTier,
     modelAccess.loading,
-    modelAccess.selectableTextModels,
+    modelAccess.pickerTextModels,
+    modelAccess.isModelAccessRestricted,
+    modelAccess.connectionsLoading,
   ])
 
   const isDefaultMaster = isDefaultMasterAgent(agent)

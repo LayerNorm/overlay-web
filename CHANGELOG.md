@@ -5,6 +5,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Route the first Codex subscription cutover through a private, pinned CLIProxyAPI bridge; keep credentials in Overlay Vault, refresh near-expiry credentials under Overlay's fenced pre-dispatch lease (never inside Go inference), and preserve saved model selections through reconnect failures. Keep isolated Preview backend provisioning in the web service build.
+- Give each subscription its own model-picker group below Recommended, with a plug badge, scope label, independent favorites and reconnect action. Load the same connections in chat and agent pickers, including restricted workspaces, without silently replacing unavailable subscription selections.
 
 - Configure provider usage markup with `OVERLAY_USAGE_MARKUP_BPS` across web, memory and Computer billing, rejecting invalid settings instead of hiding a fixed rate in code. Subscription prices, included credit and existing subscription records stay unchanged.
 

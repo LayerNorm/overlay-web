@@ -3,7 +3,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { isFreeTierChatModelId, type ChatModel } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
-import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { byokConnectionsToChatModels, isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { useByokModels } from './useByokModels'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
@@ -71,7 +72,7 @@ export function buildSelectableTextModels({
 }): ChatModel[] {
   const availableTextModels = getModelsByIntelligence(isModelAccessRestricted)
     .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
-    .filter((model) => !isModelAccessRestricted || isFreeTierChatModelId(model.id))
+    .filter((model) => !isModelAccessRestricted || isByokModelId(model.id) || isFreeTierChatModelId(model.id))
   return effectiveOnlyAllowZdrModels
     ? availableTextModels.filter((model) => model.supportsZeroDataRetention)
     : availableTextModels
@@ -110,15 +111,18 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
   onlyAllowZdrModels: boolean
   onEntitlementsFetched?: (data: T) => void
 }) {
+  const { connections, isLoading: connectionsLoading } = useByokModels()
   const [entitlements, setEntitlements] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const bootstrapEntitlementsKeyRef = useRef<string | null>(null)
   const derived = resolveEntitlementDerived(entitlements, billingEnabled, onlyAllowZdrModels)
   const selectableTextModels = useMemo(() => {
+    void connections
     void catalogRevision
     void modelCatalogVersion
     return buildSelectableTextModels(derived)
   }, [
+    connections,
     catalogRevision,
     derived.effectiveOnlyAllowZdrModels,
     derived.isModelAccessRestricted,
@@ -127,11 +131,16 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
   const pickerTextModels = useMemo(() => {
     void catalogRevision
     void modelCatalogVersion
-    return buildPickerTextModels({
+    const available = buildPickerTextModels({
       effectiveOnlyAllowZdrModels: derived.effectiveOnlyAllowZdrModels,
       isModelAccessRestricted: derived.isModelAccessRestricted,
     })
+    const unavailable = byokConnectionsToChatModels(connections, { includeUnavailable: true })
+      .filter((model) => model.subscription?.unavailable)
+      .filter((model) => !derived.effectiveOnlyAllowZdrModels || model.supportsZeroDataRetention)
+    return [...available, ...unavailable]
   }, [
+    connections,
     catalogRevision,
     derived.effectiveOnlyAllowZdrModels,
     derived.isModelAccessRestricted,
@@ -190,6 +199,7 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
     ...derived,
     entitlements,
     loading,
+    connectionsLoading,
     loadSubscription,
     pickerTextModels,
     selectableTextModels,

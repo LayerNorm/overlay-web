@@ -62,4 +62,16 @@ test('subscription models keep provider identity and connection source labels', 
   assert.equal(model?.provider, 'openai')
   assert.equal(model?.sourceLabel, 'Subscription')
   assert.equal(model?.connectionName, 'Personal ChatGPT')
+  assert.equal(model?.subscription?.connectionId, 'subscription_1')
+  assert.equal(model?.subscription?.scopeLabel, 'Personal')
+  assert.equal(model?.subscription?.unavailable, false)
+})
+
+test('only the picker can include inactive subscriptions, without changing identity or model order', () => {
+  const connection = { _id: 'expired', authKind: 'subscription' as const, subscriptionProvider: 'codex', providerId: 'subscription:codex', endpoint: '', displayName: 'ChatGPT', enabledModelIds: ['sol', 'luna'], status: 'error' as const, isDefault: false, isDeletable: true }
+  assert.deepEqual(byokConnectionsToChatModels([connection]), [])
+  const models = byokConnectionsToChatModels([connection], { includeUnavailable: true })
+  assert.deepEqual(models.map((model) => model.id), ['byok/expired/sol', 'byok/expired/luna'])
+  assert.ok(models.every((model) => model.subscription?.unavailable))
+  assert.equal(models[0].subscription?.recoveryHref, '/app/settings?section=providers&reconnect=expired')
 })

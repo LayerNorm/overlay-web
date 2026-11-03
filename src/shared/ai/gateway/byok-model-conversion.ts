@@ -214,6 +214,12 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
       provider,
       sourceLabel: subscription ? 'Subscription' : 'API key',
       connectionName: connection.displayName,
+      ...(subscription ? { subscription: {
+        connectionId: connection._id,
+        scopeLabel: 'Personal',
+        unavailable: connection.status !== 'active',
+        recoveryHref: `/app/settings?section=providers&reconnect=${encodeURIComponent(connection._id)}`,
+      } } : {}),
       intelligence: 0,
       cost: 1,
       speedTier: 2,
@@ -227,19 +233,18 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
 
 /**
  * Converts multiple BYOK connections into a flat array of {@link ChatModel}
- * objects, sorted by provider display name then model name.
+ * objects, preserving the connection and provider catalog order.
  */
 export function byokConnectionsToChatModels(
   connections: readonly ByokConnectionRow[] | unknown,
+  { includeUnavailable = false }: { includeUnavailable?: boolean } = {},
 ): ChatModel[] {
   if (!Array.isArray(connections)) return []
   const models: ChatModel[] = []
   for (const connection of connections) {
     if (!isByokConnectionRow(connection)) continue
-    if (connection.status !== 'active') continue
+    if (connection.status !== 'active' && !(includeUnavailable && isSubscriptionConnection(connection))) continue
     models.push(...byokConnectionToChatModels(connection))
   }
-  return models.sort(
-    (a, b) => a.provider.localeCompare(b.provider) || a.name.localeCompare(b.name),
-  )
+  return models
 }

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
+import { getModelsByIntelligence, registerByokModels } from '@/shared/ai/gateway/model-data'
 import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import {
   buildPickerTextModels,
@@ -107,4 +107,15 @@ test('premium text models lock only when access is restricted and are exempt for
   assert.equal(isTextModelLocked(FREE_TIER_AUTO_MODEL_ID, true), false)
   assert.equal(isTextModelLocked('byok/personal/gpt-5', true), false)
   assert.equal(isTextModelLocked('anthropic/claude-opus-4.7', false), false)
+})
+
+test('subscription models are selectable in restricted workspaces without exposing paid gateway models', () => {
+  registerByokModels([{ _id: 'personal', providerId: 'subscription:codex', authKind: 'subscription', subscriptionProvider: 'codex', endpoint: '', displayName: 'ChatGPT', enabledModelIds: ['sol'], status: 'active', isDefault: false, isDeletable: true }])
+  try {
+    const models = buildSelectableTextModels({ isModelAccessRestricted: true, effectiveOnlyAllowZdrModels: false })
+    assert.ok(models.some((model) => model.id === 'byok/personal/sol'))
+    assert.ok(models.every((model) => isFreeTierChatModelId(model.id) || model.id === 'byok/personal/sol'))
+  } finally {
+    registerByokModels([])
+  }
 })
