@@ -128,7 +128,7 @@ function activeModelTools(
 ): string[] {
   const allowed = new Set(preparedActiveToolNames)
   return Object.keys(tools).filter(name => complete
-    ? hasPendingHarnessAnswer(current) && controls.has(name)
+    ? (hasPendingHarnessAnswer(current) || current.finalVerification?.supported === false) && controls.has(name)
     : needsPlan
       ? name === 'harness_set_plan'
       : controls.has(name) || (current.policy.allowedToolIds.includes(name) && allowed.has(name)))
@@ -425,7 +425,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         const needsPlan = current.policy.requiresPlan && !current.plan.length
         observedState = current
         const activeTools = activeModelTools(current, prepared.activeToolNames, tools, controls, complete, needsPlan)
-        const pendingAnswerControls = complete && hasPendingHarnessAnswer(current) && activeTools.length > 0
+        const pendingAnswerControls = complete && activeTools.length > 0
         return {
           system: prepared.instructions ?? buildHarnessStepInstructions(current, instructionContext),
           messages: prepared.messages.filter(message => message.role !== 'system'),
@@ -504,5 +504,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     }
     stagnantSegments = continuation.stagnantSegments
     finalAnswerRequired = continuation.finalAnswerRequired
+    // A continuation is a new turn, not an assistant prefill. Some providers
+    // reject assistant-tailed prompts, including after verification feedback.
+    if (messages.at(-1)?.role === 'assistant') {
+      messages = [...messages, { role: 'user', content: 'Continue the existing task using the current persisted state and verification feedback. Obtain any missing evidence before correcting the answer. Do not repeat completed actions.' }]
+    }
   }
 }

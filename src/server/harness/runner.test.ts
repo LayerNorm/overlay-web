@@ -400,6 +400,10 @@ test('unsupported final claims are corrected from persisted evidence without rep
   expect(JSON.stringify(checkpoint)).not.toContain('0 pages processed')
   expect(JSON.stringify(checkpoint)).toContain('rev-7')
   expect(provider.doStreamCalls).toHaveLength(5)
+  const correction = provider.doStreamCalls[4]!
+  expect(correction.prompt.at(-1)?.role).toBe('user')
+  expect(correction.tools?.some(tool => tool.type === 'function' && tool.name === 'harness_read_artifact')).toBe(true)
+  expect(correction.tools?.some(tool => tool.type === 'function' && tool.name === 'read_document')).toBe(false)
 })
 
 test('a paid verification hold records an unsupported attempt before blocking without releasing the hold', async () => {

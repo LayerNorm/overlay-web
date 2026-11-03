@@ -1882,3 +1882,7 @@ artifact never certifies a new source mutation.
 Artifact-reading milestones declare `evidenceTools: ["harness_read_artifact"]`.
 These control-tool observations can prove the read, while source-tool writes
 continue to require their own successful execution evidence.
+
+Answer corrections start a new continuation turn rather than an assistant
+prefill. Verification feedback can reopen evidence through control tools while
+completed external action tools remain disabled; correction limits still apply.

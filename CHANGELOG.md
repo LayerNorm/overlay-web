@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Start Harness answer corrections as explicit continuation turns for providers that reject assistant prefill, and keep evidence-reading controls available without replaying completed external actions.
+
 - Allow authorized artifact reads to satisfy explicitly declared artifact-reading milestones, while keeping reopened excerpts ineligible as proof of a new write.
 
 - Preserve bounded, source-revision-linked observations when reopening private Harness artifacts, so final verification can inspect retrieved excerpts without treating them as new writes or independent verification.
