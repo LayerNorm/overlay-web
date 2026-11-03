@@ -80,32 +80,3 @@ function validateTools(body: Record<string, unknown>): void {
     throw new Error('Hosted subscription tools are not supported')
   }
 }
-
-export function normalizeCodexResponsesBody(
-  body: Record<string, unknown>,
-  modelId: string,
-): Record<string, unknown> {
-  const normalizedBody = { ...body }
-  for (const option of [
-    'max_output_tokens', 'max_completion_tokens', 'temperature', 'top_p',
-  ]) {
-    delete normalizedBody[option]
-  }
-  assertSupportedCodexRequest(normalizedBody, modelId)
-  const input = Array.isArray(normalizedBody.input)
-    ? normalizedBody.input.map((item) => {
-        if (!isRecord(item) || item.role !== 'system') return item
-        return { ...item, role: 'developer' }
-      })
-    : normalizedBody.input
-  const instructions = typeof normalizedBody.instructions === 'string' ? normalizedBody.instructions : ''
-  const include = Array.isArray(normalizedBody.include) ? normalizedBody.include : []
-  return {
-    ...normalizedBody,
-    input,
-    instructions,
-    include: [...new Set([...include, 'reasoning.encrypted_content'])],
-    stream: true,
-    store: false,
-  }
-}

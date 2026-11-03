@@ -3,12 +3,7 @@ import test from 'node:test'
 import { SubscriptionService } from './service'
 import type { SubscriptionRepository } from './repository'
 import type { ByokCredentialContext, ByokCredentialStore } from '@/server/ai/gateway/byok-credential-store'
-import {
-  CODEX_ISSUER,
-  CODEX_REFRESH_MARGIN_MS,
-  type CodexTokenSet,
-} from '@/server/agents/provider-accounts/codex-subscription'
-import { CODEX_MODELS_URL } from './codex-discovery'
+import { SubscriptionBridgeClient, type BridgeCredential } from './bridge-client'
 
 class FakeRepository {
   order: string[] = []
@@ -229,10 +224,16 @@ class FakeCredentials {
 
 function createService(repository: FakeRepository, credentials: FakeCredentials, fetcher: typeof fetch) {
   credentials.order = repository.order
+  const bridge = new SubscriptionBridgeClient(
+    'http://subscriptions.internal',
+    'test-service-secret-with-more-than-32-characters',
+    fetcher,
+  )
   return new SubscriptionService(
     repository as unknown as SubscriptionRepository,
     credentials as unknown as ByokCredentialStore,
     fetcher,
+    bridge,
   )
 }
 
@@ -280,19 +281,31 @@ test('Codex authorization reserves a durable generation before requesting and va
   process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex,xai'
   const repository = new FakeRepository()
   const credentials = new FakeCredentials()
-  const service = createService(repository, credentials, async (_input, init) => {
-    repository.order.push('upstream-device-code')
+  const service = createService(repository, credentials, async (input, init) => {
+    repository.order.push('bridge-authorize')
     assert.equal(init?.redirect, 'error')
+    assert.equal(new URL(String(input)).pathname, '/internal/v1/authorize')
     return Response.json({
-      device_auth_id: 'device-secret',
-      user_code: 'ABCD-1234',
-      interval: '5',
+      authorization: {
+        url: 'https://auth.openai.com/codex/device',
+        userCode: 'ABCD-1234',
+        expiresAt: Date.now() + 600_000,
+        interval: 5,
+      },
+      pendingState: {
+        backend: 'cliproxyapi',
+        version: 1,
+        providerId: 'codex',
+        metadata: { deviceAuthId: 'device-secret' },
+        expiresAt: Date.now() + 600_000,
+        interval: 5,
+      },
     })
   })
 
   const authorization = await service.startAuthorization('owner-1', 'connection-1', 'codex')
   assert.deepEqual(repository.order, [
-    'reserve', 'upstream-device-code', 'register-pending-write', 'write', 'commit-pending',
+    'reserve', 'bridge-authorize', 'register-pending-write', 'write', 'commit-pending',
   ])
   assert.equal(authorization.userCode, 'ABCD-1234')
   const [reference] = [...credentials.values.keys()]
@@ -320,9 +333,20 @@ test('ambiguous pending-state commit keeps a vault candidate referenced by durab
   }
   const credentials = new FakeCredentials()
   const service = createService(repository, credentials, async () => Response.json({
-    device_auth_id: 'device-secret',
-    user_code: 'ABCD-1234',
-    interval: '5',
+    authorization: {
+      url: 'https://auth.openai.com/codex/device',
+      userCode: 'ABCD-1234',
+      expiresAt: Date.now() + 600_000,
+      interval: 5,
+    },
+    pendingState: {
+      backend: 'cliproxyapi',
+      version: 1,
+      providerId: 'codex',
+      metadata: { deviceAuthId: 'device-secret' },
+      expiresAt: Date.now() + 600_000,
+      interval: 5,
+    },
   }))
 
   await assert.rejects(
@@ -350,9 +374,20 @@ test('service instances coordinate authorization through shared durable state', 
     requestCount += 1
     await heldFetch
     return Response.json({
-      device_auth_id: 'device-secret',
-      user_code: 'ABCD-1234',
-      interval: '5',
+      authorization: {
+        url: 'https://auth.openai.com/codex/device',
+        userCode: 'ABCD-1234',
+        expiresAt: Date.now() + 600_000,
+        interval: 5,
+      },
+      pendingState: {
+        backend: 'cliproxyapi',
+        version: 1,
+        providerId: 'codex',
+        metadata: { deviceAuthId: 'device-secret' },
+        expiresAt: Date.now() + 600_000,
+        interval: 5,
+      },
     })
   }
   const firstService = createService(repository, credentials, fetcher)
@@ -384,6 +419,13 @@ test('a stale pending write is reclaimed after a crash before the reference comm
     pendingWrites: [],
   }
   const credentials = new FakeCredentials()
+  credentials.values.set('existing-credential', JSON.stringify({
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'codex',
+    metadata: { tokenStorage: { accessToken: 'access', refreshToken: 'refresh' } },
+    expiresAt: Date.now() + 3_600_000,
+  }))
   const service = createService(repository, credentials, async () => { throw new Error('unused') })
   const writeSecret = (service as unknown as {
     writeSecret(userId: string, connectionId: string, providerId: 'codex', value: string):
@@ -556,7 +598,7 @@ test('failed credential writes attempt name-based cleanup before clearing pendin
   assert.deepEqual(repository.state?.pendingWrites, [])
 })
 
-test('credential dispatch refreshes a near-expiry Codex token before returning it', async (t) => {
+test('credential dispatch refreshes a near-expiry bridge credential under the refresh fence', async (t) => {
   const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
   t.after(() => {
     if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
@@ -564,22 +606,18 @@ test('credential dispatch refreshes a near-expiry Codex token before returning i
   })
   process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex'
   const repository = new FakeRepository()
-  const oldAccessToken = `header.${Buffer.from(JSON.stringify({
-    exp: Math.floor((Date.now() + CODEX_REFRESH_MARGIN_MS - 60_000) / 1000),
-  })).toString('base64url')}.signature`
-  const refreshedAccessToken = `header.${Buffer.from(JSON.stringify({
-    exp: Math.ceil((Date.now() + CODEX_REFRESH_MARGIN_MS + 60_000) / 1000),
-  })).toString('base64url')}.signature`
-  const oldTokens: CodexTokenSet = {
-    v: 1,
-    idToken: 'old-id-token',
-    accessToken: oldAccessToken,
-    refreshToken: 'old-refresh-token',
-    accountId: 'account-1',
-    lastRefresh: Date.now(),
+  const oldCredential: BridgeCredential = {
+    backend: 'cliproxyapi', version: 1, providerId: 'codex',
+    metadata: { tokenStorage: { accessToken: 'old-access', refreshToken: 'old-refresh' } },
+    expiresAt: Date.now() + 30_000,
+  }
+  const refreshedCredential: BridgeCredential = {
+    backend: 'cliproxyapi', version: 1, providerId: 'codex',
+    metadata: { tokenStorage: { accessToken: 'new-access', refreshToken: 'new-refresh' } },
+    expiresAt: Date.now() + 3_600_000,
   }
   const credentials = new FakeCredentials()
-  const oldRef = await credentials.write({ apiKey: JSON.stringify(oldTokens) })
+  const oldRef = await credentials.write({ apiKey: JSON.stringify(oldCredential) })
   repository.state = {
     userId: 'owner-1',
     connectionId: 'connection-1',
@@ -593,29 +631,97 @@ test('credential dispatch refreshes a near-expiry Codex token before returning i
   }
   const requestedUrls: string[] = []
   const service = createService(repository, credentials, async (input, init) => {
-    const url = String(input)
-    requestedUrls.push(url)
-    if (url === `${CODEX_ISSUER}/oauth/token`) {
-      const body = JSON.parse(String(init?.body)) as Record<string, unknown>
-      assert.equal(body.grant_type, 'refresh_token')
-      assert.equal(body.refresh_token, 'old-refresh-token')
-      return Response.json({
-        id_token: 'refreshed-id-token',
-        access_token: refreshedAccessToken,
-        refresh_token: 'refreshed-refresh-token',
-      })
+    const url = new URL(String(input))
+    requestedUrls.push(url.pathname)
+    if (url.pathname === '/internal/v1/refresh') {
+      const body = JSON.parse(String(init?.body)) as { credential: BridgeCredential }
+      assert.equal(body.credential.metadata && typeof body.credential.metadata, 'object')
+      return Response.json({ credential: refreshedCredential })
     }
-    if (url === CODEX_MODELS_URL) {
-      return Response.json({ models: [{ slug: 'codex-model', display_name: 'Codex Model' }] })
+    if (url.pathname === '/internal/v1/models') {
+      return Response.json({
+        models: [{ id: 'codex-model', name: 'Codex Model' }],
+        source: 'provider_catalog',
+      })
     }
     throw new Error('Unexpected Codex request')
   })
 
   const result = await service.credentialForDispatch('owner-1', 'connection-1', 'codex-model')
 
-  assert.equal(result?.accessToken, refreshedAccessToken)
-  assert.equal(result?.refreshToken, 'refreshed-refresh-token')
-  assert.ok(requestedUrls.includes(`${CODEX_ISSUER}/oauth/token`))
-  assert.ok(requestedUrls.includes(CODEX_MODELS_URL))
+  assert.deepEqual(result, refreshedCredential)
+  assert.ok(requestedUrls.includes('/internal/v1/refresh'))
+  assert.ok(requestedUrls.includes('/internal/v1/models'))
   assert.notEqual(repository.state?.credentialRef, oldRef)
+})
+
+test('credential dispatch rereads under the refresh lease and skips redundant rotation', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex'
+  const repository = new FakeRepository()
+  const credentials = new FakeCredentials()
+  const stale: BridgeCredential = {
+    backend: 'cliproxyapi', version: 1, providerId: 'codex',
+    metadata: { tokenStorage: { accessToken: 'old', refreshToken: 'rotating' } },
+    expiresAt: Date.now() + 20_000,
+  }
+  const fresh: BridgeCredential = {
+    ...stale,
+    metadata: { tokenStorage: { accessToken: 'new', refreshToken: 'rotated' } },
+    expiresAt: Date.now() + 3_600_000,
+  }
+  const staleRef = await credentials.write({ apiKey: JSON.stringify(stale) })
+  const freshRef = await credentials.write({ apiKey: JSON.stringify(fresh) })
+  repository.state = {
+    userId: 'owner-1', connectionId: 'connection-1', providerId: 'codex',
+    generation: 1, revision: 1, phase: 'active', credentialRef: staleRef,
+    cleanupRefs: [], pendingWrites: [],
+  }
+  repository.acquireRefresh = async () => {
+    repository.state = { ...repository.state, credentialRef: freshRef }
+    return { generation: 1, revision: 1, credentialRef: freshRef, providerId: 'codex' }
+  }
+  let refreshRequests = 0
+  const service = createService(repository, credentials, async (input) => {
+    if (new URL(String(input)).pathname === '/internal/v1/refresh') refreshRequests += 1
+    return Response.json({ models: [{ id: 'codex-model', name: 'Codex Model' }], source: 'provider_catalog' })
+  })
+
+  const result = await service.credentialForDispatch('owner-1', 'connection-1', 'codex-model')
+
+  assert.deepEqual(result, fresh)
+  assert.equal(refreshRequests, 0)
+})
+
+test('legacy native Codex credentials require reconnect without bridge import', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex'
+  const repository = new FakeRepository()
+  const credentials = new FakeCredentials()
+  const legacyRef = await credentials.write({
+    apiKey: JSON.stringify({ v: 1, accessToken: 'legacy', refreshToken: 'legacy-refresh' }),
+  })
+  repository.state = {
+    userId: 'owner-1', connectionId: 'connection-1', providerId: 'codex',
+    generation: 1, revision: 1, phase: 'active', credentialRef: legacyRef,
+    cleanupRefs: [], pendingWrites: [],
+  }
+  let bridgeRequests = 0
+  const service = createService(repository, credentials, async () => {
+    bridgeRequests += 1
+    throw new Error('unexpected bridge request')
+  })
+  await assert.rejects(
+    service.credentialForDispatch('owner-1', 'connection-1', 'codex-model'),
+    /Reconnect your Codex subscription/,
+  )
+  assert.equal(bridgeRequests, 0)
 })

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { generateText, jsonSchema, streamText } from 'ai'
 import { boundedStream, completedResponse, createSubscriptionLanguageModel } from './transport'
+import type { SubscriptionBridgeClient } from './bridge-client'
 
 test('non-stream Responses completion accepts CRLF SSE and returns the completed response', async () => {
   const response = await completedResponse(new Response(
@@ -17,7 +18,7 @@ test('streaming errors are sanitized while preserving SSE error framing', async 
     { headers: { 'content-type': 'text/event-stream' } },
   )
   const text = await new Response(boundedStream(source.body!)).text()
-  assert.match(text, /Codex subscription request failed/)
+  assert.match(text, /Codex is temporarily unavailable/)
   assert.doesNotMatch(text, /private provider detail/)
 })
 
@@ -27,7 +28,7 @@ test('non-stream errors fail with a sanitized message', async () => {
       'data: {"type":"response.failed","response":{"error":{"message":"private detail"}}}\n\n',
       { headers: { 'content-type': 'text/event-stream' } },
     )),
-    /Codex did not complete the response/,
+    /Codex is temporarily unavailable/,
   )
 })
 
@@ -37,7 +38,7 @@ test('non-stream incomplete responses are not reported as completed', async () =
       'data: {"type":"response.incomplete","response":{"error":{"message":"private detail"}}}\n\n',
       { headers: { 'content-type': 'text/event-stream' } },
     )),
-    /Codex did not complete the response/,
+    /Codex is temporarily unavailable/,
   )
 })
 
@@ -73,7 +74,19 @@ function modelWithFetch(fetcher: typeof fetch) {
         lastRefresh: Date.now(),
       }),
     } as never,
-    fetcher,
+    bridge: {
+      infer: async (request, signal) => await fetcher(
+        'http://subscriptions.internal/internal/v1/infer',
+        {
+          method: 'POST',
+          redirect: 'error',
+          cache: 'no-store',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify(request),
+          signal,
+        },
+      ),
+    } as Pick<SubscriptionBridgeClient, 'infer'>,
   })
 }
 
@@ -93,9 +106,10 @@ test('AI SDK generateText uses a completed JSON fixture and stateless storage', 
     maxOutputTokens: 8192,
   })
   assert.equal(result.text, 'fixture response')
-  assert.equal(requestBody?.stream, true)
-  assert.equal(requestBody?.store, false)
-  assert.equal(Object.hasOwn(requestBody ?? {}, 'max_output_tokens'), false)
+  const bridgeRequest = requestBody?.request as Record<string, unknown>
+  assert.equal(bridgeRequest.stream, true)
+  assert.equal(bridgeRequest.store, false)
+  assert.equal(Object.hasOwn(bridgeRequest, 'max_output_tokens'), true)
 })
 
 test('AI SDK tool continuation sends complete history rather than stored item references', { timeout: 5_000 }, async () => {
@@ -119,7 +133,7 @@ test('AI SDK tool continuation sends complete history rather than stored item re
       ] },
     ],
   })
-  const input = requestBody?.input as Array<Record<string, unknown>>
+  const input = (requestBody?.request as Record<string, unknown>).input as Array<Record<string, unknown>>
   assert.ok(input.some((item) => item.type === 'function_call' && item.call_id === 'call-1'))
   assert.ok(input.some((item) => item.type === 'function_call_output' && item.call_id === 'call-1'))
   assert.equal(input.some((item) => item.type === 'item_reference'), false)
@@ -184,6 +198,7 @@ test('AI SDK streamText preserves Responses SSE mode and requires terminal compl
   })
   const result = await streamText({ model, prompt: 'say hello', maxRetries: 0 })
   assert.equal(await result.text, 'streamed')
-  assert.equal(requestBody?.stream, true)
-  assert.equal(requestBody?.store, false)
+  const bridgeRequest = requestBody?.request as Record<string, unknown>
+  assert.equal(bridgeRequest.stream, true)
+  assert.equal(bridgeRequest.store, false)
 })

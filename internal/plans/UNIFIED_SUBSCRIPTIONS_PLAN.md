@@ -1,3 +1,9 @@
+# Superseded
+
+This historical plan was superseded by `CLIPROXYAPI_SUBSCRIPTIONS_PLAN.md`.
+It is retained for its original implementation history and is not the current
+subscription architecture.
+
 # Unified request-based subscription connections
 
 Status: Core implementation for phases 1, 2 and 4 is present for Codex; their

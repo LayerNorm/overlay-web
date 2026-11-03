@@ -3,20 +3,28 @@ import 'server-only'
 import { createOpenAI } from '@ai-sdk/openai'
 import { wrapLanguageModel } from 'ai'
 import type { LanguageModel } from '@/server/ai/provider-types'
-import type { CodexTokenSet } from '@/server/agents/provider-accounts/codex-subscription'
+import { SubscriptionBridgeClient, SubscriptionBridgeError } from './bridge-client'
 import { createSubscriptionService, type SubscriptionService } from './service'
-import { normalizeCodexResponsesBody } from './request-validation'
+import { assertSupportedCodexRequest } from './request-validation'
 
-const CODEX_RESPONSES_ENDPOINT = 'https://chatgpt.com/backend-api/codex/responses'
+const SUBSCRIPTION_RESPONSES_ENDPOINT = 'https://overlay-subscription.invalid/responses'
 const maxRequestBytes = 2_000_000
 const maxResponseBytes = 8_000_000
 const maxEventBytes = 1_000_000
 const safeUpstreamError = 'Codex subscription request failed'
 const safeStreamError = 'Codex did not complete the response'
 
-function errorResponse(status: number, message: string) {
+const safeErrors: Record<string, { message: string; status: number }> = {
+  reconnect_required: { message: 'Reconnect your Codex subscription to continue.', status: 401 },
+  rate_limited: { message: 'Codex is rate-limiting requests. Retry later.', status: 429 },
+  model_unavailable: { message: 'This Codex model is unavailable for the connected account.', status: 400 },
+  provider_unavailable: { message: 'Codex is temporarily unavailable. Retry later.', status: 502 },
+  temporary_failure: { message: 'The subscription service is temporarily unavailable. Retry later.', status: 502 },
+}
+
+function errorResponse(status: number, message: string, code = 'subscription_request_failed') {
   return new Response(JSON.stringify({
-    error: { message, type: 'api_error', code: 'subscription_request_failed' },
+    error: { message, type: 'api_error', code },
   }), {
     status,
     headers: { 'content-type': 'application/json' },
@@ -76,11 +84,22 @@ function encodeSseEvent(value: unknown): Uint8Array {
 }
 
 function failedSseEvent(value: Record<string, unknown>) {
+  const response = value.response
+  const providerError = response && typeof response === 'object'
+    ? (response as Record<string, unknown>).error
+    : undefined
+  const suppliedCode = providerError && typeof providerError === 'object'
+    ? (providerError as Record<string, unknown>).code
+    : undefined
+  const code = typeof suppliedCode === 'string' && safeErrors[suppliedCode]
+    ? suppliedCode
+    : 'provider_unavailable'
+  const safe = safeErrors[code]!
   return {
     type: 'response.failed',
     sequence_number: typeof value.sequence_number === 'number' ? value.sequence_number : 0,
     response: {
-      error: { code: 'subscription_request_failed', message: safeUpstreamError },
+      error: { code, message: safe.message },
       incomplete_details: { reason: 'error' },
     },
   }
@@ -110,7 +129,16 @@ export async function completedResponse(response: Response): Promise<Response> {
         if (event === '[DONE]') throw new Error(safeStreamError)
         const type = event && typeof event === 'object' ? (event as { type?: string }).type : undefined
         if (type === 'response.failed' || type === 'response.incomplete' || type === 'error') {
-          throw new Error(safeStreamError)
+          const value = event && typeof event === 'object' ? event as Record<string, unknown> : {}
+          const providerError = value.response && typeof value.response === 'object'
+            ? (value.response as Record<string, unknown>).error
+            : undefined
+          const code = providerError && typeof providerError === 'object' &&
+            typeof (providerError as Record<string, unknown>).code === 'string'
+            ? (providerError as Record<string, unknown>).code as string
+            : 'provider_unavailable'
+          const safe = safeErrors[code] ?? safeErrors.provider_unavailable!
+          throw new SubscriptionBridgeError(code in safeErrors ? code : 'provider_unavailable', safe.status, safe.message)
         }
         if (type === 'response.completed' && event && typeof event === 'object' &&
             (event as { response?: unknown }).response &&
@@ -127,9 +155,11 @@ export async function completedResponse(response: Response): Promise<Response> {
     throw new Error(safeStreamError)
   } catch (error) {
     await reader.cancel().catch((_cancelError) => undefined)
-    throw error instanceof Error && error.message === safeUpstreamError
+    throw error instanceof SubscriptionBridgeError
       ? error
-      : new Error(safeStreamError)
+      : error instanceof Error && error.message === safeUpstreamError
+        ? error
+        : new Error(safeStreamError)
   } finally {
     reader.releaseLock()
   }
@@ -221,65 +251,88 @@ export function createSubscriptionLanguageModel(args: {
   providerId: string
   modelId: string
   dispatchService?: DispatchService
+  bridge?: Pick<SubscriptionBridgeClient, 'infer'>
   fetcher?: typeof fetch
 }): LanguageModel {
   if (args.providerId !== 'codex') throw new Error('Subscription request adapter is not available')
-  const fetcher = args.fetcher ?? fetch
+  const bridge = args.bridge ?? new SubscriptionBridgeClient(undefined, undefined, args.fetcher ?? fetch)
   const provider = createOpenAI({
     apiKey: 'overlay-subscription-placeholder',
-    baseURL: 'https://chatgpt.com/backend-api/codex',
+    baseURL: 'https://overlay-subscription.invalid',
     fetch: async (input, init) => {
       const target = new URL(input instanceof Request ? input.url : input.toString())
-      if (target.toString() !== CODEX_RESPONSES_ENDPOINT ||
+      if (target.toString() !== SUBSCRIPTION_RESPONSES_ENDPOINT ||
           init?.method?.toUpperCase() !== 'POST') {
         return errorResponse(400, 'Unsupported subscription request')
       }
       let body: Record<string, unknown>
-      let wantsStream = false
+      let requestedStream = false
       try {
         const text = await readRequestBody(input, init)
         const parsed: unknown = JSON.parse(text)
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
           return errorResponse(400, 'Invalid subscription request')
         }
-        const rawBody = parsed as Record<string, unknown>
-        wantsStream = rawBody.stream === true ||
-          new Headers(init?.headers).get('accept')?.includes('text/event-stream') === true
-        body = normalizeCodexResponsesBody(rawBody, args.modelId)
+        body = parsed as Record<string, unknown>
+        requestedStream = body.stream === true
+        assertSupportedCodexRequest(body, args.modelId)
       } catch (error) {
         return errorResponse(400, error instanceof Error ? error.message : 'Invalid subscription request')
       }
       try {
-        const tokens: CodexTokenSet = await (args.dispatchService ?? createSubscriptionService()).credentialForDispatch(
+        const credential = await (args.dispatchService ?? createSubscriptionService()).credentialForDispatch(
           args.ownerId, args.connectionId, args.modelId,
         )
-        const headers = new Headers({
-          accept: 'text/event-stream',
-          authorization: `Bearer ${tokens.accessToken}`,
-          'content-type': 'application/json',
-        })
-        if (tokens.accountId) headers.set('ChatGPT-Account-Id', tokens.accountId)
-        const upstream = await fetcher(CODEX_RESPONSES_ENDPOINT, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(body),
-          redirect: 'error',
-          cache: 'no-store',
-          signal: init?.signal,
-        })
+        const upstream = await bridge.infer({
+          connectionId: args.connectionId,
+          credential,
+          modelId: args.modelId,
+          request: { ...body, stream: true, store: false },
+        }, init?.signal ?? undefined)
         if (!upstream.ok) {
+          let code: unknown
+          try {
+            const body: unknown = await upstream.clone().json()
+            if (body && typeof body === 'object' && 'error' in body &&
+                body.error && typeof body.error === 'object' && 'code' in body.error) {
+              code = body.error.code
+            }
+          } catch (_error) { /* use the generic safe error */ }
           await upstream.body?.cancel().catch((_error) => undefined)
-          return errorResponse(400, safeUpstreamError)
+          const safe = typeof code === 'string' ? safeErrors[code] : undefined
+          return safe
+            ? errorResponse(safe.status, safe.message, code as string)
+            : errorResponse(502, safeUpstreamError, 'provider_unavailable')
         }
         if (!upstream.body) return errorResponse(400, safeStreamError)
-        return wantsStream
-          ? new Response(boundedStream(upstream.body), {
-              status: upstream.status,
-              headers: { 'content-type': 'text/event-stream' },
-            })
-          : await completedResponse(upstream)
+        const streamResponse = new Response(boundedStream(upstream.body), {
+          status: upstream.status,
+          headers: { 'content-type': 'text/event-stream' },
+        })
+        if (requestedStream) return streamResponse
+        try {
+          return await completedResponse(streamResponse)
+        } catch (error) {
+          if (error instanceof SubscriptionBridgeError && safeErrors[error.code]) {
+            const safe = safeErrors[error.code]!
+            return errorResponse(safe.status, safe.message, error.code)
+          }
+          const message = error instanceof Error ? error.message : safeUpstreamError
+          return errorResponse(502, message, 'provider_unavailable')
+        }
       } catch (error) {
         if (error instanceof Error && error.name === 'AbortError') throw error
+        if (error instanceof SubscriptionBridgeError && safeErrors[error.code]) {
+          const safe = safeErrors[error.code]!
+          return errorResponse(safe.status, safe.message, error.code)
+        }
+        if (error instanceof Error) {
+          const matching = Object.entries(safeErrors).find(([, safe]) => safe.message === error.message)
+          if (matching) {
+            const [code, safe] = matching
+            return errorResponse(safe.status, safe.message, code)
+          }
+        }
         return errorResponse(400, safeUpstreamError)
       }
     },
