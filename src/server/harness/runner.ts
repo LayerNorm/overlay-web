@@ -10,19 +10,19 @@ import {
   hasRunnableHarnessMilestones,
   type HarnessSnapshot,
 } from '@overlay/agent-runtime/harness-state'
-import { createHarnessControlTools } from './control-tools'
+import { createHarnessAuthorizedTools } from './authorized-tools'
 import {
   buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessStuckQuestion,
   HARNESS_CONTROL_TOOLS, harnessProgressFingerprint,
 } from './context'
-import { buildHarnessCheckpoint, harnessCandidateDigest } from './continuity'
+import { buildHarnessCheckpoint } from './continuity'
+import { verifyHarnessFinalAnswer } from './final-answer-verification'
 import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSettings } from './ports'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
-import { createHarnessToolApprovals, type HarnessToolApprovals, type HarnessToolExecutionOptions } from './tool-approvals'
+import type { HarnessToolApprovals } from './tool-approvals'
 import { assertNoControlToolReplacement, prepareToolDefinitions } from './tool-definitions'
 import { harnessModelResponseFailure } from './model-usage'
 import { HarnessYield, runHarnessModelInvocation, terminateOnProviderFailure } from './model-recovery'
-import { harnessToolInputDigest } from './tool-input-digest'
 import {
   captureAuthenticatedToolDenials,
   captureObservedToolOutcome,
@@ -31,10 +31,6 @@ import {
   type ObservedToolOutcome,
 } from './tool-outcome-persistence'
 import { stripTextualToolCalls } from './textual-tool-calls'
-
-const DUPLICATE_GUARDED_CREATE_TOOLS = new Set([
-  'create_note', 'create_task', 'create_automation', 'create_folder', 'create_agent',
-])
 
 export type HarnessExecutionInput = {
   instructions: string
@@ -58,54 +54,6 @@ function isTerminal(state: HarnessSnapshot) {
 
 function onlyChildrenRemain(state: HarnessSnapshot) {
   return state.children.some(child => child.status === 'running') && !hasRunnableHarnessMilestones(state)
-}
-
-function duplicateCreateEvidence(state: HarnessSnapshot, name: string, input: unknown): HarnessSnapshot['evidence'][number] | undefined {
-  if (!DUPLICATE_GUARDED_CREATE_TOOLS.has(name)) return undefined
-  const inputDigest = harnessToolInputDigest(name, input)
-  return state.evidence.find(evidence => evidence.kind === 'tool_result'
-    && evidence.verdict !== 'failed' && evidence.source === name && evidence.inputDigest === inputDigest)
-}
-
-function wrapAuthorizedTools(
-  surfaceTools: ToolSet,
-  ports: HarnessExecutionPorts,
-  controls: Set<string>,
-  approvals: HarnessToolApprovals,
-): ToolSet {
-  const definitions = { ...surfaceTools, ...createHarnessControlTools(ports) }
-  let toolTail: Promise<unknown> = Promise.resolve()
-  return Object.fromEntries(Object.entries(definitions).sort(([a], [b]) => a.localeCompare(b)).map(([name, definition]) => {
-    const execute = definition.execute
-    return [name, !execute ? definition : {
-      ...definition,
-      execute: (value: unknown, options: Parameters<NonNullable<typeof execute>>[1]) => {
-        const pending = toolTail.then(async () => {
-          const state = await ports.read()
-          assertHarnessRunnable(state, Date.now())
-          if (!controls.has(name)) {
-            if (!state.policy.allowedToolIds.includes(name)) throw new Error('This tool is not authorized for this run.')
-            if (state.policy.requiresPlan && !state.plan.length) throw new Error('Create the required plan before executing work.')
-            await ports.authorizeTool(name)
-          }
-          const duplicate = duplicateCreateEvidence(state, name, value)
-          if (duplicate) {
-            return {
-              success: false,
-              error: `Duplicate: this exact ${name} call already succeeded as evidence ${duplicate.id}. Cite that evidence instead of repeating it.`,
-            }
-          }
-          const invoke = execute as (
-            input: unknown,
-            options: HarnessToolExecutionOptions,
-          ) => unknown
-          return invoke(value, { ...options, harnessApproved: approvals.consume(name, options.toolCallId, value) })
-        })
-        toolTail = pending.then(() => undefined, () => undefined)
-        return pending
-      },
-    }]
-  }))
 }
 
 type WaitingStateOutcome =
@@ -259,89 +207,34 @@ async function finishOrCheckpointInvocation(
   if (!truncatedResponse && !completionIssues.length && resultSummary) {
     const observedToolEvidence = state.evidence.filter(evidence => evidence.kind === 'tool_result')
     if (observedToolEvidence.length && ports.verifyFinalAnswer) {
-      const digest = await harnessCandidateDigest(resultSummary)
-      const prior = state.finalVerification
-      const attemptId = `segment:${segment}`
-      const sameAttempt = prior?.attemptId === attemptId
-        && prior.candidateDigest === digest && prior.planRevision === state.planRevision
-        && prior.evidenceRevision === state.progressRevision
-      const attempt = sameAttempt ? prior.attempts : (prior?.attempts ?? 0) + 1
-      if (attempt > 3) {
-        await ports.apply(`verify-block:${segment}`, {
-          type: 'block',
-          blocker: { kind: 'stuck', question: 'The final answer remains unsupported after two corrections. Review the persisted observations before continuing.' },
-        })
-        return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
-      }
-      let verification: Awaited<ReturnType<NonNullable<HarnessExecutionPorts['verifyFinalAnswer']>>>
-      try {
-        verification = await ports.verifyFinalAnswer({ state, candidate: resultSummary })
-      } catch (error) {
-        const afterFailure = await ports.read()
-        if (afterFailure.status !== 'running') {
+      const verification = await verifyHarnessFinalAnswer({ state, candidate: resultSummary, segment, ports })
+      if (verification.kind === 'continue') {
+        if (verification.action === 'none') {
           return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
         }
-        if (afterFailure.modelReservation?.id.startsWith('verification:')) {
-          await ports.apply(`verify-pending-result:${segment}:${attempt}`, {
-            type: 'record_verification',
-            verification: {
-              attemptId, candidateDigest: digest, planRevision: state.planRevision,
-              evidenceRevision: state.progressRevision, supported: false,
-              reason: 'Final-answer verification is awaiting provider settlement. No answer was accepted.',
-              evidenceIds: [], attempts: attempt, createdAt: Date.now(),
-            },
-          })
-          if (afterFailure.status === 'running') {
-            await ports.apply(`verification-pending:${segment}`, {
-              type: 'block',
-              blocker: {
-                kind: 'stuck',
-                question: 'Final-answer verification is awaiting provider settlement. No answer was accepted; resume after the hold reconciles.',
-              },
-            })
-          }
-          return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
-        }
-        verification = {
-          supported: false,
-          reason: error instanceof Error ? error.message : 'Final answer verification failed.',
-          evidenceIds: [],
-        }
-      }
-      const verified = await ports.apply(`verify:${segment}:${attempt}`, {
-        type: 'record_verification',
-        verification: {
-          attemptId,
-          candidateDigest: digest,
-          planRevision: state.planRevision,
-          evidenceRevision: state.progressRevision,
-          supported: verification.supported,
-          reason: verification.reason.slice(0, 1_000),
-          evidenceIds: verification.evidenceIds,
-          attempts: attempt,
-          createdAt: Date.now(),
-        },
-      })
-      if (!verification.supported) {
-        if (attempt < 3) {
+        if (verification.action === 'checkpoint') {
           await ports.apply(`checkpoint:${segment}:verification`, {
             type: 'checkpoint',
-            summary: JSON.stringify(buildHarnessCheckpoint(verified)),
+            summary: JSON.stringify(buildHarnessCheckpoint(verification.state)),
             purpose: 'continuation',
             unverifiedNarrative: resultSummary.slice(0, 8_000),
           })
           return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
         }
+        if (verification.action === 'pending') {
+          await ports.apply(`verification-pending:${segment}`, {
+            type: 'block',
+            blocker: { kind: 'stuck', question: verification.question! },
+          })
+          return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
+        }
         await ports.apply(`verify-block:${segment}`, {
           type: 'block',
-          blocker: {
-            kind: 'stuck',
-            question: `Final answer could not be supported by persisted observations: ${verification.reason.slice(0, 900)}`,
-          },
+          blocker: { kind: 'stuck', question: verification.question! },
         })
         return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
       }
-      state = verified
+      state = verification.state
     }
     const completed = await ports.apply(`finish:${segment}`, {
       type: 'finish', ...(resultSummary ? { resultSummary: resultSummary.slice(0, 8_000) } : {}),
@@ -425,8 +318,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   if (!await ports.claim()) {
     return withObservedToolOutcomes({ outcome: 'already_running', snapshot: await ports.read(), messages, steps }, executionOutcomes, authenticatedDenials)
   }
-  const approvals = createHarnessToolApprovals()
-  const tools = wrapAuthorizedTools(input.tools, ports, controls, approvals)
+  const { tools, approvals } = createHarnessAuthorizedTools(input.tools, ports, controls)
   const toolDefinitions = await prepareToolDefinitions(tools)
   const instructions = buildHarnessInstructions(input.instructions)
   let truncatedResponse = false

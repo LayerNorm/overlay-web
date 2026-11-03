@@ -366,59 +366,92 @@ export function recordHarnessVerification(
   return changed(next, now, false)
 }
 
+function validateCompactionIdentity(compaction: HarnessCompaction): void {
+  if (!compaction.cycleId || !compaction.attemptId || compaction.retryCount < 0
+    || compaction.retryCount > 1 || !Number.isSafeInteger(compaction.retryCount)
+    || !Number.isFinite(compaction.updatedAt)) throw new Error('Invalid compaction attempt.')
+}
+
+function validateCompactionStart(
+  state: HarnessSnapshot,
+  previous: HarnessCompaction | undefined,
+  compaction: HarnessCompaction,
+): void {
+  if (state.modelReservation && state.modelReservation.id !== compaction.attemptId) {
+    throw new Error('An unrelated model reservation prevents compaction.')
+  }
+  if (previous?.status === 'started' || previous?.status === 'awaiting_reconciliation') {
+    throw new Error('The active compaction attempt must be reconciled first.')
+  }
+  if (previous?.cycleId === compaction.cycleId
+    && (previous.status !== 'interrupted' || compaction.retryCount !== previous.retryCount + 1)) {
+    throw new Error('Compaction retry order is invalid.')
+  }
+  if (previous?.cycleId !== compaction.cycleId && compaction.retryCount !== 0) {
+    throw new Error('A new compaction cycle must start at attempt zero.')
+  }
+}
+
+function hasMatchingLateCompactionReceipt(
+  state: HarnessSnapshot,
+  previous: HarnessCompaction | undefined,
+  compaction: HarnessCompaction,
+): boolean {
+  return previous?.cycleId === compaction.cycleId
+    && previous.attemptId === compaction.attemptId
+    && previous.status === 'awaiting_reconciliation'
+    && compaction.status === 'interrupted'
+    && compaction.retryCount === previous.retryCount
+    && state.latestReceipt?.id === compaction.attemptId
+    && state.modelReservation?.id !== compaction.attemptId
+}
+
+function hasDuplicateInterruptedCompaction(
+  state: HarnessSnapshot,
+  previous: HarnessCompaction | undefined,
+  compaction: HarnessCompaction,
+): boolean {
+  return previous?.cycleId === compaction.cycleId && previous.attemptId === compaction.attemptId
+    && previous.status === 'interrupted' && compaction.status === 'interrupted'
+    && compaction.retryCount === previous.retryCount && state.latestReceipt?.id === compaction.attemptId
+}
+
+function validateCompactionTransition(
+  state: HarnessSnapshot,
+  previous: HarnessCompaction | undefined,
+  compaction: HarnessCompaction,
+): void {
+  if (!previous || previous.cycleId !== compaction.cycleId || previous.attemptId !== compaction.attemptId
+    || previous.status !== 'started') throw new Error('Compaction transition does not match its active attempt.')
+  if (compaction.status === 'completed' && state.modelReservation?.id === compaction.attemptId) {
+    throw new Error('Compaction cannot complete with an unsettled model hold.')
+  }
+  if (compaction.status === 'awaiting_reconciliation'
+    && state.modelReservation?.id !== compaction.attemptId) {
+    throw new Error('Only the matching unresolved hold can await reconciliation.')
+  }
+}
+
 export function setHarnessCompaction(
   state: HarnessSnapshot,
   compaction: HarnessCompaction,
   now: number,
 ): HarnessSnapshot {
   assertActive(state)
-  if (!compaction.cycleId || !compaction.attemptId || compaction.retryCount < 0
-    || compaction.retryCount > 1 || !Number.isSafeInteger(compaction.retryCount)
-    || !Number.isFinite(compaction.updatedAt)) throw new Error('Invalid compaction attempt.')
+  validateCompactionIdentity(compaction)
   const previous = state.compaction
   if (previous?.cycleId === compaction.cycleId && previous.attemptId === compaction.attemptId
     && JSON.stringify(previous) === JSON.stringify(compaction)) return state
   if (compaction.status === 'started') {
-    if (state.modelReservation && state.modelReservation.id !== compaction.attemptId) {
-      throw new Error('An unrelated model reservation prevents compaction.')
-    }
-    if (previous?.status === 'started' || previous?.status === 'awaiting_reconciliation') {
-      throw new Error('The active compaction attempt must be reconciled first.')
-    }
-    if (previous?.cycleId === compaction.cycleId
-      && (previous.status !== 'interrupted' || compaction.retryCount !== previous.retryCount + 1)) {
-      throw new Error('Compaction retry order is invalid.')
-    }
-    if (previous?.cycleId !== compaction.cycleId && compaction.retryCount !== 0) {
-      throw new Error('A new compaction cycle must start at attempt zero.')
-    }
+    validateCompactionStart(state, previous, compaction)
+  } else if (hasMatchingLateCompactionReceipt(state, previous, compaction)) {
+    const next = mutable(state)
+    next.compaction = { ...compaction }
+    return changed(next, now, false)
+  } else if (hasDuplicateInterruptedCompaction(state, previous, compaction)) {
+    return state
   } else {
-    const matchingLateReceipt = previous?.cycleId === compaction.cycleId
-      && previous.attemptId === compaction.attemptId
-      && previous.status === 'awaiting_reconciliation'
-      && compaction.status === 'interrupted'
-      && compaction.retryCount === previous.retryCount
-      && state.latestReceipt?.id === compaction.attemptId
-      && state.modelReservation?.id !== compaction.attemptId
-    if (matchingLateReceipt) {
-      const next = mutable(state)
-      next.compaction = { ...compaction }
-      return changed(next, now, false)
-    }
-    if (previous?.cycleId === compaction.cycleId && previous.attemptId === compaction.attemptId
-      && previous.status === 'interrupted' && compaction.status === 'interrupted'
-      && compaction.retryCount === previous.retryCount && state.latestReceipt?.id === compaction.attemptId) {
-      return state
-    }
-    if (!previous || previous.cycleId !== compaction.cycleId || previous.attemptId !== compaction.attemptId
-      || previous.status !== 'started') throw new Error('Compaction transition does not match its active attempt.')
-    if (compaction.status === 'completed' && state.modelReservation?.id === compaction.attemptId) {
-      throw new Error('Compaction cannot complete with an unsettled model hold.')
-    }
-    if (compaction.status === 'awaiting_reconciliation'
-      && state.modelReservation?.id !== compaction.attemptId) {
-      throw new Error('Only the matching unresolved hold can await reconciliation.')
-    }
+    validateCompactionTransition(state, previous, compaction)
   }
   const next = mutable(state)
   next.compaction = { ...compaction }
@@ -567,6 +600,21 @@ function nextModelRecovery(previous: HarnessModelRecovery | undefined, receipt: 
   }
 }
 
+function validateFailedInferenceReceipt(state: HarnessSnapshot, receipt: HarnessReceipt): void {
+  if (receipt.rejectionReason !== 'verification_failed' && receipt.rejectionReason !== 'summary_failed') return
+  const reservation = state.modelReservation
+  const dispatch = reservation?.dispatch
+  if (reservation?.id !== receipt.id || reservation.maxCostMicros !== 0
+    || dispatch?.billingReservationId !== null || dispatch.modelId !== receipt.modelId
+    || (receipt.modelId !== 'openrouter/free' && receipt.modelId !== 'overlay/free')
+    || receipt.provider !== 'overlay-free-router' || receipt.costMicros !== 0
+    || receipt.inputTokens !== 0 || receipt.outputTokens !== 0 || receipt.reasoningTokens !== 0
+    || receipt.cacheReadTokens !== 0 || receipt.cacheWriteTokens !== 0
+    || (receipt.externalCostMicros ?? 0) !== 0) {
+    throw new Error('Failed inference reconciliation requires the exact zero-cost unbilled free hold.')
+  }
+}
+
 // The caller must atomically deduplicate receipt.id per run before recording.
 export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessReceipt, now: number): HarnessSnapshot {
   if (state.latestReceipt?.id === receipt.id) {
@@ -574,19 +622,7 @@ export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessRec
     return state
   }
   validateHarnessReceipt(receipt)
-  if (receipt.rejectionReason === 'verification_failed' || receipt.rejectionReason === 'summary_failed') {
-    const reservation = state.modelReservation
-    const dispatch = reservation?.dispatch
-    if (reservation?.id !== receipt.id || reservation.maxCostMicros !== 0
-      || dispatch?.billingReservationId !== null || dispatch.modelId !== receipt.modelId
-      || (receipt.modelId !== 'openrouter/free' && receipt.modelId !== 'overlay/free')
-      || receipt.provider !== 'overlay-free-router' || receipt.costMicros !== 0
-      || receipt.inputTokens !== 0 || receipt.outputTokens !== 0 || receipt.reasoningTokens !== 0
-      || receipt.cacheReadTokens !== 0 || receipt.cacheWriteTokens !== 0
-      || (receipt.externalCostMicros ?? 0) !== 0) {
-      throw new Error('Failed inference reconciliation requires the exact zero-cost unbilled free hold.')
-    }
-  }
+  validateFailedInferenceReceipt(state, receipt)
   const next = mutable(state)
   if (next.modelReservation?.id === receipt.id) next.modelReservation = undefined
   next.latestReceipt = { ...receipt }
