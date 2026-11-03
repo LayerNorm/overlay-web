@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Record standing approval for task-related browser QA and testing, and document secure reuse of saved Convex administration access so preview checks do not require repeated approval or per-PR key requests.
+
 - Require paid, funded workspace admission before chat and hosted execution, remove free-model fallback, and preserve manual drafts plus billing-disabled self-hosted access.
 
 - Recover expected Harness milestone-validation failures across durable workflow steps and guide reporting-only milestones to finish from saved results without repeating completed actions.

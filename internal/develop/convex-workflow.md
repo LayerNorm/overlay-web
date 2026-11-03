@@ -41,6 +41,27 @@ resolution with generated package output unavailable.
 
 ## Isolated PR preview backends
 
+### Persistent agent QA access
+
+The owner authorized persistent team administration for QA through the
+organization's secure `CONVEX_TEAM_ACCESS_TOKEN` secret. Resolve it from the
+secret store at execution time, not from source files or browser storage.
+Use the [Management API](https://docs.convex.dev/management-api) to list project
+deployments and verify the expected project, `preview` type, PR reference,
+identifier, and backend name before accessing data. Obtain deployment-scoped
+credentials programmatically with only the actions needed for the check; reuse
+existing suitable access and revoke temporary diagnostic keys when finished.
+Keep token values out of logs, recordings, source, and PRs. Do not ask the owner
+for another per-PR key while the saved access can supply it; escalate only an
+actual missing, revoked, or insufficient credential after checking it.
+
+This is operator QA access, not a replacement for the controller/build key.
+Never pass the team token to PR builds or install it as
+`CONVEX_PREVIEW_CONTROL_KEY`. Production deployment and release approval rules
+above remain unchanged even when the token has broader permissions.
+
+### Preview deployment and lifecycle
+
 Add `needs-preview` when isolated hosted QA is needed; the trusted controller
 requests the exact PR SHA. Unlabeled PRs create no backend or build.
 `scripts/vercel-build.sh` builds requested PR previews in the `overlay-landing` Vercel project.
