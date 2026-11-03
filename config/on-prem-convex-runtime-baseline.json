@@ -283,6 +283,11 @@
       "target": "internal.agents.mcpCalls.cleanupExpired"
     },
     {
+      "cadence": "{ hours: 1 }",
+      "name": "expired harness context artifacts",
+      "target": "internal.harness.artifacts.cleanupExpired"
+    },
+    {
       "cadence": "{ hours: 6 }",
       "name": "function metrics cleanup",
       "target": "(internal as any).platform.metrics.cleanupOldMetricsInternal"
@@ -451,6 +456,7 @@
     "src/server/files/FileService.ts",
     "src/server/files/FileServicePayloads.ts",
     "src/server/harness/ConvexHarnessRepository.ts",
+    "src/server/harness/artifact-steps.ts",
     "src/server/harness/delivery-wait-projection.ts",
     "src/server/harness/model-dispatch.ts",
     "src/server/harness/native-access.ts",
