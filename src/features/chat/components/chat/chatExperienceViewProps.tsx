@@ -3,7 +3,7 @@
 import { appendDictatedText } from '@/components/desktop/composer-dictation'
 
 import { MODEL_RECOMMENDATIONS } from '@/shared/ai/gateway/model-data'
-import { latestContextUsage } from '@overlay/chat-react'
+import { latestContextUsage, UsageExhaustedNotice } from '@overlay/chat-react'
 import type React from 'react'
 import {
   ChevronDown,
@@ -129,7 +129,6 @@ export function buildChatExperienceViewProps(
               params.delete('tab')
               c.router.replace(`${c.pathname}?${params.toString()}`)
             },
-            isFreeTier: c.isFreeTier,
           }
         : null,
     upgradeModelDialogProps: {
@@ -246,9 +245,7 @@ export function buildChatExperienceViewProps(
                 isBudgetExhaustedPaid: c.isBudgetExhaustedPaid,
                 premiumModelBlocked: c.premiumModelBlocked,
               }) ? (
-                <div className="flex items-center gap-2 rounded-2xl border border-(--border) bg-(--background) px-4 py-3 text-xs text-(--muted)">
-                  This model requires a paid plan. Switch to Auto or upgrade.
-                </div>
+                <UsageExhaustedNotice />
               ) : null,
             },
             inputState: {

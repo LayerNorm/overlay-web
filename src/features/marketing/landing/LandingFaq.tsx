@@ -19,7 +19,7 @@ const FAQ_ITEMS: { q: string; a: string }[] = [
   },
   {
     q: 'Is Overlay open source?',
-    a: 'Yes. The core is AGPL-3.0 with hosted and self-hosted options, plus commercial licensing for organizations that need different terms. The free tier needs no card.',
+    a: 'Yes. The core is AGPL-3.0 with hosted and self-hosted options, plus commercial licensing for organizations that need different terms. Set up your workspace before choosing the $8/month usage credit. There is no trial; bring your own model credentials if you prefer.',
   },
 ]
 

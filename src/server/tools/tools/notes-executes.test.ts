@@ -48,6 +48,7 @@ test('get_note returns Markdown, a revision, and the outline-solid', async () =>
     assert.equal(result.success, true)
     assert.deepEqual('note' in result ? result.note : null, {
       noteId: 'note_1',
+      url: '/app/w/ws_1/notes?id=note_1&scope=personal',
       title: 'Doc',
       content: '# Doc\n\n## Tasks\n\n- a\n',
       tags: [],
@@ -79,6 +80,34 @@ test('create_note links new notes to its conversation only when available', asyn
     assert.equal('conversationId' in (bodies[1] ?? {}), false)
     assert.deepEqual(created.saved, { title: 'Plan', tags: [] })
     assert.deepEqual(personal.saved, { title: 'Personal', tags: [] })
+    assert.equal(created.url, '/app/w/ws_1/notes?id=note_created&scope=personal')
+    assert.equal(personal.url, '/app/w/ws_1/notes?id=note_created&scope=personal')
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('note links preserve workspace and saved scope without a deployment host', async () => {
+  const originalFetch = globalThis.fetch
+  const note = {
+    _id: 'note /?&', title: 'Saved', content: 'Body', tags: [], createdAt: 1, updatedAt: 2,
+    scope: 'workspace',
+  }
+  globalThis.fetch = (async (_input, init) => Response.json(
+    init?.method === 'POST' ? { id: note._id, note } : note,
+  )) as typeof fetch
+  try {
+    const expected = '/app/w/saved%20workspace/notes?id=note%20%2F%3F%26&scope=workspace'
+    for (const baseUrl of ['https://getoverlay.io', 'https://pr-378.preview.getoverlay.io']) {
+      const scopedOptions = { ...options, baseUrl, workspaceId: 'saved workspace' }
+      const created = await executeCreateNote(scopedOptions, { title: 'Saved', content: 'Body' })
+      const loaded = await executeGetNote(scopedOptions, { noteId: note._id })
+      assert.equal(created.url, expected)
+      assert.equal('note' in loaded && loaded.note.url, expected)
+    }
+    globalThis.fetch = (async () => Response.json({ id: 'legacy-note', note: null })) as typeof fetch
+    const legacy = await executeCreateNote({ userId: 'user_1' }, { title: 'Legacy', content: 'Body' })
+    assert.equal(legacy.url, '/app/notes?id=legacy-note&scope=personal')
   } finally {
     globalThis.fetch = originalFetch
   }

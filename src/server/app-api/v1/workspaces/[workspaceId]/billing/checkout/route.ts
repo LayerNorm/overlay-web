@@ -25,6 +25,7 @@ export async function POST(request: Request, context: AppApiRouteContext) {
       planAmountCents: Number(context.parsedJson.planAmountCents),
       topUpAmountCents: Number(context.parsedJson.topUpAmountCents),
       autoTopUpEnabled: Boolean(context.parsedJson.autoTopUpEnabled),
+      ...(context.parsedJson.returnTo === 'onboarding' ? { returnTo: 'onboarding' } : {}),
     }))
   } catch (error) {
     return billingErrorResponse(error, 'Failed to create workspace checkout.')

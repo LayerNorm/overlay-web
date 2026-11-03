@@ -119,6 +119,58 @@ test('fenced code renders the shared Code Block', () => {
   assert.match(rendered('```python\na = 1\n```'), /data-slot="code-block"/)
 })
 
+test('workspace-scoped note links remain clickable beyond 96 characters', () => {
+  const href = '/app/w/11111111-1111-1111-1111-111111111111/notes?id=22222222-2222-2222-2222-222222222222&scope=personal'
+  assert.ok(href.length > 96)
+  for (const streaming of [false, true]) {
+    const html = rendered(`[Saved note](${href})`, streaming)
+    assert.ok(html.includes(`href="${href.replaceAll('&', '&amp;')}"`))
+    assert.match(html, /Saved note<\/a>/)
+  }
+})
+
+test('garbled composite internal links remain plain text', () => {
+  for (const delimiter of ['|', '%7C']) {
+    const html = rendered(`[Saved note](/app/notes?id=one${delimiter}two)`)
+    assert.match(html, /Saved note/)
+    assert.doesNotMatch(html, /href=/)
+  }
+})
+
+test('published file download links stay clickable and resolve against the app origin', () => {
+  const href = '/api/v1/files/files%3Apublished/content'
+  for (const isStreaming of [false, true]) {
+    for (const appBaseUrl of [undefined, 'https://app.example.com/']) {
+      for (const text of [`[Download ZIP](${href})`, `**Download link:** \`${href}\``, `Download link: ${href}.`]) {
+        const html = renderToStaticMarkup(React.createElement(MarkdownMessage, {
+          text, isStreaming, appBaseUrl, suppressTypingIndicator: true,
+        }))
+        const expectedHref = appBaseUrl ? `https://app.example.com${href}` : href
+        assert.ok(html.includes(`href="${expectedHref}"`))
+        assert.equal(html.match(/<a /g)?.length, 1)
+      }
+    }
+  }
+})
+
+test('file download linkification preserves code blocks, unrelated paths and existing links', () => {
+  const href = '/api/v1/files/files%3Apublished/content'
+  for (const isStreaming of [false, true]) {
+    for (const text of [
+      `\`\`\`text\n${href}\n\`\`\``,
+      '`/api/v1/files/files%3Apublished/content?query=1`',
+      '`https://external.example/api/v1/files/files%3Apublished/content`',
+      '`/home/user/launch-kit.zip`',
+      'Download link: /api/v1/files/files%3Apublished/content/other',
+    ]) {
+      assert.doesNotMatch(rendered(text, isStreaming), /href=/)
+    }
+    const html = rendered(`[\`${href}\`](https://external.example)`, isStreaming)
+    assert.equal(html.match(/<a /g)?.length, 1)
+    assert.doesNotMatch(html, /href="\/api\/v1\/files\//)
+  }
+})
+
 test('unfinished emphasis is styled while streaming', () => {
   assert.match(rendered('Some **bold text', true), /<strong>bold text<\/strong>/)
 })

@@ -22,6 +22,7 @@ import type { WorkspaceAgentService } from '@/server/agents/WorkspaceAgentServic
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
 import { WorkServiceError, type WorkService } from '@/server/work/WorkService'
 import type { OnboardingStateRepository } from './OnboardingStateRepository'
+import { requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
 
 const MAX_STATE_LENGTH = 64_000
 type Outbox = { clientNonce: string; content: string; kind: 'user' | 'assistant' }
@@ -42,6 +43,7 @@ export type OnboardingEffects = {
   workspaces: Pick<WorkspaceService, 'listInvitations'>
 }
 export type OnboardingServiceDependencies = {
+  requireExecution?: typeof requireWorkspaceExecution
   repository: OnboardingStateRepository
   effects: OnboardingEffects
   reply?: OnboardingReplyFactory
@@ -78,6 +80,18 @@ export class ConversationalOnboardingService {
     if (!state) return { completed: false, session: null }
     this.assertWorkspace(state.session, workspaceId)
     await this.recover(state)
+    const session = state.session
+    if (session.step === 'task' && session.taskDraft && session.taskId) {
+      const task = await this.deps.effects.work.get({ id: session.taskId, userId, workspaceId }).catch(error => {
+        if (error instanceof WorkServiceError && error.statusCode === 404) return null
+        throw error
+      })
+      if (task?.workspaceId === workspaceId && task.createdBy === userId
+        && task.assigneePrincipalId === session.agentPrincipalId && task.assignmentExecution?.status === 'started') {
+        const next = await this.reduceFinish(state, userId, { action: 'finish', runId: session.runId, revision: session.revision, taskId: task.id })
+        return this.commit(userId, workspaceId, session.revision, next.state, next.completed)
+      }
+    }
     return { completed: false, session: state.session }
   }
 
@@ -140,6 +154,23 @@ export class ConversationalOnboardingService {
   }
 
   private async reduce(state: StoredState, userId: string, action: Exclude<OnboardingAction, { action: 'start' }>) {
+    if (action.action === 'save_task') {
+      const current = state.session
+      if (current.step !== 'task' || !current.taskDraft) throw new OnboardingServiceError('Prepare a first-task draft first', 409, 'invalid_step')
+      const task = await this.deps.effects.work.get({ id: action.taskId, userId, workspaceId: current.workspaceId })
+      if (task.workspaceId !== current.workspaceId || task.createdBy !== userId) throw new OnboardingServiceError('Task is not available in this workspace', 403, 'task_forbidden')
+      return { completed: false, state: { ...state, session: { ...current, revision: current.revision + 1, taskId: task.id }, outbox: [] } }
+    }
+    if (action.action === 'draft_task') {
+      const current = state.session
+      if (current.step !== 'task') throw new OnboardingServiceError('Drafts are only accepted at the task step', 409, 'invalid_step')
+      const revision = current.revision + 1
+      const reply = { ...current.reply, message: "I've saved your first task. We'll check your workspace budget before we start." }
+      return { completed: false, state: { ...state, session: { ...current, revision, taskDraft: action.value, reply }, outbox: [
+        { clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: action.value, kind: 'user' as const },
+        { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const },
+      ] } }
+    }
     if (action.action === 'answer') return this.reduceAnswer(state, userId, action)
     if (action.action === 'back') return this.reduceBack(state, userId)
     if (action.action === 'advance') return this.reduceAdvance(state, userId, action)
@@ -275,6 +306,13 @@ export class ConversationalOnboardingService {
       throw error
     }
     if (task.workspaceId !== current.workspaceId || task.createdBy !== userId) throw new OnboardingServiceError('Task is not available in this workspace', 403, 'task_forbidden')
+    const startedDraft = Boolean(current.taskDraft && current.taskId === task.id
+      && task.assigneePrincipalId === current.agentPrincipalId && task.assignmentExecution?.status === 'started')
+    // Completing an already-started task is recovery, not admission of more work.
+    if (!startedDraft) await (this.deps.requireExecution ?? requireWorkspaceExecution)({ userId, workspaceId: current.workspaceId, checkBudget: false })
+    if (current.taskDraft && !startedDraft) {
+      throw new OnboardingServiceError('Start your saved task before completing setup.', 409, 'task_not_started')
+    }
     const reply = await this.makeReply('complete', current.profile, current.aiEnabled, {})
     const revision = current.revision + 1
     return {
@@ -371,9 +409,9 @@ function isValidState(value: unknown, userId: string): value is StoredState {
 function isValidOnboardingSession(value: unknown): value is OnboardingSession {
   if (!isObjectRecord(value)) return false
   const session = value as Record<string, unknown>
-  const sessionKeys = ['version', 'runId', 'revision', 'workspaceId', 'conversationId', 'agentId', 'agentPrincipalId', 'step', 'profile', 'aiEnabled', 'reply', 'employees', 'suggestions', 'createdAgentIds', 'taskId']
-  const optionalKeys = ['flowVersion', 'member'].filter((key) => Object.hasOwn(session, key))
-  if (!isExactKeys(value, [...(session.taskId === undefined ? sessionKeys.slice(0, -1) : sessionKeys), ...optionalKeys])) return false
+  const sessionKeys = ['version', 'runId', 'revision', 'workspaceId', 'conversationId', 'agentId', 'agentPrincipalId', 'step', 'profile', 'aiEnabled', 'reply', 'employees', 'suggestions', 'createdAgentIds']
+  const optionalKeys = ['flowVersion', 'member', 'taskId', 'taskDraft'].filter((key) => Object.hasOwn(session, key))
+  if (!isExactKeys(value, [...sessionKeys, ...optionalKeys])) return false
   if (session.flowVersion !== undefined && ![2, 3].includes(session.flowVersion as number)) return false
   if (session.member !== undefined && typeof session.member !== 'boolean') return false
   if (session.version !== 1
@@ -392,7 +430,14 @@ function isValidOnboardingSession(value: unknown): value is OnboardingSession {
   return isValidProfile(session.profile) &&
     isValidStoredReply(session.reply) &&
     isValidSessionCollections(session) &&
-    (session.step === 'complete' ? boundedString(session.taskId, 1, 200) : session.taskId === undefined)
+    isValidOnboardingTask(session)
+}
+
+function isValidOnboardingTask(session: Record<string, unknown>): boolean {
+  if (session.taskDraft !== undefined && !boundedString(session.taskDraft, 1, 3000)) return false
+  return session.taskId === undefined
+    ? session.step !== 'complete'
+    : boundedString(session.taskId, 1, 200)
 }
 
 function isValidProfile(value: unknown): value is OnboardingProfile {

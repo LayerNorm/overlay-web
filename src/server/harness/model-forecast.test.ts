@@ -85,14 +85,13 @@ test('reserves at the highest input, cache-write and output tier rates', async (
   expect(estimate).toBeLessThanOrEqual(651)
 })
 
-test('unknown or negative prices fail closed, while BYOK and the free router have no Overlay cost', async () => {
+test('unknown or negative prices fail closed, retired models are refused, and BYOK has no Overlay cost', async () => {
   for (const pricing of [{ input: 1, output: 1 }, { input: -1, input_cache_write: 1, output: 1 }]) {
     mocks.catalog.mockResolvedValue({ type: 'language', pricing })
     await expect(forecastHarnessModelCost(request)).rejects.toThrow()
   }
   expect(await forecastHarnessModelCost({ ...request, modelId: 'byok/connection/model' })).toBe(0)
-  expect(await forecastHarnessModelCost({ ...request, modelId: 'openrouter/free', cacheWrites: false })).toBe(0)
-  await expect(forecastHarnessModelCost({ ...request, modelId: 'openrouter/free' })).rejects.toThrow(/cache writes/)
+  await expect(forecastHarnessModelCost({ ...request, modelId: 'openrouter/free', cacheWrites: false })).rejects.toThrow(/retired/)
   await expect(forecastHarnessModelCost({ ...request, inputTokenBudget: -1 })).rejects.toThrow(/limits/)
 })
 

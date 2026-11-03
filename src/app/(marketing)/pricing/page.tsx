@@ -5,7 +5,7 @@ import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 export const metadata: Metadata = {
   title: 'Pricing',
   description:
-    'Every workspace is free or paid. Paid starts at $8 a month, becomes credit, and is billed as you go, one line per resource.',
+    'Set up your workspace before choosing the $8/month usage credit. Payment is required before execution; there is no trial. Bring your own model credentials if preferred.',
   alternates: {
     canonical: '/pricing',
   },

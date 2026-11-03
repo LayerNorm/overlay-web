@@ -3,7 +3,7 @@ import 'server-only'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import type { UIMessage } from 'ai'
-import { FREE_TIER_DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { compactMessagesForContext, summaryGenerationOptions } from './context-compaction'
 
 function textMessage(id: string, role: 'user' | 'assistant', text: string): UIMessage {
@@ -67,7 +67,7 @@ test('context compaction summarizes old messages and preserves the newest two ex
   assert.equal(result.summaryToPersist?.summarizedThroughMessageId, 'm8')
 })
 
-test('context compaction uses the free summarizer for hosted target models', async () => {
+test('context compaction uses the paid default summarizer for hosted target models', async () => {
   const result = await compactMessagesForContext({
     messages: longMessages(10),
     targetModelId: 'claude-sonnet-4-6',
@@ -75,7 +75,7 @@ test('context compaction uses the free summarizer for hosted target models', asy
     generateSummaryText: async () => 'Hosted model summary.',
   })
 
-  assert.equal(result.summaryToPersist?.summarizerModelId, FREE_TIER_DEFAULT_MODEL_ID)
+  assert.equal(result.summaryToPersist?.summarizerModelId, DEFAULT_MODEL_ID)
 })
 
 test('context compaction uses the selected BYOK model unless a summarizer is explicit', async () => {

@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 import { billingCustomerService, billingErrorResponse } from '@/server/billing/http'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { BillingPayerResolutionError } from '@/server/billing/BillingPayerResolver'
 
 type SubscriptionRouteDependencies = {
   getAppSubscription: typeof billingCustomerService.getAppSubscription
@@ -26,10 +27,13 @@ export async function GET(
     const payer = await resolvePayer({
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
+    }).catch((error: unknown) => {
+      if (error instanceof BillingPayerResolutionError && error.code === 'workspace_wallet_not_configured') return null
+      throw error
     })
     const response = await getAppSubscription({
       userId: auth.userId,
-      ...(payer.scope === 'workspace'
+      ...(!payer ? { unfundedWorkspace: true } : payer.scope === 'workspace'
         ? { billingAccountId: payer.billingAccountId }
         : {}),
     })

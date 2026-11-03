@@ -62,6 +62,7 @@ export interface AssistantSegmentRenderContext {
   webSources?: WebSourceItem[]
   suppressTypingIndicator?: boolean
   resolveFileHref?: ComponentProps<typeof MarkdownMessage>['resolveFileHref']
+  toolResourceHrefs?: ComponentProps<typeof MarkdownMessage>['toolResourceHrefs']
   onOpenDraft: (state: DraftModalState) => void
   onCreateAutomationDraft: (state: AutomationDraftModalState) => void | Promise<void>
   onOpenAttachmentPreview?: (
@@ -309,6 +310,7 @@ function TextSegmentItem({ seg, ctx }: SegmentItemProps<'text'>) {
           webSources={isLastText && ctx.webSources && ctx.webSources.length > 0 ? ctx.webSources : undefined}
           suppressTypingIndicator={ctx.suppressTypingIndicator}
           resolveFileHref={ctx.resolveFileHref}
+          toolResourceHrefs={ctx.toolResourceHrefs}
           onOpenAttachmentPreview={ctx.onOpenAttachmentPreview}
         />
       </MarkdownConnectorActionsContext.Provider>

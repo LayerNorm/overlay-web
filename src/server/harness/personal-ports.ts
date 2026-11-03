@@ -1,7 +1,7 @@
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts } from './ports'
 import type { PersonalHarnessToolsInput } from './personal-tools'
-import { createPersonalHarnessModelPorts, type PersonalHarnessModelRouting } from './personal-model-ports'
+import { createPersonalHarnessModelPorts } from './personal-model-ports'
 import { createHarnessExecutionPorts, type HarnessSurfacePorts } from './execution-ports'
 
 export async function authorizePersonalHarnessExecution(
@@ -36,7 +36,6 @@ export async function admitPersonalHarnessExecution(
 export function createPersonalHarnessExecutionPorts(
   input: Pick<PersonalHarnessToolsInput, 'access' | 'context'> & { contextBudgetTokens?: number },
   surface: HarnessSurfacePorts,
-  routing?: PersonalHarnessModelRouting,
   // The post-claim snapshot when the workflow already ran admitPersonalHarnessExecution.
   admitted?: HarnessSnapshot,
 ): HarnessExecutionPorts {
@@ -44,7 +43,7 @@ export function createPersonalHarnessExecutionPorts(
     reference: input.access,
     modelId: input.context.effectiveModelId,
     authorize: toolName => authorizePersonalHarnessExecution(input, toolName),
-    model: createPersonalHarnessModelPorts(input, routing),
+    model: createPersonalHarnessModelPorts(input),
     surface,
     ...(admitted ? { admitted } : {}),
   })

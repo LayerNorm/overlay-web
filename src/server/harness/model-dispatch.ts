@@ -31,7 +31,7 @@ function assertPreparedDispatch(
   input: HarnessModelDispatch,
   options: LanguageModelV4CallOptions,
 ): void {
-  if ((reference.personal && reference.native) || reference.credentialOwnerId !== input.access.actorUserId || reference.allowLowBalanceFallback !== false) {
+  if ((reference.personal && reference.native) || reference.credentialOwnerId !== input.access.actorUserId) {
     throw new FatalError('Harness model dispatch identity or routing is invalid.')
   }
   if (!Number.isSafeInteger(input.maxOutputTokens) || input.maxOutputTokens <= 0

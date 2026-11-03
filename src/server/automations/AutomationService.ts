@@ -16,6 +16,7 @@ import {
   type AutomationEntitlementPolicy,
 } from './AutomationEntitlementPolicy'
 import type { AutomationScheduleWorkflowInput } from '@/server/workflows/automation-schedule'
+import { requireWorkspaceExecution, WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
 
 const MIN_INTERVAL_MINUTES = 15
 
@@ -63,6 +64,7 @@ export type AutomationServiceDeps = {
   executor?: AutomationExecutor
   lifecycleEvents?: () => LifecycleEventPublisher
   repository: AutomationRepository
+  requireExecution?: typeof requireWorkspaceExecution
 }
 
 type CreateAutomationBody = {
@@ -687,6 +689,29 @@ export class AutomationService {
     // starting a second execution for the same run.
     if (run.workflowRunId) {
       return { ok: true, durable: true, runId: run._id, workflowRunId: run.workflowRunId }
+    }
+
+    if (!automation.workspaceId) {
+      const message = 'Automation is missing its workspace billing scope.'
+      await this.markRunFailed({ runId: run._id, userId: automation.userId, error: message })
+      serviceError({
+        error: 'workspace_execution_required',
+        code: 'workspace_execution_required',
+        message,
+        recovery: 'contact_owner',
+      }, 402)
+    }
+    try {
+      await (this.deps.requireExecution ?? requireWorkspaceExecution)({
+        userId: automation.userId,
+        workspaceId: automation.workspaceId,
+      })
+    } catch (error) {
+      if (error instanceof WorkspaceExecutionError) {
+        await this.markRunFailed({ runId: run._id, userId: automation.userId, error: error.message })
+        throw new AutomationServiceError(error.payload, error.statusCode)
+      }
+      throw error
     }
 
     const scheduleInput: AutomationScheduleWorkflowInput = {

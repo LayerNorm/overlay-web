@@ -153,6 +153,14 @@ export class ConvexBillingRepository implements BillingRepository {
     }, { throwOnError: true })
   }
 
+  async confirmBillingAccountPaidPeriod(args: Parameters<BillingRepository['confirmBillingAccountPaidPeriod']>[0]) {
+    const result = await convex.mutation<{ applied: boolean }>('billing/accountSubscriptions:fundPaidPeriodByServer', {
+      ...args, serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!result) throw new Error('Failed to confirm paid workspace funding')
+    return result
+  }
+
   async recordBillingAccountTopUp(args: {
     actorUserId: string
     amountCents: number

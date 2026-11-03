@@ -110,7 +110,7 @@ async function generateTitleWithModel({
   let started = false
   try {
     abortSignal.throwIfAborted()
-    const languageModel = await getLanguageModel(modelId, auth.accessToken, auth.userId, { allowLowBalanceFallback: false })
+    const languageModel = await getLanguageModel(modelId, auth.accessToken, auth.userId)
     abortSignal.throwIfAborted()
     await chatUsagePolicy.markReservationStarted({
       userId: auth.userId,
@@ -156,7 +156,6 @@ async function generateTitleWithModel({
 
   const usage = result.usage as { inputTokens?: number; outputTokens?: number } | undefined
   await chatUsagePolicy.recordFinishedUsage({
-    forceFreeTierLimits: false,
     inputTokens: usage?.inputTokens ?? estimatedInputTokens,
     modelId,
     outputTokens: usage?.outputTokens ?? MAX_OUTPUT_TOKENS,

@@ -13,7 +13,7 @@ vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class {
   getSurfaceExecutionByHarnessRunId = mocks.surfaceExecution
 } }))
 vi.mock('@/server/agents/workspace-agent-invocation', () => ({
-  loadRoomTurnContext: mocks.room, agentModelAttempts: (modelId: string) => [modelId, 'openrouter/free'],
+  loadRoomTurnContext: mocks.room, agentModelAttempts: (modelId: string) => [modelId],
 }))
 vi.mock('@/server/conversations/http', () => ({ actEntitlementService: { gateModelPolicy: mocks.gate } }))
 vi.mock('@/server/ai/model-policy-authority', () => ({ resolveAuthorizedModelIds: mocks.models }))

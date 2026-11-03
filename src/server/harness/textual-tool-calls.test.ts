@@ -16,6 +16,15 @@ test('strips unterminated tool-call blocks and leaves incomplete marker text alo
   expect(stripTextualToolCalls('The marker is <tool_cal', toolNames)).toBe('The marker is <tool_cal')
 })
 
+test.each(['｜', '|'])('strips complete and truncated DSML tool calls using %s delimiters', delimiter => {
+  const open = `<${delimiter}DSML${delimiter}tool_calls>`
+  const close = `</${delimiter}DSML${delimiter}tool_calls>`
+  const invoke = `<${delimiter}DSML${delimiter}invoke name="harness_update_step">`
+  expect(stripTextualToolCalls(`Before\n\n${open}${invoke}${close}\n\nAfter`, toolNames)).toBe('Before\n\nAfter')
+  expect(stripTextualToolCalls(`${open}${invoke}`, toolNames)).toBe('')
+  expect(stripTextualToolCalls('The marker is <｜DSML｜tool_cal', toolNames)).toBe('The marker is <｜DSML｜tool_cal')
+})
+
 test('strips known tool JSON objects and arrays, including fenced blocks and standalone lines', () => {
   const call = '{"name":"harness_update_step","parameters":{"id":"step1","status":"done"}}'
   expect(stripTextualToolCalls(call, toolNames)).toBe('')

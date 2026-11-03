@@ -14,7 +14,7 @@ test.each([
   ['native-tool-steps.ts', ['nativeHarnessToolNeedsApproval', 'executeNativeHarnessTool', 'dispatchNativeHarnessAgentRequest']],
   ['native-named-child-launch.ts', ['startNativeHarnessNamedChild']],
   ['native-child-steps.ts', ['admitNativeHarnessChild']],
-  ['native-delivery-steps.ts', ['writeNativeHarnessFallback', 'attachNativeHarnessDelivery',
+  ['native-delivery-steps.ts', ['attachNativeHarnessDelivery',
     'projectNativeHarnessWait', 'finishNativeHarnessDelivery']],
   ['resource-wait-steps.ts', ['createHarnessResourceToken', 'publishHarnessResourceWait', 'consumeHarnessResourceWait']],
 ] as const)('compiled %s exposes only durable server steps', async (filename, exports) => {

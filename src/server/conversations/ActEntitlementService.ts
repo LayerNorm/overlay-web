@@ -1,15 +1,15 @@
 import 'server-only'
 
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
-import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
-import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 import {
-  buildInsufficientCreditsPayload,
-  canUsePaidBudgetFeatures,
   ensurePayerBudgetAvailable,
   getBudgetTotals,
-  isPaidPlan,
 } from '@/server/billing/billing-runtime'
+import {
+  requireWorkspaceExecution,
+  WorkspaceExecutionError,
+} from '@/server/billing/WorkspaceExecutionPolicy'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
 import type { ActConversationRepository } from './ActConversationRepository'
 import type { ActUsagePolicy } from './ActUsagePolicy'
@@ -38,38 +38,18 @@ export type ActModelGateResult = {
 export class ActEntitlementService {
   constructor(private readonly deps: {
     usagePolicy?: Pick<ActUsagePolicy, 'getEntitlements'>
+    requireExecution?: typeof requireWorkspaceExecution
     repository: ActConversationRepository
   }) {}
 
-  // Authorization only. Each provider operation must separately reserve its
-  // spend; an existing reservation must not revoke access or trigger a top-up.
   async gateModelPolicy(args: {
     effectiveModelId: string
     userId: string
     workspaceId?: string
     programmaticSubjectId?: string
   }): Promise<ActModelGateResult> {
-    const [entitlements, appSettings] = await Promise.all([
-      this.getEntitlements(args),
-      this.deps.repository.getAppSettings({ userId: args.userId }),
-    ])
-    if (!entitlements) {
-      serviceError({ error: 'Unauthorized', message: 'Could not verify subscription. Try signing out and back in.' }, 401)
-    }
-    const paid = isPaidPlan(entitlements)
-    if (!paid && !isByokModelId(args.effectiveModelId) && !isFreeTierChatModelId(args.effectiveModelId)) {
-      serviceError({
-        error: 'premium_model_not_allowed',
-        message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.',
-      }, 403)
-    }
-    if (paid && appSettings?.onlyAllowZdrModels && !modelSupportsZeroDataRetention(args.effectiveModelId)) {
-      serviceError({
-        error: 'zdr_model_required',
-        message: 'Your settings only allow zero data retention models. Choose a ZDR-supported model to continue.',
-      }, 400)
-    }
-    return { appSettings, paid, runtimeEntitlements: entitlements }
+    const { appSettings, entitlements } = await this.authorizeModel(args)
+    return { appSettings, paid: true, runtimeEntitlements: entitlements }
   }
 
   async gateModelAccess(args: {
@@ -78,24 +58,10 @@ export class ActEntitlementService {
     workspaceId?: string
     programmaticSubjectId?: string
   }): Promise<ActModelGateResult> {
-    const [entitlements, appSettings] = await Promise.all([
-      this.getEntitlements(args),
-      this.deps.repository.getAppSettings({ userId: args.userId }),
-    ])
-
-    if (!entitlements) {
-      serviceError(
-        { error: 'Unauthorized', message: 'Could not verify subscription. Try signing out and back in.' },
-        401,
-      )
-    }
-
+    const { appSettings, billingEnabled, entitlements } = await this.authorizeModel(args)
     let runtimeEntitlements = entitlements
-    const budget = getBudgetTotals(runtimeEntitlements)
-    const usesUserProviderKey = isByokModelId(args.effectiveModelId)
-    const effectiveModelSupportsZdr = modelSupportsZeroDataRetention(args.effectiveModelId)
 
-    if (!usesUserProviderKey && isPaidPlan(runtimeEntitlements) && budget.remainingCents <= 0) {
+    if (billingEnabled && getBudgetTotals(runtimeEntitlements).remainingCents <= 0) {
       const autoTopUp = await ensurePayerBudgetAvailable({
         userId: args.userId,
         entitlements: runtimeEntitlements,
@@ -106,36 +72,11 @@ export class ActEntitlementService {
       runtimeEntitlements = autoTopUp.entitlements
     }
 
-    let paid = canUsePaidBudgetFeatures(runtimeEntitlements)
-    if (!paid) {
-      if (!usesUserProviderKey && !isFreeTierChatModelId(args.effectiveModelId)) {
-        if (isPaidPlan(runtimeEntitlements)) {
-          serviceError(
-            buildInsufficientCreditsPayload(
-              runtimeEntitlements,
-              'No budget remaining. Switch to a free model or top up your account.',
-            ),
-            402,
-          )
-        }
-        serviceError(
-          {
-            error: 'premium_model_not_allowed',
-            message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.',
-          },
-          403,
-        )
-      }
-    }
-    if (paid && appSettings?.onlyAllowZdrModels && !effectiveModelSupportsZdr) {
-      serviceError(
-        {
-          error: 'zdr_model_required',
-          message: 'Your settings only allow zero data retention models. Choose a ZDR-supported model to continue.',
-        },
-        400,
-      )
-    }
+    await this.requireExecution({
+      userId: args.userId,
+      workspaceId: args.workspaceId,
+      checkBudget: true,
+    })
 
     const refreshedEntitlements = await this.getEntitlements(args)
 
@@ -146,32 +87,58 @@ export class ActEntitlementService {
       )
     }
 
-    runtimeEntitlements = refreshedEntitlements
-    paid = canUsePaidBudgetFeatures(runtimeEntitlements)
-
-    if (!paid && !usesUserProviderKey && !isFreeTierChatModelId(args.effectiveModelId)) {
-      if (isPaidPlan(runtimeEntitlements)) {
-        serviceError(
-          buildInsufficientCreditsPayload(
-            runtimeEntitlements,
-            'No budget remaining. Switch to a free model or top up your account.',
-          ),
-          402,
-        )
-      }
-      serviceError(
-        {
-          error: 'premium_model_not_allowed',
-          message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.',
-        },
-        403,
-      )
-    }
-
     return {
       appSettings,
-      paid,
-      runtimeEntitlements,
+      paid: true,
+      runtimeEntitlements: refreshedEntitlements,
+    }
+  }
+
+  private async authorizeModel(args: {
+    effectiveModelId: string
+    userId: string
+    workspaceId?: string
+    programmaticSubjectId?: string
+  }): Promise<{ appSettings: AppSettings | null; billingEnabled: boolean; entitlements: Entitlements }> {
+    if (isRetiredHostedModelId(args.effectiveModelId)) {
+      serviceError({
+        error: 'model_retired',
+        message: 'This model is retired. Choose a supported paid model to continue.',
+      }, 400)
+    }
+    const execution = await this.requireExecution({
+      userId: args.userId,
+      workspaceId: args.workspaceId,
+      checkBudget: false,
+    })
+    const [entitlements, appSettings] = await Promise.all([
+      this.getEntitlements(args),
+      this.deps.repository.getAppSettings({ userId: args.userId }),
+    ])
+    if (!entitlements) {
+      serviceError({ error: 'Unauthorized', message: 'Could not verify subscription. Try signing out and back in.' }, 401)
+    }
+    if (appSettings?.onlyAllowZdrModels && !modelSupportsZeroDataRetention(args.effectiveModelId)) {
+      serviceError({
+        error: 'zdr_model_required',
+        message: 'Your settings only allow zero data retention models. Choose a ZDR-supported model to continue.',
+      }, 400)
+    }
+    return { appSettings, billingEnabled: execution.billingEnabled, entitlements }
+  }
+
+  private async requireExecution(args: {
+    userId: string
+    workspaceId?: string
+    checkBudget: boolean
+  }) {
+    try {
+      return await (this.deps.requireExecution ?? requireWorkspaceExecution)(args)
+    } catch (error) {
+      if (error instanceof WorkspaceExecutionError) {
+        serviceError(error.payload, error.statusCode)
+      }
+      throw error
     }
   }
 

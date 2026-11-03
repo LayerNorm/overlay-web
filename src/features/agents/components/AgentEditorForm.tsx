@@ -13,7 +13,6 @@ import type { WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
 import { ChatModelPicker, type ChatModelPickerProps } from '@overlay/chat-react'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { MODEL_RECOMMENDATIONS } from '@/shared/ai/gateway/model-data'
-import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
@@ -27,9 +26,8 @@ export type AgentType = 'overlay' | 'byo'
 export type EnvironmentChoice = 'existing' | 'connect'
 export type AgentModelFieldProps = Pick<
   ChatModelPickerProps,
-  'favoriteScope' | 'isFreeTier' | 'selectableTextModels' | 'textModelsLoading'
+  'favoriteScope' | 'selectableTextModels' | 'textModelsLoading'
 > & {
-  isFreeTierWorkspace: boolean
   modelPickerLabel: string
 }
 
@@ -892,8 +890,6 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
             selectableTextModels={modelField.selectableTextModels}
             selectedActModel={modelId}
             onToggleTextModel={onModelChange}
-            isFreeTier={modelField.isFreeTier}
-            isFreeTierChatModelId={isFreeTierChatModelId}
             favoriteScope={modelField.favoriteScope}
             modelRecommendations={MODEL_RECOMMENDATIONS}
             textModelsLoading={modelField.textModelsLoading}
@@ -901,11 +897,6 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
             lockedGenerationMode='text'
           />
         </div>
-        {modelField.isFreeTierWorkspace && !isFreeTierChatModelId(modelId) ? (
-          <p className='mt-1.5 text-[11px] leading-4 text-(--muted)'>
-            Free workspaces use free models. This agent will use Auto.
-          </p>
-        ) : null}
       </div>
       <div>
         <p className="text-xs font-medium">Tools</p>

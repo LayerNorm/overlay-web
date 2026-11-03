@@ -1,17 +1,13 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import {
-  FREE_TIER_AUTO_MODEL_ID,
-  OPENROUTER_FREE_MODEL_ID,
   getModelForId,
   getModelsByIntelligence,
-  isFreeTierModel,
   listModelInfo,
   pickBestModelForAct,
   resolveModelId,
   toAnthropicApiModelId,
   toOpenAIApiModelId,
-  toOpenRouterApiModelId,
 } from './index'
 import { pricingFromCatalog } from './adapters/common'
 
@@ -26,62 +22,23 @@ test('lists model info without package-internal ranking fields', () => {
   assert.equal('intelligence' in model, false)
 })
 
-test('maps Overlay OpenRouter registry ids to OpenRouter API ids', () => {
-  assert.equal(toOpenRouterApiModelId('openrouter/free'), 'openrouter/free')
-  assert.equal(
-    toOpenRouterApiModelId('openrouter/vendor/example:free'),
-    'vendor/example:free',
-  )
-})
-
-test('keeps Overlay Free Auto distinct from the explicit OpenRouter Free model', () => {
-  assert.equal(FREE_TIER_AUTO_MODEL_ID, 'overlay-free')
-  assert.equal(OPENROUTER_FREE_MODEL_ID, 'openrouter/free')
-  assert.equal(getModelForId(FREE_TIER_AUTO_MODEL_ID)?.name, 'Auto')
-  assert.equal(getModelForId(OPENROUTER_FREE_MODEL_ID)?.name, 'OpenRouter Free')
-  assert.equal(getModelForId(FREE_TIER_AUTO_MODEL_ID)?.cost, 0)
-  assert.equal(getModelForId(OPENROUTER_FREE_MODEL_ID)?.cost, 0)
-})
-
 test('maps provider-prefixed direct ids to native API ids', () => {
   assert.equal(toOpenAIApiModelId('openai/gpt-5.4-mini'), 'gpt-5.4-mini')
   assert.equal(toAnthropicApiModelId('anthropic/claude-opus-4.7'), 'claude-opus-4.7')
 })
 
-test('paid users keep unknown premium models above the free section', () => {
+test('models use the configured quality ordering', () => {
   const models = [
-    { id: 'openrouter/free' },
     { id: 'openai/gpt-5.6-luna' },
-    { id: 'openrouter/vendor/spotlight:free' },
     { id: 'google/gemma-4-26b-a4b-it' },
     { id: 'minimax/minimax-m3' },
   ]
   assert.deepEqual(
-    getModelsByIntelligence(models, false).map((model) => model.id),
+    getModelsByIntelligence(models).map((model) => model.id),
     [
       'google/gemma-4-26b-a4b-it',
       'openai/gpt-5.6-luna',
       'minimax/minimax-m3',
-      'openrouter/free',
-      'openrouter/vendor/spotlight:free',
-    ],
-  )
-})
-
-test('free-tier users hoist free models above premium', () => {
-  const models = [
-    { id: 'google/gemma-4-26b-a4b-it' },
-    { id: 'openrouter/free' },
-    { id: 'openai/gpt-5.6-luna' },
-    { id: 'openrouter/vendor/spotlight:free' },
-  ]
-  assert.deepEqual(
-    getModelsByIntelligence(models, true).map((model) => model.id),
-    [
-      'openrouter/free',
-      'openrouter/vendor/spotlight:free',
-      'google/gemma-4-26b-a4b-it',
-      'openai/gpt-5.6-luna',
     ],
   )
 })
@@ -96,7 +53,6 @@ test('MiniMax M3.1 Flash has zero cost without becoming a free-tier router', () 
   assert.equal(model?.supportsVision, true)
   assert.equal(model?.supportsReasoning, true)
   assert.equal(model?.supportsZeroDataRetention, false)
-  assert.equal(isFreeTierModel(modelId), false)
   assert.equal(pricingFromCatalog(modelId).isFree, true)
-  assert.equal(pickBestModelForAct([modelId, FREE_TIER_AUTO_MODEL_ID]), FREE_TIER_AUTO_MODEL_ID)
+  assert.equal(pickBestModelForAct([modelId]), modelId)
 })

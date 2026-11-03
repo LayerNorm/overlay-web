@@ -10,10 +10,7 @@ import { convertToModelMessages, generateText } from '@/server/ai/sdk'
 import { getLanguageModel, isSubscriptionModelForUser } from '@/server/ai/model-runtime'
 import { summaryGenerationOptions } from '@/server/chat/context-compaction'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
-import {
-  FREE_TIER_DEFAULT_MODEL_ID,
-  DEFAULT_MODEL_ID,
-} from '@/shared/ai/gateway/model-types'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { meterAutomationWorkflowRun } from '@/server/billing/automation-workflow-billing'
@@ -35,7 +32,6 @@ import {
   ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
   ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
   ACT_PAID_PLAN_ACT_TOOLS_REALITY,
-  FREE_TIER_NO_PAID_AGENT_CAPABILITIES,
   MEMORY_SAVE_PROTOCOL,
   cloneMessagesWithIndexedFileHint,
   indexedFilesSystemNote,
@@ -623,7 +619,7 @@ export async function prepareAutomationAgentTurn(
   })
   const summaryModelId = isByokModelId(effectiveModelId)
     ? effectiveModelId
-    : FREE_TIER_DEFAULT_MODEL_ID
+    : DEFAULT_MODEL_ID
   messagesForModel = cloneMessagesWithIndexedFileHint(
     messagesForModel,
     indexedAttachmentList,
@@ -667,7 +663,6 @@ export async function prepareAutomationAgentTurn(
           usage?: { inputTokens?: number; outputTokens?: number }
         }).usage
         await actUsageBudgetService.recordFinishedUsage({
-          forceFreeTierLimits: false,
           inputTokens: summaryUsage?.inputTokens ?? estimatedInputTokens,
           modelId: summaryModelId,
           outputTokens: summaryUsage?.outputTokens ?? targetSummaryTokens,
@@ -780,21 +775,17 @@ export async function prepareAutomationAgentTurn(
       ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
       ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
       ACT_PAID_PLAN_ACT_TOOLS_REALITY,
-      FREE_TIER_NO_PAID_AGENT_CAPABILITIES,
       MATH_FORMAT_INSTRUCTION,
       MEMORY_SAVE_PROTOCOL,
       TABLE_FORMAT_INSTRUCTION,
     },
     docContextText: docContextBundle.contextText,
-    effectiveModelId,
     exposedMediaTools: actTooling.exposedMediaTools,
-    hasPreloadedDocContext,
     indexedNote,
     memoryContext,
     memoryEnabled,
     mentionsContext,
     mode: undefined,
-    paid,
     requestedToolIds: [],
     skillsContext,
     userSystemPromptExtension: buildSecondarySystemPromptExtension(

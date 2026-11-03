@@ -207,7 +207,6 @@ test('streams admitted multimodal history through the durable adapter', async ()
     hasDynamicApproval: true,
     instructions: 'Use the image and tools.',
     messagesForModel: messages,
-    modelCandidates: ['candidate-0', 'candidate-1'],
     paid: true,
     principalId: 'principal',
     rawReasoning: 'high',
@@ -243,7 +242,6 @@ test('streams admitted multimodal history through the durable adapter', async ()
   expect(response.headers.get('x-overlay-agent-run-id')).toBe(run.id)
   expect(response.headers.get('x-overlay-conversation-id')).toBe('conversation')
   expect(workflowInput.access.runId).toBe(`personal:${run.id}`)
-  expect(workflowInput.modelCandidates).toEqual(['candidate-0', 'candidate-1'])
   expect(workflowInput.messages[0]?.content).toEqual([{ type: 'image', image: 'https://files.example/image.png' }])
   expect(messages[0]?.parts?.find(part => part.type === 'file')).toMatchObject({
     url: 'https://files.example/image.png',

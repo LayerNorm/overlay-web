@@ -4,6 +4,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
 import { startNativeHarnessTurn } from '@/server/harness/native-turn-start'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
+import { requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
 import {
   resolveWorkspaceAgentInvocations,
   startRemoteWorkspaceAgentTurn,
@@ -30,6 +31,7 @@ type WorkspaceAgentTurnsArgs = {
 
 export type WorkspaceAgentTurnDispatcherDependencies = {
   resolveInvocations?: typeof resolveWorkspaceAgentInvocations
+  requireExecution?: typeof requireWorkspaceExecution
   startRemote?: typeof startRemoteWorkspaceAgentTurn
   getCollaboration?: () => ReturnType<typeof getOverlayServerContext>['appData']['repositories']['conversationCollaboration']
   startNative?: typeof startNativeHarnessTurn
@@ -80,6 +82,11 @@ export async function startWorkspaceAgentTurns(
       if (invocation.externalAgent && !invocation.remoteTarget) {
         throw new WorkspaceAgentInvocationError('not_entitled', 'This external agent runtime is disabled.')
       }
+      await (dependencies.requireExecution ?? requireWorkspaceExecution)({
+        userId: args.actorUserId,
+        workspaceId: args.workspaceId,
+        checkBudget: false,
+      })
       if (invocation.remoteTarget) {
         await (dependencies.startRemote ?? startRemoteWorkspaceAgentTurn)({
           actorUserId: args.actorUserId,
@@ -90,6 +97,7 @@ export async function startWorkspaceAgentTurns(
           memoryEnabled: args.memoryEnabled,
           prompt: args.prompt,
           ...(args.threadRootMessageId ? { threadRootMessageId: args.threadRootMessageId } : {}),
+          ...(dependencies.requireExecution ? { requireExecution: dependencies.requireExecution } : {}),
           workspaceId: args.workspaceId,
         })
         return
@@ -115,6 +123,11 @@ export async function startWorkspaceAgentTurns(
       // or a retried send. Starting a second workflow against the same reply
       // row would bill the turn twice.
       if (turn.resumed) return
+      await (dependencies.requireExecution ?? requireWorkspaceExecution)({
+        userId: args.actorUserId,
+        workspaceId: args.workspaceId,
+        checkBudget: true,
+      })
       await (dependencies.startNative ?? startNativeHarnessTurn)({
         actorUserId: args.actorUserId,
         workspaceId: args.workspaceId,

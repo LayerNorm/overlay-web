@@ -27,7 +27,6 @@ export async function recordHarnessModelBilling(
     if (dispatch.billingReservationId !== null) throw new FatalError('External inference cannot settle an Overlay billing reservation.')
     await server.appData.repositories.usage.recordBatch({
       userId: reference.actorUserId, workspaceId: state.policy.workspaceId, operationId,
-      forceFreeTierLimits: false,
       events: [{
         kind: 'agent', modelId: dispatch.modelId, countAsRequest: false, costCents: 0,
         inputTokens: receipt.inputTokens, outputTokens: receipt.outputTokens, cachedTokens: receipt.cacheReadTokens,
@@ -40,7 +39,7 @@ export async function recordHarnessModelBilling(
     const result = await server.chatUsagePolicy.recordFinishedUsage({
       userId: reference.actorUserId, workspaceId: state.policy.workspaceId,
       operationId, modelId: receipt.modelId, reservationId: dispatch.billingReservationId,
-      countAsRequest: false, requireRecorded: true, forceFreeTierLimits: false,
+      countAsRequest: false, requireRecorded: true,
       inputTokens: receipt.inputTokens, outputTokens: receipt.outputTokens,
       cachedInputTokens: receipt.cacheReadTokens, cacheWriteTokens: receipt.cacheWriteTokens,
       ...(providerCostUsd !== null ? { providerCostUsd } : {}),
