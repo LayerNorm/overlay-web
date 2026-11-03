@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add opt-in, isolated Preview funding fixtures with one cent of initial synthetic credit. Reseeding never drains or replenishes existing balances, starts work, enables top-ups, or creates Stripe payment evidence.
+
 - Preserve valid Harness approval waits when persistence reorders JSON object keys. Approval identities, tool names, argument values, and array order must still match before any saved decision is consumed.
 
 - Preserve the latest answer and recent tool activity when long assistant transcripts reach storage limits. Repeated compaction keeps one omission notice instead of replacing the final answer with it; both native and personal message schemas accept its metadata, and existing size limits remain enforced.
