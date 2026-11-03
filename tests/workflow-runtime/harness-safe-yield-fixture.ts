@@ -14,10 +14,10 @@ async function confirmPersisted(id: string, receiptId: string): Promise<boolean>
   return record.receiptId === receiptId
 }
 
-export async function harnessSafeYieldFixture(input: { id: string }) {
+export async function harnessSafeYieldFixture(input: { id: string; summary?: boolean }) {
   'use workflow'
   const result = await runHarnessModelInvocation(
-    () => throwYield('model:4'),
+    () => throwYield(input.summary ? 'summary:model:4:0' : 'model:4'),
     () => ({ messages: [], steps: [], preparedReceiptId: 'model:4', modelCall: 4 }),
     () => [],
     undefined,

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve the pending response when context summarization pauses for workspace funding, including after durable workflow serialization; foreign pause receipts cannot resume the task.
+
 - Reconcile durable Harness continuation with paid-workspace admission: retain the selected model on funding failure and require current verified payment before creating automatic top-up claims. Existing subscriptions and markup are unchanged.
 
 - Preserve fractional-cent funding balances through durable Harness pauses and prevent workspace-funded task errors from falling back to a different model instead of waiting for funds.

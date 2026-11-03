@@ -93,3 +93,22 @@ test('model preparation reuses the boundary state and reads catalog limits once 
   expect(prepare).toHaveBeenCalledTimes(2)
   expect(mocks.compact.mock.calls[0][0].previousSummary).toBe(state.workingSummary)
 })
+
+test('summary funding denial yields its exact receipt instead of failing or preparing an unfunded response', async () => {
+  const state = createHarnessSnapshot({ runId: 'run', goal: 'Continue the same task.', constraints: [], policy: {
+    actorUserId: 'user', workspaceId: 'workspace', executionPolicyVersion: 2, spendingMode: 'workspace',
+    allowedToolIds: [], requiresPlan: false, deadlineAt: Date.now() + 60_000,
+    maxCostMicros: 0, maxParallelChildren: 0, maxDepth: 0,
+  } }, Date.now())
+  mocks.limits.mockResolvedValue({ contextWindow: 128_000, maxOutputTokens: 4_096 })
+  mocks.compact.mockResolvedValue({ messages: [], didCompact: false, summaryFailed: true, fitsBudget: false })
+  mocks.read.mockResolvedValue({ ...state, status: 'waiting_for_resources', resourcePause: {
+    reason: 'disabled', receiptId: 'summary:model:0:0', requiredCents: 1, availableCents: 0.5,
+  } })
+  const prepare = vi.fn()
+  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  await expect(ports.prepareModel({ receiptId: 'model:0', state, messages: [], toolNames: [], toolDefinitions: [],
+    settings: {}, instructionContext: { instructions: 'Continue.', continuation: true, truncatedResponse: false },
+  })).rejects.toThrow('HARNESS_SAFE_RESOURCE_PAUSE:summary:model:0:0')
+  expect(prepare).not.toHaveBeenCalled()
+})

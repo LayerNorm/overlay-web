@@ -26,3 +26,15 @@ test('compiled step serialization recovers a safe yield only for its persisted r
   const rejected = await start(harnessSafeYieldFixture, [{ id: forged }])
   await expect(rejected.returnValue).rejects.toThrow('HARNESS_SAFE_RESOURCE_PAUSE:model:4')
 })
+
+
+test('compiled summary funding pause preserves the pending response call and checks the exact receipt', async () => {
+  const id = randomUUID()
+  await persist(id, 'summary:model:4:0')
+  const recovered = await start(harnessSafeYieldFixture, [{ id, summary: true }])
+  await expect(recovered.returnValue).resolves.toEqual({ recovered: true, modelCall: 4 })
+  const foreign = randomUUID()
+  await persist(foreign, 'summary:model:5:0')
+  const rejected = await start(harnessSafeYieldFixture, [{ id: foreign, summary: true }])
+  await expect(rejected.returnValue).rejects.toThrow('HARNESS_SAFE_RESOURCE_PAUSE:summary:model:4:0')
+})

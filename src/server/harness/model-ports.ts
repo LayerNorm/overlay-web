@@ -135,6 +135,9 @@ export function createHarnessModelPorts(input: {
       let responseMaxOutputTokens = maxOutputTokens
       if (compacted.summaryFailed || !compacted.fitsBudget) {
         state = await readHarnessState(reference)
+        if (state.status === 'waiting_for_resources' && state.resourcePause?.receiptId) {
+          throw new HarnessYield(state.resourcePause.receiptId)
+        }
         const fallbackInstructions = buildHarnessStepInstructions(state, request.instructionContext)
         const fallbackMessages = request.messages.filter(message => message.role !== 'system')
         const fallbackMaxOutputTokens = Math.min(request.settings.maxOutputTokens ?? 8_192,

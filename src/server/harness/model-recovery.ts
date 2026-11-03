@@ -39,12 +39,14 @@ export async function runHarnessModelInvocation(
     const state = readState()
     const message = error && typeof error === 'object' && 'message' in error
       && typeof error.message === 'string' ? error.message : ''
-    const yieldedReceiptId = /(?:^|[^\w])HARNESS_SAFE_RESOURCE_PAUSE:((?:model|summary):[0-9]+)(?:$|[^\d])/.exec(message)?.[1]
-    if (yieldedReceiptId === state.preparedReceiptId && await confirmYield(yieldedReceiptId)) return {
+    const yieldedReceiptId = /(?:^|[^\w])HARNESS_SAFE_RESOURCE_PAUSE:((?:model:[0-9]+|summary:model:[0-9]+:[0-9]+(?::retry:[0-9]+)?))(?:$|[^\w:])/.exec(message)?.[1]
+    const summaryForPrepared = yieldedReceiptId?.startsWith(`summary:${state.preparedReceiptId}:`) === true
+    if (yieldedReceiptId && (yieldedReceiptId === state.preparedReceiptId || summaryForPrepared)
+      && await confirmYield(yieldedReceiptId)) return {
       ...state,
       pending: [],
       recovered: true,
-      modelCall: state.preparedReceiptId === `model:${state.modelCall}`
+      modelCall: yieldedReceiptId === state.preparedReceiptId && state.preparedReceiptId === `model:${state.modelCall}`
         ? state.modelCall + 1 : state.modelCall,
     }
     if (!await recover?.(state.preparedReceiptId)) throw error
