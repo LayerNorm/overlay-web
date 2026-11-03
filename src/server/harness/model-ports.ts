@@ -25,14 +25,12 @@ import {
 import { OPENROUTER_FREE_MODEL_ID, OVERLAY_FREE_MODEL_ID } from '@/shared/ai/gateway/overlay-free-policy'
 import {
   externalizeOlderHarnessToolResults,
-  harnessArtifactDigest,
-  harnessArtifactId,
   serializeHarnessArtifactOutput,
   shouldExternalizeHarnessToolOutput,
   estimateHarnessPromptTokens,
   parseHarnessArtifactOutput,
 } from './artifact-context'
-import { storeHarnessArtifact } from './artifact-steps'
+import { identifyHarnessArtifact, readHarnessArtifactMetadata, storeHarnessArtifact } from './artifact-steps'
 import { findResourceIdentity } from './tool-evidence'
 
 export type PreparedHarnessModel = {
@@ -85,6 +83,22 @@ export function createHarnessModelPorts(input: {
     if (state.status !== 'running' || state.workflowRunId !== reference.workflowRunId
       || Date.now() >= state.policy.deadlineAt) {
       throw new HarnessYield()
+    }
+    if (state.compaction?.status === 'awaiting_reconciliation'
+      && state.modelReservation?.id !== state.compaction.attemptId
+      && state.latestReceipt?.id === state.compaction.attemptId) {
+      await applyHarnessOperation(reference, `compaction-late-receipt:${state.compaction.attemptId}`, {
+        type: 'set_compaction',
+        compaction: {
+          cycleId: state.compaction.cycleId,
+          attemptId: state.compaction.attemptId,
+          status: 'interrupted',
+          retryCount: state.compaction.retryCount,
+          failureReason: 'stream_aborted',
+          updatedAt: Date.now(),
+        },
+      })
+      state = await readHarnessState(reference)
     }
     if (state.modelReservation?.id === receiptId) {
       for (const delayMs of [5_000, 15_000, 30_000]) {
@@ -163,7 +177,17 @@ export function createHarnessModelPorts(input: {
         throw new Error('Context summarization did not finish; the full history was preserved.')
       }
       const summary = result.steps[0].text
-      if (summary.trim().length < 200 || /^\s*(user|response) safety\s*:/im.test(summary)) {
+      const summaryTokens = estimateContextTokens(summary)
+      const sourceTokens = estimateContextTokens(prompt)
+      if (summary.trim().length < 200 || summaryTokens > targetSummaryTokens
+        || summaryTokens >= sourceTokens || /^\s*(user|response) safety\s*:/im.test(summary)) {
+        await applyHarnessOperation(reference, `compaction-validation:${receiptId}`, {
+          type: 'set_compaction',
+          compaction: {
+            cycleId, attemptId: receiptId, status: 'interrupted', retryCount,
+            failureReason: 'validation_failed', updatedAt: Date.now(),
+          },
+        })
         throw new Error('Context summarization did not produce a usable summary; the full history was preserved.')
       }
       await applyHarnessOperation(reference, `compaction-complete:${receiptId}`, {
@@ -200,16 +224,18 @@ export function createHarnessModelPorts(input: {
       }
       const matchingHold = current.modelReservation?.id === receiptId
       if (!['running', 'waiting_for_input'].includes(current.status)) throw error
-      await applyHarnessOperation(reference, `compaction-interrupted:${receiptId}`, {
-        type: 'set_compaction',
-        compaction: {
-          cycleId, attemptId: receiptId,
-          status: matchingHold ? 'awaiting_reconciliation' : 'interrupted',
-          retryCount,
-          failureReason: matchingHold ? 'hold_unsettled' : 'stream_aborted',
-          updatedAt: Date.now(),
-        },
-      })
+      if (current.compaction?.attemptId !== receiptId || current.compaction.status !== 'interrupted') {
+        await applyHarnessOperation(reference, `compaction-interrupted:${receiptId}`, {
+          type: 'set_compaction',
+          compaction: {
+            cycleId, attemptId: receiptId,
+            status: matchingHold ? 'awaiting_reconciliation' : 'interrupted',
+            retryCount,
+            failureReason: matchingHold ? 'hold_unsettled' : 'provider_error',
+            updatedAt: Date.now(),
+          },
+        })
+      }
       if (matchingHold) {
         if (current.status === 'running') {
           await applyHarnessOperation(reference, `compaction-block:${receiptId}`, {
@@ -247,9 +273,17 @@ export function createHarnessModelPorts(input: {
   }
 
   async function verifyFinalAnswer(input: { state: HarnessSnapshot; candidate: string }) {
+    if (input.candidate.length > 16_000) {
+      return {
+        supported: false,
+        reason: 'The proposed answer exceeds the verification limit. Produce a shorter answer that can be checked in full.',
+        evidenceIds: [],
+      }
+    }
     const digest = await harnessCandidateDigest(input.candidate)
     let current = await waitForHarnessModelResources(reference, 0, () => readHarnessState(reference))
-    if (current.status !== 'running' || current.workflowRunId !== reference.workflowRunId) {
+    if (current.status !== 'running' || current.workflowRunId !== reference.workflowRunId
+      || Date.now() >= current.policy.deadlineAt) {
       throw new HarnessYield()
     }
     const pendingReceiptId = current.modelReservation?.id
@@ -261,6 +295,8 @@ export function createHarnessModelPorts(input: {
         current = await readHarnessState(reference)
         if (current.modelReservation?.id !== pendingReceiptId) break
       }
+      if (current.status !== 'running' || current.workflowRunId !== reference.workflowRunId
+        || Date.now() >= current.policy.deadlineAt) throw new HarnessYield()
       if (current.modelReservation?.id === pendingReceiptId) throw new HarnessYield()
     }
     if (current.modelReservation) throw new HarnessYield()
@@ -279,7 +315,7 @@ export function createHarnessModelPorts(input: {
     }
     const receiptId = `${receiptPrefix}${current.revision}`
     const limits = await readHarnessModelLimits(candidates[candidateIndex])
-    const instructions = HARNESS_ANSWER_VERIFICATION_INSTRUCTIONS
+    const instructions = `${HARNESS_ANSWER_VERIFICATION_INSTRUCTIONS}\nThe envelope explicitly marks omitted observations and truncated summaries. These are incomplete evidence, not proof of absence. Reject any material claim that needs missing details.`
     const prepared = await prepare({
       modelId: candidates[candidateIndex],
       receiptId,
@@ -305,15 +341,53 @@ export function createHarnessModelPorts(input: {
       providerOptions: prepared.options.providerOptions,
       onStepEnd: async step => settle(step, receiptId, prepared),
     })
-    const result = await agent.stream({ messages: [{
-      role: 'user', content: buildHarnessEvidenceEnvelope(current, input.candidate),
-    }] })
-    if ('error' in result && result.error) throw result.error
-    if (result.steps.length !== 1 || result.steps[0].finishReason !== 'stop') {
-      throw new Error('Final answer verification did not finish.')
+    let result: Awaited<ReturnType<typeof agent.stream>>
+    try {
+      result = await agent.stream({ messages: [{
+        role: 'user', content: buildHarnessEvidenceEnvelope(current, input.candidate),
+      }] })
+      if ('error' in result && result.error) throw result.error
+      if (result.steps.length !== 1 || result.steps[0].finishReason !== 'stop') {
+        throw new Error('Final answer verification did not finish.')
+      }
+    } catch (error) {
+      let after = await readHarnessState(reference)
+      const hold = after.modelReservation
+      const dispatch = hold?.dispatch
+      const exactFreeHold = hold?.id === receiptId && hold.maxCostMicros === 0
+        && dispatch?.billingReservationId === null
+        && (dispatch.modelId === OPENROUTER_FREE_MODEL_ID || dispatch.modelId === OVERLAY_FREE_MODEL_ID)
+      if (exactFreeHold && dispatch) {
+        await applyHarnessOperation(reference, `verification-failed:${receiptId}`, {
+          type: 'record_receipt',
+          receipt: {
+            id: receiptId, modelId: dispatch.modelId, provider: 'overlay-free-router',
+            inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0,
+            cacheWriteTokens: 0, contextWindow: null, costMicros: 0, costSource: 'catalog',
+            rejectionReason: 'verification_failed',
+          },
+        })
+        return { supported: false, reason: 'Final-answer verification was interrupted; no answer was accepted.', evidenceIds: [] }
+      }
+      if (hold?.id === receiptId) {
+        for (const delayMs of [5_000, 15_000, 30_000]) {
+          if (after.status !== 'running' || after.workflowRunId !== reference.workflowRunId
+            || Date.now() >= after.policy.deadlineAt) throw new HarnessYield()
+          await sleep(new Date(Math.min(Date.now() + delayMs, after.policy.deadlineAt)))
+          after = await readHarnessState(reference)
+          if (after.modelReservation?.id !== receiptId) break
+        }
+        if (after.status !== 'running' || after.workflowRunId !== reference.workflowRunId
+          || Date.now() >= after.policy.deadlineAt) throw new HarnessYield()
+        if (after.modelReservation?.id === receiptId) throw new HarnessYield()
+      }
+      if (after.latestReceipt?.id === receiptId) {
+        return { supported: false, reason: 'Final-answer verification settled without a usable validation result.', evidenceIds: [] }
+      }
+      throw error
     }
     const raw = result.steps[0].text.trim()
-    return parseHarnessVerificationResponse(raw, new Set(current.evidence.map(item => item.id)))
+    return parseHarnessVerificationResponse(raw, new Set(current.evidence.slice(-48).map(item => item.id)))
   }
 
   return {
@@ -340,6 +414,7 @@ export function createHarnessModelPorts(input: {
         preparedCalls.delete(receiptId)
         return false
       }
+      if (receipt.rejectionReason !== 'budget' && receipt.rejectionReason !== 'model_unavailable') return false
       if (candidateIndex + 1 >= candidates.length) return false
       const from = candidates[candidateIndex++]
       preparedCalls.delete(receiptId)
@@ -356,16 +431,39 @@ export function createHarnessModelPorts(input: {
       let promptMessages = request.messages
       try {
         const artifacts = new Map()
+        const readArtifactCalls = new Map<string, string>()
+        for (const message of request.messages) {
+          if (message.role !== 'assistant') continue
+          for (const part of message.content) {
+            if (part.type === 'tool-call' && part.toolName === 'harness_read_artifact'
+              && part.input && typeof part.input === 'object'
+              && typeof (part.input as Record<string, unknown>).artifactId === 'string') {
+              readArtifactCalls.set(part.toolCallId, (part.input as Record<string, string>).artifactId)
+            }
+          }
+        }
         for (const message of request.messages) {
           if (message.role !== 'tool') continue
           for (const part of message.content) {
-            if (part.type !== 'tool-result' || part.toolName === 'harness_read_artifact'
-              || !shouldExternalizeHarnessToolOutput(part.output)) continue
+            if (part.type !== 'tool-result') continue
+            if (part.toolName === 'harness_read_artifact') {
+              const artifactId = readArtifactCalls.get(part.toolCallId)
+              if (artifactId) {
+                const metadata = await readHarnessArtifactMetadata(reference, artifactId)
+                if (!metadata) throw new Error('The original Harness artifact is no longer available.')
+                artifacts.set(part.toolCallId, metadata)
+              }
+              continue
+            }
+            if (!shouldExternalizeHarnessToolOutput(part.output)) continue
             const data = serializeHarnessArtifactOutput(part.output)
-            const digest = await harnessArtifactDigest(data)
-            const resource = findResourceIdentity(part.output)
+            const { digest, artifactId } = await identifyHarnessArtifact({
+              data, runId: reference.runId, toolCallId: part.toolCallId,
+            })
+            const resource = state.evidence.find(item => item.id === `tool:${part.toolCallId}`)?.resource
+              ?? findResourceIdentity(part.output)
             const artifact = await storeHarnessArtifact(reference, {
-              artifactId: await harnessArtifactId(reference.runId, part.toolCallId, digest),
+              artifactId,
               toolCallId: part.toolCallId, toolName: part.toolName, digest, data,
               mediaPartCount: parseHarnessArtifactOutput(data).binaryParts.length,
               ...(resource ? { resource } : {}),
@@ -388,11 +486,22 @@ export function createHarnessModelPorts(input: {
       const fixedOverheadTokens = estimateContextTokens(buildHarnessStepInstructions(fixedState, request.instructionContext))
         + estimateContextTokens(request.toolDefinitions)
       let summaryIndex = 0
+      const resumableCycle = state.compaction
+        && (state.compaction.status === 'interrupted' || state.compaction.status === 'awaiting_reconciliation')
+        ? state.compaction : undefined
+      let resumeCycleUsed = false
       const compacted = await compactHarnessPrompt({ messages: promptMessages, contextWindow,
         outputReserveTokens: maxOutputTokens, fixedOverheadTokens, previousSummary: state.workingSummary,
         estimatePromptTokens: estimateHarnessPromptTokens,
-        generateSummaryText: ({ prompt, targetSummaryTokens }) => summarize(prompt, targetSummaryTokens,
-          `summary:${request.receiptId}:${summaryIndex++}`),
+        generateSummaryText: ({ prompt, targetSummaryTokens }) => {
+          if (resumableCycle && !resumeCycleUsed) {
+            resumeCycleUsed = true
+            if (resumableCycle.retryCount >= 1) throw new Error('The compaction retry budget is exhausted.')
+            return summarize(prompt, targetSummaryTokens,
+              `${resumableCycle.cycleId}:retry:${resumableCycle.retryCount + 1}`)
+          }
+          return summarize(prompt, targetSummaryTokens, `summary:${request.receiptId}:${summaryIndex++}`)
+        },
       })
       let messages = compacted.messages
       let instructions: string

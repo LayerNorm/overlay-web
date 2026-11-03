@@ -189,7 +189,32 @@ test('bounded checkpoints remain valid JSON and report omitted evidence for look
     id: 'tool:long-text', kind: 'tool_result', source: 'read',
     summary: 'A'.repeat(600), verdict: 'observed', createdAt: 1_001,
   }, 1_001)
-  expect(buildHarnessCheckpoint(longText).evidence[0]?.summary).toBe('A'.repeat(320))
+  expect(buildHarnessCheckpoint(longText).evidence[0]?.summary).toContain('[TRUNCATED]')
+  expect(buildHarnessCheckpoint(longText).evidence[0]?.summary.length).toBeLessThan(320)
+})
+
+test('maximum-size checkpoint fields disclose omitted goal, plan and evidence details', () => {
+  const state = {
+    ...make(false),
+    goal: 'g'.repeat(30_000),
+    plan: Array.from({ length: 100 }, (_, index) => ({
+      id: `step-${index}`,
+      title: 't'.repeat(500),
+      status: 'pending' as const,
+      dependsOn: [],
+      acceptanceCriteria: [],
+      evidenceRefs: [`evidence-${index}-1`, `evidence-${index}-2`, `evidence-${index}-3`],
+      requiresVerification: false,
+      evidenceTools: [],
+    })),
+  }
+  const checkpoint = buildHarnessCheckpoint(state)
+  const serialized = JSON.stringify(checkpoint)
+  expect(serialized.length).toBeLessThanOrEqual(7_500)
+  expect(checkpoint.goalOmittedCharacters).toBeGreaterThan(0)
+  expect(checkpoint.omittedPlanCount).toBeGreaterThan(0)
+  expect(checkpoint.plan.some(step => step.excerptTruncated || step.omittedEvidenceRefCount > 0)).toBe(true)
+  expect(JSON.parse(serialized)).toEqual(checkpoint)
 })
 
 test('final verifier JSON rejects malformed responses and evidence from outside the run', () => {

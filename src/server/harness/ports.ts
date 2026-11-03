@@ -41,8 +41,8 @@ export type HarnessArtifactRead = {
 }
 
 export type HarnessArtifactReadResult =
-  | { kind: 'text'; text: string; metadata: { toolName: string; toolCallId: string; resource?: { id: string; revision?: string; operation?: string; page?: number } } }
-  | { kind: 'media'; data: Uint8Array; mediaType: string; metadata: { toolName: string; toolCallId: string; resource?: { id: string; revision?: string; operation?: string; page?: number } } }
+  | { kind: 'text'; text: string; metadata: { artifactId: string; toolName: string; toolCallId: string; mediaPartCount: number; resource?: { id: string; revision?: string; operation?: string; page?: number } } }
+  | { kind: 'media'; data: Uint8Array; mediaType: string; metadata: { artifactId: string; toolName: string; toolCallId: string; mediaPartCount: number; mediaPart: number; resource?: { id: string; revision?: string; operation?: string; page?: number } } }
 
 // These are IO seams, not execution strategies. Implementations invoke durable
 // steps/hooks; no provider instances, credentials or closures enter run storage.
@@ -50,7 +50,11 @@ export interface HarnessExecutionPorts {
   claim(): Promise<boolean>
   read(): Promise<HarnessSnapshot>
   apply(operationId: string, operation: HarnessOperation): Promise<HarnessSnapshot>
-  readEvidence(evidenceId: string): Promise<HarnessEvidence | null>
+  readEvidence(
+    evidenceId: string,
+    cursor?: string,
+    limit?: number,
+  ): Promise<HarnessEvidence | null | { observations: Array<Pick<HarnessEvidence, 'id' | 'source' | 'verdict' | 'createdAt'>>; nextCursor: string | null }>
   waitForResources?(requiredCostMicros: number): Promise<HarnessSnapshot>
   authorizeTool(toolName: string): Promise<void>
   readArtifact?(input: HarnessArtifactRead): Promise<HarnessArtifactReadResult>

@@ -278,6 +278,9 @@ async function finishOrCheckpointInvocation(
         verification = await ports.verifyFinalAnswer({ state, candidate: resultSummary })
       } catch (error) {
         const afterFailure = await ports.read()
+        if (afterFailure.status !== 'running') {
+          return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
+        }
         if (afterFailure.modelReservation?.id.startsWith('verification:')) {
           if (afterFailure.status === 'running') {
             await ports.apply(`verification-pending:${segment}`, {

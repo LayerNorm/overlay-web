@@ -1,7 +1,7 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { HarnessPlanValidationError, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
-import type { HarnessExecutionPorts } from './ports'
+import type { HarnessArtifactReadResult, HarnessExecutionPorts } from './ports'
 
 const id = z.string().min(1).max(256)
 const evidenceReferenceError = 'Evidence must reference successful observations from this run.'
@@ -13,6 +13,13 @@ const completionErrors = new Set([
 const dependencyError = 'Dependencies are not complete.'
 const reusedToolResultEvidenceError = 'Evidence from a tool result already supports another milestone.'
 const completionHint = 'Cite tool:<id> evidence that supports this milestone, or revise the plan with harness_set_plan to mark a milestone that only reports results as answerOnly.'
+
+function artifactIdentity(metadata: HarnessArtifactReadResult['metadata']): string {
+  const resource = metadata.resource
+    ? `; resource ${metadata.resource.id}${metadata.resource.revision ? ` revision ${metadata.resource.revision}` : ''}${metadata.resource.operation ? ` operation ${metadata.resource.operation}` : ''}${metadata.resource.page ? ` page ${metadata.resource.page}` : ''}`
+    : ''
+  return `artifact ${metadata.artifactId}; ${metadata.toolName} call ${metadata.toolCallId}${resource}`
+}
 
 function availableEvidenceIds(state: HarnessSnapshot) {
   const usedByAction = new Set(state.plan
@@ -132,9 +139,13 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       },
     }),
     harness_read_evidence: tool({
-      description: 'Retrieve persisted evidence by reference when it is no longer in the recent context.',
-      inputSchema: z.object({ evidenceId: z.string().min(1).max(512) }),
-      execute: async ({ evidenceId }) => ports.readEvidence(evidenceId),
+      description: 'Read a persisted observation by evidence ID, or list a bounded chronological page of observation IDs and outcomes. Omitted or truncated content is not proof of absence.',
+      inputSchema: z.object({
+        evidenceId: z.string().min(1).max(512).optional(),
+        cursor: z.string().max(512).optional(),
+        limit: z.number().int().min(1).max(32).optional(),
+      }),
+      execute: async ({ evidenceId, cursor, limit }) => ports.readEvidence(evidenceId ?? '', cursor, limit),
     }),
     harness_read_artifact: tool({
       description: 'Reopen a private tool-result artifact using a bounded text range or a selected media-part index. Access is reauthorized against the original source tool.',
@@ -155,11 +166,11 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         ? {
             type: 'content',
             value: [
-              { type: 'text', text: `Reopened media from ${output.metadata.toolName} call ${output.metadata.toolCallId}.` },
+              { type: 'text', text: `[Incomplete media selection; ${artifactIdentity(output.metadata)}; selected part ${output.metadata.mediaPart} of ${output.metadata.mediaPartCount}.]` },
               { type: 'file', data: { type: 'data', data: output.data }, mediaType: output.mediaType },
             ],
           }
-        : { type: 'text', value: output.text },
+        : { type: 'text', value: `[Incomplete artifact excerpt; ${artifactIdentity(output.metadata)}]\n${output.text}` },
     }),
     harness_report_blocker: tool({
       description: 'Pause for essential user input. Ask one concise question rather than guessing sensitive choices.',

@@ -72,7 +72,10 @@ test('artifact reads reauthorize the original tool before fetching private conte
   await expect(ports.readArtifact!({ artifactId: `ha_${'a'.repeat(64)}`, start: 0, end: 10 }))
     .resolves.toMatchObject({
       kind: 'text', text: 'The persis\n[Incomplete: more artifact text is available after character 10.]',
-      metadata: { toolName: 'read_document', toolCallId: 'read-1', resource: { revision: 'rev-7' } },
+      metadata: {
+        artifactId: `ha_${'a'.repeat(64)}`, toolName: 'read_document', toolCallId: 'read-1',
+        mediaPartCount: 0, resource: { revision: 'rev-7' },
+      },
     })
   expect(authorize).toHaveBeenCalledExactlyOnceWith('read_document')
   expect(authorize.mock.invocationCallOrder[0]).toBeLessThan(mocks.readData.mock.invocationCallOrder[0]!)
@@ -82,4 +85,24 @@ test('artifact reads reauthorize the original tool before fetching private conte
   await expect(ports.readArtifact!({ artifactId: `ha_${'a'.repeat(64)}`, start: 0, end: 10 }))
     .rejects.toThrow('Permission revoked')
   expect(mocks.readData).not.toHaveBeenCalled()
+})
+
+test('tail text reads disclose omitted prefixes and preserve source identity', async () => {
+  const bytes = serializeHarnessArtifactOutput({ text: 'A'.repeat(100) })
+  mocks.readMetadata.mockResolvedValue({
+    artifactId: `ha_${'a'.repeat(64)}`, runId: 'run', workflowRunId: 'workflow',
+    toolCallId: 'read-2', toolName: 'read_document', digest: 'c'.repeat(64),
+    storageId: 'storage', byteSize: bytes.byteLength, mediaPartCount: 0, createdAt: 1, expiresAt: 2,
+    resource: { id: 'file-7', revision: 'rev-9', operation: 'read', page: 4 },
+  })
+  mocks.readData.mockResolvedValue(bytes)
+  const result = await create().readArtifact!({ artifactId: `ha_${'a'.repeat(64)}`, start: 90, end: 100 })
+  expect(result).toMatchObject({
+    kind: 'text',
+    text: `[Incomplete: characters before 90 were omitted.]\n${'A'.repeat(10)}`,
+    metadata: {
+      toolName: 'read_document', toolCallId: 'read-2',
+      resource: { id: 'file-7', revision: 'rev-9', operation: 'read', page: 4 },
+    },
+  })
 })

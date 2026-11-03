@@ -183,6 +183,7 @@ const receiptValidator = v.object({
     v.literal('route_interrupted'),
     v.literal('route_unavailable'),
     v.literal('summary_failed'),
+    v.literal('verification_failed'),
   )),
   responseFailure: v.optional(v.union(v.literal('empty_response'), v.literal('provider_error'), v.literal('provider_other'))),
 })
@@ -1349,7 +1350,9 @@ function freeModelTerminalReceipt(state: HarnessSnapshot): HarnessReceipt | unde
     contextWindow: null,
     costMicros: 0,
     costSource: 'catalog',
-    ...(reservation.id.startsWith('summary:') ? { rejectionReason: 'summary_failed' as const } : {}),
+    ...(reservation.id.startsWith('summary:')
+      ? { rejectionReason: 'summary_failed' as const }
+      : reservation.id.startsWith('verification:') ? { rejectionReason: 'verification_failed' as const } : {}),
   }
 }
 
@@ -1427,7 +1430,8 @@ async function applyReducer(
     case 'record_receipt':
       if (operation.receipt.rejectionReason === 'route_interrupted'
         || operation.receipt.rejectionReason === 'route_unavailable'
-        || operation.receipt.rejectionReason === 'summary_failed') {
+        || operation.receipt.rejectionReason === 'summary_failed'
+        || operation.receipt.rejectionReason === 'verification_failed') {
         const reservation = current.modelReservation
         if ((operation.receipt.modelId !== OPENROUTER_FREE_MODEL_ID && operation.receipt.modelId !== OVERLAY_FREE_MODEL_ID)
           || operation.receipt.provider !== 'overlay-free-router'
@@ -1859,20 +1863,48 @@ export const readEvidence = query({
   args: {
     actorUserId: v.string(),
     runId: v.string(),
-    evidenceId: v.string(),
+    evidenceId: v.optional(v.string()),
+    cursor: v.optional(v.string()),
+    limit: v.optional(v.number()),
     serverSecret: v.string(),
   },
+  returns: v.union(
+    evidenceValidator,
+    v.object({
+      observations: v.array(v.object({
+        id: v.string(), source: v.string(), verdict: v.string(), createdAt: v.number(),
+      })),
+      nextCursor: v.union(v.string(), v.null()),
+    }),
+    v.null(),
+  ),
   handler: async (ctx, args) => {
     requireHarnessServerSecret(args.serverSecret)
     if (!args.actorUserId.trim() || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
-      || !args.evidenceId.trim() || args.evidenceId.length > MAX_EVIDENCE_ID_LENGTH) {
+      || args.evidenceId !== undefined && (!args.evidenceId.trim() || args.evidenceId.length > MAX_EVIDENCE_ID_LENGTH)
+      || (args.cursor?.length ?? 0) > 512) {
       throw new Error('Invalid harness evidence identity.')
     }
     const run = await findRun(ctx, args.runId)
     if (!run) return null
     await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
-    const evidence = await getEvidenceRow(ctx, run.runId, args.evidenceId)
-    return evidence ? parseJson<HarnessEvidence>(evidence.evidenceJson) : null
+    if (args.evidenceId) {
+      const evidence = await getEvidenceRow(ctx, run.runId, args.evidenceId)
+      return evidence ? parseJson<HarnessEvidence>(evidence.evidenceJson) : null
+    }
+    const limit = args.limit ?? 32
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 32) throw new Error('Invalid harness evidence page size.')
+    const page = await ctx.db.query('harnessEvidence')
+      .withIndex('by_runId_createdAt', q => q.eq('runId', run.runId))
+      .order('asc')
+      .paginate({ numItems: limit, cursor: args.cursor ?? null })
+    return {
+      observations: page.page.map(row => {
+        const item = parseJson<HarnessEvidence>(row.evidenceJson)
+        return { id: item.id, source: item.source, verdict: item.verdict, createdAt: item.createdAt }
+      }),
+      nextCursor: page.isDone ? null : page.continueCursor,
+    }
   },
 })
 

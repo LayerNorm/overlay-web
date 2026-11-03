@@ -82,7 +82,7 @@ export type HarnessReceipt = {
   /** Present only for user-funded inference; null means the provider did not report its charge. */
   externalCostMicros?: number | null
   /** Zero-usage rejection or failure of a zero-cost summary attempt. */
-  rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'route_unavailable' | 'summary_failed'
+  rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'route_unavailable' | 'summary_failed' | 'verification_failed'
   /** A settled response can be unusable even when its token usage is known. */
   responseFailure?: HarnessResponseFailure
 }
@@ -393,6 +393,23 @@ export function setHarnessCompaction(
       throw new Error('A new compaction cycle must start at attempt zero.')
     }
   } else {
+    const matchingLateReceipt = previous?.cycleId === compaction.cycleId
+      && previous.attemptId === compaction.attemptId
+      && previous.status === 'awaiting_reconciliation'
+      && compaction.status === 'interrupted'
+      && compaction.retryCount === previous.retryCount
+      && state.latestReceipt?.id === compaction.attemptId
+      && state.modelReservation?.id !== compaction.attemptId
+    if (matchingLateReceipt) {
+      const next = mutable(state)
+      next.compaction = { ...compaction }
+      return changed(next, now, false)
+    }
+    if (previous?.cycleId === compaction.cycleId && previous.attemptId === compaction.attemptId
+      && previous.status === 'interrupted' && compaction.status === 'interrupted'
+      && compaction.retryCount === previous.retryCount && state.latestReceipt?.id === compaction.attemptId) {
+      return state
+    }
     if (!previous || previous.cycleId !== compaction.cycleId || previous.attemptId !== compaction.attemptId
       || previous.status !== 'started') throw new Error('Compaction transition does not match its active attempt.')
     if (compaction.status === 'completed' && state.modelReservation?.id === compaction.attemptId) {
@@ -484,7 +501,7 @@ function validateResponseFailure(receipt: HarnessReceipt) {
 
 function validateRejection(receipt: HarnessReceipt) {
   if (receipt.rejectionReason !== undefined && (
-    !['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'route_unavailable', 'summary_failed'].includes(receipt.rejectionReason)
+    !['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'route_unavailable', 'summary_failed', 'verification_failed'].includes(receipt.rejectionReason)
     || [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens,
       receipt.cacheWriteTokens, receipt.costMicros].some(value => value !== 0)
     || receipt.costSource !== 'catalog' || receipt.externalCostMicros !== undefined
@@ -557,9 +574,32 @@ export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessRec
     return state
   }
   validateHarnessReceipt(receipt)
+  if (receipt.rejectionReason === 'verification_failed' || receipt.rejectionReason === 'summary_failed') {
+    const reservation = state.modelReservation
+    const dispatch = reservation?.dispatch
+    if (reservation?.id !== receipt.id || reservation.maxCostMicros !== 0
+      || dispatch?.billingReservationId !== null || dispatch.modelId !== receipt.modelId
+      || (receipt.modelId !== 'openrouter/free' && receipt.modelId !== 'overlay/free')
+      || receipt.provider !== 'overlay-free-router' || receipt.costMicros !== 0
+      || receipt.inputTokens !== 0 || receipt.outputTokens !== 0 || receipt.reasoningTokens !== 0
+      || receipt.cacheReadTokens !== 0 || receipt.cacheWriteTokens !== 0
+      || (receipt.externalCostMicros ?? 0) !== 0) {
+      throw new Error('Failed inference reconciliation requires the exact zero-cost unbilled free hold.')
+    }
+  }
   const next = mutable(state)
   if (next.modelReservation?.id === receipt.id) next.modelReservation = undefined
   next.latestReceipt = { ...receipt }
+  if (next.compaction?.attemptId === receipt.id
+    && (next.compaction.status === 'started' || next.compaction.status === 'awaiting_reconciliation')
+    && next.modelReservation?.id !== receipt.id) {
+    next.compaction = {
+      ...next.compaction,
+      status: 'interrupted',
+      failureReason: receipt.rejectionReason === 'summary_failed' ? 'provider_error' : 'stream_aborted',
+      updatedAt: now,
+    }
+  }
   const recoveryKey = receipt.id.startsWith('summary:') ? 'summaryRecovery' : 'modelRecovery'
   next[recoveryKey] = nextModelRecovery(state[recoveryKey], receipt, now, state.policy.deadlineAt)
   if (receipt.rejectionReason === 'route_interrupted') {

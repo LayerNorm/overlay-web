@@ -29,6 +29,26 @@ type SerializedArtifact = {
   binaryParts: Array<{ index: number; mediaType: string; base64: string }>
 }
 
+function decodeBase64(value: string): Uint8Array {
+  const input = value.replace(/\s/g, '')
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(input)) {
+    throw new Error('Harness artifact media encoding is invalid.')
+  }
+  const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+  const bytes = new Uint8Array(Math.max(0, input.length / 4 * 3 - (input.endsWith('==') ? 2 : input.endsWith('=') ? 1 : 0)))
+  let offset = 0
+  for (let index = 0; index < input.length; index += 4) {
+    const a = alphabet.indexOf(input[index] ?? '')
+    const b = alphabet.indexOf(input[index + 1] ?? '')
+    const c = input[index + 2] === '=' ? 0 : alphabet.indexOf(input[index + 2] ?? '')
+    const d = input[index + 3] === '=' ? 0 : alphabet.indexOf(input[index + 3] ?? '')
+    bytes[offset++] = (a << 2) | (b >> 4)
+    if (input[index + 2] !== '=') bytes[offset++] = ((b & 15) << 4) | (c >> 2)
+    if (input[index + 3] !== '=') bytes[offset++] = ((c & 3) << 6) | d
+  }
+  return bytes
+}
+
 function base64(bytes: Uint8Array): string {
   const alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
   const chunks: string[] = []
@@ -64,10 +84,11 @@ export function serializeHarnessArtifactOutput(output: unknown): Uint8Array {
       const record = value as Record<string, unknown>
       const mediaType = typeof record.mediaType === 'string' ? record.mediaType
         : typeof record.mimeType === 'string' ? record.mimeType : inheritedMediaType
-      if (record.type === 'data' && typeof record.data === 'string'
-        && record.data.startsWith('data:') && record.data.includes(';base64,')) {
-        const [header, encoded] = record.data.split(',', 2)
-        const dataMediaType = header.slice(5).split(';')[0] || mediaType
+      const isMedia = record.type === 'image' || record.type === 'file' || mediaType.startsWith('image/')
+      if (typeof record.data === 'string' && (record.type === 'data' || isMedia)
+        && (record.data.startsWith('data:') && record.data.includes(';base64,') || isMedia)) {
+        const [header, encoded = ''] = record.data.startsWith('data:') ? record.data.split(',', 2) : ['', record.data]
+        const dataMediaType = header.startsWith('data:') ? header.slice(5).split(';')[0] || mediaType : mediaType
         const binaryIndex = index++
         binaryParts.push({ index: binaryIndex, mediaType: dataMediaType, base64: encoded })
         return { ...Object.fromEntries(Object.entries(record).filter(([key]) => key !== 'data')), __harnessBinaryPart: binaryIndex }
@@ -234,7 +255,9 @@ export function readHarnessArtifactText(bytes: Uint8Array, start: number, end: n
   visit(content.output)
   const text = chunks.join('\n')
   const excerpt = text.slice(start, end)
-  return end < text.length ? `${excerpt}\n[Incomplete: more artifact text is available after character ${end}.]` : excerpt
+  const prefix = start > 0 ? `[Incomplete: characters before ${start} were omitted.]\n` : ''
+  const suffix = end < text.length ? `\n[Incomplete: more artifact text is available after character ${end}.]` : ''
+  return `${prefix}${excerpt}${suffix}`
 }
 
 export function readHarnessArtifactMedia(bytes: Uint8Array, partIndex: number): { data: Uint8Array; mediaType: string } {
@@ -242,5 +265,5 @@ export function readHarnessArtifactMedia(bytes: Uint8Array, partIndex: number): 
   const content = parseHarnessArtifactOutput(bytes)
   const part = content.binaryParts.find(item => item.index === partIndex)
   if (!part) throw new Error('Harness artifact media part was not found.')
-  return { data: new Uint8Array(Buffer.from(part.base64, 'base64')), mediaType: part.mediaType }
+  return { data: decodeBase64(part.base64), mediaType: part.mediaType }
 }

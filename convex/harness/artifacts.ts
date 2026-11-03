@@ -1,6 +1,6 @@
 import { v } from 'convex/values'
 import { internal } from '../_generated/api'
-import { internalAction } from '../_generated/server'
+import { action, internalAction } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
 
 const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
@@ -94,6 +94,56 @@ export const put = internalAction({
   },
 })
 
+export const beginUpload = action({
+  args: {
+    serverSecret: v.string(), actorUserId: v.string(), runId: v.string(), workflowRunId: v.string(),
+  },
+  returns: v.string(),
+  handler: async (ctx, args) => {
+    const run = await ctx.runQuery(internal.harness.artifactMetadata.authorizeArtifactAccess, args)
+    if (!run) throw new Error('HARNESS_ARTIFACT_UNAUTHORIZED')
+    return await ctx.storage.generateUploadUrl()
+  },
+})
+
+export const attachUploaded = action({
+  args: {
+    ...identity,
+    artifactId: v.string(),
+    toolCallId: v.string(),
+    toolName: v.string(),
+    digest: v.string(),
+    storageId: v.id('_storage'),
+    byteSize: v.number(),
+    mediaPartCount: v.number(),
+    resource: resourceValidator,
+  },
+  returns: metadata,
+  handler: async (ctx, args): Promise<ArtifactMetadata> => {
+    const authorized = await ctx.runQuery(internal.harness.artifactMetadata.authorizeArtifactAccess, args)
+    if (!authorized) {
+      await ctx.runAction(internal.harness.artifacts.deleteOrphan, args).catch(() => undefined)
+      throw new Error('HARNESS_ARTIFACT_UNAUTHORIZED')
+    }
+    try {
+      return await ctx.runMutation(internal.harness.artifactMetadata.attach, args)
+    } catch (error) {
+      await ctx.runAction(internal.harness.artifacts.deleteOrphan, args).catch(() => undefined)
+      throw error
+    }
+  },
+})
+
+export const deleteOrphan = internalAction({
+  args: { ...identity, storageId: v.id('_storage') },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const authorized = await ctx.runQuery(internal.harness.artifactMetadata.authorizeArtifactCleanup, args)
+    if (authorized) await ctx.storage.delete(args.storageId)
+    return null
+  },
+})
+
 export const read = internalAction({
   args: { ...identity, artifactId: v.string() },
   returns: v.union(v.bytes(), v.null()),
@@ -102,6 +152,20 @@ export const read = internalAction({
     if (!row) return null
     const blob: Blob | null = await ctx.storage.get(row.storageId as Id<'_storage'>)
     return blob ? await blob.arrayBuffer() : null
+  },
+})
+
+export const readChunk = action({
+  args: { ...identity, artifactId: v.string(), offset: v.number(), length: v.number() },
+  returns: v.union(v.bytes(), v.null()),
+  handler: async (ctx, args): Promise<ArrayBuffer | null> => {
+    if (!Number.isSafeInteger(args.offset) || args.offset < 0 || !Number.isSafeInteger(args.length)
+      || args.length < 1 || args.length > 256 * 1024) throw new Error('HARNESS_ARTIFACT_RANGE_INVALID')
+    const row: ArtifactMetadata | null = await ctx.runQuery(internal.harness.artifactMetadata.getMetadata, args)
+    if (!row) return null
+    const blob: Blob | null = await ctx.storage.get(row.storageId as Id<'_storage'>)
+    if (!blob) return null
+    return await blob.slice(args.offset, args.offset + args.length).arrayBuffer()
   },
 })
 

@@ -46,6 +46,55 @@ test('compaction transitions are replay-safe and never replace an unrelated rese
   assert.equal(state.compaction?.retryCount, 1)
 })
 
+test('a matching late free summary receipt reconciles the stored cycle before its single retry', () => {
+  let state = make()
+  const cycleId = 'summary:cycle'
+  const attemptId = cycleId
+  state = setHarnessCompaction(state, {
+    cycleId, attemptId, status: 'started', retryCount: 0, updatedAt: now,
+  }, now)
+  state = reserveHarnessModel(state, attemptId, 0, now)
+  state = bindHarnessModelDispatch(state, attemptId, {
+    modelId: 'openrouter/free', billingReservationId: null,
+  }, now)
+  state = setHarnessCompaction(state, {
+    cycleId, attemptId, status: 'awaiting_reconciliation', retryCount: 0,
+    failureReason: 'hold_unsettled', updatedAt: now + 1,
+  }, now + 1)
+  const receipt: HarnessReceipt = {
+    id: attemptId, modelId: 'openrouter/free', provider: 'overlay-free-router',
+    inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+    contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'summary_failed',
+  }
+  const reconciled = recordHarnessReceipt(state, receipt, now + 2)
+  assert.equal(reconciled.compaction?.status, 'interrupted')
+  assert.equal(recordHarnessReceipt(reconciled, receipt, now + 3), reconciled)
+  state = setHarnessCompaction(reconciled, {
+    cycleId, attemptId: `${cycleId}:retry:1`, status: 'started', retryCount: 1, updatedAt: now + 4,
+  }, now + 4)
+  state = setHarnessCompaction(state, {
+    cycleId, attemptId: `${cycleId}:retry:1`, status: 'interrupted', retryCount: 1,
+    failureReason: 'provider_error', updatedAt: now + 5,
+  }, now + 5)
+  assert.throws(() => setHarnessCompaction(state, {
+    cycleId, attemptId: `${cycleId}:retry:2`, status: 'started', retryCount: 2, updatedAt: now + 6,
+  }, now + 6), /Invalid compaction attempt/)
+})
+
+test('paid or billing-bound inference cannot be reconciled as a free verifier failure', () => {
+  let state = reserveHarnessModel(make(), 'verification:1', 0, now)
+  state = bindHarnessModelDispatch(state, 'verification:1', {
+    modelId: 'openrouter/free', billingReservationId: 'billing-hold',
+  }, now)
+  const receipt: HarnessReceipt = {
+    id: 'verification:1', modelId: 'openrouter/free', provider: 'overlay-free-router',
+    inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+    contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'verification_failed',
+  }
+  assert.throws(() => recordHarnessReceipt(state, receipt, now + 1), /exact zero-cost unbilled free hold/)
+  assert.equal(state.modelReservation?.id, 'verification:1')
+})
+
 test('final verification is bound to current plan and evidence progress', () => {
   let state = make()
   state = recordHarnessEvidence(state, {

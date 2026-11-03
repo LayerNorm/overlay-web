@@ -69,7 +69,10 @@ test('artifact control reads selected media as typed binary model output', async
     kind: 'media' as const,
     data: new Uint8Array([0, 127, 255]),
     mediaType: 'image/png',
-    metadata: { toolName: 'render_document', toolCallId: 'render-1' },
+    metadata: {
+      artifactId: `ha_${'a'.repeat(64)}`, toolName: 'render_document', toolCallId: 'render-1',
+      mediaPartCount: 2, mediaPart: 1, resource: { id: 'file-1', revision: 'rev-7', page: 3 },
+    },
   }))
   const artifactTool = createHarnessControlTools({ ...fixture().ports, readArtifact }).harness_read_artifact
   const input = { artifactId: `ha_${'a'.repeat(64)}`, mediaPart: 0 }
@@ -78,7 +81,7 @@ test('artifact control reads selected media as typed binary model output', async
   expect(artifactTool.toModelOutput?.({ output: result })).toEqual({
     type: 'content',
     value: [
-      { type: 'text', text: 'Reopened media from render_document call render-1.' },
+      { type: 'text', text: `[Incomplete media selection; artifact ha_${'a'.repeat(64)}; render_document call render-1; resource file-1 revision rev-7 page 3; selected part 1 of 2.]` },
       { type: 'file', data: { type: 'data', data: new Uint8Array([0, 127, 255]) }, mediaType: 'image/png' },
     ],
   })

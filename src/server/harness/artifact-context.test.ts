@@ -4,6 +4,7 @@ import {
   estimateHarnessPromptTokens,
   externalizeOlderHarnessToolResults,
   harnessArtifactReference,
+  harnessToolResultText,
   parseHarnessArtifactOutput,
   readHarnessArtifactMedia,
   readHarnessArtifactText,
@@ -39,10 +40,27 @@ test('artifact serialization preserves exact typed media bytes and media type', 
   expect(readHarnessArtifactMedia(serialized, 0)).toEqual({ data: bytes, mediaType: 'image/png' })
 })
 
+test('mapped SDK file content captures declared bare base64 bytes without exposing them in excerpts', () => {
+  const bytes = new Uint8Array([0, 1, 2, 127, 255])
+  const encoded = Buffer.from(bytes).toString('base64')
+  const output = {
+    type: 'content',
+    value: [{
+      type: 'file',
+      mediaType: 'image/png',
+      data: { type: 'data', data: encoded },
+    }],
+  }
+  const serialized = serializeHarnessArtifactOutput(output)
+  expect(parseHarnessArtifactOutput(serialized).binaryParts).toMatchObject([{ mediaType: 'image/png' }])
+  expect(readHarnessArtifactMedia(serialized, 0)).toEqual({ data: bytes, mediaType: 'image/png' })
+  expect(harnessToolResultText(output)).not.toContain(encoded)
+})
+
 test('artifact text reads are bounded and explicitly identify remaining text', () => {
   const serialized = serializeHarnessArtifactOutput({ text: 'A'.repeat(100) })
-  expect(readHarnessArtifactText(serialized, 10, 30)).toBe(`${'A'.repeat(20)}\n[Incomplete: more artifact text is available after character 30.]`)
-  expect(readHarnessArtifactText(serialized, 90, 100)).toBe('A'.repeat(10))
+  expect(readHarnessArtifactText(serialized, 10, 30)).toBe(`[Incomplete: characters before 10 were omitted.]\n${'A'.repeat(20)}\n[Incomplete: more artifact text is available after character 30.]`)
+  expect(readHarnessArtifactText(serialized, 90, 100)).toBe(`[Incomplete: characters before 90 were omitted.]\n${'A'.repeat(10)}`)
   expect(() => readHarnessArtifactText(serialized, 0, 16_001)).toThrow(/range exceeds/)
 })
 

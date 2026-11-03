@@ -99,7 +99,14 @@ export async function applyHarnessOperation(
   }
 }
 
-export async function readHarnessEvidence(reference: HarnessExecutionReference, evidenceId: string): Promise<HarnessEvidence | null> {
+export async function readHarnessEvidence(
+  reference: HarnessExecutionReference,
+  evidenceId: string,
+  cursor?: string,
+  limit?: number,
+): Promise<HarnessEvidence | null | { observations: Array<Pick<HarnessEvidence, 'id' | 'source' | 'verdict' | 'createdAt'>>; nextCursor: string | null }> {
   'use step'
-  return new ConvexHarnessRepository().readEvidence({ actorUserId: reference.actorUserId, runId: reference.runId, evidenceId })
+  return new ConvexHarnessRepository().readEvidence({
+    actorUserId: reference.actorUserId, runId: reference.runId, evidenceId, cursor, limit,
+  })
 }

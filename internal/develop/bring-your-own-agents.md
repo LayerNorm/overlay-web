@@ -396,6 +396,12 @@ private, run-owned artifacts and replaced in older prompt history with bounded
 references; `harness_read_artifact` rechecks the original tool permission on each
 read. Compaction preserves the full transcript on failure and keeps unresolved
 provider reservations held until their matching receipt is observed.
+Checkpoint fields are structurally bounded and disclose omitted goal, plan, and
+evidence details; `harness_read_evidence` can page chronological observation IDs
+and outcomes when a checkpoint omits them. Artifact bytes travel through an
+authorized Harness action and a signed Convex storage upload URL, while reads
+are returned in bounded chunks. Reopened excerpts are explicitly incomplete,
+including tail reads, and preserve the source identity.
 
 A connected agent gets the same Overlay workspace tools a native agent with the same grant gets —
 notes (including the patch-style `edit_note`, `replace_note_section`, and `append_to_note`), files

@@ -37,11 +37,18 @@ export function createHarnessExecutionPorts(input: {
       if (!bytes) throw new Error('Harness artifact content is unavailable.')
       const resource = metadata.resource
       const artifactMetadata = {
-        toolName: metadata.toolName, toolCallId: metadata.toolCallId,
+        artifactId: metadata.artifactId,
+        toolName: metadata.toolName,
+        toolCallId: metadata.toolCallId,
+        mediaPartCount: metadata.mediaPartCount,
         ...(resource ? { resource } : {}),
       }
       if (request.mediaPart !== undefined) {
-        return { kind: 'media' as const, ...readHarnessArtifactMedia(bytes, request.mediaPart), metadata: artifactMetadata }
+        return {
+          kind: 'media' as const,
+          ...readHarnessArtifactMedia(bytes, request.mediaPart),
+          metadata: { ...artifactMetadata, mediaPart: request.mediaPart },
+        }
       }
       return { kind: 'text' as const, text: readHarnessArtifactText(bytes, request.start ?? 0,
         request.end ?? 16_000), metadata: artifactMetadata }

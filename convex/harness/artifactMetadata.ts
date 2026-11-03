@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { internalMutation, internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server'
+import { internalMutation, internalQuery, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { validateServerSecret } from '../lib/auth'
 
 const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
@@ -80,6 +80,26 @@ export const findByToolCall = internalQuery({
   },
 })
 
+export const authorizeArtifactAccess = internalQuery({
+  args: identity,
+  returns: v.union(v.object({ _id: v.id('harnessRuns'), runId: v.string() }), v.null()),
+  handler: async (ctx, args) => {
+    const run = await findActiveRun(ctx, args)
+    return run ? { _id: run._id, runId: run.runId } : null
+  },
+})
+
+export const authorizeArtifactCleanup = internalQuery({
+  args: identity,
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) return false
+    const run = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', args.runId)).unique()
+    const state = run ? JSON.parse(run.metadataJson) as { workflowRunId?: string } : null
+    return Boolean(run && run.actorUserId === args.actorUserId && state?.workflowRunId === args.workflowRunId)
+  },
+})
+
 export const attach = internalMutation({
   args: {
     ...identity,
@@ -117,6 +137,7 @@ export const attach = internalMutation({
         || JSON.stringify(previous.resource ?? null) !== JSON.stringify(args.resource ?? null)) {
         throw new Error('HARNESS_ARTIFACT_IDENTITY_CONFLICT')
       }
+      if (previous.storageId !== args.storageId) await ctx.storage.delete(args.storageId)
       return publicMetadata(previous)
     }
     const runArtifacts = await ctx.db.query('harnessContextArtifacts')
@@ -140,6 +161,19 @@ export const attach = internalMutation({
 })
 
 export const getMetadata = internalQuery({
+  args: { ...identity, artifactId: v.string() },
+  returns: v.union(metadata, v.null()),
+  handler: async (ctx, args) => {
+    await findActiveRun(ctx, args)
+    const row = await ctx.db.query('harnessContextArtifacts')
+      .withIndex('by_runId_artifactId', q => q.eq('runId', args.runId).eq('artifactId', args.artifactId))
+      .unique()
+    if (!row || row.workflowRunId !== args.workflowRunId) return null
+    return publicMetadata(row)
+  },
+})
+
+export const getMetadataForServer = query({
   args: { ...identity, artifactId: v.string() },
   returns: v.union(metadata, v.null()),
   handler: async (ctx, args) => {

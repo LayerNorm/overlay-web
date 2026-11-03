@@ -495,6 +495,48 @@ describe('durable harness runs', () => {
     expect(failedEvidence).toBeNull()
   })
 
+  test('authorized evidence lookup supports exact IDs and bounded chronological pages', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('paged-evidence', await seedConversation(convex))
+    await admit(convex, input)
+    await apply(convex, input, 'claim-evidence', 0, {
+      type: 'claim_execution', workflowRunId: 'evidence-workflow',
+    })
+    const observations = [1, 2, 3].map(index => ({
+      id: `tool:read-${index}`, kind: 'tool_result' as const, source: 'read_document',
+      summary: `Read page ${index}.`, verdict: 'observed' as const, createdAt: index,
+    }))
+    await convex.run(async ctx => {
+      for (const evidence of observations) {
+        await ctx.db.insert('harnessEvidence', {
+          runId: input.runId, evidenceId: evidence.id,
+          evidenceJson: JSON.stringify(evidence), createdAt: evidence.createdAt,
+        })
+      }
+    })
+
+    const first = await convex.query(query('readEvidence'), {
+      serverSecret: secret, actorUserId: 'alice', runId: input.runId, limit: 2,
+    })
+    expect(first).toMatchObject({
+      observations: observations.slice(0, 2).map(({ id, source, verdict, createdAt }) => ({ id, source, verdict, createdAt })),
+    })
+    if (!first || !('observations' in first) || !first.nextCursor) throw new Error('Expected a second evidence page.')
+    const second = await convex.query(query('readEvidence'), {
+      serverSecret: secret, actorUserId: 'alice', runId: input.runId, limit: 2, cursor: first.nextCursor,
+    })
+    expect(second).toMatchObject({
+      observations: [observations[2]].map(({ id, source, verdict, createdAt }) => ({ id, source, verdict, createdAt })),
+      nextCursor: null,
+    })
+    await expect(convex.query(query('readEvidence'), {
+      serverSecret: secret, actorUserId: 'alice', runId: input.runId, evidenceId: 'tool:read-2',
+    })).resolves.toMatchObject(observations[1])
+    await expect(convex.query(query('readEvidence'), {
+      serverSecret: secret, actorUserId: 'bob', runId: input.runId, evidenceId: 'tool:read-2',
+    })).rejects.toThrow()
+  })
+
   test('binds one workflow owner atomically and keeps the claim on reload', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('run-owner', await seedConversation(convex))

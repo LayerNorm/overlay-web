@@ -1,38 +1,63 @@
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 
 const MAX_CHECKPOINT_BYTES = 7_500
-const MAX_EVIDENCE = 24
+const MAX_EVIDENCE = 6
+const MAX_PLAN = 4
 
 export type HarnessCheckpoint = {
   version: 1
   goal: string
+  goalOmittedCharacters: number
   progressRevision: number
   planRevision: number
-  plan: Array<{ id: string; status: string; evidenceRefs: string[] }>
+  plan: Array<{ id: string; status: string; evidenceRefs: string[]; omittedEvidenceRefCount: number }>
+  omittedPlanCount: number
   evidence: Array<{
     id: string
     source: string
     verdict: string
     summary: string
+    excerptTruncated: boolean
     resource?: { id: string; revision?: string; operation?: string; page?: number }
+    resourceTruncated?: boolean
   }>
   omittedEvidenceCount: number
   evidenceLookup: 'harness_read_evidence'
 }
 
 function checkpointFor(state: HarnessSnapshot, evidence: HarnessSnapshot['evidence']): HarnessCheckpoint {
+  const goal = state.goal.slice(0, 900)
+  const plan = state.plan.slice(-MAX_PLAN)
   return {
     version: 1,
-    goal: state.goal,
+    goal: goal.length < state.goal.length ? `${goal} [TRUNCATED]` : goal,
+    goalOmittedCharacters: Math.max(0, state.goal.length - goal.length),
     progressRevision: state.progressRevision,
     planRevision: state.planRevision,
-    plan: state.plan.map(step => ({ id: step.id, status: step.status, evidenceRefs: [...step.evidenceRefs] })),
+    plan: plan.map(step => ({
+      id: step.id.slice(0, 128),
+      status: step.status,
+      evidenceRefs: step.evidenceRefs.slice(0, 2).map(id => id.slice(0, 128)),
+      omittedEvidenceRefCount: Math.max(0, step.evidenceRefs.length - 2),
+    })),
+    omittedPlanCount: Math.max(0, state.plan.length - plan.length),
     evidence: evidence.map(item => ({
-      id: item.id,
-      source: item.source,
+      id: item.id.slice(0, 128),
+      source: item.source.slice(0, 128),
       verdict: item.verdict,
-      summary: item.summary.replace(/(?:data:[^;\s]+;base64,)[A-Za-z0-9+/=]+/gi, '[binary payload omitted]').slice(0, 320),
-      ...(item.resource ? { resource: { ...item.resource } } : {}),
+      summary: item.summary.replace(/(?:data:[^;\s]+;base64,)[A-Za-z0-9+/=]+/gi, '[binary payload omitted]').slice(0, 240)
+        + (item.summary.length > 240 ? ' [TRUNCATED]' : ''),
+      excerptTruncated: item.summary.length > 240,
+      ...(item.resource ? {
+        resource: {
+          id: item.resource.id.slice(0, 128),
+          ...(item.resource.revision ? { revision: item.resource.revision.slice(0, 128) } : {}),
+          ...(item.resource.operation ? { operation: item.resource.operation.slice(0, 128) } : {}),
+          ...(item.resource.page !== undefined ? { page: item.resource.page } : {}),
+        },
+        ...(item.resource.id.length > 128 || (item.resource.revision?.length ?? 0) > 128
+          || (item.resource.operation?.length ?? 0) > 128 ? { resourceTruncated: true } : {}),
+      } : {}),
     })),
     omittedEvidenceCount: Math.max(0, state.evidence.length - evidence.length),
     evidenceLookup: 'harness_read_evidence',
@@ -55,19 +80,26 @@ export function serializeHarnessCheckpoint(state: HarnessSnapshot): string {
 }
 
 export function buildHarnessEvidenceEnvelope(state: HarnessSnapshot, candidate: string): string {
+  if (candidate.length > 16_000) {
+    throw new Error('The proposed answer exceeds the verification limit. Produce a shorter answer that can be checked in full.')
+  }
+  const observations = state.evidence.slice(-48)
   return JSON.stringify({
     goal: state.goal,
     plan: state.plan.map(step => ({
       id: step.id, title: step.title, status: step.status, evidenceRefs: step.evidenceRefs,
     })),
-    observations: state.evidence.slice(-48).map(evidence => ({
+    observationsOmittedCount: Math.max(0, state.evidence.length - observations.length),
+    observationsLookup: 'harness_read_evidence',
+    observations: observations.map(evidence => ({
       id: evidence.id,
       source: evidence.source,
       verdict: evidence.verdict,
-      summary: evidence.summary.slice(0, 2_000),
+      summary: evidence.summary.length > 2_000
+        ? `${evidence.summary.slice(0, 1_980)} [INCOMPLETE]` : evidence.summary,
       ...(evidence.resource ? { resource: evidence.resource } : {}),
     })),
-    candidateAnswer: candidate.slice(0, 16_000),
+    candidateAnswer: candidate,
   })
 }
 
@@ -95,6 +127,8 @@ export function parseHarnessVerificationResponse(raw: string, evidenceIds: Reado
 }
 
 export async function harnessCandidateDigest(candidate: string): Promise<string> {
+  'use step'
+  if (!globalThis.crypto?.subtle) throw new Error('Harness verification hashing is unavailable in this runtime.')
   const input = new TextEncoder().encode(candidate)
   const digest = await globalThis.crypto.subtle.digest('SHA-256', input.buffer as ArrayBuffer)
   return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, '0')).join('')

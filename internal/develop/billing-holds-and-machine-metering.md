@@ -31,6 +31,10 @@ its history and waits for the matching receipt before retrying. A final-answer
 verification failure likewise cannot complete the run: unresolved holds remain
 reserved, while settled malformed or unsupported results trigger bounded
 correction or a truthful pause.
+An aborted verification may be reconciled as `verification_failed` only for
+the exact zero-cost free-router hold with no billing reservation; paid, BYOK,
+unknown, and mismatched holds wait for their actual receipt. Compaction and
+verification recheck run ownership, status, and deadline after durable waits.
 
 ## Stuck holds (fixed 2026-10-02)
 

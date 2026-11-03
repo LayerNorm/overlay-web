@@ -93,7 +93,10 @@ export interface HarnessRepository {
   admit(input: HarnessAdmission): Promise<HarnessSnapshot>
   get(input: { actorUserId: string; runId: string }): Promise<HarnessSnapshot | null>
   apply(input: HarnessMutationInput): Promise<HarnessMutationResult>
-  readEvidence(input: { actorUserId: string; runId: string; evidenceId: string }): Promise<HarnessEvidence | null>
+  readEvidence(input: { actorUserId: string; runId: string; evidenceId?: string; cursor?: string; limit?: number }): Promise<
+    HarnessEvidence | null
+    | { observations: Array<Pick<HarnessEvidence, 'id' | 'source' | 'verdict' | 'createdAt'>>; nextCursor: string | null }
+  >
   publishWait(input: HarnessWaitReference & { request: HarnessWaitRequest }): Promise<HarnessWait>
   resolveWait(input: HarnessWaitReference & { token: string }): Promise<void>
   listPendingWaits(input: HarnessWaitReference): Promise<HarnessWait[]>
