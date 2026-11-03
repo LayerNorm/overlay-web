@@ -27,10 +27,37 @@ test('read_file returns long text in chunks with a revision', async () => {
     assert.equal(first.success, true)
     assert.equal('content' in first && first.content.length, 60_000)
     assert.equal('nextOffset' in first && first.nextOffset, 60_000)
+    assert.equal('complete' in first && first.complete, false)
     assert.equal('file' in first && first.file.revision, '7')
     const rest = await executeReadFile(options, { fileId: 'f1', offset: 60_000 })
     assert.equal('content' in rest && rest.content.length, 10_000)
-    assert.equal('nextOffset' in rest, false)
+    assert.equal('nextOffset' in rest && rest.nextOffset, null)
+    assert.equal('complete' in rest && rest.complete, false)
+  } finally {
+    restore()
+  }
+})
+
+test('read_file uses the bounded server text window and keeps later offsets incomplete', async () => {
+  let requestedOffset = ''
+  const restore = mockFetch(url => {
+    requestedOffset = url.searchParams.get('textOffset') ?? ''
+    return Response.json({
+      _id: 'f2', name: 'derived.pdf', type: 'file', kind: 'upload', updatedAt: 8,
+      textContent: 'b'.repeat(60_000), textOffset: 50_000, textTotalChars: 120_000, textComplete: false,
+      extractionStatus: 'ready', extractionTruncated: false, originalAvailable: true,
+      sourceChecksumSha256: 'a'.repeat(64),
+    })
+  })
+  try {
+    const result = await executeReadFile(options, { fileId: 'f2', offset: 50_000 })
+    assert.equal(requestedOffset, '50000')
+    assert.equal('content' in result && result.content.length, 60_000)
+    assert.equal('totalChars' in result && result.totalChars, 120_000)
+    assert.equal('nextOffset' in result && result.nextOffset, 110_000)
+    assert.equal('complete' in result && result.complete, false)
+    assert.equal('file' in result && result.file.revision, '8')
+    assert.equal('file' in result && result.file.sourceRevision, 'a'.repeat(64))
   } finally {
     restore()
   }

@@ -33,6 +33,9 @@ export type FileUploadIntentRecord = {
   _id: string
   declaredSizeBytes: number
   mimeType?: string
+  checksumSha256?: string
+  fileId?: string
+  status?: 'pending' | 'finalized'
   expiresAt: number
 }
 
@@ -44,6 +47,7 @@ export type FileStorageEntitlements = {
 export type FileSubtreeStorageEntry = {
   fileId: string
   r2Key?: string
+  extractedTextKey?: string
   storageId?: string
 }
 
@@ -70,7 +74,12 @@ export interface FileRepository {
     accessToken?: string
     fileId: string
     userId: string
+    workspaceId?: string
   }): Promise<FileRecord | null>
+  getExtractionStorage?(args: { fileId: string; userId: string; workspaceId?: string }): Promise<{
+    ownerUserId: string
+    extractedTextKey?: string
+  } | null>
   getFileByLegacyOutputId(args: {
     outputId: string
     userId: string
@@ -80,6 +89,21 @@ export interface FileRepository {
   createFile(args: Record<string, unknown> & { userId: string }): Promise<string | null>
   createFileWithStorage(args: Record<string, unknown> & { userId: string }): Promise<string | null>
   commitUploadedFile(args: UploadedFileInput): Promise<string>
+  storeFileExtraction(args: {
+    fileId: string
+    jobId: string
+    userId: string
+    attemptToken: string
+    sourceChecksumSha256: string
+    extractionStatus: 'ready' | 'failed' | 'unavailable'
+    extractedTextKey?: string
+    extractedTextBytes?: number
+    content?: string
+    extractionError?: string
+    extractionTruncated?: boolean
+    indexTruncated?: boolean
+    indexedCharCount?: number
+  }): Promise<void>
   getComputerArtifact(args: ComputerArtifactLookup): Promise<ComputerArtifactManifest | null>
   prepareComputerArtifact(args: ComputerArtifactPrepare): Promise<ComputerArtifactManifest>
   commitComputerArtifact(args: ComputerArtifactCommit): Promise<string>
@@ -108,6 +132,7 @@ export interface FileRepository {
     declaredSizeBytes: number
     expiresAt: number
     mimeType: string
+    checksumSha256?: string
     r2Key: string
     userId: string
   }): Promise<void>

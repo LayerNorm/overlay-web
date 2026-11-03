@@ -5,7 +5,8 @@ import { nativeHarnessChildInput, nativeHarnessWorkflow, startNativeHarnessChild
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), claim: vi.fn(), apply: vi.fn(), run: vi.fn(), ports: vi.fn(),
   tools: vi.fn(), waits: vi.fn(), attach: vi.fn(), finish: vi.fn(), notify: vi.fn(), child: vi.fn(),
-  admit: vi.fn(), start: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), fallback: vi.fn(), repositoryGet: vi.fn() }))
+  admit: vi.fn(), start: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), fallback: vi.fn(), repositoryGet: vi.fn(),
+  resolveFileAnalysis: vi.fn(), readFileCoverage: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('workflow', () => ({
   FatalError: class extends Error {}, getWorkflowMetadata: () => ({ workflowRunId: 'workflow' }),
@@ -20,6 +21,9 @@ vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, claimHarnessStat
 vi.mock('./runner', () => ({ runOverlayHarness: mocks.run }))
 vi.mock('./native-ports', () => ({ createNativeHarnessExecutionPorts: mocks.ports }))
 vi.mock('./native-tools', () => ({ createNativeHarnessTools: mocks.tools }))
+vi.mock('@/server/harness/file-analysis-steps', () => ({
+  resolveFileAnalysisEnabled: mocks.resolveFileAnalysis, readFileAnalysisCoverage: mocks.readFileCoverage,
+}))
 vi.mock('./waits', () => ({ createHarnessWaitPorts: mocks.waits }))
 vi.mock('./native-child-steps', () => ({ admitNativeHarnessChild: mocks.admit }))
 vi.mock('./native-delivery-steps', () => ({ attachNativeHarnessDelivery: mocks.attach,
@@ -48,6 +52,8 @@ beforeEach(() => {
   mocks.claim.mockResolvedValue(true)
   mocks.conflict.mockResolvedValue(null)
   mocks.tools.mockReturnValue({})
+  mocks.resolveFileAnalysis.mockResolvedValue(false)
+  mocks.readFileCoverage.mockResolvedValue(null)
   mocks.ports.mockImplementation((_execution: unknown, surface: unknown) => ({ ...surface }))
   mocks.run.mockResolvedValue({ outcome: 'finished', snapshot: { ...state, status: 'completed' }, messages: [], steps: [] })
 })

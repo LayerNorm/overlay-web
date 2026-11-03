@@ -4,10 +4,11 @@ import { fileService, fileUploadUrlErrorResponse } from '@/server/files/http'
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
   try {
-    const { sizeBytes, name, mimeType } = await request.json().catch((_error) => ({})) as {
+    const { sizeBytes, name, mimeType, checksumSha256 } = await request.json().catch((_error) => ({})) as {
       sizeBytes?: number
       name?: string
       mimeType?: string
+      checksumSha256?: string
     }
     const { auth } = context
     const result = await fileService.createUploadUrl({
@@ -15,6 +16,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       sizeBytes,
       name,
       mimeType,
+      checksumSha256,
     })
     return NextResponse.json(result)
   } catch (error) {

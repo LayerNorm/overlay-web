@@ -10,6 +10,9 @@ export function assertMatchingFile(file: Doc<'files'> | null, input: UploadedFil
     || file.name !== input.name || file.parentId !== input.parentId || file.workspaceId !== input.workspaceId
     || (file.scope ?? 'personal') !== input.scope || file.mimeType !== input.mimeType
     || file.extension !== input.extension) throw new Error('upload_publication_conflict')
+  if (input.sourceChecksumSha256 && file.sourceChecksumSha256 !== input.sourceChecksumSha256) {
+    throw new Error('upload_publication_conflict')
+  }
 }
 
 export async function commitUploadedFile(ctx: MutationCtx, input: UploadedFileInput, now: number) {
@@ -20,6 +23,9 @@ export async function commitUploadedFile(ctx: MutationCtx, input: UploadedFileIn
     throw new Error('upload_size_exceeds_intent')
   }
   if (intent.mimeType && intent.mimeType !== input.mimeType) throw new Error('upload_mime_mismatch')
+  if (intent.checksumSha256 && intent.checksumSha256 !== input.sourceChecksumSha256) {
+    throw new Error('upload_checksum_mismatch')
+  }
   if (intent.status === 'finalized') {
     const file = intent.fileId ? await ctx.db.get(intent.fileId) : null
     assertMatchingFile(file, input)
@@ -36,6 +42,10 @@ export async function commitUploadedFile(ctx: MutationCtx, input: UploadedFileIn
       userId: input.userId, workspaceId: input.workspaceId, scope: input.scope,
       name: input.name, parentId: input.parentId, r2Key: input.r2Key, sizeBytes: input.sizeBytes,
       mimeType: input.mimeType, extension: input.extension, type: 'file', kind: 'upload',
+      sourceChecksumSha256: input.sourceChecksumSha256,
+      extractionStatus: 'pending',
+      indexTruncated: false,
+      indexedCharCount: 0,
       indexable: false, indexStatus: 'skipped', createdAt: now, updatedAt: now,
     })
     await applyStorageUsageDelta(ctx, input.userId, input.sizeBytes)

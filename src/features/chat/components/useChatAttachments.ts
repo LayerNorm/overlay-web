@@ -36,6 +36,50 @@ const IMAGE_ATTACHMENT_MAX_EDGE_PX = 2048
 export const IMAGE_ATTACHMENT_MAX_DATA_URL_CHARS = 1_500_000
 /** ~3.1 MB across all attachments in one message. */
 export const IMAGE_ATTACHMENTS_MAX_TOTAL_DATA_URL_CHARS = 4_200_000
+async function fetchFileFirstUploadEnabled(): Promise<boolean> {
+  return overlayAppClient.files.ingestionCapabilities({ credentials: 'same-origin', cache: 'no-store' })
+    .then(capabilities => capabilities['files-file-first'] === true)
+    .catch(() => false)
+}
+
+async function uploadFileFirst(file: File): Promise<{ fileId: string; fileName: string }> {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', await file.arrayBuffer()))
+  const checksumSha256 = [...digest].map(byte => byte.toString(16).padStart(2, '0')).join('')
+  const upload = await overlayAppClient.files.uploadUrl({
+    name: file.name, mimeType: file.type || 'application/octet-stream', sizeBytes: file.size, checksumSha256,
+  }, { credentials: 'same-origin' })
+  const put = await fetch(upload.uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'content-type': file.type || 'application/octet-stream',
+      'x-amz-checksum-sha256': btoa(String.fromCharCode(...digest)),
+      'if-none-match': '*',
+    },
+    body: file,
+  })
+  if (!put.ok) throw new Error(`Could not upload file (HTTP ${put.status})`)
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const commit = await overlayAppClient.files.registerDocumentResponse({
+        r2Key: upload.r2Key, fileName: file.name, mimeType: file.type || 'application/octet-stream',
+        sizeBytes: file.size, checksumSha256,
+      }, { credentials: 'same-origin' })
+      if (!commit.ok) {
+        if (commit.status < 500 && commit.status !== 429) {
+          throw Object.assign(new Error(`Could not register file (HTTP ${commit.status})`), { permanent: true })
+        }
+        throw new Error(`Could not register file (HTTP ${commit.status})`)
+      }
+      const result = await commit.json() as { fileId?: string; fileName?: string }
+      if (!result.fileId) throw new Error('Could not register uploaded file.')
+      return { fileId: result.fileId, fileName: result.fileName ?? file.name }
+    } catch (error) {
+      if (attempt === 2 || (error && typeof error === 'object' && 'permanent' in error)) throw error
+      await new Promise(resolve => setTimeout(resolve, 250 * 2 ** attempt))
+    }
+  }
+  throw new Error('Could not register uploaded file.')
+}
 
 export function attachedImagesTotalDataUrlChars(images: readonly { dataUrl: string }[]): number {
   return images.reduce((sum, image) => sum + image.dataUrl.length, 0)
@@ -112,16 +156,20 @@ export function useChatAttachments() {
       ...prev,
       { clientId, name: file.name, fileIds: [], status: 'uploading' },
     ])
-    const form = new FormData()
-    form.append('file', file)
-    void overlayAppClient.files
-      .ingestDocumentResponse(form, {
-      credentials: 'same-origin',
-    })
+    void fetchFileFirstUploadEnabled().then(async fileFirst => {
+      if (fileFirst) {
+        const result = await uploadFileFirst(file)
+        setPendingChatDocuments(prev => prev.map(d => d.clientId === clientId
+          ? { ...d, status: 'ready' as const, fileIds: [result.fileId], name: result.fileName } : d))
+        return
+      }
+      const form = new FormData()
+      form.append('file', file)
+      return overlayAppClient.files.ingestDocumentResponse(form, { credentials: 'same-origin' })
       .then(async (res) => {
         if (!res.ok) {
           const err = (await res.json().catch(() => ({}))) as { error?: string }
-          const message = err.error ?? 'Could not index file'
+          const message = err.error ?? `Could not upload file (HTTP ${res.status})`
           setPendingChatDocuments((prev) =>
             prev.map((d) =>
               d.clientId === clientId
@@ -147,16 +195,12 @@ export function useChatAttachments() {
           ),
         )
       })
-      .catch(() => {
-        setPendingChatDocuments((prev) =>
-          prev.map((d) =>
-            d.clientId === clientId
-              ? { ...d, status: 'error' as const, error: 'Network error' }
-              : d,
-          ),
-        )
-        toast.error(`Could not upload ${file.name}. Check your connection and try again.`)
-      })
+    }).catch((error: unknown) => {
+      const message = error instanceof Error ? error.message : 'Could not upload file'
+      setPendingChatDocuments(prev => prev.map(d => d.clientId === clientId
+        ? { ...d, status: 'error' as const, error: message } : d))
+      toast.error(`Could not upload ${file.name}: ${message}`)
+    })
   }
 
   function addDocumentsFromPicker(files: FileList | File[] | null) {

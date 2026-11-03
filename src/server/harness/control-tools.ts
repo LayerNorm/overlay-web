@@ -2,6 +2,8 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import { HarnessPlanValidationError, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts } from './ports'
+import { FILE_ANALYSIS_LIMITS, fileAnalysisBrief, type FileAnalysisPartition } from './file-analysis-policy'
+import { fileAnalysisConstraints } from './file-analysis-coverage'
 
 const id = z.string().min(1).max(256)
 const evidenceReferenceError = 'Evidence must reference successful observations from this run.'
@@ -60,6 +62,58 @@ function rejectedStepUpdate(error: string, state: HarnessSnapshot, stepId: strin
 
 export function createHarnessControlTools(ports: HarnessExecutionPorts) {
   return {
+    ...(ports.fileAnalysisEnabled ? {
+      harness_analyze_files: tool({
+        description: 'Start a bounded recursive file-analysis child for assigned versioned page ranges. Uses existing shared budget, depth and concurrency limits. Keep large inputs outside parent context; join with harness_read_child and report examined versus missing coverage.',
+        inputSchema: z.object({
+          stepId: id,
+          goal: z.string().min(1).max(FILE_ANALYSIS_LIMITS.maxGoalChars),
+          partitions: z.array(z.object({
+            fileId: id, revision: z.string().min(1).max(256),
+            startPage: z.number().int().positive(), endPage: z.number().int().positive(),
+          })).min(1).max(FILE_ANALYSIS_LIMITS.maxPartitions),
+          maxCostMicros: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+        }).superRefine((input, context) => {
+          const assigned = new Map<string, Array<[number, number]>>()
+          input.partitions.forEach((partition, index) => {
+            if (partition.endPage < partition.startPage
+              || partition.endPage - partition.startPage + 1 > 20) {
+              context.addIssue({ code: 'custom', path: ['partitions', index], message: 'Page ranges must contain 1 to 20 pages.' })
+            }
+            const key = `${partition.fileId}:${partition.revision}`
+            const ranges = assigned.get(key) ?? []
+            if (ranges.some(([start, end]) => partition.startPage <= end && partition.endPage >= start)) {
+              context.addIssue({ code: 'custom', path: ['partitions', index], message: 'Assignments for the same revision cannot overlap.' })
+            }
+            ranges.push([partition.startPage, partition.endPage])
+            assigned.set(key, ranges)
+          })
+        }),
+        execute: async (input, { toolCallId }) => {
+          const state = await ports.read()
+          if (state.status === 'cancelled' || ['completed', 'failed'].includes(state.status)) {
+            return { success: false, error: 'This run can no longer launch children.' }
+          }
+          const allow = new Set([
+            'read_file', 'read_document', 'search_in_files', 'computer_exec',
+            'computer_read_file', 'computer_write_file', 'list_files',
+          ])
+          const granted = new Set(state.policy.allowedToolIds)
+          if (!granted.has('read_file') || !granted.has('read_document') || !granted.has('computer_exec')) {
+            return { success: false, error: 'File reading tools are not granted to this run.' }
+          }
+          const allowedToolIds = [...allow].filter(name => granted.has(name))
+          const partitions = input.partitions as FileAnalysisPartition[]
+          return await ports.delegate({
+            stepId: input.stepId,
+            goal: fileAnalysisBrief(input.goal, partitions),
+            constraints: fileAnalysisConstraints(partitions, toolCallId),
+            allowedToolIds,
+            maxCostMicros: input.maxCostMicros,
+          }, toolCallId)
+        },
+      }),
+    } : {}),
     harness_set_plan: tool({
       description: 'Create or revise durable milestones. Keep existing IDs; explicitly skip obsolete work. Completion requires persisted evidence.',
       inputSchema: z.object({ steps: z.array(z.object({
@@ -172,7 +226,9 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
           child = await ports.readChild(childRunId)
           if (child.parentRunId !== parent.runId || child.rootRunId !== parent.rootRunId) throw new Error('Invalid child lineage.')
         }
-        const result = { status: child.status, summary: child.resultSummary ?? child.workingSummary, evidence: child.evidence, blocker: child.blocker }
+        const coverage = ports.readFileCoverage ? await ports.readFileCoverage(childRunId) : null
+        const result = { status: child.status, summary: child.resultSummary ?? child.workingSummary, evidence: child.evidence, blocker: child.blocker,
+          ...(coverage ? { coverage } : {}) }
         if (child.status !== 'completed') return result
         await ports.apply(`settle-child:${child.runId}:${child.revision}`, { type: 'settle_child', childRunId })
         const evidenceRef = `child-result:${toolCallId}`

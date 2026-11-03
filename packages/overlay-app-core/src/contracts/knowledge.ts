@@ -88,6 +88,7 @@ export interface UpdateFileRequest {
 }
 
 export interface FileUploadUrlRequest {
+  checksumSha256?: string
   name?: string
   mimeType?: string
   sizeBytes: number

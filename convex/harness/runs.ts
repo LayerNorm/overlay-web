@@ -1765,6 +1765,23 @@ export const apply = mutation({
   },
 })
 
+export const readDocumentEvidence = query({
+  args: { actorUserId: v.string(), runId: v.string(), serverSecret: v.string() },
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const run = await findRun(ctx, args.runId)
+    if (!run) return { evidence: [], limited: false }
+    await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    const rows = await ctx.db.query('harnessEvidence')
+      .withIndex('by_runId_createdAt', q => q.eq('runId', run.runId)).order('desc').take(1024)
+    return {
+      evidence: rows.map(row => parseJson<HarnessEvidence>(row.evidenceJson))
+        .filter(item => item.kind === 'tool_result' && item.source === 'read_document'),
+      limited: rows.length === 1024,
+    }
+  },
+})
+
 export const readEvidence = query({
   args: {
     actorUserId: v.string(),

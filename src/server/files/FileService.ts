@@ -2,7 +2,7 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import type { ResourceView } from '@/shared/workspaces/resource-scope'
-import { randomBytes, randomUUID } from 'node:crypto'
+import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { MAX_FILE_CONTENT_UTF8_BYTES, splitTextForConvexDocuments } from '@/shared/storage/convex-file-content'
 import { hashTextContent } from '@/server/storage/text-content-hash'
 import { findSubstringMatchesInText } from '@/shared/storage/file-text-search'
@@ -55,6 +55,7 @@ import type {
 } from '@/shared/storage/file-publication'
 
 const MAX_INGEST_BYTES = 12 * 1024 * 1024
+const MAX_SOURCE_BYTES = 100 * 1024 * 1024
 export const MAX_COMPUTER_ARTIFACT_BYTES = 100 * 1024 * 1024
 
 export { FileServiceError } from './FileServiceErrors'
@@ -128,13 +129,23 @@ const defaultClock: FileServiceClock = {
 
 async function parsePdfBuffer(buf: Buffer): Promise<string> {
   const mod = await import('pdf-parse/lib/pdf-parse.js')
-  const parsePdf = mod.default
-  const data = await parsePdf(buf)
+  const parsePdf = mod.default as unknown as (buffer: Buffer, options: {
+    pagerender: (pageData: { getTextContent(): Promise<{ items: Array<{ str?: string }> }> }) => Promise<string>
+  }) => Promise<{ text?: string }>
+  let page = 0
+  const data = await parsePdf(buf, {
+    pagerender: async (pageData: { getTextContent(): Promise<{ items: Array<{ str?: string }> }> }) => {
+      page++
+      const content = await pageData.getTextContent()
+      const text = content.items.map(item => item.str ?? '').join(' ').trim()
+      return text ? `--- Page ${page} ---\n${text}` : ''
+    },
+  })
   return (data.text ?? '').trim()
 }
 
-async function extractTextFromBuffer(buf: Buffer, file: File, ext: string): Promise<string> {
-  if (buf.length > MAX_INGEST_BYTES) {
+async function extractTextFromBuffer(buf: Buffer, file: File, ext: string, maxBytes = MAX_INGEST_BYTES): Promise<string> {
+  if (buf.length > maxBytes) {
     throw new Error('FILE_TOO_LARGE')
   }
   if (isPdf(file, ext)) {
@@ -275,6 +286,8 @@ export class FileService {
     view?: ResourceView
     /** For a single file: return the full text of text kept in object storage, not its prefix. */
     fullText?: boolean
+    textOffset?: number
+    accessToken?: string
     userId: string
     workspaceId?: string
   }): Promise<unknown> {
@@ -282,14 +295,29 @@ export class FileService {
       const file = await this.deps.repository.getFile({
         fileId: args.fileId,
         userId: args.userId,
+        workspaceId: args.workspaceId,
+        accessToken: args.accessToken,
       })
       // Convex only returns files this user may read: their own, or workspace-shared by a member.
       if (!file) {
         serviceError({ error: 'Not found' }, 404)
       }
       if (args.fullText) {
-        const text = await this.readObjectStoreText(file, file.userId)
-        if (text !== null) return { ...file, content: text, textContent: text }
+        const extraction = await this.deps.repository.getExtractionStorage?.({
+          fileId: args.fileId, userId: args.userId, workspaceId: args.workspaceId,
+        })
+        const text = await this.readObjectStoreText(
+          { ...file, ...(extraction?.extractedTextKey ? { extractedTextKey: extraction.extractedTextKey } : {}) },
+          extraction?.ownerUserId ?? file.userId,
+        )
+        const fullText = text ?? file.textContent ?? file.content ?? ''
+        const textComplete = !(text === null && (file.textInObjectStore || extraction?.extractedTextKey))
+        if (args.textOffset !== undefined) {
+          const offset = Math.max(0, Math.floor(args.textOffset))
+          const content = fullText.slice(offset, offset + 60_000)
+          return { ...file, content, textContent: content, textOffset: offset, textTotalChars: fullText.length, textComplete }
+        }
+        return { ...file, content: fullText, textContent: fullText, textComplete }
       }
       return file
     }
@@ -500,10 +528,146 @@ export class FileService {
   }
 
   /** The full text of a file kept in object storage, or null when the file keeps its text inline. */
-  async readObjectStoreText(file: { textInObjectStore?: unknown; r2Key?: unknown }, userId: string): Promise<string | null> {
+  async readObjectStoreText(file: { textInObjectStore?: unknown; r2Key?: unknown; extractedTextKey?: unknown }, userId: string): Promise<string | null> {
+    if (typeof file.extractedTextKey === 'string' && isOwnedStorageKey(userId, file.extractedTextKey)) {
+      const extracted = await this.storage.downloadBuffer(file.extractedTextKey)
+      if (extracted) return new TextDecoder().decode(extracted)
+    }
     if (!file.textInObjectStore || typeof file.r2Key !== 'string' || !isOwnedStorageKey(userId, file.r2Key)) return null
     const bytes = await this.storage.downloadBuffer(file.r2Key)
     return bytes ? new TextDecoder().decode(bytes) : null
+  }
+
+  async extractSourceFile(args: {
+    fileId: string
+    jobId: string
+    userId: string
+    attemptToken: string
+    sourceChecksumSha256: string
+    bytes: Uint8Array
+  }): Promise<{ extractionStatus: 'ready' | 'unavailable'; extractionTruncated: boolean; chars: number }> {
+    const original = await this.deps.repository.getFile({ fileId: args.fileId, userId: args.userId })
+    if (!original || original.userId !== args.userId || !isOwnedStorageKey(args.userId, original.r2Key ?? '')) {
+      serviceError({ error: 'Original file is unavailable.' }, 404)
+    }
+    if (original.sourceChecksumSha256 !== args.sourceChecksumSha256
+      || args.bytes.byteLength !== original.sizeBytes
+      || args.bytes.byteLength > MAX_COMPUTER_ARTIFACT_BYTES
+      || createHash('sha256').update(args.bytes).digest('hex') !== args.sourceChecksumSha256) {
+      serviceError({ error: 'Original file revision verification failed.' }, 409)
+    }
+    const name = original.name
+    const blobBytes = new ArrayBuffer(args.bytes.byteLength)
+    new Uint8Array(blobBytes).set(args.bytes)
+    const file = new File([blobBytes], name, { type: String(original.mimeType ?? 'application/octet-stream') })
+    let text = ''
+    try {
+      text = await extractTextFromBuffer(Buffer.from(args.bytes), file, extOf(name), MAX_SOURCE_BYTES)
+    } catch (error) {
+      await this.deps.repository.storeFileExtraction({
+        fileId: args.fileId, jobId: args.jobId, userId: args.userId, attemptToken: args.attemptToken,
+        sourceChecksumSha256: args.sourceChecksumSha256,
+        extractionStatus: 'failed', extractionError: error instanceof Error ? error.message.slice(0, 500) : 'extraction_failed',
+      })
+      throw error
+    }
+    if (!text.trim()) {
+      await this.deps.repository.storeFileExtraction({
+        fileId: args.fileId, jobId: args.jobId, userId: args.userId, attemptToken: args.attemptToken,
+        sourceChecksumSha256: args.sourceChecksumSha256,
+        extractionStatus: 'unavailable', extractionError: 'No extractable text was found.',
+      })
+      return { extractionStatus: 'unavailable', extractionTruncated: false, chars: 0 }
+    }
+    const encoder = new TextEncoder()
+    const maxBytes = 10 * 1024 * 1024
+    let bytes = encoder.encode(text)
+    const extractionTruncated = bytes.byteLength > maxBytes
+    if (extractionTruncated) {
+      let validLength = maxBytes
+      while (validLength > 0) {
+        try {
+          text = new TextDecoder('utf-8', { fatal: true }).decode(bytes.subarray(0, validLength))
+          break
+        } catch (_error) {
+          validLength--
+        }
+      }
+      bytes = encoder.encode(text)
+    }
+    const previousExtraction = await this.deps.repository.getExtractionStorage?.({ fileId: args.fileId, userId: args.userId })
+    const extractedTextKey = this.storage.keyForFile(
+      args.userId, `extract-${args.fileId}-${args.sourceChecksumSha256}-${args.attemptToken}`, `${name}.txt`,
+    )
+    await this.storage.uploadBuffer(extractedTextKey, bytes, 'text/plain; charset=utf-8')
+    const prefix = splitTextForConvexDocuments(text, MAX_FILE_CONTENT_UTF8_BYTES)[0] ?? ''
+    try { await this.deps.repository.storeFileExtraction({
+      fileId: args.fileId, jobId: args.jobId, userId: args.userId, attemptToken: args.attemptToken,
+      sourceChecksumSha256: args.sourceChecksumSha256,
+      extractionStatus: 'ready', extractedTextKey, extractedTextBytes: bytes.byteLength,
+      content: prefix, extractionTruncated,
+      indexTruncated: bytes.byteLength > new TextEncoder().encode(prefix).byteLength,
+      indexedCharCount: prefix.length,
+    }) } catch (error) {
+      const current = await this.deps.repository.getExtractionStorage?.({ fileId: args.fileId, userId: args.userId })
+      if (current?.extractedTextKey !== extractedTextKey) {
+        await this.storage.deleteObject(extractedTextKey).catch((_error) => undefined)
+        throw error
+      }
+    }
+    if (previousExtraction?.extractedTextKey && previousExtraction.extractedTextKey !== extractedTextKey) {
+      await this.storage.deleteObject(previousExtraction.extractedTextKey).catch((_error) => undefined)
+    }
+    return { extractionStatus: 'ready', extractionTruncated, chars: text.length }
+  }
+
+  async markSourceExtractionFailed(args: {
+    fileId: string
+    jobId: string
+    userId: string
+    attemptToken: string
+    sourceChecksumSha256: string
+    error: string
+  }): Promise<void> {
+    await this.deps.repository.storeFileExtraction({
+      fileId: args.fileId, jobId: args.jobId, userId: args.userId, attemptToken: args.attemptToken,
+      sourceChecksumSha256: args.sourceChecksumSha256, extractionStatus: 'failed',
+      extractionError: args.error.slice(0, 500),
+    })
+  }
+
+  async readOriginalFile(args: { fileId: string; userId: string; workspaceId?: string }): Promise<{
+    bytes: Uint8Array
+    name: string
+    mimeType: string
+    sizeBytes: number
+    revision: string
+  }> {
+    const file = await this.deps.repository.getFile({
+      fileId: args.fileId, userId: args.userId, workspaceId: args.workspaceId,
+    })
+    if (!file || typeof file.r2Key !== 'string' || !isOwnedStorageKey(file.userId, file.r2Key)) {
+      serviceError({ error: 'Original file is unavailable.' }, 404)
+    }
+    if (!Number.isSafeInteger(file.sizeBytes) || file.sizeBytes! <= 0
+      || file.sizeBytes! > MAX_COMPUTER_ARTIFACT_BYTES) {
+      serviceError({ error: 'Original file exceeds the 100 MiB reading limit.' }, 413)
+    }
+    const bytes = await this.storage.downloadBuffer(file.r2Key, MAX_COMPUTER_ARTIFACT_BYTES)
+    if (!bytes || bytes.byteLength !== file.sizeBytes) {
+      serviceError({ error: 'Original file could not be read.' }, 502)
+    }
+    const revision = createHash('sha256').update(bytes).digest('hex')
+    if (file.sourceChecksumSha256 && file.sourceChecksumSha256 !== revision) {
+      serviceError({ error: 'Original file revision verification failed.' }, 409)
+    }
+    return {
+      bytes,
+      name: file.name,
+      mimeType: typeof file.mimeType === 'string' ? file.mimeType : 'application/octet-stream',
+      sizeBytes: bytes.byteLength,
+      revision,
+    }
   }
 
   async deleteFile(args: {
@@ -532,11 +696,19 @@ export class FileService {
     mimeType?: string
     name?: string
     sizeBytes?: number
+    checksumSha256?: string
     userId: string
   }): Promise<{ uploadUrl: string; r2Key: string; expiresIn: number; maxSizeBytes: number }> {
     const normalizedSizeBytes = normalizedPositiveBytes(args.sizeBytes, {
       missing: 'sizeBytes is required',
     })
+    const maxSizeBytes = Math.min(this.storage.getMaxPresignedUploadBytes(), MAX_COMPUTER_ARTIFACT_BYTES)
+    if (args.checksumSha256 && !/^[a-f0-9]{64}$/.test(args.checksumSha256)) {
+      serviceError({ error: 'checksumSha256 must be a lowercase SHA-256 digest.' }, 400)
+    }
+    if (normalizedSizeBytes > maxSizeBytes) {
+      serviceError({ error: 'File is too large for direct upload.', message: `Direct uploads are limited to ${formatBytes(maxSizeBytes)} per file.` }, 413)
+    }
     await this.assertPresignedUploadAllowed({
       notEnoughStoragePayload: (remainingBytes) => ({
         error: 'Overlay storage limit reached.',
@@ -560,6 +732,7 @@ export class FileService {
       r2Key,
       declaredSizeBytes: normalizedSizeBytes,
       mimeType: resolvedMime,
+      ...(args.checksumSha256 ? { checksumSha256: args.checksumSha256 } : {}),
       expiresAt: this.clock.now() + expiresIn * 1000,
     })
     const uploadUrl = await this.storage.generatePresignedUploadUrl(
@@ -567,8 +740,51 @@ export class FileService {
       resolvedMime,
       normalizedSizeBytes,
       expiresIn,
+      args.checksumSha256,
+      Boolean(args.checksumSha256),
     )
     return { uploadUrl, r2Key, expiresIn, maxSizeBytes: normalizedSizeBytes }
+  }
+
+  async commitVerifiedIngestUpload(args: {
+    userId: string
+    workspaceId: string
+    r2Key: string
+    fileName: string
+    mimeType: string
+    sizeBytes: number
+    checksumSha256: string
+    parentId?: string
+    scope?: 'personal' | 'workspace'
+  }): Promise<{ fileId: string; name: string }> {
+    if (!isOwnedStorageKey(args.userId, args.r2Key)) serviceError({ error: 'Invalid storage key' }, 400)
+    if (!/^[a-f0-9]{64}$/.test(args.checksumSha256)) serviceError({ error: 'Invalid checksum' }, 400)
+    const intent = await this.deps.repository.getUploadIntent({
+      now: this.clock.now(), r2Key: args.r2Key, userId: args.userId,
+    })
+    if (!intent || intent.checksumSha256 !== args.checksumSha256) serviceError({ error: 'Upload authorization expired or was not found' }, 400)
+    const safeName = args.fileName.replace(/[/\\]/g, '').slice(0, 240).trim()
+    const mimeType = normalizeMimeType(args.mimeType)
+    if (!safeName || !Number.isSafeInteger(args.sizeBytes) || args.sizeBytes <= 0
+      || args.sizeBytes > Math.min(this.storage.getMaxPresignedUploadBytes(), MAX_COMPUTER_ARTIFACT_BYTES)
+      || intent.declaredSizeBytes !== args.sizeBytes || intent.mimeType !== mimeType) {
+      serviceError({ error: 'Uploaded object does not match its authorization.' }, 400)
+    }
+    const verification = await verifyArtifactObject({
+      key: args.r2Key, sizeBytes: args.sizeBytes, mimeType, checksumSha256: args.checksumSha256,
+      maxBytes: Math.min(this.storage.getMaxPresignedUploadBytes(), MAX_COMPUTER_ARTIFACT_BYTES),
+      headObject: key => this.storage.headObject(key),
+      generatePresignedDownloadUrl: key => this.storage.generatePresignedDownloadUrl(key),
+    })
+    if (verification.kind !== 'verified') serviceError({ error: 'Uploaded object not found.' }, 400)
+    const fileId = await this.deps.repository.commitUploadedFile({
+      userId: args.userId, workspaceId: args.workspaceId, name: safeName, r2Key: args.r2Key,
+      sizeBytes: verification.sizeBytes, mimeType: verification.mimeType,
+      extension: extOf(safeName), sourceChecksumSha256: verification.checksumSha256,
+      ...(args.parentId ? { parentId: sanitizeConvexIdParam(args.parentId) } : {}),
+      ...(args.scope ? { scope: args.scope } : {}),
+    })
+    return { fileId, name: safeName }
   }
 
   async createPresignedUpload(args: {

@@ -3,6 +3,7 @@ const DEFAULT_BASE_TOOL_IDS = [
   'search_in_files',
   'list_files',
   'read_file',
+  'read_document',
   'search_memory',
   'search_messages',
   'list_chats',

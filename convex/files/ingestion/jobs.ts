@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { internal } from '../../_generated/api'
 import { mutation, query } from '../../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../../lib/auth'
 
@@ -50,6 +51,54 @@ export const createJob = mutation({
   },
 })
 
+export const createSourceJob = mutation({
+  args: {
+    userId: v.string(), workspaceId: v.string(), r2Key: v.string(), fileName: v.string(),
+    mimeType: v.string(), sizeBytes: v.number(), sourceFileId: v.id('files'),
+    sourceChecksumSha256: v.string(), parentId: v.optional(v.string()), serverSecret: v.optional(v.string()),
+  },
+  returns: v.object({ jobId: v.string() }),
+  handler: async (ctx, args) => {
+    await authorize({ userId: args.userId, serverSecret: args.serverSecret })
+    const existing = await ctx.db.query('documentIngestionJobs')
+      .withIndex('by_sourceFileId', q => q.eq('sourceFileId', args.sourceFileId)).unique()
+    if (existing) {
+      if (existing.userId !== args.userId || existing.sourceChecksumSha256 !== args.sourceChecksumSha256
+        || existing.r2Key !== args.r2Key || existing.fileName !== args.fileName
+        || existing.mimeType !== args.mimeType || existing.sizeBytes !== args.sizeBytes
+        || existing.workspaceId !== args.workspaceId || existing.parentId !== args.parentId) {
+        throw new Error('source_job_conflict')
+      }
+      if (existing.status === 'failed') {
+        if ((existing.attemptCount ?? 0) >= 3) throw new Error('source_job_retry_limit')
+        await ctx.db.patch(existing._id, {
+          status: 'queued', error: undefined, completedAt: undefined,
+          leaseToken: undefined, leaseExpiresAt: undefined, updatedAt: Date.now(),
+        })
+        await ctx.scheduler.runAfter(0, internal.files.ingestion.runner.runMinuteTick, {})
+      }
+      return { jobId: existing._id as string }
+    }
+    const source = await ctx.db.get(args.sourceFileId)
+    if (!source || source.deletedAt || source.userId !== args.userId || source.workspaceId !== args.workspaceId
+      || source.parentId !== args.parentId || source.r2Key !== args.r2Key || source.sizeBytes !== args.sizeBytes
+      || source.mimeType !== args.mimeType || source.name !== args.fileName
+      || source.sourceChecksumSha256 !== args.sourceChecksumSha256 || source.kind !== 'upload'
+      || source.type !== 'file') throw new Error('source_file_conflict')
+    const now = Date.now()
+    const jobId = await ctx.db.insert('documentIngestionJobs', {
+      userId: args.userId, workspaceId: args.workspaceId, r2Key: args.r2Key,
+      sourceFileId: args.sourceFileId, sourceChecksumSha256: args.sourceChecksumSha256,
+      fileName: args.fileName, mimeType: args.mimeType, sizeBytes: args.sizeBytes,
+      ...(args.parentId ? { parentId: args.parentId } : {}),
+      status: 'queued', statusMessage: 'Original file is ready; extraction is pending.',
+      fileIds: [args.sourceFileId], attemptCount: 0, createdAt: now, updatedAt: now,
+    })
+    await ctx.scheduler.runAfter(0, internal.files.ingestion.runner.runMinuteTick, {})
+    return { jobId: jobId as string }
+  },
+})
+
 /**
  * Get a single ingestion job by ID.
  */
@@ -63,6 +112,8 @@ export const getJob = query({
   returns: v.union(
     v.object({
       _id: v.string(),
+      sourceFileId: v.optional(v.string()),
+      sourceChecksumSha256: v.optional(v.string()),
       status: v.string(),
       statusMessage: v.optional(v.string()),
       fileName: v.string(),
@@ -85,6 +136,8 @@ export const getJob = query({
     if (!job || job.userId !== args.userId) return null
     return {
       _id: job._id as string,
+      ...(job.sourceFileId ? { sourceFileId: job.sourceFileId as string } : {}),
+      ...(job.sourceChecksumSha256 ? { sourceChecksumSha256: job.sourceChecksumSha256 } : {}),
       status: job.status,
       ...(job.statusMessage ? { statusMessage: job.statusMessage } : {}),
       fileName: job.fileName,
@@ -94,6 +147,32 @@ export const getJob = query({
       createdAt: job.createdAt,
       updatedAt: job.updatedAt,
       ...(job.completedAt !== undefined ? { completedAt: job.completedAt } : {}),
+    }
+  },
+})
+
+export const getJobForProcessing = query({
+  args: { jobId: v.id('documentIngestionJobs'), serverSecret: v.string() },
+  returns: v.union(v.object({
+    _id: v.string(), userId: v.string(), workspaceId: v.optional(v.string()),
+    r2Key: v.string(), fileName: v.string(), mimeType: v.string(), sizeBytes: v.number(),
+    parentId: v.optional(v.string()), sourceFileId: v.optional(v.string()),
+    sourceChecksumSha256: v.optional(v.string()), status: v.string(),
+    leaseToken: v.optional(v.string()), leaseExpiresAt: v.optional(v.number()),
+  }), v.null()),
+  handler: async (ctx, args) => {
+    if (!validateServerSecret(args.serverSecret)) return null
+    const job = await ctx.db.get(args.jobId)
+    if (!job) return null
+    return {
+      _id: job._id as string, userId: job.userId, r2Key: job.r2Key,
+      fileName: job.fileName, mimeType: job.mimeType, sizeBytes: job.sizeBytes, status: job.status,
+      ...(job.workspaceId ? { workspaceId: job.workspaceId } : {}),
+      ...(job.parentId ? { parentId: job.parentId } : {}),
+      ...(job.sourceFileId ? { sourceFileId: job.sourceFileId as string } : {}),
+      ...(job.sourceChecksumSha256 ? { sourceChecksumSha256: job.sourceChecksumSha256 } : {}),
+      ...(job.leaseToken ? { leaseToken: job.leaseToken } : {}),
+      ...(job.leaseExpiresAt ? { leaseExpiresAt: job.leaseExpiresAt } : {}),
     }
   },
 })
@@ -162,6 +241,7 @@ export const watchIngestionJobs = query({
     partCount: v.optional(v.number()),
     fileIds: v.optional(v.array(v.string())),
     error: v.optional(v.string()),
+    attemptToken: v.optional(v.string()),
     updatedAt: v.number(),
   })),
   handler: async (ctx, args) => {
@@ -207,6 +287,7 @@ export const updateJobStatus = mutation({
     fileIds: v.optional(v.array(v.id('files'))),
     partCount: v.optional(v.number()),
     error: v.optional(v.string()),
+    attemptToken: v.optional(v.string()),
     serverSecret: v.string(),
   },
   returns: v.null(),
@@ -216,7 +297,12 @@ export const updateJobStatus = mutation({
     }
     const job = await ctx.db.get(args.jobId)
     if (!job || job.userId !== args.userId) throw new Error('Job not found')
+    if ((job.sourceFileId || job.leaseToken) && (!args.attemptToken || job.leaseToken !== args.attemptToken
+      || job.status !== 'extracting' || (job.leaseExpiresAt ?? 0) <= Date.now())) {
+      throw new Error('stale_ingestion_worker')
+    }
     const now = Date.now()
+    if (job.status === 'completed' || job.status === 'failed') return null
     await ctx.db.patch(args.jobId, {
       status: args.status,
       updatedAt: now,
@@ -225,6 +311,7 @@ export const updateJobStatus = mutation({
       ...(args.partCount !== undefined ? { partCount: args.partCount } : {}),
       ...(args.error !== undefined ? { error: args.error } : {}),
       ...((args.status === 'completed' || args.status === 'failed') ? { completedAt: now } : {}),
+      ...((args.status === 'completed' || args.status === 'failed') ? { leaseToken: undefined, leaseExpiresAt: undefined } : {}),
     })
     return null
   },

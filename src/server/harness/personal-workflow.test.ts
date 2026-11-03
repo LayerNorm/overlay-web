@@ -6,7 +6,8 @@ import { personalHarnessChildInput, personalHarnessWorkflow } from '@/server/wor
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), claim: vi.fn(), apply: vi.fn(), run: vi.fn(), ports: vi.fn(),
   tools: vi.fn(), waits: vi.fn(), attach: vi.fn(), finish: vi.fn(), close: vi.fn(), notify: vi.fn(),
-  child: vi.fn(), admit: vi.fn(), start: vi.fn(), get: vi.fn(), progress: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), fallback: vi.fn() }))
+  child: vi.fn(), admit: vi.fn(), start: vi.fn(), get: vi.fn(), progress: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), fallback: vi.fn(),
+  resolveFileAnalysis: vi.fn(), readFileCoverage: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('workflow', () => ({
   FatalError: class extends Error {}, getWorkflowMetadata: () => ({ workflowRunId: 'workflow' }),
@@ -27,6 +28,9 @@ vi.mock('./personal-wait-steps', () => ({ harnessWakeToken: (id: string) => `har
   notifyHarnessAncestors: mocks.notify, readHarnessChild: mocks.child }))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.get } }))
 vi.mock('@/server/conversations/personal-chat-work-lifecycle', () => ({ persistPersonalChatWorkProgress: mocks.progress }))
+vi.mock('@/server/harness/file-analysis-steps', () => ({
+  resolveFileAnalysisEnabled: mocks.resolveFileAnalysis, readFileAnalysisCoverage: mocks.readFileCoverage,
+}))
 
 const input: PersonalHarnessWorkflowInput = {
   access: { actorUserId: 'user', runId: 'root', conversationId: 'conversation', agentRunId: 'delivery',
@@ -77,6 +81,8 @@ beforeEach(() => {
   mocks.claim.mockResolvedValue(true)
   mocks.conflict.mockResolvedValue(null)
   mocks.tools.mockReturnValue({})
+  mocks.resolveFileAnalysis.mockResolvedValue(false)
+  mocks.readFileCoverage.mockResolvedValue(null)
   mocks.ports.mockImplementation((_execution, surface) => ({ ...surface, recordModelStep: vi.fn() }))
   mocks.run.mockImplementation(async () => completed())
 })

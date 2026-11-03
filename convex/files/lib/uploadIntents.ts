@@ -19,6 +19,7 @@ export async function reserveUploadIntent(ctx: MutationCtx, args: {
   r2Key: string
   declaredSizeBytes: number
   mimeType?: string
+  checksumSha256?: string
   expiresAt: number
   now?: number
 }) {
@@ -28,6 +29,9 @@ export async function reserveUploadIntent(ctx: MutationCtx, args: {
     throw new Error('invalid_upload_intent_size')
   }
   if (!Number.isFinite(args.expiresAt)) throw new Error('invalid_upload_intent_expiry')
+  if (args.checksumSha256 !== undefined && !/^[a-f0-9]{64}$/.test(args.checksumSha256)) {
+    throw new Error('invalid_upload_checksum')
+  }
 
   const existing = await ctx.db
     .query('r2UploadIntents')
@@ -50,6 +54,7 @@ export async function reserveUploadIntent(ctx: MutationCtx, args: {
     r2Key: args.r2Key,
     declaredSizeBytes,
     mimeType: args.mimeType,
+    checksumSha256: args.checksumSha256,
     status: 'pending',
     createdAt: args.now ?? Date.now(),
     expiresAt: args.expiresAt,

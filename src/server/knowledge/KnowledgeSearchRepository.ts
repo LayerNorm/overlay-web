@@ -23,6 +23,7 @@ export type KnowledgeSearchArgs = {
   /** Anchor ms for temporal query parsing ("last week") — defaults to now. */
   asOfMs?: number
   query: string
+  resilientFiles?: boolean
   sourceKind?: 'file' | 'memory' | 'message'
   sourceKinds?: Array<'file' | 'memory' | 'message'>
   /** Parse a time window out of the query and fuse in-window chunks. */

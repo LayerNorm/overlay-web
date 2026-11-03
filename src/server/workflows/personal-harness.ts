@@ -1,5 +1,6 @@
 import { createHook, FatalError, getWorkflowMetadata, getWritable } from 'workflow'
 import { start } from 'workflow/api'
+import { resolveFileAnalysisEnabled, readFileAnalysisCoverage } from '@/server/harness/file-analysis-steps'
 import type { ModelCallStreamPart } from '@ai-sdk/workflow'
 import type { ToolSet } from 'ai'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
@@ -135,6 +136,8 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     if (isRoot) await attachPersonalHarnessDelivery(access)
     const execution = { access, context: input.context }
     const ports = createPersonalHarnessExecutionPorts(execution, {
+      fileAnalysisEnabled: await resolveFileAnalysisEnabled(access),
+      readFileCoverage: childRunId => readFileAnalysisCoverage(access, childRunId),
       ...createPersonalHarnessWaitPorts({
         access,
         wake: wake[Symbol.asyncIterator](),
@@ -143,7 +146,9 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       delegate: async (delegation, toolCallId) => {
         const child = await admitPersonalHarnessChild(execution, delegation, toolCallId)
         const snapshot = await readHarnessChild(access, child.id)
-        await startPersonalHarnessChild(access, input.context, personalHarnessChildInput(input, snapshot))
+        if (!['completed', 'failed', 'cancelled'].includes(snapshot.status)) {
+          await startPersonalHarnessChild(access, input.context, personalHarnessChildInput(input, snapshot))
+        }
         return child
       },
       recordToolResult: async event => {

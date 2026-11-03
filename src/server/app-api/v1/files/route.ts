@@ -15,6 +15,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const result = await fileService.getOrListFiles({
       userId: auth.userId,
       workspaceId: context.workspace.workspace.id,
+      accessToken: auth.accessToken,
       fileId,
       cursor: searchParams.get('cursor'),
       limit: parsedLimit !== undefined && Number.isFinite(parsedLimit) && parsedLimit > 0
@@ -28,6 +29,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       summary: ['true', '1'].includes(searchParams.get('summary') ?? ''),
       view: parseResourceView(searchParams.get('view')),
       fullText: ['true', '1'].includes(searchParams.get('fullText') ?? ''),
+      ...(searchParams.has('textOffset') ? { textOffset: Math.max(0, Number(searchParams.get('textOffset')) || 0) } : {}),
     })
     if (
       !fileId

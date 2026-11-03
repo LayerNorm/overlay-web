@@ -2,6 +2,7 @@ import { logger } from '@/server/observability/logger'
 import { NextRequest, NextResponse } from 'next/server'
 import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { createReleaseFlags } from '@/server/releases/feature-flags'
 import { KnowledgeSearchServiceError } from '@/server/knowledge'
 
 export const maxDuration = 60
@@ -17,6 +18,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       sourceKind?: 'file' | 'memory'
       workspaceOnly?: boolean
     }
+    const flags = createReleaseFlags({
+      userId: context.auth.userId,
+      workspaceId: context.workspace?.workspace.id ?? '',
+    }, ['files-hybrid-retrieval'])
+    const resilientFiles = Boolean(context.workspace?.workspace.id
+      && body.sourceKind === 'file'
+      && await flags.isEnabled('files-hybrid-retrieval'))
     const result = await getOverlayServerContext().knowledgeSearchService.hybridSearch({
       accessToken: context.auth.accessToken,
       billing: {
@@ -31,6 +39,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       m: body.m,
       minVecScore: body.minVecScore,
       query: body.query ?? '',
+      resilientFiles,
       sourceKind: body.sourceKind,
       userId: context.auth.userId,
       ...(body.workspaceOnly === true ? { workspaceOnly: true } : {}),

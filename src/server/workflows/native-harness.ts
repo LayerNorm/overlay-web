@@ -16,6 +16,7 @@ import { harnessToolResultEvidence } from '@/server/harness/tool-evidence'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
 import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
 import { harnessExecutionFailureReason } from '@/server/harness/execution-failure'
+import { resolveFileAnalysisEnabled, readFileAnalysisCoverage } from '@/server/harness/file-analysis-steps'
 import type { NativeHarnessAccess } from '@/server/harness/native-access'
 import type { NativeHarnessWorkflowInput } from '@/server/harness/native-workflow-input'
 
@@ -70,6 +71,8 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     if (owns) await attachNativeHarnessDelivery(access)
     const execution = { access, context: input.context }
     const ports = createNativeHarnessExecutionPorts(execution, {
+      fileAnalysisEnabled: await resolveFileAnalysisEnabled(access),
+      readFileCoverage: childRunId => readFileAnalysisCoverage(access, childRunId),
       ...createHarnessWaitPorts({
         reference: access, deliveryRunId: `workspace:${access.agentRunId}`, wake: wake[Symbol.asyncIterator](),
         projectWait: projection => projectNativeHarnessWait(access, projection),
@@ -78,7 +81,9 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
       delegate: async (delegation, toolCallId) => {
         const child = await admitNativeHarnessChild(execution, delegation, toolCallId)
         const snapshot = await readHarnessChild(access, child.id)
-        await startNativeHarnessChild(access, nativeHarnessChildInput(input, snapshot))
+        if (!['completed', 'failed', 'cancelled'].includes(snapshot.status)) {
+          await startNativeHarnessChild(access, nativeHarnessChildInput(input, snapshot))
+        }
         return child
       },
       recordToolResult: async event => {

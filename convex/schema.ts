@@ -1737,6 +1737,7 @@ export default defineSchema({
     sourceId: v.string(),
     knowledgeSourceId: v.optional(v.string()),
     knowledgeSourceVersionId: v.optional(v.string()),
+    sourceRevision: v.optional(v.string()),
     chunkIndex: v.number(),
     startOffset: v.number(),
     text: v.string(),
@@ -1799,6 +1800,7 @@ export default defineSchema({
     declaredSizeBytes: v.number(),
     actualSizeBytes: v.optional(v.number()),
     mimeType: v.optional(v.string()),
+    checksumSha256: v.optional(v.string()),
     status: v.union(
       v.literal('pending'),
       v.literal('finalized'),
@@ -1843,6 +1845,8 @@ export default defineSchema({
     userId: v.string(),
     workspaceId: v.optional(v.string()),
     r2Key: v.string(),
+    sourceFileId: v.optional(v.id('files')),
+    sourceChecksumSha256: v.optional(v.string()),
     fileName: v.string(),
     mimeType: v.string(),
     sizeBytes: v.number(),
@@ -1858,13 +1862,17 @@ export default defineSchema({
     fileIds: v.optional(v.array(v.id('files'))),
     partCount: v.optional(v.number()),
     error: v.optional(v.string()),
+    leaseToken: v.optional(v.string()),
+    leaseExpiresAt: v.optional(v.number()),
+    attemptCount: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
     completedAt: v.optional(v.number()),
   })
     .index('by_userId_status', ['userId', 'status'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
-    .index('by_status_createdAt', ['status', 'createdAt']),
+    .index('by_status_createdAt', ['status', 'createdAt'])
+    .index('by_sourceFileId', ['sourceFileId']),
 
   agentDriveRetiredObjects: defineTable({
     purpose: v.union(v.literal('version'), v.literal('staging'), v.literal('uncommitted')),
@@ -1910,6 +1918,14 @@ export default defineSchema({
     textContent: v.optional(v.string()),
     storageId: v.optional(v.id('_storage')),
     r2Key: v.optional(v.string()),
+    sourceChecksumSha256: v.optional(v.string()),
+    extractedTextKey: v.optional(v.string()),
+    extractedTextBytes: v.optional(v.number()),
+    extractionStatus: v.optional(v.union(v.literal('pending'), v.literal('ready'), v.literal('failed'), v.literal('unavailable'))),
+    extractionError: v.optional(v.string()),
+    extractionTruncated: v.optional(v.boolean()),
+    indexTruncated: v.optional(v.boolean()),
+    indexedCharCount: v.optional(v.number()),
     mimeType: v.optional(v.string()),
     extension: v.optional(v.string()),
     sizeBytes: v.optional(v.number()),
@@ -1923,6 +1939,7 @@ export default defineSchema({
       v.literal('failed'),
     )),
     indexedAt: v.optional(v.number()),
+    semanticIndexStatus: v.optional(v.union(v.literal('unavailable'), v.literal('indexed'))),
     indexError: v.optional(v.string()),
     conversationId: v.optional(v.string()),
     turnId: v.optional(v.string()),

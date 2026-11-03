@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createHash } from 'node:crypto'
 import { FileService, FileServiceError, type FileServiceStorage } from './FileService'
 import type {
   FileRecord,
@@ -262,6 +263,144 @@ test('FileService upload refusal preserves objects for safe reconciliation and r
     } }), error => error instanceof FileServiceError && error.statusCode === status)
     assert.deepEqual(storage.deletedKeys, [])
   }
+})
+
+test('source-backed uploads publish large originals before failed extraction and replay registration safely', async () => {
+  const bytes = Buffer.concat([Buffer.from('%PDF invalid\n'), Buffer.alloc(4_700_000, 0x78)])
+  const checksumSha256 = createHash('sha256').update(bytes).digest('hex')
+  let commits = 0
+  let registrations = 0
+  const repository = createRepository({
+    async commitUploadedFile() { commits += 1; if (!registrations) registrations += 1; return 'source_file' },
+    async getFile() {
+      return {
+        _id: 'source_file', userId: 'user_1', name: 'report.pdf',
+        r2Key: 'users/user_1/files/id/report.pdf', mimeType: 'application/pdf',
+        sizeBytes: bytes.byteLength, sourceChecksumSha256: checksumSha256,
+      } as never
+    },
+    async getUploadIntent() {
+      return {
+        _id: 'intent_1', declaredSizeBytes: bytes.byteLength, expiresAt: Date.now() + 60_000,
+        checksumSha256, mimeType: 'application/pdf',
+      }
+    },
+    async storeFileExtraction() {},
+  })
+  const storage = createStorage({
+    getMaxPresignedUploadBytes: () => 10_000_000,
+    async headObject() { return { sizeBytes: bytes.byteLength, contentType: 'application/pdf' } },
+    async generatePresignedDownloadUrl() { return 'https://download.test/source' },
+  })
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async () => new Response(bytes)
+  try {
+    const service = createService(repository, storage)
+    const input = {
+      userId: 'user_1', workspaceId: 'workspace_1', r2Key: 'users/user_1/files/id/report.pdf',
+      fileName: 'report.pdf', mimeType: 'application/pdf', sizeBytes: bytes.byteLength, checksumSha256,
+    }
+    assert.deepEqual(await service.commitVerifiedIngestUpload(input), { fileId: 'source_file', name: 'report.pdf' })
+    assert.deepEqual(await service.commitVerifiedIngestUpload(input), { fileId: 'source_file', name: 'report.pdf' })
+    assert.equal(commits, 2)
+    try {
+      await service.extractSourceFile({
+        fileId: 'source_file', jobId: 'job_1', userId: 'user_1', attemptToken: 'attempt_1',
+        sourceChecksumSha256: checksumSha256, bytes,
+      })
+    } catch {}
+    assert.equal(registrations, 1)
+    assert.deepEqual(storage.deletedKeys, [])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
+test('source extraction rejects size or checksum mismatches before storage writes', async () => {
+  const bytes = Buffer.from('original')
+  const checksumSha256 = createHash('sha256').update(bytes).digest('hex')
+  const repository = createRepository({
+    async getFile() {
+      return {
+        _id: 'source_file', userId: 'user_1', name: 'source.txt', r2Key: 'users/user_1/files/id/source.txt',
+        sizeBytes: bytes.byteLength, sourceChecksumSha256: checksumSha256,
+      } as never
+    },
+  })
+  const storage = createStorage()
+  const service = createService(repository, storage)
+  const extract = (wrongBytes: Buffer) => service.extractSourceFile({
+    fileId: 'source_file', jobId: 'job_1', userId: 'user_1', attemptToken: 'attempt_1',
+    sourceChecksumSha256: checksumSha256, bytes: wrongBytes,
+  })
+  await assert.rejects(extract(Buffer.from('other')))
+  await assert.rejects(extract(Buffer.from('wrong-size')))
+  await assert.rejects(extract(Buffer.from('changed!')))
+  assert.deepEqual(storage.uploadedKeys, [])
+})
+
+test('a source lease conflict removes only its attempt-derived object', async () => {
+  const bytes = Buffer.from('source text')
+  const checksumSha256 = createHash('sha256').update(bytes).digest('hex')
+  const originalKey = 'users/user_1/files/source/source.txt'
+  const repository = createRepository({
+    async getFile() {
+      return {
+        _id: 'source_file', userId: 'user_1', name: 'source.txt', r2Key: originalKey,
+        mimeType: 'text/plain', sizeBytes: bytes.byteLength, sourceChecksumSha256: checksumSha256,
+      } as never
+    },
+    async getExtractionStorage() { return null },
+    async storeFileExtraction() { throw new Error('ingestion_lease_conflict') },
+  })
+  const storage = createStorage()
+  await assert.rejects(createService(repository, storage).extractSourceFile({
+    fileId: 'source_file', jobId: 'job_1', userId: 'user_1', attemptToken: 'attempt_7',
+    sourceChecksumSha256: checksumSha256, bytes,
+  }), /ingestion_lease_conflict/)
+  assert.equal(storage.uploadedKeys.length, 1)
+  assert.notEqual(storage.uploadedKeys[0], originalKey)
+  assert.deepEqual(storage.deletedKeys, [storage.uploadedKeys[0]])
+  assert.equal(storage.deletedKeys.includes(originalKey), false)
+})
+
+test('legacy multipart ingestion remains capped at 12 MiB', async () => {
+  const storage = createStorage()
+  const file = new File([new Uint8Array(12 * 1024 * 1024 + 1)], 'large.txt', { type: 'text/plain' })
+  await assert.rejects(createService(createRepository(), storage).ingestDocument({ file, userId: 'user_1' }), error =>
+    error instanceof FileServiceError && error.statusCode === 413 && error.payload.error === 'File too large (max 12MB)')
+  assert.deepEqual(storage.uploadedKeys, [])
+})
+
+test('full derived text reads use bounded offsets and report a missing derived object as incomplete', async () => {
+  const extractedText = 'x'.repeat(120_000)
+  const base = {
+    _id: 'source_file', userId: 'user_1', name: 'large.pdf', type: 'file', kind: 'upload',
+    content: 'prefix', textContent: 'prefix', extractedTextKey: 'users/user_1/files/extracted/text.txt',
+    extractionStatus: 'ready',
+  }
+  const repository = createRepository({
+    async getFile() { return base as never },
+    async getExtractionStorage() {
+      return { extractedTextKey: base.extractedTextKey, ownerUserId: 'user_1' }
+    },
+  })
+  const storage = createStorage({
+    async downloadBuffer() { return Buffer.from(extractedText) },
+  })
+  const result = await createService(repository, storage).getOrListFiles({
+    userId: 'user_1', fileId: 'source_file', fullText: true, textOffset: 50_000,
+  }) as { textContent: string; textOffset: number; textTotalChars: number; textComplete: boolean }
+  assert.equal(result.textContent.length, 60_000)
+  assert.equal(result.textOffset, 50_000)
+  assert.equal(result.textTotalChars, extractedText.length)
+  assert.equal(result.textComplete, true)
+
+  const missing = await createService(repository, createStorage({
+    async downloadBuffer() { return null },
+  })).getOrListFiles({ userId: 'user_1', fileId: 'source_file', fullText: true }) as { textContent: string; textComplete: boolean }
+  assert.equal(missing.textContent, 'prefix')
+  assert.equal(missing.textComplete, false)
 })
 
 const roomyStorage = {

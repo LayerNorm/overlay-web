@@ -48,4 +48,5 @@ export interface OverlayToolsOptions {
   /** Stable key supplied by durable runners for side-effecting internal API calls. */
   idempotencyKey?: string
   artifactPublicationAuthority?: ArtifactPublicationAuthority
+  filesReadingTools?: boolean
 }

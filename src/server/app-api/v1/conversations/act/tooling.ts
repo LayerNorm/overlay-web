@@ -36,6 +36,7 @@ import {
 } from '@/server/tools/tools/exposure-policy'
 import { createFreeTierGatedStubTools } from '@/server/tools/tools/free-tier-gated-stub-tools'
 import { createWebTools } from '@/server/web/web-tools'
+import { createReleaseFlags } from '@/server/releases/feature-flags'
 import {
   summarizeErrorForLog,
   summarizeToolIndexMapForLog,
@@ -183,6 +184,10 @@ export async function prepareActTooling(params: {
   turnId: string
   userId: string
 }): Promise<ActTooling> {
+  const filesReadingTools = await createReleaseFlags({
+    userId: params.userId,
+    workspaceId: params.workspaceId ?? '',
+  }, ['files-reading-tools']).isEnabled('files-reading-tools')
   const capabilities = await getActCapabilities()
   const memoryEnabled = params.memoryEnabled !== false && capabilities.memory && capabilities.vectorSearch
   // Account policy is applied after deployment gates and only ever narrows,
@@ -262,6 +267,7 @@ export async function prepareActTooling(params: {
         workspaceId: params.workspaceId,
         idempotencyKey: params.idempotencyKey,
         artifactPublicationAuthority: params.artifactPublicationAuthority,
+        filesReadingTools,
       }),
     ),
     params.paid && capabilities.webSearch

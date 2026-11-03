@@ -30,7 +30,20 @@ type FileSummary = {
   isStorageBacked?: boolean
 }
 
-type FileDetail = FileSummary & { textContent?: string; textInObjectStore?: boolean }
+type FileDetail = FileSummary & {
+  textOffset?: number
+  textTotalChars?: number
+  textComplete?: boolean
+  semanticIndexStatus?: string
+  textContent?: string
+  textInObjectStore?: boolean
+  sourceChecksumSha256?: string
+  extractionStatus?: string
+  extractionError?: string
+  extractionTruncated?: boolean
+  indexStatus?: string
+  originalAvailable?: boolean
+}
 
 const MIME_BY_EXTENSION: Record<string, string> = {
   md: 'text/markdown',
@@ -180,32 +193,51 @@ export async function executeReadFile(
   input: { fileId: string; offset?: number },
 ) {
   try {
-    const res = await get(options, new URLSearchParams({ fileId: input.fileId.trim(), fullText: 'true' }))
+    const offset = Math.max(0, Math.floor(input.offset ?? 0))
+    const res = await get(options, new URLSearchParams({ fileId: input.fileId.trim(), fullText: 'true', textOffset: String(offset) }))
     if (!res.ok) return { success: false, error: await errorMessage(res, 'File not found') }
     const file = await res.json() as FileDetail
     if (file.type === 'folder') return { success: false, error: 'That is a folder; use list_files with its id.' }
     if (file.kind === 'note') return { success: false, error: 'That is a note; use get_note to read it.' }
     const text = file.textContent ?? ''
-    const base = { ...summarize(file), revision: String(file.updatedAt) }
+    const base = {
+      ...summarize(file),
+      revision: String(file.updatedAt),
+      ...(file.sourceChecksumSha256 ? { sourceRevision: file.sourceChecksumSha256 } : {}),
+      extractionStatus: file.extractionStatus ?? 'pending',
+      indexStatus: file.indexStatus ?? 'pending',
+      semanticIndexStatus: file.semanticIndexStatus ?? 'unavailable',
+      originalAvailable: file.originalAvailable ?? file.isStorageBacked ?? false,
+    }
     if (!text) {
+      const originalAvailable = base.originalAvailable
       return {
         success: true,
         file: base,
         content: '',
-        note: file.isStorageBacked && !file.textInObjectStore
-          ? 'This file has no extracted text (it is a binary or unindexed upload).'
-          : 'The file is empty.',
+        totalChars: 0,
+        returnedChars: 0,
+        nextOffset: null,
+        complete: !originalAvailable && !file.extractionTruncated && !file.extractionError,
+        ...(originalAvailable && file.extractionStatus !== 'ready'
+          ? { note: 'Original file is available. Text extraction is not ready or could not read this file; use read_document on its original pages.' }
+          : {}),
+        ...(file.extractionError ? { extractionError: file.extractionError } : {}),
       }
     }
-    const offset = Math.max(0, Math.floor(input.offset ?? 0))
-    const content = text.slice(offset, offset + READ_CHUNK_CHARS)
+    const totalChars = file.textTotalChars ?? text.length
+    const content = file.textOffset !== undefined ? text.slice(0, READ_CHUNK_CHARS) : text.slice(offset, offset + READ_CHUNK_CHARS)
     const nextOffset = offset + content.length
     return {
       success: true,
       file: base,
       content,
-      totalChars: text.length,
-      ...(nextOffset < text.length ? { nextOffset } : {}),
+      totalChars,
+      returnedChars: content.length,
+      nextOffset: nextOffset < totalChars ? nextOffset : null,
+      complete: offset === 0 && nextOffset >= totalChars && !file.extractionTruncated && file.textComplete !== false && !file.extractionError,
+      ...(file.extractionTruncated ? { note: 'Extracted text was truncated; inspect the original source for missing passages.' } : {}),
+      ...(file.extractionError ? { extractionError: file.extractionError } : {}),
     }
   } catch (err) {
     return failure(err, 'Failed to read file')

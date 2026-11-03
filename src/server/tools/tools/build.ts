@@ -75,6 +75,7 @@ import {
   executeReadFile,
   executeWriteFile,
 } from './files-executes'
+import { executeReadDocument } from './read-document'
 import { runInToolCallScope } from './internal-api'
 import type { OverlayToolsOptions } from './types'
 
@@ -680,6 +681,42 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       execute: async (input) => {
         assertToolAllowed('read_file')
         return executeReadFile(options, input)
+      },
+    })
+  }
+
+  const readDocumentAllowed = options.filesReadingTools === true
+    && shouldExposeTool('read_file') && shouldExposeTool('computer_exec')
+  if (readDocumentAllowed && shouldExposeTool('read_document')) {
+    tools.read_document = tool({
+      description: 'Inspect an original document on the authorized Computer. Read one page, render it for visual inspection, extract candidate tables, or run OCR. Returns source revision and page references. Extracted tables and OCR require verification; missing pages are not evidence of absence.',
+      inputSchema: z.object({
+        fileId: z.string().min(1),
+        revision: z.string().min(1).optional(),
+        mode: z.enum(['metadata', 'text', 'render', 'tables', 'ocr']).default('text'),
+        page: z.number().int().positive().default(1),
+      }).strict(),
+      execute: async input => {
+        if (options.filesReadingTools !== true) throw new Error('Original-file reading is unavailable.')
+        assertToolAllowed('read_file')
+        assertToolAllowed('computer_exec')
+        assertToolAllowed('read_document')
+        return executeReadDocument(options, input)
+      },
+      toModelOutput: ({ output }) => {
+        if (!output.success) return { type: 'text', value: output.error }
+        const { image, imageMediaType, ...data } = output
+        const text = JSON.stringify(data)
+        if (!(image instanceof Uint8Array) || typeof imageMediaType !== 'string') {
+          return { type: 'text', value: text }
+        }
+        return {
+          type: 'content',
+          value: [
+            { type: 'text', text },
+            { type: 'file', data: { type: 'data', data: image }, mediaType: imageMediaType },
+          ],
+        }
       },
     })
   }

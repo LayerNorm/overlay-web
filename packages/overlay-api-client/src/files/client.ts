@@ -65,6 +65,16 @@ export class FilesClient {
     return this.http.request('/api/v1/files/ingest-document', { ...init, method: 'POST', body })
   }
 
+  ingestionCapabilities(init?: RequestInit) {
+    return this.http.json<Record<string, boolean>>('/api/v1/files/ingest-jobs?capabilities=1', init)
+  }
+
+  registerDocumentResponse(body: {
+    r2Key: string; fileName: string; mimeType: string; sizeBytes: number; checksumSha256: string
+  }, init?: RequestInit) {
+    return this.http.request('/api/v1/files/ingest-jobs', this.http.jsonRequest(body, { ...init, method: 'POST' }))
+  }
+
   share(body: FileShareRequest, init?: RequestInit) {
     return this.http.json<FileShareResponse>('/api/v1/files/share', this.http.jsonRequest(body, { ...init, method: 'PATCH' }))
   }

@@ -106,6 +106,7 @@ const emptyDocumentContextBundle: DocumentContextBundle = {
   contextText: '',
   hasContent: false,
   totalChars: 0,
+  complete: false,
 }
 
 export type ActTurnContext = {

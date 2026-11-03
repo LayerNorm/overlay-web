@@ -100,6 +100,7 @@ function normalizeFile(file: Doc<'files'>) {
     indexable: file.indexable ?? isTextIndexable(kind, text),
     indexStatus: file.indexStatus ?? (isTextIndexable(kind, text) ? 'pending' : 'skipped'),
     indexedAt: file.indexedAt,
+    semanticIndexStatus: file.semanticIndexStatus,
     indexError: file.indexError,
     isStorageBacked: storageBackedForDownload,
     downloadUrl: storageBackedForDownload ? buildProxyUrl(file._id) : undefined,
@@ -119,6 +120,14 @@ function normalizeFile(file: Doc<'files'>) {
     legacyOutputId: file.legacyOutputId,
     tags: file.tags,
     textInObjectStore: file.textInObjectStore,
+    sourceChecksumSha256: file.sourceChecksumSha256,
+    extractionStatus: file.extractionStatus,
+    extractionError: file.extractionError,
+    extractionTruncated: file.extractionTruncated,
+    extractedTextBytes: file.extractedTextBytes,
+    indexTruncated: file.indexTruncated,
+    indexedCharCount: file.indexedCharCount,
+    originalAvailable: Boolean(file.r2Key || file.storageId),
     // Personal when absent; archived rows keep the scope they were archived from.
     scope: file.scope ?? ('personal' as const),
     archivedAt: file.archivedAt,
@@ -273,6 +282,7 @@ export const createUploadIntentByServer = mutation({
     r2Key: v.string(),
     declaredSizeBytes: v.number(),
     mimeType: v.optional(v.string()),
+    checksumSha256: v.optional(v.string()),
     expiresAt: v.number(),
   },
   handler: async (ctx, args) => {
@@ -282,6 +292,7 @@ export const createUploadIntentByServer = mutation({
       r2Key: args.r2Key,
       declaredSizeBytes: args.declaredSizeBytes,
       mimeType: args.mimeType,
+      checksumSha256: args.checksumSha256,
       expiresAt: args.expiresAt,
       now: Date.now(),
     })
@@ -300,6 +311,9 @@ export const getUploadIntentByServer = query({
       _id: v.id('r2UploadIntents'),
       declaredSizeBytes: v.number(),
       mimeType: v.optional(v.string()),
+      checksumSha256: v.optional(v.string()),
+      fileId: v.optional(v.id('files')),
+      status: v.union(v.literal('pending'), v.literal('finalized')),
       expiresAt: v.number(),
     }),
     v.null(),
@@ -311,12 +325,15 @@ export const getUploadIntentByServer = query({
       .query('r2UploadIntents')
       .withIndex('by_r2Key', (q) => q.eq('r2Key', args.r2Key))
       .first()
-    if (!intent || intent.userId !== args.userId || intent.status !== 'pending') return null
-    if (args.now > intent.expiresAt + UPLOAD_INTENT_FINALIZE_GRACE_MS) return null
+    if (!intent || intent.userId !== args.userId || (intent.status !== 'pending' && intent.status !== 'finalized')) return null
+    if (intent.status === 'pending' && args.now > intent.expiresAt + UPLOAD_INTENT_FINALIZE_GRACE_MS) return null
     return {
       _id: intent._id,
       declaredSizeBytes: intent.declaredSizeBytes,
       mimeType: intent.mimeType,
+      checksumSha256: intent.checksumSha256,
+      ...(intent.fileId ? { fileId: intent.fileId } : {}),
+      status: intent.status,
       expiresAt: intent.expiresAt,
     }
   },
@@ -610,6 +627,32 @@ export const get = query({
   },
 })
 
+export const getExtractionStorageByServer = query({
+  args: {
+    fileId: v.id('files'),
+    userId: v.string(),
+    workspaceId: v.optional(v.string()),
+    serverSecret: v.string(),
+  },
+  returns: v.union(v.object({
+    ownerUserId: v.string(),
+    extractedTextKey: v.optional(v.string()),
+  }), v.null()),
+  handler: async (ctx, args) => {
+    requireServerAccess(args.serverSecret)
+    const file = await getReadableRow(ctx, {
+      row: await ctx.db.get(args.fileId),
+      userId: args.userId,
+      workspaceId: args.workspaceId,
+    })
+    if (!file || file.deletedAt) return null
+    return {
+      ownerUserId: file.userId,
+      ...(file.extractedTextKey ? { extractedTextKey: file.extractedTextKey } : {}),
+    }
+  },
+})
+
 export const getByLegacyNoteId = query({
   args: {
     // The id the note had before notes moved into `files`; kept as text so old links still resolve.
@@ -707,7 +750,7 @@ export const getR2KeysForSubtree = query({
     }
     const root = await ctx.db.get(fileId)
     if (!root || root.userId !== userId) return []
-    const results: Array<{ fileId: Id<'files'>; r2Key?: string; storageId?: string; kind: FileKind }> = []
+    const results: Array<{ fileId: Id<'files'>; r2Key?: string; extractedTextKey?: string; storageId?: string; kind: FileKind }> = []
     async function collectSubtree(id: Id<'files'>) {
       const children = await ctx.db
         .query('files')
@@ -722,6 +765,7 @@ export const getR2KeysForSubtree = query({
         results.push({
           fileId: id,
           r2Key: file.r2Key,
+          ...(file.extractedTextKey ? { extractedTextKey: file.extractedTextKey } : {}),
           storageId: file.storageId as string | undefined,
           kind: inferKind(file),
         })
@@ -992,6 +1036,7 @@ export const commitUploadByServer = mutation({
     userId: v.string(), serverSecret: v.string(), workspaceId: v.optional(v.string()),
     name: v.string(), parentId: v.optional(v.string()), r2Key: v.string(), sizeBytes: v.number(),
     mimeType: v.optional(v.string()), extension: v.optional(v.string()), scope: scopeArg,
+    sourceChecksumSha256: v.optional(v.string()),
   },
   returns: v.id('files'),
   handler: async (ctx, args) => {
@@ -1008,6 +1053,63 @@ export const commitUploadByServer = mutation({
       }
     }
     return await commitUploadedFile(ctx, { ...args, scope, extension: args.extension ?? extensionOf(args.name) }, Date.now())
+  },
+})
+
+export const storeExtractionByServer = mutation({
+  args: {
+    serverSecret: v.string(), fileId: v.id('files'), userId: v.string(), sourceChecksumSha256: v.string(),
+    jobId: v.id('documentIngestionJobs'), attemptToken: v.string(),
+    extractionStatus: v.union(v.literal('ready'), v.literal('failed'), v.literal('unavailable')),
+    extractedTextKey: v.optional(v.string()), extractedTextBytes: v.optional(v.number()),
+    content: v.optional(v.string()), extractionError: v.optional(v.string()),
+    extractionTruncated: v.optional(v.boolean()),
+    indexTruncated: v.optional(v.boolean()),
+    indexedCharCount: v.optional(v.number()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    requireServerAccess(args.serverSecret)
+    const job = await ctx.db.get(args.jobId)
+    if (!job || job.status !== 'extracting' || job.leaseToken !== args.attemptToken
+      || (job.leaseExpiresAt ?? 0) <= Date.now() || job.sourceFileId !== args.fileId
+      || job.sourceChecksumSha256 !== args.sourceChecksumSha256 || job.userId !== args.userId) {
+      throw new Error('ingestion_lease_conflict')
+    }
+    const file = await ctx.db.get(args.fileId)
+    if (!file || file.userId !== args.userId || file.deletedAt
+      || file.sourceChecksumSha256 !== args.sourceChecksumSha256) throw new Error('file_revision_conflict')
+    if (args.extractionStatus === 'ready') {
+      if (!args.extractedTextKey || !isOwnedFileR2Key(args.userId, args.extractedTextKey)
+        || args.extractedTextKey === file.r2Key || !Number.isSafeInteger(args.extractedTextBytes)
+        || args.extractedTextBytes! < 0 || args.extractedTextBytes! > 10 * 1024 * 1024
+        || !args.content || utf8ByteLength(args.content) > 850_000) {
+        throw new Error('invalid_extracted_text')
+      }
+      const previousBytes = file.extractedTextBytes ?? 0
+      const delta = args.extractedTextBytes! - previousBytes
+      if (delta > 0) await ensureStorageAvailable(ctx, args.userId, delta)
+      await applyStorageUsageDelta(ctx, args.userId, delta)
+      await ctx.db.patch(file._id, {
+        extractedTextKey: args.extractedTextKey, extractedTextBytes: args.extractedTextBytes,
+        extractionStatus: 'ready', extractionError: undefined,
+        extractionTruncated: args.extractionTruncated ?? false,
+        indexTruncated: args.indexTruncated ?? false,
+        indexedCharCount: args.indexedCharCount ?? 0,
+        content: args.content, textContent: args.content, indexable: true, indexStatus: 'pending',
+        updatedAt: Date.now(),
+      })
+      await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId: file._id })
+      return null
+    }
+    if (file.extractionStatus === 'ready') return null
+    await ctx.db.patch(file._id, {
+      extractionStatus: args.extractionStatus,
+      extractionError: args.extractionError?.slice(0, 500),
+      extractionTruncated: false,
+      updatedAt: Date.now(),
+    })
+    return null
   },
 })
 
@@ -1138,6 +1240,9 @@ export const update = mutation({
     const userId = existing.userId
     if (updates.expectedUpdatedAt !== undefined && existing.updatedAt !== updates.expectedUpdatedAt) {
       throw new ConvexError('NOTE_REVISION_CONFLICT')
+    }
+    if (existing.sourceChecksumSha256 && [updates.content, updates.textContent, updates.r2Key, updates.sizeBytes].some(value => value !== undefined)) {
+      throw new Error('Original source files are immutable. Save changes as a new file.')
     }
     if (updates.parentId !== undefined) {
       await assertParentAndProject(ctx, {
@@ -1288,7 +1393,9 @@ export const remove = mutation({
       const kind = inferKind(file)
       const storageCleanupConfirmed = !file.r2Key || r2CleanupConfirmed === true
       if (storageCleanupConfirmed && shouldCountStorage(kind, file.type, file.sizeBytes ?? 0)) {
-        await applyStorageUsageDelta(ctx as never, userId, -(file.sizeBytes ?? 0))
+        await applyStorageUsageDelta(
+          ctx as never, userId, -((file.sizeBytes ?? 0) + (file.extractedTextBytes ?? 0)),
+        )
       }
       await ctx.db.patch(id, { deletedAt: now, updatedAt: now, indexStatus: 'skipped' })
       if (promotedDuplicateId) {

@@ -199,9 +199,12 @@ export function ownedStorageKeysForSubtree(
   entries: FileSubtreeStorageEntry[] | null | undefined,
 ): string[] {
   return (entries ?? []).flatMap((entry) => (
-    entry.r2Key && isOwnedStorageKey(userId, entry.r2Key)
-      ? [entry.r2Key]
-      : []
+    [
+      ...(entry.r2Key && isOwnedStorageKey(userId, entry.r2Key) ? [entry.r2Key] : []),
+      ...(entry.extractedTextKey && isOwnedStorageKey(userId, entry.extractedTextKey)
+        ? [entry.extractedTextKey]
+        : []),
+    ]
   ))
 }
 

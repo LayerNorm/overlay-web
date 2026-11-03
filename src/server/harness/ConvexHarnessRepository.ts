@@ -42,6 +42,14 @@ export class ConvexHarnessRepository implements HarnessRepository {
     }, { throwOnError: true })
   }
 
+  async readDocumentEvidence(input: { actorUserId: string; runId: string }) {
+    const result = await convex.query<{ evidence: HarnessEvidence[]; limited: boolean }>('harness/runs:readDocumentEvidence', {
+      ...input, serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!result) throw new Error('Document evidence could not be read.')
+    return result
+  }
+
   async getSurfaceExecutionByHarnessRunId(harnessRunId: string): Promise<SurfaceTurnExecution | null> {
     return await convex.query<SurfaceTurnExecution | null>('surfaces/surfaceExecutions:getSurfaceTurnExecutionByHarnessRunId', {
       harnessRunId,

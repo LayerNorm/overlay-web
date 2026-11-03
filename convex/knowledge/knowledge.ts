@@ -274,9 +274,10 @@ export const replaceKnowledgeSource = internalMutation({
         text: v.string(),
         chunkIndex: v.number(),
         startOffset: v.number(),
-        embedding: v.array(v.float64()),
+        embedding: v.optional(v.array(v.float64())),
       }),
     ),
+    sourceRevision: v.optional(v.string()),
     // Denormalized memory-lifecycle fields so search filters need no join.
     expiresAt: v.optional(v.number()),
     visibility: v.optional(v.union(v.literal('owner'), v.literal('workspace'))),
@@ -290,10 +291,19 @@ export const replaceKnowledgeSource = internalMutation({
     sourceCount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    if (args.sourceKind === 'file') {
+      const file = await ctx.db.get(args.sourceId as Id<'files'>)
+      const currentRevision = file?.sourceChecksumSha256 ?? file?.contentHash ?? String(file?.updatedAt ?? '')
+      if (!file || file.deletedAt || file.userId !== args.userId || currentRevision !== args.sourceRevision) return
+    }
     const existing = await ctx.db
       .query('knowledgeChunks')
       .withIndex('by_source', (q) => q.eq('sourceKind', args.sourceKind).eq('sourceId', args.sourceId))
       .collect()
+    if (args.sourceKind === 'file' && args.segments.every(segment => !segment.embedding)
+      && existing.length === args.segments.length && existing.every(chunk => chunk.sourceRevision === args.sourceRevision
+        && args.segments.some(segment => segment.chunkIndex === chunk.chunkIndex && segment.startOffset === chunk.startOffset
+          && segment.text === chunk.text))) return
     const existingEmbeddings = await Promise.all(existing.map((c) =>
       ctx.db
         .query('knowledgeChunkEmbeddings')
@@ -315,6 +325,7 @@ export const replaceKnowledgeSource = internalMutation({
         startOffset: seg.startOffset,
         text: seg.text,
         title: args.title,
+        ...(args.sourceKind === 'file' && args.sourceRevision ? { sourceRevision: args.sourceRevision } : {}),
         expiresAt: args.expiresAt,
         visibility: args.visibility,
         createdAt: args.createdAt,
@@ -324,13 +335,14 @@ export const replaceKnowledgeSource = internalMutation({
         eventAt: args.eventAt,
         sourceCount: args.sourceCount,
       })
-      await ctx.db.insert('knowledgeChunkEmbeddings', {
-        chunkId,
-        userId: args.userId,
-        sourceKind: args.sourceKind,
-        embedding: seg.embedding,
+      if (seg.embedding) await ctx.db.insert('knowledgeChunkEmbeddings', {
+        chunkId, userId: args.userId, sourceKind: args.sourceKind, embedding: seg.embedding,
       })
     }))
+    if (args.sourceKind === 'file') await ctx.db.patch(args.sourceId as Id<'files'>, {
+      indexStatus: args.segments.length ? 'indexed' : 'skipped', indexedAt: Date.now(), indexError: undefined,
+      semanticIndexStatus: args.segments.length && args.segments.every(segment => segment.embedding) ? 'indexed' : 'unavailable',
+    })
   },
 })
 
@@ -353,6 +365,7 @@ export const getFileForReindex = internalQuery({
       workspaceId: f.workspaceId,
       name: f.name,
       content,
+      sourceRevision: f.sourceChecksumSha256 ?? f.contentHash ?? String(f.updatedAt),
     }
   },
 })
@@ -585,6 +598,48 @@ export const fetchChunkPayloads = internalQuery({
   },
 })
 
+export const validateCurrentFileChunks = internalQuery({
+  args: {
+    userId: v.string(), workspaceId: v.optional(v.string()),
+    chunks: v.array(v.object({ chunkId: v.id('knowledgeChunks'), sourceRevision: v.optional(v.string()) })),
+  },
+  handler: async (ctx, args) => {
+    const valid: string[] = []
+    for (const item of args.chunks) {
+      const chunk = await ctx.db.get(item.chunkId)
+      if (!chunk || chunk.sourceKind !== 'file' || chunk.userId !== args.userId) continue
+      const file = await ctx.db.get(chunk.sourceId as Id<'files'>)
+      if (!file || file.deletedAt || file.userId !== args.userId
+        || file.workspaceId !== args.workspaceId || chunk.workspaceId !== file.workspaceId) continue
+      const revision = file.sourceChecksumSha256 ?? file.contentHash ?? String(file.updatedAt)
+      if (chunk.sourceRevision) {
+        if (item.sourceRevision !== revision || chunk.sourceRevision !== revision) continue
+      } else if ((file.textContent ?? file.content ?? '').slice(chunk.startOffset, chunk.startOffset + chunk.text.length) !== chunk.text) continue
+      valid.push(chunk._id)
+    }
+    return valid
+  },
+})
+
+export const fileNeighborChunks = internalQuery({
+  args: {
+    userId: v.string(), workspaceId: v.optional(v.string()), fileId: v.id('files'),
+    sourceRevision: v.string(), chunkIndexes: v.array(v.number()), limit: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const file = await ctx.db.get(args.fileId)
+    if (!file || file.deletedAt || file.userId !== args.userId || file.workspaceId !== args.workspaceId
+      || (file.sourceChecksumSha256 ?? file.contentHash ?? String(file.updatedAt)) !== args.sourceRevision) return []
+    const wanted = new Set(args.chunkIndexes.flatMap(index => [index - 1, index + 1]))
+    const chunks = await ctx.db.query('knowledgeChunks')
+      .withIndex('by_source', q => q.eq('sourceKind', 'file').eq('sourceId', args.fileId))
+      .collect()
+    return chunks.filter(chunk => chunk.userId === args.userId && chunk.workspaceId === file.workspaceId
+      && chunk.sourceRevision === args.sourceRevision && wanted.has(chunk.chunkIndex))
+      .sort((a, b) => a.chunkIndex - b.chunkIndex).slice(0, args.limit)
+  },
+})
+
 /**
  * Temporal candidate list for the RRF fusion: chunks of one owner whose
  * effective event time (`eventAt` = memory.eventAt ?? createdAt) falls inside
@@ -652,12 +707,17 @@ export const reindexFileInternal = internalAction({
       : meta.content
     const segments = chunkText(content)
     if (segments.length === 0) {
-      await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
-        sourceKind: 'file',
-        sourceId: fileId,
+      await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
+        userId, workspaceId: meta.workspaceId, sourceKind: 'file', sourceId: fileId, sourceRevision: meta.sourceRevision, segments: [],
       })
       return
     }
+    const sourceRevision = meta.sourceRevision
+    await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
+      userId, workspaceId: meta.workspaceId, sourceKind: 'file', sourceId: fileId,
+      title: name, sourceRevision,
+      segments: segments.map((s) => ({ text: s.text, chunkIndex: s.chunkIndex, startOffset: s.startOffset })),
+    })
     const indexingReservation = await ctx.runMutation(internal.platform.usage.tryReserveBackgroundWorkInternal, {
       userId,
       kind: 'indexing',
@@ -675,7 +735,7 @@ export const reindexFileInternal = internalAction({
     let reservationId: string
     try {
       const reserved = await reserveKnowledgeProviderBudget(ctx, {
-        idempotencyKey: `file:${fileId}`,
+        idempotencyKey: `file:${fileId}:${sourceRevision}`,
         kind: 'embedding',
         modelId: EMBEDDING_MODEL,
         operationId: 'knowledge.reindex-file',
@@ -713,6 +773,7 @@ export const reindexFileInternal = internalAction({
         sourceKind: 'file',
         sourceId: fileId,
         title: name,
+        sourceRevision,
         segments: segments.map((s, i) => ({
           text: s.text,
           chunkIndex: s.chunkIndex,
@@ -1511,8 +1572,9 @@ export const hybridSearch = action({
     kLex: v.optional(v.number()),
     m: v.optional(v.number()),
     minVecScore: v.optional(v.number()),
+    resilientFiles: v.optional(v.boolean()),
   },
-  handler: async (ctx, args): Promise<{ chunks: HybridSearchChunk[] }> => {
+  handler: async (ctx, args): Promise<{ chunks: HybridSearchChunk[]; mode: 'hybrid' | 'lexical'; degradationReason?: 'pricing_unavailable' | 'budget_exhausted' | 'embedding_failed' }> => {
     if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
 
     const kVec = Math.min(256, Math.max(1, args.kVec ?? 48))
@@ -1520,21 +1582,31 @@ export const hybridSearch = action({
     const m = Math.min(50, Math.max(1, args.m ?? 12))
     const q = args.query.trim()
     if (!q) {
-      return { chunks: [] }
+      return { chunks: [], mode: 'hybrid' }
     }
     const requestedKinds = args.sourceKinds ?? (args.sourceKind !== undefined ? [args.sourceKind] : undefined)
     const searchKinds = args.workspaceOnly ? workspaceOnlySourceKinds(requestedKinds) : requestedKinds
     // Nothing a room may see is left to search (the caller asked only for files).
-    if (searchKinds !== undefined && searchKinds.length === 0) return { chunks: [] }
+    if (searchKinds !== undefined && searchKinds.length === 0) return { chunks: [], mode: 'hybrid' }
 
     const estimatedTokens = estimateEmbeddingTokens([q])
-    const estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
-    if (estimatedCostUsd === null) {
-      throw new Error('pricing_missing: embedding model')
-    }
     const serverSecret = args.serverSecret
-    let reservationId: string
+    let retrievalMode: 'hybrid' | 'lexical' = 'hybrid'
+    let degradationReason: 'pricing_unavailable' | 'budget_exhausted' | 'embedding_failed' | undefined
+    let vectors: number[][] = []
+    let promptTokens = 0
+    let estimatedCostUsd: number | null = null
     try {
+      estimatedCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, estimatedTokens)
+    } catch {
+      if (!args.resilientFiles) throw new Error('pricing_missing: embedding model')
+    }
+    let reservationId: string | undefined
+    if (estimatedCostUsd === null) {
+      if (!args.resilientFiles) throw new Error('pricing_missing: embedding model')
+      retrievalMode = 'lexical'
+      degradationReason = 'pricing_unavailable'
+    } else try {
       const reserved = await reserveKnowledgeProviderBudget(ctx, {
         billingAccountId: args.billingAccountId,
         idempotencyKey: args.idempotencyKey,
@@ -1550,17 +1622,10 @@ export const hybridSearch = action({
         userId: args.billingUserId,
         workspaceId: args.workspaceId,
       })
-      reservationId = reserved.reservationId
       if (reserved.reservation.idempotent || reserved.reservation.status !== 'reserved') {
         throw new Error(`provider_operation_already_reserved:${reserved.reservation.status}`)
       }
-    } catch {
-      throw new Error('background_budget_exhausted')
-    }
-
-    let vectors: number[][] = []
-    let promptTokens = 0
-    try {
+      reservationId = reserved.reservationId
       await ctx.runMutation(api.platform.usage.markBudgetReservationStartedByServer, {
         serverSecret,
         userId: args.billingUserId,
@@ -1570,17 +1635,20 @@ export const hybridSearch = action({
       vectors = embedded.vectors
       promptTokens = embedded.promptTokens
     } catch (err) {
-      await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
-        serverSecret,
-        userId: args.billingUserId,
-        reservationId,
-        errorMessage: err instanceof Error ? err.message : 'embedding_search_failed',
-      }).catch(() => {})
-      throw err
+      if (reservationId) {
+        await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
+          serverSecret, userId: args.billingUserId, reservationId,
+          errorMessage: err instanceof Error ? err.message : 'embedding_search_failed',
+        }).catch(() => {})
+      }
+      if (!args.resilientFiles) {
+        if (reservationId) throw err
+        throw new Error('background_budget_exhausted')
+      }
+      retrievalMode = 'lexical'
+      degradationReason = reservationId ? 'embedding_failed' : 'budget_exhausted'
     }
-    const vector = vectors[0]!
-
-    {
+    if (reservationId && retrievalMode === 'hybrid') {
       const actualTokens = promptTokens || estimatedTokens
       const actualCostUsd = await calculateGatewayEmbeddingModelCostOrNull(ctx, EMBEDDING_MODEL, actualTokens)
       if (actualCostUsd === null) {
@@ -1635,18 +1703,15 @@ export const hybridSearch = action({
 
     // The current member keeps access to their indexed files. Additional workspace members
     // contribute memory chunks only, preserving file ownership while sharing memory context.
-    const currentVectorSearch = ctx.vectorSearch('knowledgeChunkEmbeddings', 'by_embedding', {
-      vector,
-      limit: kVec,
-      filter: (fq) => fq.eq('userId', args.userId),
-    })
-    const additionalMemorySearches = additionalMemoryUserIds.map((userId) => (
+    const vector = vectors[0]
+    const currentVectorSearch = vector ? ctx.vectorSearch('knowledgeChunkEmbeddings', 'by_embedding', {
+      vector, limit: kVec, filter: (fq) => fq.eq('userId', args.userId),
+    }) : Promise.resolve([])
+    const additionalMemorySearches = vector ? additionalMemoryUserIds.map((userId) => (
       ctx.vectorSearch('knowledgeChunkEmbeddings', 'by_embedding', {
-        vector,
-        limit: kVec,
-        filter: (fq) => fq.eq('userId', userId),
+        vector, limit: kVec, filter: (fq) => fq.eq('userId', userId),
       })
-    ))
+    )) : []
     const vectorGroups = (await Promise.all([currentVectorSearch, ...additionalMemorySearches]))
       .map((group) => args.minVecScore === undefined
         ? group
@@ -1739,10 +1804,18 @@ export const hybridSearch = action({
     const byId = new Map<Id<'knowledgeChunks'>, Doc<'knowledgeChunks'>>(
       payloads.map((p) => [p._id, p]),
     )
+    const currentFileIds = new Set<string>(await ctx.runQuery(
+      internal.knowledge.knowledge.validateCurrentFileChunks, {
+        userId: args.userId, workspaceId: args.workspaceId,
+        chunks: payloads.filter(row => row.sourceKind === 'file')
+          .map(row => ({ chunkId: row._id, sourceRevision: row.sourceRevision })),
+      },
+    ))
     const now = Date.now()
     const filteredByVisibility = rankedIds
       .map((id) => byId.get(id))
       .filter((row): row is NonNullable<typeof row> => !!row)
+      .filter(row => row.sourceKind !== 'file' || currentFileIds.has(row._id))
       // M1 memory lifecycle: superseded and expired memory chunks are dropped
       // at retrieval (rows stay in `memories` for audit). Owner-private chunks
       // only surface in the owner's own scope — other members' expansion
@@ -1784,6 +1857,34 @@ export const hybridSearch = action({
     )
 
     const top = packChunksForContext(resorted, ranked, vecScores, m)
+    if (args.resilientFiles && top.length < m) {
+      const primary = [...top]
+      const additional: HybridSearchChunk[] = []
+      const seen = new Set(primary.map(chunk => `${chunk.sourceKind}:${chunk.sourceId}:${chunk.chunkIndex}`))
+      let totalChars = primary.reduce((sum, chunk) => sum + chunk.text.length, 0)
+      for (const hit of primary.filter(chunk => chunk.sourceKind === 'file')) {
+        const row = byId.get(resorted.find(candidate => candidate.sourceId === hit.sourceId
+          && candidate.chunkIndex === hit.chunkIndex)?._id as Id<'knowledgeChunks'>)
+        if (!row?.sourceRevision || additional.length >= m - primary.length) continue
+        const neighbors = await ctx.runQuery(internal.knowledge.knowledge.fileNeighborChunks, {
+          userId: args.userId, workspaceId: args.workspaceId,
+          fileId: row.sourceId as Id<'files'>, sourceRevision: row.sourceRevision,
+          chunkIndexes: [row.chunkIndex], limit: 2,
+        })
+        for (const neighbor of neighbors) {
+          const key = `file:${neighbor.sourceId}:${neighbor.chunkIndex}`
+          if (seen.has(key) || primary.filter(c => c.sourceKind === 'file' && c.sourceId === neighbor.sourceId).length
+            + additional.filter(c => c.sourceId === neighbor.sourceId).length >= PACK_MAX_PER_SOURCE) continue
+          if (additional.length >= m - primary.length || totalChars + neighbor.text.length > PACK_MAX_TOTAL_CHARS) break
+          seen.add(key); totalChars += neighbor.text.length
+          additional.push({
+            text: neighbor.text, title: neighbor.title, sourceKind: 'file', sourceId: neighbor.sourceId,
+            chunkIndex: neighbor.chunkIndex, score: hit.score * 0.9,
+          })
+        }
+      }
+      top.push(...additional)
+    }
 
     // Provenance attach: each memory hit's source turn contributes its
     // verbatim message chunks — the distilled fact arrives with the raw
@@ -1842,7 +1943,7 @@ export const hybridSearch = action({
       }
     }
 
-    return { chunks: top }
+    return { chunks: top, mode: retrievalMode, ...(degradationReason ? { degradationReason } : {}) }
   },
 })
 

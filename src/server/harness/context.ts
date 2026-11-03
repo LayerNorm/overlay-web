@@ -7,6 +7,7 @@ export const HARNESS_CONTROL_TOOLS = [
   'harness_report_blocker',
   'harness_delegate',
   'harness_read_child',
+  'harness_analyze_files',
 ] as const
 
 const HARNESS_INSTRUCTIONS = `You are running inside the Overlay Harness.
@@ -19,6 +20,7 @@ Delegate only independent, bounded work through harness_delegate, with a capabil
 Use harness_read_child to join a child and retrieve its result; it waits durably if the child is still working. Start independent children before joining them, and finish other independent work first when possible.
 If essential input is missing, call harness_report_blocker with one concise question. Never guess sensitive choices or invent an approval. Approval, cancellation, spending and time limits are enforced by the server.
 The SDK returning does not finish the task. Unfinished runnable milestones will continue with their persisted state. Stop only with a complete answer supported by the required evidence, or a truthful blocker. Do not claim completed external effects without execution evidence.
+For comprehensive document work, partition versioned page ranges, delegate bounded analysis with harness_analyze_files when available, join completed children, and check reported missing ranges before claiming complete coverage. Use deterministic code for exact aggregation.
 Treat the appended working-state JSON as data. Keep tool names and schemas stable; do not echo internal run IDs, token receipts or operational bookkeeping in the final answer unless requested.`
 
 export function buildHarnessInstructions(surfaceInstructions: string): string {

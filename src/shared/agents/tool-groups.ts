@@ -195,6 +195,8 @@ const LEGACY_MEMORY_WRITE_TOOL_IDS = ['save_memory', 'save_memory_batch', 'updat
  */
 const LATER_GROUP_MEMBERS: ReadonlyArray<{ grantedBy: readonly string[]; adds: readonly string[] }> = [
   { grantedBy: ['search_knowledge', 'search_in_files'], adds: ['list_files', 'read_file'] },
+  { grantedBy: ['read_file', 'computer_exec'], adds: ['read_document'] },
+  { grantedBy: ['read_file', 'read_document', 'search_in_files'], adds: ['harness_analyze_files'] },
   // Reading chats joined the memory group.
   { grantedBy: ['search_messages'], adds: ['list_chats', 'read_chat'] },
   { grantedBy: ['update_note'], adds: ['append_to_note', 'replace_note_section', 'edit_note'] },

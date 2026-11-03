@@ -1,0 +1,73 @@
+# File-native Harness rollout
+
+File-native upload, original-file reading, resilient retrieval, and partitioned
+analysis are independently gated by the server-evaluated flags
+`files-file-first`, `files-reading-tools`, `files-hybrid-retrieval`, and
+`harness-file-analysis`. Enable them in this order:
+
+1. `files-file-first`
+2. `files-reading-tools`
+3. `files-hybrid-retrieval`
+4. `harness-file-analysis`
+
+The web application and backend must be coordinated in an isolated preview.
+Legacy files need no migration. Disabling a flag stops the corresponding
+behavior but leaves stored originals and derived text intact.
+
+The source object is immutable and identified by its SHA-256 revision.
+Extraction and indexing are separate statuses; a completed upload means the
+original is available, not that extraction or search indexing has completed.
+Failed extraction can be retried through the existing ingestion endpoint
+without creating a second file or charging quota again. Derived text is stored
+separately and capped at 10 MiB; truncated text is labeled as incomplete.
+
+`read_document` uses the authorized Computer and is currently limited to PDF
+page reading, rendering, candidate-table extraction, and optional OCR. It
+prepares a dedicated Python environment with PyMuPDF 1.26.7. OCR additionally
+requires Tesseract on the Computer. Table detection and OCR are candidates
+that require human/model verification; neither is a guarantee of correctness.
+Rendered images are bounded, and missing or unreadable pages must be reported
+as missing rather than treated as evidence of absence.
+
+Hybrid file retrieval falls back to lexical results when embedding pricing,
+reservation, or provider calls fail. It preserves provider reservation and
+reconciliation rules. Lexical chunks exist before vector indexing; the file's
+`indexStatus` describes lexical readiness and `semanticIndexStatus` describes
+vector readiness. Results exclude deleted, inaccessible, and stale sources.
+Bounded same-source neighbors follow primary results without displacing them.
+
+`read_file` returns bounded 60,000-character ranges over the BFF, with offsets,
+total extracted characters, and completeness. Its write-concurrency `revision`
+remains the update timestamp; `sourceRevision` is the original SHA-256.
+
+`harness_analyze_files` uses existing durable Harness children, shared budgets,
+cancellation, concurrency and depth limits, rather than a separate model billing
+path. A call assigns up to 32 versioned ranges of up to 20 pages each. Assignments
+cannot overlap within a call; the parent must avoid overlap between calls.
+Feature evaluation is persisted as a workflow step, not trusted from tool input.
+Children inherit only the intersection of their parent's tools and reading,
+search and Computer capabilities. Computer execution remains a general capability;
+the analysis instructions do not constitute an additional filesystem sandbox.
+
+`harness_read_child` returns coverage derived from persisted successful
+`read_document` observations, including descendants. Metadata, table candidates,
+blank or truncated text, arbitrary child prose, and wrong revisions do not count
+as page coverage. Missing, stale and unavailable pages are separate. Coverage
+means observed pages, not proven comprehension. Exact counts require deterministic
+code over observed records. The coverage scan is bounded to 128 descendant runs
+and the most recent 1,024 observations per run; hitting either limit prevents a
+complete-coverage claim. Completed child work is reused on replay.
+
+## Preview acceptance
+
+- Upload a PDF larger than 4.5 MB with file-first enabled; its original must remain
+  downloadable if extraction fails. Retry registration without uploading again.
+- Read a multi-page PDF, a scanned page and a table on a provisioned Computer.
+  Check revision/page citations and missing OCR capability reporting. Shared-room
+  original reads are currently withheld; non-PDF files use extracted text tools.
+- Test exact IDs, semantic paraphrases, stale/deleted files and inaccessible
+  workspace files. Disable embedding capacity and verify lexical-only metadata.
+- Interrupt a partitioned analysis, resume it, and verify no completed child is
+  relaunched and missing pages never become exhaustive results.
+- Compare correctness, evidence, latency and total cost before enabling flags
+  beyond the isolated preview. No flag defaults are changed by this feature.

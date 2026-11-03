@@ -30,6 +30,8 @@ export type HarnessApprovalRequest = {
 // These are IO seams, not execution strategies. Implementations invoke durable
 // steps/hooks; no provider instances, credentials or closures enter run storage.
 export interface HarnessExecutionPorts {
+  fileAnalysisEnabled?: boolean
+  readFileCoverage?(childRunId: string): Promise<unknown>
   claim(): Promise<boolean>
   read(): Promise<HarnessSnapshot>
   apply(operationId: string, operation: HarnessOperation): Promise<HarnessSnapshot>

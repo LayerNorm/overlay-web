@@ -5,6 +5,7 @@ export type UploadedFileInput = {
   parentId?: string
   r2Key: string
   sizeBytes: number
+  sourceChecksumSha256?: string
   mimeType?: string
   extension?: string
   scope?: 'personal' | 'workspace'

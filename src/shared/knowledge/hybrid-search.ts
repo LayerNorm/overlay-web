@@ -14,4 +14,6 @@ export type HybridSearchChunk = {
 
 export type HybridSearchResult = {
   chunks: HybridSearchChunk[]
+  mode?: 'hybrid' | 'lexical'
+  degradationReason?: 'pricing_unavailable' | 'budget_exhausted' | 'embedding_failed'
 }

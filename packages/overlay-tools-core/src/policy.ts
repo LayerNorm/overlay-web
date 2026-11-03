@@ -33,6 +33,7 @@ export const OVERLAY_TOOL_IDS = [
   'search_in_files',
   'list_files',
   'read_file',
+  'read_document',
   'write_file',
   'create_folder',
   'move_file',

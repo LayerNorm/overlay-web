@@ -10,6 +10,7 @@ export const INTERNAL_TOOL_IDS = new Set<string>([
   'search_in_files',
   'list_files',
   'read_file',
+  'read_document',
   'write_file',
   'create_folder',
   'move_file',

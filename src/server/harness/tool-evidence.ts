@@ -2,6 +2,7 @@ import type { WorkflowAgentToolExecutionEndEvent } from '@ai-sdk/workflow'
 import type { ToolSet } from 'ai'
 import type { HarnessEvidence } from '@overlay/agent-runtime/harness-state'
 import { harnessToolInputDigest } from './tool-input-digest'
+import { documentReadObservation } from './file-analysis-coverage'
 
 function hasFailureMarker(output: unknown, visited = new Set<object>(), depth = 0): boolean {
   if (!output || typeof output !== 'object') return false
@@ -41,7 +42,17 @@ export function harnessToolOutputEvidence(args: {
   error?: unknown
 }, now: number): HarnessEvidence {
   const failure = !args.success || isToolFailureOutput(args.output)
-  const value = args.success ? args.output : args.error instanceof Error ? args.error.message : args.error
+  let value = args.success ? args.output : args.error instanceof Error ? args.error.message : args.error
+  if (args.toolName === 'read_document') {
+    const observation = !failure ? documentReadObservation(args.output) : undefined
+    const input = args.input as { fileId?: unknown; revision?: unknown; page?: unknown } | null
+    const envelope = args.output as { display?: unknown } | null
+    const output = (envelope?.display ?? args.output) as { error?: unknown } | null
+    value = observation ? { success: true, ...observation } : {
+      success: false, fileId: input?.fileId, revision: input?.revision, page: input?.page,
+      status: typeof output?.error === 'string' && output.error.startsWith('Source revision mismatch') ? 'stale' : 'unavailable',
+    }
+  }
   let summary = typeof value === 'string' ? value : ''
   if (typeof value !== 'string') {
     try {

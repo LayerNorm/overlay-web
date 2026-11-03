@@ -1,5 +1,6 @@
 import 'server-only'
 
+import type { Id } from '../../../convex/_generated/dataModel'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type {
@@ -33,13 +34,21 @@ export class ConvexFileRepository implements FileRepository {
     accessToken?: string
     fileId: string
     userId: string
+    workspaceId?: string
   }): Promise<FileRecord | null> {
     return await convex.query<FileRecord | null>('files/files:get', {
       fileId: args.fileId,
       userId: args.userId,
+      ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
       serverSecret: this.serverSecret,
       ...(args.accessToken ? { accessToken: args.accessToken } : {}),
     })
+  }
+
+  async getExtractionStorage(args: { fileId: string; userId: string; workspaceId?: string }) {
+    return await convex.query<{ ownerUserId: string; extractedTextKey?: string } | null>(
+      'files/files:getExtractionStorageByServer', { ...args, serverSecret: this.serverSecret },
+    )
   }
 
   async getFileByLegacyOutputId(args: {
@@ -99,6 +108,13 @@ export class ConvexFileRepository implements FileRepository {
     }, { throwOnError: true })
     if (!id) throw new Error('Upload publication returned no file id')
     return id
+  }
+
+  async storeFileExtraction(args: Parameters<FileRepository['storeFileExtraction']>[0]): Promise<void> {
+    await convex.mutation('files/files:storeExtractionByServer', {
+      ...args, fileId: args.fileId as Id<'files'>, jobId: args.jobId as Id<'documentIngestionJobs'>,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
   }
 
   async getComputerArtifact(args: ComputerArtifactLookup): Promise<ComputerArtifactManifest | null> {
@@ -174,6 +190,7 @@ export class ConvexFileRepository implements FileRepository {
     declaredSizeBytes: number
     expiresAt: number
     mimeType: string
+    checksumSha256?: string
     r2Key: string
     userId: string
   }): Promise<void> {

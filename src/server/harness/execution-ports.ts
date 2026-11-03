@@ -5,7 +5,7 @@ import { waitForHarnessModelResources } from './resource-boundary'
 import type { HarnessExecutionReference } from './state-steps'
 
 export type HarnessSurfacePorts = Pick<HarnessExecutionPorts,
-  'recordToolResult' | 'delegate' | 'readChild' | 'waitForChildren' | 'waitForInput' | 'waitForApproval'>
+  'recordToolResult' | 'delegate' | 'readChild' | 'waitForChildren' | 'waitForInput' | 'waitForApproval' | 'fileAnalysisEnabled' | 'readFileCoverage'>
 
 export function createHarnessExecutionPorts(input: {
   reference: HarnessExecutionReference
