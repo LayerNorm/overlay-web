@@ -26,6 +26,7 @@ export async function prepareNativeHarnessModel(input: {
       native: {
         access: {
           actorUserId: access.actorUserId, runId: access.runId, workflowRunId: access.workflowRunId,
+          executionGeneration: access.executionGeneration ?? 0,
           workspaceId: access.workspaceId, principalId: access.principalId,
           agentId: access.agentId, agentPrincipalId: access.agentPrincipalId,
           conversationId: access.conversationId, agentRunId: access.agentRunId,

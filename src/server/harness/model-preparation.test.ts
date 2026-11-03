@@ -1,6 +1,8 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
 import { preparePersonalHarnessModel } from './model-preparation'
+import { WORKFLOW_SERIALIZE } from '@workflow/serde'
+import { HarnessLanguageModel } from './secure-model'
 
 const mocks = vi.hoisted(() => ({ refresh: vi.fn(), catalog: vi.fn(), zdr: vi.fn() }))
 vi.mock('server-only', () => ({}))
@@ -24,6 +26,13 @@ beforeEach(() => {
   mocks.refresh.mockImplementation(async (_access, supplied) => ({ ...supplied, entitlements: { confidential: 'must-not-persist' } }))
   mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 32_000, maxTokens: 1_000,
     pricing: { input: '0.000001', output: '0.000002' } })
+})
+
+test.each([undefined, 4])('preserves personal execution generation %s through preparation and serialization', async executionGeneration => {
+  const prepared = await preparePersonalHarnessModel({ ...input, access: { ...access, executionGeneration } })
+  expect(prepared.model.personal?.access.executionGeneration).toBe(executionGeneration ?? 0)
+  const serialized = HarnessLanguageModel[WORKFLOW_SERIALIZE](new HarnessLanguageModel(prepared.model))
+  expect(serialized.personal?.access.executionGeneration).toBe(executionGeneration ?? 0)
 })
 
 test('quotes the complete prompt and constructs a credential-free dispatch reference with explicit limits', async () => {

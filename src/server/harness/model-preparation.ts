@@ -45,6 +45,7 @@ export async function preparePersonalHarnessModel(input: {
         access: {
           actorUserId: access.actorUserId, workspaceId: access.workspaceId, principalId: access.principalId,
           runId: access.runId, workflowRunId: access.workflowRunId, conversationId: access.conversationId, agentRunId: access.agentRunId,
+          executionGeneration: access.executionGeneration ?? 0,
           authentication: serializePersonalHarnessAuthentication(access.authentication),
         },
         receiptId: input.receiptId, memoryEnabled: context.memoryEnabled,
