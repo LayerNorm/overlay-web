@@ -1,3 +1,4 @@
+import { pendingHarnessPaymentVerification } from './funding-admission'
 import type { HarnessExecutionPorts } from './ports'
 import { createNativeHarnessModelPorts } from './native-model-ports'
 import { refreshNativeHarnessAccess, type NativeHarnessAccess, type NativeHarnessContext } from './native-access'
@@ -11,9 +12,24 @@ export async function authorizeNativeHarnessExecution(
   await refreshNativeHarnessAccess(access, context, toolName, { renewalMode: true, renewLease: options.renewLease !== false })
 }
 
+export async function renewNativeHarnessWait(access: NativeHarnessAccess, context: NativeHarnessContext): Promise<void> {
+  'use step'
+  try {
+    await refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true, renewLease: true })
+  } catch (error) {
+    if (!await pendingHarnessPaymentVerification(error, access)) throw error
+  }
+}
+
 export async function checkNativeHarnessFunding(access: NativeHarnessAccess, context: NativeHarnessContext, requiredCents: number) {
   'use step'
-  const authority = await refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true })
+  let authority
+  try {
+    authority = await refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true })
+  } catch (error) {
+    if (await pendingHarnessPaymentVerification(error, access)) return false
+    throw error
+  }
   if (!authority.paid) return false
   const budget = await ensurePayerBudgetAvailable({
     entitlements: authority.entitlements, minimumRequiredCents: requiredCents,

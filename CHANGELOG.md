@@ -9,6 +9,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Keep Harness model-port, verification, compaction, artifact-prompt, and reducer validation paths focused and maintainable without changing their behavior or limits.
 - Allow isolated Preview QA to lower the test owner's Harness working-context budget to exercise compaction, without changing production or other users' budgets.
 - Keep Harness continuations grounded in persisted evidence, page omitted observations, verify nontrivial final answers, preserve context in private chunk-transport artifacts, and recover from failed compaction or verification without releasing paid or unknown provider holds.
+- Keep owned funding-paused Harness tasks waiting while payment verification is pending, without renewing execution authority or bypassing paid admission; revoked and stale runs still fail closed.
+
 - Preserve the pending response when context summarization pauses for workspace funding, including after durable workflow serialization; foreign pause receipts cannot resume the task.
 
 - Reconcile durable Harness continuation with paid-workspace admission: retain the selected model on funding failure and require current verified payment before creating automatic top-up claims. Existing subscriptions and markup are unchanged.
