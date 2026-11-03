@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Settle measured model usage when background memory generation fails schema validation, without saving invalid output or leaving a known-cost hold stuck. Unknown usage and missing pricing still require reconciliation.
+
 - Retain receipt-backed provider expenses for failed calls after their wallet holds are released, without charging or crediting the wallet again; include those expenses in billing cost reports.
 
 - Record standing approval for task-related browser QA and testing, and document secure reuse of saved Convex administration access so preview checks do not require repeated approval or per-PR key requests.

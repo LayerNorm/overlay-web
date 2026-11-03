@@ -152,3 +152,8 @@ Configure local engineer-owned Next/Convex environments too. Unit runners use an
 explicit test fixture. Do not change the rate independently during active billed
 work: reservations and final settlement must use the same policy. A future rate
 change requires a coordinated rollout with in-flight reservations settled first.
+
+Background memory extraction settles SDK-reported token usage on structured-output
+validation failures using the same pricing and finalizer as successful calls.
+Invalid output is never stored. Missing/invalid usage, unknown pricing and failed
+settlement retain reconciliation rather than assuming zero provider cost.

@@ -165,3 +165,7 @@ provider account when a shared account budget is required.
 Usage markup is configured with `OVERLAY_USAGE_MARKUP_BPS` on both Next and the
 matching Convex backend; see [Workspace billing](workspace-billing.md#usage-markup-configuration).
 Computer bootstrap holds and ongoing usage use this same configured rate.
+
+Memory extraction validation failures with complete non-negative integer SDK token
+usage follow normal priced settlement. Provider-started failures without measured
+usage remain quarantined; failed output is not itself proof of zero cost.
