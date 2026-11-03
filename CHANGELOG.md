@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep Harness control tools available while an answer-only milestone is unfinished, so agents can pause for missing human input instead of treating the plan as already complete. External action tools remain unavailable until the plan requires them.
+
 - Add versioned long-running Harness execution with workspace-funded dispatch holds, renewable execution leases, typed funding pauses, and protected continuation handoff. New checkpoints use gzip-compressed Convex File Storage blobs referenced by an atomic small metadata transaction; older inline checkpoint fields remain readable. Failed/retried uploads may leave unreferenced blobs, and no destructive orphan cleanup is performed. An expired explicit task deadline now persists as nonterminal `waiting_for_authorization`, preserves existing waits, blocks ordinary replies and execution, and remains cancellable. Funding projections show required and available amounts and show reserved amounts only when authoritative. Existing explicit spend overrides, V1 resource pauses, legacy policies, payer distinctions, and unresolved-effect holds remain enforced; targeted fixtures do not qualify every wait handoff or real-time multiweek operation.
 
 - Require a plain-language changelog entry in every PR, including documentation, dependency, test and CI changes, and a functionality summary with deployment status after each merge.

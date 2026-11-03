@@ -13,7 +13,7 @@ import {
 import { createHarnessControlTools } from './control-tools'
 import {
   buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessStuckQuestion,
-  HARNESS_CONTROL_TOOLS, harnessProgressFingerprint,
+  HARNESS_CONTROL_TOOLS, harnessProgressFingerprint, hasPendingHarnessAnswer,
 } from './context'
 import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSettings, HarnessRunnerCheckpoint } from './ports'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
@@ -130,9 +130,11 @@ function activeModelTools(
   needsPlan: boolean,
 ): string[] {
   const allowed = new Set(preparedActiveToolNames)
-  return Object.keys(tools).filter(name => !complete && (needsPlan
-    ? name === 'harness_set_plan'
-    : controls.has(name) || (current.policy.allowedToolIds.includes(name) && allowed.has(name))))
+  return Object.keys(tools).filter(name => complete
+    ? hasPendingHarnessAnswer(current) && controls.has(name)
+    : needsPlan
+      ? name === 'harness_set_plan'
+      : controls.has(name) || (current.policy.allowedToolIds.includes(name) && allowed.has(name)))
 }
 
 function assertPreparedModelAuthority(

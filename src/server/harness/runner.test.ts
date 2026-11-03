@@ -556,6 +556,40 @@ test('input blockers suspend without an extra model call and resume with the rea
   expect(JSON.stringify(provider.doStreamCalls[1].prompt)).toContain('USD')
 })
 
+test('pending answer-only plans retain input controls without enabling external actions', async () => {
+  const f = fixture(true, [], { executionPolicyVersion: 2 })
+  const read = vi.fn(async () => ({ value: 'unused' }))
+  const provider = model(index => {
+    if (index === 0) return [call('harness_set_plan', 'answer-plan', { steps: [{
+      id: 'answer', title: 'Confirm the word', dependsOn: [], acceptanceCriteria: ['Repeat the user word'], answerOnly: true,
+    }] })]
+    if (index === 1) return [call('harness_report_blocker', 'question', { question: 'Which word?' })]
+    if (index === 2) return [call('harness_update_step', 'answer-done', { id: 'answer', status: 'done' })]
+    return 'Confirmed: harbor'
+  })
+  const wait = vi.fn(async (current: state.HarnessSnapshot) => {
+    expect(current.status).toBe('waiting_for_input')
+    expect(provider.doStreamCalls).toHaveLength(2)
+    return [{ role: 'user' as const, content: 'harbor' }]
+  })
+  f.ports.waitForInput = wait
+  const result = await runOverlayHarness({ ...input, tools: {
+    read: tool({ inputSchema: z.object({}), execute: read }),
+  } }, f.ports)
+  expect(wait).toHaveBeenCalledOnce()
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.runId).toBe('run')
+  expect(result.snapshot.resultSummary).toBe('Confirmed: harbor')
+  expect(provider.doStreamCalls).toHaveLength(4)
+  const names = provider.doStreamCalls[1].tools?.map(tool => tool.name)
+  expect(names).toContain('harness_report_blocker')
+  expect(names).toContain('harness_update_step')
+  expect(names).not.toContain('read')
+  expect(JSON.stringify(provider.doStreamCalls[2].prompt)).toContain('harbor')
+  expect(provider.doStreamCalls[3].toolChoice).toEqual({ type: 'none' })
+  expect(read).not.toHaveBeenCalled()
+})
+
 test('stuck waits resume the same root run after a real reply', async () => {
   const f = fixture()
   const provider = model(index => {
