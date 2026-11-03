@@ -256,7 +256,8 @@
               "developer/contribute/run-locally",
               "developer/contribute/repository-map",
               "developer/contribute/architecture",
-              "developer/contribute/local-integrations"
+              "developer/contribute/local-integrations",
+              "developer/file-native-harness"
             ]
           },
           {
