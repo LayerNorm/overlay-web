@@ -619,6 +619,9 @@ The Boat adapter applies explicit file modes through its command channel because
 API does not apply them; a failed permission change fails delivery. Preview startup secures
 the dedicated host-state directory to 0700 before writing the access file, keeping its bytes
 private during upload as well as after the file becomes 0600.
+Files larger than Boat's 5 MiB inline-write limit use its path-bound, short-lived upload
+URL with raw bytes. Upload requests omit the Boat API key, reject redirects, and fail
+without exposing signed URLs in tool errors. Small files retain the inline-write path.
 An Overlay Cloud agent uses the same connected-agent protocol and host:
 
 - **Image.** `infra/agent-image/provision.sh` adds a pinned Overlay layer (Agent Host, acpx,

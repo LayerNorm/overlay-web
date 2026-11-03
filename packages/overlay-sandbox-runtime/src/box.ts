@@ -69,6 +69,7 @@ const PROVISION_TIMEOUT_MS = 5 * 60_000
 const STOP_TIMEOUT_MS = 2 * 60_000
 const SNAPSHOT_TIMEOUT_MS = 15 * 60_000
 const RUNTIME_FENCE_MS = 4 * 60_000
+const INLINE_FILE_LIMIT_BYTES = 5 * 1024 * 1024
 
 export class BoxApiError extends Error {
   constructor(
@@ -117,6 +118,8 @@ export type BoxFetch = (
   init: { method?: string; headers?: Record<string, string>; body?: string },
 ) => Promise<{ status: number; json(): Promise<unknown> }>
 
+export type BoxUpload = (url: string, contents: Uint8Array) => Promise<{ status: number }>
+
 /** Boat responses carry `sandbox`; legacy Box responses carried `box`. */
 type SandboxEnvelope = { sandbox?: BoxInfo; box?: BoxInfo }
 
@@ -130,6 +133,7 @@ export type BoxSandboxRuntimeOptions = {
   /** Named Boat environment; isolates Preview from production resources. */
   environment?: string
   fetch?: BoxFetch
+  upload?: BoxUpload
 }
 
 export class BoxSandboxRuntime implements SandboxRuntime {
@@ -139,6 +143,7 @@ export class BoxSandboxRuntime implements SandboxRuntime {
   private readonly baseUrl: string
   private readonly environment: string | undefined
   private readonly fetch: BoxFetch
+  private readonly upload: BoxUpload
 
   constructor(options: BoxSandboxRuntimeOptions = {}) {
     const apiKey = options.apiKey ?? boatApiKeyFromEnv()
@@ -154,6 +159,38 @@ export class BoxSandboxRuntime implements SandboxRuntime {
       const response = await fetch(input, { ...init, signal: AbortSignal.timeout(15_000), redirect: 'error' })
       return { status: response.status, json: () => response.json() }
     })
+    this.upload = options.upload ?? (async (url, contents) => {
+      const response = await fetch(url, {
+        method: 'PUT',
+        body: Buffer.from(contents),
+        headers: { 'Content-Type': 'application/octet-stream' },
+        signal: AbortSignal.timeout(120_000),
+        redirect: 'error',
+      })
+      await response.body?.cancel()
+      return { status: response.status }
+    })
+  }
+
+  async writeFile(reference: string, path: string, contents: Uint8Array): Promise<void> {
+    if (contents.byteLength <= INLINE_FILE_LIMIT_BYTES) {
+      await this.request('PUT', `/sandboxes/${reference}/files`, {
+        body: { path, content: Buffer.from(contents).toString('base64'), encoding: 'base64' },
+      })
+      return
+    }
+    const ticket = await this.request<{ url: string; method: string }>('POST', `/sandboxes/${reference}/files/upload-url`, {
+      body: { path, ttlSeconds: 300 },
+    })
+    try {
+      const url = new URL(ticket.url)
+      if (ticket.method !== 'PUT' || url.protocol !== 'https:' || url.username || url.password) throw new Error('Invalid upload URL')
+      const response = await this.upload(url.toString(), contents)
+      if (response.status < 200 || response.status >= 300) throw new Error('Upload failed')
+    } catch {
+      // Signed URLs and provider response bodies must not reach tool traces.
+      throw new BoxApiError(502, 'file_upload_failed', 'Could not upload file to machine')
+    }
   }
 
   /** Raw v1 call. Response envelopes carry `ok`; errors throw BoxApiError. */
@@ -475,9 +512,7 @@ class BoxSandboxInstance implements DesktopSandboxInstance {
     if (files.some(file => file.mode !== undefined && (!Number.isSafeInteger(file.mode) || file.mode < 0 || file.mode > 0o777)))
       throw new BoxApiError(400, 'invalid_file_mode', 'File permissions must be between 0000 and 0777')
     await Promise.all(files.map(async file => {
-      await this.runtime.request('PUT', `/sandboxes/${this.reference}/files`, {
-        body: { path: file.path, content: Buffer.from(file.contents).toString('base64'), encoding: 'base64' },
-      })
+      await this.runtime.writeFile(this.reference, file.path, file.contents)
       if (file.mode !== undefined) {
         const result = await (await this.runCommand({command: 'chmod', args: ['--', file.mode.toString(8), file.path], timeoutMs: 15_000})).wait()
         if (result.exitCode !== 0) throw new BoxApiError(500, 'file_permissions_failed', 'Could not set machine file permissions')

@@ -5,6 +5,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Add default-off file-native ingestion, bounded original-document reading, resilient hybrid retrieval, and durable partitioned file analysis with evidence-derived coverage.
+- Transfer large original files to Computers through Boat's signed upload API instead of its 5 MiB inline-write endpoint.
 
 - Explain AI SDK Harness failures in plain language, including provider HTTP failures, invalid inputs and tool approvals, missing outputs, and exhausted SDK retries. Preserve partial-stream warnings and nested SDK causes without exposing prompts, tool inputs, or provider payloads; retry, fallback, and billing behavior are unchanged.
 

@@ -354,6 +354,75 @@ test('files write base64, read base64, and missing files read as null', async ()
   assert.equal(await instance.readFile('/home/user/missing'), null)
 })
 
+test('large files use signed raw uploads while the 5 MiB boundary stays inline', async () => {
+  const events: string[] = []
+  const signedUrl = 'https://sandbox.example.test/upload?signature=private'
+  const bytes = Buffer.alloc(5_882_022, 0xff)
+  bytes[0] = 0
+  const {calls, fetch} = recorder(call => {
+    if (call.url.endsWith('/files/upload-url')) {
+      events.push('ticket')
+      assert.deepEqual(call.body, {path: '/tmp/source.pdf', ttlSeconds: 300})
+      return ok({url: signedUrl, method: 'PUT'})
+    }
+    if (call.url.endsWith('/commands')) {
+      events.push('chmod')
+      return ok({processId: 11, pid: 12})
+    }
+    if (call.url.includes('/commands/11')) return ok({running: false, status: 'exited', exitCode: 0, stdout: '', stderr: ''})
+    return ok({sandbox: {id: 'bx_1', state: 'ready'}})
+  })
+  const instance = await new BoxSandboxRuntime({apiKey: 'test-key', fetch, upload: async (url, contents) => {
+    events.push('upload')
+    assert.equal(url, signedUrl)
+    assert.deepEqual(contents, bytes)
+    return {status: 204}
+  }}).reconnect('bx_1')
+  await instance.writeFiles([{path: '/tmp/boundary.pdf', contents: Buffer.alloc(5 * 1024 * 1024)}])
+  await instance.writeFiles([{path: '/tmp/source.pdf', contents: bytes, mode: 0o600}])
+  assert.deepEqual(events, ['ticket', 'upload', 'chmod'])
+  assert.equal(calls.filter(call => call.method === 'PUT').length, 1)
+  assert.ok(calls.every(call => !call.url.includes('signature=')))
+})
+
+test('raw upload requests omit Boat authorization and reject redirects', async t => {
+  const bytes = Buffer.alloc(5 * 1024 * 1024 + 1, 0xff)
+  const signedUrl = 'https://sandbox.example.test/upload?signature=private'
+  const upload = t.mock.method(globalThis, 'fetch', async (url: string, init: RequestInit) => {
+    assert.equal(url, signedUrl)
+    assert.equal(init.method, 'PUT')
+    assert.equal(init.redirect, 'error')
+    assert.ok(init.signal)
+    assert.deepEqual(init.headers, {'Content-Type': 'application/octet-stream'})
+    assert.deepEqual(init.body, bytes)
+    return new Response(null, {status: 204})
+  })
+  const {fetch} = recorder(call => call.url.endsWith('/files/upload-url')
+    ? ok({url: signedUrl, method: 'PUT'})
+    : ok({sandbox: {id: 'bx_1', state: 'ready'}}))
+  const instance = await runtime(fetch).reconnect('bx_1')
+  await instance.writeFiles([{path: '/tmp/source.pdf', contents: bytes}])
+  assert.equal(upload.mock.callCount(), 1)
+})
+
+test('signed file upload failures are sanitized and do not apply modes or fall back to inline writes', async () => {
+  for (const failure of ['status', 'network', 'invalid-url', 'invalid-method']) {
+    const {calls, fetch} = recorder(call => call.url.endsWith('/files/upload-url')
+      ? ok({url: failure === 'invalid-url' ? 'http://sandbox.test/private' : 'https://sandbox.test/?secret=private', method: failure === 'invalid-method' ? 'GET' : 'PUT'})
+      : ok({sandbox: {id: 'bx_1', state: 'ready'}}))
+    let uploads = 0
+    const instance = await new BoxSandboxRuntime({apiKey: 'test-key', fetch, upload: async () => {
+      uploads++
+      if (failure === 'network') throw new Error('https://sandbox.test/?secret=private')
+      return {status: 403}
+    }}).reconnect('bx_1')
+    await assert.rejects(instance.writeFiles([{path: '/tmp/source.pdf', contents: Buffer.alloc(5 * 1024 * 1024 + 1), mode: 0o600}]),
+      error => error instanceof BoxApiError && error.code === 'file_upload_failed' && !error.message.includes('private'))
+    assert.equal(uploads, failure.startsWith('invalid') ? 0 : 1)
+    assert.ok(calls.every(call => call.method !== 'PUT' && !call.url.endsWith('/commands')))
+  }
+})
+
 test('file modes are applied through the command channel and never put file contents in command arguments', {skip: process.platform === 'win32' ? 'Boat is a POSIX machine' : false}, async () => {
   const directory = mkdtempSync(join(tmpdir(), 'boat-file-mode-')), path = join(directory, 'file with spaces; literal')
   const {calls, fetch} = recorder(call => {
