@@ -6,55 +6,27 @@ import type { UsageEvent, UsageRepository } from '@/server/usage'
 import {
   applyMarkupToCents,
   applyMarkupToDollars,
-  centsToDollarAmount,
-  clampTopUpAmountCents,
-  TOP_UP_MAX_AMOUNT_CENTS,
-  TOP_UP_MIN_AMOUNT_CENTS,
-  TOP_UP_STEP_AMOUNT_CENTS,
 } from '@/shared/billing/billing-pricing'
 import { ensureWorkspaceBudgetAvailable } from '@/server/billing/workspace-budget'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import type { BillingRepository } from './BillingRepository'
-
-export function isPaidPlan(entitlements: Pick<Entitlements, 'tier' | 'planKind'>): boolean {
-  if (entitlements.planKind) return entitlements.planKind === 'paid'
-  return entitlements.tier !== 'free'
-}
-
-export function canUsePaidBudgetFeatures(entitlements: Pick<
-  Entitlements,
-  'tier' | 'planKind' | 'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'
->): boolean {
-  return isPaidPlan(entitlements) && getBudgetTotals(entitlements).remainingCents > 0
-}
-
-export function usesFreeTierPrivileges(entitlements: Pick<
-  Entitlements,
-  'tier' | 'planKind' | 'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'
->): boolean {
-  return !canUsePaidBudgetFeatures(entitlements)
-}
-
-export function getBudgetTotals(entitlements: Pick<
-  Entitlements,
-  'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'
->) {
-  const usedCents =
-    typeof entitlements.budgetUsedCents === 'number'
-      ? entitlements.budgetUsedCents
-      : Math.max(0, Math.round(entitlements.creditsUsed ?? 0))
-  const totalCents =
-    typeof entitlements.budgetTotalCents === 'number'
-      ? entitlements.budgetTotalCents
-      : Math.max(0, Math.round((entitlements.creditsTotal ?? 0) * 100))
-  const remainingCents =
-    typeof entitlements.budgetRemainingCents === 'number'
-      ? entitlements.budgetRemainingCents
-      : Math.max(0, totalCents - usedCents)
-
-  return { usedCents, totalCents, remainingCents }
-}
+import {
+  buildInsufficientCreditsPayload,
+  ensureBudgetAvailable,
+  getBudgetTotals,
+  isPaidPlan,
+} from './billing-runtime-details'
+export {
+  buildInsufficientCreditsPayload,
+  canUsePaidBudgetFeatures,
+  ensureBudgetAvailable,
+  formatBudgetUsage,
+  getBudgetTotals,
+  getTopUpPreferenceSnapshot,
+  isPaidPlan,
+  usesFreeTierPrivileges,
+} from './billing-runtime-details'
 
 export function billableBudgetCentsFromProviderUsd(providerCostUsd: number): number {
   return applyMarkupToDollars({ providerCostUsd })
@@ -484,75 +456,4 @@ function toUsageEvent(event: ProviderUsageEvent): UsageEvent {
     occurredAt: event.timestamp,
     outputTokens: event.outputTokens,
   }
-}
-
-/**
- * The personal payer's budget check. A person's own account has no credit and no automatic top-ups (plans belong to
- * workspaces; a paid workspace goes through `ensureWorkspaceBudgetAvailable`), so this only reports what is left.
- */
-export async function ensureBudgetAvailable(params: {
-  userId: string
-  entitlements: Entitlements
-  minimumRequiredCents?: number
-}) {
-  return {
-    entitlements: params.entitlements,
-    remainingCents: getBudgetTotals(params.entitlements).remainingCents,
-    autoTopUpApplied: false,
-    autoTopUpReason: 'not_needed',
-  } as const
-}
-
-export function formatBudgetUsage(entitlements: Pick<
-  Entitlements,
-  'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'
->) {
-  const { usedCents, totalCents, remainingCents } = getBudgetTotals(entitlements)
-  const usedPct = totalCents > 0 ? Math.min(100, (usedCents / totalCents) * 100) : 0
-  const remainingPct = totalCents > 0 ? Math.max(0, 100 - usedPct) : 0
-
-  return {
-    usedCents,
-    totalCents,
-    remainingCents,
-    usedDollars: centsToDollarAmount(usedCents),
-    totalDollars: centsToDollarAmount(totalCents),
-    remainingDollars: centsToDollarAmount(remainingCents),
-    usedPct,
-    remainingPct,
-  }
-}
-
-export function getTopUpPreferenceSnapshot(entitlements: Pick<
-  Entitlements,
-  'autoTopUpEnabled' | 'autoTopUpAmountCents'
->) {
-  const topUpAmountCents = clampTopUpAmountCents(
-    typeof entitlements.autoTopUpAmountCents === 'number' && entitlements.autoTopUpAmountCents > 0
-      ? entitlements.autoTopUpAmountCents
-      : TOP_UP_MIN_AMOUNT_CENTS,
-  )
-
-  return {
-    topUpAmountCents,
-    autoTopUpEnabled: Boolean(entitlements.autoTopUpEnabled),
-    topUpMinAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
-    topUpMaxAmountCents: TOP_UP_MAX_AMOUNT_CENTS,
-    topUpStepAmountCents: TOP_UP_STEP_AMOUNT_CENTS,
-    autoTopUpAmountCents: topUpAmountCents,
-  }
-}
-
-export function buildInsufficientCreditsPayload(
-  entitlements: Pick<Entitlements, 'autoTopUpEnabled' | 'autoTopUpAmountCents'>,
-  message: string,
-) {
-  return {
-    error: 'insufficient_credits',
-    message,
-    billingAction: {
-      type: 'top_up',
-      ...getTopUpPreferenceSnapshot(entitlements),
-    },
-  } as const
 }

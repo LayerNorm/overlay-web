@@ -13,11 +13,8 @@ import { recordHarnessModelRejection } from './model-rejection'
 import { applyHarnessOperation, readHarnessState } from './state-steps'
 import { HarnessYield } from './model-recovery'
 
-function fundingPause(input: { receiptId: string; status: unknown }): import('@overlay/agent-runtime/harness-state').HarnessFundingPause {
-  const status = input.status && typeof input.status === 'object'
-    ? input.status as Record<string, unknown> : {}
-  const rawReason = typeof status.reason === 'string' ? status.reason : 'insufficient_budget'
-  const reason = rawReason === 'payment_failed' ? 'payment_failed'
+function fundingPauseReason(rawReason: string): import('@overlay/agent-runtime/harness-state').HarnessFundingPause['reason'] {
+  return rawReason === 'payment_failed' ? 'payment_failed'
     : rawReason === 'monthly_limit' || rawReason === 'monthly_limit_reached' ? 'monthly_limit_reached'
             : rawReason === 'missing_payment_method' || rawReason === 'missing_method' || rawReason === 'missing_customer' ? 'missing_payment_method'
               : rawReason === 'missing_consent' ? 'missing_consent'
@@ -29,22 +26,39 @@ function fundingPause(input: { receiptId: string; status: unknown }): import('@o
                           : rawReason === 'task_deadline_expired' ? 'task_deadline_expired'
                             : rawReason === 'unknown_receipt' ? 'unknown_receipt'
                               : 'insufficient_budget'
+}
+
+function exactFundingAmounts(status: Record<string, unknown>) {
   if (!Number.isSafeInteger(status.requiredCents) || (status.requiredCents as number) <= 0
     || !Number.isSafeInteger(status.remainingCents) || (status.remainingCents as number) < 0
     || (status.reservedCents !== undefined
       && (!Number.isSafeInteger(status.reservedCents) || (status.reservedCents as number) < 0))) {
     throw new FatalError('The funding denial did not include exact reservation amounts.')
   }
-  const requiredCents = status.requiredCents as number
-  const availableCents = status.remainingCents as number
-  const reservedCents = Number.isSafeInteger(status.reservedCents) ? status.reservedCents as number : undefined
+  return {
+    requiredCents: status.requiredCents as number,
+    availableCents: status.remainingCents as number,
+    reservedCents: Number.isSafeInteger(status.reservedCents) ? status.reservedCents as number : undefined,
+  }
+}
+
+function authorizedTopUpReason(status: Record<string, unknown>) {
   const safeTopUpReasons = new Set([
     'disabled', 'pending', 'payment_failed', 'monthly_limit_reached', 'missing_payment_method',
     'missing_customer', 'missing_consent', 'amount_shortfall', 'not_paid', 'authorization_changed',
     'amount_too_small',
   ])
-  const topUpReason = typeof status.topUpReason === 'string' && safeTopUpReasons.has(status.topUpReason)
+  return typeof status.topUpReason === 'string' && safeTopUpReasons.has(status.topUpReason)
     ? status.topUpReason : undefined
+}
+
+function fundingPause(input: { receiptId: string; status: unknown }): import('@overlay/agent-runtime/harness-state').HarnessFundingPause {
+  const status = input.status && typeof input.status === 'object'
+    ? input.status as Record<string, unknown> : {}
+  const rawReason = typeof status.reason === 'string' ? status.reason : 'insufficient_budget'
+  const reason = fundingPauseReason(rawReason)
+  const { requiredCents, availableCents, reservedCents } = exactFundingAmounts(status)
+  const topUpReason = authorizedTopUpReason(status)
   return { reason, requiredCents, availableCents, ...(reservedCents !== undefined ? { reservedCents } : {}), receiptId: input.receiptId,
     ...(topUpReason ? { autoTopUpReason: topUpReason } : {}) }
 }
@@ -112,16 +126,12 @@ async function claimModelDispatch(input: HarnessModelDispatch, modelId: string, 
   if (!claimed) throw new FatalError('Model dispatch ownership is contended.')
 }
 
-// Runs inside the actual provider step. No credentials or resolved grants cross
-// its durable boundary; a bound dispatch is never automatically sent again.
-export async function authorizeHarnessModelDispatch(
+async function validateCurrentDispatch(
   reference: HarnessModelReference,
   options: LanguageModelV4CallOptions,
   input: HarnessModelDispatch,
-  authorize: () => Promise<DispatchAuthority>,
-): Promise<void> {
-  assertPreparedDispatch(reference, input, options)
-  const refreshed = await authorize()
+  refreshed: DispatchAuthority,
+) {
   if (refreshed.requiresZeroDataRetention && options.providerOptions?.gateway?.zeroDataRetention !== true) {
     throw new FatalError('The model call must use current zero data retention routing.')
   }
@@ -140,7 +150,21 @@ export async function authorizeHarnessModelDispatch(
   if (state.policy.executionPolicyVersion === 2 && state.policy.spendingMode === 'none' && estimate > 0) {
     throw new FatalError('Paid model execution requires workspace funding or external credentials.')
   }
-  const operationId = `harness-model:${createHash('sha256').update(JSON.stringify([input.access.runId, input.receiptId])).digest('hex')}`
+  return {
+    state,
+    estimate,
+    operationId: `harness-model:${createHash('sha256').update(JSON.stringify([input.access.runId, input.receiptId])).digest('hex')}`,
+  }
+}
+
+async function reserveAuthorizedModelBudget(
+  reference: HarnessModelReference,
+  input: HarnessModelDispatch,
+  refreshed: DispatchAuthority,
+  state: NonNullable<Awaited<ReturnType<ConvexHarnessRepository['get']>>>,
+  estimate: number,
+  operationId: string,
+) {
   const usesOverlayBudget = state.policy.executionPolicyVersion !== 2 || state.policy.spendingMode === 'workspace'
   const reservation = usesOverlayBudget ? await reserveProviderBudget({
     userId: input.access.actorUserId, workspaceId: input.access.workspaceId,
@@ -167,6 +191,15 @@ export async function authorizeHarnessModelDispatch(
     await recordHarnessModelRejection(reference, 'budget')
     throw new FatalError(`Model budget reservation declined: ${reservation.code}`)
   }
+  return reservation
+}
+
+async function bindAndStartModelDispatch(
+  input: HarnessModelDispatch,
+  reference: HarnessModelReference,
+  operationId: string,
+  reservation: Awaited<ReturnType<typeof reserveAuthorizedModelBudget>>,
+) {
   try {
     await claimModelDispatch(input, reference.modelId, operationId, reservation?.reservationId ?? null)
   } catch (error) {
@@ -179,4 +212,21 @@ export async function authorizeHarnessModelDispatch(
   if (reservation?.ok) {
     await markProviderBudgetStarted({ userId: input.access.actorUserId, reservationId: reservation.reservationId })
   }
+}
+
+// Runs inside the actual provider step. No credentials or resolved grants cross
+// its durable boundary; a bound dispatch is never automatically sent again.
+export async function authorizeHarnessModelDispatch(
+  reference: HarnessModelReference,
+  options: LanguageModelV4CallOptions,
+  input: HarnessModelDispatch,
+  authorize: () => Promise<DispatchAuthority>,
+): Promise<void> {
+  assertPreparedDispatch(reference, input, options)
+  const refreshed = await authorize()
+  const current = await validateCurrentDispatch(reference, options, input, refreshed)
+  const reservation = await reserveAuthorizedModelBudget(
+    reference, input, refreshed, current.state, current.estimate, current.operationId,
+  )
+  await bindAndStartModelDispatch(input, reference, current.operationId, reservation)
 }

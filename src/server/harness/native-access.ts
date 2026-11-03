@@ -35,27 +35,84 @@ export type NativeHarnessContext = {
   requestFingerprint: string
 }
 
+function nativeOwnerMatches(access: NativeHarnessAccess, state: HarnessSnapshot): boolean {
+  const ownerTransferInProgress = state.runId !== access.runId
+    && state.policy.executionPolicyVersion === 2 && !state.workflowRunId && Boolean(state.handoffWorkflowRunId)
+    && !['completed', 'cancelled', 'failed'].includes(state.status)
+  return !(!state.workflowRunId && !ownerTransferInProgress) && state.policy.actorUserId === access.actorUserId
+    && state.policy.workspaceId === access.workspaceId
+    && !(state.runId === access.runId && (state.executionGeneration ?? 0) !== (access.executionGeneration ?? 0))
+}
+
+function nativeDeadlineAllows(
+  access: NativeHarnessAccess,
+  state: HarnessSnapshot,
+  allowCancelledToolProgress: boolean,
+  renewalMode: boolean,
+): boolean {
+  const cancelledToolProgress = allowCancelledToolProgress && state.runId === access.runId && state.status === 'cancelled'
+  return !((state.policy.deadlineAt <= Date.now() && !cancelledToolProgress
+    && !(renewalMode && state.policy.executionPolicyVersion === 2))
+    || (state.policy.taskDeadlineAt !== undefined && state.policy.taskDeadlineAt <= Date.now()
+      && !cancelledToolProgress && !renewalMode))
+}
+
+function nativeStatusAllows(access: NativeHarnessAccess, state: HarnessSnapshot, allowCancelledToolProgress: boolean): boolean {
+  const cancelledToolProgress = allowCancelledToolProgress && state.runId === access.runId && state.status === 'cancelled'
+  return !(['completed', 'failed'].includes(state.status)
+    || (state.status === 'cancelled' && !cancelledToolProgress))
+}
+
+function hasActiveNativeAuthority(
+  access: NativeHarnessAccess,
+  state: HarnessSnapshot | null,
+  allowCancelledToolProgress = false,
+  renewalMode = false,
+): boolean {
+  if (!state) return false
+  return nativeOwnerMatches(access, state)
+    && nativeDeadlineAllows(access, state, allowCancelledToolProgress, renewalMode)
+    && nativeStatusAllows(access, state, allowCancelledToolProgress)
+}
+
 function assertActiveAuthority(
   access: NativeHarnessAccess,
   state: HarnessSnapshot | null,
   allowCancelledToolProgress = false,
   renewalMode = false,
 ): asserts state is HarnessSnapshot {
-  const cancelledToolProgress = allowCancelledToolProgress && state?.runId === access.runId && state.status === 'cancelled'
-  const ownerTransferInProgress = state?.runId !== access.runId
-    && state?.policy.executionPolicyVersion === 2 && !state.workflowRunId && Boolean(state.handoffWorkflowRunId)
-    && !['completed', 'cancelled', 'failed'].includes(state.status)
-  if (!state || (!state.workflowRunId && !ownerTransferInProgress) || state.policy.actorUserId !== access.actorUserId
-    || state.policy.workspaceId !== access.workspaceId
-    || (state.runId === access.runId && (state.executionGeneration ?? 0) !== (access.executionGeneration ?? 0))
-    || (state.policy.deadlineAt <= Date.now() && !cancelledToolProgress
-      && !(renewalMode && state.policy.executionPolicyVersion === 2))
-    || (state.policy.taskDeadlineAt !== undefined && state.policy.taskDeadlineAt <= Date.now()
-      && !cancelledToolProgress && !renewalMode)
-    || ['completed', 'failed'].includes(state.status)
-    || (state.status === 'cancelled' && !cancelledToolProgress)) {
+  if (!hasActiveNativeAuthority(access, state, allowCancelledToolProgress, renewalMode)) {
     throw new FatalError('Native harness execution is no longer authorized.')
   }
+}
+
+function assertNativeDeliveryIdentity(access: NativeHarnessAccess, run: AgentRun | null): asserts run is AgentRun {
+  if (!run || run.id !== access.agentRunId || run.userId !== access.actorUserId
+    || run.conversationId !== access.conversationId || run.agentId !== access.agentId
+    || run.agentPrincipalId !== access.agentPrincipalId || run.turnId !== access.turnId
+    || run.userMessageId !== access.userMessageId || run.assistantMessageId !== access.assistantMessageId) {
+    throw new FatalError('Native delivery identity changed.')
+  }
+}
+
+function nativeDeliveryIsCurrent(
+  access: NativeHarnessAccess,
+  state: HarnessSnapshot,
+  delivery: HarnessSnapshot,
+  run: AgentRun,
+  allowCancelledToolProgress: boolean,
+  renewalMode: boolean,
+): boolean {
+  const deliveryOwner = delivery.workflowRunId ?? delivery.handoffWorkflowRunId
+  const cancelledToolProgress = allowCancelledToolProgress && state.runId === access.runId && state.status === 'cancelled'
+  return run.runner === 'workflow' && run.executionEngine === 'overlay_harness' && run.mode === 'room'
+    && Boolean(deliveryOwner) && run.harnessRunId === delivery.runId && run.workflowRunId === deliveryOwner
+    && (run.status === 'running' || (state.runId !== delivery.runId
+      && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children', 'waiting_for_resources'].includes(run.status))
+      || (renewalMode && state.runId === delivery.runId
+        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status)
+        && run.status === state.status)
+      || (cancelledToolProgress && run.status === 'cancelled'))
 }
 
 async function readNativeAuthority(
@@ -104,22 +161,8 @@ function assertNativeDelivery(
   allowCancelledToolProgress = false,
   renewalMode = false,
 ): void {
-  if (!run || run.id !== access.agentRunId || run.userId !== access.actorUserId
-    || run.conversationId !== access.conversationId || run.agentId !== access.agentId
-    || run.agentPrincipalId !== access.agentPrincipalId || run.turnId !== access.turnId
-    || run.userMessageId !== access.userMessageId || run.assistantMessageId !== access.assistantMessageId) {
-    throw new FatalError('Native delivery identity changed.')
-  }
-  const deliveryOwner = delivery.workflowRunId ?? delivery.handoffWorkflowRunId
-  const cancelledToolProgress = allowCancelledToolProgress && state.runId === access.runId && state.status === 'cancelled'
-  if (run.runner !== 'workflow' || run.executionEngine !== 'overlay_harness' || run.mode !== 'room'
-    || !deliveryOwner || run.harnessRunId !== delivery.runId || run.workflowRunId !== deliveryOwner
-    || (run.status !== 'running' && !(state.runId !== delivery.runId
-      && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children', 'waiting_for_resources'].includes(run.status))
-      && !(renewalMode && state.runId === delivery.runId
-        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status)
-        && run.status === state.status)
-      && !(cancelledToolProgress && run.status === 'cancelled'))) {
+  assertNativeDeliveryIdentity(access, run)
+  if (!nativeDeliveryIsCurrent(access, state, delivery, run, allowCancelledToolProgress, renewalMode)) {
     throw new FatalError('Native delivery execution changed.')
   }
 }

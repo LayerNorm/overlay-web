@@ -191,7 +191,7 @@ export class HarnessDeadlineExceededError extends Error {
   }
 }
 
-export function createHarnessSnapshot(input: {
+type HarnessSnapshotInput = {
   runId: string
   goal: string
   constraints: string[]
@@ -199,25 +199,44 @@ export function createHarnessSnapshot(input: {
   parentRunId?: string
   rootRunId?: string
   depth?: number
-}, now: number): HarnessSnapshot {
+}
+
+function validateHarnessSnapshotIdentityAndBudget(input: HarnessSnapshotInput): void {
   if (!input.runId || !input.goal.trim()) throw new Error('Run identity and goal are required.')
   if (!Number.isSafeInteger(input.policy.maxCostMicros) || input.policy.maxCostMicros < 0) throw new Error('A nonnegative spending authorization is required.')
+}
+
+function validateHarnessSnapshotDeadlines(input: HarnessSnapshotInput, now: number): void {
   if (!Number.isFinite(input.policy.deadlineAt) || input.policy.deadlineAt <= now) throw new Error('An unexpired deadline is required.')
   if (input.policy.taskDeadlineAt !== undefined
     && (!Number.isFinite(input.policy.taskDeadlineAt) || input.policy.taskDeadlineAt <= now)) {
     throw new Error('A finite task deadline is required.')
   }
-  if ((input.policy.executionPolicyVersion === 2
-      && (!input.policy.spendingMode || input.policy.maxCostMicros !== 0
-        || (input.policy.spendingMode === 'workspace' && !input.policy.workspaceId)
-        || input.policy.resourcePauseVersion === 1))
-    || (input.policy.executionPolicyVersion !== 2 && input.policy.spendingMode !== undefined)) {
+}
+
+function validateHarnessSnapshotExecutionPolicy(policy: HarnessPolicy): void {
+  if ((policy.executionPolicyVersion === 2
+      && (!policy.spendingMode || policy.maxCostMicros !== 0
+        || (policy.spendingMode === 'workspace' && !policy.workspaceId)
+        || policy.resourcePauseVersion === 1))
+    || (policy.executionPolicyVersion !== 2 && policy.spendingMode !== undefined)) {
     throw new Error('Invalid versioned execution policy.')
   }
+}
+
+function harnessSnapshotDepth(input: HarnessSnapshotInput): number {
   if (!Number.isSafeInteger(input.policy.maxParallelChildren) || input.policy.maxParallelChildren < 0
     || !Number.isSafeInteger(input.policy.maxDepth) || input.policy.maxDepth < 0) throw new Error('Invalid child limits.')
   const depth = input.depth ?? 0
   if (!Number.isSafeInteger(depth) || depth < 0 || depth > input.policy.maxDepth) throw new Error('Invalid child depth.')
+  return depth
+}
+
+export function createHarnessSnapshot(input: HarnessSnapshotInput, now: number): HarnessSnapshot {
+  validateHarnessSnapshotIdentityAndBudget(input)
+  validateHarnessSnapshotDeadlines(input, now)
+  validateHarnessSnapshotExecutionPolicy(input.policy)
+  const depth = harnessSnapshotDepth(input)
   return {
     schemaVersion: 1, runId: input.runId, rootRunId: input.rootRunId ?? input.runId,
     ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}), depth,
@@ -541,8 +560,7 @@ export function recordHarnessChildReceipt(state: HarnessSnapshot, childRunId: st
   return changed(next, now, false)
 }
 
-export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, now: number): HarnessSnapshot {
-  assertHarnessRunnable(state, now)
+function validateHarnessChildAdmission(state: HarnessSnapshot, child: HarnessChild) {
   if (!child.id) throw new Error('A child identity is required.')
   if (state.children.some(candidate => candidate.id === child.id)) throw new Error('Child identity is already reserved.')
   const step = state.plan.find(candidate => candidate.id === child.stepId)
@@ -563,6 +581,12 @@ export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, n
     throw new Error('The root spending budget cannot cover this child.')
   }
   if (child.status !== 'running' || child.evidenceRefs.length || child.costMicros !== 0 || child.accountedUsage !== undefined) throw new Error('A new child must be empty and running.')
+  return { step, needsChildEvidenceTool }
+}
+
+export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, now: number): HarnessSnapshot {
+  assertHarnessRunnable(state, now)
+  const { step, needsChildEvidenceTool } = validateHarnessChildAdmission(state, child)
   const next = mutable(state)
   next.children.push({
     ...child,
@@ -935,11 +959,14 @@ function settleNamedChildMilestone(state: HarnessSnapshot, child: HarnessChild, 
   step.skipReason = `${childState.status}: ${reason}`
 }
 
-export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSnapshot, now: number): HarnessSnapshot {
-  assertActive(state)
+function assertChildSettlementLineage(state: HarnessSnapshot, childState: HarnessSnapshot): HarnessChild {
   const child = state.children.find(candidate => candidate.id === childState.runId)
   if (!child || childState.parentRunId !== state.runId || childState.rootRunId !== state.rootRunId
     || childState.policy.actorUserId !== state.policy.actorUserId || childState.policy.workspaceId !== state.policy.workspaceId) throw new Error('The child does not belong to this run and authority.')
+  return child
+}
+
+function assertChildDelegatedAuthority(state: HarnessSnapshot, child: HarnessChild, childState: HarnessSnapshot): void {
   if (childState.depth !== state.depth + 1
     || childState.policy.allowedToolIds.some(id => !child.allowedToolIds.includes(id))
     || (state.policy.executionPolicyVersion !== 2 && childState.policy.maxCostMicros > child.maxCostMicros)
@@ -947,13 +974,23 @@ export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSn
     || (childState.policy.taskDeadlineAt !== undefined
       && (state.policy.taskDeadlineAt === undefined || childState.policy.taskDeadlineAt > state.policy.taskDeadlineAt))
     || childState.policy.maxDepth > state.policy.maxDepth
-    || childState.policy.maxParallelChildren > state.policy.maxParallelChildren) throw new Error('The child exceeds its delegated authority.')
-  if (child.status !== 'running') return state
+      || childState.policy.maxParallelChildren > state.policy.maxParallelChildren) throw new Error('The child exceeds its delegated authority.')
+}
+
+function assertChildSettlementComplete(state: HarnessSnapshot, child: HarnessChild, childState: HarnessSnapshot): void {
   if (!['completed', 'failed', 'cancelled'].includes(childState.status)) throw new Error('Child work has not finished.')
   if (childState.modelReservation || childState.children.some(child => child.status === 'running' || child.status === 'cancelled')) throw new Error('Reconcile outstanding child model calls before releasing its budget.')
   if (state.policy.executionPolicyVersion !== 2 && childState.usage.costMicros > child.maxCostMicros) {
     throw new Error('Child usage exceeded its authorization; reconcile before continuing.')
   }
+}
+
+export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSnapshot, now: number): HarnessSnapshot {
+  assertActive(state)
+  const child = assertChildSettlementLineage(state, childState)
+  assertChildDelegatedAuthority(state, child, childState)
+  if (child.status !== 'running') return state
+  assertChildSettlementComplete(state, child, childState)
   const next = mutable(state)
   Object.assign(next.children.find(candidate => candidate.id === child.id)!, {
     status: childState.status, costMicros: childState.usage.costMicros,

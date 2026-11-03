@@ -19,6 +19,12 @@ import { harnessExecutionFailureReason } from '@/server/harness/execution-failur
 import { handoffHarnessContinuation } from '@/server/harness/harness-continuations'
 import type { NativeHarnessAccess } from '@/server/harness/native-access'
 import type { NativeHarnessWorkflowInput } from '@/server/harness/native-workflow-input'
+import {
+  isHarnessTaskDeadlineExpired,
+  isTerminalHarnessStatus,
+  projectCurrentHarnessOwner,
+  projectHarnessExecutionResult,
+} from './harness-workflow-projection'
 
 export async function startNativeHarnessChild(parent: NativeHarnessAccess, input: NativeHarnessWorkflowInput): Promise<string> {
   'use step'
@@ -59,7 +65,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
   const { workflowRunId } = getWorkflowMetadata()
   const access = { ...input.access, workflowRunId, executionGeneration: input.access.executionGeneration ?? 0 }
   const initial = await readHarnessState(access)
-  if (['completed', 'failed', 'cancelled'].includes(initial.status)) return { runId: initial.runId, status: initial.status }
+  if (isTerminalHarnessStatus(initial.status)) return { runId: initial.runId, status: initial.status }
   if (initial.status === 'waiting_for_authorization') return { runId: initial.runId, status: initial.status }
   if (!await claimHarnessState(access)) return { runId: initial.runId, status: 'already_running' }
   const owns = initial.runId === `workspace:${access.agentRunId}`
@@ -111,27 +117,19 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
         sessionId: access.conversationId, allowLowBalanceFallback: false },
       tools,
     }, ports)
-    if (result.outcome === 'already_running') return { runId: initial.runId, status: 'already_running' }
-    if (result.outcome === 'continued') {
-      return { runId: result.snapshot.runId, status: 'running' }
-    }
-    if (result.snapshot.status === 'waiting_for_resources' || result.snapshot.status === 'waiting_for_authorization') {
-      return { runId: result.snapshot.runId, status: result.snapshot.status }
-    }
-    if (!['completed', 'failed', 'cancelled'].includes(result.snapshot.status)) {
+    const executionProjection = projectHarnessExecutionResult(result, initial.runId)
+    if (executionProjection) return executionProjection
+    if (!isTerminalHarnessStatus(result.snapshot.status)) {
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
         type: 'terminate', status: 'failed', reason: result.snapshot.blocker?.question || 'The task is blocked and cannot continue.',
       })
     }
   } catch (error) {
     const state = await readHarnessState(access)
-    if (state.workflowRunId !== access.workflowRunId
-      || (state.executionGeneration ?? 0) !== (access.executionGeneration ?? 0)) {
-      return { runId: state.runId, status: state.status === 'running' ? 'continued' : state.status }
-    }
+    const ownerProjection = projectCurrentHarnessOwner(state, access)
+    if (ownerProjection) return ownerProjection
     if (state.status === 'waiting_for_authorization') return { runId: state.runId, status: state.status }
-    if (state.policy.executionPolicyVersion === 2 && state.policy.taskDeadlineAt !== undefined
-      && Date.now() >= state.policy.taskDeadlineAt) {
+    if (isHarnessTaskDeadlineExpired(state, Date.now())) {
       try {
         await authorizeNativeHarnessExecution(access, input.context, undefined, { renewLease: false })
         const paused = await applyHarnessOperation(access, 'authorization-pause', { type: 'pause_for_authorization' })
@@ -141,18 +139,13 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
       }
     }
     const reason = harnessExecutionFailureReason(error)
-    const snapshot = ['completed', 'failed', 'cancelled'].includes(state.status) ? state
+    const snapshot = isTerminalHarnessStatus(state.status) ? state
       : await applyHarnessOperation(access, 'execution-failed', { type: 'terminate', status: 'failed', reason })
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
   }
   const current = await readHarnessState(access)
-  if (current.workflowRunId !== access.workflowRunId
-    || (current.executionGeneration ?? 0) !== (access.executionGeneration ?? 0)) {
-    return { runId: current.runId, status: current.status === 'running' ? 'continued' : current.status }
-  }
-  if (current.status === 'waiting_for_resources' || current.status === 'waiting_for_authorization') {
-    return { runId: current.runId, status: current.status }
-  }
+  const currentProjection = projectCurrentHarnessOwner(current, access)
+  if (currentProjection) return currentProjection
   if (owns) {
     const delivery = buildNativeHarnessDelivery(result, fallbackNotices, activeToolNames)
     await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: input.context.memoryEnabled }, activeToolNames)
