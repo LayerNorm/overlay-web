@@ -137,6 +137,20 @@ test('garbled composite internal links remain plain text', () => {
   }
 })
 
+test('published file download links stay clickable and resolve against the app origin', () => {
+  const href = '/api/v1/files/files%3Apublished/content'
+  for (const isStreaming of [false, true]) {
+    for (const appBaseUrl of [undefined, 'https://app.example.com/']) {
+      const html = renderToStaticMarkup(React.createElement(MarkdownMessage, {
+        text: `[Download ZIP](${href})`, isStreaming, appBaseUrl, suppressTypingIndicator: true,
+      }))
+      const expectedHref = appBaseUrl ? `https://app.example.com${href}` : href
+      assert.ok(html.includes(`href="${expectedHref}"`))
+      assert.match(html, /Download ZIP<\/a>/)
+    }
+  }
+})
+
 test('unfinished emphasis is styled while streaming', () => {
   assert.match(rendered('Some **bold text', true), /<strong>bold text<\/strong>/)
 })

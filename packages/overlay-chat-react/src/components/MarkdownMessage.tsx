@@ -202,8 +202,8 @@ function MarkdownMessageImpl({
             return renderChip(href, chipLabel, [fallback])
           }
 
-          // Internal `/app/...` routes. Garbled composite links are rendered
-          // as plain text; otherwise resolve against `appBaseUrl` when provided.
+          // Internal routes and file downloads resolve against `appBaseUrl`.
+          // Garbled composite app links stay plain text.
           if (
             typeof href === 'string' &&
             href.startsWith('/app/') &&
@@ -215,7 +215,10 @@ function MarkdownMessageImpl({
               </span>
             )
           }
-          if (typeof href === 'string' && href.startsWith('/app/')) {
+          if (
+            typeof href === 'string' &&
+            (href.startsWith('/app/') || /^\/api\/v1\/files\/[^/?#]+\/content$/.test(href))
+          ) {
             const abs = appBaseUrl ? `${appBaseUrl.replace(/\/$/, '')}${href}` : href
             return (
               <a

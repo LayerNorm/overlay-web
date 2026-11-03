@@ -237,7 +237,10 @@ test('returns a verified publication when post-commit Computer cleanup fails', a
       workspaceId: 'workspace',
       resolveComputer,
     })
-    expect(result).toEqual({ success: true, artifact })
+    expect(result).toEqual({
+      success: true, artifact,
+      downloadUrl: `/api/v1/files/${encodeURIComponent(artifact.fileId)}/content`,
+    })
     expect(operations).toBe(3)
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()))
@@ -386,7 +389,11 @@ test('a finalized retry returns the canonical Files artifact without resolving a
     resolveComputer,
   })
   expect(resolveComputer).not.toHaveBeenCalled()
-  expect(result).toMatchObject({ success: true, artifact: { fileId: 'files:published', rootRunId: 'root' } })
+  expect(result).toMatchObject({
+    success: true,
+    artifact: { fileId: 'files:published', rootRunId: 'root' },
+    downloadUrl: '/api/v1/files/files%3Apublished/content',
+  })
   expect(JSON.stringify(result)).not.toContain('private-object-key')
 })
 
@@ -416,6 +423,7 @@ test('a missing Computer source does not allocate a Files publication', async ()
     resolveComputer,
   })
   expect(result).toMatchObject({ success: false, error: 'ARTIFACT_SOURCE_UNAVAILABLE' })
+  expect(result).not.toHaveProperty('downloadUrl')
   expect(controllerMocks.service.prepareComputerArtifact).not.toHaveBeenCalled()
   expect(controllerMocks.service.verifyAndCommitComputerArtifact).not.toHaveBeenCalled()
 })
@@ -530,7 +538,10 @@ test('a prepared object is reconciled before Computer resolution', async () => {
     manifest,
     authority: expect.any(Object),
   })
-  expect(result).toEqual({ success: true, artifact })
+  expect(result).toEqual({
+    success: true, artifact,
+    downloadUrl: '/api/v1/files/files%3Apublished/content',
+  })
 })
 
 test('a restored Computer with identical bytes refreshes an expired URL for the frozen artifact', async () => {
@@ -627,7 +638,10 @@ test('a restored Computer with identical bytes refreshes an expired URL for the 
     expect(urls).toHaveLength(2)
     expect(controllerMocks.service.getComputerArtifactUploadUrl).toHaveBeenCalledTimes(2)
     expect(controllerMocks.service.verifyAndCommitComputerArtifact).toHaveBeenCalledTimes(3)
-    expect(result).toEqual({ success: true, artifact })
+    expect(result).toEqual({
+      success: true, artifact,
+      downloadUrl: '/api/v1/files/files%3Apublished/content',
+    })
     expect(JSON.stringify(result)).not.toContain(origin)
     expect(audit.commands.join('\n')).not.toContain(origin)
   } finally {
@@ -713,7 +727,10 @@ test('the controller reconciles after the upload acknowledgement is lost', async
     expect(storedBytes).toBe(bytes.length)
     expect(controllerMocks.service.getComputerArtifactUploadUrl).toHaveBeenCalledTimes(1)
     expect(controllerMocks.service.verifyAndCommitComputerArtifact).toHaveBeenCalledTimes(1)
-    expect(result).toEqual({ success: true, artifact })
+    expect(result).toEqual({
+      success: true, artifact,
+      downloadUrl: '/api/v1/files/files%3Apublished/content',
+    })
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()))
     await unlink(sourcePath).catch(() => undefined)

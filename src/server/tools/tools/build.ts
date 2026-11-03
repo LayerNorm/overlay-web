@@ -999,7 +999,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     if (shouldExposeTool('computer_publish_file') && shouldExposeTool('write_file')) {
       tools.computer_publish_file = tool({
         description:
-          'Publish a binary file from the bound Computer into Overlay Files. Reuse the same artifactId when retrying identical bytes; use a new artifactId for different bytes. Never use computer_read_file for binary output.',
+          'Publish a binary file from the bound Computer into Overlay Files. Returns a relative downloadUrl; use it unchanged in a Markdown link when reporting the result, not just file or artifact IDs. Reuse the same artifactId when retrying identical bytes; use a new artifactId for different bytes. Never use computer_read_file for binary output.',
         inputSchema: z.object({
           sourcePath: z.string().min(1).max(4096).describe('Absolute path of the finished binary on the Computer'),
           name: z.string().min(1).max(255).describe('Basename to use in Overlay Files'),

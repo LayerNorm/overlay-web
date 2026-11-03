@@ -12,6 +12,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Return workspace-scoped links from note tools so completed tasks can open the saved note without inventing an address.
 
+- Return authenticated download links after Computer file publication so completed tasks can link to their saved artifacts.
+
 - Require a plain-language changelog entry in every PR, including documentation, dependency, test and CI changes, and a functionality summary with deployment status after each merge.
 
 - Explain AI SDK Harness failures in plain language, including provider HTTP failures, invalid inputs and tool approvals, missing outputs, and exhausted SDK retries. Preserve partial-stream warnings and nested SDK causes without exposing prompts, tool inputs, or provider payloads; retry, fallback, and billing behavior are unchanged.
