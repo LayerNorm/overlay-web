@@ -119,6 +119,24 @@ test('fenced code renders the shared Code Block', () => {
   assert.match(rendered('```python\na = 1\n```'), /data-slot="code-block"/)
 })
 
+test('workspace-scoped note links remain clickable beyond 96 characters', () => {
+  const href = '/app/w/11111111-1111-1111-1111-111111111111/notes?id=22222222-2222-2222-2222-222222222222&scope=personal'
+  assert.ok(href.length > 96)
+  for (const streaming of [false, true]) {
+    const html = rendered(`[Saved note](${href})`, streaming)
+    assert.ok(html.includes(`href="${href.replace('&', '&amp;')}"`))
+    assert.match(html, /Saved note<\/a>/)
+  }
+})
+
+test('garbled composite internal links remain plain text', () => {
+  for (const delimiter of ['|', '%7C']) {
+    const html = rendered(`[Saved note](/app/notes?id=one${delimiter}two)`)
+    assert.match(html, /Saved note/)
+    assert.doesNotMatch(html, /href=/)
+  }
+})
+
 test('unfinished emphasis is styled while streaming', () => {
   assert.match(rendered('Some **bold text', true), /<strong>bold text<\/strong>/)
 })

@@ -746,7 +746,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('get_note')) {
     tools.get_note = tool({
     description:
-      'Load a note by id. Returns its Markdown content, tags, heading outline, and `revision`. ' +
+      'Load a note by id. Returns its Markdown content, tags, heading outline, `revision`, and relative `url`. Use that URL unchanged for note links. ' +
       'Pass that revision as expectedRevision when you edit the note so you never overwrite a change made after you read it.',
     inputSchema: z.object({
       noteId: z.string().describe('The note id from list_notes'),
@@ -1158,7 +1158,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
     if (shouldExposeTool('create_note')) {
       tools.create_note = tool({
-      description: 'Create a new note. Content is Markdown (GitHub-flavored, with $math$ and - [ ] task lists).',
+      description: 'Create a new note. Content is Markdown (GitHub-flavored, with $math$ and - [ ] task lists). Returns a relative `url`; use it unchanged for the note link instead of inventing a host or path.',
       inputSchema: z.object({
         title: z.string().trim().min(1).describe('Note title'),
         content: z.string().describe('Markdown body'),

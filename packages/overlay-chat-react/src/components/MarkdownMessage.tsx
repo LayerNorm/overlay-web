@@ -202,12 +202,12 @@ function MarkdownMessageImpl({
             return renderChip(href, chipLabel, [fallback])
           }
 
-          // Internal `/app/...` routes. Long garbled pasted links are rendered
+          // Internal `/app/...` routes. Garbled composite links are rendered
           // as plain text; otherwise resolve against `appBaseUrl` when provided.
           if (
             typeof href === 'string' &&
             href.startsWith('/app/') &&
-            (href.length > 96 || href.includes('%7C') || href.includes('|'))
+            (href.includes('%7C') || href.includes('|'))
           ) {
             return (
               <span className="whitespace-pre-wrap wrap-break-word text-(--foreground)">
