@@ -33,6 +33,7 @@ import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoa
 import { UserMessageActions } from './UserMessageActions'
 import type { ChatTranscriptPresentation } from './ChatTranscript'
 import { useChatExchangeSources } from './chat-exchange-sources'
+import { collectToolResourceHrefs } from '../markdown/tool-resource-links'
 import {
   AssistantSegmentItem,
   assistantSegmentKey,
@@ -152,6 +153,7 @@ export function ChatExchange({
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
     const lastTextBlockIndex = findLastTextBlockIndex(assistantVisualBlocks)
+    const toolResourceHrefs = useMemo(() => collectToolResourceHrefs(assistantVisualBlocks), [assistantVisualBlocks])
     const { assistantSegments, toolChainFlags } = useExchangeSegments(assistantVisualBlocks)
     const { allSources, effectiveSourceCitations, webSources } = useChatExchangeSources({
       assistantPlainText,
@@ -176,6 +178,7 @@ export function ChatExchange({
       isTextStreaming,
       sourceCitations: effectiveSourceCitations,
       webSources,
+      toolResourceHrefs,
       suppressTypingIndicator: !loadingPresentation.inlineTextMarker,
       onOpenDraft,
       onCreateAutomationDraft,
