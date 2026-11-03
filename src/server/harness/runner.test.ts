@@ -276,7 +276,7 @@ test('unsupported final claims are corrected from persisted evidence without rep
   expect(verificationCalls[0]?.evidence).toEqual(expect.arrayContaining([
     expect.objectContaining({
       id: 'tool:render-call', verdict: 'observed',
-      resource: { id: 'file-1', revision: 'rev-7', page: 1 },
+      resource: { id: 'file-1', revision: 'rev-7', operation: 'read_document', page: 1 },
     }),
   ]))
   const checkpoint = JSON.parse(result.snapshot.workingSummary) as { evidence: Array<{ summary: string }> }
