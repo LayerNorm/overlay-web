@@ -1636,6 +1636,11 @@ export default defineSchema({
           }),
           nativeAgentErrorPart,
           v.object({
+            type: v.literal('text'),
+            text: v.string(),
+            storageOmittedParts: v.number(),
+          }),
+          v.object({
             type: v.literal('tool-invocation'),
             toolInvocation: v.object({
               toolCallId: v.optional(v.string()),

@@ -69,6 +69,11 @@ const generatedUiData = v.union(
 const messagePart = v.union(
   nativeAgentErrorPart,
   v.object({
+    type: v.literal('text'),
+    text: v.string(),
+    storageOmittedParts: v.number(),
+  }),
+  v.object({
     type: v.literal('data'),
     id: v.string(),
     dataType: v.literal('overlay.generated_ui'),

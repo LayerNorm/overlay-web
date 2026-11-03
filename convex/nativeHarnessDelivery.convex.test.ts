@@ -3,6 +3,7 @@ import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import type { HarnessAdmission, HarnessOperation } from '../packages/overlay-agent-runtime/src/harness-store'
 import schema from './schema'
+import { compactAssistantPersistenceForConvex } from '../src/shared/chat/persist-assistant-turn'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'native-harness-delivery-test'
@@ -91,6 +92,30 @@ test.each(['legacy', 'unowned', 'native', 'remote'])('message writes require a s
     await convex.mutation(mutation('collaboration/directMessages:finalizeAgentMessage'), { ...owner, content: 'Verified output' })
     expect((await convex.run(ctx => ctx.db.get(turn.messageId)))?.content).toBe('Verified output')
   }
+})
+
+test('long transcript finalization persists omission metadata and the latest answer under the real schema', async () => {
+  const convex = convexTest(schema, modules)
+  const fixture = await seed(convex)
+  const turn = await open(convex, fixture)
+  const answer = 'All numbered lines appear exactly once.'
+  const persistence = compactAssistantPersistenceForConvex({
+    content: answer,
+    parts: [
+      ...Array.from({ length: 90 }, (_, index) => ({ type: 'tool-invocation', toolInvocation: {
+        toolCallId: `read-${index}`, toolName: 'get_note', state: 'output-available', toolInput: {}, toolOutput: { success: true },
+      } })),
+      { type: 'text', text: answer },
+    ],
+  })
+  await convex.mutation(mutation('collaboration/directMessages:finalizeAgentMessage'), {
+    actorUserId: 'alice', workspaceId: 'workspace', conversationId: fixture.conversationId,
+    messageId: turn.messageId, serverSecret: secret, ...persistence,
+  })
+  const saved = await convex.run(ctx => ctx.db.get(turn.messageId))
+  expect(saved).toMatchObject({ status: 'completed', content: answer, parts: persistence.parts })
+  expect(saved?.parts?.[0]).toMatchObject({ storageOmittedParts: 11 })
+  expect(saved?.parts?.at(-1)).toEqual({ type: 'text', text: answer })
 })
 
 test('unowned generation is retired while explicit non-execution posts and atomic startup errors remain available', async () => {
