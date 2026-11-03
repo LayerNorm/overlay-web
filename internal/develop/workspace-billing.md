@@ -67,6 +67,8 @@ web is live; never deploy it from a feature worktree.
 
 The usage ledger automatically releases expired reservations only when provider work never started. Provider-started reservations are quarantined until authoritative evidence establishes whether to finalize the measured cost or release the reservation.
 Harness model reservations are an exception when Gateway usage stays unavailable: after about ten minutes of 404 retries, observed tokens settle at catalog pricing when a rate exists. Non-404 lookup failures and unknown catalog rates remain quarantined.
+An operator can record late authoritative provider costs on an already released, provider-started reservation with internal `billing/releasedProviderCosts:recordInternal`. It requires the exact deployment URL, account, model, integer microdollar cost, token count and receipt evidence. Exact repeats are idempotent; conflicting evidence fails closed. This records an absorbed expense without changing the release audit, wallet, subject limits or customer charge. The operational report includes those expenses alongside finalized reservation costs, so released failures cannot inflate reported margin. Retain the exact provider receipt privately; the ledger uses microdollar precision.
+
 Approval-paused SDK steps settle their known model usage before suspension.
 WorkflowAgent returns these steps through its end callback without a step-end
 callback; the Harness deduplicates callbacks by invocation step number, advances

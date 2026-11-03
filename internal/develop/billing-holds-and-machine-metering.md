@@ -39,6 +39,10 @@ Known sources of failed holds, still open (see the follow-up task): `knowledge.c
 
 To look at a person's holds in production: `CONVEX_DEPLOYMENT=prod:colorful-chickadee-419 npx convex data budgetReservations --limit 5000 --order desc --format jsonLines`, filter by `userId` and `status`.
 
+### Late provider evidence after release
+
+A released hold is not evidence that the provider incurred no cost. Preserve the customer release and its reconciliation audit; do not release it again or reopen it to debit the wallet. The internal `billing/releasedProviderCosts:recordInternal` operation records receipt-backed provider cost and tokens once, with target/account/model guards and conflicting-replay rejection. It changes no monetary balance or subject limit. The operational report includes this absorbed cost even though the customer charge remains zero. Keep detailed receipts and exact-cost reconciliation in private operator storage.
+
 ## Machines and credit
 
 Persistent Computers enforce admission in `ComputerService`, including desktop and tool-driven wakes. `ComputerAdmission` requires a payer whose scope and ID match the workspace, then checks that wallet's paid plan and the same minimum start credit as managed machines. Personal paid credit cannot unlock a free workspace. Stop and delete remain available after downgrade or credit exhaustion. Each Computer has a deterministic `computer:<id>` lease created atomically with its owner claim; the member who starts a session and the `agent:<ownerId>` subject for agent Computers are reserved together before allocation or wake. Boat's weighted counters remain authoritative. Idle, budget, and session-expiry stops pause the provider and retain its disk and Computer row; only explicit deletion removes them, after confirmed stop and final settlement.

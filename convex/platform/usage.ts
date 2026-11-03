@@ -1297,7 +1297,12 @@ export const getBillingAccountOperationalReportByServer = query({
       .collect()
     const inPeriod = finalized.filter((row) => row.createdAt <= now)
     const retailCostCents = inPeriod.reduce((total, row) => total + (row.finalizedCents ?? 0), 0)
-    const providerCostMicros = inPeriod.reduce((total, row) => total + (row.providerCostMicros ?? 0), 0)
+    const released = await ctx.db.query('budgetReservations')
+      .withIndex('by_billingAccountId_status_createdAt', q => q
+        .eq('billingAccountId', args.billingAccountId).eq('status', 'released')
+        .gte('createdAt', args.periodStart).lte('createdAt', now))
+      .collect()
+    const providerCostMicros = [...inPeriod, ...released].reduce((total, row) => total + (row.providerCostMicros ?? 0), 0)
     const covered = inPeriod.filter((row) => row.providerCostMicros !== undefined).length
     const reconciliation = await ctx.db.query('budgetReservations')
       .withIndex('by_billingAccountId_status_createdAt', (q) => q

@@ -569,6 +569,10 @@ export default defineSchema({
     reservedTopUpCents: v.optional(v.number()),
     finalizedCents: v.optional(v.number()),
     providerCostMicros: v.optional(v.number()),
+    // Late provider evidence for a failed call whose wallet hold was already released.
+    providerCostEvidence: v.optional(v.object({
+      source: v.string(), reference: v.string(), reason: v.string(), recordedAt: v.number(),
+    })),
     // Quantities for the itemized usage list, summed from the usage events at finalize.
     usageTokens: v.optional(v.number()),
     usageSeconds: v.optional(v.number()),
