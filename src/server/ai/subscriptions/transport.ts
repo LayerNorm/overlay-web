@@ -91,7 +91,7 @@ function failedSseEvent(value: Record<string, unknown>) {
   const suppliedCode = providerError && typeof providerError === 'object'
     ? (providerError as Record<string, unknown>).code
     : undefined
-  const code = typeof suppliedCode === 'string' && safeErrors[suppliedCode]
+  const code = typeof suppliedCode === 'string' && Object.hasOwn(safeErrors, suppliedCode)
     ? suppliedCode
     : 'provider_unavailable'
   const safe = safeErrors[code]!
@@ -103,6 +103,49 @@ function failedSseEvent(value: Record<string, unknown>) {
       incomplete_details: { reason: 'error' },
     },
   }
+}
+
+function nextSseFrame(buffer: string): { frame: string; remainder: string } | null {
+  const boundary = /\r?\n\r?\n/.exec(buffer)
+  if (!boundary) return null
+  return {
+    frame: buffer.slice(0, boundary.index),
+    remainder: buffer.slice(boundary.index + boundary[0].length),
+  }
+}
+
+function responseFailure(value: Record<string, unknown>): SubscriptionBridgeError {
+  const failed = failedSseEvent(value)
+  const error = (failed.response as { error: { code: string; message: string } }).error
+  const safe = safeErrors[error.code] ?? safeErrors.provider_unavailable!
+  return new SubscriptionBridgeError(error.code, safe.status, safe.message)
+}
+
+async function completedResponseFrame(
+  frame: string,
+  status: number,
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+): Promise<Response | null> {
+  if (new TextEncoder().encode(frame).byteLength > maxEventBytes) throw new Error(safeStreamError)
+  const event = parseSseEvent(frame)
+  if (event === '[DONE]') throw new Error(safeStreamError)
+  if (!event || typeof event !== 'object') return null
+  const value = event as Record<string, unknown>
+  const type = value.type
+  if (type === 'response.failed' || type === 'response.incomplete' || type === 'error') {
+    throw responseFailure(value)
+  }
+  if (type === 'response.completed' && value.response && typeof value.response === 'object') {
+    await reader.cancel().catch((_cancelError) => undefined)
+    return Response.json(value.response, { status })
+  }
+  return null
+}
+
+function completedResponseError(error: unknown): Error {
+  if (error instanceof SubscriptionBridgeError) return error
+  if (error instanceof Error && error.message === safeUpstreamError) return error
+  return new Error(safeStreamError)
 }
 
 export async function completedResponse(response: Response): Promise<Response> {
@@ -118,35 +161,12 @@ export async function completedResponse(response: Response): Promise<Response> {
       totalBytes += value.byteLength
       if (totalBytes > maxResponseBytes) throw new Error(safeStreamError)
       buffer += decoder.decode(value, { stream: true })
-      let boundary = buffer.search(/\r?\n\r?\n/)
-      while (boundary >= 0) {
-        const match = /\r?\n\r?\n/.exec(buffer.slice(boundary))
-        if (!match) break
-        const frame = buffer.slice(0, boundary)
-        if (new TextEncoder().encode(frame).byteLength > maxEventBytes) throw new Error(safeStreamError)
-        buffer = buffer.slice(boundary + match[0].length)
-        const event = parseSseEvent(frame)
-        if (event === '[DONE]') throw new Error(safeStreamError)
-        const type = event && typeof event === 'object' ? (event as { type?: string }).type : undefined
-        if (type === 'response.failed' || type === 'response.incomplete' || type === 'error') {
-          const value = event && typeof event === 'object' ? event as Record<string, unknown> : {}
-          const providerError = value.response && typeof value.response === 'object'
-            ? (value.response as Record<string, unknown>).error
-            : undefined
-          const code = providerError && typeof providerError === 'object' &&
-            typeof (providerError as Record<string, unknown>).code === 'string'
-            ? (providerError as Record<string, unknown>).code as string
-            : 'provider_unavailable'
-          const safe = safeErrors[code] ?? safeErrors.provider_unavailable!
-          throw new SubscriptionBridgeError(code in safeErrors ? code : 'provider_unavailable', safe.status, safe.message)
-        }
-        if (type === 'response.completed' && event && typeof event === 'object' &&
-            (event as { response?: unknown }).response &&
-            typeof (event as { response?: unknown }).response === 'object') {
-          await reader.cancel().catch((_cancelError) => undefined)
-          return Response.json((event as { response: object }).response, { status: response.status })
-        }
-        boundary = buffer.search(/\r?\n\r?\n/)
+      let nextFrame = nextSseFrame(buffer)
+      while (nextFrame) {
+        buffer = nextFrame.remainder
+        const completed = await completedResponseFrame(nextFrame.frame, response.status, reader)
+        if (completed) return completed
+        nextFrame = nextSseFrame(buffer)
       }
       if (new TextEncoder().encode(buffer).byteLength > maxEventBytes) throw new Error(safeStreamError)
     }
@@ -155,11 +175,7 @@ export async function completedResponse(response: Response): Promise<Response> {
     throw new Error(safeStreamError)
   } catch (error) {
     await reader.cancel().catch((_cancelError) => undefined)
-    throw error instanceof SubscriptionBridgeError
-      ? error
-      : error instanceof Error && error.message === safeUpstreamError
-        ? error
-        : new Error(safeStreamError)
+    throw completedResponseError(error)
   } finally {
     reader.releaseLock()
   }
