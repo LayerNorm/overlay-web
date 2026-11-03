@@ -4,7 +4,7 @@ import type { ModelCallStreamPart } from '@ai-sdk/workflow'
 import type { ToolSet } from 'ai'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { createPersonalHarnessTools } from '@/server/harness/personal-tools'
-import { admitPersonalHarnessExecution, authorizePersonalHarnessExecution, checkPersonalHarnessFunding, createPersonalHarnessExecutionPorts } from '@/server/harness/personal-ports'
+import { admitPersonalHarnessExecution, authorizePersonalHarnessExecution, renewPersonalHarnessWait, checkPersonalHarnessFunding, createPersonalHarnessExecutionPorts } from '@/server/harness/personal-ports'
 import { createPersonalHarnessWaitPorts } from '@/server/harness/personal-waits'
 import { admitPersonalHarnessChild } from '@/server/harness/personal-child-steps'
 import { buildPersonalHarnessDelivery } from '@/server/harness/personal-delivery'
@@ -158,7 +158,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       ...createPersonalHarnessWaitPorts({
         access,
         wake: wake[Symbol.asyncIterator](),
-        renewLease: () => authorizePersonalHarnessExecution(execution),
+        renewLease: () => renewPersonalHarnessWait(execution),
         checkFunding: requiredCents => checkPersonalHarnessFunding(execution, requiredCents),
       }),
       readChild: childRunId => readHarnessChild(access, childRunId),

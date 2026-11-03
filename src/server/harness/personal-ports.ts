@@ -1,3 +1,4 @@
+import { pendingHarnessPaymentVerification } from './funding-admission'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts } from './ports'
 import type { PersonalHarnessToolsInput } from './personal-tools'
@@ -15,12 +16,27 @@ export async function authorizePersonalHarnessExecution(
   await refreshPersonalHarnessAccess(input.access, input.context, toolName, { renewalMode: true, renewLease: options.renewLease !== false })
 }
 
+export async function renewPersonalHarnessWait(input: Pick<PersonalHarnessToolsInput, 'access' | 'context'>): Promise<void> {
+  'use step'
+  try {
+    await refreshPersonalHarnessAccess(input.access, input.context, undefined, { renewalMode: true, renewLease: true })
+  } catch (error) {
+    if (!await pendingHarnessPaymentVerification(error, input.access)) throw error
+  }
+}
+
 export async function checkPersonalHarnessFunding(
   input: Pick<PersonalHarnessToolsInput, 'access' | 'context'>,
   requiredCents: number,
 ): Promise<boolean> {
   'use step'
-  const authority = await refreshPersonalHarnessAccess(input.access, input.context, undefined, { renewalMode: true })
+  let authority
+  try {
+    authority = await refreshPersonalHarnessAccess(input.access, input.context, undefined, { renewalMode: true })
+  } catch (error) {
+    if (await pendingHarnessPaymentVerification(error, input.access)) return false
+    throw error
+  }
   if (!authority.paid) return false
   const budget = await ensurePayerBudgetAvailable({
     entitlements: authority.entitlements, minimumRequiredCents: requiredCents,

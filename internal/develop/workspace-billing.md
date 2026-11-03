@@ -92,6 +92,9 @@ The audit defaults to the development Convex deployment. Production inspection r
 Versioned Harness tasks reserve each next call against the workspace wallet instead
 of receiving a synthetic lifetime cap. Funding shortfalls pause the same task;
 continuation rechecks current membership, paid admission and execution ownership.
+A typed payment-verification-pending result may keep an already owned funding
+wait paused; it cannot renew a lease or admit a model/tool call. Other billing
+errors and ownership changes remain fail-closed.
 BYO credentials do not bypass workspace admission. The selected model is retained;
 no budget failure recovers through a free or alternate model.
 

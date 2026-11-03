@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep owned funding-paused Harness tasks waiting while payment verification is pending, without renewing execution authority or bypassing paid admission; revoked and stale runs still fail closed.
+
 - Preserve the pending response when context summarization pauses for workspace funding, including after durable workflow serialization; foreign pause receipts cannot resume the task.
 
 - Reconcile durable Harness continuation with paid-workspace admission: retain the selected model on funding failure and require current verified payment before creating automatic top-up claims. Existing subscriptions and markup are unchanged.
