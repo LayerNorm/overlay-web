@@ -104,6 +104,13 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
     ports,
     receipts,
     sdkSteps,
+    reservePaidVerificationHold: (id = 'verification:paid-hold') => {
+      current = state.reserveHarnessModel(current, id, 10, Date.now())
+      current = state.bindHarnessModelDispatch(current, id, {
+        modelId: 'provider/paid-model',
+        billingReservationId: 'billing:verification',
+      }, Date.now())
+    },
     recordInterruption: (id: string) => {
       current = state.recordHarnessReceipt(current, {
         id,
@@ -276,6 +283,75 @@ test('unsupported final claims are corrected from persisted evidence without rep
   expect(JSON.stringify(checkpoint)).not.toContain('0 pages processed')
   expect(JSON.stringify(checkpoint)).toContain('rev-7')
   expect(provider.doStreamCalls).toHaveLength(5)
+})
+
+test('a paid verification hold records an unsupported attempt before blocking without releasing the hold', async () => {
+  const f = fixture(false, ['read'])
+  f.ports.verifyFinalAnswer = async () => {
+    f.reservePaidVerificationHold()
+    throw new Error('The verifier stream was interrupted.')
+  }
+  const operations: string[] = []
+  const apply = f.ports.apply
+  f.ports.apply = async (id, operation) => {
+    operations.push(operation.type)
+    return apply(id, operation)
+  }
+  model(index => index === 0 ? [call('read', 'read-once')] : 'The records were verified.')
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute: async () => 'Persisted record.' }) },
+  }, f.ports)
+
+  expect(result.outcome).toBe('blocked')
+  expect(result.snapshot.status).toBe('waiting_for_input')
+  expect(result.snapshot.finalVerification).toMatchObject({ supported: false, attempts: 1 })
+  expect(result.snapshot.modelReservation).toMatchObject({
+    id: 'verification:paid-hold',
+    dispatch: { modelId: 'provider/paid-model', billingReservationId: 'billing:verification' },
+  })
+  expect(operations.indexOf('record_verification')).toBeGreaterThanOrEqual(0)
+  expect(operations.indexOf('record_verification')).toBeLessThan(operations.indexOf('block'))
+})
+
+test('verification correction limit persists across a resumed segment', async () => {
+  const f = fixture(true, ['read'])
+  const verify = vi.fn(async () => ({
+    supported: false, reason: 'The persisted observation does not support this answer.', evidenceIds: [],
+  }))
+  f.ports.verifyFinalAnswer = verify
+  let suppliedReply = false
+  f.ports.waitForInput = async () => {
+    if (!suppliedReply && verify.mock.calls.length === 3) {
+      suppliedReply = true
+      return [{ role: 'user', content: 'Continue with a shorter answer.' }]
+    }
+    return null
+  }
+  const provider = model(index => {
+    if (index === 0) return [call('harness_set_plan', 'plan', { steps: [{
+      id: 'read', title: 'Read the records', dependsOn: [], acceptanceCriteria: ['Record observed'],
+      requiresVerification: false, evidenceTools: ['read'],
+    }] })]
+    if (index === 1) return [call('read', 'read-once')]
+    if (index === 2) return [call('harness_update_step', 'complete', {
+      id: 'read', status: 'done', evidenceRefs: ['tool:read-once'],
+    })]
+    return `Candidate answer ${index}.`
+  })
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute: async () => 'Persisted record.' }) },
+  }, f.ports)
+
+  expect(result.outcome).toBe('blocked')
+  expect(suppliedReply).toBe(true)
+  expect(result.snapshot.finalVerification?.attempts).toBe(3)
+  expect(result.snapshot.status).toBe('waiting_for_input')
+  expect(result.snapshot.blocker?.question).toContain('after two corrections')
+  expect(verify).toHaveBeenCalledTimes(3)
+  expect(provider.doStreamCalls).toHaveLength(7)
 })
 
 test('runner asks for a final answer after tool-call text completes the plan', async () => {

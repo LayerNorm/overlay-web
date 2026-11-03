@@ -393,8 +393,12 @@ persisted evidence. This model-based check is a bounded safeguard, not a
 mathematical guarantee. Unsupported claims receive at most two correction
 continuations before the run pauses. Large and binary tool results are stored as
 private, run-owned artifacts and replaced in older prompt history with bounded
-references; `harness_read_artifact` rechecks the original tool permission on each
-read. Compaction preserves the full transcript on failure and keeps unresolved
+references. `harness_read_artifact` rechecks the original tool permission; for
+file-backed resources it also resolves the persisted source ID to a current Files
+row and checks readability under the run's workspace policy. This Files check
+does not imply that every third-party resource has a corresponding permission
+adapter. Stored artifact bytes remain from the recorded source revision.
+Compaction preserves the full transcript on failure and keeps unresolved
 provider reservations held until their matching receipt is observed.
 Checkpoint fields are structurally bounded and disclose omitted goal, plan, and
 evidence details; `harness_read_evidence` can page chronological observation IDs

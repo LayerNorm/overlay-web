@@ -217,6 +217,25 @@ test('maximum-size checkpoint fields disclose omitted goal, plan and evidence de
   expect(JSON.parse(serialized)).toEqual(checkpoint)
 })
 
+test('checkpoint limits include JSON escaping and UTF-8 without truncating evidence identities', () => {
+  const evidenceId = `tool:${'i'.repeat(250)}`
+  const state = {
+    ...make(false),
+    goal: '\u0000'.repeat(8_000),
+    plan: Array.from({ length: 4 }, (_, index) => ({
+      id: `step-${index}${'x'.repeat(100)}`, title: 'Plan', status: 'pending' as const,
+      dependsOn: [], acceptanceCriteria: [], requiresVerification: false,
+      evidenceRefs: ['\u0000'.repeat(256), '\u0000'.repeat(256)],
+    })),
+  }
+  const checkpoint = buildHarnessCheckpoint(state)
+  expect(new TextEncoder().encode(JSON.stringify(checkpoint)).byteLength).toBeLessThanOrEqual(7_500)
+  const observed = recordHarnessEvidence(make(false), {
+    id: evidenceId, kind: 'tool_result', source: 'read', summary: 'Observed', verdict: 'observed', createdAt: 1_001,
+  }, 1_001)
+  expect(buildHarnessCheckpoint(observed).evidence[0]?.id).toBe(evidenceId)
+})
+
 test('final verifier JSON rejects malformed responses and evidence from outside the run', () => {
   const evidenceIds = new Set(['tool:current-run'])
   expect(parseHarnessVerificationResponse(

@@ -1107,6 +1107,40 @@ describe('durable harness runs', () => {
   })
 })
 
+test('public artifact attachment validates actual bytes, supports chunks, and rechecks source access', async () => {
+  const convex = convexTest(schema, modules)
+  const input = admission('public-artifact-run', await seedConversation(convex))
+  await admit(convex, input)
+  await apply(convex, input, 'claim-public-artifacts', 0, {
+    type: 'claim_execution', workflowRunId: 'artifact-workflow',
+  })
+  const access = { serverSecret: secret, actorUserId: 'alice', runId: input.runId, workflowRunId: 'artifact-workflow' }
+  const sourceId = await convex.run(ctx => ctx.db.insert('files', {
+    userId: 'alice', name: 'Source', type: 'file', createdAt: Date.now(), updatedAt: Date.now(),
+  }))
+  const bytes = new Uint8Array([0, 1, 127, 255])
+  const storageId = await convex.run(ctx => ctx.storage.store(new Blob([bytes])))
+  const args = {
+    ...access, artifactId: `ha_${'b'.repeat(64)}`, toolCallId: 'render-public', toolName: 'render_document',
+    digest: createHash('sha256').update(bytes).digest('hex'), storageId, byteSize: bytes.byteLength,
+    mediaPartCount: 1, resource: { id: sourceId, revision: 'rev-7', page: 2 },
+  }
+  await expect(convex.action(artifactAction('attachUploaded'), args)).resolves.toMatchObject({ storageId })
+  const chunk = await convex.action(artifactAction('readChunk'), {
+    ...access, artifactId: args.artifactId, offset: 1, length: 2,
+  }) as ArrayBuffer
+  expect(Array.from(new Uint8Array(chunk))).toEqual([1, 127])
+  const badStorageId = await convex.run(ctx => ctx.storage.store(new Blob([bytes])))
+  await expect(convex.action(artifactAction('attachUploaded'), {
+    ...args, artifactId: `ha_${'c'.repeat(64)}`, toolCallId: 'bad-digest', storageId: badStorageId, digest: '0'.repeat(64),
+  })).rejects.toThrow('HARNESS_ARTIFACT_DIGEST_MISMATCH')
+  expect(await convex.run(ctx => ctx.storage.get(badStorageId))).toBeNull()
+  await convex.run(ctx => ctx.db.patch(sourceId, { userId: 'bob' }))
+  await expect(convex.action(artifactAction('readChunk'), {
+    ...access, artifactId: args.artifactId, offset: 0, length: 1,
+  })).rejects.toThrow('HARNESS_ARTIFACT_SOURCE_UNAVAILABLE')
+})
+
 test('private context artifacts are run-owned, idempotent, and reject conflicting retries', async () => {
   const convex = convexTest(schema, modules)
   const input = admission('artifact-run', await seedConversation(convex))
@@ -1115,6 +1149,9 @@ test('private context artifacts are run-owned, idempotent, and reject conflictin
     type: 'claim_execution', workflowRunId: 'artifact-workflow',
   })
   const bytes = new Uint8Array([0, 1, 2, 127, 255])
+  const sourceId = await convex.run(ctx => ctx.db.insert('files', {
+    userId: 'alice', name: 'Source', type: 'file', createdAt: Date.now(), updatedAt: Date.now(),
+  }))
   const digest = createHash('sha256').update(bytes).digest('hex')
   const args = {
     serverSecret: secret,
@@ -1127,7 +1164,7 @@ test('private context artifacts are run-owned, idempotent, and reject conflictin
     digest,
     data: bytes.slice().buffer as ArrayBuffer,
     mediaPartCount: 1,
-    resource: { id: 'file-1', revision: 'rev-7', page: 1 },
+    resource: { id: sourceId, revision: 'rev-7', page: 1 },
   }
 
   const stored = await convex.action(artifactAction('put'), args) as {

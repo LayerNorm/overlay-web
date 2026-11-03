@@ -181,7 +181,7 @@ export class ConvexHarnessRepository implements HarnessRepository {
   }
 
   async readEvidence(
-    input: { actorUserId: string; runId: string; evidenceId: string; cursor?: string; limit?: number },
+    input: { actorUserId: string; runId: string; evidenceId?: string; cursor?: string; limit?: number },
   ): Promise<HarnessEvidence | null | { observations: Array<Pick<HarnessEvidence, 'id' | 'source' | 'verdict' | 'createdAt'>>; nextCursor: string | null }> {
     return await convex.query('harness/runs:readEvidence', {
       ...input,

@@ -107,6 +107,7 @@ export async function readHarnessEvidence(
 ): Promise<HarnessEvidence | null | { observations: Array<Pick<HarnessEvidence, 'id' | 'source' | 'verdict' | 'createdAt'>>; nextCursor: string | null }> {
   'use step'
   return new ConvexHarnessRepository().readEvidence({
-    actorUserId: reference.actorUserId, runId: reference.runId, evidenceId, cursor, limit,
+    actorUserId: reference.actorUserId, runId: reference.runId,
+    ...(evidenceId ? { evidenceId } : {}), ...(cursor ? { cursor } : {}), ...(limit !== undefined ? { limit } : {}),
   })
 }

@@ -25,9 +25,9 @@ export type HarnessCheckpoint = {
   evidenceLookup: 'harness_read_evidence'
 }
 
-function checkpointFor(state: HarnessSnapshot, evidence: HarnessSnapshot['evidence']): HarnessCheckpoint {
-  const goal = state.goal.slice(0, 900)
-  const plan = state.plan.slice(-MAX_PLAN)
+function checkpointFor(state: HarnessSnapshot, evidence: HarnessSnapshot['evidence'], planCount = MAX_PLAN, goalLimit = 900): HarnessCheckpoint {
+  const goal = state.goal.slice(0, goalLimit)
+  const plan = planCount ? state.plan.slice(-planCount) : []
   return {
     version: 1,
     goal: goal.length < state.goal.length ? `${goal} [TRUNCATED]` : goal,
@@ -35,14 +35,14 @@ function checkpointFor(state: HarnessSnapshot, evidence: HarnessSnapshot['eviden
     progressRevision: state.progressRevision,
     planRevision: state.planRevision,
     plan: plan.map(step => ({
-      id: step.id.slice(0, 128),
+      id: step.id,
       status: step.status,
-      evidenceRefs: step.evidenceRefs.slice(0, 2).map(id => id.slice(0, 128)),
+      evidenceRefs: step.evidenceRefs.slice(0, 2),
       omittedEvidenceRefCount: Math.max(0, step.evidenceRefs.length - 2),
     })),
     omittedPlanCount: Math.max(0, state.plan.length - plan.length),
     evidence: evidence.map(item => ({
-      id: item.id.slice(0, 128),
+      id: item.id,
       source: item.source.slice(0, 128),
       verdict: item.verdict,
       summary: item.summary.replace(/(?:data:[^;\s]+;base64,)[A-Za-z0-9+/=]+/gi, '[binary payload omitted]').slice(0, 240)
@@ -69,10 +69,14 @@ export function buildHarnessCheckpoint(state: HarnessSnapshot): HarnessCheckpoin
   let count = Math.min(MAX_EVIDENCE, ordered.length)
   while (count >= 0) {
     const result = checkpointFor(state, count ? ordered.slice(-count) : [])
-    if (JSON.stringify(result).length <= MAX_CHECKPOINT_BYTES) return result
+    if (new TextEncoder().encode(JSON.stringify(result)).byteLength <= MAX_CHECKPOINT_BYTES) return result
     count--
   }
-  return checkpointFor(state, [])
+  for (let planCount = MAX_PLAN - 1; planCount >= 0; planCount--) {
+    const result = checkpointFor(state, [], planCount)
+    if (new TextEncoder().encode(JSON.stringify(result)).byteLength <= MAX_CHECKPOINT_BYTES) return result
+  }
+  return checkpointFor(state, [], 0, 0)
 }
 
 export function serializeHarnessCheckpoint(state: HarnessSnapshot): string {

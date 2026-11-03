@@ -591,7 +591,7 @@ export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessRec
   if (next.modelReservation?.id === receipt.id) next.modelReservation = undefined
   next.latestReceipt = { ...receipt }
   if (next.compaction?.attemptId === receipt.id
-    && (next.compaction.status === 'started' || next.compaction.status === 'awaiting_reconciliation')
+    && (next.compaction.status === 'awaiting_reconciliation' || receipt.rejectionReason === 'summary_failed')
     && next.modelReservation?.id !== receipt.id) {
     next.compaction = {
       ...next.compaction,

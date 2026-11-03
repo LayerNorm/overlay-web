@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { internalMutation, internalQuery, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { validateServerSecret } from '../lib/auth'
+import { getReadableRow } from '../lib/resourceScope'
 
 const MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
 const MAX_RUN_BYTES = 128 * 1024 * 1024
@@ -66,6 +67,24 @@ function publicMetadata(row: {
     expiresAt: row.expiresAt,
     ...(row.resource ? { resource: row.resource } : {}),
   }
+}
+
+async function assertSourceReadable(ctx: QueryCtx, run: { metadataJson: string }, actorUserId: string, row: {
+  toolName: string; resource?: { id: string }
+}) {
+  if (!row.resource) return
+  const fileId = ctx.db.normalizeId('files', row.resource.id)
+  const fileTool = /^(?:read_document|render_document|get_file|get_note|create_note|update_note|search_file_text)$/.test(row.toolName)
+  if (!fileId) {
+    if (fileTool) throw new Error('HARNESS_ARTIFACT_SOURCE_UNAVAILABLE')
+    return
+  }
+  const file = await ctx.db.get(fileId)
+  const state = JSON.parse(run.metadataJson) as { policy?: { workspaceId?: string } }
+  const readable = await getReadableRow(ctx, {
+    row: file, userId: actorUserId, workspaceId: state.policy?.workspaceId,
+  })
+  if (!readable || readable.deletedAt) throw new Error('HARNESS_ARTIFACT_SOURCE_UNAVAILABLE')
 }
 
 export const findByToolCall = internalQuery({
@@ -164,11 +183,12 @@ export const getMetadata = internalQuery({
   args: { ...identity, artifactId: v.string() },
   returns: v.union(metadata, v.null()),
   handler: async (ctx, args) => {
-    await findActiveRun(ctx, args)
+    const run = await findActiveRun(ctx, args)
     const row = await ctx.db.query('harnessContextArtifacts')
       .withIndex('by_runId_artifactId', q => q.eq('runId', args.runId).eq('artifactId', args.artifactId))
       .unique()
     if (!row || row.workflowRunId !== args.workflowRunId) return null
+    await assertSourceReadable(ctx, run, args.actorUserId, row)
     return publicMetadata(row)
   },
 })
@@ -177,11 +197,12 @@ export const getMetadataForServer = query({
   args: { ...identity, artifactId: v.string() },
   returns: v.union(metadata, v.null()),
   handler: async (ctx, args) => {
-    await findActiveRun(ctx, args)
+    const run = await findActiveRun(ctx, args)
     const row = await ctx.db.query('harnessContextArtifacts')
       .withIndex('by_runId_artifactId', q => q.eq('runId', args.runId).eq('artifactId', args.artifactId))
       .unique()
     if (!row || row.workflowRunId !== args.workflowRunId) return null
+    await assertSourceReadable(ctx, run, args.actorUserId, row)
     return publicMetadata(row)
   },
 })

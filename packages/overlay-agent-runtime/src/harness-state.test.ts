@@ -46,6 +46,20 @@ test('compaction transitions are replay-safe and never replace an unrelated rese
   assert.equal(state.compaction?.retryCount, 1)
 })
 
+test('a successful summary receipt keeps its attempt active until validated completion', () => {
+  const attempt = { cycleId: 'summary:success', attemptId: 'summary:success', status: 'started' as const, retryCount: 0, updatedAt: now }
+  let state = setHarnessCompaction(make(), attempt, now)
+  state = reserveHarnessModel(state, attempt.attemptId, 1, now)
+  state = recordHarnessReceipt(state, {
+    id: attempt.attemptId, modelId: 'model', provider: 'provider', inputTokens: 1, outputTokens: 1,
+    reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 1,
+  }, now + 1)
+  assert.equal(state.modelReservation, undefined)
+  assert.equal(state.compaction?.status, 'started')
+  state = setHarnessCompaction(state, { ...attempt, status: 'completed', updatedAt: now + 2 }, now + 2)
+  assert.equal(state.compaction?.status, 'completed')
+})
+
 test('a matching late free summary receipt reconciles the stored cycle before its single retry', () => {
   let state = make()
   const cycleId = 'summary:cycle'

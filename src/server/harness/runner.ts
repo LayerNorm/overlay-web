@@ -282,6 +282,15 @@ async function finishOrCheckpointInvocation(
           return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
         }
         if (afterFailure.modelReservation?.id.startsWith('verification:')) {
+          await ports.apply(`verify-pending-result:${segment}:${attempt}`, {
+            type: 'record_verification',
+            verification: {
+              attemptId, candidateDigest: digest, planRevision: state.planRevision,
+              evidenceRevision: state.progressRevision, supported: false,
+              reason: 'Final-answer verification is awaiting provider settlement. No answer was accepted.',
+              evidenceIds: [], attempts: attempt, createdAt: Date.now(),
+            },
+          })
           if (afterFailure.status === 'running') {
             await ports.apply(`verification-pending:${segment}`, {
               type: 'block',
