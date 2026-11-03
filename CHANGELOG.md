@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve bounded, source-revision-linked observations when reopening private Harness artifacts, so final verification can inspect retrieved excerpts without treating them as new writes or independent verification.
+
 - Preserve private Harness artifacts across authorized workflow handoffs while rejecting stale workers, and retain summary/verification holds until measured usage settles without restoring free-model execution.
 
 - Keep Harness model-port, verification, compaction, artifact-prompt, and reducer validation paths focused and maintainable without changing their behavior or limits.

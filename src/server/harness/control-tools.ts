@@ -160,9 +160,19 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         if (input.mediaPart !== undefined) return input.start === undefined && input.end === undefined
         return input.end === undefined || input.start === undefined || input.end >= input.start
       }),
-      execute: async input => {
+      execute: async (input, { toolCallId }) => {
         if (!ports.readArtifact) throw new Error('Harness artifact reads are unavailable.')
-        return ports.readArtifact(input)
+        const output = await ports.readArtifact(input)
+        const selection = output.kind === 'text'
+          ? `Incomplete text excerpt, range ${input.start ?? 0}:${input.end ?? 'bounded default'}:\n${output.text.slice(0, 1_200)}`
+          : `Opened media part ${output.metadata.mediaPart} of ${output.metadata.mediaPartCount} (${output.mediaType}); no semantic content is certified by this observation.`
+        await ports.apply(`artifact-read:${toolCallId}`, { type: 'record_evidence', evidence: {
+          id: `tool:${toolCallId}`, kind: 'tool_result', source: 'harness_read_artifact',
+          resource: output.metadata.resource,
+          summary: `${artifactIdentity(output.metadata)}\n${selection}`.slice(0, 2_000),
+          verdict: 'observed', createdAt: Date.now(),
+        } })
+        return output
       },
       toModelOutput: ({ output }) => output.kind === 'media'
         ? {

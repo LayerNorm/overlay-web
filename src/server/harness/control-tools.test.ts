@@ -409,3 +409,27 @@ test('answer-only plans normalize empty evidence tools without relaxing action p
     error: expect.stringContaining('must declare evidenceTools'),
   })
 })
+
+test('reopened artifact excerpts become bounded observations for final verification', async () => {
+  const f = fixture()
+  f.ports.readArtifact = vi.fn(async () => ({ kind: 'text', text: 'Final validation code: HARBOR_384_END_9K2',
+    metadata: { artifactId: `ha_${'a'.repeat(64)}`, toolCallId: 'original-read', toolName: 'get_note',
+      byteSize: 90_000, mediaPartCount: 0, resource: { id: 'note-source', revision: 'rev-7', operation: 'get_note' } } }))
+  const control = createHarnessControlTools(f.ports).harness_read_artifact
+  await control.execute!({ artifactId: `ha_${'a'.repeat(64)}`, start: 89_000, end: 90_000 }, { toolCallId: 'reopen-tail', messages: [] })
+  const recorded = await f.ports.read()
+  expect(recorded.evidence).toContainEqual(expect.objectContaining({ id: 'tool:reopen-tail', source: 'harness_read_artifact',
+    resource: { id: 'note-source', revision: 'rev-7', operation: 'get_note' },
+    summary: expect.stringContaining('HARBOR_384_END_9K2'), verdict: 'observed' }))
+  expect(recorded.evidence.at(-1)!.summary.length).toBeLessThanOrEqual(2_000)
+})
+
+test('denied artifact reads never create observations', async () => {
+  const f = fixture()
+  f.ports.readArtifact = vi.fn(async () => { throw new Error('Source access revoked') })
+  await expect(createHarnessControlTools(f.ports).harness_read_artifact.execute!(
+    { artifactId: `ha_${'a'.repeat(64)}`, start: 0, end: 1_000 },
+    { toolCallId: 'denied-read', messages: [] },
+  )).rejects.toThrow('Source access revoked')
+  expect(f.apply).not.toHaveBeenCalled()
+})

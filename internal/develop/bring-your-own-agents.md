@@ -1873,3 +1873,8 @@ as response calls. Unknown outcomes retain their holds; full history is preserve
 compaction retries once and final answers allow at most two corrections. Failed
 verification cannot complete the run. Context pauses also verify durable current
 ownership after error serialization, rather than trusting an exception name alone.
+
+Authorized artifact reopens persist a bounded excerpt observation with the original
+source revision for final verification. Media reopens record selection metadata,
+not inferred image content; denied reads create no evidence, and rereading an
+artifact never certifies a new source mutation.
