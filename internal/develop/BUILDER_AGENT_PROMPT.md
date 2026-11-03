@@ -12,7 +12,9 @@ isolated sibling worktree. Preserve unrelated canonical edits and other agents'
 work. Use `npm run dev`; do not deploy shared dev or production Convex.
 
 Implement the change, validate proportionally, and update the applicable living
-docs and root CHANGELOG in the same commit series. Run `git diff --check` and
+docs. Every PR must include a root `CHANGELOG.md` entry under Unreleased explaining
+what it adds, changes, fixes or removes and why it matters, including documentation,
+dependency, test and CI PRs. Keep it aligned with the final diff. Run `git diff --check` and
 record the actual checks and head SHA. Security, auth, billing, tenant, migration
 and runtime changes require their relevant stronger QA.
 

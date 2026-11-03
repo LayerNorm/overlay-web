@@ -130,13 +130,13 @@ Main pushes automatically deploy to Vercel; verify the native Vercel deployment 
 
 Read the task and acceptance criteria. Make routine implementation decisions yourself. Ask only when a missing product decision or dependency prevents useful progress.
 
-Fetch current `origin/main` and create one descriptive `codex/<slug>` branch in an isolated feature worktree, following [Agentic Development](agentic-development.mdx). Keep other agents' branches and unrelated owner edits intact. Each Builder owns its feature branch through the PR handoff.
+Fetch current `origin/main` and create one descriptive `codex/<slug>` branch in an isolated feature worktree, following [Agentic Development](agentic-development.md). Keep other agents' branches and unrelated owner edits intact. Each Builder owns its feature branch through the PR handoff.
 
 If the feature depends on another PR, declare the dependency. Land shared foundations first, then start the dependent features from updated main.
 
 ### 2. Implement and run local smoke QA
 
-Build the requested behavior and update affected living documentation and root `CHANGELOG.md` under Unreleased in the same change.
+Build the requested behavior and update affected living documentation. Every PR must add a concise entry to root `CHANGELOG.md` under Unreleased in the same PR, explaining in plain language what it adds, changes, fixes or removes and why it matters. This includes documentation, dependency, test and CI PRs: describe their actual effect, not generic “miscellaneous updates.” Update the entry when the scope changes so it describes the final diff. Local direct-main changes follow the same rule.
 
 Package render tests preload the shared Node stylesheet and JSX shims, matching ordinary CI rendering; run the package's own test command when adding render coverage.
 
@@ -384,7 +384,7 @@ For sensitive changes, expand acceptance checks on the same isolated PR preview.
 
 Use GitHub PRs and checks as the queue and detailed record. Process dependencies first, then follow the owner's priority order; use ready time when no priority is specified. Continue with independent ready PRs when another PR is blocked.
 
-Read the full diff and relevant implementation. Verify the base is main, the scope matches the assignment, dependencies are satisfied, and docs/CHANGELOG are updated. Read the latest QA handoff comment: confirm its tested SHA matches the current head and its preview evidence covers the acceptance criteria. Older QA is superseded after a push. Perform additional QA where the evidence or risk calls for it, using Vercel MCP for protected browser access when needed.
+Read the full diff and relevant implementation. Verify the base is main, the scope matches the assignment, dependencies are satisfied, and living docs are updated. Verify that the PR includes its own Unreleased CHANGELOG entry describing the actual final change before merging. Read the latest QA handoff comment: confirm its tested SHA matches the current head and its preview evidence covers the acceptance criteria. Older QA is superseded after a push. Perform additional QA where the evidence or risk calls for it, using Vercel MCP for protected browser access when needed.
 
 Post a concise Integration review comment with the reviewed SHA, accepted QA or
 specific blockers, and queue decision. After release, add the accepted main SHA,
@@ -405,7 +405,7 @@ Verify the PR is merged, its accepted changes reached `origin/main`, and record 
 
 ### 3. Report and continue
 
-Report each accepted PR and main SHA, or the concrete blocker and next action. Describe the state accurately: ready, queued, merged, deployed, or verified. Continue processing the available authorized PRs in this Integration thread.
+After each merge, describe the functionality added or changed in plain language, including operational or documentation changes when applicable. Report the accepted PR and main SHA plus deployment/verification status; distinguish merged code from functionality enabled and verified in production. For blocked PRs, report the concrete blocker and next action. Describe the state accurately: ready, queued, merged, deployed, or verified. Continue processing the available authorized PRs in this Integration thread.
 
 Main changes automatically deploy to production through Vercel’s Git integration; Integration then runs proportionate smoke checks.
 
@@ -545,7 +545,7 @@ The former custom Production Release workflow, promotion script and production d
 - Reuse configured preview environments and test credentials. Keep secrets and session cookies out of commits, PR text, and screenshots.
 - Keep checks proportional and act when the evidence is sufficient. Required CI and current-preview QA determine readiness.
 
-For detailed repository mechanics, read [Agentic Development](agentic-development.mdx), [Release Workflow](release-workflow.mdx), and [Convex Workflow](convex-workflow.mdx).
+For detailed repository mechanics, read [Agentic Development](agentic-development.md), [Release Workflow](release-workflow.md), and [Convex Workflow](convex-workflow.md).
 
 ### Exhausted-quota acceptance
 
