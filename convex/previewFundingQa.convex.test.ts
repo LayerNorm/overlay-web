@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
+import { WORKSPACE_AGENT_CREATURE_SHAPES } from '@overlay/workspace-contracts'
 import schema from './schema'
 
 const modules = import.meta.glob('./**/*.ts')
@@ -37,6 +38,8 @@ test('fresh fixtures are isolated, inert and preserve funding, holds, grants and
       expect(plan?.providerSubscriptionId).toBeUndefined()
       const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', fixture.agentId)).unique()
       expect(agent).toMatchObject({ allowedToolIds: [], createdByPrincipalId: `${fixture.workspaceId}-owner` })
+      expect(WORKSPACE_AGENT_CREATURE_SHAPES).toContain(agent?.avatarShape)
+      expect(agent?.avatarColor).toMatch(/^#[0-9a-f]{6}$/i)
       await ctx.db.patch(balance._id, { usedMicros: 5000, reservedMicros: 1000 })
     }
     expect(await ctx.db.query('harnessRuns').collect()).toEqual([])

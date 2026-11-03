@@ -54,7 +54,7 @@ export const init = internalMutation({
       instructions: 'You are a synthetic preview QA assistant. Answer briefly. Do not use external tools.',
       harness: 'overlay', modelId: 'minimax/minimax-m3.1-flash', allowedToolIds: [],
       invocationPolicy: 'mention', visibility: 'creator', createdByPrincipalId: principalId,
-      avatarColor: 'blue', avatarShape: 'round', teamIds: [], roomCount: 0, createdAt: now, updatedAt: now,
+      avatarColor: '#2563eb', avatarShape: 'circle', teamIds: [], roomCount: 0, createdAt: now, updatedAt: now,
     })
     await ctx.db.insert('workspaceResourceScopes', { workspaceId, resourceType: 'agent', resourceId: agentId, createdAt: now, updatedAt: now })
     await ctx.db.insert('auditEvents', {

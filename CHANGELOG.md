@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Seed funding QA agents with valid editable avatar values so saving a model does not fail unrelated avatar validation. Existing fixtures and balances remain unchanged on reseed.
+
 - Preserve generation fencing, authorization pauses, and lease renewal when combining durable continuation with the streamlined personal Harness startup path.
 
 - Add opt-in, isolated Preview funding fixtures with one cent of initial synthetic credit. Reseeding never drains or replenishes existing balances, starts work, enables top-ups, or creates Stripe payment evidence.
