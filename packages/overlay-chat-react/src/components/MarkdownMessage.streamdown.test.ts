@@ -141,13 +141,33 @@ test('published file download links stay clickable and resolve against the app o
   const href = '/api/v1/files/files%3Apublished/content'
   for (const isStreaming of [false, true]) {
     for (const appBaseUrl of [undefined, 'https://app.example.com/']) {
-      const html = renderToStaticMarkup(React.createElement(MarkdownMessage, {
-        text: `[Download ZIP](${href})`, isStreaming, appBaseUrl, suppressTypingIndicator: true,
-      }))
-      const expectedHref = appBaseUrl ? `https://app.example.com${href}` : href
-      assert.ok(html.includes(`href="${expectedHref}"`))
-      assert.match(html, /Download ZIP<\/a>/)
+      for (const text of [`[Download ZIP](${href})`, `**Download link:** \`${href}\``, `Download link: ${href}.`]) {
+        const html = renderToStaticMarkup(React.createElement(MarkdownMessage, {
+          text, isStreaming, appBaseUrl, suppressTypingIndicator: true,
+        }))
+        const expectedHref = appBaseUrl ? `https://app.example.com${href}` : href
+        assert.ok(html.includes(`href="${expectedHref}"`))
+        assert.equal(html.match(/<a /g)?.length, 1)
+      }
     }
+  }
+})
+
+test('file download linkification preserves code blocks, unrelated paths and existing links', () => {
+  const href = '/api/v1/files/files%3Apublished/content'
+  for (const isStreaming of [false, true]) {
+    for (const text of [
+      `\`\`\`text\n${href}\n\`\`\``,
+      '`/api/v1/files/files%3Apublished/content?query=1`',
+      '`https://external.example/api/v1/files/files%3Apublished/content`',
+      '`/home/user/launch-kit.zip`',
+      'Download link: /api/v1/files/files%3Apublished/content/other',
+    ]) {
+      assert.doesNotMatch(rendered(text, isStreaming), /href=/)
+    }
+    const html = rendered(`[\`${href}\`](https://external.example)`, isStreaming)
+    assert.equal(html.match(/<a /g)?.length, 1)
+    assert.doesNotMatch(html, /href="\/api\/v1\/files\//)
   }
 })
 

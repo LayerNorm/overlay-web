@@ -13,7 +13,7 @@ import type {
   AttachmentPreviewOpenOptions,
 } from './AttachmentPreviewShell'
 import { normalizeGeneratedMarkdown } from './markdown/normalization'
-import { streamdownMath, streamdownRehypePlugins, streamdownRemarkPlugins } from './markdown/plugins'
+import { isFileContentHref, streamdownMath, streamdownRehypePlugins, streamdownRemarkPlugins } from './markdown/plugins'
 import { createBaseMdComponents, extractLinkText } from './markdown/renderers'
 import { recordRender, timeSync } from '../lib/perf-debug'
 import {
@@ -36,7 +36,7 @@ interface Props {
    * in-flight tail so text streams without a duplicate marker mid-message.
    */
   suppressTypingIndicator?: boolean
-  /** Prefix for /app/* markdown links (extension host). */
+  /** Prefix for app routes and authenticated file downloads (extension host). */
   appBaseUrl?: string | null
   /** Known mentions render as the same distinct pills used by the composer. */
   mentions?: ChatMessageMention[]
@@ -217,7 +217,7 @@ function MarkdownMessageImpl({
           }
           if (
             typeof href === 'string' &&
-            (href.startsWith('/app/') || /^\/api\/v1\/files\/[^/?#]+\/content$/.test(href))
+            (href.startsWith('/app/') || isFileContentHref(href))
           ) {
             const abs = appBaseUrl ? `${appBaseUrl.replace(/\/$/, '')}${href}` : href
             return (

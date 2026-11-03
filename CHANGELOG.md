@@ -12,7 +12,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Return workspace-scoped links from note tools so completed tasks can open the saved note without inventing an address.
 
-- Return authenticated download links after Computer file publication so completed tasks can link to their saved artifacts.
+- Return authenticated download links after Computer file publication and make them clickable even when a response formats the path as text or inline code.
 
 - Require a plain-language changelog entry in every PR, including documentation, dependency, test and CI changes, and a functionality summary with deployment status after each merge.
 
