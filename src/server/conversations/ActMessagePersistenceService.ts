@@ -2,13 +2,11 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import type { StepResult, ToolSet } from 'ai'
-import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import {
   buildAssistantPersistenceFromSteps,
   compactAssistantPersistenceForConvex,
   replaceAssistantTextForPersistence,
 } from '@/shared/chat/persist-assistant-turn'
-import { maybeRepairFreeTierLeakedPerplexityText } from '@/shared/chat/leaked-perplexity-tool-repair'
 import {
   buildPersistedMessageContent,
   sanitizeMessagePartsForPersistence,
@@ -175,12 +173,10 @@ export class ActMessagePersistenceService {
     conversationId?: ConversationId
     emitWebhook: boolean
     event: ActAssistantFinishEvent
-    fallbackNotice?: string
     finishedToolCallIds: Set<string>
     agentRunId?: string
     agentRunMetrics?: Partial<AgentRunMetrics>
     importedAuthorName?: string
-    routedModelId?: string
     sourceCitations?: SourceCitationMap
     timedOut: boolean
     timeoutMs: number
@@ -199,20 +195,6 @@ export class ActMessagePersistenceService {
         args.event.steps,
         args.event.text,
       )
-      if (isFreeTierChatModelId(args.attemptModelId)) {
-        const repaired = await maybeRepairFreeTierLeakedPerplexityText({
-          modelId: args.attemptModelId,
-          steps: args.event.steps,
-          text: args.event.text,
-          accessToken: args.accessToken,
-        })
-        if (repaired) {
-          assistantPersistence = replaceAssistantTextForPersistence(
-            assistantPersistence,
-            repaired,
-          )
-        }
-      }
       if (args.sourceCitations && Object.keys(args.sourceCitations).length > 0) {
         assistantPersistence = replaceAssistantTextForPersistence(
           assistantPersistence,
@@ -220,9 +202,7 @@ export class ActMessagePersistenceService {
         )
       }
       const { content: rawPersistContent, parts: persistParts } = assistantPersistence
-      let persistContent = args.fallbackNotice
-        ? `${args.fallbackNotice}\n\n${rawPersistContent}`
-        : rawPersistContent
+      let persistContent = rawPersistContent
       let normalizedPersistParts = persistParts.map((part) => {
         if (part.type !== 'tool-invocation') return part
         const invocation = part.toolInvocation as
@@ -277,12 +257,6 @@ export class ActMessagePersistenceService {
         }
         return part
       })
-      if (args.fallbackNotice) {
-        normalizedPersistParts = [
-          { type: 'text', text: `${args.fallbackNotice}\n\n` },
-          ...normalizedPersistParts,
-        ]
-      }
 
       if (args.timedOut) {
         const timedOutAfterSeconds = Math.round(args.timeoutMs / 1000)
@@ -298,10 +272,6 @@ export class ActMessagePersistenceService {
       persistContent = compactedPersistence.content
       normalizedPersistParts = compactedPersistence.parts
 
-      const routedModelId =
-        isFreeTierChatModelId(args.attemptModelId)
-          ? (args.routedModelId || args.event.steps.at(-1)?.response.modelId)
-          : undefined
       const finalParts = (
         normalizedPersistParts.length > 0
           ? normalizedPersistParts
@@ -314,7 +284,6 @@ export class ActMessagePersistenceService {
           userId: args.userId,
           content: persistContent,
           parts: finalParts,
-          routedModelId,
           tokens: { input: totalInputTokens, output: totalOutputTokens },
           metrics: args.agentRunMetrics,
         })
@@ -330,7 +299,6 @@ export class ActMessagePersistenceService {
           contentType: 'text',
           parts: finalParts,
           modelId: args.attemptModelId,
-          routedModelId,
           tokens: { input: totalInputTokens, output: totalOutputTokens },
           variantIndex: 0,
           importedAuthorName: args.importedAuthorName,

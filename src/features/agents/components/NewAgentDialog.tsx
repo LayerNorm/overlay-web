@@ -13,7 +13,7 @@ import type {
 import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle, toast } from '@overlay/ui/primitives'
 import { ChatModelPicker } from '@overlay/chat-react'
 import { MODEL_RECOMMENDATIONS, getModelsByIntelligence, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
-import { NEW_AGENT_DEFAULT_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
+import { NEW_AGENT_DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
   AGENT_TOOL_GROUPS,
   AGENT_TOOL_PRESETS,
@@ -92,7 +92,7 @@ const PRESET_SUMMARY: Record<AgentToolPreset, string> = {
   readonly: 'Read-only tools',
 }
 
-/** The draft's model when it is offered, else the first enabled model (e.g. free tier without the paid default). */
+/** The draft's model when it is offered, else the default model. */
 export function resolveDraftModelId(modelId: string, modelIds: readonly string[]): string {
   return modelIds.includes(modelId) ? modelId : (modelIds[0] ?? modelId)
 }
@@ -136,8 +136,6 @@ function AdvancedSection({ draft, onChange, modelField }: {
               selectableTextModels={modelField.selectableTextModels}
               selectedActModel={draft.modelId}
               onToggleTextModel={(modelId) => onChange({ modelId })}
-              isFreeTier={modelField.isFreeTier}
-              isFreeTierChatModelId={isFreeTierChatModelId}
               favoriteScope={modelField.favoriteScope}
               modelRecommendations={MODEL_RECOMMENDATIONS}
               textModelsLoading={modelField.textModelsLoading}
@@ -284,21 +282,19 @@ function useNewAgentModelField(workspaceId: string | null, draftModelId: string)
   const allTextModels = useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
-    return getModelsByIntelligence(false)
+    return getModelsByIntelligence()
   }, [revision])
   const accessUnresolved = !modelAccess.entitlements
   const restricted = modelAccess.loading || accessUnresolved
   const selectableTextModels = useMemo(
     () => restricted
-      ? buildSelectableTextModels({ isModelAccessRestricted: true, effectiveOnlyAllowZdrModels: false })
+      ? buildSelectableTextModels({ effectiveOnlyAllowZdrModels: false })
       : modelAccess.selectableTextModels,
     [restricted, modelAccess.selectableTextModels],
   )
   const modelId = resolveDraftModelId(draftModelId, selectableTextModels.map((model) => model.id))
   const modelField = {
     favoriteScope: authUser?.id ?? null,
-    isFreeTier: modelAccess.isFreeTier || restricted,
-    isFreeTierWorkspace: modelAccess.isFreeTier,
     modelPickerLabel: allTextModels.find((model) => model.id === modelId)?.name ?? modelId,
     selectableTextModels,
     textModelsLoading: false,

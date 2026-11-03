@@ -218,7 +218,6 @@ async function runAdmittedAutomationHarness(
       definitions: plan.toolDefinitions,
       instructions: plan.instructions,
       messages: plan.messages,
-      modelCandidates: [plan.effectiveModelId],
       delivery: { emitWebhook: false, sourceCitations: plan.sourceCitations, closeStream: false },
     })
   } catch (error) {

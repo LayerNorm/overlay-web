@@ -207,14 +207,9 @@ export function createOverlayServerContext(
   const workspaceRepository = new ConvexWorkspaceRepository()
   const workspaceService = new WorkspaceService(workspaceRepository, {
     lifecycleEvents,
-    hasWorkspacePlan: async (workspaceId) => {
-      const billing = appData.repositories.billing
-      const account = await billing.getWorkspaceBillingAccountByWorkspaceIdByServer({ workspaceId })
-      if (!account) return false
-      return (await billing.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId }))?.planKind === 'paid'
-    },
   })
   const billingPayerResolver = new BillingPayerResolver({
+    billingEnabled: async () => (await import('@/server/capabilities')).getOverlayCapabilities().then(capabilities => capabilities.billing),
     billing: appData.repositories.billing,
     workspaces: workspaceService,
   })

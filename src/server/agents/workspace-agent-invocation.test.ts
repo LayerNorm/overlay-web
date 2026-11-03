@@ -33,6 +33,7 @@ test('drive starts require rollout, host capability and opt-in, and never target
 })
 
 test('direct Cloud-kind dispatch rejects before room context, memory, or credit reservation', async () => {
+  let admissionChecked = false
   await assert.rejects(
     startRemoteWorkspaceAgentTurn({
       actorUserId: 'user',
@@ -43,10 +44,15 @@ test('direct Cloud-kind dispatch rejects before room context, memory, or credit 
       memoryEnabled: true,
       prompt: 'hello',
       workspaceId: 'workspace',
+      requireExecution: async () => {
+        admissionChecked = true
+        throw new Error('retired targets must not reach paid admission')
+      },
     }),
     (error: unknown) => error instanceof WorkspaceAgentInvocationError
       && error.reasonCode === 'hosted_runtime_retired',
   )
+  assert.equal(admissionChecked, false)
 
   const service = await readFile(`${root}/src/server/agents/workspace-agent-invocation.ts`, 'utf8')
   const start = service.slice(service.indexOf('export async function startRemoteWorkspaceAgentTurn'))

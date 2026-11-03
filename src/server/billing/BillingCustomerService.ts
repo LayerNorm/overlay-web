@@ -56,6 +56,18 @@ function normalizeUsageBuckets(entitlements: BillingEntitlementsRecord) {
   }
 }
 
+function appSubscriptionResponse(entitlements: BillingEntitlementsRecord) {
+  const usageBuckets = normalizeUsageBuckets(entitlements)
+  return {
+    ...entitlements,
+    dailyUsage: entitlements.dailyUsage ?? { ask: 0, write: 0, agent: 0 },
+    ...getTopUpPreferenceSnapshot(entitlements),
+    ...usageBuckets,
+    creditsUsed: usageBuckets.budgetUsedCents,
+    creditsTotal: usageBuckets.budgetTotalCents / 100,
+  }
+}
+
 export class BillingCustomerService {
   constructor(private readonly deps: BillingCustomerServiceDeps) {}
 
@@ -85,8 +97,22 @@ export class BillingCustomerService {
 
   async getAppSubscription(args: {
     billingAccountId?: string
+    unfundedWorkspace?: boolean
     userId: string
   }) {
+    if (args.unfundedWorkspace) {
+      const storage = await this.deps.repository.getEntitlementsByServer({ userId: args.userId })
+      return appSubscriptionResponse({
+        tier: 'free', planKind: 'free', planAmountCents: 0, status: 'active',
+        budgetUsedCents: 0, budgetTotalCents: 0, budgetRemainingCents: 0,
+        creditsUsed: 0, creditsTotal: 0,
+        autoTopUpEnabled: false, autoTopUpAmountCents: 0, autoTopUpConsentGranted: false,
+        dailyLimits: { ask: 0, write: 0, agent: 0 },
+        transcriptionSecondsUsed: 0, transcriptionSecondsLimit: 0,
+        overlayStorageBytesUsed: storage?.overlayStorageBytesUsed ?? 0,
+        overlayStorageBytesLimit: storage?.overlayStorageBytesLimit ?? 0,
+      })
+    }
     const [entitlements, userEntitlements] = args.billingAccountId
       ? await Promise.all([
           this.deps.repository.getBillingAccountEntitlementsByServer({
@@ -108,15 +134,7 @@ export class BillingCustomerService {
           overlayStorageBytesLimit: userEntitlements?.overlayStorageBytesLimit ?? entitlements.overlayStorageBytesLimit,
         }
       : entitlements
-    const usageBuckets = normalizeUsageBuckets(appEntitlements)
-    return {
-      ...appEntitlements,
-      dailyUsage: appEntitlements.dailyUsage ?? { ask: 0, write: 0, agent: 0 },
-      ...getTopUpPreferenceSnapshot(appEntitlements),
-      ...usageBuckets,
-      creditsUsed: usageBuckets.budgetUsedCents,
-      creditsTotal: usageBuckets.budgetTotalCents / 100,
-    }
+    return appSubscriptionResponse(appEntitlements)
   }
 
   /** A person's own billing settings. An account has no plan or automatic top-ups (plans belong to workspaces). */

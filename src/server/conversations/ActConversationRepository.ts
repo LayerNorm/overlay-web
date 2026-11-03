@@ -438,7 +438,6 @@ export interface ActConversationRepository {
   }): Promise<ConversationEventRow[]>
   recordUsageBatch(args: {
     events: ActUsageEvent[]
-    forceFreeTierLimits: boolean
     userId: string
   }): Promise<void>
 }

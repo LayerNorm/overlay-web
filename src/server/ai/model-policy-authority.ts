@@ -8,8 +8,6 @@ import {
   IMAGE_MODELS,
   VIDEO_MODELS,
 } from '@/shared/ai/gateway/model-data'
-import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
-import { isPaidPlan } from '@/server/billing/billing-runtime'
 import { logger } from '@/server/observability/logger'
 
 type RuntimeConfigLoader = typeof getOverlayRuntimeConfig
@@ -83,14 +81,9 @@ export async function resolveCatalogModelIds(args: {
 
 export function applyCatalogEntitlements(
   catalog: Awaited<ReturnType<typeof resolveCatalogModelIds>>,
-  entitlements: Pick<Entitlements, 'tier' | 'planKind'> | null,
+  _entitlements: Pick<Entitlements, 'tier' | 'planKind'> | null,
 ) {
-  const paid = Boolean(entitlements && isPaidPlan(entitlements))
-  return {
-    chat: new Set([...catalog.chat].filter((id) => paid || isFreeTierChatModelId(id))),
-    image: new Set(paid ? catalog.image : []),
-    video: new Set(paid ? catalog.video : []),
-  }
+  return catalog
 }
 
 /** Discovery never grants permission to generate with a model. */

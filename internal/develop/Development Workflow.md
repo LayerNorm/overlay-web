@@ -11,6 +11,14 @@ Production follows **merge to main → automatic Vercel Git production deploymen
 
 ## Shared hosting and parallel work
 
+Browser QA, end-to-end testing, regressions, and further task-related checks have
+standing owner approval; do not ask again before testing. Use the current-head
+isolated PR Preview, existing QA credentials, and sandbox payments when a paid
+workspace is needed. Use saved Convex administration access as described in
+[Convex Workflow](./convex-workflow.md) instead of requesting new per-PR keys.
+This approval does not extend to real customer charges, destructive operations,
+production changes, or merges outside the existing release rules.
+
 | Setting | Development rule |
 | --- | --- |
 | Customer-web Vercel project | Use `overlay-landing` for both Preview and Production. The separate staging project, branch and subdomain are retired. |

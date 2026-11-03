@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { BillingProvider } from '@overlay/app-core'
-import { createFreeEntitlements } from '@overlay/billing'
-import { NoteService, NoteServiceError, type NoteRecord, type NoteRepository } from './NoteService'
+import { createUnsubscribedEntitlements } from '@overlay/billing'
+import { NoteService, type NoteRecord, type NoteRepository } from './NoteService'
 
 const now = Date.now()
 
@@ -39,7 +39,7 @@ function createNoteRepository(): NoteRepository {
   }
 }
 
-test('NoteService.createNote checks billing write quota before creating', async () => {
+test('NoteService.createNote preserves unpaid workspace setup within storage limits', async () => {
   let createCalls = 0
   const repository = createNoteRepository()
   const originalCreate = repository.createNote.bind(repository)
@@ -51,19 +51,17 @@ test('NoteService.createNote checks billing write quota before creating', async 
   const billing: Pick<BillingProvider, 'getEntitlements'> = {
     async getEntitlements() {
       return {
-        ...createFreeEntitlements(),
-        dailyUsage: { ask: 0, write: 1, agent: 0 },
-        dailyLimits: { ask: 10, write: 1, agent: 10 },
+        ...createUnsubscribedEntitlements(),
+        dailyUsage: { ask: 0, write: 0, agent: 0 },
+        dailyLimits: { ask: 0, write: 0, agent: 0 },
       }
     },
   }
 
   const service = new NoteService({ billing, noteRepository: repository })
-  await assert.rejects(
-    () => service.createNote({ userId: 'user_1', title: 'Blocked', content: '' }),
-    (error) => error instanceof NoteServiceError && error.statusCode === 402,
-  )
-  assert.equal(createCalls, 0)
+  const result = await service.createNote({ userId: 'user_1', title: 'Setup note', content: '' })
+  assert.equal(result.note?.title, 'Setup note')
+  assert.equal(createCalls, 1)
 })
 
 test('NoteService.createNote forwards a conversation id only when provided', async () => {

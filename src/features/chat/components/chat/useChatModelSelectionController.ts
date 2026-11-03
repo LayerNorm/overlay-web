@@ -12,7 +12,6 @@ import {
 } from 'react'
 import type { ReasoningLevel } from '@overlay/chat-core'
 import {
-  isFreeTierChatModelId,
   type GenerationMode,
   type VideoSubMode,
   type ChatModel,
@@ -291,7 +290,6 @@ export function useChatModelSelectionController({
   gatewayModelsLoading,
   generationMode,
   isActiveLoading,
-  isFreeTier,
   isTemporaryChat,
   reasoning,
   onReasoningChange,
@@ -317,7 +315,6 @@ export function useChatModelSelectionController({
   gatewayModelsLoading: boolean
   generationMode: GenerationMode
   isActiveLoading: boolean
-  isFreeTier: boolean
   isTemporaryChat: boolean
   reasoning?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel | undefined) => void
@@ -395,8 +392,6 @@ export function useChatModelSelectionController({
     getChatModelDisplayName,
     hoveredModelId,
     imageModels: IMAGE_MODELS,
-    isFreeTier,
-    isFreeTierChatModelId,
     modelPickerLabel,
     modelPickerListScrollRef,
     modelPickerRef,
@@ -428,7 +423,6 @@ export function useChatModelSelectionController({
     gatewayModelsLoading,
     handleVideoSubModeChange,
     hoveredModelId,
-    isFreeTier,
     modelPickerLabel,
     modelQualitiesPos,
     onHoveredModelChange,

@@ -13,8 +13,9 @@ import type {
   AttachmentPreviewOpenOptions,
 } from './AttachmentPreviewShell'
 import { normalizeGeneratedMarkdown } from './markdown/normalization'
-import { streamdownMath, streamdownRehypePlugins, streamdownRemarkPlugins } from './markdown/plugins'
+import { isFileContentHref, streamdownMath, streamdownRehypePlugins, streamdownRemarkPlugins } from './markdown/plugins'
 import { createBaseMdComponents, extractLinkText } from './markdown/renderers'
+import { resolveToolResourceHref } from './markdown/tool-resource-links'
 import { recordRender, timeSync } from '../lib/perf-debug'
 import {
   remarkOverlayMentions,
@@ -36,7 +37,7 @@ interface Props {
    * in-flight tail so text streams without a duplicate marker mid-message.
    */
   suppressTypingIndicator?: boolean
-  /** Prefix for /app/* markdown links (extension host). */
+  /** Prefix for app routes and authenticated file downloads (extension host). */
   appBaseUrl?: string | null
   /** Known mentions render as the same distinct pills used by the composer. */
   mentions?: ChatMessageMention[]
@@ -44,6 +45,8 @@ interface Props {
   renderMentionAvatar?: (mention: ChatMessageMention) => ReactNode
   /** Host-authorized saved paths can open their canonical Files records. */
   resolveFileHref?: (href: string) => string | undefined
+  /** Canonical resource URLs from successful native tool results in this response. */
+  toolResourceHrefs?: readonly string[]
   onOpenAttachmentPreview?: (
     preview: AttachmentPreview,
     options?: AttachmentPreviewOpenOptions,
@@ -57,6 +60,7 @@ function MarkdownMessageImpl({
   webSources,
   suppressTypingIndicator = false,
   resolveFileHref,
+  toolResourceHrefs,
   appBaseUrl = null,
   mentions,
   renderMentionAvatar,
@@ -124,7 +128,8 @@ function MarkdownMessageImpl({
         em: ({ children }: { children?: ReactNode }) => <em>{children}</em>,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         a(props: any) {
-          const href = props.href
+          const href = typeof props.href === 'string'
+            ? resolveToolResourceHref(props.href, toolResourceHrefs) ?? props.href : props.href
           const savedHref = typeof href === 'string' ? resolveFileHref?.(href) : undefined
           if (savedHref) return <a href={savedHref}>{props.children}</a>
           const linkText = extractLinkText(props.children as ReactNode).trim()
@@ -202,12 +207,12 @@ function MarkdownMessageImpl({
             return renderChip(href, chipLabel, [fallback])
           }
 
-          // Internal `/app/...` routes. Long garbled pasted links are rendered
-          // as plain text; otherwise resolve against `appBaseUrl` when provided.
+          // Internal routes and file downloads resolve against `appBaseUrl`.
+          // Garbled composite app links stay plain text.
           if (
             typeof href === 'string' &&
             href.startsWith('/app/') &&
-            (href.length > 96 || href.includes('%7C') || href.includes('|'))
+            (href.includes('%7C') || href.includes('|'))
           ) {
             return (
               <span className="whitespace-pre-wrap wrap-break-word text-(--foreground)">
@@ -215,7 +220,10 @@ function MarkdownMessageImpl({
               </span>
             )
           }
-          if (typeof href === 'string' && href.startsWith('/app/')) {
+          if (
+            typeof href === 'string' &&
+            (href.startsWith('/app/') || isFileContentHref(href))
+          ) {
             const abs = appBaseUrl ? `${appBaseUrl.replace(/\/$/, '')}${href}` : href
             return (
               <a
@@ -231,7 +239,7 @@ function MarkdownMessageImpl({
         },
       }
     },
-    [knowledgeSources, stableSourceCitations, stableWebSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview, resolveFileHref],
+    [knowledgeSources, stableSourceCitations, stableWebSources, appBaseUrl, mentions, renderMentionAvatar, onOpenAttachmentPreview, resolveFileHref, toolResourceHrefs],
   )
   const activeRemarkPlugins = useMemo(
     (): Pluggable[] => [...streamdownRemarkPlugins, [remarkOverlayMentions, { mentions: mentions ?? [] }]],
@@ -314,6 +322,7 @@ export const MarkdownMessage = memo(MarkdownMessageImpl, (prev, next) => {
     prev.text === next.text &&
     prev.isStreaming === next.isStreaming &&
     prev.resolveFileHref === next.resolveFileHref &&
+    prev.toolResourceHrefs === next.toolResourceHrefs &&
     prev.suppressTypingIndicator === next.suppressTypingIndicator &&
     prev.appBaseUrl === next.appBaseUrl &&
     prev.mentions === next.mentions &&

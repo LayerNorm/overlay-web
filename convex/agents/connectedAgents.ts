@@ -23,6 +23,7 @@ import { finalizeWorkspaceLedger, markBudgetReservationReconcile } from '../plat
 import { connectedAgentPolicyProjection } from '../lib/connectedAgentPolicyProjection'
 import { applySandboxSpendLimits, prepareSandboxSpendLimits } from '../lib/sandboxSpendLimits'
 import { previewProviderBudgetAvailable } from '../lib/previewProviderBudget'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 
 const anyObject = v.any()
 const MAX_COMMAND_BYTES = 128 * 1024
@@ -3499,10 +3500,9 @@ function terminalBilling(
     agentId: typeof billing.agentId === 'string' ? billing.agentId : '',
     conversationId: typeof billing.conversationId === 'string' ? billing.conversationId : '',
     environmentId: typeof billing.environmentId === 'string' ? billing.environmentId : '',
-    forceFreeTierLimits: false,
     inputTokens: typeof tokens.input === 'number' ? tokens.input : 0,
     modelId:
-      typeof billing.modelId === 'string' ? billing.modelId : 'openrouter/free',
+      typeof billing.modelId === 'string' ? billing.modelId : DEFAULT_MODEL_ID,
     modelUsageBilling:
       billing.modelUsageBilling === 'overlay'
         ? ('overlay' as const)

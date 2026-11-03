@@ -132,7 +132,6 @@ function buildNativeWorkflowInput(
       isDefaultMaster: Boolean(prepared.agent.isDefault),
     }),
     messages: prepared.turnContext.messages,
-    modelCandidates: prepared.modelCandidates,
   }
 }
 

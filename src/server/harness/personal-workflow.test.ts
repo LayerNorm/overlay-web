@@ -6,7 +6,7 @@ import { personalHarnessChildInput, personalHarnessWorkflow } from '@/server/wor
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), readAndClaim: vi.fn(), apply: vi.fn(), run: vi.fn(), ports: vi.fn(),
   tools: vi.fn(), waits: vi.fn(), admission: vi.fn(), finish: vi.fn(), close: vi.fn(), notify: vi.fn(),
-  child: vi.fn(), admit: vi.fn(), start: vi.fn(), get: vi.fn(), progress: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), fallback: vi.fn() }))
+  child: vi.fn(), admit: vi.fn(), start: vi.fn(), get: vi.fn(), progress: vi.fn(), conflict: vi.fn(), dispose: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('workflow', () => ({
   FatalError: class extends Error {}, getWorkflowMetadata: () => ({ workflowRunId: 'workflow' }),
@@ -22,7 +22,7 @@ vi.mock('./personal-tools', () => ({ createPersonalHarnessTools: mocks.tools }))
 vi.mock('./personal-waits', () => ({ createPersonalHarnessWaitPorts: mocks.waits }))
 vi.mock('./personal-child-steps', () => ({ admitPersonalHarnessChild: mocks.admit }))
 vi.mock('./personal-delivery-steps', () => ({
-  finishPersonalHarnessDelivery: mocks.finish, closePersonalHarnessStream: mocks.close, writePersonalHarnessFallback: mocks.fallback }))
+  finishPersonalHarnessDelivery: mocks.finish, closePersonalHarnessStream: mocks.close }))
 vi.mock('./personal-wait-steps', () => ({ harnessWakeToken: (id: string) => `harness:wake:${id}`,
   notifyHarnessAncestors: mocks.notify, readHarnessChild: mocks.child }))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.get } }))
@@ -39,33 +39,6 @@ const input: PersonalHarnessWorkflowInput = {
 }
 let state: HarnessSnapshot
 const completed = () => ({ outcome: 'finished', snapshot: { ...state, status: 'completed', resultSummary: 'Verified result.' }, messages: [], steps: [] })
-
-test('fallback notices stream through root delivery and survive final transcript persistence', async () => {
-  mocks.fallback.mockResolvedValue('Selected model unavailable, switching to fallback.')
-  mocks.run.mockImplementationOnce(async () => {
-    await mocks.ports.mock.calls[0][2].onFallback({ from: 'fixture/model', to: 'fixture/fallback', receiptId: 'model:0', reason: 'model_unavailable' })
-    return completed()
-  })
-  await personalHarnessWorkflow({ ...input, modelCandidates: ['fixture/model', 'fixture/fallback'] })
-  expect(mocks.fallback).toHaveBeenCalledOnce()
-  expect(mocks.finish.mock.calls[0][1].content).toBe('Selected model unavailable, switching to fallback.\n\nVerified result.')
-})
-
-test('fallback notices remain in final transcript when a later failure preserves prior progress', async () => {
-  const notice = 'Selected model unavailable, switching to fallback.'
-  mocks.fallback.mockResolvedValue(notice)
-  mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: 'Later provider failure.' })
-  mocks.run.mockImplementationOnce(async () => {
-    const ports = mocks.ports.mock.results[0]!.value as HarnessExecutionPorts
-    await ports.recordModelStep({ text: 'Earlier progress.' } as never, 'model:0')
-    await mocks.ports.mock.calls[0][2].onFallback({
-      from: 'fixture/model', to: 'fixture/fallback', receiptId: 'model:1', reason: 'model_unavailable',
-    })
-    throw new Error('Later provider failure.')
-  })
-  await personalHarnessWorkflow({ ...input, modelCandidates: ['fixture/model', 'fixture/fallback'] })
-  expect(mocks.finish.mock.calls[0][1].content).toBe(`${notice}\n\nEarlier progress.`)
-})
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -105,7 +78,6 @@ test('SDK streaming failures close personal delivery descriptively without retry
   expect(mocks.run).toHaveBeenCalledOnce()
   expect(mocks.finish).toHaveBeenCalledOnce()
   expect(mocks.close).toHaveBeenCalledWith(reason)
-  expect(mocks.fallback).not.toHaveBeenCalled()
 })
 
 test('root registers wakeups before executing and persists authoritative delivery before closing', async () => {
@@ -115,7 +87,7 @@ test('root registers wakeups before executing and persists authoritative deliver
   expect(mocks.conflict.mock.invocationCallOrder[0]).toBeLessThan(mocks.admission.mock.invocationCallOrder[0])
   expect(mocks.admission.mock.invocationCallOrder[0]).toBeLessThan(mocks.run.mock.invocationCallOrder[0])
   // The runner reuses the admitted post-claim snapshot instead of reading and claiming again.
-  expect(mocks.ports.mock.calls[0][3]).toBe(state)
+  expect(mocks.ports.mock.calls[0][2]).toBe(state)
   expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ workflowRunId: 'workflow' }),
     expect.objectContaining({ content: 'Verified result.' }), { emitWebhook: true, turnId: 'turn' })
   expect(mocks.finish.mock.invocationCallOrder[0]).toBeLessThan(mocks.close.mock.invocationCallOrder[0])

@@ -1,23 +1,9 @@
 import 'server-only'
 
-import { canUsePaidBudgetFeatures } from '@/server/billing/billing-runtime'
-import {
-  DEFAULT_MODEL_ID,
-  FREE_TIER_DEFAULT_MODEL_ID,
-  resolveFreeTierChatModelId,
-} from '@/shared/ai/gateway/model-types'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import type { ActConversationRepository, ConversationId } from './ActConversationRepository'
-
-function clampFreeTierAskModels(modelIds: string[] | undefined): string[] {
-  const requested =
-    modelIds
-      ?.map(resolveFreeTierChatModelId)
-      .filter((id): id is string => Boolean(id)) ?? []
-  const deduped = [...new Set(requested)].slice(0, 4)
-  return deduped.length > 0 ? deduped : [FREE_TIER_DEFAULT_MODEL_ID]
-}
 
 function normalizePaidChatModels(modelIds: string[] | undefined, actModelId: string | undefined) {
   return normalizeChatModelSelection({
@@ -44,12 +30,6 @@ export async function ensureActConversationId(params: {
     throw new Error('conversationClientId required')
   }
 
-  const isFreeTier = !canUsePaidBudgetFeatures(params.entitlements)
-  const freeAskModelIds = clampFreeTierAskModels(params.askModelIds)
-  const freeActModelId =
-    resolveFreeTierChatModelId(params.actModelId) ??
-    freeAskModelIds[0] ??
-    FREE_TIER_DEFAULT_MODEL_ID
   const paidModels = normalizePaidChatModels(params.askModelIds, params.actModelId)
 
   const id = await params.repository.createConversation({
@@ -59,8 +39,8 @@ export async function ensureActConversationId(params: {
     workspaceId: params.workspaceId,
     createdByPrincipalId: params.createdByPrincipalId,
     title: params.title || 'New Chat',
-    askModelIds: isFreeTier ? freeAskModelIds : paidModels.askModelIds,
-    actModelId: isFreeTier ? freeActModelId : paidModels.actModelId,
+    askModelIds: paidModels.askModelIds,
+    actModelId: paidModels.actModelId,
     lastMode: 'act',
   })
   if (!id) {

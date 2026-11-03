@@ -92,7 +92,7 @@ function RunOut({ mode, topUp, limit, max, onMode, onTopUp, onLimit }: RunOutPro
       </div>
       <div>
         <div className={s.opts} role="radiogroup" aria-label="When credit runs out">
-          {option('stop', 'Hard stop', 'Paid resources pause at $0. Free ones keep working. Nothing else is charged.')}
+          {option('stop', 'Hard stop', 'Usage stops at $0. Nothing else is charged.')}
           {option(
             'go',
             'Keep going',

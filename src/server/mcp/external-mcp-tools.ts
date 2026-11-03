@@ -9,6 +9,7 @@ import { canUsePaidBudgetFeatures } from '@/server/billing/billing-runtime'
 import { logger } from '@/server/observability/logger'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { MCP_ACCESS_LABEL, MCP_EXTERNAL_WITHHELD_TOOL_IDS, mcpToolGrantFor } from '@/shared/mcp/access'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { McpPrincipal } from './McpAccessService'
 
 export const EXTERNAL_MCP_APPROVAL_REFUSAL =
@@ -49,7 +50,7 @@ export async function buildOverlayMcpTools(principal: McpPrincipal): Promise<{ t
     const tooling = await buildExternalAppTooling({
       actorUserId: principal.userId,
       // The effective model only picks provider-specific tool variants; MCP tools do not run a model.
-      effectiveModelId: 'openrouter/free',
+      effectiveModelId: DEFAULT_MODEL_ID,
       entitlements,
       grantToolIds: mcpToolGrantFor(principal.access),
       idempotencyKey: `mcp:${principal.grantId}:${requestId}`,

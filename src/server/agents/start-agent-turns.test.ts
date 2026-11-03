@@ -10,6 +10,7 @@ import {
   WorkspaceAgentInvocationError,
   type WorkspaceAgentInvocation,
 } from './workspace-agent-invocation'
+import { WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
 
 const args = {
   actorUserId: 'user-1',
@@ -56,13 +57,14 @@ function invocation(
 function fixture(
   invocations: WorkspaceAgentInvocation[],
   startRemote: NonNullable<WorkspaceAgentTurnDispatcherDependencies['startRemote']>,
-  options: { resumed?: boolean; nativeStartFails?: boolean } = {},
+  options: { resumed?: boolean; nativeStartFails?: boolean; admissionFails?: boolean } = {},
 ) {
   const nativeStarts: string[] = []
   const remoteStarts: string[] = []
   const failures: string[] = []
   const turnInputs: Array<Record<string, unknown>> = []
   const harnessStarts: string[] = []
+  const admissions: boolean[] = []
   const collaboration = {
     async enqueueMemoryExtraction() {},
     async startAgentTurn(input: Record<string, unknown> & { agentId: string }) {
@@ -77,6 +79,13 @@ function fixture(
     async failAgentMessage() {},
   }
   const dependencies: WorkspaceAgentTurnDispatcherDependencies = {
+    requireExecution: async (input) => {
+      admissions.push(input.checkBudget ?? true)
+      if (options.admissionFails) {
+        throw new WorkspaceExecutionError({ state: 'subscription_required', canExecute: false }, true)
+      }
+      return { billingEnabled: false } as never
+    },
     getCollaboration: () => collaboration as unknown as ReturnType<
       NonNullable<WorkspaceAgentTurnDispatcherDependencies['getCollaboration']>
     >,
@@ -97,6 +106,7 @@ function fixture(
     failures,
     turnInputs,
     harnessStarts,
+    admissions,
   }
 }
 
@@ -141,6 +151,29 @@ test('an enabled external peer with a target uses remote dispatch', async () => 
   assert.deepEqual(f.nativeStarts, [])
   assert.deepEqual(f.remoteStarts, ['external'])
   assert.deepEqual(f.failures, [])
+})
+
+test('agent starts require workspace admission before opening a durable turn', async () => {
+  const f = fixture([invocation('native')], async () => {}, { admissionFails: true })
+
+  await f.run()
+
+  assert.deepEqual(f.admissions, [false])
+  assert.deepEqual(f.nativeStarts, [])
+  assert.deepEqual(f.harnessStarts, [])
+  assert.deepEqual(f.failures, ['principal-native'])
+})
+
+test('an unfunded BYO turn is refused before remote dispatch', async () => {
+  const f = fixture([
+    invocation('external', { externalAgent: true, remoteTarget: true }),
+  ], async () => {}, { admissionFails: true })
+
+  await f.run()
+
+  assert.deepEqual(f.admissions, [false])
+  assert.deepEqual(f.remoteStarts, [])
+  assert.deepEqual(f.failures, ['principal-external'])
 })
 
 test('unsupported native identities never open a legacy delivery', async () => {

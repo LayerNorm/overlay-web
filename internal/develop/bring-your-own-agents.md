@@ -114,12 +114,14 @@ managed leases to immediate cleanup.
 
 Phase 4 routes an agent with an enabled binding through the existing room mention path. Mention,
 room membership, agent participation, binding, environment scope, and the host's advertised ACP
-adapter are revalidated before dispatch. PostgreSQL and Convex each use one provider transaction
-to create the existing assistant placeholder, a `remote` AgentRun, its remote-session record, and
-one start command. The payer allowance check happens before that transaction; a non-null billing
-reservation is released if the transaction cannot commit and its idempotency key is the
-message-agent invocation nonce. User-owned ACP model execution is not charged as Overlay model
-usage.
+adapter are revalidated before dispatch. A new hosted remote start requires an active workspace
+account, a paid current period, and available funds; BYO inference creates no Overlay model-usage
+reservation but does not bypass workspace admission. Billing-disabled self-hosted deployments
+explicitly bypass paid admission. PostgreSQL and Convex each use one provider transaction to create
+the existing assistant placeholder, a `remote` AgentRun, its remote-session record, and one start
+command. A non-null billing reservation is released if the transaction cannot commit and its
+idempotency key is the message-agent invocation nonce. User-owned ACP model execution is not
+charged as Overlay model usage.
 
 Host event batches advance the remote cursor and project full Markdown checkpoints plus stable
 action parts into that one assistant message in the same transaction. Session start binds the

@@ -57,12 +57,12 @@ test('withViewModelSelection carries the picked model into a stale runtime snaps
   })
 
   const next = withViewModelSelection(stale, {
-    selectedModels: ['openrouter/free'],
-    selectedActModel: 'openrouter/free',
+    selectedModels: ['deepseek/deepseek-v4-flash-0731'],
+    selectedActModel: 'deepseek/deepseek-v4-flash-0731',
   })
 
-  assert.deepEqual(next.selectedModels, ['openrouter/free'])
-  assert.equal(next.selectedActModel, 'openrouter/free')
+  assert.deepEqual(next.selectedModels, ['deepseek/deepseek-v4-flash-0731'])
+  assert.equal(next.selectedActModel, 'deepseek/deepseek-v4-flash-0731')
   assert.deepEqual(next.exchangeModels, [['openai/gpt-5.4-mini']])
   assert.deepEqual(stale.selectedModels, ['openai/gpt-5.4-mini'])
 })

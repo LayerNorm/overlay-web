@@ -488,7 +488,6 @@ export class ConvexActConversationRepository implements ActConversationRepositor
 
   async recordUsageBatch(args: {
     events: ActUsageEvent[]
-    forceFreeTierLimits: boolean
     userId: string
   }): Promise<void> {
     await convex.mutation('platform/usage:recordBatch', {

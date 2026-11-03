@@ -52,7 +52,7 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
     + (context.stagnationRecoveryAttempt !== undefined
       ? `\nRecovery attempt ${context.stagnationRecoveryAttempt}: inspect recent failed tool evidence, missing capabilities and unmet dependencies; revise the approach and use different authorized tools. Do not manufacture progress by repeating the same plan, checkpoint or tool call. Call harness_report_blocker only when a genuinely missing user input, permission or resource requires a durable wait.`
       : '')
-    + (context.finalAnswerRequired ? '\nAll milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.' : '')
+    + (context.finalAnswerRequired ? '\nAll action milestones are complete. Reply to the user now in plain text with the saved results and requested links. Reporting-only milestones finish with your answer; do not call tools or write tool calls as text.' : '')
 }
 
 function safeFailedEvidenceSummary(state: HarnessSnapshot): string {

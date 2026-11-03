@@ -2,9 +2,8 @@
 
 /**
  * Global `AI_GATEWAY_API_KEY` credit check for Convex background jobs.
- * Mirrors src/server/ai/gateway/gateway-credits.ts — when the shared key's
- * balance drops below the threshold, paid-tier model choices fall back to the
- * free `openrouter/free` model so the remaining credit is preserved.
+ * Mirrors src/server/ai/gateway/gateway-credits.ts and reports shared-key
+ * balance for operational diagnostics.
  * Fails open: an unreadable credits endpoint never blocks generation.
  */
 

@@ -25,6 +25,14 @@ type ResolvedComputer = {
 
 export type ComputerPublicationRequest = ComputerArtifactInput
 
+function publishedResult(artifact: PublishedComputerArtifact) {
+  return {
+    success: true as const,
+    artifact,
+    downloadUrl: `/api/v1/files/${encodeURIComponent(artifact.fileId)}/content`,
+  }
+}
+
 function canonicalResult(manifest: ComputerArtifactManifest): PublishedComputerArtifact {
   if (!manifest.fileId) throw new Error('artifact_not_committed')
   return {
@@ -283,7 +291,7 @@ export async function publishComputerFile(args: {
   userId: string
   workspaceId?: string
   resolveComputer(): Promise<ResolvedComputer>
-}): Promise<{ success: true; artifact: PublishedComputerArtifact } | ReturnType<typeof safeFailure>> {
+}): Promise<ReturnType<typeof publishedResult> | ReturnType<typeof safeFailure>> {
   try {
     const { fileService: service } = await import('./http')
     if (!args.authority) throw new Error('HARNESS_PUBLICATION_NOT_AUTHORIZED')
@@ -301,10 +309,10 @@ export async function publishComputerFile(args: {
       artifactPublicationAuthority: args.authority,
     })
     let manifest = await service.getComputerArtifact(reference, input)
-    if (manifest?.fileId) return { success: true, artifact: canonicalResult(manifest) }
+    if (manifest?.fileId) return publishedResult(canonicalResult(manifest))
     if (manifest) {
       const reconciled = await service.verifyAndCommitComputerArtifact({ manifest, authority: args.authority })
-      if (reconciled.kind === 'published') return { success: true, artifact: reconciled.artifact }
+      if (reconciled.kind === 'published') return publishedResult(reconciled.artifact)
     }
 
     const computer = await args.resolveComputer()
@@ -341,7 +349,7 @@ export async function publishComputerFile(args: {
         mimeType: args.request.mimeType,
       },
     })
-    if (manifest.fileId) return { success: true, artifact: canonicalResult(manifest) }
+    if (manifest.fileId) return publishedResult(canonicalResult(manifest))
     let uploadResult: Record<string, unknown> = { kind: 'helper_error' }
     for (let attempt = 0; attempt < 2; attempt++) {
       reference = await authorizeComputerPublication({
@@ -372,7 +380,7 @@ export async function publishComputerFile(args: {
         } catch (_error) {
           // Publication is already verified; cleanup is best effort.
         }
-        return { success: true, artifact: reconciled.artifact }
+        return publishedResult(reconciled.artifact)
       }
       if (attempt === 0 && uploadResult.kind === 'http' && uploadResult.status === 403) continue
       break

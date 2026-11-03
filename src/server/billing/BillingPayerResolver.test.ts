@@ -11,18 +11,31 @@ import {
 const personal = account({ billingAccountId: 'ba_personal', scope: 'personal', userId: 'user_1' })
 const workspace = account({ billingAccountId: 'ba_workspace', scope: 'workspace', workspaceId: 'workspace_1' })
 
-test('a workspace with no wallet, or a wallet that is not on a paid plan, is on the free allowance', async () => {
+test('hosted workspaces never fall back to personal billing', async () => {
   const noWallet = new BillingPayerResolver({
     billing: billingRepository({ personal }),
     workspaces: { resolveActiveWorkspace: async () => organizationAccess('member') },
   })
-  assert.equal((await noWallet.resolve({ userId: 'user_1', workspaceId: 'workspace_1' })).scope, 'personal')
+  await assert.rejects(
+    noWallet.resolve({ userId: 'user_1', workspaceId: 'workspace_1' }),
+    (error: unknown) => error instanceof BillingPayerResolutionError
+      && error.code === 'workspace_wallet_not_configured',
+  )
 
   const unpaidWallet = new BillingPayerResolver({
     billing: billingRepository({ personal, workspace, plan: 'free' }),
     workspaces: { resolveActiveWorkspace: async () => organizationAccess('member') },
   })
-  assert.equal((await unpaidWallet.resolve({ userId: 'user_1', workspaceId: 'workspace_1' })).scope, 'personal')
+  assert.equal((await unpaidWallet.resolve({ userId: 'user_1', workspaceId: 'workspace_1' })).scope, 'workspace')
+})
+
+test('billing-disabled self-hosted deployments retain personal bookkeeping', async () => {
+  const selfHosted = new BillingPayerResolver({
+    billingEnabled: async () => false,
+    billing: billingRepository({ personal, workspace }),
+    workspaces: { resolveActiveWorkspace: async () => organizationAccess('member') },
+  })
+  assert.equal((await selfHosted.resolve({ userId: 'user_1', workspaceId: 'workspace_1' })).scope, 'personal')
 })
 
 test('a workspace with a paid plan is the payer, whatever kind of workspace it is, and keeps programmatic attribution', async () => {

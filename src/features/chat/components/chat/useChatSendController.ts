@@ -74,7 +74,6 @@ export function useChatSendController({
   isBudgetExhaustedPaid,
   connectionUnavailable,
   isFirstMessage,
-  isFreeTier,
   isSendBlocked,
   premiumModelBlocked,
   isTemporaryChat,
@@ -152,7 +151,6 @@ export function useChatSendController({
   isBudgetExhaustedPaid: boolean
   connectionUnavailable: boolean
   isFirstMessage: boolean
-  isFreeTier: boolean
   isSendBlocked: boolean
   premiumModelBlocked: boolean
   isTemporaryChat: boolean
@@ -440,7 +438,7 @@ export function useChatSendController({
         effectiveGenType,
         emptyRuntime: emptyRuntimeRef.current,
         ensureConversationRuntime,
-        isFreeTier,
+        isSendBlocked,
         isFirstMessage,
         isTemporaryChatRef,
         loadChats,
@@ -514,7 +512,6 @@ export function useChatSendController({
     isBudgetExhaustedPaid,
     connectionUnavailable,
     isFirstMessage,
-    isFreeTier,
     isSendBlocked,
     premiumModelBlocked,
     isStreamChatActive,

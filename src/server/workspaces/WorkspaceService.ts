@@ -1,5 +1,4 @@
 import { defaultWorkspaceName } from '@/shared/workspaces/default-name'
-import { MAX_FREE_WORKSPACES_PER_OWNER } from '@/shared/billing/free-allowance'
 import 'server-only'
 
 import { randomBytes, randomUUID } from 'node:crypto'
@@ -49,8 +48,6 @@ type WorkspaceServiceOptions = {
   /** Overrides OVERLAY_COLLABORATION_ROLLOUT, mostly for tests. */
   deploymentRolloutStage?: WorkspaceRolloutStage
   lifecycleEvents?: LifecycleEventPublisher
-  /** Whether a workspace is on a paid plan. Workspaces with a plan do not count toward a person's free-workspace limit. */
-  hasWorkspacePlan?: (workspaceId: string) => Promise<boolean>
   workspaceHandleWritesEnabled?: () => boolean
   createHandleSuffix?: () => string
 }
@@ -66,7 +63,6 @@ export class WorkspaceServiceError extends Error {
       | 'forbidden'
       | 'invitation_expired'
       | 'invitation_invalid'
-      | 'free_workspace_limit'
       | 'last_owner'
       | 'not_found'
       | 'validation',
@@ -222,14 +218,6 @@ export class WorkspaceService {
   }): Promise<WorkspaceAccess> {
     const actorUserId = required(args.actorUserId, 'actorUserId')
     const name = required(args.name, 'name')
-    // Every workspace has its own free allowance, so the number a person can own is capped; otherwise creating
-    // workspaces would multiply it. Workspaces someone archived do not count.
-    const owned = (await this.repository.listForUser(actorUserId)).filter((access) =>
-      access.membership.role === 'owner'
-      && access.membership.status === 'active'
-      && access.workspace.status === 'active')
-    const planned = await Promise.all(owned.map((access) => this.options.hasWorkspacePlan?.(access.workspace.id) ?? false))
-    if (planned.filter((hasPlan) => !hasPlan).length >= MAX_FREE_WORKSPACES_PER_OWNER) throw freeWorkspaceLimit()
     const explicitHandle = args.slug === undefined ? undefined : this.normalizeHandle(args.slug)
     const base = workspaceHandleBaseFromName(name)
     const automaticBase = base
@@ -1267,14 +1255,6 @@ function hasWorkspaceHandleConflict(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error)
   return message.includes('WORKSPACE_HANDLE_ALREADY_EXISTS')
     || message.includes('WORKSPACE_SLUG_ALREADY_EXISTS')
-}
-
-function freeWorkspaceLimit(): WorkspaceServiceError {
-  return new WorkspaceServiceError(
-    `You can own up to ${MAX_FREE_WORKSPACES_PER_OWNER} free workspaces. Add a plan to one of them, or archive one you no longer use, to create another.`,
-    403,
-    'free_workspace_limit',
-  )
 }
 
 function forbidden(): WorkspaceServiceError {

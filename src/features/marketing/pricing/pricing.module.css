@@ -14,7 +14,7 @@
 .root section { display: grid; grid-template-columns: 280px minmax(0, 1fr); column-gap: 56px; padding: 88px 56px; border-top: var(--hairline); }
 section > .lab h2 { font-size: 24px; font-weight: 500; line-height: 1.2; letter-spacing: -0.025em; }
 section > .lab p { font-size: 14.5px; line-height: 1.6; color: var(--sl-muted); margin-top: 10px; }
-/* 01 free vs paid */
+/* 01 pricing modes */
   .kinds { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--sl-line-2); border-radius: 14px; overflow: hidden; background: var(--sl-card); box-shadow: var(--sl-shadow); }
 .kind { padding: 26px 26px 28px; }
 .kind + .kind { border-left: var(--hairline); }

@@ -1,7 +1,7 @@
 import 'server-only'
 
 import type { GatewayCatalogModel } from '@/shared/ai/gateway/gateway-catalog'
-import { OVERLAY_FREE_CHAT_MODELS } from '@/shared/ai/gateway/model-data'
+import { isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 
 export type OverlayProviderModelSummary = {
   id: string
@@ -15,13 +15,7 @@ export function overlayProviderDiscoveryModels(
   const seen = new Set<string>()
 
   for (const model of gatewayModels) {
-    if (model.type !== 'language' || seen.has(model.id)) continue
-    seen.add(model.id)
-    models.push({ id: model.id, name: model.name })
-  }
-
-  for (const model of OVERLAY_FREE_CHAT_MODELS) {
-    if (seen.has(model.id)) continue
+    if (model.type !== 'language' || seen.has(model.id) || isRetiredHostedModelId(model.id)) continue
     seen.add(model.id)
     models.push({ id: model.id, name: model.name })
   }

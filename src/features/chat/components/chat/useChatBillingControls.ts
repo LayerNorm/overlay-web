@@ -3,9 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   DEFAULT_MODEL_ID,
-  FREE_TIER_AUTO_MODEL_ID,
-  isFreeTierChatModelId,
-  isLegacyFreeTierDefaultModelId,
+  isRetiredHostedModelId,
   type ChatModel,
 } from '@/shared/ai/gateway/model-types'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
@@ -66,38 +64,6 @@ function useByokModelAvailability({
   return unavailable
 }
 
-function useFreeTierModelSelection({
-  activeChatId,
-  chatPrefsHydrated,
-  isModelAccessRestricted,
-  selectedActModel,
-  setSelectedActModel,
-  setSelectedModels,
-}: {
-  activeChatId: string | null
-  chatPrefsHydrated: boolean
-  isModelAccessRestricted: boolean
-  selectedActModel: string
-} & ModelSelectionControls) {
-  useEffect(() => {
-    if (!chatPrefsHydrated || !isModelAccessRestricted || activeChatId) return
-    if (isByokModelId(selectedActModel)) return
-    if (isFreeTierChatModelId(selectedActModel) && !isLegacyFreeTierDefaultModelId(selectedActModel)) return
-
-    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
-    setSelectedModels([FREE_TIER_AUTO_MODEL_ID])
-    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent, react-doctor/no-pass-data-to-parent
-    setSelectedActModel(FREE_TIER_AUTO_MODEL_ID)
-  }, [
-    activeChatId,
-    chatPrefsHydrated,
-    isModelAccessRestricted,
-    selectedActModel,
-    setSelectedActModel,
-    setSelectedModels,
-  ])
-}
-
 function useZdrModelSelection({
   activeChatId,
   chatPrefsHydrated,
@@ -117,6 +83,7 @@ function useZdrModelSelection({
 } & ModelSelectionControls) {
   useEffect(() => {
     if (!chatPrefsHydrated || !effectiveOnlyAllowZdrModels) return
+    if ([selectedActModel, ...selectedModels].some(isRetiredHostedModelId)) return
     if ([selectedActModel, ...selectedModels].some(isByokModelId)) return
     const fallback = selectableTextModels[0]?.id ?? DEFAULT_MODEL_ID
     const nextSelected = selectedModels.filter((id) => modelSupportsZeroDataRetention(id)).slice(0, 1)
@@ -163,7 +130,7 @@ function applyFetchedEntitlements(
   const exhausted = planKind === 'paid' && budgetRemainingCentsFor(data) <= 0
   if (exhausted && !announcedBudgetExhaustedRef.current) {
     announcedBudgetExhaustedRef.current = true
-    showUsageExhaustedToast(router, 'paid')
+    showUsageExhaustedToast(router)
   } else if (!exhausted) {
     announcedBudgetExhaustedRef.current = false
     toast.dismiss('usage-exhausted')
@@ -240,7 +207,6 @@ export function useChatBillingControls({
     budgetUsedCents,
     budgetRemainingCents,
     isBudgetExhaustedPaid,
-    isFreeTier,
     isModelAccessRestricted,
     effectiveOnlyAllowZdrModels,
     entitlements,
@@ -249,6 +215,13 @@ export function useChatBillingControls({
     selectableTextModels,
   } = modelAccess
   const premiumModelBlocked = isTextModelLocked(selectedActModel, isModelAccessRestricted)
+  const retiredModelSelected = [selectedActModel, ...selectedModels].some(isRetiredHostedModelId)
+  const retiredModelNotice = 'This model is retired. Choose a supported paid model before sending.'
+  useEffect(() => {
+    setComposerNotice((current) => retiredModelSelected
+      ? retiredModelNotice
+      : current === retiredModelNotice ? null : current)
+  }, [retiredModelSelected, setComposerNotice])
   const connectionUnavailable = useByokModelAvailability({
     chatPrefsHydrated,
     modelCatalogReady,
@@ -257,16 +230,7 @@ export function useChatBillingControls({
     selectedModels,
     setComposerNotice,
   })
-  const isSendBlocked = premiumModelBlocked || connectionUnavailable
-
-  useFreeTierModelSelection({
-    activeChatId,
-    chatPrefsHydrated,
-    isModelAccessRestricted,
-    selectedActModel,
-    setSelectedActModel,
-    setSelectedModels,
-  })
+  const isSendBlocked = premiumModelBlocked || connectionUnavailable || retiredModelSelected
 
   useZdrModelSelection({
     activeChatId,
@@ -292,7 +256,6 @@ export function useChatBillingControls({
     handleSaveTopUpPreference,
     handleStartTopUp,
     isBudgetExhaustedPaid,
-    isFreeTier,
     isPaidSubscription,
     isSendBlocked,
     loadSubscription,

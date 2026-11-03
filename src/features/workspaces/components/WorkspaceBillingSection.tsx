@@ -227,8 +227,8 @@ function WalletSetupCard({
     <div className="rounded-xl border border-(--border) p-5">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-sm font-medium text-(--foreground)">Free</p>
-          <p className="mt-1 max-w-xl text-xs leading-5 text-(--muted)">Everyone in this workspace shares one free weekly allowance of chat turns. Upgrade for shared credits and every model.</p>
+          <p className="text-sm font-medium text-(--foreground)">Workspace setup</p>
+          <p className="mt-1 max-w-xl text-xs leading-5 text-(--muted)">Set up your workspace before payment. Model execution starts after the $8/month usage credit is active; bring your own model credentials if you prefer.</p>
         </div>
         {canManage ? <Button size="sm" disabled={busy !== null} onClick={onUpgrade}><WalletCards size={13} />Upgrade</Button> : null}
       </div>
