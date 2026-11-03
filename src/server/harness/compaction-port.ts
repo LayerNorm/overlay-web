@@ -156,9 +156,9 @@ function validateSummary(summary: string, prompt: string, targetSummaryTokens: n
 async function invokeSummary(
   dependencies: CompactionDependencies,
   attempt: SummaryAttempt,
+  modelId: string,
+  limits: Awaited<ReturnType<typeof readHarnessModelLimits>>,
 ): Promise<string> {
-  const modelId = dependencies.getCurrentModelId()
-  const limits = await readHarnessModelLimits(modelId)
   const maxOutputTokens = Math.min(limits.maxOutputTokens ?? 8_192, attempt.targetSummaryTokens + 2_048)
   const instructions = harnessSummaryInstructions(attempt.targetSummaryTokens)
   const prepared = await dependencies.prepare({
@@ -290,23 +290,29 @@ export function createHarnessCompactionPort(dependencies: CompactionDependencies
         retryCount: attempt.retryCount, updatedAt: Date.now(),
       },
     })
+    const modelId = dependencies.getCurrentModelId()
+    const limits = await readHarnessModelLimits(modelId)
     try {
-      return await invokeSummary(dependencies, attempt)
+      return await invokeSummary(dependencies, attempt, modelId, limits)
     } catch (error) {
       return reconcileSummaryFailure(dependencies, attempt, attempt.cycleId, attempt.retryCount, error)
     }
   }
 
   async function summarize(prompt: string, targetSummaryTokens: number, receiptId: string): Promise<string> {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      const id = attempt ? `${receiptId}:retry:1` : receiptId
+    const retryMatch = /:retry:(\d+)$/.exec(receiptId)
+    const startingRetryCount = retryMatch ? Number(retryMatch[1]) : 0
+    if (startingRetryCount > 1) throw new Error('Summary attempts exhausted.')
+    const cycleId = retryMatch ? receiptId.slice(0, retryMatch.index) : receiptId
+    for (let retryCount = startingRetryCount; retryCount < 2; retryCount++) {
+      const id = retryCount ? `${cycleId}:retry:${retryCount}` : cycleId
       try {
         return await summarizeAttempt({
           prompt,
           targetSummaryTokens,
           receiptId: id,
-          cycleId: receiptId,
-          retryCount: attempt,
+          cycleId,
+          retryCount,
         })
       } catch (error) {
         const state = await readHarnessState(dependencies.reference)
@@ -316,8 +322,8 @@ export function createHarnessCompactionPort(dependencies: CompactionDependencies
         const recovered = state.summaryRecovery?.receiptId === id
           ? await waitForHarnessModelRecovery(dependencies.reference, id)
           : await dependencies.waitForCapacity(state, id, dependencies.getCurrentModelId())
-        if ((recovered || (state.compaction?.cycleId === receiptId
-          && state.compaction.status === 'interrupted' && state.status === 'running')) && attempt === 0) continue
+        if ((recovered || (state.compaction?.cycleId === cycleId
+          && state.compaction.status === 'interrupted' && state.status === 'running')) && retryCount === 0) continue
         throw error
       }
     }

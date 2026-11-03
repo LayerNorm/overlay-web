@@ -115,118 +115,104 @@ export function createHarnessModelPorts(input: {
         limits.maxOutputTokens ?? 8_192, Math.max(1, Math.floor(contextWindow / 4)))
       let state = await readHarnessState(reference)
       let promptMessages = request.messages
-      try {
-        promptMessages = await prepareHarnessArtifactPrompt({
-          reference, state, messages: request.messages, receiptId: request.receiptId,
-        })
-        const fixedState: HarnessSnapshot = { ...state, workingSummary: '' }
-        const fixedOverheadTokens = estimateContextTokens(buildHarnessStepInstructions(fixedState, request.instructionContext))
-          + estimateContextTokens(request.toolDefinitions)
-        let summaryIndex = 0
-        const resumableCycle = state.compaction
-          && (state.compaction.status === 'interrupted' || state.compaction.status === 'awaiting_reconciliation')
-          ? state.compaction : undefined
-        let resumeCycleUsed = false
-        const compacted = await compactHarnessPrompt({
-          messages: promptMessages,
-          contextWindow,
-          outputReserveTokens: maxOutputTokens,
-          fixedOverheadTokens,
-          previousSummary: state.workingSummary,
-          estimatePromptTokens: estimateHarnessPromptTokens,
-          generateSummaryText: ({ prompt, targetSummaryTokens }) => {
-            if (resumableCycle && !resumeCycleUsed) {
-              resumeCycleUsed = true
-              if (resumableCycle.retryCount >= 1) throw new Error('The compaction retry budget is exhausted.')
-              return compaction.summarize(prompt, targetSummaryTokens,
-                `${resumableCycle.cycleId}:retry:${resumableCycle.retryCount + 1}`)
-            }
-            return compaction.summarize(prompt, targetSummaryTokens, `summary:${request.receiptId}:${summaryIndex++}`)
-          },
-        })
-        let messages = compacted.messages
-        let instructions: string
-        let responseMaxOutputTokens = maxOutputTokens
-        if (compacted.summaryFailed || !compacted.fitsBudget) {
-          state = await readHarnessState(reference)
-          if (state.compaction?.status === 'awaiting_reconciliation'
-            || state.modelReservation?.id.startsWith('summary:')) throw new HarnessYield()
-          const fallbackInstructions = buildHarnessStepInstructions(state, request.instructionContext)
-          const fallbackMessages = promptMessages.filter(message => message.role !== 'system')
-          const fallbackMaxOutputTokens = Math.min(request.settings.maxOutputTokens ?? 8_192,
-            limits.maxOutputTokens ?? 8_192, Math.max(1, Math.floor(modelContextWindow / 4)))
-          const fallbackFixedOverheadTokens = estimateContextTokens(fallbackInstructions)
-            + estimateContextTokens(request.toolDefinitions)
-          const fallbackMessageTokens = estimateHarnessPromptTokens(fallbackMessages)
-          const fitsFullHistory = fallbackFixedOverheadTokens + fallbackMessageTokens + fallbackMaxOutputTokens <= modelContextWindow
-          if (state.modelReservation || !fitsFullHistory) {
-            if (state.status === 'running') {
-              await applyHarnessOperation(reference, `compaction-unavailable:${request.receiptId}`, {
-                type: 'block',
-                blocker: {
-                  kind: 'stuck',
-                  question: state.modelReservation
-                    ? 'Compaction is awaiting provider settlement. Full history is preserved.'
-                    : 'The full history exceeds the provider context window; no safe compacted continuation is available.',
-                },
-              })
-            }
-            throw new HarnessYield()
+      promptMessages = await prepareHarnessArtifactPrompt({
+        reference, state, messages: request.messages, receiptId: request.receiptId,
+      })
+      const fixedState: HarnessSnapshot = { ...state, workingSummary: '' }
+      const fixedOverheadTokens = estimateContextTokens(buildHarnessStepInstructions(fixedState, request.instructionContext))
+        + estimateContextTokens(request.toolDefinitions)
+      let summaryIndex = 0
+      const resumableCycle = state.compaction
+        && (state.compaction.status === 'interrupted' || state.compaction.status === 'awaiting_reconciliation')
+        ? state.compaction : undefined
+      let resumeCycleUsed = false
+      const compacted = await compactHarnessPrompt({
+        messages: promptMessages,
+        contextWindow,
+        outputReserveTokens: maxOutputTokens,
+        fixedOverheadTokens,
+        previousSummary: state.workingSummary,
+        estimatePromptTokens: estimateHarnessPromptTokens,
+        generateSummaryText: ({ prompt, targetSummaryTokens }) => {
+          if (resumableCycle && !resumeCycleUsed) {
+            resumeCycleUsed = true
+            if (resumableCycle.retryCount >= 1) throw new Error('The compaction retry budget is exhausted.')
+            return compaction.summarize(prompt, targetSummaryTokens,
+              `${resumableCycle.cycleId}:retry:${resumableCycle.retryCount + 1}`)
           }
-          // eslint-disable-next-line no-console
-          console.warn('[harness] compaction failed; continuing with uncompacted history within the model context window')
-          messages = fallbackMessages
-          instructions = fallbackInstructions
-          responseMaxOutputTokens = fallbackMaxOutputTokens
-        } else if (compacted.didCompact) {
-          state = await applyHarnessOperation(reference, `compact:${request.receiptId}`, {
-            type: 'checkpoint', summary: compacted.summary, purpose: 'compaction',
-          })
-          instructions = buildHarnessStepInstructions(state, request.instructionContext)
-        } else {
-          state = await readHarnessState(reference)
-          instructions = buildHarnessStepInstructions(state, request.instructionContext)
+          return compaction.summarize(prompt, targetSummaryTokens, `summary:${request.receiptId}:${summaryIndex++}`)
+        },
+      })
+      let messages = compacted.messages
+      let instructions: string
+      let responseMaxOutputTokens = maxOutputTokens
+      if (compacted.summaryFailed || !compacted.fitsBudget) {
+        state = await readHarnessState(reference)
+        if (state.compaction?.status === 'awaiting_reconciliation'
+          || state.modelReservation?.id.startsWith('summary:')) throw new HarnessYield()
+        const fallbackInstructions = buildHarnessStepInstructions(state, request.instructionContext)
+        const fallbackMessages = promptMessages.filter(message => message.role !== 'system')
+        const fallbackMaxOutputTokens = Math.min(request.settings.maxOutputTokens ?? 8_192,
+          limits.maxOutputTokens ?? 8_192, Math.max(1, Math.floor(modelContextWindow / 4)))
+        const fallbackFixedOverheadTokens = estimateContextTokens(fallbackInstructions)
+          + estimateContextTokens(request.toolDefinitions)
+        const fallbackMessageTokens = estimateHarnessPromptTokens(fallbackMessages)
+        const fitsFullHistory = fallbackFixedOverheadTokens + fallbackMessageTokens + fallbackMaxOutputTokens <= modelContextWindow
+        if (state.modelReservation || !fitsFullHistory) {
+          if (state.status === 'running') {
+            await applyHarnessOperation(reference, `compaction-unavailable:${request.receiptId}`, {
+              type: 'block',
+              blocker: {
+                kind: 'stuck',
+                question: state.modelReservation
+                  ? 'Compaction is awaiting provider settlement. Full history is preserved.'
+                  : 'The full history exceeds the provider context window; no safe compacted continuation is available.',
+              },
+            })
+          }
+          throw new HarnessYield()
         }
-        const prepared = await prepare({
-          modelId: candidates[candidateIndex],
-          receiptId: request.receiptId,
-          purpose: 'response',
-          options: {
-            ...request.settings,
-            maxOutputTokens: responseMaxOutputTokens,
-            tools: request.toolDefinitions,
-            prompt: [{ role: 'system', content: instructions }, ...messages],
-          },
+        // eslint-disable-next-line no-console
+        console.warn('[harness] compaction failed; continuing with uncompacted history within the model context window')
+        messages = fallbackMessages
+        instructions = fallbackInstructions
+        responseMaxOutputTokens = fallbackMaxOutputTokens
+      } else if (compacted.didCompact) {
+        state = await applyHarnessOperation(reference, `compact:${request.receiptId}`, {
+          type: 'checkpoint', summary: compacted.summary, purpose: 'compaction',
         })
-        preparedCalls.set(request.receiptId, prepared)
-        const reasoning = isKimiK3ModelId(candidates[candidateIndex]) && request.settings.reasoning !== undefined
-          ? 'xhigh'
-          : request.settings.reasoning
-        return {
-          messages,
-          instructions,
-          activeToolNames: request.toolNames,
-          estimatedCostMicros: prepared.estimatedCostMicros,
-          model: prepared.model,
-          settings: {
-            ...request.settings,
-            ...(reasoning !== undefined ? { reasoning } : {}),
-            maxOutputTokens: responseMaxOutputTokens,
-            providerOptions: prepared.options.providerOptions,
-          },
-        }
-      } catch (_error) {
-        const current = await readHarnessState(reference)
-        if (current.status === 'running' && !current.modelReservation) {
-          await applyHarnessOperation(reference, `artifact-unavailable:${request.receiptId}`, {
-            type: 'block',
-            blocker: {
-              kind: 'stuck',
-              question: 'Large tool context could not be stored safely. The original conversation remains intact; resume after artifact storage is available.',
-            },
-          })
-        }
-        throw new HarnessYield()
+        instructions = buildHarnessStepInstructions(state, request.instructionContext)
+      } else {
+        state = await readHarnessState(reference)
+        instructions = buildHarnessStepInstructions(state, request.instructionContext)
+      }
+      const prepared = await prepare({
+        modelId: candidates[candidateIndex],
+        receiptId: request.receiptId,
+        purpose: 'response',
+        options: {
+          ...request.settings,
+          maxOutputTokens: responseMaxOutputTokens,
+          tools: request.toolDefinitions,
+          prompt: [{ role: 'system', content: instructions }, ...messages],
+        },
+      })
+      preparedCalls.set(request.receiptId, prepared)
+      const reasoning = isKimiK3ModelId(candidates[candidateIndex]) && request.settings.reasoning !== undefined
+        ? 'xhigh'
+        : request.settings.reasoning
+      return {
+        messages,
+        instructions,
+        activeToolNames: request.toolNames,
+        estimatedCostMicros: prepared.estimatedCostMicros,
+        model: prepared.model,
+        settings: {
+          ...request.settings,
+          ...(reasoning !== undefined ? { reasoning } : {}),
+          maxOutputTokens: responseMaxOutputTokens,
+          providerOptions: prepared.options.providerOptions,
+        },
       }
     },
     recordModelStep: async (step, receiptId) => {

@@ -401,6 +401,160 @@ test('an unsettled billed summary hold survives pause and resumes only after its
   expect(prepare.mock.calls.filter(([item]) => item.purpose === 'summary').map(([item]) => item.receiptId))
     .toEqual([`${receiptId}:retry:1`])
   expect(mocks.stream).toHaveBeenCalledOnce()
+  expect(current.compaction).toMatchObject({
+    cycleId: receiptId,
+    attemptId: `${receiptId}:retry:1`,
+    status: 'completed',
+    retryCount: 1,
+  })
+})
+
+test('an interrupted summary resumes through prepareModel with its canonical cycle identity', async () => {
+  const cycleId = 'summary:response:resume'
+  const retryId = `${cycleId}:retry:1`
+  let current: HarnessSnapshot = {
+    ...stateWithInterruptionCount(0),
+    workflowRunId: 'workflow',
+    modelReservation: undefined,
+    latestReceipt: undefined,
+    compaction: {
+      cycleId, attemptId: cycleId, status: 'interrupted',
+      retryCount: 0, failureReason: 'provider_error', updatedAt: 1,
+    },
+  }
+  mocks.read.mockImplementation(async () => current)
+  mocks.apply.mockImplementation(async (_reference, _operationId, operation) => {
+    if (operation.type === 'reserve_model') {
+      current = {
+        ...current,
+        modelReservation: current.modelReservation ?? {
+          id: operation.id, maxCostMicros: operation.maxCostMicros,
+        },
+      }
+    } else if (operation.type === 'set_compaction') {
+      current = { ...current, compaction: operation.compaction }
+    } else if (operation.type === 'checkpoint') {
+      current = { ...current, workingSummary: operation.summary }
+    }
+    return current
+  })
+  mocks.stream.mockImplementationOnce(async () => {
+    current = { ...current, modelReservation: undefined }
+    return { steps: [{ text: 'A'.repeat(250), finishReason: 'stop' }] }
+  })
+  const prepare = vi.fn(async (request: {
+    modelId: string
+    receiptId: string
+    purpose: 'response' | 'summary' | 'verification'
+    options: import('@ai-sdk/provider').LanguageModelV4CallOptions
+  }): Promise<PreparedHarnessModel> => {
+    if (request.purpose === 'summary') {
+      current = {
+        ...current,
+        modelReservation: {
+          id: request.receiptId,
+          maxCostMicros: 0,
+          dispatch: { modelId: request.modelId, billingReservationId: null },
+        },
+      }
+    }
+    return {
+      model: {} as HarnessModelReference,
+      options: { prompt: [] },
+      contextWindow: 32_000,
+      estimatedCostMicros: 0,
+    }
+  })
+  const ports = createHarnessModelPorts({
+    reference, modelId: 'openrouter/free', contextBudgetTokens: 16_000, prepare,
+  })
+
+  await expect(ports.prepareModel!({
+    receiptId: 'response:resume',
+    state: current,
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'Old request '.repeat(4_000) }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'Old answer '.repeat(4_000) }] },
+      { role: 'user', content: [{ type: 'text', text: 'Continue with the current request.' }] },
+    ],
+    instructionContext: { surfaceInstructions: 'Surface instructions' },
+    toolNames: [],
+    toolDefinitions: [],
+    settings: { maxOutputTokens: 512 },
+  } as never)).resolves.toMatchObject({ activeToolNames: [] })
+
+  expect(prepare.mock.calls.filter(([item]) => item.purpose === 'summary').map(([item]) => item.receiptId))
+    .toEqual([retryId])
+  expect(current.compaction).toMatchObject({
+    cycleId,
+    attemptId: retryId,
+    status: 'completed',
+    retryCount: 1,
+  })
+})
+
+test('summary failure cannot dispatch beyond the two total attempts', async () => {
+  const cycleId = 'summary:response:bounded:0'
+  let current: HarnessSnapshot = {
+    ...stateWithInterruptionCount(0),
+    workflowRunId: 'workflow',
+    modelReservation: undefined,
+    latestReceipt: undefined,
+    compaction: undefined,
+  }
+  mocks.read.mockImplementation(async () => current)
+  mocks.wait.mockResolvedValue(true)
+  mocks.apply.mockImplementation(async (_reference, _operationId, operation) => {
+    if (operation.type === 'reserve_model') {
+      current = {
+        ...current,
+        modelReservation: {
+          id: operation.id,
+          maxCostMicros: operation.maxCostMicros,
+          dispatch: { modelId: 'openrouter/free', billingReservationId: null },
+        },
+      }
+    } else if (operation.type === 'record_receipt') {
+      current = { ...current, modelReservation: undefined, latestReceipt: operation.receipt }
+    } else if (operation.type === 'set_compaction') {
+      current = { ...current, compaction: operation.compaction }
+    }
+    return current
+  })
+  mocks.stream.mockRejectedValue(new Error('summary provider failed'))
+  const prepare = vi.fn(async (request: {
+    modelId: string
+    receiptId: string
+    purpose: 'response' | 'summary' | 'verification'
+    options: import('@ai-sdk/provider').LanguageModelV4CallOptions
+  }): Promise<PreparedHarnessModel> => ({
+    model: {} as HarnessModelReference,
+    options: { prompt: [] },
+    contextWindow: 32_000,
+    estimatedCostMicros: request.purpose === 'summary' ? 0 : 0,
+  }))
+  const ports = createHarnessModelPorts({
+    reference, modelId: 'openrouter/free', contextBudgetTokens: 16_000, prepare,
+  })
+
+  await expect(ports.prepareModel!({
+    receiptId: 'response:bounded',
+    state: current,
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'Old request '.repeat(4_000) }] },
+      { role: 'assistant', content: [{ type: 'text', text: 'Old answer '.repeat(4_000) }] },
+      { role: 'user', content: [{ type: 'text', text: 'Continue with the current request.' }] },
+    ],
+    instructionContext: { surfaceInstructions: 'Surface instructions' },
+    toolNames: [],
+    toolDefinitions: [],
+    settings: { maxOutputTokens: 512 },
+  } as never)).resolves.toMatchObject({ activeToolNames: [] })
+
+  expect(prepare.mock.calls.filter(([item]) => item.purpose === 'summary').map(([item]) => item.receiptId))
+    .toEqual([cycleId, `${cycleId}:retry:1`])
+  expect(mocks.stream).toHaveBeenCalledTimes(2)
+  expect(prepare.mock.calls.some(([item]) => item.receiptId.includes(':retry:1:retry:1'))).toBe(false)
 })
 
 test('a reopened media artifact is reused when a later tool result prepares the next prompt', async () => {
@@ -477,6 +631,38 @@ test('artifact upload failure leaves the original large tool context intact', as
   expect(JSON.stringify(messages)).toBe(original)
   expect(mocks.storeArtifact).toHaveBeenCalledOnce()
   expect(prepare).not.toHaveBeenCalled()
+})
+
+test('response preparation failures escape without an artifact-unavailable block', async () => {
+  const state = stateWithInterruptionCount(0)
+  mocks.read.mockResolvedValue(state)
+  const sentinel = new Error('response preparation sentinel')
+  const prepare = vi.fn(async (request: {
+    purpose: 'response' | 'summary' | 'verification'
+  }): Promise<PreparedHarnessModel> => {
+    if (request.purpose === 'response') throw sentinel
+    return {
+      model: {} as HarnessModelReference,
+      options: { prompt: [] },
+      contextWindow: 32_000,
+      estimatedCostMicros: 0,
+    }
+  })
+  const ports = createHarnessModelPorts({ reference, modelId: 'openrouter/free', prepare })
+
+  await expect(ports.prepareModel!({
+    receiptId: 'response:prepare-sentinel',
+    state,
+    messages: [{ role: 'user', content: [{ type: 'text', text: 'Short request.' }] }],
+    instructionContext: { surfaceInstructions: 'Surface instructions' },
+    toolNames: [],
+    toolDefinitions: [],
+    settings: { maxOutputTokens: 512 },
+  } as never)).rejects.toBe(sentinel)
+
+  expect(mocks.apply.mock.calls.some(([, operationId, operation]) => (
+    operationId === 'artifact-unavailable:response:prepare-sentinel' && operation.type === 'block'
+  ))).toBe(false)
 })
 
 test('verifier abort reconciles only an exact free hold and preserves billed holds', async () => {

@@ -66,14 +66,25 @@ function isExactFreeVerificationHold(state: HarnessSnapshot, receiptId: string):
 }
 
 async function runVerificationStream(
+  agent: WorkflowAgent,
+  prompt: string,
+): Promise<string> {
+  const result = await agent.stream({ messages: [{ role: 'user', content: prompt }] })
+  if ('error' in result && result.error) throw result.error
+  if (result.steps.length !== 1 || result.steps[0].finishReason !== 'stop') {
+    throw new Error('Final answer verification did not finish.')
+  }
+  return result.steps[0].text.trim()
+}
+
+function createVerificationAgent(
   prepared: PreparedHarnessModel,
   dependencies: VerificationDependencies,
   receiptId: string,
   instructions: string,
-  prompt: string,
   maxOutputTokens: number,
-): Promise<string> {
-  const agent = new WorkflowAgent({
+): WorkflowAgent {
+  return new WorkflowAgent({
     model: new HarnessLanguageModel(prepared.model),
     instructions,
     tools: {},
@@ -83,12 +94,6 @@ async function runVerificationStream(
     providerOptions: prepared.options.providerOptions,
     onStepEnd: async step => dependencies.settle(step, receiptId, prepared),
   })
-  const result = await agent.stream({ messages: [{ role: 'user', content: prompt }] })
-  if ('error' in result && result.error) throw result.error
-  if (result.steps.length !== 1 || result.steps[0].finishReason !== 'stop') {
-    throw new Error('Final answer verification did not finish.')
-  }
-  return result.steps[0].text.trim()
 }
 
 async function reconcileVerificationFailure(
@@ -176,12 +181,14 @@ export function createHarnessVerificationPort(dependencies: VerificationDependen
     await applyHarnessOperation(dependencies.reference, `reserve:${receiptId}`, {
       type: 'reserve_model', id: receiptId, maxCostMicros: prepared.estimatedCostMicros,
     })
+    const agent = createVerificationAgent(prepared, dependencies, receiptId, instructions, maxOutputTokens)
+    let raw: string
     try {
-      const raw = await runVerificationStream(prepared, dependencies, receiptId, instructions, prompt, maxOutputTokens)
-      return parseHarnessVerificationResponse(raw, new Set(current.evidence.slice(-48).map(item => item.id)))
+      raw = await runVerificationStream(agent, prompt)
     } catch (error) {
       return reconcileVerificationFailure(dependencies, receiptId, error)
     }
+    return parseHarnessVerificationResponse(raw, new Set(current.evidence.slice(-48).map(item => item.id)))
   }
 
   return { verifyFinalAnswer }
