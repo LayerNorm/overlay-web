@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Configure provider usage markup with `OVERLAY_USAGE_MARKUP_BPS` across web, memory and Computer billing, rejecting invalid settings instead of hiding a fixed rate in code. Subscription prices, included credit and existing subscription records stay unchanged.
+
 - Require a plain-language changelog entry in every PR, including documentation, dependency, test and CI changes, and a functionality summary with deployment status after each merge.
 
 - Reach the first model call in personal Chat and Work runs with 8 durable steps instead of 15. The initial read and execution claim share one step; delivery attach, reauthorization and request accounting share another. Model preparation reuses the state read at the model boundary and reads catalog limits once per model, so later model calls take 4 steps instead of 7. Every authorization, budget and reservation check still runs.

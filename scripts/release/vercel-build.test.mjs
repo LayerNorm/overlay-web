@@ -131,7 +131,9 @@ test('preview rebuild repairs missing fixtures after deploy and never seeds a fa
 test('runtime settings bind callbacks and transfer only approved backend credentials', () => {
   const text = previewRuntimeEnvFile({ ...preview, SESSION_SECRET: 'not-for-convex', PREVIEW_LOGIN_PASSWORD: 'private',
     INTERNAL_API_SECRET: 'api-secret', VERCEL_AUTOMATION_BYPASS_SECRET: 'hosting-secret',
+    OVERLAY_USAGE_MARKUP_BPS: '4000',
     STRIPE_WEBHOOK_SECRET: 'owned-by-per-backend-registration' })
+  assert.ok(text.includes('OVERLAY_USAGE_MARKUP_BPS="4000"'))
   assert.ok(text.includes('OVERLAY_BFF_URL="https://pr-123.preview.getoverlay.io"'))
   assert.ok(text.includes('VERCEL_AUTOMATION_BYPASS_SECRET="hosting-secret"'))
   assert.ok(text.includes('INTERNAL_API_SECRET="api-secret"'))
