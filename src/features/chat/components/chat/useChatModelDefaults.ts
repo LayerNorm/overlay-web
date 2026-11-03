@@ -13,7 +13,6 @@ type AppSettings = ReturnType<typeof useAppSettings>
 
 export function useChatModelDefaults({
   settings,
-  isFreeTier,
   hasStoredTextModelSelection,
   selectedActModel,
   selectedModels,
@@ -25,7 +24,6 @@ export function useChatModelDefaults({
   isTemporaryChat,
 }: {
   settings: AppSettings['settings']
-  isFreeTier: boolean
   hasStoredTextModelSelection: boolean
   selectedActModel: ChatPrefs['selectedActModel']
   selectedModels: ChatPrefs['selectedModels']
@@ -40,12 +38,10 @@ export function useChatModelDefaults({
     const selection = resolveDefaultChatModelSelection({
       defaultActModelId: settings.defaultActModelId,
       defaultAskModelIds: settings.defaultAskModelIds,
-      isFreeTier,
       onlyAllowZdrModels: settings.onlyAllowZdrModels,
     })
     return { ...selection, askModelIds: selection.askModelIds.slice(0, 1) }
   }, [
-    isFreeTier,
     settings.defaultActModelId,
     settings.defaultAskModelIds,
     settings.onlyAllowZdrModels,

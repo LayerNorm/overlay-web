@@ -9,7 +9,7 @@ import { createPersonalHarnessWaitPorts } from '@/server/harness/personal-waits'
 import { admitPersonalHarnessChild } from '@/server/harness/personal-child-steps'
 import { buildPersonalHarnessDelivery } from '@/server/harness/personal-delivery'
 import {
-  closePersonalHarnessStream, finishPersonalHarnessDelivery, writePersonalHarnessFallback,
+  closePersonalHarnessStream, finishPersonalHarnessDelivery,
 } from '@/server/harness/personal-delivery-steps'
 import { notifyHarnessAncestors, readHarnessChild } from '@/server/harness/personal-wait-steps'
 import { harnessWakeToken } from '@/server/harness/wait-token'
@@ -99,7 +99,6 @@ export function personalHarnessChildInput(
     context: { ...parent.context, latestUserText: child.goal },
     definitions: parent.definitions.filter(definition => allowed.has(definition.name)),
     settings: parent.settings,
-    modelCandidates: parent.modelCandidates,
     instructions: `${parent.instructions}\n\nComplete only the assigned bounded task. Return concise findings with evidence references and any blockers. Do not expand the scope or contact the user except through the harness input mechanism.`,
     messages: [{ role: 'user', content: JSON.stringify({ goal: child.goal, constraints: child.constraints }) }],
   }
@@ -130,7 +129,6 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
   using wake = createHook<unknown>({ token: harnessWakeToken(workflowRunId) })
   let result: HarnessExecutionResult | undefined
   let progress = ''
-  const fallbackNotices: string[] = []
   let activeToolNames = new Set<string>(HARNESS_CONTROL_TOOLS)
   try {
     if (await wake.getConflict()) throw new FatalError('Harness wake channel is already owned.')
@@ -155,9 +153,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
           type: 'record_evidence', evidence: harnessToolResultEvidence(event, Date.now()),
         })
       },
-    }, input.modelCandidates ? { candidateIds: input.modelCandidates,
-      onFallback: isRoot ? async event => { fallbackNotices.push(await writePersonalHarnessFallback(access, event)) } : undefined,
-    } : undefined, initial)
+    }, initial)
     const recordModelStep = ports.recordModelStep
     ports.recordModelStep = async (step, receiptId) => {
       await recordModelStep(step, receiptId)
@@ -172,7 +168,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     activeToolNames = new Set([...activeToolNames, ...Object.keys(tools)])
     result = await runOverlayHarness({
       instructions: input.instructions, messages: input.messages, settings: input.settings,
-      model: { modelId: input.context.effectiveModelId, credentialOwnerId: access.actorUserId, sessionId: access.conversationId, allowLowBalanceFallback: false },
+      model: { modelId: input.context.effectiveModelId, credentialOwnerId: access.actorUserId, sessionId: access.conversationId },
       tools,
       writable: getWritable<ModelCallStreamPart<ToolSet>>(),
     }, ports)
@@ -190,9 +186,9 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
   }
   if (isRoot) {
-    const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices, activeToolNames)
+    const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, activeToolNames)
     if (!result.steps.length && progress) {
-      const content = fallbackNotices.length ? `${fallbackNotices.join('\n\n')}\n\n${progress}` : progress
+      const content = progress
       delivery.content = content
       delivery.parts = [{ type: 'text', text: content }]
     }
@@ -208,7 +204,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     status: result.snapshot.status,
     ...(result.snapshot.terminalReason ? { terminalReason: result.snapshot.terminalReason } : {}),
     ...(input.delivery?.closeStream === false && isRoot && result.snapshot.status === 'completed'
-      ? { replyText: buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices, activeToolNames).content }
+      ? { replyText: buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, activeToolNames).content }
       : {}),
   }
 }

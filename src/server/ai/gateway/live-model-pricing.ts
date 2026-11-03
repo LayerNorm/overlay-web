@@ -8,14 +8,12 @@ import {
   calculateGatewayLanguageTokenCostOrNull,
   calculateGatewayVideoCostOrNull,
 } from '@/shared/ai/gateway/model-pricing'
-import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { getGatewayCatalogModel } from './gateway-catalog'
 import { languageModelReservationCost } from './model-reservation-pricing'
 
 export async function calculateLanguageModelReservationCostOrNull(
   modelId: string, inputTokens: number, outputTokens: number,
 ): Promise<number | null> {
-  if (isFreeTierChatModelId(modelId)) return 0
   try {
     const model = await getGatewayCatalogModel(modelId)
     if (!model || model.type !== 'language') return null
@@ -35,8 +33,6 @@ export async function calculateLanguageModelTokenCostOrNull(
   outputTokens: number,
   cacheWriteTokens = 0,
 ): Promise<number | null> {
-  if (isFreeTierChatModelId(modelId)) return 0
-
   try {
     const model = await getGatewayCatalogModel(modelId)
     if (!model || model.type !== 'language') return null

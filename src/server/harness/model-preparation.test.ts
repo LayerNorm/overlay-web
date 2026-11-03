@@ -28,7 +28,7 @@ beforeEach(() => {
 
 test('quotes the complete prompt and constructs a credential-free dispatch reference with explicit limits', async () => {
   const prepared = await preparePersonalHarnessModel({ ...input, access: { ...access, accessToken: 'must-not-persist' } as typeof access })
-  expect(prepared.model).toMatchObject({ modelId: 'fixture/model', credentialOwnerId: 'user', allowLowBalanceFallback: false,
+  expect(prepared.model).toMatchObject({ modelId: 'fixture/model', credentialOwnerId: 'user',
     personal: { receiptId: 'model:0', contextWindow: 32_000, maxOutputTokens: 100, memoryEnabled: true } })
   expect(prepared.model.personal!.inputTokenBudget).toBeGreaterThan(1_024)
   expect(prepared.estimatedCostMicros).toBeGreaterThan(1_224)

@@ -12,8 +12,6 @@ import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCa
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useWorkspaceTextModelAccess } from '@/components/providers/useWorkspaceTextModelAccess'
-import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
-import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
@@ -119,17 +117,13 @@ export function useAgentEditorController({
   const allTextModels = useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
-    return getModelsByIntelligence(false)
+    return getModelsByIntelligence()
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
   }, [revision])
   const modelField = useMemo(() => {
-    const accessUnresolved = !modelAccess.entitlements
-    const restricted = modelAccess.loading || accessUnresolved || modelAccess.isModelAccessRestricted
-    const selectableTextModels = modelAccess.pickerTextModels.filter((model) => !restricted || isByokModelId(model.id) || isFreeTierChatModelId(model.id))
+    const selectableTextModels = modelAccess.pickerTextModels
     return {
       favoriteScope: authUser?.id ?? null,
-      isFreeTier: modelAccess.isFreeTier || modelAccess.loading || accessUnresolved,
-      isFreeTierWorkspace: modelAccess.isFreeTier,
       modelPickerLabel: selectableTextModels.find((model) => model.id === form.modelId)?.name ?? allTextModels.find((model) => model.id === form.modelId)?.name ?? form.modelId,
       selectableTextModels,
       textModelsLoading: modelAccess.connectionsLoading,
@@ -138,11 +132,7 @@ export function useAgentEditorController({
     allTextModels,
     authUser?.id,
     form.modelId,
-    modelAccess.entitlements,
-    modelAccess.isFreeTier,
-    modelAccess.loading,
     modelAccess.pickerTextModels,
-    modelAccess.isModelAccessRestricted,
     modelAccess.connectionsLoading,
   ])
 

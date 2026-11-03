@@ -6,9 +6,14 @@ The first implementation slice supports Codex subscriptions only. Subscription
 inference and provider-side authorization use the pinned CLIProxyAPI source in a
 private, stateless service bound to the web service inside the same Vercel
 project. The service has no public rewrite, shared account pool, auth files,
-background refresh, or provider fallback. This implementation does not expand
-personal/workspace schema or add other providers. The model picker is not part
-of this slice.
+background refresh, or provider fallback.
+
+Codex subscriptions appear in chat and agent model pickers as separate groups
+for each personal connection, with independent favorites and a reconnect action
+for unavailable connections. The picker uses the existing personal
+provider-connection schema; it does not add workspace-scoped connections or
+other providers. Model visibility does not grant execution access: existing
+paid-access requirements still apply to all models, including BYOK.
 
 The plan-based Codex catalog is sourced from CLIProxyAPI's plan registry. It is
 catalog provenance, not proof that a particular account is entitled to every
@@ -85,5 +90,5 @@ rewrite. Hosting compatibility, preview behavior, cold starts, real-account
 refresh, and end-to-end hosted streaming require isolated preview validation;
 local tests and builds do not establish those hosted results.
 
-Other subscription providers, workspace-scope schema work, broader catalog
-entitlement verification, and the picker UI remain future work.
+Other subscription providers, workspace-scope schema work, and broader catalog
+entitlement verification remain future work.

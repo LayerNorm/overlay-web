@@ -6,6 +6,7 @@ import { getWorkService } from '@/server/work'
 import { OnboardingActionSchema } from '@/shared/onboarding/session'
 import { ConvexOnboardingStateRepository, ConversationalOnboardingService, OnboardingServiceError } from '@/server/onboarding'
 import { ONBOARDING_SEEN_COOKIE } from '@/features/auth/lib/onboarding-cookie'
+import { WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
 
 function service() {
   const server = getOverlayServerContext()
@@ -22,6 +23,7 @@ function service() {
 }
 
 function errorResponse(error: unknown) {
+  if (error instanceof WorkspaceExecutionError) return NextResponse.json(error.payload, { status: error.statusCode })
   if (error instanceof OnboardingServiceError) {
     return NextResponse.json({ error: error.message, code: error.code }, { status: error.statusCode })
   }

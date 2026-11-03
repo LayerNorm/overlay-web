@@ -16,6 +16,7 @@ import { configuredUsageMarkupBasisPoints } from '@/server/env/usage-markup'
 import { ensureWorkspaceBudgetAvailable } from '@/server/billing/workspace-budget'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
+import { requireWorkspaceExecution } from './WorkspaceExecutionPolicy'
 import type { BillingRepository } from './BillingRepository'
 
 export function isPaidPlan(entitlements: Pick<Entitlements, 'tier' | 'planKind'>): boolean {
@@ -28,13 +29,6 @@ export function canUsePaidBudgetFeatures(entitlements: Pick<
   'tier' | 'planKind' | 'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'
 >): boolean {
   return isPaidPlan(entitlements) && getBudgetTotals(entitlements).remainingCents > 0
-}
-
-export function usesFreeTierPrivileges(entitlements: Pick<
-  Entitlements,
-  'tier' | 'planKind' | 'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'
->): boolean {
-  return !canUsePaidBudgetFeatures(entitlements)
 }
 
 export function getBudgetTotals(entitlements: Pick<
@@ -123,11 +117,17 @@ export async function reserveProviderBudget(params: {
   operationId: string
   requestFingerprint: string
   reservationId?: string
+  requireExecution?: typeof requireWorkspaceExecution
   workspaceId?: string
   programmaticSubjectId?: string
 }) {
+  const execution = await (params.requireExecution ?? requireWorkspaceExecution)({
+    userId: params.userId,
+    workspaceId: params.workspaceId,
+    checkBudget: false,
+  })
   const reservedCents = billableBudgetCentsFromProviderUsd(params.providerCostUsd)
-  if (reservedCents <= 0) {
+  if (!execution.billingEnabled || reservedCents <= 0) {
     return {
       ok: true,
       billingAccountId: null,
@@ -149,7 +149,8 @@ export async function reserveProviderBudget(params: {
         minimumRequiredCents: Math.max(1, Math.ceil(reservedCents)),
       })
 
-  if (!isPaidPlan(budget.entitlements) || budget.remainingCents + 0.000001 < reservedCents) {
+  if (payerContext.payer.scope !== 'workspace'
+    && (!isPaidPlan(budget.entitlements) || budget.remainingCents + 0.000001 < reservedCents)) {
     logBudgetSecurityEvent('owner_funded_budget_declined', params, {
       requiredCents: reservedCents,
       remainingCents: budget.remainingCents,

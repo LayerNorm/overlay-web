@@ -9,7 +9,7 @@ import { ConfirmDialog } from '@overlay/ui/overlays'
 import {
   DEFAULT_CURATED_CHAT_MODEL_IDS,
 } from '@/shared/ai/gateway/model-data'
-import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 import { byokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
@@ -64,10 +64,10 @@ export function ProviderConnectionsSetting() {
         : [...DEFAULT_CURATED_CHAT_MODEL_IDS],
       modelOrder: settings.modelOrder.filter((modelId) => !removedModelIds.has(modelId)),
       ...(!subscription && removedModelIds.has(settings.defaultActModelId ?? '')
-        ? { defaultActModelId: FREE_TIER_AUTO_MODEL_ID }
+        ? { defaultActModelId: DEFAULT_MODEL_ID }
         : {}),
       ...(!subscription && nextAskModelIds.length !== settings.defaultAskModelIds.length
-        ? { defaultAskModelIds: nextAskModelIds.length > 0 ? nextAskModelIds : [FREE_TIER_AUTO_MODEL_ID] }
+        ? { defaultAskModelIds: nextAskModelIds.length > 0 ? nextAskModelIds : [DEFAULT_MODEL_ID] }
         : {}),
     })
     setDeleteTarget(null)

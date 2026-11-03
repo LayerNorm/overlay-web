@@ -5,7 +5,7 @@ import { nativeHarnessChildInput, nativeHarnessWorkflow, startNativeHarnessChild
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), claim: vi.fn(), apply: vi.fn(), run: vi.fn(), ports: vi.fn(),
   tools: vi.fn(), waits: vi.fn(), attach: vi.fn(), finish: vi.fn(), notify: vi.fn(), child: vi.fn(),
-  admit: vi.fn(), start: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), fallback: vi.fn(), repositoryGet: vi.fn() }))
+  admit: vi.fn(), start: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), repositoryGet: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('workflow', () => ({
   FatalError: class extends Error {}, getWorkflowMetadata: () => ({ workflowRunId: 'workflow' }),
@@ -23,7 +23,7 @@ vi.mock('./native-tools', () => ({ createNativeHarnessTools: mocks.tools }))
 vi.mock('./waits', () => ({ createHarnessWaitPorts: mocks.waits }))
 vi.mock('./native-child-steps', () => ({ admitNativeHarnessChild: mocks.admit }))
 vi.mock('./native-delivery-steps', () => ({ attachNativeHarnessDelivery: mocks.attach,
-  finishNativeHarnessDelivery: mocks.finish, projectNativeHarnessWait: mocks.waits, writeNativeHarnessFallback: mocks.fallback }))
+  finishNativeHarnessDelivery: mocks.finish, projectNativeHarnessWait: mocks.waits }))
 vi.mock('./personal-wait-steps', () => ({ harnessWakeToken: (id: string) => `harness:wake:${id}`,
   notifyHarnessAncestors: mocks.notify, readHarnessChild: mocks.child }))
 vi.mock('@/server/harness/native-tools', () => ({ createNativeHarnessTools: mocks.tools }))
@@ -157,7 +157,6 @@ test('SDK rate limits terminate once with descriptive delivery and no new retry 
   })
   expect(mocks.run).toHaveBeenCalledOnce()
   expect(mocks.finish).toHaveBeenCalledOnce()
-  expect(mocks.fallback).not.toHaveBeenCalled()
 })
 
 test('provider content-filter rejection terminates once with its actual reason', async () => {
@@ -174,7 +173,6 @@ test('provider content-filter rejection terminates once with its actual reason',
   })
   expect(mocks.run).toHaveBeenCalledOnce()
   expect(mocks.finish).toHaveBeenCalledOnce()
-  expect(mocks.fallback).not.toHaveBeenCalled()
 })
 
 test.each([

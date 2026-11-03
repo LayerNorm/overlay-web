@@ -52,42 +52,6 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_key', ['key']),
 
-  overlayFreeRoutes: defineTable({
-    routeKey: v.string(),
-    transport: v.union(v.literal('gateway'), v.literal('openrouter')),
-    modelId: v.string(),
-    provider: v.string(),
-    capabilitiesJson: v.string(),
-    pricingJson: v.string(),
-    catalogVerifiedAt: v.number(),
-    catalogExpiresAt: v.number(),
-    generation: v.number(),
-    canaryVerifiedAt: v.optional(v.number()),
-    canaryExpiresAt: v.optional(v.number()),
-    quarantineReason: v.optional(v.string()),
-    quarantineAt: v.optional(v.number()),
-    cooldownUntil: v.optional(v.number()),
-    latestReceiptAt: v.optional(v.number()),
-    latestReceiptJson: v.optional(v.string()),
-    latestActualModelId: v.optional(v.string()),
-    latestActualProvider: v.optional(v.string()),
-    activeLeaseToken: v.optional(v.string()),
-    activeLeaseExpiresAt: v.optional(v.number()),
-    updatedAt: v.number(),
-  })
-    .index('by_routeKey', ['routeKey'])
-    .index('by_transport_generation', ['transport', 'generation'])
-    .index('by_catalogExpiresAt', ['catalogExpiresAt']),
-
-  overlayFreeRefreshLocks: defineTable({
-    key: v.string(),
-    leaseToken: v.string(),
-    leaseExpiresAt: v.number(),
-    retryAfter: v.number(),
-    generation: v.number(),
-    updatedAt: v.number(),
-  }).index('by_key', ['key']),
-
   billingAccounts: defineTable({
     billingAccountId: v.string(),
     scope: v.union(v.literal('personal'), v.literal('workspace')),
@@ -134,7 +98,6 @@ export default defineSchema({
     paidPeriodStart: v.optional(v.number()),
     paidPeriodEnd: v.optional(v.number()),
     paidInvoiceId: v.optional(v.string()),
-    // Legacy Stripe-migrated rows can carry this field; not written by current code.
     cancelAtPeriodEnd: v.optional(v.boolean()),
     providerEventCreatedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -570,6 +533,10 @@ export default defineSchema({
     reservedTopUpCents: v.optional(v.number()),
     finalizedCents: v.optional(v.number()),
     providerCostMicros: v.optional(v.number()),
+    // Late provider evidence for a failed call whose wallet hold was already released.
+    providerCostEvidence: v.optional(v.object({
+      source: v.string(), reference: v.string(), reason: v.string(), recordedAt: v.number(),
+    })),
     // Quantities for the itemized usage list, summed from the usage events at finalize.
     usageTokens: v.optional(v.number()),
     usageSeconds: v.optional(v.number()),
@@ -761,7 +728,7 @@ export default defineSchema({
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_turnId_createdAt', ['turnId', 'createdAt']),
 
-  // Daily counters used exclusively for free-tier weekly limit enforcement.
+  // Legacy daily usage records retained for historical audit reads.
   dailyUsage: defineTable({
     userId: v.string(),
     date: v.string(), // YYYY-MM-DD format

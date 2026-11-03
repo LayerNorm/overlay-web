@@ -1,9 +1,9 @@
 'use client'
 
 import { useCallback, useMemo, useRef, useState } from 'react'
-import { isFreeTierChatModelId, type ChatModel } from '@/shared/ai/gateway/model-types'
+import type { ChatModel } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
-import { byokConnectionsToChatModels, isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { byokConnectionsToChatModels } from '@/shared/ai/gateway/byok-model-conversion'
 import { useByokModels } from './useByokModels'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -48,31 +48,26 @@ export function resolveEntitlementDerived(
   const budgetUsedCents = entitlements ? budgetUsedCentsFor(entitlements) : 0
   const budgetRemainingCents = entitlements ? budgetRemainingCentsFor(entitlements) : 0
   const isBudgetExhaustedPaid = billingEnabled && Boolean(entitlements) && isPaidSubscription && budgetRemainingCents <= 0
-  const isFreeTier = Boolean(entitlements) && (!isPaidSubscription || isBudgetExhaustedPaid)
-  const isModelAccessRestricted = isFreeTier
-  const effectiveOnlyAllowZdrModels = isPaidSubscription && !isBudgetExhaustedPaid && onlyAllowZdrModels
+  const isModelAccessRestricted = billingEnabled && (!entitlements || !isPaidSubscription || budgetRemainingCents <= 0)
+  const effectiveOnlyAllowZdrModels = onlyAllowZdrModels
   return {
     isPaidSubscription,
     budgetTotalCents,
     budgetUsedCents,
     budgetRemainingCents,
     isBudgetExhaustedPaid,
-    isFreeTier,
     isModelAccessRestricted,
     effectiveOnlyAllowZdrModels,
   }
 }
 
 export function buildSelectableTextModels({
-  isModelAccessRestricted,
   effectiveOnlyAllowZdrModels,
 }: {
-  isModelAccessRestricted: boolean
   effectiveOnlyAllowZdrModels: boolean
 }): ChatModel[] {
-  const availableTextModels = getModelsByIntelligence(isModelAccessRestricted)
+  const availableTextModels = getModelsByIntelligence()
     .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
-    .filter((model) => !isModelAccessRestricted || isByokModelId(model.id) || isFreeTierChatModelId(model.id))
   return effectiveOnlyAllowZdrModels
     ? availableTextModels.filter((model) => model.supportsZeroDataRetention)
     : availableTextModels
@@ -80,12 +75,10 @@ export function buildSelectableTextModels({
 
 export function buildPickerTextModels({
   effectiveOnlyAllowZdrModels,
-  isModelAccessRestricted = false,
 }: {
   effectiveOnlyAllowZdrModels: boolean
-  isModelAccessRestricted?: boolean
 }): ChatModel[] {
-  const availableTextModels = getModelsByIntelligence(isModelAccessRestricted)
+  const availableTextModels = getModelsByIntelligence()
     .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
   return effectiveOnlyAllowZdrModels
     ? availableTextModels.filter((model) => model.supportsZeroDataRetention)
@@ -93,7 +86,8 @@ export function buildPickerTextModels({
 }
 
 export function isTextModelLocked(modelId: string, isModelAccessRestricted: boolean): boolean {
-  return isModelAccessRestricted && !isByokModelId(modelId) && !isFreeTierChatModelId(modelId)
+  void modelId
+  return isModelAccessRestricted
 }
 
 export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements = WorkspaceModelEntitlements>({
@@ -120,12 +114,13 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
     void connections
     void catalogRevision
     void modelCatalogVersion
-    return buildSelectableTextModels(derived)
+    return buildSelectableTextModels({
+      effectiveOnlyAllowZdrModels: derived.effectiveOnlyAllowZdrModels,
+    })
   }, [
     connections,
     catalogRevision,
     derived.effectiveOnlyAllowZdrModels,
-    derived.isModelAccessRestricted,
     modelCatalogVersion,
   ])
   const pickerTextModels = useMemo(() => {
@@ -133,7 +128,6 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
     void modelCatalogVersion
     const available = buildPickerTextModels({
       effectiveOnlyAllowZdrModels: derived.effectiveOnlyAllowZdrModels,
-      isModelAccessRestricted: derived.isModelAccessRestricted,
     })
     const unavailable = byokConnectionsToChatModels(connections, { includeUnavailable: true })
       .filter((model) => model.subscription?.unavailable)
@@ -143,7 +137,6 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
     connections,
     catalogRevision,
     derived.effectiveOnlyAllowZdrModels,
-    derived.isModelAccessRestricted,
     modelCatalogVersion,
   ])
 

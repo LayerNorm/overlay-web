@@ -72,7 +72,6 @@ export async function getLanguageModel(
   accessToken?: string,
   userId?: string,
   options?: {
-    allowLowBalanceFallback?: boolean
     sessionId?: string
   },
 ): Promise<LanguageModel> {
@@ -112,7 +111,6 @@ export async function getLanguageModel(
     modelId,
     {
       accessToken,
-      allowLowBalanceFallback: options?.allowLowBalanceFallback,
     },
   )
   return model.implementation as LanguageModel

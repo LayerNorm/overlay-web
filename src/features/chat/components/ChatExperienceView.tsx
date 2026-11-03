@@ -34,7 +34,6 @@ type AutomationEditorProps = {
   automation: AutomationDetail
   onSaved: (automation: AutomationDetail) => void
   onTested: (conversationId: string) => void
-  isFreeTier: boolean
 }
 
 export type ChatExperienceViewProps = {

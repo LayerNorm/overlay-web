@@ -41,28 +41,6 @@ test('buildActTooling preserves paid primary tool composition', () => {
   ])
 })
 
-test('buildActTooling preserves free-tier tool behavior', () => {
-  const freePrimary = buildActTooling({
-    allowedOverlayToolIds: [],
-    integrationRaw: toolSet({ GMAIL_SEND_EMAIL: {}, BROWSER_NAVIGATE: {} }),
-    mcpToolsRaw: toolSet({ search_mcp_tools: {}, call_mcp_tool: {} }),
-    paid: false,
-    deepSearchTool: null,
-    webFetchTool: null,
-    webSearchTool: null,
-    webToolSet: toolSet({ save_memory: {} }),
-  })
-  assert.equal('GMAIL_SEND_EMAIL' in freePrimary.tools, true)
-  assert.equal('BROWSER_NAVIGATE' in freePrimary.tools, false)
-  assert.equal('search_mcp_tools' in freePrimary.tools, true)
-  assert.equal('call_mcp_tool' in freePrimary.tools, true)
-  assert.equal('web_search' in freePrimary.tools, true)
-  assert.equal('deep_search' in freePrimary.tools, true)
-  assert.equal('web_fetch' in freePrimary.tools, true)
-  assert.equal('run_daytona_sandbox' in freePrimary.tools, false)
-
-})
-
 test('agent turns union the grant into the tool surface; human turns keep intent gating', () => {
   const intent = ['search_knowledge', 'save_memory']
   const grant = ['computer_exec', 'computer_read_file', 'save_memory']

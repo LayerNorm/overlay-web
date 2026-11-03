@@ -5,7 +5,6 @@ import { ChevronRight } from 'lucide-react'
 import { ChatModelPicker } from '@overlay/chat-react'
 import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Textarea } from '@overlay/ui/primitives'
 import { useAutosizeTextarea } from '@overlay/ui/hooks'
-import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { MODEL_RECOMMENDATIONS } from '@/shared/ai/gateway/model-data'
 import {
   AgentSidebarAdvancedSettings,
@@ -126,19 +125,12 @@ export function AgentSidebarDetails({
                 form.setModelId(value)
                 form.markDirty()
               }}
-              isFreeTier={modelField.isFreeTier}
-              isFreeTierChatModelId={isFreeTierChatModelId}
               favoriteScope={modelField.favoriteScope}
               modelRecommendations={MODEL_RECOMMENDATIONS}
               textModelsLoading={modelField.textModelsLoading}
               generationMode="text"
               lockedGenerationMode="text"
             />
-            {modelField.isFreeTierWorkspace && !isFreeTierChatModelId(form.modelId) ? (
-              <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
-                Free workspaces use free models. This agent will use Auto.
-              </p>
-            ) : null}
           </DetailsDisclosure>
           <DetailsDisclosure
             label="Instructions"

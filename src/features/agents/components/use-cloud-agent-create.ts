@@ -101,7 +101,7 @@ export function useCloudAgentCreate(args: { workspaceId: string | null; onReady(
       dispatchAgentDirectoryChanged(workspaceId)
       rememberAgentOpened(workspaceId, created.id)
     } catch (createError) {
-      // Do not leave an agent behind that has no machine (for example on a free plan).
+      // Do not leave an agent behind when its cloud machine cannot be created.
       if (created) await overlayAppClient.agents.archive(workspaceId, created.id).catch((_error) => undefined)
       setError(createError instanceof Error ? createError.message : 'Could not create the agent.')
     } finally {

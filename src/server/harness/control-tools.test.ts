@@ -253,7 +253,7 @@ test.each([
     availableEvidenceIds: evidenceRefs
       ? [{ id: 'artifact:1', source: evidenceKind === 'tool_result' ? 'get_note' : 'file' }]
       : [],
-    hint: 'Cite tool:<id> evidence that supports this milestone, or revise the plan with harness_set_plan to mark a milestone that only reports results as answerOnly.',
+    hint: expect.stringContaining('use harness_set_plan to set answerOnly: true'),
   })
   expect((await f.ports.read()).plan[0]?.status).toBe('pending')
 })
@@ -285,8 +285,9 @@ test('tool-result evidence already used by another action milestone returns mode
     success: false,
     error: 'Evidence from a tool result already supports another milestone.',
     availableEvidenceIds: [],
-    hint: "Cite the tool result that performed this milestone's own action, or revise the plan to merge the milestones.",
+    hint: expect.stringContaining('one result cannot prove two actions'),
   })
+  expect(result).toMatchObject({ hint: expect.stringContaining('do not repeat the completed action') })
   expect((await f.ports.read()).plan.find(step => step.id === 'second')?.status).toBe('pending')
 })
 

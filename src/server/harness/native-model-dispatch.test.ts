@@ -16,7 +16,7 @@ vi.mock('@/server/billing/billing-runtime', () => ({ reserveProviderBudget: mock
 const access = { actorUserId: 'user', runId: 'workspace:delivery', workflowRunId: 'workflow',
   workspaceId: 'workspace', principalId: 'human-principal', agentId: 'agent', agentPrincipalId: 'agent-principal',
   conversationId: 'room', agentRunId: 'delivery', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' }
-const reference: HarnessModelReference = { modelId: 'provider/model', credentialOwnerId: 'user', allowLowBalanceFallback: false,
+const reference: HarnessModelReference = { modelId: 'provider/model', credentialOwnerId: 'user',
   native: { access, receiptId: 'model:0', memoryEnabled: true, sharedRoom: true, requestFingerprint: 'request',
     inputTokenBudget: 2_000, maxOutputTokens: 50, contextWindow: 10_000 } }
 const options: LanguageModelV4CallOptions = { prompt: [], maxOutputTokens: 50 }

@@ -28,7 +28,7 @@ export interface ChatModel {
     recoveryHref: string
   }
   intelligence: number
-  /** 0 = free, 1 = cheap, 2 = mid, 3 = expensive */
+  /** 0 = zero-priced, 1 = cheap, 2 = mid, 3 = expensive */
   cost: 0 | 1 | 2 | 3
   /** Relative latency: 1 = heavier/slower, 3 = faster/lighter (for model picker UI). */
   speedTier: 1 | 2 | 3
@@ -63,49 +63,27 @@ export interface VideoModel {
   subModes: VideoSubMode[]
 }
 
-export const FREE_TIER_AUTO_MODEL_ID = 'overlay-free'
-export const OPENROUTER_FREE_MODEL_ID = 'openrouter/free'
-/** @deprecated Alias for {@link FREE_TIER_AUTO_MODEL_ID}. */
-export const FREE_TIER_DEFAULT_MODEL_ID = FREE_TIER_AUTO_MODEL_ID
-export const PAID_TIER_DEFAULT_MODEL_ID = 'deepseek/deepseek-v4-flash-0731' as const
+const RETIRED_HOSTED_MODEL_IDS = new Set([
+  'overlay-free',
+  'openrouter/free',
+  'stepfun-ai/step-3.5-flash',
+  'deepseek-ai/deepseek-v3.2',
+  'moonshotai/kimi-k2-thinking',
+  'minimaxai/minimax-m2.7',
+])
+
+export function isRetiredHostedModelId(modelId: string | undefined): boolean {
+  if (!modelId || modelId.startsWith('byok/')) return false
+  return RETIRED_HOSTED_MODEL_IDS.has(modelId) || modelId.endsWith(':free')
+}
+
+export const DEFAULT_MODEL_ID = 'deepseek/deepseek-v4-flash-0731' as const
 export const KIMI_K3_MODEL_ID = 'moonshotai/kimi-k3' as const
 
 export function isKimiK3ModelId(modelId: string | undefined): boolean {
   return modelId === KIMI_K3_MODEL_ID
 }
 
-// Retired free IDs stay here only so saved user preferences migrate to the current default.
-export const FREE_TIER_LEGACY_DEFAULT_MODEL_IDS = [
-  'openrouter/moonshotai/kimi-k2.6:free',
-  'openrouter/z-ai/glm-4.5-air:free',
-  'openrouter/inclusionai/ring-2.6-1t:free',
-  'openrouter/deepseek/deepseek-v4-flash:free',
-  'openrouter/minimax/minimax-m2.5:free',
-  'openrouter/arcee-ai/trinity-large-thinking:free',
-  'openrouter/openai/gpt-oss-120b:free',
-  'openrouter/nvidia/nemotron-3-super-120b-a12b:free',
-  'stepfun-ai/step-3.5-flash',
-] as const
-
-export type FreeTierChatModelId = typeof FREE_TIER_AUTO_MODEL_ID | typeof OPENROUTER_FREE_MODEL_ID
-
-export function isLegacyFreeTierDefaultModelId(modelId: string | undefined): modelId is string {
-  return Boolean(modelId && (FREE_TIER_LEGACY_DEFAULT_MODEL_IDS as readonly string[]).includes(modelId))
-}
-
-export function isFreeTierChatModelId(
-  modelId: string | undefined,
-): modelId is FreeTierChatModelId {
-  return modelId === FREE_TIER_AUTO_MODEL_ID || modelId === OPENROUTER_FREE_MODEL_ID
-}
-
-export function resolveFreeTierChatModelId(modelId: string | undefined): string | undefined {
-  if (!modelId) return undefined
-  if (isLegacyFreeTierDefaultModelId(modelId)) return FREE_TIER_AUTO_MODEL_ID
-  return isFreeTierChatModelId(modelId) ? modelId : undefined
-}
-
-export const DEFAULT_MODEL_ID = PAID_TIER_DEFAULT_MODEL_ID
 /** New agents start on GLM 5.3 Flash (gateway id `zai/glm-5.3-flash`). */
 export const NEW_AGENT_DEFAULT_MODEL_ID = 'z-ai/glm-5.3-flash' as const
 export const DEFAULT_IMAGE_MODEL_ID = 'openai/gpt-image-1.5'

@@ -4,7 +4,6 @@ import { GatewayModelNotFoundError } from '@ai-sdk/gateway'
 import { FatalError } from 'workflow'
 import { releaseProviderBudgetReservation } from '@/server/billing/billing-runtime'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
-import { OPENROUTER_FREE_MODEL_ID, OVERLAY_FREE_MODEL_ID } from '@/shared/ai/gateway/overlay-free-policy'
 import { applyHarnessOperation, readHarnessState } from './state-steps'
 import type { HarnessModelReference } from './secure-model'
 
@@ -12,18 +11,12 @@ export function isConfirmedHarnessModelRejection(error: unknown): boolean {
   return GatewayModelNotFoundError.isInstance(error) && error.statusCode === 404 && !error.generationId
 }
 
-type HarnessModelRejectionReason = 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'route_unavailable'
+type HarnessModelRejectionReason = 'budget' | 'model_unavailable'
 
-function assertModelRejectionAuthority(reference: HarnessModelReference, reason: HarnessModelRejectionReason) {
+function assertModelRejectionAuthority(reference: HarnessModelReference, _reason: HarnessModelRejectionReason) {
   if (reference.personal && reference.native) throw new FatalError('Model rejection has ambiguous execution authority.')
   const input = reference.personal ?? reference.native
   if (!input || isByokModelId(reference.modelId)) throw new FatalError('Cannot reject an external model dispatch.')
-  const isFreeModel = reference.modelId === OPENROUTER_FREE_MODEL_ID || reference.modelId === OVERLAY_FREE_MODEL_ID
-  if ((reason === 'route_capacity' || reason === 'route_interrupted' || reason === 'route_unavailable') && !isFreeModel) {
-    throw new FatalError(reason === 'route_capacity'
-      ? 'Only the free router can confirm a capacity rejection.'
-      : 'Only the free router can record this rejection.')
-  }
   return input
 }
 
@@ -39,28 +32,15 @@ function assertMatchingModelDispatch(
     || (reason !== 'budget' && hold.dispatch?.modelId !== reference.modelId)) {
     throw new FatalError('Model rejection has no matching dispatch.')
   }
-  if ((reason === 'route_interrupted' || reason === 'route_unavailable')
-    && (hold.maxCostMicros !== 0 || hold.dispatch?.billingReservationId !== null)) {
-    throw new FatalError('This route rejection requires a zero-cost dispatch without a billing reservation.')
-  }
   return hold
 }
 
 function providerForRejection(reason: HarnessModelRejectionReason) {
   if (reason === 'budget') return 'overlay-admission'
-  if (reason === 'route_capacity' || reason === 'route_interrupted' || reason === 'route_unavailable') return 'overlay-free-router'
   return 'gateway'
 }
 
-function billingReleaseReason(reason: HarnessModelRejectionReason) {
-  return reason === 'route_capacity'
-    ? 'The free router had no capacity; no provider inference was attempted.'
-    : 'Gateway rejected an unavailable model before inference.'
-}
-
-// Called inside the provider step, only before receiving a model stream. A
-// confirmed free-router 429 is route capacity; paid and gateway rate limits,
-// timeouts, 5xx responses and stream failures retain their unresolved holds.
+// Called inside the provider step only before a stream is received.
 export async function recordHarnessModelRejection(
   reference: HarnessModelReference,
   reason: HarnessModelRejectionReason,
@@ -72,7 +52,7 @@ export async function recordHarnessModelRejection(
   const hold = assertMatchingModelDispatch(state, reference, input, reason)
   if (hold.dispatch?.billingReservationId) {
     await releaseProviderBudgetReservation({ userId: input.access.actorUserId,
-      reservationId: hold.dispatch.billingReservationId, reason: billingReleaseReason(reason) })
+      reservationId: hold.dispatch.billingReservationId, reason: 'Gateway rejected an unavailable model before inference.' })
   }
   await applyHarnessOperation(input.access, `rejected:${input.receiptId}`, {
     type: 'record_receipt', receipt: {

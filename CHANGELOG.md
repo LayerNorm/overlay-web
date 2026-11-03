@@ -5,7 +5,25 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Route the first Codex subscription cutover through a private, pinned CLIProxyAPI bridge; keep credentials in Overlay Vault, refresh near-expiry credentials under Overlay's fenced pre-dispatch lease (never inside Go inference), and preserve saved model selections through reconnect failures. Keep isolated Preview backend provisioning in the web service build.
-- Give each subscription its own model-picker group below Recommended, with a plug badge, scope label, independent favorites and reconnect action. Load the same connections in chat and agent pickers, including restricted workspaces, without silently replacing unavailable subscription selections.
+- Give each subscription its own model-picker group below Recommended, with a plug badge, scope label, independent favorites and reconnect action. Load the same connections in chat and agent pickers while preserving paid-access requirements, without silently replacing unavailable subscription selections.
+
+- Settle measured model usage when background memory generation fails schema validation, without saving invalid output or leaving a known-cost hold stuck. Unknown usage and missing pricing still require reconciliation.
+
+- Retain receipt-backed provider expenses for failed calls after their wallet holds are released, without charging or crediting the wallet again; include those expenses in billing cost reports.
+
+- Record standing approval for task-related browser QA and testing, and document secure reuse of saved Convex administration access so preview checks do not require repeated approval or per-PR key requests.
+
+- Require paid, funded workspace admission before chat and hosted execution, remove free-model fallback and retired free-routing schema definitions, and preserve manual drafts plus billing-disabled self-hosted access.
+
+- Recover expected Harness milestone-validation failures across durable workflow steps and guide reporting-only milestones to finish from saved results without repeating completed actions.
+
+- Keep provider tool-call markup out of Harness answers and continue to a real final response without repeating completed actions.
+
+- Return workspace-scoped links from note tools so completed tasks can open the saved note without inventing an address.
+
+- Resolve note and Computer download links against successful tool results when a response invents a different hostname.
+
+- Return authenticated download links after Computer file publication and make them clickable even when a response formats the path as text or inline code.
 
 - Configure provider usage markup with `OVERLAY_USAGE_MARKUP_BPS` across web, memory and Computer billing, rejecting invalid settings instead of hiding a fixed rate in code. Subscription prices, included credit and existing subscription records stay unchanged.
 

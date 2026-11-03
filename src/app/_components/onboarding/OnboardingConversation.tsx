@@ -6,7 +6,7 @@ import { Button } from '@overlay/ui/primitives'
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
 import { useAuth } from '@/contexts/AuthContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { AGENT_TOOL_PRESETS, toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import type { OnboardingAction, OnboardingEmployee, OnboardingSession, OnboardingSessionResponse } from '@/shared/onboarding/session'
@@ -14,7 +14,8 @@ import { onboardingChoices, onboardingProfileSteps } from '@/shared/onboarding/s
 import { onboardingRequestInit, requestOnboarding } from './onboarding-client'
 import { readOnboardingDraft, writeOnboardingDraft } from './onboarding-drafts'
 import { MultiChoices, SingleChoices } from './OnboardingChoices'
-import { OnboardingContext, OnboardingInvites, OnboardingTaskPreview } from './OnboardingContext'
+import { OnboardingContext, OnboardingInvites } from './OnboardingContext'
+import { OnboardingPayment } from './OnboardingPayment'
 import { OnboardingEmployees } from './OnboardingEmployees'
 import { OnboardingTools } from './OnboardingTools'
 import styles from './onboarding.module.css'
@@ -40,7 +41,7 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
   const [inputRevision, setInputRevision] = useState(0)
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [previousStep, setPreviousStep] = useState(session.step)
-  const [taskDraft, setTaskDraft] = useState<string | null>(null)
+  const [taskDraft, setTaskDraft] = useState<string | null>(session.taskDraft ?? null)
   const [busy, setBusy] = useState(false)
   const working = useRef(false)
   const [error, setError] = useState<string | null>(null)
@@ -54,7 +55,7 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
   }, [])
   if (previousStep !== session.step) {
     setPreviousStep(session.step); setInput(readOnboardingDraft(session)); setInputRevision((current) => current + 1)
-    setPicked(new Set()); setTaskDraft(null); setPendingAnswer(null)
+    setPicked(new Set()); setTaskDraft(session.taskDraft ?? null); setPendingAnswer(null)
   }
   const replaceInput = (value: string) => { setInput(value); setInputRevision((current) => current + 1) }
   const changeInput = (value: string) => {
@@ -62,7 +63,7 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
     setInput(bounded)
     if (user) writeOnboardingDraft(session, bounded)
   }
-  const perform = async (operation: () => Promise<void>) => {
+  const perform = async (operation: () => Promise<unknown>) => {
     if (working.current) return
     working.current = true; setBusy(true); setError(null)
     try {
@@ -77,6 +78,7 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
     // A short beat so Overlay's reply reads as a reply, not a page swap.
     const [next] = await Promise.all([requestOnboarding(session.workspaceId, action), new Promise((resolve) => window.setTimeout(resolve, 450))])
     onChange(next)
+    return next
   }
   const advance = (values: Omit<Extract<OnboardingAction, { action: 'advance' }>, 'action' | 'runId' | 'revision'> = {}) => act({ action: 'advance', runId: session.runId, revision: session.revision, ...values })
   const skip = () => { void perform(() => advance()) }
@@ -84,7 +86,14 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
   const answer = (value: string) => {
     const text = value.trim()
     if (!text || working.current || !user) return
-    if (session.step === 'task') { setTaskDraft(text); replaceInput(''); return }
+    if (session.step === 'task') {
+      void perform(async () => {
+        const next = await act({ action: 'draft_task', runId: session.runId, revision: session.revision, value: text })
+        if (next.session?.taskDraft !== text) throw new Error('Your setup changed in another tab. Please review the saved draft and retry.')
+        setTaskDraft(text); replaceInput('')
+      })
+      return
+    }
     replaceInput('')
     setPendingAnswer({ text, clientNonce: `onboarding:${user.id}:${session.runId}:${session.revision + 1}:user` })
     void perform(async () => {
@@ -99,7 +108,7 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
       for (const [index, employee] of employees.entries()) {
         const result = await overlayAppClient.agents.create(session.workspaceId, {
           name: employee.name.trim(), description: employee.role.trim(), instructions: employee.role.trim(),
-          harness: 'overlay', modelId: FREE_TIER_AUTO_MODEL_ID, visibility: 'creator',
+          harness: 'overlay', modelId: DEFAULT_MODEL_ID, visibility: 'creator',
           allowedToolIds: toolIdsForEnabledGroups(new Set(AGENT_TOOL_PRESETS.everything.filter((group) => group !== 'computer'))),
         }, onboardingRequestInit(session, `employee-${index}`))
         agentIds.push(result.agent.id)
@@ -125,21 +134,34 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
       await advance({ invitationIds })
     })
   }
-  const createTask = () => {
-    if (!taskDraft) return
-    void perform(async () => {
-      const result = await overlayAppClient.work.create({ title: taskDraft.slice(0, 200), description: taskDraft, scope: 'personal', context: [{ type: 'chat', id: session.conversationId, label: 'Getting started with Overlay' }] }, onboardingRequestInit(session, 'first-task'))
+  const prepareTask = async () => {
+    if (!taskDraft) throw new Error('Write a first-task draft before continuing.')
+    let prepared = session
+    if (!prepared.taskId) {
+      // Keep creation replayable even if a response is lost and the draft is subsequently edited.
+      const result = await overlayAppClient.work.create({ title: 'Your first task', scope: 'personal', context: [{ type: 'chat', id: session.conversationId, label: 'Getting started with Overlay' }] }, onboardingRequestInit(session, 'first-task'))
       if (!result.item?.id) throw new Error('Task creation could not be confirmed. Please retry.')
-      await act({ action: 'finish', runId: session.runId, revision: session.revision, taskId: result.item.id })
-    })
+      const next = await requestOnboarding(session.workspaceId, { action: 'save_task', runId: session.runId, revision: session.revision, taskId: result.item.id })
+      onChange(next)
+      if (next.session?.taskId !== result.item.id) throw new Error('Your draft could not be saved. Please retry.')
+      prepared = next.session
+    }
+    if (prepared.taskDraft !== taskDraft) throw new Error('Your setup changed in another tab. Please review the saved draft and retry.')
+    await overlayAppClient.work.update(prepared.taskId!, { title: taskDraft.slice(0, 200), description: taskDraft }, onboardingRequestInit(prepared, `edit-task-${prepared.revision}`))
+    return prepared
   }
+  const startTask = () => perform(async () => {
+    const prepared = await prepareTask()
+    await overlayAppClient.work.update(prepared.taskId!, { assigneePrincipalId: prepared.agentPrincipalId }, onboardingRequestInit(prepared, 'start-first-task'))
+    await act({ action: 'finish', runId: prepared.runId, revision: prepared.revision, taskId: prepared.taskId! })
+  })
 
   const typing = [...onboardingProfileSteps(session), 'task'].includes(session.step) && !taskDraft
   const labels = onboardingChoices(session).map((choice) => choice.label)
   const firstName = user?.firstName?.trim()
   const controls = (): ReactNode => {
     switch (session.step) {
-      case 'name': return firstName ? <SingleChoices choices={[firstName]} disabled={busy} onPick={answer} /> : null
+      case 'name': return <>{firstName ? <SingleChoices choices={[firstName]} disabled={busy} onPick={answer} /> : null}<p className="mt-3 text-xs text-muted-foreground">Set up your workspace first. Running tasks starts at $8/month.</p></>
       case 'about': case 'team': case 'website': return <SingleChoices choices={labels} disabled={busy} onPick={answer} />
       case 'daily': return <MultiChoices choices={labels} selected={picked} disabled={busy} onContinue={answerPicked}
         onToggle={(label) => setPicked((current) => { const next = new Set(current); if (!next.delete(label)) next.add(label); return next })} />
@@ -149,7 +171,7 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
       case 'memories': return <OnboardingContext disabled={busy} onSave={saveMemories} onSkip={skip} />
       case 'teammates': return <OnboardingInvites disabled={busy} onInvite={invite} onSkip={skip} />
       case 'task': return taskDraft
-        ? <OnboardingTaskPreview title={taskDraft} disabled={busy} onCreate={createTask} onChange={() => { replaceInput(taskDraft); setTaskDraft(null) }} />
+        ? <OnboardingPayment key={`${session.workspaceId}:${session.runId}`} workspaceId={session.workspaceId} title={taskDraft} disabled={busy} onPrepare={prepareTask} onStart={startTask} onEdit={() => { replaceInput(taskDraft); setTaskDraft(null) }} />
         : <SingleChoices choices={labels} disabled={busy} onPick={answer} />
       case 'complete': return <Button variant="primary" size="sm" onClick={onShowWork}>Open Work<ArrowRight className="size-3.5" /></Button>
       default: return null

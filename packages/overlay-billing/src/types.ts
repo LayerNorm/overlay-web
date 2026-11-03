@@ -1,4 +1,7 @@
 export interface Entitlements {
+  status?: 'active' | 'canceled' | 'past_due' | 'trialing'
+  paidPeriodStart?: number
+  paidPeriodEnd?: number
   tier: 'free' | 'pro' | 'max'
   planKind?: 'free' | 'paid'
   planAmountCents?: number
@@ -74,6 +77,9 @@ export interface CheckoutSessionVerificationArgs {
 }
 
 export interface CheckoutSessionVerificationResult {
+  paidInvoiceId?: string
+  paidPeriodStart?: number
+  paidPeriodEnd?: number
   providerSessionId: string
   providerCustomerId?: string
   providerSubscriptionId?: string

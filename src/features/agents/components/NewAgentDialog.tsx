@@ -13,7 +13,7 @@ import type {
 import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle, toast } from '@overlay/ui/primitives'
 import { ChatModelPicker } from '@overlay/chat-react'
 import { MODEL_RECOMMENDATIONS, getModelsByIntelligence, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
-import { NEW_AGENT_DEFAULT_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
+import { NEW_AGENT_DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import {
   AGENT_TOOL_GROUPS,
@@ -148,8 +148,6 @@ function AdvancedSection({ draft, onChange, modelField }: {
               selectableTextModels={modelField.selectableTextModels}
               selectedActModel={draft.modelId}
               onToggleTextModel={(modelId) => onChange({ modelId })}
-              isFreeTier={modelField.isFreeTier}
-              isFreeTierChatModelId={isFreeTierChatModelId}
               favoriteScope={modelField.favoriteScope}
               modelRecommendations={MODEL_RECOMMENDATIONS}
               textModelsLoading={modelField.textModelsLoading}
@@ -221,7 +219,7 @@ export function NewAgentFields({ draft, onChange, modelField, computersAvailable
   /** Overlay Cloud agents are offered only where the deployment supports them. */
   otherAgentsAvailable?: boolean
   otherAgentsEnabled?: boolean
-  /** Why Other agent is unavailable ("Coming soon", or "Paid plans" on a free plan). */
+  /** Why another agent type is unavailable. */
   otherAgentsNote?: string
   onOpenMachineSetup?(): void
 }) {
@@ -313,19 +311,12 @@ function useNewAgentModelField(workspaceId: string | null, draftModelId: string)
   const allTextModels = useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
-    return getModelsByIntelligence(false)
+    return getModelsByIntelligence()
   }, [revision])
-  const accessUnresolved = !modelAccess.entitlements
-  const restricted = modelAccess.loading || accessUnresolved
-  const selectableTextModels = useMemo(
-    () => modelAccess.pickerTextModels.filter((model) => !(restricted || modelAccess.isModelAccessRestricted) || isByokModelId(model.id) || isFreeTierChatModelId(model.id)),
-    [restricted, modelAccess.isModelAccessRestricted, modelAccess.pickerTextModels],
-  )
+  const selectableTextModels = modelAccess.pickerTextModels
   const modelId = resolveDraftModelId(draftModelId, selectableTextModels.map((model) => model.id))
   const modelField = {
     favoriteScope: authUser?.id ?? null,
-    isFreeTier: modelAccess.isFreeTier || restricted,
-    isFreeTierWorkspace: modelAccess.isFreeTier,
     modelPickerLabel: selectableTextModels.find((model) => model.id === modelId)?.name ?? allTextModels.find((model) => model.id === modelId)?.name ?? modelId,
     selectableTextModels,
     textModelsLoading: modelAccess.connectionsLoading,

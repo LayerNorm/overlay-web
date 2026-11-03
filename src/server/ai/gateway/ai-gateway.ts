@@ -6,21 +6,14 @@ import {
   registerGatewayCatalogModels,
 } from '@/shared/ai/gateway/model-data'
 import { calculateGatewayLanguageTokenCostOrNull } from '@/shared/ai/gateway/model-pricing'
-import {
-  FREE_TIER_AUTO_MODEL_ID,
-  isFreeTierChatModelId,
-  OPENROUTER_FREE_MODEL_ID,
-} from '@/shared/ai/gateway/model-types'
-import { logger } from '@/server/observability/logger'
+import { isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 import { openRouterFetchWithRetry, toOpenRouterApiModelId } from '@/server/ai/gateway/openrouter-service'
-import { isGatewayCreditLow } from './gateway-credits'
 import { getGatewayCatalogModel, getGatewayLanguageCatalog } from './gateway-catalog'
 import {
   getGatewayModelId,
   getOrCreateGateway,
   resolveOpenRouterApiKey,
 } from './gateway-runtime'
-import { createRuntimeOverlayFreeLanguageModel } from './overlay-free-router'
 export {
   getGatewayModelId,
   resolveGatewayProviderToolProxyModelId,
@@ -58,10 +51,8 @@ export async function getOpenRouterLanguageModel(modelId: string, accessToken?: 
 }
 
 /**
- * Like {@link getOpenRouterLanguageModel} but also captures the actual model OpenRouter routes to
- * (for `openrouter/free` the router picks a free model at runtime). The `onModelCaptured` callback
- * is invoked as soon as the first SSE chunk with a `model` field arrives, so it is always set
- * before `ToolLoopAgent.onFinish` is called.
+ * Like {@link getOpenRouterLanguageModel} but also captures the model reported by OpenRouter.
+ * The callback is invoked as soon as the first SSE chunk with a `model` field arrives.
  */
 export async function getOpenRouterLanguageModelCapturingRoutedModel(
   modelId: string,
@@ -129,41 +120,15 @@ export async function getOpenRouterLanguageModelCapturingRoutedModel(
   return openrouter.chat(toOpenRouterApiModelId(modelId))
 }
 
-/**
- * When the global gateway key is nearly out of credit, serve chat from the
- * OpenRouter free router. Returns null when no free transport is configured.
- */
-async function getLowBalanceFallbackLanguageModel(accessToken?: string) {
-  void accessToken
-  return await createRuntimeOverlayFreeLanguageModel()
-}
-
-export async function getGatewayLanguageModel(
-  modelId: string,
-  accessToken?: string,
-  options?: { allowLowBalanceFallback?: boolean },
-) {
-  if (isFreeTierChatModelId(modelId)) {
-    return await createRuntimeOverlayFreeLanguageModel({
-      modelId,
-      fallbackOnly: modelId === OPENROUTER_FREE_MODEL_ID,
-    })
+export async function getGatewayLanguageModel(modelId: string, accessToken?: string) {
+  if (isRetiredHostedModelId(modelId)) {
+    throw new Error('MODEL_RETIRED: This hosted model is no longer available. Select a paid model to continue.')
   }
   const model = getModel(modelId)
 
   // Route OpenRouter models to OpenRouter API
   if (model?.provider === 'openrouter') {
     return getOpenRouterLanguageModel(modelId, accessToken)
-  }
-
-  if (options?.allowLowBalanceFallback !== false && (await isGatewayCreditLow())) {
-    const fallback = await getLowBalanceFallbackLanguageModel(accessToken)
-    if (fallback) {
-      logger.warn('[ai-gateway] low gateway credit — resolving to a free model', {
-        requestedModelId: modelId,
-      })
-      return fallback
-    }
   }
 
   const gateway = await getOrCreateGateway(accessToken)
@@ -209,9 +174,7 @@ export class OpenRouterGateway implements LLMGateway {
     options: ModelOptions = {},
   ): Promise<LanguageModel> {
     const model = getModel(modelId)
-    const implementation = await getGatewayLanguageModel(modelId, options.accessToken, {
-      allowLowBalanceFallback: options.allowLowBalanceFallback,
-    })
+    const implementation = await getGatewayLanguageModel(modelId, options.accessToken)
     return {
       id: modelId,
       provider: model?.provider,
@@ -236,33 +199,12 @@ export class OpenRouterGateway implements LLMGateway {
       pricePer1mTokens:
         ((model.inputPricePerMillion ?? 0) + (model.outputPricePerMillion ?? 0)) / 2,
       }))
-    for (const modelId of [FREE_TIER_AUTO_MODEL_ID, OPENROUTER_FREE_MODEL_ID]) {
-      if (allowlist.size > 0 && !allowlist.has(modelId)) continue
-      if (models.some((model) => model.id === modelId)) continue
-      const model = getModel(modelId)
-      if (model) models.push({
-        id: model.id,
-        name: model.name,
-        provider: model.provider,
-        description: model.description,
-        supportsVision: model.supportsVision,
-        supportsReasoning: model.supportsReasoning,
-        supportsSearch: model.supportsSearch,
-        pricePer1mTokens: 0,
-      })
-    }
     return models
   }
 
   async getModelPricing(modelId: string): Promise<PricingInfo> {
-    if (isFreeTierChatModelId(modelId)) {
-      return {
-        modelId,
-        providerCostUsd: 0,
-        pricingModelId: modelId,
-        pricingType: 'language',
-        isFree: true,
-      }
+    if (isRetiredHostedModelId(modelId)) {
+      throw new Error('MODEL_RETIRED: This hosted model is no longer available. Select a paid model to continue.')
     }
     const model = await getGatewayCatalogModel(modelId)
     const providerCostUsd = model?.type === 'language'

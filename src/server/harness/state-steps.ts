@@ -4,6 +4,7 @@ import { HarnessPlanValidationError, type HarnessEvidence, type HarnessSnapshot 
 import type { HarnessMutationResult, HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { waitForHarnessModelResources } from './resource-boundary'
+import { isHarnessStepValidation } from './step-validation'
 
 export type HarnessExecutionReference = {
   actorUserId: string
@@ -14,6 +15,7 @@ export type HarnessExecutionReference = {
 export type HarnessOperationStepResult =
   | { ok: true; snapshot: HarnessSnapshot }
   | { ok: false; code: 'HARNESS_PLAN_VALIDATION'; message: string }
+  | { ok: false; code: 'HARNESS_STEP_VALIDATION'; message: string }
   | { ok: false; code: 'HARNESS_RESOURCE_REQUIRED'; requiredCostMicros: number }
 
 function rejectedOperation(error: unknown): { code: 'HARNESS_OPERATION_REJECTED' | 'HARNESS_PLAN_VALIDATION'; message: string } | null {
@@ -87,6 +89,10 @@ export async function applyHarnessOperationStep(
       if (rejected?.code === 'HARNESS_PLAN_VALIDATION') {
         return { ok: false, code: rejected.code, message: rejected.message }
       }
+      if (operation.type === 'transition_step' && rejected?.code === 'HARNESS_OPERATION_REJECTED'
+        && isHarnessStepValidation(rejected.message)) {
+        return { ok: false, code: 'HARNESS_STEP_VALIDATION', message: rejected.message }
+      }
       if (operation.type === 'reserve_model' && state.policy.resourcePauseVersion === 1
         && rejected?.code === 'HARNESS_OPERATION_REJECTED'
         && ['The authorized run deadline is exhausted.', 'The authorized spending budget is exhausted.'].includes(rejected.message)) {
@@ -112,6 +118,7 @@ export async function applyHarnessOperation(
     const result = await applyHarnessOperationStep(reference, operationId, operation)
     if (result.ok) return result.snapshot
     if (result.code === 'HARNESS_PLAN_VALIDATION') throw new HarnessPlanValidationError(result.message)
+    if (result.code === 'HARNESS_STEP_VALIDATION') throw new Error(result.message)
     const state = await waitForHarnessModelResources(reference, result.requiredCostMicros, () => readHarnessState(reference))
     if (state.status !== 'running') throw new FatalError('Harness model reservation is no longer runnable.')
   }

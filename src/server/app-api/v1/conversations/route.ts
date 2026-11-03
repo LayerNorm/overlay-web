@@ -3,7 +3,6 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { paginateArray } from '@/server/app-api/pagination-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { canUsePaidBudgetFeatures } from '@/server/billing/billing-runtime'
 import {
   GENERATED_UI_DATA_TYPE,
   normalizeGeneratedUiData,
@@ -12,7 +11,10 @@ import type {
   ConversationMessageRow,
 } from '@/server/conversations/ActConversationRepository'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
-import { resolveConversationModelSelection } from './conversation-model-selection'
+import {
+  resolveConversationModelSelection,
+  RetiredConversationModelSelectionError,
+} from './conversation-model-selection'
 import {conversationMessageParts} from './message-parts'
 
 function readBooleanParam(value: string | null): boolean | undefined {
@@ -247,12 +249,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       userId?: string
     }
     const { auth } = context
-    const { appData, chatUsagePolicy } = getOverlayServerContext()
+    const { appData } = getOverlayServerContext()
     const repository = appData.repositories.conversations
-    const entitlements = await chatUsagePolicy.getEntitlements({ userId: auth.userId })
-    const isFreeTier = !entitlements || !canUsePaidBudgetFeatures(entitlements)
     const models = resolveConversationModelSelection({
-      isFreeTier,
       askModelIds: body.askModelIds,
       actModelId: body.actModelId,
     })
@@ -273,6 +272,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     })
     return NextResponse.json({ id, conversation })
   } catch (error) {
+    if (error instanceof RetiredConversationModelSelectionError) {
+      return NextResponse.json({ error: 'model_retired', message: error.message }, { status: 400 })
+    }
     logger.error('[conversations POST]', error)
     return NextResponse.json({ error: 'Failed to create conversation' }, { status: 500 })
   }
@@ -290,7 +292,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       userId?: string
     }
     const { auth } = context
-    const { appData, chatUsagePolicy } = getOverlayServerContext()
+    const { appData } = getOverlayServerContext()
     const repository = appData.repositories.conversations
     if (!body.conversationId) {
       return NextResponse.json({ error: 'conversationId required' }, { status: 400 })
@@ -299,10 +301,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     let askModelIds = body.askModelIds
     let actModelId = body.actModelId
     if (body.askModelIds !== undefined || body.actModelId !== undefined) {
-      const entitlements = await chatUsagePolicy.getEntitlements({ userId: auth.userId })
-      const isFreeTier = !entitlements || !canUsePaidBudgetFeatures(entitlements)
       const models = resolveConversationModelSelection({
-        isFreeTier,
         askModelIds: body.askModelIds,
         actModelId: body.actModelId,
       })
@@ -326,6 +325,9 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     })
     return NextResponse.json({ success: true, conversation })
   } catch (error) {
+    if (error instanceof RetiredConversationModelSelectionError) {
+      return NextResponse.json({ error: 'model_retired', message: error.message }, { status: 400 })
+    }
     logger.error('[conversations PATCH]', error)
     return NextResponse.json({ error: 'Failed to update conversation' }, { status: 500 })
   }

@@ -5,7 +5,7 @@ import { logger } from '@/server/observability/logger'
  * OpenRouter Service — direct fetch to https://openrouter.ai/api/v1/chat/completions.
  * Overlay ids use `openrouter/` for our registry. Vendor models map to API slugs without that
  * prefix (e.g. `openrouter/arcee-ai/...` → `arcee-ai/...`). OpenRouter-native routers keep the
- * full id (e.g. `openrouter/free` — sending `free` alone is invalid).
+ * full id (e.g. `openrouter/auto` — sending `auto` alone is invalid).
  */
 
 import {
@@ -15,6 +15,7 @@ import {
   type UIMessage,
 } from 'ai'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
+import { isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 
 type OpenRouterContentPart =
   | { type: 'text'; text: string }
@@ -28,7 +29,7 @@ export interface OpenRouterMessage {
 const OPENROUTER_RETRY_ATTEMPTS = 7
 
 /**
- * Retries 429/503 from OpenRouter (common with `openrouter/free` when upstream free models throttle).
+ * Retries transient OpenRouter 429/503 responses.
  * The AI SDK also retries ~3 times; this layers longer backoff at the HTTP level per attempt.
  */
 export async function openRouterFetchWithRetry(
@@ -75,7 +76,7 @@ function gatherErrorText(error: unknown, depth = 0): string {
   return String(error)
 }
 
-/** User-visible copy when OpenRouter / free pool fails. */
+/** User-visible copy when OpenRouter fails. */
 export function userFacingOpenRouterError(error: unknown): string {
   const raw = gatherErrorText(error)
   const lower = raw.toLowerCase()
@@ -100,8 +101,7 @@ export function userFacingOpenRouterError(error: unknown): string {
     lower.includes('temporarily rate-limited')
   ) {
     return (
-      'OpenRouter’s free models are temporarily rate-limited. Wait a minute and retry, ' +
-      'or add your own OpenRouter key for higher limits.'
+      'OpenRouter is temporarily rate-limited. Wait a minute and retry, or choose another supported model.'
     )
   }
   if (
@@ -111,7 +111,7 @@ export function userFacingOpenRouterError(error: unknown): string {
   ) {
     return (
       'AI Gateway rejected one of the configured tool schemas. This is a provider configuration issue, ' +
-      'not your prompt or budget. Try again after the latest deploy, or switch to a free model temporarily.'
+      'not your prompt or budget. Try again after the latest deploy, or choose another supported model.'
     )
   }
   if (!raw.trim()) return 'Something went wrong. Please try again.'
@@ -131,6 +131,9 @@ export function shouldFallbackOpenRouterWithoutTools(error: unknown): boolean {
 
 /** Map overlay registry id → OpenRouter `model` string for /v1/chat/completions. */
 export function toOpenRouterApiModelId(overlayModelId: string): string {
+  if (isRetiredHostedModelId(overlayModelId)) {
+    throw new Error('MODEL_RETIRED: This hosted model is no longer available. Select a paid model to continue.')
+  }
   if (!overlayModelId.startsWith('openrouter/')) {
     return overlayModelId
   }

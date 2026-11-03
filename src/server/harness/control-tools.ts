@@ -2,17 +2,19 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import { HarnessPlanValidationError, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts } from './ports'
+import { HARNESS_STEP_VALIDATION } from './step-validation'
 
 const id = z.string().min(1).max(256)
-const evidenceReferenceError = 'Evidence must reference successful observations from this run.'
-const completionErrors = new Set([
-  'Completion requires evidence.',
-  'Completion requires tool-result evidence.',
-  "Completion requires tool-result evidence from this milestone's evidenceTools.",
+const evidenceReferenceError = HARNESS_STEP_VALIDATION.evidenceReference
+const completionErrors = new Set<string>([
+  HARNESS_STEP_VALIDATION.evidenceRequired,
+  HARNESS_STEP_VALIDATION.toolEvidenceRequired,
+  HARNESS_STEP_VALIDATION.matchingToolEvidenceRequired,
 ])
-const dependencyError = 'Dependencies are not complete.'
-const reusedToolResultEvidenceError = 'Evidence from a tool result already supports another milestone.'
-const completionHint = 'Cite tool:<id> evidence that supports this milestone, or revise the plan with harness_set_plan to mark a milestone that only reports results as answerOnly.'
+const dependencyError = HARNESS_STEP_VALIDATION.dependencies
+const reusedToolResultEvidenceError = HARNESS_STEP_VALIDATION.reusedToolEvidence
+const reportingHint = 'If this milestone only reports prior results, use harness_set_plan to set answerOnly: true, omit evidenceTools, and set requiresVerification: false for this milestone. Preserve every other milestone exactly, including completed action IDs, titles, dependencies and acceptance criteria. Then return the requested answer using the saved result; do not repeat the completed action.'
+const completionHint = `Cite tool:<id> evidence that supports this milestone. ${reportingHint}`
 
 function availableEvidenceIds(state: HarnessSnapshot) {
   const usedByAction = new Set(state.plan
@@ -38,7 +40,7 @@ function rejectedStepUpdate(error: string, state: HarnessSnapshot, stepId: strin
       success: false,
       error,
       availableEvidenceIds: evidenceIds,
-      hint: "Cite the tool result that performed this milestone's own action, or revise the plan to merge the milestones.",
+      hint: `For a separate action, cite its own successful tool result; one result cannot prove two actions. ${reportingHint}`,
     }
   }
   if (error === dependencyError) {
@@ -116,7 +118,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
           state = await ports.apply(`control:${toolCallId}`, { type: 'transition_step', ...input })
         } catch (error) {
           if (!(error instanceof Error)) throw error
-          const verificationError = 'Independent verification of this milestone in the current plan revision is required.'
+          const verificationError = HARNESS_STEP_VALIDATION.verification
           if (error.message === verificationError) {
             return { success: false, error: verificationError,
               hint: 'Revise the plan if no independent verifier is available for this milestone.' }

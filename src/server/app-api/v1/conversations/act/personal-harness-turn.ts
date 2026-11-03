@@ -54,7 +54,6 @@ export async function startPersonalHarnessTurn(input: {
   hasDynamicApproval: boolean
   instructions: string
   messagesForModel: UIMessage[]
-  modelCandidates: string[]
   paid: boolean
   principalId: string
   rawReasoning?: string
@@ -106,7 +105,6 @@ export async function startPersonalHarnessTurn(input: {
           ? { reasoning: input.rawReasoning as NonNullable<PersonalHarnessWorkflowInput['settings']>['reasoning'] }
           : {}),
       },
-      modelCandidates: input.modelCandidates,
       delivery: { emitWebhook: input.emitWebhook, sourceCitations: input.sourceCitations },
     }
     const workflowRun = await startPersonalHarness({
