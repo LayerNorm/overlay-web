@@ -581,6 +581,8 @@ test('pending answer-only plans retain input controls without enabling external 
   expect(result.snapshot.runId).toBe('run')
   expect(result.snapshot.resultSummary).toBe('Confirmed: harbor')
   expect(provider.doStreamCalls).toHaveLength(4)
+  expect(provider.doStreamCalls[1].toolChoice).toEqual({ type: 'auto' })
+  expect(provider.doStreamCalls[2].toolChoice).toEqual({ type: 'auto' })
   const names = provider.doStreamCalls[1].tools?.map(tool => tool.name)
   expect(names).toContain('harness_report_blocker')
   expect(names).toContain('harness_update_step')

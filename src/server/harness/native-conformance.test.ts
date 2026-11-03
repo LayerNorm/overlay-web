@@ -513,7 +513,7 @@ it('Plan: write claims without a plan stay blocked, while answer-only Q&A comple
   expect(completed.snapshot.status).toBe('completed')
   expect(completed.snapshot.plan[0]).toMatchObject({ id: 'answer', answerOnly: true, status: 'done' })
   expect(answer.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
-  expect(answer.doStreamCalls[1]?.toolChoice).toEqual({ type: 'none' })
+  expect(answer.doStreamCalls[1]?.toolChoice).toEqual({ type: 'auto' })
 })
 
 it('Budget — two named children plus the parent remain within the ceiling and a third ask is refused before a turn row', () => {

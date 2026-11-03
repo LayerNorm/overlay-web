@@ -445,12 +445,14 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         const needsPlan = current.policy.requiresPlan && !current.plan.length
         observedState = current
         const activeTools = activeModelTools(current, prepared.activeToolNames, tools, controls, complete, needsPlan)
+        const pendingAnswerControls = complete && hasPendingHarnessAnswer(current) && activeTools.length > 0
         return {
           system: prepared.instructions ?? buildHarnessStepInstructions(current, instructionContext),
           messages: prepared.messages.filter(message => message.role !== 'system'),
           ...prepared.settings,
           activeTools,
           ...(needsPlan ? { toolChoice: 'required' as const } : {}),
+          ...(pendingAnswerControls ? { toolChoice: 'auto' as const } : {}),
           ...(activeTools.length ? {} : { toolChoice: 'none' as const }),
           ...(prepared.model ? { model: new HarnessLanguageModel(prepared.model) } : {}),
         }
