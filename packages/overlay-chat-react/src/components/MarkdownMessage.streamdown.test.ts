@@ -124,7 +124,7 @@ test('workspace-scoped note links remain clickable beyond 96 characters', () => 
   assert.ok(href.length > 96)
   for (const streaming of [false, true]) {
     const html = rendered(`[Saved note](${href})`, streaming)
-    assert.ok(html.includes(`href="${href.replace('&', '&amp;')}"`))
+    assert.ok(html.includes(`href="${href.replaceAll('&', '&amp;')}"`))
     assert.match(html, /Saved note<\/a>/)
   }
 })
