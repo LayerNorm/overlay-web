@@ -5,6 +5,7 @@ import { z } from 'zod'
 import type { HarnessExecutionPorts } from './ports'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
 import { waitForHarnessHumanReply } from './resource-boundary'
+import { sameHarnessApprovalRequests } from './tool-approvals'
 import {
   listHarnessWaits, notifyHarnessAncestors,
   publishHarnessWait, readHarnessChild, resolveHarnessWait,
@@ -53,7 +54,7 @@ export function createHarnessWaitPorts(input: {
     const existing = (await listHarnessWaits(access)).find(wait => wait.runId === state.runId)
     const wait = existing ?? await publishHarnessWait(access, request)
     if (wait.kind !== request.kind || (wait.kind === 'approval' && request.kind === 'approval'
-      && JSON.stringify(wait.requests) !== JSON.stringify(request.requests))) {
+      && !sameHarnessApprovalRequests(wait.requests, request.requests))) {
       throw new FatalError('Persisted approval request changed.')
     }
     await notifyHarnessAncestors(access)

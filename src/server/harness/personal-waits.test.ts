@@ -242,6 +242,31 @@ test('a successor consumes the original durable input reply without registering 
   expect(mocks.resolve).toHaveBeenCalledExactlyOnceWith(successorAccess, previousToken)
 })
 
+test.each(['publish', 'reattach'])('a V2 approval accepts canonical persisted keys on %s', async mode => {
+  const requests = [{ approvalId: 'approval-1', toolCallId: 'call-1', toolName: 'computer_exec',
+    input: { timeoutMs: 5000, command: 'printf ok', options: { z: 1, a: [2, 1] } } }]
+  const persistedRequests = [{ approvalId: 'approval-1',
+    input: { command: 'printf ok', options: { a: [2, 1], z: 1 }, timeoutMs: 5000 },
+    toolCallId: 'call-1', toolName: 'computer_exec' }]
+  expect(JSON.stringify(persistedRequests)).not.toBe(JSON.stringify(requests))
+  state.policy.executionPolicyVersion = 2
+  state.status = 'waiting_for_approval'
+  state.blocker = { kind: 'approval', question: 'Approve command?' }
+  const wait = { kind: 'approval' as const, token: 'original-token', runId: state.runId,
+    rootRunId: state.rootRunId, workflowRunId: state.workflowRunId!, requests: persistedRequests, createdAt: 100 }
+  if (mode === 'publish') mocks.publish.mockResolvedValue(wait)
+  else mocks.list.mockResolvedValue([wait])
+  mocks.readReply.mockResolvedValue({ approved: true })
+  const ports = createPersonalHarnessWaitPorts({ access, wake: { next: vi.fn() },
+    renewLease: vi.fn(async () => {}), checkFunding: vi.fn(async () => false) })
+
+  await expect(ports.waitForApproval(requests)).resolves.toEqual([{ approvalId: 'approval-1', approved: true }])
+  expect(mocks.project).toHaveBeenCalledWith(access, { wait })
+  expect(mocks.resolve).toHaveBeenCalledExactlyOnceWith(access, 'original-token')
+  expect(mocks.hook).not.toHaveBeenCalled()
+  expect(mocks.publish).toHaveBeenCalledTimes(mode === 'publish' ? 1 : 0)
+})
+
 test('a successor validates the persisted approval request set before consuming its reply', async () => {
   const previousToken = 'harness:wait:workflow:1'
   const requests = [{ approvalId: 'approval-1', toolCallId: 'call-1', toolName: 'send', input: { id: 'doc' } }]
