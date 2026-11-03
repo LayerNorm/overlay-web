@@ -459,6 +459,7 @@
     "src/server/harness/ConvexHarnessRepository.ts",
     "src/server/harness/artifact-steps.ts",
     "src/server/harness/delivery-wait-projection.ts",
+    "src/server/harness/funding-admission.ts",
     "src/server/harness/harness-continuations.ts",
     "src/server/harness/model-dispatch.ts",
     "src/server/harness/native-access.ts",
