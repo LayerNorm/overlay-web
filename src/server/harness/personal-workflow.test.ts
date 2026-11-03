@@ -4,8 +4,8 @@ import type { HarnessExecutionPorts } from './ports'
 import type { PersonalHarnessWorkflowInput } from './personal-workflow-input'
 import { personalHarnessChildInput, personalHarnessWorkflow } from '@/server/workflows/personal-harness'
 
-const mocks = vi.hoisted(() => ({ read: vi.fn(), claim: vi.fn(), apply: vi.fn(), run: vi.fn(), ports: vi.fn(),
-  tools: vi.fn(), waits: vi.fn(), attach: vi.fn(), finish: vi.fn(), close: vi.fn(), notify: vi.fn(),
+const mocks = vi.hoisted(() => ({ read: vi.fn(), readAndClaim: vi.fn(), apply: vi.fn(), run: vi.fn(), ports: vi.fn(),
+  tools: vi.fn(), waits: vi.fn(), admission: vi.fn(), finish: vi.fn(), close: vi.fn(), notify: vi.fn(),
   child: vi.fn(), admit: vi.fn(), start: vi.fn(), get: vi.fn(), progress: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), fallback: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('workflow', () => ({
@@ -15,13 +15,13 @@ vi.mock('workflow', () => ({
     [Symbol.asyncIterator]: () => ({ next: async () => ({ value: {}, done: false }) }) }),
 }))
 vi.mock('workflow/api', () => ({ start: mocks.start }))
-vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, claimHarnessState: mocks.claim, applyHarnessOperation: mocks.apply }))
+vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, readAndClaimHarnessState: mocks.readAndClaim, applyHarnessOperation: mocks.apply }))
 vi.mock('./runner', () => ({ runOverlayHarness: mocks.run }))
-vi.mock('./personal-ports', () => ({ createPersonalHarnessExecutionPorts: mocks.ports }))
+vi.mock('./personal-ports', () => ({ createPersonalHarnessExecutionPorts: mocks.ports, admitPersonalHarnessExecution: mocks.admission }))
 vi.mock('./personal-tools', () => ({ createPersonalHarnessTools: mocks.tools }))
 vi.mock('./personal-waits', () => ({ createPersonalHarnessWaitPorts: mocks.waits }))
 vi.mock('./personal-child-steps', () => ({ admitPersonalHarnessChild: mocks.admit }))
-vi.mock('./personal-delivery-steps', () => ({ attachPersonalHarnessDelivery: mocks.attach,
+vi.mock('./personal-delivery-steps', () => ({
   finishPersonalHarnessDelivery: mocks.finish, closePersonalHarnessStream: mocks.close, writePersonalHarnessFallback: mocks.fallback }))
 vi.mock('./personal-wait-steps', () => ({ harnessWakeToken: (id: string) => `harness:wake:${id}`,
   notifyHarnessAncestors: mocks.notify, readHarnessChild: mocks.child }))
@@ -74,7 +74,7 @@ beforeEach(() => {
     maxCostMicros: 100, deadlineAt: Date.now() + 60_000, maxDepth: 2, maxParallelChildren: 2,
   } }, Date.now()), workflowRunId: 'workflow' }
   mocks.read.mockImplementation(async () => state)
-  mocks.claim.mockResolvedValue(true)
+  mocks.readAndClaim.mockImplementation(async () => ({ snapshot: state, claimed: true }))
   mocks.conflict.mockResolvedValue(null)
   mocks.tools.mockReturnValue({})
   mocks.ports.mockImplementation((_execution, surface) => ({ ...surface, recordModelStep: vi.fn() }))
@@ -111,7 +111,11 @@ test('SDK streaming failures close personal delivery descriptively without retry
 test('root registers wakeups before executing and persists authoritative delivery before closing', async () => {
   expect(await personalHarnessWorkflow(input)).toEqual({ runId: 'root', status: 'completed' })
   expect(mocks.conflict.mock.invocationCallOrder[0]).toBeLessThan(mocks.run.mock.invocationCallOrder[0])
-  expect(mocks.attach.mock.invocationCallOrder[0]).toBeLessThan(mocks.run.mock.invocationCallOrder[0])
+  expect(mocks.admission).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ context: input.context }), { attachDelivery: true })
+  expect(mocks.conflict.mock.invocationCallOrder[0]).toBeLessThan(mocks.admission.mock.invocationCallOrder[0])
+  expect(mocks.admission.mock.invocationCallOrder[0]).toBeLessThan(mocks.run.mock.invocationCallOrder[0])
+  // The runner reuses the admitted post-claim snapshot instead of reading and claiming again.
+  expect(mocks.ports.mock.calls[0][3]).toBe(state)
   expect(mocks.finish).toHaveBeenCalledWith(expect.objectContaining({ workflowRunId: 'workflow' }),
     expect.objectContaining({ content: 'Verified result.' }), { emitWebhook: true, turnId: 'turn' })
   expect(mocks.finish.mock.invocationCallOrder[0]).toBeLessThan(mocks.close.mock.invocationCallOrder[0])
@@ -120,18 +124,28 @@ test('root registers wakeups before executing and persists authoritative deliver
 })
 
 test('a duplicate workflow cannot build tools, bill or finalize another execution', async () => {
-  mocks.claim.mockResolvedValue(false)
+  mocks.readAndClaim.mockImplementation(async () => ({ snapshot: state, claimed: false }))
   expect(await personalHarnessWorkflow(input)).toEqual({ runId: 'root', status: 'already_running' })
+  expect(mocks.admission).not.toHaveBeenCalled()
   expect(mocks.ports).not.toHaveBeenCalled()
   expect(mocks.tools).not.toHaveBeenCalled()
   expect(mocks.finish).not.toHaveBeenCalled()
   expect(mocks.run).not.toHaveBeenCalled()
 })
 
+test('successor admission retains its generation and reuses the claimed snapshot', async () => {
+  state.executionGeneration = 3
+  const access = { ...input.access, executionGeneration: 3 }
+  await personalHarnessWorkflow({ ...input, access })
+  expect(mocks.readAndClaim).toHaveBeenCalledExactlyOnceWith({ ...access, workflowRunId: 'workflow' })
+  expect(mocks.admission).toHaveBeenCalledExactlyOnceWith({ access: { ...access, workflowRunId: 'workflow' }, context: input.context }, { attachDelivery: true })
+  expect(mocks.ports.mock.calls[0][3]).toBe(state)
+})
+
 test('a completed child notifies ancestors without writing the root transcript', async () => {
   state.parentRunId = 'parent'
   await personalHarnessWorkflow(input)
-  expect(mocks.attach).not.toHaveBeenCalled()
+  expect(mocks.admission).toHaveBeenCalledExactlyOnceWith(expect.anything(), { attachDelivery: false })
   expect(mocks.finish).not.toHaveBeenCalled()
   expect(mocks.notify).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 })
 })

@@ -1,8 +1,8 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { createHarnessExecutionPorts } from './execution-ports'
 
-const mocks = vi.hoisted(() => ({ claim: vi.fn(), admit: vi.fn() }))
-vi.mock('./state-ports', () => ({ createHarnessStatePorts: () => ({ claim: mocks.claim }) }))
+const mocks = vi.hoisted(() => ({ claim: vi.fn(), read: vi.fn(), admit: vi.fn() }))
+vi.mock('./state-ports', () => ({ createHarnessStatePorts: () => ({ claim: mocks.claim, read: mocks.read }) }))
 vi.mock('./request-usage-step', () => ({ admitHarnessRequestUsage: mocks.admit }))
 vi.mock('./resource-boundary', () => ({ waitForHarnessModelResources: vi.fn() }))
 
@@ -50,4 +50,20 @@ test('revoked surface authorization fails closed before accounting or tools', as
   await expect(ports.claim()).rejects.toThrow('Access revoked')
   expect(mocks.admit).not.toHaveBeenCalled()
   await expect(ports.authorizeTool('send_message')).rejects.toThrow('Access revoked')
+})
+
+test('a surface-admitted execution reuses its post-claim snapshot once without claiming again', async () => {
+  const admitted = { runId: 'run', revision: 4 } as never
+  const fresh = { runId: 'run', revision: 5 }
+  mocks.read.mockResolvedValue(fresh)
+  const ports = createHarnessExecutionPorts({ reference, modelId: 'fixture/model', authorize, model, surface, admitted })
+  expect(await ports.read()).toBe(admitted)
+  expect(await ports.claim()).toBe(true)
+  expect(mocks.claim).not.toHaveBeenCalled()
+  expect(authorize).not.toHaveBeenCalled()
+  expect(mocks.admit).not.toHaveBeenCalled()
+  expect(await ports.read()).toBe(fresh)
+  expect(mocks.read).toHaveBeenCalledOnce()
+  await ports.authorizeTool('read_file')
+  expect(authorize).toHaveBeenCalledExactlyOnceWith('read_file')
 })

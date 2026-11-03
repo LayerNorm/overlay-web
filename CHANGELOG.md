@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve generation fencing, authorization pauses, and lease renewal when combining durable continuation with the streamlined personal Harness startup path.
+
 - Add opt-in, isolated Preview funding fixtures with one cent of initial synthetic credit. Reseeding never drains or replenishes existing balances, starts work, enables top-ups, or creates Stripe payment evidence.
 
 - Preserve valid Harness approval waits when persistence reorders JSON object keys. Approval identities, tool names, argument values, and array order must still match before any saved decision is consumed.
@@ -15,6 +17,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Add versioned long-running Harness execution with workspace-funded dispatch holds, renewable execution leases, typed funding pauses, and protected continuation handoff. New checkpoints use gzip-compressed Convex File Storage blobs referenced by an atomic small metadata transaction; older inline checkpoint fields remain readable. Failed/retried uploads may leave unreferenced blobs, and no destructive orphan cleanup is performed. An expired explicit task deadline now persists as nonterminal `waiting_for_authorization`, preserves existing waits, blocks ordinary replies and execution, and remains cancellable. Funding projections show required and available amounts and show reserved amounts only when authoritative. Existing explicit spend overrides, V1 resource pauses, legacy policies, payer distinctions, and unresolved-effect holds remain enforced; targeted fixtures do not qualify every wait handoff or real-time multiweek operation.
 
 - Require a plain-language changelog entry in every PR, including documentation, dependency, test and CI changes, and a functionality summary with deployment status after each merge.
+
+- Reach the first model call in personal Chat and Work runs with 8 durable steps instead of 15. The initial read and execution claim share one step; delivery attach, reauthorization and request accounting share another. Model preparation reuses the state read at the model boundary and reads catalog limits once per model, so later model calls take 4 steps instead of 7. Every authorization, budget and reservation check still runs.
 
 - Explain AI SDK Harness failures in plain language, including provider HTTP failures, invalid inputs and tool approvals, missing outputs, and exhausted SDK retries. Preserve partial-stream warnings and nested SDK causes without exposing prompts, tool inputs, or provider payloads; retry, fallback, and billing behavior are unchanged.
 

@@ -4,16 +4,16 @@ import type { ModelCallStreamPart } from '@ai-sdk/workflow'
 import type { ToolSet } from 'ai'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { createPersonalHarnessTools } from '@/server/harness/personal-tools'
-import { authorizePersonalHarnessExecution, checkPersonalHarnessFunding, createPersonalHarnessExecutionPorts } from '@/server/harness/personal-ports'
+import { admitPersonalHarnessExecution, authorizePersonalHarnessExecution, checkPersonalHarnessFunding, createPersonalHarnessExecutionPorts } from '@/server/harness/personal-ports'
 import { createPersonalHarnessWaitPorts } from '@/server/harness/personal-waits'
 import { admitPersonalHarnessChild } from '@/server/harness/personal-child-steps'
 import { buildPersonalHarnessDelivery } from '@/server/harness/personal-delivery'
 import {
-  attachPersonalHarnessDelivery, closePersonalHarnessStream, finishPersonalHarnessDelivery, writePersonalHarnessFallback,
+  closePersonalHarnessStream, finishPersonalHarnessDelivery, writePersonalHarnessFallback,
 } from '@/server/harness/personal-delivery-steps'
 import { notifyHarnessAncestors, readHarnessChild } from '@/server/harness/personal-wait-steps'
 import { harnessWakeToken } from '@/server/harness/wait-token'
-import { applyHarnessOperation, claimHarnessState, readHarnessState } from '@/server/harness/state-steps'
+import { applyHarnessOperation, readAndClaimHarnessState, readHarnessState } from '@/server/harness/state-steps'
 import { harnessToolResultEvidence } from '@/server/harness/tool-evidence'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
 import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
@@ -187,10 +187,10 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
 
   const { workflowRunId } = getWorkflowMetadata()
   const access = { ...input.access, workflowRunId, executionGeneration: input.access.executionGeneration ?? 0 }
-  const initial = await readHarnessState(access)
+  const { snapshot: initial, claimed } = await readAndClaimHarnessState(access)
   const initialProjection = projectPersonalInitialResult(initial)
   if (initialProjection) return initialProjection
-  if (!await claimHarnessState(access)) return { runId: initial.runId, status: 'already_running' }
+  if (!claimed) return { runId: initial.runId, status: 'already_running' }
   const isRoot = !initial.parentRunId
   using wake = createHook<unknown>({ token: harnessWakeToken(workflowRunId) })
   let result: HarnessExecutionResult | undefined
@@ -199,8 +199,8 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
   let activeToolNames = new Set<string>(HARNESS_CONTROL_TOOLS)
   try {
     if (await wake.getConflict()) throw new FatalError('Harness wake channel is already owned.')
-    if (isRoot) await attachPersonalHarnessDelivery(access)
     const execution = { access, context: input.context }
+    await admitPersonalHarnessExecution(execution, { attachDelivery: isRoot })
     const ports = createPersonalHarnessExecutionPorts(execution, {
       ...createPersonalHarnessWaitPorts({
         access,
@@ -229,7 +229,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
           type: 'record_evidence', evidence: harnessToolResultEvidence(event, Date.now()),
         })
       },
-    }, personalFallbackOptions(input, isRoot, access, fallbackNotices))
+    }, personalFallbackOptions(input, isRoot, access, fallbackNotices), initial)
     const recordModelStep = ports.recordModelStep
     ports.recordModelStep = async (step, receiptId) => {
       await recordModelStep(step, receiptId)
