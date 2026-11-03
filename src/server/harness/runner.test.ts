@@ -402,6 +402,7 @@ test('unsupported final claims are corrected from persisted evidence without rep
   expect(provider.doStreamCalls).toHaveLength(5)
   const correction = provider.doStreamCalls[4]!
   expect(correction.prompt.at(-1)?.role).toBe('user')
+  expect(JSON.stringify(correction.prompt)).not.toContain('Reporting-only milestones finish with your answer; do not call tools or write tool calls as text.')
   expect(correction.tools?.some(tool => tool.type === 'function' && tool.name === 'harness_read_artifact')).toBe(true)
   expect(correction.tools?.some(tool => tool.type === 'function' && tool.name === 'read_document')).toBe(false)
 })

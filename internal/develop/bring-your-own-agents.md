@@ -1886,3 +1886,6 @@ continue to require their own successful execution evidence.
 Answer corrections start a new continuation turn rather than an assistant
 prefill. Verification feedback can reopen evidence through control tools while
 completed external action tools remain disabled; correction limits still apply.
+
+Final-answer-only guidance does not prohibit evidence-reading controls when a
+verification rejection still needs correction.
