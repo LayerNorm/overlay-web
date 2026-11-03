@@ -3,12 +3,50 @@ import 'server-only'
 import { createHash } from 'node:crypto'
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { reserveProviderBudget, markProviderBudgetStarted, releaseProviderBudgetReservation } from '@/server/billing/billing-runtime'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import type { HarnessExecutionReference } from './state-steps'
 import { estimateHarnessInputTokens, forecastHarnessModelCost, hasHarnessCacheWrites } from './model-forecast'
 import type { HarnessModelReference } from './secure-model'
 import { recordHarnessModelRejection } from './model-rejection'
+import { applyHarnessOperation, readHarnessState } from './state-steps'
+import { HarnessYield } from './model-recovery'
+
+function fundingPause(input: { receiptId: string; status: unknown }): import('@overlay/agent-runtime/harness-state').HarnessFundingPause {
+  const status = input.status && typeof input.status === 'object'
+    ? input.status as Record<string, unknown> : {}
+  const rawReason = typeof status.reason === 'string' ? status.reason : 'insufficient_budget'
+  const reason = rawReason === 'payment_failed' ? 'payment_failed'
+    : rawReason === 'monthly_limit' || rawReason === 'monthly_limit_reached' ? 'monthly_limit_reached'
+            : rawReason === 'missing_payment_method' || rawReason === 'missing_method' || rawReason === 'missing_customer' ? 'missing_payment_method'
+              : rawReason === 'missing_consent' ? 'missing_consent'
+                : rawReason === 'amount_shortfall' || rawReason === 'shortfall' ? 'amount_shortfall'
+                  : rawReason === 'not_paid' ? 'not_paid'
+                    : rawReason === 'pending' ? 'pending'
+                      : rawReason === 'disabled' ? 'disabled'
+                        : rawReason === 'authorization_changed' ? 'authorization_changed'
+                          : rawReason === 'task_deadline_expired' ? 'task_deadline_expired'
+                            : rawReason === 'unknown_receipt' ? 'unknown_receipt'
+                              : 'insufficient_budget'
+  if (!Number.isSafeInteger(status.requiredCents) || (status.requiredCents as number) <= 0
+    || !Number.isSafeInteger(status.remainingCents) || (status.remainingCents as number) < 0
+    || !Number.isSafeInteger(status.reservedCents) || (status.reservedCents as number) < 0) {
+    throw new FatalError('The funding denial did not include exact reservation amounts.')
+  }
+  const requiredCents = status.requiredCents as number
+  const availableCents = status.remainingCents as number
+  const reservedCents = status.reservedCents as number
+  const safeTopUpReasons = new Set([
+    'disabled', 'pending', 'payment_failed', 'monthly_limit_reached', 'missing_payment_method',
+    'missing_customer', 'missing_consent', 'amount_shortfall', 'not_paid', 'authorization_changed',
+    'amount_too_small',
+  ])
+  const topUpReason = typeof status.topUpReason === 'string' && safeTopUpReasons.has(status.topUpReason)
+    ? status.topUpReason : undefined
+  return { reason, requiredCents, availableCents, reservedCents, receiptId: input.receiptId,
+    ...(topUpReason ? { autoTopUpReason: topUpReason } : {}) }
+}
 
 export type HarnessModelDispatch = {
   access: HarnessExecutionReference & { workspaceId: string }
@@ -60,6 +98,8 @@ async function claimModelDispatch(input: HarnessModelDispatch, modelId: string, 
     }
     const result = await repository.apply({
       actorUserId: input.access.actorUserId, runId: input.access.runId,
+      workflowRunId: input.access.workflowRunId,
+      executionGeneration: input.access.executionGeneration ?? 0,
       operationId: `${operationId}:dispatch`, expectedRevision: current.revision,
       operation: { type: 'bind_model_dispatch', id: input.receiptId, modelId, billingReservationId },
     })
@@ -89,27 +129,50 @@ export async function authorizeHarnessModelDispatch(
   if (!state || state.workflowRunId !== input.access.workflowRunId || hold?.id !== input.receiptId || hold.dispatch) {
     throw new FatalError('Model dispatch is missing its hold or has already been attempted.')
   }
+  if (state.policy.executionPolicyVersion === 2
+    && ((state.policy.spendingMode === 'external') !== isByokModelId(reference.modelId))) {
+    throw new FatalError('The model does not match this harness spending mode.')
+  }
   const estimate = await forecastHarnessModelCost({ modelId: reference.modelId,
     inputTokenBudget: input.inputTokenBudget, maxOutputTokens: input.maxOutputTokens, cacheWrites: hasHarnessCacheWrites(options) })
   if (estimate > hold.maxCostMicros) throw new FatalError('Model pricing exceeds its authorized hold.')
   const operationId = `harness-model:${createHash('sha256').update(JSON.stringify([input.access.runId, input.receiptId])).digest('hex')}`
-  const reservation = await reserveProviderBudget({
+  const usesOverlayBudget = state.policy.executionPolicyVersion !== 2 || state.policy.spendingMode === 'workspace'
+  const reservation = usesOverlayBudget ? await reserveProviderBudget({
     userId: input.access.actorUserId, workspaceId: input.access.workspaceId,
     programmaticSubjectId: refreshed.billingProgrammaticSubjectId ?? input.billingProgrammaticSubjectId,
     entitlements: refreshed.entitlements,
     providerCostUsd: estimate / 1_000_000, kind: 'agent', modelId: reference.modelId,
     operationId, reservationId: operationId, requestFingerprint: input.requestFingerprint,
-  })
-  if (!reservation.ok) {
+  }) : null
+  if (reservation && !reservation.ok) {
+    const resourceStatus = (reservation.payload as { resourceStatus?: unknown } | undefined)?.resourceStatus
+    if (reservation.code === 'insufficient_budget' && state.policy.executionPolicyVersion === 2
+      && state.policy.spendingMode === 'workspace' && resourceStatus) {
+      await recordHarnessModelRejection(reference, 'budget')
+      const settled = await readHarnessState(input.access)
+      if (settled.status !== 'running' || settled.latestReceipt?.id !== input.receiptId) {
+        throw new FatalError('The denied model reservation could not be settled safely.')
+      }
+      await applyHarnessOperation(input.access, `funding-pause:${input.receiptId}`, {
+        type: 'pause_for_funding',
+        pause: fundingPause({ receiptId: input.receiptId, status: resourceStatus }),
+      })
+      throw new HarnessYield(input.receiptId.startsWith('model:'))
+    }
     await recordHarnessModelRejection(reference, 'budget')
     throw new FatalError(`Model budget reservation declined: ${reservation.code}`)
   }
   try {
-    await claimModelDispatch(input, reference.modelId, operationId, reservation.reservationId)
+    await claimModelDispatch(input, reference.modelId, operationId, reservation?.reservationId ?? null)
   } catch (error) {
-    await releaseProviderBudgetReservation({ userId: input.access.actorUserId, reservationId: reservation.reservationId,
-      reason: 'Harness dispatch binding failed before provider execution.' })
+    if (reservation?.ok) {
+      await releaseProviderBudgetReservation({ userId: input.access.actorUserId, reservationId: reservation.reservationId,
+        reason: 'Harness dispatch binding failed before provider execution.' })
+    }
     throw error
   }
-  await markProviderBudgetStarted({ userId: input.access.actorUserId, reservationId: reservation.reservationId })
+  if (reservation?.ok) {
+    await markProviderBudgetStarted({ userId: input.access.actorUserId, reservationId: reservation.reservationId })
+  }
 }

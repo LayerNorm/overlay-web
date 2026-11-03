@@ -32,7 +32,7 @@ export async function preparePersonalHarnessModel(input: {
 }> {
   'use step'
 
-  const context = await refreshPersonalHarnessAccess(input.access, input.context)
+  const context = await refreshPersonalHarnessAccess(input.access, input.context, undefined, { renewalMode: true, renewLease: true })
   const { options, contextWindow, estimatedCostMicros, inputTokenBudget, maxOutputTokens } = await quoteHarnessModel({
     modelId: context.effectiveModelId, requiresZeroDataRetention: context.requiresZeroDataRetention, options: input.options,
   })

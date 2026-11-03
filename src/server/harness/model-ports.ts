@@ -14,7 +14,7 @@ import { HarnessLanguageModel, type HarnessModelReference } from './secure-model
 import { settleHarnessModelUsage } from './settle-model-step'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
 import { createHarnessCapacityWaiter } from './model-capacity'
-import { waitForHarnessModelRecovery } from './model-recovery'
+import { HarnessYield, waitForHarnessModelRecovery } from './model-recovery'
 import { waitForHarnessModelResources } from './resource-boundary'
 
 export type PreparedHarnessModel = {
@@ -96,6 +96,7 @@ export function createHarnessModelPorts(input: {
       try {
         return await summarizeAttempt(prompt, targetSummaryTokens, id)
       } catch (error) {
+        if (error instanceof HarnessYield) throw error
         const state = await readHarnessState(reference)
         const recovered = state.summaryRecovery?.receiptId === id
           ? await waitForHarnessModelRecovery(reference, id)
@@ -148,8 +149,14 @@ export function createHarnessModelPorts(input: {
       let summaryIndex = 0
       const compacted = await compactHarnessPrompt({ messages: request.messages, contextWindow,
         outputReserveTokens: maxOutputTokens, fixedOverheadTokens, previousSummary: state.workingSummary,
-        generateSummaryText: ({ prompt, targetSummaryTokens }) => summarize(prompt, targetSummaryTokens,
-          `summary:${request.receiptId}:${summaryIndex++}`),
+        generateSummaryText: async ({ prompt, targetSummaryTokens }) => {
+          const base = `summary:${request.receiptId}:${summaryIndex++}`
+          const latestReceipt = (await readHarnessState(reference)).latestReceipt?.id
+          const retry = latestReceipt?.startsWith(`${base}:retry:`) ? Number(latestReceipt.slice(`${base}:retry:`.length))
+            : latestReceipt === base ? 0 : undefined
+          const id = retry === undefined ? base : `${base}:retry:${retry + 1}`
+          return summarize(prompt, targetSummaryTokens, id)
+        },
       })
       let messages = compacted.messages
       let instructions: string

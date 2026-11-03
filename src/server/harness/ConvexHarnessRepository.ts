@@ -10,6 +10,7 @@ import type {
   HarnessWaitRequest,
 } from '@overlay/agent-runtime/harness-store'
 import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import type { HarnessRunnerCheckpoint } from './ports'
 import type {
   HarnessConsumeResourceGrantInput, HarnessGrantResourcesInput, HarnessResourceConsumeResult,
   HarnessResourceGrantReceipt, HarnessResourcePauseInput, HarnessResourceRequestRecord,
@@ -93,6 +94,59 @@ export class ConvexHarnessRepository implements HarnessRepository {
     }, { throwOnError: true })
     if (!result) throw new Error('Harness mutation returned no result.')
     return result
+  }
+
+  async renewLease(input: {
+    actorUserId: string
+    runId: string
+    workflowRunId: string
+    executionGeneration: number
+    expectedRevision: number
+    now: number
+    leaseMs: number
+  }): Promise<HarnessSnapshot> {
+    const snapshot = await convex.mutation<HarnessSnapshot>('harness/runs:renewLease', {
+      ...input,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!snapshot) throw new Error('Harness lease renewal returned no state.')
+    return snapshot
+  }
+
+  async handoffContinuation(input: {
+    actorUserId: string
+    runId: string
+    workflowRunId: string
+    executionGeneration: number
+    expectedRevision: number
+    workflowKind: 'native' | 'personal'
+    checkpoint: HarnessRunnerCheckpoint
+    launchInput: unknown
+  }): Promise<HarnessSnapshot> {
+    const snapshot = await convex.mutation<HarnessSnapshot>('harness/continuations:handoff', {
+      actorUserId: input.actorUserId,
+      serverSecret: this.serverSecret,
+      runId: input.runId,
+      workflowRunId: input.workflowRunId,
+      executionGeneration: input.executionGeneration,
+      expectedRevision: input.expectedRevision,
+      workflowKind: input.workflowKind,
+      checkpointJson: JSON.stringify(input.checkpoint),
+      launchInputJson: JSON.stringify(input.launchInput),
+    }, { throwOnError: true })
+    if (!snapshot) throw new Error('Harness continuation handoff returned no state.')
+    return snapshot
+  }
+
+  async getContinuationLaunch(input: { runId: string; generation: number; checkpointToken: string }): Promise<{
+    workflowKind: 'native' | 'personal'
+    checkpointJson: string
+    launchInputJson: string
+  } | null> {
+    return await convex.query('harness/continuations:getLaunch', {
+      ...input,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
   }
 
   async readEvidence(

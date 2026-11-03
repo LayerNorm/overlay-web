@@ -20,7 +20,8 @@ const reference: HarnessModelReference = { modelId: 'provider/model', credential
   native: { access, receiptId: 'model:0', memoryEnabled: true, sharedRoom: true, requestFingerprint: 'request',
     inputTokenBudget: 2_000, maxOutputTokens: 50, contextWindow: 10_000 } }
 const options: LanguageModelV4CallOptions = { prompt: [], maxOutputTokens: 50 }
-const state = { workflowRunId: 'workflow', revision: 1, modelReservation: { id: 'model:0', maxCostMicros: 60 } }
+const state = { workflowRunId: 'workflow', revision: 1, policy: { executionPolicyVersion: 1 },
+  modelReservation: { id: 'model:0', maxCostMicros: 60 } }
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -34,7 +35,8 @@ beforeEach(() => {
 test('native dispatch refreshes authority then atomically binds a human-funded, agent-attributed hold', async () => {
   await authorizeNativeHarnessModelDispatch(reference, options)
   expect(mocks.refresh).toHaveBeenCalledExactlyOnceWith(access, { modelId: reference.modelId,
-    memoryEnabled: true, sharedRoom: true, requestFingerprint: 'request' })
+    memoryEnabled: true, sharedRoom: true, requestFingerprint: 'request' }, undefined,
+  { renewalMode: true, renewLease: true })
   expect(mocks.reserve).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ userId: 'user', workspaceId: 'workspace',
     programmaticSubjectId: 'agent:agent', providerCostUsd: 0.00004, reservationId: expect.stringMatching(/^harness-model:[a-f0-9]{64}$/) }))
   expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ operation: {

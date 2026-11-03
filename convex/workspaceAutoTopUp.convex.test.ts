@@ -64,6 +64,70 @@ describe('workspace automatic top-ups', () => {
     expect(plan?.autoTopUpMonthlyLimitCents).toBe(4_000)
   })
 
+  test('claims an account-level intent before Stripe and reserves its monthly allowance', async () => {
+    const convex = convexTest(schema, modules)
+    await paidWorkspace(convex)
+    await convex.mutation(api.billing.accountSubscriptions.upsertByServer, {
+      billingAccountId: 'ba-1', serverSecret, autoTopUpEnabled: true, autoTopUpAmountCents: 800,
+      autoTopUpMonthlyLimitCents: 800, offSessionConsentAt: 5,
+    })
+    const args = {
+      actorUserId: 'user-1',
+      billingAccountId: 'ba-1',
+      workspaceId: 'ws-1',
+      intentKey: 'intent_a',
+      idempotencyKey: 'workspace-auto-topup-intent_a',
+      amountCents: 800,
+      currentPeriodStart: 1_000,
+      consentAt: 5,
+      paymentMethodId: 'pm_1',
+      customerId: 'cus_1',
+      serverSecret,
+    }
+    const [first, duplicate] = await Promise.all([
+      convex.mutation(api.billing.accountSubscriptions.claimAutoTopUpIntentByServer, args),
+      convex.mutation(api.billing.accountSubscriptions.claimAutoTopUpIntentByServer, args),
+    ])
+    expect(first).toEqual({ status: 'claimed', idempotencyKey: args.idempotencyKey })
+    expect(duplicate).toEqual(first)
+    expect(await convex.run((ctx) => ctx.db.query('billingAutoTopUpIntents').collect())).toHaveLength(1)
+
+    expect(await convex.mutation(api.billing.accountSubscriptions.claimAutoTopUpIntentByServer, {
+      ...args, intentKey: 'intent_b', idempotencyKey: 'workspace-auto-topup-intent_b',
+    })).toEqual({ status: 'monthly_limit_reached' })
+  })
+
+  test('a declined claim stays latched across period rollover until its payment authorization changes', async () => {
+    const convex = convexTest(schema, modules)
+    await paidWorkspace(convex)
+    await convex.mutation(api.billing.accountSubscriptions.upsertByServer, {
+      billingAccountId: 'ba-1', serverSecret, autoTopUpEnabled: true, autoTopUpAmountCents: 800,
+      autoTopUpMonthlyLimitCents: 2_400, offSessionConsentAt: 5,
+    })
+    const args = {
+      actorUserId: 'user-1', billingAccountId: 'ba-1', workspaceId: 'ws-1',
+      intentKey: 'intent_failed', idempotencyKey: 'workspace-auto-topup-intent_failed',
+      amountCents: 800, currentPeriodStart: 1_000, consentAt: 5,
+      paymentMethodId: 'pm_1', customerId: 'cus_1', serverSecret,
+    }
+    await convex.mutation(api.billing.accountSubscriptions.claimAutoTopUpIntentByServer, args)
+    await convex.run(async (ctx) => {
+      const claim = await ctx.db.query('billingAutoTopUpIntents')
+        .withIndex('by_billingAccountId_intentKey', q => q.eq('billingAccountId', 'ba-1').eq('intentKey', args.intentKey))
+        .unique()
+      if (!claim) throw new Error('claim_missing')
+      await ctx.db.patch(claim._id, { state: 'payment_failed' })
+    })
+    expect(await convex.mutation(api.billing.accountSubscriptions.claimAutoTopUpIntentByServer, {
+      ...args, intentKey: 'intent_next_period', idempotencyKey: 'workspace-auto-topup-intent_next_period',
+      currentPeriodStart: 2_000,
+    })).toEqual({ status: 'payment_failed' })
+    expect(await convex.mutation(api.billing.accountSubscriptions.claimAutoTopUpIntentByServer, {
+      ...args, intentKey: 'intent_repaired', idempotencyKey: 'workspace-auto-topup-intent_repaired',
+      currentPeriodStart: 2_000, paymentMethodId: 'pm_repaired',
+    })).toEqual({ status: 'claimed', idempotencyKey: 'workspace-auto-topup-intent_repaired' })
+  })
+
   test('a pending top-up is credited once when Stripe settles it, and a failed one is not', async () => {
     const convex = convexTest(schema, modules)
     await paidWorkspace(convex)
@@ -88,6 +152,33 @@ describe('workspace automatic top-ups', () => {
     const after = await convex.query(api.billing.accountSubscriptions.getByServer, { billingAccountId: 'ba-1', serverSecret })
     expect(after?.autoTopUpPending).toBe(false)
     expect(after?.autoTopUpSpentThisPeriodCents).toBe(800)
+  })
+
+  test('a claimed top-up settlement is idempotent and closes its intent', async () => {
+    const convex = convexTest(schema, modules)
+    await paidWorkspace(convex)
+    await convex.mutation(api.billing.accountSubscriptions.upsertByServer, {
+      billingAccountId: 'ba-1', serverSecret, autoTopUpEnabled: true, autoTopUpAmountCents: 800,
+      autoTopUpMonthlyLimitCents: 1_600, offSessionConsentAt: 5,
+    })
+    const claimArgs = {
+      actorUserId: 'user-1', billingAccountId: 'ba-1', workspaceId: 'ws-1',
+      intentKey: 'intent_settlement', idempotencyKey: 'workspace-auto-topup-intent_settlement',
+      amountCents: 800, currentPeriodStart: 1_000, consentAt: 5,
+      paymentMethodId: 'pm_1', customerId: 'cus_1', serverSecret,
+    }
+    await convex.mutation(api.billing.accountSubscriptions.claimAutoTopUpIntentByServer, claimArgs)
+    await convex.mutation(api.billing.accountSubscriptions.recordTopUpByServer, {
+      actorUserId: 'user-1', amountCents: 800, billingAccountId: 'ba-1', source: 'auto', status: 'pending',
+      stripePaymentIntentId: 'pi_claimed', autoTopUpIntentKey: claimArgs.intentKey, serverSecret,
+    })
+    const settle = () => convex.mutation(internal.billing.autoTopUpSettlement.settlePendingTopUpInternal, {
+      stripePaymentIntentId: 'pi_claimed', outcome: 'succeeded',
+    })
+    expect(await settle()).toEqual({ settled: true, granted: true })
+    expect(await settle()).toEqual({ settled: false, granted: false })
+    expect(await convex.run((ctx) => ctx.db.query('billingAutoTopUpIntents').collect()))
+      .toMatchObject([{ state: 'succeeded', stripePaymentIntentId: 'pi_claimed' }])
   })
 
   test('credit does not carry over: the plan credit and any top-up balance reset at renewal', async () => {

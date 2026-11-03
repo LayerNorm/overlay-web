@@ -66,7 +66,23 @@ export function useWorkApproval({
             refresh={agentRunLifecycle.refresh}
           />
         )
-      : undefined
+      : agentRunLifecycle.run?.status === 'waiting_for_resources' && agentRunLifecycle.run.fundingPause
+        ? (
+            <Confirmation className="mb-2">
+              <ConfirmationIcon running={false} />
+              <ConfirmationBody>
+                <ConfirmationTitle>Waiting for workspace funding</ConfirmationTitle>
+                <ConfirmationRequest>
+                  {`This task needs $${(agentRunLifecycle.run.fundingPause.requiredCents / 100).toFixed(2)}. `
+                    + `$${(agentRunLifecycle.run.fundingPause.availableCents / 100).toFixed(2)} is available and `
+                    + `$${(agentRunLifecycle.run.fundingPause.reservedCents / 100).toFixed(2)} is reserved. `
+                    + `Funding status: ${agentRunLifecycle.run.fundingPause.autoTopUpReason
+                      ?? agentRunLifecycle.run.fundingPause.reason.replaceAll('_', ' ')}.`}
+                </ConfirmationRequest>
+              </ConfirmationBody>
+            </Confirmation>
+          )
+        : undefined
 
   return { workApprovalContent }
 }

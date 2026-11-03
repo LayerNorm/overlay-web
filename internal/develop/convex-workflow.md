@@ -505,6 +505,33 @@ server secret and recheck the source resource's current access on every call. Th
 authenticates the caller before using this server-only repository; these are not direct
 browser APIs.
 
+### Long-running Harness lifecycle
+
+New Harness admissions without an explicit legacy spend override use execution policy
+version 2. Its payer mode remains independent: workspace-funded paid runs reserve each
+Overlay dispatch atomically, while BYOK and non-Overlay-funded runs do not route through
+Overlay billing. Existing explicit spend limits and durations remain task limits;
+otherwise the persisted deadline is a renewable execution lease. Lease renewal is
+authority-only and must revalidate the current source, membership, model/tool scope,
+delivery ownership, workflow owner, generation, and ancestors. It cannot expand access.
+
+Workspace funding denials are persisted as `waiting_for_resources` with bounded reason
+and reservation amounts. The workflow polls on a durable 60-second sleep and rechecks
+authority and current funding before resuming the same task. Auto top-up remains opt-in:
+enabled setting, explicit consent, valid payment method, active paid subscription, and
+monthly ceiling are required. Pending claims reserve the ceiling account-wide; uncertain
+Stripe outcomes remain unresolved rather than receiving a new idempotency identity.
+
+Continuation checkpoints are protected server-side and are written only at settled
+invocation boundaries. The outbox starts the persisted workflow input on the receiving
+trusted BFF deployment; generation and owner claims fence duplicate starts and stale
+workers. Unknown provider effects and unresolved billing reservations do not qualify
+for automatic replay or rollover. Rollback disables new version-2 admissions while
+retaining additive storage, server handlers, and legacy workflows until active runs
+drain; do not migrate historical failures automatically. Verification uses accelerated
+workflow time and fault-injected billing/provider boundaries; it does not establish
+real-time multiweek production qualification.
+
 ### Harness web-first rollout
 
 Before creating a personal AgentRun, the web reads the server-owned

@@ -1,6 +1,6 @@
 import { createHook, FatalError, sleep } from 'workflow'
 import type { HarnessWait, HarnessWaitRequest } from '@overlay/agent-runtime/harness-store'
-import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { effectiveHarnessDeadlineAt, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { z } from 'zod'
 import type { HarnessExecutionPorts } from './ports'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
@@ -18,21 +18,49 @@ export type HarnessWaitProjection = { wait: HarnessWait } | { status: 'running' 
 export function createHarnessWaitPorts(input: {
   reference: HarnessExecutionReference
   deliveryRunId?: string
+  renewLease: () => Promise<void>
+  checkFunding: (requiredCents: number) => Promise<boolean>
   projectWait: (projection: HarnessWaitProjection) => Promise<'projected' | 'stale' | 'inactive'>
+  readState?: (reference: HarnessExecutionReference) => Promise<HarnessSnapshot>
   // The workflow registers this hook before launching any children, and keeps
   // it alive until finalization. Notifications are buffered while the model runs.
   wake: AsyncIterator<unknown>
-}): Pick<HarnessExecutionPorts, 'waitForInput' | 'waitForApproval' | 'waitForChildren'> {
+}): Pick<HarnessExecutionPorts, 'waitForInput' | 'waitForApproval' | 'waitForChildren' | 'waitForFunding' | 'checkFunding'> {
   const access = input.reference
+  const readState = () => input.readState ? input.readState(access) : readHarnessState(access)
   const ownsDelivery = (state: HarnessSnapshot) => input.deliveryRunId
     ? state.runId === input.deliveryRunId
     : !state.parentRunId
   let sequence = 0
+  let pendingWake: Promise<IteratorResult<unknown>> | undefined
+  const nextWake = () => {
+    pendingWake ??= input.wake.next().finally(() => { pendingWake = undefined })
+    return pendingWake
+  }
 
   const withDeadline = async <T>(pending: PromiseLike<T>, deadlineAt: number): Promise<T> => Promise.race([
     Promise.resolve(pending),
     sleep(new Date(deadlineAt)).then(() => { throw new FatalError('Harness deadline reached while waiting.') }),
   ])
+  const withRenewableLease = async <T>(pending: PromiseLike<T>, state: HarnessSnapshot): Promise<T> => {
+    const result = Promise.resolve(pending)
+    while (true) {
+      const now = Date.now()
+      if (state.policy.taskDeadlineAt !== undefined && now >= state.policy.taskDeadlineAt) {
+        throw new FatalError('The explicit harness task deadline was reached while waiting.')
+      }
+      const pollAt = Math.min(now + 60_000, state.policy.taskDeadlineAt ?? Number.MAX_SAFE_INTEGER)
+      const wake = await Promise.race([
+        result.then(value => ({ kind: 'reply' as const, value })),
+        sleep(new Date(pollAt)).then(() => ({ kind: 'poll' as const })),
+      ])
+      if (wake.kind === 'reply') return wake.value
+      if (state.policy.taskDeadlineAt !== undefined && Date.now() >= state.policy.taskDeadlineAt) {
+        throw new FatalError('The explicit harness task deadline was reached while waiting.')
+      }
+      await input.renewLease()
+    }
+  }
 
   const receive = async (request: HarnessWaitRequest): Promise<unknown> => {
     using hook = createHook<unknown>({ token: request.token })
@@ -43,7 +71,9 @@ export function createHarnessWaitPorts(input: {
     if (ownsDelivery(state) && await input.projectWait({ wait }) === 'inactive') return null
     const result = state.policy.resourcePauseVersion === 1
       ? await waitForHarnessHumanReply(access, hook, request.kind, () => readHarnessState(access))
-      : await withDeadline(hook, state.policy.deadlineAt)
+      : state.policy.executionPolicyVersion === 2
+        ? await withRenewableLease(hook, state)
+        : await withDeadline(hook, effectiveHarnessDeadlineAt(state.policy))
     if (result === null) return null
     await resolveHarnessWait(access, wait.token)
     await notifyHarnessAncestors(access)
@@ -97,10 +127,31 @@ export function createHarnessWaitPorts(input: {
           if (projected === 'inactive') return
           if (projected === 'stale') continue
         }
-        if ((await withDeadline(input.wake.next(), state.policy.deadlineAt)).done) {
-          throw new FatalError('Child notification channel closed before completion.')
+        if (state.policy.executionPolicyVersion === 2) {
+          const wake = await Promise.race([
+            nextWake().then(event => ({ kind: 'notification' as const, event })),
+            sleep(new Date(Date.now() + 60_000)).then(() => ({ kind: 'poll' as const })),
+          ])
+          if (wake.kind === 'notification') {
+            if (wake.event.done) throw new FatalError('Child notification channel closed before completion.')
+          } else {
+            await input.renewLease()
+          }
+        } else {
+          const wake = await withDeadline(nextWake(), effectiveHarnessDeadlineAt(state.policy))
+          if (wake.done) throw new FatalError('Child notification channel closed before completion.')
         }
       }
     },
+    waitForFunding: async () => {
+      const state = await readState()
+      if (['completed', 'failed', 'cancelled'].includes(state.status)) return
+      await Promise.race([nextWake(), sleep(new Date(Date.now() + 60_000))])
+      const current = await readState()
+      if (['completed', 'failed', 'cancelled'].includes(current.status)
+        || current.status !== 'waiting_for_resources') return
+      await input.renewLease()
+    },
+    checkFunding: input.checkFunding,
   }
 }

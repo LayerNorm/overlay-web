@@ -115,7 +115,10 @@ export function buildHarnessWorkingContext(state: HarnessSnapshot): string {
     blocker: state.blocker,
     budget: {
       deadlineAt: state.policy.deadlineAt,
-      remainingCostMicros: Math.max(0, state.policy.maxCostMicros - state.usage.costMicros - reservedCostMicros),
+      ...(state.policy.taskDeadlineAt !== undefined ? { taskDeadlineAt: state.policy.taskDeadlineAt } : {}),
+      ...(state.policy.executionPolicyVersion === 2
+        ? { spendingMode: state.policy.spendingMode, remainingCostMicros: state.policy.spendingMode === 'workspace' ? null : 0 }
+        : { remainingCostMicros: Math.max(0, state.policy.maxCostMicros - state.usage.costMicros - reservedCostMicros) }),
       remainingDepth: state.policy.maxDepth - state.depth,
     },
   })

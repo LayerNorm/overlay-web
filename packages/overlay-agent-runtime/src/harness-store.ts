@@ -1,4 +1,5 @@
 import type {
+  HarnessFundingPause,
   HarnessCheckpointPurpose, HarnessChild, HarnessEvidence, HarnessPlanInput, HarnessPolicy, HarnessReceipt,
   HarnessSnapshot, HarnessStepStatus,
 } from './harness-state'
@@ -25,7 +26,7 @@ export type HarnessAdmission = {
 }
 
 export type HarnessOperation =
-  | { type: 'claim_execution'; workflowRunId: string }
+  | { type: 'claim_execution'; workflowRunId: string; generation?: number }
   | { type: 'reserve_model'; id: string; maxCostMicros: number }
   | { type: 'bind_model_dispatch'; id: string; modelId: string; billingReservationId: string | null }
   | { type: 'replace_plan'; steps: HarnessPlanInput[] }
@@ -35,6 +36,8 @@ export type HarnessOperation =
   | { type: 'checkpoint'; summary: string; purpose?: HarnessCheckpointPurpose }
   | { type: 'block'; blocker: NonNullable<HarnessSnapshot['blocker']> }
   | { type: 'resume' }
+  | { type: 'pause_for_funding'; pause: HarnessFundingPause }
+  | { type: 'resume_funding' }
   | { type: 'wait_for_children' }
   | { type: 'admit_child'; child: HarnessChild; goal: string; constraints: string[] }
   | {
@@ -52,6 +55,8 @@ export type HarnessOperation =
 export type HarnessMutationInput = {
   actorUserId: string
   runId: string
+  workflowRunId: string
+  executionGeneration: number
   operationId: string
   expectedRevision: number
   operation: HarnessOperation

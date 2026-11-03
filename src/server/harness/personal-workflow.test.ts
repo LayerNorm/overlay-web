@@ -86,7 +86,7 @@ test('serialized personal failures retain their cause without retrying the run',
   mocks.run.mockRejectedValue({ code: 'STREAM_ERROR', message: 'Stream failed.', cause: { message: 'Connection closed.' } })
   mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: reason })
   await expect(personalHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed', terminalReason: reason })
-  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 }, 'execution-failed', {
     type: 'terminate', status: 'failed', reason,
   })
   expect(mocks.run).toHaveBeenCalledOnce()
@@ -99,7 +99,7 @@ test('SDK streaming failures close personal delivery descriptively without retry
   mocks.run.mockRejectedValue({ name: 'AI_StreamProviderError', statusCode: 503, isRetryable: true, message: 'private payload' })
   mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: reason })
   await expect(personalHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed', terminalReason: reason })
-  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 }, 'execution-failed', {
     type: 'terminate', status: 'failed', reason,
   })
   expect(mocks.run).toHaveBeenCalledOnce()
@@ -133,7 +133,7 @@ test('a completed child notifies ancestors without writing the root transcript',
   await personalHarnessWorkflow(input)
   expect(mocks.attach).not.toHaveBeenCalled()
   expect(mocks.finish).not.toHaveBeenCalled()
-  expect(mocks.notify).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow' })
+  expect(mocks.notify).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 })
 })
 
 test('child execution receives a focused brief and tool subset while retaining system guardrails', () => {

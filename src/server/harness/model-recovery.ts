@@ -5,7 +5,11 @@ import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessApprovalRequest, HarnessExecutionPorts } from './ports'
 import { readHarnessState, type HarnessExecutionReference } from './state-steps'
 
-export class HarnessYield extends Error {}
+export class HarnessYield extends Error {
+  constructor(readonly settledReceipt = false) {
+    super()
+  }
+}
 
 type HarnessInvocationState = {
   messages: ModelMessage[]
@@ -31,7 +35,13 @@ export async function runHarnessModelInvocation(
     return { ...readState(), messages: result.messages, steps: result.steps, pending: pendingFor(result), recovered: false }
   } catch (error) {
     const state = readState()
-    if (error instanceof HarnessYield) return { ...state, pending: [], recovered: false }
+    if (error instanceof HarnessYield) return {
+      ...state,
+      pending: [],
+      recovered: false,
+      modelCall: error.settledReceipt && state.preparedReceiptId === `model:${state.modelCall}`
+        ? state.modelCall + 1 : state.modelCall,
+    }
     if (!await recover?.(state.preparedReceiptId)) throw error
     return {
       ...state,

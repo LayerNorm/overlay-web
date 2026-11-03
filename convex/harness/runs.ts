@@ -1,5 +1,5 @@
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
-import type { Doc } from '../_generated/dataModel'
+import type { Doc, Id } from '../_generated/dataModel'
 import { requireConversationAccess } from '../collaboration/directMessages'
 import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
@@ -24,8 +24,10 @@ import {
   reserveHarnessModel,
   reservedHarnessCostMicros,
   pauseHarnessForResources,
+  pauseHarnessForFunding,
   replaceHarnessPlan,
   resumeHarness,
+  resumeHarnessFunding,
   settleHarnessChild,
   terminateHarness,
   transitionHarnessStep,
@@ -103,9 +105,12 @@ const policyValidator = v.object({
   actorUserId: v.string(),
   workspaceId: v.optional(v.string()),
   resourcePauseVersion: v.optional(v.literal(1)),
+  executionPolicyVersion: v.optional(v.literal(2)),
+  spendingMode: v.optional(v.union(v.literal('workspace'), v.literal('external'), v.literal('none'))),
   allowedToolIds: v.array(v.string()),
   requiresPlan: v.boolean(),
   deadlineAt: v.number(),
+  taskDeadlineAt: v.optional(v.number()),
   maxCostMicros: v.number(),
   maxParallelChildren: v.number(),
   maxDepth: v.number(),
@@ -193,7 +198,7 @@ const childValidator = v.object({
 const operationValidator = v.union(
   v.object({ type: v.literal('reserve_model'), id: v.string(), maxCostMicros: v.number() }),
   v.object({ type: v.literal('bind_model_dispatch'), id: v.string(), modelId: v.string(), billingReservationId: v.union(v.string(), v.null()) }),
-  v.object({ type: v.literal('claim_execution'), workflowRunId: v.string() }),
+  v.object({ type: v.literal('claim_execution'), workflowRunId: v.string(), generation: v.optional(v.number()) }),
   v.object({ type: v.literal('replace_plan'), steps: v.array(planInputValidator) }),
   v.object({
     type: v.literal('transition_step'),
@@ -224,6 +229,23 @@ const operationValidator = v.union(
     }),
   }),
   v.object({ type: v.literal('resume') }),
+  v.object({
+    type: v.literal('pause_for_funding'),
+    pause: v.object({
+      reason: v.union(
+        v.literal('disabled'), v.literal('pending'), v.literal('payment_failed'), v.literal('monthly_limit_reached'),
+        v.literal('missing_payment_method'), v.literal('missing_consent'), v.literal('amount_shortfall'),
+        v.literal('not_paid'), v.literal('authorization_changed'), v.literal('insufficient_budget'),
+        v.literal('task_deadline_expired'), v.literal('unknown_receipt'),
+      ),
+      requiredCents: v.number(),
+      availableCents: v.number(),
+      reservedCents: v.number(),
+      receiptId: v.string(),
+      autoTopUpReason: v.optional(v.string()),
+    }),
+  }),
+  v.object({ type: v.literal('resume_funding') }),
   v.object({ type: v.literal('wait_for_children') }),
   v.object({
     type: v.literal('admit_child'),
@@ -295,6 +317,7 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     rootRunId: snapshot.rootRunId,
     ...(snapshot.parentRunId === undefined ? {} : { parentRunId: snapshot.parentRunId }),
     ...(snapshot.workflowRunId === undefined ? {} : { workflowRunId: snapshot.workflowRunId }),
+    ...(snapshot.executionGeneration === undefined ? {} : { executionGeneration: snapshot.executionGeneration }),
     depth: snapshot.depth,
     goal: snapshot.goal,
     constraints: snapshot.constraints,
@@ -303,6 +326,7 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     revision: snapshot.revision,
     ...(snapshot.policyRevision === undefined ? {} : { policyRevision: snapshot.policyRevision }),
     ...(snapshot.resourceRequestToken === undefined ? {} : { resourceRequestToken: snapshot.resourceRequestToken }),
+    ...(snapshot.resourcePause === undefined ? {} : { resourcePause: snapshot.resourcePause }),
     progressRevision: snapshot.progressRevision,
     planRevision: snapshot.planRevision,
     ...(snapshot.blocker === undefined ? {} : { blocker: snapshot.blocker }),
@@ -358,6 +382,7 @@ function assertBoundedAdmission(input: HarnessAdmission) {
   if (!input.policy.actorUserId.trim()
     || (input.policy.workspaceId !== undefined && !input.policy.workspaceId.trim())
     || !Number.isFinite(input.policy.deadlineAt)
+    || (input.policy.taskDeadlineAt !== undefined && !Number.isFinite(input.policy.taskDeadlineAt))
     || !Number.isSafeInteger(input.policy.maxCostMicros)
     || input.policy.maxCostMicros < 0
     || !Number.isSafeInteger(input.policy.maxParallelChildren)
@@ -366,6 +391,13 @@ function assertBoundedAdmission(input: HarnessAdmission) {
     || input.policy.maxDepth < 0
     || input.policy.maxDepth > MAX_HARNESS_DEPTH) {
     throw new Error('Invalid harness policy.')
+  }
+  if ((input.policy.executionPolicyVersion === 2
+      && (!input.policy.spendingMode || input.policy.maxCostMicros !== 0
+        || (input.policy.spendingMode === 'workspace' && !input.policy.workspaceId)
+        || input.policy.resourcePauseVersion === 1))
+    || (input.policy.executionPolicyVersion !== 2 && input.policy.spendingMode !== undefined)) {
+    throw new Error('Invalid versioned execution policy.')
   }
   if (input.resourcePauseAuthority !== undefined && input.policy.resourcePauseVersion !== 1) {
     throw new Error('Resource-pause admission authority requires version 1.')
@@ -573,6 +605,12 @@ function assertBoundedOperation(operation: HarnessOperation) {
     case 'block':
       if (!operation.blocker.question.trim() || operation.blocker.question.length > MAX_EVIDENCE_SUMMARY_LENGTH) {
         throw new Error('Harness blocker exceeds its bounds.')
+      }
+      break
+    case 'pause_for_funding':
+      if (!operation.pause.receiptId.trim() || operation.pause.receiptId.length > MAX_ID_LENGTH
+        || (operation.pause.autoTopUpReason !== undefined && operation.pause.autoTopUpReason.length > MAX_EVIDENCE_SUMMARY_LENGTH)) {
+        throw new Error('Harness funding pause exceeds its bounds.')
       }
       break
     case 'admit_child':
@@ -1167,7 +1205,12 @@ function childAdmission(
     allowedToolIds: [...new Set(operation.child.allowedToolIds)].sort(),
     requiresPlan: parent.policy.requiresPlan && harnessToolsRequirePlan(operation.child.allowedToolIds),
     deadlineAt: parent.policy.deadlineAt,
-    maxCostMicros: operation.child.maxCostMicros,
+    ...(parent.policy.taskDeadlineAt !== undefined ? { taskDeadlineAt: parent.policy.taskDeadlineAt } : {}),
+    ...(parent.policy.executionPolicyVersion === 2 ? {
+      executionPolicyVersion: 2 as const,
+      spendingMode: parent.policy.spendingMode!,
+    } : {}),
+    maxCostMicros: parent.policy.executionPolicyVersion === 2 ? 0 : operation.child.maxCostMicros,
     maxParallelChildren: parent.policy.maxParallelChildren,
     maxDepth: parent.policy.maxDepth,
   }
@@ -1313,7 +1356,7 @@ async function applyReducer(
 }> {
   switch (operation.type) {
     case 'claim_execution':
-      return { snapshot: claimHarnessExecution(current, operation.workflowRunId, now) }
+      return { snapshot: claimHarnessExecution(current, operation.workflowRunId, now, operation.generation) }
     case 'reserve_model':
       return { snapshot: reserveHarnessModel(current, operation.id, operation.maxCostMicros, now) }
     case 'bind_model_dispatch':
@@ -1355,6 +1398,10 @@ async function applyReducer(
       return { snapshot: blockHarness(current, operation.blocker, now) }
     case 'resume':
       return { snapshot: resumeHarness(current, now) }
+    case 'pause_for_funding':
+      return { snapshot: pauseHarnessForFunding(current, operation.pause, now) }
+    case 'resume_funding':
+      return { snapshot: resumeHarnessFunding(current, now) }
     case 'wait_for_children':
       return { snapshot: waitForHarnessChildren(current, now) }
     case 'admit_child': {
@@ -1566,6 +1613,8 @@ export const apply = mutation({
   args: {
     actorUserId: v.string(),
     runId: v.string(),
+    workflowRunId: v.string(),
+    executionGeneration: v.number(),
     operationId: v.string(),
     expectedRevision: v.number(),
     operation: operationValidator,
@@ -1574,6 +1623,8 @@ export const apply = mutation({
   handler: async (ctx, args): Promise<HarnessMutationResult> => {
     requireHarnessServerSecret(args.serverSecret)
     if (!args.actorUserId.trim() || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+      || !args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH
+      || !Number.isSafeInteger(args.executionGeneration) || args.executionGeneration < 0
       || !args.operationId.trim() || args.operationId.length > MAX_ID_LENGTH
       || !Number.isSafeInteger(args.expectedRevision) || args.expectedRevision < 0) {
       throw new Error('Invalid harness mutation identity or revision.')
@@ -1584,6 +1635,12 @@ export const apply = mutation({
     if (!run) throw new Error('HARNESS_RUN_NOT_FOUND')
     const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
     const metadata = lineage[0]!.metadata
+    if ((metadata.executionGeneration ?? 0) !== args.executionGeneration
+      || (operation.type === 'claim_execution'
+        ? metadata.workflowRunId !== undefined && metadata.workflowRunId !== args.workflowRunId
+        : metadata.workflowRunId !== args.workflowRunId)) {
+      throw new Error('HARNESS_EXECUTION_NOT_OWNED')
+    }
     const operationJson = stableJson(operation)
     if (new TextEncoder().encode(operationJson).byteLength > MAX_OPERATION_JSON_BYTES) {
       throw new Error('Harness operation exceeds the 256 KiB encoded limit.')
@@ -1694,6 +1751,20 @@ export const apply = mutation({
       await persistPlan(ctx, run.runId, current.planRevision, current.plan, next, now)
       await persistChildren(ctx, run.runId, current.children, next.children)
     }
+    if (run.deliveryAgentRunId && (operation.type === 'pause_for_funding' || operation.type === 'resume_funding')) {
+      const delivery = await ctx.db.get(run.deliveryAgentRunId as Id<'conversationAgentRuns'>)
+      if (delivery && delivery.harnessRunId === run.runId && delivery.workflowRunId === args.workflowRunId) {
+        await ctx.db.patch(delivery._id, operation.type === 'pause_for_funding'
+          ? { status: 'waiting_for_resources', fundingPause: next.resourcePause, updatedAt: now }
+          : { status: 'running', fundingPause: undefined, updatedAt: now })
+      }
+    }
+    if (operation.type === 'claim_execution') {
+      const outbox = await ctx.db.query('harnessContinuationOutbox')
+        .withIndex('by_runId_generation', q => q.eq('runId', run.runId).eq('generation', args.executionGeneration))
+        .unique()
+      if (outbox?.state === 'pending') await ctx.db.patch(outbox._id, { state: 'claimed', updatedAt: now })
+    }
     if (operation.type === 'record_receipt') {
       for (let index = 1; index < lineage.length; index++) {
         const parent = lineage[index]!
@@ -1762,6 +1833,59 @@ export const apply = mutation({
       hydrateExistingStepRefs,
     )
     return { applied: changed, conflict: false, snapshot: returned }
+  },
+})
+
+export const renewLease = mutation({
+  args: {
+    actorUserId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.string(),
+    executionGeneration: v.number(),
+    expectedRevision: v.number(),
+    now: v.number(),
+    leaseMs: v.number(),
+    serverSecret: v.string(),
+  },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    if (!Number.isSafeInteger(args.executionGeneration) || args.executionGeneration < 0
+      || !Number.isSafeInteger(args.expectedRevision) || args.expectedRevision < 0
+      || !Number.isSafeInteger(args.now) || args.now < 0
+      || !Number.isSafeInteger(args.leaseMs) || args.leaseMs <= 0 || args.leaseMs > 24 * 60 * 60 * 1000) {
+      throw new Error('Invalid harness lease renewal.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run) throw new Error('HARNESS_RUN_NOT_FOUND')
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    const current = await currentSnapshot(ctx, run, lineage)
+    if (current.revision !== args.expectedRevision
+      || current.workflowRunId !== args.workflowRunId
+      || (current.executionGeneration ?? 0) !== args.executionGeneration) {
+      throw new Error('HARNESS_LEASE_CAS_CONFLICT')
+    }
+    if (current.policy.executionPolicyVersion !== 2 || current.policy.resourcePauseVersion === 1
+      || ['completed', 'failed', 'cancelled'].includes(current.status)
+      || current.policy.taskDeadlineAt !== undefined && current.policy.taskDeadlineAt <= args.now
+      || lineage.some(entry => isTerminalStatus(entry.metadata.status)
+        || entry.metadata.policy.taskDeadlineAt !== undefined && entry.metadata.policy.taskDeadlineAt <= args.now)) {
+      throw new Error('HARNESS_LEASE_RENEWAL_NOT_AUTHORIZED')
+    }
+    if (!['running', 'waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(current.status)) {
+      throw new Error('HARNESS_LEASE_RENEWAL_STATUS_CHANGED')
+    }
+    const next = {
+      ...current,
+      policy: {
+        ...current.policy,
+        deadlineAt: Math.max(current.policy.deadlineAt, args.now + args.leaseMs),
+      },
+      revision: current.revision + 1,
+      updatedAt: args.now,
+    }
+    await persistMetadata(ctx, run, next)
+    return await currentSnapshot(ctx, run, lineage)
   },
 })
 

@@ -131,6 +131,35 @@ test('reasoning stays separate from the durable final result shared with parents
   expect(result.snapshot.usage.outputTokens).toBe(1)
 })
 
+test('a resumed segment retains delivery steps from the protected checkpoint', async () => {
+  const f = fixture(false)
+  model(() => 'The task is complete.')
+  const prior = {
+    text: 'Earlier settled progress.',
+    content: [{ type: 'text', text: 'Earlier settled progress.' }],
+    toolCalls: [],
+    toolResults: [],
+  } as never
+  const result = await runOverlayHarness({
+    ...input,
+    continuation: {
+      version: 1,
+      messages: input.messages,
+      invocation: 1,
+      modelCall: 1,
+      stagnantSegments: 0,
+      finalAnswerRequired: false,
+      truncatedResponse: false,
+      segmentStartedAt: Date.now(),
+      deliverySteps: [prior],
+    },
+    tools: {},
+  }, f.ports)
+
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.steps.map(step => step.text)).toEqual(['Earlier settled progress.', 'The task is complete.'])
+})
+
 test('runner finalizes a settled answer when its authorization expires after the last model call', async () => {
   const f = fixture(false)
   const provider = model(() => 'The work is complete.')

@@ -145,6 +145,26 @@ export default defineSchema({
     .index('by_providerSubscriptionId', ['providerSubscriptionId'])
     .index('by_status_updatedAt', ['status', 'updatedAt']),
 
+  billingAutoTopUpIntents: defineTable({
+    billingAccountId: v.string(),
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    intentKey: v.string(),
+    idempotencyKey: v.string(),
+    amountCents: v.number(),
+    currentPeriodStart: v.optional(v.number()),
+    consentAt: v.number(),
+    paymentMethodId: v.string(),
+    customerId: v.string(),
+    state: v.union(v.literal('pending'), v.literal('payment_failed'), v.literal('succeeded')),
+    stripePaymentIntentId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_billingAccountId_intentKey', ['billingAccountId', 'intentKey'])
+    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
+    .index('by_paymentIntentId', ['stripePaymentIntentId']),
+
   billingAccountBalances: defineTable({
     billingAccountId: v.string(),
     mode: v.union(v.literal('unlimited'), v.literal('budgeted')),
@@ -410,6 +430,7 @@ export default defineSchema({
     stripeCustomerId: v.optional(v.string()),
     stripeCheckoutSessionId: v.optional(v.string()),
     stripePaymentIntentId: v.optional(v.string()),
+    autoTopUpIntentKey: v.optional(v.string()),
     stripeInvoiceId: v.optional(v.string()),
     billingPeriodStart: v.number(),
     billingPeriodEnd: v.optional(v.number()),
@@ -432,6 +453,7 @@ export default defineSchema({
     .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
     .index('by_userId_billingPeriodStart', ['userId', 'billingPeriodStart'])
     .index('by_paymentIntentId', ['stripePaymentIntentId'])
+    .index('by_autoTopUpIntentKey', ['autoTopUpIntentKey'])
     .index('by_checkoutSessionId', ['stripeCheckoutSessionId']),
 
   // Webhook event deduplication. Stores processed Stripe event IDs so that a
@@ -1403,6 +1425,20 @@ export default defineSchema({
       })),
     })),
     resourceRequest: v.optional(agentRunResourceRequestValidator),
+    fundingPause: v.optional(v.object({
+      reason: v.union(
+        v.literal('disabled'), v.literal('pending'), v.literal('payment_failed'),
+        v.literal('monthly_limit_reached'), v.literal('missing_payment_method'),
+        v.literal('missing_consent'), v.literal('amount_shortfall'), v.literal('not_paid'),
+        v.literal('authorization_changed'), v.literal('insufficient_budget'),
+        v.literal('task_deadline_expired'), v.literal('unknown_receipt'),
+      ),
+      requiredCents: v.number(),
+      availableCents: v.number(),
+      reservedCents: v.number(),
+      receiptId: v.string(),
+      autoTopUpReason: v.optional(v.string()),
+    })),
     metrics: v.optional(v.object({
       firstTokenAt: v.optional(v.number()),
       inputTokens: v.optional(v.number()),
@@ -3024,6 +3060,27 @@ export default defineSchema({
     metadataJson: v.string(),
     planRevision: v.number(),
     purpose: v.optional(v.union(v.literal('continuation'), v.literal('compaction'))),
+    generation: v.optional(v.number()),
+    checkpointToken: v.optional(v.string()),
+    checkpointJson: v.optional(v.string()),
+    launchInputJson: v.optional(v.string()),
     createdAt: v.number(),
-  }).index('by_runId_revision', ['runId', 'revision']),
+  }).index('by_runId_revision', ['runId', 'revision'])
+    .index('by_checkpointToken', ['checkpointToken']),
+
+  harnessContinuationOutbox: defineTable({
+    runId: v.string(),
+    rootRunId: v.string(),
+    generation: v.number(),
+    checkpointToken: v.string(),
+    workflowKind: v.union(v.literal('native'), v.literal('personal')),
+    state: v.union(v.literal('pending'), v.literal('claimed')),
+    attempts: v.number(),
+    nextAttemptAt: v.number(),
+    lastAttemptAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt'])
+    .index('by_runId_generation', ['runId', 'generation']),
 })

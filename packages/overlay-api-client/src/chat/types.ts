@@ -4,6 +4,7 @@ import type { PaginationQuery } from '../shared/types'
 import type {
   HarnessResourceDeliveryProjection,
 } from '@overlay/agent-runtime/harness-resource'
+import type { HarnessFundingPause } from '@overlay/agent-runtime/harness-state'
 
 export interface ConversationQuery extends PaginationQuery {
   view?: 'personal' | 'dms' | 'channels' | 'all'
@@ -102,6 +103,7 @@ export type AgentRunResource = {
   terminalError?: { code: string; message: string; retryable: boolean }
   inputRequest?: { token: string; requestedAt: number; question: string }
   resourceRequest?: AgentRunResourceRequest
+  fundingPause?: HarnessFundingPause
   approval?: {
     token: string
     requestedAt: number

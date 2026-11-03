@@ -73,6 +73,28 @@ const childRunState = (parent: ReturnType<typeof make>, runId: string, at: numbe
   policy: { ...parent.policy, allowedToolIds: ['read'], requiresPlan: false, maxCostMicros: 0 },
 }, at)
 
+test('workspace-funded roots and children settle usage beyond legacy allocations', () => {
+  let parent = make()
+  parent.policy.workspaceId = 'workspace'
+  parent.policy.executionPolicyVersion = 2
+  parent.policy.spendingMode = 'workspace'
+  parent.policy.maxCostMicros = 0
+  parent = replaceHarnessPlan(parent, steps, now)
+  parent = admitHarnessChild(parent, child('first', 'read', 0), now)
+  const receipt = (id: string, costMicros: number): HarnessReceipt => ({
+    id, modelId: 'provider/model', provider: 'provider', inputTokens: 1, outputTokens: 1,
+    reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null,
+    costMicros, costSource: 'provider',
+  })
+  parent = recordHarnessReceipt(parent, receipt('root:receipt', 1_100_000), now)
+  let worker = childRunState(parent, 'first', now)
+  worker = recordHarnessReceipt(worker, receipt('child:receipt', 300_000), now)
+  worker = finishHarness(worker, now, 'Child completed.')
+  parent = settleHarnessChild(parent, worker, now)
+  assert.equal(parent.usage.costMicros, 1_400_000)
+  assert.equal(parent.children[0]?.costMicros, 300_000)
+})
+
 test('model dispatch binds one billing reservation without releasing the budget hold', () => {
   const reserved = reserveHarnessModel(make(), 'receipt', 80, now)
   const dispatch = { modelId: 'provider/model', billingReservationId: 'billing-reservation' }

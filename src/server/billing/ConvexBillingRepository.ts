@@ -163,11 +163,54 @@ export class ConvexBillingRepository implements BillingRepository {
     stripeCustomerId?: string
     stripePaymentIntentId?: string
     errorMessage?: string
+    autoTopUpIntentKey?: string
   }): Promise<unknown> {
     return await convex.mutation('billing/accountSubscriptions:recordTopUpByServer', {
       ...args,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
+  }
+
+  async claimAutoTopUpIntentByServer(args: {
+    actorUserId: string
+    billingAccountId: string
+    workspaceId: string
+    intentKey: string
+    idempotencyKey: string
+    amountCents: number
+    currentPeriodStart?: number
+    consentAt: number
+    paymentMethodId: string
+    customerId: string
+  }): Promise<{
+    status: 'claimed' | 'pending' | 'payment_failed' | 'succeeded' | 'disabled' | 'missing_consent'
+      | 'missing_customer' | 'missing_payment_method' | 'monthly_limit_reached' | 'authorization_changed'
+    idempotencyKey?: string
+    stripePaymentIntentId?: string
+    actorUserId?: string
+    workspaceId?: string
+    customerId?: string
+    paymentMethodId?: string
+    amountCents?: number
+  }> {
+    const result: unknown = await convex.mutation('billing/accountSubscriptions:claimAutoTopUpIntentByServer', {
+      ...args,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!result || typeof result !== 'object' || !('status' in result)) {
+      throw new Error('Auto top-up intent claim returned no status.')
+    }
+    return result as {
+      status: 'claimed' | 'pending' | 'payment_failed' | 'succeeded' | 'disabled' | 'missing_consent'
+        | 'missing_customer' | 'missing_payment_method' | 'monthly_limit_reached' | 'authorization_changed'
+      idempotencyKey?: string
+      stripePaymentIntentId?: string
+      actorUserId?: string
+      workspaceId?: string
+      customerId?: string
+      paymentMethodId?: string
+      amountCents?: number
+    }
   }
 
 }

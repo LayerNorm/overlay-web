@@ -101,7 +101,8 @@ test('a confirmed rejection continues through the SDK with a fresh candidate and
   expect(result.snapshot.status).toBe('completed')
   expect(onFallback).toHaveBeenCalledExactlyOnceWith({ from: 'fixture/model', to: 'fixture/fallback', receiptId: 'model:0', reason: 'budget' })
   expect(mocks.model).toHaveBeenCalledExactlyOnceWith('fixture/fallback', undefined, 'user', expect.objectContaining({ allowLowBalanceFallback: false }))
-  expect(mocks.refresh).toHaveBeenCalledWith(access, expect.objectContaining({ effectiveModelId: 'fixture/fallback' }))
+  expect(mocks.refresh).toHaveBeenCalledWith(access, expect.objectContaining({ effectiveModelId: 'fixture/fallback' }),
+    undefined, { renewalMode: true, renewLease: true })
   expect(mocks.settle).toHaveBeenCalledWith(expect.objectContaining({ receiptId: 'model:1' }))
   expect(mocks.admit).toHaveBeenCalledOnce()
   expect(current.modelReservation).toBeUndefined()
@@ -187,7 +188,8 @@ test('Kimi K3 reasoning is prepared for the active fallback candidate', async ()
 
   expect(prepared.model?.modelId).toBe(KIMI_K3_MODEL_ID)
   expect(prepared.settings?.reasoning).toBe('xhigh')
-  expect(mocks.refresh).toHaveBeenCalledWith(access, expect.objectContaining({ effectiveModelId: KIMI_K3_MODEL_ID }))
+  expect(mocks.refresh).toHaveBeenCalledWith(access, expect.objectContaining({ effectiveModelId: KIMI_K3_MODEL_ID }),
+    undefined, { renewalMode: true, renewLease: true })
 })
 
 beforeEach(() => {

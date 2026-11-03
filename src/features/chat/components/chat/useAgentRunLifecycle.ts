@@ -39,6 +39,7 @@ type ConvexAgentRunDoc = {
   approval?: AgentRunResource['approval']
   inputRequest?: AgentRunResource['inputRequest']
   resourceRequest?: AgentRunResource['resourceRequest']
+  fundingPause?: AgentRunResource['fundingPause']
   metrics?: {
     browserDisconnectedAt?: number
     browserReconnectedAt?: number
@@ -103,6 +104,7 @@ export function toAgentRunResource(doc: ConvexAgentRunDoc): AgentRunResource | n
     approval: doc.approval,
     inputRequest: doc.inputRequest,
     resourceRequest: doc.resourceRequest,
+    fundingPause: doc.fundingPause,
     metrics: doc.metrics as AgentRunResource['metrics'],
   } as unknown as AgentRunResource
 }

@@ -138,10 +138,17 @@ export async function reserveProviderBudget(params: {
 
   const payerContext = await resolveProviderBillingContext(params)
   const budget = payerContext.payer.scope === 'workspace'
-    ? {
+    ? await ensureWorkspaceBudgetAvailable({
+        billingAccountId: payerContext.payer.billingAccountId,
         entitlements: payerContext.entitlements,
-        remainingCents: getBudgetTotals(payerContext.entitlements).remainingCents,
-      }
+        minimumRequiredCents: Math.max(1, Math.ceil(reservedCents)),
+        userId: params.userId,
+        workspaceId: payerContext.payer.workspaceId,
+      }, {
+        billingEnabled: billingCapabilityEnabled,
+        remainingCents: (entitlements) => getBudgetTotals(entitlements).remainingCents,
+        repository: billingRepository,
+      })
     : await ensureBudgetAvailable({
         userId: params.userId,
         entitlements: payerContext.entitlements,
@@ -157,10 +164,22 @@ export async function reserveProviderBudget(params: {
       ok: false,
       status: 402,
       code: 'insufficient_budget',
-      payload: buildInsufficientCreditsPayload(
+      payload: {
+        ...buildInsufficientCreditsPayload(
         budget.entitlements,
         'Your Overlay budget is exhausted. Add budget or enable auto top-up before running this request.',
-      ),
+        ),
+        ...(payerContext.payer.scope === 'workspace' ? {
+          resourceStatus: {
+            reason: 'autoTopUpStatus' in budget ? budget.autoTopUpStatus : 'pending',
+            requiredCents: 'requiredCents' in budget ? budget.requiredCents : Math.max(1, Math.ceil(reservedCents)),
+            remainingCents: budget.remainingCents,
+            reservedCents: 0,
+            ...('autoTopUpReason' in budget && budget.autoTopUpReason
+              ? { topUpReason: budget.autoTopUpReason } : {}),
+          },
+        } : {}),
+      },
     } as const
   }
 
@@ -216,10 +235,18 @@ export async function reserveProviderBudget(params: {
       ok: false,
       status: 402,
       code: 'insufficient_budget',
-      payload: buildInsufficientCreditsPayload(
+      payload: {
+        ...buildInsufficientCreditsPayload(
         result.entitlements,
         'Your Overlay budget is exhausted. Add budget or enable auto top-up before running this request.',
-      ),
+        ),
+        resourceStatus: {
+          reason: 'insufficient_budget',
+          requiredCents: result.requiredCents,
+          remainingCents: result.remainingCents,
+          reservedCents: 0,
+        },
+      },
     } as const
   }
   if (result.replayed || result.status !== 'reserved') {

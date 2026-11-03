@@ -4,7 +4,7 @@ import type { ModelCallStreamPart } from '@ai-sdk/workflow'
 import type { ToolSet } from 'ai'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { createPersonalHarnessTools } from '@/server/harness/personal-tools'
-import { createPersonalHarnessExecutionPorts } from '@/server/harness/personal-ports'
+import { authorizePersonalHarnessExecution, checkPersonalHarnessFunding, createPersonalHarnessExecutionPorts } from '@/server/harness/personal-ports'
 import { createPersonalHarnessWaitPorts } from '@/server/harness/personal-waits'
 import { admitPersonalHarnessChild } from '@/server/harness/personal-child-steps'
 import { buildPersonalHarnessDelivery } from '@/server/harness/personal-delivery'
@@ -23,6 +23,7 @@ import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
 import type { PersonalHarnessWorkflowInput } from '@/server/harness/personal-workflow-input'
 import { persistPersonalChatWorkProgress } from '@/server/conversations/personal-chat-work-lifecycle'
 import { hasSamePersonalHarnessAuthentication } from '@/server/harness/personal-authentication'
+import { handoffHarnessContinuation } from '@/server/harness/harness-continuations'
 
 function hasChildExecutionIdentity(parent: PersonalHarnessAccess, input: PersonalHarnessWorkflowInput): boolean {
   return input.access.actorUserId === parent.actorUserId
@@ -95,7 +96,7 @@ export function personalHarnessChildInput(
 ): PersonalHarnessWorkflowInput {
   const allowed = new Set(child.policy.allowedToolIds)
   return {
-    access: { ...parent.access, runId: child.runId },
+    access: { ...parent.access, runId: child.runId, executionGeneration: child.executionGeneration ?? 0 },
     context: { ...parent.context, latestUserText: child.goal },
     definitions: parent.definitions.filter(definition => allowed.has(definition.name)),
     settings: parent.settings,
@@ -114,7 +115,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
   'use workflow'
 
   const { workflowRunId } = getWorkflowMetadata()
-  const access = { ...input.access, workflowRunId }
+  const access = { ...input.access, workflowRunId, executionGeneration: input.access.executionGeneration ?? 0 }
   const initial = await readHarnessState(access)
   if (['completed', 'failed', 'cancelled'].includes(initial.status)) {
     return {
@@ -127,8 +128,8 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
   const isRoot = !initial.parentRunId
   using wake = createHook<unknown>({ token: harnessWakeToken(workflowRunId) })
   let result: HarnessExecutionResult | undefined
-  let progress = ''
-  const fallbackNotices: string[] = []
+  let progress = input.continuation?.deliveryProgress ?? ''
+  const fallbackNotices: string[] = input.continuation?.fallbackNotices ?? []
   let activeToolNames = new Set<string>(HARNESS_CONTROL_TOOLS)
   try {
     if (await wake.getConflict()) throw new FatalError('Harness wake channel is already owned.')
@@ -138,8 +139,17 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       ...createPersonalHarnessWaitPorts({
         access,
         wake: wake[Symbol.asyncIterator](),
+        renewLease: () => authorizePersonalHarnessExecution(execution),
+        checkFunding: requiredCents => checkPersonalHarnessFunding(execution, requiredCents),
       }),
       readChild: childRunId => readHarnessChild(access, childRunId),
+      continueExecution: checkpoint => handoffHarnessContinuation({
+        reference: access, workflowKind: 'personal',
+        checkpoint: {
+          ...checkpoint, deliveryProgress: progress, fallbackNotices: [...fallbackNotices],
+        },
+        launchInput: input,
+      }),
       delegate: async (delegation, toolCallId) => {
         const child = await admitPersonalHarnessChild(execution, delegation, toolCallId)
         const snapshot = await readHarnessChild(access, child.id)
@@ -162,7 +172,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       if (isRoot && step.text) {
         const text = stripTextualToolCalls(step.text, activeToolNames)
         if (!text) return
-        progress = `${progress}${progress ? '\n\n' : ''}${text}`.slice(-160_000)
+        progress = `${progress}${progress ? '\n\n' : ''}${text}`
         await persistPersonalChatWorkProgress({ agentRunId: access.agentRunId, resourceUserId: access.actorUserId, content: progress })
       }
     }
@@ -170,22 +180,44 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     activeToolNames = new Set([...activeToolNames, ...Object.keys(tools)])
     result = await runOverlayHarness({
       instructions: input.instructions, messages: input.messages, settings: input.settings,
+      continuation: input.continuation,
       model: { modelId: input.context.effectiveModelId, credentialOwnerId: access.actorUserId, sessionId: access.conversationId, allowLowBalanceFallback: false },
       tools,
       writable: getWritable<ModelCallStreamPart<ToolSet>>(),
     }, ports)
     if (result.outcome === 'already_running') return { runId: initial.runId, status: 'already_running' as const }
+    if (result.outcome === 'continued') {
+      return { runId: result.snapshot.runId, status: 'running' }
+    }
+    if (result.snapshot.status === 'waiting_for_resources') {
+      return { runId: result.snapshot.runId, status: result.snapshot.status }
+    }
     if (!['completed', 'failed', 'cancelled'].includes(result.snapshot.status)) {
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
         type: 'terminate', status: 'failed', reason: result.snapshot.blocker?.question || 'The task is blocked and cannot continue.',
       })
     }
   } catch (error) {
-    const reason = harnessExecutionFailureReason(error)
     const state = await readHarnessState(access)
+    if (state.workflowRunId !== access.workflowRunId
+      || (state.executionGeneration ?? 0) !== (access.executionGeneration ?? 0)) {
+      return { runId: state.runId, status: state.status === 'running' ? 'continued' : state.status }
+    }
+    if (state.status === 'waiting_for_resources') {
+      return { runId: state.runId, status: state.status }
+    }
+    const reason = harnessExecutionFailureReason(error)
     const snapshot = ['completed', 'failed', 'cancelled'].includes(state.status) ? state
       : await applyHarnessOperation(access, 'execution-failed', { type: 'terminate', status: 'failed', reason })
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
+  }
+  const current = await readHarnessState(access)
+  if (current.workflowRunId !== access.workflowRunId
+    || (current.executionGeneration ?? 0) !== (access.executionGeneration ?? 0)) {
+    return { runId: current.runId, status: current.status === 'running' ? 'continued' : current.status }
+  }
+  if (current.status === 'waiting_for_resources') {
+    return { runId: current.runId, status: current.status }
   }
   if (isRoot) {
     const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices, activeToolNames)

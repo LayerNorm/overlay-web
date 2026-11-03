@@ -193,6 +193,25 @@ test('cancellation during a versioned resource wait leaves ordinary input unreso
   expect(disposed).toHaveBeenCalledOnce()
 })
 
+test('funding polls renew the v2 lease without resuming before the authority check', async () => {
+  state.status = 'waiting_for_resources'
+  state.policy.executionPolicyVersion = 2
+  state.policy.spendingMode = 'workspace'
+  mocks.sleep.mockResolvedValue(undefined)
+  const renewLease = vi.fn(async () => undefined)
+  const checkFunding = vi.fn(async () => false)
+  const ports = createHarnessWaitPorts({
+    reference: access, renewLease, checkFunding, projectWait: vi.fn(async () => 'projected' as const),
+    wake: { next: vi.fn(() => new Promise(() => {})) },
+  })
+
+  await ports.waitForFunding()
+
+  expect(renewLease).toHaveBeenCalledOnce()
+  expect(checkFunding).not.toHaveBeenCalled()
+  expect(state.status).toBe('waiting_for_resources')
+})
+
 test('a failed child with unresolved usage fails closed without retrying settlement', async () => {
   state.status = 'waiting_for_children'
   mocks.child.mockResolvedValue({ ...state, runId: 'child', status: 'failed', modelReservation: { id: 'model:0', maxCostMicros: 0 } })

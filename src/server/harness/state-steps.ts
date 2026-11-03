@@ -9,6 +9,7 @@ export type HarnessExecutionReference = {
   actorUserId: string
   runId: string
   workflowRunId: string
+  executionGeneration?: number
 }
 
 export type HarnessOperationStepResult =
@@ -36,11 +37,18 @@ export async function claimHarnessState(reference: HarnessExecutionReference): P
   for (let attempt = 0; attempt < 8; attempt++) {
     const state = await repository.get({ actorUserId: reference.actorUserId, runId: reference.runId })
     if (!state) throw new FatalError('HARNESS_RUN_NOT_FOUND')
+    if ((state.executionGeneration ?? 0) !== (reference.executionGeneration ?? 0)) return false
     if (state.workflowRunId) return state.workflowRunId === reference.workflowRunId
     const result = await repository.apply({
       actorUserId: reference.actorUserId, runId: reference.runId,
+      workflowRunId: reference.workflowRunId,
+      executionGeneration: reference.executionGeneration ?? 0,
       operationId: `claim:${reference.workflowRunId}`, expectedRevision: state.revision,
-      operation: { type: 'claim_execution', workflowRunId: reference.workflowRunId },
+      operation: {
+        type: 'claim_execution',
+        workflowRunId: reference.workflowRunId,
+        generation: reference.executionGeneration ?? 0,
+      },
     })
     if (!result.conflict) return true
   }
@@ -57,11 +65,16 @@ export async function applyHarnessOperationStep(
   for (let attempt = 0; attempt < 8; attempt++) {
     const state = await repository.get({ actorUserId: reference.actorUserId, runId: reference.runId })
     if (!state) throw new FatalError('HARNESS_RUN_NOT_FOUND')
-    if (state.workflowRunId !== reference.workflowRunId) throw new FatalError('HARNESS_EXECUTION_NOT_OWNED')
+    if (state.workflowRunId !== reference.workflowRunId
+      || (state.executionGeneration ?? 0) !== (reference.executionGeneration ?? 0)) {
+      throw new FatalError('HARNESS_EXECUTION_NOT_OWNED')
+    }
     let result: HarnessMutationResult
     try {
       result = await repository.apply({
         actorUserId: reference.actorUserId, runId: reference.runId,
+        workflowRunId: reference.workflowRunId,
+        executionGeneration: reference.executionGeneration ?? 0,
         operationId, expectedRevision: state.revision, operation,
       })
     } catch (error) {

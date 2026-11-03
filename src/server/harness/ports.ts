@@ -4,7 +4,7 @@ import type {
   WorkflowAgentToolExecutionEndEvent,
   WorkflowAgentOptions,
 } from '@ai-sdk/workflow'
-import type { ModelMessage, ToolSet } from 'ai'
+import type { ModelMessage, StepResult, ToolSet } from 'ai'
 import type { HarnessChild, HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import type { HarnessModelReference } from './secure-model'
@@ -27,6 +27,20 @@ export type HarnessApprovalRequest = {
   input: unknown
 }
 
+export type HarnessRunnerCheckpoint = {
+  version: 1
+  messages: ModelMessage[]
+  deliverySteps?: StepResult<ToolSet>[]
+  invocation: number
+  modelCall: number
+  stagnantSegments: number
+  finalAnswerRequired: boolean
+  truncatedResponse: boolean
+  segmentStartedAt: number
+  deliveryProgress?: string
+  fallbackNotices?: string[]
+}
+
 // These are IO seams, not execution strategies. Implementations invoke durable
 // steps/hooks; no provider instances, credentials or closures enter run storage.
 export interface HarnessExecutionPorts {
@@ -35,6 +49,10 @@ export interface HarnessExecutionPorts {
   apply(operationId: string, operation: HarnessOperation): Promise<HarnessSnapshot>
   readEvidence(evidenceId: string): Promise<HarnessEvidence | null>
   waitForResources?(requiredCostMicros: number): Promise<HarnessSnapshot>
+  waitForFunding?(): Promise<void>
+  checkFunding?(requiredCents: number): Promise<boolean>
+  renewLease(): Promise<void>
+  continueExecution(checkpoint: HarnessRunnerCheckpoint): Promise<HarnessSnapshot>
   authorizeTool(toolName: string): Promise<void>
   prepareModel(input: {
     receiptId: string

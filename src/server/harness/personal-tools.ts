@@ -24,7 +24,7 @@ async function executeAuthorizedTool(args: {
     import('./personal-access'),
     import('@/server/conversations/personal-chat-work-tools'),
   ])
-  const context = await refreshPersonalHarnessAccess(args.access, args.context, args.toolName)
+  const context = await refreshPersonalHarnessAccess(args.access, args.context, args.toolName, { renewalMode: true, renewLease: true })
   const options = {
     context: { ...context, agentRunId: args.access.agentRunId, toolName: args.toolName },
     messages: args.messages, toolCallId: args.toolCallId,
@@ -53,7 +53,7 @@ async function toolNeedsApproval(args: {
     import('./personal-access'),
     import('@/server/conversations/personal-chat-work-tools'),
   ])
-  const context = await refreshPersonalHarnessAccess(args.access, args.context, args.toolName)
+  const context = await refreshPersonalHarnessAccess(args.access, args.context, args.toolName, { renewalMode: true, renewLease: true })
   return personalChatWorkToolNeedsApproval(args.input, {
     context: { ...context, agentRunId: args.access.agentRunId, toolName: args.toolName },
     messages: args.messages,

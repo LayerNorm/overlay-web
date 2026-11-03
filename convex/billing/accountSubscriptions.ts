@@ -46,9 +46,17 @@ async function autoTopUpsSince(ctx: QueryCtx, billingAccountId: string, since: n
     .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', billingAccountId).gte('createdAt', start))
     .collect())
     .filter((row) => row.source === 'auto' && (row.status === 'pending' || row.status === 'succeeded'))
+  const intents = await ctx.db.query('billingAutoTopUpIntents')
+    .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', billingAccountId))
+    .collect()
+  const rowIntentKeys = new Set(rows.flatMap((row) => row.autoTopUpIntentKey ? [row.autoTopUpIntentKey] : []))
+  const pendingClaims = intents.filter((intent) => intent.state === 'pending')
+  const pendingClaimCents = pendingClaims
+    .filter((intent) => !rowIntentKeys.has(intent.intentKey))
+    .reduce((sum, intent) => sum + intent.amountCents, 0)
   return {
-    spentCents: rows.reduce((sum, row) => sum + row.amountCents, 0),
-    pending: rows.some((row) => row.status === 'pending'),
+    spentCents: rows.reduce((sum, row) => sum + row.amountCents, 0) + pendingClaimCents,
+    pending: rows.some((row) => row.status === 'pending') || pendingClaims.length > 0,
   }
 }
 
@@ -333,6 +341,7 @@ export const recordTopUpByServer = mutation({
     stripeCheckoutSessionId: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()),
     stripePaymentIntentId: v.optional(v.string()),
+    autoTopUpIntentKey: v.optional(v.string()),
     errorMessage: v.optional(v.string()),
     serverSecret: v.string(),
   },
@@ -351,8 +360,14 @@ export const recordTopUpByServer = mutation({
           .withIndex('by_paymentIntentId', (q) => q.eq('stripePaymentIntentId', args.stripePaymentIntentId))
           .unique()
       : null
-    if (byCheckout && byPayment && byCheckout._id !== byPayment._id) throw new Error('top_up_provider_reference_conflict')
-    const existing = byCheckout ?? byPayment
+    const byIntentKey = args.autoTopUpIntentKey
+      ? await ctx.db.query('budgetTopUps')
+          .withIndex('by_autoTopUpIntentKey', (q) => q.eq('autoTopUpIntentKey', args.autoTopUpIntentKey))
+          .unique()
+      : null
+    const matches = [byCheckout, byPayment, byIntentKey].filter(Boolean)
+    if (new Set(matches.map((row) => String(row!._id))).size > 1) throw new Error('top_up_provider_reference_conflict')
+    const existing = byCheckout ?? byPayment ?? byIntentKey
     if (existing?.billingAccountId && existing.billingAccountId !== args.billingAccountId) {
       throw new Error('Top-up provider reference already belongs to another billing account')
     }
@@ -369,6 +384,8 @@ export const recordTopUpByServer = mutation({
         billingAccountId: args.billingAccountId,
         status: persistedStatus,
         updatedAt: now,
+        ...(args.autoTopUpIntentKey ? { autoTopUpIntentKey: args.autoTopUpIntentKey } : {}),
+        ...(args.stripePaymentIntentId ? { stripePaymentIntentId: args.stripePaymentIntentId } : {}),
         ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
       })
     } else {
@@ -378,6 +395,7 @@ export const recordTopUpByServer = mutation({
         amountCents: args.amountCents,
         source: args.source,
         status: args.status,
+        ...(args.autoTopUpIntentKey ? { autoTopUpIntentKey: args.autoTopUpIntentKey } : {}),
         billingPeriodStart: now,
         createdAt: now,
         updatedAt: now,
@@ -387,6 +405,32 @@ export const recordTopUpByServer = mutation({
         ...(args.errorMessage ? { errorMessage: args.errorMessage } : {}),
       })
       id = String(inserted)
+    }
+    if (args.autoTopUpIntentKey) {
+      const claim = await ctx.db.query('billingAutoTopUpIntents')
+        .withIndex('by_billingAccountId_intentKey', (q) => q
+          .eq('billingAccountId', args.billingAccountId).eq('intentKey', args.autoTopUpIntentKey!))
+        .unique()
+      if (!claim) throw new Error('auto_top_up_intent_claim_missing')
+      if (claim.amountCents !== args.amountCents) throw new Error('auto_top_up_intent_amount_mismatch')
+      const nextState = claim.state === 'succeeded' || persistedStatus === 'succeeded'
+        ? 'succeeded'
+        : persistedStatus === 'failed' || persistedStatus === 'canceled' ? 'payment_failed' : 'pending'
+      await ctx.db.patch(claim._id, {
+        state: nextState,
+        ...(args.stripePaymentIntentId ? { stripePaymentIntentId: args.stripePaymentIntentId } : {}),
+        updatedAt: now,
+      })
+    } else if (args.stripePaymentIntentId) {
+      const claim = await ctx.db.query('billingAutoTopUpIntents')
+        .withIndex('by_paymentIntentId', (q) => q.eq('stripePaymentIntentId', args.stripePaymentIntentId))
+        .unique()
+      if (claim) {
+        const nextState = claim.state === 'succeeded' || args.status === 'succeeded'
+          ? 'succeeded'
+          : args.status === 'failed' || args.status === 'canceled' ? 'payment_failed' : 'pending'
+        await ctx.db.patch(claim._id, { state: nextState, updatedAt: now })
+      }
     }
     if (granted) {
       const balance = await ensureEmptyBalance(ctx, args.billingAccountId)
@@ -399,6 +443,166 @@ export const recordTopUpByServer = mutation({
       })
     }
     return { id, granted }
+  },
+})
+
+export const claimAutoTopUpIntentByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    actorUserId: v.string(),
+    billingAccountId: v.string(),
+    workspaceId: v.string(),
+    intentKey: v.string(),
+    idempotencyKey: v.string(),
+    amountCents: v.number(),
+    currentPeriodStart: v.optional(v.number()),
+    consentAt: v.number(),
+    paymentMethodId: v.string(),
+    customerId: v.string(),
+  },
+  returns: v.object({
+    status: v.union(
+      v.literal('claimed'), v.literal('pending'), v.literal('payment_failed'), v.literal('succeeded'),
+      v.literal('disabled'), v.literal('missing_consent'), v.literal('missing_customer'),
+      v.literal('missing_payment_method'), v.literal('monthly_limit_reached'), v.literal('authorization_changed'),
+    ),
+    idempotencyKey: v.optional(v.string()),
+    stripePaymentIntentId: v.optional(v.string()),
+    actorUserId: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
+    customerId: v.optional(v.string()),
+    paymentMethodId: v.optional(v.string()),
+    amountCents: v.optional(v.number()),
+  }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    if (!args.actorUserId.trim() || !args.workspaceId.trim() || !args.intentKey.trim()
+      || !args.idempotencyKey.trim() || !Number.isSafeInteger(args.amountCents) || args.amountCents <= 0) {
+      throw new Error('invalid_auto_top_up_intent')
+    }
+    await requireCanonicalAccountById(ctx, args.billingAccountId)
+    const account = await ctx.db.query('billingAccounts')
+      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId))
+      .unique()
+    if (!account || account.scope !== 'workspace' || account.workspaceId !== args.workspaceId || account.status !== 'active') {
+      return { status: 'authorization_changed' as const }
+    }
+    const plan = await ctx.db.query('billingAccountSubscriptions')
+      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId))
+      .unique()
+    if (!plan || plan.planKind !== 'paid' || plan.status !== 'active' || !plan.autoTopUpEnabled) return { status: 'disabled' as const }
+    if (!plan.offSessionConsentAt || plan.offSessionConsentAt !== args.consentAt) {
+      return { status: 'missing_consent' as const }
+    }
+    if (!plan.providerCustomerId || plan.providerCustomerId !== args.customerId) {
+      return { status: 'missing_customer' as const }
+    }
+    if (!args.paymentMethodId.trim()) return { status: 'missing_payment_method' as const }
+    if (plan.autoTopUpAmountCents !== args.amountCents || plan.currentPeriodStart !== args.currentPeriodStart) {
+      return { status: 'authorization_changed' as const }
+    }
+
+    const existing = await ctx.db.query('billingAutoTopUpIntents')
+      .withIndex('by_billingAccountId_intentKey', (q) => q
+        .eq('billingAccountId', args.billingAccountId).eq('intentKey', args.intentKey))
+      .unique()
+    if (existing) {
+      if (existing.amountCents !== args.amountCents || existing.customerId !== args.customerId
+        || existing.paymentMethodId !== args.paymentMethodId || existing.consentAt !== args.consentAt
+        || existing.currentPeriodStart !== args.currentPeriodStart) {
+        return { status: 'authorization_changed' as const }
+      }
+      if (existing.state === 'payment_failed') return { status: 'payment_failed' as const }
+      if (existing.state === 'succeeded') return { status: 'succeeded' as const }
+      if (existing.stripePaymentIntentId) {
+        return {
+          status: 'pending' as const, stripePaymentIntentId: existing.stripePaymentIntentId,
+          idempotencyKey: existing.idempotencyKey, actorUserId: existing.actorUserId,
+          workspaceId: existing.workspaceId, customerId: existing.customerId,
+          paymentMethodId: existing.paymentMethodId, amountCents: existing.amountCents,
+        }
+      }
+      if (Date.now() - existing.createdAt >= 23 * 60 * 60 * 1000) {
+        return {
+          status: 'pending' as const, idempotencyKey: existing.idempotencyKey,
+          actorUserId: existing.actorUserId, workspaceId: existing.workspaceId,
+          customerId: existing.customerId, paymentMethodId: existing.paymentMethodId,
+          amountCents: existing.amountCents,
+        }
+      }
+      return {
+        status: 'claimed' as const, idempotencyKey: existing.idempotencyKey,
+        actorUserId: existing.actorUserId, workspaceId: existing.workspaceId,
+        customerId: existing.customerId, paymentMethodId: existing.paymentMethodId,
+        amountCents: existing.amountCents,
+      }
+    }
+
+    const unresolved = (await ctx.db.query('billingAutoTopUpIntents')
+      .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', args.billingAccountId))
+      .collect()).find((intent) => intent.state === 'pending')
+    if (unresolved) {
+      return {
+        status: 'pending' as const, ...(unresolved.stripePaymentIntentId ? { stripePaymentIntentId: unresolved.stripePaymentIntentId } : {}),
+        idempotencyKey: unresolved.idempotencyKey, actorUserId: unresolved.actorUserId,
+        workspaceId: unresolved.workspaceId, customerId: unresolved.customerId,
+        paymentMethodId: unresolved.paymentMethodId, amountCents: unresolved.amountCents,
+      }
+    }
+
+    const recentIntents = await ctx.db.query('billingAutoTopUpIntents')
+      .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', args.billingAccountId))
+      .order('desc')
+      .take(100)
+    const latchedFailure = recentIntents.find((intent) => intent.state === 'payment_failed'
+      && intent.amountCents === args.amountCents
+      && intent.consentAt === args.consentAt
+      && intent.paymentMethodId === args.paymentMethodId
+      && intent.customerId === args.customerId)
+    if (latchedFailure) return { status: 'payment_failed' as const }
+
+    const periodStart = args.currentPeriodStart ?? Date.now() - 31 * 24 * 60 * 60 * 1000
+    const topUps = await ctx.db.query('budgetTopUps')
+      .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', args.billingAccountId).gte('createdAt', periodStart))
+      .collect()
+    const inPeriodAutoTopUps = topUps.filter((topUp) => topUp.source === 'auto'
+      && (topUp.status === 'pending' || topUp.status === 'succeeded'))
+    const countedIntentKeys = new Set(inPeriodAutoTopUps.flatMap((topUp) => topUp.autoTopUpIntentKey ? [topUp.autoTopUpIntentKey] : []))
+    const intents = await ctx.db.query('billingAutoTopUpIntents')
+      .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', args.billingAccountId).gte('createdAt', periodStart))
+      .collect()
+    const unrecordedPendingCents = intents
+      .filter((intent) => intent.state === 'pending' && intent.currentPeriodStart === args.currentPeriodStart
+        && !countedIntentKeys.has(intent.intentKey))
+      .reduce((sum, intent) => sum + intent.amountCents, 0)
+    const spentCents = inPeriodAutoTopUps.reduce((sum, topUp) => sum + topUp.amountCents, 0)
+    if (plan.autoTopUpMonthlyLimitCents === undefined
+      || spentCents + unrecordedPendingCents + args.amountCents > plan.autoTopUpMonthlyLimitCents) {
+      return { status: 'monthly_limit_reached' as const }
+    }
+
+    const now = Date.now()
+    await ctx.db.insert('billingAutoTopUpIntents', {
+      billingAccountId: args.billingAccountId,
+      actorUserId: args.actorUserId,
+      workspaceId: args.workspaceId,
+      intentKey: args.intentKey,
+      idempotencyKey: args.idempotencyKey,
+      amountCents: args.amountCents,
+      ...(args.currentPeriodStart !== undefined ? { currentPeriodStart: args.currentPeriodStart } : {}),
+      consentAt: args.consentAt,
+      paymentMethodId: args.paymentMethodId,
+      customerId: args.customerId,
+      state: 'pending',
+      createdAt: now,
+      updatedAt: now,
+    })
+    return {
+      status: 'claimed' as const, idempotencyKey: args.idempotencyKey,
+      actorUserId: args.actorUserId, workspaceId: args.workspaceId,
+      customerId: args.customerId, paymentMethodId: args.paymentMethodId,
+      amountCents: args.amountCents,
+    }
   },
 })
 

@@ -18,6 +18,7 @@ beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 const mutation = (name: string) => makeFunctionReference<'mutation'>(`harness/runs:${name}`)
 const query = (name: string) => makeFunctionReference<'query'>(`harness/runs:${name}`)
 type Convex = ReturnType<typeof convexTest>
+const executionOwners = new WeakMap<Convex, Map<string, { workflowRunId: string; revisionOffset: number }>>()
 
 test('readiness is available only to the authenticated server', async () => {
   const convex = convexTest(schema, modules)
@@ -76,11 +77,34 @@ async function apply(
   actorUserId = input.policy.actorUserId,
   serverSecret = secret,
 ) {
+  const owners = executionOwners.get(convex) ?? new Map()
+  executionOwners.set(convex, owners)
+  let owner = owners.get(input.runId)
+  if (operation.type === 'claim_execution') {
+    owner = { workflowRunId: operation.workflowRunId, revisionOffset: 0 }
+    owners.set(input.runId, owner)
+  } else if (!owner) {
+    const workflowRunId = 'test-workflow'
+    await convex.run(async ctx => {
+      const run = await ctx.db.query('harnessRuns')
+        .withIndex('by_runId', q => q.eq('runId', input.runId))
+        .unique()
+      if (!run) throw new Error('HARNESS_RUN_NOT_FOUND')
+      const metadata = JSON.parse(run.metadataJson) as Record<string, unknown>
+      if (metadata.workflowRunId === undefined) {
+        await ctx.db.patch(run._id, { metadataJson: JSON.stringify({ ...metadata, workflowRunId }) })
+      }
+    })
+    owner = { workflowRunId, revisionOffset: 0 }
+    owners.set(input.runId, owner)
+  }
   return await convex.mutation(mutation('apply'), {
     actorUserId,
     runId: input.runId,
+    workflowRunId: owner!.workflowRunId,
+    executionGeneration: 0,
     operationId,
-    expectedRevision,
+    expectedRevision: expectedRevision + owner!.revisionOffset,
     operation,
     serverSecret,
   }) as HarnessMutationResult
@@ -502,7 +526,7 @@ describe('durable harness runs', () => {
     const retry = await apply(convex, input, 'owner-retry', 1, { type: 'claim_execution', workflowRunId: 'workflow-first' })
     expect(retry.snapshot.revision).toBe(1)
     await expect(apply(convex, input, 'owner-second', 1, { type: 'claim_execution', workflowRunId: 'workflow-second' }))
-      .rejects.toThrow(/ALREADY_CLAIMED/)
+      .rejects.toThrow(/HARNESS_EXECUTION_NOT_OWNED/)
   })
 
   test('round-trips normalized plans and requires current independent verification', async () => {

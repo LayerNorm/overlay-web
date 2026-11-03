@@ -11,6 +11,7 @@ const mutation = (name: string) => makeFunctionReference<'mutation'>(`harness/ru
 const query = (name: string) => makeFunctionReference<'query'>(`harness/runs:${name}`)
 const chatMutation = (name: string) => makeFunctionReference<'mutation'>(`chat/conversations:${name}`)
 type Convex = ReturnType<typeof convexTest>
+const workflowIds = new WeakMap<Convex, Map<string, string>>()
 
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
@@ -115,8 +116,15 @@ async function apply(
   expectedRevision: number,
   operation: HarnessOperation,
 ) {
+  const runOwners = workflowIds.get(convex) ?? new Map()
+  workflowIds.set(convex, runOwners)
+  const workflowRunId = operation.type === 'claim_execution'
+    ? operation.workflowRunId
+    : runOwners.get(input.runId) ?? `workflow-${input.runId}`
+  if (operation.type === 'claim_execution') runOwners.set(input.runId, workflowRunId)
   return await convex.mutation(mutation('apply'), {
-    actorUserId: 'alice', runId: input.runId, operationId, expectedRevision, operation, serverSecret: secret,
+    actorUserId: 'alice', runId: input.runId, workflowRunId, executionGeneration: 0,
+    operationId, expectedRevision, operation, serverSecret: secret,
   }) as HarnessMutationResult
 }
 

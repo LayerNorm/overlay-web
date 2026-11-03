@@ -2,6 +2,7 @@ import type { RemoteRunLiveness } from './remote-run-liveness'
 import type { RemoteRunState } from './remote-run'
 import type { RemoteRunStreamStats } from './remote-run-stream-stats'
 import type { HarnessResourceDeliveryProjection } from '@overlay/agent-runtime/harness-resource'
+import type { HarnessFundingPause } from '@overlay/agent-runtime/harness-state'
 
 /**
  * `room` is a workspace-agent turn in a DM or channel. It is a distinct mode
@@ -116,6 +117,7 @@ export type AgentRun = {
   approval?: AgentRunApproval
   inputRequest?: { token: string; requestedAt: number; question: string }
   resourceRequest?: AgentRunResourceRequest
+  fundingPause?: HarnessFundingPause
   metrics?: AgentRunMetrics
   /** Connected-agent transport counters; remote runs only. */
   streamStats?: RemoteRunStreamStats
