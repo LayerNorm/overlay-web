@@ -7,7 +7,10 @@ Convex owns durable app state, domain mutations, scheduled work, and some webhoo
 
 Treat matching web and Convex revisions as one release unit. Local development
 uses an engineer-owned backend; feature worktrees never deploy shared environments.
-PR previews deploy only their per-PR backend.
+PR previews deploy only their per-PR backend. Preview builds copy the shared
+`OVERLAY_USAGE_MARKUP_BPS` value from Vercel to that backend. Before production
+billing code is deployed, set and read back the same rate on its matching Next
+and Convex environments; see [Workspace billing](workspace-billing.md#usage-markup-configuration).
 
 Vercel’s native Git integration deploys main to production. Integration verifies
 the exact live web SHA, synchronizes customer Convex only for backend changes from
