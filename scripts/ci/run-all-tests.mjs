@@ -56,6 +56,7 @@ const PRELOADS = [
 // Deterministic placeholders for modules that read config at import time.
 // Tests never reach these endpoints.
 const TEST_ENV = {
+  OVERLAY_USAGE_MARKUP_BPS: '2500',
   NEXT_PUBLIC_CONVEX_URL: 'https://fixture.convex.cloud',
   INTERNAL_API_SECRET: 'test-internal-secret',
   NEXT_TELEMETRY_DISABLED: '1',

@@ -9,7 +9,7 @@ import { generateObject, type FlexibleSchema } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { calculateGatewayLanguageModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { isGatewayCreditLow } from '../lib/gatewayCredits'
-import { applyMarkupToDollars } from "../../src/shared/billing/billing-pricing";
+import { applyMarkupToDollars } from "../lib/usageMarkup";
 import { normalizeOpenAiCompatibleBaseUrl } from "../../src/shared/ai/gateway/openai-compatible-base-url";
 import {
   AGENT_MEMORY_EXTRACTION_SYSTEM_PROMPT,

@@ -13,6 +13,7 @@ export default defineConfig({
   },
   test: {
     environment: 'edge-runtime',
+    env: { OVERLAY_USAGE_MARKUP_BPS: '2500' },
     include: ['convex/**/*.convex.test.ts'],
     server: { deps: { inline: ['convex-test'] } },
   },
