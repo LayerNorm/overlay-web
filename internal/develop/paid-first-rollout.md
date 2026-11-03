@@ -2,7 +2,14 @@
 
 Opt-in Preview QA workspaces carry explicitly synthetic `preview-fixture` paid-period records and bounded budgets. Re-seeding does not replenish credit or extend those periods. They are not payment evidence and must never be used to claim checkout acceptance: validate Stripe payment in a separate, initially unfunded workspace. The fixture handlers refuse production deployments.
 
-This is an operator runbook, not permission to deploy. Feature development has not changed production billing, stopped existing customers, or run the migration against a real backend.
+This is an operator runbook, not permission to deploy.
+
+## Current release status
+
+- **Preparation shipped:** [PR #379](https://github.com/LayerNorm/overlay-web/pull/379) deployed additive invoice-proof funding and backfill without changing execution access. Production paid-account protection and a subsequent read-only check passed. These are point-in-time checks; refresh the inventory before a delayed enforcement release.
+- **Enforcement pending:** [PR #378](https://github.com/LayerNorm/overlay-web/pull/378) has not shipped. Independent useful-task acceptance created the note but failed terminal reporting. Hold integration until final-report recovery, terminal completion/reload without duplicate creation, and representative computer-task/economics acceptance pass on the exact preview revision.
+- **Cutoff and cleanup pending:** no production cutoff, free-resource drain or dedicated free-resource deletion has occurred. Those operations follow verified enforcement deployment, not preparation alone.
+- Keep production inventories, customer identifiers, financial metrics and reconciliation records in private operator storage, not this repository or PR discussion. Public evidence should report gate status and non-sensitive test behavior only.
 
 ## Release gates
 
@@ -10,10 +17,10 @@ This is an operator runbook, not permission to deploy. Feature development has n
 2. Prepare immediate cutoff once existing paid workspaces are protected. The owner approved removing the earlier 14-day notice delay. Preserve setup, drafts, history, export, and billing; do not charge anyone automatically. The final enforcement release cuts over all hosted workspaces together after the paid-account migration gates below; it does not contain a second grandfathered/free execution policy or a temporary cohort switch. This timing decision is not permission to merge or mutate production.
 3. Dry-run, reconcile, and apply paid-period proof for existing paid workspaces before the enforcement release. Recheck immediately before cutover. Resolve every `needs_review` or `not_applied` result; neither counts as successful migration.
 4. Validate the final exact-SHA isolated PR preview, including real Stripe **test-mode** checkout and a useful first task. Validate that $8 funds the chosen first-task experience including inference, compute, tools, payment fees, and platform overhead. Do not claim this economics gate passed based on unit tests.
-5. At cutoff, drain or stop old free runs and computers, settle their existing holds, and disable scheduled unfunded work. Deploy the enforcement/removal release using the normal main merge queue and native web release, then synchronize customer Convex only from clean matching canonical main. No feature-worktree production deploys.
+5. Deploy the enforcement/removal release using the normal main merge queue and native web release, then synchronize customer Convex only from clean matching canonical main. Verify paid access and unpaid blocking. Then drain or stop old free runs and computers, settle their existing holds, and disable scheduled unfunded work. No feature-worktree production deploys.
 6. Remove exclusively free deployed configuration and resources after their replacement callers are live. Inventory and archive operational records where necessary; retain customer transcripts, financial ledger, reservations/receipts needed for reconciliation, and exports. Confirm no free route, cron, provider canary, dedicated key, capacity reservation, activation switch, or operational-only table remains. Do not delete shared paid/BYO OpenRouter or gateway credentials.
 
-The complete feature PR is **not** the additive preparation release and must not be merged as that release. Its enforcement would immediately stop unpaid work. Keep the enforcement PR in draft until these release gates are satisfied.
+The complete feature PR is **not** the additive preparation release and must not be merged as that release. Its enforcement would immediately stop unpaid work. Keep enforcement integration blocked until the pre-merge gates are satisfied; post-deployment drain and deletion follow the ordering above.
 
 ## Existing-paid-workspace backfill
 

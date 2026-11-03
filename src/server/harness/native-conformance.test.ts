@@ -516,6 +516,46 @@ it('Plan: write claims without a plan stay blocked, while answer-only Q&A comple
   expect(answer.doStreamCalls[1]?.toolChoice).toEqual({ type: 'none' })
 })
 
+it('Plan: a rejected reporting milestone recovers without repeating its completed action', async () => {
+  const f = harnessFixture({ allowedToolIds: ['create_note'] })
+  const noteLink = '/notes/launch-checklist'
+  const create = { id: 'create', title: 'Create the launch checklist', dependsOn: [],
+    acceptanceCriteria: ['Save eight checklist items'], requiresVerification: false, evidenceTools: ['create_note'] }
+  const report = { id: 'report', title: 'Return the note link', dependsOn: ['create'],
+    acceptanceCriteria: ['Return the saved note link'], requiresVerification: false, evidenceTools: ['create_note'] }
+  const execute = vi.fn(async () => ({ success: true, noteId: 'launch-checklist', url: noteLink,
+    saved: { title: 'Launch checklist', content: Array.from({ length: 8 }, (_, i) => `- [ ] Item ${i + 1}`).join('\n') } }))
+  const tools = createHarnessTools([definition('create_note')], { needsApproval: async () => false, execute })
+  const provider = model(index => {
+    if (index === 0) return [{ name: 'harness_set_plan', id: 'plan', input: { steps: [create, report] } }]
+    if (index === 1) return [{ name: 'create_note', id: 'note', input: {} }]
+    if (index === 2) return [{ name: 'harness_update_step', id: 'created', input: {
+      id: 'create', status: 'done', evidenceRefs: ['tool:note'],
+    } }]
+    if (index === 3) return [{ name: 'harness_update_step', id: 'reused', input: {
+      id: 'report', status: 'done', evidenceRefs: ['tool:note'],
+    } }]
+    if (index === 4) return [{ name: 'harness_update_step', id: 'missing', input: { id: 'report', status: 'done' } }]
+    if (index === 5) return [{ name: 'harness_set_plan', id: 'recover', input: { steps: [create, {
+      ...report, evidenceTools: [], answerOnly: true,
+    }] } }]
+    return `Created your eight-item checklist: [Launch checklist](${noteLink}).`
+  })
+
+  const result = await f.run(tools)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toContain(noteLink)
+  expect(execute).toHaveBeenCalledOnce()
+  expect(result.snapshot.plan[0]).toMatchObject({ ...create, status: 'done', evidenceRefs: ['tool:note'] })
+  expect(result.snapshot.plan[1]).toMatchObject({ answerOnly: true, status: 'done' })
+  const recoveryPrompt = JSON.stringify(provider.doStreamCalls[5]?.prompt)
+  expect(recoveryPrompt).toContain('one result cannot prove two actions')
+  expect(recoveryPrompt).toContain('use harness_set_plan to set answerOnly: true')
+  expect(recoveryPrompt).toContain('Preserve every other milestone exactly')
+  expect(recoveryPrompt).toContain('do not repeat the completed action')
+  expect(provider.doStreamCalls.at(-1)?.toolChoice).toEqual({ type: 'none' })
+})
+
 it('Budget — two named children plus the parent remain within the ceiling and a third ask is refused before a turn row', () => {
   const parent = runtime.createHarnessSnapshot({
     runId: 'parent',
