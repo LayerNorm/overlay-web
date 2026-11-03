@@ -126,12 +126,14 @@ managed leases to immediate cleanup.
 
 Phase 4 routes an agent with an enabled binding through the existing room mention path. Mention,
 room membership, agent participation, binding, environment scope, and the host's advertised ACP
-adapter are revalidated before dispatch. PostgreSQL and Convex each use one provider transaction
-to create the existing assistant placeholder, a `remote` AgentRun, its remote-session record, and
-one start command. The payer allowance check happens before that transaction; a non-null billing
-reservation is released if the transaction cannot commit and its idempotency key is the
-message-agent invocation nonce. User-owned ACP model execution is not charged as Overlay model
-usage.
+adapter are revalidated before dispatch. A new hosted remote start requires an active workspace
+account, a paid current period, and available funds; BYO inference creates no Overlay model-usage
+reservation but does not bypass workspace admission. Billing-disabled self-hosted deployments
+explicitly bypass paid admission. PostgreSQL and Convex each use one provider transaction to create
+the existing assistant placeholder, a `remote` AgentRun, its remote-session record, and one start
+command. A non-null billing reservation is released if the transaction cannot commit and its
+idempotency key is the message-agent invocation nonce. User-owned ACP model execution is not
+charged as Overlay model usage.
 
 Host event batches advance the remote cursor and project full Markdown checkpoints plus stable
 action parts into that one assistant message in the same transaction. Session start binds the
@@ -1803,6 +1805,20 @@ warn that partial output is incomplete. No new retries, provider fallback, tool
 replay, billing changes or lifecycle transitions are introduced by classification;
 SDK `isRetryable` metadata is not an instruction to retry.
 
+### Workspace-funded Harness continuation
+
+New versioned native and personal tasks reserve each provider call against their
+workspace wallet rather than a synthetic lifetime cap. BYO uses external provider
+credentials but still requires paid-workspace admission. Explicit legacy spend
+limits remain enforced. Funding pauses keep the selected model and logical task;
+a summary pause preserves the pending response call and full history.
+
+Execution leases renew only after current authorization and generation checks.
+Safe handoffs use compressed private checkpoints and a fenced successor; unresolved
+provider calls or tool effects cannot be replayed. Explicit task deadlines pause
+for authorization. Input and approval waits retain their exact pending identity,
+and stale workers or revoked members cannot resume execution.
+
 ### Native Overlay agent approvals
 
 Native Harness room turns (`executionEngine: overlay_harness`) retain their
@@ -1844,3 +1860,16 @@ by the user; selected-root approval and heartbeat readiness stay server-owned.
 The window owns the cookie session. Sign-out stops the child and closes panels;
 native code never stores a second rotating WorkOS session. See
 [Desktop web shell](desktop-web-shell.md) for the bridge and QA contract.
+
+
+### Harness context across workflow handoffs
+
+Private context artifacts belong to the logical Harness run. The current workflow
+owner can reopen prior-generation artifacts after fresh tool and Files permission
+checks; the former workflow and other actors cannot. Artifact metadata retains its
+original workflow, tool, digest and source revision. Summary and answer-verification
+calls use the same paid-workspace admission, markup and receipt-backed settlement
+as response calls. Unknown outcomes retain their holds; full history is preserved,
+compaction retries once and final answers allow at most two corrections. Failed
+verification cannot complete the run. Context pauses also verify durable current
+ownership after error serialization, rather than trusting an exception name alone.

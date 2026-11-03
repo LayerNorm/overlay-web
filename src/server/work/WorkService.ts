@@ -12,6 +12,7 @@ import type {
 import { logger } from '@/server/observability/logger'
 import { workAssignmentMessage } from '@/shared/work/assignment-message'
 import { startWorkspaceAgentTurns } from '@/server/agents/start-agent-turns'
+import { requireWorkspaceExecution, WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
 import { parseWorkErrorReason, workErrorMessage, workErrorStatus } from '@/shared/work/errors'
 import type { WorkRepository } from './WorkRepository'
 
@@ -33,6 +34,7 @@ export class WorkService {
   constructor(
     private readonly repository: WorkRepository,
     private readonly dispatchAssignment: typeof startWorkspaceAgentTurns = startWorkspaceAgentTurns,
+    private readonly requireExecution: typeof requireWorkspaceExecution = requireWorkspaceExecution,
   ) {}
 
   /** Runs a repository call and translates Convex's refusals. */
@@ -87,6 +89,22 @@ export class WorkService {
       return item
     }
     const generation = item.assignmentExecution?.generation ?? item.updatedAt
+    const startedReplay = item.assignmentExecution?.status === 'started'
+      && item.assignmentExecution.assigneePrincipalId === assigneePrincipalId
+      && Number.isSafeInteger(item.assignmentExecution.generation)
+      && item.assignmentExecution.generation === generation
+    try {
+      await this.requireExecution({
+        userId: args.userId,
+        workspaceId: args.workspaceId,
+        checkBudget: !startedReplay,
+      })
+    } catch (error) {
+      if (error instanceof WorkspaceExecutionError) {
+        throw new WorkServiceError(error.message, error.statusCode, error.payload.code)
+      }
+      throw error
+    }
     const prepared = await this.guard(() => this.repository.prepareAssignment({
       ...args,
       id: item.id,
@@ -98,6 +116,9 @@ export class WorkService {
       throw new WorkServiceError(`Task ${item.id} was saved, but its assignment changed before the agent could start. No agent was launched.`, 409, 'work_assignment_changed')
     }
     const { execution, claimed } = prepared
+    if (execution.assigneePrincipalId !== assigneePrincipalId || execution.generation !== generation) {
+      throw new WorkServiceError(`Task ${item.id} was saved, but its assignment changed before the agent could start. No agent was launched.`, 409, 'work_assignment_changed')
+    }
     if (!claimed) {
       if (execution.status === 'starting') {
         throw new WorkServiceError(`Task ${item.id} was saved; agent startup is already in progress.`, 409, 'work_assignment_in_progress')

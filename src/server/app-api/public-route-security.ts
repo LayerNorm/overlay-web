@@ -37,7 +37,7 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/files/ingest-jobs/process': internalServiceException(['POST'], 'Internal-secret authenticated Convex file-ingestion worker bridge.'),
   '/api/v1/imports/slack/process': internalServiceException(['POST'], 'Internal-secret authenticated Slack import worker bridge.'),
   '/api/v1/automations/project-events': internalServiceException(['POST'], 'Internal-secret authenticated Workflow SDK event projection bridge.'),
-  '/api/v1/models/overlay-free/refresh': internalServiceException(['POST'], 'Internal-secret authenticated overlay-free catalog refresh worker bridge.'),
+  '/api/v1/harness/continuation': internalContinuationException(),
   '/api/v1/surfaces/slack/connect': {
     methods: ['GET'],
     reason: 'Browser navigation that must end in a redirect to Slack consent, not a JSON envelope.',
@@ -138,6 +138,21 @@ function internalServiceException(methods: readonly string[], reason: string) {
       csrf: 'no browser cookie authority',
       idempotency: 'object deletion and metadata tombstoning are idempotent',
       audit: 'artifact metadata retains cleanup state and timestamps',
+    },
+  } as const
+}
+
+function internalContinuationException() {
+  return {
+    methods: ['POST'],
+    reason: 'Internal-secret authenticated continuation launch callback.',
+    controls: {
+      authentication: 'deployment-scoped internal service secret',
+      authorization: 'the persisted checkpoint token binds the run and generation; launch identity is revalidated before workflow start',
+      rateLimit: 'durable continuation outbox backoff and bounded dispatch batches',
+      csrf: 'no browser cookie authority',
+      idempotency: 'generation and checkpoint-token fencing plus successor claim make retry launches safe',
+      audit: 'checkpoint and continuation outbox rows preserve the handoff and attempt history',
     },
   } as const
 }

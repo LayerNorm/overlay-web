@@ -4,16 +4,19 @@ import { HarnessPlanValidationError, type HarnessEvidence, type HarnessSnapshot 
 import type { HarnessMutationResult, HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { waitForHarnessModelResources } from './resource-boundary'
+import { isHarnessStepValidation } from './step-validation'
 
 export type HarnessExecutionReference = {
   actorUserId: string
   runId: string
   workflowRunId: string
+  executionGeneration?: number
 }
 
 export type HarnessOperationStepResult =
   | { ok: true; snapshot: HarnessSnapshot }
   | { ok: false; code: 'HARNESS_PLAN_VALIDATION'; message: string }
+  | { ok: false; code: 'HARNESS_STEP_VALIDATION'; message: string }
   | { ok: false; code: 'HARNESS_RESOURCE_REQUIRED'; requiredCostMicros: number }
 
 function rejectedOperation(error: unknown): { code: 'HARNESS_OPERATION_REJECTED' | 'HARNESS_PLAN_VALIDATION'; message: string } | null {
@@ -30,21 +33,48 @@ export async function readHarnessState(reference: HarnessExecutionReference): Pr
   return state
 }
 
-export async function claimHarnessState(reference: HarnessExecutionReference): Promise<boolean> {
-  'use step'
+type HarnessClaim = { snapshot: HarnessSnapshot; claimed: boolean }
+
+// A claimed snapshot is post-claim, so a caller can use it as the run's current
+// state without another read.
+async function readAndClaim(reference: HarnessExecutionReference, skipInactive: boolean): Promise<HarnessClaim> {
   const repository = new ConvexHarnessRepository()
   for (let attempt = 0; attempt < 8; attempt++) {
     const state = await repository.get({ actorUserId: reference.actorUserId, runId: reference.runId })
     if (!state) throw new FatalError('HARNESS_RUN_NOT_FOUND')
-    if (state.workflowRunId) return state.workflowRunId === reference.workflowRunId
+    if ((state.executionGeneration ?? 0) !== (reference.executionGeneration ?? 0)) return { snapshot: state, claimed: false }
+    if (skipInactive && ['completed', 'failed', 'cancelled', 'waiting_for_authorization'].includes(state.status)) {
+      return { snapshot: state, claimed: false }
+    }
+    if (state.workflowRunId) return { snapshot: state, claimed: state.workflowRunId === reference.workflowRunId }
     const result = await repository.apply({
       actorUserId: reference.actorUserId, runId: reference.runId,
+      workflowRunId: reference.workflowRunId,
+      executionGeneration: reference.executionGeneration ?? 0,
       operationId: `claim:${reference.workflowRunId}`, expectedRevision: state.revision,
-      operation: { type: 'claim_execution', workflowRunId: reference.workflowRunId },
+      operation: {
+        type: 'claim_execution',
+        workflowRunId: reference.workflowRunId,
+        generation: reference.executionGeneration ?? 0,
+      },
     })
-    if (!result.conflict) return true
+    if (!result.conflict) return { snapshot: result.snapshot, claimed: true }
   }
   throw new RetryableError('Harness execution claim is contended.')
+}
+
+export async function claimHarnessState(reference: HarnessExecutionReference): Promise<boolean> {
+  'use step'
+  return (await readAndClaim(reference, false)).claimed
+}
+
+/**
+ * One durable boundary for a workflow's initial read and execution claim.
+ * Terminal and authorization-blocked runs are returned unclaimed.
+ */
+export async function readAndClaimHarnessState(reference: HarnessExecutionReference): Promise<HarnessClaim> {
+  'use step'
+  return readAndClaim(reference, true)
 }
 
 export async function applyHarnessOperationStep(
@@ -57,17 +87,26 @@ export async function applyHarnessOperationStep(
   for (let attempt = 0; attempt < 8; attempt++) {
     const state = await repository.get({ actorUserId: reference.actorUserId, runId: reference.runId })
     if (!state) throw new FatalError('HARNESS_RUN_NOT_FOUND')
-    if (state.workflowRunId !== reference.workflowRunId) throw new FatalError('HARNESS_EXECUTION_NOT_OWNED')
+    if (state.workflowRunId !== reference.workflowRunId
+      || (state.executionGeneration ?? 0) !== (reference.executionGeneration ?? 0)) {
+      throw new FatalError('HARNESS_EXECUTION_NOT_OWNED')
+    }
     let result: HarnessMutationResult
     try {
       result = await repository.apply({
         actorUserId: reference.actorUserId, runId: reference.runId,
+        workflowRunId: reference.workflowRunId,
+        executionGeneration: reference.executionGeneration ?? 0,
         operationId, expectedRevision: state.revision, operation,
       })
     } catch (error) {
       const rejected = rejectedOperation(error)
       if (rejected?.code === 'HARNESS_PLAN_VALIDATION') {
         return { ok: false, code: rejected.code, message: rejected.message }
+      }
+      if (operation.type === 'transition_step' && rejected?.code === 'HARNESS_OPERATION_REJECTED'
+        && isHarnessStepValidation(rejected.message)) {
+        return { ok: false, code: 'HARNESS_STEP_VALIDATION', message: rejected.message }
       }
       if (operation.type === 'reserve_model' && state.policy.resourcePauseVersion === 1
         && rejected?.code === 'HARNESS_OPERATION_REJECTED'
@@ -94,6 +133,7 @@ export async function applyHarnessOperation(
     const result = await applyHarnessOperationStep(reference, operationId, operation)
     if (result.ok) return result.snapshot
     if (result.code === 'HARNESS_PLAN_VALIDATION') throw new HarnessPlanValidationError(result.message)
+    if (result.code === 'HARNESS_STEP_VALIDATION') throw new Error(result.message)
     const state = await waitForHarnessModelResources(reference, result.requiredCostMicros, () => readHarnessState(reference))
     if (state.status !== 'running') throw new FatalError('Harness model reservation is no longer runnable.')
   }

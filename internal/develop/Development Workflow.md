@@ -11,6 +11,14 @@ Production follows **merge to main → automatic Vercel Git production deploymen
 
 ## Shared hosting and parallel work
 
+Browser QA, end-to-end testing, regressions, and further task-related checks have
+standing owner approval; do not ask again before testing. Use the current-head
+isolated PR Preview, existing QA credentials, and sandbox payments when a paid
+workspace is needed. Use saved Convex administration access as described in
+[Convex Workflow](./convex-workflow.md) instead of requesting new per-PR keys.
+This approval does not extend to real customer charges, destructive operations,
+production changes, or merges outside the existing release rules.
+
 | Setting | Development rule |
 | --- | --- |
 | Customer-web Vercel project | Use `overlay-landing` for both Preview and Production. The separate staging project, branch and subdomain are retired. |
@@ -207,11 +215,29 @@ code or changes the real provider cap. Rerunning the same Actions run is
 replay-safe; an optional non-secret `request_id` can identify a specific recovery.
 
 An authenticated operator can still invoke internal `dev/qa:recover` directly on
-the verified Preview reference with a unique `requestId`, one of the four
-fixtures and `availableCents` for paid fixtures. Use a Preview-scoped key-only
+the verified Preview reference with a unique `requestId`, a supported
+fixture and `availableCents` for paid fixtures. Use a Preview-scoped key-only
 file or authenticated CLI, never `.env.local`. Recovery is explicit and audited;
 deployment seeding never resets usage or credit. Synthetic credits do not pay
 real provider costs.
+
+For paid reservation-shortfall QA, internal `dev/fundingQa:init` accepts
+`{ "fixture": "synthetic" }` or `{ "fixture": "stripe-test" }` on the verified
+isolated Preview only. Each creates its own configured-owner workspace, paid
+synthetic plan, one cent of initial allowance, and an inert no-external-tools
+agent. Reseeding never changes existing balances or plan settings and never
+starts work. Use a verified priced model whose next-call reservation exceeds
+that cent; confirm a real resource pause before recovery. An authenticated
+operator can recover only the synthetic workspace via `dev/qa:recover` with
+`fixture: "funding-workspace"`, bounded `availableCents` and a unique `requestId`.
+This new selector is not exposed by the main recovery workflow yet.
+
+The separate Stripe TEST funding fixture is only a low-credit starting state:
+it creates no Stripe customer, subscription, payment method, consent or receipt.
+Establish a dedicated verified TEST-mode customer/payment method before enabling
+auto top-up through the owner UI with a bounded amount and monthly limit. Never
+attach live payment identities. Verify actual TEST PaymentIntent and credit
+reconciliation separately; synthetic recovery does not qualify Stripe payments.
 
 For a quarantined free-model route, inspect its failure first. Preview-only
 internal `dev/qa:recoverRoute` accepts the exact `routeKey`, `expectedReason` and

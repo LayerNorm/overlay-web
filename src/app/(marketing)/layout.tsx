@@ -49,9 +49,9 @@ const structuredData = {
         "Overlay is the control plane for AI employees: one workspace to create, deploy, and manage AI agents. Bring your own agents (Codex, Claude Code, Hermes) or run Overlay's, and put them to work in chat, Slack, Telegram, iMessage, and the web. Open source under AGPL-3.0, with hosted and self-hosted options.",
       offers: {
         '@type': 'Offer',
-        price: '0',
+        price: '8',
         priceCurrency: 'USD',
-        description: 'Free tier included, no card required. Paid plans available.',
+        description: '$8/month usage credit. No trial. Set up your workspace before payment; bring your own model credentials if preferred.',
       },
       creator: { '@id': 'https://getoverlay.io/#organization' },
     },

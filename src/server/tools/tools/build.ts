@@ -746,7 +746,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (shouldExposeTool('get_note')) {
     tools.get_note = tool({
     description:
-      'Load a note by id. Returns its Markdown content, tags, heading outline, and `revision`. ' +
+      'Load a note by id. Returns its Markdown content, tags, heading outline, `revision`, and relative `url`. Use that URL unchanged for note links. ' +
       'Pass that revision as expectedRevision when you edit the note so you never overwrite a change made after you read it.',
     inputSchema: z.object({
       noteId: z.string().describe('The note id from list_notes'),
@@ -999,7 +999,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     if (shouldExposeTool('computer_publish_file') && shouldExposeTool('write_file')) {
       tools.computer_publish_file = tool({
         description:
-          'Publish a binary file from the bound Computer into Overlay Files. Reuse the same artifactId when retrying identical bytes; use a new artifactId for different bytes. Never use computer_read_file for binary output.',
+          'Publish a binary file from the bound Computer into Overlay Files. Returns a relative downloadUrl; use it unchanged in a Markdown link when reporting the result, not just file or artifact IDs. Reuse the same artifactId when retrying identical bytes; use a new artifactId for different bytes. Never use computer_read_file for binary output.',
         inputSchema: z.object({
           sourcePath: z.string().min(1).max(4096).describe('Absolute path of the finished binary on the Computer'),
           name: z.string().min(1).max(255).describe('Basename to use in Overlay Files'),
@@ -1158,7 +1158,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
 
     if (shouldExposeTool('create_note')) {
       tools.create_note = tool({
-      description: 'Create a new note. Content is Markdown (GitHub-flavored, with $math$ and - [ ] task lists).',
+      description: 'Create a new note. Content is Markdown (GitHub-flavored, with $math$ and - [ ] task lists). Returns a relative `url`; use it unchanged for the note link instead of inventing a host or path.',
       inputSchema: z.object({
         title: z.string().trim().min(1).describe('Note title'),
         content: z.string().describe('Markdown body'),

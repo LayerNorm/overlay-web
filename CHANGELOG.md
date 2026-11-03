@@ -4,11 +4,53 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve private Harness artifacts across authorized workflow handoffs while rejecting stale workers, and retain summary/verification holds until measured usage settles without restoring free-model execution.
+
 - Keep Harness model-port, verification, compaction, artifact-prompt, and reducer validation paths focused and maintainable without changing their behavior or limits.
 - Allow isolated Preview QA to lower the test owner's Harness working-context budget to exercise compaction, without changing production or other users' budgets.
 - Keep Harness continuations grounded in persisted evidence, page omitted observations, verify nontrivial final answers, preserve context in private chunk-transport artifacts, and recover from failed compaction or verification without releasing paid or unknown provider holds.
+- Preserve the pending response when context summarization pauses for workspace funding, including after durable workflow serialization; foreign pause receipts cannot resume the task.
+
+- Reconcile durable Harness continuation with paid-workspace admission: retain the selected model on funding failure and require current verified payment before creating automatic top-up claims. Existing subscriptions and markup are unchanged.
+
+- Preserve fractional-cent funding balances through durable Harness pauses and prevent workspace-funded task errors from falling back to a different model instead of waiting for funds.
+
+- Seed funding QA agents with valid editable avatar values so saving a model does not fail unrelated avatar validation. Existing fixtures and balances remain unchanged on reseed.
+
+- Preserve generation fencing, authorization pauses, and lease renewal when combining durable continuation with the streamlined personal Harness startup path.
+
+- Add opt-in, isolated Preview funding fixtures with one cent of initial synthetic credit. Reseeding never drains or replenishes existing balances, starts work, enables top-ups, or creates Stripe payment evidence.
+
+- Preserve valid Harness approval waits when persistence reorders JSON object keys. Approval identities, tool names, argument values, and array order must still match before any saved decision is consumed.
+
+- Preserve the latest answer and recent tool activity when long assistant transcripts reach storage limits. Repeated compaction keeps one omission notice instead of replacing the final answer with it; both native and personal message schemas accept its metadata, and existing size limits remain enforced.
+
+- Keep Harness control tools available while an answer-only milestone is unfinished, so agents can pause for missing human input instead of treating the plan as already complete. External action tools remain unavailable until the plan requires them.
+
+- Add versioned long-running Harness execution with workspace-funded dispatch holds, renewable execution leases, typed funding pauses, and protected continuation handoff. New checkpoints use gzip-compressed Convex File Storage blobs referenced by an atomic small metadata transaction; older inline checkpoint fields remain readable. Failed/retried uploads may leave unreferenced blobs, and no destructive orphan cleanup is performed. An expired explicit task deadline now persists as nonterminal `waiting_for_authorization`, preserves existing waits, blocks ordinary replies and execution, and remains cancellable. Funding projections show required and available amounts and show reserved amounts only when authoritative. Existing explicit spend overrides, V1 resource pauses, legacy policies, payer distinctions, and unresolved-effect holds remain enforced; targeted fixtures do not qualify every wait handoff or real-time multiweek operation.
+- Settle measured model usage when background memory generation fails schema validation, without saving invalid output or leaving a known-cost hold stuck. Unknown usage and missing pricing still require reconciliation.
+
+- Retain receipt-backed provider expenses for failed calls after their wallet holds are released, without charging or crediting the wallet again; include those expenses in billing cost reports.
+
+- Record standing approval for task-related browser QA and testing, and document secure reuse of saved Convex administration access so preview checks do not require repeated approval or per-PR key requests.
+
+- Require paid, funded workspace admission before chat and hosted execution, remove free-model fallback and retired free-routing schema definitions, and preserve manual drafts plus billing-disabled self-hosted access.
+
+- Recover expected Harness milestone-validation failures across durable workflow steps and guide reporting-only milestones to finish from saved results without repeating completed actions.
+
+- Keep provider tool-call markup out of Harness answers and continue to a real final response without repeating completed actions.
+
+- Return workspace-scoped links from note tools so completed tasks can open the saved note without inventing an address.
+
+- Resolve note and Computer download links against successful tool results when a response invents a different hostname.
+
+- Return authenticated download links after Computer file publication and make them clickable even when a response formats the path as text or inline code.
+
+- Configure provider usage markup with `OVERLAY_USAGE_MARKUP_BPS` across web, memory and Computer billing, rejecting invalid settings instead of hiding a fixed rate in code. Subscription prices, included credit and existing subscription records stay unchanged.
 
 - Require a plain-language changelog entry in every PR, including documentation, dependency, test and CI changes, and a functionality summary with deployment status after each merge.
+
+- Reach the first model call in personal Chat and Work runs with 8 durable steps instead of 15. The initial read and execution claim share one step; delivery attach, reauthorization and request accounting share another. Model preparation reuses the state read at the model boundary and reads catalog limits once per model, so later model calls take 4 steps instead of 7. Every authorization, budget and reservation check still runs.
 
 - Explain AI SDK Harness failures in plain language, including provider HTTP failures, invalid inputs and tool approvals, missing outputs, and exhausted SDK retries. Preserve partial-stream warnings and nested SDK causes without exposing prompts, tool inputs, or provider payloads; retry, fallback, and billing behavior are unchanged.
 

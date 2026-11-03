@@ -68,7 +68,7 @@ export function CreateWorkspaceDialog({
           You will be the workspace owner. You can invite people and add agents next.
         </p>
         <p className="mt-2 text-[11px] leading-relaxed text-(--muted-light)">
-          It starts on the free plan: everyone working in it shares one weekly allowance. Add a plan from its Billing tab for a pool of credits shared by every member.
+          Set up your workspace first, then choose the $8/month usage credit before running models. You can bring your own model credentials, but a funded workspace is still required.
         </p>
         {error ? (
           <p role="alert" className="mt-3 text-xs text-red-500">

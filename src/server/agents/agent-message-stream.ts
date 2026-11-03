@@ -2,7 +2,7 @@ import 'server-only'
 
 import { logger } from '@/server/observability/logger'
 import { toolFailureOutput } from '@/shared/chat/tool-outcomes'
-import { compactAssistantPersistenceForConvex } from '@/shared/chat/persist-assistant-turn'
+import { compactAssistantPersistenceForConvex, isAssistantStorageOmission } from '@/shared/chat/persist-assistant-turn'
 
 /**
  * The slice of the collaboration repository a streaming agent turn needs. Kept
@@ -59,7 +59,7 @@ export const AGENT_STREAM_EVENT_INTERVAL_MS = 1_000
 /** Keep text in the ordered parts snapshot as well as the searchable message content. */
 export function appendAgentTextPart(parts: Array<Record<string, unknown>>, delta: string): void {
   const last = parts.at(-1)
-  if (last?.type === 'text' && typeof last.text === 'string') {
+  if (last?.type === 'text' && typeof last.text === 'string' && !isAssistantStorageOmission(last)) {
     parts[parts.length - 1] = { ...last, text: last.text + delta }
   } else {
     parts.push({ type: 'text', text: delta })

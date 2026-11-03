@@ -1,6 +1,6 @@
 import { FatalError, sleep } from 'workflow'
 import { assertSafeResourceMicros } from '@overlay/agent-runtime/harness-resource'
-import { reservedHarnessCostMicros, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { effectiveHarnessDeadlineAt, reservedHarnessCostMicros, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { consumeHarnessResourceWait, createHarnessResourceToken, publishHarnessResourceWait } from './resource-wait-steps'
 import { waitForHarnessResources, type HarnessResourceWaitPorts } from './resource-waits'
 import type { HarnessExecutionReference } from './state-steps'
@@ -41,7 +41,7 @@ async function waitForHarnessBoundaryResources(
     if (humanWait ? !isHumanWait(state, humanWait) : state.status !== 'running') return state
     const commitments = state.usage.costMicros + reservedHarnessCostMicros(state) + requiredCostMicros
     assertSafeResourceMicros(commitments, 'Current commitments and forecast')
-    const reason = Date.now() >= state.policy.deadlineAt ? 'time'
+    const reason = Date.now() >= effectiveHarnessDeadlineAt(state.policy) ? 'time'
       : !humanWait && commitments > state.policy.maxCostMicros ? 'model_spend' : undefined
     if (!reason) return state
     const identity = { ...reference, expectedRevision: state.revision }
@@ -82,6 +82,6 @@ export async function waitForHarnessHumanReply<T>(
       if ('error' in received) throw received.error
       return received.value
     }
-    await Promise.race([reply, sleep(new Date(state.policy.deadlineAt))])
+    await Promise.race([reply, sleep(new Date(effectiveHarnessDeadlineAt(state.policy)))])
   }
 }

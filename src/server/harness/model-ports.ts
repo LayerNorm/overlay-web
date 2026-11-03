@@ -2,7 +2,6 @@ import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { compactHarnessPrompt, estimateContextTokens, FALLBACK_CONTEXT_WINDOW } from '@/server/chat/context-compaction-core'
-import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
 import { buildHarnessStepInstructions } from './context'
 import { prepareHarnessArtifactPrompt } from './artifact-prompt'
@@ -10,30 +9,16 @@ import { createHarnessCompactionPort } from './compaction-port'
 import { captureHarnessModelUsage } from './model-usage'
 import type { HarnessExecutionPorts } from './ports'
 import type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
-import { HarnessYield, waitForHarnessModelRecovery } from './model-recovery'
 import { readHarnessModelLimits } from './model-preparation'
 import { createHarnessVerificationPort } from './verification-port'
 import { settleHarnessModelUsage } from './settle-model-step'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
-import { createHarnessCapacityWaiter } from './model-capacity'
 import { estimateHarnessPromptTokens } from './artifact-context'
 
 export type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
+import { HarnessYield, waitForHarnessModelRecovery } from './model-recovery'
 
 type ModelStep = Parameters<HarnessExecutionPorts['recordModelStep']>[0]
-
-export type HarnessModelRouting = {
-  candidateIds: string[]
-  onFallback?: (event: { from: string; to: string; receiptId: string; reason: 'budget' | 'model_unavailable' }) => Promise<void>
-}
-
-function routingCandidates(modelId: string, routing?: HarnessModelRouting): string[] {
-  const candidates = routing?.candidateIds ?? [modelId]
-  if (!candidates.length || candidates.length > 5 || candidates[0] !== modelId
-    || candidates.some(id => !id.trim() || id.length > 256) || new Set(candidates).size !== candidates.length
-    || (candidates.some(isByokModelId) && candidates.length !== 1)) throw new Error('Invalid admitted model routing.')
-  return [...candidates]
-}
 
 export function createHarnessModelPorts(input: {
   reference: HarnessExecutionReference
@@ -45,12 +30,16 @@ export function createHarnessModelPorts(input: {
     options: LanguageModelV4CallOptions
   }) => Promise<PreparedHarnessModel>
   contextBudgetTokens?: number
-}, routing?: HarnessModelRouting): Pick<HarnessExecutionPorts, 'prepareModel' | 'recordModelStep' | 'recoverModelFailure' | 'verifyFinalAnswer'> {
+}): Pick<HarnessExecutionPorts, 'prepareModel' | 'recordModelStep' | 'recoverModelFailure' | 'verifyFinalAnswer'> {
   const preparedCalls = new Map<string, PreparedHarnessModel>()
-  const capacity = createHarnessCapacityWaiter()
-  const candidates = routingCandidates(input.modelId, routing)
-  let candidateIndex = 0
   const { reference, prepare } = input
+  // Catalog limits are fixed for a model, so read them once per run.
+  const limitsByModel = new Map<string, Awaited<ReturnType<typeof readHarnessModelLimits>>>()
+  async function modelLimits(modelId: string) {
+    let limits = limitsByModel.get(modelId)
+    if (!limits) limitsByModel.set(modelId, limits = await readHarnessModelLimits(modelId))
+    return limits
+  }
   const contextBudgetTokens = input.contextBudgetTokens ?? 32_000
   if (!Number.isSafeInteger(contextBudgetTokens) || contextBudgetTokens < 1_024) throw new Error('Invalid harness working-context budget.')
 
@@ -59,21 +48,19 @@ export function createHarnessModelPorts(input: {
       reference, receiptId, contextWindow: prepared.contextWindow,
       observation: captureHarnessModelUsage(step, prepared.model.modelId),
     })
-    capacity.reset()
   }
 
   const compaction = createHarnessCompactionPort({
     reference,
     prepare,
     settle,
-    getCurrentModelId: () => candidates[candidateIndex],
-    waitForCapacity: (state, receiptId, modelId) => capacity.wait(state, receiptId, modelId),
+    getCurrentModelId: () => input.modelId,
   })
   const verification = createHarnessVerificationPort({
     reference,
     prepare,
     settle,
-    getCurrentModelId: () => candidates[candidateIndex],
+    getCurrentModelId: () => input.modelId,
   })
 
   return {
@@ -86,34 +73,15 @@ export function createHarnessModelPorts(input: {
         preparedCalls.delete(receiptId)
         return waitForHarnessModelRecovery(reference, receiptId)
       }
-      if (!receipt.rejectionReason || receipt.modelId !== candidates[candidateIndex]) return false
-      if (receipt.rejectionReason === 'route_capacity') {
-        preparedCalls.delete(receiptId)
-        return capacity.wait(state, receiptId, candidates[candidateIndex])
-      }
-      if (receipt.rejectionReason === 'route_interrupted') {
-        preparedCalls.delete(receiptId)
-        return (state.routeInterruptionCount ?? 0) <= 2
-      }
-      if (receipt.rejectionReason === 'summary_failed') return false
-      if (receipt.rejectionReason === 'route_unavailable') {
-        preparedCalls.delete(receiptId)
-        return false
-      }
-      if (receipt.rejectionReason !== 'budget' && receipt.rejectionReason !== 'model_unavailable') return false
-      if (candidateIndex + 1 >= candidates.length) return false
-      const from = candidates[candidateIndex++]
-      preparedCalls.delete(receiptId)
-      await routing?.onFallback?.({ from, to: candidates[candidateIndex], receiptId, reason: receipt.rejectionReason })
-      return true
+      return false
     },
     prepareModel: async request => {
-      const limits = await readHarnessModelLimits(candidates[candidateIndex], reference.actorUserId)
+      const limits = await modelLimits(input.modelId)
       const modelContextWindow = limits.contextWindow ?? FALLBACK_CONTEXT_WINDOW
       const contextWindow = Math.min(input.contextBudgetTokens ?? limits.previewContextBudgetTokens ?? contextBudgetTokens, modelContextWindow)
       const maxOutputTokens = Math.min(request.settings.maxOutputTokens ?? 8_192,
         limits.maxOutputTokens ?? 8_192, Math.max(1, Math.floor(contextWindow / 4)))
-      let state = await readHarnessState(reference)
+      let state = request.state
       let promptMessages = request.messages
       promptMessages = await prepareHarnessArtifactPrompt({
         reference, state, messages: request.messages, receiptId: request.receiptId,
@@ -148,6 +116,9 @@ export function createHarnessModelPorts(input: {
       let responseMaxOutputTokens = maxOutputTokens
       if (compacted.summaryFailed || !compacted.fitsBudget) {
         state = await readHarnessState(reference)
+        if (state.status === 'waiting_for_resources' && state.resourcePause?.receiptId) {
+          throw new HarnessYield(state.resourcePause.receiptId)
+        }
         if (state.compaction?.status === 'awaiting_reconciliation'
           || state.modelReservation?.id.startsWith('summary:')) throw new HarnessYield()
         const fallbackInstructions = buildHarnessStepInstructions(state, request.instructionContext)
@@ -183,11 +154,11 @@ export function createHarnessModelPorts(input: {
         })
         instructions = buildHarnessStepInstructions(state, request.instructionContext)
       } else {
-        state = await readHarnessState(reference)
+        // Nothing was written since the boundary read: no summary, no checkpoint.
         instructions = buildHarnessStepInstructions(state, request.instructionContext)
       }
       const prepared = await prepare({
-        modelId: candidates[candidateIndex],
+        modelId: input.modelId,
         receiptId: request.receiptId,
         purpose: 'response',
         options: {
@@ -198,7 +169,7 @@ export function createHarnessModelPorts(input: {
         },
       })
       preparedCalls.set(request.receiptId, prepared)
-      const reasoning = isKimiK3ModelId(candidates[candidateIndex]) && request.settings.reasoning !== undefined
+      const reasoning = isKimiK3ModelId(input.modelId) && request.settings.reasoning !== undefined
         ? 'xhigh'
         : request.settings.reasoning
       return {

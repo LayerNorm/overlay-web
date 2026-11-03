@@ -3,6 +3,7 @@ import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { PersonalHarnessAccess } from './personal-access'
 import type { PersonalHarnessToolsInput } from './personal-tools'
 import type { HarnessModelSettings } from './ports'
+import type { HarnessRunnerCheckpoint } from './ports'
 
 export type PersonalHarnessWorkflowInput = {
   access: Omit<PersonalHarnessAccess, 'workflowRunId'>
@@ -11,10 +12,10 @@ export type PersonalHarnessWorkflowInput = {
   instructions: string
   messages: ModelMessage[]
   settings?: HarnessModelSettings
-  modelCandidates?: string[]
   delivery?: {
     emitWebhook: boolean
     sourceCitations?: SourceCitationMap
     closeStream?: boolean
   }
+  continuation?: HarnessRunnerCheckpoint
 }

@@ -835,7 +835,7 @@ test('metered settle runs a final tick, releases the bootstrap hold, and tolerat
     runtime: () => runtimeWithUsage(() => ({ wallTimeMs: 90_000 })),
   })
   await service.settle({
-    agentId: 'agent', environmentId: 'environment', forceFreeTierLimits: false,
+    agentId: 'agent', environmentId: 'environment',
     inputTokens: 0, modelId: 'openrouter/free', modelUsageBilling: 'byok', operationId: 'op',
     outcome: 'completed', outputTokens: 0, reservationId: null, runId: 'run', userId: 'user',
     workspaceId: 'workspace',
@@ -867,7 +867,7 @@ test('managed sandbox settlement failure marks its reservation for reconciliatio
     runtime: () => { throw new Error('provider unavailable') },
   })
   await assert.rejects(() => service.settle({
-    agentId: 'agent', environmentId: 'environment', forceFreeTierLimits: false,
+    agentId: 'agent', environmentId: 'environment',
     inputTokens: 0, modelId: 'openrouter/free', modelUsageBilling: 'byok', operationId: 'op',
     outcome: 'timeout', outputTokens: 0, reservationId: null, runId: 'run', userId: 'user',
     workspaceId: 'workspace', sandboxBilling: {
@@ -927,7 +927,7 @@ test('legacy settle follows a repointed lease and seeds the meter cursor', async
   assert.equal(billing.providerReference, 'destroyed-sandbox')
   assert.deepEqual(billing.baselineUsage, {})
   await service.settle({
-    agentId: 'agent', environmentId: 'environment', forceFreeTierLimits: false,
+    agentId: 'agent', environmentId: 'environment',
     inputTokens: 0, modelId: 'openrouter/free', modelUsageBilling: 'byok', operationId: 'op',
     outcome: 'completed', outputTokens: 0, reservationId: null, runId: 'run', userId: 'user',
     workspaceId: 'workspace', sandboxBilling: billing,

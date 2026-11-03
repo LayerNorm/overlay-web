@@ -4,6 +4,10 @@ import type { Entitlements } from '@/shared/app/app-contracts'
 import type { BillingRepository } from '@/server/billing/BillingRepository'
 import { maybeAutoTopUpWorkspaceBudget } from '@/server/billing/stripe-billing'
 
+export type WorkspaceBudgetFundingStatus =
+  | 'available' | 'disabled' | 'pending' | 'payment_failed' | 'monthly_limit_reached'
+  | 'missing_payment_method' | 'missing_consent' | 'amount_shortfall' | 'not_paid' | 'authorization_changed'
+
 /**
  * A paid workspace short of credit: try one automatic top-up (when an owner turned them on and the monthly limit
  * allows it); otherwise leave the entitlements as they are, so the caller stops paid work (the hard stop).
@@ -18,28 +22,62 @@ export async function ensureWorkspaceBudgetAvailable(params: {
   billingEnabled: () => Promise<boolean>
   remainingCents: (entitlements: Entitlements) => number
   repository: () => Promise<BillingRepository>
-}): Promise<{ entitlements: Entitlements; remainingCents: number }> {
-  const minimumRequiredCents = Math.max(1, Math.round(params.minimumRequiredCents ?? 1))
+}): Promise<{
+  entitlements: Entitlements
+  remainingCents: number
+  requiredCents: number
+  autoTopUpStatus: WorkspaceBudgetFundingStatus
+  autoTopUpReason?: string
+}> {
+  const requiredCents = Math.max(1, Math.round(params.minimumRequiredCents ?? 1))
   const remainingCents = deps.remainingCents(params.entitlements)
-  if (remainingCents >= minimumRequiredCents || !(await deps.billingEnabled())) {
-    return { entitlements: params.entitlements, remainingCents }
+  if (remainingCents >= requiredCents) {
+    return { entitlements: params.entitlements, remainingCents, requiredCents, autoTopUpStatus: 'available' }
+  }
+  if (!(await deps.billingEnabled())) {
+    return { entitlements: params.entitlements, remainingCents, requiredCents, autoTopUpStatus: 'disabled' }
   }
   const repository = await deps.repository()
+  const shortfallCents = Math.max(1, requiredCents - remainingCents)
   const topUp = await maybeAutoTopUpWorkspaceBudget({
     actorUserId: params.userId,
     billingAccountId: params.billingAccountId,
-    minimumRequiredCents,
+    minimumRequiredCents: shortfallCents,
     workspaceId: params.workspaceId,
   }, repository)
+  const status = normalizeFundingStatus(topUp.reason, topUp.applied)
   if (!topUp.applied) {
     if (topUp.reason === 'monthly_limit_reached') await notifyLimitReached(params, repository).catch((_error) => undefined)
-    return { entitlements: params.entitlements, remainingCents }
+    return {
+      entitlements: params.entitlements, remainingCents, requiredCents,
+      autoTopUpStatus: status, autoTopUpReason: topUp.reason,
+    }
   }
   const refreshed = await repository.getBillingAccountEntitlementsByServer({
     billingAccountId: params.billingAccountId,
   }) as Entitlements | null
   const entitlements = refreshed ?? params.entitlements
-  return { entitlements, remainingCents: deps.remainingCents(entitlements) }
+  const updatedRemainingCents = deps.remainingCents(entitlements)
+  return {
+    entitlements,
+    remainingCents: updatedRemainingCents,
+    requiredCents,
+    autoTopUpStatus: updatedRemainingCents >= requiredCents ? 'available' : 'amount_shortfall',
+    autoTopUpReason: topUp.reason,
+  }
+}
+
+function normalizeFundingStatus(reason: string | undefined, applied: boolean): WorkspaceBudgetFundingStatus {
+  if (applied) return 'available'
+  if (reason === 'disabled' || reason === 'billing_disabled') return 'disabled'
+  if (reason === 'payment_failed') return 'payment_failed'
+  if (reason === 'monthly_limit_reached') return 'monthly_limit_reached'
+  if (reason === 'missing_payment_method' || reason === 'missing_customer') return 'missing_payment_method'
+  if (reason === 'missing_consent') return 'missing_consent'
+  if (reason === 'not_paid') return 'not_paid'
+  if (reason === 'authorization_changed') return 'authorization_changed'
+  if (reason === 'invalid_amount' || reason === 'amount_too_small') return 'amount_shortfall'
+  return 'pending'
 }
 
 /**

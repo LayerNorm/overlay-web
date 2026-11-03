@@ -7,7 +7,7 @@ import { HARNESS_ANSWER_VERIFICATION_INSTRUCTIONS } from './continuity-policy'
 import { createHarnessModelPorts } from './model-ports'
 
 const mocks = vi.hoisted(() => ({
-  read: vi.fn(), wait: vi.fn(), reset: vi.fn(), recovery: vi.fn(), apply: vi.fn(),
+  read: vi.fn(), limits: vi.fn(), compact: vi.fn(), wait: vi.fn(), reset: vi.fn(), recovery: vi.fn(), apply: vi.fn(),
   stream: vi.fn(), agentOptions: [] as Array<Record<string, unknown>>,
   identifyArtifact: vi.fn(), storeArtifact: vi.fn(), readArtifactMetadata: vi.fn(),
 }))
@@ -16,16 +16,10 @@ vi.mock('./state-steps', () => ({
   readHarnessState: mocks.read, applyHarnessOperation: mocks.apply,
   readHarnessModelLimits: vi.fn(),
 }))
-vi.mock('./model-capacity', () => ({
-  createHarnessCapacityWaiter: () => ({ wait: mocks.wait, reset: mocks.reset }),
+vi.mock('./model-recovery', async importOriginal => ({
+  ...await importOriginal<typeof import('./model-recovery')>(), waitForHarnessModelRecovery: mocks.recovery,
 }))
-vi.mock('./model-recovery', () => ({
-  waitForHarnessModelRecovery: mocks.recovery,
-  HarnessYield: class extends Error {},
-}))
-vi.mock('./model-preparation', () => ({ readHarnessModelLimits: vi.fn(async () => ({
-  contextWindow: 32_000, maxOutputTokens: 2_000,
-})) }))
+vi.mock('./model-preparation', () => ({ readHarnessModelLimits: mocks.limits }))
 vi.mock('./resource-boundary', () => ({
   waitForHarnessModelResources: vi.fn((_reference, _cost, read) => read()),
 }))
@@ -50,11 +44,11 @@ vi.mock('@ai-sdk/workflow', () => ({
 
 const reference = { runId: 'run', workflowRunId: 'workflow' } as HarnessExecutionReference
 
-function stateWithInterruptionCount(routeInterruptionCount: number) {
+function runningState() {
   return {
     ...createHarnessSnapshot({
       runId: 'run',
-      goal: 'Retry an interrupted free stream.',
+      goal: 'Continue the selected model.',
       constraints: [],
       policy: {
         actorUserId: 'user',
@@ -67,7 +61,6 @@ function stateWithInterruptionCount(routeInterruptionCount: number) {
       },
     }, Date.now()),
     status: 'running' as const,
-    routeInterruptionCount,
     latestReceipt: {
       id: 'model:0',
       modelId: 'openrouter/free',
@@ -86,47 +79,49 @@ function stateWithInterruptionCount(routeInterruptionCount: number) {
 }
 
 beforeEach(() => {
-  vi.resetAllMocks()
-  mocks.agentOptions.length = 0
+  vi.resetAllMocks(); mocks.agentOptions.length = 0
+  mocks.limits.mockResolvedValue({ contextWindow: 32_000, maxOutputTokens: 2_000 })
 })
 
-test('legacy interruption snapshots without recovery metadata keep the two-attempt limit', async () => {
-  for (const count of [1, 2, 3]) {
-    const onFallback = vi.fn()
-    mocks.read.mockResolvedValue(stateWithInterruptionCount(count))
-    const ports = createHarnessModelPorts({
-      reference,
-      modelId: 'openrouter/free',
-      prepare: async () => ({
-        model: {} as HarnessModelReference,
-        options: { prompt: [] },
-        contextWindow: null,
-        estimatedCostMicros: 0,
-      }),
-    }, { candidateIds: ['openrouter/free', 'fixture/fallback'], onFallback })
-
-    expect(await ports.recoverModelFailure('model:0')).toBe(count <= 2)
-    expect(onFallback).not.toHaveBeenCalled()
-  }
-  expect(mocks.wait).not.toHaveBeenCalled()
+vi.mock('@/server/chat/context-compaction-core', async importOriginal => {
+  const actual = await importOriginal<typeof import('@/server/chat/context-compaction-core')>()
+  return { ...actual, compactHarnessPrompt: (...args: Parameters<typeof actual.compactHarnessPrompt>) =>
+    mocks.compact.getMockImplementation() ? mocks.compact(...args) : actual.compactHarnessPrompt(...args) }
 })
 
-test.each(['route_interrupted', 'route_unavailable'] as const)('routes persisted %s recovery beyond the legacy limit through the durable waiter', async code => {
-  const onFallback = vi.fn()
+test('historical free-router rejection receipts do not recover or dispatch another model', async () => {
   const state = {
-    ...stateWithInterruptionCount(3),
-    latestReceipt: { ...stateWithInterruptionCount(3).latestReceipt, rejectionReason: code },
-    modelRecovery: {
-      receiptId: 'model:0',
+    ...createHarnessSnapshot({
+      runId: 'run',
+      goal: 'Keep the selected model unchanged.',
+      constraints: [],
+      policy: {
+        actorUserId: 'user',
+        allowedToolIds: [],
+        requiresPlan: false,
+        deadlineAt: Date.now() + 60_000,
+        maxCostMicros: 0,
+        maxParallelChildren: 0,
+        maxDepth: 0,
+      },
+    }, Date.now()),
+    status: 'running' as const,
+    latestReceipt: {
+      id: 'model:0',
       modelId: 'openrouter/free',
-      code,
-      attempt: 3,
-      firstFailureAt: 1,
-      nextRetryAt: 5_001,
+      provider: 'overlay-free-router',
+      inputTokens: 0,
+      outputTokens: 0,
+      reasoningTokens: 0,
+      cacheReadTokens: 0,
+      cacheWriteTokens: 0,
+      contextWindow: null,
+      costMicros: 0,
+      costSource: 'catalog' as const,
+      rejectionReason: 'route_interrupted' as const,
     },
   }
   mocks.read.mockResolvedValue(state)
-  mocks.recovery.mockResolvedValue(true)
   const ports = createHarnessModelPorts({
     reference,
     modelId: 'openrouter/free',
@@ -136,40 +131,60 @@ test.each(['route_interrupted', 'route_unavailable'] as const)('routes persisted
       contextWindow: null,
       estimatedCostMicros: 0,
     }),
-  }, { candidateIds: ['openrouter/free', 'fixture/fallback'], onFallback })
-
-  expect(await ports.recoverModelFailure('model:0')).toBe(true)
-  expect(mocks.recovery).toHaveBeenCalledExactlyOnceWith(reference, 'model:0')
-  expect(mocks.wait).not.toHaveBeenCalled()
-  expect(onFallback).not.toHaveBeenCalled()
-})
-
-test('does not route unavailable receipts without a durable retry schedule to a fallback model', async () => {
-  const onFallback = vi.fn()
-  const state = {
-    ...stateWithInterruptionCount(0),
-    latestReceipt: { ...stateWithInterruptionCount(0).latestReceipt, rejectionReason: 'route_unavailable' as const },
-  }
-  mocks.read.mockResolvedValue(state)
-  const ports = createHarnessModelPorts({
-    reference,
-    modelId: 'openrouter/free',
-    prepare: async () => ({
-      model: {} as HarnessModelReference,
-      options: { prompt: [] },
-      contextWindow: null,
-      estimatedCostMicros: 0,
-    }),
-  }, { candidateIds: ['openrouter/free', 'fixture/fallback'], onFallback })
+  })
 
   expect(await ports.recoverModelFailure('model:0')).toBe(false)
   expect(mocks.recovery).not.toHaveBeenCalled()
-  expect(onFallback).not.toHaveBeenCalled()
+})
+
+test('model preparation reuses the boundary state and reads catalog limits once per model', async () => {
+  const state = { ...createHarnessSnapshot({
+    runId: 'run', goal: 'Use the selected paid model.', constraints: [], policy: {
+      actorUserId: 'user', allowedToolIds: [], requiresPlan: false,
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxParallelChildren: 0, maxDepth: 0,
+    },
+  }, Date.now()), status: 'running' as const }
+  const prepare = vi.fn(async ({ modelId }: { modelId: string }) => ({
+    model: { modelId, credentialOwnerId: 'user' } as HarnessModelReference,
+    options: {} as never, contextWindow: 128_000, estimatedCostMicros: 0,
+  }))
+  mocks.limits.mockResolvedValue({ contextWindow: 128_000, maxOutputTokens: 4_096 })
+  mocks.compact.mockImplementation(async ({ messages }) => ({ messages, didCompact: false, summaryFailed: false, fitsBudget: true }))
+  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  const request = (receiptId: string) => ({
+    receiptId, state, messages: [], toolNames: [], toolDefinitions: [], settings: {},
+    instructionContext: { instructions: 'Follow the plan.', continuation: false, truncatedResponse: false, finalAnswerRequired: false },
+  })
+  await ports.prepareModel(request('model:0'))
+  await ports.prepareModel(request('model:1'))
+  expect(mocks.limits).toHaveBeenCalledExactlyOnceWith('fixture/model')
+  expect(mocks.read).not.toHaveBeenCalled()
+  expect(prepare).toHaveBeenCalledTimes(2)
+  expect(mocks.compact.mock.calls[0][0].previousSummary).toBe(state.workingSummary)
+})
+
+test('summary funding denial yields its exact receipt instead of failing or preparing an unfunded response', async () => {
+  const state = createHarnessSnapshot({ runId: 'run', goal: 'Continue the same task.', constraints: [], policy: {
+    actorUserId: 'user', workspaceId: 'workspace', executionPolicyVersion: 2, spendingMode: 'workspace',
+    allowedToolIds: [], requiresPlan: false, deadlineAt: Date.now() + 60_000,
+    maxCostMicros: 0, maxParallelChildren: 0, maxDepth: 0,
+  } }, Date.now())
+  mocks.limits.mockResolvedValue({ contextWindow: 128_000, maxOutputTokens: 4_096 })
+  mocks.compact.mockResolvedValue({ messages: [], didCompact: false, summaryFailed: true, fitsBudget: false })
+  mocks.read.mockResolvedValue({ ...state, status: 'waiting_for_resources', resourcePause: {
+    reason: 'disabled', receiptId: 'summary:model:0:0', requiredCents: 1, availableCents: 0.5,
+  } })
+  const prepare = vi.fn()
+  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  await expect(ports.prepareModel({ receiptId: 'model:0', state, messages: [], toolNames: [], toolDefinitions: [],
+    settings: {}, instructionContext: { instructions: 'Continue.', continuation: true, truncatedResponse: false },
+  })).rejects.toThrow('HARNESS_SAFE_RESOURCE_PAUSE:summary:model:0:0')
+  expect(prepare).not.toHaveBeenCalled()
 })
 
 test('final verification is separately metered, tool-disabled, and validated against current-run evidence', async () => {
   const state = {
-    ...stateWithInterruptionCount(0),
+    ...runningState(),
     workflowRunId: 'workflow',
     evidence: [{
       id: 'tool:read-current', kind: 'tool_result' as const, source: 'read_document',
@@ -231,9 +246,9 @@ test('final verification is separately metered, tool-disabled, and validated aga
     .not.toContain('unverifiedNarrative')
 })
 
-test('an aborted exact free summary hold is reconciled once before one bounded retry', async () => {
+test('an aborted zero-cost summary retains its hold without invented settlement or retry', async () => {
   let current: HarnessSnapshot = {
-    ...stateWithInterruptionCount(0),
+    ...runningState(),
     workflowRunId: 'workflow',
     modelReservation: undefined,
     latestReceipt: undefined,
@@ -299,28 +314,17 @@ test('an aborted exact free summary hold is reconciled once before one bounded r
     toolNames: [],
     toolDefinitions: [],
     settings: { maxOutputTokens: 512 },
-  } as never)).resolves.toMatchObject({
-    activeToolNames: [],
-  })
+  } as never)).rejects.toThrow()
 
-  const receipts = mocks.apply.mock.calls
-    .filter(([, , operation]) => operation.type === 'record_receipt')
-    .map(([, , operation]) => operation)
-  expect(receipts, JSON.stringify(mocks.apply.mock.calls.map(([, operationId, operation]) => ({
-    operationId, type: operation.type,
-  })))).toHaveLength(1)
-  expect(receipts[0]).toMatchObject({
-    receipt: { id: 'summary:response:1:0', rejectionReason: 'summary_failed', costMicros: 0 },
-  })
-  expect(mocks.stream).toHaveBeenCalledTimes(2)
-  expect(prepare.mock.calls.filter(([request]) => request.purpose === 'summary')).toHaveLength(2)
-  expect(current.compaction).toMatchObject({ status: 'completed', retryCount: 1 })
+  expect(mocks.apply.mock.calls.some(([, , operation]) => operation.type === 'record_receipt')).toBe(false)
+  expect(mocks.stream).toHaveBeenCalledTimes(1)
+  expect(current.modelReservation?.id).toBe('summary:response:1:0')
 })
 
 test('an unsettled billed summary hold survives pause and resumes only after its receipt arrives', async () => {
   const receiptId = 'summary:response:2:0'
   let current: HarnessSnapshot = {
-    ...stateWithInterruptionCount(0),
+    ...runningState(),
     workflowRunId: 'workflow',
     latestReceipt: undefined,
     modelReservation: {
@@ -413,7 +417,7 @@ test('an interrupted summary resumes through prepareModel with its canonical cyc
   const cycleId = 'summary:response:resume'
   const retryId = `${cycleId}:retry:1`
   let current: HarnessSnapshot = {
-    ...stateWithInterruptionCount(0),
+    ...runningState(),
     workflowRunId: 'workflow',
     modelReservation: undefined,
     latestReceipt: undefined,
@@ -493,10 +497,10 @@ test('an interrupted summary resumes through prepareModel with its canonical cyc
   })
 })
 
-test('summary failure cannot dispatch beyond the two total attempts', async () => {
+test('settled summary failures cannot dispatch beyond the two total attempts', async () => {
   const cycleId = 'summary:response:bounded:0'
   let current: HarnessSnapshot = {
-    ...stateWithInterruptionCount(0),
+    ...runningState(),
     workflowRunId: 'workflow',
     modelReservation: undefined,
     latestReceipt: undefined,
@@ -521,7 +525,13 @@ test('summary failure cannot dispatch beyond the two total attempts', async () =
     }
     return current
   })
-  mocks.stream.mockRejectedValue(new Error('summary provider failed'))
+  mocks.stream.mockImplementation(async () => {
+    const id = current.modelReservation!.id
+    current = { ...current, modelReservation: undefined, latestReceipt: { id, modelId: 'fixture/model',
+      provider: 'fixture', inputTokens: 1, outputTokens: 1, reasoningTokens: 0, cacheReadTokens: 0,
+      cacheWriteTokens: 0, contextWindow: 32_000, costMicros: 1, costSource: 'catalog' } }
+    throw new Error('summary provider failed after measured settlement')
+  })
   const prepare = vi.fn(async (request: {
     modelId: string
     receiptId: string
@@ -565,7 +575,7 @@ test('a reopened media artifact is reused when a later tool result prepares the 
     storageId: 'storage-1', byteSize: 5, mediaPartCount: 1, createdAt: 1, expiresAt: 2,
     resource: { id: 'file-1', revision: 'rev-7', operation: 'render', page: 3 },
   }
-  mocks.read.mockResolvedValue(stateWithInterruptionCount(0))
+  mocks.read.mockResolvedValue(runningState())
   mocks.readArtifactMetadata.mockResolvedValue(metadata)
   const prepare = vi.fn(async (): Promise<PreparedHarnessModel> => ({
     model: {} as HarnessModelReference, options: { prompt: [] }, contextWindow: 32_000, estimatedCostMicros: 0,
@@ -591,7 +601,7 @@ test('a reopened media artifact is reused when a later tool result prepares the 
   ]
 
   const prepared = await ports.prepareModel!({
-    receiptId: 'response:artifact-reread', state: stateWithInterruptionCount(0), messages: messages as never,
+    receiptId: 'response:artifact-reread', state: runningState(), messages: messages as never,
     instructionContext: { surfaceInstructions: 'Surface instructions' }, toolNames: [], toolDefinitions: [],
     settings: { maxOutputTokens: 512 },
   })
@@ -608,7 +618,7 @@ test('a reopened media artifact is reused when a later tool result prepares the 
 })
 
 test('artifact upload failure leaves the original large tool context intact', async () => {
-  const state = stateWithInterruptionCount(0)
+  const state = runningState()
   mocks.read.mockResolvedValue(state)
   mocks.identifyArtifact.mockResolvedValue({ digest: 'b'.repeat(64), artifactId: `ha_${'b'.repeat(64)}` })
   mocks.storeArtifact.mockRejectedValue(new Error('storage unavailable'))
@@ -634,7 +644,7 @@ test('artifact upload failure leaves the original large tool context intact', as
 })
 
 test('response preparation failures escape without an artifact-unavailable block', async () => {
-  const state = stateWithInterruptionCount(0)
+  const state = runningState()
   mocks.read.mockResolvedValue(state)
   const sentinel = new Error('response preparation sentinel')
   const prepare = vi.fn(async (request: {
@@ -665,10 +675,10 @@ test('response preparation failures escape without an artifact-unavailable block
   ))).toBe(false)
 })
 
-test('verifier abort reconciles only an exact free hold and preserves billed holds', async () => {
+test('verifier abort preserves billed and zero-cost unknown holds without synthetic receipts', async () => {
   for (const billable of [false, true]) {
     let current: HarnessSnapshot = {
-      ...stateWithInterruptionCount(0),
+      ...runningState(),
       workflowRunId: 'workflow',
       evidence: [{
         id: 'tool:read:1', kind: 'tool_result', source: 'read_document',
@@ -700,15 +710,9 @@ test('verifier abort reconciles only an exact free hold and preserves billed hol
     }))
     const ports = createHarnessModelPorts({ reference, modelId: 'openrouter/free', prepare })
     const verify = ports.verifyFinalAnswer!({ state: current, candidate: 'The document was read.' })
-    if (billable) {
-      await expect(verify).rejects.toThrow()
-      expect(current.modelReservation?.id).toMatch(/^verification:/)
-      expect(mocks.apply.mock.calls.some(([, , operation]) => operation.type === 'record_receipt')).toBe(false)
-    } else {
-      await expect(verify).resolves.toMatchObject({ supported: false })
-      expect(current.modelReservation).toBeUndefined()
-      expect(current.latestReceipt).toMatchObject({ rejectionReason: 'verification_failed', costMicros: 0 })
-    }
+    await expect(verify).rejects.toThrow()
+    expect(current.modelReservation?.id).toMatch(/^verification:/)
+    expect(mocks.apply.mock.calls.some(([, , operation]) => operation.type === 'record_receipt')).toBe(false)
     vi.clearAllMocks()
     mocks.agentOptions.length = 0
   }

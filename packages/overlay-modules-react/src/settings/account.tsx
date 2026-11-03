@@ -360,42 +360,6 @@ export function TopUpHistoryList({
   )
 }
 
-export function AccountFreeUsageCard({
-  panelClass,
-  headingClass,
-  mutedClass,
-  dark,
-  entitlements,
-}: {
-  panelClass: string
-  headingClass: string
-  mutedClass: string
-  dark?: boolean
-  entitlements: AccountEntitlements
-}) {
-  return (
-    <div className={panelClass}>
-      <h2 className={`text-lg font-medium mb-4 ${headingClass}`}>Weekly Usage</h2>
-      <div className="space-y-4">
-        <div className={`rounded-xl border px-4 py-3 ${dark ? 'border-zinc-700 bg-zinc-950/60' : 'border-zinc-200 bg-zinc-50'}`}>
-          <p className={`text-sm font-medium ${headingClass}`}>Auto model requests</p>
-          <p className={`mt-1 text-sm ${mutedClass}`}>Unlimited on the free tier when you use Auto.</p>
-        </div>
-        <UsageProgressBar
-          used={entitlements.usage.transcriptionSeconds}
-          total={entitlements.limits.transcriptionSecondsPerWeek}
-          label="Transcription"
-          showAsPercentage={true}
-          isLandingDark={dark}
-        />
-      </div>
-      <p className={`mt-4 text-xs ${mutedClass}`}>
-        Auto is unlimited on free. Upgrade to a paid plan to use premium models, browser tasks, and generation tools.
-      </p>
-    </div>
-  )
-}
-
 export function UsageProgressBar({
   used,
   total,

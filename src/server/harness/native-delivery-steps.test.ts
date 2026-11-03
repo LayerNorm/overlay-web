@@ -52,6 +52,26 @@ test('native owner attaches and finalizes an authoritative room message without 
   }))
 })
 
+test('native long-turn delivery preserves the final report through repeated persistence boundaries', async () => {
+  const answer = 'All 35 numbered lines appear exactly once.'
+  const toolSteps = Array.from({ length: 90 }, (_, index) => {
+    const call = { type: 'tool-call', toolCallId: `read-${index}`, toolName: 'get_note', input: { noteId: 'note' } }
+    const result = { type: 'tool-result', toolCallId: call.toolCallId, toolName: call.toolName, output: { content: 'saved ledger' } }
+    return { text: '', content: [call, result], toolCalls: [call], toolResults: [result] }
+  })
+  const nativeDelivery = buildNativeHarnessDelivery({
+    snapshot: { ...state, resultSummary: answer, evidence: [], usage: { inputTokens: 0, outputTokens: 0, costMicros: 0 } },
+    messages: [], steps: [...toolSteps, { text: answer, content: [{ type: 'text', text: answer }], toolCalls: [], toolResults: [] }],
+  } as never)
+  expect(nativeDelivery.parts.at(-1)).toEqual({ type: 'text', text: answer })
+  await finishNativeHarnessDelivery(access, nativeDelivery, { memoryEnabled: false }, new Set(['get_note']))
+  const saved = mocks.finalize.mock.calls[0][0]
+  expect(saved.content).toBe(answer)
+  expect(saved.parts).toEqual(nativeDelivery.parts)
+  expect(saved.parts).toHaveLength(81)
+  expect(mocks.complete).toHaveBeenCalledWith(expect.objectContaining({ content: answer, parts: saved.parts }))
+})
+
 test('finalization replaces live tool progress without duplicate tool parts', async () => {
   const livePart = {
     type: 'tool-invocation',

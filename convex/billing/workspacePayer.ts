@@ -4,7 +4,7 @@ export type PaidWorkspaceAccount = { billingAccountId: string; workspaceId: stri
 
 /**
  * The workspace a person is working in (the one named, else their active workspace), when it has an active paid
- * plan. Plans belong to workspaces, so this is who pays; without one the person is on the workspace's free allowance.
+ * plan. Plans belong to workspaces, so this is who pays; without one there is no hosted execution allowance.
  */
 export async function paidWorkspaceAccountFor(
   ctx: QueryCtx | MutationCtx,

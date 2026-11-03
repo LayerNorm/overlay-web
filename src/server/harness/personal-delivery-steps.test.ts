@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest'
-import { attachPersonalHarnessDelivery, finishPersonalHarnessDelivery, writePersonalHarnessFallback } from './personal-delivery-steps'
+import { attachPersonalHarnessDelivery, finishPersonalHarnessDelivery } from './personal-delivery-steps'
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), delivery: vi.fn(), attach: vi.fn(), complete: vi.fn(), fail: vi.fn(), progress: vi.fn(), transition: vi.fn(), write: vi.fn(), release: vi.fn() }))
 vi.mock('server-only', () => ({}))
@@ -20,22 +20,6 @@ const delivery = { content: 'Result', parts: [{ type: 'text', text: 'Result' }],
   metrics: { inputTokens: 100, outputTokens: 10, providerCostMicros: 0, toolCallCount: 1, toolSuccessCount: 1, toolFailureCount: 0 } }
 const run = { id: 'delivery', userId: 'user', conversationId: 'conversation', harnessRunId: 'root', runner: 'workflow',
   executionEngine: 'overlay_harness', mode: 'work', status: 'running', workflowRunId: 'workflow' }
-
-test('only the owning running root can stream a notice matching its confirmed rejection', async () => {
-  const event = { from: 'provider/model', to: 'provider/fallback', receiptId: 'model:0', reason: 'budget' as const }
-  const rejected = { ...state, status: 'running', latestReceipt: { id: 'model:0', modelId: event.from, rejectionReason: event.reason } }
-  mocks.get.mockResolvedValue(rejected)
-  const notice = await writePersonalHarnessFallback(access, event)
-  expect(notice).toContain('switching to')
-  expect(mocks.write.mock.calls.map(call => call[0].type)).toEqual(['text-start', 'text-delta', 'text-end'])
-  expect(mocks.write).toHaveBeenCalledWith({ type: 'text-delta', id: 'harness-fallback:model:0', text: `${notice}\n\n` })
-  expect(mocks.release).toHaveBeenCalledOnce()
-  for (const delta of [{ parentRunId: 'parent' }, { workflowRunId: 'other' }, { status: 'cancelled' }, { latestReceipt: undefined }]) {
-    mocks.get.mockResolvedValue({ ...rejected, ...delta })
-    await expect(writePersonalHarnessFallback(access, event)).rejects.toThrow('authority')
-  }
-  expect(mocks.write).toHaveBeenCalledTimes(3)
-})
 
 beforeEach(() => {
   vi.resetAllMocks()

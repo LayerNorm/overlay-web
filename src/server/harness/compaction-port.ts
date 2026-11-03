@@ -2,9 +2,8 @@ import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { WorkflowAgent } from '@ai-sdk/workflow'
 import { isLoopFinished } from 'ai'
 import { sleep } from 'workflow'
-import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { effectiveHarnessDeadlineAt, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { estimateContextTokens } from '@/server/chat/context-compaction-core'
-import { OPENROUTER_FREE_MODEL_ID, OVERLAY_FREE_MODEL_ID } from '@/shared/ai/gateway/overlay-free-policy'
 import { harnessSummaryInstructions } from './continuity-policy'
 import type { HarnessExecutionPorts } from './ports'
 import { HarnessLanguageModel } from './secure-model'
@@ -27,7 +26,6 @@ type CompactionDependencies = {
   }) => Promise<PreparedHarnessModel>
   settle: (step: ModelStep, receiptId: string, prepared: PreparedHarnessModel) => Promise<void>
   getCurrentModelId: () => string
-  waitForCapacity: (state: HarnessSnapshot, receiptId: string, modelId: string) => Promise<boolean>
 }
 
 type SummaryAttempt = {
@@ -40,7 +38,7 @@ type SummaryAttempt = {
 
 function assertSummaryRunnable(reference: HarnessExecutionReference, state: HarnessSnapshot): void {
   if (state.status !== 'running' || state.workflowRunId !== reference.workflowRunId
-    || Date.now() >= state.policy.deadlineAt) throw new HarnessYield()
+    || Date.now() >= effectiveHarnessDeadlineAt(state.policy)) throw new HarnessYield()
 }
 
 async function reconcileLateSummaryReceipt(
@@ -75,7 +73,7 @@ async function pollExistingSummaryHold(
   let current = state
   for (const delayMs of [5_000, 15_000, 30_000]) {
     assertSummaryRunnable(reference, current)
-    await sleep(new Date(Math.min(Date.now() + delayMs, current.policy.deadlineAt)))
+    await sleep(new Date(Math.min(Date.now() + delayMs, effectiveHarnessDeadlineAt(current.policy))))
     current = await readHarnessState(reference)
     if (current.modelReservation?.id !== attempt.receiptId) break
   }
@@ -134,14 +132,6 @@ async function waitForSummaryResources(
   assertSummaryRunnable(reference, state)
   if (state.modelReservation) throw new HarnessYield()
   return state
-}
-
-function isExactFreeSummaryHold(state: HarnessSnapshot, receiptId: string): boolean {
-  const reservation = state.modelReservation
-  const dispatch = reservation?.dispatch
-  return reservation?.id === receiptId && reservation.maxCostMicros === 0
-    && dispatch?.billingReservationId === null
-    && (dispatch.modelId === OPENROUTER_FREE_MODEL_ID || dispatch.modelId === OVERLAY_FREE_MODEL_ID)
 }
 
 function validateSummary(summary: string, prompt: string, targetSummaryTokens: number): void {
@@ -221,25 +211,11 @@ async function reconcileSummaryFailure(
   error: unknown,
 ): Promise<never> {
   let current = await readHarnessState(dependencies.reference)
-  const reservation = current.modelReservation
-  const dispatch = reservation?.dispatch
-  const exactFree = isExactFreeSummaryHold(current, attempt.receiptId)
-  if (exactFree && dispatch) {
-    await applyHarnessOperation(dependencies.reference, `summary-failed:${attempt.receiptId}`, {
-      type: 'record_receipt',
-      receipt: {
-        id: attempt.receiptId, modelId: dispatch.modelId, provider: 'overlay-free-router',
-        inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
-        contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'summary_failed',
-      },
-    })
-    current = await readHarnessState(dependencies.reference)
-  }
-  if (!exactFree && current.modelReservation?.id === attempt.receiptId) {
+  if (current.modelReservation?.id === attempt.receiptId) {
     for (const delayMs of [5_000, 15_000, 30_000]) {
       if (current.status !== 'running' || current.workflowRunId !== dependencies.reference.workflowRunId
-        || Date.now() >= current.policy.deadlineAt) break
-      await sleep(new Date(Math.min(Date.now() + delayMs, current.policy.deadlineAt)))
+        || Date.now() >= effectiveHarnessDeadlineAt(current.policy)) break
+      await sleep(new Date(Math.min(Date.now() + delayMs, effectiveHarnessDeadlineAt(current.policy))))
       current = await readHarnessState(dependencies.reference)
       if (current.modelReservation?.id !== attempt.receiptId) break
     }
@@ -321,7 +297,7 @@ export function createHarnessCompactionPort(dependencies: CompactionDependencies
         }
         const recovered = state.summaryRecovery?.receiptId === id
           ? await waitForHarnessModelRecovery(dependencies.reference, id)
-          : await dependencies.waitForCapacity(state, id, dependencies.getCurrentModelId())
+          : false
         if ((recovered || (state.compaction?.cycleId === cycleId
           && state.compaction.status === 'interrupted' && state.status === 'running')) && retryCount === 0) continue
         throw error

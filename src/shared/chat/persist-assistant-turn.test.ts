@@ -5,6 +5,32 @@ import { buildAssistantPersistenceFromSteps, compactAssistantPersistenceForConve
 import { summarizeToolResultForTranscript } from '@/shared/tools/tool-result-summary'
 import { MAX_PERSISTED_TOOL_ERROR_CHARS } from './tool-outcomes'
 
+test('long transcript compaction preserves the latest answer and is repeatable', () => {
+  const tools = Array.from({ length: 100 }, (_, index) => ({
+    type: 'tool-invocation', toolInvocation: { toolCallId: `call-${index}`, toolName: 'read_note',
+      state: 'output-available', toolInput: {}, toolOutput: { ok: true } },
+  }))
+  const answer = { type: 'text', text: 'All 35 numbered lines appear exactly once.' }
+  const saved = compactAssistantPersistenceForConvex({ content: answer.text, parts: [...tools, answer] })
+  assert.equal(saved.parts.length, 81)
+  assert.deepEqual(saved.parts.at(-1), answer)
+  assert.equal(saved.parts[0].storageOmittedParts, 21)
+  assert.equal((saved.parts.at(-2)?.toolInvocation as { toolCallId: string }).toolCallId, 'call-99')
+  assert.deepEqual(compactAssistantPersistenceForConvex(saved), saved)
+})
+
+test('long transcript text budgets reserve space for the latest answer', () => {
+  const answer = { type: 'text', text: 'Final answer remains available.' }
+  const saved = compactAssistantPersistenceForConvex({
+    content: `${'Older narration. '.repeat(12_000)}${answer.text}`,
+    parts: [...Array.from({ length: 10 }, () => ({ type: 'reasoning', text: 'x'.repeat(24_000) })), answer],
+  })
+  assert.deepEqual(saved.parts.at(-1), answer)
+  assert.ok(saved.content.endsWith(answer.text))
+  assert.ok(saved.content.length < 160_100)
+  assert.ok(saved.parts.reduce((total, part) => total + String(part.text ?? '').length, 0) < 181_000)
+})
+
 test('completion preserves ordered SDK text, reasoning and tool calls across steps', () => {
   const firstCall = { type: 'tool-call', toolCallId: 'list', toolName: 'list_notes', input: {} }
   const secondCall = { type: 'tool-call', toolCallId: 'read', toolName: 'read_note', input: { id: 'note-1' } }

@@ -3,7 +3,7 @@ import test from 'node:test'
 
 import { overlayProviderDiscoveryModels } from './overlay-provider-models'
 
-test('Overlay provider discovery includes gateway catalog models and free models', () => {
+test('Overlay provider discovery keeps paid catalog models and filters retired hosted models', () => {
   const models = overlayProviderDiscoveryModels([{
     id: 'openai/gpt-5.4',
     gatewayId: 'openai/gpt-5.4',
@@ -17,29 +17,27 @@ test('Overlay provider discovery includes gateway catalog models and free models
     },
     inputPricePerMillion: 1,
     outputPricePerMillion: 8,
-  }])
-
-  assert.ok(models.some((model) => model.id === 'openai/gpt-5.4' && model.name === 'GPT 5.4'))
-  assert.ok(models.some((model) => model.id === 'overlay-free' && model.name === 'Auto'))
-  assert.ok(models.some((model) => model.id === 'openrouter/free' && model.name === 'OpenRouter Free'))
-})
-
-test('Overlay provider discovery dedupes free models already present in gateway catalog', () => {
-  const models = overlayProviderDiscoveryModels([{
+  }, {
     id: 'openrouter/free',
     gatewayId: 'openrouter/free',
-    name: 'Gateway Free Router',
+    name: 'OpenRouter Free',
     type: 'language',
     provider: 'openrouter',
     tags: [],
-    pricing: {
-      input: '0',
-      output: '0',
-    },
+    pricing: { input: '0', output: '0' },
+    inputPricePerMillion: 0,
+    outputPricePerMillion: 0,
+  }, {
+    id: 'openrouter/vendor/example:free',
+    gatewayId: 'vendor/example:free',
+    name: 'Legacy free model',
+    type: 'language',
+    provider: 'openrouter',
+    tags: [],
+    pricing: { input: '0', output: '0' },
     inputPricePerMillion: 0,
     outputPricePerMillion: 0,
   }])
 
-  assert.equal(models.filter((model) => model.id === 'openrouter/free').length, 1)
-  assert.equal(models.find((model) => model.id === 'openrouter/free')?.name, 'Gateway Free Router')
+  assert.deepEqual(models, [{ id: 'openai/gpt-5.4', name: 'GPT 5.4' }])
 })

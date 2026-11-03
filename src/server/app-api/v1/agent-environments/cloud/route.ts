@@ -43,7 +43,7 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
     await server.agentProviderAccounts.requireUsable({
       userId: context.auth.userId, accountId: body.providerAccountId, provider: body.adapterId,
     })
-    // A cloud machine is a paid resource; free plans use Overlay agents or their own computer.
+    // A cloud machine requires workspace execution admission.
     const entitlements = await server.generationUsagePolicy.getEntitlements({
       programmaticSubjectId: getBillingProgrammaticSubjectId(context, getTrustedAutomationBillingSubjectId(context)),
       userId: context.auth.userId,

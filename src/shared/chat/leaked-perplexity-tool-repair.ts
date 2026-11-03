@@ -1,21 +1,3 @@
-import type { StepResult, ToolSet } from 'ai'
-import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
-
-function stepsHavePerplexitySearchWithOutput(
-  steps: StepResult<ToolSet>[] | undefined,
-): boolean {
-  if (!steps?.length) return false
-  for (const step of steps) {
-    const byId = new Map((step.toolResults ?? []).map((r) => [r.toolCallId, r]))
-    for (const tc of step.toolCalls ?? []) {
-      if (tc.toolName !== 'perplexity_search' && tc.toolName !== 'web_search') continue
-      const r = byId.get(tc.toolCallId)
-      if (r && r.output !== undefined && r.output !== null) return true
-    }
-  }
-  return false
-}
-
 /** Strip bogus prefixes/suffixes weak models append to fake tool JSON. */
 export function normalizeLeakedToolCallBlob(text: string): string {
   let t = text.trim()
@@ -27,14 +9,6 @@ export function normalizeLeakedToolCallBlob(text: string): string {
     if (t === before) break
   }
   return t
-}
-
-const SEARCH_TOOL_NAME_PATTERN = /"name"\s*:\s*"(?:perplexity_search|parallel_search|web_search|deep_search|web_fetch)"/i
-
-function looksLikeLeakedPerplexityToolSyntax(text: string): boolean {
-  const t = text
-  if (!t.trim()) return false
-  return /OLCALL|TOOLCALL|TOOL_CALL/i.test(t) || SEARCH_TOOL_NAME_PATTERN.test(t)
 }
 
 /** Extract `[...]` starting at `start` with string-aware bracket matching. */
@@ -185,19 +159,5 @@ export function extractPerplexityQueryFromLeakedAssistantText(text: string): str
     if (fromBraceRegex) return fromBraceRegex
   }
 
-  return null
-}
-
-export async function maybeRepairFreeTierLeakedPerplexityText(params: {
-  modelId: string
-  steps: StepResult<ToolSet>[] | undefined
-  text: string
-  accessToken: string | undefined
-}): Promise<string | null> {
-  const { modelId, steps, text } = params
-  if (modelId !== FREE_TIER_AUTO_MODEL_ID) return null
-  if (stepsHavePerplexitySearchWithOutput(steps)) return null
-  if (!looksLikeLeakedPerplexityToolSyntax(text)) return null
-  // Free tier has no real web search tool; do not call Gateway to backfill (cost + product mismatch).
   return null
 }

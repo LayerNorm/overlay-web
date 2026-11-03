@@ -4,11 +4,13 @@ import type {
   WorkflowAgentToolExecutionEndEvent,
   WorkflowAgentOptions,
 } from '@ai-sdk/workflow'
-import type { ModelMessage, ToolSet } from 'ai'
+import type { ModelMessage, StepResult, ToolSet } from 'ai'
 import type { HarnessChild, HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import type { HarnessModelReference } from './secure-model'
 import type { HarnessInstructionContext } from './context'
+import type { HarnessToolApprovalGrant } from './tool-approvals'
+import type { AuthenticatedToolDenial, ObservedToolOutcome } from './tool-outcome-persistence'
 
 export type HarnessModelSettings = Pick<WorkflowAgentOptions, 'maxOutputTokens' | 'temperature' | 'reasoning' | 'providerOptions'>
 
@@ -44,6 +46,23 @@ export type HarnessArtifactReadResult =
   | { kind: 'text'; text: string; metadata: { artifactId: string; toolName: string; toolCallId: string; mediaPartCount: number; resource?: { id: string; revision?: string; operation?: string; page?: number } } }
   | { kind: 'media'; data: Uint8Array; mediaType: string; metadata: { artifactId: string; toolName: string; toolCallId: string; mediaPartCount: number; mediaPart: number; resource?: { id: string; revision?: string; operation?: string; page?: number } } }
 
+export type HarnessRunnerCheckpoint = {
+  version: 1
+  messages: ModelMessage[]
+  deliverySteps?: StepResult<ToolSet>[]
+  invocation: number
+  modelCall: number
+  stagnantSegments: number
+  finalAnswerRequired: boolean
+  truncatedResponse: boolean
+  segmentStartedAt: number
+  deliveryProgress?: string
+  pendingApproval?: { requests: HarnessApprovalRequest[]; segment: number }
+  toolApprovals?: HarnessToolApprovalGrant[]
+  executionOutcomes?: Array<[string, ObservedToolOutcome]>
+  authenticatedDenials?: Array<[string, AuthenticatedToolDenial]>
+}
+
 // These are IO seams, not execution strategies. Implementations invoke durable
 // steps/hooks; no provider instances, credentials or closures enter run storage.
 export interface HarnessExecutionPorts {
@@ -56,6 +75,10 @@ export interface HarnessExecutionPorts {
     limit?: number,
   ): Promise<HarnessEvidence | null | { observations: Array<Pick<HarnessEvidence, 'id' | 'source' | 'verdict' | 'createdAt'>>; nextCursor: string | null }>
   waitForResources?(requiredCostMicros: number): Promise<HarnessSnapshot>
+  waitForFunding?(): Promise<void>
+  checkFunding?(requiredCents: number): Promise<boolean>
+  renewLease(): Promise<void>
+  continueExecution(checkpoint: HarnessRunnerCheckpoint): Promise<HarnessSnapshot>
   authorizeTool(toolName: string): Promise<void>
   readArtifact?(input: HarnessArtifactRead): Promise<HarnessArtifactReadResult>
   prepareModel(input: {

@@ -1,11 +1,5 @@
 import type { ChatModel, ImageModel, ModelReasoningOption, VideoModel, VideoSubMode } from '@/shared/ai/gateway/model-types'
-import {
-  FREE_TIER_AUTO_MODEL_ID,
-  FREE_TIER_DEFAULT_MODEL_ID,
-  OPENROUTER_FREE_MODEL_ID,
-  DEFAULT_MODEL_ID,
-  isFreeTierChatModelId,
-} from '@/shared/ai/gateway/model-types'
+import { DEFAULT_MODEL_ID, isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 import {
   gatewayCatalogModelToChatModel,
   gatewayCatalogModelHasSupportedPricing,
@@ -93,13 +87,6 @@ const REASONING_KIMI_K3: readonly ModelReasoningOption[] = [
   { value: 'xhigh', label: 'Always on' },
 ]
 
-const SPECIAL_CHAT_MODELS: ChatModel[] = [
-  { id: FREE_TIER_AUTO_MODEL_ID, name: 'Auto', provider: 'overlay', description: 'Auto-selects a verified free model', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
-  { id: OPENROUTER_FREE_MODEL_ID, name: 'OpenRouter Free', provider: 'openrouter', description: 'OpenRouter free model router', intelligence: 0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, supportsZeroDataRetention: false, pricePer1mTokens: 0 },
-]
-
-export const OVERLAY_FREE_CHAT_MODELS: readonly ChatModel[] = SPECIAL_CHAT_MODELS
-
 const CURATED_FALLBACK_CHAT_MODELS: ChatModel[] = [
   { id: 'anthropic/claude-opus-5.5', name: 'Claude Opus 5.5', provider: 'anthropic', intelligence: 0, cost: 3, speedTier: 1, supportsVision: true, supportsReasoning: true, reasoningLevels: REASONING_EFFORT_MAX, supportsSearch: false, supportsZeroDataRetention: true },
   { id: 'anthropic/claude-sonnet-5.5', name: 'Claude Sonnet 5.5', provider: 'anthropic', intelligence: 0, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, reasoningLevels: REASONING_EFFORT_MAX, supportsSearch: false, supportsZeroDataRetention: true },
@@ -160,10 +147,9 @@ export const DEFAULT_CURATED_CHAT_MODEL_IDS = [
   'minimax/minimax-m3.1-flash',
   'alibaba/qwen3.8-max',
   'alibaba/qwen3.8-flash',
-  ...SPECIAL_CHAT_MODELS.map((model) => model.id),
 ] as const
 
-export const AVAILABLE_MODELS: ChatModel[] = [...CURATED_FALLBACK_CHAT_MODELS, ...SPECIAL_CHAT_MODELS]
+export const AVAILABLE_MODELS: ChatModel[] = [...CURATED_FALLBACK_CHAT_MODELS]
 
 const gatewayCatalogModels = new Map<string, ChatModel>()
 const byokModels = new Map<string, ChatModel>()
@@ -193,7 +179,7 @@ export function registerGatewayCatalogModels(models: readonly GatewayCatalogMode
   const registered: ChatModel[] = []
   const registeredIds = new Set<string>()
   for (const model of models) {
-    if (model.type !== 'language' || SPECIAL_CHAT_MODELS.some((special) => special.id === model.id)) continue
+    if (model.type !== 'language' || isRetiredHostedModelId(model.id)) continue
     const chatModel = gatewayCatalogModelToChatModel(model)
     const curated = curatedById.get(chatModel.id)
     // Prefer curated capability metadata when the gateway omits tags — bare
@@ -252,7 +238,6 @@ function rebuildAvailableModels(
     AVAILABLE_MODELS.length,
     ...registeredGatewayModels,
     ...fallbackMissingFromCatalog,
-    ...SPECIAL_CHAT_MODELS,
     ...byokModels.values(),
   )
   _intelRange = null
@@ -297,7 +282,6 @@ const ACT_MODEL_FALLBACK_PRIORITY: string[] = [
   'openai/gpt-oss-120b',
   'nvidia/nemotron-nano-9b-v2',
   'minimax/minimax-m2.7',
-  FREE_TIER_AUTO_MODEL_ID,
 ]
 
 /**
@@ -305,9 +289,8 @@ const ACT_MODEL_FALLBACK_PRIORITY: string[] = [
  * thread for newly added chat models.
  */
 export const CHAT_MODEL_QUALITY_PRIORITY: string[] = [
-  ...ACT_MODEL_FALLBACK_PRIORITY.slice(0, -1),
+  ...ACT_MODEL_FALLBACK_PRIORITY,
   'minimax/minimax-m3.1-flash',
-  FREE_TIER_AUTO_MODEL_ID,
 ]
 
 export function pickBestModelForAct(selectedAskModelIds: string[]): string {
@@ -338,22 +321,11 @@ const LEGACY_CHAT_MODEL_ID_ALIASES: Record<string, string> = {
   'zai/glm-5.3-flash': 'z-ai/glm-5.3-flash',
   'zai/glm-5.3': 'z-ai/glm-5.3',
   'alibaba/qwen3.6-plus': 'qwen/qwen3.6-plus',
-  'openrouter/moonshotai/kimi-k2.6:free': FREE_TIER_DEFAULT_MODEL_ID,
-  'openrouter/z-ai/glm-4.5-air:free': FREE_TIER_DEFAULT_MODEL_ID,
-  'openrouter/inclusionai/ring-2.6-1t:free': FREE_TIER_DEFAULT_MODEL_ID,
-  'openrouter/deepseek/deepseek-v4-flash:free': FREE_TIER_DEFAULT_MODEL_ID,
-  'openrouter/minimax/minimax-m2.5:free': FREE_TIER_DEFAULT_MODEL_ID,
-  'openrouter/arcee-ai/trinity-large-thinking:free': FREE_TIER_DEFAULT_MODEL_ID,
-  'openrouter/openai/gpt-oss-120b:free': FREE_TIER_DEFAULT_MODEL_ID,
-  'openrouter/nvidia/nemotron-3-super-120b-a12b:free': FREE_TIER_DEFAULT_MODEL_ID,
-  'stepfun-ai/step-3.5-flash': FREE_TIER_DEFAULT_MODEL_ID,
-  'deepseek-ai/deepseek-v3.2': FREE_TIER_DEFAULT_MODEL_ID,
   'deepseek/deepseek-v4-flash': 'deepseek/deepseek-v4-flash-0731',
-  'moonshotai/kimi-k2-thinking': FREE_TIER_DEFAULT_MODEL_ID,
-  'minimaxai/minimax-m2.7': FREE_TIER_DEFAULT_MODEL_ID,
 }
 
 export function getModel(id: string): ChatModel | undefined {
+  if (isRetiredHostedModelId(id)) return undefined
   const exact = AVAILABLE_MODELS.find((model) => model.id === id) ?? gatewayCatalogModels.get(id)
   if (exact) return exact
   const resolved = LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id
@@ -362,10 +334,12 @@ export function getModel(id: string): ChatModel | undefined {
 
 /** Display-name fallback for enabled IDs that are not in the static/curated catalog yet. */
 export function provisionalChatModelFromId(id: string): ChatModel {
+  if (isRetiredHostedModelId(id)) {
+    throw new Error('MODEL_RETIRED: This hosted model is no longer available. Select a paid model to continue.')
+  }
   const resolved = LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id
   const leaf = resolved.split('/').pop() ?? resolved
   const name = leaf
-    .replace(/:free$/i, '')
     .split(/[-_]/)
     .filter(Boolean)
     .map((part) => {
@@ -374,13 +348,12 @@ export function provisionalChatModelFromId(id: string): ChatModel {
     })
     .join(' ')
   const provider = resolved.includes('/') ? resolved.slice(0, resolved.indexOf('/')) : 'unknown'
-  const isFree = isFreeTierChatModelId(resolved) || resolved.endsWith(':free')
   return {
     id: resolved,
-    name: isFree && !name.toLowerCase().startsWith('free') ? `Free: ${name}` : name,
+    name,
     provider,
     intelligence: 0,
-    cost: isFree ? 0 : 1,
+    cost: 1,
     speedTier: 2,
     supportsVision: false,
     supportsReasoning: false,
@@ -394,7 +367,7 @@ export function speedTierToBarFill5(tier: ChatModel['speedTier']): number {
   return tier === 1 ? 2 : tier === 2 ? 3 : 5
 }
 
-/** 1–5 segments for relative $ (higher = pricier). Free tier uses 1. */
+/** 1–5 segments for relative $ (higher = pricier). */
 export function costToBarFill5(cost: ChatModel['cost']): number {
   if (cost === 0) return 1
   if (cost === 1) return 2
@@ -427,10 +400,10 @@ export function modelUsesOpenRouterTransport(modelId: string): boolean {
 /**
  * True when completions are served via the Vercel AI Gateway on the global
  * `AI_GATEWAY_API_KEY` — the metered path that runs out of credit. OpenRouter
- * (free router), NVIDIA NIM, and BYOK models use separate credentials.
+ * NVIDIA NIM and BYOK models use separate credentials.
  */
 export function modelUsesAiGatewayTransport(modelId: string): boolean {
-  if (isFreeTierChatModelId(modelId)) return false
+  if (isRetiredHostedModelId(modelId)) return false
   if (isByokModelId(modelId)) return false
   return !modelUsesOpenRouterTransport(modelId)
 }
@@ -454,33 +427,21 @@ export function getProviderModels(provider: ChatModel['provider']): ChatModel[] 
 
 /**
  * Models sorted by intelligence (CHAT_MODEL_QUALITY_PRIORITY order).
- * Free-tier users: free models first (Auto on top), then premium.
- * Paid users: premium first, free section last — so unknown/gateway premium
- * models are never trapped under the FREE divider.
  */
-export function getModelsByIntelligence(isFreeTier: boolean): ChatModel[] {
+export function getModelsByIntelligence(): ChatModel[] {
   const idxMap = new Map(CHAT_MODEL_QUALITY_PRIORITY.map((id, i) => [id, i]))
-  const sorted = [...AVAILABLE_MODELS].sort(
+  return [...AVAILABLE_MODELS].sort(
     (a, b) => (idxMap.get(a.id) ?? 999) - (idxMap.get(b.id) ?? 999),
   )
-  const free = sorted.filter((m) => isFreeTierChatModelId(m.id))
-  const premium = sorted.filter((m) => !isFreeTierChatModelId(m.id))
-  const freeAuto = free.filter((m) => m.id === FREE_TIER_AUTO_MODEL_ID)
-  const explicitFree = free.filter((m) => m.id !== FREE_TIER_AUTO_MODEL_ID)
-  if (isFreeTier) {
-    return [...freeAuto, ...explicitFree, ...premium]
-  }
-  return [...premium, ...freeAuto, ...explicitFree]
 }
 
 export function getEnabledChatModels(
   enabledModelIds: readonly string[],
-  isFreeTier: boolean,
   modelOrder?: readonly string[],
 ): ChatModel[] {
   const ids = enabledModelIds.length > 0 ? enabledModelIds : DEFAULT_CURATED_CHAT_MODEL_IDS
-  const enabled = new Set(ids.map((id) => LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id))
-  const curated = getModelsByIntelligence(isFreeTier).filter((model) => enabled.has(model.id))
+  const enabled = new Set(ids.map((id) => LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id).filter((id) => !isRetiredHostedModelId(id)))
+  const curated = getModelsByIntelligence().filter((model) => enabled.has(model.id))
   const availableByok = Array.from(byokModels.values()).filter(
     (model) => model.sourceLabel === 'Subscription',
   )
@@ -492,6 +453,7 @@ export function getEnabledChatModels(
   // provisional row before the gateway catalog loads so the picker never collapses.
   const additional = ids
     .map((id) => LEGACY_CHAT_MODEL_ID_ALIASES[id] ?? id)
+    .filter((id) => !isRetiredHostedModelId(id))
     .filter((id) => !curatedIds.has(id))
     .map((id) => {
       const known = getModel(id) ?? gatewayCatalogModels.get(id)
@@ -514,9 +476,7 @@ export function getEnabledChatModels(
     return [...explicitlyOrdered, ...remaining]
   }
 
-  const free = ordered.filter((model) => isFreeTierChatModelId(model.id))
-  const premium = ordered.filter((model) => !isFreeTierChatModelId(model.id))
-  return isFreeTier ? [...free, ...premium] : [...premium, ...free]
+  return ordered
 }
 
 // ─── Image Models (priority order — top = highest priority fallback) ──────────

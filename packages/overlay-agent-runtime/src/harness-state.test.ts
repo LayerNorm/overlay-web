@@ -11,6 +11,8 @@ import {
   validateHarnessReceipt,
   recordHarnessVerification,
   setHarnessCompaction,
+  pauseHarnessForAuthorization,
+  pauseHarnessForFunding, resumeHarnessFunding,
 } from './harness-state'
 
 const now = 1_000
@@ -126,32 +128,70 @@ test('final verification is bound to current plan and evidence progress', () => 
   assert.throws(() => recordHarnessVerification(state, { ...verification, evidenceIds: ['other'] }, now), /does not match/)
 })
 
-test('route interruption receipts count durably toward the per-run retry cap', () => {
-  let state = make()
-  for (let index = 0; index < 3; index += 1) {
-    state = recordHarnessReceipt(state, {
-      id: `model:${index}`,
-      modelId: 'openrouter/free',
-      provider: 'overlay-free-router',
-      inputTokens: 0,
-      outputTokens: 0,
-      reasoningTokens: 0,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      contextWindow: null,
-      costMicros: 0,
-      costSource: 'catalog',
-      rejectionReason: 'route_interrupted',
-    }, now)
+test('workspace funding pauses preserve fractional cents and resume the same task', () => {
+  const initial = make()
+  const state = { ...initial, policy: { ...initial.policy, executionPolicyVersion: 2 as const, spendingMode: 'workspace' as const } }
+  const pause = { reason: 'disabled' as const, receiptId: 'model:0', requiredCents: 38.96, availableCents: 0.98, reservedCents: 0.02 }
+  const paused = pauseHarnessForFunding(state, pause, now)
+  assert.equal(paused.status, 'waiting_for_resources')
+  assert.deepEqual(paused.resourcePause, pause)
+  const resumed = resumeHarnessFunding(paused, now + 1)
+  assert.equal(resumed.runId, state.runId)
+  assert.equal(resumed.status, 'running')
+  assert.equal(resumed.resourcePause, undefined)
+  for (const field of ['requiredCents', 'availableCents', 'reservedCents'] as const) {
+    for (const invalid of [-1, NaN, Infinity, Number.MAX_SAFE_INTEGER]) {
+      assert.throws(() => pauseHarnessForFunding(state, { ...pause, [field]: invalid }, now), /Invalid workspace funding pause/)
+    }
   }
-  assert.equal(state.routeInterruptionCount, 3)
+  assert.throws(() => pauseHarnessForFunding(state, { ...pause, requiredCents: 0 }, now), /Invalid workspace funding pause/)
+})
+
+test('historical route rejection receipts do not grant route-recovery state', () => {
+  const state = recordHarnessReceipt(make(), {
+    id: 'model:legacy',
+    modelId: 'openrouter/free',
+    provider: 'overlay-free-router',
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    contextWindow: null,
+    costMicros: 0,
+    costSource: 'catalog',
+    rejectionReason: 'route_interrupted',
+  }, now)
   assert.equal(state.latestReceipt?.rejectionReason, 'route_interrupted')
+  assert.equal(state.modelRecovery, undefined)
 })
 
 test('generic block and resume cannot bypass a resource pause', () => {
   const paused = { ...make(), status: 'waiting_for_resources' as const, resourceRequestToken: 'resource-token' }
   assert.throws(() => resumeHarness(paused, now), /resource pause/)
   assert.throws(() => blockHarness(paused, { kind: 'input', question: 'Continue?' }, now), /resource pause/)
+})
+
+test('explicit task-deadline pause is persisted, nonterminal, and cannot resume through ordinary input', () => {
+  const deadlineAt = now + 1
+  const state = createHarnessSnapshot({
+    runId: 'deadline-root', goal: 'Finish the task', constraints: [],
+    policy: {
+      actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: ['read'],
+      requiresPlan: false, deadlineAt: deadlineAt + 86_400_000, taskDeadlineAt: deadlineAt,
+      maxCostMicros: 0, maxParallelChildren: 0, maxDepth: 0,
+      executionPolicyVersion: 2, spendingMode: 'workspace',
+    },
+  }, now)
+  const paused = pauseHarnessForAuthorization(state, deadlineAt)
+  assert.equal(paused.status, 'waiting_for_authorization')
+  assert.deepEqual(paused.authorizationPause, {
+    reason: 'task_deadline_expired', deadlineAt, pausedAt: deadlineAt,
+  })
+  assert.equal('requiredCents' in paused.authorizationPause!, false)
+  assert.throws(() => resumeHarness(paused, deadlineAt + 1), /cannot be resumed/)
+  assert.throws(() => claimHarnessExecution(paused, 'successor', deadlineAt + 1), /cannot be claimed/)
+  assert.equal(paused.status === 'completed' || paused.status === 'failed' || paused.status === 'cancelled', false)
 })
 
 const steps: HarnessPlanInput[] = [
@@ -170,6 +210,28 @@ const childRunState = (parent: ReturnType<typeof make>, runId: string, at: numbe
   constraints: [],
   policy: { ...parent.policy, allowedToolIds: ['read'], requiresPlan: false, maxCostMicros: 0 },
 }, at)
+
+test('workspace-funded roots and children settle usage beyond legacy allocations', () => {
+  let parent = make()
+  parent.policy.workspaceId = 'workspace'
+  parent.policy.executionPolicyVersion = 2
+  parent.policy.spendingMode = 'workspace'
+  parent.policy.maxCostMicros = 0
+  parent = replaceHarnessPlan(parent, steps, now)
+  parent = admitHarnessChild(parent, child('first', 'read', 0), now)
+  const receipt = (id: string, costMicros: number): HarnessReceipt => ({
+    id, modelId: 'provider/model', provider: 'provider', inputTokens: 1, outputTokens: 1,
+    reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null,
+    costMicros, costSource: 'provider',
+  })
+  parent = recordHarnessReceipt(parent, receipt('root:receipt', 1_100_000), now)
+  let worker = childRunState(parent, 'first', now)
+  worker = recordHarnessReceipt(worker, receipt('child:receipt', 300_000), now)
+  worker = finishHarness(worker, now, 'Child completed.')
+  parent = settleHarnessChild(parent, worker, now)
+  assert.equal(parent.usage.costMicros, 1_400_000)
+  assert.equal(parent.children[0]?.costMicros, 300_000)
+})
 
 test('model dispatch binds one billing reservation without releasing the budget hold', () => {
   const reserved = reserveHarnessModel(make(), 'receipt', 80, now)

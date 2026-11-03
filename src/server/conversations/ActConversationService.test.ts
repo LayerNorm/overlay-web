@@ -4,23 +4,13 @@ import type { UIMessage } from '@/server/ai/sdk'
 import { ActContextService } from './ActContextService'
 import type { ActConversationRepository } from './ActConversationRepository'
 import { ActConversationServiceError, ActEntitlementService } from './ActEntitlementService'
+import { WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
 import { ActMessagePersistenceService, type ActAssistantFinishEvent } from './ActMessagePersistenceService'
 import { ActUsageBudgetService } from './ActUsageBudgetService'
-import { isFreeTierAllocationExhausted, UnlimitedUsagePolicy } from './ActUsagePolicy'
+import { UnlimitedUsagePolicy } from './ActUsagePolicy'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { asConversationId } from './ActConversationRepository'
 import { ensureActConversationId } from './ensure-act-conversation'
-
-const freeEntitlements = {
-  tier: 'free',
-  planKind: 'free',
-  creditsUsed: 0,
-  creditsTotal: 0,
-  budgetUsedCents: 0,
-  budgetTotalCents: 0,
-  budgetRemainingCents: 0,
-  dailyUsage: { ask: 0, write: 0, agent: 0 },
-} as const
 
 function unexpected(name: string): never {
   throw new Error(`Unexpected repository call: ${name}`)
@@ -58,6 +48,18 @@ function repository(overrides: Partial<ActConversationRepository> = {}): ActConv
   }
 }
 
+const paidEntitlements = {
+  tier: 'pro' as const,
+  planKind: 'paid' as const,
+  creditsUsed: 0,
+  creditsTotal: 100,
+  budgetUsedCents: 0,
+  budgetTotalCents: 10_000,
+  budgetRemainingCents: 10_000,
+  dailyUsage: { ask: 0, write: 0, agent: 0 },
+  dailyLimits: { ask: 0, write: 0, agent: 0 },
+}
+
 test('parallel first-send creation preserves workspace identity and requested scope', async () => {
   for (const scope of ['personal', 'workspace', undefined] as const) {
     let created: Parameters<ActConversationRepository['createConversation']>[0] | undefined
@@ -67,7 +69,7 @@ test('parallel first-send creation preserves workspace identity and requested sc
       createdByPrincipalId: 'principal_1',
       scope,
       conversationClientId: 'client_1',
-      entitlements: freeEntitlements,
+      entitlements: paidEntitlements,
       repository: repository({
         createConversation: async (args) => {
           created = args
@@ -83,51 +85,49 @@ test('parallel first-send creation preserves workspace identity and requested sc
   }
 })
 
-test('act entitlement service preserves premium-model free-tier gate shape', async () => {
+test('act entitlement service maps workspace execution refusals without allowing BYO exceptions', async () => {
   const service = new ActEntitlementService({
+    requireExecution: async () => {
+      throw new WorkspaceExecutionError({ state: 'subscription_required', canExecute: false }, true)
+    },
     repository: repository({
-      getEntitlements: async () => freeEntitlements,
+      getEntitlements: async () => paidEntitlements,
       getAppSettings: async () => null,
     }),
   })
 
   await assert.rejects(
-    () => service.gateModelAccess({
+    () => service.gateModelPolicy({
       effectiveModelId: 'claude-sonnet-4-6',
       userId: 'user_1',
     }),
     (error) => {
       assert.equal(error instanceof ActConversationServiceError, true)
-      assert.equal((error as ActConversationServiceError).statusCode, 403)
+      assert.equal((error as ActConversationServiceError).statusCode, 402)
       assert.deepEqual((error as ActConversationServiceError).payload, {
-        error: 'premium_model_not_allowed',
-        message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.',
+        error: 'subscription_required',
+        code: 'subscription_required',
+        message: 'Subscribe to this workspace before starting work.',
+        recovery: 'billing',
       })
       return true
     },
   )
-})
-
-test('act entitlement service allows a free-tier user to use their own provider key', async () => {
-  const service = new ActEntitlementService({
-    repository: repository({
-      getEntitlements: async () => freeEntitlements,
-      getAppSettings: async () => null,
-    }),
-  })
-
-  const result = await service.gateModelAccess({
+  await assert.rejects(service.gateModelPolicy({
     effectiveModelId: 'byok/connection_1/vendor/model-a',
     userId: 'user_1',
-  })
-  assert.equal(result.paid, false)
-  assert.equal(result.runtimeEntitlements.planKind, 'free')
+  }), (error: unknown) => error instanceof ActConversationServiceError && error.statusCode === 402)
 })
 
-test('policy-only authorization preserves a paid subscription while its funds are reserved', async () => {
-  const entitlements = { ...freeEntitlements, planKind: 'paid' as const, budgetTotalCents: 100, budgetRemainingCents: 0 }
+test('policy-only authorization requires paid workspace admission without checking funds', async () => {
+  const entitlements = { ...paidEntitlements, budgetTotalCents: 100, budgetRemainingCents: 0 }
   let reads = 0
+  let checkBudget: boolean | undefined
   const service = new ActEntitlementService({
+    requireExecution: async (args) => {
+      checkBudget = args.checkBudget
+      return { billingEnabled: true } as never
+    },
     repository: repository({
       getEntitlements: async () => { reads++; return entitlements },
       getAppSettings: async () => null,
@@ -137,23 +137,56 @@ test('policy-only authorization preserves a paid subscription while its funds ar
   assert.equal(result.paid, true)
   assert.equal(result.runtimeEntitlements, entitlements)
   assert.equal(result.runtimeEntitlements.budgetRemainingCents, 0)
+  assert.equal(checkBudget, false)
   assert.equal(reads, 1)
 })
 
-test('policy-only authorization still enforces revoked subscriptions and ZDR settings', async () => {
+test('new chat admission rechecks available workspace budget after policy authorization', async () => {
+  const entitlements = { ...paidEntitlements, budgetTotalCents: 100, budgetRemainingCents: 100 }
+  const checks: boolean[] = []
   const service = new ActEntitlementService({
-    repository: repository({ getEntitlements: async () => freeEntitlements, getAppSettings: async () => null }),
-  })
-  await assert.rejects(service.gateModelPolicy({ effectiveModelId: 'fixture/paid-model', userId: 'user_1' }),
-    (error: unknown) => error instanceof ActConversationServiceError && error.statusCode === 403)
-  assert.equal((await service.gateModelPolicy({ effectiveModelId: 'byok/connection/model', userId: 'user_1' })).paid, false)
-  const restricted = new ActEntitlementService({
+    requireExecution: async (args) => {
+      checks.push(args.checkBudget ?? true)
+      return { billingEnabled: true } as never
+    },
     repository: repository({
-      getEntitlements: async () => ({ ...freeEntitlements, planKind: 'paid' as const }),
+      getEntitlements: async () => entitlements,
+      getAppSettings: async () => null,
+    }),
+  })
+  const result = await service.gateModelAccess({ effectiveModelId: 'fixture/paid-model', userId: 'user_1' })
+
+  assert.deepEqual(checks, [false, true])
+  assert.equal(result.paid, true)
+  assert.equal(result.runtimeEntitlements.budgetRemainingCents, 100)
+})
+
+test('billing-disabled admin admission is paid and retired free models are refused', async () => {
+  const service = new ActEntitlementService({
+    requireExecution: async () => ({ billingEnabled: false } as never),
+    repository: repository({
+      getEntitlements: async () => paidEntitlements,
+      getAppSettings: async () => null,
+    }),
+  })
+  assert.equal((await service.gateModelAccess({ effectiveModelId: 'fixture/paid-model', userId: 'user_1' })).paid, true)
+  for (const effectiveModelId of ['overlay-free', 'openrouter/free', 'openrouter/example:free']) {
+    await assert.rejects(
+      service.gateModelPolicy({ effectiveModelId, userId: 'user_1' }),
+      (error: unknown) => error instanceof ActConversationServiceError && error.payload.error === 'model_retired',
+    )
+  }
+})
+
+test('policy-only authorization enforces ZDR settings for all models', async () => {
+  const restricted = new ActEntitlementService({
+    requireExecution: async () => ({ billingEnabled: false } as never),
+    repository: repository({
+      getEntitlements: async () => paidEntitlements,
       getAppSettings: async () => ({ onlyAllowZdrModels: true }) as never,
     }),
   })
-  await assert.rejects(restricted.gateModelPolicy({ effectiveModelId: 'fixture/non-zdr', userId: 'user_1' }),
+  await assert.rejects(restricted.gateModelPolicy({ effectiveModelId: 'byok/connection/model', userId: 'user_1' }),
     (error: unknown) => error instanceof ActConversationServiceError && error.payload.error === 'zdr_model_required')
 })
 
@@ -402,42 +435,30 @@ test('act assistant persistence writes one final message and emits completion', 
   }])
 })
 
-test('act usage budget service skips reservations for unpaid/free-model attempts', async () => {
-  const service = new ActUsageBudgetService({
-    repository: repository(),
-  })
-
-  const result = await service.reserveForAttempt({
-    entitlements: freeEntitlements,
-    estimatedInputTokens: 1000,
-    maxOutputTokens: 1000,
-    modelId: 'openrouter/free',
-    operationId: 'conversation.act',
-    paid: false,
-    requestFingerprint: 'free-attempt',
-    userId: 'user_1',
-  })
-
-  assert.deepEqual(result, { ok: true, reservationId: null })
-})
-
 test('act usage budget service never charges BYOK attempts', async () => {
   const service = new ActUsageBudgetService({ repository: repository() })
   const modelId = 'byok/connection_1/vendor/model-a'
 
   assert.deepEqual(await service.reserveForAttempt({
-    entitlements: freeEntitlements,
+    entitlements: {
+      tier: 'pro',
+      planKind: 'paid',
+      creditsUsed: 0,
+      creditsTotal: 100,
+      budgetUsedCents: 0,
+      budgetTotalCents: 10_000,
+      budgetRemainingCents: 10_000,
+    },
     estimatedInputTokens: 1000,
     maxOutputTokens: 1000,
     modelId,
     operationId: 'conversation.act',
-    paid: false,
+    paid: true,
     requestFingerprint: 'byok-attempt',
     userId: 'user_1',
   }), { ok: true, reservationId: null })
 
   assert.deepEqual(await service.recordFinishedUsage({
-    forceFreeTierLimits: false,
     inputTokens: 100,
     modelId,
     outputTokens: 50,
@@ -464,55 +485,10 @@ test('unlimited usage policy exposes explicit paid entitlements and no-op accoun
     userId: 'user_1',
   }), { ok: true, reservationId: null })
   assert.deepEqual(await policy.recordFinishedUsage({
-    forceFreeTierLimits: false,
     inputTokens: 12,
     modelId: 'claude-sonnet-4-6',
     outputTokens: 24,
     reservationId: null,
     userId: 'user_1',
   }), { finalized: false, reservationId: null })
-})
-
-test('free-tier allocation check does not block a plan with no credit allowance', () => {
-  // Free plans carry creditsTotal 0 (no subscription => empty usage buckets),
-  // so a credits-only check matched every free user on their first message.
-  assert.equal(isFreeTierAllocationExhausted({
-    creditsTotal: 0,
-    creditsUsed: 0,
-    dailyUsage: { ask: 0, write: 0, agent: 0 },
-    dailyLimits: { ask: 15, write: 15, agent: 15 },
-  }), false)
-})
-
-test('free-tier allocation check blocks once every daily bucket is spent', () => {
-  assert.equal(isFreeTierAllocationExhausted({
-    creditsTotal: 0,
-    creditsUsed: 0,
-    dailyUsage: { ask: 15, write: 15, agent: 15 },
-    dailyLimits: { ask: 15, write: 15, agent: 15 },
-  }), true)
-})
-
-test('free-tier allocation check still enforces an exhausted credit allowance', () => {
-  assert.equal(isFreeTierAllocationExhausted({
-    creditsTotal: 500,
-    creditsUsed: 500,
-    dailyUsage: { ask: 0, write: 0, agent: 0 },
-    dailyLimits: { ask: 15, write: 15, agent: 15 },
-  }), true)
-  assert.equal(isFreeTierAllocationExhausted({
-    creditsTotal: 500,
-    creditsUsed: 100,
-    dailyUsage: { ask: 0, write: 0, agent: 0 },
-    dailyLimits: { ask: 15, write: 15, agent: 15 },
-  }), false)
-})
-
-test('free-tier allocation check ignores unmetered (paid) daily limits', () => {
-  assert.equal(isFreeTierAllocationExhausted({
-    creditsTotal: 0,
-    creditsUsed: 0,
-    dailyUsage: { ask: 99, write: 99, agent: 99 },
-    dailyLimits: { ask: Infinity, write: Infinity, agent: Infinity },
-  }), false)
 })

@@ -4,9 +4,9 @@ import { serializeHarnessArtifactOutput } from './artifact-context'
 
 vi.mock('server-only', () => ({}))
 const mocks = vi.hoisted(() => ({
-  claim: vi.fn(), admit: vi.fn(), readMetadata: vi.fn(), readData: vi.fn(),
+  claim: vi.fn(), read: vi.fn(), admit: vi.fn(), readMetadata: vi.fn(), readData: vi.fn(),
 }))
-vi.mock('./state-ports', () => ({ createHarnessStatePorts: () => ({ claim: mocks.claim }) }))
+vi.mock('./state-ports', () => ({ createHarnessStatePorts: () => ({ claim: mocks.claim, read: mocks.read }) }))
 vi.mock('./request-usage-step', () => ({ admitHarnessRequestUsage: mocks.admit }))
 vi.mock('./resource-boundary', () => ({ waitForHarnessModelResources: vi.fn() }))
 vi.mock('./artifact-steps', () => ({
@@ -38,7 +38,10 @@ test('a surface authorizes the claimed execution before request accounting', asy
   expect(mocks.claim.mock.invocationCallOrder[0]).toBeLessThan(authorize.mock.invocationCallOrder[0])
   expect(authorize.mock.invocationCallOrder[0]).toBeLessThan(mocks.admit.mock.invocationCallOrder[0])
   expect(ports.prepareModel).toBe(model.prepareModel)
-  expect(ports.waitForInput).toBe(surface.waitForInput)
+  expect(ports.waitForInput).not.toBe(surface.waitForInput)
+  await ports.waitForInput([])
+  expect(authorize).toHaveBeenLastCalledWith()
+  expect(surface.waitForInput).toHaveBeenCalledWith([])
   await ports.authorizeTool('read_file')
   expect(authorize).toHaveBeenLastCalledWith('read_file')
 })
@@ -105,4 +108,20 @@ test('tail text reads disclose omitted prefixes and preserve source identity', a
       resource: { id: 'file-7', revision: 'rev-9', operation: 'read', page: 4 },
     },
   })
+})
+
+test('a surface-admitted execution reuses its post-claim snapshot once without claiming again', async () => {
+  const admitted = { runId: 'run', revision: 4 } as never
+  const fresh = { runId: 'run', revision: 5 }
+  mocks.read.mockResolvedValue(fresh)
+  const ports = createHarnessExecutionPorts({ reference, modelId: 'fixture/model', authorize, model, surface, admitted })
+  expect(await ports.read()).toBe(admitted)
+  expect(await ports.claim()).toBe(true)
+  expect(mocks.claim).not.toHaveBeenCalled()
+  expect(authorize).not.toHaveBeenCalled()
+  expect(mocks.admit).not.toHaveBeenCalled()
+  expect(await ports.read()).toBe(fresh)
+  expect(mocks.read).toHaveBeenCalledOnce()
+  await ports.authorizeTool('read_file')
+  expect(authorize).toHaveBeenCalledExactlyOnceWith('read_file')
 })

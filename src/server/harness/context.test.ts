@@ -26,6 +26,18 @@ test('completed plans request the final deliverable instead of more bookkeeping'
   expect(instructions).not.toContain('complete the remaining milestones')
 })
 
+test('pending answer-only milestones can still ask for essential input', () => {
+  const state = replaceHarnessPlan(make(), [{ id: 'answer', title: 'Confirm the word', dependsOn: [],
+    acceptanceCriteria: ['Repeat the user confirmation word'], requiresVerification: false, answerOnly: true }], 1_000)
+  const instructions = buildHarnessStepInstructions(state, {
+    instructions: 'Surface instructions', continuation: true, truncatedResponse: false, finalAnswerRequired: true,
+  })
+  expect(instructions).toContain('call harness_report_blocker rather than guessing')
+  expect(instructions).toContain('external action tools are unavailable')
+  expect(instructions).not.toContain('All plan milestones and required evidence are complete')
+  expect(instructions).not.toContain('Do not call tools')
+})
+
 test('write-capable runs receive evidence-backed planning instructions', () => {
   const instructions = buildHarnessStepInstructions(make(), {
     instructions: 'Surface instructions', continuation: false, truncatedResponse: false,
@@ -83,7 +95,7 @@ test('requests a plain-text final answer after a protocol-only response', () => 
   const state = make()
   const context = { instructions: 'Surface instructions', continuation: true, truncatedResponse: false }
   const required = buildHarnessStepInstructions(state, { ...context, finalAnswerRequired: true })
-  expect(required).toContain('All milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.')
+  expect(required).toContain('All action milestones are complete. Reply to the user now in plain text with the saved results and requested links. Reporting-only milestones finish with your answer; do not call tools or write tool calls as text.')
   expect(buildHarnessStepInstructions(state, context)).not.toContain('Reply to the user now in plain text')
 })
 

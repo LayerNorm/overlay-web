@@ -2,7 +2,7 @@ import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { WorkflowAgent } from '@ai-sdk/workflow'
 import { isLoopFinished } from 'ai'
 import { sleep } from 'workflow'
-import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { effectiveHarnessDeadlineAt, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { HARNESS_ANSWER_VERIFICATION_INSTRUCTIONS } from './continuity-policy'
 import { buildHarnessEvidenceEnvelope, harnessCandidateDigest, parseHarnessVerificationResponse } from './continuity'
 import type { HarnessExecutionPorts } from './ports'
@@ -11,7 +11,6 @@ import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference
 import { readHarnessModelLimits } from './model-preparation'
 import { HarnessYield } from './model-recovery'
 import { waitForHarnessModelResources } from './resource-boundary'
-import { OPENROUTER_FREE_MODEL_ID, OVERLAY_FREE_MODEL_ID } from '@/shared/ai/gateway/overlay-free-policy'
 import type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
 
 type ModelStep = Parameters<HarnessExecutionPorts['recordModelStep']>[0]
@@ -36,7 +35,7 @@ type VerificationResult = {
 
 function assertVerificationRunnable(reference: HarnessExecutionReference, state: HarnessSnapshot): void {
   if (state.status !== 'running' || state.workflowRunId !== reference.workflowRunId
-    || Date.now() >= state.policy.deadlineAt) throw new HarnessYield()
+    || Date.now() >= effectiveHarnessDeadlineAt(state.policy)) throw new HarnessYield()
 }
 
 async function waitForExistingVerificationHold(
@@ -48,21 +47,13 @@ async function waitForExistingVerificationHold(
   let current = state
   for (const delayMs of [5_000, 15_000, 30_000]) {
     assertVerificationRunnable(dependencies.reference, current)
-    await sleep(new Date(Math.min(Date.now() + delayMs, current.policy.deadlineAt)))
+    await sleep(new Date(Math.min(Date.now() + delayMs, effectiveHarnessDeadlineAt(current.policy))))
     current = await readHarnessState(dependencies.reference)
     if (current.modelReservation?.id !== pendingReceiptId) break
   }
   assertVerificationRunnable(dependencies.reference, current)
   if (current.modelReservation?.id === pendingReceiptId) throw new HarnessYield()
   return current
-}
-
-function isExactFreeVerificationHold(state: HarnessSnapshot, receiptId: string): boolean {
-  const reservation = state.modelReservation
-  const dispatch = reservation?.dispatch
-  return reservation?.id === receiptId && reservation.maxCostMicros === 0
-    && dispatch?.billingReservationId === null
-    && (dispatch.modelId === OPENROUTER_FREE_MODEL_ID || dispatch.modelId === OVERLAY_FREE_MODEL_ID)
 }
 
 async function runVerificationStream(
@@ -103,23 +94,10 @@ async function reconcileVerificationFailure(
 ): Promise<VerificationResult> {
   let after = await readHarnessState(dependencies.reference)
   const hold = after.modelReservation
-  const dispatch = hold?.dispatch
-  if (isExactFreeVerificationHold(after, receiptId) && dispatch) {
-    await applyHarnessOperation(dependencies.reference, `verification-failed:${receiptId}`, {
-      type: 'record_receipt',
-      receipt: {
-        id: receiptId, modelId: dispatch.modelId, provider: 'overlay-free-router',
-        inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0,
-        cacheWriteTokens: 0, contextWindow: null, costMicros: 0, costSource: 'catalog',
-        rejectionReason: 'verification_failed',
-      },
-    })
-    return { supported: false, reason: 'Final-answer verification was interrupted; no answer was accepted.', evidenceIds: [] }
-  }
   if (hold?.id === receiptId) {
     for (const delayMs of [5_000, 15_000, 30_000]) {
       assertVerificationRunnable(dependencies.reference, after)
-      await sleep(new Date(Math.min(Date.now() + delayMs, after.policy.deadlineAt)))
+      await sleep(new Date(Math.min(Date.now() + delayMs, effectiveHarnessDeadlineAt(after.policy))))
       after = await readHarnessState(dependencies.reference)
       if (after.modelReservation?.id !== receiptId) break
     }

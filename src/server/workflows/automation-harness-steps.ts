@@ -83,7 +83,9 @@ async function reconcileAutomationHarnessTerminalStep(input: {
   'use step'
   const { ConvexHarnessRepository } = await import('@/server/harness/ConvexHarnessRepository')
   const snapshot = await new ConvexHarnessRepository().get(input.access)
-  if (!snapshot || snapshot.workflowRunId !== input.workflowRunId
+  if (!snapshot || snapshot.runId !== input.access.runId || !snapshot.workflowRunId
+    || snapshot.policy.actorUserId !== input.userId
+    || snapshot.policy.workspaceId !== input.access.workspaceId
     || !['completed', 'failed', 'cancelled'].includes(snapshot.status)) return null
   if (input.runId) {
     const payload = await getOverlayServerContext().appData.repositories.automations

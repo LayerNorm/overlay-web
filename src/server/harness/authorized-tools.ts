@@ -20,8 +20,9 @@ export function createHarnessAuthorizedTools(
   surfaceTools: ToolSet,
   ports: HarnessExecutionPorts,
   controls: Set<string>,
+  initialApprovals?: Parameters<typeof createHarnessToolApprovals>[0],
 ): { tools: ToolSet; approvals: HarnessToolApprovals } {
-  const approvals = createHarnessToolApprovals()
+  const approvals = createHarnessToolApprovals(initialApprovals)
   const definitions = { ...surfaceTools, ...createHarnessControlTools(ports) }
   let toolTail: Promise<unknown> = Promise.resolve()
   const tools = Object.fromEntries(Object.entries(definitions).sort(([a], [b]) => a.localeCompare(b)).map(([name, definition]) => {
@@ -30,7 +31,11 @@ export function createHarnessAuthorizedTools(
       ...definition,
       execute: (value: unknown, options: Parameters<NonNullable<typeof execute>>[1]) => {
         const pending = toolTail.then(async () => {
-          const state = await ports.read()
+          let state = await ports.read()
+          if (state.policy.executionPolicyVersion === 2) {
+            await ports.renewLease()
+            state = await ports.read()
+          }
           assertHarnessRunnable(state, Date.now())
           if (!controls.has(name)) {
             if (!state.policy.allowedToolIds.includes(name)) throw new Error('This tool is not authorized for this run.')

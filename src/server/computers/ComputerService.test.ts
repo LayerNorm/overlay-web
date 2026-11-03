@@ -5,6 +5,7 @@ import type { Computer } from '@overlay/workspace-contracts'
 import { ComputerService, ComputerServiceError } from './ComputerService'
 import type { ComputerRepository } from './ComputerRepository'
 import type { ComputerLifecycleService } from './ComputerLifecycleService'
+import { WorkspaceExecutionError, requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
 
 const member = { workspaceId: 'ws-1', userId: 'user-1', principalId: 'principal-1', workspaceRole: 'member' as const }
 const otherMember = { workspaceId: 'ws-1', userId: 'user-2', principalId: 'principal-2', workspaceRole: 'member' as const }
@@ -56,6 +57,7 @@ function service(overrides: {
   repository?: MemoryRepository
   agents?: Record<string, { visibility: 'workspace' | 'creator'; createdByPrincipalId: string }>
   assertCanRun?: () => Promise<void>
+  requireExecution?: typeof requireWorkspaceExecution
 } = {}) {
   const repository = overrides.repository ?? new MemoryRepository()
   const agents = overrides.agents ?? {}
@@ -92,6 +94,7 @@ function service(overrides: {
   const svc = new ComputerService({
     repository,
     assertCanRun: overrides.assertCanRun ?? (async () => {}),
+    requireExecution: overrides.requireExecution ?? (async () => ({ billingEnabled: true }) as never),
     agentOwner: async (_workspaceId, agentId) => agents[agentId] ?? null,
     lifecycle,
   })
@@ -180,6 +183,21 @@ test('paid admission rejection happens before lifecycle access', async () => {
   await assert.rejects(
     svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' }),
     /paid required/,
+  )
+  assert.deepEqual(calls, [])
+})
+
+test('workspace execution policy rejection is returned before computer launch', async () => {
+  const { svc, calls } = service({
+    requireExecution: async () => {
+      throw new WorkspaceExecutionError({ state: 'budget_exhausted', canExecute: false }, true)
+    },
+  })
+  await assert.rejects(
+    svc.provision({ actor: member, workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1' }),
+    (error: unknown) => error instanceof ComputerServiceError
+      && error.status === 402
+      && error.code === 'budget_exhausted',
   )
   assert.deepEqual(calls, [])
 })

@@ -146,6 +146,7 @@
     "src/app/api/v1/generate-tab-group-label/route.ts",
     "src/app/api/v1/generate-title/route.ts",
     "src/app/api/v1/generate-video/route.ts",
+    "src/app/api/v1/harness/continuation/route.ts",
     "src/app/api/v1/imports/slack/process/route.ts",
     "src/app/api/v1/imports/slack/route.ts",
     "src/app/api/v1/integrations/route.ts",
@@ -161,7 +162,6 @@
     "src/app/api/v1/memory/route.ts",
     "src/app/api/v1/mention-search/route.ts",
     "src/app/api/v1/model-catalog/route.ts",
-    "src/app/api/v1/models/overlay-free/refresh/route.ts",
     "src/app/api/v1/notebook-agent/route.ts",
     "src/app/api/v1/notes/route.ts",
     "src/app/api/v1/onboarding/complete/route.ts",
@@ -298,6 +298,11 @@
       "target": "internal.platform.growth.startDaily"
     },
     {
+      "cadence": "{ minutes: 1 }",
+      "name": "Harness continuation reconciliation",
+      "target": "internal.harness.continuations.dispatchDue"
+    },
+    {
       "cadence": "{ hourUTC: 4, minuteUTC: 30 }",
       "name": "knowledge orphan-chunk sweep",
       "target": "(internal as any).knowledge.knowledge.sweepOrphanedChunks"
@@ -306,11 +311,6 @@
       "cadence": "{ minutes: 1 }",
       "name": "outbound webhook delivery",
       "target": "internal.webhooks.deliveryRunner.runMinuteTick"
-    },
-    {
-      "cadence": "{ minuteUTC: 0 }",
-      "name": "overlay-free catalog refresh",
-      "target": "internal.platform.overlayFreeRefresh.runTick"
     },
     {
       "cadence": "{ minutes: 5 }",
@@ -368,6 +368,7 @@
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
     "src/app/api/share/file/[token]/route.ts",
+    "src/app/api/v1/harness/continuation/route.ts",
     "src/app/auth/desktop/complete/route.ts",
     "src/app/share/f/[token]/opengraph-image.tsx",
     "src/app/share/f/[token]/page.tsx",
@@ -405,13 +406,13 @@
     "src/server/agents/run-agent-drive-version-cleanup.ts",
     "src/server/ai/catalog/ConvexModelCatalogRepository.ts",
     "src/server/ai/catalog/index.ts",
-    "src/server/ai/gateway/overlay-free-refresh.ts",
-    "src/server/ai/gateway/overlay-free-router.ts",
     "src/server/ai/provider-connections/ConvexProviderConnectionRepository.ts",
     "src/server/ai/provider-connections/index.ts",
     "src/server/ai/subscriptions/repository.ts",
     "src/server/app-api/v1/account/profile/route.ts",
     "src/server/app-api/v1/bootstrap/route.ts",
+    "src/server/app-api/v1/conversations/run/approval/route.ts",
+    "src/server/app-api/v1/conversations/run/input/route.ts",
     "src/server/app-api/v1/conversations/run/resources/route.ts",
     "src/server/app-api/v1/imports/slack/route.ts",
     "src/server/app-api/v1/mention-search/route.ts",
@@ -458,6 +459,7 @@
     "src/server/harness/ConvexHarnessRepository.ts",
     "src/server/harness/artifact-steps.ts",
     "src/server/harness/delivery-wait-projection.ts",
+    "src/server/harness/harness-continuations.ts",
     "src/server/harness/model-dispatch.ts",
     "src/server/harness/native-access.ts",
     "src/server/harness/native-child-steps.ts",
@@ -470,9 +472,10 @@
     "src/server/harness/personal-admission.ts",
     "src/server/harness/personal-cancellation.ts",
     "src/server/harness/personal-child-steps.ts",
+    "src/server/harness/personal-delivery-attach.ts",
     "src/server/harness/personal-delivery-steps.ts",
     "src/server/harness/personal-wait-steps.ts",
-    "src/server/harness/request-usage-step.ts",
+    "src/server/harness/request-usage.ts",
     "src/server/harness/resource-wait-steps.ts",
     "src/server/harness/settle-model-billing-step.ts",
     "src/server/harness/state-steps.ts",

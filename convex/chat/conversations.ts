@@ -69,6 +69,11 @@ const generatedUiData = v.union(
 const messagePart = v.union(
   nativeAgentErrorPart,
   v.object({
+    type: v.literal('text'),
+    text: v.string(),
+    storageOmittedParts: v.number(),
+  }),
+  v.object({
     type: v.literal('data'),
     id: v.string(),
     dataType: v.literal('overlay.generated_ui'),
@@ -131,6 +136,7 @@ const agentRunStatus = v.union(
   v.literal('waiting_for_input'),
   v.literal('waiting_for_children'),
   v.literal('waiting_for_resources'),
+  v.literal('waiting_for_authorization'),
   v.literal('completed'),
   v.literal('failed'),
   v.literal('cancelled'),
@@ -165,6 +171,7 @@ const AGENT_RUN_TRANSITIONS: Record<string, ReadonlySet<string>> = {
   waiting_for_input: new Set(['running', 'failed', 'cancelled']),
   waiting_for_children: new Set(['running', 'failed', 'cancelled']),
   waiting_for_resources: new Set(['failed', 'cancelled']),
+  waiting_for_authorization: new Set(['cancelled']),
   completed: new Set(),
   failed: new Set(),
   cancelled: new Set(),
@@ -1058,7 +1065,7 @@ export const transitionAgentRun = mutation({
       throw new Error('AgentRun workflow ownership changed')
     }
     assertSupportedAgentExecution(run)
-    if (args.status === 'waiting_for_resources'
+    if (args.status === 'waiting_for_resources' || args.status === 'waiting_for_authorization'
       || (run.status === 'waiting_for_resources' && !['failed', 'cancelled'].includes(args.status))) {
       throw new Error('Resource pauses may only be changed by resource mutations.')
     }

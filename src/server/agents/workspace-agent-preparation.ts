@@ -7,7 +7,7 @@ import { hashOperationalIdentifier } from '@/server/security/operational-key-has
 import { buildWorkspaceAgentTooling } from './agent-tooling'
 import { buildAgentTurnContext } from './agent-turn-context'
 import { sanitizeWorkflowToolSchemaValue } from '@/server/conversations/personal-chat-work-tools'
-import { agentModelAttempts, loadRoomTurnContext } from './workspace-agent-invocation'
+import { loadRoomTurnContext } from './workspace-agent-invocation'
 
 export function workspaceAgentInvocationIdentity(messageId: string, agentId: string) {
   const invocationNonce = `agent:${messageId}:${agentId}`
@@ -45,22 +45,13 @@ export async function prepareWorkspaceAgentInputs(input: {
     repository: server.appData.repositories.conversations,
     usagePolicy: server.chatUsagePolicy,
   })
-  let gate: Awaited<ReturnType<ActEntitlementService['gateModelAccess']>> | undefined
-  let modelId = agent.modelId
-  const modelAttempts = agentModelAttempts(agent.modelId)
-  for (const attempt of modelAttempts) {
-    try {
-      gate = await entitlementService.gateModelAccess({
-        effectiveModelId: attempt,
-        programmaticSubjectId: input.billingProgrammaticSubjectId ?? `agent:${agent.id}`,
-        userId: input.actorUserId,
-        workspaceId: input.workspaceId,
-      })
-      modelId = attempt
-      break
-    } catch (_error) { /* fallback to the next entitled model */ }
-  }
-  if (!gate) throw new Error('No agent model attempt succeeded')
+  const modelId = agent.modelId
+  const gate = await entitlementService.gateModelAccess({
+    effectiveModelId: modelId,
+    programmaticSubjectId: input.billingProgrammaticSubjectId ?? `agent:${agent.id}`,
+    userId: input.actorUserId,
+    workspaceId: input.workspaceId,
+  })
   const tooling = await buildWorkspaceAgentTooling({
     actorUserId: input.actorUserId,
     agentPrincipalId: agent.principalId,
@@ -107,9 +98,6 @@ export async function prepareWorkspaceAgentInputs(input: {
     gate,
     tooling,
     modelId,
-    // Exclude candidates already rejected by admission. The execution contract
-    // starts at the selected entitled model, including a free-plan fallback.
-    modelCandidates: modelAttempts.slice(modelAttempts.indexOf(modelId)),
     turnContext,
     toolDefinitions,
     ...identity,

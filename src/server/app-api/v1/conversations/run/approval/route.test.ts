@@ -107,6 +107,33 @@ test('the initiator can decide an active approval, including legacy personal con
   }
 })
 
+test('V2 approval persists without requiring a live workflow hook', async () => {
+  let submitted: unknown
+  const response = await POST(request(), context('owner'), {
+    conversations: { getConversationById: async () => conversation,
+      getLatestAgentRun: async () => ({ ...run, harnessRunId: 'harness-run' }) },
+    collaboration: { getAccessibleConversation: async () => conversation },
+    submitWaitReply: async value => { submitted = value; return true },
+    resume: async () => assert.fail('V2 approval must not depend on a live hook'),
+  })
+  assert.equal(response.status, 200)
+  assert.deepEqual(submitted, { actorUserId: 'owner', workspaceId: 'workspace-a', deliveryAgentRunId: 'run-a',
+    token: 'token-a', reply: { approved: true } })
+})
+
+test('a missed durable legacy approval reply falls back to the workflow hook', async () => {
+  let resumed: unknown
+  const response = await POST(request(false), context('owner'), {
+    conversations: { getConversationById: async () => conversation,
+      getLatestAgentRun: async () => ({ ...run, harnessRunId: 'legacy-harness' }) },
+    collaboration: { getAccessibleConversation: async () => conversation },
+    submitWaitReply: async () => false,
+    resume: async (token, decision) => { resumed = { token, decision } },
+  })
+  assert.equal(response.status, 200)
+  assert.deepEqual(resumed, { token: 'token-a', decision: { approved: false } })
+})
+
 test('room creators with revoked membership cannot decide a pending approval', async () => {
   for (const approved of [true, false]) {
     const response = await POST(request(approved), context('owner'), {

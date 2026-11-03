@@ -1,9 +1,6 @@
 import type { GatewayCatalogModel } from '@/shared/ai/gateway/gateway-catalog'
-import {
-  DEFAULT_CURATED_CHAT_MODEL_IDS,
-  OVERLAY_FREE_CHAT_MODELS,
-} from '@/shared/ai/gateway/model-data'
-import type { ChatModel } from '@/shared/ai/gateway/model-types'
+import { DEFAULT_CURATED_CHAT_MODEL_IDS } from '@/shared/ai/gateway/model-data'
+import { isRetiredHostedModelId, type ChatModel } from '@/shared/ai/gateway/model-types'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 import {
   byokModelId,
@@ -79,7 +76,7 @@ export function payloadErrorMessage(payload: unknown): string | null {
 }
 
 export function gatewayModelToOption(model: GatewayCatalogModel): ProviderModelOption | null {
-  if (model.type !== 'language') return null
+  if (model.type !== 'language' || isRetiredHostedModelId(model.id)) return null
   return {
     rawId: model.id,
     appModelId: model.id,
@@ -93,20 +90,6 @@ export function gatewayModelToOption(model: GatewayCatalogModel): ProviderModelO
   }
 }
 
-export function freeChatModelToOption(model: ChatModel): ProviderModelOption {
-  return {
-    rawId: model.id,
-    appModelId: model.id,
-    name: model.name,
-    provider: model.provider,
-    supportsVision: model.supportsVision,
-    supportsReasoning: model.supportsReasoning,
-    inputPricePerMillion: 0,
-    outputPricePerMillion: 0,
-    isDefault: DEFAULT_CURATED_CHAT_MODEL_IDS.includes(model.id as typeof DEFAULT_CURATED_CHAT_MODEL_IDS[number]),
-  }
-}
-
 export function buildProviderModelOptions(
   connection: ByokConnectionRow,
   gatewayModels: readonly GatewayCatalogModel[],
@@ -116,7 +99,6 @@ export function buildProviderModelOptions(
       ...gatewayModels
         .map(gatewayModelToOption)
         .filter((model): model is ProviderModelOption => Boolean(model)),
-      ...OVERLAY_FREE_CHAT_MODELS.map(freeChatModelToOption),
     ]
     const seen = new Set<string>()
     return options

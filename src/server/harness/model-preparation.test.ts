@@ -1,6 +1,8 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
 import { preparePersonalHarnessModel, readHarnessModelLimits } from './model-preparation'
+import { WORKFLOW_SERIALIZE } from '@workflow/serde'
+import { HarnessLanguageModel } from './secure-model'
 
 const mocks = vi.hoisted(() => ({ refresh: vi.fn(), catalog: vi.fn(), zdr: vi.fn(), deploymentEnv: vi.fn() }))
 vi.mock('server-only', () => ({}))
@@ -43,9 +45,16 @@ test('model limits expose the scoped QA budget without changing provider limits'
   })
 })
 
+test.each([undefined, 4])('preserves personal execution generation %s through preparation and serialization', async executionGeneration => {
+  const prepared = await preparePersonalHarnessModel({ ...input, access: { ...access, executionGeneration } })
+  expect(prepared.model.personal?.access.executionGeneration).toBe(executionGeneration ?? 0)
+  const serialized = HarnessLanguageModel[WORKFLOW_SERIALIZE](new HarnessLanguageModel(prepared.model))
+  expect(serialized.personal?.access.executionGeneration).toBe(executionGeneration ?? 0)
+})
+
 test('quotes the complete prompt and constructs a credential-free dispatch reference with explicit limits', async () => {
   const prepared = await preparePersonalHarnessModel({ ...input, access: { ...access, accessToken: 'must-not-persist' } as typeof access })
-  expect(prepared.model).toMatchObject({ modelId: 'fixture/model', credentialOwnerId: 'user', allowLowBalanceFallback: false,
+  expect(prepared.model).toMatchObject({ modelId: 'fixture/model', credentialOwnerId: 'user',
     personal: { receiptId: 'model:0', contextWindow: 32_000, maxOutputTokens: 100, memoryEnabled: true } })
   expect(prepared.model.personal!.inputTokenBudget).toBeGreaterThan(1_024)
   expect(prepared.estimatedCostMicros).toBeGreaterThan(1_224)

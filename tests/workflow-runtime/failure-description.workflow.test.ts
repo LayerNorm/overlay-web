@@ -1,6 +1,15 @@
 import { expect, test } from 'vitest'
 import { start } from 'workflow/api'
-import { failureDescriptionFixture } from './failure-description-fixture'
+import { evidenceValidationFixture, failureDescriptionFixture } from './failure-description-fixture'
+
+test('evidence rejection remains correctable across the compiled step boundary', async () => {
+  const run = await start(evidenceValidationFixture, [])
+  expect(await run.returnValue).toEqual({
+    success: false,
+    error: 'Evidence must reference successful observations from this run.',
+    availableEvidenceIds: [],
+  })
+})
 
 test.each([
   ['retry', 'The model request still failed after the AI SDK exhausted its retries. (AI_RetryError)'

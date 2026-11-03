@@ -2,6 +2,7 @@ import 'server-only'
 
 import { createGateway } from 'ai'
 import { getModel } from '@/shared/ai/gateway/model-data'
+import { isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 import { createGatewayCreditTrackingFetch } from '@/server/ai/gateway/gateway-credits'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
 
@@ -31,6 +32,9 @@ export async function resolveOpenRouterApiKey(accessToken?: string): Promise<str
 }
 
 export function getGatewayModelId(modelId: string): string {
+  if (isRetiredHostedModelId(modelId)) {
+    throw new Error('MODEL_RETIRED: This hosted model is no longer available. Select a paid model to continue.')
+  }
   const alias = GATEWAY_MODEL_ID_ALIASES[modelId]
   if (alias) return alias
 
@@ -70,8 +74,8 @@ const DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID = 'deepseek/deepseek-v4-flash'
 
 export function resolveGatewayProviderToolProxyModelId(chatModelId?: string): string {
   if (!chatModelId) return DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID
-  if (chatModelId === 'overlay-free' || chatModelId === 'openrouter/free') {
-    throw new Error('Provider tools are not supported by free router models.')
+  if (isRetiredHostedModelId(chatModelId)) {
+    throw new Error('MODEL_RETIRED: This hosted model is no longer available. Select a paid model to continue.')
   }
   const model = getModel(chatModelId)
   if (!model) return DEFAULT_GATEWAY_TOOL_PROXY_MODEL_ID

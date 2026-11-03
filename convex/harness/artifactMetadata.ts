@@ -187,7 +187,7 @@ export const getMetadata = internalQuery({
     const row = await ctx.db.query('harnessContextArtifacts')
       .withIndex('by_runId_artifactId', q => q.eq('runId', args.runId).eq('artifactId', args.artifactId))
       .unique()
-    if (!row || row.workflowRunId !== args.workflowRunId) return null
+    if (!row) return null
     await assertSourceReadable(ctx, run, args.actorUserId, row)
     return publicMetadata(row)
   },
@@ -201,7 +201,7 @@ export const getMetadataForServer = query({
     const row = await ctx.db.query('harnessContextArtifacts')
       .withIndex('by_runId_artifactId', q => q.eq('runId', args.runId).eq('artifactId', args.artifactId))
       .unique()
-    if (!row || row.workflowRunId !== args.workflowRunId) return null
+    if (!row) return null
     await assertSourceReadable(ctx, run, args.actorUserId, row)
     return publicMetadata(row)
   },

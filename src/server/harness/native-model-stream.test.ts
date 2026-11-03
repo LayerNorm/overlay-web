@@ -47,6 +47,15 @@ beforeEach(() => {
   mocks.append.mockResolvedValue(undefined)
 })
 
+test.each(['｜', '|'])('withholds split DSML protocol from live delivery using %s delimiters', async delimiter => {
+  const parts = [text(`Saved result.\n\n<${delimiter}DS`), text(`ML${delimiter}tool_`),
+    text(`calls><${delimiter}DSML${delimiter}invoke name="harness_update_step">`), finish]
+  expect(await drain(await projectNativeHarnessStream(reference, source(parts)))).toEqual(parts)
+  const visible = mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')
+  expect(visible.trim()).toBe('Saved result.')
+  expect(JSON.stringify(mocks.append.mock.calls)).not.toContain('DSML')
+})
+
 test('native text streams before inference finishes, preserving usage and excluding reasoning', async () => {
   let controller!: ReadableStreamDefaultController<LanguageModelV4StreamPart>
   let written!: () => void

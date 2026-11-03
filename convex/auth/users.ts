@@ -292,7 +292,7 @@ export const markOnboardingComplete = mutation({
       return { ok: true as const }
     }
     // Subscription row is normally created by syncUserProfile; if missing, bootstrap
-    // a free-tier row so onboarding completion can persist.
+    // a personal usage row so onboarding completion can persist.
     const safeEmail = email?.trim() || `${userId}@users.overlay.onboarding`
     const now = Date.now()
     await ctx.db.insert('subscriptions', {

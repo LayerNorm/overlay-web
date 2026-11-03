@@ -1,12 +1,9 @@
-import { createHarnessModelPorts, type HarnessModelRouting } from './model-ports'
+import { createHarnessModelPorts } from './model-ports'
 import { preparePersonalHarnessModel } from './model-preparation'
 import type { PersonalHarnessToolsInput } from './personal-tools'
 
-export type PersonalHarnessModelRouting = HarnessModelRouting
-
 export function createPersonalHarnessModelPorts(
   input: Pick<PersonalHarnessToolsInput, 'access' | 'context'> & { contextBudgetTokens?: number },
-  routing?: PersonalHarnessModelRouting,
 ) {
   return createHarnessModelPorts({
     reference: input.access,
@@ -19,5 +16,5 @@ export function createPersonalHarnessModelPorts(
       purpose,
       options,
     }),
-  }, routing)
+  })
 }

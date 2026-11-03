@@ -5,6 +5,7 @@ import { isSupportedAgentProviderId } from '@/shared/agents/provider-accounts'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import { ComputerAdmission } from '@/server/computers/ComputerAdmission'
 import { ComputerServiceError } from '@/server/computers/ComputerService'
+import { requireWorkspaceExecution, WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
 import { CloudAgentMachineError, CloudAgentMachineService } from './CloudAgentMachineService'
 
 /** The machine service wired to the running server's repositories and account vault. */
@@ -23,8 +24,15 @@ export function createCloudAgentMachineService() {
     assertCanRun: async (input) => {
       await server.workspaceAgentService.get({ actorUserId: input.userId, workspaceId: input.workspaceId, agentId: input.agentId })
       try {
-        await admission.assertCanRun(input)
+        const execution = await requireWorkspaceExecution({
+          userId: input.userId,
+          workspaceId: input.workspaceId,
+        })
+        if (execution.billingEnabled) await admission.assertCanRun(input)
       } catch (error) {
+        if (error instanceof WorkspaceExecutionError) {
+          throw new CloudAgentMachineError(error.message, error.statusCode, error.payload.code)
+        }
         if (error instanceof ComputerServiceError) throw new CloudAgentMachineError(error.message, error.status, error.code)
         throw error
       }

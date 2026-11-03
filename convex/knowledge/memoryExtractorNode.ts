@@ -5,11 +5,10 @@ import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { api, internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
-import { generateObject, type FlexibleSchema } from "ai";
+import { generateObject, NoObjectGeneratedError, type FlexibleSchema } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { calculateGatewayLanguageModelCostOrNull } from '../lib/gatewayCatalogPricing'
-import { isGatewayCreditLow } from '../lib/gatewayCredits'
-import { applyMarkupToDollars } from "../../src/shared/billing/billing-pricing";
+import { applyMarkupToDollars } from '../lib/usageMarkup'
 import { normalizeOpenAiCompatibleBaseUrl } from "../../src/shared/ai/gateway/openai-compatible-base-url";
 import {
   AGENT_MEMORY_EXTRACTION_SYSTEM_PROMPT,
@@ -149,13 +148,7 @@ export const extractFromTurn = internalAction({
       void isPaid;
       const paid = Boolean(resolvedBillingAccountId);
       const configuredModelId = process.env.OVERLAY_MEMORY_EXTRACTION_MODEL_ID?.trim();
-      const lowCredit =
-        !configuredModelId &&
-        paid &&
-        (await isGatewayCreditLow(API_KEY, GATEWAY_BASE_URL));
-      const modelId =
-        configuredModelId ||
-        (paid && !lowCredit ? "google/gemini-2.5-flash-lite" : "openrouter/free");
+      const modelId = configuredModelId || "google/gemini-2.5-flash-lite";
       const model = getExtractorModel(modelId);
       const serverSecret = process.env.INTERNAL_API_SECRET;
       const systemPrompt = targetActor === "agent" ? AGENT_MEMORY_EXTRACTION_SYSTEM_PROMPT : HUMAN_MEMORY_EXTRACTION_SYSTEM_PROMPT;
@@ -230,6 +223,47 @@ export const extractFromTurn = internalAction({
           }
         }
 
+        const settleUsage = async (usage: { inputTokens?: number; outputTokens?: number } | undefined) => {
+          if (reservationId && serverSecret) {
+            const inputTokens = usage?.inputTokens ?? estimatedInputTokens;
+            const outputTokens = usage?.outputTokens ?? opts.maxOutputTokens;
+            const actualCostUsd = await calculateGatewayLanguageModelCostOrNull(ctx, modelId, inputTokens, 0, outputTokens);
+            if (actualCostUsd === null) {
+              await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
+                serverSecret,
+                userId: billingUserId,
+                reservationId,
+                errorMessage: `pricing_missing:${modelId}`,
+              }).catch(() => {});
+            } else {
+              const costCents = applyMarkupToDollars({ providerCostUsd: actualCostUsd });
+              await ctx.runMutation(api.platform.usage.finalizeBudgetReservationByServer, {
+                serverSecret,
+                userId: billingUserId,
+                reservationId,
+                actualCents: costCents,
+                events: [{
+                  type: "generation",
+                  modelId,
+                  inputTokens,
+                  outputTokens,
+                  cachedTokens: 0,
+                  providerCostUsd: actualCostUsd,
+                  cost: costCents,
+                  timestamp: Date.now(),
+                }],
+              }).catch(async (err) => {
+                await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
+                  serverSecret,
+                  userId: billingUserId,
+                  reservationId,
+                  errorMessage: err instanceof Error ? err.message : "finalize_failed",
+                }).catch(() => {});
+              });
+            }
+          }
+        };
+
         let result: { object: T; usage?: { inputTokens?: number; outputTokens?: number } };
         try {
           if (reservationId && serverSecret) {
@@ -248,7 +282,18 @@ export const extractFromTurn = internalAction({
             maxOutputTokens: opts.maxOutputTokens,
           })) as { object: T; usage?: { inputTokens?: number; outputTokens?: number } };
         } catch (err) {
-          if (reservationId && serverSecret) {
+          const usage = NoObjectGeneratedError.isInstance(err) ? err.usage : undefined;
+          const inputTokens = usage?.inputTokens;
+          const outputTokens = usage?.outputTokens;
+          // Schema rejection happens after inference. Bill observed usage exactly as
+          // a successful response; never accept the invalid object as a memory.
+          const measured = typeof inputTokens === "number" && Number.isSafeInteger(inputTokens) && inputTokens >= 0
+            && typeof outputTokens === "number" && Number.isSafeInteger(outputTokens) && outputTokens >= 0;
+          let handledUsage = false;
+          if (measured) {
+            try { await settleUsage({ inputTokens, outputTokens }); handledUsage = true; } catch { /* Reconcile below. */ }
+          }
+          if (!handledUsage && reservationId && serverSecret) {
             await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
               serverSecret,
               userId: billingUserId,
@@ -260,45 +305,7 @@ export const extractFromTurn = internalAction({
           return { status: "error" };
         }
 
-        if (reservationId && serverSecret) {
-          const usage = result.usage;
-          const inputTokens = usage?.inputTokens ?? estimatedInputTokens;
-          const outputTokens = usage?.outputTokens ?? opts.maxOutputTokens;
-          const actualCostUsd = await calculateGatewayLanguageModelCostOrNull(ctx, modelId, inputTokens, 0, outputTokens);
-          if (actualCostUsd === null) {
-            await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
-              serverSecret,
-              userId: billingUserId,
-              reservationId,
-              errorMessage: `pricing_missing:${modelId}`,
-            }).catch(() => {});
-          } else {
-            const costCents = applyMarkupToDollars({ providerCostUsd: actualCostUsd });
-            await ctx.runMutation(api.platform.usage.finalizeBudgetReservationByServer, {
-              serverSecret,
-              userId: billingUserId,
-              reservationId,
-              actualCents: costCents,
-              events: [{
-                type: "generation",
-                modelId,
-                inputTokens,
-                outputTokens,
-                cachedTokens: 0,
-                providerCostUsd: actualCostUsd,
-                cost: costCents,
-                timestamp: Date.now(),
-              }],
-            }).catch(async (err) => {
-              await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
-                serverSecret,
-                userId: billingUserId,
-                reservationId,
-                errorMessage: err instanceof Error ? err.message : "finalize_failed",
-              }).catch(() => {});
-            });
-          }
-        }
+        await settleUsage(result.usage);
         return { status: "ok", object: result.object };
       };
 

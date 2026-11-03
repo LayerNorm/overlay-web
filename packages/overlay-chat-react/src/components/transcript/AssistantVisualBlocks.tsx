@@ -8,6 +8,7 @@ import {
 } from '@overlay/chat-core'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { SourceCitationMap } from '../../lib/source-citations'
+import { collectToolResourceHrefs } from '../markdown/tool-resource-links'
 import type {
   AttachmentPreview,
   AttachmentPreviewOpenOptions,
@@ -83,6 +84,7 @@ export function AssistantVisualBlocks({
   const segments = useMemo(() => buildAssistantVisualSegments(blocks), [blocks])
   const toolChainFlags = useMemo(() => computeToolChainFlags(segments), [segments])
   const webSources = useMemo(() => collectWebSourcesFromBlocks(blocks), [blocks])
+  const toolResourceHrefs = useMemo(() => collectToolResourceHrefs(blocks), [blocks])
   const lastTextBlockIndex = useMemo(() => {
     let idx = -1
     for (let i = 0; i < blocks.length; i++) {
@@ -132,6 +134,7 @@ export function AssistantVisualBlocks({
     webSources,
     suppressTypingIndicator,
     resolveFileHref,
+    toolResourceHrefs,
     onOpenDraft,
     onCreateAutomationDraft,
     onOpenAttachmentPreview,
@@ -141,7 +144,7 @@ export function AssistantVisualBlocks({
   }), [
     blockKeyPrefix, markdownKeyPrefix, blocks.length, lastTextBlockIndex,
     isStreaming, isTextStreaming, sourceCitations, webSources,
-    suppressTypingIndicator, resolveFileHref, onOpenDraft, onCreateAutomationDraft,
+    suppressTypingIndicator, resolveFileHref, toolResourceHrefs, onOpenDraft, onCreateAutomationDraft,
     onOpenAttachmentPreview, generatedUiConnectorActions, generatedUiReadOnly, onGeneratedUiChange,
   ])
 
