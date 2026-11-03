@@ -21,6 +21,7 @@ function service(provision: Record<string, unknown>, lease: Record<string, unkno
       get: async () => provision,
       listReclaimable: async () => [],
       claimReclaim: async () => null,
+      markReclaimPending: async () => true,
       finishReclaim: async () => false,
     } as never,
     now: () => now,
@@ -104,4 +105,97 @@ test('failed provider deletion stays retryable and never resumes or finishes the
   assert.deepEqual(await service.reclaimAbandonedProvisions(), { reclaimed: 0, skipped: 0, failed: 1 })
   assert.equal(deletes, 2)
   assert.equal(finishes, 0)
+})
+
+test('explicit teardown queues ready provision cleanup until its lease is released', async () => {
+  let provision: Record<string, unknown> = {
+    workspaceId: 'workspace', agentId: 'agent', userId: 'owner', phase: 'ready',
+    environmentId: 'cloud-env', provider: 'box', providerReference: 'provider-machine',
+    allocationKey: 'allocation', createdAt: 1, updatedAt: 2,
+  }
+  const lease = {
+    id: 'lease', workspaceId: 'workspace', environmentId: 'cloud-env',
+    provider: 'box', providerReference: 'provider-machine', status: 'active' as 'active' | 'cleanup_failed' | 'released',
+  }
+  let environmentStatus = 'approved'
+  let marked = 0
+  let deletions = 0
+  const audits: Array<{ metadata?: Record<string, unknown> }> = []
+  const retirement = new RetiredCloudAgentService({
+    audit: { record: async (entry: { metadata?: Record<string, unknown> }) => { audits.push(entry) } } as never,
+    controlPlane: { revokeEnvironment: async () => { environmentStatus = 'revoked' } },
+    repository: {
+      listBindings: async () => [],
+      getEnvironment: async () => ({ id: 'cloud-env', kind: 'overlay_cloud', status: environmentStatus }),
+      getActiveSandboxLease: async () => lease.status === 'active' ? lease : null,
+      listSandboxLeases: async ({ statuses }) => statuses.includes(lease.status) ? [lease] : [],
+    } as never,
+    provisions: {
+      get: async () => ({ ...provision }),
+      listReclaimable: async () => provision.reclaimPending ? [{ ...provision }] : [],
+      claimReclaim: async () => null,
+      markReclaimPending: async (args: { workspaceId: string; agentId: string; allocationKey: string; now: number }) => {
+        assert.deepEqual(args, { workspaceId: 'workspace', agentId: 'agent', allocationKey: 'allocation', now })
+        marked += 1
+        provision = { ...provision, phase: 'failed', error: 'Hosted Cloud runtime retired; provider cleanup is pending.', reclaimPending: true, updatedAt: now }
+        return true
+      },
+      finishReclaim: async (args: { workspaceId: string; agentId: string; allocationKey: string; providerReference: string; now: number }) => {
+        assert.deepEqual(args, {
+          workspaceId: 'workspace', agentId: 'agent', allocationKey: 'allocation',
+          providerReference: 'provider-machine', now,
+        })
+        provision = {
+          ...provision,
+          provider: undefined,
+          providerReference: undefined,
+          allocationKey: undefined,
+          allocatedAt: undefined,
+          reclaimPending: undefined,
+          updatedAt: now,
+        }
+        return true
+      },
+    } as never,
+    runtime: () => ({
+      reconnect: async (reference, options) => {
+        assert.equal(reference, 'provider-machine')
+        assert.equal(options?.resume, false)
+        return {
+          status: async () => 'stopped',
+          delete: async () => { deletions += 1 },
+        }
+      },
+    } as never),
+    now: () => now,
+  })
+
+  assert.deepEqual(await retirement.teardown({
+    actorUserId: 'owner', workspaceId: 'workspace', agentId: 'agent',
+  }), { cleanupPending: 1 })
+  assert.equal(marked, 1)
+  assert.equal(provision.reclaimPending, true)
+  assert.deepEqual(await retirement.reclaimAbandonedProvisions(), { reclaimed: 0, skipped: 1, failed: 0 })
+  assert.equal(deletions, 0)
+
+  lease.status = 'cleanup_failed'
+  assert.equal((await retirement.status({ workspaceId: 'workspace', agentId: 'agent' })).machine?.state, 'stopped')
+  assert.deepEqual(await retirement.reclaimAbandonedProvisions(), { reclaimed: 0, skipped: 1, failed: 0 })
+  assert.equal(deletions, 0)
+
+  lease.status = 'released'
+  assert.deepEqual(await retirement.reclaimAbandonedProvisions(), { reclaimed: 1, skipped: 0, failed: 0 })
+  assert.equal(deletions, 1)
+  assert.equal(provision.providerReference, undefined)
+  assert.equal(provision.allocationKey, undefined)
+  assert.deepEqual(audits[0]?.metadata, {
+    workspaceId: 'workspace',
+    agentId: 'agent',
+    provider: 'box',
+    allocationKey: 'allocation',
+    providerReference: 'provider-machine',
+  })
+  assert.deepEqual(await retirement.teardown({
+    actorUserId: 'owner', workspaceId: 'workspace', agentId: 'agent',
+  }), { cleanupPending: 0 })
 })

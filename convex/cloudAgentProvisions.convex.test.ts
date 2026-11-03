@@ -119,4 +119,32 @@ describe('Convex cloud agent provisions', () => {
       providerReference: 'bx_1',
     })
   })
+
+  test('verified reclaim clears provider references and allocation key', async () => {
+    const convex = convexTest(schema, modules)
+    await convex.run(ctx => ctx.db.insert('cloudAgentProvisions', {
+      workspaceId: key.workspaceId,
+      agentId: key.agentId,
+      userId: 'u',
+      phase: 'failed',
+      allocationKey: 'allocation-1',
+      provider: 'box',
+      providerReference: 'bx_1',
+      allocatedAt: 3,
+      reclaimPending: true,
+      createdAt: 1,
+      updatedAt: 3,
+    }))
+
+    expect(await convex.mutation(mutation('finishReclaimByServer'), {
+      ...key, allocationKey: 'allocation-1', providerReference: 'bx_1', now: 4,
+    })).toBe(true)
+    const provision = await convex.query(query('getByServer'), key)
+    expect(provision?.phase).toBe('failed')
+    expect(provision?.error).toBeUndefined()
+    expect(provision?.allocationKey).toBeUndefined()
+    expect(provision?.provider).toBeUndefined()
+    expect(provision?.providerReference).toBeUndefined()
+    expect(provision?.reclaimPending).toBeUndefined()
+  })
 })

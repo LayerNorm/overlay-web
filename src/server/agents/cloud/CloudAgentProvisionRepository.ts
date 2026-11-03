@@ -20,7 +20,6 @@ export type CloudAgentProvisionRecord = {
 
 export interface CloudAgentProvisionRepository {
   get(args: { workspaceId: string; agentId: string }): Promise<CloudAgentProvisionRecord | null>
-  /** Starts a record, or restarts a failed one. Returns started:false when one is already active or done. */
   claimReclaim(args: { workspaceId: string; agentId: string; expectedUpdatedAt: number; now: number }): Promise<CloudAgentProvisionRecord | null>
   markReclaimPending(args: { workspaceId: string; agentId: string; allocationKey: string; now: number }): Promise<boolean>
   finishReclaim(args: { workspaceId: string; agentId: string; allocationKey: string; providerReference: string; now: number }): Promise<boolean>

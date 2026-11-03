@@ -27,7 +27,7 @@ export class RetiredCloudAgentService {
     audit: AuditService
     controlPlane: RetirementControlPlane
     repository: Pick<ConnectedAgentRepository, 'listBindings' | 'getEnvironment' | 'getActiveSandboxLease' | 'listSandboxLeases'>
-    provisions: Pick<CloudAgentProvisionRepository, 'get' | 'listReclaimable' | 'claimReclaim' | 'finishReclaim'>
+    provisions: Pick<CloudAgentProvisionRepository, 'get' | 'listReclaimable' | 'claimReclaim' | 'markReclaimPending' | 'finishReclaim'>
     runtime?: (provider?: string) => SandboxRuntime
     now?: () => number
   }) {}
@@ -56,10 +56,7 @@ export class RetiredCloudAgentService {
       if (candidate?.kind === 'overlay_cloud') environment = candidate
     }
     const lease = environment
-      ? await this.dependencies.repository.getActiveSandboxLease({
-        workspaceId: args.workspaceId,
-        environmentId: environment.id,
-      })
+      ? await this.findCleanupLease(args.workspaceId, environment.id)
       : null
     const machine = lease ? await this.readMachine(lease) : null
     const parts = {
@@ -105,6 +102,14 @@ export class RetiredCloudAgentService {
     const environmentIds = new Set(bindings.map((binding) => binding.environmentId))
     if (provision?.environmentId) environmentIds.add(provision.environmentId)
     let cleanupPending = 0
+    if (provision?.providerReference && provision.allocationKey) {
+      await this.dependencies.provisions.markReclaimPending({
+        workspaceId: args.workspaceId,
+        agentId: args.agentId,
+        allocationKey: provision.allocationKey,
+        now: this.now(),
+      })
+    }
     for (const environmentId of environmentIds) {
       const environment = await this.dependencies.repository.getEnvironment({
         workspaceId: args.workspaceId,
@@ -191,7 +196,13 @@ export class RetiredCloudAgentService {
         outcome: 'success',
         resourceType: 'agent_environment',
         ...(claimed.environmentId ? { resourceId: claimed.environmentId } : {}),
-        metadata: { workspaceId: claimed.workspaceId, agentId: claimed.agentId, provider },
+        metadata: {
+          workspaceId: claimed.workspaceId,
+          agentId: claimed.agentId,
+          provider,
+          allocationKey,
+          providerReference,
+        },
       }).catch((_error) => undefined)
       return 'reclaimed'
     } catch (_error) {
