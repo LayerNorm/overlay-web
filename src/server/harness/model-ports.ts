@@ -108,9 +108,9 @@ export function createHarnessModelPorts(input: {
       return true
     },
     prepareModel: async request => {
-      const limits = await readHarnessModelLimits(candidates[candidateIndex])
+      const limits = await readHarnessModelLimits(candidates[candidateIndex], reference.actorUserId)
       const modelContextWindow = limits.contextWindow ?? FALLBACK_CONTEXT_WINDOW
-      const contextWindow = Math.min(contextBudgetTokens, modelContextWindow)
+      const contextWindow = Math.min(input.contextBudgetTokens ?? limits.previewContextBudgetTokens ?? contextBudgetTokens, modelContextWindow)
       const maxOutputTokens = Math.min(request.settings.maxOutputTokens ?? 8_192,
         limits.maxOutputTokens ?? 8_192, Math.max(1, Math.floor(contextWindow / 4)))
       let state = await readHarnessState(reference)

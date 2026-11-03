@@ -1,9 +1,10 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
-import { preparePersonalHarnessModel } from './model-preparation'
+import { preparePersonalHarnessModel, readHarnessModelLimits } from './model-preparation'
 
-const mocks = vi.hoisted(() => ({ refresh: vi.fn(), catalog: vi.fn(), zdr: vi.fn() }))
+const mocks = vi.hoisted(() => ({ refresh: vi.fn(), catalog: vi.fn(), zdr: vi.fn(), deploymentEnv: vi.fn() }))
 vi.mock('server-only', () => ({}))
+vi.mock('@/server/env/deployment-env', () => ({ deploymentEnv: mocks.deploymentEnv }))
 vi.mock('./personal-access', () => ({ refreshPersonalHarnessAccess: mocks.refresh }))
 vi.mock('@/server/ai/gateway/gateway-catalog', () => ({ getGatewayCatalogModel: mocks.catalog }))
 vi.mock('@/shared/ai/gateway/model-data', () => ({ modelSupportsZeroDataRetention: mocks.zdr }))
@@ -20,10 +21,26 @@ const input = { access, context, receiptId: 'model:0', options: {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.deploymentEnv.mockReturnValue({})
   mocks.zdr.mockReturnValue(false)
   mocks.refresh.mockImplementation(async (_access, supplied) => ({ ...supplied, entitlements: { confidential: 'must-not-persist' } }))
   mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 32_000, maxTokens: 1_000,
     pricing: { input: '0.000001', output: '0.000002' } })
+})
+
+test('model limits expose the scoped QA budget without changing provider limits', async () => {
+  mocks.deploymentEnv.mockReturnValue({
+    VERCEL_ENV: 'preview', OVERLAY_DEPLOYMENT_ENV: 'preview',
+    NEXT_PUBLIC_APP_URL: 'https://pr-384.preview.getoverlay.io',
+    VERCEL_GIT_PULL_REQUEST_ID: '384', PREVIEW_LOGIN_USER_ID: 'user_qa',
+    HARNESS_PREVIEW_CONTEXT_TOKENS: '16000',
+  })
+  expect(await readHarnessModelLimits('fixture/model', 'user_qa')).toEqual({
+    contextWindow: 32_000, maxOutputTokens: 1_000, previewContextBudgetTokens: 16_000,
+  })
+  expect(await readHarnessModelLimits('fixture/model', 'user_other')).toEqual({
+    contextWindow: 32_000, maxOutputTokens: 1_000,
+  })
 })
 
 test('quotes the complete prompt and constructs a credential-free dispatch reference with explicit limits', async () => {

@@ -407,6 +407,16 @@ authorized Harness action and a signed Convex storage upload URL, while reads
 are returned in bounded chunks. Reopened excerpts are explicitly incomplete,
 including tail reads, and preserve the source identity.
 
+For controlled compaction QA, set `HARNESS_PREVIEW_CONTEXT_TOKENS=16000` on only
+the feature branch's Vercel Preview environment before its exact-SHA build.
+This optional working-context override applies only to `PREVIEW_LOGIN_USER_ID`
+on a canonical isolated PR origin with both deployment markers set to `preview`.
+It accepts integers from 8192 through 32000; missing or invalid values, other
+actors and production retain normal budgets. Explicit runtime test budgets still
+take precedence. Provider context limits, output limits, billing and reservation
+rules are unchanged. Verify persisted compaction attempts and final verification,
+not merely a short response or a completed status, then remove the QA override.
+
 A connected agent gets the same Overlay workspace tools a native agent with the same grant gets —
 notes (including the patch-style `edit_note`, `replace_note_section`, and `append_to_note`), files
 (`list_files`, `read_file`, `write_file`, `create_folder`, `move_file`), memory, knowledge search,

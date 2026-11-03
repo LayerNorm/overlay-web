@@ -7,11 +7,19 @@ import { quoteHarnessModel } from './model-quote'
 import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './personal-access'
 import { serializePersonalHarnessAuthentication } from './personal-authentication'
 import type { HarnessModelReference } from './secure-model'
+import { deploymentEnv } from '@/server/env/deployment-env'
+import { previewHarnessContextBudget } from './preview-context-budget'
 
-export async function readHarnessModelLimits(modelId: string): Promise<{ contextWindow: number | null; maxOutputTokens: number | null }> {
+export async function readHarnessModelLimits(modelId: string, actorUserId?: string): Promise<{
+  contextWindow: number | null
+  maxOutputTokens: number | null
+  previewContextBudgetTokens?: number
+}> {
   'use step'
   const catalog = await getGatewayCatalogModel(modelId)
+  const previewContextBudgetTokens = previewHarnessContextBudget(deploymentEnv(), actorUserId)
   return {
+    ...(previewContextBudgetTokens === undefined ? {} : { previewContextBudgetTokens }),
     contextWindow: catalog?.type === 'language' && Number.isSafeInteger(catalog.contextWindow) && catalog.contextWindow! > 0
       ? catalog.contextWindow! : null,
     maxOutputTokens: catalog?.type === 'language' && Number.isSafeInteger(catalog.maxTokens) && catalog.maxTokens! > 0
