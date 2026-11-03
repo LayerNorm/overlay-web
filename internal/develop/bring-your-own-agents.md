@@ -1878,3 +1878,7 @@ Authorized artifact reopens persist a bounded excerpt observation with the origi
 source revision for final verification. Media reopens record selection metadata,
 not inferred image content; denied reads create no evidence, and rereading an
 artifact never certifies a new source mutation.
+
+Artifact-reading milestones declare `evidenceTools: ["harness_read_artifact"]`.
+These control-tool observations can prove the read, while source-tool writes
+continue to require their own successful execution evidence.

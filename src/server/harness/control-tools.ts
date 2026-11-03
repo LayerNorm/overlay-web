@@ -14,7 +14,7 @@ const completionErrors = new Set<string>([
 const dependencyError = HARNESS_STEP_VALIDATION.dependencies
 const reusedToolResultEvidenceError = HARNESS_STEP_VALIDATION.reusedToolEvidence
 const reportingHint = 'If this milestone only reports prior results, use harness_set_plan to set answerOnly: true, omit evidenceTools, and set requiresVerification: false for this milestone. Preserve every other milestone exactly, including completed action IDs, titles, dependencies and acceptance criteria. Then return the requested answer using the saved result; do not repeat the completed action.'
-const completionHint = `Cite tool:<id> evidence that supports this milestone. ${reportingHint}`
+const completionHint = `Cite tool:<id> evidence that supports this milestone. For a milestone that reopens an artifact, declare evidenceTools: ["harness_read_artifact"] with harness_set_plan; a reopened excerpt cannot prove a new source-tool write. ${reportingHint}`
 
 function artifactIdentity(metadata: HarnessArtifactReadResult['metadata']): string {
   const resource = metadata.resource
@@ -150,7 +150,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       execute: async ({ evidenceId, cursor, limit }) => ports.readEvidence(evidenceId ?? '', cursor, limit),
     }),
     harness_read_artifact: tool({
-      description: 'Reopen a private tool-result artifact using a bounded text range or a selected media-part index. Access is reauthorized against the original source tool.',
+      description: 'Reopen a private tool-result artifact using a bounded text range or a selected media-part index. Access is reauthorized against the original source tool. Read milestones should declare evidenceTools: ["harness_read_artifact"]; this observation cannot prove a new source-tool write.',
       inputSchema: z.object({
         artifactId: z.string().min(67).max(67).regex(/^ha_[a-f0-9]{64}$/),
         start: z.number().int().nonnegative().optional(),

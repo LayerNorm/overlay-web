@@ -970,3 +970,22 @@ test('harness_read_child evidence matches its declared tool ID', () => {
     id: 'delegate', status: 'done', evidenceRefs: ['child-result'],
   }, now).plan[0]?.status, 'done')
 })
+
+test('authorized artifact observations prove artifact reads but cannot certify source writes', () => {
+  const initial = { ...make(), policy: { ...make().policy, allowedToolIds: ['get_note', 'create_note'] } }
+  const read = { id: 'reopen', title: 'Read the omitted source', dependsOn: [],
+    acceptanceCriteria: ['Read the omitted excerpt'], requiresVerification: false, evidenceTools: ['harness_read_artifact'] }
+  const planned = replaceHarnessPlan(initial, [read], now)
+  const observed = recordHarnessEvidence(planned, {
+    id: 'tool:reopen', kind: 'tool_result', source: 'harness_read_artifact',
+    resource: { id: 'source', revision: 'rev-1', operation: 'create_note' },
+    summary: 'Reopened the original source excerpt', verdict: 'observed', createdAt: now,
+  }, now)
+  assert.equal(transitionHarnessStep(observed, {
+    id: 'reopen', status: 'done', evidenceRefs: ['tool:reopen'],
+  }, now).plan[0]?.status, 'done')
+  const writePlan = replaceHarnessPlan(observed, [{ ...read, evidenceTools: ['create_note'] }], now)
+  assert.throws(() => transitionHarnessStep(writePlan, {
+    id: 'reopen', status: 'done', evidenceRefs: ['tool:reopen'],
+  }, now), /evidenceTools/)
+})

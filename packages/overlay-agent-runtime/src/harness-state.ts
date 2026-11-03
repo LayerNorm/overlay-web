@@ -318,7 +318,8 @@ function validateStepEvidenceTools(state: HarnessSnapshot, step: HarnessPlanInpu
   if (!tools.length || tools.length > 8 || tools.some(tool => !tool.trim() || tool.length > 256)) {
     throw new Error(`Milestone "${step.id}" must list between one and eight valid evidenceTools.`)
   }
-  const unsupported = tools.find(tool => tool !== 'harness_read_child' && !state.policy.allowedToolIds.includes(tool))
+  const unsupported = tools.find(tool => tool !== 'harness_read_child' && tool !== 'harness_read_artifact'
+    && !state.policy.allowedToolIds.includes(tool))
   if (unsupported) throw new Error(`Milestone "${step.id}" lists unsupported evidence tool "${unsupported}".`)
 }
 
