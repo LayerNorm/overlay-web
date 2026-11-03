@@ -219,16 +219,16 @@ describe('durable harness runs', () => {
     expect(first.snapshot[recoveryKey]).toEqual(loaded?.[recoveryKey])
   })
 
-  test.each(['budget', 'model_unavailable', 'route_capacity'] as const)('persists a zero-usage %s rejection through the mutation boundary', async rejectionReason => {
+  test.each(['budget', 'model_unavailable'] as const)('persists a zero-usage %s rejection through the mutation boundary', async rejectionReason => {
     const convex = convexTest(schema, modules)
     const input = admission('rejection', await seedConversation(convex))
     await admit(convex, input)
     let state = (await apply(convex, input, 'reserve', 0, { type: 'reserve_model', id: 'model:0', maxCostMicros: 600 })).snapshot
     if (rejectionReason !== 'budget') {
       state = (await apply(convex, input, 'dispatch', state.revision, { type: 'bind_model_dispatch', id: 'model:0',
-        modelId: 'openrouter/free', billingReservationId: 'billing-reservation' })).snapshot
+        modelId: 'fixture/model', billingReservationId: 'billing-reservation' })).snapshot
     }
-    const receipt = { id: 'model:0', modelId: 'openrouter/free', provider: 'overlay-free-router',
+    const receipt = { id: 'model:0', modelId: 'fixture/model', provider: 'fixture',
       inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
       contextWindow: null, costMicros: 0, costSource: 'catalog' as const, rejectionReason }
     await expect(apply(convex, input, 'invalid-rejection', state.revision, {
@@ -246,68 +246,25 @@ describe('durable harness runs', () => {
     expect(replay.snapshot.latestReceipt).toEqual(receipt)
   })
 
-  test.each(['route_interrupted', 'route_unavailable'] as const)('accepts %s with a released zero-cost hold and rejects paid or BYOK models', async rejectionReason => {
+  test.each(['route_capacity', 'route_interrupted', 'route_unavailable'] as const)('rejects new %s receipts without releasing the reservation', async rejectionReason => {
     const convex = convexTest(schema, modules)
     const input = admission('route-interruption', await seedConversation(convex))
     await admit(convex, input)
-    let state = (await apply(convex, input, 'route-interruption-reserve-0', 0, {
-      type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
+    const state = (await apply(convex, input, 'route-interruption-reserve-0', 0, {
+      type: 'reserve_model', id: 'model:0', maxCostMicros: 600,
     })).snapshot
-    state = (await apply(convex, input, 'route-interruption-dispatch-0', state.revision, {
-      type: 'bind_model_dispatch', id: 'model:0', modelId: 'openrouter/free', billingReservationId: null,
+    const dispatched = (await apply(convex, input, 'route-interruption-dispatch-0', state.revision, {
+      type: 'bind_model_dispatch', id: 'model:0', modelId: 'fixture/model', billingReservationId: 'hold',
     })).snapshot
-
-    for (let index = 0; index < 3; index += 1) {
-      const receipt = {
-        id: `model:${index}`,
-        modelId: 'openrouter/free',
-        provider: 'overlay-free-router',
-        inputTokens: 0,
-        outputTokens: 0,
-        reasoningTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        contextWindow: null,
-        costMicros: 0,
-        costSource: 'catalog' as const,
-        rejectionReason,
-      }
-      if (index > 0) {
-        state = (await apply(convex, input, `route-interruption-reserve-${index}`, state.revision, {
-          type: 'reserve_model', id: receipt.id, maxCostMicros: 0,
-        })).snapshot
-        state = (await apply(convex, input, `route-interruption-dispatch-${index}`, state.revision, {
-          type: 'bind_model_dispatch', id: receipt.id, modelId: 'openrouter/free', billingReservationId: null,
-        })).snapshot
-      }
-      state = (await apply(convex, input, `route-interruption-receipt-${index}`, state.revision, {
-        type: 'record_receipt', receipt,
-      })).snapshot
-      expect(state.modelReservation).toBeUndefined()
-      expect(state.routeInterruptionCount ?? 0).toBe(rejectionReason === 'route_interrupted' ? index + 1 : 0)
-      expect(state.modelRecovery).toMatchObject({ code: rejectionReason, attempt: index + 1 })
+    const receipt = {
+      id: 'model:0', modelId: 'fixture/model', provider: 'fixture',
+      inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+      contextWindow: null, costMicros: 0, costSource: 'catalog' as const, rejectionReason,
     }
-    expect((await get(convex, input.runId))?.modelRecovery).toMatchObject({ code: rejectionReason, attempt: 3 })
-
-    for (const [index, modelId] of ['fixture/paid', 'byok/connection/model'].entries()) {
-      const rejectedConvex = convexTest(schema, modules)
-      const rejectedInput = admission(`route-interruption-rejected-${index}`, await seedConversation(rejectedConvex))
-      await admit(rejectedConvex, rejectedInput)
-      let reserved = (await apply(rejectedConvex, rejectedInput, 'reserve', 0, {
-        type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
-      })).snapshot
-      reserved = (await apply(rejectedConvex, rejectedInput, 'dispatch', reserved.revision, {
-        type: 'bind_model_dispatch', id: 'model:0', modelId, billingReservationId: null,
-      })).snapshot
-      await expect(apply(rejectedConvex, rejectedInput, 'reject', reserved.revision, {
-        type: 'record_receipt',
-        receipt: {
-          id: 'model:0', modelId, provider: 'overlay-free-router',
-          inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
-          contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason,
-        },
-      })).rejects.toThrow(/route rejection requires/i)
-    }
+    await expect(apply(convex, input, 'route-retired-receipt', dispatched.revision, {
+      type: 'record_receipt', receipt,
+    })).rejects.toThrow('This route receipt is retired.')
+    expect((await get(convex, input.runId))?.modelReservation).toEqual(dispatched.modelReservation)
   })
 
   test.each([
@@ -383,11 +340,11 @@ describe('durable harness runs', () => {
     expect((await get(convex, input.runId))?.usage.costMicros).toBe(500)
   })
 
-  test('failed runs release only zero-cost unbilled free-model reservations', async () => {
+  test('failed runs keep unresolved reservations without fabricating receipts', async () => {
     const scenarios = [
-      { runId: 'failed-free-model', modelId: 'openrouter/free', billingReservationId: null, maxCostMicros: 0, released: true },
-      { runId: 'failed-paid-model', modelId: 'fixture/model', billingReservationId: null, maxCostMicros: 500, released: false },
-      { runId: 'failed-billed-free-model', modelId: 'openrouter/free', billingReservationId: 'billing-hold', maxCostMicros: 0, released: false },
+      { runId: 'failed-zero-cost-model', modelId: 'fixture/model', billingReservationId: null, maxCostMicros: 0 },
+      { runId: 'failed-paid-model', modelId: 'fixture/model', billingReservationId: null, maxCostMicros: 500 },
+      { runId: 'failed-billed-model', modelId: 'fixture/model', billingReservationId: 'billing-hold', maxCostMicros: 0 },
     ] as const
 
     for (const scenario of scenarios) {
@@ -406,34 +363,21 @@ describe('durable harness runs', () => {
       })
       expect(failed.snapshot.status).toBe('failed')
       const reloaded = await get(convex, scenario.runId)
-      if (scenario.released) {
-        expect(reloaded?.modelReservation).toBeUndefined()
-        expect(reloaded?.latestReceipt).toMatchObject({
-          id: `model:${scenario.runId}`,
-          modelId: 'openrouter/free',
-          provider: 'overlay-free-router',
-          inputTokens: 0,
-          outputTokens: 0,
-          costMicros: 0,
-        })
-        expect(reloaded?.latestReceipt).not.toHaveProperty('rejectionReason')
-      } else {
-        expect(reloaded?.modelReservation).toMatchObject({
-          id: `model:${scenario.runId}`,
-          maxCostMicros: scenario.maxCostMicros,
-          dispatch: {
-            modelId: scenario.modelId,
-            billingReservationId: scenario.billingReservationId,
-          },
-        })
-        expect(reloaded?.latestReceipt).toBeUndefined()
-      }
+      expect(reloaded?.modelReservation).toMatchObject({
+        id: `model:${scenario.runId}`,
+        maxCostMicros: scenario.maxCostMicros,
+        dispatch: {
+          modelId: scenario.modelId,
+          billingReservationId: scenario.billingReservationId,
+        },
+      })
+      expect(reloaded?.latestReceipt).toBeUndefined()
     }
   })
 
-  test('cancelled runs release a zero-cost unbilled free-model reservation without a summary id', async () => {
+  test('cancelled runs retain an unresolved zero-cost reservation without fabricating a receipt', async () => {
     const convex = convexTest(schema, modules)
-    const input = admission('cancelled-free-model', await seedConversation(convex))
+    const input = admission('cancelled-zero-cost-model', await seedConversation(convex))
     await admit(convex, input)
     const reserved = await apply(convex, input, 'reserve', 0, {
       type: 'reserve_model', id: 'model:10', maxCostMicros: 0,
@@ -446,15 +390,8 @@ describe('durable harness runs', () => {
       type: 'terminate', status: 'cancelled', reason: 'User stopped.',
     })
     expect(cancelled.snapshot.status).toBe('cancelled')
-    expect(cancelled.snapshot.modelReservation).toBeUndefined()
-    expect(cancelled.snapshot.latestReceipt).toMatchObject({
-      id: 'model:10',
-      provider: 'overlay-free-router',
-      inputTokens: 0,
-      outputTokens: 0,
-      costMicros: 0,
-    })
-    expect(cancelled.snapshot.latestReceipt).not.toHaveProperty('rejectionReason')
+    expect(cancelled.snapshot.modelReservation).toEqual(dispatched.snapshot.modelReservation)
+    expect(cancelled.snapshot.latestReceipt).toBeUndefined()
   })
 
   test('reducer rejection exposes a typed operation error for workflow retry handling', async () => {

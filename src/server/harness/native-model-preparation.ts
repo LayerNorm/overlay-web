@@ -22,7 +22,7 @@ export async function prepareNativeHarnessModel(input: {
   return {
     model: {
       modelId: input.context.modelId, credentialOwnerId: access.actorUserId,
-      sessionId: access.conversationId, allowLowBalanceFallback: false,
+      sessionId: access.conversationId,
       native: {
         access: {
           actorUserId: access.actorUserId, runId: access.runId, workflowRunId: access.workflowRunId,

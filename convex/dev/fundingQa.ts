@@ -40,7 +40,9 @@ export const init = internalMutation({
       billingAccountId: account.billingAccountId, provider: 'preview-fixture', planKind: 'paid', planVersion: 'variable_v2',
       planAmountCents: 800, markupBasisPoints: account.markupBasisPoints, status: 'active',
       autoTopUpEnabled: false, autoTopUpAmountCents: 0,
-      currentPeriodStart: now, currentPeriodEnd: now + 30 * 86_400_000, createdAt: now, updatedAt: now,
+      currentPeriodStart: now, currentPeriodEnd: now + 30 * 86_400_000,
+      paidInvoiceId: `preview-fixture:${workspaceId}`, paidPeriodStart: now, paidPeriodEnd: now + 30 * 86_400_000,
+      createdAt: now, updatedAt: now,
     })
     const balance = await ensureEmptyBalance(ctx, account.billingAccountId)
     await ctx.db.patch(balance._id, { includedMicros: 10_000, version: balance.version + 1, updatedAt: now })

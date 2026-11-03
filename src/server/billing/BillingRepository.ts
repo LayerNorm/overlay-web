@@ -8,6 +8,8 @@ import type {
 } from '@/shared/billing/billing-payer'
 
 export type BillingEntitlementsRecord = {
+  paidPeriodStart?: number
+  paidPeriodEnd?: number
   billingAccountId?: string
   tier: 'free' | 'pro' | 'max'
   planKind: 'free' | 'paid'
@@ -38,6 +40,8 @@ export type BillingEntitlementsRecord = {
 }
 
 export type BillingSubscriptionRecord = {
+  paidPeriodStart?: number
+  paidPeriodEnd?: number
   billingAccountId?: string
   userId?: string
   email?: string
@@ -65,6 +69,10 @@ export type BillingAccountEntitlementsRecord = BillingEntitlementsRecord & {
 }
 
 export interface BillingRepository {
+  confirmBillingAccountPaidPeriod(args: {
+    billingAccountId: string; stripeCustomerId: string; stripeSubscriptionId: string
+    paidInvoiceId: string; paidPeriodStart: number; paidPeriodEnd: number; amountCents: number
+  }): Promise<{ applied: boolean }>
   ensurePersonalBillingAccount(args: {
     userId: string
   }): Promise<BillingAccountRecord>

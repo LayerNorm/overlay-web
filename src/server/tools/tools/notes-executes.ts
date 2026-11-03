@@ -11,6 +11,7 @@ import {
   type NoteFindReplace,
 } from '@overlay/app-core/note-edits'
 import type { NoteDoc } from '@overlay/app-core'
+import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
 
@@ -22,6 +23,13 @@ import type { OverlayToolsOptions } from './types'
  */
 
 const NOTES_PATH = '/api/v1/notes'
+
+function noteUrl(options: OverlayToolsOptions, noteId: string, note?: NoteDoc | null): string {
+  const scope = note?.scope === 'workspace' ? 'workspace' : 'personal'
+  const href = `/app/notes?id=${encodeURIComponent(noteId)}&scope=${scope}`
+  const workspaceId = options.workspaceId
+  return workspaceId ? buildWorkspaceHref(workspaceId, href) : href
+}
 
 type ToolFailure = { success: false; error: string; conflict?: true; currentRevision?: string }
 
@@ -196,6 +204,7 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
       success: true,
       note: {
         noteId: note._id,
+        url: noteUrl(options, note._id, note),
         title: note.title || 'Untitled',
         content: note.content,
         tags: note.tags ?? [],
@@ -232,9 +241,11 @@ export async function executeCreateNote(
     )
     if (!res.ok) return { success: false, error: await errorMessage(res, 'Failed to create note') }
     const data = (await res.json()) as { id?: string; note?: NoteDoc | null }
+    const noteId = data.id ?? data.note?._id
     return {
       success: true,
-      noteId: data.id,
+      noteId,
+      url: noteId ? noteUrl(options, noteId, data.note) : undefined,
       revision: data.note ? revisionOf(data.note) : undefined,
       saved: data.note
         ? { title: data.note.title, tags: data.note.tags ?? [] }

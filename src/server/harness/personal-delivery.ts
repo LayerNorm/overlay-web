@@ -12,7 +12,6 @@ import { stripTextualToolCalls } from './textual-tool-calls'
 export function buildPersonalHarnessDelivery(
   result: HarnessExecutionResult,
   sourceCitations?: SourceCitationMap,
-  fallbackNotices: string[] = [],
   activeToolNames: ReadonlySet<string> = new Set(),
 ) {
   const toolNames = new Set([...HARNESS_CONTROL_TOOLS, ...activeToolNames])
@@ -44,9 +43,6 @@ export function buildPersonalHarnessDelivery(
   ].map(candidate => typeof candidate === 'string' ? sanitize(candidate) : '')
     .find(candidate => candidate.length > 0) ?? ''
   let transcript = buildAssistantPersistenceFromSteps(steps, summary)
-  if (fallbackNotices.length) {
-    transcript = replaceAssistantTextForPersistence(transcript, `${fallbackNotices.join('\n\n')}\n\n${transcript.content}`)
-  }
   if (sourceCitations && Object.keys(sourceCitations).length) {
     transcript = replaceAssistantTextForPersistence(transcript, linkifySourceCitationsMarkdown(transcript.content, sourceCitations))
   }

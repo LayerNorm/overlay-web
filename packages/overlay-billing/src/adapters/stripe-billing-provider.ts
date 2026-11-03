@@ -1,4 +1,5 @@
-import { createFreeEntitlements } from '../entitlements'
+import { createUnsubscribedEntitlements } from '../entitlements'
+import { paidInvoiceFunding, type PaidInvoice } from '../paid-invoice'
 import type {
   BillingProvider,
   CheckoutArgs,
@@ -47,6 +48,7 @@ export interface StripeSubscriptionItem {
 }
 
 export interface StripeSubscription {
+  latest_invoice?: string | PaidInvoice | null
   id: string
   billing_cycle_anchor?: number | null
   customer?: string | { id?: string } | null
@@ -101,7 +103,7 @@ export interface StripeBillingProviderOptions {
   getBillingAccountSubscriptionState?: (billingAccountId: string) => Promise<StripeSubscriptionState | null>
   recordUsage?: (args: UsageArgs) => Promise<void>
   cancelSubscription?: (subscriptionId: string) => Promise<void>
-  createFreeEntitlements?: () => Entitlements
+  createUnsubscribedEntitlements?: () => Entitlements
   normalizePlanAmountCents?: (amountCents: number) => number
   normalizeTopUpAmountCents?: (amountCents: number) => number
   isRecognizedTopUpAmount?: (amountCents: number) => boolean
@@ -177,7 +179,7 @@ export class StripeBillingProvider implements BillingProvider {
   constructor(private readonly options: StripeBillingProviderOptions) {}
 
   async getEntitlements(userId: string): Promise<Entitlements> {
-    return (await this.options.getEntitlements?.(userId)) ?? this.freeEntitlements()
+    return (await this.options.getEntitlements?.(userId)) ?? this.unsubscribedEntitlements()
   }
 
   async createCheckoutSession(args: CheckoutArgs): Promise<CheckoutResult> {
@@ -436,7 +438,7 @@ export class StripeBillingProvider implements BillingProvider {
     args: CheckoutSessionVerificationArgs,
   ): Promise<CheckoutSessionVerificationResult> {
     const checkoutSession = await this.retrieveCheckoutSession(args.sessionId, {
-      expand: ['subscription'],
+      expand: ['subscription.latest_invoice'],
     })
 
     if (!this.checkoutSessionBelongsToPayer(checkoutSession, args)) {
@@ -455,7 +457,7 @@ export class StripeBillingProvider implements BillingProvider {
     if (!subscription) {
       throw new Error('Subscription not found')
     }
-    if (subscription.status !== 'active' && subscription.status !== 'trialing') {
+    if (subscription.status !== 'active') {
       throw new Error('Subscription is not active')
     }
 
@@ -465,6 +467,12 @@ export class StripeBillingProvider implements BillingProvider {
     if (!priceId || (expectedPriceId && priceId !== expectedPriceId)) {
       throw new Error('Unexpected subscription price')
     }
+
+    const invoice = subscription.latest_invoice
+    const funding = invoice && typeof invoice !== 'string' ? paidInvoiceFunding(invoice, {
+      customerId: getId(checkoutSession.customer) ?? '', subscriptionId: subscription.id, priceId: expectedPriceId ?? '',
+    }) : null
+    if (!funding) throw new Error('Paid subscription invoice has not been confirmed')
 
     const metadataQuantity = Number.parseInt(checkoutSession.metadata?.stripeQuantity ?? '0', 10)
     const quantity = firstItem?.quantity ?? (Number.isFinite(metadataQuantity) && metadataQuantity > 0 ? metadataQuantity : 1)
@@ -478,11 +486,16 @@ export class StripeBillingProvider implements BillingProvider {
     const autoTopUpEnabled = checkoutSession.metadata?.autoTopUpEnabled === 'true'
     const offSessionConsentAt = Number.parseInt(checkoutSession.metadata?.offSessionConsentAt ?? '0', 10) || undefined
     const period = getSubscriptionPeriodMs(subscription)
+    if (period.currentPeriodStart !== funding.paidPeriodStart || period.currentPeriodEnd !== funding.paidPeriodEnd
+      || planAmountCents !== funding.amountCents) throw new Error('Current subscription period is not funded')
 
     return {
       providerSessionId: checkoutSession.id,
       providerCustomerId: getId(checkoutSession.customer),
       providerSubscriptionId: subscription.id,
+      paidInvoiceId: funding.paidInvoiceId,
+      paidPeriodStart: funding.paidPeriodStart,
+      paidPeriodEnd: funding.paidPeriodEnd,
       providerPriceId: priceId,
       providerQuantity: quantity,
       status: subscription.status ?? undefined,
@@ -699,8 +712,8 @@ export class StripeBillingProvider implements BillingProvider {
     return resolve(this.options.baseUrl) ?? ''
   }
 
-  private freeEntitlements(): Entitlements {
-    return (this.options.createFreeEntitlements ?? createFreeEntitlements)()
+  private unsubscribedEntitlements(): Entitlements {
+    return (this.options.createUnsubscribedEntitlements ?? createUnsubscribedEntitlements)()
   }
 
   private normalizePlanAmount(amountCents: number): number {

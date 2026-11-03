@@ -28,7 +28,7 @@ import {
   type AuthenticatedToolDenial,
   type ObservedToolOutcome,
 } from './tool-outcome-persistence'
-import { stripTextualToolCalls } from './textual-tool-calls'
+import { stripTextualToolCalls, TEXTUAL_TOOL_CALL_MARKERS } from './textual-tool-calls'
 import { HarnessWaitRollover } from './waits'
 import { buildHarnessRunnerCheckpoint } from './runner-checkpoint'
 import {
@@ -283,6 +283,7 @@ function latestFinalAnswerText(steps: StepResult<ToolSet>[], toolNames: Readonly
   for (let index = steps.length - 1; index >= 0; index--) {
     const step = steps[index]
     if (step.toolCalls.length) break
+    if (TEXTUAL_TOOL_CALL_MARKERS.some(marker => step.text?.includes(marker))) return ''
     const text = stripTextualToolCalls(step.text ?? '', toolNames)
     if (text) return text
   }
@@ -430,7 +431,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           instructions,
           continuation: segment > 0,
           truncatedResponse,
-          finalAnswerRequired,
+          finalAnswerRequired: finalAnswerRequired || (current.plan.length > 0 && harnessCompletionIssues(current).length === 0),
           ...(stagnantSegments >= STAGNATION_RECOVERY_START
             ? { stagnationRecoveryAttempt: stagnantSegments - STAGNATION_RECOVERY_START + 1 } : {}),
         }

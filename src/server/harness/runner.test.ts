@@ -303,12 +303,18 @@ test('resource waits gate a quoted response and resume only after previous tool 
   expect(timeGrants).toBe(1)
 })
 
-test('runner stores sanitized final text and ignores a trailing textual tool call', async () => {
+test('runner requests a real answer when prose precedes a trailing textual tool call', async () => {
   const f = fixture(false)
   const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'
-  model(() => `The capital of France is Paris.\n\n${protocol}`)
+  const finalAnswer = 'The capital of France is Paris.'
+  const provider = model(index => index === 0
+    ? `The requested lookup is complete.\n\n${protocol}`
+    : finalAnswer)
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
-  expect(result.snapshot.resultSummary).toBe('The capital of France is Paris.')
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe(finalAnswer)
+  expect(provider.doStreamCalls).toHaveLength(2)
+  expect(JSON.stringify(provider.doStreamCalls[1]?.prompt)).toContain('Reply to the user now in plain text')
 })
 
 test('runner uses only text after the last tool call as its final result', async () => {
@@ -364,7 +370,7 @@ test('runner asks for a final answer after tool-call text completes the plan', a
   expect(result.snapshot.resultSummary).toBe(finalAnswer)
   expect(provider.doStreamCalls).toHaveLength(5)
   expect(JSON.stringify(provider.doStreamCalls[4]?.prompt))
-    .toContain('All milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.')
+    .toContain('Reporting-only milestones finish with your answer; do not call tools or write tool calls as text.')
 })
 
 test('runner requests a real answer after a protocol-only final segment', async () => {
@@ -376,7 +382,7 @@ test('runner requests a real answer after a protocol-only final segment', async 
   expect(result.snapshot.resultSummary).toBe('The answer is 6.')
   expect(provider.doStreamCalls).toHaveLength(2)
   expect(JSON.stringify(provider.doStreamCalls[1]?.prompt))
-    .toContain('All milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.')
+    .toContain('Reporting-only milestones finish with your answer; do not call tools or write tool calls as text.')
 })
 
 test('runner recovers with a trusted instruction before pausing after six unchanged segments', async () => {
@@ -388,7 +394,7 @@ test('runner recovers with a trusted instruction before pausing after six unchan
   expect(result.snapshot.blocker?.kind).toBe('stuck')
   expect(provider.doStreamCalls).toHaveLength(6)
   expect(JSON.stringify(provider.doStreamCalls[1]?.prompt))
-    .toContain('All milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.')
+    .toContain('Reporting-only milestones finish with your answer; do not call tools or write tool calls as text.')
   expect(JSON.stringify(provider.doStreamCalls[2]?.prompt))
     .toContain('Recovery attempt 1')
 })

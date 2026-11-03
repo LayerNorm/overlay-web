@@ -4,9 +4,11 @@ import { ConvexError } from 'convex/values'
 import type { WorkItem } from '@overlay/app-core'
 import { WorkService, WorkServiceError, translateWorkError } from './WorkService'
 import type { WorkRepository } from './WorkRepository'
+import { WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
 
 const actor = { userId: 'u1', workspaceId: 'w1' }
 const item = { id: 'i1', title: 'Task', status: 'todo', doneWhen: [], context: [], blockedBy: [] } as WorkItem
+const allowExecution = async () => ({ billingEnabled: false } as never)
 
 function repository(overrides: Partial<WorkRepository> = {}): WorkRepository {
   return {
@@ -82,7 +84,7 @@ test('an agent assignment is prepared and dispatched once; same-assignee edits d
       return true
     },
   })
-  const service = new WorkService(repo, async () => { dispatches += 1; return [] })
+  const service = new WorkService(repo, async () => { dispatches += 1; return [] }, allowExecution)
 
   const created = await service.create({ ...actor, input: { title: 'Write a plan', assigneePrincipalId: 'agent-1' } })
   assert.equal(dispatches, 1)
@@ -114,7 +116,7 @@ test('a persisted agent assignment missing from context is reported with the sav
       preparations += 1
       return null
     },
-  }), async () => { dispatches += 1; return [] })
+  }), async () => { dispatches += 1; return [] }, allowExecution)
 
   await assert.rejects(
     service.create({ ...actor, input: { title: 'Task', assigneePrincipalId: 'agent-1' } }),
@@ -186,7 +188,7 @@ test('agent launch failures are persisted and reported with the saved task id', 
       return true
     },
   })
-  const service = new WorkService(repo, async () => { throw new Error('provider unavailable') })
+  const service = new WorkService(repo, async () => { throw new Error('provider unavailable') }, allowExecution)
   await assert.rejects(
     service.create({ ...actor, input: { title: 'Task', assigneePrincipalId: 'agent-1' } }),
     (error: unknown) => error instanceof WorkServiceError
@@ -225,7 +227,7 @@ test('an assignment already starting is reported as in progress', async () => {
     }),
   }), async () => {
     throw new Error('A concurrent start should not dispatch again')
-  })
+  }, allowExecution)
 
   await assert.rejects(
     service.update({ ...actor, id: 'task-3', input: { assigneePrincipalId: 'agent-1' } }),
@@ -233,6 +235,59 @@ test('an assignment already starting is reported as in progress', async () => {
       && error.statusCode === 409
       && error.code === 'work_assignment_in_progress',
   )
+})
+
+test('a started assignment retry at zero available budget returns the persisted task without redispatch', async () => {
+  const agentItem = {
+    ...item,
+    id: 'task-started-retry',
+    title: 'Write a plan',
+    assigneePrincipalId: 'agent-1',
+    updatedAt: 47,
+    assignmentExecution: { assignedByUserId: 'u1', assigneePrincipalId: 'agent-1', generation: 47, status: 'started' as const },
+  } as WorkItem
+  const budgetChecks: boolean[] = []
+  let dispatches = 1
+  let preparedAssignee: string | undefined
+  let preparedGeneration: number | undefined
+  const service = new WorkService(repository({
+    context: async () => ({
+      principalId: 'person-1',
+      role: 'member',
+      canCreateInWorkspace: true,
+      people: [{ principalId: 'agent-1', type: 'agent', displayName: 'Agent', userId: null }],
+    }),
+    update: async () => agentItem,
+    prepareAssignment: async ({ assigneePrincipalId, generation }) => {
+      preparedAssignee = assigneePrincipalId
+      preparedGeneration = generation
+      return {
+        execution: {
+          assignedByUserId: 'u1',
+          assigneePrincipalId,
+          generation,
+          status: 'started',
+          conversationId: 'conversation-started',
+          messageId: 'message-started',
+          turnId: 'turn-started',
+        },
+        claimed: false,
+      }
+    },
+  }), async () => { dispatches += 1; return [] }, async (request) => {
+    budgetChecks.push(request.checkBudget ?? true)
+    if (request.checkBudget !== false) {
+      throw new WorkspaceExecutionError({ state: 'budget_exhausted', canExecute: false }, true)
+    }
+    return { billingEnabled: true } as never
+  })
+
+  const result = await service.update({ ...actor, id: agentItem.id, input: { assigneePrincipalId: 'agent-1' } })
+  assert.equal(result, agentItem)
+  assert.deepEqual(budgetChecks, [false])
+  assert.equal(preparedAssignee, 'agent-1')
+  assert.equal(preparedGeneration, 47)
+  assert.equal(dispatches, 1)
 })
 
 test('an unconfirmed agent start is not marked failed or offered for retry', async () => {
@@ -268,7 +323,7 @@ test('an unconfirmed agent start is not marked failed or offered for retry', asy
       if (status === 'started') throw new Error('confirmation unavailable')
       return true
     },
-  }), async () => [])
+  }), async () => [], allowExecution)
 
   await assert.rejects(
     service.create({ ...actor, input: { title: 'Task', assigneePrincipalId: 'agent-1' } }),
@@ -278,6 +333,34 @@ test('an unconfirmed agent start is not marked failed or offered for retry', asy
       && /Do not clear or reassign/.test(error.message),
   )
   assert.deepEqual(completionStatuses, ['started'])
+})
+
+test('an agent assignment is refused before preparing the durable assignment', async () => {
+  let preparations = 0
+  const service = new WorkService(repository({
+    context: async () => ({
+      principalId: 'person-1',
+      role: 'member',
+      canCreateInWorkspace: true,
+      people: [{ principalId: 'agent-1', type: 'agent', displayName: 'Agent', userId: null }],
+    }),
+    create: async () => ({ ...item, assigneePrincipalId: 'agent-1' } as WorkItem),
+    prepareAssignment: async () => {
+      preparations += 1
+      return null
+    },
+  }), undefined, async (request) => {
+    assert.equal(request.checkBudget, true)
+    throw new WorkspaceExecutionError({ state: 'payment_pending', canExecute: false }, true)
+  })
+
+  await assert.rejects(
+    service.create({ ...actor, input: { title: 'Task', assigneePrincipalId: 'agent-1' } }),
+    (error: unknown) => error instanceof WorkServiceError
+      && error.statusCode === 402
+      && error.code === 'payment_pending',
+  )
+  assert.equal(preparations, 0)
 })
 
 test('a production-redacted revision conflict remains an HTTP 409', () => {

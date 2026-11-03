@@ -7,8 +7,6 @@ import {
   calculateGatewayLanguageTokenCostOrNull,
   calculateGatewayVideoCostOrNull,
   IMAGE_GENERATION_RESERVATION_USAGE,
-  isExplicitFreeModel,
-  isPremiumModel,
 } from '@/shared/ai/gateway/model-pricing'
 
 test('language pricing uses Gateway per-token rates', () => {
@@ -78,11 +76,4 @@ test('image pricing supports Gateway token rates and requires measured or reserv
       IMAGE_GENERATION_RESERVATION_USAGE,
     ) ?? 0) > 0,
   )
-})
-
-test('only explicit free models bypass premium usage', () => {
-  assert.equal(isExplicitFreeModel('openrouter/free'), true)
-  assert.equal(isPremiumModel('openrouter/free'), false)
-  assert.equal(isExplicitFreeModel('example/new-gateway-model'), false)
-  assert.equal(isPremiumModel('example/new-gateway-model'), true)
 })

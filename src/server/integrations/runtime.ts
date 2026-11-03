@@ -5,7 +5,7 @@ import { hashOperationalIdentifier } from '@/server/security/operational-key-has
 import { ComposioIntegrationProvider } from './ComposioIntegrationProvider'
 import { ExecutorIntegrationProvider } from './ExecutorIntegrationProvider'
 import type { IntegrationProvider } from './contracts'
-import { filterComposioToolSet, filterComposioToolSetForPaidOnlyFeatures } from '@/server/tools/tools/composio-filter'
+import { filterComposioToolSet } from '@/server/tools/tools/composio-filter'
 import type { ToolSet } from 'ai'
 import { logger } from '@/server/observability/logger'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -93,11 +93,10 @@ export async function createIntegrationToolSet(args: {
 
 export function filterIntegrationToolSet(
   tools: ToolSet,
-  paid: boolean,
   provider: 'composio' | 'executor' | 'none' = 'composio',
 ): ToolSet {
   if (provider !== 'composio') return tools
-  const apply = (set: ToolSet) => filterComposioToolSetForPaidOnlyFeatures(filterComposioToolSet(set), paid)
+  const apply = (set: ToolSet) => filterComposioToolSet(set)
   // The workspace's tools are filtered by their real names, then given their prefix back.
   const { own, workspace } = splitWorkspaceTools(tools)
   if (Object.keys(workspace).length === 0) return apply(own)

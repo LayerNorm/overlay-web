@@ -36,7 +36,6 @@ import {
   type HarnessChild,
   type HarnessEvidence,
   type HarnessPolicy,
-  type HarnessReceipt,
   type HarnessSnapshot,
 } from '../../packages/overlay-agent-runtime/src/harness-state'
 import {
@@ -60,7 +59,6 @@ import type {
 } from '../../packages/overlay-agent-runtime/src/harness-store'
 import { harnessToolsRequirePlan } from '../../packages/overlay-agent-runtime/src/harness-write-tools'
 import { ConvexError, v } from 'convex/values'
-import { OPENROUTER_FREE_MODEL_ID, OVERLAY_FREE_MODEL_ID } from '@/shared/ai/gateway/overlay-free-policy'
 
 const MAX_ID_LENGTH = 256
 const MAX_EVIDENCE_ID_LENGTH = 512
@@ -341,7 +339,6 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     lastContinuationProgressRevision: snapshot.lastContinuationProgressRevision,
     stalledContinuations: snapshot.stalledContinuations,
     ...(snapshot.latestReceipt === undefined ? {} : { latestReceipt: snapshot.latestReceipt }),
-    ...(snapshot.routeInterruptionCount === undefined ? {} : { routeInterruptionCount: snapshot.routeInterruptionCount }),
     ...(snapshot.modelRecovery === undefined ? {} : { modelRecovery: snapshot.modelRecovery }),
     ...(snapshot.summaryRecovery === undefined ? {} : { summaryRecovery: snapshot.summaryRecovery }),
     ...(snapshot.modelReservation === undefined ? {} : { modelReservation: snapshot.modelReservation }),
@@ -1285,62 +1282,11 @@ export async function cancelHarnessDelivery(
     return { agentRunId: delivery._id, runId: run.runId }
   }
   const snapshot = await hydrateSnapshot(ctx, run)
-  const cancellationState = await recordFreeModelTerminalReceipt(ctx, run.runId, snapshot, now)
-  const cancelled = terminateHarness(cancellationState, 'cancelled', 'The delivery was cancelled by the user.', now)
+  const cancelled = terminateHarness(snapshot, 'cancelled', 'The delivery was cancelled by the user.', now)
   await persistMetadata(ctx, run, cancelled)
   await persistChildren(ctx, run.runId, snapshot.children, cancelled.children)
   await releaseTerminalSubtree(ctx, run, lineage)
   return { agentRunId: delivery._id, runId: run.runId }
-}
-
-function freeModelTerminalReceipt(state: HarnessSnapshot): HarnessReceipt | undefined {
-  const reservation = state.modelReservation
-  const dispatch = reservation?.dispatch
-  if (!reservation || reservation.maxCostMicros !== 0
-    || !dispatch || dispatch.billingReservationId !== null
-    || (dispatch.modelId !== OPENROUTER_FREE_MODEL_ID && dispatch.modelId !== OVERLAY_FREE_MODEL_ID)) {
-    return undefined
-  }
-  return {
-    id: reservation.id,
-    modelId: dispatch.modelId,
-    provider: 'overlay-free-router',
-    inputTokens: 0,
-    outputTokens: 0,
-    reasoningTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    contextWindow: null,
-    costMicros: 0,
-    costSource: 'catalog',
-    ...(reservation.id.startsWith('summary:') ? { rejectionReason: 'summary_failed' as const } : {}),
-  }
-}
-
-async function recordFreeModelTerminalReceipt(
-  ctx: MutationCtx,
-  runId: string,
-  state: HarnessSnapshot,
-  now: number,
-): Promise<HarnessSnapshot> {
-  const receipt = freeModelTerminalReceipt(state)
-  if (!receipt) return state
-  const receiptJson = stableJson(receipt)
-  const existingReceipt = await ctx.db.query('harnessReceipts')
-    .withIndex('by_runId_receiptId', query => query.eq('runId', runId).eq('receiptId', receipt.id))
-    .unique()
-  if (existingReceipt && existingReceipt.receiptJson !== receiptJson) {
-    throw new Error('HARNESS_RECEIPT_ID_CONFLICT')
-  }
-  if (!existingReceipt) {
-    await ctx.db.insert('harnessReceipts', {
-      runId,
-      receiptId: receipt.id,
-      receiptJson,
-      createdAt: now,
-    })
-  }
-  return recordHarnessReceipt(state, receipt, now)
 }
 
 async function applyReducer(
@@ -1385,16 +1331,10 @@ async function applyReducer(
       }
     }
     case 'record_receipt':
-      if (operation.receipt.rejectionReason === 'route_interrupted' || operation.receipt.rejectionReason === 'route_unavailable') {
-        const reservation = current.modelReservation
-        if ((operation.receipt.modelId !== OPENROUTER_FREE_MODEL_ID && operation.receipt.modelId !== OVERLAY_FREE_MODEL_ID)
-          || operation.receipt.provider !== 'overlay-free-router'
-          || reservation?.id !== operation.receipt.id
-          || reservation.maxCostMicros !== 0
-          || reservation.dispatch?.modelId !== operation.receipt.modelId
-          || reservation.dispatch.billingReservationId !== null) {
-          throw new Error('This route rejection requires a matching zero-cost free-router dispatch without billing.')
-        }
+      if (operation.receipt.rejectionReason === 'route_capacity'
+        || operation.receipt.rejectionReason === 'route_interrupted'
+        || operation.receipt.rejectionReason === 'route_unavailable') {
+        throw new Error('This route receipt is retired.')
       }
       return { snapshot: recordHarnessReceipt(current, operation.receipt, now) }
     case 'checkpoint':
@@ -1512,10 +1452,8 @@ async function applyReducer(
     }
     case 'finish':
       return { snapshot: finishHarness(current, now, operation.resultSummary) }
-    case 'terminate': {
-      const settled = await recordFreeModelTerminalReceipt(ctx, run.runId, current, now)
-      return { snapshot: terminateHarness(settled, operation.status, operation.reason, now) }
-    }
+    case 'terminate':
+      return { snapshot: terminateHarness(current, operation.status, operation.reason, now) }
   }
 }
 

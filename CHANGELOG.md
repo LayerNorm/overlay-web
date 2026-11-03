@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Reconcile durable Harness continuation with paid-workspace admission: retain the selected model on funding failure and require current verified payment before creating automatic top-up claims. Existing subscriptions and markup are unchanged.
+
 - Preserve fractional-cent funding balances through durable Harness pauses and prevent workspace-funded task errors from falling back to a different model instead of waiting for funds.
 
 - Seed funding QA agents with valid editable avatar values so saving a model does not fail unrelated avatar validation. Existing fixtures and balances remain unchanged on reseed.
@@ -19,6 +21,23 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Keep Harness control tools available while an answer-only milestone is unfinished, so agents can pause for missing human input instead of treating the plan as already complete. External action tools remain unavailable until the plan requires them.
 
 - Add versioned long-running Harness execution with workspace-funded dispatch holds, renewable execution leases, typed funding pauses, and protected continuation handoff. New checkpoints use gzip-compressed Convex File Storage blobs referenced by an atomic small metadata transaction; older inline checkpoint fields remain readable. Failed/retried uploads may leave unreferenced blobs, and no destructive orphan cleanup is performed. An expired explicit task deadline now persists as nonterminal `waiting_for_authorization`, preserves existing waits, blocks ordinary replies and execution, and remains cancellable. Funding projections show required and available amounts and show reserved amounts only when authoritative. Existing explicit spend overrides, V1 resource pauses, legacy policies, payer distinctions, and unresolved-effect holds remain enforced; targeted fixtures do not qualify every wait handoff or real-time multiweek operation.
+- Settle measured model usage when background memory generation fails schema validation, without saving invalid output or leaving a known-cost hold stuck. Unknown usage and missing pricing still require reconciliation.
+
+- Retain receipt-backed provider expenses for failed calls after their wallet holds are released, without charging or crediting the wallet again; include those expenses in billing cost reports.
+
+- Record standing approval for task-related browser QA and testing, and document secure reuse of saved Convex administration access so preview checks do not require repeated approval or per-PR key requests.
+
+- Require paid, funded workspace admission before chat and hosted execution, remove free-model fallback and retired free-routing schema definitions, and preserve manual drafts plus billing-disabled self-hosted access.
+
+- Recover expected Harness milestone-validation failures across durable workflow steps and guide reporting-only milestones to finish from saved results without repeating completed actions.
+
+- Keep provider tool-call markup out of Harness answers and continue to a real final response without repeating completed actions.
+
+- Return workspace-scoped links from note tools so completed tasks can open the saved note without inventing an address.
+
+- Resolve note and Computer download links against successful tool results when a response invents a different hostname.
+
+- Return authenticated download links after Computer file publication and make them clickable even when a response formats the path as text or inline code.
 
 - Configure provider usage markup with `OVERLAY_USAGE_MARKUP_BPS` across web, memory and Computer billing, rejecting invalid settings instead of hiding a fixed rate in code. Subscription prices, included credit and existing subscription records stay unchanged.
 

@@ -3,6 +3,7 @@ import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import { WORKSPACE_AGENT_CREATURE_SHAPES } from '@overlay/workspace-contracts'
 import schema from './schema'
+import { workspaceExecutionAccess } from '@/shared/billing/execution-access'
 
 const modules = import.meta.glob('./**/*.ts')
 const seed = makeFunctionReference<'mutation'>('dev/fundingQa:init')
@@ -34,6 +35,7 @@ test('fresh fixtures are isolated, inert and preserve funding, holds, grants and
       expect(balance).toMatchObject({ includedMicros: 10_000, usedMicros: 0, reservedMicros: 0 })
       const plan = await ctx.db.query('billingAccountSubscriptions').withIndex('by_billingAccountId', q => q.eq('billingAccountId', fixture.billingAccountId)).unique()
       expect(plan).toMatchObject({ provider: 'preview-fixture', planKind: 'paid', autoTopUpEnabled: false })
+      expect(workspaceExecutionAccess({ billingEnabled: true, accountStatus: 'active', subscription: plan, remainingCents: 1 }).canExecute).toBe(true)
       expect(plan?.providerCustomerId).toBeUndefined()
       expect(plan?.providerSubscriptionId).toBeUndefined()
       const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', fixture.agentId)).unique()

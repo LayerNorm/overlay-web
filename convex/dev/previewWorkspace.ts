@@ -51,6 +51,9 @@ export async function seedPreviewWorkspace(ctx: MutationCtx, { userId, email }: 
       billingAccountId: account.billingAccountId, provider: 'preview-fixture', planKind: 'paid',
       planVersion: 'variable_v2', planAmountCents: 100, markupBasisPoints: account.markupBasisPoints,
       status: 'active', autoTopUpEnabled: false, autoTopUpAmountCents: 0,
+      currentPeriodStart: now, currentPeriodEnd: now + 30 * 24 * 60 * 60_000,
+      paidInvoiceId: `preview-fixture:${workspaceId}`,
+      paidPeriodStart: now, paidPeriodEnd: now + 30 * 24 * 60 * 60_000,
       createdAt: now, updatedAt: now,
     })
     const balance = await ensureEmptyBalance(ctx, account.billingAccountId)

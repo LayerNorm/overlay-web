@@ -37,7 +37,6 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/files/ingest-jobs/process': internalServiceException(['POST'], 'Internal-secret authenticated Convex file-ingestion worker bridge.'),
   '/api/v1/imports/slack/process': internalServiceException(['POST'], 'Internal-secret authenticated Slack import worker bridge.'),
   '/api/v1/automations/project-events': internalServiceException(['POST'], 'Internal-secret authenticated Workflow SDK event projection bridge.'),
-  '/api/v1/models/overlay-free/refresh': internalServiceException(['POST'], 'Internal-secret authenticated overlay-free catalog refresh worker bridge.'),
   '/api/v1/harness/continuation': internalContinuationException(),
   '/api/v1/surfaces/slack/connect': {
     methods: ['GET'],

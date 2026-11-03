@@ -15,7 +15,6 @@ const reference = {
   modelId: 'fixture/model',
   credentialOwnerId: 'fixture-user',
   sessionId: 'fixture-session',
-  allowLowBalanceFallback: false,
 }
 const options: LanguageModelV4CallOptions = {
   prompt: [{ role: 'user', content: [{ type: 'text', text: 'fixture' }] }],
@@ -141,7 +140,7 @@ test('resolves credentials anew on execution and preserves v4 calls, streaming a
   expect(second.doStreamCalls).toEqual([options])
   expect(getLanguageModel).toHaveBeenCalledTimes(2)
   expect(getLanguageModel).toHaveBeenNthCalledWith(2, reference.modelId, undefined, reference.credentialOwnerId, {
-    sessionId: reference.sessionId, allowLowBalanceFallback: false,
+    sessionId: reference.sessionId,
   })
 })
 

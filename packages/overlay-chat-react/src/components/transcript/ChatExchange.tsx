@@ -33,6 +33,7 @@ import { ExchangeLoadingState, exchangeLoadingPresentation } from './ExchangeLoa
 import { UserMessageActions } from './UserMessageActions'
 import type { ChatTranscriptPresentation } from './ChatTranscript'
 import { useChatExchangeSources } from './chat-exchange-sources'
+import { collectToolResourceHrefs } from '../markdown/tool-resource-links'
 import {
   AssistantSegmentItem,
   assistantSegmentKey,
@@ -152,6 +153,7 @@ export function ChatExchange({
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
     const lastTextBlockIndex = findLastTextBlockIndex(assistantVisualBlocks)
+    const toolResourceHrefs = useMemo(() => collectToolResourceHrefs(assistantVisualBlocks), [assistantVisualBlocks])
     const { assistantSegments, toolChainFlags } = useExchangeSegments(assistantVisualBlocks)
     const { allSources, effectiveSourceCitations, webSources } = useChatExchangeSources({
       assistantPlainText,
@@ -176,6 +178,7 @@ export function ChatExchange({
       isTextStreaming,
       sourceCitations: effectiveSourceCitations,
       webSources,
+      toolResourceHrefs,
       suppressTypingIndicator: !loadingPresentation.inlineTextMarker,
       onOpenDraft,
       onCreateAutomationDraft,
@@ -531,8 +534,8 @@ function ExchangeUserMessage({
 function ExchangeErrorNotice({ errorMessage }: { errorMessage: string }) {
   return (
     <div className="flex justify-start px-1 py-1">
-      {isWeeklyUsageLimitError(errorMessage) || isUsageExhaustedError(errorMessage) ? (
-        <UsageExhaustedNotice variant={isWeeklyUsageLimitError(errorMessage) ? 'free' : 'paid'} />
+      {isUsageExhaustedError(errorMessage) ? (
+        <UsageExhaustedNotice />
       ) : (
         <div
           className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs"
@@ -548,13 +551,6 @@ function ExchangeErrorNotice({ errorMessage }: { errorMessage: string }) {
       )}
     </div>
   )
-}
-
-function isWeeklyUsageLimitError(errorMessage: string | null | undefined): boolean {
-  const normalized = errorMessage?.toLowerCase() ?? ''
-  return normalized.includes('weekly_limit')
-    || normalized.includes('weekly limit')
-    || normalized.includes("this week's free chats")
 }
 
 function ExchangeSettledNotices({

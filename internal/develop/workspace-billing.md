@@ -28,7 +28,7 @@ Payment ownership is modeled by a billing account with an explicit `markup_25_v1
 
 ## Workspace reservation foundation
 
-Plans belong to workspaces, and workspace billing is always on (there is no rollout flag). A workspace with an active wallet on a paid plan is the payer; with no wallet, or a wallet not on a paid plan, it is on the free allowance (counted per workspace). A workspace whose paid wallet is suspended or mismatched fails closed and never spends anything of a member's. Every hosted-cost entry point supplies its resource workspace. Shared human actions use a `member` subject, while agents, automations, knowledge indexing, and API keys use a stable `programmatic` subject.
+Hosted execution requires a workspace wallet with an active account, a paid subscription in its current verified period, and available funds. A missing wallet or unpaid account never falls back to a member's personal payer or free inference. Workspace setup, manual drafts, history, and export remain available before payment. Billing-disabled self-hosted deployments explicitly bypass paid admission and may retain personal bookkeeping. A workspace whose paid wallet is suspended or mismatched fails closed. Every hosted-cost entry point supplies its resource workspace. Shared human actions use a `member` subject, while agents, automations, knowledge indexing, and API keys use a stable `programmatic` subject.
 
 Workspace owners and admins use the authenticated `/api/v1/workspaces/:workspaceId/billing` API family to initialize a wallet, read credit usage, and open Stripe subscription, top-up, portal, or checkout-verification flows. Overlay creates one Stripe customer per workspace billing account. Stripe metadata binds payments to the account and workspace; the initiating admin is an audit actor, not the payment owner. Duplicate webhook deliveries are idempotent and older subscription events cannot overwrite newer account state.
 
@@ -41,6 +41,8 @@ The Billing settings tab shows the month's credit and top-up balance, the itemiz
 Billing settings presents uninitialized and initialized-but-unpaid workspaces as Free. Upgrade opens a dialog for the monthly amount and legal acceptance; Continue to payment initializes the wallet if needed, then starts Stripe checkout. The paid billing overview appears only after the workspace has a paid subscription or a top-up balance.
 
 Workspace reservations use the account-keyed balance and optionally a fixed-period subject limit. Subjects are either `member` for human-attributed spend or `programmatic` for shared agents, automations, and service callers. Reservation creation locks the workspace balance and subject limit in one transaction. Finalize, release, expiry, and evidence-based reconciliation update the workspace balance and subject counters together. Wallet creation grants no credits; funding remains an explicit later operation.
+
+New execution admission checks the paid current period and available wallet funds before starting work. Already-created matching holds are replayed before new-spend admission, and settlement, release, and reconciliation remain available after admission closes. Explicit BYO inference still requires a funded workspace, but creates no Overlay model-usage reservation.
 
 The launch coverage gate lives in `src/server/billing/billable-feature-coverage.ts`. Shared conversations/agents, embeddings/search, browser/sandbox, hosted media/transcription, and automation/API provider calls are metered. Workflow runs additionally charge a conservative 20-step estimate at Vercel's Workflow Steps rate ($2.50 per 100,000 steps) with the configured usage markup. Functions, integrations, and MCP tools are bounded to 12 steps per agent turn and 50,000 result characters; file ingestion is bounded to 20 requests per hour and the account storage cap. Keep `npm run check:owner-funded-boundary` and the coverage test passing for every hosted-cost entry point.
 
@@ -65,6 +67,8 @@ web is live; never deploy it from a feature worktree.
 
 The usage ledger automatically releases expired reservations only when provider work never started. Provider-started reservations are quarantined until authoritative evidence establishes whether to finalize the measured cost or release the reservation.
 Harness model reservations are an exception when Gateway usage stays unavailable: after about ten minutes of 404 retries, observed tokens settle at catalog pricing when a rate exists. Non-404 lookup failures and unknown catalog rates remain quarantined.
+An operator can record late authoritative provider costs on an already released, provider-started reservation with internal `billing/releasedProviderCosts:recordInternal`. It requires the exact deployment URL, account, model, integer microdollar cost, token count and receipt evidence. Exact repeats are idempotent; conflicting evidence fails closed. This records an absorbed expense without changing the release audit, wallet, subject limits or customer charge. The operational report includes those expenses alongside finalized reservation costs, so released failures cannot inflate reported margin. Retain the exact provider receipt privately; the ledger uses microdollar precision.
+
 Approval-paused SDK steps settle their known model usage before suspension.
 WorkflowAgent returns these steps through its end callback without a step-end
 callback; the Harness deduplicates callbacks by invocation step number, advances
@@ -82,6 +86,20 @@ The audit defaults to the development Convex deployment. Production inspection r
 
 - [ ] Fix the unrelated on-prem Convex inventory mismatch in the existing chat and auth files.
 - [ ] Fix the unrelated conversation smoke-test index mismatch.
+
+## Workspace-funded continuation
+
+Versioned Harness tasks reserve each next call against the workspace wallet instead
+of receiving a synthetic lifetime cap. Funding shortfalls pause the same task;
+continuation rechecks current membership, paid admission and execution ownership.
+BYO credentials do not bypass workspace admission. The selected model is retained;
+no budget failure recovers through a free or alternate model.
+
+Automatic top-up claims require the current verified paid period as well as active
+billing, explicit off-session consent, the bound customer/payment method and the
+monthly ceiling. Pending or ambiguous payments retain one stable payment identity;
+retries cannot create another charge or credit the wallet twice. Existing prices,
+included credit, configured markup and subscriptions remain unchanged.
 
 ## Preview fixture recovery
 
@@ -148,3 +166,8 @@ Configure local engineer-owned Next/Convex environments too. Unit runners use an
 explicit test fixture. Do not change the rate independently during active billed
 work: reservations and final settlement must use the same policy. A future rate
 change requires a coordinated rollout with in-flight reservations settled first.
+
+Background memory extraction settles SDK-reported token usage on structured-output
+validation failures using the same pricing and finalizer as successful calls.
+Invalid output is never stored. Missing/invalid usage, unknown pricing and failed
+settlement retain reconciliation rather than assuming zero provider cost.

@@ -5,7 +5,7 @@ import { FatalError } from 'workflow'
 import { getGatewayCatalogModel } from '@/server/ai/gateway/gateway-catalog'
 import { languageModelReservationCost } from '@/server/ai/gateway/model-reservation-pricing'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
-import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
+import { isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 import { harnessCostMicros } from './model-usage'
 
 function positiveInteger(value: number) {
@@ -37,10 +37,7 @@ export async function forecastHarnessModelCost(input: {
   positiveInteger(input.inputTokenBudget)
   positiveInteger(input.maxOutputTokens)
   if (isByokModelId(input.modelId)) return 0
-  if (isFreeTierChatModelId(input.modelId)) {
-    if (input.cacheWrites) throw new FatalError('Explicit cache writes are not priced for the free router.')
-    return 0
-  }
+  if (isRetiredHostedModelId(input.modelId)) throw new FatalError('This hosted model is retired.')
   const model = await getGatewayCatalogModel(input.modelId)
   if (!model || model.type !== 'language') throw new FatalError('Language model pricing is unavailable.')
   return harnessCostMicros(await languageModelReservationCost(model, input.inputTokenBudget, input.maxOutputTokens, input.cacheWrites))

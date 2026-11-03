@@ -657,7 +657,6 @@ export async function runAppDataRepositoryContractSuite(
       })
       assert.deepEqual(reservation, { ok: true, reservationId: null })
       const finished = await backend.usagePolicy.recordFinishedUsage({
-        forceFreeTierLimits: false,
         inputTokens: 0,
         modelId: 'openrouter/free',
         outputTokens: 0,

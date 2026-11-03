@@ -2,8 +2,6 @@ import { v } from 'convex/values'
 import { internalMutation } from '../_generated/server'
 import { requirePreviewDeployment } from '../lib/preview'
 import { uniqueWorkspaceAccount } from '../billing/accountModel'
-import { workspaceAllowanceSubject } from '../../src/shared/billing/free-allowance'
-import { hasZeroPricing } from '../../src/shared/ai/gateway/overlay-free-policy'
 
 /** Explicit recovery, never called by ordinary deployment seeding. */
 export const recover = internalMutation({
@@ -27,6 +25,9 @@ export const recover = internalMutation({
     if (!workspaceId) throw new Error('Seed the Preview fixture before recovery')
     const workspace = await ctx.db.query('workspaces').withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).unique()
     if (!workspace) throw new Error('Seed the Preview fixture before recovery')
+    if (args.fixture === 'personal' || args.fixture === 'exhausted-workspace') {
+      throw new Error('Subscribe to this workspace before execution; there is no allowance to reset.')
+    }
     const eventId = `preview-qa-recovery:${args.requestId}`
     const previous = await ctx.db.query('auditEvents').withIndex('by_eventId', q => q.eq('eventId', eventId)).unique()
     if (previous) {
@@ -35,20 +36,7 @@ export const recover = internalMutation({
       }
       return { workspaceId, applied: false }
     }
-    if (args.fixture === 'personal' || args.fixture === 'exhausted-workspace') {
-      if (args.availableCents !== undefined) throw new Error('Free fixture recovery cannot grant paid credit')
-      const from = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10)
-      // Both keys cover accounts that started before workspace counting was introduced.
-      const subjects = args.fixture === 'personal' ? [userId, workspaceAllowanceSubject(workspaceId)] : [workspaceAllowanceSubject(workspaceId)]
-      for (const subject of subjects) {
-        const rows = await ctx.db.query('dailyUsage').withIndex('by_userId_date', q =>
-          q.eq('userId', subject).gte('date', from)).take(32)
-        if (rows.length === 32) throw new Error('Unexpected QA usage history; inspect before resetting')
-        for (const row of rows) await ctx.db.patch(row._id, {
-          askCount: 0, writeCount: 0, agentCount: 0, transcriptionSeconds: 0,
-        })
-      }
-    } else {
+    {
       const cents = args.availableCents
       if (!Number.isSafeInteger(cents) || cents === undefined || cents < 0 || cents > 5_000) {
         throw new Error('Synthetic available credit must be an integer from 0 to 5000 cents')
@@ -75,42 +63,5 @@ export const recover = internalMutation({
       resourceId: workspaceId, outcome: 'success', metadataJson: JSON.stringify(args), createdAt: Date.now(),
     })
     return { workspaceId, applied: true }
-  },
-})
-
-/** Recovery permits re-verification; it never manufactures a safe provider receipt. */
-export const recoverRoute = internalMutation({
-  args: { routeKey: v.string(), expectedReason: v.string(), requestId: v.string() },
-  returns: v.object({ applied: v.boolean() }),
-  handler: async (ctx, args) => {
-    requirePreviewDeployment()
-    if (!/^[a-zA-Z0-9_-]{1,100}$/.test(args.requestId)
-      || !args.routeKey || args.routeKey.length > 300 || !args.expectedReason || args.expectedReason.length > 500) {
-      throw new Error('Route recovery requires a request id, route key and expected reason')
-    }
-    const eventId = `preview-qa-route-recovery:${args.requestId}`
-    const metadataJson = JSON.stringify(args)
-    const previous = await ctx.db.query('auditEvents').withIndex('by_eventId', q => q.eq('eventId', eventId)).unique()
-    if (previous) {
-      if (previous.resourceId !== args.routeKey || previous.metadataJson !== metadataJson) {
-        throw new Error('Route recovery request id reused with different arguments')
-      }
-      return { applied: false }
-    }
-    const route = await ctx.db.query('overlayFreeRoutes').withIndex('by_routeKey', q => q.eq('routeKey', args.routeKey)).unique()
-    if (!route || route.quarantineReason !== args.expectedReason) throw new Error('Route quarantine reason changed or is absent')
-    if (route.activeLeaseToken !== undefined) throw new Error('Settle the route lease before recovery')
-    let pricing: unknown
-    try { pricing = JSON.parse(route.pricingJson) } catch { throw new Error('Route pricing is invalid') }
-    if (!hasZeroPricing(pricing)) throw new Error('Route pricing must be explicitly zero')
-    await ctx.db.patch(route._id, {
-      quarantineReason: undefined, quarantineAt: undefined, cooldownUntil: undefined,
-      catalogExpiresAt: 0, canaryVerifiedAt: undefined, canaryExpiresAt: undefined, updatedAt: Date.now(),
-    })
-    await ctx.db.insert('auditEvents', {
-      eventId, actorType: 'system', action: 'preview.qa.route.recover', resourceType: 'model-route',
-      resourceId: args.routeKey, outcome: 'success', metadataJson, createdAt: Date.now(),
-    })
-    return { applied: true }
   },
 })

@@ -9,7 +9,7 @@ import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { assertUserCanUseByokModel } from '@/server/ai/model-runtime'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
-import { agentModelAttempts, loadRoomTurnContext } from '@/server/agents/workspace-agent-invocation'
+import { loadRoomTurnContext } from '@/server/agents/workspace-agent-invocation'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { actEntitlementService } from '@/server/conversations/http'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
@@ -234,7 +234,7 @@ function assertRoomIdentity(
     humanParticipants: room.participants.filter(participant => participant.principalType === 'human').length,
   })
   if (shared && !context.sharedRoom) throw new FatalError('Room visibility changed; private context cannot be reused.')
-  if (!agentModelAttempts(agent.modelId).includes(context.modelId)) {
+  if (agent.modelId !== context.modelId) {
     throw new FatalError('The model is no longer an admitted native agent candidate.')
   }
   return agent

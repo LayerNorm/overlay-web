@@ -3,6 +3,7 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { FatalError } from 'workflow'
 import { HarnessPlanValidationError } from '@overlay/agent-runtime/harness-state'
 import { applyHarnessOperation, applyHarnessOperationStep, claimHarnessState, readAndClaimHarnessState } from './state-steps'
+import { HARNESS_STEP_VALIDATION } from './step-validation'
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), apply: vi.fn(), resources: vi.fn() }))
 vi.mock('./resource-boundary', () => ({ waitForHarnessModelResources: mocks.resources }))
@@ -21,24 +22,31 @@ beforeEach(() => {
   mocks.get.mockResolvedValue({ workflowRunId: reference.workflowRunId, revision: 3 })
 })
 
-test('typed rejected operations become fatal without retrying the mutation', async () => {
+test.each(Object.values(HARNESS_STEP_VALIDATION))('step validation crosses the durable boundary as data: %s', async message => {
   mocks.apply.mockRejectedValue(new ConvexError({
     code: 'HARNESS_OPERATION_REJECTED',
-    message: 'Evidence must reference successful observations from this run.',
+    message,
   }))
 
-  let rejection: unknown
-  try {
-    await applyHarnessOperation(reference, 'invalid-update', {
-      type: 'transition_step', id: 'work', status: 'done', evidenceRefs: ['missing'],
-    })
-  } catch (error) {
-    rejection = error
-  }
-  expect(rejection).toBeInstanceOf(FatalError)
-  expect(rejection).toMatchObject({
-    message: 'Evidence must reference successful observations from this run.',
-  })
+  const operation = { type: 'transition_step' as const, id: 'work', status: 'done' as const, evidenceRefs: ['missing'] }
+  const result = await applyHarnessOperationStep(reference, 'invalid-update', operation)
+  expect(result).toEqual({ ok: false, code: 'HARNESS_STEP_VALIDATION', message })
+  expect(structuredClone(result)).toEqual(result)
+  expect(mocks.apply).toHaveBeenCalledOnce()
+
+  const rejection = await applyHarnessOperation(reference, 'invalid-update', operation).catch(error => error)
+  expect(rejection).toBeInstanceOf(Error)
+  expect(rejection).not.toBeInstanceOf(FatalError)
+  expect(rejection.message).toBe(message)
+  expect(mocks.resources).not.toHaveBeenCalled()
+  expect(mocks.apply).toHaveBeenCalledTimes(2)
+})
+
+test('unexpected operation rejections remain fatal', async () => {
+  mocks.apply.mockRejectedValue(new ConvexError({ code: 'HARNESS_OPERATION_REJECTED', message: 'The run is terminal.' }))
+  await expect(applyHarnessOperation(reference, 'terminal-update', {
+    type: 'transition_step', id: 'work', status: 'done',
+  })).rejects.toBeInstanceOf(FatalError)
   expect(mocks.apply).toHaveBeenCalledOnce()
 })
 

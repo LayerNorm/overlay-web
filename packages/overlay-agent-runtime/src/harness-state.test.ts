@@ -49,26 +49,23 @@ test('workspace funding pauses preserve fractional cents and resume the same tas
   assert.throws(() => pauseHarnessForFunding(state, { ...pause, requiredCents: 0 }, now), /Invalid workspace funding pause/)
 })
 
-test('route interruption receipts count durably toward the per-run retry cap', () => {
-  let state = make()
-  for (let index = 0; index < 3; index += 1) {
-    state = recordHarnessReceipt(state, {
-      id: `model:${index}`,
-      modelId: 'openrouter/free',
-      provider: 'overlay-free-router',
-      inputTokens: 0,
-      outputTokens: 0,
-      reasoningTokens: 0,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      contextWindow: null,
-      costMicros: 0,
-      costSource: 'catalog',
-      rejectionReason: 'route_interrupted',
-    }, now)
-  }
-  assert.equal(state.routeInterruptionCount, 3)
+test('historical route rejection receipts do not grant route-recovery state', () => {
+  const state = recordHarnessReceipt(make(), {
+    id: 'model:legacy',
+    modelId: 'openrouter/free',
+    provider: 'overlay-free-router',
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    contextWindow: null,
+    costMicros: 0,
+    costSource: 'catalog',
+    rejectionReason: 'route_interrupted',
+  }, now)
   assert.equal(state.latestReceipt?.rejectionReason, 'route_interrupted')
+  assert.equal(state.modelRecovery, undefined)
 })
 
 test('generic block and resume cannot bypass a resource pause', () => {

@@ -40,7 +40,6 @@ export type HarnessRunnerCheckpoint = {
   truncatedResponse: boolean
   segmentStartedAt: number
   deliveryProgress?: string
-  fallbackNotices?: string[]
   pendingApproval?: { requests: HarnessApprovalRequest[]; segment: number }
   toolApprovals?: HarnessToolApprovalGrant[]
   executionOutcomes?: Array<[string, ObservedToolOutcome]>

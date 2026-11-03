@@ -184,7 +184,6 @@ test('launch-off preserves authorized host/read and cleanup paths while rejectin
     agentId: 'agent-1',
     conversationId: 'conversation-1',
     environmentId: f.environment.id,
-    forceFreeTierLimits: false,
     inputTokens: 1,
     modelId: 'test-model',
     modelUsageBilling: 'overlay',

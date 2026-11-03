@@ -70,8 +70,7 @@ export const resolveKnowledgeBillingPayer = internalQuery({
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId!))
       .unique()
     if (!workspace) return { scope: 'personal' }
-    // Any workspace may have a plan. Without a wallet on a paid plan it is on the free allowance, which runs through
-    // the person's own pipeline (the same rule as BillingPayerResolver).
+    // Any workspace may have a plan; usage history remains associated with its actual user.
     const account = await ctx.db.query('billingAccounts')
       .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId!))
       .unique()

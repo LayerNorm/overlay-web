@@ -38,13 +38,6 @@ export function canUsePaidBudgetFeatures(entitlements: Pick<
   return isPaidPlan(entitlements) && getBudgetTotals(entitlements).remainingCents > 0
 }
 
-export function usesFreeTierPrivileges(entitlements: Pick<
-  Entitlements,
-  'tier' | 'planKind' | 'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'
->): boolean {
-  return !canUsePaidBudgetFeatures(entitlements)
-}
-
 export async function ensureBudgetAvailable(params: {
   userId: string
   entitlements: Entitlements

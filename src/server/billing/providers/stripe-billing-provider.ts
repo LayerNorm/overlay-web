@@ -19,7 +19,7 @@ import {
   quantityToPlanAmountCents,
 } from '@/shared/billing/billing-pricing'
 import {
-  createFreeEntitlements,
+  createUnsubscribedEntitlements,
   StripeBillingProvider as CoreStripeBillingProvider,
   type Entitlements,
   type StripeBillingClient,
@@ -100,7 +100,7 @@ export class StripeBillingProvider extends CoreStripeBillingProvider {
             userId: args.userId,
           }).then(() => undefined)
         : undefined,
-      createFreeEntitlements,
+      createUnsubscribedEntitlements,
       normalizePlanAmountCents: clampPaidPlanAmountCents,
       normalizeTopUpAmountCents: clampTopUpAmountCents,
       isRecognizedTopUpAmount,

@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { workspaceExecutionAccess } from '@/shared/billing/execution-access'
 import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { canceledPlanCreditPatch, ensureEmptyBalance, requireCanonicalBalanceAccount } from './accountModel'
@@ -533,6 +534,10 @@ export const claimAutoTopUpIntentByServer = mutation({
       .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId))
       .unique()
     if (!plan || plan.planKind !== 'paid' || plan.status !== 'active' || !plan.autoTopUpEnabled) return { status: 'disabled' as const }
+    if (!workspaceExecutionAccess({ billingEnabled: true, accountStatus: account.status,
+      subscription: plan, remainingCents: 0, checkBudget: false }).canExecute) {
+      return { status: 'disabled' as const }
+    }
     if (!plan.offSessionConsentAt || plan.offSessionConsentAt !== args.consentAt) {
       return { status: 'missing_consent' as const }
     }

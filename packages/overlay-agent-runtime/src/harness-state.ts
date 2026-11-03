@@ -153,7 +153,6 @@ export type HarnessSnapshot = {
   lastContinuationProgressRevision: number
   stalledContinuations: number
   latestReceipt?: HarnessReceipt
-  routeInterruptionCount?: number
   modelRecovery?: HarnessModelRecovery
   summaryRecovery?: HarnessModelRecovery
   modelReservation?: {
@@ -245,7 +244,7 @@ export function createHarnessSnapshot(input: HarnessSnapshotInput, now: number):
     status: 'running', revision: 0, ...(input.policy.resourcePauseVersion === 1 ? { policyRevision: 0 } : {}),
     executionGeneration: 0,
     progressRevision: 0, planRevision: 0, plan: [], evidence: [], children: [], workingSummary: '',
-    continuations: 0, lastContinuationProgressRevision: 0, stalledContinuations: 0, routeInterruptionCount: 0,
+    continuations: 0, lastContinuationProgressRevision: 0, stalledContinuations: 0,
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: 0 },
     updatedAt: now,
   }
@@ -515,8 +514,7 @@ function addHarnessUsage(target: HarnessUsage, delta: HarnessUsage) {
 }
 
 function nextModelRecovery(previous: HarnessModelRecovery | undefined, receipt: HarnessReceipt, now: number, deadlineAt: number): HarnessModelRecovery | undefined {
-  const code = receipt.responseFailure ?? (receipt.rejectionReason === 'route_capacity'
-    || receipt.rejectionReason === 'route_interrupted' || receipt.rejectionReason === 'route_unavailable' ? receipt.rejectionReason : undefined)
+  const code = receipt.responseFailure
   if (!code) return receipt.rejectionReason ? previous : undefined
   const attempt = Math.min((previous?.attempt ?? 0) + 1, Number.MAX_SAFE_INTEGER)
   const delay = Math.min(5_000 * 2 ** Math.min(attempt - 1, 6), 300_000)
@@ -539,9 +537,6 @@ export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessRec
   next.latestReceipt = { ...receipt }
   const recoveryKey = receipt.id.startsWith('summary:') ? 'summaryRecovery' : 'modelRecovery'
   next[recoveryKey] = nextModelRecovery(state[recoveryKey], receipt, now, effectiveHarnessDeadlineAt(state.policy))
-  if (receipt.rejectionReason === 'route_interrupted') {
-    next.routeInterruptionCount = (next.routeInterruptionCount ?? 0) + 1
-  }
   addHarnessUsage(next.usage, receiptUsage(receipt))
   return changed(next, now, false)
 }

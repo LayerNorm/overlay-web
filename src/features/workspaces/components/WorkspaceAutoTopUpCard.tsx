@@ -56,7 +56,7 @@ export function WorkspaceAutoTopUpCard({
 
       {canManage ? (
         <div className="mt-4 space-y-2" role="radiogroup" aria-label="When credit runs out">
-          <Option checked={!enabled} onSelect={() => setEnabled(false)} title="Hard stop" text="Paid resources stop at $0. Free ones keep working." />
+          <Option checked={!enabled} onSelect={() => setEnabled(false)} title="Hard stop" text="Usage stops at $0. Nothing else is charged." />
           <Option checked={enabled} onSelect={() => setEnabled(true)} title="Keep going" text="Charge the workspace’s card for more credit, up to a monthly limit." />
           {enabled ? (
             <div className="flex flex-wrap items-center gap-2 pl-7 text-xs text-(--muted)">

@@ -298,3 +298,29 @@ describe('workspace automatic top-ups', () => {
     expect(after?.includedMicros).toBe(800 * 10_000)
   })
 })
+
+
+test.each(['missing', 'expired', 'future'] as const)('new top-up claims require current verified payment proof (%s)', async kind => {
+  const convex = convexTest(schema, modules)
+  await paidWorkspace(convex)
+  await convex.mutation(api.billing.accountSubscriptions.upsertByServer, {
+    billingAccountId: 'ba-1', serverSecret, autoTopUpEnabled: true, autoTopUpAmountCents: 800,
+    autoTopUpMonthlyLimitCents: 1_600, offSessionConsentAt: 5,
+  })
+  await convex.run(async ctx => {
+    const plan = await ctx.db.query('billingAccountSubscriptions')
+      .withIndex('by_billingAccountId', q => q.eq('billingAccountId', 'ba-1')).unique()
+    if (!plan) throw new Error('Missing test plan')
+    await ctx.db.patch(plan._id, kind === 'missing'
+      ? { paidPeriodStart: undefined, paidPeriodEnd: undefined, paidInvoiceId: undefined }
+      : kind === 'expired' ? { paidPeriodStart: 1, paidPeriodEnd: Date.now() - 1 }
+        : { paidPeriodStart: Date.now() + 60_000, paidPeriodEnd: Date.now() + 120_000 })
+  })
+  expect(await convex.mutation(api.billing.accountSubscriptions.claimAutoTopUpIntentByServer, {
+    actorUserId: 'user-1', billingAccountId: 'ba-1', workspaceId: 'ws-1', intentKey: 'unverified',
+    idempotencyKey: 'workspace-auto-topup-unverified', amountCents: 800, currentPeriodStart: 1_000,
+    consentAt: 5, paymentMethodId: 'pm_1', customerId: 'cus_1', serverSecret,
+  })).toEqual({ status: 'disabled' })
+  expect(await convex.run(ctx => ctx.db.query('billingAutoTopUpIntents').collect())).toHaveLength(0)
+  expect(await convex.run(ctx => ctx.db.query('budgetTopUps').collect())).toHaveLength(0)
+})

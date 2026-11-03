@@ -61,8 +61,8 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
       : '')
     + (context.finalAnswerRequired
       ? pendingAnswer
-        ? '\nReturn the final answer in plain text, or call harness_report_blocker if essential user input is still missing. Do not write tool calls as text.'
-        : '\nAll milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.'
+        ? '\nAll action milestones are complete. Return the final answer in plain text with saved results and requested links, or call harness_report_blocker if essential user input is missing. Reporting-only milestones finish with your answer. Do not repeat completed actions or write tool calls as text.'
+        : '\nAll action milestones are complete. Reply to the user now in plain text with the saved results and requested links. Reporting-only milestones finish with your answer; do not call tools or write tool calls as text.'
       : '')
 }
 

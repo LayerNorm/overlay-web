@@ -541,12 +541,12 @@ describe('personal harness delivery binding', () => {
     expect((await get(convex, 'independent-root'))?.status).toBe('running')
   })
 
-  test('stop releases only zero-cost free summary reservations without a billing hold', async () => {
+  test('stop preserves summary reservations without fabricating retired receipts', async () => {
     const scenarios = [
-      { runId: 'cancel-free-summary', modelId: 'openrouter/free', billingReservationId: null, maxCostMicros: 0, released: true },
-      { runId: 'cancel-paid-summary', modelId: 'openrouter/free', billingReservationId: 'billing-hold', maxCostMicros: 500, released: false },
-      { runId: 'cancel-billed-free-summary', modelId: 'openrouter/free', billingReservationId: 'billing-hold', maxCostMicros: 0, released: false },
-      { runId: 'cancel-external-summary', modelId: 'external/provider', billingReservationId: null, maxCostMicros: 0, released: false },
+      { runId: 'cancel-legacy-summary', modelId: 'openrouter/free', billingReservationId: null, maxCostMicros: 0 },
+      { runId: 'cancel-paid-summary', modelId: 'openai/gpt-5.4', billingReservationId: 'billing-hold', maxCostMicros: 500 },
+      { runId: 'cancel-zero-cost-summary', modelId: 'openai/gpt-5.4', billingReservationId: 'billing-hold', maxCostMicros: 0 },
+      { runId: 'cancel-external-summary', modelId: 'external/provider', billingReservationId: null, maxCostMicros: 0 },
     ] as const
 
     for (const scenario of scenarios) {
@@ -570,34 +570,15 @@ describe('personal harness delivery binding', () => {
       await cancelDelivery(convex, conversationId)
       const root = await get(convex, scenario.runId)
       expect(root?.status).toBe('cancelled')
-      if (scenario.released) {
-        expect(root?.modelReservation).toBeUndefined()
-        expect(root?.latestReceipt).toMatchObject({
-          id: reservationId,
-          modelId: 'openrouter/free',
-          provider: 'overlay-free-router',
-          rejectionReason: 'summary_failed',
-          costMicros: 0,
-        })
-        const storedReceipt = await convex.run(ctx => ctx.db.query('harnessReceipts')
-          .withIndex('by_runId_receiptId', query => (
-            query.eq('runId', scenario.runId).eq('receiptId', reservationId)
-          ))
-          .unique())
-        expect(JSON.parse(storedReceipt!.receiptJson)).toMatchObject({
-          id: reservationId, rejectionReason: 'summary_failed', costMicros: 0,
-        })
-      } else {
-        expect(root?.modelReservation).toMatchObject({
-          id: reservationId,
-          maxCostMicros: scenario.maxCostMicros,
-          dispatch: {
-            modelId: scenario.modelId,
-            billingReservationId: scenario.billingReservationId,
-          },
-        })
-        expect(root?.latestReceipt).toBeUndefined()
-      }
+      expect(root?.modelReservation).toMatchObject({
+        id: reservationId,
+        maxCostMicros: scenario.maxCostMicros,
+        dispatch: {
+          modelId: scenario.modelId,
+          billingReservationId: scenario.billingReservationId,
+        },
+      })
+      expect(root?.latestReceipt).toBeUndefined()
     }
   })
 

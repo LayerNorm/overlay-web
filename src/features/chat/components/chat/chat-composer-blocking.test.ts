@@ -28,7 +28,7 @@ test('an unavailable BYOK model keeps the composer and shows connection guidance
   }), CONNECTION_UNAVAILABLE_NOTICE)
 })
 
-test('a premium model on the free tier retains the paid-plan replacement', () => {
+test('an unfunded workspace requires subscription without offering free-model fallback', () => {
   assert.equal(shouldShowPaidModelReplacement({
     isBudgetExhaustedPaid: false,
     premiumModelBlocked: true,
@@ -37,5 +37,5 @@ test('a premium model on the free tier retains the paid-plan replacement', () =>
     connectionUnavailable: false,
     isBudgetExhaustedPaid: false,
     premiumModelBlocked: true,
-  }), 'This model requires a paid plan. Switch to Auto or upgrade.')
+  }), 'Subscribe to this workspace before starting work.')
 })

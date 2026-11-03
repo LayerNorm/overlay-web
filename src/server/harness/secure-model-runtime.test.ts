@@ -2,7 +2,6 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { MockLanguageModelV4 } from 'ai/test'
 import { APICallError, StreamProviderError } from 'ai'
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
-import { OverlayFreeRouteBusyError, OverlayFreeRouteInterruptedError, OverlayFreeRouteUnavailableError } from '@/server/ai/gateway/overlay-free-router-errors'
 import type { HarnessModelReference } from './secure-model'
 import { secureModelDoGenerate, secureModelDoStream } from './secure-model-runtime'
 import { harnessExecutionFailureReason } from './execution-failure'
@@ -11,13 +10,13 @@ const mocks = vi.hoisted(() => ({ model: vi.fn(), record: vi.fn(), confirmed: vi
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: mocks.model }))
 vi.mock('./model-rejection', () => ({ recordHarnessModelRejection: mocks.record, isConfirmedHarnessModelRejection: mocks.confirmed }))
 
-const reference: HarnessModelReference = { modelId: 'openrouter/free', credentialOwnerId: 'user', personal: {
+const reference: HarnessModelReference = { modelId: 'openai/gpt-4.1-mini', credentialOwnerId: 'user', personal: {
   access: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation', agentRunId: 'delivery',
     workspaceId: 'workspace', principalId: 'principal', authentication: { type: 'session' } },
   receiptId: 'model:0', memoryEnabled: false, requestFingerprint: 'request', inputTokenBudget: 100, maxOutputTokens: 100, contextWindow: null,
 } }
 
-const nativeReference: HarnessModelReference = { modelId: 'openrouter/free', credentialOwnerId: 'user', native: {
+const nativeReference: HarnessModelReference = { modelId: 'openai/gpt-4.1-mini', credentialOwnerId: 'user', native: {
   access: { actorUserId: 'user', runId: 'workspace:delivery', workflowRunId: 'workflow', workspaceId: 'workspace',
     principalId: 'human-principal', agentId: 'agent', agentPrincipalId: 'agent-principal', conversationId: 'room',
     agentRunId: 'delivery', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
@@ -27,14 +26,17 @@ const nativeReference: HarnessModelReference = { modelId: 'openrouter/free', cre
 
 beforeEach(() => { vi.resetAllMocks(); mocks.confirmed.mockReturnValue(false) })
 
-test.each([secureModelDoStream, secureModelDoGenerate])('preserves SDK details after recording provider rejection, with one dispatch', async invoke => {
+test.each([
+  [secureModelDoStream, reference], [secureModelDoGenerate, reference],
+  [secureModelDoStream, nativeReference], [secureModelDoGenerate, nativeReference],
+] as const)('preserves SDK details after recording provider rejection, with one dispatch', async (invoke, dispatchReference) => {
   const error = new APICallError({ message: 'private', url: 'https://private.test', requestBodyValues: {}, statusCode: 429 })
   const dispatch = vi.fn(async () => { throw error })
   mocks.model.mockResolvedValue(new MockLanguageModelV4({ doStream: dispatch, doGenerate: dispatch }))
   mocks.confirmed.mockReturnValue(true)
-  await expect(invoke(reference, { prompt: [] })).rejects.toMatchObject({ name: 'HarnessModelFailure', message: harnessExecutionFailureReason(error) })
+  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toMatchObject({ name: 'HarnessModelFailure', message: harnessExecutionFailureReason(error) })
   expect(mocks.confirmed).toHaveBeenCalledWith(error)
-  expect(mocks.record).toHaveBeenCalledExactlyOnceWith(reference, 'model_unavailable')
+  expect(mocks.record).toHaveBeenCalledExactlyOnceWith(dispatchReference, 'model_unavailable')
   expect(dispatch).toHaveBeenCalledOnce()
 })
 
@@ -78,55 +80,8 @@ test('generated results separate tagged reasoning without changing provider acco
   expect(provider.doGenerateCalls).toHaveLength(1)
 })
 
-test.each([
-  [secureModelDoStream, reference], [secureModelDoGenerate, reference],
-  [secureModelDoStream, nativeReference], [secureModelDoGenerate, nativeReference],
-] as const)('only the typed free-router busy result creates a capacity receipt', async (invoke, dispatchReference) => {
-  let failure: Error = new OverlayFreeRouteBusyError()
-  const dispatch = async () => { throw failure }
-  mocks.model.mockResolvedValue(new MockLanguageModelV4({ doStream: dispatch, doGenerate: dispatch }))
-  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toBe(failure)
-  expect(mocks.record).toHaveBeenCalledExactlyOnceWith(dispatchReference, 'route_capacity')
-  failure = new Error('overlay_free_route_busy')
-  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toBe(failure)
-  expect(mocks.record).toHaveBeenCalledOnce()
-  failure = new OverlayFreeRouteBusyError()
-  mocks.record.mockRejectedValueOnce(new Error('receipt storage failed'))
-  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toThrow('receipt storage failed')
-})
-
-test.each([reference, nativeReference])('records an async free-route interruption before rethrowing it', async dispatchReference => {
-  const interruption = new OverlayFreeRouteInterruptedError()
-  mocks.model.mockResolvedValue(new MockLanguageModelV4({
-    doStream: async () => ({
-      stream: new ReadableStream({ start: controller => controller.error(interruption) }),
-    }),
-  }))
-
-  const result = await secureModelDoStream(dispatchReference, { prompt: [] })
-  await expect(result.stream.getReader().read()).rejects.toBe(interruption)
-  expect(mocks.record).toHaveBeenCalledExactlyOnceWith(dispatchReference, 'route_interrupted')
-})
-
-test.each([
-  [secureModelDoStream, reference], [secureModelDoGenerate, reference],
-  [secureModelDoStream, nativeReference], [secureModelDoGenerate, nativeReference],
-] as const)('only confirmed route unavailability creates a settled retry receipt', async (invoke, dispatchReference) => {
-  let failure: Error = new OverlayFreeRouteUnavailableError()
-  const dispatch = async () => { throw failure }
-  mocks.model.mockResolvedValue(new MockLanguageModelV4({ doStream: dispatch, doGenerate: dispatch }))
-  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toBe(failure)
-  expect(mocks.record).toHaveBeenCalledExactlyOnceWith(dispatchReference, 'route_unavailable')
-  failure = new Error('overlay_free_no_eligible_route')
-  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toBe(failure)
-  expect(mocks.record).toHaveBeenCalledOnce()
-  failure = new OverlayFreeRouteUnavailableError()
-  mocks.record.mockRejectedValueOnce(new Error('receipt storage failed'))
-  await expect(invoke(dispatchReference, { prompt: [] })).rejects.toThrow('receipt storage failed')
-})
-
-test('BYOK stream interruptions do not create Harness rejection receipts', async () => {
-  const interruption = new OverlayFreeRouteInterruptedError()
+test('non-SDK BYOK stream interruptions preserve the error without rejection receipts', async () => {
+  const interruption = new Error('Connection interrupted')
   const byok = { ...reference, modelId: 'byok/connection/model' }
   mocks.model.mockResolvedValue(new MockLanguageModelV4({
     doStream: async () => ({

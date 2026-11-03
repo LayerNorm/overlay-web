@@ -28,7 +28,6 @@ function publishCreatedNote(id: string): void {
 export interface UseAppSidebarActionsOptions {
   user: object | null
   pathname: string
-  isFreeTier?: boolean
   requireAuth: (reason: GateReason) => void
   onCloseMobileMenu: () => void
   onChatCreated: () => void

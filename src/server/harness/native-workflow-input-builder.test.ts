@@ -46,7 +46,6 @@ beforeEach(() => {
     },
     agent: { id: 'agent', name: 'Scout', principalId: 'agent-principal', instructions: 'Be useful', harness: 'overlay' },
     modelId: 'model-selected',
-    modelCandidates: ['model-selected', 'model-fallback'],
     requestFingerprint: 'fingerprint',
     turnId: 'turn',
     turnContext: { contextBlock: 'Saved memory', messages: [{ role: 'user', content: 'Help' }] },
@@ -75,7 +74,6 @@ test('builds native input from the persisted delivery identity without reservati
     modelId: 'model-selected', memoryEnabled: true, sharedRoom: true, requestFingerprint: 'fingerprint',
   })
   expect(input.instructions).toBe('Complete system prompt')
-  expect(input.modelCandidates).toEqual(['model-selected', 'model-fallback'])
   expect(input.definitions[0]).not.toHaveProperty('execute')
   expect(mocks.server.chatUsagePolicy.reserveForAttempt).not.toHaveBeenCalled()
 })
@@ -87,7 +85,7 @@ test('rejects a stored triggering message with a different human principal', asy
       conversationType: 'channel', participants: [], history: [{ _id: 'question', authorKind: 'human', authorPrincipalId: 'foreign' }],
     },
     agent: { id: 'agent', name: 'Scout', principalId: 'agent-principal', instructions: '', harness: 'overlay' },
-    modelId: 'model', modelCandidates: ['model'], requestFingerprint: 'fp', turnId: 'turn',
+    modelId: 'model', requestFingerprint: 'fp', turnId: 'turn',
     turnContext: { contextBlock: '', messages: [] }, toolDefinitions: [],
   })
   await expect(buildNativeHarnessWorkflowInput({
@@ -172,7 +170,7 @@ test('named native child in a different room keeps its turn and inherits verifie
       history: [{ _id: 'child-question', authorKind: 'agent', authorPrincipalId: 'parent-principal', content: 'Child task' }],
     },
     agent: { id: 'child-agent', name: 'Child', principalId: 'child-principal', instructions: '', harness: 'overlay' },
-    modelId: 'model', modelCandidates: ['model'], requestFingerprint: 'child-fingerprint', turnId: 'child-turn',
+    modelId: 'model', requestFingerprint: 'child-fingerprint', turnId: 'child-turn',
     turnContext: { contextBlock: 'Parent source context', messages: [{ role: 'user', content: 'Child task' }] },
     toolDefinitions: [],
   })

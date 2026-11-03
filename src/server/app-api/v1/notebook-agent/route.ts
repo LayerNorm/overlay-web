@@ -19,12 +19,10 @@ import {
   reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
-import { isPremiumModel } from '@/server/ai/pricing'
 import { createNotebookTextEmitter } from '@/server/agent/notebook-agent-stream'
 import {
   DEFAULT_MODEL_ID,
-  isFreeTierChatModelId,
-  resolveFreeTierChatModelId,
+  isRetiredHostedModelId,
 } from '@/shared/ai/gateway/model-types'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
 import { executeSearchKnowledge } from '@/server/tools/tools/overlay-executes'
@@ -214,35 +212,30 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   }
 
   const requestedModelId = (modelId?.trim() && modelId.trim()) || DEFAULT_MODEL_ID
-  const effectiveModelId = resolveFreeTierChatModelId(requestedModelId) ?? requestedModelId
-
+  const effectiveModelId = requestedModelId
+  if (isRetiredHostedModelId(effectiveModelId)) {
+    return new Response(JSON.stringify({
+      error: 'model_retired', message: 'This hosted model is retired. Select a paid model to continue.',
+    }), { status: 409, headers: { 'Content-Type': 'application/json' } })
+  }
   if (!isPaidPlan(entitlements)) {
-    if (!isFreeTierChatModelId(effectiveModelId)) {
+    return new Response(JSON.stringify(buildInsufficientCreditsPayload(entitlements, 'Fund this workspace to run a model.')),
+      { status: 402, headers: { 'Content-Type': 'application/json' } })
+  }
+  const budget = getBudgetTotals(entitlements)
+  if (budget.remainingCents <= 0) {
+    const autoTopUp = await generationUsagePolicy.ensureBudgetAvailable({
+      userId,
+      entitlements,
+      minimumRequiredCents: 1,
+      programmaticSubjectId,
+      workspaceId,
+    })
+    if (autoTopUp.remainingCents <= 0) {
       return new Response(
-        JSON.stringify({
-          error: 'premium_model_not_allowed',
-          message:
-            'Free tier is limited to free models. Upgrade to a paid plan to use premium models.',
-        }),
-        { status: 403, headers: { 'Content-Type': 'application/json' } },
+        JSON.stringify(buildInsufficientCreditsPayload(entitlements, 'No budget remaining. Please top up your workspace.')),
+        { status: 402, headers: { 'Content-Type': 'application/json' } },
       )
-    }
-  } else {
-    const budget = getBudgetTotals(entitlements)
-    if (budget.remainingCents <= 0 && isPremiumModel(effectiveModelId)) {
-      const autoTopUp = await generationUsagePolicy.ensureBudgetAvailable({
-        userId,
-        entitlements,
-        minimumRequiredCents: 1,
-        programmaticSubjectId,
-        workspaceId,
-      })
-      if (autoTopUp.remainingCents <= 0) {
-        return new Response(
-          JSON.stringify(buildInsufficientCreditsPayload(entitlements, 'No budget remaining. Please top up your account.')),
-          { status: 402, headers: { 'Content-Type': 'application/json' } },
-        )
-      }
     }
   }
 
@@ -264,7 +257,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     )
   }
 
-  if (isPaidPlan(refreshedEntitlements) && isPremiumModel(effectiveModelId)) {
+  if (isPaidPlan(refreshedEntitlements)) {
     const refreshedBudget = getBudgetTotals(refreshedEntitlements)
     if (refreshedBudget.remainingCents <= 0) {
       return new Response(
@@ -282,7 +275,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       : rawNoteContent
 
   let budgetReservationId: string | null = null
-  if (isPaidPlan(refreshedEntitlements) && isPremiumModel(effectiveModelId)) {
+  if (isPaidPlan(refreshedEntitlements)) {
     const estimatedInputTokens = Math.ceil((frozenNoteLines.length + message.length + NOTEBOOK_AGENT_PROMPT.length) / 4) + 2_000
     const maxOutputTokens = 8_192
     const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(

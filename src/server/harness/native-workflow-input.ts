@@ -11,6 +11,5 @@ export type NativeHarnessWorkflowInput = {
   instructions: string
   messages: ModelMessage[]
   settings?: HarnessModelSettings
-  modelCandidates?: string[]
   continuation?: HarnessRunnerCheckpoint
 }

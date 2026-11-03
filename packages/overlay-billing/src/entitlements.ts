@@ -1,6 +1,6 @@
 import type { Entitlements } from './types'
 
-export function createFreeEntitlements(): Entitlements {
+export function createUnsubscribedEntitlements(): Entitlements {
   return {
     tier: 'free',
     planKind: 'free',
@@ -41,11 +41,4 @@ export function canUsePaidBudgetFeatures(entitlements: Pick<
   'tier' | 'planKind' | 'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'
 >): boolean {
   return isPaidPlan(entitlements) && getBudgetTotals(entitlements).remainingCents > 0
-}
-
-export function usesFreeTierPrivileges(entitlements: Pick<
-  Entitlements,
-  'tier' | 'planKind' | 'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'
->): boolean {
-  return !canUsePaidBudgetFeatures(entitlements)
 }

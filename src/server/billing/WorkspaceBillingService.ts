@@ -19,8 +19,10 @@ import { workspaceUsageSummary } from './workspace-usage-summary'
 import type { BillingRepository, BillingSubscriptionRecord } from './BillingRepository'
 import type { UsageRepository } from '@/server/usage/UsageRepository'
 import { BillingServiceError } from './BillingCustomerService'
+import { workspaceExecutionAccess } from '@/shared/billing/execution-access'
 
 type Deps = {
+  billingEnabled?: () => Promise<boolean>
   baseUrl: () => string
   billingProvider: () => BillingProvider
   repository: BillingRepository
@@ -54,7 +56,8 @@ export class WorkspaceBillingService {
       usedBytes: actorEntitlements?.overlayStorageBytesUsed ?? 0,
       limitBytes: actorEntitlements?.overlayStorageBytesLimit ?? 0,
     }
-    if (!account) return emptySummary(access.workspace.id, canManage, canTopUp, storage)
+    const billingEnabled = await this.deps.billingEnabled?.() ?? true
+    if (!account) return { ...emptySummary(access.workspace.id, canManage, canTopUp, storage), executionAccess: workspaceExecutionAccess({ billingEnabled, remainingCents: 0 }) }
     const [entitlements, subscription] = await Promise.all([
       this.deps.repository.getBillingAccountEntitlementsByServer({ billingAccountId: account.billingAccountId }),
       this.deps.repository.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId }),
@@ -67,6 +70,7 @@ export class WorkspaceBillingService {
       canManage,
       canTopUp,
       initialized: true,
+      executionAccess: workspaceExecutionAccess({ billingEnabled, accountStatus: account.status, subscription, remainingCents }),
       pricingVersion: account.pricingVersion,
       credits: {
         total: centsToBillingCredits(totalCents),
@@ -129,6 +133,7 @@ export class WorkspaceBillingService {
   }
 
   async createSubscriptionCheckout(args: {
+    returnTo?: 'onboarding'
     actorEmail?: string
     actorUserId: string
     autoTopUpEnabled?: boolean
@@ -153,8 +158,12 @@ export class WorkspaceBillingService {
       topUpAmountCents: args.topUpAmountCents,
       autoTopUpEnabled: Boolean(args.autoTopUpEnabled),
       metadata: args.legalMetadata,
-      successUrl: `${this.deps.baseUrl()}/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing&workspace_billing_success=true&workspace_session_id={CHECKOUT_SESSION_ID}`,
-      cancelUrl: `${this.deps.baseUrl()}/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing&workspace_billing_canceled=true`,
+      successUrl: args.returnTo === 'onboarding'
+        ? `${this.deps.baseUrl()}/app/w/${encodeURIComponent(workspaceId)}/work?onboarding_billing=success&onboarding_session_id={CHECKOUT_SESSION_ID}`
+        : `${this.deps.baseUrl()}/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing&workspace_billing_success=true&workspace_session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: args.returnTo === 'onboarding'
+        ? `${this.deps.baseUrl()}/app/w/${encodeURIComponent(workspaceId)}/work?onboarding_billing=canceled`
+        : `${this.deps.baseUrl()}/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing&workspace_billing_canceled=true`,
     })
     return { url: result.url }
   }
@@ -220,7 +229,9 @@ export class WorkspaceBillingService {
       kind: args.kind,
     })
     if (args.kind === 'paid_plan') {
-      if (!verification.providerSubscriptionId || !verification.providerPriceId) {
+      if (!verification.providerSubscriptionId || !verification.providerPriceId || !verification.providerCustomerId
+        || verification.status !== 'active' || verification.paymentStatus !== 'paid'
+        || !verification.paidInvoiceId || !verification.paidPeriodStart || !verification.paidPeriodEnd) {
         this.fail('Subscription verification failed.', 400)
       }
       const quantity = verification.providerQuantity ?? 1
@@ -240,6 +251,15 @@ export class WorkspaceBillingService {
         status: verification.status,
         currentPeriodStart: verification.currentPeriodStart,
         currentPeriodEnd: verification.currentPeriodEnd,
+      })
+      await this.deps.repository.confirmBillingAccountPaidPeriod({
+        billingAccountId: account.billingAccountId,
+        stripeCustomerId: verification.providerCustomerId,
+        stripeSubscriptionId: verification.providerSubscriptionId,
+        paidInvoiceId: verification.paidInvoiceId,
+        paidPeriodStart: verification.paidPeriodStart,
+        paidPeriodEnd: verification.paidPeriodEnd,
+        amountCents,
       })
       return { success: true, amountCents, kind: args.kind }
     }

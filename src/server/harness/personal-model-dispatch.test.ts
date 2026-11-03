@@ -14,7 +14,7 @@ vi.mock('@/server/billing/billing-runtime', () => ({ reserveProviderBudget: mock
 
 const access = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation', agentRunId: 'delivery',
   workspaceId: 'workspace', principalId: 'principal', authentication: { type: 'session' as const } }
-const reference: HarnessModelReference = { modelId: 'provider/model', credentialOwnerId: 'user', allowLowBalanceFallback: false,
+const reference: HarnessModelReference = { modelId: 'provider/model', credentialOwnerId: 'user',
   personal: { access, receiptId: 'model:0', memoryEnabled: true, requestFingerprint: 'fingerprint', inputTokenBudget: 100,
     maxOutputTokens: 50, contextWindow: 1_000 } }
 const options: LanguageModelV4CallOptions = { prompt: [], maxOutputTokens: 50 }
@@ -152,7 +152,7 @@ test('failed binding releases only the unused account hold; a failed start retai
   expect(mocks.release).toHaveBeenCalledTimes(1)
 })
 
-test('v2 external mode binds BYOK and none mode allows only a free route', async () => {
+test('v2 external mode binds BYOK and cannot reintroduce retired free routes', async () => {
   const byokReference: HarnessModelReference = {
     ...reference,
     modelId: 'byok/anthropic/claude-3-5-sonnet-latest',
@@ -190,10 +190,9 @@ test('v2 external mode binds BYOK and none mode allows only a free route', async
   }
   mocks.forecast.mockResolvedValueOnce(0)
   mocks.read.mockReset().mockResolvedValue(freeState)
-  await authorizePersonalHarnessModelDispatch(freeReference, options)
-  expect(mocks.apply).toHaveBeenCalledWith(expect.objectContaining({ operation: {
-    type: 'bind_model_dispatch', id: 'model:2', modelId: 'openrouter/free', billingReservationId: null,
-  } }))
+  await expect(authorizePersonalHarnessModelDispatch(freeReference, options)).rejects.toThrow(/retired/)
+  expect(mocks.reserve).not.toHaveBeenCalled()
+  expect(mocks.apply).toHaveBeenCalledTimes(1)
   expect(mocks.started).not.toHaveBeenCalled()
 })
 

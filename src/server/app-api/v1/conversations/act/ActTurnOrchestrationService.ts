@@ -93,7 +93,6 @@ export async function executeActTurn(
         ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
         ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
         ACT_PAID_PLAN_ACT_TOOLS_REALITY,
-        FREE_TIER_NO_PAID_AGENT_CAPABILITIES,
         MEMORY_SAVE_PROTOCOL,
         cloneMessagesWithIndexedFileHint,
         indexedFilesSystemNote,
@@ -258,17 +257,17 @@ export async function executeActTurn(
         { status: 403 },
       )
     }
-    const modelCandidates = await prepareActModelCandidates({
+    const selectedModels = await prepareActModelCandidates({
           authorization: authorizationService,
           context,
           modelId: effectiveModelId,
-          paid,
-          onlyAllowZdrModels: appSettings?.onlyAllowZdrModels === true,
-          requiresVision: messagesRequireVision(uiMessages),
           authorizedModelIds: authorizedModelIds.chat,
         })
-    if (modelCandidates?.length) {
-      effectiveModelId = modelCandidates[0]!
+    if (selectedModels.length !== 1) {
+      throw new Error('The selected model is not authorized for this workspace.')
+    }
+    if (selectedModels.length) {
+      effectiveModelId = selectedModels[0]!
       requestModelId = effectiveModelId
     }
     if (_ttftDebug) _tAuth = performance.now()
@@ -510,21 +509,17 @@ export async function executeActTurn(
         ACT_KNOWLEDGE_TOOLS_NOTE_NO_WEB,
         ACT_KNOWLEDGE_WEB_TOOLS_NOTE,
         ACT_PAID_PLAN_ACT_TOOLS_REALITY,
-        FREE_TIER_NO_PAID_AGENT_CAPABILITIES,
         MATH_FORMAT_INSTRUCTION,
         MEMORY_SAVE_PROTOCOL,
         TABLE_FORMAT_INSTRUCTION,
       },
       docContextText: docContextBundle.contextText,
-      effectiveModelId,
       exposedMediaTools: actTooling.exposedMediaTools,
-      hasPreloadedDocContext,
       indexedNote,
       memoryContext,
       memoryEnabled,
       mentionsContext,
       mode,
-      paid,
       requestedToolIds,
       skillsContext,
       userSystemPromptExtension,
@@ -532,7 +527,7 @@ export async function executeActTurn(
       automationMode: automationMode === true,
     })
 
-    if (!agentRun || !cid || !modelCandidates) throw new Error('Personal harness requires an admitted AgentRun and model candidates.')
+    if (!agentRun || !cid) throw new Error('Personal harness requires an admitted AgentRun.')
     const personalAgentRun = agentRun
     return await startPersonalHarnessTurn({
         agentRun: personalAgentRun,
@@ -551,7 +546,6 @@ export async function executeActTurn(
         hasDynamicApproval: Boolean(actTooling.toolApproval),
         instructions: actInstructions,
         messagesForModel,
-        modelCandidates,
         paid,
         principalId: context.workspace.principal.id,
         rawReasoning,

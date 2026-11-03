@@ -10,18 +10,8 @@ test('paid usage notice links to workspace billing', () => {
   const html = renderToStaticMarkup(<UsageExhaustedNotice />)
   const copy = html.replaceAll('&#x27;', "'")
 
-  assert.match(copy, /You're out of credits/)
-  assert.match(copy, /Top up in Billing to keep chatting\./)
+  assert.match(copy, /Workspace billing is required to continue/)
+  assert.match(copy, /Subscribe or add usage credit in Billing to continue\./)
   assert.match(copy, /Open billing/)
   assert.ok(html.includes(`href="${WORKSPACE_BILLING_HREF.replaceAll('&', '&amp;')}"`))
-})
-
-test('free usage notice links to workspace upgrade', () => {
-  const html = renderToStaticMarkup(<UsageExhaustedNotice variant="free" />)
-  const copy = html.replaceAll('&#x27;', "'")
-
-  assert.match(copy, /You've used this week's free chats/)
-  assert.match(copy, /Upgrade for shared credits and every model\./)
-  assert.match(copy, /Upgrade/)
-  assert.match(html, /workspace_tab=billing&amp;upgrade=1/)
 })

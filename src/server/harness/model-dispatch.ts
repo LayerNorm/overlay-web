@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
 import { isSafeHarnessFundingCents } from '@overlay/agent-runtime/harness-resource'
+import { isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { reserveProviderBudget, markProviderBudgetStarted, releaseProviderBudgetReservation } from '@/server/billing/billing-runtime'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
@@ -85,7 +86,10 @@ function assertPreparedDispatch(
   input: HarnessModelDispatch,
   options: LanguageModelV4CallOptions,
 ): void {
-  if ((reference.personal && reference.native) || reference.credentialOwnerId !== input.access.actorUserId || reference.allowLowBalanceFallback !== false) {
+  if (isRetiredHostedModelId(reference.modelId)) {
+    throw new FatalError('This hosted model is retired. Choose a supported paid model.')
+  }
+  if ((reference.personal && reference.native) || reference.credentialOwnerId !== input.access.actorUserId) {
     throw new FatalError('Harness model dispatch identity or routing is invalid.')
   }
   if (!Number.isSafeInteger(input.maxOutputTokens) || input.maxOutputTokens <= 0

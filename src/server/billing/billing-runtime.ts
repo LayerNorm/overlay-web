@@ -11,6 +11,7 @@ import { configuredUsageMarkupBasisPoints } from '@/server/env/usage-markup'
 import { ensureWorkspaceBudgetAvailable } from '@/server/billing/workspace-budget'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
+import { requireWorkspaceExecution } from './WorkspaceExecutionPolicy'
 import type { BillingRepository } from './BillingRepository'
 import {
   buildInsufficientCreditsPayload,
@@ -26,7 +27,6 @@ export {
   getBudgetTotals,
   getTopUpPreferenceSnapshot,
   isPaidPlan,
-  usesFreeTierPrivileges,
 } from './billing-runtime-details'
 
 export function billableBudgetCentsFromProviderUsd(providerCostUsd: number): number {
@@ -95,11 +95,17 @@ export async function reserveProviderBudget(params: {
   operationId: string
   requestFingerprint: string
   reservationId?: string
+  requireExecution?: typeof requireWorkspaceExecution
   workspaceId?: string
   programmaticSubjectId?: string
 }) {
+  const execution = await (params.requireExecution ?? requireWorkspaceExecution)({
+    userId: params.userId,
+    workspaceId: params.workspaceId,
+    checkBudget: false,
+  })
   const reservedCents = billableBudgetCentsFromProviderUsd(params.providerCostUsd)
-  if (reservedCents <= 0) {
+  if (!execution.billingEnabled || reservedCents <= 0) {
     return {
       ok: true,
       billingAccountId: null,

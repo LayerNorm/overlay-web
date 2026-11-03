@@ -140,8 +140,6 @@ export interface ChatExperienceHeaderProps {
   modelQualitiesPos: ModelQualitiesPosition | null
   onHoveredModelChange: (modelId: string | null, position: ModelQualitiesPosition | null) => void
   resolveModel: (modelId: string) => ChatModel | undefined
-  isFreeTier: boolean
-  isFreeTierChatModelId: (modelId: string) => boolean
   automationHeaderModelId: string
   automationHeaderModels: ChatModel[]
   onSaveAutomationHeaderModel: (modelId: string) => void | Promise<void>
@@ -348,11 +346,9 @@ function AutomationModelPicker({
   onReasoningChange,
   modelPickerListScrollRef,
   textModelsLoading,
-  isFreeTier,
   automationHeaderModels,
   favoriteScope,
   modelRecommendations,
-  isFreeTierChatModelId,
   onSaveAutomationHeaderModel,
   onSetShowModelPicker,
 }: Pick<
@@ -370,11 +366,9 @@ function AutomationModelPicker({
   | 'onReasoningChange'
   | 'modelPickerListScrollRef'
   | 'textModelsLoading'
-  | 'isFreeTier'
   | 'automationHeaderModels'
   | 'favoriteScope'
   | 'modelRecommendations'
-  | 'isFreeTierChatModelId'
   | 'onSaveAutomationHeaderModel'
   | 'onSetShowModelPicker'
 >) {
@@ -418,7 +412,6 @@ function AutomationModelPicker({
           <ModelSelector
             models={automationHeaderModels}
             recommendedIds={modelRecommendations?.text}
-            pinnedIds={isFreeTier ? automationHeaderModels.filter((m) => isFreeTierChatModelId(m.id)).map((m) => m.id) : []}
             favoriteIds={favoriteIds}
             onToggleFavorite={toggleFavorite}
           onListChange={() => onHoveredModelChange(null, null)}
@@ -483,11 +476,9 @@ function AutomationHeaderControls(props: Pick<ChatExperienceHeaderProps,
   | 'onReasoningChange'
   | 'modelPickerListScrollRef'
   | 'textModelsLoading'
-  | 'isFreeTier'
   | 'automationHeaderModels'
   | 'favoriteScope'
   | 'modelRecommendations'
-  | 'isFreeTierChatModelId'
   | 'onSaveAutomationHeaderModel'
   | 'onSetShowModelPicker'
   | 'automationDetailTab'
@@ -563,7 +554,6 @@ export function ChatModelPickerDropdown({
   isActiveLoading,
   modelPickerListScrollRef,
   textModelsLoading,
-  isFreeTier,
   imageModels,
   selectedImageModels,
   onSelectImageModel,
@@ -578,7 +568,6 @@ export function ChatModelPickerDropdown({
   onLockedTextModelSelect,
   favoriteScope,
   modelRecommendations,
-  isFreeTierChatModelId,
   onHoveredModelChange,
   modelSearchInputRef,
 }: Pick<
@@ -588,7 +577,6 @@ export function ChatModelPickerDropdown({
   | 'isActiveLoading'
   | 'modelPickerListScrollRef'
   | 'textModelsLoading'
-  | 'isFreeTier'
   | 'imageModels'
   | 'selectedImageModels'
   | 'onSelectImageModel'
@@ -603,7 +591,6 @@ export function ChatModelPickerDropdown({
   | 'onLockedTextModelSelect'
   | 'favoriteScope'
   | 'modelRecommendations'
-  | 'isFreeTierChatModelId'
   | 'onHoveredModelChange'
 > & { lockedGenerationMode?: GenerationMode; modelSearchInputRef: RefObject<HTMLInputElement | null> }) {
   const { favoriteIds, toggleFavorite } = useFavoriteModelIds(favoriteScope)
@@ -629,7 +616,6 @@ export function ChatModelPickerDropdown({
         <ModelSelector
           models={pickerTextModels ?? selectableTextModels}
           recommendedIds={modelRecommendations?.text}
-          pinnedIds={isFreeTier ? selectableTextModels.filter((m) => isFreeTierChatModelId(m.id)).map((m) => m.id) : []}
           favoriteIds={favoriteIds}
           onToggleFavorite={toggleFavorite}
           onListChange={() => onHoveredModelChange(null, null)}
@@ -690,7 +676,6 @@ export type ChatModelPickerProps = {
   isActiveLoading?: boolean
   modelPickerListScrollRef?: RefObject<HTMLDivElement | null>
   textModelsLoading?: boolean
-  isFreeTier: boolean
   imageModels?: ImageModel[]
   selectedImageModels?: string[]
   onSelectImageModel?: (modelId: string) => void
@@ -705,7 +690,6 @@ export type ChatModelPickerProps = {
   onLockedTextModelSelect?: (model: ChatModel) => void
   favoriteScope?: string | null
   modelRecommendations?: Partial<Record<GenerationMode, readonly string[]>>
-  isFreeTierChatModelId: (modelId: string) => boolean
 }
 
 function modelPickerPlacement(placement: ChatModelPickerProps['placement'] = 'header') {
@@ -773,7 +757,6 @@ export function ChatModelPicker({
   isActiveLoading,
   modelPickerListScrollRef,
   textModelsLoading,
-  isFreeTier,
   imageModels,
   selectedImageModels,
   onSelectImageModel,
@@ -788,7 +771,6 @@ export function ChatModelPicker({
   onLockedTextModelSelect,
   favoriteScope,
   modelRecommendations,
-  isFreeTierChatModelId,
   placement = 'header',
   lockedGenerationMode,
 }: ChatModelPickerProps) {
@@ -872,7 +854,6 @@ export function ChatModelPicker({
             isActiveLoading={isActiveLoading ?? false}
             modelPickerListScrollRef={listRef}
             textModelsLoading={textModelsLoading ?? false}
-            isFreeTier={isFreeTier}
             imageModels={activeImageModels}
             selectedImageModels={activeSelectedImageModels}
             onSelectImageModel={onSelectImageModel ?? IGNORE_MODEL_CHANGE}
@@ -888,7 +869,6 @@ export function ChatModelPicker({
               handleOpenChange(false)
               onLockedTextModelSelect?.(model)
             }}
-            isFreeTierChatModelId={isFreeTierChatModelId}
             onHoveredModelChange={handleHoveredModelChange}
             modelSearchInputRef={modelSearchInputRef}
           />

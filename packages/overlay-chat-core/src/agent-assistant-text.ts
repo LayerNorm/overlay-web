@@ -73,7 +73,7 @@ export function appendInterruptionNotice(text: string): string {
 }
 
 /**
- * NIM / weak free-tier models sometimes put chain-of-thought in the `text` channel (not
+ * NIM / weaker instruction-following models sometimes put chain-of-thought in the `text` channel (not
  * `reasoning` parts), so the UI shows planning + backend ids. These patterns only match
  * obvious “assistant is narrating the plan” lines at the start of a reply.
  */
@@ -304,7 +304,7 @@ export function splitRedactedThinkingSegments(
 }
 
 /**
- * Remove lines that match "assistant is narrating the plan" (NIM / weak free tier often
+ * Remove lines that match "assistant is narrating the plan" (NIM / weaker models often
  * emits this in the text stream instead of reasoning parts). Safe patterns only.
  */
 export function redactNimLeakedNarrationToUser(text: string): string {
