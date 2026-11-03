@@ -30,21 +30,39 @@ export async function readHarnessState(reference: HarnessExecutionReference): Pr
   return state
 }
 
-export async function claimHarnessState(reference: HarnessExecutionReference): Promise<boolean> {
-  'use step'
+type HarnessClaim = { snapshot: HarnessSnapshot; claimed: boolean }
+
+// A claimed snapshot is post-claim, so a caller can use it as the run's current
+// state without another read.
+async function readAndClaim(reference: HarnessExecutionReference, skipTerminal: boolean): Promise<HarnessClaim> {
   const repository = new ConvexHarnessRepository()
   for (let attempt = 0; attempt < 8; attempt++) {
     const state = await repository.get({ actorUserId: reference.actorUserId, runId: reference.runId })
     if (!state) throw new FatalError('HARNESS_RUN_NOT_FOUND')
-    if (state.workflowRunId) return state.workflowRunId === reference.workflowRunId
+    if (skipTerminal && ['completed', 'failed', 'cancelled'].includes(state.status)) return { snapshot: state, claimed: false }
+    if (state.workflowRunId) return { snapshot: state, claimed: state.workflowRunId === reference.workflowRunId }
     const result = await repository.apply({
       actorUserId: reference.actorUserId, runId: reference.runId,
       operationId: `claim:${reference.workflowRunId}`, expectedRevision: state.revision,
       operation: { type: 'claim_execution', workflowRunId: reference.workflowRunId },
     })
-    if (!result.conflict) return true
+    if (!result.conflict) return { snapshot: result.snapshot, claimed: true }
   }
   throw new RetryableError('Harness execution claim is contended.')
+}
+
+export async function claimHarnessState(reference: HarnessExecutionReference): Promise<boolean> {
+  'use step'
+  return (await readAndClaim(reference, false)).claimed
+}
+
+/**
+ * One durable boundary for a workflow's initial read and execution claim.
+ * A terminal run is returned unclaimed, matching a read-then-claim sequence.
+ */
+export async function readAndClaimHarnessState(reference: HarnessExecutionReference): Promise<HarnessClaim> {
+  'use step'
+  return readAndClaim(reference, true)
 }
 
 export async function applyHarnessOperationStep(

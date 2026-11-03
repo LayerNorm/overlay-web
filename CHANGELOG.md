@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Reach the first model call in personal Chat and Work runs with 8 durable steps instead of 15. The initial read and execution claim share one step; delivery attach, reauthorization and request accounting share another. Model preparation reuses the state read at the model boundary and reads catalog limits once per model, so later model calls take 4 steps instead of 7. Every authorization, budget and reservation check still runs.
 - Explain AI SDK Harness failures in plain language, including provider HTTP failures, invalid inputs and tool approvals, missing outputs, and exhausted SDK retries. Preserve partial-stream warnings and nested SDK causes without exposing prompts, tool inputs, or provider payloads; retry, fallback, and billing behavior are unchanged.
 
 - Prepare paid workspaces for paid-first execution with verified invoice funding and an operator-only, dry-run-first migration that preserves existing balances. Execution access and free-tier infrastructure are unchanged in this preparation release.
