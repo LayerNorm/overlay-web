@@ -3,6 +3,7 @@ import test from 'node:test'
 import { asSchema, type ToolSet } from 'ai'
 import { DRIVER_VERSION, type SandboxInstance } from '@overlay/sandbox-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { fileService } from '@/server/files/http'
 import { buildOverlayToolSet } from './build'
 import { createFreeTierGatedStubTools } from './free-tier-gated-stub-tools'
 import { executeComputerActionWithApproval, executeComputerActionWithTakeover } from './overlay-executes'
@@ -16,6 +17,59 @@ function buildTestTools() {
     memoryEnabled: true,
   })
 }
+
+test('read_document normalizes raw durable inputs before invoking the reader', async t => {
+  const previousNextPhase = process.env.NEXT_PHASE
+  process.env.NEXT_PHASE = 'phase-production-build'
+  let context: ReturnType<typeof getOverlayServerContext>
+  try { context = getOverlayServerContext() } finally {
+    if (previousNextPhase === undefined) delete process.env.NEXT_PHASE
+    else process.env.NEXT_PHASE = previousNextPhase
+  }
+  const computer = {id: 'computer-1', name: 'Computer'}
+  const commands: Array<{command: string; args?: string[]}> = []
+  const bytes = new Uint8Array([37, 80, 68, 70])
+  const instance = {
+    writeFiles: async () => undefined,
+    runCommand: async (command: {command: string; args?: string[]}) => {
+      commands.push(command)
+      assert.ok(command.args?.every(arg => typeof arg === 'string'))
+      return {wait: async () => ({exitCode: 0, stderr: '', stdout: JSON.stringify({page: 1, pageCount: 2, text: 'source text'})})}
+    },
+  } as unknown as SandboxInstance
+  t.mock.method(globalThis, 'fetch', async () => Response.json({name: 'source.pdf', mimeType: 'application/pdf'}))
+  t.mock.method(fileService, 'readOriginalFile', async () => ({bytes, sizeBytes: bytes.byteLength, revision: 'source-sha'}))
+  t.mock.method(context.workspaceService, 'listForUser', async () => [{
+    workspace: {id: 'ws-1'}, principal: {id: 'principal-1'}, membership: {role: 'owner'},
+  }])
+  t.mock.method(context.computerService, 'getForOwner', async () => computer)
+  t.mock.method(context.computerService, 'withOwnerOperation', async ({operation}: {
+    operation: (computer: unknown, instance: SandboxInstance) => Promise<unknown>
+  }) => operation(computer, instance))
+  const tools = buildOverlayToolSet({
+    userId: 'user-test', workspaceId: 'ws-1', baseUrl: 'http://localhost:3000',
+    filesReadingTools: true, allowedToolIds: ['read_file', 'computer_exec', 'read_document'],
+  })
+  const read = tools.read_document as unknown as {
+    execute: (input: unknown, options: unknown) => Promise<{success: boolean; mode: string; revision: string}>
+  }
+  for (const [input, mode, page] of [
+    [{fileId: 'file-1'}, 'text', '1'],
+    [{fileId: 'file-1', mode: 'metadata'}, 'metadata', '1'],
+    [{fileId: 'file-1', mode: 'text', page: 2}, 'text', '2'],
+  ] as const) {
+    const result = await read.execute(input, {})
+    assert.equal(result.success, true)
+    assert.equal(result.mode, mode)
+    assert.equal(result.revision, 'source-sha')
+    const reader = commands.findLast(command => command.command.endsWith('/bin/python'))
+    assert.deepEqual(reader?.args?.slice(-2), [page, mode])
+    assert.equal(commands.at(-1)?.command, 'rm')
+  }
+  const priorCommands = commands.length
+  await assert.rejects(read.execute({fileId: 'file-1', mode: 'bogus', page: 0}, {}))
+  assert.equal(commands.length, priorCommands)
+})
 
 async function assertGatewayCompatibleToolSet(toolSet: ToolSet) {
   const violations: string[] = []

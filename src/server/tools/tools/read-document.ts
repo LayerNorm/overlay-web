@@ -2,6 +2,7 @@ import 'server-only'
 
 import { randomUUID } from 'node:crypto'
 import { posix as path } from 'node:path'
+import { z } from 'zod'
 import type { SandboxInstance } from '@overlay/sandbox-runtime'
 import { DOCUMENT_READER_PROGRAM } from '@/server/files/document-reader-program'
 import { fileService } from '@/server/files/http'
@@ -14,6 +15,12 @@ const MAX_IMAGE_BYTES = 8 * 1024 * 1024
 const PREPARE_TIMEOUT_MS = 120_000
 
 type ReadMode = 'metadata' | 'text' | 'render' | 'tables' | 'ocr'
+export const readDocumentInputSchema = z.object({
+  fileId: z.string().min(1),
+  revision: z.string().min(1).optional(),
+  mode: z.enum(['metadata', 'text', 'render', 'tables', 'ocr']).default('text'),
+  page: z.number().int().positive().default(1),
+}).strict()
 type ReadDocumentResult = {
   success: false
   error: string
@@ -216,8 +223,9 @@ function successfulReadDocumentResult(
 
 export async function executeReadDocument(
   options: OverlayToolsOptions,
-  input: { fileId: string; revision?: string; mode: ReadMode; page: number },
+  rawInput: z.input<typeof readDocumentInputSchema>,
 ): Promise<ReadDocumentResult> {
+  const input = readDocumentInputSchema.parse(rawInput)
   const source = await readAuthorizedPdf(options, input)
   if ('error' in source) return { success: false, error: source.error }
   const computer = await computerInstanceFor(options)

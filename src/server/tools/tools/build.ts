@@ -75,7 +75,7 @@ import {
   executeReadFile,
   executeWriteFile,
 } from './files-executes'
-import { executeReadDocument } from './read-document'
+import { executeReadDocument, readDocumentInputSchema } from './read-document'
 import { runInToolCallScope } from './internal-api'
 import type { OverlayToolsOptions } from './types'
 
@@ -690,12 +690,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   if (readDocumentAllowed && shouldExposeTool('read_document')) {
     tools.read_document = tool({
       description: 'Inspect an original document on the authorized Computer. Read one page, render it for visual inspection, extract candidate tables, or run OCR. Returns source revision and page references. Extracted tables and OCR require verification; missing pages are not evidence of absence.',
-      inputSchema: z.object({
-        fileId: z.string().min(1),
-        revision: z.string().min(1).optional(),
-        mode: z.enum(['metadata', 'text', 'render', 'tables', 'ocr']).default('text'),
-        page: z.number().int().positive().default(1),
-      }).strict(),
+      inputSchema: readDocumentInputSchema,
       execute: async input => {
         if (options.filesReadingTools !== true) throw new Error('Original-file reading is unavailable.')
         assertToolAllowed('read_file')
