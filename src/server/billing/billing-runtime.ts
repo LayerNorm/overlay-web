@@ -12,6 +12,7 @@ import {
   TOP_UP_MIN_AMOUNT_CENTS,
   TOP_UP_STEP_AMOUNT_CENTS,
 } from '@/shared/billing/billing-pricing'
+import { configuredUsageMarkupBasisPoints } from '@/server/env/usage-markup'
 import { ensureWorkspaceBudgetAvailable } from '@/server/billing/workspace-budget'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
@@ -51,11 +52,11 @@ export function getBudgetTotals(entitlements: Pick<
 }
 
 export function billableBudgetCentsFromProviderUsd(providerCostUsd: number): number {
-  return applyMarkupToDollars({ providerCostUsd })
+  return applyMarkupToDollars({ providerCostUsd, markupBasisPoints: configuredUsageMarkupBasisPoints() })
 }
 
 export function billableBudgetCentsFromProviderCents(providerCostCents: number): number {
-  return applyMarkupToCents({ providerCostCents })
+  return applyMarkupToCents({ providerCostCents, markupBasisPoints: configuredUsageMarkupBasisPoints() })
 }
 
 export type ProviderSpendKind =

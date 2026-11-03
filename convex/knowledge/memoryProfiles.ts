@@ -16,7 +16,7 @@ import { internalAction } from '../_generated/server'
 import { v } from 'convex/values'
 import { api, internal } from '../_generated/api'
 import { calculateGatewayLanguageModelCostOrNull } from '../lib/gatewayCatalogPricing'
-import { applyMarkupToDollars } from '../../src/shared/billing/billing-pricing'
+import { applyMarkupToDollars } from '../lib/usageMarkup'
 import { normalizeOpenAiCompatibleBaseUrl } from '../../src/shared/ai/gateway/openai-compatible-base-url'
 
 // Keep in sync with memoryProfileStore.PROFILE_MEMORY_LIMIT — a node-runtime

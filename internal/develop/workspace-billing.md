@@ -44,7 +44,7 @@ Workspace reservations use the account-keyed balance and optionally a fixed-peri
 
 New execution admission checks the paid current period and available wallet funds before starting work. Already-created matching holds are replayed before new-spend admission, and settlement, release, and reconciliation remain available after admission closes. Explicit BYO inference still requires a funded workspace, but creates no Overlay model-usage reservation.
 
-The launch coverage gate lives in `src/server/billing/billable-feature-coverage.ts`. Shared conversations/agents, embeddings/search, browser/sandbox, hosted media/transcription, and automation/API provider calls are metered. Workflow runs additionally charge a conservative 20-step estimate at Vercel's Workflow Steps rate ($2.50 per 100,000 steps) with the same 25% markup. Functions, integrations, and MCP tools are bounded to 12 steps per agent turn and 50,000 result characters; file ingestion is bounded to 20 requests per hour and the account storage cap. Keep `npm run check:owner-funded-boundary` and the coverage test passing for every hosted-cost entry point.
+The launch coverage gate lives in `src/server/billing/billable-feature-coverage.ts`. Shared conversations/agents, embeddings/search, browser/sandbox, hosted media/transcription, and automation/API provider calls are metered. Workflow runs additionally charge a conservative 20-step estimate at Vercel's Workflow Steps rate ($2.50 per 100,000 steps) with the configured usage markup. Functions, integrations, and MCP tools are bounded to 12 steps per agent turn and 50,000 result characters; file ingestion is bounded to 20 requests per hour and the account storage cap. Keep `npm run check:owner-funded-boundary` and the coverage test passing for every hosted-cost entry point.
 
 The workspace billing contract runs against Convex:
 
@@ -134,3 +134,21 @@ plan admission and provider budget reservation/finalization remain enforced.
 The owner-funded boundary guard follows the current Act orchestration, Harness
 model dispatch and Convex knowledge payer path. It also rejects retired Postgres
 and desktop billing implementations and native client-calculated usage writes.
+
+## Usage markup configuration
+
+`OVERLAY_USAGE_MARKUP_BPS` is required on Next and its matching Convex deployment.
+Set it to `2500` to retain the current 25% rate. This controls provider-cost billing
+for inference, tools, memory/embeddings and Computer compute; it does not change
+Stripe prices, subscription amounts, included credit or existing account records.
+Shared pricing helpers require an explicit rate and never read environment values.
+Missing, negative or non-integer configuration rejects billing rather than silently
+falling back. The historical `markup_25_v1` account identifier is retained for
+compatibility; it is not the runtime rate. New accounts record the configured rate.
+
+Before releasing this contract, set and read back the same value in Vercel Preview
+and Production, the shared Convex Preview configuration and matching backends.
+Configure local engineer-owned Next/Convex environments too. Unit runners use an
+explicit test fixture. Do not change the rate independently during active billed
+work: reservations and final settlement must use the same policy. A future rate
+change requires a coordinated rollout with in-flight reservations settled first.

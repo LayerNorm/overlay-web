@@ -170,3 +170,7 @@ remain possible after exhaustion, so costs cannot disappear or strand a machine.
 The guard does not replace provider account limits for unmetered service fees,
 retained storage, or activity outside Overlay. Aggregate multiple PRs at the
 provider account when a shared account budget is required.
+
+Usage markup is configured with `OVERLAY_USAGE_MARKUP_BPS` on both Next and the
+matching Convex backend; see [Workspace billing](workspace-billing.md#usage-markup-configuration).
+Computer bootstrap holds and ongoing usage use this same configured rate.

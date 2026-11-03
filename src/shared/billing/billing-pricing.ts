@@ -7,8 +7,6 @@ export const PAID_PLAN_MAX_AMOUNT_CENTS = 50_000
 export const PAID_PLAN_STEP_AMOUNT_CENTS = 100
 export const PAID_PLAN_UNIT_AMOUNT_CENTS = 100
 
-export const DEFAULT_MARKUP_BASIS_POINTS = 2_500
-
 export const FREE_PLAN_STORAGE_BYTES = 10 * 1024 * 1024
 export const PAID_STORAGE_BASE_PLAN_AMOUNT_CENTS = 800
 export const PAID_STORAGE_BASE_BYTES = 1024 * 1024 * 1024
@@ -63,11 +61,20 @@ export function derivePlanAmountCents(params: {
   return clampPaidPlanAmountCents(legacyTierPlanAmountCents(params.tier))
 }
 
-export function getMarkupBasisPoints(markupBasisPoints?: number | null): number {
-  if (typeof markupBasisPoints === 'number' && Number.isFinite(markupBasisPoints) && markupBasisPoints >= 0) {
-    return Math.round(markupBasisPoints)
+/** Validate a supplied rate; billing never silently substitutes a pricing policy. */
+export function getMarkupBasisPoints(markupBasisPoints: number): number {
+  if (!Number.isSafeInteger(markupBasisPoints) || markupBasisPoints < 0) {
+    throw new Error('Usage markup must be a non-negative integer in basis points')
   }
-  return DEFAULT_MARKUP_BASIS_POINTS
+  return markupBasisPoints
+}
+
+/** Pure parser: environment reads belong to the Next or Convex server boundary. */
+export function parseUsageMarkupBasisPoints(value: string | undefined): number {
+  if (!value || !/^\d+$/.test(value.trim())) {
+    throw new Error('OVERLAY_USAGE_MARKUP_BPS must be configured as a non-negative integer')
+  }
+  return getMarkupBasisPoints(Number(value.trim()))
 }
 
 export function quantityToPlanAmountCents(quantity?: number | null): number {
@@ -122,7 +129,7 @@ export function dollarsToCents(value: number): number {
 
 export function applyMarkupToCents(params: {
   providerCostCents: number
-  markupBasisPoints?: number | null
+  markupBasisPoints: number
 }): number {
   const markupBasisPoints = getMarkupBasisPoints(params.markupBasisPoints)
   const multiplier = 1 + markupBasisPoints / 10_000
@@ -131,7 +138,7 @@ export function applyMarkupToCents(params: {
 
 export function applyMarkupToDollars(params: {
   providerCostUsd: number
-  markupBasisPoints?: number | null
+  markupBasisPoints: number
 }): number {
   return applyMarkupToCents({
     providerCostCents: dollarsToCents(params.providerCostUsd),

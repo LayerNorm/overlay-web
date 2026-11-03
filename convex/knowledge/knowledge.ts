@@ -13,7 +13,7 @@ import { internal, api } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
 import { requireAccessToken, requireServerSecret, validateServerSecret } from '../lib/auth'
 import { calculateGatewayEmbeddingModelCostOrNull } from '../lib/gatewayCatalogPricing'
-import { applyMarkupToDollars } from '../../src/shared/billing/billing-pricing'
+import { applyMarkupToDollars } from '../lib/usageMarkup'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import {
   KNOWLEDGE_CHUNK_CHARS,

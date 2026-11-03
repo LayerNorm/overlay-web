@@ -6,6 +6,8 @@ import test from 'node:test'
 import {
   canUsePaidBudgetFeatures,
   reserveProviderBudget,
+  billableBudgetCentsFromProviderUsd,
+  billableBudgetCentsFromProviderCents,
 } from './billing-runtime'
 import { WorkspaceExecutionError } from './WorkspaceExecutionPolicy'
 
@@ -150,4 +152,20 @@ test('auto top-up is skipped when the billing capability is disabled', async (t)
 
   assert.equal(result.autoTopUpApplied, false)
   assert.equal(result.remainingCents, 0)
+})
+
+
+test('web usage billing reads the configured rate with no hardcoded fallback', (t) => {
+  const original = process.env.OVERLAY_USAGE_MARKUP_BPS
+  t.after(() => {
+    if (original === undefined) delete process.env.OVERLAY_USAGE_MARKUP_BPS
+    else process.env.OVERLAY_USAGE_MARKUP_BPS = original
+  })
+  process.env.OVERLAY_USAGE_MARKUP_BPS = '5000'
+  assert.equal(billableBudgetCentsFromProviderUsd(8), 1200)
+  assert.equal(billableBudgetCentsFromProviderCents(800), 1200)
+  process.env.OVERLAY_USAGE_MARKUP_BPS = '0'
+  assert.equal(billableBudgetCentsFromProviderUsd(8), 800)
+  delete process.env.OVERLAY_USAGE_MARKUP_BPS
+  assert.throws(() => billableBudgetCentsFromProviderUsd(8), /OVERLAY_USAGE_MARKUP_BPS/)
 })
