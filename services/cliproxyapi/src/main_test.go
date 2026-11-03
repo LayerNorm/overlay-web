@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -165,25 +166,42 @@ func TestInferCancelsExecutorWhenStreamWriteFails(t *testing.T) {
 	}
 }
 
-type providerStatus int
+type refreshRoundTripFunc func(*http.Request) (*http.Response, error)
 
-func (status providerStatus) Error() string   { return "private provider detail" }
-func (status providerStatus) StatusCode() int { return int(status) }
+func (f refreshRoundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) {
+	return f(request)
+}
 
-func TestSafeRefreshErrorsDistinguishRateLimitFromReconnection(t *testing.T) {
+func TestSafeRefreshErrorsUseActualUpstreamRefreshStatus(t *testing.T) {
 	for _, test := range []struct {
-		status int
-		code   string
+		name       string
+		status     int
+		code       string
+		wantStatus int
 	}{
-		{http.StatusTooManyRequests, "rate_limited"},
-		{http.StatusUnauthorized, "reconnect_required"},
-		{http.StatusBadGateway, "reconnect_required"},
+		{"rate-limited", http.StatusTooManyRequests, "rate_limited", http.StatusTooManyRequests},
+		{"invalidated", http.StatusUnauthorized, "reconnect_required", http.StatusUnauthorized},
+		{"uncertain", http.StatusBadGateway, "reconnect_required", http.StatusBadGateway},
 	} {
-		_, code, message := safeRefreshError(providerStatus(test.status))
-		if code != test.code {
-			t.Fatalf("status %d code = %q", test.status, code)
+		auth := codexauth.NewCodexAuthWithHTTPClient(nil, &http.Client{
+			Transport: refreshRoundTripFunc(func(request *http.Request) (*http.Response, error) {
+				return &http.Response{
+					StatusCode: test.status,
+					Body:       io.NopCloser(strings.NewReader("private provider text")),
+					Header:     make(http.Header),
+					Request:    request,
+				}, nil
+			}),
+		})
+		_, err := auth.RefreshTokens(context.Background(), "safe-refresh-"+test.name)
+		if err == nil {
+			t.Fatalf("%s: expected upstream refresh error", test.name)
 		}
-		if strings.Contains(message, "private provider detail") {
+		status, code, message := safeRefreshError(err)
+		if status != test.wantStatus || code != test.code {
+			t.Fatalf("status/code = %d/%q, want %d/%q", status, code, test.wantStatus, test.code)
+		}
+		if strings.Contains(message, "private provider text") {
 			t.Fatal("refresh error leaked provider details")
 		}
 	}

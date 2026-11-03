@@ -20,13 +20,13 @@ if [ "$ACTUAL_SHA" != "$UPSTREAM_SHA" ]; then
   exit 1
 fi
 
-PATCH="$ROOT/patches/codex-device-api.patch"
-if git -C "$UPSTREAM_DIR" apply --unidiff-zero --reverse --check "$PATCH" >/dev/null 2>&1; then
-  :
-else
+for PATCH in "$ROOT"/patches/*.patch; do
+  if git -C "$UPSTREAM_DIR" apply --unidiff-zero --reverse --check "$PATCH" >/dev/null 2>&1; then
+    continue
+  fi
   git -C "$UPSTREAM_DIR" apply --unidiff-zero --check "$PATCH"
   git -C "$UPSTREAM_DIR" apply --unidiff-zero "$PATCH"
-fi
+done
 
 mkdir -p "$UPSTREAM_DIR/cmd/overlay-subscriptions"
 cp "$ROOT"/src/*.go "$UPSTREAM_DIR/cmd/overlay-subscriptions/"

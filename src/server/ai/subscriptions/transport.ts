@@ -289,21 +289,6 @@ export function createSubscriptionLanguageModel(args: {
           modelId: args.modelId,
           request: { ...body, stream: true, store: false },
         }, init?.signal ?? undefined)
-        if (!upstream.ok) {
-          let code: unknown
-          try {
-            const body: unknown = await upstream.clone().json()
-            if (body && typeof body === 'object' && 'error' in body &&
-                body.error && typeof body.error === 'object' && 'code' in body.error) {
-              code = body.error.code
-            }
-          } catch (_error) { /* use the generic safe error */ }
-          await upstream.body?.cancel().catch((_error) => undefined)
-          const safe = typeof code === 'string' ? safeErrors[code] : undefined
-          return safe
-            ? errorResponse(safe.status, safe.message, code as string)
-            : errorResponse(502, safeUpstreamError, 'provider_unavailable')
-        }
         if (!upstream.body) return errorResponse(400, safeStreamError)
         const streamResponse = new Response(boundedStream(upstream.body), {
           status: upstream.status,

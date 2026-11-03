@@ -19,6 +19,39 @@ export type BridgePendingState = {
 }
 
 const safeError = 'The subscription service could not complete this request.'
+const maxControlResponseBytes = 2_000_000
+
+async function readBoundedResponse(response: Response): Promise<Uint8Array> {
+  const reader = response.body?.getReader()
+  if (!reader) return new Uint8Array()
+
+  const chunks: Uint8Array[] = []
+  let totalBytes = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      if (!value || totalBytes + value.byteLength > maxControlResponseBytes) {
+        throw new Error(safeError)
+      }
+      chunks.push(value)
+      totalBytes += value.byteLength
+    }
+  } catch (error) {
+    await reader.cancel().catch((_cancelError) => undefined)
+    throw error
+  } finally {
+    reader.releaseLock()
+  }
+
+  const bytes = new Uint8Array(totalBytes)
+  let offset = 0
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return bytes
+}
 
 export class SubscriptionBridgeError extends Error {
   constructor(readonly code: string, readonly status: number, message: string) {
@@ -39,7 +72,7 @@ export function isBridgeCredential(value: unknown): value is BridgeCredential {
 export function isBridgePendingState(value: unknown): value is BridgePendingState {
   return isBridgeCredential(value) && 'interval' in value &&
     typeof value.interval === 'number' && Number.isFinite(value.interval) &&
-    value.interval >= 1 && value.interval <= 30 && value.expiresAt > Date.now()
+    value.interval >= 1 && value.interval <= 30
 }
 
 export class SubscriptionBridgeClient {
@@ -70,7 +103,8 @@ export class SubscriptionBridgeClient {
         typeof value.authorization.interval !== 'number' ||
         !Number.isFinite(value.authorization.interval) ||
         value.authorization.interval < 1 || value.authorization.interval > 30 ||
-        !isBridgePendingState(value.pendingState)) throw new Error(safeError)
+        !isBridgePendingState(value.pendingState) ||
+        value.pendingState.expiresAt <= Date.now()) throw new Error(safeError)
     return value as {
       authorization: { url: string; userCode: string; expiresAt: number; interval: number }
       pendingState: BridgePendingState
@@ -106,14 +140,15 @@ export class SubscriptionBridgeClient {
     request: { connectionId: string; credential: BridgeCredential; modelId: string; request: unknown },
     signal?: AbortSignal,
   ): Promise<Response> {
-    return await this.send('/internal/v1/infer', request, signal)
+    const response = await this.send('/internal/v1/infer', request, signal)
+    if (!response.ok) throw await this.safeFailure(response)
+    return response
   }
 
   private async request<T>(path: string, body: unknown): Promise<T> {
     const response = await this.send(path, body, AbortSignal.timeout(30_000))
     if (!response.ok) throw await this.safeFailure(response)
-    const bytes = new Uint8Array(await response.arrayBuffer())
-    if (bytes.byteLength > 2_000_000) throw new Error(safeError)
+    const bytes = await readBoundedResponse(response)
     try {
       return JSON.parse(new TextDecoder().decode(bytes)) as T
     } catch (_error) {
@@ -144,9 +179,14 @@ export class SubscriptionBridgeClient {
 
   private async safeFailure(response: Response): Promise<Error> {
     let code: unknown
+    let bytes: Uint8Array
     try {
-      const bytes = new Uint8Array(await response.arrayBuffer())
-      if (bytes.byteLength > 2_000_000) return new Error(safeError)
+      bytes = await readBoundedResponse(response)
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') throw error
+      return new Error(safeError)
+    }
+    try {
       const body: unknown = JSON.parse(new TextDecoder().decode(bytes))
       if (body && typeof body === 'object' && 'error' in body &&
           body.error && typeof body.error === 'object' && 'code' in body.error) {

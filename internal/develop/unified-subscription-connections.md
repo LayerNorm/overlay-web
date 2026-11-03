@@ -50,6 +50,9 @@ the new immutable credential before dispatch, then rechecks the model,
 generation, and credential reference. The Go inference executor never refreshes
 credentials. An uncertain rotating-token result fails closed rather than
 blindly retrying a possibly consumed token.
+An explicit provider rate limit instead releases the refresh lease, preserves
+the current credential, and reports a safe retry-later result. Definite
+credential rejection and uncertain rotation outcomes remain fail-closed.
 
 Catalog reconciliation removes selections only when a successful catalog
 update proves a selected model is no longer present. Temporary inference

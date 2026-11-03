@@ -220,6 +220,10 @@ export class SubscriptionService {
       if (!committed) throw new Error('Refreshed subscription credential could not be committed')
       return await this.discover(userId, connectionId)
     } catch (error) {
+      if (error instanceof SubscriptionBridgeError && error.code === 'rate_limited') {
+        await this.repository.releaseRefresh(fenced).catch((_releaseError) => undefined)
+        return { status: 'error', error: publicError(error) }
+      }
       await this.repository.failClosed({
         ...fenced,
         error: 'The rotating subscription credential could not be refreshed. Reconnect to continue.',

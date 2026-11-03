@@ -725,3 +725,103 @@ test('legacy native Codex credentials require reconnect without bridge import', 
   )
   assert.equal(bridgeRequests, 0)
 })
+
+test('expired persisted authorization returns expired without contacting the bridge', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex'
+  const repository = new FakeRepository()
+  repository.state = {
+    userId: 'owner-1',
+    connectionId: 'connection-1',
+    providerId: 'codex',
+    generation: 2,
+    revision: 4,
+    phase: 'pending',
+    pendingStateRef: 'expired-pending-state',
+    cleanupRefs: [],
+    pendingWrites: [],
+  }
+  repository.acquirePoll = async () => ({
+    generation: 2,
+    revision: 4,
+    pendingStateRef: 'expired-pending-state',
+  })
+  let failClosedCalled = false
+  repository.failClosed = async () => {
+    failClosedCalled = true
+    return []
+  }
+  const credentials = new FakeCredentials()
+  credentials.values.set('expired-pending-state', JSON.stringify({
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'codex',
+    metadata: { deviceAuthId: 'opaque-device-state' },
+    expiresAt: Date.now() - 1,
+    interval: 5,
+  }))
+  let bridgeRequests = 0
+  const service = createService(repository, credentials, async () => {
+    bridgeRequests += 1
+    throw new Error('expired authorization must not be polled')
+  })
+
+  assert.deepEqual(
+    await service.poll('owner-1', 'connection-1'),
+    { status: 'expired' },
+  )
+  assert.equal(failClosedCalled, true)
+  assert.equal(bridgeRequests, 0)
+})
+
+test('an explicit refresh rate limit releases the lease and preserves the credential', async () => {
+  const repository = new FakeRepository()
+  const credentials = new FakeCredentials()
+  const storedCredential: BridgeCredential = {
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'codex',
+    metadata: { tokenStorage: { accessToken: 'current-access', refreshToken: 'current-refresh' } },
+    expiresAt: Date.now() + 30_000,
+  }
+  const serializedCredential = JSON.stringify(storedCredential)
+  const credentialRef = await credentials.write({ apiKey: serializedCredential })
+  repository.state = {
+    userId: 'owner-1',
+    connectionId: 'connection-1',
+    providerId: 'codex',
+    generation: 3,
+    revision: 6,
+    phase: 'active',
+    credentialRef,
+    cleanupRefs: [],
+    pendingWrites: [],
+  }
+  let refreshLeaseReleased = false
+  let failClosedCalled = false
+  repository.releaseRefresh = async () => { refreshLeaseReleased = true }
+  repository.failClosed = async () => {
+    failClosedCalled = true
+    return []
+  }
+  const service = createService(repository, credentials, async () => Response.json(
+    { error: { code: 'rate_limited', message: 'private provider detail' } },
+    { status: 429 },
+  ))
+
+  const result = await service.refresh('owner-1', 'connection-1')
+
+  assert.deepEqual(result, {
+    status: 'error',
+    error: 'Codex is rate-limiting requests. Retry later.',
+  })
+  assert.equal(refreshLeaseReleased, true)
+  assert.equal(failClosedCalled, false)
+  assert.equal(repository.state?.credentialRef, credentialRef)
+  assert.equal(credentials.values.get(credentialRef), serializedCredential)
+  assert.equal(credentials.values.size, 1)
+})
