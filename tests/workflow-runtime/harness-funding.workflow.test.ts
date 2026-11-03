@@ -10,6 +10,9 @@ import {
 test('compiled v2 funding wait renews its lease and resumes the same persisted task after a wake', async () => {
   const id = randomUUID()
   await initializeHarnessFundingFixture(id)
+  expect((await readHarnessFundingFixture(id)).resourcePause).toMatchObject({
+    requiredCents: 38.96, availableCents: 0.98, reservedCents: 0.02,
+  })
   const run = await start(harnessFundingFixture, [{ id }])
   const token = `harness-funding:${id}`
   await waitForHook(run, { token })

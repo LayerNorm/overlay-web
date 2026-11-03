@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve fractional-cent funding balances through durable Harness pauses and prevent workspace-funded task errors from falling back to a different model instead of waiting for funds.
+
 - Seed funding QA agents with valid editable avatar values so saving a model does not fail unrelated avatar validation. Existing fixtures and balances remain unchanged on reseed.
 
 - Preserve generation fencing, authorization pauses, and lease renewal when combining durable continuation with the streamlined personal Harness startup path.

@@ -124,6 +124,8 @@ export function createHarnessModelPorts(input: {
         return waitForHarnessModelRecovery(reference, receiptId)
       }
       if (!receipt.rejectionReason || receipt.modelId !== candidates[candidateIndex]) return false
+      if (receipt.rejectionReason === 'budget' && state.policy.executionPolicyVersion === 2
+        && state.policy.spendingMode === 'workspace') return false
       if (receipt.rejectionReason === 'route_capacity') {
         preparedCalls.delete(receiptId)
         return capacity.wait(state, receiptId, candidates[candidateIndex])

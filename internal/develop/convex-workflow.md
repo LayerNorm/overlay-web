@@ -527,7 +527,10 @@ delivery ownership, workflow owner, generation, and ancestors. It cannot expand 
 
 Workspace funding denials are persisted as `waiting_for_resources` with bounded reasons,
 required and available amounts, and the reserved amount only when authoritative. Otherwise
-the projection explicitly reports that the reserved amount is unavailable. The workflow
+the projection explicitly reports that the reserved amount is unavailable. These amounts
+retain fractional cents from the billing ledger; they are not Stripe payment amounts.
+Workspace-funded budget rejections never fall back to another model, including when
+persisting the funding pause fails. Legacy routing behavior remains unchanged. The workflow
 polls on a durable 60-second sleep and rechecks authority and current funding before
 resuming the same task. Auto top-up remains opt-in:
 enabled setting, explicit consent, valid payment method, active paid subscription, and

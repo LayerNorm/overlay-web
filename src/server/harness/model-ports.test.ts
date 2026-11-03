@@ -58,6 +58,23 @@ beforeEach(() => {
   vi.resetAllMocks()
 })
 
+test.each([true, false])('budget fallback preserves legacy behavior but never masks workspace funding errors (v2=%s)', async versioned => {
+  const initial = stateWithInterruptionCount(0)
+  const onFallback = vi.fn()
+  mocks.read.mockResolvedValue({
+    ...initial,
+    policy: { ...initial.policy, ...(versioned ? { executionPolicyVersion: 2, spendingMode: 'workspace' } : {}) },
+    latestReceipt: { ...initial.latestReceipt, modelId: 'fixture/paid', rejectionReason: 'budget' },
+  })
+  const ports = createHarnessModelPorts({
+    reference, modelId: 'fixture/paid', prepare: vi.fn(),
+  }, { candidateIds: ['fixture/paid', 'openrouter/free'], onFallback })
+  expect(await ports.recoverModelFailure('model:0')).toBe(!versioned)
+  expect(onFallback).toHaveBeenCalledTimes(versioned ? 0 : 1)
+  expect(mocks.wait).not.toHaveBeenCalled()
+  expect(mocks.recovery).not.toHaveBeenCalled()
+})
+
 test('legacy interruption snapshots without recovery metadata keep the two-attempt limit', async () => {
   for (const count of [1, 2, 3]) {
     const onFallback = vi.fn()

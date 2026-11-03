@@ -36,9 +36,9 @@ export async function initializeHarnessFundingFixture(id: string): Promise<void>
   const running = { ...initial, workflowRunId: 'fixture' }
   const paused = pauseHarnessForFunding(running, {
     reason: 'insufficient_budget',
-    requiredCents: 25,
-    availableCents: 0,
-    reservedCents: 0,
+    requiredCents: 38.96,
+    availableCents: 0.98,
+    reservedCents: 0.02,
     receiptId: 'model:4',
   }, now)
   paused.policy.deadlineAt = now - 1
@@ -108,7 +108,7 @@ export async function harnessFundingFixture(input: { id: string }) {
     readState: () => readFundingState(input.id),
   })
   if (!ports.checkFunding || !ports.waitForFunding) throw new Error('Funding wait ports are unavailable.')
-  while (!await ports.checkFunding(25)) await ports.waitForFunding()
+  while (!await ports.checkFunding(38.96)) await ports.waitForFunding()
   const state = await readFundingState(input.id)
   const resumed = resumeHarnessFunding(state, Date.now())
   await persistFundingResume(input.id, resumed)

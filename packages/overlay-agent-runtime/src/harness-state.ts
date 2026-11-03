@@ -1,4 +1,4 @@
-import type { HarnessResourceGrantReceipt } from './harness-resource'
+import { isSafeHarnessFundingCents, type HarnessResourceGrantReceipt } from './harness-resource'
 
 export type HarnessStatus = 'running' | 'waiting_for_input' | 'waiting_for_approval' | 'waiting_for_children' | 'waiting_for_resources' | 'waiting_for_authorization' | 'completed' | 'cancelled' | 'failed'
 export type HarnessAuthorizationPause = {
@@ -769,10 +769,10 @@ export function pauseHarnessForFunding(
   if (state.policy.executionPolicyVersion !== 2 || state.policy.spendingMode !== 'workspace'
     || state.status !== 'running' || state.modelReservation || state.resourceRequestToken
     || state.resourcePause || !pause.receiptId.trim()
-    || !Number.isSafeInteger(pause.requiredCents) || pause.requiredCents < 1
-    || !Number.isSafeInteger(pause.availableCents) || pause.availableCents < 0
+    || !isSafeHarnessFundingCents(pause.requiredCents) || pause.requiredCents <= 0
+    || !isSafeHarnessFundingCents(pause.availableCents)
     || (pause.reservedCents !== undefined
-      && (!Number.isSafeInteger(pause.reservedCents) || pause.reservedCents < 0))) {
+      && !isSafeHarnessFundingCents(pause.reservedCents))) {
     throw new Error('Invalid workspace funding pause.')
   }
   const next = mutable(state)

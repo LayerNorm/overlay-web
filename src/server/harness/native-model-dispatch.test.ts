@@ -65,6 +65,24 @@ test('native budget rejection records the receipt and does not start inference',
   expect(mocks.started).not.toHaveBeenCalled()
 })
 
+test('workspace funding denial with fractional cents persists a pause before yielding without inference', async () => {
+  const active = { ...state, status: 'running', policy: { executionPolicyVersion: 2, spendingMode: 'workspace' } }
+  const settled = { ...active, modelReservation: undefined, latestReceipt: { id: 'model:0' } }
+  mocks.read.mockResolvedValue(active)
+  mocks.reject.mockImplementation(async () => { mocks.read.mockResolvedValue(settled) })
+  mocks.apply.mockResolvedValue({ applied: true, conflict: false, snapshot: { ...settled, status: 'waiting_for_resources' } })
+  mocks.reserve.mockResolvedValue({ ok: false, code: 'insufficient_budget', payload: {
+    resourceStatus: { reason: 'disabled', requiredCents: 38.96, remainingCents: 0.98, reservedCents: 0.02 },
+  } })
+  await expect(authorizeNativeHarnessModelDispatch(reference, options)).rejects.toThrow('HARNESS_SAFE_RESOURCE_PAUSE:model:0')
+  expect(mocks.reject).toHaveBeenCalledExactlyOnceWith(reference, 'budget')
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ operation: {
+    type: 'pause_for_funding', pause: { reason: 'disabled', requiredCents: 38.96, availableCents: 0.98, reservedCents: 0.02, receiptId: 'model:0' },
+  } }))
+  expect(mocks.started).not.toHaveBeenCalled()
+  expect(mocks.release).not.toHaveBeenCalled()
+})
+
 test('revoked access, fresh ZDR and replayed dispatch fail closed without a second hold', async () => {
   mocks.refresh.mockRejectedValueOnce(new Error('revoked'))
   await expect(authorizeNativeHarnessModelDispatch(reference, options)).rejects.toThrow(/revoked/)

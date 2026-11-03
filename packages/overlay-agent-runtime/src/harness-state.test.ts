@@ -10,6 +10,7 @@ import {
   bindHarnessModelDispatch,
   validateHarnessReceipt,
   pauseHarnessForAuthorization,
+  pauseHarnessForFunding, resumeHarnessFunding,
 } from './harness-state'
 
 const now = 1_000
@@ -28,6 +29,25 @@ const make = () => createHarnessSnapshot({ runId: 'root', goal: 'Produce a check
   actorUserId: 'user', allowedToolIds: ['read', 'write'], requiresPlan: true,
   deadlineAt: 10_000, maxCostMicros: 100, maxParallelChildren: 2, maxDepth: 1,
 } }, now)
+
+test('workspace funding pauses preserve fractional cents and resume the same task', () => {
+  const initial = make()
+  const state = { ...initial, policy: { ...initial.policy, executionPolicyVersion: 2 as const, spendingMode: 'workspace' as const } }
+  const pause = { reason: 'disabled' as const, receiptId: 'model:0', requiredCents: 38.96, availableCents: 0.98, reservedCents: 0.02 }
+  const paused = pauseHarnessForFunding(state, pause, now)
+  assert.equal(paused.status, 'waiting_for_resources')
+  assert.deepEqual(paused.resourcePause, pause)
+  const resumed = resumeHarnessFunding(paused, now + 1)
+  assert.equal(resumed.runId, state.runId)
+  assert.equal(resumed.status, 'running')
+  assert.equal(resumed.resourcePause, undefined)
+  for (const field of ['requiredCents', 'availableCents', 'reservedCents'] as const) {
+    for (const invalid of [-1, NaN, Infinity, Number.MAX_SAFE_INTEGER]) {
+      assert.throws(() => pauseHarnessForFunding(state, { ...pause, [field]: invalid }, now), /Invalid workspace funding pause/)
+    }
+  }
+  assert.throws(() => pauseHarnessForFunding(state, { ...pause, requiredCents: 0 }, now), /Invalid workspace funding pause/)
+})
 
 test('route interruption receipts count durably toward the per-run retry cap', () => {
   let state = make()

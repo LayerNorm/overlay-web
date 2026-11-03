@@ -3,6 +3,7 @@ import 'server-only'
 import { createHash } from 'node:crypto'
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
+import { isSafeHarnessFundingCents } from '@overlay/agent-runtime/harness-resource'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { reserveProviderBudget, markProviderBudgetStarted, releaseProviderBudgetReservation } from '@/server/billing/billing-runtime'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
@@ -29,16 +30,16 @@ function fundingPauseReason(rawReason: string): import('@overlay/agent-runtime/h
 }
 
 function exactFundingAmounts(status: Record<string, unknown>) {
-  if (!Number.isSafeInteger(status.requiredCents) || (status.requiredCents as number) <= 0
-    || !Number.isSafeInteger(status.remainingCents) || (status.remainingCents as number) < 0
+  if (!isSafeHarnessFundingCents(status.requiredCents) || status.requiredCents <= 0
+    || !isSafeHarnessFundingCents(status.remainingCents)
     || (status.reservedCents !== undefined
-      && (!Number.isSafeInteger(status.reservedCents) || (status.reservedCents as number) < 0))) {
+      && !isSafeHarnessFundingCents(status.reservedCents))) {
     throw new FatalError('The funding denial did not include exact reservation amounts.')
   }
   return {
-    requiredCents: status.requiredCents as number,
-    availableCents: status.remainingCents as number,
-    reservedCents: Number.isSafeInteger(status.reservedCents) ? status.reservedCents as number : undefined,
+    requiredCents: status.requiredCents,
+    availableCents: status.remainingCents,
+    reservedCents: status.reservedCents,
   }
 }
 
