@@ -144,7 +144,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
   }
   const current = await readHarnessState(access)
-  const currentProjection = projectCurrentHarnessOwner(current, access)
+  const currentProjection = projectCurrentHarnessOwner(current, access, { includeFundingPause: true })
   if (currentProjection) return currentProjection
   if (owns) {
     const delivery = buildNativeHarnessDelivery(result, fallbackNotices, activeToolNames)

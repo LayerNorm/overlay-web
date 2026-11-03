@@ -20,12 +20,14 @@ export function projectHarnessExecutionResult(
 export function projectCurrentHarnessOwner(
   state: HarnessSnapshot,
   access: { workflowRunId: string; executionGeneration?: number },
+  options: { includeFundingPause?: boolean } = {},
 ): { runId: string; status: string } | null {
   if (state.workflowRunId !== access.workflowRunId
     || (state.executionGeneration ?? 0) !== (access.executionGeneration ?? 0)) {
     return { runId: state.runId, status: state.status === 'running' ? 'continued' : state.status }
   }
-  if (state.status === 'waiting_for_resources' || state.status === 'waiting_for_authorization') {
+  if (state.status === 'waiting_for_authorization'
+    || (options.includeFundingPause && state.status === 'waiting_for_resources')) {
     return { runId: state.runId, status: state.status }
   }
   return null

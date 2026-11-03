@@ -276,7 +276,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
   }
   const current = await readHarnessState(access)
-  const currentProjection = projectCurrentHarnessOwner(current, access)
+  const currentProjection = projectCurrentHarnessOwner(current, access, { includeFundingPause: true })
   if (currentProjection) return currentProjection
   if (isRoot) {
     const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, fallbackNotices, activeToolNames)
