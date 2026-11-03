@@ -516,7 +516,7 @@ it('Plan: write claims without a plan stay blocked, while answer-only Q&A comple
   expect(answer.doStreamCalls[1]?.toolChoice).toEqual({ type: 'none' })
 })
 
-it('Plan: a rejected reporting milestone recovers without repeating its completed action', async () => {
+it('Plan: rejected reporting and textual DSML recover without repeating the completed action', async () => {
   const f = harnessFixture({ allowedToolIds: ['create_note'] })
   const noteLink = '/notes/launch-checklist'
   const create = { id: 'create', title: 'Create the launch checklist', dependsOn: [],
@@ -539,12 +539,15 @@ it('Plan: a rejected reporting milestone recovers without repeating its complete
     if (index === 5) return [{ name: 'harness_set_plan', id: 'recover', input: { steps: [create, {
       ...report, evidenceTools: [], answerOnly: true,
     }] } }]
+    if (index === 6) return 'Marking the report done.\n\n<｜DSML｜tool_calls>\n<｜DSML｜invoke name="harness_update_step">\n<｜DSML｜parameter name="id" string="true">report</｜DSML｜parameter>\n<｜DSML｜parameter name="status" string="true">done</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜tool_calls>'
     return `Created your eight-item checklist: [Launch checklist](${noteLink}).`
   })
 
   const result = await f.run(tools)
   expect(result.snapshot.status).toBe('completed')
   expect(result.snapshot.resultSummary).toContain(noteLink)
+  expect(result.snapshot.resultSummary).not.toContain('DSML')
+  expect(provider.doStreamCalls).toHaveLength(8)
   expect(execute).toHaveBeenCalledOnce()
   expect(result.snapshot.plan[0]).toMatchObject({ ...create, status: 'done', evidenceRefs: ['tool:note'] })
   expect(result.snapshot.plan[1]).toMatchObject({ answerOnly: true, status: 'done' })
@@ -553,6 +556,8 @@ it('Plan: a rejected reporting milestone recovers without repeating its complete
   expect(recoveryPrompt).toContain('use harness_set_plan to set answerOnly: true')
   expect(recoveryPrompt).toContain('Preserve every other milestone exactly')
   expect(recoveryPrompt).toContain('do not repeat the completed action')
+  expect(JSON.stringify(provider.doStreamCalls[6]?.prompt)).toContain('Reporting-only milestones finish with your answer')
+  expect(provider.doStreamCalls[6]?.toolChoice).toEqual({ type: 'none' })
   expect(provider.doStreamCalls.at(-1)?.toolChoice).toEqual({ type: 'none' })
 })
 
