@@ -7,6 +7,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { agentRunService } from '@/server/conversations/http'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
+import { attachPersonalDelivery } from './personal-delivery-attach'
 import type { PersonalHarnessAccess } from './personal-access'
 import type { buildPersonalHarnessDelivery } from './personal-delivery'
 import type { PersonalHarnessModelRouting } from './personal-model-ports'
@@ -36,21 +37,7 @@ export async function writePersonalHarnessFallback(
 
 export async function attachPersonalHarnessDelivery(access: PersonalHarnessAccess): Promise<void> {
   'use step'
-  const state = await new ConvexHarnessRepository().get(access)
-  if (!state || state.parentRunId || state.workflowRunId !== access.workflowRunId) throw new FatalError('Invalid root delivery authority.')
-  const current = await getOverlayServerContext().appData.repositories.conversations.getLatestAgentRun({
-    conversationId: asConversationId(access.conversationId), userId: access.actorUserId, agentRunId: access.agentRunId,
-  })
-  if (!current || current.id !== access.agentRunId || current.userId !== access.actorUserId
-    || current.conversationId !== access.conversationId || current.harnessRunId !== state.runId
-    || current.runner !== 'workflow' || current.executionEngine !== 'overlay_harness' || current.mode === 'room'
-    || (current.workflowRunId && current.workflowRunId !== access.workflowRunId)) throw new FatalError('Invalid personal delivery run.')
-  const run = await agentRunService.attachWorkflow({
-    runId: access.agentRunId, userId: access.actorUserId, workflowRunId: access.workflowRunId,
-  })
-  if (!run || run.conversationId !== access.conversationId || run.harnessRunId !== state.runId
-    || run.runner !== 'workflow' || run.executionEngine !== 'overlay_harness'
-    || run.workflowRunId !== access.workflowRunId || run.mode === 'room') throw new FatalError('Invalid personal delivery run.')
+  await attachPersonalDelivery(access)
 }
 
 export async function finishPersonalHarnessDelivery(
