@@ -160,7 +160,8 @@ const handlers = {
         workspaceId: intent.metadata.workspaceId,
         userId: intent.metadata.userId,
         customerId: typeof intent.customer === 'string' ? intent.customer : intent.customer?.id,
-        amountCents: intent.amount_received || intent.amount,
+        amountCents: intent.amount_received,
+        currency: intent.currency,
       })
     },
 
@@ -178,6 +179,7 @@ const handlers = {
         userId: intent.metadata.userId,
         customerId: typeof intent.customer === 'string' ? intent.customer : intent.customer?.id,
         amountCents: intent.amount,
+        currency: intent.currency,
       })
     },
 
@@ -194,6 +196,7 @@ const handlers = {
         userId: intent.metadata.userId,
         customerId: typeof intent.customer === 'string' ? intent.customer : intent.customer?.id,
         amountCents: intent.amount,
+        currency: intent.currency,
       })
     },
 

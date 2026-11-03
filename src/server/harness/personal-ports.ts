@@ -8,9 +8,10 @@ import { refreshPersonalHarnessAccess } from './personal-access'
 export async function authorizePersonalHarnessExecution(
   input: Pick<PersonalHarnessToolsInput, 'access' | 'context'>,
   toolName?: string,
+  options: { renewLease?: boolean } = {},
 ): Promise<void> {
   'use step'
-  await refreshPersonalHarnessAccess(input.access, input.context, toolName, { renewalMode: true, renewLease: true })
+  await refreshPersonalHarnessAccess(input.access, input.context, toolName, { renewalMode: true, renewLease: options.renewLease !== false })
 }
 
 export async function checkPersonalHarnessFunding(

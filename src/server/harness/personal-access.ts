@@ -71,7 +71,7 @@ function assertCurrentHarness(access: PersonalHarnessAccess, state: HarnessState
     || !allowedStatus
     || state.policy.actorUserId !== access.actorUserId || state.policy.workspaceId !== access.workspaceId
     || leaseExpired
-    || (state.policy.taskDeadlineAt !== undefined && state.policy.taskDeadlineAt <= Date.now())) {
+    || (state.policy.taskDeadlineAt !== undefined && state.policy.taskDeadlineAt <= Date.now() && !renewalMode)) {
     throw new FatalError('Personal harness execution is not authorized to continue.')
   }
 }
@@ -83,11 +83,13 @@ function assertToolAllowed(state: HarnessState, toolName?: string): void {
 }
 
 function assertActiveRoot(access: PersonalHarnessAccess, root: HarnessState | null, renewalMode = false): asserts root is HarnessState {
-  if (!root?.workflowRunId || root.policy.actorUserId !== access.actorUserId
+  const ownerTransferInProgress = root?.policy.executionPolicyVersion === 2
+    && !root.workflowRunId && Boolean(root.handoffWorkflowRunId) && !['completed', 'cancelled', 'failed'].includes(root.status)
+  if (!root || (!root.workflowRunId && !ownerTransferInProgress) || root.policy.actorUserId !== access.actorUserId
     || root.policy.workspaceId !== access.workspaceId
     || (root.executionGeneration ?? 0) !== (root.runId === access.runId ? access.executionGeneration ?? 0 : root.executionGeneration ?? 0)
     || (root.policy.deadlineAt <= Date.now() && !(renewalMode && root.policy.executionPolicyVersion === 2))
-    || (root.policy.taskDeadlineAt !== undefined && root.policy.taskDeadlineAt <= Date.now())
+    || (root.policy.taskDeadlineAt !== undefined && root.policy.taskDeadlineAt <= Date.now() && !renewalMode)
     || ['completed', 'cancelled', 'failed'].includes(root.status)) {
     throw new FatalError('The root harness execution is no longer active.')
   }
@@ -147,14 +149,17 @@ function assertDeliveryOwnership(
 ): void {
   if (!agentRun || agentRun.id !== access.agentRunId || agentRun.userId !== access.actorUserId
     || agentRun.conversationId !== access.conversationId || agentRun.harnessRunId !== root.runId
-    || agentRun.workflowRunId !== root.workflowRunId
     || agentRun.runner !== 'workflow' || agentRun.executionEngine !== 'overlay_harness' || agentRun.mode === 'room'
     || (agentRun.status !== 'running' && !(state.parentRunId
-      && ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children'].includes(agentRun.status))
+      && ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'waiting_for_resources'].includes(agentRun.status))
       && !(renewalMode && state.runId === root.runId
         && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status)
         && agentRun.status === state.status))) {
     throw new FatalError('Personal harness resource access has changed.')
+  }
+  const deliveryOwner = root.workflowRunId ?? root.handoffWorkflowRunId
+  if (!deliveryOwner || agentRun.workflowRunId !== deliveryOwner) {
+    throw new FatalError('Personal harness delivery ownership has changed.')
   }
 }
 

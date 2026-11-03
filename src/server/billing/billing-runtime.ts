@@ -174,7 +174,6 @@ export async function reserveProviderBudget(params: {
             reason: 'autoTopUpStatus' in budget ? budget.autoTopUpStatus : 'pending',
             requiredCents: 'requiredCents' in budget ? budget.requiredCents : Math.max(1, Math.ceil(reservedCents)),
             remainingCents: budget.remainingCents,
-            reservedCents: 0,
             ...('autoTopUpReason' in budget && budget.autoTopUpReason
               ? { topUpReason: budget.autoTopUpReason } : {}),
           },
@@ -244,7 +243,6 @@ export async function reserveProviderBudget(params: {
           reason: 'insufficient_budget',
           requiredCents: result.requiredCents,
           remainingCents: result.remainingCents,
-          reservedCents: 0,
         },
       },
     } as const

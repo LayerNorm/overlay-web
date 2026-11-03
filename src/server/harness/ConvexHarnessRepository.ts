@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { gunzipSync, gzipSync } from 'node:zlib'
 import type {
   HarnessAdmission,
   HarnessMutationInput,
@@ -40,6 +41,21 @@ export class ConvexHarnessRepository implements HarnessRepository {
     return await convex.query<HarnessSnapshot | null>('harness/runs:get', {
       actorUserId: input.actorUserId, runId: input.runId,
       serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+  }
+
+  async submitWaitReply(input: {
+    actorUserId: string; workspaceId: string; deliveryAgentRunId: string; token: string
+    reply: { text: string } | { approved: boolean; reason?: string }
+  }): Promise<boolean> {
+    return await convex.mutation<boolean>('harness/runs:submitWaitReply', {
+      ...input, serverSecret: this.serverSecret,
+    }, { throwOnError: true }) === true
+  }
+
+  async readWaitReply(input: HarnessWaitReference & { token: string }): Promise<unknown> {
+    return await convex.query('harness/runs:readWaitReply', {
+      ...input, serverSecret: this.serverSecret,
     }, { throwOnError: true })
   }
 
@@ -123,7 +139,30 @@ export class ConvexHarnessRepository implements HarnessRepository {
     checkpoint: HarnessRunnerCheckpoint
     launchInput: unknown
   }): Promise<HarnessSnapshot> {
-    const snapshot = await convex.mutation<HarnessSnapshot>('harness/continuations:handoff', {
+    const payload = JSON.stringify({ checkpoint: input.checkpoint, launchInput: input.launchInput })
+    const compressed = gzipSync(Buffer.from(payload, 'utf8'))
+    const upload = await convex.mutation<{ uploadUrl: string }>('harness/continuations:generateUploadUrl', {
+      actorUserId: input.actorUserId,
+      serverSecret: this.serverSecret,
+      runId: input.runId,
+      workflowRunId: input.workflowRunId,
+      executionGeneration: input.executionGeneration,
+    }, { throwOnError: true })
+    if (!upload?.uploadUrl) throw new Error('Harness continuation upload URL is unavailable.')
+    const { uploadUrl } = upload
+    const uploadResponse = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'content-type': 'application/gzip' },
+      body: compressed as unknown as BodyInit,
+    })
+    if (!uploadResponse.ok) throw new Error('Harness continuation checkpoint upload failed.')
+    const uploadResult = await uploadResponse.json() as { storageId?: unknown }
+    if (typeof uploadResult.storageId !== 'string') {
+      throw new Error('Harness continuation checkpoint upload returned no storage id.')
+    }
+    const result = await convex.mutation<{
+      runId: string; rootRunId: string; status: string; executionGeneration: number; revision: number; updatedAt: number
+    }>('harness/continuations:handoff', {
       actorUserId: input.actorUserId,
       serverSecret: this.serverSecret,
       runId: input.runId,
@@ -131,10 +170,14 @@ export class ConvexHarnessRepository implements HarnessRepository {
       executionGeneration: input.executionGeneration,
       expectedRevision: input.expectedRevision,
       workflowKind: input.workflowKind,
-      checkpointJson: JSON.stringify(input.checkpoint),
-      launchInputJson: JSON.stringify(input.launchInput),
+      checkpointStorageId: uploadResult.storageId,
     }, { throwOnError: true })
-    if (!snapshot) throw new Error('Harness continuation handoff returned no state.')
+    if (!result) throw new Error('Harness continuation handoff returned no projection.')
+    const snapshot = await this.get({ actorUserId: input.actorUserId, runId: input.runId })
+    if (!snapshot || snapshot.revision !== result.revision
+      || snapshot.executionGeneration !== result.executionGeneration) {
+      throw new Error('Harness continuation handoff snapshot could not be confirmed.')
+    }
     return snapshot
   }
 
@@ -143,10 +186,49 @@ export class ConvexHarnessRepository implements HarnessRepository {
     checkpointJson: string
     launchInputJson: string
   } | null> {
-    return await convex.query('harness/continuations:getLaunch', {
+    const launch = await convex.query<{
+      workflowKind: 'native' | 'personal'
+      actorUserId: string
+      workspaceId?: string
+      executionGeneration: number
+      checkpointStorageUrl?: string
+      checkpointJson?: string
+      launchInputJson?: string
+    } | null>('harness/continuations:getLaunch', {
       ...input,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
+    if (!launch) return null
+    let checkpointJson: string
+    let launchInputJson: string
+    if (launch.checkpointStorageUrl) {
+      const response = await fetch(launch.checkpointStorageUrl)
+      if (!response.ok) throw new Error('Harness continuation checkpoint download failed.')
+      const payload = JSON.parse(gunzipSync(Buffer.from(await response.arrayBuffer())).toString('utf8')) as {
+        checkpoint?: unknown
+        launchInput?: unknown
+      }
+      checkpointJson = JSON.stringify(payload.checkpoint)
+      launchInputJson = JSON.stringify(payload.launchInput)
+    } else if (launch.checkpointJson !== undefined && launch.launchInputJson !== undefined) {
+      checkpointJson = launch.checkpointJson
+      launchInputJson = launch.launchInputJson
+    } else {
+      throw new Error('Harness continuation checkpoint payload is missing.')
+    }
+    const checkpoint = JSON.parse(checkpointJson) as { version?: unknown; messages?: unknown }
+    const launchInput = JSON.parse(launchInputJson) as {
+      access?: { actorUserId?: unknown; workspaceId?: unknown; runId?: unknown; executionGeneration?: unknown }
+    }
+    if (checkpoint.version !== 1 || !Array.isArray(checkpoint.messages)
+      || launchInput.access?.actorUserId !== launch.actorUserId
+      || launchInput.access.workspaceId !== launch.workspaceId
+      || launchInput.access.runId !== input.runId
+      || launchInput.access.executionGeneration !== launch.executionGeneration
+      || launch.executionGeneration !== input.generation) {
+      throw new Error('Harness continuation checkpoint identity is invalid.')
+    }
+    return { workflowKind: launch.workflowKind, checkpointJson, launchInputJson }
   }
 
   async readEvidence(

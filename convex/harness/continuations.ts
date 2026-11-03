@@ -1,12 +1,78 @@
 import { v } from 'convex/values'
-import { internalAction, internalMutation, internalQuery, mutation, query } from '../_generated/server'
+import {
+  internalAction, internalMutation, internalQuery, mutation, query,
+  type MutationCtx,
+} from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 
-const MAX_CONTINUATION_BYTES = 4 * 1024 * 1024
+const workflowKind = v.union(v.literal('native'), v.literal('personal'))
+const activeContinuationStatuses = [
+  'running',
+  'waiting_for_resources',
+  'waiting_for_input',
+  'waiting_for_approval',
+  'waiting_for_children',
+]
 
-function json(value: unknown): string {
-  return JSON.stringify(value)
+type ContinuationIdentity = {
+  runId: string
+  actorUserId: string
+  workflowRunId: string
+  executionGeneration: number
 }
+
+async function readOwnedRun(ctx: MutationCtx, identity: ContinuationIdentity) {
+  const run = await ctx.db.query('harnessRuns')
+    .withIndex('by_runId', q => q.eq('runId', identity.runId))
+    .unique()
+  if (!run || run.actorUserId !== identity.actorUserId) throw new Error('HARNESS_RUN_NOT_FOUND')
+  const metadata = JSON.parse(run.metadataJson) as {
+    workflowRunId?: string
+    executionGeneration?: number
+    revision: number
+    rootRunId: string
+    planRevision: number
+    status: string
+    authorizationPause?: unknown
+    policy: {
+      actorUserId: string
+      executionPolicyVersion?: number
+      workspaceId?: string
+      taskDeadlineAt?: number
+    }
+    modelReservation?: unknown
+    resourceRequestToken?: string
+  }
+  if (metadata.workflowRunId !== identity.workflowRunId
+    || (metadata.executionGeneration ?? 0) !== identity.executionGeneration
+    || metadata.policy.actorUserId !== identity.actorUserId) {
+    throw new Error('HARNESS_EXECUTION_NOT_OWNED')
+  }
+  return { run, metadata }
+}
+
+export const generateUploadUrl = mutation({
+  args: {
+    serverSecret: v.string(),
+    actorUserId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.string(),
+    executionGeneration: v.number(),
+  },
+  returns: v.object({ uploadUrl: v.string() }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const { metadata } = await readOwnedRun(ctx, args)
+    if (metadata.policy.executionPolicyVersion !== 2
+      || !activeContinuationStatuses.includes(metadata.status)
+      || metadata.authorizationPause
+      || (metadata.policy.taskDeadlineAt !== undefined && metadata.policy.taskDeadlineAt <= Date.now())
+      || metadata.modelReservation || metadata.resourceRequestToken) {
+      throw new Error('HARNESS_CONTINUATION_BOUNDARY_UNSAFE')
+    }
+    return { uploadUrl: await ctx.storage.generateUploadUrl() }
+  },
+})
 
 export const handoff = mutation({
   args: {
@@ -16,9 +82,8 @@ export const handoff = mutation({
     workflowRunId: v.string(),
     executionGeneration: v.number(),
     expectedRevision: v.number(),
-    workflowKind: v.union(v.literal('native'), v.literal('personal')),
-    checkpointJson: v.string(),
-    launchInputJson: v.string(),
+    workflowKind,
+    checkpointStorageId: v.id('_storage'),
   },
   returns: v.object({
     runId: v.string(),
@@ -30,67 +95,62 @@ export const handoff = mutation({
   }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    if (new TextEncoder().encode(args.checkpointJson).byteLength
-      + new TextEncoder().encode(args.launchInputJson).byteLength > MAX_CONTINUATION_BYTES) {
-      throw new Error('HARNESS_CONTINUATION_CHECKPOINT_TOO_LARGE')
-    }
-    const checkpoint = JSON.parse(args.checkpointJson) as { version?: unknown; messages?: unknown[] }
-    const launch = JSON.parse(args.launchInputJson) as { access?: { runId?: string; executionGeneration?: number } }
-    if (checkpoint.version !== 1 || !Array.isArray(checkpoint.messages)
-      || launch.access?.runId !== args.runId
-      || launch.access.executionGeneration !== args.executionGeneration + 1) {
-      throw new Error('HARNESS_CONTINUATION_CHECKPOINT_INVALID')
-    }
-    const run = await ctx.db.query('harnessRuns')
-      .withIndex('by_runId', q => q.eq('runId', args.runId))
-      .unique()
-    if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_RUN_NOT_FOUND')
-    const current = JSON.parse(run.metadataJson) as {
-      runId: string; rootRunId: string; workflowRunId?: string; executionGeneration?: number
-      revision: number; planRevision: number; status: string; policy: { executionPolicyVersion?: number }
-      modelReservation?: unknown; resourceRequestToken?: string
-    }
-    if (current.workflowRunId !== args.workflowRunId
-      || (current.executionGeneration ?? 0) !== args.executionGeneration
-      || current.revision !== args.expectedRevision) {
-      throw new Error('HARNESS_CONTINUATION_CAS_CONFLICT')
-    }
-    if (current.policy.executionPolicyVersion !== 2 || current.status !== 'running'
+    const { run, metadata: current } = await readOwnedRun(ctx, args)
+    if (current.revision !== args.expectedRevision) throw new Error('HARNESS_CONTINUATION_CAS_CONFLICT')
+    if (current.policy.executionPolicyVersion !== 2
+      || !activeContinuationStatuses.includes(current.status)
+      || current.authorizationPause
+      || (current.policy.taskDeadlineAt !== undefined && current.policy.taskDeadlineAt <= Date.now())
       || current.modelReservation || current.resourceRequestToken) {
       throw new Error('HARNESS_CONTINUATION_BOUNDARY_UNSAFE')
     }
+    const storage = await ctx.db.system.get(args.checkpointStorageId)
+    if (!storage) throw new Error('HARNESS_CONTINUATION_STORAGE_NOT_FOUND')
     const generation = args.executionGeneration + 1
     const now = Date.now()
     const checkpointToken = `${args.runId}:${generation}`
     const next = {
       ...current,
       workflowRunId: undefined,
+      handoffWorkflowRunId: args.workflowRunId,
       executionGeneration: generation,
       revision: current.revision + 1,
       updatedAt: now,
     }
-    await ctx.db.patch(run._id, { metadataJson: json(next), updatedAt: now })
+    await ctx.db.patch(run._id, { metadataJson: JSON.stringify(next), updatedAt: now })
     await ctx.db.insert('harnessCheckpoints', {
       runId: args.runId,
       operationId: `continuation:${generation}`,
       revision: next.revision,
-      metadataJson: json(next),
+      metadataJson: JSON.stringify(next),
       planRevision: current.planRevision,
       purpose: 'continuation',
       generation,
       checkpointToken,
-      checkpointJson: args.checkpointJson,
-      launchInputJson: args.launchInputJson,
+      checkpointStorageId: args.checkpointStorageId,
       createdAt: now,
     })
     await ctx.db.insert('harnessContinuationOutbox', {
-      runId: args.runId, rootRunId: current.rootRunId, generation, checkpointToken,
-      workflowKind: args.workflowKind, state: 'pending', attempts: 0,
-      nextAttemptAt: now, createdAt: now, updatedAt: now,
+      runId: args.runId,
+      rootRunId: current.rootRunId,
+      generation,
+      previousWorkflowRunId: args.workflowRunId,
+      previousExecutionGeneration: args.executionGeneration,
+      checkpointToken,
+      workflowKind: args.workflowKind,
+      state: 'pending',
+      attempts: 0,
+      nextAttemptAt: now,
+      createdAt: now,
+      updatedAt: now,
     })
     return {
-      runId: args.runId, rootRunId: current.rootRunId, status: next.status,
-      executionGeneration: generation, revision: next.revision, updatedAt: now,
+      runId: args.runId,
+      rootRunId: current.rootRunId,
+      status: next.status,
+      executionGeneration: generation,
+      revision: next.revision,
+      updatedAt: now,
     }
   },
 })
@@ -98,9 +158,13 @@ export const handoff = mutation({
 export const getLaunch = query({
   args: { serverSecret: v.string(), runId: v.string(), generation: v.number(), checkpointToken: v.string() },
   returns: v.union(v.object({
-    workflowKind: v.union(v.literal('native'), v.literal('personal')),
-    checkpointJson: v.string(),
-    launchInputJson: v.string(),
+    workflowKind,
+    actorUserId: v.string(),
+    workspaceId: v.optional(v.string()),
+    executionGeneration: v.number(),
+    checkpointStorageUrl: v.optional(v.string()),
+    checkpointJson: v.optional(v.string()),
+    launchInputJson: v.optional(v.string()),
   }), v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -108,15 +172,39 @@ export const getLaunch = query({
       .withIndex('by_runId_generation', q => q.eq('runId', args.runId).eq('generation', args.generation))
       .unique()
     if (!outbox || outbox.checkpointToken !== args.checkpointToken || outbox.state !== 'pending') return null
+    const run = await ctx.db.query('harnessRuns')
+      .withIndex('by_runId', q => q.eq('runId', args.runId))
+      .unique()
+    if (!run) return null
+    const metadata = JSON.parse(run.metadataJson) as {
+      status: string
+      executionGeneration?: number
+      authorizationPause?: unknown
+      policy: { actorUserId: string; workspaceId?: string; taskDeadlineAt?: number }
+    }
+    if (['completed', 'failed', 'cancelled', 'waiting_for_authorization'].includes(metadata.status)
+      || metadata.authorizationPause
+      || (metadata.policy.taskDeadlineAt !== undefined && metadata.policy.taskDeadlineAt <= Date.now())
+      || (metadata.executionGeneration ?? 0) !== args.generation) return null
     const checkpoint = await ctx.db.query('harnessCheckpoints')
       .withIndex('by_checkpointToken', q => q.eq('checkpointToken', args.checkpointToken))
       .unique()
-    if (!checkpoint?.checkpointJson || !checkpoint.launchInputJson) return null
-    return {
+    if (!checkpoint) return null
+    const base = {
       workflowKind: outbox.workflowKind,
-      checkpointJson: checkpoint.checkpointJson,
-      launchInputJson: checkpoint.launchInputJson,
+      actorUserId: metadata.policy.actorUserId,
+      ...(metadata.policy.workspaceId ? { workspaceId: metadata.policy.workspaceId } : {}),
+      executionGeneration: args.generation,
     }
+    if (checkpoint.checkpointStorageId) {
+      const checkpointStorageUrl = await ctx.storage.getUrl(checkpoint.checkpointStorageId)
+      if (!checkpointStorageUrl) return null
+      return { ...base, checkpointStorageUrl }
+    }
+    if (checkpoint.checkpointJson !== undefined && checkpoint.launchInputJson !== undefined) {
+      return { ...base, checkpointJson: checkpoint.checkpointJson, launchInputJson: checkpoint.launchInputJson }
+    }
+    return null
   },
 })
 
@@ -169,7 +257,9 @@ export const dispatchDue = internalAction({
           error: error instanceof Error ? error.message : 'unknown',
         })
       } finally {
-        await ctx.runMutation(internal.harness.continuations.noteAttempt, item)
+        await ctx.runMutation(internal.harness.continuations.noteAttempt, {
+          runId: item.runId, generation: item.generation,
+        })
       }
     }
     return null

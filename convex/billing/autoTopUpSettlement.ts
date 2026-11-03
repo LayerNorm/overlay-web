@@ -18,6 +18,7 @@ export const settlePendingTopUpInternal = internalMutation({
     userId: v.optional(v.string()),
     customerId: v.optional(v.string()),
     amountCents: v.optional(v.number()),
+    currency: v.optional(v.string()),
   },
   returns: v.object({ settled: v.boolean(), granted: v.boolean() }),
   handler: async (ctx, args) => {
@@ -39,6 +40,7 @@ export const settlePendingTopUpInternal = internalMutation({
       if (!claim || claim.workspaceId !== args.workspaceId || claim.actorUserId !== args.userId
         || claim.customerId !== args.customerId || claim.amountCents !== args.amountCents
         || claim.stripePaymentIntentId && claim.stripePaymentIntentId !== args.stripePaymentIntentId
+        || args.currency !== 'usd'
         || !account || account.scope !== 'workspace' || account.workspaceId !== claim.workspaceId
         || account.status !== 'active' || !plan || plan.planKind !== 'paid' || plan.status !== 'active') {
         return { settled: false, granted: false }
@@ -46,6 +48,7 @@ export const settlePendingTopUpInternal = internalMutation({
       const createdAt = Date.now()
       const topUpId = await ctx.db.insert('budgetTopUps', {
         userId: claim.actorUserId, billingAccountId: claim.billingAccountId,
+        workspaceId: claim.workspaceId,
         stripeCustomerId: claim.customerId, stripePaymentIntentId: args.stripePaymentIntentId,
         autoTopUpIntentKey: claim.intentKey, billingPeriodStart: claim.currentPeriodStart ?? claim.createdAt,
         amountCents: claim.amountCents, source: 'auto',
@@ -71,29 +74,45 @@ export const settlePendingTopUpInternal = internalMutation({
       return { settled: true, granted: false }
     }
     // Only rows still waiting on Stripe change; succeeded ones were already credited.
-    if (!row || row.status !== 'pending' || !row.billingAccountId) return { settled: false, granted: false }
+    if (!row || row.status !== 'pending' || row.source !== 'auto' || !row.billingAccountId
+      || args.billingAccountId !== row.billingAccountId
+      || args.intentKey !== row.autoTopUpIntentKey
+      || (row.workspaceId !== undefined && args.workspaceId !== row.workspaceId)
+      || args.userId !== row.userId
+      || args.customerId !== row.stripeCustomerId
+      || args.amountCents !== row.amountCents
+      || args.currency !== 'usd') return { settled: false, granted: false }
     const account = await ctx.db.query('billingAccounts')
       .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', row.billingAccountId!))
       .unique()
-    if (!account || account.scope !== 'workspace') return { settled: false, granted: false }
+    const claim = row.autoTopUpIntentKey
+      ? await ctx.db.query('billingAutoTopUpIntents')
+          .withIndex('by_billingAccountId_intentKey', (q) => q
+            .eq('billingAccountId', row.billingAccountId!).eq('intentKey', row.autoTopUpIntentKey!))
+          .unique()
+      : null
+    const plan = await ctx.db.query('billingAccountSubscriptions')
+      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', row.billingAccountId!))
+      .unique()
+    const legacy = row.autoTopUpIntentKey === undefined && args.intentKey === undefined
+    if (!account || account.scope !== 'workspace' || account.workspaceId !== args.workspaceId
+      || account.status !== 'active'
+      || (!legacy && (!claim || claim.workspaceId !== row.workspaceId
+        || claim.actorUserId !== row.userId || claim.customerId !== row.stripeCustomerId
+        || claim.amountCents !== row.amountCents || claim.stripePaymentIntentId !== args.stripePaymentIntentId))
+      || !plan || plan.planKind !== 'paid' || plan.status !== 'active') {
+      return { settled: false, granted: false }
+    }
     const now = Date.now()
     await ctx.db.patch(row._id, {
       status: args.outcome,
       updatedAt: now,
       ...(args.errorMessage ? { errorMessage: args.errorMessage.slice(0, 500) } : {}),
     })
-    if (row.autoTopUpIntentKey) {
-      const claim = await ctx.db.query('billingAutoTopUpIntents')
-        .withIndex('by_billingAccountId_intentKey', (q) => q
-          .eq('billingAccountId', row.billingAccountId!).eq('intentKey', row.autoTopUpIntentKey!))
-        .unique()
-      if (claim) {
-        await ctx.db.patch(claim._id, {
-          state: args.outcome === 'succeeded' ? 'succeeded' : 'payment_failed',
-          updatedAt: now,
-        })
-      }
-    }
+    if (claim) await ctx.db.patch(claim._id, {
+      state: args.outcome === 'succeeded' ? 'succeeded' : 'payment_failed',
+      updatedAt: now,
+    })
     if (args.outcome !== 'succeeded') return { settled: true, granted: false }
     const balance = await ensureEmptyBalance(ctx, row.billingAccountId)
     const amountMicros = row.amountCents * 10_000

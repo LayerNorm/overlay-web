@@ -9,6 +9,7 @@ import {
   reserveHarnessModel, reservedHarnessCostMicros,
   bindHarnessModelDispatch,
   validateHarnessReceipt,
+  pauseHarnessForAuthorization,
 } from './harness-state'
 
 const now = 1_000
@@ -54,6 +55,28 @@ test('generic block and resume cannot bypass a resource pause', () => {
   const paused = { ...make(), status: 'waiting_for_resources' as const, resourceRequestToken: 'resource-token' }
   assert.throws(() => resumeHarness(paused, now), /resource pause/)
   assert.throws(() => blockHarness(paused, { kind: 'input', question: 'Continue?' }, now), /resource pause/)
+})
+
+test('explicit task-deadline pause is persisted, nonterminal, and cannot resume through ordinary input', () => {
+  const deadlineAt = now + 1
+  const state = createHarnessSnapshot({
+    runId: 'deadline-root', goal: 'Finish the task', constraints: [],
+    policy: {
+      actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: ['read'],
+      requiresPlan: false, deadlineAt: deadlineAt + 86_400_000, taskDeadlineAt: deadlineAt,
+      maxCostMicros: 0, maxParallelChildren: 0, maxDepth: 0,
+      executionPolicyVersion: 2, spendingMode: 'workspace',
+    },
+  }, now)
+  const paused = pauseHarnessForAuthorization(state, deadlineAt)
+  assert.equal(paused.status, 'waiting_for_authorization')
+  assert.deepEqual(paused.authorizationPause, {
+    reason: 'task_deadline_expired', deadlineAt, pausedAt: deadlineAt,
+  })
+  assert.equal('requiredCents' in paused.authorizationPause!, false)
+  assert.throws(() => resumeHarness(paused, deadlineAt + 1), /cannot be resumed/)
+  assert.throws(() => claimHarnessExecution(paused, 'successor', deadlineAt + 1), /cannot be claimed/)
+  assert.equal(paused.status === 'completed' || paused.status === 'failed' || paused.status === 'cancelled', false)
 })
 
 const steps: HarnessPlanInput[] = [

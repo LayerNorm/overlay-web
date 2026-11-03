@@ -1,6 +1,11 @@
 import type { HarnessResourceGrantReceipt } from './harness-resource'
 
-export type HarnessStatus = 'running' | 'waiting_for_input' | 'waiting_for_approval' | 'waiting_for_children' | 'waiting_for_resources' | 'completed' | 'cancelled' | 'failed'
+export type HarnessStatus = 'running' | 'waiting_for_input' | 'waiting_for_approval' | 'waiting_for_children' | 'waiting_for_resources' | 'waiting_for_authorization' | 'completed' | 'cancelled' | 'failed'
+export type HarnessAuthorizationPause = {
+  reason: 'task_deadline_expired'
+  deadlineAt: number
+  pausedAt: number
+}
 export type HarnessFundingPauseReason =
   | 'disabled' | 'pending' | 'payment_failed' | 'monthly_limit_reached' | 'missing_payment_method'
   | 'missing_consent' | 'amount_shortfall' | 'not_paid' | 'authorization_changed' | 'insufficient_budget'
@@ -10,7 +15,7 @@ export type HarnessFundingPause = {
   reason: HarnessFundingPauseReason
   requiredCents: number
   availableCents: number
-  reservedCents: number
+  reservedCents?: number
   receiptId: string
   autoTopUpReason?: string
 }
@@ -123,6 +128,7 @@ export type HarnessSnapshot = {
   rootRunId: string
   parentRunId?: string
   workflowRunId?: string
+  handoffWorkflowRunId?: string
   executionGeneration?: number
   depth: number
   goal: string
@@ -133,6 +139,7 @@ export type HarnessSnapshot = {
   policyRevision?: number
   resourceRequestToken?: string
   resourcePause?: HarnessFundingPause
+  authorizationPause?: HarnessAuthorizationPause
   progressRevision: number
   planRevision: number
   plan: HarnessPlanStep[]
@@ -701,6 +708,9 @@ export function blockHarness(state: HarnessSnapshot, blocker: NonNullable<Harnes
 
 export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnapshot {
   assertActive(state)
+  if (state.status === 'waiting_for_authorization' || state.authorizationPause) {
+    throw new Error('Expired authorization cannot be resumed by an input or approval reply.')
+  }
   if (state.status === 'waiting_for_resources' || state.resourceRequestToken) {
     throw new Error('A resource pause must be consumed before the run can resume.')
   }
@@ -711,6 +721,19 @@ export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnaps
   next.stalledContinuations = 0
   next.lastContinuationProgressRevision = next.progressRevision
   return changed(next, now)
+}
+
+export function pauseHarnessForAuthorization(state: HarnessSnapshot, now: number): HarnessSnapshot {
+  assertActive(state)
+  const deadlineAt = state.policy.taskDeadlineAt
+  if (state.policy.executionPolicyVersion !== 2 || deadlineAt === undefined || now < deadlineAt
+    || state.status === 'waiting_for_authorization' || state.resourceRequestToken) {
+    throw new Error('Invalid task-deadline authorization pause.')
+  }
+  const next = mutable(state)
+  next.status = 'waiting_for_authorization'
+  next.authorizationPause = { reason: 'task_deadline_expired', deadlineAt, pausedAt: now }
+  return changed(next, now, false)
 }
 
 export function pauseHarnessForFunding(
@@ -724,7 +747,8 @@ export function pauseHarnessForFunding(
     || state.resourcePause || !pause.receiptId.trim()
     || !Number.isSafeInteger(pause.requiredCents) || pause.requiredCents < 1
     || !Number.isSafeInteger(pause.availableCents) || pause.availableCents < 0
-    || !Number.isSafeInteger(pause.reservedCents) || pause.reservedCents < 0) {
+    || (pause.reservedCents !== undefined
+      && (!Number.isSafeInteger(pause.reservedCents) || pause.reservedCents < 0))) {
     throw new Error('Invalid workspace funding pause.')
   }
   const next = mutable(state)
@@ -834,6 +858,9 @@ export function claimHarnessExecution(
   generation = state.executionGeneration ?? 0,
 ): HarnessSnapshot {
   assertActive(state)
+  if (state.status === 'waiting_for_authorization' || state.authorizationPause) {
+    throw new Error('Expired authorization cannot be claimed for execution.')
+  }
   if (!workflowRunId.trim() || workflowRunId.length > 256) throw new Error('Invalid workflow execution identity.')
   if (!Number.isSafeInteger(generation) || generation !== (state.executionGeneration ?? 0)) {
     throw new Error('HARNESS_EXECUTION_GENERATION_CHANGED')
@@ -844,6 +871,7 @@ export function claimHarnessExecution(
   }
   const next = mutable(state)
   next.workflowRunId = workflowRunId
+  delete next.handoffWorkflowRunId
   return changed(next, now, false)
 }
 
@@ -915,7 +943,7 @@ export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSn
   if (childState.depth !== state.depth + 1
     || childState.policy.allowedToolIds.some(id => !child.allowedToolIds.includes(id))
     || (state.policy.executionPolicyVersion !== 2 && childState.policy.maxCostMicros > child.maxCostMicros)
-    || childState.policy.deadlineAt > state.policy.deadlineAt
+    || (state.policy.executionPolicyVersion !== 2 && childState.policy.deadlineAt > state.policy.deadlineAt)
     || (childState.policy.taskDeadlineAt !== undefined
       && (state.policy.taskDeadlineAt === undefined || childState.policy.taskDeadlineAt > state.policy.taskDeadlineAt))
     || childState.policy.maxDepth > state.policy.maxDepth

@@ -6,6 +6,7 @@ import { maybeAutoTopUpWorkspaceBudget } from './stripe-billing'
 const plan: BillingSubscriptionRecord = {
   billingAccountId: 'account',
   planKind: 'paid',
+  status: 'active',
   stripeCustomerId: 'cus_test',
   autoTopUpEnabled: true,
   autoTopUpAmountCents: 800,
@@ -95,10 +96,58 @@ test('concurrent resource requests claim one top-up before Stripe', async () => 
   assert.equal(results.filter((result) => result.applied).length, 1)
 })
 
+test('an unrecorded pending claim retries the same Stripe parameters and original metadata', async () => {
+  const intent = {
+    intentKey: 'original-intent',
+    idempotencyKey: 'workspace-auto-topup-original-intent',
+    actorUserId: 'original-owner',
+    workspaceId: 'workspace',
+    amountCents: 800,
+    currentPeriodStart: 100,
+    consentAt: 123,
+    paymentMethodId: 'pm_original',
+    customerId: 'cus_test',
+    createdAt: Date.now(),
+  }
+  const records: unknown[] = []
+  const repository = {
+    getBillingAccountSubscriptionByServer: async () => ({ ...plan, autoTopUpPending: true }),
+    getPendingAutoTopUpIntentByServer: async () => intent,
+    claimAutoTopUpIntentByServer: async () => { throw new Error('must not create a new claim') },
+    recordBillingAccountTopUp: async (record: unknown) => { records.push(record); return { granted: true } },
+  } as unknown as BillingRepository
+  const calls: unknown[] = []
+  const result = await maybeAutoTopUpWorkspaceBudget({ ...params, actorUserId: 'new-trigger-user' }, repository, {
+    resolvePaymentMethodId: async () => 'pm_original',
+    createPaymentIntent: async (input: unknown, options: unknown) => {
+      calls.push({ input, options })
+      return { id: 'pi_retried', status: 'succeeded' }
+    },
+  })
+  assert.equal(result.applied, true)
+  assert.deepEqual(calls, [{
+    input: {
+      amount: 800, currency: 'usd', customer: 'cus_test', payment_method: 'pm_original',
+      off_session: true, confirm: true,
+      metadata: {
+        kind: 'budget_topup', source: 'auto', billingAccountId: 'account',
+        intentKey: 'original-intent', workspaceId: 'workspace', userId: 'original-owner',
+      },
+    },
+    options: { idempotencyKey: 'workspace-auto-topup-original-intent' },
+  }])
+  assert.deepEqual(records, [{
+    actorUserId: 'original-owner', billingAccountId: 'account', workspaceId: 'workspace', amountCents: 800, source: 'auto',
+    status: 'succeeded', stripeCustomerId: 'cus_test', stripePaymentIntentId: 'pi_retried',
+    autoTopUpIntentKey: 'original-intent',
+  }])
+})
+
 function expectTopUpRecord(stripePaymentIntentId: string, autoTopUpIntentKey?: string) {
   return {
     actorUserId: 'owner',
     billingAccountId: 'account',
+    workspaceId: 'workspace',
     amountCents: 800,
     source: 'auto',
     status: 'succeeded',

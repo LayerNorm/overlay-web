@@ -5,9 +5,11 @@ import { createHarnessExecutionPorts, type HarnessSurfacePorts } from './executi
 import type { HarnessModelRouting } from './model-ports'
 import { ensurePayerBudgetAvailable } from '@/server/billing/billing-runtime'
 
-export async function authorizeNativeHarnessExecution(access: NativeHarnessAccess, context: NativeHarnessContext, toolName?: string) {
+export async function authorizeNativeHarnessExecution(
+  access: NativeHarnessAccess, context: NativeHarnessContext, toolName?: string, options: { renewLease?: boolean } = {},
+) {
   'use step'
-  await refreshNativeHarnessAccess(access, context, toolName, { renewalMode: true, renewLease: true })
+  await refreshNativeHarnessAccess(access, context, toolName, { renewalMode: true, renewLease: options.renewLease !== false })
 }
 
 export async function checkNativeHarnessFunding(access: NativeHarnessAccess, context: NativeHarnessContext, requiredCents: number) {

@@ -10,12 +10,14 @@ import { asConversationId } from '@/server/conversations/ActConversationReposito
 import { AgentRunInputRequest } from '@/shared/schemas/chat'
 import type { AgentRun } from '@/shared/agents/agent-run'
 import { isRetiredNativeRun, NATIVE_RUN_RETIRED_CODE, NATIVE_RUN_RETIRED_MESSAGE } from '@/shared/agents/native-run-retirement'
+import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
 
 type Repositories = ReturnType<typeof getOverlayServerContext>['appData']['repositories']
 type InputRouteDependencies = {
   conversations: Pick<Repositories['conversations'], 'getConversationById' | 'getLatestAgentRun'>
   collaboration?: Pick<Repositories['conversationCollaboration'], 'getAccessibleConversation'>
   resume: (token: string, reply: { text: string }) => Promise<unknown>
+  submitWaitReply?: ConvexHarnessRepository['submitWaitReply']
 }
 
 const inactive = () => NextResponse.json({ error: 'This input request is no longer active.' }, { status: 409 })
@@ -61,6 +63,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext, de
       return NextResponse.json({ error: NATIVE_RUN_RETIRED_MESSAGE, code: NATIVE_RUN_RETIRED_CODE }, { status: 410 })
     }
     if (run.runner !== 'workflow' || !run.workflowRunId) return inactive()
+    const submit = dependencies ? dependencies.submitWaitReply
+      : (input: Parameters<ConvexHarnessRepository['submitWaitReply']>[0]) => new ConvexHarnessRepository().submitWaitReply(input)
+    if (run.harnessRunId && submit && await submit({
+      actorUserId, workspaceId: context.workspace.workspace.id, deliveryAgentRunId: run.id,
+      token: body.data.token, reply: { text: body.data.text },
+    })) return NextResponse.json({ success: true })
     // This is input to an existing work artifact, not a new turn. The hook
     // retains the full reply; the harness records bounded user-input evidence.
     await (dependencies?.resume ?? resumeHook)(body.data.token, { text: body.data.text })

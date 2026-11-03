@@ -515,22 +515,39 @@ otherwise the persisted deadline is a renewable execution lease. Lease renewal i
 authority-only and must revalidate the current source, membership, model/tool scope,
 delivery ownership, workflow owner, generation, and ancestors. It cannot expand access.
 
-Workspace funding denials are persisted as `waiting_for_resources` with bounded reason
-and reservation amounts. The workflow polls on a durable 60-second sleep and rechecks
-authority and current funding before resuming the same task. Auto top-up remains opt-in:
+Workspace funding denials are persisted as `waiting_for_resources` with bounded reasons,
+required and available amounts, and the reserved amount only when authoritative. Otherwise
+the projection explicitly reports that the reserved amount is unavailable. The workflow
+polls on a durable 60-second sleep and rechecks authority and current funding before
+resuming the same task. Auto top-up remains opt-in:
 enabled setting, explicit consent, valid payment method, active paid subscription, and
 monthly ceiling are required. Pending claims reserve the ceiling account-wide; uncertain
 Stripe outcomes remain unresolved rather than receiving a new idempotency identity.
 
+An expired explicit `taskDeadlineAt` is distinct from the renewable lease: it persists as
+`waiting_for_authorization` with the deadline and pause time. This state is nonterminal,
+cancellable, and cannot be resumed by input, approval, chat, or lease renewal. Existing
+ordinary wait records remain intact; new authorization requires a future explicit flow.
+The passive UI text is: “The task reached its explicit deadline. Progress is saved;
+further execution requires new authorization.”
+
 Continuation checkpoints are protected server-side and are written only at settled
-invocation boundaries. The outbox starts the persisted workflow input on the receiving
-trusted BFF deployment; generation and owner claims fence duplicate starts and stale
-workers. Unknown provider effects and unresolved billing reservations do not qualify
-for automatic replay or rollover. Rollback disables new version-2 admissions while
-retaining additive storage, server handlers, and legacy workflows until active runs
-drain; do not migrate historical failures automatically. Verification uses accelerated
-workflow time and fault-injected billing/provider boundaries; it does not establish
-real-time multiweek production qualification.
+invocation boundaries. New checkpoint and persisted launch-input payloads are gzip
+compressed into Convex File Storage; the checkpoint row and continuation outbox retain
+only the storage reference and small identity metadata. Legacy inline JSON fields remain
+readable during migration. An upload that succeeds before a fenced handoff fails can
+leave an unreferenced blob; retries may also create orphans, and the current implementation
+does not attempt destructive cleanup. The outbox starts the persisted workflow input on
+the receiving trusted BFF deployment; generation and owner claims fence duplicate starts
+and stale workers. Unknown provider effects and unresolved billing reservations do not
+qualify for automatic replay or rollover. Current tests cover targeted state, billing and
+continuation fixtures, including large storage-backed checkpoint handoff, native/personal
+delivery transfer, a compiled funding wake/poll path and authorization-pause
+reducer/projection checks; they do not qualify every input/approval/child wait handoff,
+deployment rollover across weeks, or actual multiweek operation. Rollback disables new
+version-2 admissions while retaining additive storage, server handlers, and legacy
+workflows until active runs drain; do not migrate historical failures automatically.
+No real-time multiweek production qualification or Preview acceptance is claimed.
 
 ### Harness web-first rollout
 

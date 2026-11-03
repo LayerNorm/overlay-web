@@ -60,6 +60,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
   const access = { ...input.access, workflowRunId, executionGeneration: input.access.executionGeneration ?? 0 }
   const initial = await readHarnessState(access)
   if (['completed', 'failed', 'cancelled'].includes(initial.status)) return { runId: initial.runId, status: initial.status }
+  if (initial.status === 'waiting_for_authorization') return { runId: initial.runId, status: initial.status }
   if (!await claimHarnessState(access)) return { runId: initial.runId, status: 'already_running' }
   const owns = initial.runId === `workspace:${access.agentRunId}`
   using wake = createHook<unknown>({ token: harnessWakeToken(workflowRunId) })
@@ -114,7 +115,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     if (result.outcome === 'continued') {
       return { runId: result.snapshot.runId, status: 'running' }
     }
-    if (result.snapshot.status === 'waiting_for_resources') {
+    if (result.snapshot.status === 'waiting_for_resources' || result.snapshot.status === 'waiting_for_authorization') {
       return { runId: result.snapshot.runId, status: result.snapshot.status }
     }
     if (!['completed', 'failed', 'cancelled'].includes(result.snapshot.status)) {
@@ -128,8 +129,16 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
       || (state.executionGeneration ?? 0) !== (access.executionGeneration ?? 0)) {
       return { runId: state.runId, status: state.status === 'running' ? 'continued' : state.status }
     }
-    if (state.status === 'waiting_for_resources') {
-      return { runId: state.runId, status: state.status }
+    if (state.status === 'waiting_for_authorization') return { runId: state.runId, status: state.status }
+    if (state.policy.executionPolicyVersion === 2 && state.policy.taskDeadlineAt !== undefined
+      && Date.now() >= state.policy.taskDeadlineAt) {
+      try {
+        await authorizeNativeHarnessExecution(access, input.context, undefined, { renewLease: false })
+        const paused = await applyHarnessOperation(access, 'authorization-pause', { type: 'pause_for_authorization' })
+        return { runId: paused.runId, status: paused.status }
+      } catch (authorizationError) {
+        error = authorizationError
+      }
     }
     const reason = harnessExecutionFailureReason(error)
     const snapshot = ['completed', 'failed', 'cancelled'].includes(state.status) ? state
@@ -141,7 +150,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     || (current.executionGeneration ?? 0) !== (access.executionGeneration ?? 0)) {
     return { runId: current.runId, status: current.status === 'running' ? 'continued' : current.status }
   }
-  if (current.status === 'waiting_for_resources') {
+  if (current.status === 'waiting_for_resources' || current.status === 'waiting_for_authorization') {
     return { runId: current.runId, status: current.status }
   }
   if (owns) {

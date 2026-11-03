@@ -104,6 +104,25 @@ export class ConvexBillingRepository implements BillingRepository {
     )
   }
 
+  async getPendingAutoTopUpIntentByServer(args: {
+    billingAccountId: string
+  }) {
+    return await convex.query<{
+      intentKey: string
+      idempotencyKey: string
+      actorUserId: string
+      workspaceId: string
+      amountCents: number
+      currentPeriodStart?: number
+      consentAt: number
+      paymentMethodId: string
+      customerId: string
+      createdAt: number
+      stripePaymentIntentId?: string
+    } | null>('billing/accountSubscriptions:getPendingAutoTopUpIntentByServer',
+      { ...args, serverSecret: this.serverSecret }, { throwOnError: true })
+  }
+
   async getBillingAccountSpendLimitByServer(args: {
     billingAccountId: string
     subject: BillingSpendSubject
@@ -157,6 +176,7 @@ export class ConvexBillingRepository implements BillingRepository {
     actorUserId: string
     amountCents: number
     billingAccountId: string
+    workspaceId?: string
     source: 'manual' | 'auto'
     status: 'pending' | 'succeeded' | 'failed' | 'canceled'
     stripeCheckoutSessionId?: string

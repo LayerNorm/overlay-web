@@ -4,7 +4,7 @@ import {
   type WorkflowAgentStreamResult,
 } from '@ai-sdk/workflow'
 import { isLoopFinished, type ModelMessage, type StepResult, type ToolSet } from 'ai'
-import { sleep } from 'workflow'
+import { FatalError, sleep } from 'workflow'
 import {
   assertHarnessRunnable,
   HarnessBudgetExceededError,
@@ -32,6 +32,7 @@ import {
   type ObservedToolOutcome,
 } from './tool-outcome-persistence'
 import { stripTextualToolCalls } from './textual-tool-calls'
+import { HarnessWaitRollover } from './waits'
 
 const DUPLICATE_GUARDED_CREATE_TOOLS = new Set([
   'create_note', 'create_task', 'create_automation', 'create_folder', 'create_agent',
@@ -60,6 +61,27 @@ function isTerminal(state: HarnessSnapshot) {
 
 function onlyChildrenRemain(state: HarnessSnapshot) {
   return state.children.some(child => child.status === 'running') && !hasRunnableHarnessMilestones(state)
+}
+
+function checkpointDeliverySteps(
+  steps: StepResult<ToolSet>[],
+  outcomes: ReadonlyMap<string, ObservedToolOutcome>,
+  denials: ReadonlyMap<string, AuthenticatedToolDenial>,
+): StepResult<ToolSet>[] {
+  const settled = withObservedToolOutcomes({
+    outcome: 'continued',
+    snapshot: {} as HarnessSnapshot,
+    messages: [],
+    steps,
+  }, outcomes, denials).steps
+  return settled.map(step => JSON.parse(JSON.stringify({
+    ...(step.content ? { content: step.content } : {}),
+    ...(step.text !== undefined ? { text: step.text } : {}),
+    ...(step.toolCalls ? { toolCalls: step.toolCalls } : {}),
+    ...(step.toolResults ? { toolResults: step.toolResults } : {}),
+    ...(step.usage ? { usage: step.usage } : {}),
+    ...(step.finishReason !== undefined ? { finishReason: step.finishReason } : {}),
+  })) as StepResult<ToolSet>)
 }
 
 function duplicateCreateEvidence(state: HarnessSnapshot, name: string, input: unknown): HarnessSnapshot['evidence'][number] | undefined {
@@ -126,6 +148,11 @@ type ApprovalResumeOutcome =
 const STAGNATION_RECOVERY_START = 2
 const STAGNATION_PAUSE_AFTER = 6
 
+function isFatalHarnessWaitError(error: unknown): boolean {
+  return error instanceof FatalError || Boolean(error && typeof error === 'object'
+    && (error as { name?: unknown }).name === 'FatalError')
+}
+
 async function handleWaitingState(
   state: HarnessSnapshot,
   messages: ModelMessage[],
@@ -136,13 +163,26 @@ async function handleWaitingState(
     if (state.policy.executionPolicyVersion !== 2 || state.policy.spendingMode !== 'workspace') {
       return { kind: 'blocked', snapshot: state }
     }
-    if (ports.waitForFunding) await ports.waitForFunding()
-    else await sleep('60s')
+    try {
+      if (ports.waitForFunding) await ports.waitForFunding()
+      else await sleep('60s')
+    } catch (error) {
+      if (isFatalHarnessWaitError(error)) throw error
+      await sleep('60s')
+      return { kind: 'restart', messages, invocation, resetStagnation: false }
+    }
     const current = await ports.read()
     if (isTerminal(current) || current.status !== 'waiting_for_resources' || !current.resourcePause) {
       return { kind: 'restart', messages, invocation, resetStagnation: false }
     }
-    if (!ports.checkFunding || !await ports.checkFunding(current.resourcePause.requiredCents)) {
+    let funded = false
+    try {
+      funded = Boolean(ports.checkFunding && await ports.checkFunding(current.resourcePause.requiredCents))
+    } catch (error) {
+      if (isFatalHarnessWaitError(error)) throw error
+      return { kind: 'restart', messages, invocation, resetStagnation: false }
+    }
+    if (!funded) {
       return { kind: 'restart', messages, invocation, resetStagnation: false }
     }
     await ports.renewLease()
@@ -336,12 +376,16 @@ async function authorizeModelBoundary(
     } catch (error) {
       if (!(error instanceof HarnessBudgetExceededError)) throw error
       await ports.apply(operationId, {
-        type: 'block', blocker: { kind: 'budget', question: 'The authorized time or spending budget is exhausted. Review the partial result before starting more work.' },
+        type: 'block', blocker: { kind: 'budget', question: 'This legacy task reached its authorized spending limit. Progress is saved; review the partial result before authorizing more work.' },
       })
-      throw new HarnessYield()
+      throw new HarnessYield(`model:${operationId.split(':').at(-1)}`)
     }
   }
-  if (state.status !== 'running') throw new HarnessYield()
+  if (state.status !== 'running') {
+    const receiptId = operationId.startsWith('budget:') ? `model:${operationId.split(':').at(-1)}` : state.latestReceipt?.id
+    if (receiptId) throw new HarnessYield(receiptId)
+    throw new Error('Harness execution is not runnable.')
+  }
   return state
 }
 
@@ -352,8 +396,8 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   let messages = input.continuation?.messages ?? input.messages
   const steps: StepResult<ToolSet>[] = []
   const deliverySteps: StepResult<ToolSet>[] = [...(input.continuation?.deliverySteps ?? [])]
-  const executionOutcomes = new Map<string, ObservedToolOutcome>()
-  const authenticatedDenials = new Map<string, AuthenticatedToolDenial>()
+  const executionOutcomes = new Map<string, ObservedToolOutcome>(input.continuation?.executionOutcomes)
+  const authenticatedDenials = new Map<string, AuthenticatedToolDenial>(input.continuation?.authenticatedDenials)
   const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
   const toolNames = new Set([...Object.keys(input.tools), ...HARNESS_CONTROL_TOOLS])
   assertNoControlToolReplacement(input.tools, controls)
@@ -365,7 +409,11 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   if (!await ports.claim()) {
     return withObservedToolOutcomes({ outcome: 'already_running', snapshot: await ports.read(), messages, steps: deliverySteps }, executionOutcomes, authenticatedDenials)
   }
-  const approvals = createHarnessToolApprovals()
+  const claimedState = await ports.read()
+  if (!claimedState.workflowRunId) throw new Error('Harness execution has no current workflow owner.')
+  const executionOwner = claimedState.workflowRunId
+  const executionGeneration = claimedState.executionGeneration ?? 0
+  const approvals = createHarnessToolApprovals(input.continuation?.toolApprovals)
   const tools = wrapAuthorizedTools(input.tools, ports, controls, approvals)
   const toolDefinitions = await prepareToolDefinitions(tools)
   const instructions = buildHarnessInstructions(input.instructions)
@@ -374,15 +422,49 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   let invocation = input.continuation?.invocation ?? 0
   let modelCall = input.continuation?.modelCall ?? 0
   let stagnantSegments = input.continuation?.stagnantSegments ?? 0
-  const segmentStartedAt = input.continuation?.segmentStartedAt ?? Date.now()
+  const segmentStartedAt = Date.now()
   const segmentModelCallStart = modelCall
+  let pendingApproval = input.continuation?.pendingApproval
+  const handoff = async (): Promise<HarnessExecutionResult> => {
+    const checkpoint: HarnessRunnerCheckpoint = {
+      version: 1, messages, invocation, modelCall, stagnantSegments,
+      finalAnswerRequired, truncatedResponse, segmentStartedAt: Date.now(),
+      deliverySteps: checkpointDeliverySteps(deliverySteps, executionOutcomes, authenticatedDenials),
+      ...(pendingApproval ? { pendingApproval } : {}),
+      toolApprovals: approvals.snapshot(), executionOutcomes: [...executionOutcomes],
+      authenticatedDenials: [...authenticatedDenials],
+    }
+    if ((await ports.read()).modelReservation) throw new Error('HARNESS_CONTINUATION_HAS_UNRESOLVED_MODEL_RESERVATION')
+    const handedOff = await ports.continueExecution(checkpoint)
+    return withObservedToolOutcomes({ outcome: 'continued', snapshot: handedOff, messages, steps: deliverySteps },
+      executionOutcomes, authenticatedDenials)
+  }
 
   while (true) {
     const state = await ports.read()
     if (isTerminal(state)) {
       return withObservedToolOutcomes({ outcome: 'finished', snapshot: state, messages, steps: deliverySteps }, executionOutcomes, authenticatedDenials)
     }
-    const waiting = await handleWaitingState(state, messages, ports, invocation)
+    if (state.policy.executionPolicyVersion === 2 && state.status !== 'waiting_for_authorization'
+      && (modelCall - segmentModelCallStart >= 32 || Date.now() - segmentStartedAt >= 60 * 60_000)) return handoff()
+    let waiting: WaitingStateOutcome | null
+    try {
+      if (pendingApproval) {
+        const approval = await resumePendingApprovals(pendingApproval.requests, tools, messages, ports,
+          pendingApproval.segment, approvals, authenticatedDenials)
+        if (approval.kind === 'blocked') {
+          return withObservedToolOutcomes({ outcome: 'blocked', snapshot: approval.snapshot, messages, steps: deliverySteps }, executionOutcomes, authenticatedDenials)
+        }
+        messages = approval.messages
+        if (approval.resetStagnation) stagnantSegments = 0
+        pendingApproval = undefined
+        continue
+      }
+      waiting = await handleWaitingState(state, messages, ports, invocation)
+    } catch (error) {
+      if (error instanceof HarnessWaitRollover && state.policy.executionPolicyVersion === 2) return handoff()
+      throw error
+    }
     if (waiting) {
       if (waiting.kind === 'blocked') {
         return withObservedToolOutcomes({ outcome: 'blocked', snapshot: waiting.snapshot, messages, steps: deliverySteps }, executionOutcomes, authenticatedDenials)
@@ -421,7 +503,8 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         stagnantCalls = progress === previous ? stagnantCalls + 1 : 0
         previous = progress
         return observedState.status !== 'running' || onlyChildrenRemain(observedState) || stagnantCalls >= 3
-          || modelCall - segmentModelCallStart >= 32 || Date.now() - segmentStartedAt >= 60 * 60 * 1000
+          || (observedState.policy.executionPolicyVersion === 2
+            && (modelCall - segmentModelCallStart >= 32 || Date.now() - segmentStartedAt >= 60 * 60 * 1000))
       }],
       prepareStep: async ({ messages: prompt }) => {
         // This boundary includes completed tools, but none of the next call's partial output.
@@ -483,9 +566,21 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     let recoveredModel = false
     const invocationResult = await runHarnessModelInvocation(
       () => agent.stream({ messages, writable: input.writable, preventClose: true, sendFinish: false }),
-      () => ({ messages: invocationMessages, steps: invocationSteps, preparedReceiptId, modelCall }),
+      () => ({ messages: recoveryMessages, steps: recoverySteps, preparedReceiptId, modelCall }),
       unresolvedApprovalCalls,
       ports.recoverModelFailure,
+      async receiptId => {
+        const paused = await ports.read()
+        const ownerMatches = paused.workflowRunId === executionOwner
+          && (paused.executionGeneration ?? 0) === executionGeneration
+        return ownerMatches && (
+          (paused.status === 'waiting_for_resources'
+            && paused.resourcePause?.receiptId === receiptId
+            && paused.latestReceipt?.id === receiptId)
+          || (receiptId.startsWith('model:')
+            && paused.status === 'waiting_for_input' && paused.blocker?.kind === 'budget')
+        )
+      },
     )
     invocationMessages = invocationResult.messages
     invocationSteps = invocationResult.steps
@@ -514,12 +609,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     truncatedResponse = finishReason === 'length'
     if (updatedState.status !== 'running') continue
     if (pending.length) {
-      const approval = await resumePendingApprovals(pending, tools, messages, ports, segment, approvals, authenticatedDenials)
-      if (approval.kind === 'blocked') {
-        return withObservedToolOutcomes({ outcome: 'blocked', snapshot: approval.snapshot, messages, steps: deliverySteps }, executionOutcomes, authenticatedDenials)
-      }
-      messages = approval.messages
-      if (approval.resetStagnation) stagnantSegments = 0
+      pendingApproval = { requests: pending, segment }
       continue
     }
     const continuation = await finishOrCheckpointInvocation(updatedState, ports, segment, before, steps, toolNames, truncatedResponse, stagnantSegments)
@@ -528,15 +618,5 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     }
     stagnantSegments = continuation.stagnantSegments
     finalAnswerRequired = continuation.finalAnswerRequired
-    if (modelCall - segmentModelCallStart >= 32 || Date.now() - segmentStartedAt >= 60 * 60 * 1000) {
-      const checkpoint: HarnessRunnerCheckpoint = {
-        version: 1, messages, invocation, modelCall, stagnantSegments,
-        finalAnswerRequired, truncatedResponse, segmentStartedAt: Date.now(), deliverySteps,
-      }
-      if ((await ports.read()).modelReservation) throw new Error('HARNESS_CONTINUATION_HAS_UNRESOLVED_MODEL_RESERVATION')
-      const handedOff = await ports.continueExecution(checkpoint)
-      return withObservedToolOutcomes({ outcome: 'continued', snapshot: handedOff, messages, steps: deliverySteps },
-        executionOutcomes, authenticatedDenials)
-    }
   }
 }

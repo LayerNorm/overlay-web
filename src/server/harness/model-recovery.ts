@@ -6,8 +6,9 @@ import type { HarnessApprovalRequest, HarnessExecutionPorts } from './ports'
 import { readHarnessState, type HarnessExecutionReference } from './state-steps'
 
 export class HarnessYield extends Error {
-  constructor(readonly settledReceipt = false) {
-    super()
+  readonly name = 'HarnessYield'
+  constructor(readonly receiptId: string) {
+    super(`HARNESS_SAFE_RESOURCE_PAUSE:${receiptId}`)
   }
 }
 
@@ -28,6 +29,7 @@ export async function runHarnessModelInvocation(
   readState: () => HarnessInvocationState,
   pendingFor: (result: WorkflowAgentStreamResult<ToolSet>) => HarnessApprovalRequest[],
   recover: HarnessExecutionPorts['recoverModelFailure'],
+  confirmYield: (receiptId: string) => Promise<boolean>,
 ): Promise<HarnessInvocationResult> {
   try {
     const result = await stream()
@@ -35,11 +37,14 @@ export async function runHarnessModelInvocation(
     return { ...readState(), messages: result.messages, steps: result.steps, pending: pendingFor(result), recovered: false }
   } catch (error) {
     const state = readState()
-    if (error instanceof HarnessYield) return {
+    const message = error && typeof error === 'object' && 'message' in error
+      && typeof error.message === 'string' ? error.message : ''
+    const yieldedReceiptId = /^HARNESS_SAFE_RESOURCE_PAUSE:((?:model|summary):[0-9]+)$/.exec(message)?.[1]
+    if (yieldedReceiptId === state.preparedReceiptId && await confirmYield(yieldedReceiptId)) return {
       ...state,
       pending: [],
-      recovered: false,
-      modelCall: error.settledReceipt && state.preparedReceiptId === `model:${state.modelCall}`
+      recovered: true,
+      modelCall: state.preparedReceiptId === `model:${state.modelCall}`
         ? state.modelCall + 1 : state.modelCall,
     }
     if (!await recover?.(state.preparedReceiptId)) throw error

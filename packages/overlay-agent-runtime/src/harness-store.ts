@@ -38,6 +38,7 @@ export type HarnessOperation =
   | { type: 'resume' }
   | { type: 'pause_for_funding'; pause: HarnessFundingPause }
   | { type: 'resume_funding' }
+  | { type: 'pause_for_authorization' }
   | { type: 'wait_for_children' }
   | { type: 'admit_child'; child: HarnessChild; goal: string; constraints: string[] }
   | {

@@ -60,6 +60,7 @@ test('refreshes identity, reserves a stable account hold, claims dispatch atomic
 test('automation model dispatch rebuilds run and source identity from serialized authority', async () => {
   const automationAccess = {
     ...access,
+    executionGeneration: 7,
     authentication: {
       type: 'automation' as const,
       automationId: 'automation',
@@ -71,6 +72,7 @@ test('automation model dispatch rebuilds run and source identity from serialized
     ...reference,
     personal: { ...reference.personal!, access: automationAccess, automationContext },
   }
+  mocks.read.mockResolvedValue({ ...state, executionGeneration: 7 })
   const serialized = HarnessLanguageModel[WORKFLOW_SERIALIZE](new HarnessLanguageModel(automationReference))
   await authorizePersonalHarnessModelDispatch(serialized, options)
   expect(mocks.refresh).toHaveBeenCalledWith(automationAccess, expect.objectContaining({
@@ -150,7 +152,7 @@ test('failed binding releases only the unused account hold; a failed start retai
   expect(mocks.release).toHaveBeenCalledTimes(1)
 })
 
-test('v2 external and none modes bind receipts without reserving Overlay budget', async () => {
+test('v2 external mode binds BYOK and none mode allows only a free route', async () => {
   const byokReference: HarnessModelReference = {
     ...reference,
     modelId: 'byok/anthropic/claude-3-5-sonnet-latest',
@@ -173,8 +175,25 @@ test('v2 external and none modes bind receipts without reserving Overlay budget'
     ...state, policy: { executionPolicyVersion: 2, spendingMode: 'none' },
   }
   mocks.read.mockResolvedValueOnce(noneState).mockResolvedValueOnce(noneState)
-  await authorizePersonalHarnessModelDispatch(reference, options)
+  await expect(authorizePersonalHarnessModelDispatch(reference, options)).rejects.toThrow(/requires workspace funding/)
   expect(mocks.reserve).not.toHaveBeenCalled()
+  expect(mocks.apply).toHaveBeenCalledTimes(1)
+
+  const freeReference: HarnessModelReference = {
+    ...reference,
+    modelId: 'openrouter/free',
+    personal: { ...reference.personal!, receiptId: 'model:2' },
+  }
+  const freeState = {
+    ...noneState,
+    modelReservation: { id: 'model:2', maxCostMicros: 0 },
+  }
+  mocks.forecast.mockResolvedValueOnce(0)
+  mocks.read.mockReset().mockResolvedValue(freeState)
+  await authorizePersonalHarnessModelDispatch(freeReference, options)
+  expect(mocks.apply).toHaveBeenCalledWith(expect.objectContaining({ operation: {
+    type: 'bind_model_dispatch', id: 'model:2', modelId: 'openrouter/free', billingReservationId: null,
+  } }))
   expect(mocks.started).not.toHaveBeenCalled()
 })
 

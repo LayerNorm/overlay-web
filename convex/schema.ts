@@ -427,6 +427,7 @@ export default defineSchema({
   budgetTopUps: defineTable({
     userId: v.string(),
     billingAccountId: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()),
     stripeCheckoutSessionId: v.optional(v.string()),
     stripePaymentIntentId: v.optional(v.string()),
@@ -1391,6 +1392,7 @@ export default defineSchema({
       v.literal('waiting_for_input'),
       v.literal('waiting_for_children'),
       v.literal('waiting_for_resources'),
+      v.literal('waiting_for_authorization'),
       v.literal('completed'),
       v.literal('failed'),
       v.literal('cancelled'),
@@ -1435,9 +1437,14 @@ export default defineSchema({
       ),
       requiredCents: v.number(),
       availableCents: v.number(),
-      reservedCents: v.number(),
+      reservedCents: v.optional(v.number()),
       receiptId: v.string(),
       autoTopUpReason: v.optional(v.string()),
+    })),
+    authorizationPause: v.optional(v.object({
+      reason: v.literal('task_deadline_expired'),
+      deadlineAt: v.number(),
+      pausedAt: v.number(),
     })),
     metrics: v.optional(v.object({
       firstTokenAt: v.optional(v.number()),
@@ -3019,6 +3026,8 @@ export default defineSchema({
     question: v.string(),
     createdAt: v.number(),
     resolvedAt: v.optional(v.number()),
+    replyJson: v.optional(v.string()),
+    repliedAt: v.optional(v.number()),
   }).index('by_token', ['token'])
     .index('by_runId_resolvedAt', ['runId', 'resolvedAt', 'createdAt'])
     .index('by_rootRunId_resolvedAt', ['rootRunId', 'resolvedAt', 'createdAt']),
@@ -3062,6 +3071,7 @@ export default defineSchema({
     purpose: v.optional(v.union(v.literal('continuation'), v.literal('compaction'))),
     generation: v.optional(v.number()),
     checkpointToken: v.optional(v.string()),
+    checkpointStorageId: v.optional(v.id('_storage')),
     checkpointJson: v.optional(v.string()),
     launchInputJson: v.optional(v.string()),
     createdAt: v.number(),
@@ -3072,6 +3082,8 @@ export default defineSchema({
     runId: v.string(),
     rootRunId: v.string(),
     generation: v.number(),
+    previousWorkflowRunId: v.optional(v.string()),
+    previousExecutionGeneration: v.optional(v.number()),
     checkpointToken: v.string(),
     workflowKind: v.union(v.literal('native'), v.literal('personal')),
     state: v.union(v.literal('pending'), v.literal('claimed')),

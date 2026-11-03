@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, test } from 'vitest'
+import { gzipSync } from 'node:zlib'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import type { HarnessAdmission, HarnessMutationResult, HarnessOperation } from '../packages/overlay-agent-runtime/src/harness-store'
@@ -174,6 +175,114 @@ async function seedPersonalWorkspace(convex: Convex, workspaceId: string, ownerU
 }
 
 describe('personal harness delivery binding', () => {
+  test('continuation successor claims and transfers root delivery ownership atomically', async () => {
+    const convex = convexTest(schema, modules)
+    await seedPersonalWorkspace(convex, 'workspace', 'alice')
+    const conversationId = await seedConversation(convex, 'alice', {
+      workspaceId: 'workspace', conversationType: 'personal',
+    })
+    const deliveryId = await seedDelivery(convex, conversationId)
+    const input = admission('root-continuation', conversationId, deliveryId)
+    input.policy = {
+      ...input.policy, executionPolicyVersion: 2, spendingMode: 'none', workspaceId: 'workspace',
+      maxCostMicros: 0,
+    }
+    let state = await admit(convex, input)
+    state = (await apply(convex, input, 'claim-first', state.revision, {
+      type: 'claim_execution', workflowRunId: 'workflow-first',
+    })).snapshot
+    await convex.mutation(chatMutation('attachAgentRunWorkflow'), {
+      runId: deliveryId, serverSecret: secret, userId: 'alice', workflowRunId: 'workflow-first',
+    })
+    const waitToken = 'continuation-input-wait'
+    state = (await apply(convex, input, 'block-input', state.revision, {
+      type: 'block', blocker: { kind: 'input', question: 'Provide the missing detail.' },
+    })).snapshot
+    const wait = await convex.mutation(makeFunctionReference<'mutation'>('harness/runs:publishWait'), {
+      actorUserId: 'alice',
+      runId: input.runId,
+      workflowRunId: 'workflow-first',
+      request: { kind: 'input', token: waitToken },
+      serverSecret: secret,
+    }) as { token: string }
+    await convex.run(ctx => ctx.db.patch(deliveryId as never, {
+      status: 'waiting_for_input',
+      inputRequest: { token: waitToken, requestedAt: Date.now(), question: 'Provide the missing detail.' },
+    }))
+    const submitReply = makeFunctionReference<'mutation'>('harness/runs:submitWaitReply')
+    const replyArgs = {
+      actorUserId: 'alice',
+      workspaceId: 'workspace',
+      deliveryAgentRunId: deliveryId,
+      token: waitToken,
+      reply: { text: 'Use the existing project.' },
+      serverSecret: secret,
+    }
+    await expect(convex.mutation(submitReply, { ...replyArgs, workspaceId: 'other-workspace' }))
+      .rejects.toThrow('HARNESS_WAIT_REPLY_NOT_AUTHORIZED')
+    await expect(convex.mutation(submitReply, { ...replyArgs, actorUserId: 'mallory' })).resolves.toBe(false)
+    await expect(convex.mutation(submitReply, replyArgs)).resolves.toBe(true)
+    await expect(convex.mutation(submitReply, replyArgs)).resolves.toBe(true)
+    await expect(convex.mutation(submitReply, { ...replyArgs, reply: { text: 'Different answer.' } }))
+      .rejects.toThrow('HARNESS_WAIT_REPLY_CONFLICT')
+    expect(wait.token).toBe(waitToken)
+    const checkpoint = {
+      version: 1, messages: [{ role: 'assistant', content: 'x'.repeat(300_000) }],
+      invocation: 1, modelCall: 2, stagnantSegments: 0,
+      finalAnswerRequired: false, truncatedResponse: false, segmentStartedAt: Date.now(),
+    }
+    const launchInput = {
+      access: { actorUserId: 'alice', workspaceId: 'workspace', runId: input.runId, executionGeneration: 1 },
+    }
+    const checkpointStorageId = await convex.run(ctx => ctx.storage.store(new Blob([
+      new Uint8Array(gzipSync(Buffer.from(JSON.stringify({ checkpoint, launchInput }), 'utf8'))),
+    ])))
+    const handoff = await convex.mutation(makeFunctionReference<'mutation'>('harness/continuations:handoff'), {
+      actorUserId: 'alice', serverSecret: secret, runId: input.runId,
+      workflowRunId: 'workflow-first', executionGeneration: 0, expectedRevision: state.revision,
+      workflowKind: 'personal',
+      checkpointStorageId,
+    }) as { revision: number; executionGeneration: number }
+    expect(handoff.executionGeneration).toBe(1)
+    await expect(convex.query(makeFunctionReference<'query'>('harness/continuations:getLaunch'), {
+      serverSecret: secret, runId: input.runId, generation: 1, checkpointToken: `${input.runId}:1`,
+    })).resolves.toMatchObject({ workflowKind: 'personal', actorUserId: 'alice', executionGeneration: 1 })
+    const checkpointRow = await convex.run(ctx => ctx.db.query('harnessCheckpoints')
+      .withIndex('by_checkpointToken', q => q.eq('checkpointToken', `${input.runId}:1`)).unique())
+    expect(checkpointRow?.checkpointStorageId).toBe(checkpointStorageId)
+    expect(checkpointRow?.checkpointJson).toBeUndefined()
+    expect(checkpointRow?.launchInputJson).toBeUndefined()
+
+    const next = await convex.mutation(mutation('apply'), {
+      actorUserId: 'alice', runId: input.runId, workflowRunId: 'workflow-next',
+      executionGeneration: 1, operationId: 'claim-next', expectedRevision: handoff.revision,
+      operation: { type: 'claim_execution', workflowRunId: 'workflow-next', generation: 1 },
+      serverSecret: secret,
+    }) as HarnessMutationResult
+    expect(next.snapshot).toMatchObject({ workflowRunId: 'workflow-next', executionGeneration: 1 })
+    const transferredDelivery = await convex.run(ctx => ctx.db.get(deliveryId as never))
+    expect(transferredDelivery).toMatchObject({ workflowRunId: 'workflow-next', status: 'waiting_for_input' })
+    const transferredWait = await convex.run(ctx => ctx.db.query('harnessWaits')
+      .withIndex('by_token', q => q.eq('token', waitToken)).unique())
+    expect(transferredWait?.workflowRunId).toBe('workflow-next')
+    await expect(convex.query(makeFunctionReference<'query'>('harness/runs:readWaitReply'), {
+      actorUserId: 'alice', runId: input.runId, workflowRunId: 'workflow-next',
+      token: waitToken, serverSecret: secret,
+    })).resolves.toEqual({ text: 'Use the existing project.' })
+    await expect(convex.mutation(mutation('apply'), {
+      actorUserId: 'alice', runId: input.runId, workflowRunId: 'workflow-loser',
+      executionGeneration: 1, operationId: 'claim-loser', expectedRevision: next.snapshot.revision,
+      operation: { type: 'claim_execution', workflowRunId: 'workflow-loser', generation: 1 },
+      serverSecret: secret,
+    })).rejects.toThrow('HARNESS_EXECUTION_NOT_OWNED')
+    await expect(convex.mutation(mutation('apply'), {
+      actorUserId: 'alice', runId: input.runId, workflowRunId: 'workflow-first',
+      executionGeneration: 0, operationId: 'stale-write', expectedRevision: next.snapshot.revision,
+      operation: { type: 'checkpoint', summary: 'stale', purpose: 'continuation' },
+      serverSecret: secret,
+    })).rejects.toThrow('HARNESS_EXECUTION_NOT_OWNED')
+  })
+
   test('admits and replays one queued delivery with an atomic binding', async () => {
     const convex = convexTest(schema, modules)
     const conversationId = await seedConversation(convex)

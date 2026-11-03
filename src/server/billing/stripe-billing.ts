@@ -133,8 +133,87 @@ export async function maybeAutoTopUpWorkspaceBudget(params: {
 }) {
   const plan = await repository.getBillingAccountSubscriptionByServer({ billingAccountId: params.billingAccountId })
   if (!plan || plan.planKind !== 'paid') return { applied: false as const, reason: 'not_paid' }
-  // One in flight at a time: a pending top-up is settled by the webhook or the reconcile job when Stripe finishes.
-  if (plan.autoTopUpPending) return { applied: false as const, reason: 'already_pending' }
+  // Retry only the original, unrecorded claim with its immutable parameters/key.
+  // A known PaymentIntent or an expired idempotency window must be reconciled,
+  // never replaced with a new charge identity.
+  if (plan.autoTopUpPending) {
+    const pending = await repository.getPendingAutoTopUpIntentByServer?.({
+      billingAccountId: params.billingAccountId,
+    })
+    if (!pending || pending.stripePaymentIntentId || Date.now() - pending.createdAt >= 23 * 60 * 60 * 1_000) {
+      return { applied: false as const, reason: 'already_pending' }
+    }
+    if (!plan.autoTopUpEnabled || plan.status !== 'active'
+      || plan.offSessionConsentAt !== pending.consentAt || plan.stripeCustomerId !== pending.customerId
+      || plan.autoTopUpAmountCents !== pending.amountCents || plan.currentPeriodStart !== pending.currentPeriodStart
+      || params.workspaceId !== pending.workspaceId) {
+      return { applied: false as const, reason: 'authorization_changed' }
+    }
+    try {
+      const paymentMethodId = await (deps?.resolvePaymentMethodId ?? resolveDefaultPaymentMethodId)({
+        ...plan, userId: pending.actorUserId,
+      })
+      if (paymentMethodId !== pending.paymentMethodId) return { applied: false as const, reason: 'authorization_changed' }
+      const createPaymentIntent = deps?.createPaymentIntent
+        ?? ((input: Parameters<typeof stripe.paymentIntents.create>[0], options: Parameters<typeof stripe.paymentIntents.create>[1]) =>
+          stripe.paymentIntents.create(input, options) as Promise<{ id: string; status: string }>)
+      const paymentIntent = await createPaymentIntent({
+        amount: pending.amountCents,
+        currency: 'usd',
+        customer: pending.customerId,
+        payment_method: pending.paymentMethodId,
+        off_session: true,
+        confirm: true,
+        metadata: {
+          kind: 'budget_topup',
+          source: 'auto',
+          billingAccountId: params.billingAccountId,
+          intentKey: pending.intentKey,
+          workspaceId: pending.workspaceId,
+          userId: pending.actorUserId,
+        },
+      }, { idempotencyKey: pending.idempotencyKey })
+      await repository.recordBillingAccountTopUp({
+        actorUserId: pending.actorUserId,
+        billingAccountId: params.billingAccountId,
+        workspaceId: pending.workspaceId,
+        amountCents: pending.amountCents,
+        source: 'auto',
+        status: paymentIntent.status === 'succeeded' ? 'succeeded' : 'pending',
+        stripeCustomerId: pending.customerId,
+        stripePaymentIntentId: paymentIntent.id,
+        autoTopUpIntentKey: pending.intentKey,
+      })
+      return {
+        applied: paymentIntent.status === 'succeeded',
+        amountCents: pending.amountCents,
+        reason: paymentIntent.status === 'succeeded' ? 'succeeded' : paymentIntent.status,
+      } as const
+    } catch (error) {
+      const stripeError = error && typeof error === 'object' ? error as {
+        type?: unknown; code?: unknown; payment_intent?: { id?: unknown }
+      } : {}
+      const paymentIntentId = typeof stripeError.payment_intent?.id === 'string'
+        ? stripeError.payment_intent.id : undefined
+      const definitiveDecline = stripeError.type === 'StripeCardError'
+        || (typeof stripeError.code === 'string' && /^(card_|payment_intent_authentication)/.test(stripeError.code))
+      if (definitiveDecline) {
+        await repository.recordBillingAccountTopUp({
+          actorUserId: pending.actorUserId,
+          billingAccountId: params.billingAccountId,
+          workspaceId: pending.workspaceId,
+          amountCents: pending.amountCents,
+          source: 'auto',
+          status: 'failed',
+          stripeCustomerId: pending.customerId,
+          ...(paymentIntentId ? { stripePaymentIntentId: paymentIntentId } : {}),
+          autoTopUpIntentKey: pending.intentKey,
+        })
+        return { applied: false as const, reason: 'payment_failed' }
+      }
+      return { applied: false as const, reason: 'pending' }
+    }
+  }
   const decision = decideAutoTopUp({
     enabled: Boolean(plan.autoTopUpEnabled),
     amountCents: plan.autoTopUpAmountCents ?? 0,
@@ -200,6 +279,7 @@ export async function maybeAutoTopUpWorkspaceBudget(params: {
     await repository.recordBillingAccountTopUp({
       actorUserId: claim.actorUserId ?? params.actorUserId,
       billingAccountId: params.billingAccountId,
+      workspaceId: claim.workspaceId ?? params.workspaceId,
       amountCents: claim.amountCents ?? amountCents,
       source: 'auto',
       status: paymentIntent.status === 'succeeded' ? 'succeeded' : 'pending',
@@ -227,6 +307,7 @@ export async function maybeAutoTopUpWorkspaceBudget(params: {
     await repository.recordBillingAccountTopUp({
       actorUserId: params.actorUserId,
       billingAccountId: params.billingAccountId,
+      workspaceId: params.workspaceId,
       amountCents,
       source: 'auto',
       status: 'failed',

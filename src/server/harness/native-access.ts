@@ -42,12 +42,16 @@ function assertActiveAuthority(
   renewalMode = false,
 ): asserts state is HarnessSnapshot {
   const cancelledToolProgress = allowCancelledToolProgress && state?.runId === access.runId && state.status === 'cancelled'
-  if (!state?.workflowRunId || state.policy.actorUserId !== access.actorUserId
+  const ownerTransferInProgress = state?.runId !== access.runId
+    && state?.policy.executionPolicyVersion === 2 && !state.workflowRunId && Boolean(state.handoffWorkflowRunId)
+    && !['completed', 'cancelled', 'failed'].includes(state.status)
+  if (!state || (!state.workflowRunId && !ownerTransferInProgress) || state.policy.actorUserId !== access.actorUserId
     || state.policy.workspaceId !== access.workspaceId
     || (state.runId === access.runId && (state.executionGeneration ?? 0) !== (access.executionGeneration ?? 0))
     || (state.policy.deadlineAt <= Date.now() && !cancelledToolProgress
       && !(renewalMode && state.policy.executionPolicyVersion === 2))
-    || (state.policy.taskDeadlineAt !== undefined && state.policy.taskDeadlineAt <= Date.now() && !cancelledToolProgress)
+    || (state.policy.taskDeadlineAt !== undefined && state.policy.taskDeadlineAt <= Date.now()
+      && !cancelledToolProgress && !renewalMode)
     || ['completed', 'failed'].includes(state.status)
     || (state.status === 'cancelled' && !cancelledToolProgress)) {
     throw new FatalError('Native harness execution is no longer authorized.')
@@ -106,11 +110,12 @@ function assertNativeDelivery(
     || run.userMessageId !== access.userMessageId || run.assistantMessageId !== access.assistantMessageId) {
     throw new FatalError('Native delivery identity changed.')
   }
+  const deliveryOwner = delivery.workflowRunId ?? delivery.handoffWorkflowRunId
   const cancelledToolProgress = allowCancelledToolProgress && state.runId === access.runId && state.status === 'cancelled'
   if (run.runner !== 'workflow' || run.executionEngine !== 'overlay_harness' || run.mode !== 'room'
-    || run.harnessRunId !== delivery.runId || run.workflowRunId !== delivery.workflowRunId
+    || !deliveryOwner || run.harnessRunId !== delivery.runId || run.workflowRunId !== deliveryOwner
     || (run.status !== 'running' && !(state.runId !== delivery.runId
-      && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(run.status))
+      && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children', 'waiting_for_resources'].includes(run.status))
       && !(renewalMode && state.runId === delivery.runId
         && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status)
         && run.status === state.status)

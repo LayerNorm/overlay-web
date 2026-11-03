@@ -31,12 +31,13 @@ function fundingPause(input: { receiptId: string; status: unknown }): import('@o
                               : 'insufficient_budget'
   if (!Number.isSafeInteger(status.requiredCents) || (status.requiredCents as number) <= 0
     || !Number.isSafeInteger(status.remainingCents) || (status.remainingCents as number) < 0
-    || !Number.isSafeInteger(status.reservedCents) || (status.reservedCents as number) < 0) {
+    || (status.reservedCents !== undefined
+      && (!Number.isSafeInteger(status.reservedCents) || (status.reservedCents as number) < 0))) {
     throw new FatalError('The funding denial did not include exact reservation amounts.')
   }
   const requiredCents = status.requiredCents as number
   const availableCents = status.remainingCents as number
-  const reservedCents = status.reservedCents as number
+  const reservedCents = Number.isSafeInteger(status.reservedCents) ? status.reservedCents as number : undefined
   const safeTopUpReasons = new Set([
     'disabled', 'pending', 'payment_failed', 'monthly_limit_reached', 'missing_payment_method',
     'missing_customer', 'missing_consent', 'amount_shortfall', 'not_paid', 'authorization_changed',
@@ -44,7 +45,7 @@ function fundingPause(input: { receiptId: string; status: unknown }): import('@o
   ])
   const topUpReason = typeof status.topUpReason === 'string' && safeTopUpReasons.has(status.topUpReason)
     ? status.topUpReason : undefined
-  return { reason, requiredCents, availableCents, reservedCents, receiptId: input.receiptId,
+  return { reason, requiredCents, availableCents, ...(reservedCents !== undefined ? { reservedCents } : {}), receiptId: input.receiptId,
     ...(topUpReason ? { autoTopUpReason: topUpReason } : {}) }
 }
 
@@ -136,6 +137,9 @@ export async function authorizeHarnessModelDispatch(
   const estimate = await forecastHarnessModelCost({ modelId: reference.modelId,
     inputTokenBudget: input.inputTokenBudget, maxOutputTokens: input.maxOutputTokens, cacheWrites: hasHarnessCacheWrites(options) })
   if (estimate > hold.maxCostMicros) throw new FatalError('Model pricing exceeds its authorized hold.')
+  if (state.policy.executionPolicyVersion === 2 && state.policy.spendingMode === 'none' && estimate > 0) {
+    throw new FatalError('Paid model execution requires workspace funding or external credentials.')
+  }
   const operationId = `harness-model:${createHash('sha256').update(JSON.stringify([input.access.runId, input.receiptId])).digest('hex')}`
   const usesOverlayBudget = state.policy.executionPolicyVersion !== 2 || state.policy.spendingMode === 'workspace'
   const reservation = usesOverlayBudget ? await reserveProviderBudget({
@@ -158,7 +162,7 @@ export async function authorizeHarnessModelDispatch(
         type: 'pause_for_funding',
         pause: fundingPause({ receiptId: input.receiptId, status: resourceStatus }),
       })
-      throw new HarnessYield(input.receiptId.startsWith('model:'))
+      throw new HarnessYield(input.receiptId)
     }
     await recordHarnessModelRejection(reference, 'budget')
     throw new FatalError(`Model budget reservation declined: ${reservation.code}`)

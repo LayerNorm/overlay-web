@@ -98,7 +98,8 @@ test.each([false, true])('compiled workflow can load and dispatch the credential
   const reference = { modelId: 'fixture/model', credentialOwnerId: 'fixture-user', ...(native ? { native: {
     access: { actorUserId: 'fixture-user', runId: 'workspace:delivery', workflowRunId: 'workflow', workspaceId: 'workspace',
       principalId: 'human-principal', agentId: 'agent', agentPrincipalId: 'agent-principal', conversationId: 'room',
-      agentRunId: 'delivery', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
+      agentRunId: 'delivery', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn',
+      executionGeneration: 7 },
     receiptId: 'model:0', memoryEnabled: true, sharedRoom: false, requestFingerprint: 'request',
     inputTokenBudget: 1_000, maxOutputTokens: 100, contextWindow: 10_000,
   } } : {}) }

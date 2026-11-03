@@ -60,6 +60,45 @@ async function autoTopUpsSince(ctx: QueryCtx, billingAccountId: string, since: n
   }
 }
 
+export const getPendingAutoTopUpIntentByServer = query({
+  args: { billingAccountId: v.string(), serverSecret: v.string() },
+  returns: v.union(v.object({
+    intentKey: v.string(),
+    idempotencyKey: v.string(),
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    amountCents: v.number(),
+    currentPeriodStart: v.optional(v.number()),
+    consentAt: v.number(),
+    paymentMethodId: v.string(),
+    customerId: v.string(),
+    createdAt: v.number(),
+    stripePaymentIntentId: v.optional(v.string()),
+  }), v.null()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const pending = (await ctx.db.query('billingAutoTopUpIntents')
+      .withIndex('by_billingAccountId_createdAt', q => q.eq('billingAccountId', args.billingAccountId))
+      .collect())
+      .filter(intent => intent.state === 'pending')
+      .sort((a, b) => a.createdAt - b.createdAt)[0]
+    if (!pending) return null
+    return {
+      intentKey: pending.intentKey,
+      idempotencyKey: pending.idempotencyKey,
+      actorUserId: pending.actorUserId,
+      workspaceId: pending.workspaceId,
+      amountCents: pending.amountCents,
+      ...(pending.currentPeriodStart === undefined ? {} : { currentPeriodStart: pending.currentPeriodStart }),
+      consentAt: pending.consentAt,
+      paymentMethodId: pending.paymentMethodId,
+      customerId: pending.customerId,
+      createdAt: pending.createdAt,
+      ...(pending.stripePaymentIntentId ? { stripePaymentIntentId: pending.stripePaymentIntentId } : {}),
+    }
+  },
+})
+
 export const getByServer = query({
   args: { billingAccountId: v.string(), serverSecret: v.string() },
   returns: v.union(subscriptionRecord, v.null()),
@@ -336,6 +375,7 @@ export const recordTopUpByServer = mutation({
     actorUserId: v.string(),
     amountCents: v.number(),
     billingAccountId: v.string(),
+    workspaceId: v.optional(v.string()),
     source: v.union(v.literal('manual'), v.literal('auto')),
     status: v.union(v.literal('pending'), v.literal('succeeded'), v.literal('failed'), v.literal('canceled')),
     stripeCheckoutSessionId: v.optional(v.string()),
@@ -382,6 +422,7 @@ export const recordTopUpByServer = mutation({
       id = String(existing._id)
       await ctx.db.patch(existing._id, {
         billingAccountId: args.billingAccountId,
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
         status: persistedStatus,
         updatedAt: now,
         ...(args.autoTopUpIntentKey ? { autoTopUpIntentKey: args.autoTopUpIntentKey } : {}),
@@ -392,6 +433,7 @@ export const recordTopUpByServer = mutation({
       const inserted = await ctx.db.insert('budgetTopUps', {
         userId: args.actorUserId,
         billingAccountId: args.billingAccountId,
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
         amountCents: args.amountCents,
         source: args.source,
         status: args.status,

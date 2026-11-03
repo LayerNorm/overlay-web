@@ -9,6 +9,8 @@ import type { HarnessChild, HarnessEvidence, HarnessSnapshot } from '@overlay/ag
 import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import type { HarnessModelReference } from './secure-model'
 import type { HarnessInstructionContext } from './context'
+import type { HarnessToolApprovalGrant } from './tool-approvals'
+import type { AuthenticatedToolDenial, ObservedToolOutcome } from './tool-outcome-persistence'
 
 export type HarnessModelSettings = Pick<WorkflowAgentOptions, 'maxOutputTokens' | 'temperature' | 'reasoning' | 'providerOptions'>
 
@@ -39,6 +41,10 @@ export type HarnessRunnerCheckpoint = {
   segmentStartedAt: number
   deliveryProgress?: string
   fallbackNotices?: string[]
+  pendingApproval?: { requests: HarnessApprovalRequest[]; segment: number }
+  toolApprovals?: HarnessToolApprovalGrant[]
+  executionOutcomes?: Array<[string, ObservedToolOutcome]>
+  authenticatedDenials?: Array<[string, AuthenticatedToolDenial]>
 }
 
 // These are IO seams, not execution strategies. Implementations invoke durable

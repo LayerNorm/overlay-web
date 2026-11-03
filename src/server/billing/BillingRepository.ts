@@ -74,7 +74,21 @@ export interface BillingRepository {
   }): Promise<BillingAccountRecord>
   getBillingAccountByIdByServer(args: {
     billingAccountId: string
+    workspaceId?: string
   }): Promise<BillingAccountRecord | null>
+  getPendingAutoTopUpIntentByServer(args: { billingAccountId: string }): Promise<{
+    intentKey: string
+    idempotencyKey: string
+    actorUserId: string
+    workspaceId: string
+    amountCents: number
+    currentPeriodStart?: number
+    consentAt: number
+    paymentMethodId: string
+    customerId: string
+    createdAt: number
+    stripePaymentIntentId?: string
+  } | null>
   getPersonalBillingAccountByUserIdByServer(args: {
     userId: string
   }): Promise<BillingAccountRecord | null>
@@ -134,6 +148,7 @@ export interface BillingRepository {
     actorUserId: string
     amountCents: number
     billingAccountId: string
+    workspaceId?: string
     source: 'manual' | 'auto'
     status: 'pending' | 'succeeded' | 'failed' | 'canceled'
     stripeCheckoutSessionId?: string

@@ -37,7 +37,7 @@ export async function handoffHarnessContinuation(input: {
     })
   } catch (error) {
     const current = await repository.get({ actorUserId: input.reference.actorUserId, runId: input.reference.runId })
-    if (current?.status === 'running' && !current.workflowRunId
+    if (current && !['completed', 'failed', 'cancelled', 'waiting_for_authorization'].includes(current.status) && !current.workflowRunId
       && current.executionGeneration === (state.executionGeneration ?? 0) + 1) return current
     throw error
   }

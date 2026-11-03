@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import { test } from 'vitest'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { shouldApplyRunSnapshot, toAgentRunResource } from './useAgentRunLifecycle'
@@ -48,6 +48,29 @@ test('Convex run projection preserves resource metadata and user identity', () =
   assert.deepEqual(run?.resourceRequest, resourceRequest)
 })
 
+test('authorization deadline projects the pause and renders passive text without resume controls', () => {
+  const authorizationPause = {
+    reason: 'task_deadline_expired' as const,
+    deadlineAt: 200,
+    pausedAt: 201,
+  }
+  const run = toAgentRunResource({
+    ...waitingRunDoc, status: 'waiting_for_authorization', approval: undefined,
+    authorizationPause,
+  })
+  assert.deepEqual(run?.authorizationPause, authorizationPause)
+  function AuthorizationPauseCard() {
+    const { workApprovalContent } = useWorkApproval({
+      agentRunLifecycle: { run, refresh: async () => run } as never,
+      activeChatId: 'conversation_1',
+    })
+    return createElement('div', null, workApprovalContent)
+  }
+  const markup = renderToStaticMarkup(createElement(AuthorizationPauseCard))
+  assert.match(markup, /The task reached its explicit deadline\. Progress is saved; further execution requires new authorization\./)
+  assert.doesNotMatch(markup, /aria-label="Your reply"|Send reply|Approve|Deny/)
+})
+
 test('run snapshot merge applies newer and different runs but ignores stale same-id runs', () => {
   const current = { id: 'run_1', status: 'running' as const, updatedAt: 200 }
   assert.equal(shouldApplyRunSnapshot(current, { ...current, updatedAt: 201 }), true)
@@ -57,7 +80,7 @@ test('run snapshot merge applies newer and different runs but ignores stale same
 })
 
 test('run snapshot merge preserves active runs when a null snapshot arrives', () => {
-  for (const status of ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'waiting_for_resources'] as const) {
+  for (const status of ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'waiting_for_resources', 'waiting_for_authorization'] as const) {
     assert.equal(shouldApplyRunSnapshot({ id: 'run_1', status, updatedAt: 100 }, null), false)
   }
   assert.equal(shouldApplyRunSnapshot({ id: 'run_1', status: 'completed', updatedAt: 100 }, null), true)

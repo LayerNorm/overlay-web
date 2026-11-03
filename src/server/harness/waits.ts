@@ -8,7 +8,10 @@ import { waitForHarnessHumanReply } from './resource-boundary'
 import {
   listHarnessWaits, notifyHarnessAncestors,
   publishHarnessWait, readHarnessChild, resolveHarnessWait,
+  readHarnessWaitReply,
 } from './personal-wait-steps'
+
+export class HarnessWaitRollover extends Error {}
 
 const inputReply = z.object({ text: z.string().trim().min(1).max(32_000) })
 const approvalReply = z.object({ approved: z.boolean(), reason: z.string().max(2_000).optional() })
@@ -27,6 +30,10 @@ export function createHarnessWaitPorts(input: {
   wake: AsyncIterator<unknown>
 }): Pick<HarnessExecutionPorts, 'waitForInput' | 'waitForApproval' | 'waitForChildren' | 'waitForFunding' | 'checkFunding'> {
   const access = input.reference
+  const segmentStartedAt = Date.now()
+  const checkRollover = () => {
+    if (Date.now() - segmentStartedAt >= 60 * 60_000) throw new HarnessWaitRollover()
+  }
   const readState = () => input.readState ? input.readState(access) : readHarnessState(access)
   const ownsDelivery = (state: HarnessSnapshot) => input.deliveryRunId
     ? state.runId === input.deliveryRunId
@@ -42,27 +49,38 @@ export function createHarnessWaitPorts(input: {
     Promise.resolve(pending),
     sleep(new Date(deadlineAt)).then(() => { throw new FatalError('Harness deadline reached while waiting.') }),
   ])
-  const withRenewableLease = async <T>(pending: PromiseLike<T>, state: HarnessSnapshot): Promise<T> => {
-    const result = Promise.resolve(pending)
+  const receiveDurable = async (request: HarnessWaitRequest, state: HarnessSnapshot): Promise<unknown> => {
+    const existing = (await listHarnessWaits(access)).find(wait => wait.runId === state.runId)
+    const wait = existing ?? await publishHarnessWait(access, request)
+    if (wait.kind !== request.kind || (wait.kind === 'approval' && request.kind === 'approval'
+      && JSON.stringify(wait.requests) !== JSON.stringify(request.requests))) {
+      throw new FatalError('Persisted approval request changed.')
+    }
+    await notifyHarnessAncestors(access)
+    if (ownsDelivery(state) && await input.projectWait({ wait }) === 'inactive') return null
     while (true) {
       const now = Date.now()
       if (state.policy.taskDeadlineAt !== undefined && now >= state.policy.taskDeadlineAt) {
         throw new FatalError('The explicit harness task deadline was reached while waiting.')
       }
-      const pollAt = Math.min(now + 60_000, state.policy.taskDeadlineAt ?? Number.MAX_SAFE_INTEGER)
-      const wake = await Promise.race([
-        result.then(value => ({ kind: 'reply' as const, value })),
-        sleep(new Date(pollAt)).then(() => ({ kind: 'poll' as const })),
-      ])
-      if (wake.kind === 'reply') return wake.value
-      if (state.policy.taskDeadlineAt !== undefined && Date.now() >= state.policy.taskDeadlineAt) {
-        throw new FatalError('The explicit harness task deadline was reached while waiting.')
+      const reply = await readHarnessWaitReply(access, wait.token)
+      if (reply !== null) {
+        await resolveHarnessWait(access, wait.token)
+        await notifyHarnessAncestors(access)
+        if (ownsDelivery(state)) await input.projectWait({ status: 'running' })
+        return reply
       }
+      checkRollover()
+      await sleep(new Date(Math.min(now + 60_000, state.policy.taskDeadlineAt ?? Number.MAX_SAFE_INTEGER)))
       await input.renewLease()
+      const current = await readState()
+      if (['completed', 'failed', 'cancelled'].includes(current.status)) return null
     }
   }
 
   const receive = async (request: HarnessWaitRequest): Promise<unknown> => {
+    const initial = await readState()
+    if (initial.policy.executionPolicyVersion === 2) return receiveDurable(request, initial)
     using hook = createHook<unknown>({ token: request.token })
     if (await hook.getConflict()) throw new FatalError('Harness wait token is already owned.')
     const wait = await publishHarnessWait(access, request)
@@ -71,9 +89,7 @@ export function createHarnessWaitPorts(input: {
     if (ownsDelivery(state) && await input.projectWait({ wait }) === 'inactive') return null
     const result = state.policy.resourcePauseVersion === 1
       ? await waitForHarnessHumanReply(access, hook, request.kind, () => readHarnessState(access))
-      : state.policy.executionPolicyVersion === 2
-        ? await withRenewableLease(hook, state)
-        : await withDeadline(hook, effectiveHarnessDeadlineAt(state.policy))
+      : await withDeadline(hook, effectiveHarnessDeadlineAt(state.policy))
     if (result === null) return null
     await resolveHarnessWait(access, wait.token)
     await notifyHarnessAncestors(access)
@@ -128,6 +144,7 @@ export function createHarnessWaitPorts(input: {
           if (projected === 'stale') continue
         }
         if (state.policy.executionPolicyVersion === 2) {
+          checkRollover()
           const wake = await Promise.race([
             nextWake().then(event => ({ kind: 'notification' as const, event })),
             sleep(new Date(Date.now() + 60_000)).then(() => ({ kind: 'poll' as const })),

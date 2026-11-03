@@ -4,7 +4,7 @@
  * independently retryable steps.
  */
 
-import { FatalError, RetryableError, getWorkflowMetadata } from 'workflow'
+import { FatalError, RetryableError, getWorkflowMetadata, sleep } from 'workflow'
 import {
   AutomationTurnError,
   prepareAutomationAgentTurn,
@@ -249,6 +249,22 @@ async function runAdmittedAutomationHarness(
       error: result.terminalReason,
     })
     if (input.runId && !settled) return projectAutomationTurnResult(plan.conversationId, 'already_running')
+  }
+  if (result.status !== 'already_running' && !isTerminalAutomationStatus(result.status)) {
+    while (true) {
+      await sleep('60s')
+      const terminal = await reconcileAutomationHarnessTerminalStep({
+        access: claim.access, automationId: input.automationId!, runId: input.runId,
+        turnId: turnInput.turnId, userId: input.userId, workflowRunId,
+      })
+      if (!terminal) continue
+      const replyText = terminal === 'completed'
+        ? await readAutomationDeliveryStep({
+          conversationId: plan.conversationId, agentRunId: claim.agentRun.id, userId: input.userId,
+        })
+        : ''
+      return projectAutomationTurnResult(plan.conversationId, terminal, replyText)
+    }
   }
   return projectAutomationTurnResult(
     plan.conversationId,
