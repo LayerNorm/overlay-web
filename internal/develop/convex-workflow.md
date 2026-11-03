@@ -409,7 +409,14 @@ calls roll up separately through child joins. The run's spending authorization
 bounds Overlay-funded inference, not the user's external provider account.
 
 `admitHarnessRequestUsage` consumes the root's request allowance with a stable
-operation ID before inference. Child runs do not consume another request; Auto
+operation ID before inference. Personal runs perform it inside
+`admitPersonalHarnessExecution`, one step that attaches root delivery,
+reauthorizes and then counts the request, after `readAndClaimHarnessState` has
+read and claimed the run in a single step; the runner reuses that post-claim
+snapshot rather than reading and claiming again. Keep step bodies' shared
+helpers in modules without steps (`personal-delivery-attach.ts`,
+`request-usage.ts`): the workflow compiler keeps plain exports of step modules
+and would bundle their server imports. Child runs do not consume another request; Auto
 and BYOK retain their existing exemptions. Internal model receipts set the
 server-only `countAsRequest: false` while retaining all cost and token accounting.
 Durable accounting binds the workspace explicitly so a tab switch cannot move

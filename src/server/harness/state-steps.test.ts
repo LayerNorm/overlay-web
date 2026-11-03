@@ -2,7 +2,7 @@ import { ConvexError } from 'convex/values'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { FatalError } from 'workflow'
 import { HarnessPlanValidationError } from '@overlay/agent-runtime/harness-state'
-import { applyHarnessOperation, applyHarnessOperationStep } from './state-steps'
+import { applyHarnessOperation, applyHarnessOperationStep, claimHarnessState, readAndClaimHarnessState } from './state-steps'
 import { HARNESS_STEP_VALIDATION } from './step-validation'
 
 const mocks = vi.hoisted(() => ({ get: vi.fn(), apply: vi.fn(), resources: vi.fn() }))
@@ -110,5 +110,30 @@ test('Convex argument validation errors become fatal without retrying the mutati
     name: 'FatalError',
     message: 'Harness operation rejected: invalid operation arguments.',
   })
+  expect(mocks.apply).toHaveBeenCalledOnce()
+})
+
+test('read and claim returns the post-claim snapshot in one boundary', async () => {
+  const claimed = { workflowRunId: reference.workflowRunId, revision: 4, status: 'running' }
+  mocks.get.mockResolvedValue({ revision: 3, status: 'running' })
+  mocks.apply.mockResolvedValue({ conflict: false, snapshot: claimed })
+  expect(await readAndClaimHarnessState(reference)).toEqual({ snapshot: claimed, claimed: true })
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    operationId: 'claim:workflow', expectedRevision: 3, operation: { type: 'claim_execution', workflowRunId: 'workflow' },
+  }))
+})
+
+test('read and claim leaves terminal and foreign-owned runs unclaimed', async () => {
+  mocks.get.mockResolvedValue({ revision: 3, status: 'cancelled' })
+  expect(await readAndClaimHarnessState(reference)).toEqual({ snapshot: { revision: 3, status: 'cancelled' }, claimed: false })
+  mocks.get.mockResolvedValue({ workflowRunId: 'other', revision: 3, status: 'running' })
+  expect((await readAndClaimHarnessState(reference)).claimed).toBe(false)
+  expect(mocks.apply).not.toHaveBeenCalled()
+})
+
+test('claim keeps its existing behavior for unowned terminal runs', async () => {
+  mocks.get.mockResolvedValue({ revision: 3, status: 'cancelled' })
+  mocks.apply.mockResolvedValue({ conflict: false, snapshot: {} })
+  expect(await claimHarnessState(reference)).toBe(true)
   expect(mocks.apply).toHaveBeenCalledOnce()
 })
