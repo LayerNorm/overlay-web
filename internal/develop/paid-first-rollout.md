@@ -4,12 +4,18 @@ Opt-in Preview QA workspaces carry explicitly synthetic `preview-fixture` paid-p
 
 Follow the owner-authorized enforcement rollout and the canonical production deployment rules below. The owner has retained the current $8 subscription and accepted proceeding without a pricing or subscription migration. This does not establish overall profitability.
 
-## Current release status
+## Release contract
 
-- **Preparation shipped:** [PR #379](https://github.com/LayerNorm/overlay-web/pull/379) deployed additive invoice-proof funding and backfill without changing execution access. Production paid-account protection and a subsequent read-only check passed. These are point-in-time checks; refresh the inventory before a delayed enforcement release.
-- **Enforcement pending:** [PR #378](https://github.com/LayerNorm/overlay-web/pull/378) has not shipped. Refresh exact-revision hosted acceptance after integrating current main, including useful-task completion/reload and paid-account protection. Prior failed-call accounting and useful Computer-task acceptance are recorded in the PR; refresh evidence affected by new changes.
-- **Cutoff and cleanup pending:** no production cutoff, free-resource drain or dedicated free-resource deletion has occurred. Those operations follow verified enforcement deployment, not preparation alone.
-- Keep production inventories, customer identifiers, financial metrics and reconciliation records in private operator storage, not this repository or PR discussion. Public evidence should report gate status and non-sensitive test behavior only.
+Preparation #379 supplied additive invoice proof and balance-preserving backfill.
+This release enforces paid-workspace admission and retires free execution. Record
+exact-revision acceptance, deployment, production drain and cleanup in the PR;
+refresh paid-account protection immediately before integration. The owner retained
+the current subscription pricing and configured usage markup while net
+infrastructure profitability remains unproven.
+
+Keep customer identifiers, production inventories, financial metrics and
+reconciliation records in private operator storage. Public evidence reports gate
+status and non-sensitive test behavior only.
 
 ## Release gates
 

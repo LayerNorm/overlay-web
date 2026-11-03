@@ -1,6 +1,6 @@
 # Credit, holds, and agent-machine billing
 
-How the credit a person sees relates to what Overlay enforces, and how Overlay Cloud agent machines are billed. Written after a production check where a person saw 36.8% of their allowance used but only $0.99 left.
+How displayed credit relates to execution admission, reservations, settlement and Overlay Cloud machine metering.
 
 ## Two separate accounts
 
@@ -22,22 +22,13 @@ Model admission uses a reservation ceiling, not the headline catalog price. For 
 
 Harness terminal cancellation and failure may release a zero-cost free-router model hold only when no provider billing reservation exists. Paid, externally billed, nonzero-cost, and provider-started holds remain unresolved until authoritative usage evidence settles them.
 
-## Stuck holds (fixed 2026-10-02)
+## Reconciling held credit
 
-A call that failed, or finished costing more than was held, used to leave its reservation in `reconcile_required`, waiting for "provider evidence" that nothing supplied, and it counted as held forever. One account had 356 of them, $11.66 of a $20 allowance.
-
-`settleStaleBudgetReservationsInternal` (`convex/platform/usage.ts`, hourly cron `stale usage hold settlement`, batches of 8 that reschedule themselves) settles any hold older than 6 hours through the same audited path as the ops mutation (`applyReservationReconciliation`; evidence source `system:stale-hold-policy`, reference = the reservation id):
-
-| Hold's error | Settled as | Why |
-| --- | --- | --- |
-| `actual_cost_exceeds_reservation` | **Finalized** at the held amount | The work finished and cost more than was held; the ledger refused to record it, so spend was understated. |
-| anything else (provider error, schema mismatch, lost outcome) | **Released** | The person is not charged for work they did not get. |
-
-The first run on the affected account charged 122 finished agent runs ($8.63) and released 234 failed calls ($3.03): usage went from 36.8% to 80.1%, remaining from $0.99 to $3.98, and remaining now equals allowance minus spend.
-
-Known sources of failed holds, still open (see the follow-up task): `knowledge.compile-memory-profile` failing with "No object generated: response did not match schema" on `gemini-2.5-flash-lite` (a new hold on every run), billing document write conflicts ("Documents read from or written to the billing…"), provider usage lookups returning not found when no catalog rate is available, and agent reservations that are estimated lower than real cost.
-
-To look at a person's holds in production: `CONVEX_DEPLOYMENT=prod:colorful-chickadee-419 npx convex data budgetReservations --limit 5000 --order desc --format jsonLines`, filter by `userId` and `status`.
+Use the internal reconciliation audit to identify provider-started holds requiring
+authoritative cost evidence. Retain financial and customer-specific audit records
+in private operator storage. Failed structured-output generation, write conflicts,
+missing provider receipts and underestimated reservations can all leave a hold
+requiring reconciliation; failure alone does not establish zero provider cost.
 
 ### Late provider evidence after release
 
