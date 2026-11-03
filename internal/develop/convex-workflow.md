@@ -7,7 +7,10 @@ Convex owns durable app state, domain mutations, scheduled work, and some webhoo
 
 Treat matching web and Convex revisions as one release unit. Local development
 uses an engineer-owned backend; feature worktrees never deploy shared environments.
-PR previews deploy only their per-PR backend.
+PR previews deploy only their per-PR backend. Preview builds copy the shared
+`OVERLAY_USAGE_MARKUP_BPS` value from Vercel to that backend. Before production
+billing code is deployed, set and read back the same rate on its matching Next
+and Convex environments; see [Workspace billing](workspace-billing.md#usage-markup-configuration).
 
 Vercel’s native Git integration deploys main to production. Integration verifies
 the exact live web SHA, synchronizes customer Convex only for backend changes from
@@ -388,7 +391,14 @@ calls roll up separately through child joins. The run's spending authorization
 bounds Overlay-funded inference, not the user's external provider account.
 
 `admitHarnessRequestUsage` consumes the root's request allowance with a stable
-operation ID before inference. Child runs do not consume another request; Auto
+operation ID before inference. Personal runs perform it inside
+`admitPersonalHarnessExecution`, one step that attaches root delivery,
+reauthorizes and then counts the request, after `readAndClaimHarnessState` has
+read and claimed the run in a single step; the runner reuses that post-claim
+snapshot rather than reading and claiming again. Keep step bodies' shared
+helpers in modules without steps (`personal-delivery-attach.ts`,
+`request-usage.ts`): the workflow compiler keeps plain exports of step modules
+and would bundle their server imports. Child runs do not consume another request; Auto
 and BYOK retain their existing exemptions. Internal model receipts set the
 server-only `countAsRequest: false` while retaining all cost and token accounting.
 Durable accounting binds the workspace explicitly so a tab switch cannot move

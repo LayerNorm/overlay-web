@@ -15,7 +15,6 @@ import {
 import type { WorkspaceConnectorRepository } from '@/server/integrations/WorkspaceConnectorRepository'
 import type { AuthorizationService } from '@/server/authorization/AuthorizationService'
 import {
-  CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS,
   CURRENT_BILLING_ACCOUNT_PRICING_VERSION,
   type BillingAccountRecord,
 } from '@/shared/billing/billing-account'
@@ -137,7 +136,7 @@ function personalBillingAccountFixture(): BillingAccountRecord {
   return {
     billingAccountId: 'billing_account_user_1',
     createdAt: 0,
-    markupBasisPoints: CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS,
+    markupBasisPoints: 2_500,
     pricingVersion: CURRENT_BILLING_ACCOUNT_PRICING_VERSION,
     scope: 'personal',
     status: 'active',

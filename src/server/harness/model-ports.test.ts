@@ -4,13 +4,18 @@ import type { HarnessExecutionReference } from './state-steps'
 import type { HarnessModelReference } from './secure-model'
 import { createHarnessModelPorts } from './model-ports'
 
-const mocks = vi.hoisted(() => ({ read: vi.fn(), wait: vi.fn(), reset: vi.fn(), recovery: vi.fn() }))
+const mocks = vi.hoisted(() => ({ read: vi.fn(), wait: vi.fn(), reset: vi.fn(), recovery: vi.fn(), limits: vi.fn(), compact: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('./state-steps', () => ({ readHarnessState: mocks.read, applyHarnessOperation: vi.fn() }))
 vi.mock('./model-capacity', () => ({
   createHarnessCapacityWaiter: () => ({ wait: mocks.wait, reset: mocks.reset }),
 }))
 vi.mock('./model-recovery', () => ({ waitForHarnessModelRecovery: mocks.recovery }))
+vi.mock('./model-preparation', () => ({ readHarnessModelLimits: mocks.limits }))
+vi.mock('@/server/chat/context-compaction-core', async importOriginal => ({
+  ...await importOriginal<typeof import('@/server/chat/context-compaction-core')>(),
+  compactHarnessPrompt: mocks.compact,
+}))
 
 const reference = {} as HarnessExecutionReference
 
@@ -128,4 +133,25 @@ test('does not route unavailable receipts without a durable retry schedule to a 
   expect(await ports.recoverModelFailure('model:0')).toBe(false)
   expect(mocks.recovery).not.toHaveBeenCalled()
   expect(onFallback).not.toHaveBeenCalled()
+})
+
+test('model preparation reuses the boundary state and reads catalog limits once per model', async () => {
+  const state = stateWithInterruptionCount(0)
+  const prepare = vi.fn(async ({ modelId }: { modelId: string }) => ({
+    model: { modelId, credentialOwnerId: 'user' } as HarnessModelReference,
+    options: {} as never, contextWindow: 128_000, estimatedCostMicros: 0,
+  }))
+  mocks.limits.mockResolvedValue({ contextWindow: 128_000, maxOutputTokens: 4_096 })
+  mocks.compact.mockImplementation(async ({ messages }) => ({ messages, didCompact: false, summaryFailed: false, fitsBudget: true }))
+  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  const request = (receiptId: string) => ({
+    receiptId, state, messages: [], toolNames: [], toolDefinitions: [], settings: {},
+    instructionContext: { instructions: 'Follow the plan.', continuation: false, truncatedResponse: false, finalAnswerRequired: false },
+  })
+  await ports.prepareModel(request('model:0'))
+  await ports.prepareModel(request('model:1'))
+  expect(mocks.limits).toHaveBeenCalledExactlyOnceWith('fixture/model')
+  expect(mocks.read).not.toHaveBeenCalled()
+  expect(prepare).toHaveBeenCalledTimes(2)
+  expect(mocks.compact.mock.calls[0][0].previousSummary).toBe(state.workingSummary)
 })
