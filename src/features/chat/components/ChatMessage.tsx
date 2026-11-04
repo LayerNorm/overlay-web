@@ -197,7 +197,7 @@ function resolveStreamLoadState(props: TextChatMessageProps, selection: StreamSe
       ? (actChat.status === 'streaming' || actChat.status === 'submitted')
       : !!slotInstance && (slotInstance.status === 'streaming' || slotInstance.status === 'submitted')) ||
     isOptimisticLoading ||
-    (isActExchange && isActiveLoading && persistedStatus !== 'completed')
+    (isActiveLoading && (isActExchange ? persistedStatus !== 'completed' : persistedStatus === 'generating'))
   )
   const persistedErrorText = persistedStatus === 'error'
     ? persistedGenerationErrorMessage(responseText)
