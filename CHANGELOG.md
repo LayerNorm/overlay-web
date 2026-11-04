@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Show each subscription connection's saved Personal or Workspace scope in Settings instead of always labeling it Personal.
+
 - Upgrade Better Auth and its SSO integration to 1.7.16, including the November 3 security fixes for private deployments. Hosted WorkOS authentication and the dependency cooldown policy are unchanged.
 
 - Add immutable personal/workspace subscription scope, active-member authorization, owner-only lifecycle management, and workspace-aware picker caching. The approved scope selector defaults to Personal, supports explicit Workspace sharing, and preserves scope on reconnect; hosted/live acceptance remains pending.

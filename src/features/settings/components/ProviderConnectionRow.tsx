@@ -280,7 +280,7 @@ export function ProviderConnectionRow({
   )
   const enabledCount = defaultGateway ? allModels.length : allModels.filter((model) => effectiveSettingsIds.has(model.appModelId)).length
   const displayModelCount = defaultGateway && allModels.length > 0 ? allModels.length : discoveredCount
-  const providerLabel = connection.providerId.startsWith('subscription:') ? 'Subscription · Personal' : preset?.allowsCustomEndpoint && endpointHost
+  const providerLabel = connection.providerId.startsWith('subscription:') ? `Subscription · ${connection.scope === 'workspace' ? 'Workspace' : 'Personal'}` : preset?.allowsCustomEndpoint && endpointHost
     ? `${preset.label} · ${endpointHost}`
     : (preset?.label ?? connection.providerId)
   const {

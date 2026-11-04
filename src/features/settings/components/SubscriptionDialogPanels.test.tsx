@@ -5,8 +5,33 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { SubscriptionFooter, SubscriptionPrivacyNote, SubscriptionScopeSelector } from './SubscriptionDialogPanels'
 import { subscriptionAuthorizationBody, subscriptionRequest } from './subscription-connection-client'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+import { ProviderConnectionRow } from './ProviderConnectionRow'
+import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
+
+test('connection rows display persisted scope and treat legacy subscriptions as personal', () => {
+  const render = (scope?: ByokConnectionRow['scope']) => renderToStaticMarkup(
+    <ProviderConnectionRow
+      connection={{ _id: 'connection', providerId: 'subscription:claude', scope, endpoint: '', displayName: 'Claude', enabledModelIds: [], status: 'pending', isDefault: false, isDeletable: true }}
+      gatewayModels={[]}
+      gatewayLoading={false}
+      settingsEnabledModelIds={[]}
+      settingsModelOrder={[]}
+      settingsDisabled={false}
+      onSettingsChange={async () => {}}
+      onRefreshConnections={async () => {}}
+      onUpdateConnection={() => {}}
+      onRefreshGateway={async () => {}}
+      onEdit={() => {}}
+      onDelete={() => {}}
+    />,
+  )
+  assert.match(render('workspace'), /Subscription · Workspace/)
+  assert.doesNotMatch(render('workspace'), /Subscription · Personal/)
+  assert.match(render('personal'), /Subscription · Personal/)
+  assert.match(render(), /Subscription · Personal/)
+})
 
 test('scope selector explains personal isolation and explicit workspace sharing', () => {
   const render = (scope: 'personal' | 'workspace', disabled = false, workspaceAvailable = true) => renderToStaticMarkup(
