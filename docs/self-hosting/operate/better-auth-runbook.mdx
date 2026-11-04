@@ -14,6 +14,19 @@ Use Better Auth when Overlay should own the web session in the customer deployme
 
 Keep the Better Auth Postgres database auth-scoped. It stores Better Auth users, sessions, and linked SSO accounts; it does not replace Convex app data. `BETTER_AUTH_DATABASE_URL` is used only for Better Auth state — application records always live in the Convex deployment.
 
+## Security updates
+
+Use Better Auth 1.7.16 or a later patched release, and keep `better-auth` and
+`@better-auth/sso` on matching versions. The
+[November 3, 2026 security release](https://better-auth.com/blog/security-release-2026-11-03)
+fixes multiple authentication issues in earlier versions. Update using the committed
+lockfile, rebuild, and redeploy every private deployment using Better Auth.
+
+Overlay configures SSO, JWT, and Next.js cookie integration, not the Better Auth Expo
+or Electron plugins associated with the critical mobile and high-severity desktop
+advisories. Hosted WorkOS authentication is a separate provider. This does not remove
+the need to keep the installed Better Auth packages patched.
+
 ## Environment
 
 Set these on the Next.js/Overlay web runtime:
