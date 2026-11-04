@@ -610,6 +610,13 @@ export const webApiBoundaryDefinitions = [
   },
   {
     method: 'GET',
+    path: '/api/v1/conversations/trace',
+    schema: { query: z.object({ messageId: z.string().trim().min(1).max(256) }) },
+    summary: 'Stream the complete public transcript of an assistant message',
+    tag: 'Conversations',
+  },
+  {
+    method: 'GET',
     path: '/api/v1/conversations/run',
     schema: { query: ConversationRunQuery },
     summary: 'Read the authoritative AgentRun for a conversation',

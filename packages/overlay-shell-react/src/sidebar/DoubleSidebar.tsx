@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import { Loader2, PanelLeft, Plus, Search } from 'lucide-react'
+import { Loader2, Plus, Search } from 'lucide-react'
 import { cn } from '@overlay/ui'
 import { Button, PanelResizeHandle, Sidebar, SidebarContent, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@overlay/ui/primitives'
 import { DelayedTooltip } from '@overlay/ui/overlays'
@@ -66,13 +66,18 @@ export function DoubleSidebar({
   const { rememberScope } = useShellAdapter()
   const [width, setWidth] = useState(272)
   const [resizing, setResizing] = useState(false)
+  const railRef = useRef<HTMLElement>(null)
   const panelRef = useRef<HTMLElement>(null)
-  const toggleRef = useRef<HTMLButtonElement>(null)
+  const panelHadFocusRef = useRef(false)
   const settingsNav = panelKind === 'settings' ? panelNav : undefined
   const scopedNav = settingsNav ? undefined : panelNav
+  const setCollapsed = (next: boolean) => {
+    if (next && panelRef.current?.contains(document.activeElement)) panelHadFocusRef.current = true
+    onCollapsedChange(next)
+  }
   const select = (item: PrimaryRailItem) => ({
     ...item,
-    onSelect: () => selectDoubleSidebarItem(item, collapsed, onCollapsedChange),
+    onSelect: () => selectDoubleSidebarItem(item, collapsed, setCollapsed),
   })
   const destinations = items.filter((item) => item.id !== 'settings-close').map(select)
   const moreGroups = groupMoreItems(destinations, MORE_GROUPS)
@@ -80,18 +85,29 @@ export function DoubleSidebar({
   const rows = scopedNav ? scopeChildren(scopedNav, scope) : []
   const groupedResources = panelKind === 'chat' || panelKind === 'work'
 
-  useCollapseShortcut(keyboardShortcut, collapsed, onCollapsedChange)
+  useCollapseShortcut(keyboardShortcut, collapsed, setCollapsed)
   useEffect(() => {
     // The context panel owns these views, instead of duplicating them in page headers.
     publishPageSubviews(null)
   }, [])
   useEffect(() => {
-    if (collapsed && panelRef.current?.contains(document.activeElement)) toggleRef.current?.focus()
-  }, [collapsed])
+    if (collapsed) {
+      const panelHasFocus = panelHadFocusRef.current || panelRef.current?.contains(document.activeElement)
+      if (panelHasFocus) {
+        const headerToggle = panelId
+          ? Array.from(document.querySelectorAll<HTMLButtonElement>('button[aria-controls]'))
+            .find((button) => button.getAttribute('aria-controls') === panelId && !panelRef.current?.contains(button))
+          : undefined
+        const railLink = railRef.current?.querySelector<HTMLAnchorElement>('nav a[href]')
+        ;(headerToggle ?? railLink)?.focus()
+      }
+      panelHadFocusRef.current = false
+    }
+  }, [collapsed, panelId])
 
   return (
     <div data-double-sidebar data-shell-preset={themePreset} className={cn('double-sidebar flex h-full shrink-0', className)}>
-      <Sidebar aria-label="Primary navigation" className="double-sidebar-rail w-[60px] overflow-visible border-0 bg-transparent px-2.5 py-1.5">
+      <Sidebar ref={railRef} aria-label="Primary navigation" className="double-sidebar-rail w-[60px] overflow-visible border-0 bg-transparent px-2.5 py-1.5">
         <div className="mb-2.5 flex size-10 shrink-0 items-center justify-center">{railBrand}</div>
         <SidebarContent className="overflow-visible">
           <nav aria-label="Primary">
@@ -104,11 +120,6 @@ export function DoubleSidebar({
           </nav>
         </SidebarContent>
         <div className="mt-auto flex flex-col gap-1">
-          <DelayedTooltip label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} side="right">
-            <Button ref={toggleRef} variant="ghost" size="icon" className="double-sidebar-toggle size-10 text-(--muted)"
-              aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'} aria-expanded={!collapsed} aria-controls={panelId}
-              onClick={() => onCollapsedChange(!collapsed)}><PanelLeft size={16} aria-hidden /></Button>
-          </DelayedTooltip>
           <SidebarMenu className="gap-1">{footerItems.map((item) => <NavRow key={item.id} item={item.id === 'settings' ? select(item) : item} collapsed />)}</SidebarMenu>
           {account}
         </div>

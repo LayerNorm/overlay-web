@@ -17,6 +17,25 @@ beforeEach(() => {
 })
 afterEach(() => vi.unstubAllGlobals())
 
+test('journal uploads complete public data while storing only a bounded delivery snapshot', async () => {
+  const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ storageId: 'full-storage' })))
+  vi.stubGlobal('fetch', fetch)
+  mocks.mutation.mockResolvedValueOnce('https://storage.test/upload').mockResolvedValueOnce({ persisted: true }).mockResolvedValueOnce(null)
+  const persistence = { content: 'A public update.', parts: Array.from({ length: 96 }, (_, index) => ({
+    type: 'tool-invocation', toolInvocation: { toolCallId: `call-${index}`, toolName: 'get_note', toolOutput: { value: 'result '.repeat(2_000) } },
+  })) }
+  await new ConvexHarnessRepository().writeTranscriptStep({ ...identity, receiptId: 'model:0', stepNumber: 0, persistence })
+  const upload = fetch.mock.calls[0][1]
+  expect(JSON.parse(gunzipSync(Buffer.from(upload.body)).toString())).toEqual(persistence)
+  const attach = mocks.mutation.mock.calls.find(call => call[0] === 'harness/runs:writeTranscriptStep')!
+  expect(attach[1].persistence.parts.length).toBeLessThanOrEqual(81)
+  expect(attach[1].fullPersistenceStorageId).toBe('full-storage')
+  expect(attach[1].fullPersistenceDigest).toMatch(/^[a-f0-9]{64}$/)
+  expect(mocks.mutation).toHaveBeenLastCalledWith('harness/runs:discardTranscriptUpload', {
+    ...identity, receiptId: 'model:0', storageId: 'full-storage',
+  }, { throwOnError: true })
+})
+
 test('personal execution references never leak extra fields into strict Convex read validators', async () => {
   const repository = new ConvexHarnessRepository()
   await repository.get(reference)

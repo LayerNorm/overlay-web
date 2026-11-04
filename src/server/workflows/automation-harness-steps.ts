@@ -13,7 +13,6 @@ import { assertAutomationAdmissionSource } from '@/server/harness/automation-acc
 import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
 import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
 import { personalHarnessPolicy } from '@/server/harness/personal-admission-policy'
-import { harnessToolsRequirePlan } from '@/server/harness/write-tools'
 
 async function ensureConversationStep(input: AutomationAgentTurnInput): Promise<{
   conversationId: string
@@ -220,7 +219,6 @@ async function admitAutomationHarnessStep(input: {
       actorUserId: input.actorUserId,
       workspaceId: input.workspaceId,
       allowedToolIds: input.allowedToolIds,
-      requiresPlan: harnessToolsRequirePlan(input.allowedToolIds),
       modelId: input.modelId,
       paid: input.paid,
       createdAt: input.createdAt,

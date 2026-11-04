@@ -25,7 +25,7 @@ import type {
 import type { GeneratedUiConnectorActions } from '../GeneratedUiCard'
 import { UserMessageBubble } from '../UserMessageBubble'
 import { Message, MessageContent } from '@overlay/ui/ai'
-import { WorkedForGroup } from '../exchange'
+import { isRunPlanSettled, RunPlan, WorkedForGroup, type RunPlanPhase, type RunPlanStep } from '../exchange'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { UsageExhaustedNotice } from '../UsageExhaustedNotice'
 import { ExchangeActions } from './ExchangeActions'
@@ -50,6 +50,8 @@ export type AttachmentPreviewRequest = AttachmentPreview
 type AutomationDraftModalState = Extract<DraftModalState, { kind: 'automation' }>
 
 export interface ChatExchangeProps {
+  onWorkExpandedChange?: (expanded: boolean) => void
+  workDetails?: import('react').ReactNode
   userMsgId: string
   userBodyText: string
   userDocumentNames: string[]
@@ -66,6 +68,9 @@ export interface ChatExchangeProps {
   isTextStreaming: boolean
   /** Persisted turn time (assistant row createdAt→updatedAt); falls back to the live measure. */
   workedDurationMs?: number | null
+  /** The steps the agent is working through, shown at the bottom of the response. */
+  plan?: readonly RunPlanStep[]
+  planPhase?: RunPlanPhase
   errorMessage: string | null
   responseInProgress: boolean
   /** Normalized selected-response status. Host booleans remain as a compatibility fallback. */
@@ -112,14 +117,16 @@ function useExchangeSegments(assistantVisualBlocks: Parameters<typeof buildAssis
   return { assistantSegments, toolChainFlags }
 }
 
-function useCollapsePlan(assistantSegments: ReturnType<typeof buildAssistantVisualSegments>, isStreaming: boolean) {
-  const [hasStreamed, setHasStreamed] = useState(isStreaming)
-  if (isStreaming && !hasStreamed) setHasStreamed(true)
+function useCollapsePlan(
+  assistantSegments: ReturnType<typeof buildAssistantVisualSegments>,
+  isStreaming: boolean,
+  foldText: boolean,
+) {
   const collapsePlan = useMemo(
-    () => isStreaming || hasStreamed
+    () => isStreaming
       ? { collapsedIndexes: [] as number[], collapsedToolCallCount: 0 }
-      : planAssistantWorkCollapse(assistantSegments),
-    [assistantSegments, isStreaming, hasStreamed],
+      : planAssistantWorkCollapse(assistantSegments, { foldTextBeforeLastWork: foldText }),
+    [assistantSegments, isStreaming, foldText],
   )
   const collapsedSet = useMemo(
     () => new Set(collapsePlan.collapsedIndexes),
@@ -144,11 +151,11 @@ function useWorkedMs(isStreaming: boolean, workedDurationMs: number | null | und
 }
 
 export function ChatExchange({
-  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, responseSources, isStreaming, isTextStreaming, workedDurationMs, errorMessage,
+  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, responseSources, isStreaming, isTextStreaming, workedDurationMs, plan, planPhase = 'ended', errorMessage,
   responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue,
-  generatedUiConnectorActions, generatedUiReadOnly, onGeneratedUiChange, presentation,
+  generatedUiConnectorActions, generatedUiReadOnly, onGeneratedUiChange, presentation, onWorkExpandedChange, workDetails,
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
@@ -167,8 +174,9 @@ export function ChatExchange({
     // live turns still measure on the streaming→settled edge.
     const workedMs = useWorkedMs(isStreaming, workedDurationMs)
 
-    const { collapsePlan, collapsedSet } = useCollapsePlan(assistantSegments, isStreaming)
+    const { collapsePlan, collapsedSet } = useCollapsePlan(assistantSegments, isStreaming || !responseSettled, !interrupted && !errorMessage)
     const [workExpanded, setWorkExpanded] = useState(false)
+    useEffect(() => { onWorkExpandedChange?.(workExpanded) }, [workExpanded, onWorkExpandedChange])
     const segmentCtx: AssistantSegmentRenderContext = {
       keyPrefix: exchIdx,
       markdownKeyPrefix: `${userMsgId}-${responseModelId}`,
@@ -224,12 +232,15 @@ export function ChatExchange({
           workedMs={workedMs}
           workExpanded={workExpanded}
           setWorkExpanded={setWorkExpanded}
+          workDetails={workDetails}
           assistantSegments={assistantSegments}
           collapsedSet={collapsedSet}
           toolChainFlags={toolChainFlags}
           exchIdx={exchIdx}
           isStreaming={isStreaming}
           segmentCtx={segmentCtx}
+          plan={plan}
+          planPhase={planPhase}
           errorMessage={errorMessage}
           loadingPresentation={loadingPresentation}
           hasPersistedInterruptionNotice={hasInterruptionNotice(assistantPlainText)}
@@ -260,6 +271,7 @@ export function ChatExchange({
 }
 
 type ChatExchangeAssistantBodyProps = {
+  workDetails?: import('react').ReactNode
   collapsePlan: ReturnType<typeof useCollapsePlan>['collapsePlan']
   workedMs: number | null
   workExpanded: boolean
@@ -270,6 +282,8 @@ type ChatExchangeAssistantBodyProps = {
   exchIdx: number
   isStreaming: boolean
   segmentCtx: AssistantSegmentRenderContext
+  plan: ChatExchangeProps['plan']
+  planPhase: RunPlanPhase
   errorMessage: ChatExchangeProps['errorMessage']
   loadingPresentation: ReturnType<typeof exchangeLoadingPresentation>
   hasPersistedInterruptionNotice: boolean
@@ -297,6 +311,7 @@ type ChatExchangeAssistantBodyProps = {
 }
 
 function ChatExchangeAssistantBody({
+  workDetails,
   collapsePlan,
   workedMs,
   workExpanded,
@@ -307,6 +322,8 @@ function ChatExchangeAssistantBody({
   exchIdx,
   isStreaming,
   segmentCtx,
+  plan,
+  planPhase,
   errorMessage,
   loadingPresentation,
   hasPersistedInterruptionNotice,
@@ -332,10 +349,11 @@ function ChatExchangeAssistantBody({
   actionVisibility,
   showModelLabel,
 }: ChatExchangeAssistantBodyProps) {
+  const planSettled = Boolean(plan && isRunPlanSettled(plan, planPhase))
   return (
     <Message>
       <MessageContent className="gap-2">
-        {collapsePlan.collapsedIndexes.length > 0 && (
+        {(collapsePlan.collapsedIndexes.length > 0 || planSettled) && (
           <WorkedForGroup
             durationMs={workedMs}
             toolCallCount={collapsePlan.collapsedToolCallCount}
@@ -343,6 +361,8 @@ function ChatExchangeAssistantBody({
             onToggle={() => setWorkExpanded((v) => !v)}
           />
         )}
+        {plan && planSettled && workExpanded ? <RunPlan steps={plan} phase={planPhase} /> : null}
+        {workExpanded ? workDetails : null}
         {assistantSegments.map((seg, segIdx) => {
           if (!workExpanded && collapsedSet.has(segIdx)) return null
           const chain = toolChainFlags[segIdx]!
@@ -356,6 +376,8 @@ function ChatExchangeAssistantBody({
             />
           )
         })}
+
+        {plan?.length && !planSettled ? <RunPlan steps={plan} phase={planPhase} /> : null}
 
         {!errorMessage ? <ExchangeLoadingState presentation={loadingPresentation} /> : null}
 

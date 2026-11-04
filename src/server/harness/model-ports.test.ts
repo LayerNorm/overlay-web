@@ -3,7 +3,6 @@ import { createHarnessSnapshot, type HarnessSnapshot } from '@overlay/agent-runt
 import type { HarnessExecutionReference } from './state-steps'
 import type { HarnessModelReference } from './secure-model'
 import type { PreparedHarnessModel } from './model-ports'
-import { HARNESS_ANSWER_VERIFICATION_INSTRUCTIONS } from './continuity-policy'
 import { createHarnessModelPorts } from './model-ports'
 
 const mocks = vi.hoisted(() => ({
@@ -180,70 +179,6 @@ test('summary funding denial yields its exact receipt instead of failing or prep
     settings: {}, instructionContext: { instructions: 'Continue.', continuation: true, truncatedResponse: false },
   })).rejects.toThrow('HARNESS_SAFE_RESOURCE_PAUSE:summary:model:0:0')
   expect(prepare).not.toHaveBeenCalled()
-})
-
-test('final verification is separately metered, tool-disabled, and validated against current-run evidence', async () => {
-  const state = {
-    ...runningState(),
-    workflowRunId: 'workflow',
-    evidence: [{
-      id: 'tool:read-current', kind: 'tool_result' as const, source: 'read_document',
-      summary: 'Read page 1 of file-1 revision rev-7.', verdict: 'observed' as const, createdAt: 1,
-      resource: { id: 'file-1', revision: 'rev-7', page: 1 },
-    }],
-    progressRevision: 3,
-  }
-  mocks.read.mockResolvedValue(state)
-  mocks.stream.mockResolvedValue({
-    steps: [{
-      text: '{"supported":true,"reason":"The answer matches page 1.","evidenceIds":["tool:read-current"]}',
-      finishReason: 'stop',
-    }],
-  })
-  const prepare = vi.fn(async (request: {
-    modelId: string
-    receiptId: string
-    purpose: 'response' | 'summary' | 'verification'
-    options: import('@ai-sdk/provider').LanguageModelV4CallOptions
-  }): Promise<PreparedHarnessModel> => {
-    expect(request.purpose).toBe('verification')
-    return {
-      model: {} as HarnessModelReference,
-      options: { prompt: [] },
-      contextWindow: null,
-      estimatedCostMicros: 0,
-    }
-  })
-  const ports = createHarnessModelPorts({ reference, modelId: 'openrouter/free', prepare })
-
-  await expect(ports.verifyFinalAnswer!({
-    state, candidate: 'Page 1 was read from file-1 revision rev-7.',
-  })).resolves.toEqual({
-    supported: true, reason: 'The answer matches page 1.', evidenceIds: ['tool:read-current'],
-  })
-
-  expect(prepare).toHaveBeenCalledOnce()
-  const expectedInstructions = `${HARNESS_ANSWER_VERIFICATION_INSTRUCTIONS}\nThe envelope explicitly marks omitted observations and truncated summaries. These are incomplete evidence, not proof of absence. Reject any material claim that needs missing details.`
-  expect(prepare.mock.calls[0]?.[0]).toMatchObject({
-    purpose: 'verification',
-    receiptId: expect.stringMatching(/^verification:0:3:/),
-    options: { prompt: expect.arrayContaining([
-      { role: 'system', content: expectedInstructions },
-      expect.objectContaining({ role: 'user' }),
-    ]) },
-  })
-  expect(mocks.apply).toHaveBeenCalledWith(
-    reference, expect.stringMatching(/^reserve:verification:/),
-    expect.objectContaining({ type: 'reserve_model', maxCostMicros: 0 }),
-  )
-  expect(mocks.agentOptions[0]).toMatchObject({
-    tools: {}, maxRetries: 0, stopWhen: expect.anything(),
-    instructions: expectedInstructions,
-  })
-  expect(JSON.stringify(prepare.mock.calls[0]?.[0]?.options.prompt))
-    .toContain('tool:read-current')
-  expect(JSON.stringify(prepare.mock.calls[0]?.[0]?.options.prompt))
-    .not.toContain('unverifiedNarrative')
 })
 
 test('an aborted zero-cost summary retains its hold without invented settlement or retry', async () => {
@@ -673,47 +608,4 @@ test('response preparation failures escape without an artifact-unavailable block
   expect(mocks.apply.mock.calls.some(([, operationId, operation]) => (
     operationId === 'artifact-unavailable:response:prepare-sentinel' && operation.type === 'block'
   ))).toBe(false)
-})
-
-test('verifier abort preserves billed and zero-cost unknown holds without synthetic receipts', async () => {
-  for (const billable of [false, true]) {
-    let current: HarnessSnapshot = {
-      ...runningState(),
-      workflowRunId: 'workflow',
-      evidence: [{
-        id: 'tool:read:1', kind: 'tool_result', source: 'read_document',
-        summary: 'Read revision rev-7.', verdict: 'observed', createdAt: 1,
-      }],
-      modelReservation: undefined,
-    }
-    mocks.read.mockImplementation(async () => current)
-    mocks.apply.mockImplementation(async (_reference, _operationId, operation) => {
-      if (operation.type === 'reserve_model') current = {
-        ...current,
-        modelReservation: {
-          id: operation.id,
-          maxCostMicros: billable ? 500 : 0,
-          dispatch: { modelId: 'openrouter/free', billingReservationId: billable ? 'billing-hold' : null },
-        },
-      }
-      if (operation.type === 'record_receipt') {
-        current = { ...current, modelReservation: undefined, latestReceipt: operation.receipt }
-      }
-      return current
-    })
-    mocks.stream.mockRejectedValue(new Error('validator stream aborted'))
-    const prepare = vi.fn(async (): Promise<PreparedHarnessModel> => ({
-      model: {} as HarnessModelReference,
-      options: { prompt: [] },
-      contextWindow: 32_000,
-      estimatedCostMicros: billable ? 500 : 0,
-    }))
-    const ports = createHarnessModelPorts({ reference, modelId: 'openrouter/free', prepare })
-    const verify = ports.verifyFinalAnswer!({ state: current, candidate: 'The document was read.' })
-    await expect(verify).rejects.toThrow()
-    expect(current.modelReservation?.id).toMatch(/^verification:/)
-    expect(mocks.apply.mock.calls.some(([, , operation]) => operation.type === 'record_receipt')).toBe(false)
-    vi.clearAllMocks()
-    mocks.agentOptions.length = 0
-  }
 })

@@ -540,6 +540,7 @@ export const watchRoomMessages = query({
         importedAuthorStatus: message.importedAuthorStatus,
         content: message.content,
         parts: message.parts,
+        agentPlan: message.agentPlan,
         createdAt: message.createdAt,
         updatedAt: message.updatedAt ?? message.createdAt,
         eventSequence: message.eventSequence,

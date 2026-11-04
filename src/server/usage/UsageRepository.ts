@@ -131,6 +131,12 @@ export interface UsageRepository {
     reservationId: string
     userId: string
   }): Promise<{ status: UsageReservationStatus }>
+  correctFinalizedCost(args: {
+    actualCostCents: number
+    providerCostUsd: number
+    reservationId: string
+    userId: string
+  }): Promise<{ status: 'corrected' | 'already_corrected' | 'skipped' }>
   markStarted(args: {
     reservationId: string
     userId: string

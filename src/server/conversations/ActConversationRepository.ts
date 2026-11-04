@@ -119,6 +119,7 @@ export type ConversationMessageRow = {
     editedAt: number
   }>
   threadRootMessageId?: string
+  agentPlan?: Array<{ id: string; title: string; status: string }>
 }
 
 export type ActUsageEvent = {

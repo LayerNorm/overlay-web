@@ -419,6 +419,11 @@ export const recordBatch = mutation({
  * Charges usage recorded after the fact (no reservation) to a paid workspace's balance, capped at what the balance
  * holds, and records the amount on the usage operation for the itemized usage list.
  */
+function workspaceAvailableMicros(balance: Doc<'billingAccountBalances'>): number {
+  return Math.max(0, balance.includedMicros + balance.institutionalGrantMicros - balance.allowanceUsedMicros)
+    + Math.max(0, balance.topUpBalanceMicros)
+}
+
 async function chargeWorkspaceDirect(ctx: MutationCtx, args: {
   billingAccountId: string
   userId: string
@@ -427,9 +432,7 @@ async function chargeWorkspaceDirect(ctx: MutationCtx, args: {
 }) {
   const cents = args.events.reduce((sum, event) => sum + Math.max(0, event.cost), 0)
   const balance = await ensureEmptyBalance(ctx, args.billingAccountId)
-  const availableMicros = Math.max(0, balance.includedMicros + balance.institutionalGrantMicros - balance.allowanceUsedMicros)
-    + Math.max(0, balance.topUpBalanceMicros)
-  const chargeMicros = Math.min(Math.round(cents * 10_000), availableMicros)
+  const chargeMicros = Math.min(Math.round(cents * 10_000), workspaceAvailableMicros(balance))
   if (chargeMicros > 0) {
     const limit = await ctx.db.query('billingAccountSpendLimits')
       .withIndex('by_account_subject', (q) => q
@@ -1052,6 +1055,35 @@ export async function finalizeWorkspaceLedger(
   }
 }
 
+/** Returns an overestimate. Allowance is charged first, so it is restored first. */
+async function refundWorkspaceLedger(
+  ctx: MutationCtx,
+  args: {
+    balance: Doc<'billingAccountBalances'>
+    limit: Doc<'billingAccountSpendLimits'> | null
+    refundMicros: number
+  },
+): Promise<void> {
+  const now = Date.now()
+  const allowanceRefund = Math.min(args.refundMicros, args.balance.allowanceUsedMicros)
+  const usedMicros = Math.max(0, args.balance.usedMicros - args.refundMicros)
+  await ctx.db.patch(args.balance._id, {
+    ...await canceledPlanCreditPatch(ctx, args.balance, usedMicros, args.balance.reservedMicros),
+    allowanceUsedMicros: args.balance.allowanceUsedMicros - allowanceRefund,
+    topUpBalanceMicros: args.balance.topUpBalanceMicros + args.refundMicros - allowanceRefund,
+    updatedAt: now,
+    usedMicros,
+    version: args.balance.version + 1,
+  })
+  if (args.limit) {
+    await ctx.db.patch(args.limit._id, {
+      updatedAt: now,
+      usedMicros: Math.max(0, args.limit.usedMicros - args.refundMicros),
+      version: args.limit.version + 1,
+    })
+  }
+}
+
 async function releaseWorkspaceLedger(
   ctx: MutationCtx,
   args: {
@@ -1275,6 +1307,65 @@ export const finalizeBudgetReservationByServer = mutation({
     })
 
     return { success: true, status: 'finalized', finalizedCents: safeActualCents }
+  },
+})
+
+/**
+ * Replaces a settled estimate with the exact provider cost. Each reservation is
+ * corrected at most once, and a raise never charges more than the account holds.
+ */
+export const correctFinalizedBudgetReservationCostByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    userId: v.string(),
+    reservationId: v.string(),
+    actualCents: v.number(),
+    providerCostUsd: v.number(),
+  },
+  handler: async (ctx, { serverSecret, userId, reservationId, actualCents, providerCostUsd }) => {
+    requireServerSecret(serverSecret)
+    const reservation = await ctx.db
+      .query('budgetReservations')
+      .withIndex('by_reservationId', (q) => q.eq('reservationId', reservationId.trim()))
+      .first()
+    if (!reservation) throw new Error('reservation_not_found')
+    if (reservation.userId !== userId) throw new Error('reservation_user_mismatch')
+    if (reservation.costCorrectedAt !== undefined) return { status: 'already_corrected' as const }
+    if (reservation.status !== 'finalized' || reservation.finalizedCents === undefined) return { status: 'skipped' as const }
+    const ledger = await workspaceReservationLedger(ctx, reservation)
+    if (!ledger) return { status: 'skipped' as const }
+
+    const now = Date.now()
+    const subscription = await ctx.db.query('billingAccountSubscriptions')
+      .withIndex('by_billingAccountId', q => q.eq('billingAccountId', reservation.billingAccountId!)).unique()
+    // Renewal resets the wallet. An old estimate must not debit or refund the new allowance.
+    const sameBillingPeriod = subscription?.paidPeriodStart === undefined
+      || reservation.updatedAt >= subscription.paidPeriodStart
+    const estimatedMicros = Math.round(reservation.finalizedCents * 10_000)
+    const differenceMicros = sameBillingPeriod
+      ? Math.round(roundCreditAmount(Math.max(0, actualCents)) * 10_000) - estimatedMicros : 0
+    const limitOwnsSettlement = !ledger.limit || (reservation.updatedAt >= ledger.limit.periodStart
+      && reservation.updatedAt < ledger.limit.periodEnd)
+    const availableLimitMicros = !ledger.limit ? Number.MAX_SAFE_INTEGER
+      : limitOwnsSettlement && now >= ledger.limit.periodStart && now < ledger.limit.periodEnd
+        ? Math.max(0, ledger.limit.limitMicros - ledger.limit.usedMicros - ledger.limit.reservedMicros) : 0
+    const chargedMicros = Math.max(0, Math.min(differenceMicros, availableLimitMicros,
+      workspaceAvailableMicros(ledger.balance) - ledger.balance.reservedMicros))
+    if (differenceMicros > 0 && chargedMicros > 0) {
+      await finalizeWorkspaceLedger(ctx, { actualMicros: chargedMicros, balance: ledger.balance, limit: ledger.limit, reservedMicros: 0 })
+    } else if (differenceMicros < 0) {
+      await refundWorkspaceLedger(ctx, {
+        balance: ledger.balance, limit: limitOwnsSettlement ? ledger.limit : null, refundMicros: -differenceMicros,
+      })
+    }
+    await ctx.db.patch(reservation._id, {
+      estimatedCents: reservation.finalizedCents,
+      finalizedCents: roundCreditAmount((estimatedMicros + (differenceMicros > 0 ? chargedMicros : differenceMicros)) / 10_000),
+      providerCostMicros: Math.round(Math.max(0, providerCostUsd) * 1_000_000),
+      costCorrectedAt: now,
+      updatedAt: now,
+    })
+    return { status: 'corrected' as const }
   },
 })
 

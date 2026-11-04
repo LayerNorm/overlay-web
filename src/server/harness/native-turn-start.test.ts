@@ -81,7 +81,7 @@ test('read-only native tool sets remain plan-optional and start with the built i
   expect(startWorkflow).toHaveBeenCalledWith(mocks.workflow, [workflowInput])
 })
 
-test('requires a durable plan when the native tool set includes a write-capable tool', async () => {
+test('does not force a plan when the native tool set includes a write-capable tool', async () => {
   const admit = vi.fn().mockResolvedValue({ runId: 'workspace:agent-run', status: 'running' })
   await startNativeHarnessTurn({
     actorUserId: 'user', workspaceId: 'workspace', conversationId: 'room', runId: 'agent-run', memoryEnabled: true,
@@ -96,7 +96,7 @@ test('requires a durable plan when the native tool set includes a write-capable 
     startWorkflow: vi.fn(),
   })
   expect(admit).toHaveBeenCalledWith(expect.objectContaining({
-    policy: expect.objectContaining({ requiresPlan: true }),
+    policy: expect.objectContaining({ requiresPlan: false }),
   }))
 })
 

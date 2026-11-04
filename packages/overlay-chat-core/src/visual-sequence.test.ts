@@ -69,3 +69,12 @@ test('repairs a word split across reasoning and text without a trailing-word reg
     { kind: 'text', text: "can't remain split." },
   ])
 })
+
+test('harness control tools are not shown as work', () => {
+  const blocks = buildAssistantVisualSequence([
+    { type: 'tool-invocation', toolInvocation: { toolCallId: 'plan', toolName: 'harness_set_plan', state: 'output-available', toolOutput: {} } },
+    { type: 'tool-harness_update_step', toolCallId: 'step', state: 'output-available', input: {}, output: {} },
+    { type: 'tool-web_search', toolCallId: 'search', state: 'output-available', input: {}, output: {} },
+  ])
+  assert.deepEqual(blocks.map(block => block.kind === 'tool' ? block.name : block.kind), ['web_search'])
+})

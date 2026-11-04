@@ -27,7 +27,7 @@ function hasOwn(value: ToolRecord, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(value, key)
 }
 
-export function boundedToolError(error: unknown, fallback = 'The tool did not complete successfully.'): string {
+function toolErrorMessage(error: unknown, fallback = 'The tool did not complete successfully.'): string {
   const record = asRecord(error)
   const message = record && typeof record.message === 'string'
     ? record.message
@@ -38,7 +38,11 @@ export function boundedToolError(error: unknown, fallback = 'The tool did not co
         : error == null
           ? fallback
           : String(error)
-  const trimmed = message.trim() || fallback
+  return message.trim() || fallback
+}
+
+export function boundedToolError(error: unknown, fallback?: string): string {
+  const trimmed = toolErrorMessage(error, fallback)
   if (trimmed.length <= MAX_PERSISTED_TOOL_ERROR_CHARS) return trimmed
   const suffix = ' [truncated]'
   return `${trimmed.slice(0, MAX_PERSISTED_TOOL_ERROR_CHARS - suffix.length).trimEnd()}${suffix}`
@@ -82,11 +86,11 @@ function isFailureOutput(output: unknown): boolean {
   )
 }
 
-function readOutputError(output: unknown): string | undefined {
+function readOutputError(output: unknown, format = boundedToolError): string | undefined {
   const record = asRecord(output)
   if (!record) return undefined
-  if (hasOwn(record, 'error') && hasMeaningfulError(record.error)) return boundedToolError(record.error)
-  if (hasOwn(record, 'errorMessage') && hasMeaningfulError(record.errorMessage)) return boundedToolError(record.errorMessage)
+  if (hasOwn(record, 'error') && hasMeaningfulError(record.error)) return format(record.error)
+  if (hasOwn(record, 'errorMessage') && hasMeaningfulError(record.errorMessage)) return format(record.errorMessage)
   if (record.success === false) return 'The tool returned success:false.'
   return undefined
 }
@@ -117,7 +121,10 @@ function mergeOutcome(
  */
 export function resolveToolOutcomes(
   steps: readonly { toolCalls?: readonly unknown[]; toolResults?: readonly unknown[]; content?: readonly unknown[] }[],
+  options: { fullValues?: boolean } = {},
 ): ReadonlyMap<string, ResolvedToolOutcome> {
+  const formatError = options.fullValues ? toolErrorMessage : boundedToolError
+  const failureOutput = (error: unknown, fallback?: string) => ({ success: false, error: formatError(error, fallback) })
   const calls = new Map<string, ToolRecord>()
   const outcomes = new Map<string, ResolvedToolOutcome>()
 
@@ -129,8 +136,8 @@ export function resolveToolOutcomes(
       outcomes.set(call.toolCallId, mergeOutcome(outcomes.get(call.toolCallId), {
         state: 'output-error',
         hasOutput: true,
-        output: toolFailureOutput(call.error, 'The model produced an invalid tool call.'),
-        error: boundedToolError(call.error, 'The model produced an invalid tool call.'),
+        output: failureOutput(call.error, 'The model produced an invalid tool call.'),
+        error: formatError(call.error, 'The model produced an invalid tool call.'),
         providerExecuted: call.providerExecuted === true,
       }))
     }
@@ -145,13 +152,13 @@ export function resolveToolOutcomes(
         ? result.result
         : result
     const failed = isFailureOutput(output)
-    const error = failed ? readOutputError(output) ?? 'The tool returned success:false.' : undefined
+    const error = failed ? readOutputError(output, formatError) ?? 'The tool returned success:false.' : undefined
     const normalizedOutput = failed
       ? (() => {
           const outputRecord = asRecord(output)
           return outputRecord
             ? { ...outputRecord, success: false, error }
-            : toolFailureOutput(error)
+            : failureOutput(error)
         })()
       : output
     outcomes.set(result.toolCallId, mergeOutcome(outcomes.get(result.toolCallId), {
@@ -166,11 +173,11 @@ export function resolveToolOutcomes(
   const rememberError = (value: unknown) => {
     const error = asRecord(value)
     if (!error || typeof error.toolCallId !== 'string') return
-    const message = boundedToolError(error.error)
+    const message = formatError(error.error)
     outcomes.set(error.toolCallId, mergeOutcome(outcomes.get(error.toolCallId), {
       state: 'output-error',
       hasOutput: true,
-      output: toolFailureOutput(error.error),
+      output: failureOutput(error.error),
       error: message,
       ...(error.providerExecuted === true ? { providerExecuted: true } : {}),
     }))
@@ -187,8 +194,8 @@ export function resolveToolOutcomes(
     outcomes.set(call.toolCallId, mergeOutcome(outcomes.get(call.toolCallId), {
       state: denied ? 'output-denied' : 'pending',
       hasOutput: denied,
-      ...(denied ? { output: toolFailureOutput(approval.reason, 'Tool approval was denied.') } : {}),
-      ...(denied ? { error: boundedToolError(approval.reason, 'Tool approval was denied.') } : {}),
+      ...(denied ? { output: failureOutput(approval.reason, 'Tool approval was denied.') } : {}),
+      ...(denied ? { error: formatError(approval.reason, 'Tool approval was denied.') } : {}),
       ...(call.providerExecuted === true ? { providerExecuted: true } : {}),
       approvalId: approval.approvalId,
       approvalStatus: approval.type === 'tool-approval-request'

@@ -15,7 +15,7 @@ export function createHarnessExecutionPorts(input: {
   reference: HarnessExecutionReference
   modelId: string
   authorize: (toolName?: string) => Promise<void>
-  model: Pick<HarnessExecutionPorts, 'prepareModel' | 'recordModelStep' | 'recoverModelFailure' | 'verifyFinalAnswer'>
+  model: Pick<HarnessExecutionPorts, 'prepareModel' | 'recordModelStep' | 'recoverModelFailure'>
   surface: HarnessSurfacePorts
   // Set when the surface workflow already claimed, authorized and admitted the
   // run in its own steps. The runner's first read then uses this post-claim

@@ -106,22 +106,16 @@ function attachWebSourcesToToolOutput(
   }
 }
 
-export function replaceAssistantTextForPersistence(
+/** Rewrites each text block where it stands, so text stays in order with the tools around it. */
+export function mapAssistantTextForPersistence(
   persistence: { content: string; parts: Array<Record<string, unknown>> },
-  text: string,
+  transform: (text: string) => string,
 ): { content: string; parts: Array<Record<string, unknown>> } {
-  const cleaned = ensureAssistantPersistContent(normalizeAgentAssistantText(text))
-  let replacedText = false
-  const parts = persistence.parts.flatMap((part) => {
-    if (part.type !== 'text') return [part]
-    if (replacedText) return []
-    replacedText = true
-    return [{ type: 'text', text: cleaned }]
-  })
-  if (!replacedText) parts.push({ type: 'text', text: cleaned })
   return {
-    content: cleaned,
-    parts,
+    content: ensureAssistantPersistContent(normalizeAgentAssistantText(transform(persistence.content))),
+    parts: persistence.parts.map((part) => part.type === 'text' && typeof part.text === 'string'
+      ? { ...part, text: normalizeAgentAssistantText(transform(part.text)) }
+      : part),
   }
 }
 
@@ -245,8 +239,9 @@ export function compactAssistantPersistenceForConvex(input: {
   content: string
   parts: Array<Record<string, unknown>>
 }): { content: string; parts: Array<Record<string, unknown>> } {
+  const omittedPrefix = '[Earlier response text omitted for storage]\n\n'
   const content = input.content.length > MAX_PERSISTED_ASSISTANT_CONTENT_CHARS
-    ? `[Earlier response text omitted for storage]\n\n${input.content.slice(-MAX_PERSISTED_ASSISTANT_CONTENT_CHARS)}`
+    ? `${omittedPrefix}${input.content.slice(-(MAX_PERSISTED_ASSISTANT_CONTENT_CHARS - omittedPrefix.length))}`
     : input.content
   const { candidates, selected, answer, previousOmissions } = selectAssistantPartsForPersistence(input.parts)
   const answerChars = answer ? Math.min(MAX_PERSISTED_TEXT_PART_CHARS, String(answer.text).length) : 0
@@ -361,6 +356,7 @@ function toolOutputForOutcome(outcome: ResolvedToolOutcome | undefined): unknown
 function toolInvocationForPersistence(
   call: PersistedToolCall,
   outcome: ResolvedToolOutcome | undefined,
+  fullValues: boolean,
 ): Record<string, unknown> {
   const state = outcome?.state === 'output-available'
     || outcome?.state === 'output-error'
@@ -371,8 +367,8 @@ function toolInvocationForPersistence(
     toolCallId: call.toolCallId,
     toolName: call.toolName,
     state,
-    toolInput: clampNestingDepth(call.input),
-    toolOutput: clampNestingDepth(toolOutputForOutcome(outcome)),
+    toolInput: fullValues ? call.input : clampNestingDepth(call.input),
+    toolOutput: fullValues ? toolOutputForOutcome(outcome) : clampNestingDepth(toolOutputForOutcome(outcome)),
     ...(call.providerExecuted ? { providerExecuted: true } : {}),
     ...(outcome?.approvalId ? { approvalId: outcome.approvalId } : {}),
     ...(outcome?.approvalStatus ? { approvalStatus: outcome.approvalStatus } : {}),
@@ -387,12 +383,13 @@ function toolInvocationForPersistence(
 export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
   steps: StepResult<TOOLS>[] | undefined,
   fallbackText: string,
+  options: { fullValues?: boolean } = {},
 ): { content: string; parts: Array<Record<string, unknown>> } {
   const list = steps ?? []
   const textSegments: string[] = []
   const synthesizedToolSegments: string[] = []
   const generatedUiTextSegments: string[] = []
-  const toolOutcomes = resolveToolOutcomes(list)
+  const toolOutcomes = resolveToolOutcomes(list, options)
   const canonicalToolCalls = new Map<string, PersistedToolCall>()
   for (const step of list) {
     for (const part of orderedContentForStep(step)) {
@@ -477,7 +474,7 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
       }
       const toolPart = {
         type: 'tool-invocation',
-        toolInvocation: toolInvocationForPersistence(call, outcome),
+        toolInvocation: toolInvocationForPersistence(call, outcome, options.fullValues === true),
       }
       if (existingIndex === undefined) {
         renderedToolCallIds.set(call.toolCallId, parts.length)

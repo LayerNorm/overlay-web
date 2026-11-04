@@ -6,6 +6,7 @@ import type {
 import { sameAssistantSnapshot } from './chat-runtime-helpers'
 
 export type ServerAssistantMessageRow = {
+  agentPlan?: Array<{ id: string; title: string; status: string }>
   id: string
   turnId?: string
   role: 'assistant'
@@ -29,11 +30,14 @@ function patchMessageIntoList(messages: UIMessage[], incoming: LiveConversationM
     metadata: {
       ...(incoming.routedModelId ? { routedModelId: incoming.routedModelId } : {}),
     },
+    ...(incoming.agentPlan?.length ? { agentPlan: incoming.agentPlan } : {}),
     turnId: incoming.turnId,
     mode: incoming.mode,
     model: incoming.modelId,
     variantIndex: incoming.variantIndex,
     status: incoming.status,
+    ...(incoming.createdAt ? { createdAt: incoming.createdAt } : {}),
+    ...(incoming.updatedAt ? { updatedAt: incoming.updatedAt } : {}),
   } as unknown as UIMessage
 
   const existingIdx = messages.findIndex((message) => {
@@ -46,6 +50,8 @@ function patchMessageIntoList(messages: UIMessage[], incoming: LiveConversationM
     )
   })
   if (existingIdx >= 0) {
+    // A row still generating holds nothing yet, so keep what the stream already showed.
+    if (incoming.status === 'generating' && !incoming.parts?.length && !incoming.content) return false
     if (sameAssistantSnapshot(messages[existingIdx], nextMessage)) {
       return false
     }
@@ -66,10 +72,12 @@ function patchMessageIntoList(messages: UIMessage[], incoming: LiveConversationM
 export function patchLiveMessagesIntoRuntime(
   runtime: ConversationRuntime,
   liveMessages: readonly LiveConversationMessage[],
+  // Personal chat runs save 'ask' rows, which only need patching while a run is being followed.
+  { includeAskRows = false }: { includeAskRows?: boolean } = {},
 ) {
   let changed = false
   for (const incoming of liveMessages) {
-    if (incoming.mode !== 'act' || (incoming.variantIndex ?? 0) !== 0) continue
+    if ((incoming.mode !== 'act' && !includeAskRows) || (incoming.variantIndex ?? 0) !== 0) continue
     changed = patchMessageIntoList(runtime.actChat.messages as UIMessage[], incoming) || changed
     changed = patchMessageIntoList(runtime.askChats[0].messages as UIMessage[], incoming) || changed
   }
@@ -85,6 +93,7 @@ function patchServerMessageIntoList(messages: UIMessage[], incoming: ServerAssis
     metadata: {
       ...(incoming.routedModelId ? { routedModelId: incoming.routedModelId } : {}),
     },
+    ...(incoming.agentPlan?.length ? { agentPlan: incoming.agentPlan } : {}),
     turnId: incoming.turnId,
     mode: incoming.mode ?? 'act',
     model: incoming.model,
@@ -126,7 +135,7 @@ export function patchServerAssistantRowsIntoRuntime(
 ) {
   let changed = false
   for (const incoming of assistantRows) {
-    if ((incoming.mode ?? 'act') !== 'act' || (incoming.variantIndex ?? 0) !== 0) continue
+    if ((incoming.variantIndex ?? 0) !== 0) continue
     changed = patchServerMessageIntoList(runtime.actChat.messages as UIMessage[], incoming) || changed
     changed = patchServerMessageIntoList(runtime.askChats[0].messages as UIMessage[], incoming) || changed
   }

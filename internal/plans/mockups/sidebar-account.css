@@ -1,0 +1,21 @@
+@import './agent-thread-activity.css';
+@source './sidebar-account.tsx';
+@source './sidebar-account-menu.tsx';
+
+/* Proposed menu and rail changes only; production shell remains unchanged. */
+.double-sidebar-toggle { display: none !important }
+.account-preview-menu { width: 280px; padding: 5px; border: 1px solid var(--border); background: var(--surface-elevated, var(--surface)); color: var(--foreground); border-radius: 10px; box-shadow: 0 10px 35px #0002 }
+.profile-photo { width: 30px; height: 30px; object-fit: cover; border-radius: 50% }
+.profile-link { display: flex; width: 100%; height: auto !important; gap: 10px !important; padding: 10px 8px !important; text-align: left; font-weight: 400 !important; justify-content: flex-start !important }
+.profile-link .profile-photo { width: 36px; height: 36px }
+.profile-link > span { flex: 1; min-width: 0 }
+.profile-link strong { display: block; font-size: 13px; font-weight: 500 }
+.profile-link small { display: block; font-size: 11px; color: var(--muted); margin-top: 2px }
+.profile-link > svg { color: var(--muted) }
+.workspace-list { border-top: 1px solid var(--border); padding: 7px 0 }
+.menu-section-label { padding: 4px 8px 7px; font-size: 11px; color: var(--muted) }
+.workspace-option { width: 100%; height: 34px !important; display: flex; justify-content: flex-start !important; gap: 10px !important; padding: 0 8px !important; font-size: 12px !important; font-weight: 400 !important }
+.workspace-option > span:nth-last-child(2) { flex: 1; text-align: left }
+.workspace-icon { display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; flex: none !important; border: 1px solid var(--border); border-radius: 5px; font-size: 10px; background: var(--surface-subtle) }
+.sign-out { border-top: 1px solid var(--border); border-radius: 0 !important; margin-top: 2px; padding-top: 4px !important; height: 38px !important }
+@media (max-width: 767px) { .account-preview-menu { max-width: calc(100vw - 84px) } }
