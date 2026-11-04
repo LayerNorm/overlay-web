@@ -115,7 +115,7 @@ test('checks current model policy and BYOK connection authority instead of trust
   mocks.models.mockResolvedValueOnce({ chat: new Set() })
   await expect(refreshPersonalHarnessAccess(access, context)).rejects.toThrow(/model.*no longer/)
   await refreshPersonalHarnessAccess(access, { ...context, effectiveModelId: 'byok/connection/model' })
-  expect(mocks.byok).toHaveBeenCalledWith('byok/connection/model', 'user')
+  expect(mocks.byok).toHaveBeenCalledWith('byok/connection/model', 'user', access.workspaceId)
   mocks.byok.mockRejectedValueOnce(new Error('BYOK connection not found'))
   await expect(refreshPersonalHarnessAccess(access, { ...context, effectiveModelId: 'byok/connection/model' })).rejects.toThrow(/not found/)
   mocks.capability.mockImplementation((_subject, capability) => ({ allowed: capability !== 'mcp.use' }))
