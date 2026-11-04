@@ -6,6 +6,40 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Retire hosted third-party Claude Code/Codex runtimes in Overlay Cloud. Cloud creation, restart, run credentials, profile import and desktop launch are blocked; legacy agents remain readable and cleanup is lease-reaper managed. Preserve BYOM Agent Host, native Computers, provider connections, billing settlement, and historical records. Deployment is gated on an operator inventory, drain/export, and provider-deletion verification; completion is not established.
 
+- Keep answer-correction instructions consistent with the available evidence-reading controls, so a verifier rejection does not also tell the agent to avoid those tools.
+
+- Start Harness answer corrections as explicit continuation turns for providers that reject assistant prefill, and keep evidence-reading controls available without replaying completed external actions.
+
+- Allow authorized artifact reads to satisfy explicitly declared artifact-reading milestones, while keeping reopened excerpts ineligible as proof of a new write.
+
+- Preserve bounded, source-revision-linked observations when reopening private Harness artifacts, so final verification can inspect retrieved excerpts without treating them as new writes or independent verification.
+
+- Preserve private Harness artifacts across authorized workflow handoffs while rejecting stale workers, and retain summary/verification holds until measured usage settles without restoring free-model execution.
+
+- Keep Harness model-port, verification, compaction, artifact-prompt, and reducer validation paths focused and maintainable without changing their behavior or limits.
+- Allow isolated Preview QA to lower the test owner's Harness working-context budget to exercise compaction, without changing production or other users' budgets.
+- Keep Harness continuations grounded in persisted evidence, page omitted observations, verify nontrivial final answers, preserve context in private chunk-transport artifacts, and recover from failed compaction or verification without releasing paid or unknown provider holds.
+- Keep owned funding-paused Harness tasks waiting while payment verification is pending, without renewing execution authority or bypassing paid admission; revoked and stale runs still fail closed.
+
+- Preserve the pending response when context summarization pauses for workspace funding, including after durable workflow serialization; foreign pause receipts cannot resume the task.
+
+- Reconcile durable Harness continuation with paid-workspace admission: retain the selected model on funding failure and require current verified payment before creating automatic top-up claims. Existing subscriptions and markup are unchanged.
+
+- Preserve fractional-cent funding balances through durable Harness pauses and prevent workspace-funded task errors from falling back to a different model instead of waiting for funds.
+
+- Seed funding QA agents with valid editable avatar values so saving a model does not fail unrelated avatar validation. Existing fixtures and balances remain unchanged on reseed.
+
+- Preserve generation fencing, authorization pauses, and lease renewal when combining durable continuation with the streamlined personal Harness startup path.
+
+- Add opt-in, isolated Preview funding fixtures with one cent of initial synthetic credit. Reseeding never drains or replenishes existing balances, starts work, enables top-ups, or creates Stripe payment evidence.
+
+- Preserve valid Harness approval waits when persistence reorders JSON object keys. Approval identities, tool names, argument values, and array order must still match before any saved decision is consumed.
+
+- Preserve the latest answer and recent tool activity when long assistant transcripts reach storage limits. Repeated compaction keeps one omission notice instead of replacing the final answer with it; both native and personal message schemas accept its metadata, and existing size limits remain enforced.
+
+- Keep Harness control tools available while an answer-only milestone is unfinished, so agents can pause for missing human input instead of treating the plan as already complete. External action tools remain unavailable until the plan requires them.
+
+- Add versioned long-running Harness execution with workspace-funded dispatch holds, renewable execution leases, typed funding pauses, and protected continuation handoff. New checkpoints use gzip-compressed Convex File Storage blobs referenced by an atomic small metadata transaction; older inline checkpoint fields remain readable. Failed/retried uploads may leave unreferenced blobs, and no destructive orphan cleanup is performed. An expired explicit task deadline now persists as nonterminal `waiting_for_authorization`, preserves existing waits, blocks ordinary replies and execution, and remains cancellable. Funding projections show required and available amounts and show reserved amounts only when authoritative. Existing explicit spend overrides, V1 resource pauses, legacy policies, payer distinctions, and unresolved-effect holds remain enforced; targeted fixtures do not qualify every wait handoff or real-time multiweek operation.
 - Settle measured model usage when background memory generation fails schema validation, without saving invalid output or leaving a known-cost hold stuck. Unknown usage and missing pricing still require reconciliation.
 
 - Retain receipt-backed provider expenses for failed calls after their wallet holds are released, without charging or crediting the wallet again; include those expenses in billing cost reports.

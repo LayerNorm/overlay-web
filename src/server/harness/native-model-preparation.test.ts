@@ -1,5 +1,7 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { prepareNativeHarnessModel } from './native-model-preparation'
+import { WORKFLOW_SERIALIZE } from '@workflow/serde'
+import { HarnessLanguageModel } from './secure-model'
 
 const mocks = vi.hoisted(() => ({ refresh: vi.fn(), catalog: vi.fn(), zdr: vi.fn() }))
 vi.mock('server-only', () => ({}))
@@ -21,6 +23,13 @@ beforeEach(() => {
   mocks.refresh.mockResolvedValue({ requiresZeroDataRetention: true, entitlements: { confidential: 'must-not-persist' } })
   mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 32_000, maxTokens: 1_000,
     pricing: { input: '0.000001', output: '0.000002' } })
+})
+
+test.each([undefined, 4])('preserves native execution generation %s through preparation and serialization', async executionGeneration => {
+  const prepared = await prepareNativeHarnessModel({ ...input, access: { ...access, executionGeneration } })
+  expect(prepared.model.native?.access.executionGeneration).toBe(executionGeneration ?? 0)
+  const serialized = HarnessLanguageModel[WORKFLOW_SERIALIZE](new HarnessLanguageModel(prepared.model))
+  expect(serialized.native?.access.executionGeneration).toBe(executionGeneration ?? 0)
 })
 
 test('prepares native authority without credentials and quotes the exact ZDR-routed prompt', async () => {

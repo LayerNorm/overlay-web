@@ -37,6 +37,11 @@ export async function resolveHarnessWait(reference: HarnessExecutionReference, t
   await new ConvexHarnessRepository().resolveWait({ ...reference, token })
 }
 
+export async function readHarnessWaitReply(reference: HarnessExecutionReference, token: string) {
+  'use step'
+  return new ConvexHarnessRepository().readWaitReply({ ...reference, token })
+}
+
 export async function listHarnessWaits(reference: HarnessExecutionReference) {
   'use step'
   return new ConvexHarnessRepository().listPendingWaits(reference)
@@ -68,12 +73,15 @@ export async function notifyHarnessAncestors(reference: HarnessExecutionReferenc
     if (seen.has(state.parentRunId) || seen.size > 32) throw new FatalError('Invalid wake lineage.')
     seen.add(state.parentRunId)
     state = await repository.get({ actorUserId: reference.actorUserId, runId: state.parentRunId })
-    if (!state || state.rootRunId !== rootRunId || !state.workflowRunId) throw new FatalError('Missing wake parent.')
+    if (!state || state.rootRunId !== rootRunId) throw new FatalError('Missing wake parent.')
+    if (!state.workflowRunId && state.policy.executionPolicyVersion === 2) continue
+    if (!state.workflowRunId) throw new FatalError('Missing wake parent.')
     if (['completed', 'cancelled', 'failed'].includes(state.status)) continue
     try {
       await resumeHook(harnessWakeToken(state.workflowRunId), { childRunId: reference.runId })
     } catch (error) {
       const latest = await repository.get({ actorUserId: reference.actorUserId, runId: state.runId })
+      if (latest?.policy.executionPolicyVersion === 2) continue
       if (!latest || !['completed', 'cancelled', 'failed'].includes(latest.status)) throw error
     }
   }

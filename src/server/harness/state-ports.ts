@@ -7,6 +7,6 @@ export function createHarnessStatePorts(reference: HarnessExecutionReference): P
     claim: () => claimHarnessState(reference),
     read: () => readHarnessState(reference),
     apply: (operationId, operation) => applyHarnessOperation(reference, operationId, operation),
-    readEvidence: evidenceId => readHarnessEvidence(reference, evidenceId),
+    readEvidence: (evidenceId, cursor, limit) => readHarnessEvidence(reference, evidenceId, cursor, limit),
   }
 }

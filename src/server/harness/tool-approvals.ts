@@ -9,11 +9,18 @@ function canonicalInput(input: unknown): string | undefined {
     ? Object.fromEntries(Object.entries(value).sort(([a], [b]) => a.localeCompare(b))) : value)
 }
 
+export function sameHarnessApprovalRequests(left: HarnessApprovalRequest[], right: HarnessApprovalRequest[]): boolean {
+  return canonicalInput(left) === canonicalInput(right)
+}
+
 // Only authenticated wait decisions populate this workflow-local ledger.
 // Conversation content and provider-supplied approval parts never grant authority.
-export function createHarnessToolApprovals() {
-  const approved = new Map<string, { toolName: string; input: string | undefined }>()
+export type HarnessToolApprovalGrant = [string, { toolName: string; input?: string }]
+
+export function createHarnessToolApprovals(restored: HarnessToolApprovalGrant[] = []) {
+  const approved = new Map<string, { toolName: string; input?: string }>(restored)
   return {
+    snapshot(): HarnessToolApprovalGrant[] { return [...approved] },
     record(requests: HarnessApprovalRequest[], decisions: Decisions): void {
       approved.clear()
       if (new Set(requests.map(request => request.toolCallId)).size !== requests.length) {

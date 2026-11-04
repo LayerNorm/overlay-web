@@ -513,7 +513,7 @@ it('Plan: write claims without a plan stay blocked, while answer-only Q&A comple
   expect(completed.snapshot.status).toBe('completed')
   expect(completed.snapshot.plan[0]).toMatchObject({ id: 'answer', answerOnly: true, status: 'done' })
   expect(answer.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
-  expect(answer.doStreamCalls[1]?.toolChoice).toEqual({ type: 'none' })
+  expect(answer.doStreamCalls[1]?.toolChoice).toEqual({ type: 'auto' })
 })
 
 it('Plan: rejected reporting and textual DSML recover without repeating the completed action', async () => {
@@ -557,8 +557,11 @@ it('Plan: rejected reporting and textual DSML recover without repeating the comp
   expect(recoveryPrompt).toContain('Preserve every other milestone exactly')
   expect(recoveryPrompt).toContain('do not repeat the completed action')
   expect(JSON.stringify(provider.doStreamCalls[6]?.prompt)).toContain('Reporting-only milestones finish with your answer')
-  expect(provider.doStreamCalls[6]?.toolChoice).toEqual({ type: 'none' })
-  expect(provider.doStreamCalls.at(-1)?.toolChoice).toEqual({ type: 'none' })
+  for (const call of [provider.doStreamCalls[6], provider.doStreamCalls.at(-1)]) {
+    expect(call?.toolChoice).toEqual({ type: 'auto' })
+    expect(call?.tools?.map(tool => tool.name)).not.toContain('create_note')
+    expect(call?.tools?.map(tool => tool.name)).toContain('harness_report_blocker')
+  }
 })
 
 it('Budget — two named children plus the parent remain within the ceiling and a third ask is refused before a turn row', () => {
