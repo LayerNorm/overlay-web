@@ -182,7 +182,7 @@ presets, mobile width). Keep the branch merged with its base as #260 moves.
 
 | # | Slice | Contents | Done when |
 |---|---|---|---|
-| 0 | Plan + mockup | This doc; a standalone HTML mockup (`internal/plans/mockups/chat-ai-elements-mockup.html`) of one turn with reasoning, 3 tools, sources, code, citation, approval, and the composer | Owner approves the look |
+| 0 | Plan + mockup | This doc; the original chat mockup was removed because its shell is obsolete. Future previews of reasoning, tools, sources, code, citation, approval, and the composer must use the workspace structure in `internal/plans/mockups/agent-thread-activity.html`. | Owner approves the look |
 | 1 | Primitives | Add and adapt `collapsible`, `hover-card`, `item`, `input-group`, `spinner`, `message`, `bubble`, `trace`, `code-block` (+ Shiki hook/lib), `message-scroller` (+ `@shadcn/react`), `attachment` in `@overlay/ui`; `@overlay/ui/ai` entry; Storybook stories; unit tests. No consumer changes | Stories render in all themes; package tests green |
 | 2 | Code Block everywhere | Markdown fences, tool input/output, HTML render toggle; delete `LazySyntaxHighlighter` and `react-syntax-highlighter` | Bundle and highlight-latency numbers recorded; copy excludes line numbers |
 | 3 | Trace steps | `ai-elements/reasoning`, `tool`, `chain-of-thought`, `sources`; port web search, memory, browser, gated callout; delete `tool-rail.tsx`, `ToolCallsCollapsedGroup`, `WorkedForGroup` internals; update `tool-call-rows.test.tsx`, `tool-rail.test.tsx` | Every step type in the fixture renders as a Trace line with correct status |

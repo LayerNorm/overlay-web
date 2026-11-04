@@ -136,7 +136,7 @@ Rules:
 4. Review and input loop. `submit_task`, task notifications, Approve / Request changes, comments and thread replies
    resume the agent, "Waiting on you".
 5. UI pass. Agent section in the task peek (state, Open thread, Stop, Retry, summary), task chip in the thread
-   header, agent activity lines, Work filters "Needs you" and "Agent work" (already in `work-mockup.html`).
+   header, agent activity lines, Work filters "Needs you" and "Agent work". The former Work mockup was removed because its shell is obsolete; use `internal/plans/mockups/agent-thread-activity.html` for workspace structure.
    Standalone HTML mockup first, for approval.
 6. Self-driving. Lineage limits on agent-created assignments, daily cap, dependency auto-start, and an optional
    "triage" automation that grooms the backlog (dedupes, splits, assigns) on a schedule.

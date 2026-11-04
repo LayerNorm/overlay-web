@@ -6,6 +6,30 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Upgrade Better Auth and its SSO integration to 1.7.16, including the November 3 security fixes for private deployments. Hosted WorkOS authentication and the dependency cooldown policy are unchanged.
 
+- Refresh subscription rollout status and remove the superseded in-process adapter plan so future agents follow the private bridge architecture.
+
+- Update YAML parsing used by development and repository tooling. (#329)
+
+- Update asynchronous OpenTelemetry context propagation. (#332)
+
+- Update Word document conversion and remove its obsolete Bluebird dependency. (#333)
+
+- Update the development CSS selector parser. (#338)
+
+- Update the development regular-expression engine while retaining Node 22 compatibility. (#343)
+
+- Update CodeQL initialization, analysis and SARIF upload together. (#334)
+
+- Update lint and compiler cache actions, including read-only cache handling. (#373)
+
+- Update the Semgrep engine used by the existing security scan. (#374)
+
+- Improve artifact upload/download retry handling when GitHub rate-limits CI. (#375)
+
+- Update container registry login handling for image publication. (#376)
+
+- Refresh Python setup support and diagnostics for security scans. (#377)
+
 - Preserve Codex event-stream framing and optional function-tool arguments so connected subscription responses can complete in chats and native agents.
 
 - Recognize Codex Pro Lite/Max catalogs using explicit pinned plan membership, and preserve newly authorized credentials when catalog discovery is unavailable while continuing to block unknown-plan inference.
@@ -18,6 +42,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Give each subscription its own model-picker group below Recommended, with a plug badge, scope label, independent favorites and reconnect action. Load the same connections in chat and agent pickers while preserving paid-access requirements, without silently replacing unavailable subscription selections.
 - Keep agent progress visible with brief metered updates and a durable, sanitized transcript that survives workflow handoffs and failures. Uncertain tool outcomes stop further actions and show a safe diagnostic instead of automatically repeating work. Empty progress-only replies cannot abort otherwise valid work. Existing paid-workspace admission, selected models, funding waits and renewable execution leases remain enforced.
 - Simplify agent Computer actions and correctly show the current operator and stopped state, retain document attachment chips after reloading a thread, and hide internal agent bookkeeping from saved responses. Computer artifact upload permissions now expire within 15 minutes independently of the task lease.
+- Establish the approved agent-thread mockup as the canonical workspace-shell reference, remove ten conflicting workspace mockups and the superseded single-sidebar plan, keep mobile detail panels opaque, and document strict reuse of production sidebar components and styles.
 
 - Keep the user-owned agent setup entry hidden when the deployment’s connected-agent rollout is disabled, while native agents and Computers remain available.
 

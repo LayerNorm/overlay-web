@@ -1,11 +1,13 @@
 # Plan: Replace subscription plumbing with CLIProxyAPI
 
-Status: Codex-only implementation in review; real-account hosted acceptance pending. Broader provider and workspace-scope work remains planned.
+Status: Codex-only implementation merged in #386 with real-account hosted acceptance and production bridge verification complete. Broader provider and workspace-scope work remains planned.
 
 > Progress note: this plan is broader than the current implementation slice.
-> The first slice is Codex-only and uses a same-project private bridge; no other
-> subscription provider, workspace-scope schema expansion, or production picker
-> UI is included or implied. The plan catalog is not account-entitlement proof.
+> The first slice is Codex-only and uses a same-project private bridge. Shared
+> production model pickers and chat/native-agent reasoning controls are included;
+> other subscription providers and workspace-scope schema expansion remain planned.
+> The plan catalog is not account-entitlement proof. The superseded in-process
+> adapter plan has been removed; git history preserves its original decisions.
 
 ## 1. Establish one subscription backend
 
