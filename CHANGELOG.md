@@ -4,12 +4,13 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Upgrade Better Auth and its SSO integration to 1.7.16, including the November 3 security fixes for private deployments. Hosted WorkOS authentication and the dependency cooldown policy are unchanged.
+
 - Add immutable personal/workspace subscription scope, active-member authorization, owner-only lifecycle management, and workspace-aware picker caching. The approved scope selector defaults to Personal, supports explicit Workspace sharing, and preserves scope on reconnect; hosted/live acceptance remains pending.
 
 - Tighten subscription auth error classification, callback retry/fencing and provider identity checks; local fixtures remain distinct from hosted and live-account acceptance.
 
 - Extend the private pinned subscription bridge and fenced control plane to Claude, xAI, Meta, Kimi, Kimi AI, and Devin, including callback/device authorization and provider-bound catalogs/inference. Live account acceptance and hosted QA remain outstanding.
-
 - Refresh subscription rollout status and remove the superseded in-process adapter plan so future agents follow the private bridge architecture.
 
 - Update YAML parsing used by development and repository tooling. (#329)
