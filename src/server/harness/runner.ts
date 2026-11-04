@@ -10,18 +10,19 @@ import {
   hasRunnableHarnessMilestones,
   type HarnessSnapshot,
 } from '@overlay/agent-runtime/harness-state'
-import { createHarnessControlTools } from './control-tools'
+import { createHarnessAuthorizedTools } from './authorized-tools'
 import {
   buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessStuckQuestion,
   HARNESS_CONTROL_TOOLS, harnessProgressFingerprint, hasPendingHarnessAnswer,
 } from './context'
+import { buildHarnessCheckpoint } from './continuity'
+import { verifyHarnessFinalAnswer } from './final-answer-verification'
 import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSettings, HarnessRunnerCheckpoint } from './ports'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
-import { createHarnessToolApprovals, type HarnessToolApprovals, type HarnessToolExecutionOptions } from './tool-approvals'
+import type { HarnessToolApprovals } from './tool-approvals'
 import { assertNoControlToolReplacement, prepareToolDefinitions } from './tool-definitions'
 import { harnessModelResponseFailure } from './model-usage'
 import { HarnessYield, runHarnessModelInvocation, terminateOnProviderFailure } from './model-recovery'
-import { harnessToolInputDigest } from './tool-input-digest'
 import {
   captureObservedToolOutcome,
   withObservedToolOutcomes,
@@ -36,10 +37,6 @@ import {
   resumePendingApprovals,
   unresolvedApprovalCalls,
 } from './runner-waiting'
-
-const DUPLICATE_GUARDED_CREATE_TOOLS = new Set([
-  'create_note', 'create_task', 'create_automation', 'create_folder', 'create_agent',
-])
 
 export type HarnessExecutionInput = {
   instructions: string
@@ -131,7 +128,7 @@ function activeModelTools(
 ): string[] {
   const allowed = new Set(preparedActiveToolNames)
   return Object.keys(tools).filter(name => complete
-    ? hasPendingHarnessAnswer(current) && controls.has(name)
+    ? (hasPendingHarnessAnswer(current) || current.finalVerification?.supported === false) && controls.has(name)
     : needsPlan
       ? name === 'harness_set_plan'
       : controls.has(name) || (current.policy.allowedToolIds.includes(name) && allowed.has(name)))
@@ -183,57 +180,6 @@ async function shouldRecoverModelInvocation(
   return await ports.recoverModelFailure?.(receiptId) ?? false
 }
 
-function duplicateCreateEvidence(state: HarnessSnapshot, name: string, input: unknown): HarnessSnapshot['evidence'][number] | undefined {
-  if (!DUPLICATE_GUARDED_CREATE_TOOLS.has(name)) return undefined
-  const inputDigest = harnessToolInputDigest(name, input)
-  return state.evidence.find(evidence => evidence.kind === 'tool_result'
-    && evidence.verdict !== 'failed' && evidence.source === name && evidence.inputDigest === inputDigest)
-}
-
-function wrapAuthorizedTools(
-  surfaceTools: ToolSet,
-  ports: HarnessExecutionPorts,
-  controls: Set<string>,
-  approvals: HarnessToolApprovals,
-): ToolSet {
-  const definitions = { ...surfaceTools, ...createHarnessControlTools(ports) }
-  let toolTail: Promise<unknown> = Promise.resolve()
-  return Object.fromEntries(Object.entries(definitions).sort(([a], [b]) => a.localeCompare(b)).map(([name, definition]) => {
-    const execute = definition.execute
-    return [name, !execute ? definition : {
-      ...definition,
-      execute: (value: unknown, options: Parameters<NonNullable<typeof execute>>[1]) => {
-        const pending = toolTail.then(async () => {
-          let state = await ports.read()
-          if (state.policy.executionPolicyVersion === 2) {
-            await ports.renewLease()
-            state = await ports.read()
-          }
-          assertHarnessRunnable(state, Date.now())
-          if (!controls.has(name)) {
-            if (!state.policy.allowedToolIds.includes(name)) throw new Error('This tool is not authorized for this run.')
-            if (state.policy.requiresPlan && !state.plan.length) throw new Error('Create the required plan before executing work.')
-            await ports.authorizeTool(name)
-          }
-          const duplicate = duplicateCreateEvidence(state, name, value)
-          if (duplicate) {
-            return {
-              success: false,
-              error: `Duplicate: this exact ${name} call already succeeded as evidence ${duplicate.id}. Cite that evidence instead of repeating it.`,
-            }
-          }
-          const invoke = execute as (
-            input: unknown,
-            options: HarnessToolExecutionOptions,
-          ) => unknown
-          return invoke(value, { ...options, harnessApproved: approvals.consume(name, options.toolCallId, value) })
-        })
-        toolTail = pending.then(() => undefined, () => undefined)
-        return pending
-      },
-    }]
-  }))
-}
 
 const STAGNATION_RECOVERY_START = 2
 const STAGNATION_PAUSE_AFTER = 6
@@ -260,6 +206,37 @@ async function finishOrCheckpointInvocation(
   const resultSummary = latestFinalAnswerText(runSteps, toolNames)
   const finalAnswerRequired = !truncatedResponse && !completionIssues.length && !resultSummary
   if (!truncatedResponse && !completionIssues.length && resultSummary) {
+    const observedToolEvidence = state.evidence.filter(evidence => evidence.kind === 'tool_result')
+    if (observedToolEvidence.length && ports.verifyFinalAnswer) {
+      const verification = await verifyHarnessFinalAnswer({ state, candidate: resultSummary, segment, ports })
+      if (verification.kind === 'continue') {
+        if (verification.action === 'none') {
+          return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
+        }
+        if (verification.action === 'checkpoint') {
+          await ports.apply(`checkpoint:${segment}:verification`, {
+            type: 'checkpoint',
+            summary: JSON.stringify(buildHarnessCheckpoint(verification.state)),
+            purpose: 'continuation',
+            unverifiedNarrative: resultSummary.slice(0, 8_000),
+          })
+          return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
+        }
+        if (verification.action === 'pending') {
+          await ports.apply(`verification-pending:${segment}`, {
+            type: 'block',
+            blocker: { kind: 'stuck', question: verification.question! },
+          })
+          return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
+        }
+        await ports.apply(`verify-block:${segment}`, {
+          type: 'block',
+          blocker: { kind: 'stuck', question: verification.question! },
+        })
+        return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
+      }
+      state = verification.state
+    }
     const completed = await ports.apply(`finish:${segment}`, {
       type: 'finish', ...(resultSummary ? { resultSummary: resultSummary.slice(0, 8_000) } : {}),
     })
@@ -273,9 +250,12 @@ async function finishOrCheckpointInvocation(
     })
     return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
   }
-  const summary = stripTextualToolCalls(state.workingSummary, toolNames)
-    || latestCheckpointSummaryText(runSteps, toolNames)
-  await ports.apply(`checkpoint:${segment}`, { type: 'checkpoint', summary: summary.slice(0, 8_000), purpose: 'continuation' })
+  await ports.apply(`checkpoint:${segment}`, {
+    type: 'checkpoint',
+    summary: JSON.stringify(buildHarnessCheckpoint(state)),
+    purpose: 'continuation',
+    unverifiedNarrative: latestCheckpointSummaryText(runSteps, toolNames).slice(0, 8_000),
+  })
   return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
 }
 
@@ -346,8 +326,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   if ('outcome' in acquisition) return acquisition.outcome
   let observedState = acquisition.initial
   const { executionOwner, executionGeneration } = acquisition
-  const approvals = createHarnessToolApprovals(input.continuation?.toolApprovals)
-  const tools = wrapAuthorizedTools(input.tools, ports, controls, approvals)
+  const { tools, approvals } = createHarnessAuthorizedTools(input.tools, ports, controls, input.continuation?.toolApprovals)
   const toolDefinitions = await prepareToolDefinitions(tools)
   const instructions = buildHarnessInstructions(input.instructions)
   let truncatedResponse = input.continuation?.truncatedResponse ?? false
@@ -446,7 +425,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         const needsPlan = current.policy.requiresPlan && !current.plan.length
         observedState = current
         const activeTools = activeModelTools(current, prepared.activeToolNames, tools, controls, complete, needsPlan)
-        const pendingAnswerControls = complete && hasPendingHarnessAnswer(current) && activeTools.length > 0
+        const pendingAnswerControls = complete && activeTools.length > 0
         return {
           system: prepared.instructions ?? buildHarnessStepInstructions(current, instructionContext),
           messages: prepared.messages.filter(message => message.role !== 'system'),
@@ -486,6 +465,12 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         const paused = await ports.read()
         return confirmedModelPause(paused, receiptId, executionOwner, executionGeneration)
       },
+      async () => {
+        const blocked = await ports.read()
+        return blocked.workflowRunId === executionOwner
+          && (blocked.executionGeneration ?? 0) === executionGeneration
+          && blocked.status === 'waiting_for_input' && blocked.blocker?.kind === 'stuck'
+      },
     )
     invocationMessages = invocationResult.messages
     invocationSteps = invocationResult.steps
@@ -519,5 +504,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     }
     stagnantSegments = continuation.stagnantSegments
     finalAnswerRequired = continuation.finalAnswerRequired
+    // A continuation is a new turn, not an assistant prefill. Some providers
+    // reject assistant-tailed prompts, including after verification feedback.
+    if (messages.at(-1)?.role === 'assistant') {
+      messages = [...messages, { role: 'user', content: 'Continue the existing task using the current persisted state and verification feedback. Obtain any missing evidence before correcting the answer. Do not repeat completed actions.' }]
+    }
   }
 }

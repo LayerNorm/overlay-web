@@ -9,6 +9,7 @@ import { KIMI_K3_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { admitPersonalHarnessExecution, createPersonalHarnessExecutionPorts } from './personal-ports'
 import { createPersonalHarnessModelPorts } from './personal-model-ports'
 import { createHarnessModelPorts } from './model-ports'
+import { HarnessYield } from './model-recovery'
 import { runOverlayHarness } from './runner'
 import { estimateHarnessInputTokens } from './model-forecast'
 
@@ -145,6 +146,8 @@ beforeEach(() => {
     pricing: { input: '0.000001', output: '0.000002' } })
   mocks.apply.mockImplementation(async (_reference, _id, operation: HarnessOperation) => {
     if (operation.type === 'reserve_model') current = state.reserveHarnessModel(current, operation.id, operation.maxCostMicros, Date.now())
+    else if (operation.type === 'set_compaction') current = state.setHarnessCompaction(current, operation.compaction, Date.now())
+    else if (operation.type === 'block') current = state.blockHarness(current, operation.blocker, Date.now())
     else if (operation.type === 'checkpoint') current = state.checkpointHarness(current, operation.summary, Date.now())
     else if (operation.type === 'record_receipt') current = state.recordHarnessReceipt(current, operation.receipt, Date.now())
     else if (operation.type === 'finish') current = state.finishHarness(current, Date.now())
@@ -257,16 +260,18 @@ test('a failed summary with an unsettled reservation cannot dispatch the main ca
   const model = provider()
   mocks.settle.mockRejectedValue(new Error('Billing unavailable'))
   const ports = createPersonalHarnessExecutionPorts({ access, context, contextBudgetTokens: 8_192 }, surface)
-  await expect(runOverlayHarness({ ...execution, messages: history() }, ports)).rejects.toThrow(/safely compacted/)
+  const result = await runOverlayHarness({ ...execution, messages: history() }, ports)
+  expect(result.outcome).toBe('blocked')
+  expect(result.snapshot.status).toBe('waiting_for_input')
   expect(model.doStreamCalls).toHaveLength(1)
   expect(current.workingSummary).toBe('')
   expect(current.modelReservation?.dispatch).toBeDefined()
-  expect(mocks.sleep).not.toHaveBeenCalled()
+  expect(mocks.sleep).toHaveBeenCalledTimes(3)
 })
 
 test('settled empty summaries retry with durable backoff before compacting or dispatching the response', async () => {
   let summaries = 0
-  const model = provider('stop', false, () => ++summaries <= 2 ? ''
+  const model = provider('stop', false, () => ++summaries <= 1 ? ''
     : 'Earlier records were read. Do not publish. Verify the final result. The user asked to check the supplied records and preserve the original constraints. No external changes were made. Confirm each result before reporting it, and use the persisted observations as the source of truth.')
   const delays: number[] = []
   mocks.sleep.mockImplementation(async (until: Date) => {
@@ -279,9 +284,11 @@ test('settled empty summaries retry with durable backoff before compacting or di
   const ports = createPersonalHarnessExecutionPorts({ access, context, contextBudgetTokens: 8_192 }, surface)
   const result = await runOverlayHarness({ ...execution, messages: history() }, ports)
   expect(result.snapshot.status).toBe('completed')
-  expect(delays).toEqual([5_000, 10_000])
+  expect(delays).toHaveLength(1)
+  expect(delays[0]).toBeGreaterThanOrEqual(4_900)
+  expect(delays[0]).toBeLessThanOrEqual(5_000)
   const receiptIds = mocks.settle.mock.calls.map(([call]) => call.receiptId)
-  expect(receiptIds.slice(0, 3)).toEqual(['summary:model:0:0', 'summary:model:0:0:retry:1', 'summary:model:0:0:retry:2'])
+  expect(receiptIds.slice(0, 2)).toEqual(['summary:model:0:0', 'summary:model:0:0:retry:1'])
   expect(new Set(receiptIds).size).toBe(receiptIds.length)
   expect(receiptIds.filter(id => !id.startsWith('summary:'))).toEqual(['model:0'])
   expect(result.snapshot.usage.costMicros).toBe(receiptIds.length * 120)
@@ -367,7 +374,7 @@ test.each([
   expect(current.latestReceipt?.id).toMatch(/^summary:model:summary-quality-rejected:/)
   expect(current.latestReceipt?.rejectionReason).toBeUndefined()
   expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(1)
-  expect(model.doStreamCalls).toHaveLength(1)
+  expect(model.doStreamCalls).toHaveLength(2)
 })
 
 test('a 200-character summary remains accepted', async () => {
@@ -401,11 +408,11 @@ test('a failed summary falls back to uncompacted history when it fits the real m
   expect(responseRequest?.options.maxOutputTokens).toBe(12_000)
   expect(result.messages).toHaveLength(originalMessages.length)
   expect(result.settings?.maxOutputTokens).toBe(12_000)
-  expect(model.doStreamCalls).toHaveLength(1)
+  expect(model.doStreamCalls).toHaveLength(2)
   expect(current.modelReservation).toBeUndefined()
 })
 
-test.each(['openrouter/free', 'overlay-free'])('an ambiguous %s summary keeps its reservation without fabricating a zero-cost receipt', async modelId => {
+test('an interrupted zero-cost summary preserves its hold and cannot dispatch the response', async () => {
   const model = provider('stop', true)
   mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })
   const prepare = vi.fn(async ({ modelId, receiptId, options }) => ({
@@ -415,7 +422,7 @@ test.each(['openrouter/free', 'overlay-free'])('an ambiguous %s summary keeps it
   const originalMessages = compactableHistory()
   const ports = createHarnessModelPorts({
     reference: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' },
-    modelId,
+    modelId: 'openrouter/free',
     contextBudgetTokens: 8_192,
     prepare,
   })
@@ -423,10 +430,35 @@ test.each(['openrouter/free', 'overlay-free'])('an ambiguous %s summary keeps it
     receiptId: 'model:free-summary-fallback', state: current, messages: originalMessages,
     instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
     toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 512 },
-  })).rejects.toThrow(/safely compacted/)
+  })).rejects.toBeInstanceOf(HarnessYield)
+  expect(current.modelReservation).toBeDefined()
+  expect(mocks.settle).not.toHaveBeenCalled()
+  expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(0)
+  expect(model.doStreamCalls).toHaveLength(1)
+})
+
+test('a mismatched overlay-free summary hold pauses without fabricating a zero-cost receipt', async () => {
+  const model = provider('stop', true)
+  mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })
+  const prepare = vi.fn(async ({ modelId, receiptId, options }) => ({
+    ...preparedHarnessModel(modelId, receiptId, options, 128_000),
+    estimatedCostMicros: 0,
+  }))
+  const originalMessages = compactableHistory()
+  const ports = createHarnessModelPorts({
+    reference: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' },
+    modelId: 'overlay-free',
+    contextBudgetTokens: 8_192,
+    prepare,
+  })
+  await expect(ports.prepareModel({
+    receiptId: 'model:free-summary-fallback', state: current, messages: originalMessages,
+    instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
+    toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 512 },
+  })).rejects.toBeInstanceOf(HarnessYield)
   expect(current.modelReservation).toMatchObject({
     id: expect.stringMatching(/^summary:model:free-summary-fallback:/), maxCostMicros: 0,
-    dispatch: { modelId },
+    dispatch: { modelId: 'overlay-free', billingReservationId: 'billing' },
   })
   expect(current.latestReceipt).toBeUndefined()
   expect(mocks.settle).not.toHaveBeenCalled()
@@ -434,7 +466,7 @@ test.each(['openrouter/free', 'overlay-free'])('an ambiguous %s summary keeps it
   expect(model.doStreamCalls).toHaveLength(1)
 })
 
-test('a failed summary remains fatal when the uncompacted prompt exceeds the real model window', async () => {
+test('a failed summary pauses when the uncompacted prompt exceeds the real model window', async () => {
   const model = provider('length')
   mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 8_192, maxTokens: 8_192 })
   const prepare = vi.fn(async ({ modelId, receiptId, options }) => preparedHarnessModel(modelId, receiptId, options, 8_192))
@@ -449,12 +481,14 @@ test('a failed summary remains fatal when the uncompacted prompt exceeds the rea
     messages: [{ role: 'assistant', content: [{ type: 'text' as const, text: 'Large history '.repeat(10_000) }] }],
     instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
     toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 8_000 },
-  })).rejects.toThrow(/safely compacted/)
+  })).rejects.toBeInstanceOf(HarnessYield)
+  expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(0)
   expect(prepare).not.toHaveBeenCalled()
   expect(model.doStreamCalls).toHaveLength(0)
+  expect(current.status).toBe('waiting_for_input')
 })
 
-test('a failed summary remains fatal while its model reservation is pending', async () => {
+test('a failed summary pauses while its model reservation is pending', async () => {
   const model = provider('length')
   mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })
   mocks.settle.mockImplementationOnce(async () => undefined)
@@ -469,9 +503,10 @@ test('a failed summary remains fatal while its model reservation is pending', as
     receiptId: 'model:fallback-pending', state: current, messages: compactableHistory(),
     instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
     toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 512 },
-  })).rejects.toThrow(/safely compacted/)
+  })).rejects.toBeInstanceOf(HarnessYield)
   expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(0)
   expect(current.modelReservation).toBeDefined()
+  expect(current.status).toBe('waiting_for_input')
   expect(model.doStreamCalls).toHaveLength(1)
 })
 

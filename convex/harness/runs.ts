@@ -19,6 +19,8 @@ import {
   consumeHarnessResourcePause,
   HarnessPlanValidationError,
   recordHarnessEvidence,
+  recordHarnessVerification,
+  setHarnessCompaction,
   recordHarnessChildReceipt,
   recordHarnessReceipt,
   reserveHarnessModel,
@@ -153,6 +155,12 @@ const evidenceValidator = v.object({
   verdict: v.union(v.literal('observed'), v.literal('passed'), v.literal('failed')),
   createdAt: v.number(),
   inputDigest: v.optional(v.string()),
+  resource: v.optional(v.object({
+    id: v.string(),
+    revision: v.optional(v.string()),
+    operation: v.optional(v.string()),
+    page: v.optional(v.number()),
+  })),
   verification: v.optional(v.object({
     stepId: v.string(),
     planRevision: v.number(),
@@ -179,6 +187,7 @@ const receiptValidator = v.object({
     v.literal('route_interrupted'),
     v.literal('route_unavailable'),
     v.literal('summary_failed'),
+    v.literal('verification_failed'),
   )),
   responseFailure: v.optional(v.union(v.literal('empty_response'), v.literal('provider_error'), v.literal('provider_other'))),
 })
@@ -214,11 +223,40 @@ const operationValidator = v.union(
     skipReason: v.optional(v.string()),
   }),
   v.object({ type: v.literal('record_evidence'), evidence: evidenceValidator }),
+  v.object({
+    type: v.literal('record_verification'),
+    verification: v.object({
+      attemptId: v.string(),
+      candidateDigest: v.string(),
+      planRevision: v.number(),
+      evidenceRevision: v.number(),
+      supported: v.boolean(),
+      reason: v.string(),
+      evidenceIds: v.array(v.string()),
+      attempts: v.number(),
+      createdAt: v.number(),
+    }),
+  }),
+  v.object({
+    type: v.literal('set_compaction'),
+    compaction: v.object({
+      cycleId: v.string(),
+      attemptId: v.string(),
+      status: v.union(v.literal('started'), v.literal('completed'), v.literal('interrupted'), v.literal('awaiting_reconciliation')),
+      retryCount: v.number(),
+      failureReason: v.optional(v.union(
+        v.literal('stream_aborted'), v.literal('validation_failed'), v.literal('provider_error'),
+        v.literal('unknown'), v.literal('hold_unsettled'),
+      )),
+      updatedAt: v.number(),
+    }),
+  }),
   v.object({ type: v.literal('record_receipt'), receipt: receiptValidator }),
   v.object({
     type: v.literal('checkpoint'),
     summary: v.string(),
     purpose: v.optional(v.union(v.literal('continuation'), v.literal('compaction'))),
+    unverifiedNarrative: v.optional(v.string()),
   }),
   v.object({
     type: v.literal('block'),
@@ -341,6 +379,9 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     ...(snapshot.latestReceipt === undefined ? {} : { latestReceipt: snapshot.latestReceipt }),
     ...(snapshot.modelRecovery === undefined ? {} : { modelRecovery: snapshot.modelRecovery }),
     ...(snapshot.summaryRecovery === undefined ? {} : { summaryRecovery: snapshot.summaryRecovery }),
+    ...(snapshot.unverifiedNarrative === undefined ? {} : { unverifiedNarrative: snapshot.unverifiedNarrative }),
+    ...(snapshot.finalVerification === undefined ? {} : { finalVerification: snapshot.finalVerification }),
+    ...(snapshot.compaction === undefined ? {} : { compaction: snapshot.compaction }),
     ...(snapshot.modelReservation === undefined ? {} : { modelReservation: snapshot.modelReservation }),
     usage: snapshot.usage,
     updatedAt: snapshot.updatedAt,
@@ -585,6 +626,38 @@ function assertBoundedOperation(operation: HarnessOperation) {
             || operation.evidence.verification.planRevision < 0))) {
         throw new Error('Harness evidence exceeds its bounds.')
       }
+      if (operation.evidence.resource && (
+        !operation.evidence.resource.id.trim()
+        || operation.evidence.resource.id.length > MAX_EVIDENCE_ID_LENGTH
+        || (operation.evidence.resource.revision !== undefined && operation.evidence.resource.revision.length > 256)
+        || (operation.evidence.resource.operation !== undefined && operation.evidence.resource.operation.length > 256)
+        || (operation.evidence.resource.page !== undefined
+          && (!Number.isSafeInteger(operation.evidence.resource.page) || operation.evidence.resource.page < 1))
+      )) throw new Error('Harness evidence resource identity exceeds its bounds.')
+      break
+    case 'record_verification':
+      if (!operation.verification.attemptId.trim() || operation.verification.attemptId.length > 256
+        || !operation.verification.candidateDigest.trim() || operation.verification.candidateDigest.length > 128
+        || !Number.isSafeInteger(operation.verification.planRevision) || operation.verification.planRevision < 0
+        || !Number.isSafeInteger(operation.verification.evidenceRevision) || operation.verification.evidenceRevision < 0
+        || operation.verification.reason.length > 1_000
+        || operation.verification.evidenceIds.length > 48
+        || operation.verification.evidenceIds.some(id => !id.trim() || id.length > MAX_EVIDENCE_ID_LENGTH)
+        || !Number.isSafeInteger(operation.verification.attempts)
+        || operation.verification.attempts < 1 || operation.verification.attempts > 3
+        || !Number.isFinite(operation.verification.createdAt) || operation.verification.createdAt < 0) {
+        throw new Error('Harness answer verification exceeds its bounds.')
+      }
+      break
+    case 'set_compaction':
+      if (!operation.compaction.cycleId.trim() || operation.compaction.cycleId.length > MAX_ID_LENGTH
+        || !operation.compaction.attemptId.trim() || operation.compaction.attemptId.length > MAX_ID_LENGTH
+        || !Number.isSafeInteger(operation.compaction.retryCount)
+        || operation.compaction.retryCount < 0 || operation.compaction.retryCount > 1
+        || !Number.isFinite(operation.compaction.updatedAt)
+        || (operation.compaction.failureReason !== undefined && operation.compaction.failureReason.length > 64)) {
+        throw new Error('Harness compaction state exceeds its bounds.')
+      }
       break
     case 'record_receipt':
       if (!operation.receipt.id.trim() || operation.receipt.id.length > MAX_ID_LENGTH
@@ -598,7 +671,10 @@ function assertBoundedOperation(operation: HarnessOperation) {
       if (!operation.id.trim() || operation.id.length > MAX_ID_LENGTH) throw new Error('Invalid model reservation identity.')
       break
     case 'checkpoint':
-      if (operation.summary.length > MAX_WORKING_SUMMARY_LENGTH) throw new Error('Harness working summary exceeds 8,000 characters.')
+      if (operation.summary.length > MAX_WORKING_SUMMARY_LENGTH
+        || operation.unverifiedNarrative !== undefined && operation.unverifiedNarrative.length > MAX_WORKING_SUMMARY_LENGTH) {
+        throw new Error('Harness working summary exceeds 8,000 characters.')
+      }
       break
     case 'finish':
       if (operation.resultSummary !== undefined && operation.resultSummary.length > MAX_WORKING_SUMMARY_LENGTH) throw new Error('Harness result summary exceeds 8,000 characters.')
@@ -1101,6 +1177,15 @@ async function persistMetadata(ctx: MutationCtx, run: RunRow, snapshot: HarnessS
     metadataJson: stableJson(metadataFromSnapshot(snapshot)),
     updatedAt: snapshot.updatedAt,
   })
+  if (isTerminalStatus(snapshot.status)) {
+    const expiresAt = snapshot.updatedAt + 30 * 24 * 60 * 60_000
+    const artifacts = await ctx.db.query('harnessContextArtifacts')
+      .withIndex('by_runId_createdAt', q => q.eq('runId', run.runId))
+      .take(1_025)
+    if (artifacts.length > 1_024) throw new Error('Harness artifact count exceeds cleanup bounds.')
+    await Promise.all(artifacts.filter(artifact => artifact.expiresAt !== expiresAt)
+      .map(artifact => ctx.db.patch(artifact._id, { expiresAt })))
+  }
 }
 
 export async function failUnclaimedNativeHarnessInTransaction(ctx: MutationCtx, input: {
@@ -1330,6 +1415,10 @@ async function applyReducer(
         evidenceToPersist: operation.evidence,
       }
     }
+    case 'record_verification':
+      return { snapshot: recordHarnessVerification(current, operation.verification, now) }
+    case 'set_compaction':
+      return { snapshot: setHarnessCompaction(current, operation.compaction, now) }
     case 'record_receipt':
       if (operation.receipt.rejectionReason === 'route_capacity'
         || operation.receipt.rejectionReason === 'route_interrupted'
@@ -1338,7 +1427,7 @@ async function applyReducer(
       }
       return { snapshot: recordHarnessReceipt(current, operation.receipt, now) }
     case 'checkpoint':
-      return { snapshot: checkpointHarness(current, operation.summary, now, operation.purpose) }
+      return { snapshot: checkpointHarness(current, operation.summary, now, operation.purpose, operation.unverifiedNarrative) }
     case 'block':
       return { snapshot: blockHarness(current, operation.blocker, now) }
     case 'resume':
@@ -1892,20 +1981,48 @@ export const readEvidence = query({
   args: {
     actorUserId: v.string(),
     runId: v.string(),
-    evidenceId: v.string(),
+    evidenceId: v.optional(v.string()),
+    cursor: v.optional(v.string()),
+    limit: v.optional(v.number()),
     serverSecret: v.string(),
   },
+  returns: v.union(
+    evidenceValidator,
+    v.object({
+      observations: v.array(v.object({
+        id: v.string(), source: v.string(), verdict: v.string(), createdAt: v.number(),
+      })),
+      nextCursor: v.union(v.string(), v.null()),
+    }),
+    v.null(),
+  ),
   handler: async (ctx, args) => {
     requireHarnessServerSecret(args.serverSecret)
     if (!args.actorUserId.trim() || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
-      || !args.evidenceId.trim() || args.evidenceId.length > MAX_EVIDENCE_ID_LENGTH) {
+      || args.evidenceId !== undefined && (!args.evidenceId.trim() || args.evidenceId.length > MAX_EVIDENCE_ID_LENGTH)
+      || (args.cursor?.length ?? 0) > 512) {
       throw new Error('Invalid harness evidence identity.')
     }
     const run = await findRun(ctx, args.runId)
     if (!run) return null
     await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
-    const evidence = await getEvidenceRow(ctx, run.runId, args.evidenceId)
-    return evidence ? parseJson<HarnessEvidence>(evidence.evidenceJson) : null
+    if (args.evidenceId) {
+      const evidence = await getEvidenceRow(ctx, run.runId, args.evidenceId)
+      return evidence ? parseJson<HarnessEvidence>(evidence.evidenceJson) : null
+    }
+    const limit = args.limit ?? 32
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 32) throw new Error('Invalid harness evidence page size.')
+    const page = await ctx.db.query('harnessEvidence')
+      .withIndex('by_runId_createdAt', q => q.eq('runId', run.runId))
+      .order('asc')
+      .paginate({ numItems: limit, cursor: args.cursor ?? null })
+    return {
+      observations: page.page.map(row => {
+        const item = parseJson<HarnessEvidence>(row.evidenceJson)
+        return { id: item.id, source: item.source, verdict: item.verdict, createdAt: item.createdAt }
+      }),
+      nextCursor: page.isDone ? null : page.continueCursor,
+    }
   },
 })
 

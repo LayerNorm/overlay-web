@@ -82,7 +82,11 @@ async function checkFunding(id: string): Promise<boolean> {
   try {
     return await readFile(`${await directory(id)}/funded`, 'utf8') === 'confirmed'
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      const { appendFile } = await import('node:fs/promises')
+      await appendFile(`${await directory(id)}/events`, 'funding-insufficient\n')
+      return false
+    }
     throw error
   }
 }

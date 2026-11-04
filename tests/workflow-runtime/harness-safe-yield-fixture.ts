@@ -1,6 +1,6 @@
 import { HarnessYield, runHarnessModelInvocation } from '../../src/server/harness/model-recovery'
 
-async function throwYield(receiptId: string): Promise<never> {
+async function throwYield(receiptId?: string): Promise<never> {
   'use step'
   throw new HarnessYield(receiptId)
 }
@@ -14,14 +14,15 @@ async function confirmPersisted(id: string, receiptId: string): Promise<boolean>
   return record.receiptId === receiptId
 }
 
-export async function harnessSafeYieldFixture(input: { id: string; summary?: boolean }) {
+export async function harnessSafeYieldFixture(input: { id: string; summary?: boolean; blocked?: boolean }) {
   'use workflow'
   const result = await runHarnessModelInvocation(
-    () => throwYield(input.summary ? 'summary:model:4:0' : 'model:4'),
+    () => throwYield(input.blocked ? undefined : input.summary ? 'summary:model:4:0' : 'model:4'),
     () => ({ messages: [], steps: [], preparedReceiptId: 'model:4', modelCall: 4 }),
     () => [],
     undefined,
     receiptId => confirmPersisted(input.id, receiptId),
+    () => confirmPersisted(input.id, 'blocked'),
   )
   return { recovered: result.recovered, modelCall: result.modelCall }
 }

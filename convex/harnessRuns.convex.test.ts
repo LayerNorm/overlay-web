@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import { ConvexError } from 'convex/values'
+import { createHash } from 'node:crypto'
 import type {
   HarnessAdmission,
   HarnessMutationResult,
@@ -17,6 +18,7 @@ beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 const mutation = (name: string) => makeFunctionReference<'mutation'>(`harness/runs:${name}`)
 const query = (name: string) => makeFunctionReference<'query'>(`harness/runs:${name}`)
+const artifactAction = (name: string) => makeFunctionReference<'action'>(`harness/artifacts:${name}`)
 type Convex = ReturnType<typeof convexTest>
 const executionOwners = new WeakMap<Convex, Map<string, { workflowRunId: string; revisionOffset: number }>>()
 
@@ -452,6 +454,48 @@ describe('durable harness runs', () => {
     const failedEvidence = await convex.run(async ctx => ctx.db.query('harnessEvidence')
       .withIndex('by_runId_evidenceId', q => q.eq('runId', failedInput.runId).eq('evidenceId', 'tool:failed-run-call')).unique())
     expect(failedEvidence).toBeNull()
+  })
+
+  test('authorized evidence lookup supports exact IDs and bounded chronological pages', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('paged-evidence', await seedConversation(convex))
+    await admit(convex, input)
+    await apply(convex, input, 'claim-evidence', 0, {
+      type: 'claim_execution', workflowRunId: 'evidence-workflow',
+    })
+    const observations = [1, 2, 3].map(index => ({
+      id: `tool:read-${index}`, kind: 'tool_result' as const, source: 'read_document',
+      summary: `Read page ${index}.`, verdict: 'observed' as const, createdAt: index,
+    }))
+    await convex.run(async ctx => {
+      for (const evidence of observations) {
+        await ctx.db.insert('harnessEvidence', {
+          runId: input.runId, evidenceId: evidence.id,
+          evidenceJson: JSON.stringify(evidence), createdAt: evidence.createdAt,
+        })
+      }
+    })
+
+    const first = await convex.query(query('readEvidence'), {
+      serverSecret: secret, actorUserId: 'alice', runId: input.runId, limit: 2,
+    })
+    expect(first).toMatchObject({
+      observations: observations.slice(0, 2).map(({ id, source, verdict, createdAt }) => ({ id, source, verdict, createdAt })),
+    })
+    if (!first || !('observations' in first) || !first.nextCursor) throw new Error('Expected a second evidence page.')
+    const second = await convex.query(query('readEvidence'), {
+      serverSecret: secret, actorUserId: 'alice', runId: input.runId, limit: 2, cursor: first.nextCursor,
+    })
+    expect(second).toMatchObject({
+      observations: [observations[2]].map(({ id, source, verdict, createdAt }) => ({ id, source, verdict, createdAt })),
+      nextCursor: null,
+    })
+    await expect(convex.query(query('readEvidence'), {
+      serverSecret: secret, actorUserId: 'alice', runId: input.runId, evidenceId: 'tool:read-2',
+    })).resolves.toMatchObject(observations[1])
+    await expect(convex.query(query('readEvidence'), {
+      serverSecret: secret, actorUserId: 'bob', runId: input.runId, evidenceId: 'tool:read-2',
+    })).rejects.toThrow()
   })
 
   test('binds one workflow owner atomically and keeps the claim on reload', async () => {
@@ -1022,4 +1066,119 @@ describe('durable harness runs', () => {
     expect(persisted.revisions).toHaveLength(0)
     expect(persisted.operations).toHaveLength(0)
   })
+})
+
+test('public artifact attachment validates actual bytes, supports chunks, and rechecks source access', async () => {
+  const convex = convexTest(schema, modules)
+  const input = admission('public-artifact-run', await seedConversation(convex))
+  await admit(convex, input)
+  await apply(convex, input, 'claim-public-artifacts', 0, {
+    type: 'claim_execution', workflowRunId: 'artifact-workflow',
+  })
+  const access = { serverSecret: secret, actorUserId: 'alice', runId: input.runId, workflowRunId: 'artifact-workflow' }
+  const sourceId = await convex.run(ctx => ctx.db.insert('files', {
+    userId: 'alice', name: 'Source', type: 'file', createdAt: Date.now(), updatedAt: Date.now(),
+  }))
+  const bytes = new Uint8Array([0, 1, 127, 255])
+  const storageId = await convex.run(ctx => ctx.storage.store(new Blob([bytes])))
+  const args = {
+    ...access, artifactId: `ha_${'b'.repeat(64)}`, toolCallId: 'render-public', toolName: 'render_document',
+    digest: createHash('sha256').update(bytes).digest('hex'), storageId, byteSize: bytes.byteLength,
+    mediaPartCount: 1, resource: { id: sourceId, revision: 'rev-7', page: 2 },
+  }
+  await expect(convex.action(artifactAction('attachUploaded'), args)).resolves.toMatchObject({ storageId })
+  const chunk = await convex.action(artifactAction('readChunk'), {
+    ...access, artifactId: args.artifactId, offset: 1, length: 2,
+  }) as ArrayBuffer
+  expect(Array.from(new Uint8Array(chunk))).toEqual([1, 127])
+  const badStorageId = await convex.run(ctx => ctx.storage.store(new Blob([bytes])))
+  await expect(convex.action(artifactAction('attachUploaded'), {
+    ...args, artifactId: `ha_${'c'.repeat(64)}`, toolCallId: 'bad-digest', storageId: badStorageId, digest: '0'.repeat(64),
+  })).rejects.toThrow('HARNESS_ARTIFACT_DIGEST_MISMATCH')
+  expect(await convex.run(ctx => ctx.storage.get(badStorageId))).toBeNull()
+  await convex.run(ctx => ctx.db.patch(sourceId, { userId: 'bob' }))
+  await expect(convex.action(artifactAction('readChunk'), {
+    ...access, artifactId: args.artifactId, offset: 0, length: 1,
+  })).rejects.toThrow('HARNESS_ARTIFACT_SOURCE_UNAVAILABLE')
+})
+
+test('private context artifacts are run-owned, idempotent, and reject conflicting retries', async () => {
+  const convex = convexTest(schema, modules)
+  const input = admission('artifact-run', await seedConversation(convex))
+  await admit(convex, input)
+  await apply(convex, input, 'claim-artifact-run', 0, {
+    type: 'claim_execution', workflowRunId: 'artifact-workflow',
+  })
+  const bytes = new Uint8Array([0, 1, 2, 127, 255])
+  const sourceId = await convex.run(ctx => ctx.db.insert('files', {
+    userId: 'alice', name: 'Source', type: 'file', createdAt: Date.now(), updatedAt: Date.now(),
+  }))
+  const digest = createHash('sha256').update(bytes).digest('hex')
+  const args = {
+    serverSecret: secret,
+    actorUserId: 'alice',
+    runId: input.runId,
+    workflowRunId: 'artifact-workflow',
+    toolCallId: 'render-1',
+    toolName: 'render_document',
+    artifactId: `ha_${'a'.repeat(64)}`,
+    digest,
+    data: bytes.slice().buffer as ArrayBuffer,
+    mediaPartCount: 1,
+    resource: { id: sourceId, revision: 'rev-7', page: 1 },
+  }
+
+  const stored = await convex.action(artifactAction('put'), args) as {
+    artifactId: string; storageId: string; byteSize: number; resource: { revision: string }
+  }
+  const replay = await convex.action(artifactAction('put'), args)
+  expect(replay).toMatchObject({ artifactId: stored.artifactId, storageId: stored.storageId })
+  expect(stored.byteSize).toBe(bytes.byteLength)
+  expect(stored.resource.revision).toBe('rev-7')
+  const read = await convex.action(artifactAction('read'), {
+    serverSecret: secret, actorUserId: 'alice', runId: input.runId,
+    workflowRunId: 'artifact-workflow', artifactId: stored.artifactId,
+  }) as ArrayBuffer
+  expect(Array.from(new Uint8Array(read))).toEqual(Array.from(bytes))
+  await expect(convex.action(artifactAction('read'), {
+    serverSecret: secret, actorUserId: 'bob', runId: input.runId,
+    workflowRunId: 'artifact-workflow', artifactId: stored.artifactId,
+  })).rejects.toThrow('HARNESS_ARTIFACT_UNAUTHORIZED')
+  await expect(convex.action(artifactAction('read'), {
+    serverSecret: secret, actorUserId: 'alice', runId: 'another-run',
+    workflowRunId: 'artifact-workflow', artifactId: stored.artifactId,
+  })).rejects.toThrow('HARNESS_ARTIFACT_UNAUTHORIZED')
+  await expect(convex.action(artifactAction('put'), {
+    ...args,
+    digest: createHash('sha256').update(new Uint8Array([9])).digest('hex'),
+    data: new Uint8Array([9]).buffer as ArrayBuffer,
+  })).rejects.toThrow('HARNESS_ARTIFACT_IDENTITY_CONFLICT')
+  const rows = await convex.run(ctx => ctx.db.query('harnessContextArtifacts').collect())
+  expect(rows).toHaveLength(1)
+})
+
+test('a current successor can read prior artifacts while stale workflows and actors remain fenced', async () => {
+  const convex = convexTest(schema, modules)
+  const input = admission('artifact-successor', await seedConversation(convex))
+  await admit(convex, input)
+  await apply(convex, input, 'claim-artifact-owner', 0, { type: 'claim_execution', workflowRunId: 'artifact-original' })
+  const bytes = new Uint8Array([7, 8, 9])
+  const artifactId = `ha_${'b'.repeat(64)}`
+  await convex.action(artifactAction('put'), {
+    serverSecret: secret, actorUserId: 'alice', runId: input.runId, workflowRunId: 'artifact-original',
+    toolCallId: 'read-before-handoff', toolName: 'read_document', artifactId,
+    digest: createHash('sha256').update(bytes).digest('hex'), data: bytes.buffer, mediaPartCount: 0,
+  })
+  await convex.run(async ctx => {
+    const run = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', input.runId)).unique()
+    const state = JSON.parse(run!.metadataJson)
+    await ctx.db.patch(run!._id, { metadataJson: JSON.stringify({ ...state,
+      workflowRunId: 'artifact-successor', executionGeneration: 1, revision: state.revision + 1 }) })
+  })
+  const read = { serverSecret: secret, actorUserId: 'alice', runId: input.runId, workflowRunId: 'artifact-successor', artifactId }
+  expect(new Uint8Array(await convex.action(artifactAction('read'), read) as ArrayBuffer)).toEqual(bytes)
+  await expect(convex.action(artifactAction('read'), { ...read, workflowRunId: 'artifact-original' }))
+    .rejects.toThrow('HARNESS_ARTIFACT_UNAUTHORIZED')
+  await expect(convex.action(artifactAction('read'), { ...read, actorUserId: 'bob' }))
+    .rejects.toThrow('HARNESS_ARTIFACT_UNAUTHORIZED')
 })

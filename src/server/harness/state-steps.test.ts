@@ -2,16 +2,17 @@ import { ConvexError } from 'convex/values'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { FatalError } from 'workflow'
 import { HarnessPlanValidationError } from '@overlay/agent-runtime/harness-state'
-import { applyHarnessOperation, applyHarnessOperationStep, claimHarnessState, readAndClaimHarnessState } from './state-steps'
+import { applyHarnessOperation, applyHarnessOperationStep, readHarnessEvidence, claimHarnessState, readAndClaimHarnessState } from './state-steps'
 import { HARNESS_STEP_VALIDATION } from './step-validation'
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), apply: vi.fn(), resources: vi.fn() }))
+const mocks = vi.hoisted(() => ({ get: vi.fn(), apply: vi.fn(), readEvidence: vi.fn(), resources: vi.fn() }))
 vi.mock('./resource-boundary', () => ({ waitForHarnessModelResources: mocks.resources }))
 
 vi.mock('./ConvexHarnessRepository', () => ({
   ConvexHarnessRepository: class {
     get = mocks.get
     apply = mocks.apply
+    readEvidence = mocks.readEvidence
   },
 }))
 
@@ -111,6 +112,28 @@ test('Convex argument validation errors become fatal without retrying the mutati
     message: 'Harness operation rejected: invalid operation arguments.',
   })
   expect(mocks.apply).toHaveBeenCalledOnce()
+})
+
+test('evidence listing omits the empty evidence ID when calling the repository', async () => {
+  const page = { observations: [{ id: 'evidence-1', source: 'read', verdict: 'observed', createdAt: 1 }], nextCursor: null }
+  mocks.readEvidence.mockResolvedValue(page)
+
+  await expect(readHarnessEvidence(reference, '', undefined, 10)).resolves.toEqual(page)
+
+  expect(mocks.readEvidence).toHaveBeenCalledExactlyOnceWith({
+    actorUserId: 'user', runId: 'run', limit: 10,
+  })
+})
+
+test('exact evidence reads preserve the requested ID', async () => {
+  const evidence = { id: 'evidence-7', kind: 'tool_result' }
+  mocks.readEvidence.mockResolvedValue(evidence)
+
+  await expect(readHarnessEvidence(reference, 'evidence-7')).resolves.toEqual(evidence)
+
+  expect(mocks.readEvidence).toHaveBeenCalledExactlyOnceWith({
+    actorUserId: 'user', runId: 'run', evidenceId: 'evidence-7',
+  })
 })
 
 test('read and claim returns the post-claim snapshot in one boundary', async () => {

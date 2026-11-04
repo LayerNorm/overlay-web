@@ -16,6 +16,10 @@ test('compiled v2 funding wait renews its lease and resumes the same persisted t
   const run = await start(harnessFundingFixture, [{ id }])
   const token = `harness-funding:${id}`
   await waitForHook(run, { token })
+  await expect.poll(() => readHarnessFundingEvents(id).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return []
+    throw error
+  })).toContain('funding-insufficient')
   await grantHarnessFundingFixture(id)
   await resumeHook(token, { funded: true })
 
@@ -23,5 +27,5 @@ test('compiled v2 funding wait renews its lease and resumes the same persisted t
   const state = await readHarnessFundingFixture(id)
   expect(state).toMatchObject({ runId: id, status: 'running' })
   expect(state.resourcePause).toBeUndefined()
-  expect(await readHarnessFundingEvents(id)).toEqual(['lease-renewed'])
+  expect(await readHarnessFundingEvents(id)).toEqual(['funding-insufficient', 'lease-renewed'])
 })

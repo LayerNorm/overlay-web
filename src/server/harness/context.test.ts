@@ -1,6 +1,8 @@
 import { expect, test } from 'vitest'
 import { createHarnessSnapshot, recordHarnessEvidence, recordHarnessReceipt, replaceHarnessPlan, transitionHarnessStep } from '@overlay/agent-runtime/harness-state'
 import { buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessWorkingContext, harnessProgressFingerprint } from './context'
+import { buildHarnessCheckpoint, parseHarnessVerificationResponse } from './continuity'
+import { HARNESS_ANSWER_CORRECTION_INSTRUCTIONS, HARNESS_EVIDENCE_POLICY } from './continuity-policy'
 
 const make = (requiresPlan = true) => createHarnessSnapshot({
   runId: 'fixture-run', goal: 'Check the requested document', constraints: ['Do not publish it'],
@@ -147,4 +149,136 @@ test('accounting and repeated identical observations do not masquerade as progre
     ...state.evidence[0]!, id: 'third', source: 'document:revision-2', summary: 'Corrected the figures',
   }, 3_000)
   expect(harnessProgressFingerprint(changed)).not.toBe(fingerprint)
+})
+
+test('checkpoints separate stale narrative from chronological exact-resource observations', () => {
+  let state = {
+    ...make(),
+    workingSummary: '0 pages processed.',
+  }
+  state = recordHarnessEvidence(state, {
+    id: 'tool:failed-render', kind: 'tool_result', source: 'render_document',
+    summary: 'The first render failed.', verdict: 'failed', createdAt: 1_100,
+    resource: { id: 'file-1', revision: 'rev-7', operation: 'render', page: 1 },
+  }, 1_100)
+  state = recordHarnessEvidence(state, {
+    id: 'tool:successful-render', kind: 'tool_result', source: 'render_document',
+    summary: 'Rendered page 1.', verdict: 'observed', createdAt: 1_200,
+    resource: { id: 'file-1', revision: 'rev-7', operation: 'render', page: 1 },
+  }, 1_200)
+
+  const working = JSON.parse(buildHarnessWorkingContext(state)) as {
+    unverifiedNarrative: string
+    authoritativeCheckpoint: ReturnType<typeof buildHarnessCheckpoint>
+  }
+  expect(working.unverifiedNarrative).toBe('0 pages processed.')
+  expect(working.authoritativeCheckpoint.evidence.map(item => item.id)).toEqual([
+    'tool:failed-render', 'tool:successful-render',
+  ])
+  expect(working.authoritativeCheckpoint.evidence[1]).toMatchObject({
+    verdict: 'observed', resource: { id: 'file-1', revision: 'rev-7', page: 1 },
+  })
+  expect(buildHarnessInstructions('Surface instructions')).toContain(HARNESS_EVIDENCE_POLICY)
+})
+
+test('bounded checkpoints remain valid JSON and report omitted evidence for lookup', () => {
+  let state = make(false)
+  for (let index = 0; index < 30; index++) {
+    state = recordHarnessEvidence(state, {
+      id: `tool:${index}`, kind: 'tool_result', source: 'read',
+      summary: `Observation ${index} ${'x'.repeat(1_000)}`, verdict: index === 0 ? 'failed' : 'observed',
+      createdAt: 1_000 + index,
+    }, 1_000 + index)
+  }
+  const serialized = JSON.stringify(buildHarnessCheckpoint(state))
+  expect(serialized.length).toBeLessThanOrEqual(7_500)
+  expect(JSON.parse(serialized).omittedEvidenceCount).toBeGreaterThan(0)
+  expect(JSON.parse(serialized).evidenceLookup).toBe('harness_read_evidence')
+  const working = JSON.parse(buildHarnessWorkingContext(state))
+  expect(working.observations).toHaveLength(working.authoritativeCheckpoint.evidence.length)
+
+  const longText = recordHarnessEvidence(make(false), {
+    id: 'tool:long-text', kind: 'tool_result', source: 'read',
+    summary: 'A'.repeat(600), verdict: 'observed', createdAt: 1_001,
+  }, 1_001)
+  expect(buildHarnessCheckpoint(longText).evidence[0]?.summary).toContain('[TRUNCATED]')
+  expect(buildHarnessCheckpoint(longText).evidence[0]?.summary.length).toBeLessThan(320)
+})
+
+test('maximum-size checkpoint fields disclose omitted goal, plan and evidence details', () => {
+  const state = {
+    ...make(false),
+    goal: 'g'.repeat(30_000),
+    plan: Array.from({ length: 100 }, (_, index) => ({
+      id: `step-${index}`,
+      title: 't'.repeat(500),
+      status: 'pending' as const,
+      dependsOn: [],
+      acceptanceCriteria: [],
+      evidenceRefs: [`evidence-${index}-1`, `evidence-${index}-2`, `evidence-${index}-3`],
+      requiresVerification: false,
+      evidenceTools: [],
+    })),
+  }
+  const checkpoint = buildHarnessCheckpoint(state)
+  const serialized = JSON.stringify(checkpoint)
+  expect(serialized.length).toBeLessThanOrEqual(7_500)
+  expect(checkpoint.goalOmittedCharacters).toBeGreaterThan(0)
+  expect(checkpoint.omittedPlanCount).toBeGreaterThan(0)
+  expect(checkpoint.plan.some(step => step.excerptTruncated || step.omittedEvidenceRefCount > 0)).toBe(true)
+  expect(JSON.parse(serialized)).toEqual(checkpoint)
+})
+
+test('checkpoint limits include JSON escaping and UTF-8 without truncating evidence identities', () => {
+  const evidenceId = `tool:${'i'.repeat(250)}`
+  const state = {
+    ...make(false),
+    goal: '\u0000'.repeat(8_000),
+    plan: Array.from({ length: 4 }, (_, index) => ({
+      id: `step-${index}${'x'.repeat(100)}`, title: 'Plan', status: 'pending' as const,
+      dependsOn: [], acceptanceCriteria: [], requiresVerification: false,
+      evidenceRefs: ['\u0000'.repeat(256), '\u0000'.repeat(256)],
+    })),
+  }
+  const checkpoint = buildHarnessCheckpoint(state)
+  expect(new TextEncoder().encode(JSON.stringify(checkpoint)).byteLength).toBeLessThanOrEqual(7_500)
+  const observed = recordHarnessEvidence(make(false), {
+    id: evidenceId, kind: 'tool_result', source: 'read', summary: 'Observed', verdict: 'observed', createdAt: 1_001,
+  }, 1_001)
+  expect(buildHarnessCheckpoint(observed).evidence[0]?.id).toBe(evidenceId)
+})
+
+test('final verifier JSON rejects malformed responses and evidence from outside the run', () => {
+  const evidenceIds = new Set(['tool:current-run'])
+  expect(parseHarnessVerificationResponse(
+    '{"supported":false,"reason":"Unsupported","evidenceIds":[]}', evidenceIds,
+  )).toEqual({ supported: false, reason: 'Unsupported', evidenceIds: [] })
+  expect(() => parseHarnessVerificationResponse('not-json', evidenceIds)).toThrow()
+  expect(() => parseHarnessVerificationResponse(
+    '{"supported":true,"reason":"ok","evidenceIds":["tool:other-run"]}', evidenceIds,
+  )).toThrow(/invalid evidence reference/)
+})
+
+test('unsupported final answers receive structured correction feedback', () => {
+  const state = {
+    ...make(false),
+    finalVerification: {
+      attemptId: 'segment:1',
+      candidateDigest: 'a'.repeat(64),
+      planRevision: 0,
+      evidenceRevision: 0,
+      supported: false,
+      reason: 'The render shows page 1.',
+      evidenceIds: ['tool:render'],
+      attempts: 1,
+      createdAt: 1_000,
+    },
+  }
+  const instructions = buildHarnessStepInstructions(state, {
+    instructions: 'Surface instructions', continuation: true, truncatedResponse: false,
+  })
+  expect(instructions).toContain(HARNESS_ANSWER_CORRECTION_INSTRUCTIONS)
+  expect(instructions).toContain(
+    'Verification feedback: {"supported":false,"reason":"The render shows page 1.","evidenceIds":["tool:render"]}',
+  )
 })

@@ -29,6 +29,23 @@ export type HarnessApprovalRequest = {
   input: unknown
 }
 
+export type HarnessAnswerVerification = {
+  supported: boolean
+  reason: string
+  evidenceIds: string[]
+}
+
+export type HarnessArtifactRead = {
+  artifactId: string
+  start?: number
+  end?: number
+  mediaPart?: number
+}
+
+export type HarnessArtifactReadResult =
+  | { kind: 'text'; text: string; metadata: { artifactId: string; toolName: string; toolCallId: string; mediaPartCount: number; resource?: { id: string; revision?: string; operation?: string; page?: number } } }
+  | { kind: 'media'; data: Uint8Array; mediaType: string; metadata: { artifactId: string; toolName: string; toolCallId: string; mediaPartCount: number; mediaPart: number; resource?: { id: string; revision?: string; operation?: string; page?: number } } }
+
 export type HarnessRunnerCheckpoint = {
   version: 1
   messages: ModelMessage[]
@@ -52,13 +69,18 @@ export interface HarnessExecutionPorts {
   claim(): Promise<boolean>
   read(): Promise<HarnessSnapshot>
   apply(operationId: string, operation: HarnessOperation): Promise<HarnessSnapshot>
-  readEvidence(evidenceId: string): Promise<HarnessEvidence | null>
+  readEvidence(
+    evidenceId: string,
+    cursor?: string,
+    limit?: number,
+  ): Promise<HarnessEvidence | null | { observations: Array<Pick<HarnessEvidence, 'id' | 'source' | 'verdict' | 'createdAt'>>; nextCursor: string | null }>
   waitForResources?(requiredCostMicros: number): Promise<HarnessSnapshot>
   waitForFunding?(): Promise<void>
   checkFunding?(requiredCents: number): Promise<boolean>
   renewLease(): Promise<void>
   continueExecution(checkpoint: HarnessRunnerCheckpoint): Promise<HarnessSnapshot>
   authorizeTool(toolName: string): Promise<void>
+  readArtifact?(input: HarnessArtifactRead): Promise<HarnessArtifactReadResult>
   prepareModel(input: {
     receiptId: string
     state: HarnessSnapshot
@@ -77,6 +99,10 @@ export interface HarnessExecutionPorts {
   }>
   recordModelStep(step: Parameters<WorkflowAgentOnStepEndCallback<ToolSet>>[0], receiptId: string): Promise<void>
   recoverModelFailure?(receiptId: string): Promise<boolean>
+  verifyFinalAnswer?(input: {
+    state: HarnessSnapshot
+    candidate: string
+  }): Promise<HarnessAnswerVerification>
   recordToolResult(event: WorkflowAgentToolExecutionEndEvent<ToolSet>): Promise<void>
   delegate(input: HarnessDelegation, toolCallId: string): Promise<HarnessChild>
   readChild(childRunId: string): Promise<HarnessSnapshot>

@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { harnessToolOutputEvidence, harnessToolResultEvidence, isToolFailureOutput } from './tool-evidence'
+import { findResourceIdentity, harnessToolOutputEvidence, harnessToolResultEvidence, isToolFailureOutput } from './tool-evidence'
 import { harnessToolInputDigest } from './tool-input-digest'
 
 const now = 1_000
@@ -47,4 +47,30 @@ test('the native step and workflow hook construct the same tool-result evidence'
     output,
     success: true,
   }, now)).toEqual(harnessToolResultEvidence(resultEvent(output), now))
+})
+
+test('resource identity follows declared file fields and SDK text envelopes, not unrelated IDs', () => {
+  expect(findResourceIdentity({ id: 'provider-request', nested: { fileId: 'file-7', sourceRevision: 'rev-4', page: 2 } }))
+    .toEqual({ id: 'file-7', revision: 'rev-4', page: 2 })
+  const observation = harnessToolOutputEvidence({
+    toolCallId: 'render', toolName: 'read_document', success: true,
+    input: { fileId: 'file-7', page: 2 },
+    output: { content: [{ type: 'text', text: JSON.stringify({ fileId: 'file-7', sourceRevision: 'rev-4' }) }] },
+  }, now)
+  expect(observation.resource).toEqual({ id: 'file-7', revision: 'rev-4', operation: 'read_document', page: 2 })
+  expect(findResourceIdentity({ id: 'provider-request', data: { fileId: 'untrusted-binary' } })).toBeUndefined()
+})
+
+test('long ordinary text is preserved in tool evidence', () => {
+  const text = 'A'.repeat(3_000)
+  const evidence = harnessToolOutputEvidence({
+    toolCallId: 'read-call',
+    toolName: 'read_document',
+    input: {},
+    output: { display: text },
+    success: true,
+  }, now)
+  expect(evidence.summary).toContain('A'.repeat(1_000))
+  expect(evidence.summary).not.toContain('[binary content omitted]')
+  expect(evidence.summary).toHaveLength(2_000)
 })

@@ -4,6 +4,19 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep answer-correction instructions consistent with the available evidence-reading controls, so a verifier rejection does not also tell the agent to avoid those tools.
+
+- Start Harness answer corrections as explicit continuation turns for providers that reject assistant prefill, and keep evidence-reading controls available without replaying completed external actions.
+
+- Allow authorized artifact reads to satisfy explicitly declared artifact-reading milestones, while keeping reopened excerpts ineligible as proof of a new write.
+
+- Preserve bounded, source-revision-linked observations when reopening private Harness artifacts, so final verification can inspect retrieved excerpts without treating them as new writes or independent verification.
+
+- Preserve private Harness artifacts across authorized workflow handoffs while rejecting stale workers, and retain summary/verification holds until measured usage settles without restoring free-model execution.
+
+- Keep Harness model-port, verification, compaction, artifact-prompt, and reducer validation paths focused and maintainable without changing their behavior or limits.
+- Allow isolated Preview QA to lower the test owner's Harness working-context budget to exercise compaction, without changing production or other users' budgets.
+- Keep Harness continuations grounded in persisted evidence, page omitted observations, verify nontrivial final answers, preserve context in private chunk-transport artifacts, and recover from failed compaction or verification without releasing paid or unknown provider holds.
 - Keep owned funding-paused Harness tasks waiting while payment verification is pending, without renewing execution authority or bypassing paid admission; revoked and stale runs still fail closed.
 
 - Preserve the pending response when context summarization pauses for workspace funding, including after durable workflow serialization; foreign pause receipts cannot resume the task.

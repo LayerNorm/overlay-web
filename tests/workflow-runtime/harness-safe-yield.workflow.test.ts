@@ -38,3 +38,15 @@ test('compiled summary funding pause preserves the pending response call and che
   const rejected = await start(harnessSafeYieldFixture, [{ id: foreign, summary: true }])
   await expect(rejected.returnValue).rejects.toThrow('HARNESS_SAFE_RESOURCE_PAUSE:summary:model:4:0')
 })
+
+
+test('compiled context pause requires persisted blocking evidence without advancing the model call', async () => {
+  const id = randomUUID()
+  await persist(id, 'blocked')
+  const paused = await start(harnessSafeYieldFixture, [{ id, blocked: true }])
+  await expect(paused.returnValue).resolves.toEqual({ recovered: false, modelCall: 4 })
+  const forged = randomUUID()
+  await persist(forged, 'not-blocked')
+  const rejected = await start(harnessSafeYieldFixture, [{ id: forged, blocked: true }])
+  await expect(rejected.returnValue).rejects.toThrow('HARNESS_SAFE_YIELD')
+})

@@ -43,7 +43,34 @@ export type HarnessEvidence = {
   verdict: 'observed' | 'passed' | 'failed'
   createdAt: number
   inputDigest?: string
+  resource?: {
+    id: string
+    revision?: string
+    operation?: string
+    page?: number
+  }
   verification?: { stepId: string; planRevision: number }
+}
+
+export type HarnessVerification = {
+  attemptId: string
+  candidateDigest: string
+  planRevision: number
+  evidenceRevision: number
+  supported: boolean
+  reason: string
+  evidenceIds: string[]
+  attempts: number
+  createdAt: number
+}
+
+export type HarnessCompaction = {
+  cycleId: string
+  attemptId: string
+  status: 'started' | 'completed' | 'interrupted' | 'awaiting_reconciliation'
+  retryCount: number
+  failureReason?: 'stream_aborted' | 'validation_failed' | 'provider_error' | 'unknown' | 'hold_unsettled'
+  updatedAt: number
 }
 
 export type HarnessResponseFailure = 'empty_response' | 'provider_error' | 'provider_other'
@@ -73,7 +100,7 @@ export type HarnessReceipt = {
   /** Present only for user-funded inference; null means the provider did not report its charge. */
   externalCostMicros?: number | null
   /** Zero-usage rejection or failure of a zero-cost summary attempt. */
-  rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'route_unavailable' | 'summary_failed'
+  rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'route_unavailable' | 'summary_failed' | 'verification_failed'
   /** A settled response can be unusable even when its token usage is known. */
   responseFailure?: HarnessResponseFailure
 }
@@ -148,6 +175,10 @@ export type HarnessSnapshot = {
   blocker?: { kind: 'input' | 'approval' | 'budget' | 'stuck'; question: string }
   terminalReason?: string
   workingSummary: string
+  /** Model-produced continuity prose. Never authoritative evidence. */
+  unverifiedNarrative?: string
+  finalVerification?: HarnessVerification
+  compaction?: HarnessCompaction
   resultSummary?: string
   continuations: number
   lastContinuationProgressRevision: number
@@ -287,7 +318,8 @@ function validateStepEvidenceTools(state: HarnessSnapshot, step: HarnessPlanInpu
   if (!tools.length || tools.length > 8 || tools.some(tool => !tool.trim() || tool.length > 256)) {
     throw new Error(`Milestone "${step.id}" must list between one and eight valid evidenceTools.`)
   }
-  const unsupported = tools.find(tool => tool !== 'harness_read_child' && !state.policy.allowedToolIds.includes(tool))
+  const unsupported = tools.find(tool => tool !== 'harness_read_child' && tool !== 'harness_read_artifact'
+    && !state.policy.allowedToolIds.includes(tool))
   if (unsupported) throw new Error(`Milestone "${step.id}" lists unsupported evidence tool "${unsupported}".`)
 }
 
@@ -373,6 +405,7 @@ export function recordHarnessEvidence(state: HarnessSnapshot, evidence: HarnessE
   if (previous) {
     if (previous.kind !== evidence.kind || previous.source !== evidence.source || previous.summary !== evidence.summary || previous.verdict !== evidence.verdict
       || previous.inputDigest !== evidence.inputDigest
+      || JSON.stringify(previous.resource) !== JSON.stringify(evidence.resource)
       || JSON.stringify(previous.verification) !== JSON.stringify(evidence.verification)) throw new Error('Evidence is immutable; use a new reference for new observations.')
     return state
   }
@@ -382,6 +415,122 @@ export function recordHarnessEvidence(state: HarnessSnapshot, evidence: HarnessE
     ...(evidence.verification ? { verification: { ...evidence.verification } } : {}),
   })
   return changed(next, now, !lateToolResult)
+}
+
+export function recordHarnessVerification(
+  state: HarnessSnapshot,
+  verification: HarnessVerification,
+  now: number,
+): HarnessSnapshot {
+  assertActive(state)
+  if (!Number.isSafeInteger(verification.planRevision) || verification.planRevision !== state.planRevision
+    || !Number.isSafeInteger(verification.evidenceRevision) || verification.evidenceRevision !== state.progressRevision
+    || !verification.attemptId || verification.attemptId.length > 256
+    || !verification.candidateDigest || verification.reason.length > 1_000
+    || verification.evidenceIds.some(id => !state.evidence.some(evidence => evidence.id === id))) {
+    throw new Error('Final verification does not match the current plan and evidence.')
+  }
+  if (state.finalVerification
+    && JSON.stringify(state.finalVerification) === JSON.stringify(verification)) return state
+  if (state.finalVerification?.candidateDigest === verification.candidateDigest
+    && state.finalVerification.planRevision === verification.planRevision
+    && state.finalVerification.evidenceRevision === verification.evidenceRevision
+    && state.finalVerification.attempts >= verification.attempts) return state
+  const next = mutable(state)
+  next.finalVerification = { ...verification, evidenceIds: [...verification.evidenceIds] }
+  return changed(next, now, false)
+}
+
+function validateCompactionIdentity(compaction: HarnessCompaction): void {
+  if (!compaction.cycleId || !compaction.attemptId || compaction.retryCount < 0
+    || compaction.retryCount > 1 || !Number.isSafeInteger(compaction.retryCount)
+    || !Number.isFinite(compaction.updatedAt)) throw new Error('Invalid compaction attempt.')
+}
+
+function validateCompactionStart(
+  state: HarnessSnapshot,
+  previous: HarnessCompaction | undefined,
+  compaction: HarnessCompaction,
+): void {
+  if (state.modelReservation && state.modelReservation.id !== compaction.attemptId) {
+    throw new Error('An unrelated model reservation prevents compaction.')
+  }
+  if (previous?.status === 'started' || previous?.status === 'awaiting_reconciliation') {
+    throw new Error('The active compaction attempt must be reconciled first.')
+  }
+  if (previous?.cycleId === compaction.cycleId
+    && (previous.status !== 'interrupted' || compaction.retryCount !== previous.retryCount + 1)) {
+    throw new Error('Compaction retry order is invalid.')
+  }
+  if (previous?.cycleId !== compaction.cycleId && compaction.retryCount !== 0) {
+    throw new Error('A new compaction cycle must start at attempt zero.')
+  }
+}
+
+function hasMatchingLateCompactionReceipt(
+  state: HarnessSnapshot,
+  previous: HarnessCompaction | undefined,
+  compaction: HarnessCompaction,
+): boolean {
+  return previous?.cycleId === compaction.cycleId
+    && previous.attemptId === compaction.attemptId
+    && previous.status === 'awaiting_reconciliation'
+    && compaction.status === 'interrupted'
+    && compaction.retryCount === previous.retryCount
+    && state.latestReceipt?.id === compaction.attemptId
+    && state.modelReservation?.id !== compaction.attemptId
+}
+
+function hasDuplicateInterruptedCompaction(
+  state: HarnessSnapshot,
+  previous: HarnessCompaction | undefined,
+  compaction: HarnessCompaction,
+): boolean {
+  return previous?.cycleId === compaction.cycleId && previous.attemptId === compaction.attemptId
+    && previous.status === 'interrupted' && compaction.status === 'interrupted'
+    && compaction.retryCount === previous.retryCount && state.latestReceipt?.id === compaction.attemptId
+}
+
+function validateCompactionTransition(
+  state: HarnessSnapshot,
+  previous: HarnessCompaction | undefined,
+  compaction: HarnessCompaction,
+): void {
+  if (!previous || previous.cycleId !== compaction.cycleId || previous.attemptId !== compaction.attemptId
+    || previous.status !== 'started') throw new Error('Compaction transition does not match its active attempt.')
+  if (compaction.status === 'completed' && state.modelReservation?.id === compaction.attemptId) {
+    throw new Error('Compaction cannot complete with an unsettled model hold.')
+  }
+  if (compaction.status === 'awaiting_reconciliation'
+    && state.modelReservation?.id !== compaction.attemptId) {
+    throw new Error('Only the matching unresolved hold can await reconciliation.')
+  }
+}
+
+export function setHarnessCompaction(
+  state: HarnessSnapshot,
+  compaction: HarnessCompaction,
+  now: number,
+): HarnessSnapshot {
+  assertActive(state)
+  validateCompactionIdentity(compaction)
+  const previous = state.compaction
+  if (previous?.cycleId === compaction.cycleId && previous.attemptId === compaction.attemptId
+    && JSON.stringify(previous) === JSON.stringify(compaction)) return state
+  if (compaction.status === 'started') {
+    validateCompactionStart(state, previous, compaction)
+  } else if (hasMatchingLateCompactionReceipt(state, previous, compaction)) {
+    const next = mutable(state)
+    next.compaction = { ...compaction }
+    return changed(next, now, false)
+  } else if (hasDuplicateInterruptedCompaction(state, previous, compaction)) {
+    return state
+  } else {
+    validateCompactionTransition(state, previous, compaction)
+  }
+  const next = mutable(state)
+  next.compaction = { ...compaction }
+  return changed(next, now, false)
 }
 
 function hasToolResultEvidenceAlreadyUsedByAction(
@@ -460,7 +609,7 @@ function validateResponseFailure(receipt: HarnessReceipt) {
 
 function validateRejection(receipt: HarnessReceipt) {
   if (receipt.rejectionReason !== undefined && (
-    !['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'route_unavailable', 'summary_failed'].includes(receipt.rejectionReason)
+    !['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'route_unavailable', 'summary_failed', 'verification_failed'].includes(receipt.rejectionReason)
     || [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens,
       receipt.cacheWriteTokens, receipt.costMicros].some(value => value !== 0)
     || receipt.costSource !== 'catalog' || receipt.externalCostMicros !== undefined
@@ -525,6 +674,21 @@ function nextModelRecovery(previous: HarnessModelRecovery | undefined, receipt: 
   }
 }
 
+function validateFailedInferenceReceipt(state: HarnessSnapshot, receipt: HarnessReceipt): void {
+  if (receipt.rejectionReason !== 'verification_failed' && receipt.rejectionReason !== 'summary_failed') return
+  const reservation = state.modelReservation
+  const dispatch = reservation?.dispatch
+  if (reservation?.id !== receipt.id || reservation.maxCostMicros !== 0
+    || dispatch?.billingReservationId !== null || dispatch.modelId !== receipt.modelId
+    || (receipt.modelId !== 'openrouter/free' && receipt.modelId !== 'overlay/free')
+    || receipt.provider !== 'overlay-free-router' || receipt.costMicros !== 0
+    || receipt.inputTokens !== 0 || receipt.outputTokens !== 0 || receipt.reasoningTokens !== 0
+    || receipt.cacheReadTokens !== 0 || receipt.cacheWriteTokens !== 0
+    || (receipt.externalCostMicros ?? 0) !== 0) {
+    throw new Error('Failed inference reconciliation requires the exact zero-cost unbilled free hold.')
+  }
+}
+
 // The caller must atomically deduplicate receipt.id per run before recording.
 export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessReceipt, now: number): HarnessSnapshot {
   if (state.latestReceipt?.id === receipt.id) {
@@ -532,9 +696,20 @@ export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessRec
     return state
   }
   validateHarnessReceipt(receipt)
+  validateFailedInferenceReceipt(state, receipt)
   const next = mutable(state)
   if (next.modelReservation?.id === receipt.id) next.modelReservation = undefined
   next.latestReceipt = { ...receipt }
+  if (next.compaction?.attemptId === receipt.id
+    && (next.compaction.status === 'awaiting_reconciliation' || receipt.rejectionReason === 'summary_failed')
+    && next.modelReservation?.id !== receipt.id) {
+    next.compaction = {
+      ...next.compaction,
+      status: 'interrupted',
+      failureReason: receipt.rejectionReason === 'summary_failed' ? 'provider_error' : 'stream_aborted',
+      updatedAt: now,
+    }
+  }
   const recoveryKey = receipt.id.startsWith('summary:') ? 'summaryRecovery' : 'modelRecovery'
   next[recoveryKey] = nextModelRecovery(state[recoveryKey], receipt, now, effectiveHarnessDeadlineAt(state.policy))
   addHarnessUsage(next.usage, receiptUsage(receipt))
@@ -727,6 +902,7 @@ export function blockHarness(state: HarnessSnapshot, blocker: NonNullable<Harnes
 
 export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnapshot {
   assertActive(state)
+  if (state.modelReservation) throw new Error('A model hold must be reconciled before the run can resume.')
   if (state.status === 'waiting_for_authorization' || state.authorizationPause) {
     throw new Error('Expired authorization cannot be resumed by an input or approval reply.')
   }
@@ -909,12 +1085,21 @@ export function checkpointHarness(
   summary: string,
   now: number,
   purpose: HarnessCheckpointPurpose = 'continuation',
+  unverifiedNarrative?: string,
 ): HarnessSnapshot {
   assertActive(state)
   if (summary.length > 8_000) throw new Error('Keep the working summary under 8,000 characters; store larger outputs as artifacts.')
+  if (unverifiedNarrative !== undefined && unverifiedNarrative.length > 8_000) {
+    throw new Error('Keep unverified narrative under 8,000 characters.')
+  }
   const next = mutable(state)
+  if (purpose === 'compaction') {
+    next.workingSummary = summary
+    next.unverifiedNarrative = summary
+    return changed(next, now, false)
+  }
   next.workingSummary = summary
-  if (purpose === 'compaction') return changed(next, now, false)
+  if (unverifiedNarrative !== undefined) next.unverifiedNarrative = unverifiedNarrative
   next.continuations++
   next.stalledContinuations = state.progressRevision === state.lastContinuationProgressRevision ? state.stalledContinuations + 1 : 0
   next.lastContinuationProgressRevision = state.progressRevision

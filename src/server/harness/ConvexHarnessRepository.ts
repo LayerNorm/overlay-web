@@ -11,6 +11,7 @@ import type {
   HarnessWaitRequest,
 } from '@overlay/agent-runtime/harness-store'
 import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import type { HarnessArtifactMetadata } from './artifact-context'
 import type { HarnessRunnerCheckpoint } from './ports'
 import type {
   HarnessConsumeResourceGrantInput, HarnessGrantResourcesInput, HarnessResourceConsumeResult,
@@ -18,13 +19,97 @@ import type {
   HarnessResourceRequestReference,
 } from '@overlay/agent-runtime/harness-resource'
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
+import { ConvexHttpClient } from 'convex/browser'
+import { api } from '../../../convex/_generated/api'
+import { deploymentEnv } from '@/server/env/deployment-env'
+import { resolveConvexUrl } from '@/server/database/convex-url'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { requireNativeThreadCompatibilityBackend } from '@/server/conversations/native-thread-compatibility-backend'
 
+function artifactClient() {
+  const { url, invalid } = resolveConvexUrl(deploymentEnv())
+  if (!url || invalid) throw new Error('Harness artifact storage is unavailable.')
+  return new ConvexHttpClient(url, { logger: false, skipConvexDeploymentUrlCheck: true })
+}
+
 export class ConvexHarnessRepository implements HarnessRepository {
   private get serverSecret(): string {
     return getInternalApiSecret()
+  }
+
+  async storeContextArtifact(input: {
+    actorUserId: string
+    runId: string
+    workflowRunId: string
+    artifactId: string
+    toolCallId: string
+    toolName: string
+    digest: string
+    data: Uint8Array
+    mediaPartCount: number
+    resource?: { id: string; revision?: string; operation?: string; page?: number }
+  }): Promise<HarnessArtifactMetadata> {
+    const client = artifactClient()
+    const identity = {
+      actorUserId: input.actorUserId, runId: input.runId, workflowRunId: input.workflowRunId,
+      serverSecret: this.serverSecret,
+    }
+    const uploadUrl = await client.action(api.harness.artifacts.beginUpload, identity)
+    const response = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: input.data.slice().buffer as ArrayBuffer,
+      redirect: 'error',
+      signal: AbortSignal.timeout(120_000),
+    })
+    if (!response.ok) throw new Error('Harness artifact upload failed.')
+    const uploaded = await response.json() as { storageId?: string }
+    if (typeof uploaded.storageId !== 'string') throw new Error('Harness artifact upload returned no storage identity.')
+    return await client.action(api.harness.artifacts.attachUploaded, {
+      ...identity,
+      artifactId: input.artifactId,
+      toolCallId: input.toolCallId,
+      toolName: input.toolName,
+      digest: input.digest,
+      storageId: uploaded.storageId as never,
+      byteSize: input.data.byteLength,
+      mediaPartCount: input.mediaPartCount,
+      ...(input.resource ? { resource: input.resource } : {}),
+    })
+  }
+
+  async getContextArtifactMetadata(input: {
+    actorUserId: string; runId: string; workflowRunId: string; artifactId: string
+  }): Promise<HarnessArtifactMetadata | null> {
+    return await artifactClient().query(api.harness.artifactMetadata.getMetadataForServer, {
+      ...input, serverSecret: this.serverSecret,
+    })
+  }
+
+  async readContextArtifact(input: {
+    actorUserId: string; runId: string; workflowRunId: string; artifactId: string
+  }): Promise<Uint8Array | null> {
+    const client = artifactClient()
+    const metadata = await this.getContextArtifactMetadata(input)
+    if (!metadata) return null
+    const parts: Uint8Array[] = []
+    for (let offset = 0; offset < metadata.byteSize; offset += 256 * 1024) {
+      const part = await client.action(api.harness.artifacts.readChunk, {
+        ...input, serverSecret: this.serverSecret, offset,
+        length: Math.min(256 * 1024, metadata.byteSize - offset),
+      })
+      if (!part) throw new Error('Harness artifact content is unavailable.')
+      parts.push(new Uint8Array(part))
+    }
+    const result = new Uint8Array(metadata.byteSize)
+    let offset = 0
+    for (const part of parts) {
+      result.set(part, offset)
+      offset += part.byteLength
+    }
+    if (offset !== metadata.byteSize) throw new Error('Harness artifact content is incomplete.')
+    return result
   }
 
   async admit(input: HarnessAdmission): Promise<HarnessSnapshot> {
@@ -236,9 +321,9 @@ export class ConvexHarnessRepository implements HarnessRepository {
   }
 
   async readEvidence(
-    input: { actorUserId: string; runId: string; evidenceId: string },
-  ): Promise<HarnessEvidence | null> {
-    return await convex.query<HarnessEvidence | null>('harness/runs:readEvidence', {
+    input: { actorUserId: string; runId: string; evidenceId?: string; cursor?: string; limit?: number },
+  ): Promise<HarnessEvidence | null | { observations: Array<Pick<HarnessEvidence, 'id' | 'source' | 'verdict' | 'createdAt'>>; nextCursor: string | null }> {
+    return await convex.query('harness/runs:readEvidence', {
       ...input,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
