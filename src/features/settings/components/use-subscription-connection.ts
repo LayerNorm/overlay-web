@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
-import { subscriptionRequest, type SubscriptionAuthorization, type SubscriptionAvailability, type SubscriptionProgress } from './subscription-connection-client'
+import { subscriptionAuthorizationBody, subscriptionRequest, type SubscriptionAuthorization, type SubscriptionAvailability, type SubscriptionProgress, type SubscriptionScope } from './subscription-connection-client'
 
 export function shouldStopSubscriptionFlow(progress: SubscriptionProgress): boolean {
   return progress.status === 'expired' ||
@@ -13,8 +13,10 @@ export function shouldPollSubscriptionAuthorization(authorization: SubscriptionA
   return authorization.callbackRequired !== true
 }
 
-export function useSubscriptionConnection({ connection, onConnected, onClose }: {
+export function useSubscriptionConnection({ connection, scope = 'personal', workspaceId, onConnected, onClose }: {
   connection?: ByokConnectionRow
+  scope?: SubscriptionScope
+  workspaceId?: string
   onConnected(): Promise<void> | void
   onClose(): void
 }) {
@@ -33,11 +35,11 @@ export function useSubscriptionConnection({ connection, onConnected, onClose }: 
 
   useEffect(() => {
     const abort = new AbortController()
-    void subscriptionRequest<SubscriptionAvailability>(undefined, { signal: abort.signal })
+    void subscriptionRequest<SubscriptionAvailability>(undefined, { signal: abort.signal, workspaceId })
       .then(setAvailability)
       .catch((value: unknown) => { if (!abort.signal.aborted) setError(value instanceof Error ? value.message : 'Could not load providers.') })
     return () => abort.abort()
-  }, [])
+  }, [workspaceId])
 
   const accept = useCallback(async (progress: SubscriptionProgress) => {
     if (closing.current) return
@@ -80,7 +82,7 @@ export function useSubscriptionConnection({ connection, onConnected, onClose }: 
         return
       }
       try {
-        const progress = await subscriptionRequest<SubscriptionProgress>({ connectionId: login.connectionId, action: 'poll' }, { signal: abort.signal })
+        const progress = await subscriptionRequest<SubscriptionProgress>({ connectionId: login.connectionId, action: 'poll' }, { signal: abort.signal, workspaceId })
         if (abort.signal.aborted) return
         await accept(progress)
         if (progress.status !== 'pending') return
@@ -93,7 +95,7 @@ export function useSubscriptionConnection({ connection, onConnected, onClose }: 
     }
     timer = setTimeout(() => { void poll() }, Math.max(2, login.authorization.interval) * 1000)
     return () => { abort.abort(); clearTimeout(timer) }
-  }, [login, connected, stopped, accept])
+  }, [login, connected, stopped, accept, workspaceId])
 
   const start = async (providerId: string) => {
     if (working.current) return
@@ -101,7 +103,7 @@ export function useSubscriptionConnection({ connection, onConnected, onClose }: 
     setBusy(true); setError(null)
     requestKey.current ??= crypto.randomUUID()
     try {
-      const next = await subscriptionRequest<SubscriptionAuthorization>({ providerId, ...(pendingId.current ? { connectionId: pendingId.current } : {}) }, { method: 'POST', idempotencyKey: requestKey.current })
+      const next = await subscriptionRequest<SubscriptionAuthorization>(subscriptionAuthorizationBody(providerId, scope, pendingId.current), { method: 'POST', idempotencyKey: requestKey.current, workspaceId })
       pendingId.current = next.connectionId
       setLogin(next); setStopped(false); setConnected(null)
       requestKey.current = null
@@ -114,7 +116,7 @@ export function useSubscriptionConnection({ connection, onConnected, onClose }: 
     if (!login || working.current) return
     working.current = true; setBusy(true); setError(null)
     try {
-      await accept(await subscriptionRequest<SubscriptionProgress>({ connectionId: login.connectionId, action: 'callback', callbackUrl }))
+      await accept(await subscriptionRequest<SubscriptionProgress>({ connectionId: login.connectionId, action: 'callback', callbackUrl }, { workspaceId }))
     } catch (value) { setError(value instanceof Error ? value.message : 'Could not complete sign-in.') }
     finally { working.current = false; setBusy(false) }
   }
@@ -133,5 +135,5 @@ export function useSubscriptionConnection({ connection, onConnected, onClose }: 
     finally { working.current = false; setBusy(false) }
   }
 
-  return { availability, login, connected, error, busy, stopped, start, completeCallback, close }
+  return { availability, login, connected, error, busy, stopped, selectionLocked: Boolean(pendingId.current || requestKey.current), start, completeCallback, close }
 }

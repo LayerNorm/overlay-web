@@ -42,5 +42,5 @@ plane; this bridge remains stateless and does not receive workspace ownership
 as a substitute for that authorization. Builds and injected-network tests do
 not establish live provider acceptance. Callback UX, provider account
 entitlement, refresh behavior, hosted restart and streaming behavior still
-require isolated real-account QA. Scope-selection UI remains pending approval,
-and the deployment provider allowlist is unchanged.
+require isolated real-account QA. The web scope selector now supports explicit
+workspace sharing; the production provider allowlist is unchanged.

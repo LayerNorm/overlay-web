@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add immutable personal/workspace subscription scope, active-member authorization, owner-only lifecycle management, and workspace-aware picker caching; scope-selection UI and hosted/live acceptance remain pending.
+- Add immutable personal/workspace subscription scope, active-member authorization, owner-only lifecycle management, and workspace-aware picker caching. The approved scope selector defaults to Personal, supports explicit Workspace sharing, and preserves scope on reconnect; hosted/live acceptance remains pending.
 
 - Tighten subscription auth error classification, callback retry/fencing and provider identity checks; local fixtures remain distinct from hosted and live-account acceptance.
 

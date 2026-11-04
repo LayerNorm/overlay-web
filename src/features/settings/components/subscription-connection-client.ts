@@ -1,4 +1,11 @@
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
+import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
+
+export type SubscriptionScope = 'personal' | 'workspace'
+
+export function subscriptionAuthorizationBody(providerId: string, scope: SubscriptionScope, connectionId?: string) {
+  return connectionId ? { providerId, connectionId } : { providerId, scope }
+}
 
 export type SubscriptionProvider = { id: string; label: string; description: string; enabled: boolean }
 export type SubscriptionAvailability = { available: boolean; providers: SubscriptionProvider[]; reason?: string }
@@ -18,13 +25,16 @@ export function subscriptionLogo(providerId: string): string {
   return ({ codex: 'openai', claude: 'anthropic', kimi: 'moonshotai', 'kimi-ai': 'moonshotai', meta: 'meta-llama' } as Record<string, string>)[id] ?? id
 }
 
-export async function subscriptionRequest<T>(body?: Record<string, unknown>, options: { method?: string; signal?: AbortSignal; idempotencyKey?: string } = {}): Promise<T> {
+export async function subscriptionRequest<T>(body?: Record<string, unknown>, options: { method?: string; signal?: AbortSignal; idempotencyKey?: string; workspaceId?: string } = {}): Promise<T> {
   const response = await fetch('/api/v1/providers/subscriptions', {
     method: options.method ?? (body ? 'PATCH' : 'GET'),
     cache: 'no-store',
     signal: options.signal,
+    headers: {
+      ...(options.workspaceId ? { [ACTIVE_WORKSPACE_HEADER]: options.workspaceId } : {}),
+      ...(body ? { 'Content-Type': 'application/json', 'Idempotency-Key': options.idempotencyKey ?? crypto.randomUUID() } : {}),
+    },
     ...(body ? {
-      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': options.idempotencyKey ?? crypto.randomUUID() },
       body: JSON.stringify(body),
     } : {}),
   })

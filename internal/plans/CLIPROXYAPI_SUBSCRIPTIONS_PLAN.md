@@ -6,7 +6,8 @@ Status: The Codex implementation is merged in #386. This branch extends the back
 > This branch extends its backend and control plane to Claude, xAI, Meta, Kimi,
 > Kimi AI, and Devin, and adds immutable personal/workspace subscription scope,
 > active-member authorization, workspace-aware dispatch, and picker/cache
-> isolation. The approval-gated scope selector and privacy copy are not shipped.
+> isolation. The approved scope selector defaults to Personal and offers explicit
+> Workspace sharing, with scope-specific privacy copy and immutable reconnects.
 > Hosted and real-account acceptance remains separate work.
 > Local build and injected-HTTP fixtures establish implementation behavior only;
 > they do not establish hosted deployment or live provider-account acceptance.
@@ -51,8 +52,8 @@ rows. Legacy rows remain personal, scope is immutable, and only active members
 of the matching active workspace may list or use a shared connection. The
 acting user and billing workspace remain authoritative; the credential owner
 is resolved internally for Vault reads and refresh leases. Picker caching and
-nonowner management safeguards are workspace-aware. The scope selector/privacy
-copy, full shared-picker QA, hosted acceptance, and real-account validation
+nonowner management safeguards are workspace-aware. The approved scope selector
+and privacy copy are implemented. Full shared-picker QA, hosted acceptance, and real-account validation
 remain pending and are not implied by synthetic tests.
 
 Dispatch rollout is additive: `getForDispatchByServer` retains its legacy

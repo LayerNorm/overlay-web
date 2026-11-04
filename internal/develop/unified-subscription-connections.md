@@ -16,8 +16,11 @@ Only active members of that exact active workspace may list or use a shared
 subscription. API-key connections remain unchanged and are never workspace-
 shared. Lifecycle management and Vault references remain owner-only; nonowner
 shared rows reach the picker with `canManage: false`, are excluded from Settings
-management, and expose no reconnect URL. Scope-selection UI and related privacy
-copy remain pending approval. Model visibility does not grant execution access:
+management, and expose no reconnect URL. The scope selector defaults to Personal,
+offers Workspace only with an active workspace, and locks scope once authorization
+starts. Reconnects preserve the stored scope. Requests pin the active workspace
+through the workspace header, not a client-controlled body field.
+Model visibility does not grant execution access:
 existing paid-access requirements still apply to all models, including BYOK.
 
 ### Dispatch endpoint rollout compatibility
@@ -166,5 +169,5 @@ reachable on short desktop and mobile screens.
 Workspace scope tests use synthetic Convex/service fixtures and do not establish
 hosted authorization behavior. Live provider-account acceptance and hosted
 callback, refresh, restart, and streaming QA remain unfinished. Catalog
-membership is not account entitlement. Scope-selection UI remains pending
-approval, and the deployment provider allowlist is unchanged.
+membership is not account entitlement. Scope-selection UI is implemented, and
+the production provider allowlist is unchanged.
