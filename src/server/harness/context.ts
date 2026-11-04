@@ -4,7 +4,6 @@ import { HARNESS_EVIDENCE_POLICY, HARNESS_ANSWER_CORRECTION_INSTRUCTIONS } from 
 import { buildHarnessCheckpoint } from './continuity'
 
 export { HARNESS_CONTROL_TOOLS } from '@overlay/agent-runtime/harness-store'
-import { HARNESS_CONTROL_TOOLS } from '@overlay/agent-runtime/harness-store'
 
 const HARNESS_INSTRUCTIONS = `You are running inside the Overlay Harness.
 Keep the user informed in ordinary assistant text, not private reasoning or tool arguments. Before the first tool call, briefly acknowledge the request and describe the next action. Between meaningful batches of tools, explain what you found, what changed, or what you will try next. When a tool fails or you change approach, explain the practical impact. Do not narrate every tool call, expose private reasoning, or claim success without evidence. Tool activity labels are not a substitute for these progress updates.

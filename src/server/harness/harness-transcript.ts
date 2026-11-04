@@ -48,6 +48,11 @@ export function publicHarnessStepPersistence(
     toolCalls: step.toolCalls.filter(isPublic),
     toolResults: step.toolResults.filter(isPublic).map(displayResult),
   }
+  const hasPublicContent = publicStep.text?.trim() || publicStep.toolCalls.length || publicStep.toolResults.length
+    || publicStep.content?.some(part => part.type !== 'text' || part.text.trim())
+  // Internal-only and reasoning-only steps still have a settled receipt, but no
+  // public output. Do not turn hidden bookkeeping into an empty-response bubble.
+  if (!hasPublicContent) return { content: '', parts: [] }
   const persistence = buildAssistantPersistenceFromSteps([publicStep], publicStep.text ?? '')
   return compactAssistantPersistenceForConvex({
     ...persistence,

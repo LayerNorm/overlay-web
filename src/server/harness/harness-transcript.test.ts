@@ -217,3 +217,12 @@ test('a stale workflow cannot replace a successor transcript after a read failur
     .rejects.toThrow('authorization was revoked')
   expect(applyHarnessOperation).not.toHaveBeenCalled()
 })
+
+
+test('an internal-only settled step journals no empty-response placeholder', () => {
+  const call = { type: 'tool-call', toolCallId: 'plan', toolName: 'harness_set_plan', input: {} }
+  const result = { ...call, type: 'tool-result', output: { success: true } }
+  expect(publicHarnessStepPersistence({ stepNumber: 0, text: '', reasoning: [],
+    content: [call, result], toolCalls: [call], toolResults: [result] } as never, new Set()))
+    .toEqual({ content: '', parts: [] })
+})
