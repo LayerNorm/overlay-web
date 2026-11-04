@@ -1,6 +1,5 @@
 export * from './acp-adapter.js'
 export * from './acpx-adapter.js'
-export * from './image-check.js'
 export * from './adapter.js'
 export * from './adapter-manifests.js'
 export * from './config.js'

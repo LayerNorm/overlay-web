@@ -51,7 +51,7 @@ describe('Convex agent-environment control plane', () => {
         convex.mutation(controlMutation(operation), { ...args, serverSecret: secret })
       await call('createEnrollmentSessionByServer', enrollmentInput())
       await call('redeemEnrollmentSessionByServer', { codeHash, now,
-        environment: environmentInput({ kind: 'overlay_cloud' }), proofChallenge: proofChallengeInput() })
+        environment: environmentInput({ kind: 'local' }), proofChallenge: proofChallengeInput() })
       await call('approveEnvironmentByServer', { workspaceId, environmentId, approvedByUserId: 'owner-user',
         filesystemGrant: { mode: 'selected_roots', roots: ['/home/user/workspace'] }, now: now + 1 })
       const methods = AGENT_ENVIRONMENT_CREDENTIAL_METHODS.filter(method => method !== 'agent:drive-credentials'

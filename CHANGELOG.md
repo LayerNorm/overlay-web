@@ -6,6 +6,14 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Establish the approved agent-thread mockup as the canonical workspace-shell reference, remove ten conflicting workspace mockups, and document strict reuse of production sidebar components and styles.
 
+- Keep the user-owned agent setup entry hidden when the deployment’s connected-agent rollout is disabled, while native agents and Computers remain available.
+
+- Keep retired hosted-machine cleanup pending until a fresh provider lookup confirms deletion, preventing asynchronous delete acknowledgements from discarding cleanup ownership.
+
+- Preserve private exact-origin hosting access for user-owned Agent Hosts, so retiring hosted Cloud runtimes does not break enrollment, signed API calls, or MCP tools on protected PR previews.
+
+- Retire hosted third-party Claude Code/Codex runtimes in Overlay Cloud. Cloud creation, restart, run credentials, profile import and desktop launch are blocked; legacy agents remain readable and cleanup is lease-reaper managed. Preserve BYOM Agent Host, native Computers, provider connections, billing settlement, and historical records. Deployment is gated on an operator inventory, drain/export, and provider-deletion verification; completion is not established.
+
 - Keep answer-correction instructions consistent with the available evidence-reading controls, so a verifier rejection does not also tell the agent to avoid those tools.
 
 - Start Harness answer corrections as explicit continuation turns for providers that reject assistant prefill, and keep evidence-reading controls available without replaying completed external actions.

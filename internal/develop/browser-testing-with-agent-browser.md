@@ -198,31 +198,18 @@ preserve the original run bearer, and forward only to the verified PR origin thr
 the host's private transport. Keep the hosting secret out of provider child environments
 and record this QA intervention separately from unattended Cloud/image acceptance.
 
-For unattended Agent Host acceptance on a protected Preview, use a disposable
-QA image with a transport wrapper that attaches an existing access cookie only
-to that exact PR origin. Keep the cookie in a mode-0600 file under the machine's
-private persistent home, never in a snapshot, provider-child environment or
-global request headers. Boat clears `/tmp` during stop/resume, so a temporary
-access file cannot establish unattended wake acceptance. Keep the signed host
-authentication intact, record the wrapper as a QA fixture, and delete the owned
-machine after settlement; this is not the production image bootstrap.
-
-For candidate-host regression QA, `scripts/smoke/cloud-agent-long-horizon/byo-host-box.mts`
-can pack the current checkout and enroll it into the PR's backend. Require the
-existing scoped Preview Boat key with `BOAT_ENVIRONMENT=overlay-preview`; never
-substitute the production key. This is a disposable VPS-style fixture, so record
-cloud-provisioning acceptance separately. The host-only preload removes its
-`NODE_OPTIONS` before provider launch. It does not authenticate the provider's MCP
-traffic through Vercel protection; record that limitation when testing app tools.
-
-Native managed-Cloud QA may bootstrap an owned disposable machine during its pending
-provisioning attempt. Verify its provider identity and expected enrollment name, confirm that
-no original host/provider task is running, install checksum-verified candidate packages and
-exact adapter pins, then enroll with that same expected name. Let the existing provisioner
-approve the environment, create its lease and bind the provider account. Use the exact-origin
-private transport for both initial enrollment and later host wake; keep its preload out of
-provider children. Record this manual intervention separately from unattended image/startup
-acceptance. A successful shell-only provider probe does not prove protected Overlay MCP tools.
+For candidate-host regression QA, use a user-owned local machine or VPS with the
+current Agent Host package and standard user-initiated enrollment. Connect it to
+the isolated PR backend, approve its selected root, then verify bind, invoke,
+stream, cancel, reconnect, and revoke. Do not use hosted Cloud provisioning,
+or managed images. Browser protection access is separate from host access.
+For a user-owned QA host, retain `--hosting-auth-file`: a one-shot, mode-0600,
+host-owned file containing the exact HTTPS Preview origin and the existing
+project bypass secret. The host consumes it before enrollment, attaches it
+only to that origin’s API requests, refuses redirects, and proxies the run’s
+MCP through loopback without exposing hosting access to provider children.
+Signed enrollment and run authentication remain required. Restarts need a fresh
+private file at the configured path; never store it in a snapshot or Git.
 
 See [Vercel's automation bypass documentation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation).
 See also [Vercel MCP access tools](https://vercel.com/docs/agent-resources/vercel-mcp/tools).

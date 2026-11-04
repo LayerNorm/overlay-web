@@ -237,10 +237,8 @@ export default defineSchema({
     .index('by_connectionId', ['connectionId'])
     .index('by_userId', ['userId']),
 
-  // Metadata for the credentials an Overlay Cloud agent runs on (a Claude Code
-  // setup-token or API key, an OpenAI API key). The secret itself lives in the
-  // credential vault; only its opaque reference is stored here, and it is
-  // delivered to a machine one run at a time.
+  // Historical provider-account metadata. Provider/model adapters may still
+  // use these records; retired Cloud runtimes cannot receive credentials.
   agentProviderAccounts: defineTable({
     userId: v.string(),
     provider: v.union(v.literal('claude-code'), v.literal('codex'), v.literal('opencode'), v.literal('hermes'), v.literal('cursor')),

@@ -3,20 +3,14 @@ import { z } from 'zod/v3'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { WorkspaceAgentServiceError } from '@/server/agents'
-import { CloudAgentMachineError } from '@/server/agents/cloud/CloudAgentMachineService'
 import { AgentProfileError } from '@/server/agents/profiles/agent-profile-codec'
 import { logger } from '@/server/observability/logger'
-import { getAgentFacingBaseUrl } from '@/server/web/app-url'
 import { agentErrorResponse } from '../../shared'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
 
 const actionSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('import_code'), harness: z.string().max(32) }).strict(),
-  z.object({ action: z.literal('apply'), profileId: z.string().min(1).max(64), hooksEnabled: z.boolean().optional() }).strict(),
   z.object({ action: z.literal('discard'), profileId: z.string().min(1).max(64) }).strict(),
-  z.object({ action: z.literal('hooks'), profileId: z.string().min(1).max(64), enabled: z.boolean() }).strict(),
-  z.object({ action: z.literal('set_secret'), name: z.string().min(1).max(64), value: z.string().min(1).max(4096) }).strict(),
   z.object({ action: z.literal('delete_secret'), name: z.string().min(1).max(64) }).strict(),
 ])
 
@@ -28,7 +22,7 @@ async function agentIdOf(context: AppApiRouteContext) {
 }
 
 function failure(error: unknown) {
-  if (error instanceof AgentProfileError || error instanceof CloudAgentMachineError) {
+  if (error instanceof AgentProfileError) {
     return NextResponse.json({ error: error.message, code: error.code }, { status: error.statusCode, headers: NO_STORE })
   }
   if (error instanceof z.ZodError) {
@@ -50,31 +44,28 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
   }
 }
 
-/** Create an import code, apply or discard a version, turn imported hooks on or off, set or remove a needed value. */
+/** Remove historical profile data or secret values. New profile imports, applications, and secret writes are retired. */
 export async function POST(_request: Request, context: AppApiRouteContext) {
   try {
     const input = actionSchema.parse(context.parsedJson)
     const profiles = getOverlayServerContext().agentProfiles
     const base = { actorUserId: context.auth.userId, workspaceId: context.workspace.workspace.id, agentId: await agentIdOf(context) }
     switch (input.action) {
-      case 'import_code':
-        return NextResponse.json(await profiles.createImportCode({ ...base, harness: input.harness, serverUrl: getAgentFacingBaseUrl() }), { status: 201, headers: NO_STORE })
-      case 'apply':
-        return NextResponse.json(await profiles.apply({ ...base, profileId: input.profileId, ...(input.hooksEnabled === undefined ? {} : { hooksEnabled: input.hooksEnabled }) }), { headers: NO_STORE })
       case 'discard':
         await profiles.discard({ ...base, profileId: input.profileId })
-        return NextResponse.json({ ok: true }, { headers: NO_STORE })
-      case 'hooks':
-        await profiles.setHooks({ ...base, profileId: input.profileId, enabled: input.enabled })
-        return NextResponse.json({ ok: true }, { headers: NO_STORE })
-      case 'set_secret':
-        await profiles.setSecret({ ...base, name: input.name, value: input.value })
         return NextResponse.json({ ok: true }, { headers: NO_STORE })
       case 'delete_secret':
         await profiles.deleteSecret({ ...base, name: input.name })
         return NextResponse.json({ ok: true }, { headers: NO_STORE })
     }
   } catch (error) {
+    if (error instanceof z.ZodError && (error.issues[0]?.path[0] === 'action'
+      || ['import_code', 'apply', 'hooks', 'set_secret'].includes(String((context.parsedJson as { action?: unknown } | undefined)?.action)))) {
+      return NextResponse.json({
+        error: 'Hosted Overlay Cloud profile import and application are retired.',
+        code: 'hosted_runtime_retired',
+      }, { status: 410, headers: NO_STORE })
+    }
     return failure(error)
   }
 }

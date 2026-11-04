@@ -250,35 +250,3 @@ export function isDesktopSandboxInstance(value: SandboxInstance): value is Deskt
 
 export const OVERLAY_AGENT_HOST_STATE_DIRECTORY = '/var/lib/overlay-agent-host'
 export const OVERLAY_AGENT_HOST_WORKSPACE = '/workspace'
-export const OVERLAY_MANAGED_ACP_ADAPTER_IDS = ['codex', 'claude-code'] as const
-export type OverlayManagedAcpAdapterId = (typeof OVERLAY_MANAGED_ACP_ADAPTER_IDS)[number]
-
-export function isOverlayManagedAcpAdapterId(value: unknown): value is OverlayManagedAcpAdapterId {
-  return typeof value === 'string'
-    && (OVERLAY_MANAGED_ACP_ADAPTER_IDS as readonly string[]).includes(value)
-}
-
-/** The same bootstrap is used for user-owned and managed hosts; only the surrounding machine differs. */
-export function managedAgentHostCommand(input: {
-  enrollmentCode: string
-  serverUrl: string
-  name: string
-  adapters?: OverlayManagedAcpAdapterId[]
-}): SandboxCommandRequest {
-  const adapters = input.adapters?.length ? input.adapters : ['codex', 'claude-code']
-  return {
-    command: 'overlay-agent-host',
-    args: [
-      'connect', input.enrollmentCode,
-      '--server', input.serverUrl,
-      '--state-dir', OVERLAY_AGENT_HOST_STATE_DIRECTORY,
-      '--name', input.name,
-      '--kind', 'overlay_cloud',
-      '--run',
-      ...adapters.flatMap((adapter) => ['--adapter', adapter]),
-    ],
-    cwd: OVERLAY_AGENT_HOST_WORKSPACE,
-    detached: true,
-    timeoutMs: 24 * 60 * 60_000,
-  }
-}

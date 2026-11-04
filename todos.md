@@ -41,11 +41,8 @@ touch it if a customer explicitly requires a Postgres app-data backend.
 
 ## Overlay Cloud agents (Phase 6)
 
-- [ ] **Test the E2B adapter against real E2B** — it is only tested against a fake SDK.
-  Needs an `E2B_API_KEY`; set `OVERLAY_MANAGED_SANDBOX_PROVIDER=e2b` and
-  `OVERLAY_CLOUD_AGENT_IMAGE=overlay-agent:v5`, run `npx tsx infra/agent-image/build-e2b.mts`,
-  then create a cloud agent and check: create, wake after idle, pause, delete, `writeFiles`
-  (Codex `auth.json`), and the E2B rate card in `ManagedAgentSandboxBilling.ts`.
+- [x] Hosted third-party Overlay Cloud image provisioning retired. Do not rebuild or publish
+  `infra/agent-image`; retain shared sandbox metering and provider cleanup infrastructure.
   See `internal/develop/codex-subscription.md`.
 - [x] **Hermes on Overlay Cloud — dropped (2026-10-03).** Boat's lazy Hermes install fails, and pre-installing with `UV_PYTHON_INSTALL_DIR` / `UV_CACHE_DIR` on the real disk did not help: the base layer's filesystem drops files while uv unpacks (`EXTERNALLY-MANAGED`, `_sysconfigdata_`, wheel `.dist-info` errors). Hermes stays hidden from the pickers (`SELECTABLE_AGENT_PROVIDER_IDS`); retry only if Boat's base layer changes.
 - [ ] **Cursor agent live test** — needs a `CURSOR_API_KEY`.

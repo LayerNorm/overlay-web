@@ -73,7 +73,7 @@ purpose, but there is no per-message opt-in yet.
 | --- | --- |
 | **Personal chat** | The same pipeline, narrowed by what you ask: a base set (knowledge, memory, notes read, skills) is always there; writes, files, browser, video, and automations appear when the request calls for them (`exposure-policy.ts`), plus web and connected apps by plan. Free plan: paid tools are stubs. |
 | **Overlay (native) agent** | Its grant (groups it was given, `allowedToolIds`) intersected with deployment, account, and project policy. A grant only narrows. New agents get every group except Computer. |
-| **Claude Code / Codex on Overlay Cloud, or on your machine** | The same tools through the Overlay MCP server (`/api/agent-mcp`), limited by the agent's grant, minus `computer_*` (it has its own machine) and `present_generated_ui`. Tools that need approval show an approval card. |
+| **Claude Code / Codex on a user-owned host** | The same tools through the Overlay MCP server (`/api/agent-mcp`), limited by the agent's grant, minus `computer_*` and `present_generated_ui`. Tools that need approval show an approval card. |
 | **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, computer tools, and `post_message`. |
 
 ## Native agent permissions

@@ -39,10 +39,7 @@ for (const path of ['runtime.ts', 'enrollment.ts']) {
   const source = await readFile(new URL(`../../packages/overlay-agent-host/src/${path}`, import.meta.url), 'utf8')
   assert.ok(source.includes(`hostVersion: '${hostPackage.version}'`), `${path} must advertise the released host version`)
 }
-const image = JSON.parse(await readFile(new URL('../../infra/agent-image/versions.json', import.meta.url), 'utf8'))
 for (const [constant, name] of [['CODEX_ACP_PACKAGE_VERSION', 'codex-acp'], ['CLAUDE_AGENT_ACP_PACKAGE_VERSION', 'claude-agent-acp']]) {
-  const version = image.packages[`@agentclientprotocol/${name}`]
-  assert.match(version, /^\d+\.\d+\.\d+$/)
-  assert.match(adapterManifests, new RegExp(`${constant} = '${version.replaceAll('.', '\\.')}'`), 'host and image adapter pins must match')
+  assert.match(adapterManifests, new RegExp(`${constant} = '\\d+\\.\\d+\\.\\d+'`), `${name} BYOM pin must be a stable release`)
 }
 console.log(`Agent Host release ${hostPackage.version} is internally pinned and consistent.`)
