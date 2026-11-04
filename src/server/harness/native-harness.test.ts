@@ -31,6 +31,13 @@ vi.mock('./native-delivery-steps', () => ({ attachNativeHarnessDelivery: mocks.a
 vi.mock('./personal-wait-steps', () => ({ harnessWakeToken: (id: string) => `harness:wake:${id}`,
   notifyHarnessAncestors: mocks.notify, readHarnessChild: mocks.child }))
 vi.mock('@/server/harness/native-tools', () => ({ createNativeHarnessTools: mocks.tools }))
+vi.mock('@/server/harness/harness-transcript', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/server/harness/harness-transcript')>()),
+  readHarnessTranscriptForDelivery: vi.fn(async () => ({
+    persistence: { content: '', parts: [] }, steps: [], truncated: false,
+    newestSequence: null, oldestSequence: null,
+  })),
+}))
 
 const input: NativeHarnessWorkflowInput = {
   access: { actorUserId: 'user', runId: 'workspace:agent', conversationId: 'room', workspaceId: 'workspace',

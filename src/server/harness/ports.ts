@@ -49,6 +49,7 @@ export type HarnessArtifactReadResult =
 export type HarnessRunnerCheckpoint = {
   version: 1
   messages: ModelMessage[]
+  stepReceiptIds?: Array<string | undefined>
   deliverySteps?: StepResult<ToolSet>[]
   invocation: number
   modelCall: number
@@ -56,6 +57,7 @@ export type HarnessRunnerCheckpoint = {
   finalAnswerRequired: boolean
   truncatedResponse: boolean
   segmentStartedAt: number
+  publicProgress?: { due: boolean; silentToolBatches: number }
   deliveryProgress?: string
   pendingApproval?: { requests: HarnessApprovalRequest[]; segment: number }
   toolApprovals?: HarnessToolApprovalGrant[]

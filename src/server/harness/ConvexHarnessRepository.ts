@@ -9,6 +9,8 @@ import type {
   HarnessWait,
   HarnessWaitReference,
   HarnessWaitRequest,
+  HarnessTranscriptPage,
+  HarnessTranscriptPersistence,
 } from '@overlay/agent-runtime/harness-store'
 import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessArtifactMetadata } from './artifact-context'
@@ -135,6 +137,38 @@ export class ConvexHarnessRepository implements HarnessRepository {
     }, { throwOnError: true })
     if (!result) throw new Error('Document evidence could not be read.')
     return result
+  }
+
+  async writeTranscriptStep(input: {
+    actorUserId: string
+    runId: string
+    workflowRunId: string
+    receiptId: string
+    stepNumber: number
+    persistence: HarnessTranscriptPersistence
+  }): Promise<{ persisted: boolean }> {
+    const result = await convex.mutation<{ persisted: boolean }>('harness/runs:writeTranscriptStep', {
+      ...input, serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!result) throw new Error('Harness transcript persistence returned no result.')
+    return result
+  }
+
+  async listTranscriptSteps(input: {
+    actorUserId: string
+    runId: string
+    workflowRunId: string
+    cursor: string | null
+  }): Promise<HarnessTranscriptPage> {
+    const page = await convex.query<HarnessTranscriptPage>('harness/runs:listTranscriptSteps', {
+      actorUserId: input.actorUserId,
+      runId: input.runId,
+      workflowRunId: input.workflowRunId,
+      paginationOpts: { cursor: input.cursor, numItems: 25 },
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!page) throw new Error('Harness transcript read returned no page.')
+    return page
   }
 
   async submitWaitReply(input: {

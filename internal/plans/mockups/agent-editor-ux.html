@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="generator" content="Devin artifact kit" />
+    <title>Artifact</title>
+    <script>
+      // A network that blocks the kit's host (or hands back a block page for it) leaves the page blank; say so instead. Styled like the
+      // ds error alert card (ChatAlertCard variant="error", no bar), values hardcoded: the kit CSS is what failed.
+      function artifactKitFailed() {
+        function show() {
+          if (document.getElementById("artifact-kit-notice")) return;
+          document.documentElement.style.colorScheme = "light";
+          var notice = document.createElement("div");
+          notice.id = "artifact-kit-notice";
+          notice.setAttribute("role", "alert");
+          notice.style.cssText =
+            "box-sizing:border-box;display:flex;align-items:flex-start;gap:6px;max-width:960px;margin:0 auto;padding:32px 24px 0;" +
+            "font:13px/18px Inter,ui-sans-serif,system-ui,sans-serif;letter-spacing:-0.005em;color:rgb(25 25 25)";
+          var ns = "http://www.w3.org/2000/svg";
+          var icon = document.createElementNS(ns, "svg");
+          icon.setAttribute("viewBox", "0 0 24 24");
+          icon.setAttribute("fill", "rgb(245 59 58)");
+          icon.setAttribute("aria-hidden", "true");
+          icon.style.cssText = "width:14px;height:14px;flex-shrink:0;margin-top:2px";
+          var path = document.createElementNS(ns, "path");
+          path.setAttribute("fill-rule", "evenodd");
+          path.setAttribute("clip-rule", "evenodd");
+          path.setAttribute(
+            "d",
+            "M12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2ZM12 15C11.4477 15 11 15.4477 11 16C11 16.5523 11.4477 17 12 17C12.5523 17 13 16.5523 13 16C13 15.4477 12.5523 15 12 15ZM12 7C11.5858 7 11.25 7.33579 11.25 7.75V12.25C11.25 12.6642 11.5858 13 12 13C12.4142 13 12.75 12.6642 12.75 12.25V7.75C12.75 7.33579 12.4142 7 12 7Z"
+          );
+          icon.appendChild(path);
+          var text = document.createElement("span");
+          text.textContent = "This page could not load Devin's artifact kit.";
+          notice.appendChild(icon);
+          notice.appendChild(text);
+          document.body.prepend(notice);
+        }
+        if (document.body) show();
+        else document.addEventListener("DOMContentLoaded", show);
+      }
+    </script>
+    <link rel="stylesheet" href="https://static.devin.ai/artifact-kit/b0ca2d9c3a0700c2/ds-kit.css" onerror="artifactKitFailed()" />
+    <style>
+.mb-2 {
+    margin-bottom: 0.5rem
+}
+.mb-3 {
+    margin-bottom: 0.75rem
+}
+.mb-4 {
+    margin-bottom: 1rem
+}
+.mb-5 {
+    margin-bottom: 1.25rem
+}
+.mb-6 {
+    margin-bottom: 1.5rem
+}
+.mb-7 {
+    margin-bottom: 1.75rem
+}
+.mt-1 {
+    margin-top: 0.25rem
+}
+.mt-12 {
+    margin-top: 3rem
+}
+.mt-2 {
+    margin-top: 0.5rem
+}
+.mt-3 {
+    margin-top: 0.75rem
+}
+.mt-5 {
+    margin-top: 1.25rem
+}
+.mt-6 {
+    margin-top: 1.5rem
+}
+.flex {
+    display: flex
+}
+.grid {
+    display: grid
+}
+.hidden {
+    display: none
+}
+.min-h-\[500px\] {
+    min-height: 500px
+}
+.w-\[272px\] {
+    width: 272px
+}
+.w-\[348px\] {
+    width: 348px
+}
+.w-full {
+    width: 100%
+}
+.min-w-0 {
+    min-width: 0px
+}
+.max-w-\[300px\] {
+    max-width: 300px
+}
+.max-w-full {
+    max-width: 100%
+}
+.flex-1 {
+    flex: 1 1 0%
+}
+.shrink-0 {
+    flex-shrink: 0
+}
+.grid-cols-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr))
+}
+.flex-wrap {
+    flex-wrap: wrap
+}
+.items-start {
+    align-items: flex-start
+}
+.items-center {
+    align-items: center
+}
+.justify-start {
+    justify-content: flex-start
+}
+.justify-between {
+    justify-content: space-between
+}
+.gap-10 {
+    gap: 2.5rem
+}
+.gap-2 {
+    gap: 0.5rem
+}
+.gap-3 {
+    gap: 0.75rem
+}
+.gap-4 {
+    gap: 1rem
+}
+.space-y-1 > :not([hidden]) ~ :not([hidden]) {
+    --tw-space-y-reverse: 0;
+    margin-top: calc(0.25rem * calc(1 - var(--tw-space-y-reverse)));
+    margin-bottom: calc(0.25rem * var(--tw-space-y-reverse))
+}
+.space-y-3 > :not([hidden]) ~ :not([hidden]) {
+    --tw-space-y-reverse: 0;
+    margin-top: calc(0.75rem * calc(1 - var(--tw-space-y-reverse)));
+    margin-bottom: calc(0.75rem * var(--tw-space-y-reverse))
+}
+.space-y-5 > :not([hidden]) ~ :not([hidden]) {
+    --tw-space-y-reverse: 0;
+    margin-top: calc(1.25rem * calc(1 - var(--tw-space-y-reverse)));
+    margin-bottom: calc(1.25rem * var(--tw-space-y-reverse))
+}
+.truncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap
+}
+.break-words {
+    overflow-wrap: break-word
+}
+.rounded-lg {
+    border-radius: 0.5rem
+}
+.rounded-xl {
+    border-radius: 0.75rem
+}
+.border {
+    border-width: 1px
+}
+.border-primary {
+    border-color: rgb(var(--border-primary))
+}
+.bg-elevated {
+    background-color: rgb(var(--bg-elevated))
+}
+.bg-wash {
+    background-color: rgb(var(--bg-wash))
+}
+.p-3 {
+    padding: 0.75rem
+}
+.p-5 {
+    padding: 1.25rem
+}
+.px-2 {
+    padding-left: 0.5rem;
+    padding-right: 0.5rem
+}
+.py-1 {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem
+}
+.py-2 {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem
+}
+.pt-2 {
+    padding-top: 0.5rem
+}
+.text-center {
+    text-align: center
+}
+.text-sm {
+    font-size: calc(0.875rem * var(--text-scale, 1));
+    line-height: calc(1.25rem * var(--text-scale, 1))
+}
+.font-normal {
+    font-weight: 400
+}
+.text-blue {
+    color: rgb(var(--text-blue))
+}
+.text-primary {
+    color: rgb(var(--text-primary))
+}
+.text-secondary {
+    color: rgb(var(--text-secondary))
+}
+.filter {
+    filter: var(--tw-blur) var(--tw-brightness) var(--tw-contrast) var(--tw-grayscale) var(--tw-hue-rotate) var(--tw-invert) var(--tw-saturate) var(--tw-sepia) var(--tw-drop-shadow)
+}
+@keyframes enter {
+    from {
+        opacity: var(--tw-enter-opacity, 1);
+        transform: translate3d(var(--tw-enter-translate-x, 0), var(--tw-enter-translate-y, 0), 0) scale3d(var(--tw-enter-scale, 1), var(--tw-enter-scale, 1), var(--tw-enter-scale, 1)) rotate(var(--tw-enter-rotate, 0))
+    }
+}
+@keyframes exit {
+    to {
+        opacity: var(--tw-exit-opacity, 1);
+        transform: translate3d(var(--tw-exit-translate-x, 0), var(--tw-exit-translate-y, 0), 0) scale3d(var(--tw-exit-scale, 1), var(--tw-exit-scale, 1), var(--tw-exit-scale, 1)) rotate(var(--tw-exit-rotate, 0))
+    }
+}
+.\!running {
+    animation-play-state: running !important
+}
+.running {
+    animation-play-state: running
+}
+@media (min-width: 640px) {
+    .sm\:block {
+        display: block
+    }
+}
+    </style>
+  </head>
+  <body>
+    <script src="https://static.devin.ai/artifact-kit/b0ca2d9c3a0700c2/ds-kit.js" onerror="artifactKitFailed()"></script>
+    <script>
+      if (!window.DS) artifactKitFailed();
+    </script>
+    <main data-artifact-shell class="mx-auto flex max-w-[960px] flex-col gap-6 px-6 py-8">
+<div id="root"></div>
+<script>DSRun("\nfunction ComputerIcon() { return React.createElement('svg', { width: \"16\", height: \"16\", viewBox: \"0 0 24 24\"   , fill: \"none\", stroke: \"currentColor\", strokeWidth: \"1.5\",}, React.createElement('rect', { x: \"3\", y: \"3\", width: \"18\", height: \"13\", rx: \"2\",}), React.createElement('path', { d: \"M12 16v5m-4 0h8\"  ,})) }\nfunction TrashIcon() { return React.createElement('svg', { width: \"15\", height: \"15\", viewBox: \"0 0 24 24\"   , fill: \"none\", stroke: \"currentColor\", strokeWidth: \"1.5\",}, React.createElement('path', { d: \"M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7\"     ,})) }\nfunction SearchIcon() { return React.createElement('svg', { width: \"16\", height: \"16\", viewBox: \"0 0 24 24\"   , fill: \"none\", stroke: \"currentColor\", strokeWidth: \"1.5\",}, React.createElement('circle', { cx: \"10\", cy: \"10\", r: \"7\",}), React.createElement('path', { d: \"m15 15 6 6\"   ,})) }\nfunction AgentIcon() { return React.createElement('svg', { width: \"32\", height: \"32\", viewBox: \"0 0 32 32\"   , fill: \"none\",}, React.createElement('path', { className: \"text-blue\", fill: \"currentColor\", d: \"m16 2 12 7v14l-12 7-12-7V9z\"    ,}), React.createElement('path', { stroke: \"currentColor\", strokeWidth: \"2.5\", strokeLinecap: \"round\", d: \"M12 14v4m8-4v4\" ,})) }\nfunction Mockup() {\n  const [screen,setScreen] = useState('editor');\n  const [connected,setConnected] = useState(true);\n  const [running,setRunning] = useState(true);\n  const [computer,setComputer] = useState(true);\n  const [size,setSize] = useState('default');\n  const [channels,setChannels] = useState(['product','launch']);\n  const [tab,setTab] = useState('personal');\n  const [selected,setSelected] = useState('Paul Nurse the Scientist');\n  const [notice,setNotice] = useState('');\n  const chats = ['Paul Nurse the Scientist','Learning LU Decomposition','Who Is Michael Truell','Learning QR Decomposition','Overlay Launch Video','Launch Strategy','New thread'];\n  return React.createElement(PageLayout, { title: \"Agent editor and chats\"   , subtitle: \"Design preview. Sample connections and threads.\"     , themeToggle: true,}\n    , React.createElement('div', { className: \"flex flex-wrap items-center justify-between gap-3 mb-6\"     ,}\n      , React.createElement(SegmentedControl, { value: screen, onValueChange: setScreen,}, React.createElement(SegmentedControlItem, { value: \"editor\",}, \"Agent editor\" ), React.createElement(SegmentedControlItem, { value: \"chats\",}, \"Chat sidebar\" ))\n      , screen === 'editor' && React.createElement(SegmentedControl, { value: connected?'connected':'empty', onValueChange: v=>setConnected(v==='connected'), size: \"small\",}, React.createElement(SegmentedControlItem, { value: \"connected\",}, \"Connected\"), React.createElement(SegmentedControlItem, { value: \"empty\",}, \"Not connected\" ))\n    )\n    , screen === 'editor' ? React.createElement('div', { className: \"flex flex-wrap gap-10 items-start\"   ,}\n      , React.createElement('div', { className: \"w-[348px] max-w-full shrink-0 rounded-xl border border-primary bg-elevated p-5 text-primary\"        ,}\n        , React.createElement('div', { className: \"flex items-center gap-3 mb-6\"   ,}, React.createElement(AgentIcon, null), React.createElement('div', { className: \"flex-1\",}, React.createElement(Text, { as: \"p\", weight: \"medium\",}, \"Product Agent\" ), React.createElement(Text, { as: \"p\", size: 12, className: \"text-secondary\",}, \"Improve the product\"  )), React.createElement(IconButton, { variant: \"ghost\", 'aria-label': \"Close preview\" , onClick: ()=>setNotice('Preview only: the editor closes in the app.'),}, React.createElement(IconCrossMedium, null)))\n        , React.createElement('div', { className: \"flex gap-4 mb-6 text-sm\"   ,}, React.createElement(Text, { as: \"p\", weight: \"medium\",}, \"Details\"), React.createElement(Text, { as: \"p\", className: \"text-secondary\",}, \"Library\"), React.createElement(Text, { as: \"p\", className: \"text-secondary\",}, \"Computer\"))\n        , React.createElement('div', { className: \"flex justify-between items-center py-2 mb-2\"    ,}, React.createElement(Text, { as: \"p\", size: 12, className: \"text-secondary\",}, \"Model\"), React.createElement(Text, { as: \"p\", size: 12,}, \"GLM 5.3 Flash\"  ))\n        , React.createElement('div', { className: \"flex justify-between items-center py-2 mb-5\"    ,}, React.createElement(Text, { as: \"p\", size: 12, className: \"text-secondary\",}, \"Tools\"), React.createElement(Text, { as: \"p\", size: 12,}, \"15 enabled\" ))\n        , React.createElement(Text, { as: \"p\", size: 12, weight: \"medium\", className: \"mb-3\",}, \"Computer\")\n        , computer ? React.createElement('div', { className: \"bg-wash rounded-xl p-3 mb-7\"   ,}\n          , React.createElement('div', { className: \"flex gap-2 items-start mb-4\"   ,}, React.createElement('span', { className: \"text-secondary mt-1\" ,}, React.createElement(ComputerIcon, null)), React.createElement('div', { className: \"min-w-0 flex-1\" ,}, React.createElement(Text, { as: \"p\", size: 13, weight: \"medium\", className: \"break-words\",}, \"Product Agent computer\"  ), React.createElement(Text, { as: \"p\", size: 12, className: \"text-secondary mt-1\" ,}, running?'Running · Agent is using it':'Stopped')))\n          , React.createElement('div', { className: \"grid grid-cols-2 gap-2\"  ,}, React.createElement(Button, { variant: \"secondary\", size: \"sm\", onClick: ()=>setNotice('Preview: desktop opens in a new panel.'), disabled: !running,}, \"Open desktop\" ), React.createElement(Button, { variant: \"secondary\", size: \"sm\", onClick: ()=>setNotice('Preview: request control of this computer.'), disabled: !running,}, \"Take control\" ))\n          , React.createElement('div', { className: \"flex justify-between mt-2\"  ,}, React.createElement(Button, { variant: \"ghost\", size: \"sm\", onClick: ()=>setRunning(!running),}, running?'Stop computer':'Start computer'), React.createElement(IconButton, { variant: \"ghost\", 'aria-label': \"Delete computer\" , onClick: ()=>setNotice('Preview: deleting a computer requires confirmation.'),}, React.createElement(TrashIcon, null)))\n        ) : React.createElement('div', { className: \"bg-wash rounded-xl p-3 mb-7\"   ,}, React.createElement(Text, { as: \"p\", size: 12, className: \"mb-2\",}, \"Size\"), React.createElement(SimpleSelect, { value: size, onValueChange: setSize, options: [{value:'small',label:'Small · 2 vCPU, 4 GB'},{value:'default',label:'Default · 4 vCPU, 8 GB'},{value:'large',label:'Large · 8 vCPU, 16 GB'}],} ), React.createElement(Text, { as: \"p\", size: 12, className: \"text-secondary mt-3\" ,}, \"Created when you save. Also managed in Settings → Computers.\"         ))\n        , React.createElement(Text, { as: \"p\", size: 12, weight: \"medium\", className: \"mb-3\",}, \"Reachable on\" )\n        , React.createElement('div', { className: \"space-y-3\",}\n          , React.createElement('div', { className: \"bg-wash rounded-xl p-3\"  ,}, React.createElement('div', { className: \"flex justify-between items-center\"  ,}, React.createElement(Text, { as: \"p\", size: 13, weight: \"medium\",}, \"Overlay\"), React.createElement(Text, { as: \"p\", size: 11, className: \"text-secondary\",}, \"Always on\" )), React.createElement(Text, { as: \"p\", size: 12, className: \"text-secondary mt-1\" ,}, \"Chats and rooms\"  ))\n          , React.createElement('div', { className: \"bg-wash rounded-xl p-3\"  ,}\n            , React.createElement('div', { className: \"flex justify-between items-center gap-2\"   ,}, React.createElement('div', null, React.createElement(Text, { as: \"p\", size: 13, weight: \"medium\",}, \"Slack\"), React.createElement(Text, { as: \"p\", size: 12, className: \"text-secondary mt-1\" ,}, connected?'Acme workspace':'Not connected')), !connected?React.createElement(Button, { variant: \"secondary\", size: \"sm\", onClick: ()=>setConnected(true),}, \"Connect\"):React.createElement(Menu, null, React.createElement(MenuTrigger, null, React.createElement(IconButton, { 'aria-label': \"Slack actions\" , variant: \"ghost\",}, React.createElement(IconChevronDownMedium, null))), React.createElement(MenuContent, null, React.createElement(MenuItem, { onClick: ()=>setChannels([...new Set([...channels,'engineering'])]),}, \"Add channel\" ), React.createElement(MenuItem, { onClick: ()=>setConnected(false),}, \"Disconnect workspace\" ))))\n            , connected && React.createElement('div', { className: \"mt-3 space-y-1\" ,}, channels.map(channel=>React.createElement('div', { className: \"flex items-center gap-2 py-1\"   , key: channel,}, React.createElement(Text, { as: \"p\", size: 12, className: \"flex-1\",}, \"# \" , channel), React.createElement(IconButton, { size: \"sm\", variant: \"ghost\", 'aria-label': 'Remove '+channel, onClick: ()=>setChannels(channels.filter(c=>c!==channel)),}, React.createElement(IconCrossMedium, { size: 12,})))), channels.length===0&&React.createElement(Text, { as: \"p\", size: 12, className: \"text-secondary\",}, \"No channels added\"  ), React.createElement(Button, { variant: \"ghost\", size: \"sm\", className: \"mt-1\", onClick: ()=>setChannels([...new Set([...channels,'engineering'])]),}, React.createElement(IconPlusLarge, { size: 12,}), \"Add channel\" ))\n          )\n        )\n        , React.createElement(Text, { as: \"p\", size: 11, className: \"text-secondary mt-3\" ,}, \"Connected conversations appear in Chats.\"    )\n      )\n      , React.createElement('div', { className: \"max-w-[300px] pt-2 space-y-5\"  ,}\n        , React.createElement('div', null, React.createElement(Text, { as: \"p\", weight: \"medium\",}, \"Fits the sidebar\"  ), React.createElement(Text, { as: \"p\", size: 13, className: \"text-secondary mt-2\" ,}, \"Computer actions sit below its name and status. Nothing squeezes the title or spills outside the panel.\"                ))\n        , React.createElement('div', null, React.createElement(Text, { as: \"p\", weight: \"medium\",}, \"Connections, not dividers\"  ), React.createElement(Text, { as: \"p\", size: 13, className: \"text-secondary mt-2\" ,}, \"Each platform has one flat surface. Slack channels sit under their workspace. Unsupported platforms stay out of the editor.\"                  ))\n        , React.createElement('div', null, React.createElement(Text, { as: \"p\", weight: \"medium\",}, \"Channels versus threads\"  ), React.createElement(Text, { as: \"p\", size: 13, className: \"text-secondary mt-2\" ,}, \"The editor manages connected channels. Actual conversations and their threads remain in Chats. No invented thread counts or links.\"                  ))\n        , React.createElement(Button, { variant: \"ghost\", size: \"sm\", onClick: ()=>setComputer(!computer),}, computer?'Show no computer':'Show connected computer')\n      )\n    ) : React.createElement('div', { className: \"flex gap-2 min-h-[500px]\"  ,}\n      , React.createElement('div', { className: \"w-[272px] shrink-0 max-w-full bg-elevated border border-primary rounded-xl p-3\"       ,}\n        , React.createElement('div', { className: \"flex items-center mb-4\"  ,}, React.createElement(Text, { as: \"p\", weight: \"semibold\", className: \"flex-1\",}, \"Chats\"), React.createElement(IconButton, { 'aria-label': \"Search chats\" , variant: \"ghost\", onClick: ()=>setNotice('Preview: search your chats.'),}, React.createElement(SearchIcon, null)), React.createElement(IconButton, { 'aria-label': \"New chat\" , variant: \"ghost\", onClick: ()=>setSelected('New thread'),}, React.createElement(IconPlusLarge, { size: 16,})))\n        , React.createElement(SegmentedControl, { value: tab, onValueChange: setTab, className: \"w-full\", size: \"small\",}, React.createElement(SegmentedControlItem, { value: \"personal\", className: \"flex-1\",}, \"Personal\"), React.createElement(SegmentedControlItem, { value: \"workspace\", className: \"flex-1\",}, \"Workspace\"))\n        , React.createElement(Text, { as: \"p\", size: 12, className: \"text-secondary mt-6 mb-2 px-2\"   ,}, \"Recents\")\n        , React.createElement('div', { className: \"space-y-1\",}, chats.map(name=>React.createElement(Button, { key: name, variant: \"ghost\", size: \"sm\", className: 'w-full justify-start font-normal '+(selected===name?'bg-wash':''), onClick: ()=>setSelected(name),}, React.createElement('span', { className: \"truncate\",}, name))))\n      )\n      , React.createElement('div', { className: \"flex-1 min-w-0 rounded-xl border border-primary bg-elevated p-5 hidden sm:block\"        ,}, React.createElement(Text, { as: \"p\", size: 13, className: \"text-secondary\",}, tab==='personal'?'Personal':'Workspace', \" / Chats\"  ), React.createElement(Text, { as: \"p\", weight: \"medium\", className: \"mt-12 text-center\" ,}, selected), React.createElement(Text, { as: \"p\", size: 13, className: \"text-secondary mt-3 text-center\"  ,}, \"AI chat titles without repeated chat icons.\"      ))\n    )\n    , notice&&React.createElement('div', { className: \"flex items-center gap-3 mt-5 bg-wash rounded-lg p-3\"      ,}, React.createElement(Text, { as: \"p\", size: 12, className: \"flex-1\",}, notice), React.createElement(IconButton, { variant: \"ghost\", 'aria-label': \"Dismiss\", onClick: ()=>setNotice(''),}, React.createElement(IconCrossMedium, { size: 12,})))\n  )\n}\nrender(React.createElement(Mockup, null));\n")</script>
+    </main>
+  </body>
+</html>

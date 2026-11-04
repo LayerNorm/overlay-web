@@ -31,6 +31,13 @@ vi.mock('@/server/conversations/personal-chat-work-lifecycle', () => ({ persistP
 vi.mock('@/server/harness/file-analysis-steps', () => ({
   resolveFileAnalysisEnabled: mocks.resolveFileAnalysis, readFileAnalysisCoverage: mocks.readFileCoverage,
 }))
+vi.mock('@/server/harness/harness-transcript', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/server/harness/harness-transcript')>()),
+  readHarnessTranscriptForDelivery: vi.fn(async () => ({
+    persistence: { content: '', parts: [] }, steps: [], truncated: false,
+    newestSequence: null, oldestSequence: null,
+  })),
+}))
 
 const input: PersonalHarnessWorkflowInput = {
   access: { actorUserId: 'user', runId: 'root', conversationId: 'conversation', agentRunId: 'delivery',
@@ -196,11 +203,16 @@ test('retrying child launch reuses claimed child ownership instead of starting a
 
 test('execution failure is persisted before a child wakes its parent', async () => {
   state.parentRunId = 'parent'
+  state.policy.publicProgressVersion = 1
   mocks.run.mockRejectedValue(new Error('Access was revoked.'))
   mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: 'Access was revoked.' })
   expect(await personalHarnessWorkflow(input)).toEqual({
     runId: 'root', status: 'failed', terminalReason: 'Access was revoked.',
   })
-  expect(mocks.apply).toHaveBeenCalledWith(expect.anything(), 'execution-failed', { type: 'terminate', status: 'failed', reason: 'Access was revoked.' })
+  expect(mocks.apply).toHaveBeenCalledWith(expect.anything(), 'execution-failed',
+    expect.objectContaining({
+      type: 'terminate', status: 'failed', reason: expect.stringContaining('Diagnostic ID:'),
+      diagnostic: expect.objectContaining({ code: 'UNKNOWN', retryability: 'reconcile' }),
+    }))
   expect(mocks.apply.mock.invocationCallOrder[0]).toBeLessThan(mocks.notify.mock.invocationCallOrder[0])
 })

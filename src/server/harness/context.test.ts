@@ -1,9 +1,13 @@
 import { expect, test } from 'vitest'
 import { createHarnessSnapshot, recordHarnessEvidence, recordHarnessReceipt, replaceHarnessPlan, transitionHarnessStep } from '@overlay/agent-runtime/harness-state'
-import { buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessWorkingContext, harnessProgressFingerprint } from './context'
+import { buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessWorkingContext, harnessProgressFingerprint, HARNESS_CONTROL_TOOLS } from './context'
 import { buildHarnessCheckpoint, parseHarnessVerificationResponse } from './continuity'
 import { HARNESS_ANSWER_CORRECTION_INSTRUCTIONS, HARNESS_EVIDENCE_POLICY } from './continuity-policy'
 import { harnessToolOutputEvidence } from './tool-evidence'
+
+test('shared Harness controls retain file analysis after transcript integration', () => {
+  expect(HARNESS_CONTROL_TOOLS).toContain('harness_analyze_files')
+})
 
 const make = (requiresPlan = true) => createHarnessSnapshot({
   runId: 'fixture-run', goal: 'Check the requested document', constraints: ['Do not publish it'],
@@ -43,7 +47,7 @@ test('write-capable runs receive evidence-backed planning instructions', () => {
   const instructions = buildHarnessStepInstructions(make(), {
     instructions: 'Surface instructions', continuation: false, truncatedResponse: false,
   })
-  expect(instructions).toContain('call harness_set_plan before anything else')
+  expect(instructions).toContain('make harness_set_plan your first tool call, after a brief user-facing acknowledgment')
   expect(instructions).toContain('tool:<id> evidence IDs from observations')
   expect(instructions).toContain('Give each action milestone evidenceTools listing the tools whose results prove it; cite only results from those tools.')
   expect(instructions).toContain('one answerOnly milestone')
@@ -63,6 +67,14 @@ test('write-capable runs receive evidence-backed planning instructions', () => {
   expect(instructions).toContain('Never describe actions that were not executed')
   expect(instructions).not.toContain('\u2013')
   expect(instructions).not.toContain('\u2014')
+})
+
+test('progress is public text rather than private reasoning or tool labels', () => {
+  const instructions = buildHarnessInstructions('Surface instructions')
+  expect(instructions).toContain('Before the first tool call, briefly acknowledge the request')
+  expect(instructions).toContain('Between meaningful batches of tools, explain what you found')
+  expect(instructions).toContain('When a tool fails or you change approach, explain the practical impact')
+  expect(instructions).toContain('not private reasoning or tool arguments')
 })
 
 test('goal anchoring is present for plan-optional runs', () => {

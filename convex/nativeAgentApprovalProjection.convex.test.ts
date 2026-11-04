@@ -2,6 +2,9 @@ import { convexTest } from 'convex-test'
 import { beforeAll, describe, expect, test } from 'vitest'
 import { api } from './_generated/api'
 import schema from './schema'
+import { createHarnessDiagnostic, harnessDiagnosticMessage } from '../packages/overlay-agent-runtime/src/harness-diagnostic'
+import { readNativeAgentError } from '../src/shared/agents/native-agent-error'
+import { mergeHarnessFailureTranscript } from './lib/harnessFailureTranscript'
 
 const modules = import.meta.glob('./**/*.ts')
 const serverSecret = 'native-agent-approval-test'
@@ -14,6 +17,24 @@ const participantPrincipalId = 'native-agent-approval-participant-principal'
 beforeAll(() => { process.env.INTERNAL_API_SECRET = serverSecret })
 
 describe('native agent approval projection', () => {
+  test('an empty failure journal preserves live text and tool part order', () => {
+    const liveParts = [
+      { type: 'text', text: 'Before the action.' },
+      { type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'live-tool', toolName: 'computer_input', state: 'output-available', toolOutput: { ok: true },
+      } },
+      { type: 'text', text: 'After the action.' },
+    ]
+    const merged = mergeHarnessFailureTranscript({
+      liveContent: 'Before the action.\nAfter the action.',
+      liveParts,
+      settledContent: '',
+      settledParts: [],
+    })
+    expect(merged.content).toBe('Before the action.\nAfter the action.')
+    expect(merged.parts).toEqual(liveParts)
+  })
+
   test('exact run lookup is scoped while transitions and progress preserve or clear the projection', async () => {
     const convex = convexTest(schema, modules)
     const seeded = await convex.run(async ctx => {
@@ -188,6 +209,7 @@ describe('native agent approval projection', () => {
         mode: 'room',
         runner: 'workflow',
         executionEngine: 'overlay_harness',
+        workflowRunId: 'approval-workflow-b',
         status: 'running',
         createdAt: now,
         updatedAt: now,
@@ -356,20 +378,43 @@ describe('native agent approval projection', () => {
 
     await convex.mutation(api.collaboration.directMessages.failAgentMessage, {
       actorUserId: initiatorUserId,
-      content: 'Partial failure output.',
+      content: 'The first part.\nThe last part.',
       conversationId: seeded.conversationId,
       messageId: seeded.assistantMessageB,
       parts: [
-        { type: 'text', text: 'Partial failure output.' },
+        { type: 'text', text: 'The first part.' },
         { type: 'tool-invocation', toolInvocation: { toolCallId: 'tool-2', toolName: 'computer_input', state: 'output-error', toolOutput: { error: 'failed' } } },
+        { type: 'text', text: 'The last part.' },
         { type: 'data-native-agent-approval', data: { runId: seeded.runB, conversationId: seeded.conversationId, userId: initiatorUserId, token: 'approval-token-b', requestedAt: Date.now(), requests: [] } },
       ],
+      runId: seeded.runB,
+      workflowRunId: 'approval-workflow-b',
       workspaceId,
       serverSecret,
     })
+    const diagnostic = createHarnessDiagnostic({
+      diagnosticId: 'hd_convex_roundtrip',
+      code: 'UNKNOWN',
+      stage: 'model',
+      occurredAt: Date.now(),
+    })
     await convex.mutation(api.chat.conversations.failAgentRun, {
-      error: { code: 'model_failed', message: 'The agent turn failed.', retryable: false },
+      error: {
+        code: 'harness_unknown',
+        message: harnessDiagnosticMessage(diagnostic),
+        retryable: false,
+        diagnostic,
+      },
       errorText: 'The agent turn failed.',
+      expectedWorkflowRunId: 'approval-workflow-b',
+      failureTranscript: {
+        content: 'The first part.\nThe missing middle.\nThe last part.',
+        parts: [
+          { type: 'text', text: 'The first part.' },
+          { type: 'text', text: 'The missing middle.' },
+          { type: 'text', text: 'The last part.' },
+        ],
+      },
       runId: seeded.runB,
       serverSecret,
       userId: initiatorUserId,
@@ -383,7 +428,9 @@ describe('native agent approval projection', () => {
     const failedMessage = await convex.run(ctx => ctx.db.get(seeded.assistantMessageB))
     expect(failedRun?.status).toBe('failed')
     expect(failedRun?.approval).toBeUndefined()
-    expect(failedMessage?.content).toBe('Partial failure output.')
+    expect(failedMessage?.content).toBe('The first part.\nThe missing middle.\nThe last part.\n\nSecond agent.')
+    expect(failedMessage?.content.match(/The first part\./g)).toHaveLength(1)
+    expect(failedMessage?.content.match(/The last part\./g)).toHaveLength(1)
     expect(failedMessage?.parts?.some(part => part.type === 'data-native-agent-approval')).toBe(false)
     expect(failedMessage?.parts?.some(part => part.type === 'tool-invocation')).toBe(true)
     expect(failedMessage?.parts?.find(part => part.type === 'data-native-agent-error')).toEqual({
@@ -391,6 +438,9 @@ describe('native agent approval projection', () => {
         ...failedRun!.terminalError, runId: String(seeded.runB), failedAt: failedRun!.failedAt,
       },
     })
+    expect(readNativeAgentError(failedMessage?.parts)).toEqual(failedMessage?.parts?.find(
+      part => part.type === 'data-native-agent-error',
+    )?.data)
     await convex.mutation(api.chat.conversations.failAgentRun, {
       error: { code: 'different', message: 'A late duplicate must not replace the reason.', retryable: true },
       errorText: 'late', runId: seeded.runB, serverSecret, userId: initiatorUserId,

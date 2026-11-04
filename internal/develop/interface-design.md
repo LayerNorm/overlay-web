@@ -633,3 +633,10 @@ existing settings rows and UI primitives. Reserve traffic-light space only when
 the bridge marks the document; header buttons and links remain non-draggable.
 Chat/notes `surface=panel` uses the compact desktop layout with the same providers
 and permission boundaries. See [Desktop web shell](desktop-web-shell.md).
+
+
+Agent Computer cards stack their desktop/control actions above secondary power and
+delete controls so narrow editor panels remain usable. Pass the current operator ID
+through every card entry point so taking control identifies the viewer correctly. User document chips derive from persisted attachment
+metadata or the indexed-document marker even when structured text parts take priority
+for the displayed message body.

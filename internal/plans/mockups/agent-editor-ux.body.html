@@ -1,0 +1,64 @@
+<div id="root"></div>
+<script type="text/jsx">
+function ComputerIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="13" rx="2"/><path d="M12 16v5m-4 0h8"/></svg> }
+function TrashIcon() { return <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/></svg> }
+function SearchIcon() { return <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/></svg> }
+function AgentIcon() { return <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><path className="text-blue" fill="currentColor" d="m16 2 12 7v14l-12 7-12-7V9z"/><path stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" d="M12 14v4m8-4v4"/></svg> }
+function Mockup() {
+  const [screen,setScreen] = useState('editor');
+  const [connected,setConnected] = useState(true);
+  const [running,setRunning] = useState(true);
+  const [computer,setComputer] = useState(true);
+  const [size,setSize] = useState('default');
+  const [channels,setChannels] = useState(['product','launch']);
+  const [tab,setTab] = useState('personal');
+  const [selected,setSelected] = useState('Paul Nurse the Scientist');
+  const [notice,setNotice] = useState('');
+  const chats = ['Paul Nurse the Scientist','Learning LU Decomposition','Who Is Michael Truell','Learning QR Decomposition','Overlay Launch Video','Launch Strategy','New thread'];
+  return <PageLayout title="Agent editor and chats" subtitle="Design preview. Sample connections and threads." themeToggle>
+    <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <SegmentedControl value={screen} onValueChange={setScreen}><SegmentedControlItem value="editor">Agent editor</SegmentedControlItem><SegmentedControlItem value="chats">Chat sidebar</SegmentedControlItem></SegmentedControl>
+      {screen === 'editor' && <SegmentedControl value={connected?'connected':'empty'} onValueChange={v=>setConnected(v==='connected')} size="small"><SegmentedControlItem value="connected">Connected</SegmentedControlItem><SegmentedControlItem value="empty">Not connected</SegmentedControlItem></SegmentedControl>}
+    </div>
+    {screen === 'editor' ? <div className="flex flex-wrap gap-10 items-start">
+      <div className="w-[348px] max-w-full shrink-0 rounded-xl border border-primary bg-elevated p-5 text-primary">
+        <div className="flex items-center gap-3 mb-6"><AgentIcon/><div className="flex-1"><Text as="p" weight="medium">Product Agent</Text><Text as="p" size={12} className="text-secondary">Improve the product</Text></div><IconButton variant="ghost" aria-label="Close preview" onClick={()=>setNotice('Preview only: the editor closes in the app.')}><IconCrossMedium/></IconButton></div>
+        <div className="flex gap-4 mb-6 text-sm"><Text as="p" weight="medium">Details</Text><Text as="p" className="text-secondary">Library</Text><Text as="p" className="text-secondary">Computer</Text></div>
+        <div className="flex justify-between items-center py-2 mb-2"><Text as="p" size={12} className="text-secondary">Model</Text><Text as="p" size={12}>GLM 5.3 Flash</Text></div>
+        <div className="flex justify-between items-center py-2 mb-5"><Text as="p" size={12} className="text-secondary">Tools</Text><Text as="p" size={12}>15 enabled</Text></div>
+        <Text as="p" size={12} weight="medium" className="mb-3">Computer</Text>
+        {computer ? <div className="bg-wash rounded-xl p-3 mb-7">
+          <div className="flex gap-2 items-start mb-4"><span className="text-secondary mt-1"><ComputerIcon/></span><div className="min-w-0 flex-1"><Text as="p" size={13} weight="medium" className="break-words">Product Agent computer</Text><Text as="p" size={12} className="text-secondary mt-1">{running?'Running · Agent is using it':'Stopped'}</Text></div></div>
+          <div className="grid grid-cols-2 gap-2"><Button variant="secondary" size="sm" onClick={()=>setNotice('Preview: desktop opens in a new panel.')} disabled={!running}>Open desktop</Button><Button variant="secondary" size="sm" onClick={()=>setNotice('Preview: request control of this computer.')} disabled={!running}>Take control</Button></div>
+          <div className="flex justify-between mt-2"><Button variant="ghost" size="sm" onClick={()=>setRunning(!running)}>{running?'Stop computer':'Start computer'}</Button><IconButton variant="ghost" aria-label="Delete computer" onClick={()=>setNotice('Preview: deleting a computer requires confirmation.')}><TrashIcon/></IconButton></div>
+        </div> : <div className="bg-wash rounded-xl p-3 mb-7"><Text as="p" size={12} className="mb-2">Size</Text><SimpleSelect value={size} onValueChange={setSize} options={[{value:'small',label:'Small · 2 vCPU, 4 GB'},{value:'default',label:'Default · 4 vCPU, 8 GB'},{value:'large',label:'Large · 8 vCPU, 16 GB'}]} /><Text as="p" size={12} className="text-secondary mt-3">Created when you save. Also managed in Settings → Computers.</Text></div>}
+        <Text as="p" size={12} weight="medium" className="mb-3">Reachable on</Text>
+        <div className="space-y-3">
+          <div className="bg-wash rounded-xl p-3"><div className="flex justify-between items-center"><Text as="p" size={13} weight="medium">Overlay</Text><Text as="p" size={11} className="text-secondary">Always on</Text></div><Text as="p" size={12} className="text-secondary mt-1">Chats and rooms</Text></div>
+          <div className="bg-wash rounded-xl p-3">
+            <div className="flex justify-between items-center gap-2"><div><Text as="p" size={13} weight="medium">Slack</Text><Text as="p" size={12} className="text-secondary mt-1">{connected?'Acme workspace':'Not connected'}</Text></div>{!connected?<Button variant="secondary" size="sm" onClick={()=>setConnected(true)}>Connect</Button>:<Menu><MenuTrigger><IconButton aria-label="Slack actions" variant="ghost"><IconChevronDownMedium/></IconButton></MenuTrigger><MenuContent><MenuItem onClick={()=>setChannels([...new Set([...channels,'engineering'])])}>Add channel</MenuItem><MenuItem onClick={()=>setConnected(false)}>Disconnect workspace</MenuItem></MenuContent></Menu>}</div>
+            {connected && <div className="mt-3 space-y-1">{channels.map(channel=><div className="flex items-center gap-2 py-1" key={channel}><Text as="p" size={12} className="flex-1"># {channel}</Text><IconButton size="sm" variant="ghost" aria-label={'Remove '+channel} onClick={()=>setChannels(channels.filter(c=>c!==channel))}><IconCrossMedium size={12}/></IconButton></div>)}{channels.length===0&&<Text as="p" size={12} className="text-secondary">No channels added</Text>}<Button variant="ghost" size="sm" className="mt-1" onClick={()=>setChannels([...new Set([...channels,'engineering'])])}><IconPlusLarge size={12}/>Add channel</Button></div>}
+          </div>
+        </div>
+        <Text as="p" size={11} className="text-secondary mt-3">Connected conversations appear in Chats.</Text>
+      </div>
+      <div className="max-w-[300px] pt-2 space-y-5">
+        <div><Text as="p" weight="medium">Fits the sidebar</Text><Text as="p" size={13} className="text-secondary mt-2">Computer actions sit below its name and status. Nothing squeezes the title or spills outside the panel.</Text></div>
+        <div><Text as="p" weight="medium">Connections, not dividers</Text><Text as="p" size={13} className="text-secondary mt-2">Each platform has one flat surface. Slack channels sit under their workspace. Unsupported platforms stay out of the editor.</Text></div>
+        <div><Text as="p" weight="medium">Channels versus threads</Text><Text as="p" size={13} className="text-secondary mt-2">The editor manages connected channels. Actual conversations and their threads remain in Chats. No invented thread counts or links.</Text></div>
+        <Button variant="ghost" size="sm" onClick={()=>setComputer(!computer)}>{computer?'Show no computer':'Show connected computer'}</Button>
+      </div>
+    </div> : <div className="flex gap-2 min-h-[500px]">
+      <div className="w-[272px] shrink-0 max-w-full bg-elevated border border-primary rounded-xl p-3">
+        <div className="flex items-center mb-4"><Text as="p" weight="semibold" className="flex-1">Chats</Text><IconButton aria-label="Search chats" variant="ghost" onClick={()=>setNotice('Preview: search your chats.')}><SearchIcon/></IconButton><IconButton aria-label="New chat" variant="ghost" onClick={()=>setSelected('New thread')}><IconPlusLarge size={16}/></IconButton></div>
+        <SegmentedControl value={tab} onValueChange={setTab} className="w-full" size="small"><SegmentedControlItem value="personal" className="flex-1">Personal</SegmentedControlItem><SegmentedControlItem value="workspace" className="flex-1">Workspace</SegmentedControlItem></SegmentedControl>
+        <Text as="p" size={12} className="text-secondary mt-6 mb-2 px-2">Recents</Text>
+        <div className="space-y-1">{chats.map(name=><Button key={name} variant="ghost" size="sm" className={'w-full justify-start font-normal '+(selected===name?'bg-wash':'')} onClick={()=>setSelected(name)}><span className="truncate">{name}</span></Button>)}</div>
+      </div>
+      <div className="flex-1 min-w-0 rounded-xl border border-primary bg-elevated p-5 hidden sm:block"><Text as="p" size={13} className="text-secondary">{tab==='personal'?'Personal':'Workspace'} / Chats</Text><Text as="p" weight="medium" className="mt-12 text-center">{selected}</Text><Text as="p" size={13} className="text-secondary mt-3 text-center">AI chat titles without repeated chat icons.</Text></div>
+    </div>}
+    {notice&&<div className="flex items-center gap-3 mt-5 bg-wash rounded-lg p-3"><Text as="p" size={12} className="flex-1">{notice}</Text><IconButton variant="ghost" aria-label="Dismiss" onClick={()=>setNotice('')}><IconCrossMedium size={12}/></IconButton></div>}
+  </PageLayout>
+}
+render(<Mockup/>);
+</script>

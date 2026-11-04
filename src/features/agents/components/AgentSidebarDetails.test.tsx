@@ -4,6 +4,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { AgentSidebarDetails } from './AgentSidebarDetails'
+import { AgentSidebarAdvancedSettings } from './AgentSidebarDetails.parts'
 import type { useAgentEditorController } from './AgentEditorPage'
 
 type Controller = ReturnType<typeof useAgentEditorController>
@@ -61,4 +62,19 @@ test('agent details render collapsed Model, Instructions, Tools, and Advanced se
   assert.match(html, /2 on/)
   assert.doesNotMatch(html, /More settings/)
   assert.doesNotMatch(html, /Mention-first is enforced/)
+})
+
+
+test('the sidebar identifies its current Computer operator instead of reporting someone else', () => {
+  const editor = {
+    computersAvailable: true, isDefaultMaster: true, connectedAgentsEnabled: false,
+    runtime: { agentType: 'overlay' },
+    form: { name: 'QA agent', permissionMode: 'ask', visibility: 'workspace', enabledToolGroups: new Set(['computer']) },
+    computer: { currentUserId: 'qa-operator', computerSize: 'small', computerOpenBusy: false, computerLifecycleBusy: null,
+      agentComputer: { id: 'owned-computer', status: 'ready', size: 'small', controlledByUserId: 'qa-operator' } },
+    surfaces: { connections: [], bindings: [], loading: false, enabled: false },
+  } as unknown as Controller
+  const html = renderToStaticMarkup(<AgentSidebarAdvancedSettings editor={editor} />)
+  assert.match(html, /You have control\. QA agent is paused\./)
+  assert.doesNotMatch(html, /Someone else has control/)
 })

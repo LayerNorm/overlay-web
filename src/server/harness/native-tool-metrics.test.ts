@@ -1,6 +1,9 @@
+import { vi } from 'vitest'
 import { expect, test } from 'vitest'
 import { createHarnessSnapshot, recordHarnessEvidence } from '@overlay/agent-runtime/harness-state'
 import { buildNativeHarnessDelivery, nativeHarnessToolMetrics } from './native-tool-metrics'
+
+vi.mock('server-only', () => ({}))
 
 test('native metrics count persisted non-control tool results and classify failures', () => {
   const evidence = Array.from({ length: 10 }, (_, index) => ({

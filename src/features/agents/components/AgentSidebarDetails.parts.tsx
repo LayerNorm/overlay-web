@@ -191,13 +191,14 @@ export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller })
           </section>
           {editor.computersAvailable ? (
             <section>
-              <SectionHeading>Computer settings</SectionHeading>
-              <div className="mt-2 rounded-[10px] bg-(--surface-subtle) p-3">
+              <SectionHeading>Computer</SectionHeading>
+              <div className="mt-2">
                 <AgentComputerSection
                   enabled={form.enabledToolGroups.has('computer')}
                   size={computer.computerSize}
                   onSizeChange={(size) => { computer.setComputerSize(size); form.markDirty() }}
                   computer={computer.agentComputer}
+                  currentUserId={computer.currentUserId}
                   agentName={form.name}
                   openBusy={computer.computerOpenBusy}
                   lifecycleBusy={computer.computerLifecycleBusy}
@@ -214,7 +215,7 @@ export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller })
             </section>
           ) : null}
           <section>
-            <div className="mt-2 rounded-[10px] bg-(--surface-subtle) p-3">
+            <div className="mt-2">
               <AgentSurfacesField
                 agentName={form.name}
                 hasAgent={Boolean(agent)}

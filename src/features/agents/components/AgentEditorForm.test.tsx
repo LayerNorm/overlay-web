@@ -7,6 +7,7 @@ import {
   AccessSelector,
   AgentBehaviorFields,
   AgentComputerSection,
+  AgentSurfacesSection,
   AgentTypeSelector,
   ByoAgentFields,
   OverlayAgentPermissionsField,
@@ -167,6 +168,8 @@ test('computer section shows the provisioned desktop and locks the size', () => 
   assert.match(markup, /ready · large/)
   assert.match(markup, /Open desktop/)
   assert.match(markup, /Take control/)
+  assert.match(markup, /grid grid-cols-2 gap-2/)
+  assert.doesNotMatch(markup, /border-\(--border\)/)
   assert.doesNotMatch(markup, /aria-label="Computer size"/)
 })
 
@@ -187,6 +190,32 @@ test('computer section warns that disabling a provisioned computer deletes it', 
     <AgentComputerSection enabled={false} computer={agentComputer} {...computerSectionProps} />,
   )
   assert.match(markup, /Saving deletes this computer/)
+})
+
+test('reachable platforms group channels by workspace without dividers or coming-soon rows', () => {
+  const noop = () => undefined
+  const props: React.ComponentProps<typeof AgentSurfacesSection> = {
+    agentName: 'Scout', hasAgent: true, loading: false, canBind: true, canBindResolved: true,
+    channelPicker: null, busyId: null, error: null,
+    onConnectSlack: noop, onToggleChannelPicker: noop, onSelectChannel: noop, onRemoveBinding: noop,
+    connections: [{ id: 'connection', workspaceId: 'workspace', platform: 'slack', externalTeamId: 'team',
+      externalTeamName: 'Acme', externalEnterpriseId: null, botUserId: 'bot', status: 'active',
+      installedByUserId: 'user', createdAt: 1, updatedAt: 1 }],
+    bindings: [{ id: 'binding', connectionId: 'connection', agentId: 'agent', channelId: 'channel',
+      channelName: 'product', status: 'active', createdByUserId: 'user', createdAt: 1, updatedAt: 1 }],
+  }
+  const html = renderToStaticMarkup(<AgentSurfacesSection {...props} />)
+  assert.match(html, /Slack/)
+  assert.match(html, /Acme/)
+  assert.match(html, /product/)
+  assert.match(html, /Add channel/)
+  assert.match(html, /It acts with your access/)
+  assert.doesNotMatch(html, /border-b|coming soon|Teams|Discord/)
+  const readOnly = renderToStaticMarkup(<AgentSurfacesSection {...props} canBind={false} />)
+  assert.doesNotMatch(readOnly, />Add channel<|>Remove<|Connect another/)
+  const empty = renderToStaticMarkup(<AgentSurfacesSection {...props} connections={[]} bindings={[]} />)
+  assert.match(empty, /Not connected/)
+  assert.match(empty, />Connect</)
 })
 
 const behaviorBase = {
@@ -260,4 +289,13 @@ test('overlay fields render the computer accessory under its tool row', () => {
   assert.match(markup, /persistent cloud desktop/)
   assert.match(markup, /Scout computer/)
   assert.match(markup, /Open desktop/)
+})
+
+
+test('a recently active stopped Computer shows its stopped state rather than active use', () => {
+  const markup = renderToStaticMarkup(<AgentComputerSection enabled
+    computer={{ ...agentComputer, status: 'stopped', lastActiveAt: Date.now() }} {...computerSectionProps} />)
+  assert.match(markup, /stopped · large/)
+  assert.match(markup, /Start computer/)
+  assert.doesNotMatch(markup, /Scout is using it/)
 })
