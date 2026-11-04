@@ -4,7 +4,6 @@ import {
   calculateGatewayEmbeddingCostOrNull,
   calculateGatewayLanguageTokenCostOrNull,
 } from '../../src/shared/ai/gateway/model-pricing'
-import { isFreeTierChatModelId } from '../../src/shared/ai/gateway/model-types'
 
 const CATALOG_URL = 'https://ai-gateway.vercel.sh/v1/models'
 const CACHE_TTL_MS = 15 * 60 * 1000
@@ -95,7 +94,6 @@ export async function calculateGatewayLanguageModelCostOrNull(
   cachedInputTokens: number,
   outputTokens: number,
 ): Promise<number | null> {
-  if (isFreeTierChatModelId(modelId)) return 0
   const model = await findModel(ctx, modelId)
   return model?.type === 'language' && model.pricing
     ? calculateGatewayLanguageTokenCostOrNull(

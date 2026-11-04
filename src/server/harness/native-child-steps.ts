@@ -29,6 +29,8 @@ export async function admitNativeHarnessChild(
       || state.policy.workspaceId !== input.access.workspaceId) throw new FatalError('Invalid native delegation authority.')
     const result = await repository.apply({
       actorUserId: input.access.actorUserId, runId: input.access.runId,
+      workflowRunId: input.access.workflowRunId,
+      executionGeneration: input.access.executionGeneration ?? 0,
       operationId: `delegate:${id}`, expectedRevision: state.revision,
       operation: { type: 'admit_child', child, goal: delegation.goal, constraints: delegation.constraints },
     })

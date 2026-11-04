@@ -13,17 +13,16 @@ adapter are three independent parts of the connected-agent system.
 
 **Refresh.** `AgentProviderAccountService.freshCodexTokens` refreshes server-side when the access token expires within 25 minutes. A Convex lease (`refreshLockOwner` / `refreshLockUntil` on `agentProviderAccounts`, `acquireRefreshLockByServer` / `releaseRefreshLockByServer`) lets exactly one run refresh at a time; others wait up to 20 s then reread. New tokens are stored *before* the lock is released. A rejected refresh (`invalid_grant`, 400/401) flags the account `needs_reauth`; a transient failure does not.
 
-**Delivery.** On `issueRunCredentials` or idle bound-adapter option discovery the app server writes a per-run `/home/user/.codex/auth.json` to the machine through `deliverMachineFiles` (`CloudAgentMachineService.writeFiles`; paths must be under `/home/user/`). It holds a fresh access token and a **placeholder** refresh token, so a machine can never rotate the real one. Codex only refreshes after 8 days or on a 401; a placeholder refresh therefore fails harmlessly and the next run gets a new file. The signed credential endpoint accepts an exclusive run id or adapter id. Discovery uses only the unique enabled binding on that Cloud environment and refuses active work; callers cannot select an account or owner. Existing run requests and credential method scopes remain compatible.
+**Delivery.** Hosted Cloud run-credential delivery is retired and the compatibility endpoint returns 410. Provider-account records and token refresh remain available to supported model/subscription adapters; they are not issued to hosted third-party harnesses.
 
-**Known limit.** `auth.json` (with a short-lived access token) stays on the machine's disk after a catalog probe or run, until the next broker delivery overwrites it.
+**Host credential delivery.** No provider-account credentials are delivered to retired hosted
+third-party runtimes. A BYOM harness keeps and refreshes its own subscription session on the
+user-owned host; model/subscription adapters use provider-account records independently.
 
-Protected PR Preview hosting access is separate from Codex sign-in. The compatible host consumes
-a private one-shot access file before starting adapters and keeps hosting headers on its exact
-Preview API origin; MCP crosses a host loopback relay with the original run token. Neither the
-provider environment nor Codex `auth.json` contains the hosting credential. Fresh-image acceptance
-is required before claiming unattended Preview enrollment; a manual QA bootstrap is insufficient.
+The former managed-host Preview bootstrap credential is retired. BYOM hosts use their own enrollment
+credential and the standard signed control-plane protocol.
 
-**Verification status.** Unit and Convex tests cover the flow, the lock, and delivery. Live verification (a real ChatGPT approval, and two Codex agents on one account) needs the account owner to approve a device code; record the result here when done.
+**Verification status.** Unit and Convex tests cover the broker and refresh lock. Live verification (a real ChatGPT approval) needs the account owner to approve a device code; record the result here when done.
 
 ## Model choice
 
@@ -38,9 +37,8 @@ Model, effort, permissions and Overlay access save independently for the next tu
 OpenCode, Hermes, and Cursor are no longer product-supported BYO providers. Existing records
 remain readable for history and account removal, but they are not offered for new setup or
 reconnection and their credentials are not issued to runs. Generic ACP transport remains
-available for self-hosted custom adapters. The source update prepares Agent Host/protocol `0.4.3`
-and image v10 with Claude ACP `0.93.0` and Codex ACP `2.2.2`; publication and machine rollout
-are separate work. Existing machines should upgrade only when idle.
+available for self-hosted custom adapters. Agent Host and protocol releases remain a lockstep
+BYOM compatibility concern; no hosted Cloud image is built or published.
 
 ## C. E2B adapter (self-hosting)
 
@@ -49,8 +47,7 @@ are separate work. Existing machines should upgrade only when idle.
 ```
 OVERLAY_MANAGED_SANDBOX_PROVIDER=e2b
 E2B_API_KEY=...
-OVERLAY_CLOUD_AGENT_IMAGE=overlay-agent:v5     # printed by the build script
-npx tsx infra/agent-image/build-e2b.mts        # builds the template
+OVERLAY_E2B_TEMPLATE=<template configured for this self-hosted deployment>
 ```
 
 Sandboxes use `onTimeout: 'pause'`, `autoResume: false`; Overlay's own idle meter stops them. Billing uses the E2B rate card in `ManagedAgentSandboxBilling.ts`. Tested against a fake SDK only; not run against real E2B.

@@ -21,8 +21,33 @@ export function documentReadObservation(output: unknown) {
     || typeof value.fileId !== 'string' || typeof value.revision !== 'string'
     || !Number.isSafeInteger(value.page) || Number(value.page) < 1
     || !['text', 'render', 'ocr'].includes(String(value.mode))
-    || value.truncated === true || value.needsVisualInspection === true) return undefined
+    || value.truncated === true || value.needsVisualInspection === true || value.coverageComplete === false) return undefined
   return { fileId: value.fileId, revision: value.revision, page: Number(value.page), mode: String(value.mode) }
+}
+
+export function documentReadEvidenceValue(output: unknown, input: unknown, failed: boolean) {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) return undefined
+  const value = output as Record<string, unknown>
+  if (typeof value.success !== 'boolean' && typeof value.error !== 'string') return undefined
+  const request = input && typeof input === 'object' ? input as Record<string, unknown> : {}
+  const observation = failed ? undefined : documentReadObservation(value)
+  const evidence = {
+    success: !failed && value.success === true,
+    fileId: value.fileId ?? request.fileId,
+    revision: value.revision ?? request.revision,
+    page: value.page ?? request.page,
+    mode: value.mode,
+    coverageComplete: Boolean(observation),
+    ...(!observation ? {
+      status: typeof value.error === 'string' && value.error.startsWith('Source revision mismatch') ? 'stale' : 'unavailable',
+    } : {}),
+    ...(typeof value.text === 'string' ? { textExcerpt: value.text.slice(0, 1_000), textExcerptTruncated: value.text.length > 1_000 } : {}),
+  }
+  while (evidence.textExcerpt && JSON.stringify(evidence).length > 1_900) {
+    evidence.textExcerpt = evidence.textExcerpt.slice(0, Math.floor(evidence.textExcerpt.length / 2))
+    evidence.textExcerptTruncated = true
+  }
+  return evidence
 }
 
 export function fileAnalysisAssignments(child: Pick<HarnessSnapshot, 'constraints'>): FileAnalysisPartition[] | null {
@@ -50,7 +75,7 @@ export function fileAnalysisCoverage(assignments: FileAnalysisPartition[], evide
       const value = JSON.parse(item.summary)
       const data = documentReadObservation(value)
       if (data && item.verdict !== 'failed') observed.set(JSON.stringify([data.fileId, data.revision, data.page]), item.id)
-      if (value.success === false && ['stale', 'unavailable'].includes(value.status)) {
+      if ((value.success === false || value.coverageComplete === false) && ['stale', 'unavailable'].includes(value.status)) {
         failures.set(JSON.stringify([value.fileId, value.revision, value.page]), value.status)
       }
     } catch (_error) { /* Non-structured legacy observations do not establish coverage. */ }

@@ -1,8 +1,8 @@
 import { v } from 'convex/values'
+import { configuredUsageMarkupBasisPoints } from '../lib/usageMarkup'
 import type { Doc } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import {
-  CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS,
   CURRENT_BILLING_ACCOUNT_PRICING_VERSION,
   assertBillingAccountOwnership,
   type BillingAccountRecord,
@@ -53,7 +53,7 @@ export async function ensurePersonalBillingAccount(
   const account: Omit<Doc<'billingAccounts'>, '_creationTime' | '_id'> = {
     billingAccountId: `ba_${crypto.randomUUID().replaceAll('-', '')}`,
     createdAt: now,
-    markupBasisPoints: CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS,
+    markupBasisPoints: configuredUsageMarkupBasisPoints(),
     pricingVersion: CURRENT_BILLING_ACCOUNT_PRICING_VERSION,
     primaryBillingContactUserId: userId,
     scope: 'personal',
@@ -86,7 +86,7 @@ export async function ensureWorkspaceBillingAccount(
   const account: Omit<Doc<'billingAccounts'>, '_creationTime' | '_id'> = {
     billingAccountId: `ba_${crypto.randomUUID().replaceAll('-', '')}`,
     createdAt: now,
-    markupBasisPoints: CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS,
+    markupBasisPoints: configuredUsageMarkupBasisPoints(),
     pricingVersion: CURRENT_BILLING_ACCOUNT_PRICING_VERSION,
     primaryBillingContactUserId,
     scope: 'workspace',

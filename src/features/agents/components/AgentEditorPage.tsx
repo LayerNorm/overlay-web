@@ -117,21 +117,18 @@ export function useAgentEditorController({
   const allTextModels = useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
-    return getModelsByIntelligence(false)
+    return getModelsByIntelligence()
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
   }, [revision])
   const modelField = useMemo(() => {
     const accessUnresolved = !modelAccess.entitlements
     const selectableTextModels = modelAccess.loading || accessUnresolved
       ? buildSelectableTextModels({
-          isModelAccessRestricted: true,
           effectiveOnlyAllowZdrModels: false,
         })
       : modelAccess.selectableTextModels
     return {
       favoriteScope: authUser?.id ?? null,
-      isFreeTier: modelAccess.isFreeTier || modelAccess.loading || accessUnresolved,
-      isFreeTierWorkspace: modelAccess.isFreeTier,
       modelPickerLabel: allTextModels.find((model) => model.id === form.modelId)?.name ?? form.modelId,
       selectableTextModels,
       textModelsLoading: false,
@@ -141,7 +138,6 @@ export function useAgentEditorController({
     authUser?.id,
     form.modelId,
     modelAccess.entitlements,
-    modelAccess.isFreeTier,
     modelAccess.loading,
     modelAccess.selectableTextModels,
   ])
@@ -175,7 +171,7 @@ export function useAgentEditorController({
       }),
       teamIds: agent?.teamIds ?? [],
     }
-    // An Overlay Cloud agent's Overlay access is set by its own control on this page, not by Save; sending the
+    // A legacy Cloud agent's Overlay access is controlled separately from this form; sending the
     // editor's copy (empty for connected agents) would wipe it.
     // Its model is likewise set by its own control (Model).
     if (runtime.cloudAgent) {

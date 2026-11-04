@@ -62,7 +62,7 @@ const sections = [
   },
   {
     title: 'Availability, changes, and beta features',
-    body: 'The service may change, experience interruptions, or discontinue features. Beta, preview, trial, and experimental features may be changed or withdrawn at any time and are provided without service commitments. LayerNorm will use commercially reasonable efforts to avoid materially reducing paid core functionality during a current term, subject to security, law, and provider changes.',
+    body: 'The service may change, experience interruptions, or discontinue features. Beta, preview, and experimental features may be changed or withdrawn at any time and are provided without service commitments. LayerNorm will use commercially reasonable efforts to avoid materially reducing paid core functionality during a current term, subject to security, law, and provider changes.',
   },
   {
     title: 'Termination and data export',

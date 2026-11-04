@@ -1,5 +1,5 @@
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
-import type { Doc } from '../_generated/dataModel'
+import type { Doc, Id } from '../_generated/dataModel'
 import { requireConversationAccess } from '../collaboration/directMessages'
 import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
@@ -19,13 +19,18 @@ import {
   consumeHarnessResourcePause,
   HarnessPlanValidationError,
   recordHarnessEvidence,
+  recordHarnessVerification,
+  setHarnessCompaction,
   recordHarnessChildReceipt,
   recordHarnessReceipt,
   reserveHarnessModel,
   reservedHarnessCostMicros,
   pauseHarnessForResources,
+  pauseHarnessForFunding,
+  pauseHarnessForAuthorization,
   replaceHarnessPlan,
   resumeHarness,
+  resumeHarnessFunding,
   settleHarnessChild,
   terminateHarness,
   transitionHarnessStep,
@@ -33,7 +38,6 @@ import {
   type HarnessChild,
   type HarnessEvidence,
   type HarnessPolicy,
-  type HarnessReceipt,
   type HarnessSnapshot,
 } from '../../packages/overlay-agent-runtime/src/harness-state'
 import {
@@ -57,7 +61,6 @@ import type {
 } from '../../packages/overlay-agent-runtime/src/harness-store'
 import { harnessToolsRequirePlan } from '../../packages/overlay-agent-runtime/src/harness-write-tools'
 import { ConvexError, v } from 'convex/values'
-import { OPENROUTER_FREE_MODEL_ID, OVERLAY_FREE_MODEL_ID } from '@/shared/ai/gateway/overlay-free-policy'
 
 const MAX_ID_LENGTH = 256
 const MAX_EVIDENCE_ID_LENGTH = 512
@@ -103,9 +106,12 @@ const policyValidator = v.object({
   actorUserId: v.string(),
   workspaceId: v.optional(v.string()),
   resourcePauseVersion: v.optional(v.literal(1)),
+  executionPolicyVersion: v.optional(v.literal(2)),
+  spendingMode: v.optional(v.union(v.literal('workspace'), v.literal('external'), v.literal('none'))),
   allowedToolIds: v.array(v.string()),
   requiresPlan: v.boolean(),
   deadlineAt: v.number(),
+  taskDeadlineAt: v.optional(v.number()),
   maxCostMicros: v.number(),
   maxParallelChildren: v.number(),
   maxDepth: v.number(),
@@ -149,6 +155,12 @@ const evidenceValidator = v.object({
   verdict: v.union(v.literal('observed'), v.literal('passed'), v.literal('failed')),
   createdAt: v.number(),
   inputDigest: v.optional(v.string()),
+  resource: v.optional(v.object({
+    id: v.string(),
+    revision: v.optional(v.string()),
+    operation: v.optional(v.string()),
+    page: v.optional(v.number()),
+  })),
   verification: v.optional(v.object({
     stepId: v.string(),
     planRevision: v.number(),
@@ -175,6 +187,7 @@ const receiptValidator = v.object({
     v.literal('route_interrupted'),
     v.literal('route_unavailable'),
     v.literal('summary_failed'),
+    v.literal('verification_failed'),
   )),
   responseFailure: v.optional(v.union(v.literal('empty_response'), v.literal('provider_error'), v.literal('provider_other'))),
 })
@@ -193,7 +206,7 @@ const childValidator = v.object({
 const operationValidator = v.union(
   v.object({ type: v.literal('reserve_model'), id: v.string(), maxCostMicros: v.number() }),
   v.object({ type: v.literal('bind_model_dispatch'), id: v.string(), modelId: v.string(), billingReservationId: v.union(v.string(), v.null()) }),
-  v.object({ type: v.literal('claim_execution'), workflowRunId: v.string() }),
+  v.object({ type: v.literal('claim_execution'), workflowRunId: v.string(), generation: v.optional(v.number()) }),
   v.object({ type: v.literal('replace_plan'), steps: v.array(planInputValidator) }),
   v.object({
     type: v.literal('transition_step'),
@@ -210,11 +223,40 @@ const operationValidator = v.union(
     skipReason: v.optional(v.string()),
   }),
   v.object({ type: v.literal('record_evidence'), evidence: evidenceValidator }),
+  v.object({
+    type: v.literal('record_verification'),
+    verification: v.object({
+      attemptId: v.string(),
+      candidateDigest: v.string(),
+      planRevision: v.number(),
+      evidenceRevision: v.number(),
+      supported: v.boolean(),
+      reason: v.string(),
+      evidenceIds: v.array(v.string()),
+      attempts: v.number(),
+      createdAt: v.number(),
+    }),
+  }),
+  v.object({
+    type: v.literal('set_compaction'),
+    compaction: v.object({
+      cycleId: v.string(),
+      attemptId: v.string(),
+      status: v.union(v.literal('started'), v.literal('completed'), v.literal('interrupted'), v.literal('awaiting_reconciliation')),
+      retryCount: v.number(),
+      failureReason: v.optional(v.union(
+        v.literal('stream_aborted'), v.literal('validation_failed'), v.literal('provider_error'),
+        v.literal('unknown'), v.literal('hold_unsettled'),
+      )),
+      updatedAt: v.number(),
+    }),
+  }),
   v.object({ type: v.literal('record_receipt'), receipt: receiptValidator }),
   v.object({
     type: v.literal('checkpoint'),
     summary: v.string(),
     purpose: v.optional(v.union(v.literal('continuation'), v.literal('compaction'))),
+    unverifiedNarrative: v.optional(v.string()),
   }),
   v.object({
     type: v.literal('block'),
@@ -224,6 +266,24 @@ const operationValidator = v.union(
     }),
   }),
   v.object({ type: v.literal('resume') }),
+  v.object({
+    type: v.literal('pause_for_funding'),
+    pause: v.object({
+      reason: v.union(
+        v.literal('disabled'), v.literal('pending'), v.literal('payment_failed'), v.literal('monthly_limit_reached'),
+        v.literal('missing_payment_method'), v.literal('missing_consent'), v.literal('amount_shortfall'),
+        v.literal('not_paid'), v.literal('authorization_changed'), v.literal('insufficient_budget'),
+        v.literal('task_deadline_expired'), v.literal('unknown_receipt'),
+      ),
+      requiredCents: v.number(),
+      availableCents: v.number(),
+      reservedCents: v.optional(v.number()),
+      receiptId: v.string(),
+      autoTopUpReason: v.optional(v.string()),
+    }),
+  }),
+  v.object({ type: v.literal('resume_funding') }),
+  v.object({ type: v.literal('pause_for_authorization') }),
   v.object({ type: v.literal('wait_for_children') }),
   v.object({
     type: v.literal('admit_child'),
@@ -295,6 +355,8 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     rootRunId: snapshot.rootRunId,
     ...(snapshot.parentRunId === undefined ? {} : { parentRunId: snapshot.parentRunId }),
     ...(snapshot.workflowRunId === undefined ? {} : { workflowRunId: snapshot.workflowRunId }),
+    ...(snapshot.handoffWorkflowRunId === undefined ? {} : { handoffWorkflowRunId: snapshot.handoffWorkflowRunId }),
+    ...(snapshot.executionGeneration === undefined ? {} : { executionGeneration: snapshot.executionGeneration }),
     depth: snapshot.depth,
     goal: snapshot.goal,
     constraints: snapshot.constraints,
@@ -303,6 +365,8 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     revision: snapshot.revision,
     ...(snapshot.policyRevision === undefined ? {} : { policyRevision: snapshot.policyRevision }),
     ...(snapshot.resourceRequestToken === undefined ? {} : { resourceRequestToken: snapshot.resourceRequestToken }),
+    ...(snapshot.resourcePause === undefined ? {} : { resourcePause: snapshot.resourcePause }),
+    ...(snapshot.authorizationPause === undefined ? {} : { authorizationPause: snapshot.authorizationPause }),
     progressRevision: snapshot.progressRevision,
     planRevision: snapshot.planRevision,
     ...(snapshot.blocker === undefined ? {} : { blocker: snapshot.blocker }),
@@ -313,9 +377,11 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     lastContinuationProgressRevision: snapshot.lastContinuationProgressRevision,
     stalledContinuations: snapshot.stalledContinuations,
     ...(snapshot.latestReceipt === undefined ? {} : { latestReceipt: snapshot.latestReceipt }),
-    ...(snapshot.routeInterruptionCount === undefined ? {} : { routeInterruptionCount: snapshot.routeInterruptionCount }),
     ...(snapshot.modelRecovery === undefined ? {} : { modelRecovery: snapshot.modelRecovery }),
     ...(snapshot.summaryRecovery === undefined ? {} : { summaryRecovery: snapshot.summaryRecovery }),
+    ...(snapshot.unverifiedNarrative === undefined ? {} : { unverifiedNarrative: snapshot.unverifiedNarrative }),
+    ...(snapshot.finalVerification === undefined ? {} : { finalVerification: snapshot.finalVerification }),
+    ...(snapshot.compaction === undefined ? {} : { compaction: snapshot.compaction }),
     ...(snapshot.modelReservation === undefined ? {} : { modelReservation: snapshot.modelReservation }),
     usage: snapshot.usage,
     updatedAt: snapshot.updatedAt,
@@ -358,6 +424,7 @@ function assertBoundedAdmission(input: HarnessAdmission) {
   if (!input.policy.actorUserId.trim()
     || (input.policy.workspaceId !== undefined && !input.policy.workspaceId.trim())
     || !Number.isFinite(input.policy.deadlineAt)
+    || (input.policy.taskDeadlineAt !== undefined && !Number.isFinite(input.policy.taskDeadlineAt))
     || !Number.isSafeInteger(input.policy.maxCostMicros)
     || input.policy.maxCostMicros < 0
     || !Number.isSafeInteger(input.policy.maxParallelChildren)
@@ -366,6 +433,13 @@ function assertBoundedAdmission(input: HarnessAdmission) {
     || input.policy.maxDepth < 0
     || input.policy.maxDepth > MAX_HARNESS_DEPTH) {
     throw new Error('Invalid harness policy.')
+  }
+  if ((input.policy.executionPolicyVersion === 2
+      && (!input.policy.spendingMode || input.policy.maxCostMicros !== 0
+        || (input.policy.spendingMode === 'workspace' && !input.policy.workspaceId)
+        || input.policy.resourcePauseVersion === 1))
+    || (input.policy.executionPolicyVersion !== 2 && input.policy.spendingMode !== undefined)) {
+    throw new Error('Invalid versioned execution policy.')
   }
   if (input.resourcePauseAuthority !== undefined && input.policy.resourcePauseVersion !== 1) {
     throw new Error('Resource-pause admission authority requires version 1.')
@@ -552,6 +626,38 @@ function assertBoundedOperation(operation: HarnessOperation) {
             || operation.evidence.verification.planRevision < 0))) {
         throw new Error('Harness evidence exceeds its bounds.')
       }
+      if (operation.evidence.resource && (
+        !operation.evidence.resource.id.trim()
+        || operation.evidence.resource.id.length > MAX_EVIDENCE_ID_LENGTH
+        || (operation.evidence.resource.revision !== undefined && operation.evidence.resource.revision.length > 256)
+        || (operation.evidence.resource.operation !== undefined && operation.evidence.resource.operation.length > 256)
+        || (operation.evidence.resource.page !== undefined
+          && (!Number.isSafeInteger(operation.evidence.resource.page) || operation.evidence.resource.page < 1))
+      )) throw new Error('Harness evidence resource identity exceeds its bounds.')
+      break
+    case 'record_verification':
+      if (!operation.verification.attemptId.trim() || operation.verification.attemptId.length > 256
+        || !operation.verification.candidateDigest.trim() || operation.verification.candidateDigest.length > 128
+        || !Number.isSafeInteger(operation.verification.planRevision) || operation.verification.planRevision < 0
+        || !Number.isSafeInteger(operation.verification.evidenceRevision) || operation.verification.evidenceRevision < 0
+        || operation.verification.reason.length > 1_000
+        || operation.verification.evidenceIds.length > 48
+        || operation.verification.evidenceIds.some(id => !id.trim() || id.length > MAX_EVIDENCE_ID_LENGTH)
+        || !Number.isSafeInteger(operation.verification.attempts)
+        || operation.verification.attempts < 1 || operation.verification.attempts > 3
+        || !Number.isFinite(operation.verification.createdAt) || operation.verification.createdAt < 0) {
+        throw new Error('Harness answer verification exceeds its bounds.')
+      }
+      break
+    case 'set_compaction':
+      if (!operation.compaction.cycleId.trim() || operation.compaction.cycleId.length > MAX_ID_LENGTH
+        || !operation.compaction.attemptId.trim() || operation.compaction.attemptId.length > MAX_ID_LENGTH
+        || !Number.isSafeInteger(operation.compaction.retryCount)
+        || operation.compaction.retryCount < 0 || operation.compaction.retryCount > 1
+        || !Number.isFinite(operation.compaction.updatedAt)
+        || (operation.compaction.failureReason !== undefined && operation.compaction.failureReason.length > 64)) {
+        throw new Error('Harness compaction state exceeds its bounds.')
+      }
       break
     case 'record_receipt':
       if (!operation.receipt.id.trim() || operation.receipt.id.length > MAX_ID_LENGTH
@@ -565,7 +671,10 @@ function assertBoundedOperation(operation: HarnessOperation) {
       if (!operation.id.trim() || operation.id.length > MAX_ID_LENGTH) throw new Error('Invalid model reservation identity.')
       break
     case 'checkpoint':
-      if (operation.summary.length > MAX_WORKING_SUMMARY_LENGTH) throw new Error('Harness working summary exceeds 8,000 characters.')
+      if (operation.summary.length > MAX_WORKING_SUMMARY_LENGTH
+        || operation.unverifiedNarrative !== undefined && operation.unverifiedNarrative.length > MAX_WORKING_SUMMARY_LENGTH) {
+        throw new Error('Harness working summary exceeds 8,000 characters.')
+      }
       break
     case 'finish':
       if (operation.resultSummary !== undefined && operation.resultSummary.length > MAX_WORKING_SUMMARY_LENGTH) throw new Error('Harness result summary exceeds 8,000 characters.')
@@ -573,6 +682,12 @@ function assertBoundedOperation(operation: HarnessOperation) {
     case 'block':
       if (!operation.blocker.question.trim() || operation.blocker.question.length > MAX_EVIDENCE_SUMMARY_LENGTH) {
         throw new Error('Harness blocker exceeds its bounds.')
+      }
+      break
+    case 'pause_for_funding':
+      if (!operation.pause.receiptId.trim() || operation.pause.receiptId.length > MAX_ID_LENGTH
+        || (operation.pause.autoTopUpReason !== undefined && operation.pause.autoTopUpReason.length > MAX_EVIDENCE_SUMMARY_LENGTH)) {
+        throw new Error('Harness funding pause exceeds its bounds.')
       }
       break
     case 'admit_child':
@@ -947,7 +1062,8 @@ async function loadWaitAuthority(
 }
 
 function assertActiveWaitLineage(lineage: LineageEntry[]): void {
-  if (lineage.some(entry => isTerminalStatus(entry.metadata.status))) {
+  if (lineage.some(entry => isTerminalStatus(entry.metadata.status)
+    || entry.metadata.status === 'waiting_for_authorization')) {
     throw new Error('The harness run or an ancestor is terminal.')
   }
 }
@@ -1061,6 +1177,15 @@ async function persistMetadata(ctx: MutationCtx, run: RunRow, snapshot: HarnessS
     metadataJson: stableJson(metadataFromSnapshot(snapshot)),
     updatedAt: snapshot.updatedAt,
   })
+  if (isTerminalStatus(snapshot.status)) {
+    const expiresAt = snapshot.updatedAt + 30 * 24 * 60 * 60_000
+    const artifacts = await ctx.db.query('harnessContextArtifacts')
+      .withIndex('by_runId_createdAt', q => q.eq('runId', run.runId))
+      .take(1_025)
+    if (artifacts.length > 1_024) throw new Error('Harness artifact count exceeds cleanup bounds.')
+    await Promise.all(artifacts.filter(artifact => artifact.expiresAt !== expiresAt)
+      .map(artifact => ctx.db.patch(artifact._id, { expiresAt })))
+  }
 }
 
 export async function failUnclaimedNativeHarnessInTransaction(ctx: MutationCtx, input: {
@@ -1167,7 +1292,12 @@ function childAdmission(
     allowedToolIds: [...new Set(operation.child.allowedToolIds)].sort(),
     requiresPlan: parent.policy.requiresPlan && harnessToolsRequirePlan(operation.child.allowedToolIds),
     deadlineAt: parent.policy.deadlineAt,
-    maxCostMicros: operation.child.maxCostMicros,
+    ...(parent.policy.taskDeadlineAt !== undefined ? { taskDeadlineAt: parent.policy.taskDeadlineAt } : {}),
+    ...(parent.policy.executionPolicyVersion === 2 ? {
+      executionPolicyVersion: 2 as const,
+      spendingMode: parent.policy.spendingMode!,
+    } : {}),
+    maxCostMicros: parent.policy.executionPolicyVersion === 2 ? 0 : operation.child.maxCostMicros,
     maxParallelChildren: parent.policy.maxParallelChildren,
     maxDepth: parent.policy.maxDepth,
   }
@@ -1237,62 +1367,11 @@ export async function cancelHarnessDelivery(
     return { agentRunId: delivery._id, runId: run.runId }
   }
   const snapshot = await hydrateSnapshot(ctx, run)
-  const cancellationState = await recordFreeModelTerminalReceipt(ctx, run.runId, snapshot, now)
-  const cancelled = terminateHarness(cancellationState, 'cancelled', 'The delivery was cancelled by the user.', now)
+  const cancelled = terminateHarness(snapshot, 'cancelled', 'The delivery was cancelled by the user.', now)
   await persistMetadata(ctx, run, cancelled)
   await persistChildren(ctx, run.runId, snapshot.children, cancelled.children)
   await releaseTerminalSubtree(ctx, run, lineage)
   return { agentRunId: delivery._id, runId: run.runId }
-}
-
-function freeModelTerminalReceipt(state: HarnessSnapshot): HarnessReceipt | undefined {
-  const reservation = state.modelReservation
-  const dispatch = reservation?.dispatch
-  if (!reservation || reservation.maxCostMicros !== 0
-    || !dispatch || dispatch.billingReservationId !== null
-    || (dispatch.modelId !== OPENROUTER_FREE_MODEL_ID && dispatch.modelId !== OVERLAY_FREE_MODEL_ID)) {
-    return undefined
-  }
-  return {
-    id: reservation.id,
-    modelId: dispatch.modelId,
-    provider: 'overlay-free-router',
-    inputTokens: 0,
-    outputTokens: 0,
-    reasoningTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    contextWindow: null,
-    costMicros: 0,
-    costSource: 'catalog',
-    ...(reservation.id.startsWith('summary:') ? { rejectionReason: 'summary_failed' as const } : {}),
-  }
-}
-
-async function recordFreeModelTerminalReceipt(
-  ctx: MutationCtx,
-  runId: string,
-  state: HarnessSnapshot,
-  now: number,
-): Promise<HarnessSnapshot> {
-  const receipt = freeModelTerminalReceipt(state)
-  if (!receipt) return state
-  const receiptJson = stableJson(receipt)
-  const existingReceipt = await ctx.db.query('harnessReceipts')
-    .withIndex('by_runId_receiptId', query => query.eq('runId', runId).eq('receiptId', receipt.id))
-    .unique()
-  if (existingReceipt && existingReceipt.receiptJson !== receiptJson) {
-    throw new Error('HARNESS_RECEIPT_ID_CONFLICT')
-  }
-  if (!existingReceipt) {
-    await ctx.db.insert('harnessReceipts', {
-      runId,
-      receiptId: receipt.id,
-      receiptJson,
-      createdAt: now,
-    })
-  }
-  return recordHarnessReceipt(state, receipt, now)
 }
 
 async function applyReducer(
@@ -1313,7 +1392,7 @@ async function applyReducer(
 }> {
   switch (operation.type) {
     case 'claim_execution':
-      return { snapshot: claimHarnessExecution(current, operation.workflowRunId, now) }
+      return { snapshot: claimHarnessExecution(current, operation.workflowRunId, now, operation.generation) }
     case 'reserve_model':
       return { snapshot: reserveHarnessModel(current, operation.id, operation.maxCostMicros, now) }
     case 'bind_model_dispatch':
@@ -1336,25 +1415,29 @@ async function applyReducer(
         evidenceToPersist: operation.evidence,
       }
     }
+    case 'record_verification':
+      return { snapshot: recordHarnessVerification(current, operation.verification, now) }
+    case 'set_compaction':
+      return { snapshot: setHarnessCompaction(current, operation.compaction, now) }
     case 'record_receipt':
-      if (operation.receipt.rejectionReason === 'route_interrupted' || operation.receipt.rejectionReason === 'route_unavailable') {
-        const reservation = current.modelReservation
-        if ((operation.receipt.modelId !== OPENROUTER_FREE_MODEL_ID && operation.receipt.modelId !== OVERLAY_FREE_MODEL_ID)
-          || operation.receipt.provider !== 'overlay-free-router'
-          || reservation?.id !== operation.receipt.id
-          || reservation.maxCostMicros !== 0
-          || reservation.dispatch?.modelId !== operation.receipt.modelId
-          || reservation.dispatch.billingReservationId !== null) {
-          throw new Error('This route rejection requires a matching zero-cost free-router dispatch without billing.')
-        }
+      if (operation.receipt.rejectionReason === 'route_capacity'
+        || operation.receipt.rejectionReason === 'route_interrupted'
+        || operation.receipt.rejectionReason === 'route_unavailable') {
+        throw new Error('This route receipt is retired.')
       }
       return { snapshot: recordHarnessReceipt(current, operation.receipt, now) }
     case 'checkpoint':
-      return { snapshot: checkpointHarness(current, operation.summary, now, operation.purpose) }
+      return { snapshot: checkpointHarness(current, operation.summary, now, operation.purpose, operation.unverifiedNarrative) }
     case 'block':
       return { snapshot: blockHarness(current, operation.blocker, now) }
     case 'resume':
       return { snapshot: resumeHarness(current, now) }
+    case 'pause_for_funding':
+      return { snapshot: pauseHarnessForFunding(current, operation.pause, now) }
+    case 'resume_funding':
+      return { snapshot: resumeHarnessFunding(current, now) }
+    case 'pause_for_authorization':
+      return { snapshot: pauseHarnessForAuthorization(current, now) }
     case 'wait_for_children':
       return { snapshot: waitForHarnessChildren(current, now) }
     case 'admit_child': {
@@ -1458,10 +1541,8 @@ async function applyReducer(
     }
     case 'finish':
       return { snapshot: finishHarness(current, now, operation.resultSummary) }
-    case 'terminate': {
-      const settled = await recordFreeModelTerminalReceipt(ctx, run.runId, current, now)
-      return { snapshot: terminateHarness(settled, operation.status, operation.reason, now) }
-    }
+    case 'terminate':
+      return { snapshot: terminateHarness(current, operation.status, operation.reason, now) }
   }
 }
 
@@ -1566,6 +1647,8 @@ export const apply = mutation({
   args: {
     actorUserId: v.string(),
     runId: v.string(),
+    workflowRunId: v.optional(v.string()),
+    executionGeneration: v.optional(v.number()),
     operationId: v.string(),
     expectedRevision: v.number(),
     operation: operationValidator,
@@ -1574,6 +1657,9 @@ export const apply = mutation({
   handler: async (ctx, args): Promise<HarnessMutationResult> => {
     requireHarnessServerSecret(args.serverSecret)
     if (!args.actorUserId.trim() || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+      || (args.workflowRunId !== undefined && (!args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH))
+      || (args.executionGeneration !== undefined
+        && (!Number.isSafeInteger(args.executionGeneration) || args.executionGeneration < 0))
       || !args.operationId.trim() || args.operationId.length > MAX_ID_LENGTH
       || !Number.isSafeInteger(args.expectedRevision) || args.expectedRevision < 0) {
       throw new Error('Invalid harness mutation identity or revision.')
@@ -1584,6 +1670,26 @@ export const apply = mutation({
     if (!run) throw new Error('HARNESS_RUN_NOT_FOUND')
     const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
     const metadata = lineage[0]!.metadata
+    const executionGeneration = args.executionGeneration ?? 0
+    const workflowRunId = args.workflowRunId
+      ?? metadata.workflowRunId
+      ?? (operation.type === 'claim_execution' ? operation.workflowRunId : undefined)
+    const legacyGenerationZeroUnowned = metadata.policy.executionPolicyVersion !== 2
+      && (metadata.executionGeneration ?? 0) === 0
+      && args.workflowRunId === undefined
+      && args.executionGeneration === undefined
+      && metadata.workflowRunId === undefined
+      && operation.type !== 'claim_execution'
+    if (metadata.policy.executionPolicyVersion === 2
+      && (args.workflowRunId === undefined || args.executionGeneration === undefined)) {
+      throw new Error('HARNESS_EXECUTION_IDENTITY_REQUIRED')
+    }
+    if ((!workflowRunId && !legacyGenerationZeroUnowned) || (metadata.executionGeneration ?? 0) !== executionGeneration
+      || (operation.type === 'claim_execution'
+        ? metadata.workflowRunId !== undefined && metadata.workflowRunId !== workflowRunId
+        : !legacyGenerationZeroUnowned && metadata.workflowRunId !== workflowRunId)) {
+      throw new Error('HARNESS_EXECUTION_NOT_OWNED')
+    }
     const operationJson = stableJson(operation)
     if (new TextEncoder().encode(operationJson).byteLength > MAX_OPERATION_JSON_BYTES) {
       throw new Error('Harness operation exceeds the 256 KiB encoded limit.')
@@ -1622,6 +1728,10 @@ export const apply = mutation({
     const current = projectAncestorTermination(currentState, lineage)
     if (current.revision !== args.expectedRevision) {
       return { applied: false, conflict: true, snapshot: current }
+    }
+    if (current.status === 'waiting_for_authorization'
+      && !(operation.type === 'terminate' && operation.status === 'cancelled')) {
+      throw new Error('Expired authorization cannot be resumed or changed without new authorization.')
     }
 
     if (operation.type === 'record_receipt') {
@@ -1693,6 +1803,50 @@ export const apply = mutation({
       await persistMetadata(ctx, run, next)
       await persistPlan(ctx, run.runId, current.planRevision, current.plan, next, now)
       await persistChildren(ctx, run.runId, current.children, next.children)
+    }
+    if (run.deliveryAgentRunId && (operation.type === 'pause_for_funding' || operation.type === 'resume_funding'
+      || operation.type === 'pause_for_authorization')) {
+      const delivery = await ctx.db.get(run.deliveryAgentRunId as Id<'conversationAgentRuns'>)
+      if (delivery && delivery.harnessRunId === run.runId && delivery.workflowRunId === workflowRunId) {
+        await ctx.db.patch(delivery._id, operation.type === 'pause_for_funding'
+          ? { status: 'waiting_for_resources', fundingPause: next.resourcePause, updatedAt: now }
+          : operation.type === 'pause_for_authorization'
+            ? { status: 'waiting_for_authorization', authorizationPause: next.authorizationPause, updatedAt: now }
+            : { status: 'running', fundingPause: undefined, updatedAt: now })
+      }
+    }
+    if (operation.type === 'claim_execution') {
+      const outbox = await ctx.db.query('harnessContinuationOutbox')
+        .withIndex('by_runId_generation', q => q.eq('runId', run.runId).eq('generation', executionGeneration))
+        .unique()
+      if (outbox?.state === 'pending') {
+        if (outbox.generation !== executionGeneration
+          || outbox.previousExecutionGeneration !== executionGeneration - 1
+          || !outbox.previousWorkflowRunId) {
+          throw new Error('HARNESS_CONTINUATION_GENERATION_TRANSFER_REJECTED')
+        }
+        if (run.deliveryAgentRunId) {
+          const delivery = await ctx.db.get(run.deliveryAgentRunId as Id<'conversationAgentRuns'>)
+          if (!delivery || delivery.userId !== args.actorUserId || delivery.harnessRunId !== run.runId
+            || delivery.workflowRunId !== outbox.previousWorkflowRunId) {
+            throw new Error('HARNESS_DELIVERY_GENERATION_TRANSFER_REJECTED')
+          }
+          await ctx.db.patch(delivery._id, {
+            workflowRunId,
+            updatedAt: now,
+          })
+        }
+        const waits = await ctx.db.query('harnessWaits')
+          .withIndex('by_runId_resolvedAt', q => q.eq('runId', run.runId).eq('resolvedAt', undefined))
+          .collect()
+        for (const wait of waits) {
+          if (wait.workflowRunId !== outbox.previousWorkflowRunId) {
+            throw new Error('HARNESS_WAIT_GENERATION_TRANSFER_REJECTED')
+          }
+          await ctx.db.patch(wait._id, { workflowRunId: workflowRunId! })
+        }
+        await ctx.db.patch(outbox._id, { state: 'claimed', updatedAt: now })
+      }
     }
     if (operation.type === 'record_receipt') {
       for (let index = 1; index < lineage.length; index++) {
@@ -1782,24 +1936,110 @@ export const readDocumentEvidence = query({
   },
 })
 
+export const renewLease = mutation({
+  args: {
+    actorUserId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.string(),
+    executionGeneration: v.number(),
+    expectedRevision: v.number(),
+    now: v.number(),
+    leaseMs: v.number(),
+    serverSecret: v.string(),
+  },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    if (!Number.isSafeInteger(args.executionGeneration) || args.executionGeneration < 0
+      || !Number.isSafeInteger(args.expectedRevision) || args.expectedRevision < 0
+      || !Number.isSafeInteger(args.now) || args.now < 0
+      || !Number.isSafeInteger(args.leaseMs) || args.leaseMs <= 0 || args.leaseMs > 24 * 60 * 60 * 1000) {
+      throw new Error('Invalid harness lease renewal.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run) throw new Error('HARNESS_RUN_NOT_FOUND')
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    const current = await currentSnapshot(ctx, run, lineage)
+    if (current.revision !== args.expectedRevision
+      || current.workflowRunId !== args.workflowRunId
+      || (current.executionGeneration ?? 0) !== args.executionGeneration) {
+      throw new Error('HARNESS_LEASE_CAS_CONFLICT')
+    }
+    if (current.policy.taskDeadlineAt !== undefined && current.policy.taskDeadlineAt <= args.now
+      || lineage.some(entry => entry.metadata.policy.taskDeadlineAt !== undefined
+        && entry.metadata.policy.taskDeadlineAt <= args.now)) {
+      throw new Error('The explicit harness task deadline was reached while waiting.')
+    }
+    if (current.policy.executionPolicyVersion !== 2 || current.policy.resourcePauseVersion === 1
+      || ['completed', 'cancelled', 'failed', 'waiting_for_authorization'].includes(current.status)
+      || lineage.some(entry => isTerminalStatus(entry.metadata.status))) {
+      throw new Error('HARNESS_LEASE_RENEWAL_NOT_AUTHORIZED')
+    }
+    if (!['running', 'waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(current.status)) {
+      throw new Error('HARNESS_LEASE_RENEWAL_STATUS_CHANGED')
+    }
+    const next = {
+      ...current,
+      policy: {
+        ...current.policy,
+        deadlineAt: Math.max(current.policy.deadlineAt, args.now + args.leaseMs),
+      },
+      revision: current.revision + 1,
+      updatedAt: args.now,
+    }
+    await persistMetadata(ctx, run, next)
+    const renewedRun = await findRun(ctx, run.runId)
+    if (!renewedRun) throw new Error('HARNESS_RUN_NOT_FOUND')
+    return await currentSnapshot(ctx, renewedRun, await loadLineage(ctx, renewedRun, args.actorUserId, args.serverSecret))
+  },
+})
+
 export const readEvidence = query({
   args: {
     actorUserId: v.string(),
     runId: v.string(),
-    evidenceId: v.string(),
+    evidenceId: v.optional(v.string()),
+    cursor: v.optional(v.string()),
+    limit: v.optional(v.number()),
     serverSecret: v.string(),
   },
+  returns: v.union(
+    evidenceValidator,
+    v.object({
+      observations: v.array(v.object({
+        id: v.string(), source: v.string(), verdict: v.string(), createdAt: v.number(),
+      })),
+      nextCursor: v.union(v.string(), v.null()),
+    }),
+    v.null(),
+  ),
   handler: async (ctx, args) => {
     requireHarnessServerSecret(args.serverSecret)
     if (!args.actorUserId.trim() || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
-      || !args.evidenceId.trim() || args.evidenceId.length > MAX_EVIDENCE_ID_LENGTH) {
+      || args.evidenceId !== undefined && (!args.evidenceId.trim() || args.evidenceId.length > MAX_EVIDENCE_ID_LENGTH)
+      || (args.cursor?.length ?? 0) > 512) {
       throw new Error('Invalid harness evidence identity.')
     }
     const run = await findRun(ctx, args.runId)
     if (!run) return null
     await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
-    const evidence = await getEvidenceRow(ctx, run.runId, args.evidenceId)
-    return evidence ? parseJson<HarnessEvidence>(evidence.evidenceJson) : null
+    if (args.evidenceId) {
+      const evidence = await getEvidenceRow(ctx, run.runId, args.evidenceId)
+      return evidence ? parseJson<HarnessEvidence>(evidence.evidenceJson) : null
+    }
+    const limit = args.limit ?? 32
+    if (!Number.isSafeInteger(limit) || limit < 1 || limit > 32) throw new Error('Invalid harness evidence page size.')
+    const page = await ctx.db.query('harnessEvidence')
+      .withIndex('by_runId_createdAt', q => q.eq('runId', run.runId))
+      .order('asc')
+      .paginate({ numItems: limit, cursor: args.cursor ?? null })
+    return {
+      observations: page.page.map(row => {
+        const item = parseJson<HarnessEvidence>(row.evidenceJson)
+        return { id: item.id, source: item.source, verdict: item.verdict, createdAt: item.createdAt }
+      }),
+      nextCursor: page.isDone ? null : page.continueCursor,
+    }
   },
 })
 
@@ -1861,6 +2101,64 @@ export const publishWait = mutation({
       question,
       createdAt,
     }
+  },
+})
+
+export const submitWaitReply = mutation({
+  args: {
+    actorUserId: v.string(), workspaceId: v.string(), deliveryAgentRunId: v.id('conversationAgentRuns'),
+    token: v.string(), reply: v.union(
+      v.object({ text: v.string() }),
+      v.object({ approved: v.boolean(), reason: v.optional(v.string()) }),
+    ), serverSecret: v.string(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const delivery = await ctx.db.get(args.deliveryAgentRunId)
+    if (!delivery || delivery.userId !== args.actorUserId || !delivery.harnessRunId) return false
+    const root = await findRun(ctx, delivery.harnessRunId)
+    if (!root) return false
+    const rootMetadata = parseJson<HarnessMetadata>(root.metadataJson)
+    if (rootMetadata.policy.executionPolicyVersion !== 2) return false
+    const wait = await ctx.db.query('harnessWaits').withIndex('by_token', q => q.eq('token', args.token)).unique()
+    const run = wait ? await findRun(ctx, wait.runId) : null
+    if (!wait || !run || wait.resolvedAt !== undefined) throw new Error('HARNESS_WAIT_INACTIVE')
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    assertActiveWaitLineage(lineage)
+    if (!lineage.some(entry => entry.run.runId === root.runId)
+      || lineage.some(entry => entry.metadata.policy.workspaceId !== args.workspaceId
+        || (entry.metadata.policy.taskDeadlineAt !== undefined && entry.metadata.policy.taskDeadlineAt <= Date.now()))
+      || delivery.executionEngine !== 'overlay_harness' || delivery.runner !== 'workflow'
+      || (wait.kind === 'input'
+        ? delivery.status !== 'waiting_for_input' || delivery.inputRequest?.token !== wait.token
+        : delivery.status !== 'waiting_for_approval' || delivery.approval?.token !== wait.token)) {
+      throw new Error('HARNESS_WAIT_REPLY_NOT_AUTHORIZED')
+    }
+    if (wait.kind === 'input'
+      ? !('text' in args.reply) || !args.reply.text.trim() || args.reply.text.length > 32_000
+      : !('approved' in args.reply) || (args.reply.reason?.length ?? 0) > 2_000) {
+      throw new Error('HARNESS_WAIT_REPLY_INVALID')
+    }
+    const replyJson = stableJson(args.reply)
+    if (wait.replyJson !== undefined && wait.replyJson !== replyJson) throw new Error('HARNESS_WAIT_REPLY_CONFLICT')
+    if (wait.replyJson === undefined) await ctx.db.patch(wait._id, { replyJson, repliedAt: Date.now() })
+    return true
+  },
+})
+
+export const readWaitReply = query({
+  args: { ...waitReferenceFields, token: v.string(), serverSecret: v.string() },
+  returns: v.any(),
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const { run, lineage } = await loadWaitAuthority(ctx, args, args.serverSecret)
+    assertActiveWaitLineage(lineage)
+    const wait = await ctx.db.query('harnessWaits').withIndex('by_token', q => q.eq('token', args.token)).unique()
+    if (!wait || wait.runId !== run.runId || wait.workflowRunId !== args.workflowRunId) {
+      throw new Error('HARNESS_WAIT_NOT_FOUND')
+    }
+    return wait.replyJson === undefined ? null : JSON.parse(wait.replyJson)
   },
 })
 
@@ -1930,6 +2228,8 @@ export const listPendingWaits = query({
       }
       const candidateLineage = await loadLineage(ctx, candidateRun, reference.actorUserId, args.serverSecret)
       if (candidateLineage[0]!.metadata.workflowRunId !== candidate.workflowRunId) {
+        if (!candidateLineage[0]!.metadata.workflowRunId
+          && candidateLineage[0]!.metadata.policy.executionPolicyVersion === 2) continue
         throw new Error('Invalid stored harness wait workflow owner.')
       }
       if (!candidateLineage.some(entry => entry.run.runId === run.runId)) continue

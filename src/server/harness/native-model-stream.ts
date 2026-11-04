@@ -5,7 +5,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { createAgentMessageStream, appendAgentTextPart } from '@/server/agents/agent-message-stream'
 import { logger } from '@/server/observability/logger'
 import { compactAssistantPersistenceForConvex, MAX_PERSISTED_ASSISTANT_CONTENT_CHARS } from '@/shared/chat/persist-assistant-turn'
-import { stripTextualToolCalls } from '@/shared/ai/textual-tool-calls'
+import { stripTextualToolCalls, TEXTUAL_TOOL_CALL_MARKERS } from '@/shared/ai/textual-tool-calls'
 import { refreshNativeHarnessAccess } from './native-access'
 import type { HarnessModelReference } from './secure-model'
 
@@ -132,7 +132,7 @@ export async function projectNativeHarnessStream(
     let firstText = true
     let protocolSeen = false
     let pendingMarkerPrefix = ''
-    const markers = ['<tool_call>', '<|python_tag|>']
+    const markers = TEXTUAL_TOOL_CALL_MARKERS
     const appendVisibleText = (text: string) => {
       if (!text || remaining <= 0) return
       const visible = `${firstText && message.content.trim() ? '\n\n' : ''}${text}`.slice(0, remaining)

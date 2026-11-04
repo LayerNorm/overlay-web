@@ -6,7 +6,7 @@ export type { ToolCategory } from '@overlay/tools-core'
 /**
  * Unified overlay-native tools (Act agent). See build.ts for composition.
  *
- * Composio tools are merged in act/route.ts (full set for paid; filtered for free tier).
+ * Composio tools are merged in act/route.ts.
  */
 
 export interface OverlayToolsOptions {

@@ -10,7 +10,7 @@ import {consumePreviewHostingAccess, previewHostingFetch} from './preview-hostin
 
 const access = {origin: 'https://pr-247.preview.example.test', secret: 'private-hosting-test-secret'}
 
-test('the built CLI crosses a protected enrollment gate only through its one-shot access file', {skip: process.platform === 'win32' ? 'Cloud bootstrap uses POSIX file permissions' : false}, async () => {
+test('the built CLI crosses a protected enrollment gate only through its one-shot access file', {skip: process.platform === 'win32' ? 'Private QA bootstrap uses POSIX file permissions' : false}, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'preview-cli-')), path = join(directory, 'access.json')
   const execute = promisify(execFile)
   const command = ['--import', fileURLToPath(new URL('fixtures/preview-enrollment-fetch.mjs', import.meta.url)),
@@ -35,7 +35,7 @@ test('the built CLI crosses a protected enrollment gate only through its one-sho
   } finally {await rm(directory, {recursive: true, force: true})}
 })
 
-test('host bootstrap consumes a private origin-bound file before returning its credential', {skip: process.platform === 'win32' ? 'Cloud bootstrap uses POSIX file permissions' : false}, async () => {
+test('host bootstrap consumes a private origin-bound file before returning its credential', {skip: process.platform === 'win32' ? 'Private QA bootstrap uses POSIX file permissions' : false}, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'preview-hosting-')), path = join(directory, 'access.json')
   try {
     await writeFile(path, JSON.stringify(access), {mode: 0o600})
@@ -44,7 +44,7 @@ test('host bootstrap consumes a private origin-bound file before returning its c
   } finally {await rm(directory, {recursive: true, force: true})}
 })
 
-test('unsafe file access and foreign or non-HTTPS origins cannot authorize bootstrap', {skip: process.platform === 'win32' ? 'Cloud bootstrap uses POSIX file permissions' : false}, async () => {
+test('unsafe file access and foreign or non-HTTPS origins cannot authorize bootstrap', {skip: process.platform === 'win32' ? 'Private QA bootstrap uses POSIX file permissions' : false}, async () => {
   const directory = await mkdtemp(join(tmpdir(), 'preview-hosting-')), path = join(directory, 'access.json')
   try {
     await writeFile(path, JSON.stringify(access), {mode: 0o600})

@@ -43,6 +43,18 @@ test('the owner can submit bounded text to the exact waiting run', async () => {
   assert.deepEqual(replies, [{ token: 'token', reply: { text: 'The quarterly report.' } }])
 })
 
+test('V2 input persists without requiring a live workflow hook', async () => {
+  let submitted: unknown
+  const response = await POST(request(), context, { conversations: {
+    getConversationById: async () => conversation,
+    getLatestAgentRun: async () => ({ ...run, harnessRunId: 'harness-run' }),
+  }, submitWaitReply: async value => { submitted = value; return true },
+  resume: async () => assert.fail('V2 input must not depend on a live hook') })
+  assert.equal(response.status, 200)
+  assert.deepEqual(submitted, { actorUserId: 'owner', workspaceId: 'workspace', deliveryAgentRunId: 'run',
+    token: 'token', reply: { text: 'The quarterly report.' } })
+})
+
 test('legacy personal input returns an explicit retirement error without waking its workflow', async () => {
   const response = await POST(request(), context, { conversations: {
     getConversationById: async () => conversation,
@@ -54,13 +66,27 @@ test('legacy personal input returns an explicit retirement error without waking 
   })
 })
 
+test('a missed durable legacy input reply falls back to the workflow hook', async () => {
+  let resumed: unknown
+  const response = await POST(request(), context, { conversations: {
+    getConversationById: async () => conversation,
+    getLatestAgentRun: async () => ({ ...run, harnessRunId: 'legacy-harness' }),
+  }, submitWaitReply: async () => false,
+  resume: async (token, reply) => { resumed = { token, reply } } })
+  assert.equal(response.status, 200)
+  assert.deepEqual(resumed, { token: 'token', reply: { text: 'The quarterly report.' } })
+})
+
 test('missing access and a different workspace cannot resume a hook even with its token', async () => {
+  let submissions = 0
   for (const resource of [null, { ...conversation, userId: 'someone-else' }, { ...conversation, workspaceId: 'other' }]) {
     const response = await POST(request(), context, { conversations: {
       getConversationById: async () => resource, getLatestAgentRun: async () => assert.fail('Must authorize the conversation first'),
-    }, resume: async () => assert.fail('No unauthorized wake') })
+    }, submitWaitReply: async () => { submissions += 1; return true },
+    resume: async () => assert.fail('No unauthorized wake') })
     assert.equal(response.status, 404)
   }
+  assert.equal(submissions, 0)
 })
 
 test('stale, foreign and non-personal runs cannot receive personal input', async () => {

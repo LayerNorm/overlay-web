@@ -1,6 +1,6 @@
 # Credit, holds, and agent-machine billing
 
-How the credit a person sees relates to what Overlay enforces, and how Overlay Cloud agent machines are billed. Written after a production check where a person saw 36.8% of their allowance used but only $0.99 left.
+How displayed credit relates to execution admission, reservations, settlement and shared sandbox lease metering. Historical Cloud-agent billing notes are retained only as records; hosted third-party launches are retired.
 
 ## Two separate accounts
 
@@ -20,32 +20,33 @@ Gateway usage 404s retry with exponential backoff for about ten minutes, then se
 
 Model admission uses a reservation ceiling, not the headline catalog price. For models marked `varies_by_provider`, the web server loads Gateway's public model-endpoints pricing, caches validated results for five minutes, and reserves at the maximum published provider, tier, regional, fast and peak rates. Missing endpoint pricing blocks admission before inference rather than falling back to a cheaper quote. Both Harness quotes/dispatch and legacy chat reservations use this ceiling. These rates are never used as the actual charge: provider receipts, markup, idempotent settlement and the over-reservation reconciliation guard are unchanged. Existing failed runs and reconciliation rows are not replayed or rewritten by this change.
 
-Harness terminal cancellation and failure may release a zero-cost free-router model hold only when no provider billing reservation exists. Paid, externally billed, nonzero-cost, and provider-started holds remain unresolved until authoritative usage evidence settles them.
+Harness cancellation and failure retain provider-started or uncertain model holds until authoritative usage settles them. Historical retired-route receipts do not authorize new inference or synthetic zero-usage settlement.
 
-## Stuck holds (fixed 2026-10-02)
+Harness summaries and final-answer verification use distinct metered dispatches.
+Failed, interrupted or malformed responses cannot invent zero-usage receipts or
+release paid, BYO or unknown holds. Retain full history and pause until provider
+settlement; retry compaction at most once. Funding pauses preserve the selected
+model and pending response. All calls use the configured usage markup.
 
-A call that failed, or finished costing more than was held, used to leave its reservation in `reconcile_required`, waiting for "provider evidence" that nothing supplied, and it counted as held forever. One account had 356 of them, $11.66 of a $20 allowance.
+## Reconciling held credit
 
-`settleStaleBudgetReservationsInternal` (`convex/platform/usage.ts`, hourly cron `stale usage hold settlement`, batches of 8 that reschedule themselves) settles any hold older than 6 hours through the same audited path as the ops mutation (`applyReservationReconciliation`; evidence source `system:stale-hold-policy`, reference = the reservation id):
+Use the internal reconciliation audit to identify provider-started holds requiring
+authoritative cost evidence. Retain financial and customer-specific audit records
+in private operator storage. Failed structured-output generation, write conflicts,
+missing provider receipts and underestimated reservations can all leave a hold
+requiring reconciliation; failure alone does not establish zero provider cost.
 
-| Hold's error | Settled as | Why |
-| --- | --- | --- |
-| `actual_cost_exceeds_reservation` | **Finalized** at the held amount | The work finished and cost more than was held; the ledger refused to record it, so spend was understated. |
-| anything else (provider error, schema mismatch, lost outcome) | **Released** | The person is not charged for work they did not get. |
+### Late provider evidence after release
 
-The first run on the affected account charged 122 finished agent runs ($8.63) and released 234 failed calls ($3.03): usage went from 36.8% to 80.1%, remaining from $0.99 to $3.98, and remaining now equals allowance minus spend.
-
-Known sources of failed holds, still open (see the follow-up task): `knowledge.compile-memory-profile` failing with "No object generated: response did not match schema" on `gemini-2.5-flash-lite` (a new hold on every run), billing document write conflicts ("Documents read from or written to the billing…"), provider usage lookups returning not found when no catalog rate is available, and agent reservations that are estimated lower than real cost.
-
-To look at a person's holds in production: `CONVEX_DEPLOYMENT=prod:colorful-chickadee-419 npx convex data budgetReservations --limit 5000 --order desc --format jsonLines`, filter by `userId` and `status`.
+A released hold is not evidence that the provider incurred no cost. Preserve the customer release and its reconciliation audit; do not release it again or reopen it to debit the wallet. The internal `billing/releasedProviderCosts:recordInternal` operation records receipt-backed provider cost and tokens once, with target/account/model guards and conflicting-replay rejection. It changes no monetary balance or subject limit. The operational report includes this absorbed cost even though the customer charge remains zero. Keep detailed receipts and exact-cost reconciliation in private operator storage.
 
 ## Machines and credit
 
 Persistent Computers enforce admission in `ComputerService`, including desktop and tool-driven wakes. `ComputerAdmission` requires a payer whose scope and ID match the workspace, then checks that wallet's paid plan and the same minimum start credit as managed machines. Personal paid credit cannot unlock a free workspace. Stop and delete remain available after downgrade or credit exhaustion. Each Computer has a deterministic `computer:<id>` lease created atomically with its owner claim; the member who starts a session and the `agent:<ownerId>` subject for agent Computers are reserved together before allocation or wake. Boat's weighted counters remain authoritative. Idle, budget, and session-expiry stops pause the provider and retain its disk and Computer row; only explicit deletion removes them, after confirmed stop and final settlement.
 
-Cloud-agent machine allocation, explicit resume/restart controls, workflow wakes, and stopped-execution recovery recheck paid-workspace and finite-credit admission using the authenticated actor or the remote run's stored actor and agent. Pause, status, stop, and teardown remain available after downgrade. Missing actor or agent identity on a remote run fails closed before machine or recovery work. Remote resume, retry and start-fresh controls on Overlay Cloud check admission before recording the control, so a refused workspace does not queue work. Every machine meter tick also rechecks the workspace plan in the ledger mutation: once a workspace is no longer paid, ticks that would keep a running machine alive, add a hold, or charge without confirmed-stopped provider evidence return \`paid_plan_required\`, and the scheduler stops the machine (Computers keep their disk). Final settlement of confirmed-stopped usage and release of an unused hold remain allowed. This admission recheck is not a pre-allocation cloud hold.
+Hosted third-party Cloud-agent allocation, workflow wakes, and stopped-execution recovery are retired. Existing usage still settles through the shared lease meter and reaper; confirmed-stopped usage may settle and unused holds may be released. Native Computers and supported sandbox leases retain their own admission and lifecycle rules.
 
-Cloud Agent provisioning stores its allocation key before provider creation and durably binds the provider reference from the allocation callback. The operations reconcile route reclaims stale setup attempts without a matching active lease, retaining retry state when deletion fails. The minute-level Convex settlement job calls this route on both Preview and Production; Preview requires its own app callback origin and hosting access. It recovers allocations recorded by this flow, not older unrecorded machines or provider-wide orphan inventory, and does not unify Cloud Agent lifecycle paths.
+Historical Cloud Agent provisioning records retain allocation keys and provider references for cleanup. The operations reconcile route reclaims stale setup attempts without a matching lease, retains retry state when deletion fails, and never resumes a machine.
 
 ## Provider inventory reconciliation
 
@@ -54,24 +55,21 @@ The operations reconcile route scans at most two pages of Boat or E2B inventory 
 The Computer integration is one cumulative Phase 2 substep, not completion of Phase 2. The schema changes are additive optional lease fields and indexes. No shared Convex deployment or migration was performed by this code change. Do not roll back lifecycle code or remove its fields while runtime holds, activity tokens, maintenance intents, or cleanup evidence remain unresolved: reconcile and settle them first. Provider allocation retries must use the saved exact recipe and key within Boat's idempotency-retention window; an older ambiguous allocation requires operator reconciliation.
 
 - **Floor.** The meter stops and deletes disposable environment machines whose payer is at or below `OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS` (default 100, $1.00) of remaining credit. Persistent Computers pause and retain their disk and row at the same boundary; only explicit deletion removes the provider resource after final settlement.
-- **Start check.** Creating a cloud agent now needs more than the floor (`minimumBudgetToStartMachineCents`, floor + 1¢) and answers `402 insufficient_credit` otherwise; before this, a machine started under the floor was deleted about a minute later (`stopReason: budget_exhausted` on its lease).
-- **What the person sees.** The agent page says "Machine stopped" with an explanation when the machine is gone. There is no automatic top-up for machines; the person adds credit and recreates the agent.
+- **Historical start check.** Before hosted third-party runtimes were retired, Cloud Agent creation required more than the floor (`minimumBudgetToStartMachineCents`, floor + 1¢).
+- **Historical status.** Retained Cloud Agent records may show a stopped machine; they cannot be restarted or recreated through the product.
 - Leases live in `agentSandboxLeases`; `usage.stopReason` records why one ended.
 
 ## Hosts, redirects, and machine-facing URLs
 
 Production's app URL is the apex (`https://getoverlay.io`), which redirects to `https://www.getoverlay.io`. A cross-origin redirect drops the `Authorization` header, so a machine pointed at the apex enrolled (no header) and then got 401 on every signed request. Machine-facing URLs (the host's server URL, the per-run MCP URL, the agent gateway) come from `getAgentFacingBaseUrl()`, which reads `OVERLAY_AGENT_PUBLIC_URL` (production: `https://www.getoverlay.io`) and falls back to the app URL. Set it on any deployment whose app URL redirects. The MCP/OAuth metadata is built from the host the client called instead (`mcpBaseUrl`), and strict OAuth clients must use the `www` address.
 
-## Production environment for Overlay Cloud agents
+## Retired hosted-agent metering
 
-Flags (all set on production): `OVERLAY_FEATURE_CONNECTED_AGENT_CONTROL_PLANE`, `OVERLAY_FEATURE_REMOTE_AGENT_RUNS`, `OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS`, `OVERLAY_CONNECTED_AGENTS_ROLLOUT_STAGE` (`internal` limits cloud agents to `OVERLAY_CONNECTED_AGENTS_INTERNAL_WORKSPACE_IDS`), `OVERLAY_HOSTED_PROVIDER_ACCESS_ENABLED=1` (without it tool assembly throws the hosted-provider kill-switch error), `BOX_API_KEY` or `BOAT_API_KEY`, `OVERLAY_AGENT_PUBLIC_URL`. The machine image is the Boat snapshot `overlay-agent-v5` (`OVERLAY_CLOUD_AGENT_IMAGE` overrides it).
-
-## Checking production by hand
-
-- Everything a signed-in person can do is available to test through their own browser session: calls from the page need `x-overlay-workspace-id` set (the personal workspace id looks like `personal-xxxxxxx`).
-- A Boat machine's state, its host log (`~/.overlay/agent-host.log`), and whether the host is checking in can be read through the Boat API with the same key the app uses.
-- The in-app browser renders only while its pane is shown (a hidden or wedged tab sits on the loading shell); open a fresh tab with `preview_start`.
-- Real model runs need a real credential entered by the owner; never type credentials into production on their behalf.
+Overlay Cloud third-party runtimes are retired. Do not enable hosted-agent flags,
+provision machines, or use provider credentials to test them. Existing leases,
+billing settlement, and the shared reaper remain in place for safe cleanup.
+Before rollout, follow the [retirement runbook](./retire-overlay-cloud-agents.md)
+and verify provider deletion; a released lease alone does not prove charges stopped.
 
 
 ## A machine deleted for lack of credit
@@ -166,3 +164,11 @@ remain possible after exhaustion, so costs cannot disappear or strand a machine.
 The guard does not replace provider account limits for unmetered service fees,
 retained storage, or activity outside Overlay. Aggregate multiple PRs at the
 provider account when a shared account budget is required.
+
+Usage markup is configured with `OVERLAY_USAGE_MARKUP_BPS` on both Next and the
+matching Convex backend; see [Workspace billing](workspace-billing.md#usage-markup-configuration).
+Computer bootstrap holds and ongoing usage use this same configured rate.
+
+Memory extraction validation failures with complete non-negative integer SDK token
+usage follow normal priced settlement. Provider-started failures without measured
+usage remain quarantined; failed output is not itself proof of zero cost.

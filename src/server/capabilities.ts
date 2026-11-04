@@ -75,12 +75,7 @@ export function withObservabilityProviderCapabilities(
     errorReporting: capabilities.errorReporting && errorReportingProvider === 'sentry',
     connectedAgents: externalAgentsEnabled,
     externalAgents: externalAgentsEnabled,
-    // Flag = hosted rollout control; a resolvable provider runtime = the
-    // deployment actually has computer credentials (BOAT_API_KEY, or legacy BOX_API_KEY, for `box`).
-    // Both are required, so self-host deployments without keys report the
-    // capability absent instead of surfacing 503s in the UI.
-    cloudAgents: externalAgentsEnabled
-      && runtimeConfig.features?.overlayCloudEnvironments === true,
+    cloudAgents: false,
     computers: runtimeConfig.features?.computers === true
       && computerRuntimeForProvider(computerProviderFromEnv()) !== undefined,
   }
@@ -94,7 +89,7 @@ export function withWorkspaceExternalAgentCapabilities(
     ...capabilities,
     connectedAgents: capabilities.connectedAgents && launchEnabled,
     externalAgents: capabilities.externalAgents && launchEnabled,
-    cloudAgents: capabilities.cloudAgents && launchEnabled,
+    cloudAgents: false,
   }
 }
 

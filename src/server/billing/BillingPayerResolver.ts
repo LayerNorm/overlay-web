@@ -23,6 +23,7 @@ export class BillingPayerResolutionError extends Error {
 
 export class BillingPayerResolver {
   constructor(private readonly deps: {
+    billingEnabled?: () => Promise<boolean>
     billing: BillingRepository
     workspaces: Pick<WorkspaceService, 'resolveActiveWorkspace'>
   }) {}
@@ -35,17 +36,13 @@ export class BillingPayerResolver {
     const userId = required(args.userId, 'userId')
     const subject = spendSubject(userId, args.programmaticSubjectId)
     const access = await this.deps.workspaces.resolveActiveWorkspace(userId, args.workspaceId)
-    // Any workspace may have a plan. Without one (no wallet yet, or a wallet that is not on a paid plan) the workspace
-    // is on the free allowance, which runs through the person's own pipeline and is counted per workspace.
+    if (this.deps.billingEnabled && !(await this.deps.billingEnabled())) {
+      return personalPayer(await this.deps.billing.ensurePersonalBillingAccount({ userId }), subject, userId)
+    }
     const account = await this.deps.billing.getWorkspaceBillingAccountByWorkspaceIdByServer({
       workspaceId: access.workspace.id,
     })
-    const plan = account
-      ? await this.deps.billing.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId })
-      : null
-    if (!account || plan?.planKind !== 'paid') {
-      return personalPayer(await this.deps.billing.ensurePersonalBillingAccount({ userId }), subject, userId)
-    }
+    if (!account) throw new BillingPayerResolutionError('workspace_wallet_not_configured')
     if (account.status !== 'active') throw new BillingPayerResolutionError('billing_account_inactive')
     return {
       billingAccountId: account.billingAccountId,

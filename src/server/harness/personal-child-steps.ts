@@ -28,6 +28,8 @@ export async function admitPersonalHarnessChild(
     if (!state || state.workflowRunId !== input.access.workflowRunId) throw new FatalError('Invalid delegation authority.')
     const result = await repository.apply({
       actorUserId: input.access.actorUserId, runId: input.access.runId,
+      workflowRunId: input.access.workflowRunId,
+      executionGeneration: input.access.executionGeneration ?? 0,
       operationId: `delegate:${id}`, expectedRevision: state.revision,
       operation: { type: 'admit_child', child, goal: delegation.goal, constraints: delegation.constraints },
     })

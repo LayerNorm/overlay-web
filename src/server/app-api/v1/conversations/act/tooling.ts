@@ -34,7 +34,6 @@ import { createMcpLazyMetaTools, type McpToolApprovalFn } from '@/server/tools/m
 import {
   allowedOverlayToolIdsForTurn,
 } from '@/server/tools/tools/exposure-policy'
-import { createFreeTierGatedStubTools } from '@/server/tools/tools/free-tier-gated-stub-tools'
 import { createWebTools } from '@/server/web/web-tools'
 import { createReleaseFlags } from '@/server/releases/feature-flags'
 import {
@@ -270,7 +269,7 @@ export async function prepareActTooling(params: {
         filesReadingTools,
       }),
     ),
-    params.paid && capabilities.webSearch
+    capabilities.webSearch
       ? getWebSearchTool(params.effectiveModelId, {
           entitlements: params.entitlements,
           programmaticSubjectId: params.billingProgrammaticSubjectId,
@@ -279,7 +278,7 @@ export async function prepareActTooling(params: {
           workspaceId: params.workspaceId,
         })
       : Promise.resolve(null),
-    params.paid && capabilities.webSearch
+    capabilities.webSearch
       ? getDeepSearchTool(params.effectiveModelId, {
           entitlements: params.entitlements,
           programmaticSubjectId: params.billingProgrammaticSubjectId,
@@ -288,7 +287,7 @@ export async function prepareActTooling(params: {
           workspaceId: params.workspaceId,
         })
       : Promise.resolve(null),
-    params.paid && capabilities.webSearch
+    capabilities.webSearch
       ? getWebFetchTool({
           entitlements: params.entitlements,
           programmaticSubjectId: params.billingProgrammaticSubjectId,
@@ -311,7 +310,6 @@ export async function prepareActTooling(params: {
     mcpToolsRaw: mcpToolsResult.tools,
     mcpToolApproval: mcpToolsResult.toolApproval,
     mcpToolsContext: mcpToolsResult.toolsContext,
-    paid: params.paid,
     deepSearchTool,
     webFetchTool,
     webSearchTool,
@@ -320,10 +318,6 @@ export async function prepareActTooling(params: {
   })
 
   tooling.ttft = { mcpCatalogMs: +mcpCatalogMs.toFixed(1) }
-
-  if (!params.paid) {
-    return tooling
-  }
 
   const compatible = await filterGatewayCompatibleToolSet(tooling.tools)
   if (compatible.dropped.length === 0) {
@@ -372,27 +366,19 @@ export function buildActTooling(params: {
   mcpToolsRaw: ToolSet
   mcpToolApproval?: McpToolApprovalFn
   mcpToolsContext?: Record<string, unknown>
-  paid: boolean
   deepSearchTool: ToolDefinition | null
   webFetchTool: ToolDefinition | null
   webSearchTool: ToolDefinition | null
   webToolSet: ToolSet
   enabledConnectorSlugs?: readonly string[]
 }): ActTooling {
-  const integrationTools = filterIntegrationToolSet(
-    params.integrationRaw,
-    params.paid,
-    params.integrationProvider,
-  )
+  const integrationTools = filterIntegrationToolSet(params.integrationRaw, params.integrationProvider)
   const integrationsForAgent = integrationTools
-  const freeTierStubsActive = !params.paid
-  const freeTierGatedStubs: ToolSet = createFreeTierGatedStubTools(freeTierStubsActive)
   const mcpTools = params.mcpToolsRaw
   const tools: ToolSet = {
     ...integrationsForAgent,
     ...mcpTools,
     ...params.webToolSet,
-    ...freeTierGatedStubs,
     ...(params.webSearchTool ? { web_search: params.webSearchTool } : {}),
     ...(params.deepSearchTool ? { deep_search: params.deepSearchTool } : {}),
     ...(params.webFetchTool ? { web_fetch: params.webFetchTool } : {}),

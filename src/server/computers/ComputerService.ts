@@ -11,6 +11,7 @@ import type {
 } from '@overlay/workspace-contracts'
 import type { ComputerRepository } from './ComputerRepository'
 import type { ComputerLifecycleService } from './ComputerLifecycleService'
+import { requireWorkspaceExecution, WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
 
 export type { Computer, ComputerOwnerType, ComputerSize, ComputerStatus } from '@overlay/workspace-contracts'
 export type { ComputerRepository } from './ComputerRepository'
@@ -44,7 +45,7 @@ export type ComputerOwnerAccess =
 
 export class ComputerServiceError extends Error {
   constructor(
-    readonly code: 'not_found' | 'forbidden' | 'not_ready' | 'paid_plan_required' | 'insufficient_credit' | 'quota_exceeded' | 'size_not_allowed' | 'provider_unavailable' | 'provider_error',
+    readonly code: 'not_found' | 'forbidden' | 'not_ready' | 'paid_plan_required' | 'insufficient_credit' | 'quota_exceeded' | 'size_not_allowed' | 'provider_unavailable' | 'provider_error' | 'subscription_required' | 'payment_pending' | 'budget_exhausted' | 'billing_suspended',
     message: string,
     readonly status: number,
     options?: { cause?: unknown },
@@ -58,6 +59,7 @@ export class ComputerService {
   constructor(private readonly dependencies: {
     repository: ComputerRepository
     assertCanRun(input: { workspaceId: string; userId: string; agentId?: string }): Promise<void>
+    requireExecution?: typeof requireWorkspaceExecution
     /** Resolve an agent owner's visibility and creator principal for access checks. */
     agentOwner?: (workspaceId: string, agentId: string) => Promise<{ visibility: 'workspace' | 'creator'; createdByPrincipalId: string } | null>
     limits?: ((input: { workspaceId: string; ownerType: ComputerOwnerType }) => Promise<ComputerLimits | undefined> | ComputerLimits | undefined) | ComputerLimits
@@ -256,8 +258,26 @@ export class ComputerService {
     }
   }
 
-  private admit(actor: ComputerActor, workspaceId: string, ownerType: ComputerOwnerType, ownerId: string) {
-    return this.dependencies.assertCanRun({ workspaceId, userId: actor.userId, ...(ownerType === 'agent' ? { agentId: ownerId } : {}) })
+  private async admit(actor: ComputerActor, workspaceId: string, ownerType: ComputerOwnerType, ownerId: string) {
+    let execution
+    try {
+      execution = await (this.dependencies.requireExecution ?? requireWorkspaceExecution)({
+        userId: actor.userId,
+        workspaceId,
+      })
+    } catch (error) {
+      if (error instanceof WorkspaceExecutionError) {
+        throw new ComputerServiceError(error.payload.code as ComputerServiceError['code'], error.message, error.statusCode)
+      }
+      throw error
+    }
+    if (execution.billingEnabled) {
+      await this.dependencies.assertCanRun({
+        workspaceId,
+        userId: actor.userId,
+        ...(ownerType === 'agent' ? { agentId: ownerId } : {}),
+      })
+    }
   }
 
   private async ownerAccess(

@@ -1,6 +1,24 @@
-import type { HarnessResourceGrantReceipt } from './harness-resource'
+import { isSafeHarnessFundingCents, type HarnessResourceGrantReceipt } from './harness-resource'
 
-export type HarnessStatus = 'running' | 'waiting_for_input' | 'waiting_for_approval' | 'waiting_for_children' | 'waiting_for_resources' | 'completed' | 'cancelled' | 'failed'
+export type HarnessStatus = 'running' | 'waiting_for_input' | 'waiting_for_approval' | 'waiting_for_children' | 'waiting_for_resources' | 'waiting_for_authorization' | 'completed' | 'cancelled' | 'failed'
+export type HarnessAuthorizationPause = {
+  reason: 'task_deadline_expired'
+  deadlineAt: number
+  pausedAt: number
+}
+export type HarnessFundingPauseReason =
+  | 'disabled' | 'pending' | 'payment_failed' | 'monthly_limit_reached' | 'missing_payment_method'
+  | 'missing_consent' | 'amount_shortfall' | 'not_paid' | 'authorization_changed' | 'insufficient_budget'
+  | 'task_deadline_expired' | 'unknown_receipt'
+
+export type HarnessFundingPause = {
+  reason: HarnessFundingPauseReason
+  requiredCents: number
+  availableCents: number
+  reservedCents?: number
+  receiptId: string
+  autoTopUpReason?: string
+}
 export type HarnessStepStatus = 'pending' | 'running' | 'blocked' | 'verifying' | 'done' | 'skipped'
 
 export type HarnessPlanStep = {
@@ -25,7 +43,34 @@ export type HarnessEvidence = {
   verdict: 'observed' | 'passed' | 'failed'
   createdAt: number
   inputDigest?: string
+  resource?: {
+    id: string
+    revision?: string
+    operation?: string
+    page?: number
+  }
   verification?: { stepId: string; planRevision: number }
+}
+
+export type HarnessVerification = {
+  attemptId: string
+  candidateDigest: string
+  planRevision: number
+  evidenceRevision: number
+  supported: boolean
+  reason: string
+  evidenceIds: string[]
+  attempts: number
+  createdAt: number
+}
+
+export type HarnessCompaction = {
+  cycleId: string
+  attemptId: string
+  status: 'started' | 'completed' | 'interrupted' | 'awaiting_reconciliation'
+  retryCount: number
+  failureReason?: 'stream_aborted' | 'validation_failed' | 'provider_error' | 'unknown' | 'hold_unsettled'
+  updatedAt: number
 }
 
 export type HarnessResponseFailure = 'empty_response' | 'provider_error' | 'provider_other'
@@ -55,7 +100,7 @@ export type HarnessReceipt = {
   /** Present only for user-funded inference; null means the provider did not report its charge. */
   externalCostMicros?: number | null
   /** Zero-usage rejection or failure of a zero-cost summary attempt. */
-  rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'route_unavailable' | 'summary_failed'
+  rejectionReason?: 'budget' | 'model_unavailable' | 'route_capacity' | 'route_interrupted' | 'route_unavailable' | 'summary_failed' | 'verification_failed'
   /** A settled response can be unusable even when its token usage is known. */
   responseFailure?: HarnessResponseFailure
 }
@@ -64,13 +109,21 @@ export type HarnessPolicy = {
   actorUserId: string
   workspaceId?: string
   resourcePauseVersion?: 1
+  executionPolicyVersion?: 2
+  spendingMode?: 'workspace' | 'external' | 'none'
   allowedToolIds: string[]
   requiresPlan: boolean
   deadlineAt: number
+  taskDeadlineAt?: number
   /** Bounds Overlay-funded inference, not spending on user-owned provider accounts. */
   maxCostMicros: number
   maxParallelChildren: number
   maxDepth: number
+}
+
+export function effectiveHarnessDeadlineAt(policy: Pick<HarnessPolicy, 'deadlineAt' | 'taskDeadlineAt'>): number {
+  return policy.taskDeadlineAt !== undefined && policy.taskDeadlineAt < policy.deadlineAt
+    ? policy.taskDeadlineAt : policy.deadlineAt
 }
 
 export type HarnessUsage = {
@@ -102,6 +155,8 @@ export type HarnessSnapshot = {
   rootRunId: string
   parentRunId?: string
   workflowRunId?: string
+  handoffWorkflowRunId?: string
+  executionGeneration?: number
   depth: number
   goal: string
   constraints: string[]
@@ -110,6 +165,8 @@ export type HarnessSnapshot = {
   revision: number
   policyRevision?: number
   resourceRequestToken?: string
+  resourcePause?: HarnessFundingPause
+  authorizationPause?: HarnessAuthorizationPause
   progressRevision: number
   planRevision: number
   plan: HarnessPlanStep[]
@@ -118,12 +175,15 @@ export type HarnessSnapshot = {
   blocker?: { kind: 'input' | 'approval' | 'budget' | 'stuck'; question: string }
   terminalReason?: string
   workingSummary: string
+  /** Model-produced continuity prose. Never authoritative evidence. */
+  unverifiedNarrative?: string
+  finalVerification?: HarnessVerification
+  compaction?: HarnessCompaction
   resultSummary?: string
   continuations: number
   lastContinuationProgressRevision: number
   stalledContinuations: number
   latestReceipt?: HarnessReceipt
-  routeInterruptionCount?: number
   modelRecovery?: HarnessModelRecovery
   summaryRecovery?: HarnessModelRecovery
   modelReservation?: {
@@ -147,7 +207,21 @@ export class HarnessPlanValidationError extends Error {
   }
 }
 
-export function createHarnessSnapshot(input: {
+export class HarnessBudgetExceededError extends Error {
+  constructor() {
+    super('The authorized spending budget is exhausted.')
+    this.name = 'HarnessBudgetExceededError'
+  }
+}
+
+export class HarnessDeadlineExceededError extends Error {
+  constructor(message = 'The authorized run deadline is exhausted.') {
+    super(message)
+    this.name = 'HarnessDeadlineExceededError'
+  }
+}
+
+type HarnessSnapshotInput = {
   runId: string
   goal: string
   constraints: string[]
@@ -155,22 +229,53 @@ export function createHarnessSnapshot(input: {
   parentRunId?: string
   rootRunId?: string
   depth?: number
-}, now: number): HarnessSnapshot {
+}
+
+function validateHarnessSnapshotIdentityAndBudget(input: HarnessSnapshotInput): void {
   if (!input.runId || !input.goal.trim()) throw new Error('Run identity and goal are required.')
   if (!Number.isSafeInteger(input.policy.maxCostMicros) || input.policy.maxCostMicros < 0) throw new Error('A nonnegative spending authorization is required.')
+}
+
+function validateHarnessSnapshotDeadlines(input: HarnessSnapshotInput, now: number): void {
   if (!Number.isFinite(input.policy.deadlineAt) || input.policy.deadlineAt <= now) throw new Error('An unexpired deadline is required.')
+  if (input.policy.taskDeadlineAt !== undefined
+    && (!Number.isFinite(input.policy.taskDeadlineAt) || input.policy.taskDeadlineAt <= now)) {
+    throw new Error('A finite task deadline is required.')
+  }
+}
+
+function validateHarnessSnapshotExecutionPolicy(policy: HarnessPolicy): void {
+  if ((policy.executionPolicyVersion === 2
+      && (!policy.spendingMode || policy.maxCostMicros !== 0
+        || (policy.spendingMode === 'workspace' && !policy.workspaceId)
+        || policy.resourcePauseVersion === 1))
+    || (policy.executionPolicyVersion !== 2 && policy.spendingMode !== undefined)) {
+    throw new Error('Invalid versioned execution policy.')
+  }
+}
+
+function harnessSnapshotDepth(input: HarnessSnapshotInput): number {
   if (!Number.isSafeInteger(input.policy.maxParallelChildren) || input.policy.maxParallelChildren < 0
     || !Number.isSafeInteger(input.policy.maxDepth) || input.policy.maxDepth < 0) throw new Error('Invalid child limits.')
   const depth = input.depth ?? 0
   if (!Number.isSafeInteger(depth) || depth < 0 || depth > input.policy.maxDepth) throw new Error('Invalid child depth.')
+  return depth
+}
+
+export function createHarnessSnapshot(input: HarnessSnapshotInput, now: number): HarnessSnapshot {
+  validateHarnessSnapshotIdentityAndBudget(input)
+  validateHarnessSnapshotDeadlines(input, now)
+  validateHarnessSnapshotExecutionPolicy(input.policy)
+  const depth = harnessSnapshotDepth(input)
   return {
     schemaVersion: 1, runId: input.runId, rootRunId: input.rootRunId ?? input.runId,
     ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}), depth,
     goal: input.goal, constraints: [...input.constraints],
     policy: { ...input.policy, allowedToolIds: [...new Set(input.policy.allowedToolIds)].sort() },
     status: 'running', revision: 0, ...(input.policy.resourcePauseVersion === 1 ? { policyRevision: 0 } : {}),
+    executionGeneration: 0,
     progressRevision: 0, planRevision: 0, plan: [], evidence: [], children: [], workingSummary: '',
-    continuations: 0, lastContinuationProgressRevision: 0, stalledContinuations: 0, routeInterruptionCount: 0,
+    continuations: 0, lastContinuationProgressRevision: 0, stalledContinuations: 0,
     usage: { inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costMicros: 0 },
     updatedAt: now,
   }
@@ -213,7 +318,8 @@ function validateStepEvidenceTools(state: HarnessSnapshot, step: HarnessPlanInpu
   if (!tools.length || tools.length > 8 || tools.some(tool => !tool.trim() || tool.length > 256)) {
     throw new Error(`Milestone "${step.id}" must list between one and eight valid evidenceTools.`)
   }
-  const unsupported = tools.find(tool => tool !== 'harness_read_child' && !state.policy.allowedToolIds.includes(tool))
+  const unsupported = tools.find(tool => tool !== 'harness_read_child' && tool !== 'harness_read_artifact'
+    && !state.policy.allowedToolIds.includes(tool))
   if (unsupported) throw new Error(`Milestone "${step.id}" lists unsupported evidence tool "${unsupported}".`)
 }
 
@@ -299,6 +405,7 @@ export function recordHarnessEvidence(state: HarnessSnapshot, evidence: HarnessE
   if (previous) {
     if (previous.kind !== evidence.kind || previous.source !== evidence.source || previous.summary !== evidence.summary || previous.verdict !== evidence.verdict
       || previous.inputDigest !== evidence.inputDigest
+      || JSON.stringify(previous.resource) !== JSON.stringify(evidence.resource)
       || JSON.stringify(previous.verification) !== JSON.stringify(evidence.verification)) throw new Error('Evidence is immutable; use a new reference for new observations.')
     return state
   }
@@ -308,6 +415,122 @@ export function recordHarnessEvidence(state: HarnessSnapshot, evidence: HarnessE
     ...(evidence.verification ? { verification: { ...evidence.verification } } : {}),
   })
   return changed(next, now, !lateToolResult)
+}
+
+export function recordHarnessVerification(
+  state: HarnessSnapshot,
+  verification: HarnessVerification,
+  now: number,
+): HarnessSnapshot {
+  assertActive(state)
+  if (!Number.isSafeInteger(verification.planRevision) || verification.planRevision !== state.planRevision
+    || !Number.isSafeInteger(verification.evidenceRevision) || verification.evidenceRevision !== state.progressRevision
+    || !verification.attemptId || verification.attemptId.length > 256
+    || !verification.candidateDigest || verification.reason.length > 1_000
+    || verification.evidenceIds.some(id => !state.evidence.some(evidence => evidence.id === id))) {
+    throw new Error('Final verification does not match the current plan and evidence.')
+  }
+  if (state.finalVerification
+    && JSON.stringify(state.finalVerification) === JSON.stringify(verification)) return state
+  if (state.finalVerification?.candidateDigest === verification.candidateDigest
+    && state.finalVerification.planRevision === verification.planRevision
+    && state.finalVerification.evidenceRevision === verification.evidenceRevision
+    && state.finalVerification.attempts >= verification.attempts) return state
+  const next = mutable(state)
+  next.finalVerification = { ...verification, evidenceIds: [...verification.evidenceIds] }
+  return changed(next, now, false)
+}
+
+function validateCompactionIdentity(compaction: HarnessCompaction): void {
+  if (!compaction.cycleId || !compaction.attemptId || compaction.retryCount < 0
+    || compaction.retryCount > 1 || !Number.isSafeInteger(compaction.retryCount)
+    || !Number.isFinite(compaction.updatedAt)) throw new Error('Invalid compaction attempt.')
+}
+
+function validateCompactionStart(
+  state: HarnessSnapshot,
+  previous: HarnessCompaction | undefined,
+  compaction: HarnessCompaction,
+): void {
+  if (state.modelReservation && state.modelReservation.id !== compaction.attemptId) {
+    throw new Error('An unrelated model reservation prevents compaction.')
+  }
+  if (previous?.status === 'started' || previous?.status === 'awaiting_reconciliation') {
+    throw new Error('The active compaction attempt must be reconciled first.')
+  }
+  if (previous?.cycleId === compaction.cycleId
+    && (previous.status !== 'interrupted' || compaction.retryCount !== previous.retryCount + 1)) {
+    throw new Error('Compaction retry order is invalid.')
+  }
+  if (previous?.cycleId !== compaction.cycleId && compaction.retryCount !== 0) {
+    throw new Error('A new compaction cycle must start at attempt zero.')
+  }
+}
+
+function hasMatchingLateCompactionReceipt(
+  state: HarnessSnapshot,
+  previous: HarnessCompaction | undefined,
+  compaction: HarnessCompaction,
+): boolean {
+  return previous?.cycleId === compaction.cycleId
+    && previous.attemptId === compaction.attemptId
+    && previous.status === 'awaiting_reconciliation'
+    && compaction.status === 'interrupted'
+    && compaction.retryCount === previous.retryCount
+    && state.latestReceipt?.id === compaction.attemptId
+    && state.modelReservation?.id !== compaction.attemptId
+}
+
+function hasDuplicateInterruptedCompaction(
+  state: HarnessSnapshot,
+  previous: HarnessCompaction | undefined,
+  compaction: HarnessCompaction,
+): boolean {
+  return previous?.cycleId === compaction.cycleId && previous.attemptId === compaction.attemptId
+    && previous.status === 'interrupted' && compaction.status === 'interrupted'
+    && compaction.retryCount === previous.retryCount && state.latestReceipt?.id === compaction.attemptId
+}
+
+function validateCompactionTransition(
+  state: HarnessSnapshot,
+  previous: HarnessCompaction | undefined,
+  compaction: HarnessCompaction,
+): void {
+  if (!previous || previous.cycleId !== compaction.cycleId || previous.attemptId !== compaction.attemptId
+    || previous.status !== 'started') throw new Error('Compaction transition does not match its active attempt.')
+  if (compaction.status === 'completed' && state.modelReservation?.id === compaction.attemptId) {
+    throw new Error('Compaction cannot complete with an unsettled model hold.')
+  }
+  if (compaction.status === 'awaiting_reconciliation'
+    && state.modelReservation?.id !== compaction.attemptId) {
+    throw new Error('Only the matching unresolved hold can await reconciliation.')
+  }
+}
+
+export function setHarnessCompaction(
+  state: HarnessSnapshot,
+  compaction: HarnessCompaction,
+  now: number,
+): HarnessSnapshot {
+  assertActive(state)
+  validateCompactionIdentity(compaction)
+  const previous = state.compaction
+  if (previous?.cycleId === compaction.cycleId && previous.attemptId === compaction.attemptId
+    && JSON.stringify(previous) === JSON.stringify(compaction)) return state
+  if (compaction.status === 'started') {
+    validateCompactionStart(state, previous, compaction)
+  } else if (hasMatchingLateCompactionReceipt(state, previous, compaction)) {
+    const next = mutable(state)
+    next.compaction = { ...compaction }
+    return changed(next, now, false)
+  } else if (hasDuplicateInterruptedCompaction(state, previous, compaction)) {
+    return state
+  } else {
+    validateCompactionTransition(state, previous, compaction)
+  }
+  const next = mutable(state)
+  next.compaction = { ...compaction }
+  return changed(next, now, false)
 }
 
 function hasToolResultEvidenceAlreadyUsedByAction(
@@ -386,7 +609,7 @@ function validateResponseFailure(receipt: HarnessReceipt) {
 
 function validateRejection(receipt: HarnessReceipt) {
   if (receipt.rejectionReason !== undefined && (
-    !['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'route_unavailable', 'summary_failed'].includes(receipt.rejectionReason)
+    !['budget', 'model_unavailable', 'route_capacity', 'route_interrupted', 'route_unavailable', 'summary_failed', 'verification_failed'].includes(receipt.rejectionReason)
     || [receipt.inputTokens, receipt.outputTokens, receipt.reasoningTokens, receipt.cacheReadTokens,
       receipt.cacheWriteTokens, receipt.costMicros].some(value => value !== 0)
     || receipt.costSource !== 'catalog' || receipt.externalCostMicros !== undefined
@@ -440,8 +663,7 @@ function addHarnessUsage(target: HarnessUsage, delta: HarnessUsage) {
 }
 
 function nextModelRecovery(previous: HarnessModelRecovery | undefined, receipt: HarnessReceipt, now: number, deadlineAt: number): HarnessModelRecovery | undefined {
-  const code = receipt.responseFailure ?? (receipt.rejectionReason === 'route_capacity'
-    || receipt.rejectionReason === 'route_interrupted' || receipt.rejectionReason === 'route_unavailable' ? receipt.rejectionReason : undefined)
+  const code = receipt.responseFailure
   if (!code) return receipt.rejectionReason ? previous : undefined
   const attempt = Math.min((previous?.attempt ?? 0) + 1, Number.MAX_SAFE_INTEGER)
   const delay = Math.min(5_000 * 2 ** Math.min(attempt - 1, 6), 300_000)
@@ -452,6 +674,21 @@ function nextModelRecovery(previous: HarnessModelRecovery | undefined, receipt: 
   }
 }
 
+function validateFailedInferenceReceipt(state: HarnessSnapshot, receipt: HarnessReceipt): void {
+  if (receipt.rejectionReason !== 'verification_failed' && receipt.rejectionReason !== 'summary_failed') return
+  const reservation = state.modelReservation
+  const dispatch = reservation?.dispatch
+  if (reservation?.id !== receipt.id || reservation.maxCostMicros !== 0
+    || dispatch?.billingReservationId !== null || dispatch.modelId !== receipt.modelId
+    || (receipt.modelId !== 'openrouter/free' && receipt.modelId !== 'overlay/free')
+    || receipt.provider !== 'overlay-free-router' || receipt.costMicros !== 0
+    || receipt.inputTokens !== 0 || receipt.outputTokens !== 0 || receipt.reasoningTokens !== 0
+    || receipt.cacheReadTokens !== 0 || receipt.cacheWriteTokens !== 0
+    || (receipt.externalCostMicros ?? 0) !== 0) {
+    throw new Error('Failed inference reconciliation requires the exact zero-cost unbilled free hold.')
+  }
+}
+
 // The caller must atomically deduplicate receipt.id per run before recording.
 export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessReceipt, now: number): HarnessSnapshot {
   if (state.latestReceipt?.id === receipt.id) {
@@ -459,14 +696,22 @@ export function recordHarnessReceipt(state: HarnessSnapshot, receipt: HarnessRec
     return state
   }
   validateHarnessReceipt(receipt)
+  validateFailedInferenceReceipt(state, receipt)
   const next = mutable(state)
   if (next.modelReservation?.id === receipt.id) next.modelReservation = undefined
   next.latestReceipt = { ...receipt }
-  const recoveryKey = receipt.id.startsWith('summary:') ? 'summaryRecovery' : 'modelRecovery'
-  next[recoveryKey] = nextModelRecovery(state[recoveryKey], receipt, now, state.policy.deadlineAt)
-  if (receipt.rejectionReason === 'route_interrupted') {
-    next.routeInterruptionCount = (next.routeInterruptionCount ?? 0) + 1
+  if (next.compaction?.attemptId === receipt.id
+    && (next.compaction.status === 'awaiting_reconciliation' || receipt.rejectionReason === 'summary_failed')
+    && next.modelReservation?.id !== receipt.id) {
+    next.compaction = {
+      ...next.compaction,
+      status: 'interrupted',
+      failureReason: receipt.rejectionReason === 'summary_failed' ? 'provider_error' : 'stream_aborted',
+      updatedAt: now,
+    }
   }
+  const recoveryKey = receipt.id.startsWith('summary:') ? 'summaryRecovery' : 'modelRecovery'
+  next[recoveryKey] = nextModelRecovery(state[recoveryKey], receipt, now, effectiveHarnessDeadlineAt(state.policy))
   addHarnessUsage(next.usage, receiptUsage(receipt))
   return changed(next, now, false)
 }
@@ -485,8 +730,7 @@ export function recordHarnessChildReceipt(state: HarnessSnapshot, childRunId: st
   return changed(next, now, false)
 }
 
-export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, now: number): HarnessSnapshot {
-  assertHarnessRunnable(state, now)
+function validateHarnessChildAdmission(state: HarnessSnapshot, child: HarnessChild) {
   if (!child.id) throw new Error('A child identity is required.')
   if (state.children.some(candidate => candidate.id === child.id)) throw new Error('Child identity is already reserved.')
   const step = state.plan.find(candidate => candidate.id === child.stepId)
@@ -502,10 +746,24 @@ export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, n
   if (active.length >= state.policy.maxParallelChildren) throw new Error('The child concurrency budget is exhausted.')
   if (child.allowedToolIds.some(id => !state.policy.allowedToolIds.includes(id))) throw new Error('Child capabilities cannot exceed the parent.')
   if (!Number.isSafeInteger(child.maxCostMicros) || child.maxCostMicros < 0
-    || state.usage.costMicros + reservedHarnessCostMicros(state) + child.maxCostMicros > state.policy.maxCostMicros) throw new Error('The root spending budget cannot cover this child.')
+    || (state.policy.executionPolicyVersion !== 2
+      && state.usage.costMicros + reservedHarnessCostMicros(state) + child.maxCostMicros > state.policy.maxCostMicros)) {
+    throw new Error('The root spending budget cannot cover this child.')
+  }
   if (child.status !== 'running' || child.evidenceRefs.length || child.costMicros !== 0 || child.accountedUsage !== undefined) throw new Error('A new child must be empty and running.')
+  return { step, needsChildEvidenceTool }
+}
+
+export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, now: number): HarnessSnapshot {
+  assertHarnessRunnable(state, now)
+  const { step, needsChildEvidenceTool } = validateHarnessChildAdmission(state, child)
   const next = mutable(state)
-  next.children.push({ ...child, allowedToolIds: [...child.allowedToolIds], evidenceRefs: [...child.evidenceRefs] })
+  next.children.push({
+    ...child,
+    ...(state.policy.executionPolicyVersion === 2 ? { maxCostMicros: 0 } : {}),
+    allowedToolIds: [...child.allowedToolIds],
+    evidenceRefs: [...child.evidenceRefs],
+  })
   const delegatedStep = next.plan.find(candidate => candidate.id === child.stepId)!
   Object.assign(delegatedStep, { childRunId: child.id, status: 'running' })
   if (needsChildEvidenceTool) {
@@ -536,7 +794,8 @@ export function admitHarnessNamedChild(
     throw new Error('Child capabilities cannot exceed the parent.')
   }
   if (!Number.isSafeInteger(child.maxCostMicros) || child.maxCostMicros < 0
-    || state.usage.costMicros + reservedHarnessCostMicros(state) + child.maxCostMicros > state.policy.maxCostMicros) {
+    || (state.policy.executionPolicyVersion !== 2
+      && state.usage.costMicros + reservedHarnessCostMicros(state) + child.maxCostMicros > state.policy.maxCostMicros)) {
     throw new Error('The root spending budget cannot cover this child.')
   }
   if (child.status !== 'running' || child.evidenceRefs.length || child.costMicros !== 0 || child.accountedUsage !== undefined) {
@@ -617,10 +876,16 @@ export function bindHarnessModelDispatch(
 export function assertHarnessRunnable(state: HarnessSnapshot, now: number, estimatedNextCostMicros = 0) {
   assertActive(state)
   if (state.status !== 'running' || state.blocker) throw new Error('The run is waiting for a blocker to resolve.')
-  if (now >= state.policy.deadlineAt) throw new Error('The authorized run deadline is exhausted.')
+  if (now >= state.policy.deadlineAt) throw new HarnessDeadlineExceededError()
+  if (state.policy.taskDeadlineAt !== undefined && now >= state.policy.taskDeadlineAt) {
+    throw new HarnessDeadlineExceededError('The authorized task deadline is exhausted.')
+  }
   if (!Number.isSafeInteger(estimatedNextCostMicros) || estimatedNextCostMicros < 0) throw new Error('A nonnegative cost reservation is required.')
   const reserved = reservedHarnessCostMicros(state)
-  if (state.usage.costMicros + reserved + estimatedNextCostMicros > state.policy.maxCostMicros) throw new Error('The authorized spending budget is exhausted.')
+  if (state.policy.executionPolicyVersion !== 2
+    && state.usage.costMicros + reserved + estimatedNextCostMicros > state.policy.maxCostMicros) {
+    throw new HarnessBudgetExceededError()
+  }
 }
 
 export function blockHarness(state: HarnessSnapshot, blocker: NonNullable<HarnessSnapshot['blocker']>, now: number): HarnessSnapshot {
@@ -637,6 +902,10 @@ export function blockHarness(state: HarnessSnapshot, blocker: NonNullable<Harnes
 
 export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnapshot {
   assertActive(state)
+  if (state.modelReservation) throw new Error('A model hold must be reconciled before the run can resume.')
+  if (state.status === 'waiting_for_authorization' || state.authorizationPause) {
+    throw new Error('Expired authorization cannot be resumed by an input or approval reply.')
+  }
   if (state.status === 'waiting_for_resources' || state.resourceRequestToken) {
     throw new Error('A resource pause must be consumed before the run can resume.')
   }
@@ -647,6 +916,52 @@ export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnaps
   next.stalledContinuations = 0
   next.lastContinuationProgressRevision = next.progressRevision
   return changed(next, now)
+}
+
+export function pauseHarnessForAuthorization(state: HarnessSnapshot, now: number): HarnessSnapshot {
+  assertActive(state)
+  const deadlineAt = state.policy.taskDeadlineAt
+  if (state.policy.executionPolicyVersion !== 2 || deadlineAt === undefined || now < deadlineAt
+    || state.status === 'waiting_for_authorization' || state.resourceRequestToken) {
+    throw new Error('Invalid task-deadline authorization pause.')
+  }
+  const next = mutable(state)
+  next.status = 'waiting_for_authorization'
+  next.authorizationPause = { reason: 'task_deadline_expired', deadlineAt, pausedAt: now }
+  return changed(next, now, false)
+}
+
+export function pauseHarnessForFunding(
+  state: HarnessSnapshot,
+  pause: HarnessFundingPause,
+  now: number,
+): HarnessSnapshot {
+  assertActive(state)
+  if (state.policy.executionPolicyVersion !== 2 || state.policy.spendingMode !== 'workspace'
+    || state.status !== 'running' || state.modelReservation || state.resourceRequestToken
+    || state.resourcePause || !pause.receiptId.trim()
+    || !isSafeHarnessFundingCents(pause.requiredCents) || pause.requiredCents <= 0
+    || !isSafeHarnessFundingCents(pause.availableCents)
+    || (pause.reservedCents !== undefined
+      && !isSafeHarnessFundingCents(pause.reservedCents))) {
+    throw new Error('Invalid workspace funding pause.')
+  }
+  const next = mutable(state)
+  next.status = 'waiting_for_resources'
+  next.resourcePause = { ...pause }
+  return changed(next, now, false)
+}
+
+export function resumeHarnessFunding(state: HarnessSnapshot, now: number): HarnessSnapshot {
+  assertActive(state)
+  if (state.policy.executionPolicyVersion !== 2 || state.status !== 'waiting_for_resources'
+    || !state.resourcePause || state.resourceRequestToken) {
+    throw new Error('There is no v2 workspace funding pause to resume.')
+  }
+  const next = mutable(state)
+  next.status = 'running'
+  next.resourcePause = undefined
+  return changed(next, now, false)
 }
 
 export function pauseHarnessForResources(state: HarnessSnapshot, token: string, now: number): HarnessSnapshot {
@@ -731,15 +1046,27 @@ export function hasRunnableHarnessMilestones(state: HarnessSnapshot): boolean {
     && (!step.childRunId || !state.children.some(child => child.id === step.childRunId && child.status === 'running')))
 }
 
-export function claimHarnessExecution(state: HarnessSnapshot, workflowRunId: string, now: number): HarnessSnapshot {
+export function claimHarnessExecution(
+  state: HarnessSnapshot,
+  workflowRunId: string,
+  now: number,
+  generation = state.executionGeneration ?? 0,
+): HarnessSnapshot {
   assertActive(state)
+  if (state.status === 'waiting_for_authorization' || state.authorizationPause) {
+    throw new Error('Expired authorization cannot be claimed for execution.')
+  }
   if (!workflowRunId.trim() || workflowRunId.length > 256) throw new Error('Invalid workflow execution identity.')
+  if (!Number.isSafeInteger(generation) || generation !== (state.executionGeneration ?? 0)) {
+    throw new Error('HARNESS_EXECUTION_GENERATION_CHANGED')
+  }
   if (state.workflowRunId) {
     if (state.workflowRunId !== workflowRunId) throw new Error('HARNESS_EXECUTION_ALREADY_CLAIMED')
     return state
   }
   const next = mutable(state)
   next.workflowRunId = workflowRunId
+  delete next.handoffWorkflowRunId
   return changed(next, now, false)
 }
 
@@ -758,12 +1085,21 @@ export function checkpointHarness(
   summary: string,
   now: number,
   purpose: HarnessCheckpointPurpose = 'continuation',
+  unverifiedNarrative?: string,
 ): HarnessSnapshot {
   assertActive(state)
   if (summary.length > 8_000) throw new Error('Keep the working summary under 8,000 characters; store larger outputs as artifacts.')
+  if (unverifiedNarrative !== undefined && unverifiedNarrative.length > 8_000) {
+    throw new Error('Keep unverified narrative under 8,000 characters.')
+  }
   const next = mutable(state)
+  if (purpose === 'compaction') {
+    next.workingSummary = summary
+    next.unverifiedNarrative = summary
+    return changed(next, now, false)
+  }
   next.workingSummary = summary
-  if (purpose === 'compaction') return changed(next, now, false)
+  if (unverifiedNarrative !== undefined) next.unverifiedNarrative = unverifiedNarrative
   next.continuations++
   next.stalledContinuations = state.progressRevision === state.lastContinuationProgressRevision ? state.stalledContinuations + 1 : 0
   next.lastContinuationProgressRevision = state.progressRevision
@@ -803,21 +1139,38 @@ function settleNamedChildMilestone(state: HarnessSnapshot, child: HarnessChild, 
   step.skipReason = `${childState.status}: ${reason}`
 }
 
-export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSnapshot, now: number): HarnessSnapshot {
-  assertActive(state)
+function assertChildSettlementLineage(state: HarnessSnapshot, childState: HarnessSnapshot): HarnessChild {
   const child = state.children.find(candidate => candidate.id === childState.runId)
   if (!child || childState.parentRunId !== state.runId || childState.rootRunId !== state.rootRunId
     || childState.policy.actorUserId !== state.policy.actorUserId || childState.policy.workspaceId !== state.policy.workspaceId) throw new Error('The child does not belong to this run and authority.')
+  return child
+}
+
+function assertChildDelegatedAuthority(state: HarnessSnapshot, child: HarnessChild, childState: HarnessSnapshot): void {
   if (childState.depth !== state.depth + 1
     || childState.policy.allowedToolIds.some(id => !child.allowedToolIds.includes(id))
-    || childState.policy.maxCostMicros > child.maxCostMicros
-    || childState.policy.deadlineAt > state.policy.deadlineAt
+    || (state.policy.executionPolicyVersion !== 2 && childState.policy.maxCostMicros > child.maxCostMicros)
+    || (state.policy.executionPolicyVersion !== 2 && childState.policy.deadlineAt > state.policy.deadlineAt)
+    || (childState.policy.taskDeadlineAt !== undefined
+      && (state.policy.taskDeadlineAt === undefined || childState.policy.taskDeadlineAt > state.policy.taskDeadlineAt))
     || childState.policy.maxDepth > state.policy.maxDepth
-    || childState.policy.maxParallelChildren > state.policy.maxParallelChildren) throw new Error('The child exceeds its delegated authority.')
-  if (child.status !== 'running') return state
+      || childState.policy.maxParallelChildren > state.policy.maxParallelChildren) throw new Error('The child exceeds its delegated authority.')
+}
+
+function assertChildSettlementComplete(state: HarnessSnapshot, child: HarnessChild, childState: HarnessSnapshot): void {
   if (!['completed', 'failed', 'cancelled'].includes(childState.status)) throw new Error('Child work has not finished.')
   if (childState.modelReservation || childState.children.some(child => child.status === 'running' || child.status === 'cancelled')) throw new Error('Reconcile outstanding child model calls before releasing its budget.')
-  if (childState.usage.costMicros > child.maxCostMicros) throw new Error('Child usage exceeded its authorization; reconcile before continuing.')
+  if (state.policy.executionPolicyVersion !== 2 && childState.usage.costMicros > child.maxCostMicros) {
+    throw new Error('Child usage exceeded its authorization; reconcile before continuing.')
+  }
+}
+
+export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSnapshot, now: number): HarnessSnapshot {
+  assertActive(state)
+  const child = assertChildSettlementLineage(state, childState)
+  assertChildDelegatedAuthority(state, child, childState)
+  if (child.status !== 'running') return state
+  assertChildSettlementComplete(state, child, childState)
   const next = mutable(state)
   Object.assign(next.children.find(candidate => candidate.id === child.id)!, {
     status: childState.status, costMicros: childState.usage.costMicros,

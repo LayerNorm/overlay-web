@@ -22,7 +22,7 @@ export interface CapabilityCheck {
   /** External agent runtimes (Claude Code, Codex, etc.). */
   externalAgents: boolean
   computers: boolean
-  /** Agents (Claude Code, Codex) on Overlay Cloud machines. */
+  /** Permanently false compatibility field for retired hosted third-party agents. */
   cloudAgents: boolean
   /** Work: tasks as a list, board and timeline. */
   work: boolean

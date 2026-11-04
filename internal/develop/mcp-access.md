@@ -8,7 +8,7 @@ Overlay runs **two MCP servers inside the Next.js app**, plus it is an **MCP cli
 
 | | `/api/mcp` | `/api/agent-mcp` |
 | --- | --- | --- |
-| For | Outside AI apps (ChatGPT, Claude, Cursor, local agents) | Claude Code / Codex agents Overlay runs or connects (Overlay Cloud machines, your machine) |
+| For | Outside AI apps (ChatGPT, Claude, Cursor, local agents) | Claude Code / Codex agents on user-owned hosts connected through Agent Host |
 | Sign-in | OAuth 2.1 (dynamic registration, PKCE, rotating refresh) or a personal token (`ovmcu_p_…`) | A per-run token (`ovmcp_…`) the Agent Host hands the agent; stops working when the run ends |
 | Who it acts as | The person who connected it, in one workspace, at one access level | The person who summoned the agent, limited to the agent's grant |
 | Tools | Read / Read and write / Everything (see `tool-catalog.md`) | The agent's grant, same pipeline as a native agent |

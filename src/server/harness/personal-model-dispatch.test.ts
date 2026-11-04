@@ -14,7 +14,7 @@ vi.mock('@/server/billing/billing-runtime', () => ({ reserveProviderBudget: mock
 
 const access = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation', agentRunId: 'delivery',
   workspaceId: 'workspace', principalId: 'principal', authentication: { type: 'session' as const } }
-const reference: HarnessModelReference = { modelId: 'provider/model', credentialOwnerId: 'user', allowLowBalanceFallback: false,
+const reference: HarnessModelReference = { modelId: 'provider/model', credentialOwnerId: 'user',
   personal: { access, receiptId: 'model:0', memoryEnabled: true, requestFingerprint: 'fingerprint', inputTokenBudget: 100,
     maxOutputTokens: 50, contextWindow: 1_000 } }
 const options: LanguageModelV4CallOptions = { prompt: [], maxOutputTokens: 50 }
@@ -22,7 +22,8 @@ const automationContext = {
   turnId: 'automation-run:automation-run', accountAllowedToolIds: ['read_file'],
   accountAllowedConnectorIds: ['gmail'], integrationToolIds: ['gmail_send'],
 }
-const state = { workflowRunId: 'workflow', revision: 1, modelReservation: { id: 'model:0', maxCostMicros: 60 } }
+const state = { workflowRunId: 'workflow', revision: 1, policy: { executionPolicyVersion: 1 },
+  modelReservation: { id: 'model:0', maxCostMicros: 60 } }
 
 test('budget rejection is durably recorded before failing and never binds or starts provider execution', async () => {
   mocks.reserve.mockResolvedValue({ ok: false, code: 'insufficient_credits' })
@@ -43,7 +44,9 @@ beforeEach(() => {
 
 test('refreshes identity, reserves a stable account hold, claims dispatch atomically, then marks started', async () => {
   await authorizePersonalHarnessModelDispatch(reference, options)
-  expect(mocks.refresh).toHaveBeenCalledWith(access, expect.objectContaining({ memoryEnabled: true, effectiveModelId: 'provider/model' }))
+  expect(mocks.refresh).toHaveBeenCalledWith(access,
+    expect.objectContaining({ memoryEnabled: true, effectiveModelId: 'provider/model' }), undefined,
+    { renewalMode: true, renewLease: true })
   expect(mocks.reserve).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user', workspaceId: 'workspace', providerCostUsd: 0.00004,
     reservationId: expect.stringMatching(/^harness-model:[a-f0-9]{64}$/), operationId: expect.any(String) }))
   expect(mocks.apply).toHaveBeenCalledWith(expect.objectContaining({ operation: {
@@ -57,6 +60,7 @@ test('refreshes identity, reserves a stable account hold, claims dispatch atomic
 test('automation model dispatch rebuilds run and source identity from serialized authority', async () => {
   const automationAccess = {
     ...access,
+    executionGeneration: 7,
     authentication: {
       type: 'automation' as const,
       automationId: 'automation',
@@ -68,6 +72,7 @@ test('automation model dispatch rebuilds run and source identity from serialized
     ...reference,
     personal: { ...reference.personal!, access: automationAccess, automationContext },
   }
+  mocks.read.mockResolvedValue({ ...state, executionGeneration: 7 })
   const serialized = HarnessLanguageModel[WORKFLOW_SERIALIZE](new HarnessLanguageModel(automationReference))
   await authorizePersonalHarnessModelDispatch(serialized, options)
   expect(mocks.refresh).toHaveBeenCalledWith(automationAccess, expect.objectContaining({
@@ -76,7 +81,7 @@ test('automation model dispatch rebuilds run and source identity from serialized
     automationId: 'automation',
     automationRunId: 'automation-run',
     billingProgrammaticSubjectId: 'automation:automation',
-  }))
+  }), undefined, { renewalMode: true, renewLease: true })
 })
 
 test('automation model dispatch revalidates source before reserving provider funds', async () => {
@@ -145,4 +150,57 @@ test('failed binding releases only the unused account hold; a failed start retai
   mocks.started.mockRejectedValueOnce(new Error('start unavailable'))
   await expect(authorizePersonalHarnessModelDispatch(reference, options)).rejects.toThrow(/start unavailable/)
   expect(mocks.release).toHaveBeenCalledTimes(1)
+})
+
+test('v2 external mode binds BYOK and cannot reintroduce retired free routes', async () => {
+  const byokReference: HarnessModelReference = {
+    ...reference,
+    modelId: 'byok/anthropic/claude-3-5-sonnet-latest',
+    personal: { ...reference.personal!, receiptId: 'model:1' },
+  }
+  const externalState = {
+    ...state, policy: { executionPolicyVersion: 2, spendingMode: 'external' },
+    modelReservation: { id: 'model:1', maxCostMicros: 60 },
+  }
+  mocks.read.mockResolvedValueOnce(externalState).mockResolvedValueOnce(externalState)
+
+  await authorizePersonalHarnessModelDispatch(byokReference, options)
+  expect(mocks.reserve).not.toHaveBeenCalled()
+  expect(mocks.apply).toHaveBeenCalledWith(expect.objectContaining({ operation: {
+    type: 'bind_model_dispatch', id: 'model:1', modelId: byokReference.modelId, billingReservationId: null,
+  } }))
+  expect(mocks.started).not.toHaveBeenCalled()
+
+  const noneState = {
+    ...state, policy: { executionPolicyVersion: 2, spendingMode: 'none' },
+  }
+  mocks.read.mockResolvedValueOnce(noneState).mockResolvedValueOnce(noneState)
+  await expect(authorizePersonalHarnessModelDispatch(reference, options)).rejects.toThrow(/requires workspace funding/)
+  expect(mocks.reserve).not.toHaveBeenCalled()
+  expect(mocks.apply).toHaveBeenCalledTimes(1)
+
+  const freeReference: HarnessModelReference = {
+    ...reference,
+    modelId: 'openrouter/free',
+    personal: { ...reference.personal!, receiptId: 'model:2' },
+  }
+  const freeState = {
+    ...noneState,
+    modelReservation: { id: 'model:2', maxCostMicros: 0 },
+  }
+  mocks.forecast.mockResolvedValueOnce(0)
+  mocks.read.mockReset().mockResolvedValue(freeState)
+  await expect(authorizePersonalHarnessModelDispatch(freeReference, options)).rejects.toThrow(/retired/)
+  expect(mocks.reserve).not.toHaveBeenCalled()
+  expect(mocks.apply).toHaveBeenCalledTimes(1)
+  expect(mocks.started).not.toHaveBeenCalled()
+})
+
+test('v2 external spending cannot dispatch an Overlay-funded model', async () => {
+  mocks.read.mockResolvedValueOnce({
+    ...state, policy: { executionPolicyVersion: 2, spendingMode: 'external' },
+  })
+  await expect(authorizePersonalHarnessModelDispatch(reference, options)).rejects.toThrow(/spending mode/)
+  expect(mocks.reserve).not.toHaveBeenCalled()
+  expect(mocks.apply).not.toHaveBeenCalled()
 })

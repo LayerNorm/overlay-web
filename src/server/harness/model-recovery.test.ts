@@ -44,17 +44,6 @@ test('settled failures persist exponential backoff without advancing progress, t
   expect(state.modelRecovery).toBeUndefined()
 })
 
-test('free interruptions and capacity rejections share bounded backoff and respect authorization expiry', () => {
-  let state = initial()
-  state.policy.deadlineAt = 12_000
-  for (const [index, rejectionReason] of (['route_interrupted', 'route_capacity', 'route_interrupted'] as const).entries()) {
-    state = recordHarnessReceipt(state, { ...receipt(`model:${index}`), modelId: 'openrouter/free',
-      provider: 'overlay-free-router', responseFailure: undefined, inputTokens: 0, costMicros: 0, rejectionReason }, 1_000)
-  }
-  expect(state.modelRecovery).toMatchObject({ attempt: 3, nextRetryAt: 12_000, code: 'route_interrupted' })
-  expect(state.usage.costMicros).toBe(0)
-})
-
 test('summary recovery has independent durable attempts without resetting response recovery or advancing progress', () => {
   let state = recordHarnessReceipt(initial(), receipt('model:0'), 1_000)
   const responseRecovery = state.modelRecovery
@@ -70,23 +59,6 @@ test('summary recovery has independent durable attempts without resetting respon
   expect(state.summaryRecovery).toBeUndefined()
   expect(state.modelRecovery).toEqual(responseRecovery)
   expect(state.usage.costMicros).toBe(4)
-})
-
-test.each(['model:0', 'summary:model:0:0'])('route unavailability survives reload and waits from its durable receipt %s', async id => {
-  const rejection: HarnessReceipt = { ...receipt(id), modelId: 'openrouter/free', provider: 'overlay-free-router',
-    inputTokens: 0, costMicros: 0, responseFailure: undefined, rejectionReason: 'route_unavailable' }
-  const original = { ...initial(), modelReservation: { id, maxCostMicros: 0 } }
-  const state = JSON.parse(JSON.stringify(recordHarnessReceipt(original, rejection, 1_000))) as HarnessSnapshot
-  const recoveryKey = id.startsWith('summary:') ? 'summaryRecovery' : 'modelRecovery'
-  expect(state[recoveryKey]).toEqual({ receiptId: id, modelId: 'openrouter/free', code: 'route_unavailable',
-    attempt: 1, firstFailureAt: 1_000, nextRetryAt: 6_000 })
-  expect(state.modelReservation).toBeUndefined()
-  expect(state.progressRevision).toBe(original.progressRevision)
-  expect(state.usage.costMicros).toBe(0)
-  expect(state.status).toBe('running')
-  mocks.read.mockResolvedValue(state)
-  expect(await waitForHarnessModelRecovery(reference, id)).toBe(true)
-  expect(mocks.sleep).toHaveBeenCalledExactlyOnceWith(new Date(6_000))
 })
 
 test.each(['model:0', 'summary:model:0:0'])('durable retry %s uses the stored time and rechecks ownership and cancellation after waking', async id => {

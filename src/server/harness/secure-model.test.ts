@@ -15,7 +15,6 @@ const reference = {
   modelId: 'fixture/model',
   credentialOwnerId: 'fixture-user',
   sessionId: 'fixture-session',
-  allowLowBalanceFallback: false,
 }
 const options: LanguageModelV4CallOptions = {
   prompt: [{ role: 'user', content: [{ type: 'text', text: 'fixture' }] }],
@@ -38,14 +37,14 @@ beforeEach(() => {
 })
 
 const personal: PersonalHarnessModelDispatch = {
-  access: { actorUserId: 'fixture-user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation',
+  access: { actorUserId: 'fixture-user', runId: 'run', workflowRunId: 'workflow', executionGeneration: 7, conversationId: 'conversation',
     workspaceId: 'workspace', principalId: 'principal', agentRunId: 'delivery', authentication: { type: 'api-key', apiKeyId: 'key-reference' } },
   receiptId: 'model:0', memoryEnabled: true, requestFingerprint: 'fingerprint', inputTokenBudget: 10_000,
   maxOutputTokens: 100, contextWindow: 100_000,
 }
 
 const native: NativeHarnessModelDispatch = {
-  access: { actorUserId: 'fixture-user', runId: 'workspace:delivery', workflowRunId: 'workflow',
+  access: { actorUserId: 'fixture-user', runId: 'workspace:delivery', workflowRunId: 'workflow', executionGeneration: 9,
     conversationId: 'room', agentRunId: 'delivery', workspaceId: 'workspace', principalId: 'principal',
     agentId: 'agent', agentPrincipalId: 'agent-principal', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
   receiptId: 'model:0', memoryEnabled: true, sharedRoom: false, requestFingerprint: 'request', streamToDelivery: true,
@@ -141,7 +140,7 @@ test('resolves credentials anew on execution and preserves v4 calls, streaming a
   expect(second.doStreamCalls).toEqual([options])
   expect(getLanguageModel).toHaveBeenCalledTimes(2)
   expect(getLanguageModel).toHaveBeenNthCalledWith(2, reference.modelId, undefined, reference.credentialOwnerId, {
-    sessionId: reference.sessionId, allowLowBalanceFallback: false,
+    sessionId: reference.sessionId,
   })
 })
 

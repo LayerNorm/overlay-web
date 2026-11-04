@@ -5,7 +5,7 @@ import type { LanguageModelV4FinishReason, LanguageModelV4StreamPart } from '@ai
 import { FatalError } from 'workflow'
 import { z } from 'zod'
 import * as state from '@overlay/agent-runtime/harness-state'
-import type { HarnessExecutionPorts } from './ports'
+import type { HarnessExecutionPorts, HarnessRunnerCheckpoint } from './ports'
 import { buildHarnessStepInstructions } from './context'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { runOverlayHarness } from './runner'
@@ -13,6 +13,7 @@ import { harnessToolResultEvidence } from './tool-evidence'
 import type { HarnessToolExecutionOptions } from './tool-approvals'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
 import { harnessModelResponseFailure } from './model-usage'
+import { HarnessWaitRollover } from './waits'
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
@@ -44,15 +45,23 @@ function model(program: (index: number) => ProgramOutput, finishReasons: Languag
   return provider
 }
 
-function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
+function fixture(requiresPlan = true, extraAllowedToolIds: string[] = [], options: { executionPolicyVersion?: 1 | 2 } = {}) {
+  let owner = 'workflow'
   let current = state.createHarnessSnapshot({ runId: 'run', goal: 'Read the requested records', constraints: [], policy: {
     actorUserId: 'user', allowedToolIds: ['read', 'write', ...extraAllowedToolIds], requiresPlan,
-    deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxDepth: 1, maxParallelChildren: 2,
+    deadlineAt: Date.now() + (options.executionPolicyVersion === 2 ? 3 * 60 * 60_000 : 60_000),
+    maxCostMicros: options.executionPolicyVersion === 2 ? 0 : 100,
+    maxDepth: 1, maxParallelChildren: 2,
+    ...(options.executionPolicyVersion ? {
+      executionPolicyVersion: options.executionPolicyVersion,
+      ...(options.executionPolicyVersion === 2 ? { spendingMode: 'none' as const } : {}),
+    } : {}),
   } }, Date.now())
   const receipts = new Set<string>()
   const sdkSteps: number[] = []
+  const checkpoints: HarnessRunnerCheckpoint[] = []
   const ports: HarnessExecutionPorts = {
-    claim: async () => { current = state.claimHarnessExecution(current, 'workflow', Date.now()); return true },
+    claim: async () => { current = state.claimHarnessExecution(current, owner, Date.now()); return true },
     read: async () => current,
     apply: async (_id, operation) => {
       const now = Date.now()
@@ -62,7 +71,11 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
         case 'transition_step': current = state.transitionHarnessStep(current, operation, now); break
         case 'block': current = state.blockHarness(current, operation.blocker, now); break
         case 'resume': current = state.resumeHarness(current, now); break
-        case 'checkpoint': current = state.checkpointHarness(current, operation.summary, now, operation.purpose); break
+        case 'checkpoint': current = state.checkpointHarness(
+          current, operation.summary, now, operation.purpose, operation.unverifiedNarrative,
+        ); break
+        case 'record_verification': current = state.recordHarnessVerification(current, operation.verification, now); break
+        case 'set_compaction': current = state.setHarnessCompaction(current, operation.compaction, now); break
         case 'finish': current = state.finishHarness(current, now, operation.resultSummary); break
         case 'terminate': current = state.terminateHarness(current, operation.status, operation.reason, now); break
         case 'wait_for_children': current = state.waitForHarnessChildren(current, now); break
@@ -72,6 +85,7 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
     },
     readEvidence: async id => current.evidence.find(item => item.id === id) ?? null,
     authorizeTool: vi.fn(async () => undefined),
+    renewLease: async () => {},
     prepareModel: async request => ({ messages: request.messages, instructions: buildHarnessStepInstructions(current, request.instructionContext),
       activeToolNames: request.toolNames, estimatedCostMicros: 0 }),
     recordModelStep: async (step, id) => {
@@ -95,11 +109,24 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
     waitForChildren: async () => { throw new Error('Unexpected child wait') },
     waitForInput: async () => null,
     waitForApproval: async () => null,
+    continueExecution: async checkpoint => { checkpoints.push(checkpoint); return current },
   }
   return {
     ports,
     receipts,
     sdkSteps,
+    reservePaidVerificationHold: (id = 'verification:paid-hold') => {
+      current = state.reserveHarnessModel(current, id, 10, Date.now())
+      current = state.bindHarnessModelDispatch(current, id, {
+        modelId: 'provider/paid-model',
+        billingReservationId: 'billing:verification',
+      }, Date.now())
+    },
+    checkpoints,
+    setOwner: (next: string, generation: number) => {
+      owner = next
+      current = { ...current, workflowRunId: next, executionGeneration: generation }
+    },
     recordInterruption: (id: string) => {
       current = state.recordHarnessReceipt(current, {
         id,
@@ -119,6 +146,72 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = []) {
   }
 }
 
+test('V2 approval rollover checkpoints pending requests and resumes without replaying the tool', async () => {
+  const clock = vi.spyOn(Date, 'now')
+  let now = Date.now()
+  clock.mockImplementation(() => now)
+  const f = fixture(false, [], { executionPolicyVersion: 2 })
+  const read = vi.fn(async () => ({ document: 'observed' }))
+  const execute = vi.fn(async () => ({ success: true }))
+  const write = tool({ inputSchema: z.object({ id: z.string() }), needsApproval: true, execute })
+  model(index => index === 0 ? [call('read', 'read-1', {})]
+    : index === 1 ? [call('write', 'write-1', { id: 'doc' })] : 'The document was sent.')
+  f.ports.waitForApproval = async () => { throw new HarnessWaitRollover() }
+  try {
+    const tools = { read: tool({ inputSchema: z.object({}), execute: read }), write }
+    const first = await runOverlayHarness({ ...input, tools }, f.ports)
+    expect(first.outcome).toBe('continued')
+    expect(f.checkpoints).toHaveLength(1)
+    const checkpoint = f.checkpoints[0]!
+    expect(checkpoint.pendingApproval?.requests).toMatchObject([{ toolCallId: 'write-1', toolName: 'write', input: { id: 'doc' } }])
+    expect(checkpoint.messages.length).toBeGreaterThan(0)
+    expect(checkpoint.invocation).toBeGreaterThan(0)
+    expect(checkpoint.modelCall).toBeGreaterThan(0)
+    expect(checkpoint.executionOutcomes).toMatchObject([['read-1', { toolName: 'read', success: true }]])
+    expect(read).toHaveBeenCalledOnce()
+    expect(execute).not.toHaveBeenCalled()
+
+    now += 60 * 60_000
+    f.setOwner('successor', 1)
+    model(() => 'The document was sent.')
+    f.ports.waitForApproval = async requests => requests.map(request => ({ approvalId: request.approvalId, approved: true }))
+    const resumed = await runOverlayHarness({ ...input, continuation: checkpoint, tools }, f.ports)
+    expect(resumed.snapshot.status).toBe('completed')
+    expect(read).toHaveBeenCalledOnce()
+    expect(execute).toHaveBeenCalledOnce()
+  } finally {
+    clock.mockRestore()
+  }
+})
+
+test('legacy waits propagate rollover instead of using the V2 segment handoff', async () => {
+  const f = fixture(false)
+  model(() => [call('harness_report_blocker', 'input', { question: 'Which document?' })])
+  f.ports.waitForInput = async () => { throw new HarnessWaitRollover() }
+  await expect(runOverlayHarness({ ...input, tools: {} }, f.ports)).rejects.toBeInstanceOf(HarnessWaitRollover)
+  expect(f.checkpoints).toHaveLength(0)
+})
+
+test('V2 input rollover checkpoints the invocation and resumes through the successor segment', async () => {
+  const f = fixture(false, [], { executionPolicyVersion: 2 })
+  model(() => [call('harness_report_blocker', 'input', { question: 'Which document?' })])
+  f.ports.waitForInput = async () => { throw new HarnessWaitRollover() }
+  const first = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(first.outcome).toBe('continued')
+  const checkpoint = f.checkpoints[0]!
+  expect(checkpoint.pendingApproval).toBeUndefined()
+  expect(checkpoint.messages.length).toBeGreaterThan(0)
+  expect(checkpoint.invocation).toBeGreaterThan(0)
+  expect(checkpoint.modelCall).toBeGreaterThan(0)
+
+  f.setOwner('input-successor', 1)
+  f.ports.waitForInput = async () => [{ role: 'user', content: 'Use the latest document.' }]
+  model(() => 'The selected document is ready.')
+  const resumed = await runOverlayHarness({ ...input, continuation: checkpoint, tools: {} }, f.ports)
+  expect(resumed.snapshot.status).toBe('completed')
+  expect(resumed.snapshot.resultSummary).toBe('The selected document is ready.')
+})
+
 const input = { instructions: 'Use the tools to perform the requested work.', messages: [{ role: 'user' as const, content: 'Read the records.' }], model: { modelId: 'fixture/model', credentialOwnerId: 'user' } }
 
 test('reasoning stays separate from the durable final result shared with parents', async () => {
@@ -129,6 +222,35 @@ test('reasoning stays separate from the durable final result shared with parents
   expect(result.steps[0]?.reasoningText).toBe('Private planning')
   expect(provider.doStreamCalls).toHaveLength(1)
   expect(result.snapshot.usage.outputTokens).toBe(1)
+})
+
+test('a resumed segment retains delivery steps from the protected checkpoint', async () => {
+  const f = fixture(false)
+  model(() => 'The task is complete.')
+  const prior = {
+    text: 'Earlier settled progress.',
+    content: [{ type: 'text', text: 'Earlier settled progress.' }],
+    toolCalls: [],
+    toolResults: [],
+  } as never
+  const result = await runOverlayHarness({
+    ...input,
+    continuation: {
+      version: 1,
+      messages: input.messages,
+      invocation: 1,
+      modelCall: 1,
+      stagnantSegments: 0,
+      finalAnswerRequired: false,
+      truncatedResponse: false,
+      segmentStartedAt: Date.now(),
+      deliverySteps: [prior],
+    },
+    tools: {},
+  }, f.ports)
+
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.steps.map(step => step.text)).toEqual(['Earlier settled progress.', 'The task is complete.'])
 })
 
 test('runner finalizes a settled answer when its authorization expires after the last model call', async () => {
@@ -192,12 +314,18 @@ test('resource waits gate a quoted response and resume only after previous tool 
   expect(timeGrants).toBe(1)
 })
 
-test('runner stores sanitized final text and ignores a trailing textual tool call', async () => {
+test('runner requests a real answer when prose precedes a trailing textual tool call', async () => {
   const f = fixture(false)
   const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'
-  model(() => `The capital of France is Paris.\n\n${protocol}`)
+  const finalAnswer = 'The capital of France is Paris.'
+  const provider = model(index => index === 0
+    ? `The requested lookup is complete.\n\n${protocol}`
+    : finalAnswer)
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
-  expect(result.snapshot.resultSummary).toBe('The capital of France is Paris.')
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe(finalAnswer)
+  expect(provider.doStreamCalls).toHaveLength(2)
+  expect(JSON.stringify(provider.doStreamCalls[1]?.prompt)).toContain('Reply to the user now in plain text')
 })
 
 test('runner uses only text after the last tool call as its final result', async () => {
@@ -217,6 +345,135 @@ test('runner uses only text after the last tool call as its final result', async
   expect(result.snapshot.status).toBe('completed')
   expect(result.snapshot.resultSummary).toBe(finalAnswer)
   expect(provider.doStreamCalls).toHaveLength(4)
+})
+
+test('unsupported final claims are corrected from persisted evidence without replaying successful reads', async () => {
+  const f = fixture(true, ['read_document'])
+  const executeRead = vi.fn(async () => ({
+    display: 'Rendered page 1 from file-1 revision rev-7.',
+    fileId: 'file-1',
+    revision: 'rev-7',
+    page: 1,
+  }))
+  const verificationCalls: Array<{ candidate: string; evidence: unknown }> = []
+  f.ports.verifyFinalAnswer = async ({ state: snapshot, candidate }) => {
+    verificationCalls.push({ candidate, evidence: snapshot.evidence })
+    return verificationCalls.length === 1
+      ? { supported: false, reason: 'The persisted render shows page 1, not zero pages.', evidenceIds: [] }
+      : { supported: true, reason: 'The corrected statement matches the exact-revision render.', evidenceIds: ['tool:render-call'] }
+  }
+  const provider = model(index => {
+    if (index === 0) return [call('harness_set_plan', 'plan', { steps: [{
+      id: 'read', title: 'Render the source page', dependsOn: [], acceptanceCriteria: ['Page 1 rendered'],
+      requiresVerification: false, evidenceTools: ['read_document'],
+    }] })]
+    if (index === 1) return { text: '0 pages processed.', calls: [call('read_document', 'render-call', { fileId: 'file-1' })] }
+    if (index === 2) return [call('harness_update_step', 'complete', {
+      id: 'read', status: 'done', evidenceRefs: ['tool:render-call'],
+    })]
+    if (index === 3) return '0 pages were processed.'
+    return 'The render confirmed page 1 of file-1 revision rev-7.'
+  })
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read_document: tool({ inputSchema: z.object({ fileId: z.string() }), execute: executeRead }) },
+  }, f.ports)
+
+  expect(result.snapshot.status, JSON.stringify({
+    blocker: result.snapshot.blocker,
+    verification: result.snapshot.finalVerification,
+    plan: result.snapshot.plan,
+    evidence: result.snapshot.evidence,
+  })).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('The render confirmed page 1 of file-1 revision rev-7.')
+  expect(executeRead).toHaveBeenCalledOnce()
+  expect(verificationCalls).toHaveLength(2)
+  expect(verificationCalls[0]?.candidate).toBe('0 pages were processed.')
+  expect(verificationCalls[1]?.candidate).toContain('confirmed page 1')
+  expect(verificationCalls[0]?.evidence).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      id: 'tool:render-call', verdict: 'observed',
+      resource: { id: 'file-1', revision: 'rev-7', operation: 'read_document', page: 1 },
+    }),
+  ]))
+  const checkpoint = JSON.parse(result.snapshot.workingSummary) as { evidence: Array<{ summary: string }> }
+  expect(JSON.stringify(checkpoint)).not.toContain('0 pages processed')
+  expect(JSON.stringify(checkpoint)).toContain('rev-7')
+  expect(provider.doStreamCalls).toHaveLength(5)
+  const correction = provider.doStreamCalls[4]!
+  expect(correction.prompt.at(-1)?.role).toBe('user')
+  expect(JSON.stringify(correction.prompt)).not.toContain('Reporting-only milestones finish with your answer; do not call tools or write tool calls as text.')
+  expect(correction.tools?.some(tool => tool.type === 'function' && tool.name === 'harness_read_artifact')).toBe(true)
+  expect(correction.tools?.some(tool => tool.type === 'function' && tool.name === 'read_document')).toBe(false)
+})
+
+test('a paid verification hold records an unsupported attempt before blocking without releasing the hold', async () => {
+  const f = fixture(false, ['read'])
+  f.ports.verifyFinalAnswer = async () => {
+    f.reservePaidVerificationHold()
+    throw new Error('The verifier stream was interrupted.')
+  }
+  const operations: string[] = []
+  const apply = f.ports.apply
+  f.ports.apply = async (id, operation) => {
+    operations.push(operation.type)
+    return apply(id, operation)
+  }
+  model(index => index === 0 ? [call('read', 'read-once')] : 'The records were verified.')
+
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute: async () => 'Persisted record.' }) },
+  }, f.ports)
+
+  expect(result.outcome).toBe('blocked')
+  expect(result.snapshot.status).toBe('waiting_for_input')
+  expect(result.snapshot.finalVerification).toMatchObject({ supported: false, attempts: 1 })
+  expect(result.snapshot.modelReservation).toMatchObject({
+    id: 'verification:paid-hold',
+    dispatch: { modelId: 'provider/paid-model', billingReservationId: 'billing:verification' },
+  })
+  expect(operations.indexOf('record_verification')).toBeGreaterThanOrEqual(0)
+  expect(operations.indexOf('record_verification')).toBeLessThan(operations.indexOf('block'))
+})
+
+test('verification correction limit persists across a resumed segment', async () => {
+  const f = fixture(true, ['read'])
+  const verify = vi.fn(async () => ({
+    supported: false, reason: 'The persisted observation does not support this answer.', evidenceIds: [],
+  }))
+  f.ports.verifyFinalAnswer = verify
+  let suppliedReply = false
+  f.ports.waitForInput = async () => {
+    if (!suppliedReply && verify.mock.calls.length === 3) {
+      suppliedReply = true
+      return [{ role: 'user', content: 'Continue with a shorter answer.' }]
+    }
+    return null
+  }
+  const provider = model(index => {
+    if (index === 0) return [call('harness_set_plan', 'plan', { steps: [{
+      id: 'read', title: 'Read the records', dependsOn: [], acceptanceCriteria: ['Record observed'],
+      requiresVerification: false, evidenceTools: ['read'],
+    }] })]
+    if (index === 1) return [call('read', 'read-once')]
+    if (index === 2) return [call('harness_update_step', 'complete', {
+      id: 'read', status: 'done', evidenceRefs: ['tool:read-once'],
+    })]
+    return `Candidate answer ${index}.`
+  })
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute: async () => 'Persisted record.' }) },
+  }, f.ports)
+
+  expect(result.outcome).toBe('blocked')
+  expect(suppliedReply).toBe(true)
+  expect(result.snapshot.finalVerification?.attempts).toBe(3)
+  expect(result.snapshot.status).toBe('waiting_for_input')
+  expect(result.snapshot.blocker?.question).toContain('after two corrections')
+  expect(verify).toHaveBeenCalledTimes(3)
+  expect(provider.doStreamCalls).toHaveLength(7)
 })
 
 test('runner asks for a final answer after tool-call text completes the plan', async () => {
@@ -253,7 +510,7 @@ test('runner asks for a final answer after tool-call text completes the plan', a
   expect(result.snapshot.resultSummary).toBe(finalAnswer)
   expect(provider.doStreamCalls).toHaveLength(5)
   expect(JSON.stringify(provider.doStreamCalls[4]?.prompt))
-    .toContain('All milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.')
+    .toContain('Reporting-only milestones finish with your answer; do not call tools or write tool calls as text.')
 })
 
 test('runner requests a real answer after a protocol-only final segment', async () => {
@@ -265,7 +522,7 @@ test('runner requests a real answer after a protocol-only final segment', async 
   expect(result.snapshot.resultSummary).toBe('The answer is 6.')
   expect(provider.doStreamCalls).toHaveLength(2)
   expect(JSON.stringify(provider.doStreamCalls[1]?.prompt))
-    .toContain('All milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.')
+    .toContain('Reporting-only milestones finish with your answer; do not call tools or write tool calls as text.')
 })
 
 test('runner recovers with a trusted instruction before pausing after six unchanged segments', async () => {
@@ -277,7 +534,7 @@ test('runner recovers with a trusted instruction before pausing after six unchan
   expect(result.snapshot.blocker?.kind).toBe('stuck')
   expect(provider.doStreamCalls).toHaveLength(6)
   expect(JSON.stringify(provider.doStreamCalls[1]?.prompt))
-    .toContain('All milestones are complete. Reply to the user now in plain text with the results; do not write tool calls as text.')
+    .toContain('Reporting-only milestones finish with your answer; do not call tools or write tool calls as text.')
   expect(JSON.stringify(provider.doStreamCalls[2]?.prompt))
     .toContain('Recovery attempt 1')
 })
@@ -311,8 +568,11 @@ test('runner checkpoint summary falls back to sanitized step text', async () => 
   const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'
   model(() => `The capital of France is Paris.\n\n${protocol}`)
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
-  expect(result.snapshot.workingSummary).toBe('The capital of France is Paris.')
-  expect(result.snapshot.workingSummary).not.toContain('<tool_call>')
+  expect(JSON.parse(result.snapshot.workingSummary ?? '{}')).toMatchObject({
+    goal: 'Read the requested records',
+  })
+  expect(result.snapshot.unverifiedNarrative).toBe('The capital of France is Paris.')
+  expect(result.snapshot.unverifiedNarrative).not.toContain('<tool_call>')
 })
 
 test('an identical successful create is rejected with its original evidence reference', async () => {
@@ -423,7 +683,10 @@ test('the real SDK runs beyond twenty tool calls and continues after early sign-
   expect(f.sdkSteps.some(step => step >= 10)).toBe(true)
   expect(result.snapshot.continuations).toBeGreaterThan(0)
   expect(JSON.stringify(provider.doStreamCalls[0].prompt)).toContain('Preserve the original constraints after compaction.')
-  expect(result.snapshot.workingSummary).toBe('Preserve the original constraints after compaction.')
+  expect(JSON.parse(result.snapshot.workingSummary ?? '{}')).toMatchObject({
+    goal: 'Read the requested records',
+  })
+  expect(result.snapshot.unverifiedNarrative).toBe('An early response, with work still unfinished.')
   expect(result.snapshot.resultSummary).toBe('All requested records were read.')
   expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('All plan milestones and required evidence are complete')
   expect(provider.doStreamCalls.at(-1)?.toolChoice).toEqual({ type: 'none' })
@@ -443,6 +706,42 @@ test('input blockers suspend without an extra model call and resume with the rea
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
   expect(result.snapshot.status).toBe('completed')
   expect(JSON.stringify(provider.doStreamCalls[1].prompt)).toContain('USD')
+})
+
+test('pending answer-only plans retain input controls without enabling external actions', async () => {
+  const f = fixture(true, [], { executionPolicyVersion: 2 })
+  const read = vi.fn(async () => ({ value: 'unused' }))
+  const provider = model(index => {
+    if (index === 0) return [call('harness_set_plan', 'answer-plan', { steps: [{
+      id: 'answer', title: 'Confirm the word', dependsOn: [], acceptanceCriteria: ['Repeat the user word'], answerOnly: true,
+    }] })]
+    if (index === 1) return [call('harness_report_blocker', 'question', { question: 'Which word?' })]
+    if (index === 2) return [call('harness_update_step', 'answer-done', { id: 'answer', status: 'done' })]
+    return 'Confirmed: harbor'
+  })
+  const wait = vi.fn(async (current: state.HarnessSnapshot) => {
+    expect(current.status).toBe('waiting_for_input')
+    expect(provider.doStreamCalls).toHaveLength(2)
+    return [{ role: 'user' as const, content: 'harbor' }]
+  })
+  f.ports.waitForInput = wait
+  const result = await runOverlayHarness({ ...input, tools: {
+    read: tool({ inputSchema: z.object({}), execute: read }),
+  } }, f.ports)
+  expect(wait).toHaveBeenCalledOnce()
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.runId).toBe('run')
+  expect(result.snapshot.resultSummary).toBe('Confirmed: harbor')
+  expect(provider.doStreamCalls).toHaveLength(4)
+  expect(provider.doStreamCalls[1].toolChoice).toEqual({ type: 'auto' })
+  expect(provider.doStreamCalls[2].toolChoice).toEqual({ type: 'auto' })
+  const names = provider.doStreamCalls[1].tools?.map(tool => tool.name)
+  expect(names).toContain('harness_report_blocker')
+  expect(names).toContain('harness_update_step')
+  expect(names).not.toContain('read')
+  expect(JSON.stringify(provider.doStreamCalls[2].prompt)).toContain('harbor')
+  expect(provider.doStreamCalls[3].toolChoice).toEqual({ type: 'none' })
+  expect(read).not.toHaveBeenCalled()
 })
 
 test('stuck waits resume the same root run after a real reply', async () => {

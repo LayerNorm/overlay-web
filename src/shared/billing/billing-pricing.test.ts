@@ -6,6 +6,8 @@ import {
   PAID_PLAN_MIN_AMOUNT_CENTS,
   PAID_STORAGE_BASE_BYTES,
   applyMarkupToDollars,
+  parseUsageMarkupBasisPoints,
+  getMarkupBasisPoints,
   clampPaidPlanAmountCents,
   getStorageLimitBytes,
   isValidTopUpAmount,
@@ -30,12 +32,27 @@ test('paid storage scales linearly with spend', () => {
 })
 
 test('markup applies to provider spend', () => {
-  assert.equal(applyMarkupToDollars({ providerCostUsd: 8 }), 1_000)
-  assert.equal(applyMarkupToDollars({ providerCostUsd: 0.2 }), 25)
+  assert.equal(applyMarkupToDollars({ providerCostUsd: 8, markupBasisPoints: 2_500 }), 1_000)
+  assert.equal(applyMarkupToDollars({ providerCostUsd: 0.2, markupBasisPoints: 2_500 }), 25)
 })
 
 test('top-up amount validation rejects unsupported raw amounts', () => {
   assert.equal(isValidTopUpAmount(800), true)
   assert.equal(isValidTopUpAmount(850), false)
   assert.equal(isValidTopUpAmount(20_050), false)
+})
+
+
+test('configured markup controls pricing without changing subscription amounts', () => {
+  for (const [value, expected] of [['2500', 1000], ['0', 800], ['5000', 1200]] as const) {
+    assert.equal(applyMarkupToDollars({ providerCostUsd: 8, markupBasisPoints: parseUsageMarkupBasisPoints(value) }), expected)
+    assert.equal(quantityToPlanAmountCents(8), 800)
+  }
+})
+
+test('missing or malformed markup fails closed rather than silently changing billing', () => {
+  for (const value of [undefined, '', ' ', '-1', '2.5', '25%', 'NaN', 'Infinity', '1e3', '9007199254740992']) {
+    assert.throws(() => parseUsageMarkupBasisPoints(value))
+  }
+  for (const value of [NaN, Infinity, -1, 2.5]) assert.throws(() => getMarkupBasisPoints(value))
 })

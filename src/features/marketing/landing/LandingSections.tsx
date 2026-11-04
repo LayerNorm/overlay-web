@@ -264,7 +264,7 @@ export function GetOverlaySection({ appHref }: { appHref: string }) {
       <div className="cta-card">
         <div>
           <h2 className="h2">Hire your first AI employee</h2>
-          <p className="body">The free tier needs no card. Start on the web, then take Overlay everywhere you work.</p>
+          <p className="body">Set up your workspace before choosing the $8/month usage credit. No trial is offered, and you can bring your own model credentials.</p>
           <div className="actions">
             <Link className="btn primary" href={appHref}>Get started <ArrowRight className="i go" /></Link>
             <a className="btn ghost" href={MARKETING_SALES_URL} target="_blank" rel="noopener noreferrer">Book a call</a>

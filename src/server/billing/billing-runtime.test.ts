@@ -5,10 +5,13 @@ import test from 'node:test'
 
 import {
   canUsePaidBudgetFeatures,
-  usesFreeTierPrivileges,
+  reserveProviderBudget,
+  billableBudgetCentsFromProviderUsd,
+  billableBudgetCentsFromProviderCents,
 } from './billing-runtime'
+import { WorkspaceExecutionError } from './WorkspaceExecutionPolicy'
 
-test('free plans use free-tier privileges', () => {
+test('unsubscribed workspaces cannot use paid-budget features', () => {
   const entitlements = {
     tier: 'free' as const,
     planKind: 'free' as const,
@@ -20,7 +23,6 @@ test('free plans use free-tier privileges', () => {
   }
 
   assert.equal(canUsePaidBudgetFeatures(entitlements), false)
-  assert.equal(usesFreeTierPrivileges(entitlements), true)
 })
 
 test('paid plans with budget can use paid-budget features', () => {
@@ -35,10 +37,9 @@ test('paid plans with budget can use paid-budget features', () => {
   }
 
   assert.equal(canUsePaidBudgetFeatures(entitlements), true)
-  assert.equal(usesFreeTierPrivileges(entitlements), false)
 })
 
-test('paid plans with exhausted budget fall back to free-tier privileges', () => {
+test('paid plans with exhausted budget have no execution privileges', () => {
   const entitlements = {
     tier: 'pro' as const,
     planKind: 'paid' as const,
@@ -51,8 +52,58 @@ test('paid plans with exhausted budget fall back to free-tier privileges', () =>
   }
 
   assert.equal(canUsePaidBudgetFeatures(entitlements), false)
-  assert.equal(usesFreeTierPrivileges(entitlements), true)
   assert.equal(entitlements.overlayStorageBytesLimit, 10_000_000_000)
+})
+
+test('provider reservations check execution policy before the zero-cost fast path', async () => {
+  const input = {
+    userId: 'user_1',
+    entitlements: {
+      tier: 'free' as const,
+      planKind: 'free' as const,
+      creditsUsed: 0,
+      creditsTotal: 0,
+      budgetUsedCents: 0,
+      budgetTotalCents: 0,
+      budgetRemainingCents: 0,
+    },
+    providerCostUsd: 0,
+    kind: 'ask' as const,
+    operationId: 'operation_1',
+    requestFingerprint: 'fingerprint_1',
+    requireExecution: async () => {
+      throw new WorkspaceExecutionError({ state: 'subscription_required', canExecute: false }, true)
+    },
+  }
+
+  await assert.rejects(
+    reserveProviderBudget(input),
+    (error: unknown) => error instanceof WorkspaceExecutionError && error.statusCode === 402,
+  )
+})
+
+test('billing-disabled provider requests return without creating a reservation', async () => {
+  const result = await reserveProviderBudget({
+    userId: 'user_1',
+    entitlements: {
+      tier: 'free',
+      planKind: 'free',
+      creditsUsed: 0,
+      creditsTotal: 0,
+      budgetUsedCents: 0,
+      budgetTotalCents: 0,
+      budgetRemainingCents: 0,
+    },
+    providerCostUsd: 1,
+    kind: 'ask',
+    operationId: 'operation_1',
+    requestFingerprint: 'fingerprint_1',
+    requireExecution: async () => ({ billingEnabled: false }) as never,
+  })
+
+  assert.equal(result.ok, true)
+  assert.equal(result.reservationId, null)
+  assert.equal(result.reservedCents, 0)
 })
 
 test('auto top-up is skipped when the billing capability is disabled', async (t) => {
@@ -101,4 +152,20 @@ test('auto top-up is skipped when the billing capability is disabled', async (t)
 
   assert.equal(result.autoTopUpApplied, false)
   assert.equal(result.remainingCents, 0)
+})
+
+
+test('web usage billing reads the configured rate with no hardcoded fallback', (t) => {
+  const original = process.env.OVERLAY_USAGE_MARKUP_BPS
+  t.after(() => {
+    if (original === undefined) delete process.env.OVERLAY_USAGE_MARKUP_BPS
+    else process.env.OVERLAY_USAGE_MARKUP_BPS = original
+  })
+  process.env.OVERLAY_USAGE_MARKUP_BPS = '5000'
+  assert.equal(billableBudgetCentsFromProviderUsd(8), 1200)
+  assert.equal(billableBudgetCentsFromProviderCents(800), 1200)
+  process.env.OVERLAY_USAGE_MARKUP_BPS = '0'
+  assert.equal(billableBudgetCentsFromProviderUsd(8), 800)
+  delete process.env.OVERLAY_USAGE_MARKUP_BPS
+  assert.throws(() => billableBudgetCentsFromProviderUsd(8), /OVERLAY_USAGE_MARKUP_BPS/)
 })

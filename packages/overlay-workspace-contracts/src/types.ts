@@ -191,6 +191,10 @@ export type WorkspaceBillingSubscription = {
 }
 
 export type WorkspaceBillingSummaryResponse = {
+  executionAccess?: {
+    state: 'subscription_required' | 'payment_pending' | 'ready' | 'budget_exhausted' | 'billing_suspended'
+    canExecute: boolean
+  }
   workspaceId: string
   canManage: boolean
   /** May add credits: owners and admins always, members when the workspace lets them (`usageTopUpBy`). */
@@ -244,6 +248,7 @@ export type WorkspaceBillingUsage = {
 }
 
 export type WorkspaceBillingCheckoutInput = {
+  returnTo?: 'onboarding'
   acceptedLegalTerms: true
   privacyVersion: string
   termsVersion: string

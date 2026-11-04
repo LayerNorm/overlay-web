@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { agentHostCommandSchema, agentHostEventSchema, canonicalEnrollmentProof, canonicalHostRequestProof, enrollmentRequestSchema, eventBatchSchema, filesystemGrantSchema, OVERLAY_AGENT_PROTOCOL_VERSION } from './index'
-import { providerCredentialsRequestSchema, driveCredentialsRequestSchema, driveCredentialsResponseSchema, driveSyncStatusSchema, driveStartDescriptorSchema, startAdapterPayloadSchema, recoveryCapabilitiesSchema } from './index'
+import { agentHostCommandSchema, agentHostEventSchema, canonicalEnrollmentProof, canonicalHostRequestProof, enrollmentRequestSchema, environmentCredentialResponseSchema, eventBatchSchema, filesystemGrantSchema, OVERLAY_AGENT_PROTOCOL_VERSION } from './index'
+import { driveCredentialsRequestSchema, driveCredentialsResponseSchema, driveSyncStatusSchema, driveStartDescriptorSchema, startAdapterPayloadSchema, recoveryCapabilitiesSchema } from './index'
 
 test('fenced native restoration requires its original session and a complete stopped-provider receipt', () => {
   const base = {bindingId: 'binding', adapterId: 'claude-code', workingDirectory: '/home/user/drive', prompt: 'Continue', metadata: {}}
@@ -57,15 +57,17 @@ test('filesystem grants require explicit roots or explicit all-user access', () 
   assert.equal(filesystemGrantSchema.safeParse({ mode: 'all_user_files' }).success, true)
 })
 
-test('managed hosts enroll through the same strict protocol as user-owned hosts', () => {
-  assert.equal(enrollmentRequestSchema.parse({
-    code: 'a'.repeat(32), kind: 'overlay_cloud', name: 'Overlay Cloud', publicKey: 'a'.repeat(64),
+test('new host enrollment rejects the retired Overlay Cloud kind', () => {
+  const request = {
+    code: 'a'.repeat(32), kind: 'local', name: 'User-owned host', publicKey: 'a'.repeat(64),
     hostVersion: '0.0.1', platform: 'linux',
     capabilities: {
       protocolVersion: 1, hostVersion: '0.0.1', platform: 'linux', adapters: [],
       filesystem: { mode: 'selected_roots', roots: ['/workspace'] }, maxConcurrentRuns: 1,
     },
-  }).kind, 'overlay_cloud')
+  }
+  assert.equal(enrollmentRequestSchema.parse(request).kind, 'local')
+  assert.equal(enrollmentRequestSchema.safeParse({ ...request, kind: 'overlay_cloud' }).success, false)
 })
 
 test('commands reject unknown protocol versions', () => {
@@ -125,12 +127,12 @@ test('proof canonicalization binds every security-relevant request field', () =>
 })
 
 
-test('provider credential requests distinguish active runs from bound-adapter discovery without accepting caller-selected accounts', () => {
-  for (const input of [{protocolVersion: 1, runId: 'run'}, {protocolVersion: 1, adapterId: 'codex'}])
-    assert.deepEqual(providerCredentialsRequestSchema.parse(input), input)
-  for (const input of [
-    {protocolVersion: 1}, {protocolVersion: 1, runId: 'run', adapterId: 'codex'},
-    {protocolVersion: 1, adapterId: 'codex', accountId: 'other-account'},
-    {protocolVersion: 1, adapterId: 'codex', ownerUserId: 'other-owner'},
-  ]) assert.equal(providerCredentialsRequestSchema.safeParse(input).success, false)
+test('new host credentials cannot grant the retired provider-run credential method', () => {
+  const base = {
+    protocolVersion: 1, workspaceId: 'workspace', environmentId: 'environment',
+    audience: 'overlay-agent-control-plane', token: 'x'.repeat(32), expiresAt: 1,
+    filesystemGrant: { mode: 'all_user_files' },
+  }
+  assert.equal(environmentCredentialResponseSchema.safeParse({ ...base, methods: ['agent:commands:poll'] }).success, true)
+  assert.equal(environmentCredentialResponseSchema.safeParse({ ...base, methods: ['agent:run-credentials'] }).success, false)
 })

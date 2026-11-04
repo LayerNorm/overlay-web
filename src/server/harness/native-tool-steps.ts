@@ -2,7 +2,6 @@ import 'server-only'
 
 import { FatalError } from 'workflow'
 import { reservedHarnessCostMicros, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
-import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
 import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
@@ -259,7 +258,7 @@ export async function dispatchNativeHarnessAgentRequest(
           id: childRunId,
           stepId: `ask:${toolCallId}:${invocation.agentId}`,
           allowedToolIds,
-          maxCostMicros: isFreeTierChatModelId(invocation.modelId) ? 0 : childBudget,
+          maxCostMicros: childBudget,
           costMicros: 0,
           status: 'running' as const,
           evidenceRefs: [],
@@ -270,6 +269,8 @@ export async function dispatchNativeHarnessAgentRequest(
           const result = await repository.apply({
             actorUserId: access.actorUserId,
             runId: access.runId,
+            workflowRunId: access.workflowRunId,
+            executionGeneration: access.executionGeneration ?? 0,
             operationId: `named-child:${toolCallId}:${invocation.agentId}`,
             expectedRevision: state.revision,
             operation: {

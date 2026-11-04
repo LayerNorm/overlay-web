@@ -6,7 +6,7 @@ import { MarketingPageHead } from '@/features/marketing/components/StaticMarketi
 import { MARKETING_SALES_URL } from '@/shared/marketing/marketing'
 import s from './pricing.module.css'
 
-const FREE_ITEMS = ['Auto model, with weekly limits', 'Notes, chats, files and knowledge', '10 MB of storage']
+const SETUP_ITEMS = ['Configure your workspace and connections', 'Draft your first task', 'Keep access to your history and exports']
 const PAID_ITEMS = [
   'Premium models',
   'Overlay Cloud computers',
@@ -23,10 +23,10 @@ const TRUST = [
 ] as const
 
 const FAQ = [
-  ['Is free or paid a setting on my account?', 'No. Each workspace is free or paid on its own. You can have a free workspace and a paid one under the same account.'],
-  ['What does a free workspace include?', 'The Auto model, notes, chats, files and knowledge, and 10 MB of storage. Each free workspace gets 15 chat messages, 15 writing requests and 15 agent runs a week, and 10 minutes of transcription.'],
-  ['How many free workspaces can I own?', 'Up to three. Joining other people’s workspaces does not count. Add a plan to any workspace whenever you want more.'],
-  ['What counts as a paid resource?', 'Premium models, Overlay Cloud computers, web search, browser tasks, image and video generation, and storage beyond the free 10 MB.'],
+  ['When do I pay?', 'Set up your workspace and draft your first task, then subscribe before starting work. Plans start at $8 a month, converted into usage credit. There is no trial.'],
+  ['Is billing per person or workspace?', 'Each workspace has its own subscription and shared usage budget. Joining a funded workspace does not require a separate personal subscription.'],
+  ['Can I bring my own subscription or API key?', 'Yes, supported connections are optional. A funded workspace is still required, and Overlay-hosted computers and tools use its budget.'],
+  ['What uses my credit?', 'Hosted model inference, Overlay Cloud computers, web search, browser tasks, image and video generation, and metered storage.'],
   ['Does unused credit roll over?', 'No. Each month starts with the credit your plan buys. Anything left at renewal, including credit you added, does not carry over.'],
   ['What happens when credit runs out?', 'By default paid resources stop until next month. An owner can instead turn on automatic top-ups, which add credit from the workspace’s card up to a monthly limit they choose.'],
   ['Can I change my plan later?', 'Yes. Change the monthly amount, add credit, switch automatic top-ups on or off, or cancel at any time in your workspace’s billing settings.'],
@@ -37,10 +37,10 @@ export function PricingHero({ appHref }: { appHref: string }) {
     <MarketingPageHead
       label="Pricing"
       title={<>Pay for what your workspace <span className="k" style={{ '--k': '#ea580c' } as CSSProperties}>actually uses</span></>}
-      lead="Every workspace is free or paid. Paid plans start at $8 a month, which becomes $8 of credit for that month. What you use comes out of it."
+      lead="Plans start at $8 a month, converted into usage credit. Set up your workspace first, then subscribe before your first task. No trial."
     >
       <div className="actions">
-        <Link className="btn primary" href={appHref}>Start free <ArrowRight className="i go" /></Link>
+        <Link className="btn primary" href={appHref}>Get started <ArrowRight className="i go" /></Link>
         <a className="btn ghost" href="#bill">See an example bill</a>
       </div>
     </MarketingPageHead>
@@ -60,27 +60,27 @@ export function PricingKinds() {
   return (
     <section>
       <div className={s.lab}>
-        <h2>Two kinds of workspace</h2>
-        <p>A workspace is free or paid. Your account is neither; it just belongs to workspaces.</p>
+        <h2>Set up, then start work</h2>
+        <p>Prepare your first task before subscribing. You decide when to start it.</p>
       </div>
       <div>
         <div className={s.kinds}>
           <div className={s.kind}>
-            <h3>Free</h3>
-            <div className={s.price}><b>$0</b>no card needed</div>
-            <ul>{FREE_ITEMS.map((item) => <Item key={item}>{item}</Item>)}</ul>
+            <h3>Before payment</h3>
+            <div className={s.price}><b>Set up</b>no execution yet</div>
+            <ul>{SETUP_ITEMS.map((item) => <Item key={item}>{item}</Item>)}</ul>
           </div>
           <div className={s.kind}>
-            <h3>Paid</h3>
+            <h3>Start work</h3>
             <div className={s.price}><b>From $8</b>a month</div>
             <ul>
-              <Item muted>Everything in Free</Item>
+              <Item muted>Your monthly payment becomes usage credit</Item>
               {PAID_ITEMS.map((item) => <Item key={item}>{item}</Item>)}
             </ul>
           </div>
         </div>
         <p className={s.note}>
-          <b>Free workspaces never need a card.</b> Each person can own up to three free workspaces. A paid resource in a free workspace asks you to add a plan first.
+          <b>Payment comes before execution.</b> Bringing your own supported subscription or API key is optional. It does not replace workspace funding.
         </p>
       </div>
     </section>
@@ -123,9 +123,9 @@ export function PricingEnd({ appHref }: { appHref: string }) {
   return (
     <section className="sec">
       <div className="head center">
-        <h2 className="h2">Free or paid, one workspace at a time.</h2>
+        <h2 className="h2">Start with your first real task.</h2>
         <div className="actions">
-          <Link className="btn primary" href={appHref}>Start free <ArrowRight className="i go" /></Link>
+          <Link className="btn primary" href={appHref}>Get started <ArrowRight className="i go" /></Link>
           <a className="btn ghost" href={MARKETING_SALES_URL} target="_blank" rel="noopener noreferrer">Talk to us</a>
         </div>
       </div>

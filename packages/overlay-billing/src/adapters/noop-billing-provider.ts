@@ -1,4 +1,4 @@
-import { createFreeEntitlements } from '../entitlements'
+import { createUnsubscribedEntitlements } from '../entitlements'
 import type {
   BillingProvider,
   CheckoutArgs,
@@ -14,7 +14,7 @@ import type {
 export class NoOpBillingProvider implements BillingProvider {
   async getEntitlements(userId: string): Promise<Entitlements> {
     void userId
-    return createFreeEntitlements()
+    return createUnsubscribedEntitlements()
   }
 
   async createCheckoutSession(args: CheckoutArgs): Promise<CheckoutResult> {

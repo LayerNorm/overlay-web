@@ -28,6 +28,7 @@ export type OnboardingSession = {
   suggestions: string[]
   createdAgentIds: string[]
   taskId?: string
+  taskDraft?: string
 }
 export type OnboardingSessionResponse = { completed: boolean; session: OnboardingSession | null }
 
@@ -38,6 +39,8 @@ export const OnboardingActionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('start') }).strict(),
   z.object({ action: z.literal('answer'), runId: OnboardingRunIdSchema, revision, value: z.string().trim().min(1).max(3000) }).strict(),
   z.object({ action: z.literal('back'), runId: OnboardingRunIdSchema, revision }).strict(),
+  z.object({ action: z.literal('draft_task'), runId: OnboardingRunIdSchema, revision, value: z.string().trim().min(1).max(3000) }).strict(),
+  z.object({ action: z.literal('save_task'), runId: OnboardingRunIdSchema, revision, taskId: z.string().trim().min(1).max(200) }).strict(),
   z.object({ action: z.literal('advance'), runId: OnboardingRunIdSchema, revision, agentIds: ids.optional(), memoryIds: ids.optional(), invitationIds: ids.optional(), connectedTools: z.array(z.enum(['gmail', 'googlecalendar', 'slack', 'notion', 'github'])).max(5).optional() }).strict(),
   z.object({ action: z.literal('finish'), runId: OnboardingRunIdSchema, revision, taskId: z.string().trim().min(1).max(200) }).strict(),
 ])
@@ -113,7 +116,7 @@ export function preparedOnboardingReply(step: OnboardingStep, profile: Onboardin
     memories: 'Do you use another AI assistant? I can pick up what it already knows about your work.',
     teammates: "Want to bring in anyone you work with? They'll join this workspace and can bring their own agents.",
     task: "Last thing. What's one task we can start on?",
-    complete: "You're all set. Your first task is waiting in Work.\n\nHappy working.",
+    complete: "Your first task is now in Work. I'll keep you updated there.",
   }
   return {
     message: messages[step], mode: 'prepared',

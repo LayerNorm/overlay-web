@@ -18,7 +18,6 @@ import { HostHeartbeat } from './host-heartbeat.js'
 import { buildHostCapabilities, updateHostCapabilities } from './host-capabilities.js'
 import { PendingHostPrompts, quiesceHostRuns } from './runtime-shutdown.js'
 import {withRunPreparation} from './run-preparation.js'
-import {fetchProviderRunCredentials} from './provider-run-credentials.js'
 import {requireNativeRestorationSource} from './native-restoration.js'
 import {admitHostSession} from './runtime-session-admission.js'
 import {nativePreparationFingerprint} from './native-start-preparation.js'
@@ -46,8 +45,6 @@ export type AgentHostRuntimeOptions = {
   controlPlane: AgentControlPlaneClient
   logger?: StructuredLogger
   maxOutboxEvents?: number
-  /** Overlay Cloud machines fetch their provider credentials from the control plane for each run. */
-  fetchRunCredentials?: boolean
   drive?: { stateDirectory: string; apiUrl: string; create?: typeof createRuntimeDrive; syncIntervalMs?: number; fetch?: typeof globalThis.fetch }
 }
 
@@ -91,20 +88,10 @@ export class AgentHostRuntime {
   }
 
   async discoverCapabilities() {
-    // Authenticated starts already captured the live catalog. Publish it without probing or replacing auth files during work.
-    if (this.options.fetchRunCredentials && [...this.sessions.keys()].some(runId => !this.terminalRuns.has(runId))) return [...this.adapters.values()].map(adapter => adapter.capability)
     const root = this.options.filesystem.mode === 'all_user_files' ? homedir() : this.options.filesystem.roots[0]
     return Promise.all([...this.adapters.values()].map(async adapter => {
       if (!root) return adapter.capability
-      let credentials: Record<string, string> | undefined
-      if (this.options.fetchRunCredentials && this.options.controlPlane.fetchDiscoveryCredentials) {
-        try { credentials = await this.options.controlPlane.fetchDiscoveryCredentials(adapter.capability.id) }
-        catch {
-          this.logger.warn('adapter option credentials unavailable; keeping fallback catalog', { adapterId: adapter.capability.id })
-          return adapter.capability
-        }
-      }
-      return adapter.discover({ workingDirectory: root, ...(credentials ? { credentials } : {}) })
+      return adapter.discover({ workingDirectory: root })
     }))
   }
 
@@ -176,8 +163,7 @@ export class AgentHostRuntime {
       })
       await updateHostCapabilities(this.options.controlPlane, capabilities)
     }
-    const missingCloudCatalog = this.options.fetchRunCredentials && [...this.adapters.values()].some(adapter => !adapter.capability.options)
-    this.nextCapabilityRefreshAt = Date.now() + (missingCloudCatalog ? 60_000 : 24 * 60 * 60_000)
+    this.nextCapabilityRefreshAt = Date.now() + 24 * 60 * 60_000
     await this.hostHeartbeat.send()
   }
 
@@ -354,8 +340,6 @@ export class AgentHostRuntime {
     if (admission.kind === 'already-active') return
     const {settings, offset, restored} = admission
     let canonicalOffset = offset
-    const credentials = await this.runCredentials(command.runId, command.payload.metadata.runCredentials === true, Boolean(restored))
-    if (credentials === 'unavailable') return
     preparationSignal?.throwIfAborted()
     const drive = await prepareRuntimeDrive(this.options, command, this.executions.get(command.runId))
     const scope = drive ? { workingDirectory: drive.workingDirectory, additionalDirectories: drive.additionalDirectories }
@@ -392,7 +376,6 @@ export class AgentHostRuntime {
       prompt: command.payload.prompt,
       ...(command.payload.sessionId ? { remoteSessionId: command.payload.sessionId } : {}),
       metadata: command.payload.metadata,
-      ...(credentials ? { credentials } : {}),
       adapterState: this.options.state.getAdapterSessionState(command.runId, command.payload.adapterId),
       persistAdapterState: (state) => this.options.state.saveAdapterSessionState(command.runId, command.payload.adapterId, state),
     }, emit) } catch (error) {
@@ -432,26 +415,17 @@ export class AgentHostRuntime {
     }
     const scope = await resolveFilesystemScope(this.options.filesystem, stored.workingDirectory)
     // A resumed session needs its credentials again; whether this run has an account is the server's call.
-    const credentials = await this.runCredentials(runId, this.options.fetchRunCredentials === true)
-    if (credentials === 'unavailable') throw new Error('provider credentials are unavailable for this run')
     const session = await this.requireAdapter(stored.adapterId).start({
       onNativeTurnEnded: createNativeTerminalIntent({execution: this.executions.get(runId), currentExecution: () => this.executions.get(runId),
         shuttingDown: () => this.shuttingDown, markEnded: () => {this.terminalRuns.add(runId)}}),
       runId, workingDirectory: scope.workingDirectory, additionalDirectories: scope.additionalDirectories,
       prompt: '', remoteSessionId: stored.remoteSessionId, metadata: agentSettingsSchema.parse(stored.config ?? {}),
-      ...(credentials ? { credentials } : {}),
       adapterState: this.options.state.getAdapterSessionState(runId, stored.adapterId),
       persistAdapterState: (state) => this.options.state.saveAdapterSessionState(runId, stored.adapterId, state),
     }, this.createStream(runId))
     this.sessions.set(runId, session)
     this.scheduleCapabilityRefresh()
     return session
-  }
-
-  private runCredentials(runId: string, requested: boolean, retryPreparation = false) {
-    const execution = this.executions.get(runId)
-    return fetchProviderRunCredentials({runId, requested: Boolean(this.options.fetchRunCredentials && requested),
-      retryPreparation, client: this.options.controlPlane, emit: event => this.emit(runId, event, execution), logger: this.logger})
   }
 
   private requireAdapter(adapterId: string): AgentAdapter {

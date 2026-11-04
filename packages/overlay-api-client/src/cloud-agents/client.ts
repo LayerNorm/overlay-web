@@ -21,21 +21,9 @@ function workspaceInit(workspaceId: string, init?: RequestInit): RequestInit {
   return { ...init, headers }
 }
 
-/** An agent's Overlay Cloud machine: start it, watch it start, pause/resume/restart, delete. */
+/** Historical Overlay Cloud status and explicit cleanup for retired agents. */
 export class CloudAgentsClient {
   constructor(private readonly http: HttpContext) {}
-
-  /** Starts provisioning and returns at once (202); poll `status` for progress. */
-  provision(
-    workspaceId: string,
-    input: { agentId: string; adapterId: 'claude-code' | 'codex' | 'opencode' | 'hermes' | 'cursor'; providerAccountId: string; size?: 'small' | 'default' | 'large' },
-    init?: RequestInit,
-  ) {
-    return this.http.json<{ phase: CloudAgentPhaseResource }>(
-      '/api/v1/agent-environments/cloud',
-      this.http.jsonRequest(input, { ...workspaceInit(workspaceId, init), method: 'POST' }),
-    )
-  }
 
   status(workspaceId: string, agentId: string, init?: RequestInit) {
     return this.http.json<CloudAgentStatusResource>(
@@ -44,15 +32,8 @@ export class CloudAgentsClient {
     )
   }
 
-  control(workspaceId: string, agentId: string, action: 'pause' | 'resume' | 'restart', init?: RequestInit) {
-    return this.http.json<{ ok: true }>(
-      `/api/v1/agents/${encodeURIComponent(agentId)}/machine`,
-      this.http.jsonRequest({ action }, { ...workspaceInit(workspaceId, init), method: 'POST' }),
-    )
-  }
-
   remove(workspaceId: string, agentId: string, init?: RequestInit) {
-    return this.http.json<{ deleted: true }>(
+    return this.http.json<{ revoked: true; cleanupPending: number }>(
       `/api/v1/agents/${encodeURIComponent(agentId)}/machine`,
       { ...workspaceInit(workspaceId, init), method: 'DELETE' },
     )

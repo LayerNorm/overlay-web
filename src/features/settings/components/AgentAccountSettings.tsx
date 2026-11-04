@@ -23,11 +23,7 @@ function formatLastUsed(timestamp: number | undefined): string {
   return `Last used ${new Date(timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
 }
 
-/**
- * The Claude Code and Codex accounts agents on Overlay Cloud run on. A
- * credential is sent once and never shown again; the list only ever has names
- * and states.
- */
+/** Provider-account connections for supported model and subscription adapters. */
 export function AgentAccountSettings() {
   const [accounts, setAccounts] = useState<ProviderAccountResource[] | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -71,7 +67,7 @@ export function AgentAccountSettings() {
           <div className="min-w-0">
             <h2 className="text-sm font-semibold text-(--foreground)">Agent accounts</h2>
             <p className="mt-1 text-sm text-(--muted)">
-              Your Claude and OpenAI credentials, used by Claude Code and Codex agents running on Overlay Cloud. They are stored encrypted and sent to an agent only while it works.
+              Encrypted provider-account connections remain available to supported model and subscription adapters. They are not delivered to retired hosted third-party agents.
             </p>
           </div>
           <Button variant="secondary" size="sm" onClick={() => setDialog({ mode: 'connect' })}>
@@ -85,7 +81,7 @@ export function AgentAccountSettings() {
       <div className="space-y-2">
         {accounts !== null && accounts.length === 0 ? (
           <p className="rounded-xl border border-dashed border-(--border) p-8 text-center text-sm text-(--muted)">
-            No accounts yet. Connect one to run Claude Code or Codex on Overlay Cloud.
+            No accounts yet. Connect an account for a supported model or subscription adapter.
           </p>
         ) : null}
         {(accounts ?? []).map((account) => (

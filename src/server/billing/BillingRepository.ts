@@ -8,6 +8,8 @@ import type {
 } from '@/shared/billing/billing-payer'
 
 export type BillingEntitlementsRecord = {
+  paidPeriodStart?: number
+  paidPeriodEnd?: number
   billingAccountId?: string
   tier: 'free' | 'pro' | 'max'
   planKind: 'free' | 'paid'
@@ -38,6 +40,8 @@ export type BillingEntitlementsRecord = {
 }
 
 export type BillingSubscriptionRecord = {
+  paidPeriodStart?: number
+  paidPeriodEnd?: number
   billingAccountId?: string
   userId?: string
   email?: string
@@ -65,6 +69,10 @@ export type BillingAccountEntitlementsRecord = BillingEntitlementsRecord & {
 }
 
 export interface BillingRepository {
+  confirmBillingAccountPaidPeriod(args: {
+    billingAccountId: string; stripeCustomerId: string; stripeSubscriptionId: string
+    paidInvoiceId: string; paidPeriodStart: number; paidPeriodEnd: number; amountCents: number
+  }): Promise<{ applied: boolean }>
   ensurePersonalBillingAccount(args: {
     userId: string
   }): Promise<BillingAccountRecord>
@@ -74,7 +82,21 @@ export interface BillingRepository {
   }): Promise<BillingAccountRecord>
   getBillingAccountByIdByServer(args: {
     billingAccountId: string
+    workspaceId?: string
   }): Promise<BillingAccountRecord | null>
+  getPendingAutoTopUpIntentByServer(args: { billingAccountId: string }): Promise<{
+    intentKey: string
+    idempotencyKey: string
+    actorUserId: string
+    workspaceId: string
+    amountCents: number
+    currentPeriodStart?: number
+    consentAt: number
+    paymentMethodId: string
+    customerId: string
+    createdAt: number
+    stripePaymentIntentId?: string
+  } | null>
   getPersonalBillingAccountByUserIdByServer(args: {
     userId: string
   }): Promise<BillingAccountRecord | null>
@@ -88,6 +110,28 @@ export interface BillingRepository {
   getBillingAccountEntitlementsByServer(args: {
     billingAccountId: string
   }): Promise<BillingAccountEntitlementsRecord | null>
+  claimAutoTopUpIntentByServer(args: {
+    actorUserId: string
+    billingAccountId: string
+    workspaceId: string
+    intentKey: string
+    idempotencyKey: string
+    amountCents: number
+    currentPeriodStart?: number
+    consentAt: number
+    paymentMethodId: string
+    customerId: string
+  }): Promise<{
+    status: 'claimed' | 'pending' | 'payment_failed' | 'succeeded' | 'disabled' | 'missing_consent'
+      | 'missing_customer' | 'missing_payment_method' | 'monthly_limit_reached' | 'authorization_changed'
+    idempotencyKey?: string
+    stripePaymentIntentId?: string
+    actorUserId?: string
+    workspaceId?: string
+    customerId?: string
+    paymentMethodId?: string
+    amountCents?: number
+  }>
   getBillingAccountSubscriptionByServer(args: {
     billingAccountId: string
   }): Promise<BillingSubscriptionRecord | null>
@@ -112,11 +156,13 @@ export interface BillingRepository {
     actorUserId: string
     amountCents: number
     billingAccountId: string
+    workspaceId?: string
     source: 'manual' | 'auto'
     status: 'pending' | 'succeeded' | 'failed' | 'canceled'
     stripeCheckoutSessionId?: string
     stripeCustomerId?: string
     stripePaymentIntentId?: string
+    autoTopUpIntentKey?: string
     errorMessage?: string
   }): Promise<unknown>
 }

@@ -5,7 +5,6 @@ import { DRIVER_VERSION, type SandboxInstance } from '@overlay/sandbox-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { fileService } from '@/server/files/http'
 import { buildOverlayToolSet } from './build'
-import { createFreeTierGatedStubTools } from './free-tier-gated-stub-tools'
 import { executeComputerActionWithApproval, executeComputerActionWithTakeover } from './overlay-executes'
 
 function buildTestTools() {
@@ -564,8 +563,4 @@ test('present_generated_ui schema failures include bounded issue paths without e
   assert.ok(Array.isArray(result.issues))
   assert.ok((result.issues as Array<{ path: string }>).some(issue => issue.path === 'subject'))
   assert.ok(!(JSON.stringify(result).includes('do-not-echo')))
-})
-
-test('free-tier stub tools expose Gateway-compatible input schemas', async () => {
-  await assertGatewayCompatibleToolSet(createFreeTierGatedStubTools(true))
 })

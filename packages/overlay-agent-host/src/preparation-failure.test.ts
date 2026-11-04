@@ -10,9 +10,6 @@ import {SqliteHostStateStore} from './state'
 import {nativePreparationFingerprint} from './native-start-preparation'
 import {processHostCommand} from './process-host-command'
 import type {AgentHostCommand} from '@layernorm/overlay-agent-bridge-protocol'
-import {fetchProviderRunCredentials} from './provider-run-credentials'
-import {StructuredLogger} from './logger'
-import type {NormalizedAgentEvent} from './adapter'
 
 test('recognized transport failures retry while credential and programming failures remain permanent', () => {
   for (const error of [new DriveRequestError(503, 'DRIVE_BACKEND_UNAVAILABLE'), new ControlPlaneRequestError(429),
@@ -47,28 +44,5 @@ test('the same 503 becomes retryable only before the durable native-start bounda
       assert.equal(state.getProcessedCommand('restore')?.errorCode, code)
       assert.equal(state.getSession('run')?.execution?.attemptId, crossed ? 'next' : 'previous')
     } finally {state.close(); await rm(directory, {recursive: true, force: true})}
-  }
-})
-
-test('restoration credential outages remain preparation failures, while account reconnection and ordinary-start behavior stay explicit', async () => {
-  for (const scenario of [{status: 503, retryPreparation: true}, {status: 429, retryPreparation: true},
-    {status: 409, retryPreparation: true}, {status: 503, retryPreparation: false}]) {
-    const events: NormalizedAgentEvent[] = []
-    const result = fetchProviderRunCredentials({runId: 'run', requested: true, retryPreparation: scenario.retryPreparation,
-      logger: new StructuredLogger(() => undefined), emit: async event => {events.push(event)}, client: {
-        pollCommands: async () => ({commands: []}), acknowledgeCommand: async () => undefined,
-        uploadEvents: async () => {throw Error('Unused upload boundary')},
-        fetchRunCredentials: async () => {throw new ControlPlaneRequestError(scenario.status, scenario.status === 409 ? 'account_needs_reauth' : undefined)},
-      }})
-    if (scenario.retryPreparation && scenario.status !== 409) {
-      await assert.rejects(result, ControlPlaneRequestError)
-      assert.deepEqual(events, [])
-    } else {
-      assert.equal(await result, 'unavailable')
-      assert.equal(events.length, 1)
-      const failure = events[0]
-      if (failure?.type !== 'failed') throw Error('Missing credential failure')
-      assert.equal(failure.payload.code, scenario.status === 409 ? 'auth_required' : 'credentials_unavailable')
-    }
   }
 })

@@ -43,7 +43,7 @@ test('external agent capabilities require the master and all existing runtime ga
     const capabilities = withObservabilityProviderCapabilities(DEFAULT_OVERLAY_CAPABILITIES, runtimeConfig)
     assert.equal(capabilities.connectedAgents, true)
     assert.equal(capabilities.externalAgents, true)
-    assert.equal(capabilities.cloudAgents, true)
+    assert.equal(capabilities.cloudAgents, false)
     assert.equal(capabilities.computers, true)
 
     const disabled = withObservabilityProviderCapabilities(DEFAULT_OVERLAY_CAPABILITIES, {

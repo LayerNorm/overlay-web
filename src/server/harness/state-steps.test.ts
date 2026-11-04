@@ -2,15 +2,17 @@ import { ConvexError } from 'convex/values'
 import { beforeEach, expect, test, vi } from 'vitest'
 import { FatalError } from 'workflow'
 import { HarnessPlanValidationError } from '@overlay/agent-runtime/harness-state'
-import { applyHarnessOperation, applyHarnessOperationStep } from './state-steps'
+import { applyHarnessOperation, applyHarnessOperationStep, readHarnessEvidence, claimHarnessState, readAndClaimHarnessState } from './state-steps'
+import { HARNESS_STEP_VALIDATION } from './step-validation'
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), apply: vi.fn(), resources: vi.fn() }))
+const mocks = vi.hoisted(() => ({ get: vi.fn(), apply: vi.fn(), readEvidence: vi.fn(), resources: vi.fn() }))
 vi.mock('./resource-boundary', () => ({ waitForHarnessModelResources: mocks.resources }))
 
 vi.mock('./ConvexHarnessRepository', () => ({
   ConvexHarnessRepository: class {
     get = mocks.get
     apply = mocks.apply
+    readEvidence = mocks.readEvidence
   },
 }))
 
@@ -21,24 +23,31 @@ beforeEach(() => {
   mocks.get.mockResolvedValue({ workflowRunId: reference.workflowRunId, revision: 3 })
 })
 
-test('typed rejected operations become fatal without retrying the mutation', async () => {
+test.each(Object.values(HARNESS_STEP_VALIDATION))('step validation crosses the durable boundary as data: %s', async message => {
   mocks.apply.mockRejectedValue(new ConvexError({
     code: 'HARNESS_OPERATION_REJECTED',
-    message: 'Evidence must reference successful observations from this run.',
+    message,
   }))
 
-  let rejection: unknown
-  try {
-    await applyHarnessOperation(reference, 'invalid-update', {
-      type: 'transition_step', id: 'work', status: 'done', evidenceRefs: ['missing'],
-    })
-  } catch (error) {
-    rejection = error
-  }
-  expect(rejection).toBeInstanceOf(FatalError)
-  expect(rejection).toMatchObject({
-    message: 'Evidence must reference successful observations from this run.',
-  })
+  const operation = { type: 'transition_step' as const, id: 'work', status: 'done' as const, evidenceRefs: ['missing'] }
+  const result = await applyHarnessOperationStep(reference, 'invalid-update', operation)
+  expect(result).toEqual({ ok: false, code: 'HARNESS_STEP_VALIDATION', message })
+  expect(structuredClone(result)).toEqual(result)
+  expect(mocks.apply).toHaveBeenCalledOnce()
+
+  const rejection = await applyHarnessOperation(reference, 'invalid-update', operation).catch(error => error)
+  expect(rejection).toBeInstanceOf(Error)
+  expect(rejection).not.toBeInstanceOf(FatalError)
+  expect(rejection.message).toBe(message)
+  expect(mocks.resources).not.toHaveBeenCalled()
+  expect(mocks.apply).toHaveBeenCalledTimes(2)
+})
+
+test('unexpected operation rejections remain fatal', async () => {
+  mocks.apply.mockRejectedValue(new ConvexError({ code: 'HARNESS_OPERATION_REJECTED', message: 'The run is terminal.' }))
+  await expect(applyHarnessOperation(reference, 'terminal-update', {
+    type: 'transition_step', id: 'work', status: 'done',
+  })).rejects.toBeInstanceOf(FatalError)
   expect(mocks.apply).toHaveBeenCalledOnce()
 })
 
@@ -103,4 +112,78 @@ test('Convex argument validation errors become fatal without retrying the mutati
     message: 'Harness operation rejected: invalid operation arguments.',
   })
   expect(mocks.apply).toHaveBeenCalledOnce()
+})
+
+test('evidence listing omits the empty evidence ID when calling the repository', async () => {
+  const page = { observations: [{ id: 'evidence-1', source: 'read', verdict: 'observed', createdAt: 1 }], nextCursor: null }
+  mocks.readEvidence.mockResolvedValue(page)
+
+  await expect(readHarnessEvidence(reference, '', undefined, 10)).resolves.toEqual(page)
+
+  expect(mocks.readEvidence).toHaveBeenCalledExactlyOnceWith({
+    actorUserId: 'user', runId: 'run', limit: 10,
+  })
+})
+
+test('exact evidence reads preserve the requested ID', async () => {
+  const evidence = { id: 'evidence-7', kind: 'tool_result' }
+  mocks.readEvidence.mockResolvedValue(evidence)
+
+  await expect(readHarnessEvidence(reference, 'evidence-7')).resolves.toEqual(evidence)
+
+  expect(mocks.readEvidence).toHaveBeenCalledExactlyOnceWith({
+    actorUserId: 'user', runId: 'run', evidenceId: 'evidence-7',
+  })
+})
+
+test('read and claim returns the post-claim snapshot in one boundary', async () => {
+  const claimed = { workflowRunId: reference.workflowRunId, revision: 4, status: 'running' }
+  mocks.get.mockResolvedValue({ revision: 3, status: 'running' })
+  mocks.apply.mockResolvedValue({ conflict: false, snapshot: claimed })
+  expect(await readAndClaimHarnessState(reference)).toEqual({ snapshot: claimed, claimed: true })
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    operationId: 'claim:workflow', expectedRevision: 3, executionGeneration: 0,
+    operation: { type: 'claim_execution', workflowRunId: 'workflow', generation: 0 },
+  }))
+})
+
+test('read and claim leaves terminal and foreign-owned runs unclaimed', async () => {
+  mocks.get.mockResolvedValue({ revision: 3, status: 'cancelled' })
+  expect(await readAndClaimHarnessState(reference)).toEqual({ snapshot: { revision: 3, status: 'cancelled' }, claimed: false })
+  mocks.get.mockResolvedValue({ workflowRunId: 'other', revision: 3, status: 'running' })
+  expect((await readAndClaimHarnessState(reference)).claimed).toBe(false)
+  expect(mocks.apply).not.toHaveBeenCalled()
+})
+
+test('claim keeps its existing behavior for unowned terminal runs', async () => {
+  mocks.get.mockResolvedValue({ revision: 3, status: 'cancelled' })
+  mocks.apply.mockResolvedValue({ conflict: false, snapshot: {} })
+  expect(await claimHarnessState(reference)).toBe(true)
+  expect(mocks.apply).toHaveBeenCalledOnce()
+})
+
+test('combined admission fences stale generations even when the workflow identity matches', async () => {
+  const snapshot = { workflowRunId: reference.workflowRunId, revision: 4, status: 'running', executionGeneration: 2 }
+  mocks.get.mockResolvedValue(snapshot)
+  expect(await readAndClaimHarnessState({ ...reference, executionGeneration: 1 })).toEqual({ snapshot, claimed: false })
+  expect(await claimHarnessState({ ...reference, executionGeneration: 1 })).toBe(false)
+  expect(mocks.apply).not.toHaveBeenCalled()
+})
+
+test('combined admission claims the current successor generation', async () => {
+  const successor = { ...reference, executionGeneration: 2 }
+  const snapshot = { revision: 5, status: 'running', executionGeneration: 2, workflowRunId: reference.workflowRunId }
+  mocks.get.mockResolvedValue({ ...snapshot, workflowRunId: undefined, revision: 4 })
+  mocks.apply.mockResolvedValue({ conflict: false, snapshot })
+  expect(await readAndClaimHarnessState(successor)).toEqual({ snapshot, claimed: true })
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+    executionGeneration: 2, operation: { type: 'claim_execution', workflowRunId: reference.workflowRunId, generation: 2 },
+  }))
+})
+
+test('combined admission leaves an authorization-blocked task unclaimed', async () => {
+  const snapshot = { revision: 4, status: 'waiting_for_authorization' }
+  mocks.get.mockResolvedValue(snapshot)
+  expect(await readAndClaimHarnessState(reference)).toEqual({ snapshot, claimed: false })
+  expect(mocks.apply).not.toHaveBeenCalled()
 })

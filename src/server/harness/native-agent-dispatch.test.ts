@@ -125,12 +125,12 @@ test('native ask splits the remaining budget across three targets while preservi
   expect(mocks.apply.mock.calls.map(([args]) => args.operation.child.maxCostMicros)).toEqual([25, 25, 25])
 })
 
-test('free native routes reserve no child budget', async () => {
-  mocks.resolve.mockResolvedValueOnce([{ ...invocation, modelId: 'openrouter/free' }])
+test('native routes reserve child budget', async () => {
+  mocks.resolve.mockResolvedValueOnce([{ ...invocation, modelId: 'deepseek/deepseek-v4-flash-0731' }])
   await dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
     agent: 'Target', message: 'inspect this', wait: true,
   })
-  expect(mocks.apply.mock.calls[0]![0].operation.child.maxCostMicros).toBe(0)
+  expect(mocks.apply.mock.calls[0]![0].operation.child.maxCostMicros).toBe(50)
 })
 
 test('a descendant dispatch uses the original root workflow for surface preparation', async () => {

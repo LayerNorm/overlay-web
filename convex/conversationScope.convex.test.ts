@@ -43,4 +43,22 @@ describe('conversation scope', () => {
     expect(scopeOf(legacyId)).toBe('personal')
     expect(listed.find((row) => row._id === personalId)?.scope).toBeUndefined()
   })
+
+  test('personal assistant messages accept and retain storage omission metadata', async () => {
+    process.env.INTERNAL_API_SECRET = serverSecret
+    const convex = convexTest(schema, modules)
+    const auth = { userId: 'user', workspaceId: 'workspace', serverSecret }
+    const conversationId = await convex.mutation(api.chat.conversations.create, { ...auth, title: 'Compacted chat' })
+    const parts = [
+      { type: 'text', text: '[7 additional assistant parts omitted for storage]', storageOmittedParts: 7 },
+      { type: 'text', text: 'Final answer' },
+    ]
+    await convex.mutation(api.chat.conversations.addMessage, {
+      ...auth, conversationId, turnId: 'turn', role: 'assistant', mode: 'act',
+      contentType: 'text', content: 'Final answer', parts, skipMemoryExtraction: true,
+    })
+    const rows = await convex.run(ctx => ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId', q => q.eq('conversationId', conversationId)).collect())
+    expect(rows[0]?.parts).toEqual(parts)
+  })
 })

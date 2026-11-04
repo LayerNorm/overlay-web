@@ -26,7 +26,7 @@ export function BudgetTopUpComposerPrompt({
             <p className="font-medium">Paid budget is empty</p>
           </div>
           <p className="mt-1 text-xs leading-relaxed text-(--muted)">
-            ${Math.max(0, remainingCents / 100).toFixed(2)} remaining. Free models still work; top up to use paid models and paid tools.
+            ${Math.max(0, remainingCents / 100).toFixed(2)} remaining. Model execution is paused at $0; add credit to continue.
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-2">

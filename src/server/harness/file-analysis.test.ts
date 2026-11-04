@@ -25,7 +25,8 @@ test('coverage requires successful exact-revision page observations, not child p
   expect(result.examined.map(page => page.page)).toEqual([1])
   expect(result.missing.map(page => page.page)).toEqual([2, 3])
   expect(result.complete).toBe(false)
-  expect(evidence[0].summary).not.toContain('Source text')
+  expect(evidence[0].summary).toContain('Source text')
+  expect(evidence[0].resource).toEqual({ id: 'file', revision: 'revision', page: 1, operation: 'read_document' })
 })
 
 test('blank/truncated pages stay missing until rendered; failed and stale reads remain distinct', () => {
@@ -40,6 +41,21 @@ test('blank/truncated pages stay missing until rendered; failed and stale reads 
   expect(result.unavailable.map(page => page.page)).toEqual([3])
   expect(result.complete).toBe(false)
   expect(fileAnalysisCoverage([partition], [1, 2, 3].map(page => observation(page, {}))).complete).toBe(true)
+})
+
+test('bounded page evidence retains facts without binary payloads or false full-page coverage', () => {
+  const evidence = observation(1, { text: 'Known source fact. ' + '\u0000'.repeat(5_000), image: new Uint8Array(1_024) })
+  const value = JSON.parse(evidence.summary)
+  expect(evidence.summary.length).toBeLessThanOrEqual(2_000)
+  expect(value.textExcerpt).toContain('Known source fact.')
+  expect(value.textExcerptTruncated).toBe(true)
+  expect(value.image).toBeUndefined()
+  expect(fileAnalysisCoverage([partition], [evidence]).examined.map(page => page.page)).toEqual([1])
+
+  const partial = observation(2, { text: 'Partial page fact', truncated: true })
+  expect(JSON.parse(partial.summary)).toMatchObject({ success: true, coverageComplete: false, textExcerpt: 'Partial page fact' })
+  expect(partial.verdict).toBe('observed')
+  expect(fileAnalysisCoverage([partition], [partial]).examined).toEqual([])
 })
 
 test('analysis schema bounds work and delegates only inherited tools with a durable assignment manifest', async () => {

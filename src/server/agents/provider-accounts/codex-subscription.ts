@@ -1,7 +1,7 @@
 import 'server-only'
 
 /**
- * Signing in to Codex with a ChatGPT subscription, and keeping that sign-in alive for Overlay Cloud machines.
+ * Signing in to Codex with a ChatGPT subscription for supported model/subscription adapters.
  *
  * Codex signs in with OAuth. Its access token is short-lived and its refresh token **rotates on every use**, so two
  * machines holding the same sign-in would invalidate each other. Overlay keeps the only refresh token, in the

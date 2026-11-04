@@ -155,6 +155,13 @@ const handlers = {
       await ctx.runMutation(internal.billing.autoTopUpSettlement.settlePendingTopUpInternal, {
         stripePaymentIntentId: intent.id,
         outcome: 'succeeded',
+        billingAccountId: intent.metadata.billingAccountId,
+        intentKey: intent.metadata.intentKey,
+        workspaceId: intent.metadata.workspaceId,
+        userId: intent.metadata.userId,
+        customerId: typeof intent.customer === 'string' ? intent.customer : intent.customer?.id,
+        amountCents: intent.amount_received,
+        currency: intent.currency,
       })
     },
 
@@ -166,6 +173,13 @@ const handlers = {
         stripePaymentIntentId: intent.id,
         outcome: 'failed',
         errorMessage: intent.last_payment_error?.message ?? 'payment_failed',
+        billingAccountId: intent.metadata.billingAccountId,
+        intentKey: intent.metadata.intentKey,
+        workspaceId: intent.metadata.workspaceId,
+        userId: intent.metadata.userId,
+        customerId: typeof intent.customer === 'string' ? intent.customer : intent.customer?.id,
+        amountCents: intent.amount,
+        currency: intent.currency,
       })
     },
 
@@ -176,6 +190,13 @@ const handlers = {
       await ctx.runMutation(internal.billing.autoTopUpSettlement.settlePendingTopUpInternal, {
         stripePaymentIntentId: intent.id,
         outcome: 'canceled',
+        billingAccountId: intent.metadata.billingAccountId,
+        intentKey: intent.metadata.intentKey,
+        workspaceId: intent.metadata.workspaceId,
+        userId: intent.metadata.userId,
+        customerId: typeof intent.customer === 'string' ? intent.customer : intent.customer?.id,
+        amountCents: intent.amount,
+        currency: intent.currency,
       })
     },
 

@@ -51,8 +51,7 @@ export const DEFAULT_OVERLAY_RUNTIME_CONFIG = {
     connectedAgentArtifacts: false,
     connectedAgentDrive: false,
     overlayCloudEnvironments: false,
-    // Legacy managed harnesses remain disabled for config compatibility; connected
-    // cloud agents use overlayCloudEnvironments.
+    // Hosted Overlay Cloud agents are retired; this legacy key is inert.
     managedHarnessAgents: false,
     // Computer access defaults on, but capability derivation also requires a
     // configured provider (BOX_API_KEY for the default `box` provider).

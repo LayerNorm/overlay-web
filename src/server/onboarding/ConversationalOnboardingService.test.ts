@@ -1,11 +1,12 @@
 import { strict as assert } from 'node:assert'
 import test from 'node:test'
 import { WorkServiceError } from '@/server/work/WorkService'
+import { WorkspaceExecutionError } from '@/server/billing/WorkspaceExecutionPolicy'
 import { OnboardingActionSchema, type OnboardingAction, type OnboardingSession } from '@/shared/onboarding/session'
 import { ConversationalOnboardingService, type OnboardingEffects } from './ConversationalOnboardingService'
 import type { OnboardingStateRepository } from './OnboardingStateRepository'
 
-function fixture() {
+function fixture(paid = true) {
   let raw: string | undefined
   let completed = false
   let runId = ''
@@ -69,7 +70,12 @@ function fixture() {
     work: { async get() { throw new WorkServiceError('Task not found.', 404, 'work_not_found') } },
   }
   return {
-    repository, effects, messages, service: new ConversationalOnboardingService({ repository, effects }),
+    repository, effects, messages, service: new ConversationalOnboardingService({ repository, effects,
+      requireExecution: async ({ workspaceId }) => {
+        if (!paid) throw new WorkspaceExecutionError({ state: 'subscription_required', canExecute: false }, true)
+        return { billingEnabled: true, canManage: true, workspaceId: workspaceId!, access: { state: 'ready', canExecute: true } }
+      },
+    }),
     get runId() { return runId }, set runId(value: string) { runId = value },
     get failTranscriptWrites() { return failTranscriptWrites }, set failTranscriptWrites(value: number) { failTranscriptWrites = value },
   }
@@ -403,6 +409,27 @@ test('missing and foreign tasks cannot falsely complete onboarding', async () =>
   assert.equal((await f.service.get('user-1', 'workspace-1')).completed, false)
 })
 
+test('unpaid onboarding saves and restores the draft but cannot complete execution', async () => {
+  const f = fixture(false)
+  let result = await advanceToTask(f)
+  const draft = 'Review the launch plan'
+  result = await act(f, { action: 'draft_task', revision: result.session!.revision, value: draft })
+  f.effects.work.get = async () => ({ id: 'task-1', title: draft, workspaceId: 'workspace-1', createdBy: 'user-1' } as never)
+  result = await act(f, { action: 'save_task', revision: result.session!.revision, taskId: 'task-1' })
+  assert.equal(result.completed, false)
+  assert.equal(result.session?.step, 'task')
+  const restored = await currentSession(f)
+  assert.equal(restored.taskDraft, draft)
+  assert.equal(restored.taskId, 'task-1')
+  await assert.rejects(act(f, { action: 'finish', revision: restored.revision, taskId: 'task-1' }), WorkspaceExecutionError)
+  assert.equal((await currentSession(f)).step, 'task')
+  result = await act(f, { action: 'draft_task', revision: restored.revision, value: 'An updated task' })
+  assert.equal(result.session?.taskId, 'task-1')
+  assert.equal(result.session?.taskDraft, 'An updated task')
+  const stale = await act(f, { action: 'draft_task', revision: restored.revision, value: 'Stale tab draft' })
+  assert.equal(stale.session?.taskDraft, 'An updated task')
+})
+
 test('a verified first task completes onboarding durably', async () => {
   const f = fixture()
   const task = await advanceToTask(f)
@@ -421,7 +448,22 @@ test('a verified first task completes onboarding durably', async () => {
   assert.deepEqual(retry, result)
   assert.equal(f.messages.length, messageCount)
   assert.equal((await f.service.get('user-1', 'workspace-1')).completed, true)
-  assert.equal(f.messages.at(-1)?.content, "You're all set. Your first task is waiting in Work.\n\nHappy working.")
+  assert.equal(f.messages.at(-1)?.content, "Your first task is now in Work. I'll keep you updated there.")
+})
+
+test('a lost Start response recovers from the durable assignment even after billing closes', async () => {
+  const f = fixture(false)
+  let result = await advanceToTask(f)
+  result = await act(f, { action: 'draft_task', revision: result.session!.revision, value: 'Review the launch plan' })
+  const task = { id: 'task-1', title: 'Review the launch plan', workspaceId: 'workspace-1', createdBy: 'user-1' }
+  f.effects.work.get = async () => task as never
+  result = await act(f, { action: 'save_task', revision: result.session!.revision, taskId: task.id })
+  f.effects.work.get = async () => ({ ...task, assigneePrincipalId: result.session!.agentPrincipalId, assignmentExecution: { status: 'started' } }) as never
+  const recovered = await f.service.get('user-1', 'workspace-1')
+  assert.equal(recovered.completed, true)
+  assert.equal(recovered.session?.taskId, task.id)
+  assert.equal(recovered.session?.step, 'complete')
+  assert.deepEqual(await f.service.get('user-1', 'workspace-1'), recovered)
 })
 
 test('GET recovers a completed final transcript outbox after a write failure', async () => {
@@ -439,6 +481,6 @@ test('GET recovers a completed final transcript outbox after a write failure', a
   assert.equal(result.session?.taskId, 'task-1')
   assert.deepEqual(f.messages.slice(-2).map((message) => message.content), [
     'Review the launch plan',
-    "You're all set. Your first task is waiting in Work.\n\nHappy working.",
+    "Your first task is now in Work. I'll keep you updated there.",
   ])
 })

@@ -20,6 +20,7 @@ beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 const mutation = (name: string) => makeFunctionReference<'mutation'>(`harness/runs:${name}`)
 const query = (name: string) => makeFunctionReference<'query'>(`harness/runs:${name}`)
 type Convex = ReturnType<typeof convexTest>
+const workflowIds = new WeakMap<Convex, Map<string, string>>()
 
 async function seedConversation(convex: Convex, userId = 'alice') {
   const now = Date.now()
@@ -66,9 +67,17 @@ async function apply(
   operation: HarnessOperation,
   actorUserId = input.policy.actorUserId,
 ) {
+  const runOwners = workflowIds.get(convex) ?? new Map()
+  workflowIds.set(convex, runOwners)
+  const workflowRunId = operation.type === 'claim_execution'
+    ? operation.workflowRunId
+    : runOwners.get(input.runId) ?? `workflow-${input.runId}`
+  if (operation.type === 'claim_execution') runOwners.set(input.runId, workflowRunId)
   return await convex.mutation(mutation('apply'), {
     actorUserId,
     runId: input.runId,
+    workflowRunId,
+    executionGeneration: 0,
     operationId,
     expectedRevision,
     operation,

@@ -10,12 +10,14 @@ import { readValidatedJson } from '@/server/app-api/validated-input'
 import { AgentRunApprovalRequest } from '@/shared/schemas/chat'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { agentRunApprovalAccess } from '@/server/agents/agent-approval-authority'
+import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
 
 type ApprovalRepositories = ReturnType<typeof getOverlayServerContext>['appData']['repositories']
 type ApprovalRouteDependencies = {
   conversations: Pick<ApprovalRepositories['conversations'], 'getConversationById' | 'getLatestAgentRun'>
   collaboration: Pick<ApprovalRepositories['conversationCollaboration'], 'getAccessibleConversation'>
   resume: (token: string, decision: { approved: boolean; reason?: string }) => Promise<unknown>
+  submitWaitReply?: ConvexHarnessRepository['submitWaitReply']
 }
 
 export async function POST(
@@ -67,6 +69,14 @@ export async function POST(
       return NextResponse.json({ error: NATIVE_RUN_RETIRED_MESSAGE, code: NATIVE_RUN_RETIRED_CODE }, { status: 410 })
     }
     const resume = dependencies?.resume ?? resumeHook
+    const submit = dependencies ? dependencies.submitWaitReply
+      : (input: Parameters<ConvexHarnessRepository['submitWaitReply']>[0]) => new ConvexHarnessRepository().submitWaitReply(input)
+    if (run?.harnessRunId && submit && await submit({
+      actorUserId, workspaceId: context.workspace.workspace.id, deliveryAgentRunId: run.id,
+      token: body.data.token, reply: {
+        approved: body.data.approved, ...(body.data.reason ? { reason: body.data.reason } : {}),
+      },
+    })) return NextResponse.json({ success: true })
     await resume(body.data.token, {
       approved: body.data.approved,
       ...(body.data.reason ? { reason: body.data.reason } : {}),

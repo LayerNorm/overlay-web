@@ -138,6 +138,46 @@ describe('Convex connected-agent provider contract', () => {
     })).rejects.toThrow(/Unauthorized/)
   })
 
+  test('retired Cloud transactions reject starts, preserve only inert controls, and neutralize queued work', async () => {
+    const convex = convexTest(schema, modules)
+    const call = (name: string, args: Record<string, unknown>) => convex.mutation(reference(name), { ...args, serverSecret: secret })
+    await convex.run(async (ctx) => {
+      await ctx.db.insert('agentEnvironments', {
+        environmentId: 'retired-cloud', workspaceId: 'retired-ws', kind: 'overlay_cloud',
+        name: 'Legacy', status: 'online', capabilities: {}, createdAt: 1, updatedAt: 1,
+      })
+      await ctx.db.insert('agentRunCommands', {
+        commandId: 'old-start', workspaceId: 'retired-ws', environmentId: 'retired-cloud',
+        runId: 'old-run', type: 'start', sequence: 1, payload: { adapterId: 'codex' },
+        status: 'pending', createdAt: 1, updatedAt: 1,
+      })
+    })
+    await expect(call('createRemoteSessionByServer', {
+      id: 'session', workspaceId: 'retired-ws', environmentId: 'retired-cloud',
+      bindingId: 'missing-binding', runId: 'old-run', status: 'running', commandCursor: 0,
+      eventCursor: 0, capabilitySnapshot: {}, now: 2,
+    })).rejects.toThrow('HOSTED_RUNTIME_RETIRED')
+    await expect(call('enqueueCommandByServer', {
+      id: 'new-start', workspaceId: 'retired-ws', environmentId: 'retired-cloud',
+      runId: 'old-run', type: 'start', payload: {}, now: 2,
+    })).rejects.toThrow('HOSTED_RUNTIME_RETIRED')
+    for (const [index, type] of ['observe', 'cancel', 'shutdown'].entries()) {
+      await call('enqueueCommandByServer', {
+        id: `safe-${type}`, workspaceId: 'retired-ws', environmentId: 'retired-cloud',
+        runId: 'old-run', type, payload: {}, now: 3 + index,
+      })
+    }
+    const claimed = await call('claimCommandsByServer', {
+      workspaceId: 'retired-ws', environmentId: 'retired-cloud', now: 10, leaseMs: 10_000, limit: 10,
+    }) as Array<{ id: string }>
+    expect(claimed.map((command) => command.id)).toEqual(['safe-observe', 'safe-cancel', 'safe-shutdown'])
+    await convex.run(async (ctx) => {
+      const oldStart = await ctx.db.query('agentRunCommands')
+        .withIndex('by_commandId', (q) => q.eq('commandId', 'old-start')).unique()
+      expect(oldStart?.status).toBe('cancelled')
+    })
+  })
+
   test('claims meter batches by due time and makes overlapping sweeps disjoint', async () => {
     const convex = convexTest(schema, modules)
     const call = (name: string, args: Record<string, unknown>) => convex.mutation(reference(name), { ...args, serverSecret: secret })

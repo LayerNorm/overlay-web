@@ -9,6 +9,10 @@ import {
   reserveHarnessModel, reservedHarnessCostMicros,
   bindHarnessModelDispatch,
   validateHarnessReceipt,
+  recordHarnessVerification,
+  setHarnessCompaction,
+  pauseHarnessForAuthorization,
+  pauseHarnessForFunding, resumeHarnessFunding,
 } from './harness-state'
 
 const now = 1_000
@@ -28,32 +32,166 @@ const make = () => createHarnessSnapshot({ runId: 'root', goal: 'Produce a check
   deadlineAt: 10_000, maxCostMicros: 100, maxParallelChildren: 2, maxDepth: 1,
 } }, now)
 
-test('route interruption receipts count durably toward the per-run retry cap', () => {
+test('compaction transitions are replay-safe and never replace an unrelated reservation', () => {
   let state = make()
-  for (let index = 0; index < 3; index += 1) {
-    state = recordHarnessReceipt(state, {
-      id: `model:${index}`,
-      modelId: 'openrouter/free',
-      provider: 'overlay-free-router',
-      inputTokens: 0,
-      outputTokens: 0,
-      reasoningTokens: 0,
-      cacheReadTokens: 0,
-      cacheWriteTokens: 0,
-      contextWindow: null,
-      costMicros: 0,
-      costSource: 'catalog',
-      rejectionReason: 'route_interrupted',
-    }, now)
+  const started = { cycleId: 'summary:r1', attemptId: 'summary:r1', status: 'started' as const, retryCount: 0, updatedAt: now }
+  state = setHarnessCompaction(state, started, now)
+  assert.equal(setHarnessCompaction(state, started, now), state)
+  assert.throws(() => setHarnessCompaction({
+    ...state, modelReservation: { id: 'response:r1', maxCostMicros: 1 },
+  }, { ...started, cycleId: 'summary:r2', attemptId: 'summary:r2' }, now), /unrelated model reservation/)
+  const interrupted = { ...started, status: 'interrupted' as const, failureReason: 'stream_aborted' as const, updatedAt: now + 1 }
+  state = setHarnessCompaction(state, interrupted, now + 1)
+  state = setHarnessCompaction(state, {
+    cycleId: started.cycleId, attemptId: 'summary:r1:retry:1', status: 'started', retryCount: 1, updatedAt: now + 2,
+  }, now + 2)
+  assert.equal(state.compaction?.retryCount, 1)
+})
+
+test('a successful summary receipt keeps its attempt active until validated completion', () => {
+  const attempt = { cycleId: 'summary:success', attemptId: 'summary:success', status: 'started' as const, retryCount: 0, updatedAt: now }
+  let state = setHarnessCompaction(make(), attempt, now)
+  state = reserveHarnessModel(state, attempt.attemptId, 1, now)
+  state = recordHarnessReceipt(state, {
+    id: attempt.attemptId, modelId: 'model', provider: 'provider', inputTokens: 1, outputTokens: 1,
+    reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null, costMicros: 1,
+  }, now + 1)
+  assert.equal(state.modelReservation, undefined)
+  assert.equal(state.compaction?.status, 'started')
+  state = setHarnessCompaction(state, { ...attempt, status: 'completed', updatedAt: now + 2 }, now + 2)
+  assert.equal(state.compaction?.status, 'completed')
+})
+
+test('a matching late free summary receipt reconciles the stored cycle before its single retry', () => {
+  let state = make()
+  const cycleId = 'summary:cycle'
+  const attemptId = cycleId
+  state = setHarnessCompaction(state, {
+    cycleId, attemptId, status: 'started', retryCount: 0, updatedAt: now,
+  }, now)
+  state = reserveHarnessModel(state, attemptId, 0, now)
+  state = bindHarnessModelDispatch(state, attemptId, {
+    modelId: 'openrouter/free', billingReservationId: null,
+  }, now)
+  state = setHarnessCompaction(state, {
+    cycleId, attemptId, status: 'awaiting_reconciliation', retryCount: 0,
+    failureReason: 'hold_unsettled', updatedAt: now + 1,
+  }, now + 1)
+  const receipt: HarnessReceipt = {
+    id: attemptId, modelId: 'openrouter/free', provider: 'overlay-free-router',
+    inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+    contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'summary_failed',
   }
-  assert.equal(state.routeInterruptionCount, 3)
+  const reconciled = recordHarnessReceipt(state, receipt, now + 2)
+  assert.equal(reconciled.compaction?.status, 'interrupted')
+  assert.equal(recordHarnessReceipt(reconciled, receipt, now + 3), reconciled)
+  state = setHarnessCompaction(reconciled, {
+    cycleId, attemptId: `${cycleId}:retry:1`, status: 'started', retryCount: 1, updatedAt: now + 4,
+  }, now + 4)
+  state = setHarnessCompaction(state, {
+    cycleId, attemptId: `${cycleId}:retry:1`, status: 'interrupted', retryCount: 1,
+    failureReason: 'provider_error', updatedAt: now + 5,
+  }, now + 5)
+  assert.throws(() => setHarnessCompaction(state, {
+    cycleId, attemptId: `${cycleId}:retry:2`, status: 'started', retryCount: 2, updatedAt: now + 6,
+  }, now + 6), /Invalid compaction attempt/)
+})
+
+test('paid or billing-bound inference cannot be reconciled as a free verifier failure', () => {
+  let state = reserveHarnessModel(make(), 'verification:1', 0, now)
+  state = bindHarnessModelDispatch(state, 'verification:1', {
+    modelId: 'openrouter/free', billingReservationId: 'billing-hold',
+  }, now)
+  const receipt: HarnessReceipt = {
+    id: 'verification:1', modelId: 'openrouter/free', provider: 'overlay-free-router',
+    inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+    contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'verification_failed',
+  }
+  assert.throws(() => recordHarnessReceipt(state, receipt, now + 1), /exact zero-cost unbilled free hold/)
+  assert.equal(state.modelReservation?.id, 'verification:1')
+})
+
+test('final verification is bound to current plan and evidence progress', () => {
+  let state = make()
+  state = recordHarnessEvidence(state, {
+    id: 'tool:read:1', kind: 'tool_result', source: 'read_document', summary: 'Read revision r1.',
+    verdict: 'observed', createdAt: now,
+  }, now)
+  const verification = {
+    attemptId: 'segment:1',
+    candidateDigest: 'digest', planRevision: state.planRevision, evidenceRevision: state.progressRevision,
+    supported: true, reason: 'Supported by the saved read.', evidenceIds: ['tool:read:1'], attempts: 1, createdAt: now,
+  }
+  state = recordHarnessVerification(state, verification, now)
+  assert.equal(recordHarnessVerification(state, verification, now), state)
+  assert.throws(() => recordHarnessVerification(state, { ...verification, evidenceRevision: 0 }, now), /does not match/)
+  assert.throws(() => recordHarnessVerification(state, { ...verification, evidenceIds: ['other'] }, now), /does not match/)
+})
+
+test('workspace funding pauses preserve fractional cents and resume the same task', () => {
+  const initial = make()
+  const state = { ...initial, policy: { ...initial.policy, executionPolicyVersion: 2 as const, spendingMode: 'workspace' as const } }
+  const pause = { reason: 'disabled' as const, receiptId: 'model:0', requiredCents: 38.96, availableCents: 0.98, reservedCents: 0.02 }
+  const paused = pauseHarnessForFunding(state, pause, now)
+  assert.equal(paused.status, 'waiting_for_resources')
+  assert.deepEqual(paused.resourcePause, pause)
+  const resumed = resumeHarnessFunding(paused, now + 1)
+  assert.equal(resumed.runId, state.runId)
+  assert.equal(resumed.status, 'running')
+  assert.equal(resumed.resourcePause, undefined)
+  for (const field of ['requiredCents', 'availableCents', 'reservedCents'] as const) {
+    for (const invalid of [-1, NaN, Infinity, Number.MAX_SAFE_INTEGER]) {
+      assert.throws(() => pauseHarnessForFunding(state, { ...pause, [field]: invalid }, now), /Invalid workspace funding pause/)
+    }
+  }
+  assert.throws(() => pauseHarnessForFunding(state, { ...pause, requiredCents: 0 }, now), /Invalid workspace funding pause/)
+})
+
+test('historical route rejection receipts do not grant route-recovery state', () => {
+  const state = recordHarnessReceipt(make(), {
+    id: 'model:legacy',
+    modelId: 'openrouter/free',
+    provider: 'overlay-free-router',
+    inputTokens: 0,
+    outputTokens: 0,
+    reasoningTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    contextWindow: null,
+    costMicros: 0,
+    costSource: 'catalog',
+    rejectionReason: 'route_interrupted',
+  }, now)
   assert.equal(state.latestReceipt?.rejectionReason, 'route_interrupted')
+  assert.equal(state.modelRecovery, undefined)
 })
 
 test('generic block and resume cannot bypass a resource pause', () => {
   const paused = { ...make(), status: 'waiting_for_resources' as const, resourceRequestToken: 'resource-token' }
   assert.throws(() => resumeHarness(paused, now), /resource pause/)
   assert.throws(() => blockHarness(paused, { kind: 'input', question: 'Continue?' }, now), /resource pause/)
+})
+
+test('explicit task-deadline pause is persisted, nonterminal, and cannot resume through ordinary input', () => {
+  const deadlineAt = now + 1
+  const state = createHarnessSnapshot({
+    runId: 'deadline-root', goal: 'Finish the task', constraints: [],
+    policy: {
+      actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: ['read'],
+      requiresPlan: false, deadlineAt: deadlineAt + 86_400_000, taskDeadlineAt: deadlineAt,
+      maxCostMicros: 0, maxParallelChildren: 0, maxDepth: 0,
+      executionPolicyVersion: 2, spendingMode: 'workspace',
+    },
+  }, now)
+  const paused = pauseHarnessForAuthorization(state, deadlineAt)
+  assert.equal(paused.status, 'waiting_for_authorization')
+  assert.deepEqual(paused.authorizationPause, {
+    reason: 'task_deadline_expired', deadlineAt, pausedAt: deadlineAt,
+  })
+  assert.equal('requiredCents' in paused.authorizationPause!, false)
+  assert.throws(() => resumeHarness(paused, deadlineAt + 1), /cannot be resumed/)
+  assert.throws(() => claimHarnessExecution(paused, 'successor', deadlineAt + 1), /cannot be claimed/)
+  assert.equal(paused.status === 'completed' || paused.status === 'failed' || paused.status === 'cancelled', false)
 })
 
 const steps: HarnessPlanInput[] = [
@@ -72,6 +210,28 @@ const childRunState = (parent: ReturnType<typeof make>, runId: string, at: numbe
   constraints: [],
   policy: { ...parent.policy, allowedToolIds: ['read'], requiresPlan: false, maxCostMicros: 0 },
 }, at)
+
+test('workspace-funded roots and children settle usage beyond legacy allocations', () => {
+  let parent = make()
+  parent.policy.workspaceId = 'workspace'
+  parent.policy.executionPolicyVersion = 2
+  parent.policy.spendingMode = 'workspace'
+  parent.policy.maxCostMicros = 0
+  parent = replaceHarnessPlan(parent, steps, now)
+  parent = admitHarnessChild(parent, child('first', 'read', 0), now)
+  const receipt = (id: string, costMicros: number): HarnessReceipt => ({
+    id, modelId: 'provider/model', provider: 'provider', inputTokens: 1, outputTokens: 1,
+    reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: null,
+    costMicros, costSource: 'provider',
+  })
+  parent = recordHarnessReceipt(parent, receipt('root:receipt', 1_100_000), now)
+  let worker = childRunState(parent, 'first', now)
+  worker = recordHarnessReceipt(worker, receipt('child:receipt', 300_000), now)
+  worker = finishHarness(worker, now, 'Child completed.')
+  parent = settleHarnessChild(parent, worker, now)
+  assert.equal(parent.usage.costMicros, 1_400_000)
+  assert.equal(parent.children[0]?.costMicros, 300_000)
+})
 
 test('model dispatch binds one billing reservation without releasing the budget hold', () => {
   const reserved = reserveHarnessModel(make(), 'receipt', 80, now)
@@ -332,6 +492,15 @@ test('plan revisions reject cycles and invalidate completed downstream work', ()
   assert.deepEqual(state.plan.map(step => step.status), ['pending', 'pending'])
   assert.deepEqual(previous.plan.map(step => step.status), ['done', 'done'])
   assert.throws(() => replaceHarnessPlan(state, [steps[0]!], now), /Keep existing/)
+})
+
+test('continuation checkpoint keeps model narrative separate from authoritative summary', () => {
+  let state = make()
+  state = checkpointHarness(state, 'Authoritative checkpoint', now, 'continuation', 'Unverified model narrative.')
+  assert.equal(state.workingSummary, 'Authoritative checkpoint')
+  assert.equal(state.unverifiedNarrative, 'Unverified model narrative.')
+  state = checkpointHarness(state, 'Compacted context', now, 'compaction')
+  assert.equal(state.unverifiedNarrative, 'Compacted context')
 })
 
 test('telemetry is not progress and compaction does not count as continuation stagnation', () => {
@@ -800,4 +969,23 @@ test('harness_read_child evidence matches its declared tool ID', () => {
   assert.equal(transitionHarnessStep(evidence, {
     id: 'delegate', status: 'done', evidenceRefs: ['child-result'],
   }, now).plan[0]?.status, 'done')
+})
+
+test('authorized artifact observations prove artifact reads but cannot certify source writes', () => {
+  const initial = { ...make(), policy: { ...make().policy, allowedToolIds: ['get_note', 'create_note'] } }
+  const read = { id: 'reopen', title: 'Read the omitted source', dependsOn: [],
+    acceptanceCriteria: ['Read the omitted excerpt'], requiresVerification: false, evidenceTools: ['harness_read_artifact'] }
+  const planned = replaceHarnessPlan(initial, [read], now)
+  const observed = recordHarnessEvidence(planned, {
+    id: 'tool:reopen', kind: 'tool_result', source: 'harness_read_artifact',
+    resource: { id: 'source', revision: 'rev-1', operation: 'create_note' },
+    summary: 'Reopened the original source excerpt', verdict: 'observed', createdAt: now,
+  }, now)
+  assert.equal(transitionHarnessStep(observed, {
+    id: 'reopen', status: 'done', evidenceRefs: ['tool:reopen'],
+  }, now).plan[0]?.status, 'done')
+  const writePlan = replaceHarnessPlan(observed, [{ ...read, evidenceTools: ['create_note'] }], now)
+  assert.throws(() => transitionHarnessStep(writePlan, {
+    id: 'reopen', status: 'done', evidenceRefs: ['tool:reopen'],
+  }, now), /evidenceTools/)
 })
