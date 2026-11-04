@@ -8,13 +8,13 @@ import * as state from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts, HarnessRunnerCheckpoint } from './ports'
 import { buildHarnessStepInstructions } from './context'
 import { getLanguageModel } from '@/server/ai/model-runtime'
-import { runOverlayHarness } from './runner'
+import { planRepairCalls, runOverlayHarness } from './runner'
 import { harnessToolResultEvidence } from './tool-evidence'
 import type { HarnessToolExecutionOptions } from './tool-approvals'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
 import { harnessModelResponseFailure } from './model-usage'
 import { HarnessWaitRollover } from './waits'
-import { planRepairEvidence } from './plan-repair'
+import { advancePlanRepair, planRepairEvidence } from './plan-repair'
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
@@ -1635,6 +1635,22 @@ test('invalid targeted revision schemas count toward the repair pause', async ()
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
   expect(provider.doStreamCalls).toHaveLength(5)
   expect(result.snapshot.blocker).toMatchObject({ kind: 'stuck' })
+})
+
+test('an unambiguous invalid update schema includes its control name in repair accounting', async () => {
+  const f = fixture(false)
+  const snapshot = await f.ports.read()
+  const previous = { attempts: 0, evidence: planRepairEvidence(snapshot) }
+  const emptyStep = {
+    finishReason: 'tool-calls', text: '', content: [], toolCalls: [],
+  } as unknown as Parameters<typeof planRepairCalls>[0]
+
+  const calls = planRepairCalls(emptyStep, ['harness_update_step'], true)
+
+  expect(calls).toEqual({ names: ['harness_update_step'], failedUpdateStep: true })
+  expect(advancePlanRepair(previous, snapshot, calls.names, true, calls.failedUpdateStep).attempts).toBe(1)
+  expect(planRepairCalls(emptyStep, ['harness_update_step'], false))
+    .toEqual({ names: [], failedUpdateStep: false })
 })
 
 test('a resumed checkpoint at the repair limit blocks before another model dispatch', async () => {

@@ -202,6 +202,41 @@ test('repair paragraphs split across native deltas are withheld while ordinary p
   expect(visible).not.toContain(leaked[2])
 })
 
+test('fenced tool JSON with blank lines is withheld and ordinary fenced code roundtrips', async () => {
+  const toolJson = [
+    '```json',
+    '{',
+    '  "name": "harness_update_step",',
+    '  "parameters": {',
+    '    "id": "work",',
+    '',
+    '    "status": "done",',
+    '    "note": "Fixing the plan format - status should not be included in the set operation"',
+    '  }',
+    '}',
+    '```',
+  ].join('\n')
+  const code = ['```text', '  keep this whitespace  ', '', '  and this blank line', '```'].join('\n')
+  const prose = `${toolJson}\n\n${code}`
+  const parts: LanguageModelV4StreamPart[] = [
+    ...Array.from(prose, character => text(character)),
+    { type: 'text-end', id: 'text' },
+    finish,
+  ]
+  const delivered: string[] = []
+  let publicText = ''
+  mocks.append.mockImplementation(async args => {
+    publicText += args.contentDelta
+    delivered.push(publicText)
+  })
+
+  expect(await drain(await projectNativeHarnessStream(reference, source(parts), new Set(['harness_update_step'])))).toEqual(parts)
+  expect(publicText).toBe(code)
+  expect(delivered.every(snapshot => ![
+    '"name"', 'harness_update_step', 'Fixing the plan format', '<tool_call>', '<function_calls>',
+  ].some(fragment => snapshot.includes(fragment)))).toBe(true)
+})
+
 test('an oversized unclassified paragraph is dropped instead of leaking a prefix', async () => {
   const oversized = 'x'.repeat(MAX_PERSISTED_ASSISTANT_CONTENT_CHARS + 1)
   const parts = [text(oversized), text('\n\nThe next result is ready.'), finish]

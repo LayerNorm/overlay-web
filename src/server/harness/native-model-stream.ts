@@ -5,7 +5,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { createAgentMessageStream, appendAgentTextPart } from '@/server/agents/agent-message-stream'
 import { logger } from '@/server/observability/logger'
 import { compactAssistantPersistenceForConvex, MAX_PERSISTED_ASSISTANT_CONTENT_CHARS } from '@/shared/chat/persist-assistant-turn'
-import { stripTextualToolCalls, TEXTUAL_TOOL_CALL_MARKERS } from '@/shared/ai/textual-tool-calls'
+import { hasTextualToolCalls, stripTextualToolCalls, TEXTUAL_TOOL_CALL_MARKERS } from '@/shared/ai/textual-tool-calls'
 import { stripHarnessBookkeeping } from './public-text'
 import { refreshNativeHarnessAccess } from './native-access'
 import type { HarnessModelReference } from './secure-model'
@@ -14,46 +14,103 @@ function createTextualToolCallProjector(
   toolNames: ReadonlySet<string>,
   appendVisibleText: (text: string) => void,
 ) {
-  let paragraph = ''
-  let droppingParagraph = false
-  let insideCodeFence = false
-  let emittedParagraph = false
+  let block = ''
+  let pendingLine = ''
+  let overflowedLine = false
+  let overflowedLineWhitespace = true
+  let overflowedFenceOpeningLength: number | undefined
+  let droppingBlock = false
+  let codeFenceLength = 0
+  let emittedBlock = false
 
-  const emitParagraph = (text: string) => {
-    const fences = text.match(/^\s*```/gm)?.length ?? 0
-    const code = insideCodeFence || fences > 0
-    if (fences % 2) insideCodeFence = !insideCodeFence
-    const visible = code ? stripTextualToolCalls(text, toolNames) : stripHarnessBookkeeping(text, toolNames)
+  const emitBlock = (text: string) => {
+    const code = /(?:^|\n)[ \t]*```/.test(text)
+    const containsToolCall = hasTextualToolCalls(text, toolNames)
+    const visible = code
+      ? containsToolCall ? stripTextualToolCalls(text, toolNames) : text.replace(/\n[ \t]*\n+$/, '')
+      : stripHarnessBookkeeping(text, toolNames)
     if (!visible) return
-    appendVisibleText(`${emittedParagraph ? '\n\n' : ''}${visible}`)
-    emittedParagraph = true
+    appendVisibleText(`${emittedBlock ? '\n\n' : ''}${visible}`)
+    emittedBlock = true
+  }
+
+  const resetBlock = () => {
+    if (!droppingBlock && block) emitBlock(block)
+    block = ''
+    droppingBlock = false
+  }
+
+  const processLine = (line: string) => {
+    if (!droppingBlock) {
+      if (block.length + line.length > MAX_PERSISTED_ASSISTANT_CONTENT_CHARS) {
+        block = ''
+        droppingBlock = true
+      } else {
+        block += line
+      }
+    }
+
+    const fence = line.replace(/\r?\n$/, '').match(/^[ \t]*(`{3,})(.*)$/)
+    if (fence) {
+      if (!codeFenceLength) codeFenceLength = fence[1]!.length
+      else if (fence[1]!.length >= codeFenceLength && /^[ \t]*$/.test(fence[2]!)) codeFenceLength = 0
+    }
+    if (!codeFenceLength && /^[ \t]*\r?\n$/.test(line)) resetBlock()
   }
 
   return {
     push(text: string) {
-      const combined = paragraph + text
-      const boundary = /\n[ \t]*\n/g
+      let cursor = 0
+      if (overflowedLine) {
+        const newline = text.indexOf('\n')
+        const skipped = newline < 0 ? text : text.slice(0, newline)
+        overflowedLineWhitespace &&= /^[ \t\r]*$/.test(skipped)
+        if (newline < 0) return
+        if (overflowedFenceOpeningLength && !codeFenceLength) codeFenceLength = overflowedFenceOpeningLength
+        if (overflowedLineWhitespace && !codeFenceLength) resetBlock()
+        overflowedLine = false
+        overflowedLineWhitespace = true
+        overflowedFenceOpeningLength = undefined
+        cursor = newline + 1
+      }
+
+      const combined = pendingLine + text.slice(cursor)
+      pendingLine = ''
       let start = 0
-      let match: RegExpExecArray | null
-      while ((match = boundary.exec(combined))) {
-        const next = combined.slice(start, match.index)
-        if (!droppingParagraph && next.length + match[0].length <= MAX_PERSISTED_ASSISTANT_CONTENT_CHARS) {
-          emitParagraph(next + match[0])
-        }
-        paragraph = ''
-        droppingParagraph = false
-        start = match.index + match[0].length
+      let newline: number
+      while ((newline = combined.indexOf('\n', start)) >= 0) {
+        processLine(combined.slice(start, newline + 1))
+        start = newline + 1
       }
       const remainder = combined.slice(start)
-      if (droppingParagraph || remainder.length > MAX_PERSISTED_ASSISTANT_CONTENT_CHARS) {
-        paragraph = ''
-        droppingParagraph = true
-      } else paragraph = remainder
+      if (!remainder) return
+      if (block.length + remainder.length > MAX_PERSISTED_ASSISTANT_CONTENT_CHARS) {
+        block = ''
+        droppingBlock = true
+        overflowedLine = true
+        overflowedLineWhitespace = /^[ \t\r]*$/.test(remainder)
+        if (!codeFenceLength) {
+          const fenceOpening = remainder.match(/^[ \t]*(`{3,})/)
+          overflowedFenceOpeningLength = fenceOpening?.[1]?.length
+        }
+      } else pendingLine = remainder
     },
     flush() {
-      if (!droppingParagraph && paragraph) emitParagraph(paragraph)
-      paragraph = ''
-      droppingParagraph = false
+      if (overflowedLine) {
+        if (overflowedFenceOpeningLength && !codeFenceLength) codeFenceLength = overflowedFenceOpeningLength
+        overflowedLine = false
+      } else if (pendingLine) {
+        processLine(pendingLine)
+        pendingLine = ''
+      }
+      if (codeFenceLength) droppingBlock = true
+      if (!droppingBlock && block) emitBlock(block)
+      block = ''
+      pendingLine = ''
+      droppingBlock = false
+      codeFenceLength = 0
+      overflowedLineWhitespace = true
+      overflowedFenceOpeningLength = undefined
     },
   }
 }

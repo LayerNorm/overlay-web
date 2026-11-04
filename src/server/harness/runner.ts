@@ -298,7 +298,7 @@ function latestCheckpointSummaryText(steps: StepResult<ToolSet>[], toolNames: Re
   return ''
 }
 
-function planRepairCalls(step: StepResult<ToolSet>, selectedControlNames: string[], unambiguousControl: boolean) {
+export function planRepairCalls(step: StepResult<ToolSet>, selectedControlNames: string[], unambiguousControl: boolean) {
   const controlNames = new Set(['harness_set_plan', 'harness_revise_step', 'harness_update_step'])
   const record = step as unknown as {
     toolCalls?: Array<{ toolName?: string; toolCallId?: string }>
@@ -337,7 +337,7 @@ function planRepairCalls(step: StepResult<ToolSet>, selectedControlNames: string
   const unparsedToolCall = step.finishReason === 'tool-calls' && !step.text.trim() && step.content.length === 0
     && step.toolCalls.length === 0 && !(record.toolCalls?.length) && !(record.toolErrors?.length) && !(record.toolResults?.length)
   const unparsedControl = unparsedToolCall && unambiguousControl ? selectedControlNames[0] : undefined
-  if (unparsedControl === 'harness_set_plan' || unparsedControl === 'harness_revise_step') names.add(unparsedControl)
+  if (unparsedControl && controlNames.has(unparsedControl)) names.add(unparsedControl)
   return {
     names: [...names],
     failedUpdateStep: updateFailed || unparsedControl === 'harness_update_step',
