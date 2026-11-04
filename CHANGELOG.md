@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Recover personal chat responses after a dropped connection. Saved updates for these chats were ignored, so the text froze and the finished answer stayed hidden until a reload; they now appear while a run is followed, without blanking text already shown.
 - Speed up agent runs by no longer waiting for exact billing data after each model call, which could hold a run for up to 16 seconds per call. Calls now settle immediately from token counts and catalog prices, and a background job replaces the estimate with the exact cost once it is available, charging or refunding the difference once. Calls with no catalog price still wait for the exact cost. Each model call also renews its authorization once instead of twice, and runs no longer make a separate progress-update call before starting work, which answered simple questions early and left the real reply with nothing to say.
 
 - Keep text and tool calls in the order they happened when a response has source citations. Saved responses previously merged all their text into one block ahead of every tool call; responses already saved stay merged.

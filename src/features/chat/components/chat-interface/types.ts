@@ -155,6 +155,8 @@ export type LiveConversationMessage = {
   variantIndex?: number
   routedModelId?: string
   status?: 'generating' | 'completed' | 'error'
+  createdAt?: number
+  updatedAt?: number
 }
 
 export interface GenerationResult {
