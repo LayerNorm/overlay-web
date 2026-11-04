@@ -3,6 +3,7 @@ import { createHarnessSnapshot, recordHarnessEvidence, recordHarnessReceipt, rep
 import { buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessWorkingContext, harnessProgressFingerprint } from './context'
 import { buildHarnessCheckpoint, parseHarnessVerificationResponse } from './continuity'
 import { HARNESS_ANSWER_CORRECTION_INSTRUCTIONS, HARNESS_EVIDENCE_POLICY } from './continuity-policy'
+import { harnessToolOutputEvidence } from './tool-evidence'
 
 const make = (requiresPlan = true) => createHarnessSnapshot({
   runId: 'fixture-run', goal: 'Check the requested document', constraints: ['Do not publish it'],
@@ -179,6 +180,50 @@ test('checkpoints separate stale narrative from chronological exact-resource obs
     verdict: 'observed', resource: { id: 'file-1', revision: 'rev-7', page: 1 },
   })
   expect(buildHarnessInstructions('Surface instructions')).toContain(HARNESS_EVIDENCE_POLICY)
+  expect(HARNESS_EVIDENCE_POLICY).toContain('Use harness_read_evidence to read a truncated observation by evidenceId or list omitted observations before claiming details were absent or repeating a successful tool')
+})
+
+test('checkpoints preserve short document facts after resource metadata within the existing byte budget', () => {
+  let state = make(false)
+  const text = 'Page 2 - depot shipments\n\nRegion  Crates\nNorth  12\nSouth  29\nTotal  41'
+  for (let index = 0; index < 6; index++) {
+    state = recordHarnessEvidence(state, harnessToolOutputEvidence({
+      toolCallId: `read-${index}`, toolName: 'read_document', success: true,
+      input: { fileId: `file-${index}`, page: 2, mode: 'text' },
+      output: {
+        success: true, fileId: `file-${index}`, revision: 'a'.repeat(64),
+        page: 2, mode: 'text', text,
+      },
+    }, 1_100 + index), 1_100 + index)
+  }
+  const checkpoint = buildHarnessCheckpoint(state)
+  expect(state.evidence.every(item => item.summary.length > 240)).toBe(true)
+  expect(checkpoint.evidence).toHaveLength(6)
+  expect(checkpoint.omittedEvidenceCount).toBe(0)
+  expect(new TextEncoder().encode(JSON.stringify(checkpoint)).byteLength).toBeLessThanOrEqual(7_500)
+  checkpoint.evidence.forEach((item, index) => {
+    expect(item.summary).toBe(state.evidence[index]!.summary)
+    expect(JSON.parse(item.summary).textExcerpt).toBe(text)
+    expect(item.excerptTruncated).toBe(false)
+    expect(item.resource).toMatchObject({ id: `file-${index}`, revision: 'a'.repeat(64), page: 2 })
+  })
+})
+
+test('checkpoints shorten large observations before dropping recent evidence', () => {
+  let state = make(false)
+  for (let index = 0; index < 6; index++) {
+    state = recordHarnessEvidence(state, {
+      id: `tool:${index}`, kind: 'tool_result', source: 'read',
+      summary: '\u754c'.repeat(2_000), verdict: 'observed', createdAt: 1_000 + index,
+    }, 1_000 + index)
+  }
+  const checkpoint = buildHarnessCheckpoint(state)
+  expect(new TextEncoder().encode(JSON.stringify(checkpoint)).byteLength).toBeLessThanOrEqual(7_500)
+  expect(checkpoint.evidence).toHaveLength(6)
+  expect(checkpoint.omittedEvidenceCount).toBe(0)
+  expect(checkpoint.evidence.map(item => item.id)).toEqual(state.evidence.map(item => item.id))
+  expect(checkpoint.evidence.every(item => item.excerptTruncated && item.summary.endsWith('[TRUNCATED]'))).toBe(true)
+  expect(checkpoint.evidenceLookup).toBe('harness_read_evidence')
 })
 
 test('bounded checkpoints remain valid JSON and report omitted evidence for lookup', () => {
@@ -201,8 +246,8 @@ test('bounded checkpoints remain valid JSON and report omitted evidence for look
     id: 'tool:long-text', kind: 'tool_result', source: 'read',
     summary: 'A'.repeat(600), verdict: 'observed', createdAt: 1_001,
   }, 1_001)
-  expect(buildHarnessCheckpoint(longText).evidence[0]?.summary).toContain('[TRUNCATED]')
-  expect(buildHarnessCheckpoint(longText).evidence[0]?.summary.length).toBeLessThan(320)
+  expect(buildHarnessCheckpoint(longText).evidence[0]?.summary).toBe('A'.repeat(600))
+  expect(buildHarnessCheckpoint(longText).evidence[0]?.excerptTruncated).toBe(false)
 })
 
 test('maximum-size checkpoint fields disclose omitted goal, plan and evidence details', () => {

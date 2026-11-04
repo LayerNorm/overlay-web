@@ -25,7 +25,7 @@ export type HarnessCheckpoint = {
   evidenceLookup: 'harness_read_evidence'
 }
 
-function checkpointFor(state: HarnessSnapshot, evidence: HarnessSnapshot['evidence'], planCount = MAX_PLAN, goalLimit = 900): HarnessCheckpoint {
+function checkpointFor(state: HarnessSnapshot, evidence: HarnessSnapshot['evidence'], planCount = MAX_PLAN, goalLimit = 900, summaryLimit = 240): HarnessCheckpoint {
   const goal = state.goal.slice(0, goalLimit)
   const plan = planCount ? state.plan.slice(-planCount) : []
   return {
@@ -45,9 +45,9 @@ function checkpointFor(state: HarnessSnapshot, evidence: HarnessSnapshot['eviden
       id: item.id,
       source: item.source.slice(0, 128),
       verdict: item.verdict,
-      summary: item.summary.replace(/(?:data:[^;\s]+;base64,)[A-Za-z0-9+/=]+/gi, '[binary payload omitted]').slice(0, 240)
-        + (item.summary.length > 240 ? ' [TRUNCATED]' : ''),
-      excerptTruncated: item.summary.length > 240,
+      summary: item.summary.replace(/(?:data:[^;\s]+;base64,)[A-Za-z0-9+/=]+/gi, '[binary payload omitted]').slice(0, summaryLimit)
+        + (item.summary.length > summaryLimit ? ' [TRUNCATED]' : ''),
+      excerptTruncated: item.summary.length > summaryLimit,
       ...(item.resource ? {
         resource: {
           id: item.resource.id.slice(0, 128),
@@ -67,6 +67,10 @@ function checkpointFor(state: HarnessSnapshot, evidence: HarnessSnapshot['eviden
 export function buildHarnessCheckpoint(state: HarnessSnapshot): HarnessCheckpoint {
   const ordered = [...state.evidence].sort((left, right) => left.createdAt - right.createdAt)
   let count = Math.min(MAX_EVIDENCE, ordered.length)
+  for (const summaryLimit of [2_000, 1_000, 500]) {
+    const result = checkpointFor(state, count ? ordered.slice(-count) : [], MAX_PLAN, 900, summaryLimit)
+    if (new TextEncoder().encode(JSON.stringify(result)).byteLength <= MAX_CHECKPOINT_BYTES) return result
+  }
   while (count >= 0) {
     const result = checkpointFor(state, count ? ordered.slice(-count) : [])
     if (new TextEncoder().encode(JSON.stringify(result)).byteLength <= MAX_CHECKPOINT_BYTES) return result

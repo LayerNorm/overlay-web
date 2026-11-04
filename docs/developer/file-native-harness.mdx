@@ -29,6 +29,12 @@ that require human/model verification; neither is a guarantee of correctness.
 Rendered images are bounded, and missing or unreadable pages must be reported
 as missing rather than treated as evidence of absence.
 
+Harness checkpoints retain short tool observations when they fit the existing
+7,500-byte checkpoint budget. Larger observations remain marked as truncated;
+use `harness_read_evidence` to inspect persisted details before treating missing
+preview text as missing source data. Image artifacts still require authorized
+reopening and visual inspection, not an inference from render metadata.
+
 Hybrid file retrieval falls back to lexical results when embedding pricing,
 reservation, or provider calls fail. It preserves provider reservation and
 reconciliation rules. Lexical chunks exist before vector indexing; the file's
