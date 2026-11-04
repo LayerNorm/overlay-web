@@ -12,6 +12,7 @@ class FakeRepository {
   forgetDisconnectedCalls = 0
   forgetAllCalls = 0
   pollReleaseIntervals: number[] = []
+  callbackModeCalls: boolean[] = []
   failClosedCalls = 0
   discoveryReleaseCalls = 0
 
@@ -142,8 +143,9 @@ class FakeRepository {
     this.state = { ...this.state, phase: 'disconnected', cleanupRefs }
     return cleanupRefs
   }
-  async acquirePoll() {
+  async acquirePoll(args?: { callbackMode?: boolean }) {
     if (!this.state) throw new Error('not used')
+    this.callbackModeCalls.push(args?.callbackMode === true)
     return {
       generation: Number(this.state.generation ?? 1),
       revision: Number(this.state.revision ?? 1),
@@ -885,6 +887,124 @@ test('ordinary callback-provider polling remains pending without consuming the f
   assert.equal(repository.failClosedCalls, 0)
   assert.deepEqual(repository.pollReleaseIntervals, [12_000])
   assert.equal(repository.state?.phase, 'pending')
+})
+
+test('discovery refuses a credential whose provider differs from the lease', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'claude,codex'
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  const repository = new FakeRepository()
+  repository.state = {
+    userId: 'owner-1',
+    connectionId: 'connection-1',
+    providerId: 'claude',
+    generation: 1,
+    revision: 2,
+    phase: 'discovering',
+    credentialRef: 'credential-ref',
+    cleanupRefs: [],
+  }
+  const credentials = new FakeCredentials()
+  credentials.values.set('credential-ref', JSON.stringify({
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'codex',
+    metadata: {},
+    expiresAt: Date.now() + 60_000,
+  }))
+  let bridgeCalls = 0
+  const service = createService(repository, credentials, async () => {
+    bridgeCalls += 1
+    throw new Error('provider mismatch reached the bridge')
+  })
+
+  const result = await service.poll('owner-1', 'connection-1')
+  assert.equal(result.status, 'error')
+  assert.equal(bridgeCalls, 0)
+  assert.equal(repository.state?.phase, 'discovering')
+})
+
+test('callback completion retries invalid input and a replay does not exchange again', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'claude'
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  const repository = new FakeRepository()
+  repository.state = {
+    userId: 'owner-1',
+    connectionId: 'connection-1',
+    providerId: 'claude',
+    generation: 1,
+    revision: 2,
+    phase: 'pending',
+    pendingStateRef: 'pending-ref',
+    expiresAt: Date.now() + 600_000,
+    pollIntervalMs: 12_000,
+    cleanupRefs: [],
+  }
+  const credentials = new FakeCredentials()
+  credentials.values.set('pending-ref', JSON.stringify({
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'claude',
+    metadata: { state: 'opaque', codeVerifier: 'opaque' },
+    expiresAt: Date.now() + 600_000,
+    interval: 5,
+    callbackRequired: true,
+  }))
+  let completionCalls = 0
+  const service = createService(repository, credentials, async (input) => {
+    const path = new URL(String(input)).pathname
+    if (path.endsWith('/complete')) {
+      completionCalls += 1
+      if (completionCalls === 1) {
+        return Response.json({ error: { code: 'invalid_callback' } }, { status: 400 })
+      }
+      return Response.json({
+        status: 'connected',
+        credential: {
+          backend: 'cliproxyapi',
+          version: 1,
+          providerId: 'claude',
+          metadata: { accessToken: 'access', refreshToken: 'refresh' },
+          expiresAt: Date.now() + 3_600_000,
+        },
+      })
+    }
+    if (path.endsWith('/models')) {
+      return Response.json({
+        providerId: 'claude',
+        source: 'provider_catalog',
+        models: [{ id: 'claude-sonnet', name: 'Claude Sonnet' }],
+      })
+    }
+    throw new Error(`unexpected bridge path: ${path}`)
+  })
+
+  const callbackUrl = 'http://127.0.0.1:54545/callback?code=opaque&state=opaque'
+  const failed = await service.poll('owner-1', 'connection-1', callbackUrl)
+  assert.deepEqual(failed, {
+    status: 'error',
+    error: 'The callback does not match this authorization. Check the URL and retry.',
+    retryable: true,
+  })
+  assert.equal(repository.state?.phase, 'pending')
+  assert.equal(repository.failClosedCalls, 0)
+
+  const completed = await service.poll('owner-1', 'connection-1', callbackUrl)
+  assert.deepEqual(completed, {
+    status: 'connected',
+    models: [{ id: 'claude-sonnet', name: 'Claude Sonnet' }],
+  })
+  const replay = await service.poll('owner-1', 'connection-1', callbackUrl)
+  assert.deepEqual(replay, { status: 'connected', models: [] })
+  assert.equal(completionCalls, 2)
+  assert.deepEqual(repository.callbackModeCalls, [true, true])
 })
 
 test('device-flow slowdown interval is saved with the pending provider state', async (t) => {

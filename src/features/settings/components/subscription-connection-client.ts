@@ -9,6 +9,7 @@ export type SubscriptionAuthorization = {
 export type SubscriptionProgress = {
   status: 'pending' | 'connected' | 'expired' | 'error'
   error?: string
+  retryable?: boolean
   connection?: ByokConnectionRow
 }
 

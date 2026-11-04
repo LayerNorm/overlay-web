@@ -5,7 +5,7 @@ import { wrapLanguageModel } from 'ai'
 import type { LanguageModel } from '@/server/ai/provider-types'
 import { SubscriptionBridgeClient, SubscriptionBridgeError } from './bridge-client'
 import { createSubscriptionService, type SubscriptionService } from './service'
-import { assertSupportedSubscriptionRequest, subscriptionStatelessRequest } from './request-validation'
+import { assertSupportedCodexRequest, assertSupportedSubscriptionRequest, subscriptionStatelessRequest } from './request-validation'
 
 const SUBSCRIPTION_RESPONSES_ENDPOINT = 'https://overlay-subscription.invalid/responses'
 const maxRequestBytes = 2_000_000
@@ -261,6 +261,44 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
 }
 
 type DispatchService = Pick<SubscriptionService, 'credentialForDispatch'>
+
+async function validateSubscriptionRequest(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  providerId: string,
+  modelId: string,
+): Promise<{ body: Record<string, unknown>; requestedStream: boolean } | { response: Response }> {
+  try {
+    const text = await readRequestBody(input, init)
+    const parsed: unknown = JSON.parse(text)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { response: errorResponse(400, 'Invalid subscription request') }
+    }
+    const body = parsed as Record<string, unknown>
+    if (providerId === 'codex') assertSupportedCodexRequest(body, modelId)
+    else assertSupportedSubscriptionRequest(body, modelId)
+    return { body, requestedStream: body.stream === true }
+  } catch (error) {
+    return {
+      response: errorResponse(400, error instanceof Error ? error.message : 'Invalid subscription request'),
+    }
+  }
+}
+
+async function credentialForProvider(
+  service: DispatchService,
+  ownerId: string,
+  connectionId: string,
+  modelId: string,
+  providerId: string,
+) {
+  const credential = await service.credentialForDispatch(ownerId, connectionId, modelId)
+  if (credential.providerId !== providerId) {
+    throw new Error(safeErrors.reconnect_required!.message)
+  }
+  return credential
+}
+
 export function createSubscriptionLanguageModel(args: {
   ownerId: string
   connectionId: string
@@ -283,23 +321,16 @@ export function createSubscriptionLanguageModel(args: {
           init?.method?.toUpperCase() !== 'POST') {
         return errorResponse(400, 'Unsupported subscription request')
       }
-      let body: Record<string, unknown>
-      let requestedStream = false
+      const validated = await validateSubscriptionRequest(input, init, args.providerId, args.modelId)
+      if ('response' in validated) return validated.response
+      const { body, requestedStream } = validated
       try {
-        const text = await readRequestBody(input, init)
-        const parsed: unknown = JSON.parse(text)
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          return errorResponse(400, 'Invalid subscription request')
-        }
-        body = parsed as Record<string, unknown>
-        requestedStream = body.stream === true
-        assertSupportedSubscriptionRequest(body, args.modelId)
-      } catch (error) {
-        return errorResponse(400, error instanceof Error ? error.message : 'Invalid subscription request')
-      }
-      try {
-        const credential = await (args.dispatchService ?? createSubscriptionService()).credentialForDispatch(
-          args.ownerId, args.connectionId, args.modelId,
+        const credential = await credentialForProvider(
+          args.dispatchService ?? createSubscriptionService(),
+          args.ownerId,
+          args.connectionId,
+          args.modelId,
+          args.providerId,
         )
         const upstream = await bridge.infer({
           connectionId: args.connectionId,

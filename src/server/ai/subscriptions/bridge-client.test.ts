@@ -31,6 +31,33 @@ test('non-expiring bridge credentials are accepted only for confirmed providers'
   assert.equal(isBridgeCredential({ ...credential, providerId: 'meta' }), true)
   assert.equal(isBridgeCredential({ ...credential, providerId: 'devin' }), true)
   assert.equal(isBridgeCredential({ ...credential, providerId: 'kimi' }), false)
+  assert.equal(isBridgeCredential({
+    ...credential, providerId: 'codex', expiresAt: Date.now() + 60_000,
+  }), false)
+  assert.equal(isBridgeCredential({
+    ...credential, providerId: 'meta', expiresAt: Date.now() + 60_000,
+  }), false)
+  assert.equal(isBridgeCredential({
+    ...credential, providerId: 'claude', expiresAt: Date.now() + 60_000, nonExpiring: false,
+  }), true)
+  assert.equal(isBridgeCredential({
+    ...credential, providerId: 'claude', expiresAt: Date.now() + 60_000,
+  }), false)
+})
+
+test('callback-required pending states are strict and provider-specific', () => {
+  const base = {
+    backend: 'cliproxyapi',
+    version: 1,
+    metadata: {},
+    expiresAt: Date.now() + 60_000,
+    interval: 5,
+  }
+  assert.equal(isBridgePendingState({ ...base, providerId: 'claude', callbackRequired: true }), true)
+  assert.equal(isBridgePendingState({ ...base, providerId: 'claude', callbackRequired: false }), false)
+  assert.equal(isBridgePendingState({ ...base, providerId: 'devin', callbackRequired: true }), true)
+  assert.equal(isBridgePendingState({ ...base, providerId: 'codex', callbackRequired: true }), false)
+  assert.equal(isBridgePendingState({ ...base, providerId: 'codex', callbackRequired: 'false' }), false)
 })
 
 test('authorization rejects expired pending state', async () => {
@@ -152,6 +179,12 @@ test('bridge rejects a catalog or poll state bound to a different provider', asy
     pendingState: { ...pendingState, providerId: 'devin' },
   }))
   await assert.rejects(pollClient.poll(pendingState), /could not complete this request/)
+
+  const credentialClient = new SubscriptionBridgeClient(serviceUrl, secret, async () => Response.json({
+    status: 'connected',
+    credential: { ...credential, providerId: 'codex' },
+  }))
+  await assert.rejects(credentialClient.poll(pendingState), /could not complete this request/)
 })
 
 test('poll returns the updated provider-bound interval for durable slowdown handling', async () => {

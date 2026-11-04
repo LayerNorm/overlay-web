@@ -26,7 +26,7 @@ export interface SubscriptionRepository {
   registerPendingWrite(args: { userId: string; connectionId: string; name: string }): Promise<void>
   clearPendingWrite(args: { userId: string; connectionId: string; name: string }): Promise<void>
   savePendingAuthorization(args: FencedArgs & { pendingStateRef: string; pendingWriteName?: string; expiresAt: number; pollIntervalMs: number }): Promise<{ revision: number; cleanupRefs: string[] }>
-  acquirePoll(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; pendingStateRef: string; expiresAt: number; providerId: SubscriptionProviderId; pollIntervalMs?: number }>
+  acquirePoll(args: { userId: string; connectionId: string; leaseToken: string; callbackMode?: boolean }): Promise<{ generation: number; revision: number; pendingStateRef: string; expiresAt: number; providerId: SubscriptionProviderId; pollIntervalMs?: number }>
   releasePendingPoll(args: FencedArgs & { pollIntervalMs: number }): Promise<void>
   acquireRefresh(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; credentialRef: string; providerId: SubscriptionProviderId }>
   releaseRefresh(args: FencedArgs): Promise<void>
@@ -93,7 +93,7 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
     ))
   }
 
-  async acquirePoll(args: { userId: string; connectionId: string; leaseToken: string }) {
+  async acquirePoll(args: { userId: string; connectionId: string; leaseToken: string; callbackMode?: boolean }) {
     const result = requireMutationResult(await convex.mutation<{
       generation?: number
       revision?: number

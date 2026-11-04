@@ -102,7 +102,7 @@ export async function executeSubscriptionUpdate(
   body: SubscriptionUpdateBody,
 ) {
   if (body.action === 'callback' &&
-      (typeof body.callbackUrl !== 'string' || body.callbackUrl.length === 0 || body.callbackUrl.length > 16_384)) {
+      (typeof body.callbackUrl !== 'string' || body.callbackUrl.length === 0 || body.callbackUrl.length > 8192)) {
     return responseError('Invalid authorization callback', 400)
   }
   const service = createSubscriptionService()

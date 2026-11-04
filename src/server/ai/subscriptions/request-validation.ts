@@ -84,5 +84,25 @@ export function subscriptionStatelessRequest(body: Record<string, unknown>): Rec
   return { ...body, ...(tools ? { tools } : {}), stream: true, store: false }
 }
 
-export const assertSupportedCodexRequest = assertSupportedSubscriptionRequest
+export function assertSupportedCodexRequest(body: Record<string, unknown>, modelId: string) {
+  const tools = Array.isArray(body.tools) ? body.tools.map((tool) => {
+    if (!isRecord(tool) || tool.type !== 'custom') return tool
+    const format = tool.format
+    if (!toolName(tool.name) ||
+        (format !== undefined && (!isRecord(format) || format.type !== 'text' ||
+          Object.keys(format).some((key) => key !== 'type'))) ||
+        Object.keys(tool).some((key) =>
+          !['type', 'name', 'description', 'format'].includes(key)
+        ) || (tool.description !== undefined && typeof tool.description !== 'string')) {
+      throw new Error('Invalid Codex custom text tool')
+    }
+    return {
+      type: 'function',
+      name: tool.name,
+      ...(tool.description === undefined ? {} : { description: tool.description }),
+      parameters: { type: 'object' },
+    }
+  }) : undefined
+  assertSupportedSubscriptionRequest({ ...body, ...(tools ? { tools } : {}) }, modelId)
+}
 export const codexStatelessRequest = subscriptionStatelessRequest

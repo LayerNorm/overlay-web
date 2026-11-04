@@ -6,6 +6,8 @@ Status: The Codex implementation is merged in #386. This branch extends the back
 > This branch extends its backend and control plane to Claude, xAI, Meta, Kimi,
 > Kimi AI, and Devin without adding workspace authorization/schema or rendered UI.
 > Hosted and real-account acceptance remains separate work.
+> Local build and injected-HTTP fixtures establish implementation behavior only;
+> they do not establish hosted deployment or live provider-account acceptance.
 > The plan catalog is not account-entitlement proof. The superseded in-process
 > adapter plan has been removed; git history preserves its original decisions.
 
@@ -38,8 +40,14 @@ validated callback completion. Persist credentials and pending state only in
 Overlay Vault, keep provider/domain identity exact, and use provider catalogs
 without treating them as account-entitlement proof. Preserve the private,
 stateless bridge and fenced Overlay refresh/discovery/inference lifecycle.
-Data-only provider metadata may be extended here; workspace authorization and
-rendered UI are separate work.
+Provide the same shared subscription picker across supported entry points,
+including Settings, new chats, existing chats and native agents. Keep provider
+logos and model capability metadata consistent, preserve favorites and
+recommendations, and expose only models discovered for the exact connection.
+Workspace-scoped connections remain part of the product goal: add workspace
+ownership, authorization and picker scoping without weakening personal
+connection isolation or paid-access checks. Provider implementation progress
+does not complete shared-picker parity or workspace-scope acceptance.
 
 ## 7. Verify and roll out
 

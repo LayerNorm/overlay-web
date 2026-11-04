@@ -368,7 +368,8 @@ func decodeDevinCredential(value envelope) (*cliproxyauth.Auth, bool) {
 	}
 	metadataValue := ojson.ParseBytes([]byte(token.Get("metadata").Raw)).Value()
 	metadata, ok := metadataValue.(map[string]any)
-	if !ok || metadata["type"] != "devin" || metadata["session_token"] == "" {
+	sessionToken, tokenOK := metadata["session_token"].(string)
+	if !ok || metadata["type"] != "devin" || !tokenOK || strings.TrimSpace(sessionToken) == "" {
 		return nil, false
 	}
 	attributes := make(map[string]string)

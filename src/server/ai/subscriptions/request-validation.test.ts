@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { assertSupportedCodexRequest } from './request-validation'
+import { assertSupportedCodexRequest, assertSupportedSubscriptionRequest } from './request-validation'
 
 test('rejects media, hosted tools, ZDR, and unsupported semantic options', () => {
   for (const body of [
@@ -36,4 +36,18 @@ test('validates tool schemas without mistaking property names for media input', 
     input: [{ type: 'input_image', image_url: 'https://example.test/a.png' }],
   }, 'm'), /text-only/)
   assert.throws(() => assertSupportedCodexRequest({ model: 'other' }, 'm'), /model mismatch/)
+})
+
+test('Codex accepts custom text tools while unsupported providers reject that shape', () => {
+  const body = {
+    model: 'm',
+    input: [{ role: 'user', content: 'run the text tool' }],
+    tools: [{ type: 'custom', name: 'apply_patch', description: 'Apply a patch', format: { type: 'text' } }],
+  }
+  assert.doesNotThrow(() => assertSupportedCodexRequest(body, 'm'))
+  assert.throws(() => assertSupportedSubscriptionRequest(body, 'm'), /Only function tools/)
+  assert.throws(() => assertSupportedCodexRequest({
+    ...body,
+    tools: [{ type: 'custom', name: 'apply_patch', format: { type: 'json_schema' } }],
+  }, 'm'), /Invalid Codex custom text tool/)
 })

@@ -50,7 +50,7 @@ func (b *bridge) pollProvider(w http.ResponseWriter, r *http.Request, pending pe
 		auth := xaiauth.NewXAIAuth(&config.Config{})
 		tokens, err, nextInterval, shouldContinue := auth.PollDeviceCodeOnce(ctx, tokenEndpoint, deviceCode, interval)
 		if err != nil {
-			status, code, _ := safeProviderRefreshError(pending.ProviderID, err)
+			status, code, _ := safeProviderPollError(err)
 			writeProviderError(w, pending.ProviderID, status, code)
 			return
 		}
@@ -77,7 +77,7 @@ func (b *bridge) pollProvider(w http.ResponseWriter, r *http.Request, pending pe
 		client := kimiauth.NewDeviceFlowClientWithDomainDeviceIDAndProxyURL(&config.Config{}, domain, deviceID, "")
 		tokens, isPending, nextInterval, err := client.PollDeviceCodeOnce(ctx, metadata.Get("deviceCode").String(), interval)
 		if err != nil {
-			status, code, _ := safeProviderRefreshError(pending.ProviderID, err)
+			status, code, _ := safeProviderPollError(err)
 			writeProviderError(w, pending.ProviderID, status, code)
 			return
 		}
@@ -102,7 +102,7 @@ func (b *bridge) pollProvider(w http.ResponseWriter, r *http.Request, pending pe
 		auth := metaauth.NewMetaAuth(&config.Config{})
 		bundle, isPending, nextInterval, err := auth.PollForAuthorizationOnce(ctx, device, interval)
 		if err != nil {
-			status, code, _ := safeProviderRefreshError(pending.ProviderID, err)
+			status, code, _ := safeProviderPollError(err)
 			writeProviderError(w, pending.ProviderID, status, code)
 			return
 		}

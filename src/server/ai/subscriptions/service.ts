@@ -154,12 +154,17 @@ export class SubscriptionService {
     connectionId: string,
     callbackUrl?: string,
   ): Promise<SubscriptionResult> {
+    if (callbackUrl !== undefined && (callbackUrl.length === 0 || callbackUrl.length > 8192)) {
+      return { status: 'error', error: 'Invalid authorization callback.', retryable: true }
+    }
     await this.reconcilePendingWrites(userId, connectionId, { olderThanMs: pendingWriteStaleAgeMs })
     const current = await this.repository.get({ userId, connectionId })
     if (current?.phase === 'active') return { status: 'connected', models: [] }
     if (current?.phase === 'discovering') return await this.discover(userId, connectionId)
     const leaseToken = randomUUID()
-    const lease = await this.repository.acquirePoll({ userId, connectionId, leaseToken })
+    const lease = await this.repository.acquirePoll({
+      userId, connectionId, leaseToken, callbackMode: callbackUrl !== undefined,
+    })
     const fenced = {
       userId, connectionId, generation: lease.generation,
       revision: lease.revision, leaseToken,
@@ -195,7 +200,8 @@ export class SubscriptionService {
         })
         return { status: 'pending' }
       }
-      if (!result.credential || !parseCredential(JSON.stringify(result.credential))) {
+      if (!result.credential || !parseCredential(JSON.stringify(result.credential)) ||
+          result.credential.providerId !== providerId) {
         throw new Error('Subscription credential is unavailable')
       }
       const candidate = await this.writeSecret(
@@ -212,7 +218,7 @@ export class SubscriptionService {
           ...fenced,
           pollIntervalMs: pending.interval * 1000,
         }).catch((_releaseError) => undefined)
-        return { status: 'error', error: publicError(error) }
+        return { status: 'error', error: publicError(error), retryable: true }
       }
       await this.repository.failClosed({
         ...fenced,
@@ -335,7 +341,9 @@ export class SubscriptionService {
     try {
       const secret = await this.credentials.read(lease.credentialRef)
       const credential = secret ? parseCredential(secret) : null
-      if (!credential) throw new Error('Reconnect your subscription to continue.')
+      if (!credential || credential.providerId !== lease.providerId) {
+        throw new Error('Reconnect your subscription to continue.')
+      }
       const catalog = await this.bridge.models(credential)
       const models = catalog.models
       const saved = await this.repository.commitActive({

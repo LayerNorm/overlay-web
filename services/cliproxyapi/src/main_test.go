@@ -21,6 +21,37 @@ import (
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
 
+type typedProviderErrorFixture struct {
+	status int
+	reason string
+}
+
+func (e *typedProviderErrorFixture) Error() string      { return "provider error" }
+func (e *typedProviderErrorFixture) StatusCode() int    { return e.status }
+func (e *typedProviderErrorFixture) OAuthError() string { return e.reason }
+
+func TestProviderRefreshErrorClassificationFailsClosedOnUnknownOutcomes(t *testing.T) {
+	cases := []struct {
+		name       string
+		err        error
+		wantStatus int
+		wantCode   string
+	}{
+		{name: "unknown transport", err: errors.New("connection interrupted"), wantStatus: http.StatusUnauthorized, wantCode: "reconnect_required"},
+		{name: "invalid grant", err: &typedProviderErrorFixture{status: http.StatusBadRequest, reason: "invalid_grant"}, wantStatus: http.StatusUnauthorized, wantCode: "reconnect_required"},
+		{name: "rate limited", err: &typedProviderErrorFixture{status: http.StatusTooManyRequests}, wantStatus: http.StatusTooManyRequests, wantCode: "rate_limited"},
+		{name: "confirmed provider failure", err: &typedProviderErrorFixture{status: http.StatusServiceUnavailable}, wantStatus: http.StatusBadGateway, wantCode: "provider_unavailable"},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			status, code, _ := safeProviderRefreshError("claude", testCase.err)
+			if status != testCase.wantStatus || code != testCase.wantCode {
+				t.Fatalf("classification = (%d, %q), want (%d, %q)", status, code, testCase.wantStatus, testCase.wantCode)
+			}
+		})
+	}
+}
+
 func TestBridgeRequiresServiceBearer(t *testing.T) {
 	handler := &bridge{secret: strings.Repeat("s", 32)}
 	request := httptest.NewRequest(http.MethodPost, "/internal/v1/authorize", bytes.NewReader([]byte("{}")))

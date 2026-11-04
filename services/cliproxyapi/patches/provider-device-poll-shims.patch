@@ -176,6 +176,12 @@ index 0000000..0000000 100644
 -			}
 +			bundle, pending, nextInterval, err := a.PollForAuthorizationOnce(ctx, dcr, interval)
 +			if err != nil {
++				if oauthErr, ok := err.(interface{ OAuthError() string }); ok {
++					switch oauthErr.OAuthError() {
++					case "access_denied", "expired_token", "invalid_grant":
++						return nil, err
++					}
++				}
 +				log.Warnf("meta auth: poll request error: %v (retrying)", err)
 +				continue
 +			}
@@ -191,6 +197,24 @@ index 0000000..0000000 100644
  }
 +
 +// PollForAuthorizationOnce performs one token poll and reuses Meta's API-key minting flow.
++type ProviderOAuthError struct {
++	Status int
++	Reason string
++}
++
++func (e *ProviderOAuthError) Error() string {
++	switch e.Reason {
++	case "access_denied":
++		return "meta authorization denied"
++	case "expired_token", "invalid_grant":
++		return "meta authorization expired or rejected"
++	default:
++		return "meta authorization failed"
++	}
++}
++func (e *ProviderOAuthError) StatusCode() int { return e.Status }
++func (e *ProviderOAuthError) OAuthError() string { return e.Reason }
++
 +func (a *MetaAuth) PollForAuthorizationOnce(ctx context.Context, dcr *DeviceCodeResponse, interval time.Duration) (*MetaAuthBundle, bool, time.Duration, error) {
 +	if ctx == nil {
 +		ctx = context.Background()
@@ -259,13 +283,17 @@ index 0000000..0000000 100644
 +	case "slow_down":
 +		return nil, true, interval + 5*time.Second, nil
 +	case "access_denied":
-+		return nil, false, interval, fmt.Errorf("meta auth: access was denied by user")
++		status := resp.StatusCode
++		if status < 400 { status = http.StatusBadRequest }
++		return nil, false, interval, &ProviderOAuthError{Status: status, Reason: "access_denied"}
 +	case "expired_token":
-+		return nil, false, interval, fmt.Errorf("meta auth: device code has expired")
++		status := resp.StatusCode
++		if status < 400 { status = http.StatusBadRequest }
++		return nil, false, interval, &ProviderOAuthError{Status: status, Reason: "expired_token"}
 +	default:
 +		if value := strings.TrimSpace(doc.Get("error").String()); value != "" {
-+			return nil, false, interval, fmt.Errorf("meta auth: authorization request failed")
++			return nil, false, interval, &ProviderOAuthError{Status: resp.StatusCode, Reason: value}
 +		}
-+		return nil, false, interval, fmt.Errorf("meta auth: unexpected token response")
++		return nil, false, interval, &ProviderOAuthError{Status: resp.StatusCode}
 +	}
 +}

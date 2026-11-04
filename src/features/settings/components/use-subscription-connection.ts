@@ -4,6 +4,15 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 import { subscriptionRequest, type SubscriptionAuthorization, type SubscriptionAvailability, type SubscriptionProgress } from './subscription-connection-client'
 
+export function shouldStopSubscriptionFlow(progress: SubscriptionProgress): boolean {
+  return progress.status === 'expired' ||
+    (progress.status === 'error' && progress.retryable !== true)
+}
+
+export function shouldPollSubscriptionAuthorization(authorization: SubscriptionAuthorization['authorization']): boolean {
+  return authorization.callbackRequired !== true
+}
+
 export function useSubscriptionConnection({ connection, onConnected, onClose }: {
   connection?: ByokConnectionRow
   onConnected(): Promise<void> | void
@@ -37,10 +46,16 @@ export function useSubscriptionConnection({ connection, onConnected, onClose }: 
       setStopped(true)
       setError(null)
       await connectedCallback.current()
-    } else if (progress.status === 'expired' || progress.status === 'error') {
+    } else if (progress.status === 'expired') {
       setStopped(true)
       setError(progress.error ?? 'Sign-in expired. Start again to reconnect.')
       await connectedCallback.current()
+    } else if (progress.status === 'error') {
+      if (shouldStopSubscriptionFlow(progress)) {
+        setStopped(true)
+        await connectedCallback.current()
+      }
+      setError(progress.error ?? 'Could not complete sign-in.')
     }
   }, [])
 
@@ -48,6 +63,15 @@ export function useSubscriptionConnection({ connection, onConnected, onClose }: 
     if (!login || stopped || connected) return
     const abort = new AbortController()
     let timer: ReturnType<typeof setTimeout>
+    if (!shouldPollSubscriptionAuthorization(login.authorization)) {
+      timer = setTimeout(() => {
+        if (!abort.signal.aborted) {
+          setStopped(true)
+          setError('Sign-in expired. Start again to reconnect.')
+        }
+      }, Math.max(0, login.authorization.expiresAt - Date.now()))
+      return () => { abort.abort(); clearTimeout(timer) }
+    }
     const poll = async () => {
       if (closing.current || abort.signal.aborted) return
       if (Date.now() >= login.authorization.expiresAt) {

@@ -72,6 +72,16 @@ test('configured implemented adapters appear enabled from the environment allowl
   assert.equal(providers.find((provider) => provider.id === 'xai')?.enabled, true)
 })
 
+test('subscription route rejects oversized callback URLs before connection lookup', async () => {
+  const { PATCH } = await import('./route')
+  const response = await PATCH(request('/api/v1/providers/subscriptions', 'PATCH', {
+    connectionId: 'connection-1',
+    action: 'callback',
+    callbackUrl: 'x'.repeat(8193),
+  }), apiContext())
+  assert.equal(response.status, 400)
+})
+
 test('subscription authorization remains owner-scoped and unsupported providers stay disabled', async (t) => {
   const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
   process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex'

@@ -59,14 +59,20 @@ const responseBody = {
   },
 }
 
-function modelWithFetch(fetcher: typeof fetch, modelId = 'account-model') {
+function modelWithFetch(
+  fetcher: typeof fetch,
+  modelId = 'account-model',
+  providerId = 'codex',
+  credentialProviderId = providerId,
+) {
   return createSubscriptionLanguageModel({
     ownerId: 'user-1',
     connectionId: 'connection-1',
-    providerId: 'codex',
+    providerId,
     modelId,
     dispatchService: {
       credentialForDispatch: async () => ({
+        providerId: credentialProviderId,
         v: 1,
         idToken: 'id-token',
         accessToken: 'access-token',
@@ -89,6 +95,22 @@ function modelWithFetch(fetcher: typeof fetch, modelId = 'account-model') {
     } as Pick<SubscriptionBridgeClient, 'infer'>,
   })
 }
+
+test('inference rejects a credential from a different provider before bridge dispatch', async () => {
+  let bridgeCalls = 0
+  const model = modelWithFetch(async () => {
+    bridgeCalls += 1
+    return new Response()
+  }, 'account-model', 'claude', 'codex')
+
+  await assert.rejects(generateText({
+    model,
+    prompt: 'say hello',
+    maxRetries: 0,
+    maxOutputTokens: 8192,
+  }), /Reconnect your subscription/)
+  assert.equal(bridgeCalls, 0)
+})
 
 test('AI SDK generateText uses a completed JSON fixture and stateless storage', async () => {
   let requestBody: Record<string, unknown> | undefined

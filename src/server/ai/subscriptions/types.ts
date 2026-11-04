@@ -42,4 +42,4 @@ export type SubscriptionResult =
   | { status: 'pending' }
   | { status: 'connected'; models: SubscriptionModel[] }
   | { status: 'expired' }
-  | { status: 'error'; error: string }
+  | { status: 'error'; error: string; retryable?: boolean }

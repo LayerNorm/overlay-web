@@ -62,30 +62,38 @@ export class SubscriptionBridgeError extends Error {
 }
 
 export function isBridgeCredential(value: unknown): value is BridgeCredential {
-  return Boolean(value && typeof value === 'object' &&
-    'backend' in value && value.backend === 'cliproxyapi' &&
-    'version' in value && value.version === 1 &&
-    'providerId' in value && ['codex', 'claude', 'xai', 'meta', 'kimi', 'kimi-ai', 'devin'].includes(String(value.providerId)) &&
-    'metadata' in value && isRecord(value.metadata) &&
-    'expiresAt' in value && (value.expiresAt === null ||
-      (typeof value.expiresAt === 'number' && Number.isFinite(value.expiresAt) && value.expiresAt > 0)) &&
-    (value.expiresAt !== null || (
-      'nonExpiring' in value && value.nonExpiring === true &&
-      (value.providerId === 'meta' || value.providerId === 'devin')
-    )))
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  if (candidate.backend !== 'cliproxyapi' || candidate.version !== 1 ||
+      typeof candidate.providerId !== 'string' ||
+      !['codex', 'claude', 'xai', 'meta', 'kimi', 'kimi-ai', 'devin'].includes(candidate.providerId) ||
+      !isRecord(candidate.metadata) || !('expiresAt' in candidate)) return false
+  const providerId = candidate.providerId
+  const allowsNonExpiring = providerId === 'meta' || providerId === 'devin'
+  if (candidate.expiresAt === null) {
+    return allowsNonExpiring && candidate.nonExpiring === true
+  }
+  return typeof candidate.expiresAt === 'number' &&
+    Number.isFinite(candidate.expiresAt) && candidate.expiresAt > 0 &&
+    (!('nonExpiring' in candidate) || candidate.nonExpiring === false)
 }
 
 export function isBridgePendingState(value: unknown): value is BridgePendingState {
-  return Boolean(value && typeof value === 'object' &&
-    'backend' in value && value.backend === 'cliproxyapi' &&
-    'version' in value && value.version === 1 &&
-    'providerId' in value && ['codex', 'claude', 'xai', 'meta', 'kimi', 'kimi-ai', 'devin'].includes(String(value.providerId)) &&
-    'metadata' in value && isRecord(value.metadata) &&
-    'expiresAt' in value && typeof value.expiresAt === 'number' &&
-    Number.isFinite(value.expiresAt) && value.expiresAt > 0 &&
-    'interval' in value &&
-    typeof value.interval === 'number' && Number.isFinite(value.interval) &&
-    value.interval >= 1 && value.interval <= 1800)
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  if (candidate.backend !== 'cliproxyapi' || candidate.version !== 1 ||
+      typeof candidate.providerId !== 'string' ||
+      !['codex', 'claude', 'xai', 'meta', 'kimi', 'kimi-ai', 'devin'].includes(candidate.providerId) ||
+      !isRecord(candidate.metadata) ||
+      typeof candidate.expiresAt !== 'number' || !Number.isFinite(candidate.expiresAt) ||
+      candidate.expiresAt <= 0 ||
+      typeof candidate.interval !== 'number' || !Number.isFinite(candidate.interval) ||
+      candidate.interval < 1 || candidate.interval > 1800 ||
+      ('callbackRequired' in candidate && typeof candidate.callbackRequired !== 'boolean')) return false
+  const callbackProvider = candidate.providerId === 'claude' || candidate.providerId === 'devin'
+  return callbackProvider
+    ? candidate.callbackRequired === true
+    : candidate.callbackRequired !== true
 }
 
 export class SubscriptionBridgeClient {
@@ -126,6 +134,9 @@ export class SubscriptionBridgeClient {
   }
 
   async complete(pendingState: BridgePendingState, callbackUrl: string) {
+    if (callbackUrl.length === 0 || callbackUrl.length > 8192) {
+      throw new Error(safeError)
+    }
     const value = await this.request<unknown>('/internal/v1/complete', { pendingState, callbackUrl })
     if (!isRecord(value) || value.status !== 'connected' || !isBridgeCredential(value.credential) ||
         value.credential.providerId !== pendingState.providerId) throw new Error(safeError)

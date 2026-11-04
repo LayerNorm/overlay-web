@@ -52,7 +52,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     return responseError('Invalid subscription update', 400)
   }
   if (body.action === 'callback' &&
-      (typeof body.callbackUrl !== 'string' || body.callbackUrl.length === 0 || body.callbackUrl.length > 16_384)) {
+      (typeof body.callbackUrl !== 'string' || body.callbackUrl.length === 0 || body.callbackUrl.length > 8192)) {
     return responseError('Invalid authorization callback', 400)
   }
 

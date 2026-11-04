@@ -337,6 +337,7 @@ export const acquirePoll = mutation({
     userId: v.string(),
     connectionId: v.id('userProviderConnections'),
     leaseToken: v.string(),
+    callbackMode: v.optional(v.boolean()),
   },
   returns: v.object({
     generation: v.optional(v.number()),
@@ -361,7 +362,12 @@ export const acquirePoll = mutation({
       await markNeedsReconnect(ctx, state, now)
       return { error: 'Subscription authorization expired' }
     }
-    if (state.nextPollAt && state.nextPollAt > now) throw new Error('Subscription poll is not due')
+    if (args.callbackMode && !['claude', 'devin'].includes(state.providerId)) {
+      throw new Error('Callback completion is unavailable for this provider')
+    }
+    if (!args.callbackMode && state.nextPollAt && state.nextPollAt > now) {
+      throw new Error('Subscription poll is not due')
+    }
     if (state.leaseUntil && state.leaseUntil > now) throw new Error('Subscription connection is busy')
     if (state.leaseOperation === 'authorization' && state.leaseUntil && state.leaseUntil <= now) {
       await markNeedsReconnect(ctx, state, now)

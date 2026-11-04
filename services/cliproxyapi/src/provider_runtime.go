@@ -27,7 +27,7 @@ func (b *bridge) modelsProvider(w http.ResponseWriter, _ *http.Request, credenti
 		writeError(w, http.StatusBadRequest, "invalid_request", "The credential provider is unavailable.")
 		return
 	}
-	if _, ok := providerTokenStorage(credential); !ok {
+	if !validProviderCredential(credential) {
 		writeProviderError(w, credential.ProviderID, http.StatusUnauthorized, "reconnect_required")
 		return
 	}
@@ -172,9 +172,33 @@ func (b *bridge) refreshProvider(w http.ResponseWriter, r *http.Request, credent
 
 func safeProviderRefreshError(providerID string, err error) (int, string, string) {
 	if err == nil {
+		return http.StatusUnauthorized, "reconnect_required", ""
+	}
+	var statusErr interface{ StatusCode() int }
+	if !errors.As(err, &statusErr) {
+		return http.StatusUnauthorized, "reconnect_required", ""
+	}
+	switch statusErr.StatusCode() {
+	case http.StatusTooManyRequests:
+		return http.StatusTooManyRequests, "rate_limited", ""
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return http.StatusUnauthorized, "reconnect_required", ""
+	}
+	if statusErr.StatusCode() >= http.StatusInternalServerError {
 		return http.StatusBadGateway, "provider_unavailable", ""
 	}
-	var statusErr cliproxyexecutor.StatusError
+	var oauthErr interface{ OAuthError() string }
+	if errors.As(err, &oauthErr) {
+		switch strings.ToLower(strings.TrimSpace(oauthErr.OAuthError())) {
+		case "invalid_grant", "access_denied", "expired_token", "token_expired":
+			return http.StatusUnauthorized, "reconnect_required", ""
+		}
+	}
+	return http.StatusUnauthorized, "reconnect_required", ""
+}
+
+func safeProviderPollError(err error) (int, string, string) {
+	var statusErr interface{ StatusCode() int }
 	if errors.As(err, &statusErr) {
 		switch statusErr.StatusCode() {
 		case http.StatusTooManyRequests:
@@ -182,8 +206,41 @@ func safeProviderRefreshError(providerID string, err error) (int, string, string
 		case http.StatusUnauthorized, http.StatusForbidden:
 			return http.StatusUnauthorized, "reconnect_required", ""
 		}
+		if statusErr.StatusCode() >= http.StatusInternalServerError {
+			return http.StatusBadGateway, "provider_unavailable", ""
+		}
+		var oauthErr interface{ OAuthError() string }
+		if errors.As(err, &oauthErr) {
+			switch strings.ToLower(strings.TrimSpace(oauthErr.OAuthError())) {
+			case "invalid_grant", "access_denied", "expired_token", "token_expired":
+				return http.StatusUnauthorized, "reconnect_required", ""
+			}
+		}
+		return http.StatusUnauthorized, "reconnect_required", ""
 	}
 	return http.StatusBadGateway, "provider_unavailable", ""
+}
+
+func validProviderCredential(credential envelope) bool {
+	switch credential.ProviderID {
+	case "claude":
+		_, ok := decodeClaudeCredential(credential)
+		return ok
+	case "xai":
+		_, ok := decodeXaiCredential(credential)
+		return ok
+	case "meta":
+		_, ok := decodeMetaCredential(credential)
+		return ok
+	case "kimi", "kimi-ai":
+		_, ok := decodeKimiCredential(credential)
+		return ok
+	case "devin":
+		_, ok := decodeDevinCredential(credential)
+		return ok
+	default:
+		return false
+	}
 }
 
 func buildProviderAuth(credential envelope, connectionID string) *cliproxyauth.Auth {
@@ -355,7 +412,7 @@ func metaStorageFromAuth(auth *cliproxyauth.Auth, previous *metaauth.MetaTokenSt
 }
 
 func (b *bridge) inferProvider(w http.ResponseWriter, r *http.Request, doc *ojson.Doc, credential envelope, providerID, connectionID, modelID string, requestPayload ojson.Result) {
-	if !supportedProvider(providerID) || providerID == "codex" {
+	if !supportedProvider(providerID) || providerID == "codex" || credential.ProviderID != providerID {
 		writeError(w, http.StatusBadRequest, "invalid_request", "The subscription provider is unavailable.")
 		return
 	}
