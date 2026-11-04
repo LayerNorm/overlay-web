@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Refresh Python setup support and diagnostics for security scans. (#377)
+
 - Preserve Codex event-stream framing and optional function-tool arguments so connected subscription responses can complete in chats and native agents.
 
 - Recognize Codex Pro Lite/Max catalogs using explicit pinned plan membership, and preserve newly authorized credentials when catalog discovery is unavailable while continuing to block unknown-plan inference.
