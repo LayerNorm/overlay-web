@@ -302,7 +302,7 @@ export async function refreshNativeHarnessAccess(
   const gate = await actEntitlementService.gateModelPolicy({ effectiveModelId: context.modelId,
     userId: access.actorUserId, workspaceId: access.workspaceId, programmaticSubjectId: billingProgrammaticSubjectId })
   if (isByokModelId(context.modelId)) {
-    await assertUserCanUseByokModel(context.modelId, access.actorUserId)
+    await assertUserCanUseByokModel(context.modelId, access.actorUserId, access.workspaceId)
   } else if (!(await resolveAuthorizedModelIds({ entitlements: gate.runtimeEntitlements })).chat.has(context.modelId)) {
     throw new FatalError('The native model is no longer allowed by server policy.')
   }

@@ -7,6 +7,7 @@ import { preserveHarnessSDKFailure } from './execution-failure'
 async function model(reference: HarnessModelReference) {
   const provider = await getLanguageModel(reference.modelId, undefined, reference.credentialOwnerId, {
     sessionId: reference.sessionId,
+    workspaceId: reference.personal?.access.workspaceId ?? reference.native?.access.workspaceId,
   })
   return wrapLanguageModel({ model: provider, middleware: extractReasoningMiddleware({ tagName: 'think' }) })
 }

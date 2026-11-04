@@ -111,6 +111,7 @@ export async function compactMessagesForContext(params: {
   messages: UIMessage[]
   targetModelId: string
   userId?: string
+  workspaceId?: string
   accessToken?: string
   summarizerModelId?: string
   previousSummary?: ContextSummarySnapshot | null
@@ -188,9 +189,18 @@ export async function compactMessagesForContext(params: {
             import('@/server/ai/model-runtime'),
             import('@/server/ai/sdk'),
           ])
-          const model = await getLanguageModel(summarizerModelId, params.accessToken, params.userId)
+          const model = await getLanguageModel(
+            summarizerModelId,
+            params.accessToken,
+            params.userId,
+            { workspaceId: params.workspaceId },
+          )
           const isSubscription = Boolean(
-            params.userId && await isSubscriptionModelForUser(summarizerModelId, params.userId),
+            params.userId && await isSubscriptionModelForUser(
+              summarizerModelId,
+              params.userId,
+              params.workspaceId,
+            ),
           )
           const result = await generateText({
             model,

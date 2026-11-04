@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { normalizeByokConnectionsPayload } from './useByokModels'
+import {
+  byokConnectionScopeKey,
+  canApplyByokConnectionResponse,
+  normalizeByokConnectionsPayload,
+} from './useByokModels'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 
 const connection: ByokConnectionRow = {
@@ -35,4 +39,15 @@ test('surfaces provider connection API errors without crashing the model registr
     () => normalizeByokConnectionsPayload({ error: 'Failed to fetch provider connections' }),
     /Failed to fetch provider connections/,
   )
+})
+
+test('workspace namespaces are isolated and stale connection responses cannot become active', () => {
+  const personal = byokConnectionScopeKey('user-1')
+  const workspaceOne = byokConnectionScopeKey('user-1', 'workspace-1')
+  const workspaceTwo = byokConnectionScopeKey('user-1', 'workspace-2')
+
+  assert.notEqual(personal, workspaceOne)
+  assert.notEqual(workspaceOne, workspaceTwo)
+  assert.equal(canApplyByokConnectionResponse(workspaceTwo, workspaceOne), false)
+  assert.equal(canApplyByokConnectionResponse(workspaceTwo, workspaceTwo), true)
 })

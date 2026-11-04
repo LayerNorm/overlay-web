@@ -28,17 +28,23 @@ import { createSubscriptionService } from '@/server/ai/subscriptions/service'
 async function getUserByokConnection(
   userId: string,
   connectionId: string,
+  workspaceId?: string,
 ): Promise<ProviderConnectionRecord | null> {
-  return await getOverlayServerContext().appData.repositories.providerConnections.get({ connectionId, userId })
+  return await getOverlayServerContext().appData.repositories.providerConnections.getForUse({
+    connectionId,
+    actorUserId: userId,
+    workspaceId,
+  })
 }
 
 export async function assertUserCanUseByokModel(
   modelId: string,
   userId: string,
+  workspaceId?: string,
 ): Promise<{ connection: ProviderConnectionRecord; rawModelId: string }> {
   const parsed = parseByokModelId(modelId)
   if (!parsed) throw new Error('Invalid BYOK model id.')
-  const connection = await getUserByokConnection(userId, parsed.connectionId)
+  const connection = await getUserByokConnection(userId, parsed.connectionId, workspaceId)
   if (!connection) throw new Error('BYOK connection not found.')
   if (connection.authKind === 'subscription' || connection.providerId.startsWith('subscription:')) {
     if (!isSubscriptionConnection(connection) ||
@@ -56,10 +62,14 @@ export async function assertUserCanUseByokModel(
   return { connection, rawModelId: parsed.rawModelId }
 }
 
-export async function isSubscriptionModelForUser(modelId: string, userId: string): Promise<boolean> {
+export async function isSubscriptionModelForUser(
+  modelId: string,
+  userId: string,
+  workspaceId?: string,
+): Promise<boolean> {
   const parsed = parseByokModelId(modelId)
   if (!parsed) return false
-  const connection = await getUserByokConnection(userId, parsed.connectionId)
+  const connection = await getUserByokConnection(userId, parsed.connectionId, workspaceId)
   return Boolean(
     connection &&
     isSubscriptionConnection(connection) &&
@@ -73,19 +83,23 @@ export async function getLanguageModel(
   userId?: string,
   options?: {
     sessionId?: string
+    workspaceId?: string
   },
 ): Promise<LanguageModel> {
   const parsed = parseByokModelId(modelId)
   if (isByokModelId(modelId) && !parsed) throw new Error('Invalid BYOK model id.')
   if (parsed) {
     if (!userId) throw new Error('Authenticated user required for BYOK models.')
-    const { connection, rawModelId } = await assertUserCanUseByokModel(modelId, userId)
+    const { connection, rawModelId } = await assertUserCanUseByokModel(
+      modelId, userId, options?.workspaceId,
+    )
     if (isSubscriptionConnection(connection) && isSubscriptionProviderId(connection.subscriptionProvider)) {
       return createSubscriptionLanguageModel({
         ownerId: userId,
         connectionId: connection._id,
         providerId: connection.subscriptionProvider,
         modelId: rawModelId,
+        workspaceId: options?.workspaceId,
       })
     }
     const apiKey = connection.credentialRef

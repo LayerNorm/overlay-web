@@ -287,12 +287,13 @@ async function validateSubscriptionRequest(
 
 async function credentialForProvider(
   service: DispatchService,
-  ownerId: string,
+  actorUserId: string,
   connectionId: string,
   modelId: string,
   providerId: string,
+  workspaceId?: string,
 ) {
-  const credential = await service.credentialForDispatch(ownerId, connectionId, modelId)
+  const credential = await service.credentialForDispatch(actorUserId, connectionId, modelId, workspaceId)
   if (credential.providerId !== providerId) {
     throw new Error(safeErrors.reconnect_required!.message)
   }
@@ -304,6 +305,7 @@ export function createSubscriptionLanguageModel(args: {
   connectionId: string
   providerId: string
   modelId: string
+  workspaceId?: string
   dispatchService?: DispatchService
   bridge?: Pick<SubscriptionBridgeClient, 'infer'>
   fetcher?: typeof fetch
@@ -331,6 +333,7 @@ export function createSubscriptionLanguageModel(args: {
           args.connectionId,
           args.modelId,
           args.providerId,
+          args.workspaceId,
         )
         const upstream = await bridge.infer({
           connectionId: args.connectionId,

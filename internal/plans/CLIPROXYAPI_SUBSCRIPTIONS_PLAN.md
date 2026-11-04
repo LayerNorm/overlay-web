@@ -1,10 +1,12 @@
 # Plan: Replace subscription plumbing with CLIProxyAPI
 
-Status: The Codex implementation is merged in #386. This branch extends the backend and control plane to seven providers; live provider-account acceptance, hosted validation, and workspace-scope work remain incomplete.
+Status: The Codex implementation is merged in #386. This branch extends the backend and control plane to seven providers and adds workspace-scoped subscription sharing. Live provider-account acceptance and hosted validation remain incomplete.
 
 > Progress note: the original Codex slice uses a same-project private bridge.
 > This branch extends its backend and control plane to Claude, xAI, Meta, Kimi,
-> Kimi AI, and Devin without adding workspace authorization/schema or rendered UI.
+> Kimi AI, and Devin, and adds immutable personal/workspace subscription scope,
+> active-member authorization, workspace-aware dispatch, and picker/cache
+> isolation. The approval-gated scope selector and privacy copy are not shipped.
 > Hosted and real-account acceptance remains separate work.
 > Local build and injected-HTTP fixtures establish implementation behavior only;
 > they do not establish hosted deployment or live provider-account acceptance.
@@ -44,10 +46,14 @@ Provide the same shared subscription picker across supported entry points,
 including Settings, new chats, existing chats and native agents. Keep provider
 logos and model capability metadata consistent, preserve favorites and
 recommendations, and expose only models discovered for the exact connection.
-Workspace-scoped connections remain part of the product goal: add workspace
-ownership, authorization and picker scoping without weakening personal
-connection isolation or paid-access checks. Provider implementation progress
-does not complete shared-picker parity or workspace-scope acceptance.
+Workspace-scoped subscription sharing is implemented for explicitly scoped
+rows. Legacy rows remain personal, scope is immutable, and only active members
+of the matching active workspace may list or use a shared connection. The
+acting user and billing workspace remain authoritative; the credential owner
+is resolved internally for Vault reads and refresh leases. Picker caching and
+nonowner management safeguards are workspace-aware. The scope selector/privacy
+copy, full shared-picker QA, hosted acceptance, and real-account validation
+remain pending and are not implied by synthetic tests.
 
 ## 7. Verify and roll out
 
@@ -56,6 +62,8 @@ restart recovery, reconnect, disconnect and removed models. Distinguish
 temporary failures, limits and invalid credentials with actionable messages.
 Never silently switch accounts or paid routes. Isolated-preview deployment,
 live callback and real-account acceptance, per-provider refresh, hosted restart
-and end-to-end streaming QA remain unfinished. Roll providers out individually
+and end-to-end streaming QA remain unfinished. Local Convex/service fixtures
+are synthetic authorization and lifecycle evidence only, not hosted or live
+provider acceptance. Roll providers out individually
 only after those checks; rollback disables subscription availability without
 reactivating competing credential refreshers.

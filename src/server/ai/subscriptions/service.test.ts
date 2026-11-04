@@ -15,6 +15,9 @@ class FakeRepository {
   callbackModeCalls: boolean[] = []
   failClosedCalls = 0
   discoveryReleaseCalls = 0
+  dispatchCalls: Array<{ actorUserId: string; workspaceId?: string }> = []
+  refreshOwners: string[] = []
+  revokedActors = new Set<string>()
 
   async reserveAuthorization(args: Record<string, unknown>) {
     const leaseUntil = this.state?.leaseUntil
@@ -101,7 +104,8 @@ class FakeRepository {
     return { revision, cleanupRefs: nextCleanupRefs }
   }
 
-  async acquireRefresh() {
+  async acquireRefresh(args?: { userId?: string }) {
+    if (args?.userId) this.refreshOwners.push(args.userId)
     return {
       generation: Number(this.state?.generation ?? 1),
       revision: Number(this.state?.revision ?? 1),
@@ -159,12 +163,16 @@ class FakeRepository {
     if (args.pollIntervalMs !== undefined) this.pollReleaseIntervals.push(args.pollIntervalMs)
   }
   async releaseDiscovery() { this.discoveryReleaseCalls += 1; return }
-  async forDispatch() {
+  async forDispatch(args: { actorUserId: string; workspaceId?: string }) {
+    this.dispatchCalls.push(args)
+    if (this.revokedActors.has(args.actorUserId)) return null
     if (this.state?.phase !== 'active' || typeof this.state.credentialRef !== 'string') return null
     return {
       providerId: String(this.state.providerId ?? 'codex') as BridgeCredential['providerId'],
       credentialRef: this.state.credentialRef,
+      ownerUserId: String(this.state.userId ?? args.actorUserId),
       generation: Number(this.state.generation ?? 1),
+      revision: Number(this.state.revision ?? 1),
     }
   }
   async revokeAllByUser() {
@@ -713,6 +721,82 @@ test('credential dispatch rereads under the refresh lease and skips redundant ro
 
   assert.deepEqual(result, fresh)
   assert.equal(refreshRequests, 0)
+})
+
+test('shared dispatch refreshes as the owner and blocks after actor membership is revoked', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex'
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  const repository = new FakeRepository()
+  const credentials = new FakeCredentials()
+  const expiredSoon: BridgeCredential = {
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'codex',
+    metadata: { tokenStorage: { accessToken: 'owner-access', refreshToken: 'owner-refresh' } },
+    expiresAt: Date.now() + 20_000,
+  }
+  const refreshed: BridgeCredential = {
+    ...expiredSoon,
+    metadata: { tokenStorage: { accessToken: 'owner-access-new', refreshToken: 'owner-refresh-new' } },
+    expiresAt: Date.now() + 3_600_000,
+  }
+  const oldRef = await credentials.write({
+    apiKey: JSON.stringify(expiredSoon),
+    context: { purpose: 'subscription', userId: 'owner-1', connectionId: 'connection-1', providerId: 'subscription-codex' },
+  })
+  repository.state = {
+    userId: 'owner-1',
+    connectionId: 'connection-1',
+    providerId: 'codex',
+    generation: 2,
+    revision: 4,
+    phase: 'active',
+    credentialRef: oldRef,
+    cleanupRefs: [],
+    pendingWrites: [],
+  }
+  const commitActive = repository.commitActive.bind(repository)
+  repository.commitActive = async (args) => {
+    const result = await commitActive(args)
+    repository.revokedActors.add('member-1')
+    return result
+  }
+  const paths: string[] = []
+  const service = createService(repository, credentials, async (input, init) => {
+    const path = new URL(String(input)).pathname
+    paths.push(path)
+    if (path === '/internal/v1/refresh') {
+      const body = JSON.parse(String(init?.body)) as { credential: BridgeCredential }
+      assert.equal(body.credential.metadata?.tokenStorage && typeof body.credential.metadata.tokenStorage, 'object')
+      return Response.json({ credential: refreshed })
+    }
+    if (path === '/internal/v1/models') {
+      return Response.json({
+        providerId: 'codex',
+        models: [{ id: 'codex-model', name: 'Codex Model' }],
+        source: 'provider_catalog',
+      })
+    }
+    throw new Error(`Unexpected bridge request: ${path}`)
+  })
+
+  await assert.rejects(
+    service.credentialForDispatch('member-1', 'connection-1', 'codex-model', 'workspace-1'),
+    /unavailable/,
+  )
+  assert.deepEqual(repository.refreshOwners, ['owner-1'])
+  assert.ok(repository.dispatchCalls.length >= 2)
+  assert.ok(repository.dispatchCalls.every((call) =>
+    call.actorUserId === 'member-1' && call.workspaceId === 'workspace-1',
+  ))
+  assert.ok(credentials.contexts.some((context) => context.userId === 'owner-1'))
+  assert.ok(paths.includes('/internal/v1/refresh'))
+  assert.ok(paths.includes('/internal/v1/models'))
+  assert.ok(!paths.includes('/internal/v1/infer'))
 })
 
 test('legacy native Codex credentials require reconnect without bridge import', async (t) => {

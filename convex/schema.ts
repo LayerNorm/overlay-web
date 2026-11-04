@@ -175,6 +175,8 @@ export default defineSchema({
     discoveredModelsJson: v.optional(v.string()),
     discoveredAt: v.optional(v.number()),
     authKind: v.optional(v.union(v.literal('api_key'), v.literal('subscription'))),
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    workspaceId: v.optional(v.string()),
     subscriptionProvider: v.optional(v.union(
       v.literal('codex'),
       v.literal('claude'),
@@ -193,7 +195,8 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_userId_providerId', ['userId', 'providerId']),
+    .index('by_userId_providerId', ['userId', 'providerId'])
+    .index('by_workspaceId_scope', ['workspaceId', 'scope']),
 
   providerSubscriptionStates: defineTable({
     userId: v.string(),

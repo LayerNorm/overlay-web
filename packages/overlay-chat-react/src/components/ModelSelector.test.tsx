@@ -30,6 +30,15 @@ test('reasoning controls are text-only, model-specific, and disabled for unavail
   assert.equal(modelReasoningLabel(model, 'xhigh'), 'Default')
 })
 
+test('unavailable shared subscriptions without a recovery URL do not expose reconnect controls', () => {
+  const model = { id: 'byok/workspace/sol', name: 'Sol', provider: 'openai',
+    subscription: { connectionId: 'workspace', scopeLabel: 'Workspace', unavailable: true } }
+  const html = renderToStaticMarkup(<ModelSelector models={[model]} recommendedIds={[model.id]} favoriteIds={[]}
+    onToggleFavorite={() => {}} onSelect={() => {}} isSelected={() => true} />)
+  assert.doesNotMatch(html, /Reconnect Sol/)
+  assert.doesNotMatch(html, /No alternate model will be used/)
+})
+
 test('models without advertised reasoning levels remain provider managed', () => {
   const model = { id: 'custom', name: 'Custom' }
   const html = renderToStaticMarkup(<ModelReasoningControl model={model} value="high" onChange={() => {}} />)

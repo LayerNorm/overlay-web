@@ -2,6 +2,7 @@ import { v } from 'convex/values'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
+import { canUseProviderConnection } from '../lib/providerConnectionScope'
 
 const providerValidator = v.union(
   v.literal('codex'),
@@ -148,7 +149,8 @@ export const listByUserByServer = query({
 export const getForDispatchByServer = query({
   args: {
     serverSecret: v.string(),
-    userId: v.string(),
+    actorUserId: v.string(),
+    workspaceId: v.optional(v.string()),
     connectionId: v.id('userProviderConnections'),
     modelId: v.string(),
   },
@@ -156,16 +158,19 @@ export const getForDispatchByServer = query({
     v.object({
       providerId: providerValidator,
       credentialRef: v.string(),
+      ownerUserId: v.string(),
       generation: v.number(),
+      revision: v.number(),
     }),
     v.null(),
   ),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const state = await loadState(ctx, args.connectionId)
-    if (!state || state.userId !== args.userId || state.phase !== 'active' ||
+    if (!state || state.phase !== 'active' ||
         !state.credentialRef) return null
-    const connection = await loadConnection(ctx, args.connectionId, args.userId, state.providerId)
+    const connection = await loadConnection(ctx, args.connectionId, state.userId, state.providerId)
+    if (!(await canUseProviderConnection(ctx, connection, args))) return null
     if (
       connection.status !== 'active' ||
       !connection.enabledModelIds.includes(args.modelId) ||
@@ -174,7 +179,9 @@ export const getForDispatchByServer = query({
     return {
       providerId: state.providerId,
       credentialRef: state.credentialRef,
+      ownerUserId: state.userId,
       generation: state.generation,
+      revision: state.revision,
     }
   },
 })

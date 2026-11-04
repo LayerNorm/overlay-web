@@ -9,10 +9,16 @@ bound to the web service inside the same Vercel project. The service has no
 public rewrite, shared account pool, auth files, background refresh, or
 provider/domain fallback.
 
-Existing picker and connection schemas remain personal-only in this
-implementation slice; workspace-scoped connections are not added here. Model
-visibility does not grant execution access: existing paid-access requirements
-still apply to all models, including BYOK.
+Subscription connections support explicit, immutable `personal` or `workspace`
+scope. Missing scope on legacy rows is personal; creation defaults to personal,
+and workspace identity comes from the authenticated active-workspace context.
+Only active members of that exact active workspace may list or use a shared
+subscription. API-key connections remain unchanged and are never workspace-
+shared. Lifecycle management and Vault references remain owner-only; nonowner
+shared rows reach the picker with `canManage: false`, are excluded from Settings
+management, and expose no reconnect URL. Scope-selection UI and related privacy
+copy remain pending approval. Model visibility does not grant execution access:
+existing paid-access requirements still apply to all models, including BYOK.
 
 The plan-based Codex catalog is sourced from CLIProxyAPI's plan registry. The
 `prolite` and `promax` variants additionally intersect that pinned registry with
@@ -33,14 +39,18 @@ Neither capability metadata nor a saved effort changes paid-access enforcement.
 
 ## Responsibilities
 
-Overlay owns the authenticated connection, its generation and revision fences,
-model selections, and durable secret lifecycle. Provider credentials and
+Overlay owns the authenticated connection, its immutable scope, generation and
+revision fences, model selections, and durable secret lifecycle. Provider credentials and
 authorization state live in Overlay Vault; Convex keeps opaque references,
 pending-write names, selected model IDs, and lease state. The bridge accepts a
 credential envelope and explicit connection/model identity for each request. It
 constructs one upstream auth record and executes only that credential—there is
 no manager, pool, or account/model/paid-route fallback.
 
+Runtime dispatch preserves the acting user and billing workspace as execution
+identity. Convex resolves the credential owner internally for Vault reads and
+refresh leases; after refresh, actor/workspace authorization and provider,
+credential-reference, generation, and revision stability are checked again.
 The bridge returns bounded, typed control responses for authorization, polling,
 callback completion, refresh, model listing, and inference. Authorization state is persisted by
 Overlay so polling survives container restarts. Bridge calls require the
@@ -130,6 +140,8 @@ The provider connection dialog stays within the dynamic viewport and scrolls
 when its provider list exceeds the available height, keeping sign-in actions
 reachable on short desktop and mobile screens.
 
-Live provider-account acceptance and hosted callback, refresh, restart, and
-streaming QA remain unfinished. Catalog membership is not account entitlement.
-Workspace-scope schema and authorization remain separate future work.
+Workspace scope tests use synthetic Convex/service fixtures and do not establish
+hosted authorization behavior. Live provider-account acceptance and hosted
+callback, refresh, restart, and streaming QA remain unfinished. Catalog
+membership is not account entitlement. Scope-selection UI remains pending
+approval, and the deployment provider allowlist is unchanged.

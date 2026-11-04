@@ -110,7 +110,7 @@ async function generateTitleWithModel({
   let started = false
   try {
     abortSignal.throwIfAborted()
-    const languageModel = await getLanguageModel(modelId, auth.accessToken, auth.userId)
+    const languageModel = await getLanguageModel(modelId, auth.accessToken, auth.userId, { workspaceId })
     abortSignal.throwIfAborted()
     await chatUsagePolicy.markReservationStarted({
       userId: auth.userId,

@@ -37,7 +37,10 @@ comma-separated deployment allowlist. The supported value is
 `codex,claude,xai,meta,kimi,kimi-ai,devin`; only enable IDs approved for that
 environment. No Vercel configuration or secrets are defined here.
 
-Builds and injected-network tests do not establish live provider acceptance.
-Callback UX, provider account entitlement, refresh behavior, hosted restart and
-streaming behavior still require isolated real-account QA. Workspace-scoped
-connections are not implemented in this provider slice.
+Workspace-scoped subscription sharing is enforced by the web/Convex control
+plane; this bridge remains stateless and does not receive workspace ownership
+as a substitute for that authorization. Builds and injected-network tests do
+not establish live provider acceptance. Callback UX, provider account
+entitlement, refresh behavior, hosted restart and streaming behavior still
+require isolated real-account QA. Scope-selection UI remains pending approval,
+and the deployment provider allowlist is unchanged.

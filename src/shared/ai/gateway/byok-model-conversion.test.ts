@@ -75,6 +75,27 @@ test('subscription models keep provider identity and connection source labels', 
   ])
 })
 
+test('workspace-shared picker models have no nonowner reconnect route', () => {
+  const [model] = byokConnectionsToChatModels([{
+    _id: 'shared-subscription',
+    authKind: 'subscription',
+    subscriptionProvider: 'codex',
+    providerId: 'subscription:codex',
+    scope: 'workspace',
+    workspaceId: 'workspace-1',
+    canManage: false,
+    endpoint: '',
+    displayName: 'Shared Codex',
+    enabledModelIds: ['openai/gpt-4.1'],
+    status: 'error',
+    isDefault: false,
+    isDeletable: true,
+  }], { includeUnavailable: true })
+
+  assert.equal(model?.subscription?.scopeLabel, 'Workspace')
+  assert.equal(model?.subscription?.recoveryHref, undefined)
+})
+
 test('unknown discovered reasoning metadata remains provider-managed', () => {
   const [model] = byokConnectionsToChatModels([{
     _id: 'subscription_custom',

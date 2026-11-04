@@ -3,7 +3,10 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
-import type { ProviderConnectionRecord } from '@/server/ai/provider-connections/ProviderConnectionRepository'
+import type {
+  CreateProviderConnectionInput,
+  ProviderConnectionRecord,
+} from '@/server/ai/provider-connections/ProviderConnectionRepository'
 import type { SubscriptionProgress } from '@/features/settings/components/subscription-connection-client'
 
 const originalEnv = {
@@ -43,7 +46,7 @@ function apiContext(userId = 'user_1'): AppApiRouteContext {
     appDataCapabilities: {} as AppApiRouteContext['appDataCapabilities'],
     requestFingerprint: 'test-request-fingerprint',
     requestIdempotencyKey: 'test-idempotency-key',
-    workspace: {} as AppApiRouteContext['workspace'],
+    workspace: { workspace: { id: 'workspace-1' } } as AppApiRouteContext['workspace'],
   } as AppApiRouteContext
 }
 
@@ -108,6 +111,93 @@ test('subscription authorization remains owner-scoped and unsupported providers 
     providerId: 'xai',
   }), apiContext())
   assert.equal(disabled.status, 404)
+})
+
+test('subscription scope is explicit, bound to active workspace, and immutable on reconnect', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex'
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  const { getOverlayServerContext } = await import('@/server/bootstrap')
+  const repository = getOverlayServerContext().appData.repositories.providerConnections
+  const created: Array<Record<string, unknown>> = []
+  t.mock.method(repository, 'count', async () => 0)
+  t.mock.method(repository, 'create', async (args: CreateProviderConnectionInput) => {
+    created.push(args)
+    return 'workspace-connection'
+  })
+  const { SubscriptionService } = await import('@/server/ai/subscriptions/service')
+  t.mock.method(SubscriptionService.prototype, 'startAuthorization', async () => ({
+    url: 'https://provider.test/authorize',
+    expiresAt: Date.now() + 600_000,
+    interval: 5,
+  }))
+  const { POST } = await import('./route')
+
+  const invalidWorkspace = await POST(request('/api/v1/providers/subscriptions', 'POST', {
+    providerId: 'codex',
+    scope: 'workspace',
+    workspaceId: 'attacker-workspace',
+  }), apiContext())
+  assert.equal(invalidWorkspace.status, 400)
+  assert.equal(created.length, 0)
+
+  const createdResponse = await POST(request('/api/v1/providers/subscriptions', 'POST', {
+    providerId: 'codex',
+    scope: 'workspace',
+  }), apiContext())
+  assert.equal(createdResponse.status, 200)
+  assert.deepEqual(created[0], {
+    userId: 'user_1',
+    providerId: 'subscription:codex',
+    authKind: 'subscription',
+    subscriptionProvider: 'codex',
+    scope: 'workspace',
+    workspaceId: 'workspace-1',
+    endpoint: '',
+    displayName: 'ChatGPT/Codex subscription',
+    enabledModelIds: [],
+    isDefault: false,
+    isDeletable: true,
+  })
+  const personalResponse = await POST(request('/api/v1/providers/subscriptions', 'POST', {
+    providerId: 'codex',
+  }), apiContext())
+  assert.equal(personalResponse.status, 200)
+  assert.equal(created[1]?.scope, 'personal')
+  assert.equal(created[1]?.workspaceId, undefined)
+
+  const existing: ProviderConnectionRecord = {
+    _id: 'workspace-connection',
+    userId: 'user_1',
+    providerId: 'subscription:codex',
+    authKind: 'subscription',
+    subscriptionProvider: 'codex',
+    scope: 'workspace',
+    workspaceId: 'workspace-1',
+    endpoint: '',
+    displayName: 'OpenAI Codex',
+    enabledModelIds: [],
+    status: 'pending',
+    isDefault: false,
+    isDeletable: true,
+  }
+  t.mock.method(repository, 'get', async () => existing)
+  const reconnect = await POST(request('/api/v1/providers/subscriptions', 'POST', {
+    providerId: 'codex',
+    connectionId: existing._id,
+  }), apiContext())
+  assert.equal(reconnect.status, 200)
+  assert.equal(created.length, 2)
+
+  const elevationAttempt = await POST(request('/api/v1/providers/subscriptions', 'POST', {
+    providerId: 'codex',
+    connectionId: existing._id,
+    scope: 'personal',
+  }), apiContext())
+  assert.equal(elevationAttempt.status, 409)
 })
 
 test('generic connection updates cannot forge subscription discovery metadata', async (t) => {

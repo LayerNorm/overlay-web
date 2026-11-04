@@ -161,7 +161,10 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
     const repository = getOverlayServerContext().appData.repositories.providerConnections
-    const connections = await repository.listPublic({ userId: auth.userId })
+    const connections = await repository.listPublic({
+      userId: auth.userId,
+      workspaceId: context.workspace.workspace.id,
+    })
     const seededConnections = await ensureDefaultGatewayConnection(
       auth.userId,
       repository,

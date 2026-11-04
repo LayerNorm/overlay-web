@@ -36,7 +36,18 @@ export interface SubscriptionRepository {
   commitActive(args: FencedArgs & { credentialRef: string; discoveredModelsJson: string; discoveredModelIds: string[]; displayName?: string }): Promise<{ revision: number; enabledModelIds: string[]; cleanupRefs: string[] }>
   failClosed(args: FencedArgs & { error: string }): Promise<string[]>
   disconnect(args: { userId: string; connectionId: string }): Promise<string[]>
-  forDispatch(args: { userId: string; connectionId: string; modelId: string }): Promise<{ providerId: SubscriptionProviderId; credentialRef: string; generation: number } | null>
+  forDispatch(args: {
+    actorUserId: string
+    workspaceId?: string
+    connectionId: string
+    modelId: string
+  }): Promise<{
+    providerId: SubscriptionProviderId
+    credentialRef: string
+    ownerUserId: string
+    generation: number
+    revision: number
+  } | null>
   revokeAllByUser(userId: string): Promise<string[]>
   removeCleanupRef(args: { userId: string; connectionId: string; credentialRef: string }): Promise<void>
   retainCleanupRef(args: { userId: string; connectionId: string; credentialRef: string; pendingWriteName?: string }): Promise<void>
@@ -228,8 +239,19 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
     ))
   }
 
-  async forDispatch(args: { userId: string; connectionId: string; modelId: string }) {
-    return await convex.query<{ providerId: SubscriptionProviderId; credentialRef: string; generation: number } | null>(
+  async forDispatch(args: {
+    actorUserId: string
+    workspaceId?: string
+    connectionId: string
+    modelId: string
+  }) {
+    return await convex.query<{
+      providerId: SubscriptionProviderId
+      credentialRef: string
+      ownerUserId: string
+      generation: number
+      revision: number
+    } | null>(
       'providers/subscriptions:getForDispatchByServer',
       { serverSecret: this.secret, ...args },
       { throwOnError: true },

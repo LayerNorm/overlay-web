@@ -150,7 +150,8 @@ const ProviderConnectionTestRequest = z.object({
 const SubscriptionAuthorizationRequest = z.object({
   providerId: z.string().optional(),
   connectionId: z.string().optional(),
-}).passthrough()
+  scope: z.enum(['personal', 'workspace']).optional(),
+}).strict()
 
 const SubscriptionUpdateRequest = z.object({
   action: z.enum(['poll', 'refresh', 'callback']),

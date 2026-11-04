@@ -6,6 +6,11 @@ import {
   type QueryCtx,
 } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
+import {
+  assertActiveWorkspaceMember,
+  canUseProviderConnection,
+  isActiveWorkspaceMember,
+} from '../lib/providerConnectionScope'
 import type { Doc } from '../_generated/dataModel'
 
 // ─── Types ───
@@ -32,6 +37,8 @@ const connectionRowValidator = v.object({
   providerId: v.string(),
   authKind: v.optional(authKindValidator),
   subscriptionProvider: v.optional(subscriptionProviderValidator),
+  scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+  workspaceId: v.optional(v.string()),
   endpoint: v.string(),
   displayName: v.string(),
   enabledModelIds: v.array(v.string()),
@@ -44,6 +51,7 @@ const connectionRowValidator = v.object({
   isDeletable: v.boolean(),
   createdAt: v.number(),
   updatedAt: v.number(),
+  canManage: v.optional(v.boolean()),
 })
 
 /**
@@ -51,12 +59,14 @@ const connectionRowValidator = v.object({
  * before returning it to the client. discoveredModelsJson is NOT a secret —
  * it's model metadata needed by the client to render model names.
  */
-function stripSecrets(row: Doc<'userProviderConnections'>) {
+function stripSecrets(row: Doc<'userProviderConnections'>, canManage = true) {
   return {
     _id: row._id,
     providerId: row.providerId,
     authKind: row.authKind,
     subscriptionProvider: row.subscriptionProvider,
+    scope: row.scope ?? 'personal',
+    workspaceId: row.scope === 'workspace' ? row.workspaceId : undefined,
     endpoint: row.endpoint,
     displayName: row.displayName,
     enabledModelIds: row.enabledModelIds,
@@ -69,6 +79,7 @@ function stripSecrets(row: Doc<'userProviderConnections'>) {
     isDeletable: row.isDeletable,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    canManage,
   }
 }
 
@@ -94,7 +105,45 @@ export const listPublicByServer = query({
       .query('userProviderConnections')
       .withIndex('by_userId', (q) => q.eq('userId', args.userId))
       .collect()
-    return rows.map(stripSecrets)
+    return rows.map((row) => stripSecrets(row))
+  },
+})
+
+export const listPublicForUseByServer = query({
+  args: {
+    serverSecret: v.string(),
+    actorUserId: v.string(),
+    workspaceId: v.optional(v.string()),
+  },
+  returns: v.array(connectionRowValidator),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const ownedRows = await ctx.db
+      .query('userProviderConnections')
+      .withIndex('by_userId', (q) => q.eq('userId', args.actorUserId))
+      .collect()
+    const personalRows = ownedRows.filter((row) => (row.scope ?? 'personal') === 'personal')
+    if (!args.workspaceId || !(await isActiveWorkspaceMember(ctx, {
+      userId: args.actorUserId,
+      workspaceId: args.workspaceId,
+    }))) {
+      return personalRows.map((row) => stripSecrets(row, true))
+    }
+
+    const workspaceRows = await ctx.db
+      .query('userProviderConnections')
+      .withIndex('by_workspaceId_scope', (q) =>
+        q.eq('workspaceId', args.workspaceId!).eq('scope', 'workspace'),
+      )
+      .collect()
+    const rowsById = new Map<string, Doc<'userProviderConnections'>>()
+    for (const row of workspaceRows) {
+      if (row.authKind === 'subscription' && row.subscriptionProvider) rowsById.set(row._id, row)
+    }
+    for (const row of personalRows) rowsById.set(row._id, row)
+    return [...rowsById.values()].map((row) =>
+      stripSecrets(row, row.userId === args.actorUserId),
+    )
   },
 })
 
@@ -124,6 +173,8 @@ export const createByServer = mutation({
     providerId: v.string(),
     authKind: v.optional(authKindValidator),
     subscriptionProvider: v.optional(subscriptionProviderValidator),
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    workspaceId: v.optional(v.string()),
     endpoint: v.string(),
     displayName: v.string(),
     vaultKeyName: v.string(),
@@ -144,11 +195,25 @@ export const createByServer = mutation({
     ) {
       throw new Error('Invalid subscription connection metadata')
     }
+    const scope = args.scope ?? 'personal'
+    if (scope === 'workspace') {
+      if (args.authKind !== 'subscription' || !args.workspaceId) {
+        throw new Error('Workspace scope is only supported for subscription connections')
+      }
+      await assertActiveWorkspaceMember(ctx, {
+        userId: args.userId,
+        workspaceId: args.workspaceId,
+      })
+    } else if (args.workspaceId !== undefined) {
+      throw new Error('Personal connections cannot have a workspace')
+    }
     return await ctx.db.insert('userProviderConnections', {
       userId: args.userId,
       providerId: args.providerId,
       authKind: args.authKind,
       subscriptionProvider: args.subscriptionProvider,
+      ...(args.authKind === 'subscription' ? { scope } : {}),
+      ...(scope === 'workspace' ? { workspaceId: args.workspaceId } : {}),
       endpoint: args.endpoint,
       displayName: args.displayName,
       vaultKeyName: args.vaultKeyName,
@@ -347,6 +412,8 @@ const connectionWithVaultValidator = v.object({
   status: connectionStatusValidator,
   authKind: v.optional(authKindValidator),
   subscriptionProvider: v.optional(subscriptionProviderValidator),
+  scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+  workspaceId: v.optional(v.string()),
   discoveredModelsJson: v.optional(v.string()),
   discoveredAt: v.optional(v.number()),
   lastError: v.optional(v.string()),
@@ -369,6 +436,8 @@ export const getByServer = query({
       providerId: row.providerId,
       authKind: row.authKind,
       subscriptionProvider: row.subscriptionProvider,
+      scope: row.scope ?? 'personal',
+      workspaceId: row.scope === 'workspace' ? row.workspaceId : undefined,
       endpoint: row.endpoint,
       displayName: row.displayName,
       vaultKeyName: row.vaultKeyName,
@@ -381,6 +450,42 @@ export const getByServer = query({
       discoveredAt: row.discoveredAt,
       lastError: row.lastError,
       lastTestedAt: row.lastTestedAt,
+    }
+  },
+})
+
+export const getForUseByServer = query({
+  args: {
+    serverSecret: v.string(),
+    connectionId: v.id('userProviderConnections'),
+    actorUserId: v.string(),
+    workspaceId: v.optional(v.string()),
+  },
+  returns: v.union(connectionWithVaultValidator, v.null()),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const connection = await ctx.db.get(args.connectionId)
+    if (!connection || !(await canUseProviderConnection(ctx, connection, args))) return null
+    return {
+      _id: connection._id,
+      userId: connection.userId,
+      providerId: connection.providerId,
+      authKind: connection.authKind,
+      subscriptionProvider: connection.subscriptionProvider,
+      scope: connection.scope ?? 'personal',
+      workspaceId: connection.scope === 'workspace' ? connection.workspaceId : undefined,
+      endpoint: connection.endpoint,
+      displayName: connection.displayName,
+      vaultKeyName: connection.vaultKeyName,
+      vaultObjectId: connection.vaultObjectId,
+      enabledModelIds: connection.enabledModelIds,
+      isDefault: connection.isDefault,
+      isDeletable: connection.isDeletable,
+      status: connection.status,
+      discoveredModelsJson: connection.discoveredModelsJson,
+      discoveredAt: connection.discoveredAt,
+      lastError: connection.lastError,
+      lastTestedAt: connection.lastTestedAt,
     }
   },
 })

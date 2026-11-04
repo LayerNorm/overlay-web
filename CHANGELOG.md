@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add immutable personal/workspace subscription scope, active-member authorization, owner-only lifecycle management, and workspace-aware picker caching; scope-selection UI and hosted/live acceptance remain pending.
+
 - Tighten subscription auth error classification, callback retry/fencing and provider identity checks; local fixtures remain distinct from hosted and live-account acceptance.
 
 - Extend the private pinned subscription bridge and fenced control plane to Claude, xAI, Meta, Kimi, Kimi AI, and Devin, including callback/device authorization and provider-bound catalogs/inference. Live account acceptance and hosted QA remain outstanding.

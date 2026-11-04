@@ -261,7 +261,7 @@ export interface ChatModel {
     connectionId: string
     scopeLabel: string
     unavailable?: boolean
-    recoveryHref: string
+    recoveryHref?: string
   }
   provider?: string
   description?: string

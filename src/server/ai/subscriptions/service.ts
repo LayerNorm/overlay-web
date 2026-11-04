@@ -9,8 +9,6 @@ import {
   type SubscriptionProviderId,
 } from '@/shared/ai/gateway/subscription-providers'
 import {
-  isBridgeCredential,
-  isBridgePendingState,
   SubscriptionBridgeClient,
   SubscriptionBridgeError,
   type BridgeCredential,
@@ -21,55 +19,20 @@ import type {
   SubscriptionAuthorization,
   SubscriptionResult,
 } from './types'
-
-const implementedProviders = new Set<SubscriptionProviderId>(SUBSCRIPTION_PROVIDERS.map(({ id }) => id))
-const credentialPurpose = 'subscription-credential' as const
-const pendingWriteStaleAgeMs = 5 * 60_000
-
-type WrittenSecret = {
-  ref: string
-  name: string
-}
-
-function parsePendingState(value: string): BridgePendingState | null {
-  try {
-    const parsed: unknown = JSON.parse(value)
-    return isBridgePendingState(parsed) ? parsed : null
-  } catch (_error) {
-    return null
-  }
-}
-
-function parseCredential(value: string): BridgeCredential | null {
-  try {
-    const parsed: unknown = JSON.parse(value)
-    return isBridgeCredential(parsed) ? parsed : null
-  } catch (_error) {
-    return null
-  }
-}
-
-function allowedProviders(bridgeConfigured: boolean): SubscriptionProviderId[] {
-  const configured = new Set(
-    (process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS ?? '')
-      .split(',')
-      .map((provider) => provider.trim()),
-  )
-  if (!bridgeConfigured) return []
-  return SUBSCRIPTION_PROVIDERS
-    .filter(({ id }) => implementedProviders.has(id) && configured.has(id))
-    .map(({ id }) => id)
-}
-
-function publicError(error: unknown): string {
-  if (error instanceof SubscriptionBridgeError &&
-      ['reconnect_required', 'model_unavailable', 'rate_limited', 'provider_unavailable',
-        'temporary_failure', 'invalid_callback']
-        .includes(error.code)) return error.message
-  if (error instanceof Error && error.message.startsWith('Reconnect your subscription')) return error.message
-  if (error instanceof Error && error.message.startsWith('Subscriptions are unavailable')) return error.message
-  return 'The subscription operation failed. Retry or reconnect.'
-}
+import {
+  allowedProviders,
+  credentialPurpose,
+  dispatchAuthorizationMatches,
+  dispatchStateMatches,
+  isCredentialNearExpiry,
+  isDispatchCredentialUsable,
+  parseCredential,
+  parsePendingState,
+  pendingWriteStaleAgeMs,
+  publicError,
+  sameDispatchAuthorization,
+  type WrittenSecret,
+} from './service-helpers'
 
 export class SubscriptionService {
   private readonly bridge: SubscriptionBridgeClient
@@ -281,40 +244,57 @@ export class SubscriptionService {
   }
 
   async credentialForDispatch(
-    userId: string,
+    actorUserId: string,
     connectionId: string,
     modelId: string,
+    workspaceId?: string,
   ): Promise<BridgeCredential> {
-    const state = await this.repository.get({ userId, connectionId })
-    if (!state || !this.isEnabled(state.providerId)) throw new Error('Subscription request adapter is not available')
-    let authorized = await this.repository.forDispatch({ userId, connectionId, modelId })
-    if (!authorized || authorized.providerId !== state.providerId) {
+    const authorized = await this.repository.forDispatch({
+      actorUserId, workspaceId, connectionId, modelId,
+    })
+    if (!authorized || !this.isEnabled(authorized.providerId)) {
       throw new Error('Subscription connection is unavailable or this model is not enabled.')
     }
-    let secret = await this.credentials.read(authorized.credentialRef)
-    let credential = secret ? parseCredential(secret) : null
-    if (!credential || credential.providerId !== authorized.providerId) throw new Error('Reconnect your subscription to continue.')
-    if (!credential.nonExpiring && credential.expiresAt !== null && credential.expiresAt <= Date.now() + 60_000) {
+    const userId = authorized.ownerUserId
+    const state = await this.repository.get({ userId, connectionId })
+    if (!state || !dispatchStateMatches(state, authorized)) {
+      throw new Error('Subscription connection is unavailable or this model is not enabled.')
+    }
+    let currentAuthorization = authorized
+    let credential = await this.readDispatchCredential(currentAuthorization)
+    if (isCredentialNearExpiry(credential)) {
       const refreshed = await this.refresh(userId, connectionId)
       if (refreshed.status !== 'connected') {
         throw new Error(refreshed.status === 'error' ? refreshed.error : 'Reconnect your subscription to continue.')
       }
-      authorized = await this.repository.forDispatch({ userId, connectionId, modelId })
-      if (!authorized || authorized.providerId !== state.providerId) {
+      const refreshedAuthorization = await this.repository.forDispatch({
+        actorUserId, workspaceId, connectionId, modelId,
+      })
+      if (!dispatchAuthorizationMatches(authorized, refreshedAuthorization)) {
         throw new Error('Subscription connection is unavailable or this model is not enabled.')
       }
-      secret = await this.credentials.read(authorized.credentialRef)
-      credential = secret ? parseCredential(secret) : null
-      if (!credential || credential.providerId !== authorized.providerId ||
-          (!credential.nonExpiring && (credential.expiresAt === null || credential.expiresAt <= Date.now()))) {
+      currentAuthorization = refreshedAuthorization
+      credential = await this.readDispatchCredential(currentAuthorization)
+      if (!isDispatchCredentialUsable(credential, currentAuthorization.providerId)) {
         throw new Error('Reconnect your subscription to continue.')
       }
     }
-    const revalidated = await this.repository.forDispatch({ userId, connectionId, modelId })
-    if (!revalidated || revalidated.providerId !== state.providerId ||
-        revalidated.generation !== authorized.generation ||
-        revalidated.credentialRef !== authorized.credentialRef) {
+    const revalidated = await this.repository.forDispatch({
+      actorUserId, workspaceId, connectionId, modelId,
+    })
+    if (!sameDispatchAuthorization(currentAuthorization, revalidated)) {
       throw new Error('Subscription connection is unavailable or this model is not enabled.')
+    }
+    return credential
+  }
+
+  private async readDispatchCredential(
+    authorized: NonNullable<Awaited<ReturnType<SubscriptionRepository['forDispatch']>>>,
+  ): Promise<BridgeCredential> {
+    const secret = await this.credentials.read(authorized.credentialRef)
+    const credential = secret ? parseCredential(secret) : null
+    if (!credential || credential.providerId !== authorized.providerId) {
+      throw new Error('Reconnect your subscription to continue.')
     }
     return credential
   }

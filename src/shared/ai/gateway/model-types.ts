@@ -25,7 +25,7 @@ export interface ChatModel {
     connectionId: string
     scopeLabel: string
     unavailable?: boolean
-    recoveryHref: string
+    recoveryHref?: string
   }
   intelligence: number
   /** 0 = zero-priced, 1 = cheap, 2 = mid, 3 = expensive */
