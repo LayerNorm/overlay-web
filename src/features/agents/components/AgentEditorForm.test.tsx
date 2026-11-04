@@ -290,3 +290,12 @@ test('overlay fields render the computer accessory under its tool row', () => {
   assert.match(markup, /Scout computer/)
   assert.match(markup, /Open desktop/)
 })
+
+
+test('a recently active stopped Computer shows its stopped state rather than active use', () => {
+  const markup = renderToStaticMarkup(<AgentComputerSection enabled
+    computer={{ ...agentComputer, status: 'stopped', lastActiveAt: Date.now() }} {...computerSectionProps} />)
+  assert.match(markup, /stopped · large/)
+  assert.match(markup, /Start computer/)
+  assert.doesNotMatch(markup, /Scout is using it/)
+})

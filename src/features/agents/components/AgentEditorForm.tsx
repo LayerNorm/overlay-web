@@ -441,7 +441,7 @@ function ProvisionedComputerCard({ computer, currentUserId, agentName, openBusy,
   const canDeleteComputer = canTogglePower || computer.status === 'error'
   const powerLabel = lifecycleBusy === 'stop' ? 'Stopping…' : lifecycleBusy === 'start' ? 'Starting…' : computer.status === 'ready' ? 'Stop computer' : 'Start computer'
   const controlledByCurrentUser = Boolean(computer.controlledByUserId && computer.controlledByUserId === currentUserId)
-  const statusLine = computer.controlledByUserId
+  const statusLine = computer.status !== 'ready' ? null : computer.controlledByUserId
     ? controlledByCurrentUser
       ? `You have control. ${agentName} is paused.`
       : 'Someone else has control'
