@@ -5,7 +5,7 @@ import { wrapLanguageModel } from 'ai'
 import type { LanguageModel } from '@/server/ai/provider-types'
 import { SubscriptionBridgeClient, SubscriptionBridgeError } from './bridge-client'
 import { createSubscriptionService, type SubscriptionService } from './service'
-import { assertSupportedCodexRequest } from './request-validation'
+import { assertSupportedCodexRequest, codexStatelessRequest } from './request-validation'
 
 const SUBSCRIPTION_RESPONSES_ENDPOINT = 'https://overlay-subscription.invalid/responses'
 const maxRequestBytes = 2_000_000
@@ -303,7 +303,7 @@ export function createSubscriptionLanguageModel(args: {
           connectionId: args.connectionId,
           credential,
           modelId: args.modelId,
-          request: { ...body, stream: true, store: false },
+          request: codexStatelessRequest(body),
         }, init?.signal ?? undefined)
         if (!upstream.body) return errorResponse(400, safeStreamError)
         const streamResponse = new Response(boundedStream(upstream.body), {

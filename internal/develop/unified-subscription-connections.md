@@ -84,7 +84,9 @@ before sending it to the private service. The bridge requires `stream: true`
 and `store: false`; it has no stateful response or conversation continuation
 store. CLIProxyAPI owns Codex provider translation. Its SSE field lines and combined
 event/data frames pass through unchanged; only bare JSON chunks receive a
-`data:` prefix. Overlay returns bounded
+`data:` prefix. Function tools without an explicit strictness choice send
+`strict: false`, preserving optional arguments instead of inheriting the
+provider's strict default; explicit strict choices are retained. Overlay returns bounded
 streaming events for `streamText` and converts a completed Responses event to
 JSON for `generateText`. Cancellation, response/event size limits, and safe
 typed errors are enforced at the boundary. There is no timeout after an

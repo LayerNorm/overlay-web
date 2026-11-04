@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Preserve Codex event-stream framing so connected subscription responses can complete in chats and native agents.
+- Preserve Codex event-stream framing and optional function-tool arguments so connected subscription responses can complete in chats and native agents.
 
 - Recognize Codex Pro Lite/Max catalogs using explicit pinned plan membership, and preserve newly authorized credentials when catalog discovery is unavailable while continuing to block unknown-plan inference.
 

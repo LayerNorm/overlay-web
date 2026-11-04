@@ -232,3 +232,20 @@ test('translator event-only frames do not turn into invalid JSON data', async ()
   assert.doesNotMatch(output, /data: event:/)
   assert.match(output, /"type":"response.completed"/)
 })
+
+
+test('SDK function tools keep optional arguments non-strict unless strict was explicitly requested', async () => {
+  for (const strict of [undefined, true, false]) {
+    let requestBody: Record<string, unknown> | undefined
+    const model = modelWithFetch(async (_input, init) => {
+      requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+      return new Response(`data: ${JSON.stringify({ type: 'response.completed', response: responseBody })}\n\n`)
+    })
+    await generateText({
+      model, prompt: 'say hello', maxRetries: 0,
+      tools: { lookup: { inputSchema: jsonSchema({ type: 'object', properties: { value: { type: 'string' } }, required: ['value'], additionalProperties: false }), ...(strict === undefined ? {} : { strict }) } },
+    })
+    const sent = requestBody?.request as { tools: Array<{ strict?: boolean }> }
+    assert.equal(sent.tools[0]?.strict, strict ?? false)
+  }
+})

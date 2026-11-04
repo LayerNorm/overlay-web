@@ -80,3 +80,13 @@ function validateTools(body: Record<string, unknown>): void {
     throw new Error('Hosted subscription tools are not supported')
   }
 }
+
+
+export function codexStatelessRequest(body: Record<string, unknown>): Record<string, unknown> {
+  const tools = Array.isArray(body.tools)
+    ? body.tools.map((tool) => isRecord(tool) && tool.type === 'function' && tool.strict == null
+      ? { ...tool, strict: false }
+      : tool)
+    : undefined
+  return { ...body, ...(tools ? { tools } : {}), stream: true, store: false }
+}
