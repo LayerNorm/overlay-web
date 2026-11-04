@@ -636,6 +636,7 @@ and permission boundaries. See [Desktop web shell](desktop-web-shell.md).
 
 
 Agent Computer cards stack their desktop/control actions above secondary power and
-delete controls so narrow editor panels remain usable. User document chips derive from persisted attachment
+delete controls so narrow editor panels remain usable. Pass the current operator ID
+through every card entry point so taking control identifies the viewer correctly. User document chips derive from persisted attachment
 metadata or the indexed-document marker even when structured text parts take priority
 for the displayed message body.

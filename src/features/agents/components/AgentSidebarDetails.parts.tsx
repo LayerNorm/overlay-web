@@ -198,6 +198,7 @@ export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller })
                   size={computer.computerSize}
                   onSizeChange={(size) => { computer.setComputerSize(size); form.markDirty() }}
                   computer={computer.agentComputer}
+                  currentUserId={computer.currentUserId}
                   agentName={form.name}
                   openBusy={computer.computerOpenBusy}
                   lifecycleBusy={computer.computerLifecycleBusy}
