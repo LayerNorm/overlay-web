@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Update Word document conversion and remove its obsolete Bluebird dependency. (#333)
+
 - Update the development CSS selector parser. (#338)
 
 - Update the development regular-expression engine while retaining Node 22 compatibility. (#343)
