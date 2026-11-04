@@ -1069,8 +1069,8 @@ describe('durable harness runs', () => {
       receiptId: args.receiptId, serverSecret: secret }
     await convex.mutation(mutation('discardTranscriptUpload'), { ...discard, storageId: duplicate })
     await convex.mutation(mutation('discardTranscriptUpload'), { ...discard, storageId: fullPersistenceStorageId })
-    expect(await convex.run(ctx => ctx.storage.get(duplicate))).toBeNull()
-    expect(await convex.run(ctx => ctx.storage.get(fullPersistenceStorageId))).not.toBeNull()
+    expect(await convex.run(ctx => ctx.db.system.get(duplicate))).toBeNull()
+    expect(await convex.run(ctx => ctx.db.system.get(fullPersistenceStorageId))).not.toBeNull()
     await expect(convex.mutation(write, {
       ...args,
       persistence: { content: 'Different replay.', parts: [{ type: 'text', text: 'Different replay.' }] },

@@ -165,7 +165,7 @@ export class ConvexHarnessRepository implements HarnessRepository {
       // Also cleans up a duplicate upload after an idempotent workflow replay.
       await convex.mutation('harness/runs:discardTranscriptUpload', {
         ...identity, storageId: uploaded.storageId,
-      }, { throwOnError: true }).catch(() => undefined)
+      }, { throwOnError: true }).catch((_error) => undefined)
     }
   }
 

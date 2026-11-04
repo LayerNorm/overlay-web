@@ -70,7 +70,7 @@ export function createPublicTranscriptStream({ firstPage, loadPage, signal }: {
         const next = await iterator.next()
         if (next.done) controller.close()
         else controller.enqueue(encoder.encode(`${JSON.stringify(next.value)}\n`))
-      } catch {
+      } catch (_error) {
         if (!combinedSignal.aborted) {
           controller.enqueue(encoder.encode(`${JSON.stringify({ type: 'error', message: 'Could not load the complete trace.' })}\n`))
           controller.close()

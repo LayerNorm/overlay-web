@@ -48,7 +48,7 @@ test('public journal keeps every part and full tool payload independently of the
 })
 
 test('full public persistence retains long tool errors but excludes control approvals and reasoning', () => {
-  const error = 'Public tool failure. '.repeat(1_000)
+  const error = 'Public tool failure.'.repeat(1_000)
   const persistence = publicHarnessStepPersistence({
     stepNumber: 0, text: '', reasoning: [], toolCalls: [], toolResults: [], content: [
       { type: 'reasoning', text: 'private thought' },
