@@ -18,7 +18,7 @@ async function fixture({ included = 20_000_000, allowanceUsed = 100_000, topUp =
       institutionalGrantMicros: 0, allowanceUsedMicros: allowanceUsed, topUpPurchasedMicros: topUp, topUpBalanceMicros: topUp,
       usedMicros: allowanceUsed, reservedMicros: 0, version: 1, createdAt: 1, updatedAt: 1 })
     await ctx.db.insert('billingAccountSpendLimits', { billingAccountId: 'ba', subjectKind: 'member', subjectId: 'user',
-      limitMicros: 100_000_000, usedMicros: allowanceUsed, reservedMicros: 0, periodStart: 1, periodEnd: 2, version: 1, createdAt: 1, updatedAt: 1 })
+      limitMicros: 100_000_000, usedMicros: allowanceUsed, reservedMicros: 0, periodStart: 0, periodEnd: Number.MAX_SAFE_INTEGER, version: 1, createdAt: 1, updatedAt: 1 })
     await ctx.db.insert('budgetReservations', { userId: 'user', billingAccountId: 'ba', spendSubjectKind: 'member', spendSubjectId: 'user',
       reservationId: 'hold', status, kind: 'agent', reservedCents: 50, finalizedCents: 10, createdAt: 1, updatedAt: 1 })
   })
@@ -82,6 +82,75 @@ test('an unfinished hold is left alone', async () => {
   const before = await state(t)
   expect(await run(t, 15)).toEqual({ status: 'skipped' })
   expect(await state(t)).toEqual(before)
+})
+
+test('an upward correction preserves credit already reserved for other work', async () => {
+  const t = await fixture({ included: 200_000 })
+  await t.run(async ctx => {
+    const balance = await ctx.db.query('billingAccountBalances').first()
+    await ctx.db.patch(balance!._id, { reservedMicros: 80_000 })
+  })
+  await run(t, 50)
+  const { balance, reservation } = await state(t)
+  expect(balance).toMatchObject({ usedMicros: 120_000, reservedMicros: 80_000 })
+  expect(reservation).toMatchObject({ finalizedCents: 12, providerCostMicros: 400_000 })
+})
+
+test('an upward correction respects the payer subject limit and its other holds', async () => {
+  const t = await fixture()
+  await t.run(async ctx => {
+    const limit = await ctx.db.query('billingAccountSpendLimits').first()
+    await ctx.db.patch(limit!._id, { limitMicros: 180_000, reservedMicros: 30_000 })
+  })
+  await run(t, 50)
+  const { limit, reservation } = await state(t)
+  expect(limit).toMatchObject({ usedMicros: 150_000, reservedMicros: 30_000 })
+  expect(reservation).toMatchObject({ finalizedCents: 15, providerCostMicros: 400_000 })
+})
+
+test.each([4, 15])('a late %s-cent correction cannot change a renewed wallet', async actual => {
+  const t = await fixture({ allowanceUsed: 0 })
+  await t.run(async ctx => {
+    await ctx.db.insert('billingAccountSubscriptions', {
+      billingAccountId: 'ba', provider: 'stripe', planKind: 'paid', planVersion: 'variable_v2',
+      planAmountCents: 800, markupBasisPoints: 2500, status: 'active', autoTopUpEnabled: false,
+      autoTopUpAmountCents: 800, paidPeriodStart: Date.now() - 1_000,
+      paidPeriodEnd: Date.now() + 86_400_000, createdAt: 1, updatedAt: 1,
+    })
+  })
+  const before = await state(t)
+  await run(t, actual)
+  const after = await state(t)
+  expect(after.balance).toEqual(before.balance)
+  expect(after.limit).toEqual(before.limit)
+  expect(after.reservation).toMatchObject({ finalizedCents: 10, providerCostMicros: actual * 8_000 })
+})
+
+test('a correction cannot debit a different spend-limit period', async () => {
+  const t = await fixture()
+  await t.run(async ctx => {
+    const limit = await ctx.db.query('billingAccountSpendLimits').first()
+    await ctx.db.patch(limit!._id, { periodStart: Date.now() - 1_000, usedMicros: 0 })
+  })
+  const before = await state(t)
+  await run(t, 15)
+  const after = await state(t)
+  expect(after.balance).toEqual(before.balance)
+  expect(after.limit).toEqual(before.limit)
+  expect(after.reservation).toMatchObject({ finalizedCents: 10, providerCostMicros: 120_000 })
+})
+
+test('a refund leaves a different spend-limit period unchanged', async () => {
+  const t = await fixture()
+  await t.run(async ctx => {
+    const limit = await ctx.db.query('billingAccountSpendLimits').first()
+    await ctx.db.patch(limit!._id, { periodStart: Date.now() - 1_000, usedMicros: 50_000 })
+  })
+  const before = await state(t)
+  await run(t, 4)
+  const after = await state(t)
+  expect(after.balance).toMatchObject({ usedMicros: 40_000, allowanceUsedMicros: 40_000 })
+  expect(after.limit).toEqual(before.limit)
 })
 
 test('corrections need the server secret and the owning user', async () => {

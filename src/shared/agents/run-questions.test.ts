@@ -28,6 +28,11 @@ test('one question replies with just its answer', () => {
   assert.equal(formatRunAnswers([{ prompt: 'Which colors?' }], [['Red', 'Blue']]), 'Red, Blue')
 })
 
+test('skipping one optional question still sends a reply, while a required blank stays empty', () => {
+  assert.equal(formatRunAnswers([{ prompt: 'Which label?', optional: true }], [[]]), '(skipped)')
+  assert.equal(formatRunAnswers([{ prompt: 'Which label?' }], [[]]), '')
+})
+
 test('several questions pair each answer with its question and mark skips', () => {
   assert.equal(
     formatRunAnswers([{ prompt: 'Who is it for?' }, { prompt: 'Name customers?' }], [['Team'], []]),

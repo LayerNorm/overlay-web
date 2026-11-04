@@ -1335,15 +1335,29 @@ export const correctFinalizedBudgetReservationCostByServer = mutation({
     const ledger = await workspaceReservationLedger(ctx, reservation)
     if (!ledger) return { status: 'skipped' as const }
 
+    const now = Date.now()
+    const subscription = await ctx.db.query('billingAccountSubscriptions')
+      .withIndex('by_billingAccountId', q => q.eq('billingAccountId', reservation.billingAccountId!)).unique()
+    // Renewal resets the wallet. An old estimate must not debit or refund the new allowance.
+    const sameBillingPeriod = subscription?.paidPeriodStart === undefined
+      || reservation.updatedAt >= subscription.paidPeriodStart
     const estimatedMicros = Math.round(reservation.finalizedCents * 10_000)
-    const differenceMicros = Math.round(roundCreditAmount(Math.max(0, actualCents)) * 10_000) - estimatedMicros
-    const chargedMicros = Math.min(differenceMicros, workspaceAvailableMicros(ledger.balance))
+    const differenceMicros = sameBillingPeriod
+      ? Math.round(roundCreditAmount(Math.max(0, actualCents)) * 10_000) - estimatedMicros : 0
+    const limitOwnsSettlement = !ledger.limit || (reservation.updatedAt >= ledger.limit.periodStart
+      && reservation.updatedAt < ledger.limit.periodEnd)
+    const availableLimitMicros = !ledger.limit ? Number.MAX_SAFE_INTEGER
+      : limitOwnsSettlement && now >= ledger.limit.periodStart && now < ledger.limit.periodEnd
+        ? Math.max(0, ledger.limit.limitMicros - ledger.limit.usedMicros - ledger.limit.reservedMicros) : 0
+    const chargedMicros = Math.max(0, Math.min(differenceMicros, availableLimitMicros,
+      workspaceAvailableMicros(ledger.balance) - ledger.balance.reservedMicros))
     if (differenceMicros > 0 && chargedMicros > 0) {
       await finalizeWorkspaceLedger(ctx, { actualMicros: chargedMicros, balance: ledger.balance, limit: ledger.limit, reservedMicros: 0 })
     } else if (differenceMicros < 0) {
-      await refundWorkspaceLedger(ctx, { balance: ledger.balance, limit: ledger.limit, refundMicros: -differenceMicros })
+      await refundWorkspaceLedger(ctx, {
+        balance: ledger.balance, limit: limitOwnsSettlement ? ledger.limit : null, refundMicros: -differenceMicros,
+      })
     }
-    const now = Date.now()
     await ctx.db.patch(reservation._id, {
       estimatedCents: reservation.finalizedCents,
       finalizedCents: roundCreditAmount((estimatedMicros + (differenceMicros > 0 ? chargedMicros : differenceMicros)) / 10_000),

@@ -72,6 +72,6 @@ export function runQuestionIssue(questions: readonly RunQuestion[]): string | nu
 
 /** One question replies with just the answer; several pair each with its question. */
 export function formatRunAnswers(questions: readonly RunQuestion[], answers: ReadonlyArray<readonly string[] | undefined>): string {
-  if (questions.length === 1) return (answers[0] ?? []).join(', ')
+  if (questions.length === 1) return (answers[0] ?? []).join(', ') || (questions[0]?.optional ? '(skipped)' : '')
   return questions.map((question, index) => `${question.prompt}\n${answers[index]?.join(', ') || '(skipped)'}`).join('\n\n')
 }

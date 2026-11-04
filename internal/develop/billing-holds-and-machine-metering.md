@@ -9,6 +9,8 @@ How displayed credit relates to execution admission, reservations, settlement an
 
 Everything below is about Overlay credit.
 
+Harness catalog estimates settle promptly; late exact provider costs correct them once. Additional charges use only unreserved wallet credit within the original payer's current spend-limit period. A billing renewal prevents old corrections from changing the new wallet, and a refund never reduces a different spend-limit period. Full provider cost remains recorded even when a correction cannot be charged.
+
 ## Remaining credit
 
 `remaining = allowance + top-ups − spend − holds`.

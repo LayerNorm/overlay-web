@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Resume waiting runs when a person skips a single optional questionnaire question, instead of silently leaving the run paused.
+
+- Keep late model-cost corrections within unreserved credit and payer limits, and prevent old corrections from changing a renewed wallet while retaining the provider's full reported cost.
+
 - Upgrade Better Auth and its SSO integration to 1.7.16, including the November 3 security fixes for private deployments. Hosted WorkOS authentication and the dependency cooldown policy are unchanged.
 
 - Load complete public Harness text and tool records when expanding a response, with authenticated trace retrieval and separate full-payload storage. Compact chat snapshots no longer determine trace length; previously truncated historical payloads remain marked as legacy.
