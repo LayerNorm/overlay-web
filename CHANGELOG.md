@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Use the shared reasoning-enabled model picker in General settings, reusing workspace-scoped new-chat preferences without changing existing threads.
 - Add per-model reasoning preferences to chats and native agents, and expose only discovered Codex subscription reasoning capabilities.
 - Route the first Codex subscription cutover through a private, pinned CLIProxyAPI bridge; keep credentials in Overlay Vault, refresh near-expiry credentials under Overlay's fenced pre-dispatch lease (never inside Go inference), and preserve saved model selections through reconnect failures. Keep isolated Preview backend provisioning in the web service build.
 - Give each subscription its own model-picker group below Recommended, with a plug badge, scope label, independent favorites and reconnect action. Load the same connections in chat and agent pickers while preserving paid-access requirements, without silently replacing unavailable subscription selections.

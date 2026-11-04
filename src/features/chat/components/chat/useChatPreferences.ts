@@ -9,15 +9,8 @@ import {
   DEFAULT_VIDEO_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
-import {
-  chatReasoningStorageKey,
-  isPersistentChatReasoningScope,
-  normalizeChatModelSelection,
-  readStoredReasoningByModel,
-  writeStoredReasoningByModel,
-  type ChatReasoningScope,
-  type ReasoningByModel,
-} from '@/shared/chat/chat-model-prefs'
+import { normalizeChatModelSelection, type ChatReasoningScope } from '@/shared/chat/chat-model-prefs'
+import { useChatReasoningPreferences } from '@/components/providers/useChatReasoningPreferences'
 import { PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
 import { normalizeStoredModelId, safeSetLocalStorage } from './model-selection-utils'
 import {
@@ -56,15 +49,7 @@ export function useChatPreferences({
     : activeChatId && activeChatId !== PENDING_FIRST_CHAT_ID
       ? { type: 'thread', id: activeChatId }
       : { type: 'workspace', id: activeWorkspaceId ?? 'personal' }
-  const reasoningStorageKey = chatReasoningStorageKey(reasoningScope)
-  const persistReasoning = isPersistentChatReasoningScope(reasoningScope)
-  const [reasoningState, setReasoningState] = useState<{
-    storageKey: string
-    values: Record<string, ReasoningLevel>
-  }>(() => ({ storageKey: '', values: {} }))
-  const reasoningByModel: ReasoningByModel = reasoningState.storageKey === reasoningStorageKey
-    ? reasoningState.values
-    : {}
+  const { reasoningByModel, onModelReasoningChange, reasoningStorageKey } = useChatReasoningPreferences(reasoningScope)
   const reasoning = reasoningByModel[selectedActModel]
   const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>('text-to-video')
   const lastGeneratedImageUrlRef = useRef<string | null>(null)
@@ -133,25 +118,6 @@ export function useChatPreferences({
       setChatPrefsHydrated(true)
     }
   }, [])
-
-  useEffect(() => {
-    setReasoningState({
-      storageKey: reasoningStorageKey,
-      values: persistReasoning ? readStoredReasoningByModel(reasoningStorageKey) : {},
-    })
-  }, [persistReasoning, reasoningStorageKey])
-
-  const onModelReasoningChange = useCallback((modelId: string, level: ReasoningLevel | undefined) => {
-    if (!modelId) return
-    const current = reasoningState.storageKey === reasoningStorageKey
-      ? reasoningState.values
-      : persistReasoning ? readStoredReasoningByModel(reasoningStorageKey) : {}
-    const next = { ...current }
-    if (!level || level === 'provider-default') delete next[modelId]
-    else next[modelId] = level
-    if (persistReasoning) writeStoredReasoningByModel(reasoningStorageKey, next)
-    setReasoningState({ storageKey: reasoningStorageKey, values: next })
-  }, [persistReasoning, reasoningState, reasoningStorageKey])
 
   const setReasoning = useCallback((level: ReasoningLevel | undefined) => {
     onModelReasoningChange(selectedActModel, level)

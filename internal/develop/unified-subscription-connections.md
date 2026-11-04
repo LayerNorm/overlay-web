@@ -90,6 +90,12 @@ gateway inference paths are unchanged.
 
 ## Configuration and rollout
 
+General settings uses the shared model picker. Its reasoning controls edit the
+same browser-local, workspace-scoped preferences used by new chats; the help
+text states this scope. Existing threads keep their own snapshots. Model
+defaults retain their existing account-settings persistence. No additional
+reasoning defaults are written to global account settings.
+
 Configure `OVERLAY_CLIPROXYAPI_URL` as the private service binding and
 `OVERLAY_CLIPROXYAPI_SECRET` as a secret of at least 32 characters. Keep
 `OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS` limited to `codex` to enable this
