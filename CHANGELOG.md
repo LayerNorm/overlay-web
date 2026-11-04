@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Update lint and compiler cache actions, including read-only cache handling. (#373)
+
 - Update the Semgrep engine used by the existing security scan. (#374)
 
 - Improve artifact upload/download retry handling when GitHub rate-limits CI. (#375)
