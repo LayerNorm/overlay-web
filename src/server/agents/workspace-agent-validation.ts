@@ -1,5 +1,9 @@
-import type { WorkspaceAgentCreatureShape, WorkspaceAgentVisibility } from '@overlay/workspace-contracts'
-import { WORKSPACE_AGENT_CREATURE_SHAPES } from '@overlay/workspace-contracts'
+import type {
+  WorkspaceAgentCreatureShape,
+  WorkspaceAgentReasoningLevel,
+  WorkspaceAgentVisibility,
+} from '@overlay/workspace-contracts'
+import { WORKSPACE_AGENT_CREATURE_SHAPES, WORKSPACE_AGENT_REASONING_LEVELS } from '@overlay/workspace-contracts'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import { isSupportedAgentProviderId } from '@/shared/agents/provider-accounts'
 
@@ -16,6 +20,32 @@ export class WorkspaceAgentServiceError extends Error {
 export function assertValidOverlayPermissionMode(harness: string, permissionMode?: string) {
   if (harness === 'overlay' && permissionMode !== undefined && permissionMode !== 'ask' && permissionMode !== 'auto') {
     throw new WorkspaceAgentServiceError('validation', 'Overlay permission mode must be ask or auto')
+  }
+}
+
+function assertValidWorkspaceAgentReasoning(value?: string) {
+  if (value !== undefined && !(WORKSPACE_AGENT_REASONING_LEVELS as readonly string[]).includes(value)) {
+    throw new WorkspaceAgentServiceError('validation', 'Agent reasoning level is invalid')
+  }
+}
+
+export function workspaceAgentCreateModelFields(modelId: string, reasoning?: WorkspaceAgentReasoningLevel) {
+  assertValidWorkspaceAgentReasoning(reasoning)
+  return { modelId, ...(reasoning === undefined ? {} : { reasoning }) }
+}
+
+export function workspaceAgentUpdateModelFields(
+  { modelId, reasoning }: { modelId?: string; reasoning?: WorkspaceAgentReasoningLevel },
+  currentModelId: string,
+): { modelId?: string; reasoning?: WorkspaceAgentReasoningLevel } {
+  assertValidWorkspaceAgentReasoning(reasoning)
+  return {
+    ...(modelId === undefined ? {} : { modelId: required(modelId, 'Model', 200) }),
+    ...(reasoning !== undefined
+      ? { reasoning }
+      : modelId !== undefined && modelId !== currentModelId
+        ? { reasoning: 'provider-default' }
+        : {}),
   }
 }
 

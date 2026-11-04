@@ -24,6 +24,7 @@ Environment variables override `overlay.config.json`. Put secrets in the runtime
 
 | Provider family | Variables |
 | --- | --- |
+| Codex subscriptions | `OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS=codex`, `OVERLAY_CLIPROXYAPI_URL` (private service binding), and `OVERLAY_CLIPROXYAPI_SECRET` (32+ characters, web and private bridge only). Missing bridge configuration disables subscriptions; it never enables native Codex fallback. |
 | WorkOS auth | `WORKOS_CLIENT_ID`, `WORKOS_API_KEY`; dev fallback uses `DEV_WORKOS_CLIENT_ID`, `DEV_WORKOS_API_KEY`. |
 | Better Auth | `BETTER_AUTH_URL`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_DATABASE_URL`, `BETTER_AUTH_JWT_ISSUER`, `BETTER_AUTH_JWT_AUDIENCE`, `BETTER_AUTH_JWKS_URL`, and one connection registry using `BETTER_AUTH_CONNECTION_ID`, `BETTER_AUTH_CONNECTION_PRESET`, `BETTER_AUTH_CONNECTION_LABEL`, `BETTER_AUTH_CONNECTION_DOMAINS`, and the applicable connection client/issuer variables. See [Authentication](/self-hosting/configure/authentication/index). Legacy `BETTER_AUTH_DEFAULT_SSO_*` and `BETTER_AUTH_OIDC_*` variables exist for migration compatibility but must not be mixed with the connection registry. |
 | OIDC auth | `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_AUDIENCE`. Use these variables for Keycloak-compatible realm issuers too. |

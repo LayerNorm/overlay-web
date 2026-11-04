@@ -37,6 +37,7 @@ export function sendTextTurn({
   completeSessionForStream,
   createNewChat,
   reasoning,
+  reasoningByModelSnapshot,
   emptyRuntime,
   ensureConversationRuntime,
   isFirstMessage,
@@ -79,6 +80,7 @@ export function sendTextTurn({
   replyContext: ReplyContext
   selectedActModelSnapshot: string
   reasoning?: ReasoningLevel
+  reasoningByModelSnapshot: Readonly<Record<string, ReasoningLevel | undefined>>
   setIsFirstMessage: (isFirstMessage: boolean) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   snapshot: SubmittedComposerSnapshot
@@ -158,6 +160,7 @@ export function sendTextTurn({
       renameStarted: false,
       renameSeed: snapshot.text || payload.indexedFileNames[0] || 'Documents',
       activeChatTitleSnapshot: snapshot.activeChatTitleSnapshot,
+      reasoningByModelSnapshot,
     }
     chatId = PENDING_FIRST_CHAT_ID
     targetRuntime = previewRuntime
@@ -166,6 +169,7 @@ export function sendTextTurn({
     void createNewChat({
       clientId: conversationClientId,
       deferActivation: true,
+      reasoningByModelSnapshot,
     }).catch(() => {
       toast.error('Could not create chat. Your reply may still stream.')
     })

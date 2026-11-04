@@ -8,12 +8,14 @@ import type {
   ComputerSize,
   WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
+  WorkspaceAgentReasoningLevel,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle, toast } from '@overlay/ui/primitives'
 import { ChatModelPicker } from '@overlay/chat-react'
 import { MODEL_RECOMMENDATIONS, getModelsByIntelligence, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
 import { NEW_AGENT_DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import {
   AGENT_TOOL_GROUPS,
   AGENT_TOOL_PRESETS,
@@ -26,10 +28,10 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
-import { useWorkspaceTextModelAccess, buildSelectableTextModels } from '@/components/providers/useWorkspaceTextModelAccess'
+import { useWorkspaceTextModelAccess } from '@/components/providers/useWorkspaceTextModelAccess'
 import { useAuth } from '@/contexts/AuthContext'
 import type { AgentModelFieldProps } from './AgentEditorForm'
-import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
+import { buildWorkspaceAgentInput, workspaceAgentReasoningForSave } from '../lib/agent-editor-input'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
 import { FieldLabel } from './InfoTip'
 
@@ -42,6 +44,7 @@ export type NewAgentDraft = {
   computerSize: ComputerSize
   visibility: WorkspaceAgentVisibility
   modelId: string
+  reasoningByModel: Readonly<Record<string, WorkspaceAgentReasoningLevel | undefined>>
   toolGroups: ReadonlySet<string>
 }
 
@@ -55,6 +58,7 @@ export function initialNewAgentDraft(): NewAgentDraft {
     computerSize: 'default',
     visibility: 'creator',
     modelId: NEW_AGENT_DEFAULT_MODEL_ID,
+    reasoningByModel: {},
     toolGroups: new Set(AGENT_TOOL_PRESETS.everything),
   }
 }
@@ -92,8 +96,9 @@ const PRESET_SUMMARY: Record<AgentToolPreset, string> = {
   readonly: 'Read-only tools',
 }
 
-/** The draft's model when it is offered, else the default model. */
+/** Keep BYOK drafts unchanged; otherwise use the draft when offered or the first enabled model. */
 export function resolveDraftModelId(modelId: string, modelIds: readonly string[]): string {
+  if (isByokModelId(modelId)) return modelId
   return modelIds.includes(modelId) ? modelId : (modelIds[0] ?? modelId)
 }
 
@@ -136,6 +141,14 @@ function AdvancedSection({ draft, onChange, modelField }: {
               selectableTextModels={modelField.selectableTextModels}
               selectedActModel={draft.modelId}
               onToggleTextModel={(modelId) => onChange({ modelId })}
+              reasoning={draft.reasoningByModel[draft.modelId]}
+              onReasoningChange={(level) => onChange({
+                reasoningByModel: { ...draft.reasoningByModel, [draft.modelId]: level ?? 'provider-default' },
+              })}
+              reasoningByModel={draft.reasoningByModel}
+              onModelReasoningChange={(modelId, level) => onChange({
+                reasoningByModel: { ...draft.reasoningByModel, [modelId]: level ?? 'provider-default' },
+              })}
               favoriteScope={modelField.favoriteScope}
               modelRecommendations={MODEL_RECOMMENDATIONS}
               textModelsLoading={modelField.textModelsLoading}
@@ -284,26 +297,24 @@ function useNewAgentModelField(workspaceId: string | null, draftModelId: string)
     void getGatewayCatalogRevision()
     return getModelsByIntelligence()
   }, [revision])
-  const accessUnresolved = !modelAccess.entitlements
-  const restricted = modelAccess.loading || accessUnresolved
-  const selectableTextModels = useMemo(
-    () => restricted
-      ? buildSelectableTextModels({ effectiveOnlyAllowZdrModels: false })
-      : modelAccess.selectableTextModels,
-    [restricted, modelAccess.selectableTextModels],
-  )
+  const selectableTextModels = modelAccess.pickerTextModels
   const modelId = resolveDraftModelId(draftModelId, selectableTextModels.map((model) => model.id))
   const modelField = {
     favoriteScope: authUser?.id ?? null,
-    modelPickerLabel: allTextModels.find((model) => model.id === modelId)?.name ?? modelId,
+    modelPickerLabel: selectableTextModels.find((model) => model.id === modelId)?.name ?? allTextModels.find((model) => model.id === modelId)?.name ?? modelId,
     selectableTextModels,
-    textModelsLoading: false,
+    textModelsLoading: modelAccess.connectionsLoading,
   }
   return { modelField, modelId }
 }
 
 /** Creates the agent (and its computer when asked for), then refreshes the roster. */
-async function createAgentFromDraft(workspaceId: string, draft: NewAgentDraft, computersAvailable: boolean) {
+async function createAgentFromDraft(
+  workspaceId: string,
+  draft: NewAgentDraft,
+  computersAvailable: boolean,
+  reasoningModels: AgentModelFieldProps['selectableTextModels'],
+) {
   const toolGroups = new Set(draft.toolGroups)
   const withComputer = computersAvailable && draft.computer
   if (withComputer) toolGroups.add('computer')
@@ -316,6 +327,11 @@ async function createAgentFromDraft(workspaceId: string, draft: NewAgentDraft, c
       harnessLabel: '',
       adapterId: '',
       modelId: draft.modelId,
+      reasoning: workspaceAgentReasoningForSave({
+        modelId: draft.modelId,
+        reasoning: draft.reasoningByModel[draft.modelId],
+        reasoningModels,
+      }),
       avatarColor: draft.avatarColor,
       avatarShape: draft.avatarShape,
       enabledToolGroups: toolGroups,
@@ -368,7 +384,12 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
     if (!workspaceId || working || !isNewAgentDraftValid(draft)) return
     setBusy(true)
     try {
-      const { agent, computerError } = await createAgentFromDraft(workspaceId, draft, computersAvailable)
+      const { agent, computerError } = await createAgentFromDraft(
+        workspaceId,
+        draft,
+        computersAvailable,
+        modelField.selectableTextModels,
+      )
       setDraft(initialNewAgentDraft())
       toast.success('Agent created.')
       onCreated(agent, computerError)

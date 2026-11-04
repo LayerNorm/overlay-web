@@ -1,0 +1,58 @@
+diff --git a/internal/auth/codex/openai_auth.go b/internal/auth/codex/openai_auth.go
+--- a/internal/auth/codex/openai_auth.go
++++ b/internal/auth/codex/openai_auth.go
+@@ -38,0 +39,7 @@
++type RefreshHTTPError struct {
++	statusCode int
++	message    string
++}
++
++func (err *RefreshHTTPError) Error() string   { return err.message }
++func (err *RefreshHTTPError) StatusCode() int { return err.statusCode }
+@@ -66,0 +74,9 @@
++
++// NewCodexAuthWithHTTPClient creates a CodexAuth with a caller-provided HTTP client.
++func NewCodexAuthWithHTTPClient(cfg *config.Config, httpClient *http.Client) *CodexAuth {
++	auth := NewCodexAuth(cfg)
++	if httpClient != nil {
++		auth.httpClient = httpClient
++	}
++	return auth
++}
+@@ -252 +268,4 @@
+-		return nil, fmt.Errorf("token refresh failed with status %d: %s", resp.StatusCode, string(body))
++		return nil, &RefreshHTTPError{
++			statusCode: resp.StatusCode,
++			message:    fmt.Sprintf("token refresh failed with status %d: %s", resp.StatusCode, string(body)),
++		}
+diff --git a/internal/auth/codex/openai_auth_test.go b/internal/auth/codex/openai_auth_test.go
+--- a/internal/auth/codex/openai_auth_test.go
++++ b/internal/auth/codex/openai_auth_test.go
+@@ -68,0 +69,27 @@
++func TestRefreshTokensReturnsTypedStatusError(t *testing.T) {
++	resetCodexRefreshGroupForTest()
++	t.Cleanup(resetCodexRefreshGroupForTest)
++	auth := &CodexAuth{
++		httpClient: &http.Client{
++			Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
++				return &http.Response{
++					StatusCode: http.StatusTooManyRequests,
++					Body:       io.NopCloser(strings.NewReader("private provider text")),
++					Header:     make(http.Header),
++					Request:    req,
++				}, nil
++			}),
++		},
++	}
++	_, err := auth.RefreshTokens(context.Background(), "typed-status-429-refresh")
++	if err == nil {
++		t.Fatal("expected refresh error")
++	}
++	statusErr, ok := err.(interface{ StatusCode() int })
++	if !ok || statusErr.StatusCode() != http.StatusTooManyRequests {
++		t.Fatalf("refresh error status = %v, want %d", statusErr, http.StatusTooManyRequests)
++	}
++	if got, want := err.Error(), "token refresh failed with status 429: private provider text"; got != want {
++		t.Fatalf("refresh error = %q, want %q", got, want)
++	}
++}

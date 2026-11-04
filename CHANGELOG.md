@@ -6,6 +6,16 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Upgrade Better Auth and its SSO integration to 1.7.16, including the November 3 security fixes for private deployments. Hosted WorkOS authentication and the dependency cooldown policy are unchanged.
 
+- Preserve Codex event-stream framing and optional function-tool arguments so connected subscription responses can complete in chats and native agents.
+
+- Recognize Codex Pro Lite/Max catalogs using explicit pinned plan membership, and preserve newly authorized credentials when catalog discovery is unavailable while continuing to block unknown-plan inference.
+
+- Keep provider sign-in dialogs scrollable within short viewports so the connection action remains reachable.
+
+- Use the shared reasoning-enabled model picker in General settings, reusing workspace-scoped new-chat preferences without changing existing threads.
+- Add per-model reasoning preferences to chats and native agents, and expose only discovered Codex subscription reasoning capabilities.
+- Route the first Codex subscription cutover through a private, pinned CLIProxyAPI bridge; keep credentials in Overlay Vault, refresh near-expiry credentials under Overlay's fenced pre-dispatch lease (never inside Go inference), and preserve saved model selections through reconnect failures. Keep isolated Preview backend provisioning in the web service build.
+- Give each subscription its own model-picker group below Recommended, with a plug badge, scope label, independent favorites and reconnect action. Load the same connections in chat and agent pickers while preserving paid-access requirements, without silently replacing unavailable subscription selections.
 - Keep agent progress visible with brief metered updates and a durable, sanitized transcript that survives workflow handoffs and failures. Uncertain tool outcomes stop further actions and show a safe diagnostic instead of automatically repeating work. Empty progress-only replies cannot abort otherwise valid work. Existing paid-workspace admission, selected models, funding waits and renewable execution leases remain enforced.
 - Simplify agent Computer actions and correctly show the current operator and stopped state, retain document attachment chips after reloading a thread, and hide internal agent bookkeeping from saved responses. Computer artifact upload permissions now expire within 15 minutes independently of the task lease.
 
@@ -74,7 +84,6 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Require a plain-language changelog entry in every PR, including documentation, dependency, test and CI changes, and a functionality summary with deployment status after each merge.
 
 - Reach the first model call in personal Chat and Work runs with 8 durable steps instead of 15. The initial read and execution claim share one step; delivery attach, reauthorization and request accounting share another. Model preparation reuses the state read at the model boundary and reads catalog limits once per model, so later model calls take 4 steps instead of 7. Every authorization, budget and reservation check still runs.
-
 - Explain AI SDK Harness failures in plain language, including provider HTTP failures, invalid inputs and tool approvals, missing outputs, and exhausted SDK retries. Preserve partial-stream warnings and nested SDK causes without exposing prompts, tool inputs, or provider payloads; retry, fallback, and billing behavior are unchanged.
 
 - Prepare paid workspaces for paid-first execution with verified invoice funding and an operator-only, dry-run-first migration that preserves existing balances. Execution access and free-tier infrastructure are unchanged in this preparation release.

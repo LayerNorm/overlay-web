@@ -131,6 +131,7 @@ function serviceFor(
           instructions: input.instructions,
           harness: input.harness,
           modelId: input.modelId,
+          ...(input.reasoning === undefined ? {} : { reasoning: input.reasoning }),
           ...(input.permissionMode ? { permissionMode: input.permissionMode } : {}),
           ...(input.effort ? { effort: input.effort } : {}),
           avatarColor: input.avatarColor,
@@ -448,6 +449,65 @@ test('adapter-owned permission and effort ids persist on create and update, with
     input: { permissionMode: ' ' } }), /Permission mode/)
   await assert.rejects(fixture.service.update({ actorUserId: 'user-1', workspaceId: WORKSPACE_ID, agentId: created.id,
     input: { effort: 'x'.repeat(201) } }), /Effort/)
+})
+
+test('native agent reasoning validates, persists, clears, and resets when its model changes', async () => {
+  const fixture = serviceFor(CREATOR_PRINCIPAL_ID, 'member')
+  const created = await fixture.service.create({
+    actorUserId: 'user-1',
+    workspaceId: WORKSPACE_ID,
+    input: { name: 'Reasoning agent', instructions: 'Do the work', modelId: 'model-a', reasoning: 'high' },
+  })
+  assert.equal(created.reasoning, 'high')
+
+  const unchanged = await fixture.service.update({
+    actorUserId: 'user-1',
+    workspaceId: WORKSPACE_ID,
+    agentId: created.id,
+    input: { permissionMode: 'auto' },
+  })
+  assert.equal(unchanged?.reasoning, 'high')
+
+  const reset = await fixture.service.update({
+    actorUserId: 'user-1',
+    workspaceId: WORKSPACE_ID,
+    agentId: created.id,
+    input: { modelId: 'model-b' },
+  })
+  assert.equal(reset?.reasoning, 'provider-default')
+
+  const restored = await fixture.service.update({
+    actorUserId: 'user-1',
+    workspaceId: WORKSPACE_ID,
+    agentId: created.id,
+    input: { reasoning: 'medium' },
+  })
+  assert.equal(restored?.reasoning, 'medium')
+
+  const cleared = await fixture.service.update({
+    actorUserId: 'user-1',
+    workspaceId: WORKSPACE_ID,
+    agentId: created.id,
+    input: { reasoning: 'provider-default' },
+  })
+  assert.equal(cleared?.reasoning, 'provider-default')
+  await assert.rejects(fixture.service.update({
+    actorUserId: 'user-1',
+    workspaceId: WORKSPACE_ID,
+    agentId: created.id,
+    input: { reasoning: 'unsupported' as never },
+  }), /reasoning level is invalid/i)
+})
+
+test('legacy native agents without a reasoning field remain provider-managed', async () => {
+  const legacy = agentFixture({ id: 'legacy-without-reasoning' })
+  const fixture = serviceFor(CREATOR_PRINCIPAL_ID, 'member', [legacy])
+  const agent = await fixture.service.get({
+    actorUserId: 'user-1',
+    workspaceId: WORKSPACE_ID,
+    agentId: legacy.id,
+  })
+  assert.equal(agent.reasoning, undefined)
 })
 
 test('Overlay permission mode accepts Ask and Auto and rejects connected-harness values', async () => {

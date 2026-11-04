@@ -3,6 +3,7 @@
 import { Button, toast } from '@overlay/ui/primitives'
 
 import { useCallback, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { AlertCircle, KeyRound, Loader2, Plus } from 'lucide-react'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import {
@@ -28,7 +29,17 @@ export function ProviderConnectionsSetting() {
   const { connections, isLoading, error, refresh, updateConnection } = useByokModels()
   const { models: gatewayModels, isLoading: gatewayLoading, refresh: refreshGateway } = useGatewayModelCatalog()
   const { settings, isSaving, updateSettings } = useAppSettings()
-  const [dialog, setDialog] = useState<DialogState>(null)
+  const [openedDialog, setDialog] = useState<DialogState>(null)
+  const reconnectId = useSearchParams()?.get('reconnect')
+  const [dismissedReconnectId, setDismissedReconnectId] = useState<string | null>(null)
+  const reconnectTarget = reconnectId && reconnectId !== dismissedReconnectId
+    ? connections.find((connection) => connection._id === reconnectId && connection.authKind === 'subscription')
+    : undefined
+  const dialog: DialogState = openedDialog ?? (reconnectTarget ? { mode: 'edit', connection: reconnectTarget } : null)
+  const closeDialog = () => {
+    setDialog(null)
+    setDismissedReconnectId(reconnectId ?? null)
+  }
   const [deleteTarget, setDeleteTarget] = useState<ByokConnectionRow | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -134,7 +145,7 @@ export function ProviderConnectionsSetting() {
       {dialog?.mode === 'add' || (dialog?.mode === 'edit' && dialog.connection.providerId.startsWith('subscription:')) ? (
         <ConnectProviderDialog
           connection={dialog.mode === 'edit' ? dialog.connection : undefined}
-          onClose={() => setDialog(null)}
+          onClose={closeDialog}
           onConnected={refresh}
         />
       ) : dialog ? (

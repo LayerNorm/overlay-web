@@ -1,6 +1,8 @@
 import 'server-only'
 
 import type { NativeHarnessWorkflowInput } from './native-workflow-input'
+import type { HarnessModelSettings } from './ports'
+import type { WorkspaceAgentReasoningLevel } from '@overlay/workspace-contracts'
 import { buildAgentSystemPrompt } from '@/server/agents/workspace-agent-invocation'
 import { prepareWorkspaceAgentInputs } from '@/server/agents/workspace-agent-preparation'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -22,6 +24,12 @@ type NativeInputArgs = {
   expectedSurfaceWorkflowRunId?: string
 }
 type PreparedWorkspaceInputs = Awaited<ReturnType<typeof prepareWorkspaceAgentInputs>>
+
+export function nativeWorkflowSettingsForReasoning(
+  reasoning?: WorkspaceAgentReasoningLevel,
+): HarnessModelSettings | undefined {
+  return reasoning && reasoning !== 'provider-default' ? { reasoning } : undefined
+}
 
 function assertNativeRunIdentity(run: AgentRun | null, args: NativeInputArgs): asserts run is AgentRun {
   if (!run || run.id !== args.runId || run.userId !== args.actorUserId
@@ -100,6 +108,7 @@ function buildNativeWorkflowInput(
     channelVisibility: (room.conversation as { channelVisibility?: string | null }).channelVisibility,
     humanParticipants: room.participants.filter(participant => participant.principalType === 'human').length,
   })
+  const settings = nativeWorkflowSettingsForReasoning(prepared.agent.reasoning)
   return {
     access: {
       actorUserId: run.userId,
@@ -132,6 +141,7 @@ function buildNativeWorkflowInput(
       isDefaultMaster: Boolean(prepared.agent.isDefault),
     }),
     messages: prepared.turnContext.messages,
+    ...(settings ? { settings } : {}),
   }
 }
 

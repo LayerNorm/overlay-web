@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
+import { getModelsByIntelligence, registerByokModels } from '@/shared/ai/gateway/model-data'
 import { isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 import {
   buildPickerTextModels,
@@ -90,4 +90,27 @@ test('all text models, including BYOK, lock when access is restricted', () => {
   assert.equal(isTextModelLocked('anthropic/claude-opus-4.7', true), true)
   assert.equal(isTextModelLocked('byok/personal/gpt-5', true), true)
   assert.equal(isTextModelLocked('anthropic/claude-opus-4.7', false), false)
+})
+
+test('registered subscription models remain visible while respecting paid access', () => {
+  registerByokModels([{ _id: 'personal', providerId: 'subscription:codex', authKind: 'subscription', subscriptionProvider: 'codex', endpoint: '', displayName: 'ChatGPT', enabledModelIds: ['sol'], status: 'active', isDefault: false, isDeletable: true }])
+  try {
+    const modelId = 'byok/personal/sol'
+    const pickerModels = buildPickerTextModels({ effectiveOnlyAllowZdrModels: false })
+    const restrictedAccess = resolveEntitlementDerived(null, true, false)
+    const fundedAccess = resolveEntitlementDerived({
+      tier: 'pro',
+      planKind: 'paid',
+      creditsUsed: 0,
+      creditsTotal: 100,
+      budgetTotalCents: 10_000,
+      budgetRemainingCents: 10_000,
+    }, true, false)
+
+    assert.ok(pickerModels.some((model) => model.id === modelId))
+    assert.equal(isTextModelLocked(modelId, restrictedAccess.isModelAccessRestricted), true)
+    assert.equal(isTextModelLocked(modelId, fundedAccess.isModelAccessRestricted), false)
+  } finally {
+    registerByokModels([])
+  }
 })

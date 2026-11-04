@@ -3,6 +3,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ChatModel } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
+import { byokConnectionsToChatModels } from '@/shared/ai/gateway/byok-model-conversion'
+import { useByokModels } from './useByokModels'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
@@ -103,30 +105,38 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
   onlyAllowZdrModels: boolean
   onEntitlementsFetched?: (data: T) => void
 }) {
+  const { connections, isLoading: connectionsLoading } = useByokModels()
   const [entitlements, setEntitlements] = useState<T | null>(null)
   const [loading, setLoading] = useState(true)
   const bootstrapEntitlementsKeyRef = useRef<string | null>(null)
   const derived = resolveEntitlementDerived(entitlements, billingEnabled, onlyAllowZdrModels)
   const selectableTextModels = useMemo(() => {
+    void connections
     void catalogRevision
     void modelCatalogVersion
-    return buildSelectableTextModels(derived)
+    return buildSelectableTextModels({
+      effectiveOnlyAllowZdrModels: derived.effectiveOnlyAllowZdrModels,
+    })
   }, [
+    connections,
     catalogRevision,
     derived.effectiveOnlyAllowZdrModels,
-    derived.isModelAccessRestricted,
     modelCatalogVersion,
   ])
   const pickerTextModels = useMemo(() => {
     void catalogRevision
     void modelCatalogVersion
-    return buildPickerTextModels({
+    const available = buildPickerTextModels({
       effectiveOnlyAllowZdrModels: derived.effectiveOnlyAllowZdrModels,
     })
+    const unavailable = byokConnectionsToChatModels(connections, { includeUnavailable: true })
+      .filter((model) => model.subscription?.unavailable)
+      .filter((model) => !derived.effectiveOnlyAllowZdrModels || model.supportsZeroDataRetention)
+    return [...available, ...unavailable]
   }, [
+    connections,
     catalogRevision,
     derived.effectiveOnlyAllowZdrModels,
-    derived.isModelAccessRestricted,
     modelCatalogVersion,
   ])
 
@@ -182,6 +192,7 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
     ...derived,
     entitlements,
     loading,
+    connectionsLoading,
     loadSubscription,
     pickerTextModels,
     selectableTextModels,

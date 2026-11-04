@@ -5,6 +5,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import type {
   WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
+  WorkspaceAgentReasoningLevel,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 import {
@@ -36,6 +37,9 @@ export function useAgentEditorForm({
   const [description, setDescription] = useState(initial.description)
   const [instructions, setInstructions] = useState(initial.instructions)
   const [modelId, setModelId] = useState<string>(initial.modelId)
+  const [reasoningByModel, setReasoningByModel] = useState<Record<string, WorkspaceAgentReasoningLevel>>(() =>
+    initial.reasoning && initial.reasoning !== 'provider-default' ? { [initial.modelId]: initial.reasoning } : {},
+  )
   const [avatarColor, setAvatarColor] = useState(initial.avatarColor)
   const [avatarShape, setAvatarShape] = useState<WorkspaceAgentCreatureShape>(initial.avatarShape)
   const [visibility, setVisibility] = useState<WorkspaceAgentVisibility>(initial.visibility)
@@ -74,6 +78,9 @@ export function useAgentEditorForm({
       setDescription(agent.description ?? '')
       setInstructions(agent.instructions)
       setModelId(agent.modelId)
+      setReasoningByModel(agent.reasoning && agent.reasoning !== 'provider-default'
+        ? { [agent.modelId]: agent.reasoning }
+        : {})
       setAvatarColor(agent.avatarColor ?? AVATAR_FALLBACK_COLOR)
       setAvatarShape(agent.avatarShape ?? 'circle')
       setVisibility(agent.visibility)
@@ -115,6 +122,18 @@ export function useAgentEditorForm({
     }
   }, [agent, activeWorkspaceId])
 
+  const onModelReasoningChange = useCallback((reasoningModelId: string, level: WorkspaceAgentReasoningLevel | undefined) => {
+    markDirty()
+    setReasoningByModel(current => ({
+      ...current,
+      [reasoningModelId]: level ?? 'provider-default',
+    }))
+  }, [markDirty])
+  const setReasoning = useCallback((level: WorkspaceAgentReasoningLevel | undefined) => {
+    onModelReasoningChange(modelId, level)
+  }, [modelId, onModelReasoningChange])
+  const reasoning = reasoningByModel[modelId] ?? (agent?.modelId === modelId ? agent.reasoning : undefined)
+
   return {
     name,
     setName,
@@ -124,6 +143,10 @@ export function useAgentEditorForm({
     setInstructions,
     modelId,
     setModelId,
+    reasoningByModel,
+    onModelReasoningChange,
+    setReasoning,
+    reasoning,
     avatarColor,
     setAvatarColor,
     avatarShape,
