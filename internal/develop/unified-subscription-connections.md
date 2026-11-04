@@ -108,5 +108,9 @@ rewrite. Hosting compatibility, preview behavior, cold starts, real-account
 refresh, and end-to-end hosted streaming require isolated preview validation;
 local tests and builds do not establish those hosted results.
 
+The provider connection dialog stays within the dynamic viewport and scrolls
+when its provider list exceeds the available height, keeping sign-in actions
+reachable on short desktop and mobile screens.
+
 Other subscription providers, workspace-scope schema work, and broader catalog
 entitlement verification remain future work.
