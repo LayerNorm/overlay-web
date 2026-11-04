@@ -2,6 +2,7 @@ import type { WorkflowAgentStreamResult } from '@ai-sdk/workflow'
 import type { ModelMessage, StepResult, ToolSet } from 'ai'
 import { sleep } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { createHarnessDiagnostic, harnessDiagnosticMessage, stableHarnessDiagnosticId } from '@overlay/agent-runtime/harness-diagnostic'
 import type { HarnessApprovalRequest, HarnessExecutionPorts } from './ports'
 import { readHarnessState, type HarnessExecutionReference } from './state-steps'
 
@@ -84,8 +85,16 @@ export async function terminateOnProviderFailure(
 ): Promise<boolean> {
   if (!['completed', 'failed', 'cancelled'].includes(state.status)
     && (finishReason === 'content-filter' || finishReason === 'error' || finishReason === 'other')) {
+    const operationId = state.latestReceipt?.id ?? `provider-failure:${segment}`
+    const diagnostic = createHarnessDiagnostic({
+      diagnosticId: stableHarnessDiagnosticId(state.runId, operationId, state.revision),
+      code: finishReason === 'content-filter' ? 'PROVIDER_REJECTED' : 'PROVIDER_UNAVAILABLE',
+      stage: 'model',
+      operationId,
+      occurredAt: Date.now(),
+    })
     await ports.apply(`provider-failure:${segment}`, {
-      type: 'terminate', status: 'failed', reason: `The provider could not finish the response (${finishReason}).`,
+      type: 'terminate', status: 'failed', reason: harnessDiagnosticMessage(diagnostic), diagnostic,
     })
     return true
   }

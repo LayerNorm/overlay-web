@@ -1,5 +1,8 @@
+import { vi } from 'vitest'
 import { expect, test } from 'vitest'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
+
+vi.mock('server-only', () => ({}))
 
 const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'
 

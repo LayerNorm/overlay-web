@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-10-20T19:59:20.711Z",
+  "generatedAt": "2026-11-04T01:56:39.316Z",
   "budgets": {
     "maxProductionFileLoc": 500,
     "maxFunctionComplexity": 25,
@@ -37,8 +37,8 @@
     },
     {
       "file": "packages/overlay-agent-runtime/src/harness-state.ts",
-      "loc": 521,
-      "complexity": 244,
+      "loc": 1147,
+      "complexity": 500,
       "recordedAt": "2026-10-27T16:05:34.734Z"
     },
     {
@@ -73,8 +73,8 @@
     },
     {
       "file": "packages/overlay-chat-core/src/messages.ts",
-      "loc": 649,
-      "complexity": 220,
+      "loc": 646,
+      "complexity": 214,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -211,8 +211,8 @@
     },
     {
       "file": "src/features/agents/components/AgentEditorForm.tsx",
-      "loc": 1012,
-      "complexity": 116,
+      "loc": 1099,
+      "complexity": 136,
       "recordedAt": "2026-09-19T00:40:49.060Z"
     },
     {
@@ -379,8 +379,8 @@
     },
     {
       "file": "src/server/conversations/ConvexConversationCollaborationRepository.ts",
-      "loc": 597,
-      "complexity": 32,
+      "loc": 649,
+      "complexity": 33,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -388,6 +388,12 @@
       "loc": 792,
       "complexity": 125,
       "recordedAt": "2026-09-11T05:17:27.991Z"
+    },
+    {
+      "file": "src/server/harness/runner.ts",
+      "loc": 583,
+      "complexity": 163,
+      "recordedAt": "2026-11-02T04:15:06.216Z"
     },
     {
       "file": "src/server/tools/mcp-tools.ts",
@@ -472,7 +478,6 @@
     "src/server/knowledge/mention-resolver.ts#resolveOne": 1,
     "src/shared/agents/elicitation-schema.ts#matchesPropertySchema": 1,
     "packages/overlay-billing/src/adapters/stripe-billing-provider.ts#verifyPaidPlanCheckoutSession": 1,
-    "packages/overlay-chat-core/src/messages.ts#errorLabel": 1,
     "packages/overlay-chat-react/src/components/MediaSlotOutput.tsx#MediaSlotOutput": 1,
     "src/server/app-api/v1/conversations/act/turn-authorization.ts#authorizeActRequest": 1,
     "src/server/app-api/v1/conversations/message/route.ts#POST": 1,
@@ -482,7 +487,14 @@
     "src/server/app-api/v1/conversations/act/extension-plan/route.ts#POST": 1,
     "packages/overlay-chat-core/src/tool-labels.ts#getDescriptiveToolLabel": 1,
     "src/components/agents/AgentAccountDialog.tsx#AccountDialog": 1,
-    "src/server/tools/mcp-tools.ts#execute": 1
+    "src/server/tools/mcp-tools.ts#execute": 1,
+    "src/server/harness/harness-diagnostics.ts#harnessDiagnosticForFailure": 1,
+    "src/server/harness/runner.ts#runOverlayHarness": 1,
+    "src/server/harness/harness-transcript.ts#readSettledHarnessTranscript": 1,
+    "packages/overlay-chat-core/src/messages.ts#errorLabel": 1,
+    "src/server/workflows/personal-harness.ts#personalHarnessWorkflow": 1,
+    "src/shared/agents/native-agent-error.ts#readNativeAgentError": 1,
+    "src/server/harness/native-delivery-steps.ts#finishNativeHarnessDelivery": 1
   },
   "routeHandlersOverBudget": [
     {
@@ -560,6 +572,76 @@
   ],
   "zeroFanInFiles": [
     {
+      "file": "packages/overlay-agent-bridge-protocol/src/drive-recovery.ts",
+      "layer": "packages/overlay-agent-bridge-protocol",
+      "loc": 14,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-bridge-protocol/src/drive.ts",
+      "layer": "packages/overlay-agent-bridge-protocol",
+      "loc": 77,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/acp-settings.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 49,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/acpx-session-identity.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 54,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/action-title.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 7,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/agent-options.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 42,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/cli.mjs",
+      "layer": "packages/overlay-agent-host",
+      "loc": 8,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/config.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 84,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/host-capabilities.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 54,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/host-heartbeat.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 31,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
       "file": "packages/overlay-agent-host/src/index.ts",
       "layer": "packages/overlay-agent-host",
       "loc": 18,
@@ -567,39 +649,144 @@
       "reason": "Package public API barrel; consumers may import it through package exports."
     },
     {
+      "file": "packages/overlay-agent-host/src/launchd.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 108,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/native-restoration.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 22,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/native-start-barrier.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 31,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/ordered-acp-updates.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 30,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/outbox-packing.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 39,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/preview-hosting-access.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 35,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/preview-hosting.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 16,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/preview-mcp-relay.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 89,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/process-group.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 26,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/run-preparation.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 18,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/runtime-drive-controller.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 97,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/runtime-session-admission.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 43,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/runtime-shutdown.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 25,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/runtime-terminal-boundary.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 40,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/runtime-version.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 9,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-agent-host/src/text-coalescer.ts",
+      "layer": "packages/overlay-agent-host",
+      "loc": 45,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-chat-react/scripts/check-transcript-boundaries.mjs",
+      "layer": "packages/overlay-chat-react",
+      "loc": 167,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-chat-react/src/context/chat-settings.ts",
+      "layer": "packages/overlay-chat-react",
+      "loc": 1,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "packages/overlay-chat-react/src/lib/shim-incomplete-markdown.ts",
+      "layer": "packages/overlay-chat-react",
+      "loc": 1,
+      "classification": "review",
+      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
       "file": "packages/overlay-ui/postcss.config.cjs",
       "layer": "packages/overlay-ui",
       "loc": 5,
       "classification": "keep",
       "reason": "Package-local build config consumed by package tooling."
-    },
-    {
-      "file": "src/app/.well-known/apple-app-site-association/route.ts",
-      "layer": "src/app routes",
-      "loc": 36,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/.well-known/assetlinks.json/route.ts",
-      "layer": "src/app routes",
-      "loc": 31,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/.well-known/oauth-protected-resource/api/mcp/route.ts",
-      "layer": "src/app routes",
-      "loc": 10,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/.well-known/oauth-protected-resource/route.ts",
-      "layer": "src/app routes",
-      "loc": 10,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
       "file": "src/app/(app)/chat/loading.tsx",
@@ -752,6 +939,34 @@
       "file": "src/app/(marketing)/terms/page.tsx",
       "layer": "src/app routes",
       "loc": 95,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/.well-known/apple-app-site-association/route.ts",
+      "layer": "src/app routes",
+      "loc": 36,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/.well-known/assetlinks.json/route.ts",
+      "layer": "src/app routes",
+      "loc": 31,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/.well-known/oauth-protected-resource/api/mcp/route.ts",
+      "layer": "src/app routes",
+      "loc": 10,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/app/.well-known/oauth-protected-resource/route.ts",
+      "layer": "src/app routes",
+      "loc": 10,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -2569,223 +2784,6 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
-      "file": "src/instrumentation-client.ts",
-      "layer": "other",
-      "loc": 61,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/instrumentation.ts",
-      "layer": "other",
-      "loc": 45,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "packages/overlay-agent-bridge-protocol/src/drive-recovery.ts",
-      "layer": "packages/overlay-agent-bridge-protocol",
-      "loc": 14,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-bridge-protocol/src/drive.ts",
-      "layer": "packages/overlay-agent-bridge-protocol",
-      "loc": 77,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/acp-settings.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 49,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/acpx-session-identity.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 54,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/action-title.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 7,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/agent-options.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 42,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/cli.mjs",
-      "layer": "packages/overlay-agent-host",
-      "loc": 8,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/config.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 84,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/host-capabilities.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 54,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/host-heartbeat.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 31,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/launchd.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 108,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/native-restoration.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 22,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/native-start-barrier.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 31,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/ordered-acp-updates.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 30,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/outbox-packing.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 39,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/preview-hosting-access.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 35,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/preview-hosting.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 16,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/preview-mcp-relay.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 89,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/process-group.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 26,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/run-preparation.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 18,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/runtime-drive-controller.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 97,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/runtime-session-admission.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 43,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/runtime-shutdown.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 25,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/runtime-terminal-boundary.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 40,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/runtime-version.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 9,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-agent-host/src/text-coalescer.ts",
-      "layer": "packages/overlay-agent-host",
-      "loc": 45,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-chat-react/scripts/check-transcript-boundaries.mjs",
-      "layer": "packages/overlay-chat-react",
-      "loc": 167,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-chat-react/src/context/chat-settings.ts",
-      "layer": "packages/overlay-chat-react",
-      "loc": 1,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
-      "file": "packages/overlay-chat-react/src/lib/shim-incomplete-markdown.ts",
-      "layer": "packages/overlay-chat-react",
-      "loc": 1,
-      "classification": "review",
-      "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
-    },
-    {
       "file": "src/components/useVisibleReconciliation.ts",
       "layer": "src/components",
       "loc": 34,
@@ -2826,6 +2824,20 @@
       "loc": 16,
       "classification": "review",
       "reason": "No static fan-in found. Classify as keep, merge, or delete before changing."
+    },
+    {
+      "file": "src/instrumentation-client.ts",
+      "layer": "other",
+      "loc": 61,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
+    },
+    {
+      "file": "src/instrumentation.ts",
+      "layer": "other",
+      "loc": 45,
+      "classification": "keep",
+      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
       "file": "src/server/agents/provider-accounts/index.ts",

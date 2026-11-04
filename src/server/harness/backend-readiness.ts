@@ -15,4 +15,6 @@ export function isHarnessBackendReady(settings: AppSettings | null): boolean {
     && settings.harnessModelRecoveryRevision === 'settled-retry-v1'
     && 'harnessArtifactPublicationRevision' in settings
     && settings.harnessArtifactPublicationRevision === 'binary-artifact-v1'
+    && 'harnessTranscriptRevision' in settings
+    && settings.harnessTranscriptRevision === 'settled-public-v1'
 }

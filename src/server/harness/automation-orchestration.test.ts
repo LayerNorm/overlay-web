@@ -85,7 +85,7 @@ beforeEach(() => {
   mocks.getAppSettings.mockResolvedValue({
     harnessRevision: 'overlay-harness-v1',
     harnessModelRecoveryRevision: 'settled-retry-v1',
-    harnessArtifactPublicationRevision: 'binary-artifact-v1',
+    harnessArtifactPublicationRevision: 'binary-artifact-v1', harnessTranscriptRevision: 'settled-public-v1',
   })
   mocks.assertSource.mockResolvedValue(source)
   mocks.ensureConversation.mockResolvedValue({ conversationId: 'conversation', workspaceId: 'workspace' })

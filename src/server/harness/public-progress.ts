@@ -1,0 +1,3 @@
+export const HARNESS_PUBLIC_PROGRESS_INSTRUCTION = 'This is a public progress update, not the final answer. In one or two brief sentences, explain the next action before work begins, or summarize the observed results and next action after a tool batch. If a tool failed, explain the practical impact and your next approach. Use only facts in the conversation and tool results. Do not expose private reasoning, internal identifiers, raw arguments, credentials, or implementation bookkeeping. Do not claim that work is complete. Do not call tools in this update. The task controller will resume work after this message.'
+
+export const HARNESS_SILENT_TOOL_BATCHES = 3

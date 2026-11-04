@@ -27,6 +27,7 @@ export function personalHarnessPolicy(input: {
   const workspaceFunded = input.paid && !byok && !hasExplicitSpendCap
   const versioned = !hasExplicitSpendCap
   return {
+    publicProgressVersion: 1,
     actorUserId: input.actorUserId,
     workspaceId: input.workspaceId,
     ...(versioned ? {

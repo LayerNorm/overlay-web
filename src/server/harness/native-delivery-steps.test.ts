@@ -1,5 +1,6 @@
 import { beforeEach, expect, test, vi } from 'vitest'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
+import { createHarnessDiagnostic, harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 import { finishNativeHarnessDelivery, attachNativeHarnessDelivery, projectNativeHarnessWait } from './native-delivery-steps'
 import { buildNativeHarnessDelivery } from './native-tool-metrics'
 
@@ -142,7 +143,10 @@ test('native failure keeps streamed partial content and cancellation is fenced',
   mocks.get.mockResolvedValue({ ...state, status: 'failed', terminalReason: 'Failed.' })
   mocks.listMessages.mockResolvedValue([{ ...assistantMessage, content: 'Partial streamed response' }])
   await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false })
-  expect(mocks.failMessage).toHaveBeenCalledWith(expect.not.objectContaining({ content: expect.anything() }))
+  expect(mocks.failMessage).toHaveBeenCalledWith(expect.objectContaining({
+    content: 'Answer',
+    parts: delivery.parts,
+  }))
   expect(mocks.fail).toHaveBeenCalledOnce()
   mocks.get.mockResolvedValue({ ...state, status: 'cancelled' })
   await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false }, new Set(['get_note']))
@@ -152,7 +156,7 @@ test('native failure keeps streamed partial content and cancellation is fenced',
   expect(mocks.transition).toHaveBeenCalledWith(expect.objectContaining({ status: 'cancelled', expectedWorkflowRunId: 'workflow' }))
 })
 
-test('native failure with empty content writes the friendly quota failure copy', async () => {
+test('native failure with empty streamed content preserves reconstructed answer text', async () => {
   mocks.get.mockResolvedValue({
     ...state, status: 'failed', terminalReason: 'free_tier_limit_exceeded: weekly agent limit reached',
   })
@@ -160,19 +164,39 @@ test('native failure with empty content writes the friendly quota failure copy',
   expect(mocks.listMessages).toHaveBeenCalledWith({
     actorUserId: 'user', conversationId: 'room', messageId: 'answer', workspaceId: 'workspace', limit: 1,
   })
-  expect(mocks.agent).toHaveBeenCalledWith({ actorUserId: 'user', workspaceId: 'workspace', agentId: 'agent' })
+  expect(mocks.agent).not.toHaveBeenCalled()
   expect(mocks.failMessage).toHaveBeenCalledWith(expect.objectContaining({
-    content: 'Agent could not start this turn. Your message was saved; please try sending it again.',
+    content: 'Answer',
   }))
   expect(mocks.failMessage.mock.calls[0][0].content).not.toContain('free_tier_limit_exceeded')
   expect(mocks.fail).toHaveBeenCalledOnce()
 })
 
+test.each(['MODEL_OUTCOME_UNKNOWN', 'TOOL_OUTCOME_UNKNOWN', 'UNKNOWN'] as const)(
+  'empty native failure uses safe %s guidance rather than inviting another send', async (code) => {
+    const diagnostic = createHarnessDiagnostic({
+      diagnosticId: 'diagnostic', code, stage: 'model', occurredAt: 1,
+    })
+    mocks.get.mockResolvedValue({ ...state, status: 'failed', diagnostic })
+    await finishNativeHarnessDelivery(access, { ...delivery, content: '', parts: [] }, { memoryEnabled: false })
+    expect(mocks.failMessage).toHaveBeenCalledWith(expect.objectContaining({
+      content: harnessDiagnosticMessage(diagnostic),
+    }))
+    expect(mocks.failMessage.mock.calls[0][0].content).not.toContain('try sending it again')
+    expect(mocks.fail).toHaveBeenCalledWith(expect.objectContaining({
+      error: expect.objectContaining({ retryable: false, message: harnessDiagnosticMessage(diagnostic) }),
+    }))
+    expect(mocks.agent).not.toHaveBeenCalled()
+  },
+)
+
 test('native failure with a foreign assistant row does not replace its content', async () => {
   mocks.get.mockResolvedValue({ ...state, status: 'failed', terminalReason: 'Failed.' })
   mocks.listMessages.mockResolvedValue([{ ...assistantMessage, authorPrincipalId: 'foreign-agent' }])
   await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false })
-  expect(mocks.failMessage).toHaveBeenCalledWith(expect.not.objectContaining({ content: expect.anything() }))
+  expect(mocks.failMessage).toHaveBeenCalledWith(expect.not.objectContaining({
+    content: expect.anything(), parts: expect.anything(),
+  }))
   expect(mocks.agent).not.toHaveBeenCalled()
   expect(mocks.fail).toHaveBeenCalledOnce()
 })
@@ -181,7 +205,9 @@ test('native failure still fails the run when reading the assistant message fail
   mocks.get.mockResolvedValue({ ...state, status: 'failed', terminalReason: 'Failed.' })
   mocks.listMessages.mockRejectedValue(new Error('message store unavailable'))
   await expect(finishNativeHarnessDelivery(access, delivery, { memoryEnabled: false })).resolves.toBeUndefined()
-  expect(mocks.failMessage).toHaveBeenCalledWith(expect.not.objectContaining({ content: expect.anything() }))
+  expect(mocks.failMessage).toHaveBeenCalledWith(expect.not.objectContaining({
+    content: expect.anything(), parts: expect.anything(),
+  }))
   expect(mocks.fail).toHaveBeenCalledOnce()
 })
 
