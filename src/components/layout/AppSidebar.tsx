@@ -28,6 +28,21 @@ const WORK_SECTION_ORDER: readonly WorkFilter[] = ['needs-you', 'mine', 'all']
 const WORK_SECTION_ROWS: ReadonlyArray<InlineNavItem> = WORK_SECTION_ORDER.map((id) => ({ id, label: WORK_FILTER_LABELS[id] }))
 const shellAdapter = { Link: NextLink, rememberScope: rememberPanelScope } satisfies ShellAdapter
 
+function renderAccountProfile(
+  { user, displayName }: Pick<ReturnType<typeof useAppSidebarState>, 'user' | 'displayName'>,
+  onAccountClick: () => void,
+) {
+  if (!user) return null
+  return (
+    <SidebarAccountProfile
+      name={displayName}
+      email={user.email}
+      photoUrl={user.profilePictureUrl}
+      onAccountClick={onAccountClick}
+    />
+  )
+}
+
 export type {
   AppSidebarChatPanelContext,
   AppSidebarNavigateContext,
@@ -87,22 +102,8 @@ export default function AppSidebar({
     s.setMobileAccountOpen(false)
     s.closeAccountMenus()
   }
-  const accountHeader = s.user ? (
-    <SidebarAccountProfile
-      name={s.displayName}
-      email={s.user.email}
-      photoUrl={s.user.profilePictureUrl}
-      onAccountClick={s.closeAccountMenus}
-    />
-  ) : null
-  const mobileAccountHeader = s.user ? (
-    <SidebarAccountProfile
-      name={s.displayName}
-      email={s.user.email}
-      photoUrl={s.user.profilePictureUrl}
-      onAccountClick={closeMobileAccountMenus}
-    />
-  ) : null
+  const accountHeader = renderAccountProfile(s, s.closeAccountMenus)
+  const mobileAccountHeader = renderAccountProfile(s, closeMobileAccountMenus)
   const userAvatar = s.user ? (
     <SidebarAccountAvatar name={s.displayName} photoUrl={s.user.profilePictureUrl} />
   ) : null
