@@ -26,7 +26,7 @@ export interface SubscriptionRepository {
   registerPendingWrite(args: { userId: string; connectionId: string; name: string }): Promise<void>
   clearPendingWrite(args: { userId: string; connectionId: string; name: string }): Promise<void>
   savePendingAuthorization(args: FencedArgs & { pendingStateRef: string; pendingWriteName?: string; expiresAt: number; pollIntervalMs: number }): Promise<{ revision: number; cleanupRefs: string[] }>
-  acquirePoll(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; pendingStateRef: string; expiresAt: number }>
+  acquirePoll(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; pendingStateRef: string; expiresAt: number; providerId: SubscriptionProviderId; pollIntervalMs?: number }>
   releasePendingPoll(args: FencedArgs & { pollIntervalMs: number }): Promise<void>
   acquireRefresh(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; credentialRef: string; providerId: SubscriptionProviderId }>
   releaseRefresh(args: FencedArgs): Promise<void>
@@ -98,7 +98,9 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
       generation?: number
       revision?: number
       pendingStateRef?: string
+      pollIntervalMs?: number
       expiresAt?: number
+      providerId?: SubscriptionProviderId
       error?: string
     }>(
       'providers/subscriptions:acquirePoll',
@@ -107,7 +109,7 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
     ))
     if (result.error) throw new Error(result.error)
     if (result.generation === undefined || result.revision === undefined ||
-        !result.pendingStateRef || result.expiresAt === undefined) {
+        !result.pendingStateRef || result.expiresAt === undefined || !result.providerId) {
       throw new Error('Subscription authorization is unavailable')
     }
     return {
@@ -115,6 +117,8 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
       revision: result.revision,
       pendingStateRef: result.pendingStateRef,
       expiresAt: result.expiresAt,
+      providerId: result.providerId,
+      pollIntervalMs: result.pollIntervalMs,
     }
   }
 

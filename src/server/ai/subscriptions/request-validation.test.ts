@@ -13,7 +13,7 @@ test('rejects media, hosted tools, ZDR, and unsupported semantic options', () =>
   for (const option of ['truncation', 'user', 'previous_response_id', 'prompt_cache_retention']) {
     assert.throws(
       () => assertSupportedCodexRequest({ model: 'm', [option]: 'unsupported' }, 'm'),
-      new RegExp(`Codex subscription requests do not support ${option}`),
+      new RegExp(`Subscription requests do not support ${option}`),
     )
   }
 })

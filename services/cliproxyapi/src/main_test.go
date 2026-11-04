@@ -7,12 +7,15 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MoeForge/moego/ojson"
+	claudeauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/claude"
 	codexauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
+	kimiauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/kimi"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
@@ -64,6 +67,71 @@ func TestCatalogReasoningLevelsUseOnlyPinnedCanonicalThinkingLevels(t *testing.T
 		if got[index] != want[index] {
 			t.Fatalf("levels = %v, want %v", got, want)
 		}
+	}
+}
+
+func TestProviderCredentialIdentityAndKimiDomainAreBound(t *testing.T) {
+	for _, providerID := range []string{"codex", "claude", "xai", "meta", "kimi", "kimi-ai", "devin"} {
+		if !supportedProvider(providerID) {
+			t.Fatalf("provider %q is not supported", providerID)
+		}
+	}
+	credential, err := providerCredential("claude", []byte(`{"access_token":"opaque"}`), time.Now().Add(time.Hour), false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := readTokenStorage(credential, "xai"); ok {
+		t.Fatal("credential was accepted for a different provider")
+	}
+	if _, ok := readTokenStorage(credential, "claude"); !ok {
+		t.Fatal("credential was not accepted for its provider")
+	}
+
+	storage := &kimiauth.KimiTokenStorage{
+		AccessToken: "access", RefreshToken: "refresh", Type: "kimi-ai",
+		Domain: kimiauth.KimiAIDomain, DeviceID: "connection-device",
+		Expired: time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+	}
+	kimiCredential, err := newKimiCredential("kimi-ai", storage)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, ok := decodeKimiCredential(kimiCredential)
+	if !ok || decoded.Domain != kimiauth.KimiAIDomain || decoded.DeviceID != "connection-device" {
+		t.Fatalf("Kimi.ai identity was not preserved: %#v", decoded)
+	}
+	if _, err := newKimiCredential("kimi", storage); err == nil {
+		t.Fatal("Kimi.ai credential was accepted for the kimi domain")
+	}
+	storage.Expired = ""
+	if _, err := newKimiCredential("kimi-ai", storage); err == nil {
+		t.Fatal("Kimi credential without an upstream expiry was treated as non-expiring")
+	}
+}
+
+func TestClaudeCallbackStateMismatchIsRejectedBeforeExchange(t *testing.T) {
+	callback, err := url.Parse(claudeauth.RedirectURI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := callback.Query()
+	query.Set("code", "authorization-code")
+	query.Set("state", "wrong-state")
+	callback.RawQuery = query.Encode()
+	pending := pendingEnvelope{
+		Backend: backendName, Version: 1, ProviderID: "claude",
+		Metadata:  []byte(`{"state":"expected-state","codeVerifier":"opaque-verifier"}`),
+		ExpiresAt: time.Now().Add(10 * time.Minute).UnixMilli(),
+		Interval:  5, CallbackRequired: true,
+	}
+	if !validPendingState(pending, "claude") || !ojsonObject(pending.Metadata) {
+		t.Fatalf("callback pending state was invalid: %#v", pending)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/internal/v1/complete", nil)
+	response := httptest.NewRecorder()
+	(&bridge{}).completeProvider(response, request, pending, callback.String())
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), `"code":"invalid_callback"`) {
+		t.Fatalf("callback mismatch response = %d %s", response.Code, response.Body.String())
 	}
 }
 

@@ -2,18 +2,17 @@
 
 ## Current scope
 
-The first implementation slice supports Codex subscriptions only. Subscription
-inference and provider-side authorization use the pinned CLIProxyAPI source in a
-private, stateless service bound to the web service inside the same Vercel
-project. The service has no public rewrite, shared account pool, auth files,
-background refresh, or provider fallback.
+The provider implementation supports the exact IDs `codex`, `claude`, `xai`,
+`meta`, `kimi`, `kimi-ai`, and `devin`. Subscription inference and provider-side
+authorization use the pinned CLIProxyAPI source in a private, stateless service
+bound to the web service inside the same Vercel project. The service has no
+public rewrite, shared account pool, auth files, background refresh, or
+provider/domain fallback.
 
-Codex subscriptions appear in chat and agent model pickers as separate groups
-for each personal connection, with independent favorites and a reconnect action
-for unavailable connections. The picker uses the existing personal
-provider-connection schema; it does not add workspace-scoped connections or
-other providers. Model visibility does not grant execution access: existing
-paid-access requirements still apply to all models, including BYOK.
+Existing picker and connection schemas remain personal-only in this
+implementation slice; workspace-scoped connections are not added here. Model
+visibility does not grant execution access: existing paid-access requirements
+still apply to all models, including BYOK.
 
 The plan-based Codex catalog is sourced from CLIProxyAPI's plan registry. The
 `prolite` and `promax` variants additionally intersect that pinned registry with
@@ -39,17 +38,23 @@ model selections, and durable secret lifecycle. Provider credentials and
 authorization state live in Overlay Vault; Convex keeps opaque references,
 pending-write names, selected model IDs, and lease state. The bridge accepts a
 credential envelope and explicit connection/model identity for each request. It
-constructs one Codex auth record and executes only that credential—there is no
-manager, pool, or account/model/paid-route fallback.
+constructs one upstream auth record and executes only that credential—there is
+no manager, pool, or account/model/paid-route fallback.
 
 The bridge returns bounded, typed control responses for authorization, polling,
-refresh, model listing, and inference. Authorization state is persisted by
+callback completion, refresh, model listing, and inference. Authorization state is persisted by
 Overlay so polling survives container restarts. Bridge calls require the
 private service bearer secret. A missing URL or secret disables the adapter;
 it never activates the old native subscription backend.
 
 The old native Codex token format is not imported. Existing subscription
-credentials in that format require one explicit reconnect. The shared
+credentials in that format require one explicit reconnect. Claude and Devin
+use generated PKCE authorization and callback URLs validated locally against
+their pending flow; the bridge never fetches a supplied URL or opens a
+localhost listener. xAI, Kimi/Kimi AI, and Meta device flows advance one
+bounded poll per browser request. Kimi's domain and device identity remain
+connection-bound. Devin session tokens and minted Meta API keys may use
+nullable expiry only for upstream-confirmed non-expiring credentials. The shared
 `codex-subscription.ts` helper remains behind provider-account compatibility
 services; retired hosted third-party runtimes still receive no credentials. It
 is not an inference or refresh fallback for unified subscription connections.
@@ -68,8 +73,9 @@ the new immutable credential before dispatch, then rechecks the model,
 generation, and credential reference. The Go inference executor never refreshes
 credentials. An uncertain rotating-token result fails closed rather than
 blindly retrying a possibly consumed token.
-An explicit provider rate limit instead releases the refresh lease, preserves
-the current credential, and reports a safe retry-later result. Definite
+Explicit refresh always rediscovers the provider catalog, including when the
+credential is non-expiring or not near expiry. Temporary provider failures
+release leases and preserve valid credentials and saved selections. Definite
 credential rejection and uncertain rotation outcomes remain fail-closed.
 
 Catalog reconciliation removes selections only when a successful catalog
@@ -82,8 +88,10 @@ saved model choices for later reconnect.
 Overlay validates the selected model and supported stateless Responses request
 before sending it to the private service. The bridge requires `stream: true`
 and `store: false`; it has no stateful response or conversation continuation
-store. CLIProxyAPI owns Codex provider translation. Its SSE field lines and combined
-event/data frames pass through unchanged; only bare JSON chunks receive a
+store. Pinned CLIProxyAPI executors own provider translation. The bridge sends
+OpenAI Responses source/target formats only to executors that register that
+translator contract. SSE field lines and combined event/data frames pass
+through unchanged; only bare JSON chunks receive a
 `data:` prefix. Function tools without an explicit strictness choice send
 `strict: false`, preserving optional arguments instead of inheriting the
 provider's strict default; explicit strict choices are retained. Overlay returns bounded
@@ -107,8 +115,9 @@ reasoning defaults are written to global account settings.
 
 Configure `OVERLAY_CLIPROXYAPI_URL` as the private service binding and
 `OVERLAY_CLIPROXYAPI_SECRET` as a secret of at least 32 characters. Keep
-`OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS` limited to `codex` to enable this
-implemented adapter. The bearer secret is shared between web and the private
+`OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS` as the explicit comma-separated
+allowlist `codex,claude,xai,meta,kimi,kimi-ai,devin` when all are approved for
+that environment. The bearer secret is shared between web and the private
 service within each environment; Preview and Production use separate secrets.
 The URL is supplied by the service binding, not a manually copied deployment
 URL. Rebuild after changing settings and verify live provider availability before
@@ -121,5 +130,6 @@ The provider connection dialog stays within the dynamic viewport and scrolls
 when its provider list exceeds the available height, keeping sign-in actions
 reachable on short desktop and mobile screens.
 
-Other subscription providers, workspace-scope schema work, and broader catalog
-entitlement verification remain future work.
+Live provider-account acceptance and hosted callback, refresh, restart, and
+streaming QA remain unfinished. Catalog membership is not account entitlement.
+Workspace-scope schema and authorization remain separate future work.

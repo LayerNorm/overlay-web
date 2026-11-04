@@ -5,6 +5,7 @@ import { requireServerSecret } from '../lib/auth'
 
 const providerValidator = v.union(
   v.literal('codex'),
+  v.literal('claude'),
   v.literal('xai'),
   v.literal('meta'),
   v.literal('kimi'),
@@ -36,6 +37,7 @@ const stateValidator = v.object({
   ),
   credentialRef: v.optional(v.string()),
   pendingStateRef: v.optional(v.string()),
+  pollIntervalMs: v.optional(v.number()),
   nextPollAt: v.optional(v.number()),
   expiresAt: v.optional(v.number()),
   leaseToken: v.optional(v.string()),
@@ -312,8 +314,9 @@ export const savePendingAuthorization = mutation({
     await ctx.db.patch(state._id, {
       revision: state.revision + 1,
       pendingStateRef: args.pendingStateRef,
+      pollIntervalMs: Math.max(2_000, Math.min(args.pollIntervalMs, 1_800_000)),
       expiresAt: args.expiresAt,
-      nextPollAt: now + Math.max(2_000, Math.min(args.pollIntervalMs, 30_000)),
+      nextPollAt: now + Math.max(2_000, Math.min(args.pollIntervalMs, 1_800_000)),
       leaseToken: undefined,
       leaseUntil: undefined,
       leaseOperation: undefined,
@@ -340,7 +343,9 @@ export const acquirePoll = mutation({
     revision: v.optional(v.number()),
     leaseUntil: v.optional(v.number()),
     pendingStateRef: v.optional(v.string()),
+    pollIntervalMs: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
+    providerId: v.optional(providerValidator),
     error: v.optional(v.string()),
   }),
   handler: async (ctx, args) => {
@@ -380,7 +385,9 @@ export const acquirePoll = mutation({
       revision,
       leaseUntil,
       pendingStateRef: state.pendingStateRef,
+      pollIntervalMs: state.pollIntervalMs,
       expiresAt: state.expiresAt,
+      providerId: state.providerId,
     }
   },
 })
@@ -405,7 +412,8 @@ export const releasePendingPoll = mutation({
     const now = Date.now()
     await ctx.db.patch(state._id, {
       revision: state.revision + 1,
-      nextPollAt: now + Math.max(2_000, Math.min(args.pollIntervalMs, 30_000)),
+      pollIntervalMs: Math.max(2_000, Math.min(args.pollIntervalMs, 1_800_000)),
+      nextPollAt: now + Math.max(2_000, Math.min(args.pollIntervalMs, 1_800_000)),
       leaseToken: undefined,
       leaseUntil: undefined,
       leaseOperation: undefined,

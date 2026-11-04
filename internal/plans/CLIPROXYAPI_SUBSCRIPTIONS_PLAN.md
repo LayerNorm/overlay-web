@@ -1,11 +1,11 @@
 # Plan: Replace subscription plumbing with CLIProxyAPI
 
-Status: Codex-only implementation merged in #386 with real-account hosted acceptance and production bridge verification complete. Broader provider and workspace-scope work remains planned.
+Status: The Codex implementation is merged in #386. This branch extends the backend and control plane to seven providers; live provider-account acceptance, hosted validation, and workspace-scope work remain incomplete.
 
-> Progress note: this plan is broader than the current implementation slice.
-> The first slice is Codex-only and uses a same-project private bridge. Shared
-> production model pickers and chat/native-agent reasoning controls are included;
-> other subscription providers and workspace-scope schema expansion remain planned.
+> Progress note: the original Codex slice uses a same-project private bridge.
+> This branch extends its backend and control plane to Claude, xAI, Meta, Kimi,
+> Kimi AI, and Devin without adding workspace authorization/schema or rendered UI.
+> Hosted and real-account acceptance remains separate work.
 > The plan catalog is not account-entitlement proof. The superseded in-process
 > adapter plan has been removed; git history preserves its original decisions.
 
@@ -31,8 +31,23 @@ Inventory existing connections, credential formats, model selections and consume
 
 ## 6. Deliver provider and picker parity
 
-Expose Codex, Claude, Grok, Meta, Kimi, Kimi AI and Devin through verified CLIProxyAPI integrations, accurately indicating unavailable capabilities. Use one reactive catalog across chat, new agents and agent editing. Add subscription sections immediately below Recommended, with provider logos and bottom-right plug badges. Preserve favorites, search and quality ordering. Approve a standalone mockup before UI implementation.
+Expose the exact IDs Codex, Claude, xAI (Grok), Meta, Kimi, Kimi AI and Devin
+through the pinned CLIProxyAPI integration. Codex, xAI, Meta and Kimi use
+device authorization; Claude and Devin use generated PKCE plus locally
+validated callback completion. Persist credentials and pending state only in
+Overlay Vault, keep provider/domain identity exact, and use provider catalogs
+without treating them as account-entitlement proof. Preserve the private,
+stateless bridge and fenced Overlay refresh/discovery/inference lifecycle.
+Data-only provider metadata may be extended here; workspace authorization and
+rendered UI are separate work.
 
 ## 7. Verify and roll out
 
-Test scope enforcement, discovery changes, tool streaming, refresh races, restart recovery, reconnect, disconnect and removed models. Distinguish temporary failures, limits and invalid credentials with actionable messages. Never silently switch accounts or paid routes. Validate isolated previews with real accounts, roll providers out individually, and monitor failures. Rollback disables subscription availability without reactivating competing credential refreshers.
+Test scope enforcement, discovery changes, tool streaming, refresh races,
+restart recovery, reconnect, disconnect and removed models. Distinguish
+temporary failures, limits and invalid credentials with actionable messages.
+Never silently switch accounts or paid routes. Isolated-preview deployment,
+live callback and real-account acceptance, per-provider refresh, hosted restart
+and end-to-end streaming QA remain unfinished. Roll providers out individually
+only after those checks; rollback disables subscription availability without
+reactivating competing credential refreshers.

@@ -22,7 +22,7 @@ import type {
   SubscriptionResult,
 } from './types'
 
-const implementedProviders = new Set<SubscriptionProviderId>(['codex'])
+const implementedProviders = new Set<SubscriptionProviderId>(SUBSCRIPTION_PROVIDERS.map(({ id }) => id))
 const credentialPurpose = 'subscription-credential' as const
 const pendingWriteStaleAgeMs = 5 * 60_000
 
@@ -63,10 +63,11 @@ function allowedProviders(bridgeConfigured: boolean): SubscriptionProviderId[] {
 
 function publicError(error: unknown): string {
   if (error instanceof SubscriptionBridgeError &&
-      ['reconnect_required', 'model_unavailable', 'rate_limited', 'provider_unavailable', 'temporary_failure']
+      ['reconnect_required', 'model_unavailable', 'rate_limited', 'provider_unavailable',
+        'temporary_failure', 'invalid_callback']
         .includes(error.code)) return error.message
-  if (error instanceof Error && error.message.startsWith('Reconnect your Codex')) return error.message
-  if (error instanceof Error && error.message.startsWith('Codex subscriptions are unavailable')) return error.message
+  if (error instanceof Error && error.message.startsWith('Reconnect your subscription')) return error.message
+  if (error instanceof Error && error.message.startsWith('Subscriptions are unavailable')) return error.message
   return 'The subscription operation failed. Retry or reconnect.'
 }
 
@@ -111,7 +112,7 @@ export class SubscriptionService {
     })
     let candidate: WrittenSecret | undefined
     try {
-      const device = await this.bridge.authorize()
+      const device = await this.bridge.authorize(providerId)
       const pending = device.pendingState
       const written = await this.writeSecret(userId, connectionId, providerId, JSON.stringify(pending))
       candidate = written
@@ -136,6 +137,7 @@ export class SubscriptionService {
         userCode: device.authorization.userCode,
         expiresAt: device.authorization.expiresAt,
         interval: device.authorization.interval,
+        callbackRequired: device.authorization.callbackRequired,
       }
     } catch (error) {
       if (candidate) await this.deleteCandidateIfUncommitted(userId, connectionId, candidate)
@@ -147,7 +149,11 @@ export class SubscriptionService {
     }
   }
 
-  async poll(userId: string, connectionId: string): Promise<SubscriptionResult> {
+  async poll(
+    userId: string,
+    connectionId: string,
+    callbackUrl?: string,
+  ): Promise<SubscriptionResult> {
     await this.reconcilePendingWrites(userId, connectionId, { olderThanMs: pendingWriteStaleAgeMs })
     const current = await this.repository.get({ userId, connectionId })
     if (current?.phase === 'active') return { status: 'connected', models: [] }
@@ -158,20 +164,34 @@ export class SubscriptionService {
       userId, connectionId, generation: lease.generation,
       revision: lease.revision, leaseToken,
     }
+    const providerId = lease.providerId
     let pending: BridgePendingState | null = null
     try {
       const secret = await this.credentials.read(lease.pendingStateRef)
       pending = secret ? parsePendingState(secret) : null
       if (!pending) throw new Error('Subscription authorization state is unavailable')
+      if (!providerId || pending.providerId !== providerId) throw new Error('Subscription authorization provider does not match')
+      if (lease.pollIntervalMs !== undefined) {
+        pending.interval = Math.max(1, Math.min(1800, Math.ceil(lease.pollIntervalMs / 1000)))
+      }
       if (pending.expiresAt <= Date.now()) {
         await this.repository.failClosed({ ...fenced, error: 'Authorization expired. Reconnect to continue.' })
         return { status: 'expired' }
       }
-      const result = await this.bridge.poll(pending)
-      if (result.status === 'pending') {
+      if (pending.callbackRequired && !callbackUrl) {
         await this.repository.releasePendingPoll({
           ...fenced,
           pollIntervalMs: pending.interval * 1000,
+        })
+        return { status: 'pending' }
+      }
+      const result = pending.callbackRequired
+        ? await this.bridge.complete(pending, callbackUrl!)
+        : await this.bridge.poll(pending)
+      if (result.status === 'pending') {
+        await this.repository.releasePendingPoll({
+          ...fenced,
+          pollIntervalMs: (result.pendingState?.interval ?? pending.interval) * 1000,
         })
         return { status: 'pending' }
       }
@@ -179,15 +199,24 @@ export class SubscriptionService {
         throw new Error('Subscription credential is unavailable')
       }
       const candidate = await this.writeSecret(
-        userId, connectionId, 'codex', JSON.stringify(result.credential),
+        userId, connectionId, providerId, JSON.stringify(result.credential),
       )
       const committed = await this.commitCredentialCandidate(fenced, candidate)
       if (!committed) throw new Error('Authorization could not be committed')
       return await this.discover(userId, connectionId)
     } catch (error) {
+      if (pending && error instanceof SubscriptionBridgeError &&
+          ['invalid_callback', 'rate_limited', 'provider_unavailable', 'temporary_failure']
+            .includes(error.code)) {
+        await this.repository.releasePendingPoll({
+          ...fenced,
+          pollIntervalMs: pending.interval * 1000,
+        }).catch((_releaseError) => undefined)
+        return { status: 'error', error: publicError(error) }
+      }
       await this.repository.failClosed({
         ...fenced,
-        error: 'Codex authorization could not be completed. Reconnect to continue.',
+        error: 'Subscription authorization could not be completed. Reconnect to continue.',
       }).catch((_error) => undefined)
       return { status: 'error', error: publicError(error) }
     }
@@ -210,17 +239,20 @@ export class SubscriptionService {
       const latestSecret = await this.credentials.read(lease.credentialRef)
       const latest = latestSecret ? parseCredential(latestSecret) : null
       if (!latest) throw new Error('Subscription credential is unavailable')
-      if (latest.expiresAt > Date.now() + 60_000) {
+      if (latest.providerId !== lease.providerId) throw new Error('Subscription credential provider does not match')
+      if (latest.nonExpiring || latest.expiresAt === null || latest.expiresAt > Date.now() + 60_000) {
         await this.repository.releaseRefresh(fenced)
-        return { status: 'connected', models: [] }
+        return await this.discover(userId, connectionId)
       }
       const refreshed = await this.bridge.refresh(latest)
-      const candidate = await this.writeSecret(userId, connectionId, 'codex', JSON.stringify(refreshed.credential))
+      if (refreshed.credential.providerId !== lease.providerId) throw new Error('Refreshed provider does not match')
+      const candidate = await this.writeSecret(userId, connectionId, lease.providerId, JSON.stringify(refreshed.credential))
       const committed = await this.commitCredentialCandidate(fenced, candidate)
       if (!committed) throw new Error('Refreshed subscription credential could not be committed')
       return await this.discover(userId, connectionId)
     } catch (error) {
-      if (error instanceof SubscriptionBridgeError && error.code === 'rate_limited') {
+      if (error instanceof SubscriptionBridgeError &&
+          ['rate_limited', 'provider_unavailable', 'temporary_failure'].includes(error.code)) {
         await this.repository.releaseRefresh(fenced).catch((_releaseError) => undefined)
         return { status: 'error', error: publicError(error) }
       }
@@ -247,31 +279,33 @@ export class SubscriptionService {
     connectionId: string,
     modelId: string,
   ): Promise<BridgeCredential> {
-    if (!this.isEnabled('codex')) throw new Error('Subscription request adapter is not available')
+    const state = await this.repository.get({ userId, connectionId })
+    if (!state || !this.isEnabled(state.providerId)) throw new Error('Subscription request adapter is not available')
     let authorized = await this.repository.forDispatch({ userId, connectionId, modelId })
-    if (!authorized || authorized.providerId !== 'codex') {
+    if (!authorized || authorized.providerId !== state.providerId) {
       throw new Error('Subscription connection is unavailable or this model is not enabled.')
     }
     let secret = await this.credentials.read(authorized.credentialRef)
     let credential = secret ? parseCredential(secret) : null
-    if (!credential) throw new Error('Reconnect your Codex subscription to continue.')
-    if (credential.expiresAt <= Date.now() + 60_000) {
+    if (!credential || credential.providerId !== authorized.providerId) throw new Error('Reconnect your subscription to continue.')
+    if (!credential.nonExpiring && credential.expiresAt !== null && credential.expiresAt <= Date.now() + 60_000) {
       const refreshed = await this.refresh(userId, connectionId)
       if (refreshed.status !== 'connected') {
-        throw new Error(refreshed.status === 'error' ? refreshed.error : 'Reconnect your Codex subscription to continue.')
+        throw new Error(refreshed.status === 'error' ? refreshed.error : 'Reconnect your subscription to continue.')
       }
       authorized = await this.repository.forDispatch({ userId, connectionId, modelId })
-      if (!authorized || authorized.providerId !== 'codex') {
+      if (!authorized || authorized.providerId !== state.providerId) {
         throw new Error('Subscription connection is unavailable or this model is not enabled.')
       }
       secret = await this.credentials.read(authorized.credentialRef)
       credential = secret ? parseCredential(secret) : null
-      if (!credential || credential.expiresAt <= Date.now()) {
-        throw new Error('Reconnect your Codex subscription to continue.')
+      if (!credential || credential.providerId !== authorized.providerId ||
+          (!credential.nonExpiring && (credential.expiresAt === null || credential.expiresAt <= Date.now()))) {
+        throw new Error('Reconnect your subscription to continue.')
       }
     }
     const revalidated = await this.repository.forDispatch({ userId, connectionId, modelId })
-    if (!revalidated || revalidated.providerId !== 'codex' ||
+    if (!revalidated || revalidated.providerId !== state.providerId ||
         revalidated.generation !== authorized.generation ||
         revalidated.credentialRef !== authorized.credentialRef) {
       throw new Error('Subscription connection is unavailable or this model is not enabled.')
@@ -301,7 +335,7 @@ export class SubscriptionService {
     try {
       const secret = await this.credentials.read(lease.credentialRef)
       const credential = secret ? parseCredential(secret) : null
-      if (!credential) throw new Error('Reconnect your Codex subscription to continue.')
+      if (!credential) throw new Error('Reconnect your subscription to continue.')
       const catalog = await this.bridge.models(credential)
       const models = catalog.models
       const saved = await this.repository.commitActive({

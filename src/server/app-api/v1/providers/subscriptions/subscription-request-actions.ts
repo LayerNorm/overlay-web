@@ -15,6 +15,7 @@ import {
 
 export type SubscriptionUpdateBody = Record<string, unknown> & {
   action: 'poll' | 'refresh' | 'callback'
+  callbackUrl?: string
 }
 
 function publicConnection(connection: ProviderConnectionRecord): ByokConnectionRow {
@@ -100,7 +101,10 @@ export async function executeSubscriptionUpdate(
   connectionId: string,
   body: SubscriptionUpdateBody,
 ) {
-  if (body.action === 'callback') return responseError('This subscription action is unavailable', 400)
+  if (body.action === 'callback' &&
+      (typeof body.callbackUrl !== 'string' || body.callbackUrl.length === 0 || body.callbackUrl.length > 16_384)) {
+    return responseError('Invalid authorization callback', 400)
+  }
   const service = createSubscriptionService()
   const existing = await fetchOwnedConnection(userId, connectionId)
   if (!existing || existing.authKind !== 'subscription') {
@@ -112,6 +116,8 @@ export async function executeSubscriptionUpdate(
     }
     const result = body.action === 'poll'
       ? await service.poll(userId, connectionId)
+      : body.action === 'callback'
+        ? await service.poll(userId, connectionId, body.callbackUrl)
       : await service.refresh(userId, connectionId)
     if (result.status === 'connected') {
       const connection = await fetchOwnedConnection(userId, connectionId)

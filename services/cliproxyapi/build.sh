@@ -21,17 +21,18 @@ if [ "$ACTUAL_SHA" != "$UPSTREAM_SHA" ]; then
 fi
 
 for PATCH in "$ROOT"/patches/*.patch; do
-  if git -C "$UPSTREAM_DIR" apply --unidiff-zero --reverse --check "$PATCH" >/dev/null 2>&1; then
+  if git -C "$UPSTREAM_DIR" apply --recount --unidiff-zero --reverse --check "$PATCH" >/dev/null 2>&1; then
     continue
   fi
-  git -C "$UPSTREAM_DIR" apply --unidiff-zero --check "$PATCH"
-  git -C "$UPSTREAM_DIR" apply --unidiff-zero "$PATCH"
+  git -C "$UPSTREAM_DIR" apply --recount --unidiff-zero --check "$PATCH"
+  git -C "$UPSTREAM_DIR" apply --recount --unidiff-zero "$PATCH"
 done
 
 mkdir -p "$UPSTREAM_DIR/cmd/overlay-subscriptions"
 cp "$ROOT"/src/*.go "$UPSTREAM_DIR/cmd/overlay-subscriptions/"
 cd "$UPSTREAM_DIR"
 go test ./sdk/auth
+go test ./internal/auth/xai ./internal/auth/kimi ./internal/auth/meta
 go test ./cmd/overlay-subscriptions
 mkdir -p "$(dirname "$OUTPUT")"
 go build -o "$OUTPUT" ./cmd/overlay-subscriptions

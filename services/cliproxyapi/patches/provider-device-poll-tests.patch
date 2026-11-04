@@ -1,0 +1,118 @@
+diff --git a/internal/auth/xai/provider_poll_once_test.go b/internal/auth/xai/provider_poll_once_test.go
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/internal/auth/xai/provider_poll_once_test.go
+@@ -0,0 +1,43 @@
++package xai
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++	"time"
++)
++
++type providerPollRoundTripper func(*http.Request) (*http.Response, error)
++
++func (roundTrip providerPollRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
++	return roundTrip(request)
++}
++
++func TestPollDeviceCodeOncePreservesSlowdownInterval(t *testing.T) {
++	client := &http.Client{Transport: providerPollRoundTripper(func(request *http.Request) (*http.Response, error) {
++		return &http.Response{
++			StatusCode: http.StatusBadRequest, Header: make(http.Header),
++			Body: io.NopCloser(strings.NewReader(`{"error":"slow_down"}`)), Request: request,
++		}, nil
++	})}
++	auth := &XAIAuth{httpClient: client}
++
++	token, err, interval, pending := auth.PollDeviceCodeOnce(
++		context.Background(), "https://auth.x.ai/oauth/token", "opaque-device-code", 5*time.Second,
++	)
++	if err != nil || token != nil || !pending || interval != 10*time.Second {
++		t.Fatalf("poll result = (%v, %v, %v, %v)", token, err, interval, pending)
++	}
++}
+diff --git a/internal/auth/kimi/provider_poll_once_test.go b/internal/auth/kimi/provider_poll_once_test.go
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/internal/auth/kimi/provider_poll_once_test.go
+@@ -0,0 +1,41 @@
++package kimi
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++	"time"
++)
++
++type providerPollRoundTripper func(*http.Request) (*http.Response, error)
++
++func (roundTrip providerPollRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
++	return roundTrip(request)
++}
++
++func TestPollDeviceCodeOncePreservesSlowdownInterval(t *testing.T) {
++	client := &DeviceFlowClient{
++		httpClient: &http.Client{Transport: providerPollRoundTripper(func(request *http.Request) (*http.Response, error) {
++			return &http.Response{
++				StatusCode: http.StatusOK, Header: make(http.Header),
++				Body: io.NopCloser(strings.NewReader(`{"error":"slow_down"}`)), Request: request,
++			}, nil
++		})},
++		deviceID: "per-connection-device", domain: KimiAIDomain, oauthHost: "https://auth.kimi.ai",
++	}
++
++	token, pending, interval, err := client.PollDeviceCodeOnce(context.Background(), "opaque-device-code", 5*time.Second)
++	if err != nil || token != nil || !pending || interval != 10*time.Second {
++		t.Fatalf("poll result = (%v, %v, %v, %v)", token, pending, interval, err)
++	}
++}
+diff --git a/internal/auth/meta/provider_poll_once_test.go b/internal/auth/meta/provider_poll_once_test.go
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/internal/auth/meta/provider_poll_once_test.go
+@@ -0,0 +1,38 @@
++package meta
++
++import (
++	"context"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++	"time"
++)
++
++type providerPollRoundTripper func(*http.Request) (*http.Response, error)
++
++func (roundTrip providerPollRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
++	return roundTrip(request)
++}
++
++func TestPollForAuthorizationOncePreservesSlowdownInterval(t *testing.T) {
++	auth := &MetaAuth{httpClient: &http.Client{Transport: providerPollRoundTripper(func(request *http.Request) (*http.Response, error) {
++		return &http.Response{
++			StatusCode: http.StatusBadRequest, Header: make(http.Header),
++			Body: io.NopCloser(strings.NewReader(`{"error":"slow_down"}`)), Request: request,
++		}, nil
++	})}}
++
++	bundle, pending, interval, err := auth.PollForAuthorizationOnce(
++		context.Background(),
++		&DeviceCodeResponse{DeviceCode: "opaque-device-code", TokenEndpoint: "https://auth.meta.com/oidc/device/token/"},
++		5*time.Second,
++	)
++	if err != nil || bundle != nil || !pending || interval != 10*time.Second {
++		t.Fatalf("poll result = (%v, %v, %v, %v)", bundle, pending, interval, err)
++	}
++}

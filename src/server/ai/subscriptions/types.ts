@@ -13,6 +13,7 @@ export type SubscriptionState = {
   phase: SubscriptionPhase
   credentialRef?: string
   pendingStateRef?: string
+  pollIntervalMs?: number
   nextPollAt?: number
   expiresAt?: number
   leaseToken?: string
@@ -34,6 +35,7 @@ export type SubscriptionAuthorization = {
   userCode?: string
   expiresAt: number
   interval: number
+  callbackRequired?: boolean
 }
 
 export type SubscriptionResult =

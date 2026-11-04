@@ -51,6 +51,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       !['poll', 'refresh', 'callback'].includes(String(body.action))) {
     return responseError('Invalid subscription update', 400)
   }
+  if (body.action === 'callback' &&
+      (typeof body.callbackUrl !== 'string' || body.callbackUrl.length === 0 || body.callbackUrl.length > 16_384)) {
+    return responseError('Invalid authorization callback', 400)
+  }
 
   const { connectionId } = body as {
     connectionId: string

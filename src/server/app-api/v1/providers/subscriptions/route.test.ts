@@ -57,7 +57,7 @@ function request(path: string, method: string, body?: unknown): NextRequest {
   })
 }
 
-test('only implemented adapters appear enabled, regardless of the environment allowlist', async (t) => {
+test('configured implemented adapters appear enabled from the environment allowlist', async (t) => {
   const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
   process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex,xai'
   t.after(() => {
@@ -69,7 +69,7 @@ test('only implemented adapters appear enabled, regardless of the environment al
   const data = (await response.json() as { data: { providers: Array<{ id: string; enabled: boolean }> } }).data
   const providers = data.providers
   assert.equal(providers.find((provider) => provider.id === 'codex')?.enabled, true)
-  assert.equal(providers.find((provider) => provider.id === 'xai')?.enabled, false)
+  assert.equal(providers.find((provider) => provider.id === 'xai')?.enabled, true)
 })
 
 test('subscription authorization remains owner-scoped and unsupported providers stay disabled', async (t) => {

@@ -18,7 +18,7 @@ test('streaming errors are sanitized while preserving SSE error framing', async 
     { headers: { 'content-type': 'text/event-stream' } },
   )
   const text = await new Response(boundedStream(source.body!)).text()
-  assert.match(text, /Codex is temporarily unavailable/)
+  assert.match(text, /The provider is temporarily unavailable/)
   assert.doesNotMatch(text, /private provider detail/)
 })
 
@@ -28,7 +28,7 @@ test('non-stream errors fail with a sanitized message', async () => {
       'data: {"type":"response.failed","response":{"error":{"message":"private detail"}}}\n\n',
       { headers: { 'content-type': 'text/event-stream' } },
     )),
-    /Codex is temporarily unavailable/,
+    /The provider is temporarily unavailable/,
   )
 })
 
@@ -38,7 +38,7 @@ test('non-stream incomplete responses are not reported as completed', async () =
       'data: {"type":"response.incomplete","response":{"error":{"message":"private detail"}}}\n\n',
       { headers: { 'content-type': 'text/event-stream' } },
     )),
-    /Codex is temporarily unavailable/,
+    /The provider is temporarily unavailable/,
   )
 })
 

@@ -220,14 +220,15 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
   if (connection.isDefault && connection.providerId === 'vercel-ai-gateway') return []
   const subscription = isSubscriptionConnection(connection)
   const provider = subscription
-    ? ({
+      ? ({
         codex: 'openai',
+        claude: 'anthropic',
         xai: 'xai',
         meta: 'meta-llama',
         kimi: 'moonshotai',
         'kimi-ai': 'moonshotai',
         devin: 'devin',
-      } as const)[connection.subscriptionProvider! as 'codex' | 'xai' | 'meta' | 'kimi' | 'kimi-ai' | 'devin']
+      } as const)[connection.subscriptionProvider! as 'codex' | 'claude' | 'xai' | 'meta' | 'kimi' | 'kimi-ai' | 'devin']
     : connection.displayName
 
   const discovered = parseDiscoveredModels(connection.discoveredModelsJson)

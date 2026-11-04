@@ -19,6 +19,7 @@ const connectionStatusValidator = v.union(
 const authKindValidator = v.union(v.literal('api_key'), v.literal('subscription'))
 const subscriptionProviderValidator = v.union(
   v.literal('codex'),
+  v.literal('claude'),
   v.literal('xai'),
   v.literal('meta'),
   v.literal('kimi'),

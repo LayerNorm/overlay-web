@@ -177,6 +177,7 @@ export default defineSchema({
     authKind: v.optional(v.union(v.literal('api_key'), v.literal('subscription'))),
     subscriptionProvider: v.optional(v.union(
       v.literal('codex'),
+      v.literal('claude'),
       v.literal('xai'),
       v.literal('meta'),
       v.literal('kimi'),
@@ -199,6 +200,7 @@ export default defineSchema({
     connectionId: v.id('userProviderConnections'),
     providerId: v.union(
       v.literal('codex'),
+      v.literal('claude'),
       v.literal('xai'),
       v.literal('meta'),
       v.literal('kimi'),
@@ -216,6 +218,7 @@ export default defineSchema({
     ),
     credentialRef: v.optional(v.string()),
     pendingStateRef: v.optional(v.string()),
+    pollIntervalMs: v.optional(v.number()),
     nextPollAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
     leaseToken: v.optional(v.string()),
