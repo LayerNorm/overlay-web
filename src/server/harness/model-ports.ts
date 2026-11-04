@@ -1,3 +1,4 @@
+import { publicHarnessStepPersistence, writeSettledHarnessTranscriptStep } from './harness-transcript'
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
@@ -31,7 +32,9 @@ export function createHarnessModelPorts(input: {
   contextBudgetTokens?: number
 }): Pick<HarnessExecutionPorts, 'prepareModel' | 'recordModelStep' | 'recoverModelFailure'> {
   const preparedCalls = new Map<string, PreparedHarnessModel>()
+  const publicProgressReceipts = new Map<string, boolean>()
   const { reference, prepare } = input
+  let activeToolNames = new Set<string>()
   // Catalog limits are fixed for a model, so read them once per run.
   const limitsByModel = new Map<string, Awaited<ReturnType<typeof readHarnessModelLimits>>>()
   async function modelLimits(modelId: string) {
@@ -68,6 +71,8 @@ export function createHarnessModelPorts(input: {
       return false
     },
     prepareModel: async request => {
+      publicProgressReceipts.set(request.receiptId, request.instructionContext.publicProgress === true)
+      activeToolNames = new Set(request.toolNames)
       const limits = await modelLimits(input.modelId)
       const modelContextWindow = limits.contextWindow ?? FALLBACK_CONTEXT_WINDOW
       const contextWindow = Math.min(input.contextBudgetTokens ?? limits.previewContextBudgetTokens ?? contextBudgetTokens, modelContextWindow)
@@ -185,7 +190,10 @@ export function createHarnessModelPorts(input: {
         throw new FatalError('Model usage has no corresponding prepared dispatch.')
       }
       await settle(step, receiptId, prepared)
+      await writeSettledHarnessTranscriptStep(reference, receiptId, step.stepNumber,
+        publicHarnessStepPersistence(step, activeToolNames, { textOnly: publicProgressReceipts.get(receiptId) === true }))
       preparedCalls.delete(receiptId)
+      publicProgressReceipts.delete(receiptId)
     },
   }
 }

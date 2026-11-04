@@ -81,31 +81,12 @@ function validateTools(body: Record<string, unknown>): void {
   }
 }
 
-export function normalizeCodexResponsesBody(
-  body: Record<string, unknown>,
-  modelId: string,
-): Record<string, unknown> {
-  const normalizedBody = { ...body }
-  for (const option of [
-    'max_output_tokens', 'max_completion_tokens', 'temperature', 'top_p',
-  ]) {
-    delete normalizedBody[option]
-  }
-  assertSupportedCodexRequest(normalizedBody, modelId)
-  const input = Array.isArray(normalizedBody.input)
-    ? normalizedBody.input.map((item) => {
-        if (!isRecord(item) || item.role !== 'system') return item
-        return { ...item, role: 'developer' }
-      })
-    : normalizedBody.input
-  const instructions = typeof normalizedBody.instructions === 'string' ? normalizedBody.instructions : ''
-  const include = Array.isArray(normalizedBody.include) ? normalizedBody.include : []
-  return {
-    ...normalizedBody,
-    input,
-    instructions,
-    include: [...new Set([...include, 'reasoning.encrypted_content'])],
-    stream: true,
-    store: false,
-  }
+
+export function codexStatelessRequest(body: Record<string, unknown>): Record<string, unknown> {
+  const tools = Array.isArray(body.tools)
+    ? body.tools.map((tool) => isRecord(tool) && tool.type === 'function' && tool.strict == null
+      ? { ...tool, strict: false }
+      : tool)
+    : undefined
+  return { ...body, ...(tools ? { tools } : {}), stream: true, store: false }
 }

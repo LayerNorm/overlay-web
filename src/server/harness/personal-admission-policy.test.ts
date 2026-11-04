@@ -6,12 +6,12 @@ const input = { actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: [
 
 test('new admissions use v2 lifecycle while only Overlay-funded paid runs use workspace spending', () => {
   expect(personalHarnessPolicy(input)).toEqual({ actorUserId: 'user', workspaceId: 'workspace',
-    executionPolicyVersion: 2, spendingMode: 'workspace', allowedToolIds: ['read', 'write'], requiresPlan: false,
+    publicProgressVersion: 1, executionPolicyVersion: 2, spendingMode: 'workspace', allowedToolIds: ['read', 'write'], requiresPlan: false,
     deadlineAt: 86_401_000, maxCostMicros: 0, maxParallelChildren: 3, maxDepth: 2 })
   expect(personalHarnessPolicy({ ...input, paid: false }))
-    .toMatchObject({ executionPolicyVersion: 2, spendingMode: 'none', maxCostMicros: 0 })
+    .toMatchObject({ publicProgressVersion: 1, executionPolicyVersion: 2, spendingMode: 'none', maxCostMicros: 0 })
   expect(personalHarnessPolicy({ ...input, modelId: 'byok/key/model' }))
-    .toMatchObject({ executionPolicyVersion: 2, spendingMode: 'external', maxCostMicros: 0 })
+    .toMatchObject({ publicProgressVersion: 1, executionPolicyVersion: 2, spendingMode: 'external', maxCostMicros: 0 })
   expect(personalHarnessPolicy({ ...input, budget: { maxProviderCostUsd: 0.125, durationMs: 60_000 } }))
     .toMatchObject({ maxCostMicros: 125_000, deadlineAt: 61_000 })
   expect(personalHarnessPolicy({ ...input, budget: { durationMs: 60_000 } }))

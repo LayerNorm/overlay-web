@@ -51,6 +51,10 @@ function updateInput(body: Record<string, unknown>): WorkspaceAgentUpdateInput {
   assignString(input, body, 'description')
   assignString(input, body, 'instructions')
   assignString(input, body, 'modelId')
+  if (body.reasoning !== undefined) {
+    if (typeof body.reasoning !== 'string') invalid('reasoning')
+    input.reasoning = body.reasoning as WorkspaceAgentUpdateInput['reasoning']
+  }
   assignString(input, body, 'permissionMode')
   assignString(input, body, 'effort')
   assignString(input, body, 'avatarColor')

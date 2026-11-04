@@ -292,7 +292,9 @@ export function useChatModelSelectionController({
   isActiveLoading,
   isTemporaryChat,
   reasoning,
+  reasoningByModel,
   onReasoningChange,
+  onModelReasoningChange,
   selectableTextModels,
   selectedActModel,
   selectedImageModels,
@@ -317,7 +319,9 @@ export function useChatModelSelectionController({
   isActiveLoading: boolean
   isTemporaryChat: boolean
   reasoning?: ReasoningLevel
+  reasoningByModel: Readonly<Record<string, ReasoningLevel | undefined>>
   onReasoningChange?: (level: ReasoningLevel | undefined) => void
+  onModelReasoningChange: (modelId: string, level: ReasoningLevel | undefined) => void
   selectableTextModels: ChatModel[]
   selectedActModel: string
   selectedImageModels: string[]
@@ -397,8 +401,10 @@ export function useChatModelSelectionController({
     modelPickerRef,
     modelQualitiesPos,
     reasoning,
+    reasoningByModel,
     onHoveredModelChange,
     onReasoningChange,
+    onModelReasoningChange,
     onSetShowModelPicker: setShowModelPicker,
     onSetShowVideoSubModePicker: setShowVideoSubModePicker,
     onSelectImageModel: selectImageModelInPicker,
@@ -427,7 +433,9 @@ export function useChatModelSelectionController({
     modelQualitiesPos,
     onHoveredModelChange,
     onReasoningChange,
+    onModelReasoningChange,
     reasoning,
+    reasoningByModel,
     selectableTextModels,
     selectedActModel,
     selectedImageModels,

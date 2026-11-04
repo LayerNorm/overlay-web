@@ -11,7 +11,7 @@ import {
 } from 'react'
 import type { AgentRunResource } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { ACTIVE_AGENT_RUN_STATUSES } from '@/shared/agents/agent-run'
+import { ACTIVE_AGENT_RUN_STATUSES, type AgentRunTerminalError } from '@/shared/agents/agent-run'
 import { useQuery } from '@/components/providers/convex-hooks'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
@@ -36,7 +36,7 @@ type ConvexAgentRunDoc = {
   status: string
   updatedAt: number
   createdAt: number
-  terminalError?: { code: string; message: string; retryable: boolean }
+  terminalError?: AgentRunTerminalError
   approval?: AgentRunResource['approval']
   inputRequest?: AgentRunResource['inputRequest']
   plan?: AgentRunResource['plan']

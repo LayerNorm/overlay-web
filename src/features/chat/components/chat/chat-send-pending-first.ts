@@ -1,5 +1,6 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
+import type { ReasoningLevel } from '@overlay/chat-core'
 import { toast } from '@overlay/ui/primitives'
 import { cloneConversationUiState } from '@overlay/chat-core'
 import type {
@@ -22,6 +23,7 @@ export type PendingFirstSendState = {
   renameStarted: boolean
   renameSeed: string
   activeChatTitleSnapshot: string | null
+  reasoningByModelSnapshot: Readonly<Record<string, ReasoningLevel | undefined>>
 }
 
 export function startPendingFirstSendRename(

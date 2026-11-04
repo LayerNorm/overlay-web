@@ -461,6 +461,7 @@
     "src/server/harness/delivery-wait-projection.ts",
     "src/server/harness/funding-admission.ts",
     "src/server/harness/harness-continuations.ts",
+    "src/server/harness/harness-transcript.ts",
     "src/server/harness/model-dispatch.ts",
     "src/server/harness/native-access.ts",
     "src/server/harness/native-child-steps.ts",

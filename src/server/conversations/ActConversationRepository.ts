@@ -354,6 +354,8 @@ export interface ActConversationRepository {
   failAgentRun(args: {
     error: AgentRunTerminalError
     errorText: string
+    expectedWorkflowRunId?: string
+    failureTranscript?: { content: string; parts: Array<Record<string, unknown>> }
     runId: string
     userId: string
     metrics?: Partial<AgentRunMetrics>

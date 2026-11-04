@@ -16,6 +16,7 @@ export function getInitialEditorState(args: {
     description: agent?.description ?? '',
     instructions: agent?.instructions ?? '',
     modelId: agent?.modelId ?? NEW_AGENT_DEFAULT_MODEL_ID,
+    reasoning: agent?.reasoning,
     avatarColor: agent?.avatarColor ?? AVATAR_FALLBACK_COLOR,
     avatarShape: agent?.avatarShape ?? 'circle',
     visibility: agent?.visibility ?? 'workspace',

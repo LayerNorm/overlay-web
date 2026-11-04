@@ -28,7 +28,8 @@ import { DelayedTooltip } from '@overlay/ui/overlays'
 import { AppBreadcrumbs, AppScreenHeader } from '@overlay/modules-react/shell'
 import type { ChatModelIndicatorModel } from './ModelIndicators'
 import { ModelQualitiesPanel } from './ModelQualitiesPanel'
-import { ModelSelector } from './ModelSelector'
+import { ModelProviderLogo, ModelSelector } from './ModelSelector'
+import { modelReasoningLabel, type ModelReasoningProps } from './ModelReasoningControl'
 import { useFavoriteModelIds } from './useFavoriteModelIds'
 
 const TEMPORARY_CHAT_ICON_SRC = '/assets/icons/dashed-chat.png'
@@ -166,6 +167,8 @@ export interface ChatExperienceHeaderProps {
   isTextModelLocked?: (modelId: string) => boolean
   onLockedTextModelSelect?: (model: ChatModel) => void
   hasAutomationContext: boolean
+  reasoningByModel?: ModelReasoningProps['reasoningByModel']
+  onModelReasoningChange?: ModelReasoningProps['onModelReasoningChange']
   reasoning?: ReasoningLevel
   onReasoningChange?: (level: ReasoningLevel | undefined) => void
 }
@@ -343,7 +346,8 @@ function AutomationModelPicker({
   onHoveredModelChange,
   resolveModel,
   reasoning,
-  onReasoningChange,
+  reasoningByModel,
+  onModelReasoningChange,
   modelPickerListScrollRef,
   textModelsLoading,
   automationHeaderModels,
@@ -364,6 +368,8 @@ function AutomationModelPicker({
   | 'resolveModel'
   | 'reasoning'
   | 'onReasoningChange'
+  | 'reasoningByModel'
+  | 'onModelReasoningChange'
   | 'modelPickerListScrollRef'
   | 'textModelsLoading'
   | 'automationHeaderModels'
@@ -373,6 +379,7 @@ function AutomationModelPicker({
   | 'onSetShowModelPicker'
 >) {
   const { favoriteIds, toggleFavorite } = useFavoriteModelIds(favoriteScope)
+  const selectedModel = automationHeaderModels.find((model) => model.id === automationHeaderModelId)
   return (
     <Popover open={showModelPicker} onOpenChange={onSetShowModelPicker}>
       <div data-tour="model-picker" className="relative min-w-0 flex-1 md:w-auto md:flex-none">
@@ -386,6 +393,9 @@ function AutomationModelPicker({
               <span className="min-w-0 truncate">
                 {getChatModelDisplayName(automationHeaderModelId) || 'Select model'}
               </span>
+              {selectedModel ? <span data-slot="selected-model-reasoning" className="shrink-0 text-[11px] font-normal text-(--muted-light)">
+                {modelReasoningLabel(selectedModel, reasoningByModel ? reasoningByModel[automationHeaderModelId] : reasoning)}
+              </span> : null}
               <ChevronDown size={11} className="shrink-0" />
             </Button>
           </PopoverTrigger>
@@ -405,12 +415,14 @@ function AutomationModelPicker({
               position={modelQualitiesPos}
               resolveModel={resolveModel}
               reasoning={reasoning}
-              onReasoningChange={onReasoningChange}
               onHoveredModelChange={onHoveredModelChange}
             />
           ) : null}
           <ModelSelector
             models={automationHeaderModels}
+            showReasoning
+            reasoningByModel={reasoningByModel ?? { [automationHeaderModelId]: reasoning }}
+            onModelReasoningChange={onModelReasoningChange}
             recommendedIds={modelRecommendations?.text}
             favoriteIds={favoriteIds}
             onToggleFavorite={toggleFavorite}
@@ -474,6 +486,8 @@ function AutomationHeaderControls(props: Pick<ChatExperienceHeaderProps,
   | 'resolveModel'
   | 'reasoning'
   | 'onReasoningChange'
+  | 'reasoningByModel'
+  | 'onModelReasoningChange'
   | 'modelPickerListScrollRef'
   | 'textModelsLoading'
   | 'automationHeaderModels'
@@ -570,6 +584,9 @@ export function ChatModelPickerDropdown({
   modelRecommendations,
   onHoveredModelChange,
   modelSearchInputRef,
+  reasoning,
+  reasoningByModel,
+  onModelReasoningChange,
 }: Pick<
   ChatExperienceHeaderProps,
   | 'generationMode'
@@ -592,6 +609,10 @@ export function ChatModelPickerDropdown({
   | 'favoriteScope'
   | 'modelRecommendations'
   | 'onHoveredModelChange'
+  | 'reasoning'
+  | 'onReasoningChange'
+  | 'reasoningByModel'
+  | 'onModelReasoningChange'
 > & { lockedGenerationMode?: GenerationMode; modelSearchInputRef: RefObject<HTMLInputElement | null> }) {
   const { favoriteIds, toggleFavorite } = useFavoriteModelIds(favoriteScope)
   const mediaModels = generationMode === 'image' ? imageModels : videoModels
@@ -635,6 +656,9 @@ export function ChatModelPickerDropdown({
             onHoveredModelChange(m.id, { x: r.left - 8, y: r.top + r.height / 2 })
           }}
           beforeList={textModelsLoading ? <PremiumModelsLoadingRows /> : null}
+          showReasoning
+          reasoningByModel={reasoningByModel ?? { [selectedActModel]: reasoning }}
+          onModelReasoningChange={onModelReasoningChange}
         />
       ) : (
         <ModelSelector
@@ -658,7 +682,7 @@ export function ChatModelPickerDropdown({
   )
 }
 
-export type ChatModelPickerProps = {
+export type ChatModelPickerProps = ModelReasoningProps & {
   placement?: 'header' | 'composer' | 'field'
   modelPickerRef?: RefObject<HTMLDivElement | null>
   modelPickerLabel: string
@@ -741,6 +765,39 @@ const EMPTY_VIDEO_MODELS: VideoModel[] = []
 const EMPTY_SELECTED_MODELS: string[] = []
 const IGNORE_MODEL_CHANGE = () => {}
 
+function SelectedModelTriggerLogo({
+  model,
+  generationMode,
+}: {
+  model: ChatModel | undefined
+  generationMode: GenerationMode
+}) {
+  if (generationMode !== 'text' || !model?.subscription) return null
+  return <ModelProviderLogo model={model} />
+}
+
+function SelectedModelReasoningBadge({
+  model,
+  generationMode,
+  selectedActModel,
+  reasoning,
+  reasoningByModel,
+}: {
+  model: ChatModel | undefined
+  generationMode: GenerationMode
+  selectedActModel: string
+  reasoning?: ReasoningLevel
+  reasoningByModel?: ModelReasoningProps['reasoningByModel']
+}) {
+  if (generationMode !== 'text' || !model) return null
+  const selectedReasoning = reasoningByModel !== undefined
+    ? reasoningByModel[selectedActModel]
+    : reasoning
+  return <span data-slot="selected-model-reasoning" className="shrink-0 text-[11px] font-normal text-(--muted-light)">
+    {modelReasoningLabel(model, selectedReasoning)}
+  </span>
+}
+
 export function ChatModelPicker({
   modelPickerRef,
   modelPickerLabel,
@@ -753,6 +810,8 @@ export function ChatModelPicker({
   resolveModel,
   reasoning,
   onReasoningChange,
+  reasoningByModel,
+  onModelReasoningChange,
   onGenerationModeChange,
   isActiveLoading,
   modelPickerListScrollRef,
@@ -791,6 +850,7 @@ export function ChatModelPicker({
   const activeHoveredModelId = hoveredModelId === undefined ? internalHoveredModelId : hoveredModelId
   const activeQualitiesPos = modelQualitiesPos === undefined ? internalQualitiesPos : modelQualitiesPos
   const placementConfig = modelPickerPlacement(placement)
+  const selectedTextModel = (pickerTextModels ?? selectableTextModels).find((model) => model.id === selectedActModel)
   const handleOpenChange = (value: boolean) => {
     if (showModelPicker === undefined) setInternalOpen(value)
     onSetShowModelPicker?.(value)
@@ -817,7 +877,18 @@ export function ChatModelPicker({
               type="button"
               className={placementConfig.triggerClass}
             >
+              <SelectedModelTriggerLogo
+                model={selectedTextModel}
+                generationMode={activeGenerationMode}
+              />
               <span className="min-w-0 truncate">{modelPickerLabel}</span>
+              <SelectedModelReasoningBadge
+                model={selectedTextModel}
+                generationMode={activeGenerationMode}
+                selectedActModel={selectedActModel}
+                reasoning={reasoning}
+                reasoningByModel={reasoningByModel}
+              />
               <ChevronDown size={11} className="shrink-0" />
             </Button>
           </PopoverTrigger>
@@ -841,11 +912,14 @@ export function ChatModelPicker({
               position={activeQualitiesPos}
               resolveModel={(id) => resolvePickerModel(id, resolveModel, pickerTextModels ?? selectableTextModels, activeImageModels, activeVideoModels)}
               reasoning={reasoning}
-              onReasoningChange={onReasoningChange}
               onHoveredModelChange={handleHoveredModelChange}
             />
           ) : null}
           <ChatModelPickerDropdown
+            reasoning={reasoning}
+            onReasoningChange={onReasoningChange}
+            reasoningByModel={reasoningByModel}
+            onModelReasoningChange={onModelReasoningChange}
             favoriteScope={favoriteScope}
             modelRecommendations={modelRecommendations}
             generationMode={activeGenerationMode}

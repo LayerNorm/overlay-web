@@ -15,6 +15,12 @@ and Convex environments; see [Workspace billing](workspace-billing.md#usage-mark
 Vercel’s native Git integration deploys main to production. Integration verifies
 the exact live web SHA, synchronizes customer Convex only for backend changes from
 clean current canonical main, and runs proportionate authenticated smoke.
+Harness admissions require the server-owned `harnessTranscriptRevision:
+settled-public-v1` marker as well as the existing recovery/artifact markers. This
+keeps new admissions closed during web-first deployment until the journal and
+safe-diagnostic backend contract is available. Existing run records without
+`publicProgressVersion: 1` do not call the new transcript endpoints.
+
 Frontend-only releases need no backend push. Use the production-scoped key through
 a private key-only env file; never pass .env.local or use convex:push:all.
 

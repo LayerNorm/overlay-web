@@ -75,8 +75,3 @@ export function formatRunAnswers(questions: readonly RunQuestion[], answers: Rea
   if (questions.length === 1) return (answers[0] ?? []).join(', ')
   return questions.map((question, index) => `${question.prompt}\n${answers[index]?.join(', ') || '(skipped)'}`).join('\n\n')
 }
-
-/** A short plain-text form of a stored question, for places that show one line. */
-export function runQuestionSummary(question: string): string {
-  return decodeRunQuestions(question).map(item => item.prompt).join(' ')
-}

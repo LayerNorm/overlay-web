@@ -4,6 +4,7 @@ import {nativeStartAdmissionValidator} from './lib/nativeStartAdmission'
 import { agentMcpCallState } from './lib/agentMcpCallSchema'
 import { growthTables } from './lib/growthSchema'
 import { nativeAgentErrorPart } from './lib/nativeAgentErrorPart'
+import { harnessDiagnosticValidator } from './lib/harnessDiagnosticValidator'
 import { agentRunResourceRequestValidator } from './harness/resourceValidators'
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
@@ -1383,6 +1384,7 @@ export default defineSchema({
       code: v.string(),
       message: v.string(),
       retryable: v.boolean(),
+      diagnostic: v.optional(harnessDiagnosticValidator),
     })),
     inputRequest: v.optional(v.object({
       token: v.string(),
@@ -2414,6 +2416,15 @@ export default defineSchema({
       v.literal('hermes'),
     ),
     modelId: v.string(),
+    reasoning: v.optional(v.union(
+      v.literal('provider-default'),
+      v.literal('none'),
+      v.literal('minimal'),
+      v.literal('low'),
+      v.literal('medium'),
+      v.literal('high'),
+      v.literal('xhigh'),
+    )),
     permissionMode: v.optional(v.string()),
     effort: v.optional(v.string()),
     avatarColor: v.optional(v.string()),
@@ -3014,6 +3025,16 @@ export default defineSchema({
     createdAt: v.number(),
   }).index('by_runId_receiptId', ['runId', 'receiptId'])
     .index('by_runId_createdAt', ['runId', 'createdAt']),
+
+  harnessTranscriptSteps: defineTable({
+    runId: v.string(),
+    receiptId: v.string(),
+    sequence: v.number(),
+    stepNumber: v.number(),
+    persistenceJson: v.string(),
+    createdAt: v.number(),
+  }).index('by_runId_receiptId', ['runId', 'receiptId'])
+    .index('by_runId_sequence', ['runId', 'sequence']),
 
   /** The parent's reservation for a delegated child; the child run itself is a separate `harnessRuns` row. */
   harnessChildren: defineTable({

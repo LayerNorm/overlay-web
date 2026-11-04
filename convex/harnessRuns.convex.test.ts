@@ -28,7 +28,7 @@ test('readiness is available only to the authenticated server', async () => {
   expect(await convex.query(settings, { userId: 'alice', serverSecret: secret }))
     .toMatchObject({ harnessRevision: 'overlay-harness-v1', harnessModelRecoveryRevision: 'settled-retry-v1',
       nativeThreadCompatibilityRevision: 'tracked-native-v1',
-      harnessArtifactPublicationRevision: 'binary-artifact-v1' })
+      harnessArtifactPublicationRevision: 'binary-artifact-v1', harnessTranscriptRevision: 'settled-public-v1' })
   await expect(convex.query(settings, { userId: 'alice', serverSecret: 'invalid' })).rejects.toThrow('Unauthorized')
 })
 
@@ -1029,6 +1029,64 @@ describe('durable harness runs', () => {
     expect(persisted.planRows).toHaveLength(0)
     expect(persisted.revisions).toHaveLength(0)
     expect(persisted.operations).toHaveLength(0)
+  })
+
+  test('writes bounded settled transcript rows idempotently and rejects conflicting replay', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('transcript-journal', await seedConversation(convex))
+    let state = await admit(convex, input)
+    state = (await apply(convex, input, 'claim-transcript', state.revision, {
+      type: 'claim_execution', workflowRunId: 'workflow-transcript',
+    })).snapshot
+    state = (await apply(convex, input, 'reserve-transcript', state.revision, {
+      type: 'reserve_model', id: 'model:0', maxCostMicros: 100,
+    })).snapshot
+    await apply(convex, input, 'settle-transcript', state.revision, {
+      type: 'record_receipt', receipt: {
+        id: 'model:0', modelId: 'fixture/model', provider: 'fixture', inputTokens: 1, outputTokens: 1,
+        reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000, costMicros: 1,
+      },
+    })
+    const write = mutation('writeTranscriptStep')
+    const args = {
+      actorUserId: input.policy.actorUserId,
+      runId: input.runId,
+      workflowRunId: 'workflow-transcript',
+      receiptId: 'model:0',
+      stepNumber: 0,
+      persistence: { content: 'A settled public update.', parts: [{ type: 'text', text: 'A settled public update.' }] },
+      serverSecret: secret,
+    }
+    expect(await convex.mutation(write, args)).toEqual({ persisted: true })
+    expect(await convex.mutation(write, args)).toEqual({ persisted: false })
+    await expect(convex.mutation(write, {
+      ...args,
+      persistence: { content: 'Different replay.', parts: [{ type: 'text', text: 'Different replay.' }] },
+    })).rejects.toThrow(/HARNESS_TRANSCRIPT_CONFLICT/)
+    await expect(convex.mutation(write, { ...args, workflowRunId: 'other-workflow' }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_ACCESS_DENIED/)
+    await expect(convex.mutation(write, { ...args, actorUserId: 'foreign-actor' }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_ACCESS_DENIED/)
+    await expect(convex.mutation(write, { ...args, receiptId: 'model:1' }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_RECEIPT_NOT_FOUND/)
+    await expect(convex.mutation(write, { ...args, receiptId: 'model:9999999999999999999999999' }))
+      .rejects.toThrow(/Invalid harness transcript step/)
+    await expect(convex.query(query('listTranscriptSteps'), {
+      actorUserId: input.policy.actorUserId, runId: input.runId, workflowRunId: 'stale-workflow',
+      paginationOpts: { cursor: null, numItems: 25 }, serverSecret: secret,
+    })).rejects.toThrow(/HARNESS_TRANSCRIPT_ACCESS_DENIED/)
+    const page = await convex.query(query('listTranscriptSteps'), {
+      actorUserId: input.policy.actorUserId,
+      runId: input.runId,
+      workflowRunId: 'workflow-transcript',
+      paginationOpts: { cursor: null, numItems: 25 },
+      serverSecret: secret,
+    })
+    expect(page).toMatchObject({
+      steps: [{ receiptId: 'model:0', sequence: 0, stepNumber: 0,
+        persistence: { content: 'A settled public update.' } }],
+      isDone: true,
+    })
   })
 })
 

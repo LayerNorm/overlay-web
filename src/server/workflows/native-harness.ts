@@ -1,4 +1,4 @@
-import { runQuestionSummary } from '@/shared/agents/run-questions'
+import { harnessExecutionFailureReason } from '@/server/harness/execution-failure'
 import { createHook, FatalError, getWorkflowMetadata } from 'workflow'
 import { start } from 'workflow/api'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
@@ -14,9 +14,11 @@ import { notifyHarnessAncestors, readHarnessChild } from '@/server/harness/perso
 import { harnessWakeToken } from '@/server/harness/wait-token'
 import { applyHarnessOperation, claimHarnessState, readHarnessState } from '@/server/harness/state-steps'
 import { harnessToolResultEvidence } from '@/server/harness/tool-evidence'
+import { readHarnessTranscriptForDelivery } from '@/server/harness/harness-transcript'
+import { harnessDiagnosticForFailure } from '@/server/harness/harness-diagnostics'
+import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
 import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
-import { harnessExecutionFailureReason } from '@/server/harness/execution-failure'
 import { handoffHarnessContinuation } from '@/server/harness/harness-continuations'
 import type { NativeHarnessAccess } from '@/server/harness/native-access'
 import type { NativeHarnessWorkflowInput } from '@/server/harness/native-workflow-input'
@@ -117,8 +119,10 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     const executionProjection = projectHarnessExecutionResult(result, initial.runId)
     if (executionProjection) return executionProjection
     if (!isTerminalHarnessStatus(result.snapshot.status)) {
+      const diagnostic = harnessDiagnosticForFailure(access.runId, result.snapshot, new Error(result.snapshot.blocker?.question ?? ''), 'model')
+      const reason = harnessDiagnosticMessage(diagnostic)
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
-        type: 'terminate', status: 'failed', reason: (result.snapshot.blocker && runQuestionSummary(result.snapshot.blocker.question)) || 'The task is blocked and cannot continue.',
+        type: 'terminate', status: 'failed', reason, diagnostic,
       })
     }
   } catch (error) {
@@ -135,16 +139,19 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
         error = authorizationError
       }
     }
-    const reason = harnessExecutionFailureReason(error)
+    const diagnostic = harnessDiagnosticForFailure(access.runId, state, error, (error as { code?: string })?.code === 'HARNESS_TOOL_OUTCOME_UNKNOWN' ? 'tool' : 'model')
+    const diagnosticFields = state.policy.publicProgressVersion === 1 ? { diagnostic } : {}
+    const reason = state.policy.publicProgressVersion === 1 ? harnessDiagnosticMessage(diagnostic) : harnessExecutionFailureReason(error)
     const snapshot = isTerminalHarnessStatus(state.status) ? state
-      : await applyHarnessOperation(access, 'execution-failed', { type: 'terminate', status: 'failed', reason })
+      : await applyHarnessOperation(access, 'execution-failed', { type: 'terminate', status: 'failed', reason, ...diagnosticFields })
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
   }
   const current = await readHarnessState(access)
   const currentProjection = projectCurrentHarnessOwner(current, access, { includeFundingPause: true })
   if (currentProjection) return currentProjection
   if (owns) {
-    const delivery = buildNativeHarnessDelivery(result, activeToolNames)
+    const journal = await readHarnessTranscriptForDelivery(access, result)
+    const delivery = buildNativeHarnessDelivery(result, activeToolNames, journal)
     await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: input.context.memoryEnabled }, activeToolNames)
   }
   if (initial.parentRunId) await notifyHarnessAncestors(access)

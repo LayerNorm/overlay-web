@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { decodeRunQuestions, encodeRunQuestions, formatRunAnswers, runQuestionIssue, runQuestionSummary } from './run-questions'
+import { decodeRunQuestions, encodeRunQuestions, formatRunAnswers, runQuestionIssue } from './run-questions'
 
 test('encoded questions decode back unchanged', () => {
   const questions = [{ prompt: 'Who is this for?', description: 'Sets the detail.', choices: [{ label: 'Team', description: 'All of it' }], allowCustomAnswer: true, optional: true }]
@@ -33,9 +33,4 @@ test('several questions pair each answer with its question and mark skips', () =
     formatRunAnswers([{ prompt: 'Who is it for?' }, { prompt: 'Name customers?' }], [['Team'], []]),
     'Who is it for?\nTeam\n\nName customers?\n(skipped)',
   )
-})
-
-test('a summary never exposes the stored JSON', () => {
-  assert.equal(runQuestionSummary(encodeRunQuestions([{ prompt: 'Who is it for?' }, { prompt: 'Name customers?' }])), 'Who is it for? Name customers?')
-  assert.equal(runQuestionSummary('Which currency?'), 'Which currency?')
 })

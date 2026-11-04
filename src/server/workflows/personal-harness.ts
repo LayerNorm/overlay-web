@@ -1,4 +1,7 @@
-import { runQuestionSummary } from '@/shared/agents/run-questions'
+import { harnessExecutionFailureReason } from '@/server/harness/execution-failure'
+import { harnessDiagnosticForFailure } from '@/server/harness/harness-diagnostics'
+import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
+import { readHarnessTranscriptForDelivery } from '@/server/harness/harness-transcript'
 import { createHook, FatalError, getWorkflowMetadata, getWritable } from 'workflow'
 import { start } from 'workflow/api'
 import type { ModelCallStreamPart } from '@ai-sdk/workflow'
@@ -18,7 +21,6 @@ import { applyHarnessOperation, readAndClaimHarnessState, readHarnessState } fro
 import { harnessToolResultEvidence } from '@/server/harness/tool-evidence'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
 import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
-import { harnessExecutionFailureReason } from '@/server/harness/execution-failure'
 import { stripTextualToolCalls } from '@/server/harness/textual-tool-calls'
 import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
 import type { PersonalHarnessWorkflowInput } from '@/server/harness/personal-workflow-input'
@@ -206,8 +208,10 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     const executionProjection = projectHarnessExecutionResult(result, initial.runId)
     if (executionProjection) return executionProjection
     if (!isTerminalHarnessStatus(result.snapshot.status)) {
+      const diagnostic = harnessDiagnosticForFailure(access.runId, result.snapshot, new Error(result.snapshot.blocker?.question ?? ''), 'model')
+      const reason = harnessDiagnosticMessage(diagnostic)
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
-        type: 'terminate', status: 'failed', reason: (result.snapshot.blocker && runQuestionSummary(result.snapshot.blocker.question)) || 'The task is blocked and cannot continue.',
+        type: 'terminate', status: 'failed', reason, diagnostic,
       })
     }
   } catch (error) {
@@ -224,21 +228,26 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
         error = authorizationError
       }
     }
-    const reason = harnessExecutionFailureReason(error)
+    const diagnostic = harnessDiagnosticForFailure(access.runId, state, error, (error as { code?: string })?.code === 'HARNESS_TOOL_OUTCOME_UNKNOWN' ? 'tool' : 'model')
+    const diagnosticFields = state.policy.publicProgressVersion === 1 ? { diagnostic } : {}
+    const reason = state.policy.publicProgressVersion === 1 ? harnessDiagnosticMessage(diagnostic) : harnessExecutionFailureReason(error)
     const snapshot = isTerminalHarnessStatus(state.status) ? state
-      : await applyHarnessOperation(access, 'execution-failed', { type: 'terminate', status: 'failed', reason })
+      : await applyHarnessOperation(access, 'execution-failed', { type: 'terminate', status: 'failed', reason, ...diagnosticFields })
     result = { outcome: 'finished', snapshot, messages: [], steps: [] }
   }
   const current = await readHarnessState(access)
   const currentProjection = projectCurrentHarnessOwner(current, access, { includeFundingPause: true })
   if (currentProjection) return currentProjection
+  let replyText: string | undefined
   if (isRoot) {
-    const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, activeToolNames)
-    if (!result.steps.length && progress) {
+    const journal = await readHarnessTranscriptForDelivery(access, result)
+    const delivery = buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, activeToolNames, journal)
+    if (!result.steps.length && !delivery.content && progress) {
       const content = progress
       delivery.content = content
       delivery.parts = [{ type: 'text', text: content }]
     }
+    replyText = delivery.content
     await finishPersonalHarnessDelivery(access, delivery, { emitWebhook: input.delivery?.emitWebhook ?? false, turnId: input.context.turnId })
   } else {
     await notifyHarnessAncestors(access)
@@ -251,7 +260,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     status: result.snapshot.status,
     ...(result.snapshot.terminalReason ? { terminalReason: result.snapshot.terminalReason } : {}),
     ...(shouldReturnPersonalReply(input.delivery?.closeStream, isRoot, result.snapshot.status)
-      ? { replyText: buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, activeToolNames).content }
+      ? { replyText: replyText ?? buildPersonalHarnessDelivery(result, input.delivery?.sourceCitations, activeToolNames).content }
       : {}),
   }
 }

@@ -121,6 +121,10 @@ export function AgentSidebarDetails({
               modelPickerLabel={modelField.modelPickerLabel}
               selectableTextModels={modelField.selectableTextModels}
               selectedActModel={form.modelId}
+              reasoning={form.reasoning}
+              onReasoningChange={form.setReasoning}
+              reasoningByModel={form.reasoningByModel}
+              onModelReasoningChange={form.onModelReasoningChange}
               onToggleTextModel={(value) => {
                 form.setModelId(value)
                 form.markDirty()

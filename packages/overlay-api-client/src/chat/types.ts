@@ -101,7 +101,20 @@ export type AgentRunResource = {
   completedAt?: number
   failedAt?: number
   cancelledAt?: number
-  terminalError?: { code: string; message: string; retryable: boolean }
+  terminalError?: {
+    code: string
+    message: string
+    retryable: boolean
+    diagnostic?: {
+      diagnosticId: string
+      code: string
+      stage: 'admission' | 'model' | 'tool' | 'persistence' | 'delivery'
+      retryability: 'automatic' | 'user_action' | 'reconcile' | 'none'
+      safeMessage: string
+      nextAction: string
+      occurredAt: number
+    }
+  }
   inputRequest?: { token: string; requestedAt: number; question: string }
   plan?: Array<{ id: string; title: string; status: string }>
   resourceRequest?: AgentRunResourceRequest

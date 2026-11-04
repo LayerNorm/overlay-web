@@ -1,3 +1,4 @@
+import { harnessDiagnosticMessage, type HarnessDiagnostic } from './harness-diagnostic'
 import { isSafeHarnessFundingCents, type HarnessResourceGrantReceipt } from './harness-resource'
 
 export type HarnessStatus = 'running' | 'waiting_for_input' | 'waiting_for_approval' | 'waiting_for_children' | 'waiting_for_resources' | 'waiting_for_authorization' | 'completed' | 'cancelled' | 'failed'
@@ -106,6 +107,8 @@ export type HarnessReceipt = {
 }
 
 export type HarnessPolicy = {
+  /** Public progress and the settled public transcript journal are enabled only for new admissions. */
+  publicProgressVersion?: 1
   actorUserId: string
   workspaceId?: string
   resourcePauseVersion?: 1
@@ -174,6 +177,7 @@ export type HarnessSnapshot = {
   children: HarnessChild[]
   blocker?: { kind: 'input' | 'approval' | 'budget' | 'stuck'; question: string }
   terminalReason?: string
+  diagnostic?: HarnessDiagnostic
   workingSummary: string
   /** Model-produced continuity prose. Never authoritative evidence. */
   unverifiedNarrative?: string
@@ -758,7 +762,8 @@ export function harnessCompletionIssues(state: HarnessSnapshot): string[] {
 
 export function reservedHarnessCostMicros(state: HarnessSnapshot): number {
   return (state.modelReservation?.maxCostMicros ?? 0)
-    + state.children.filter(child => child.status === 'running').reduce((sum, child) => sum + Math.max(0, child.maxCostMicros - child.costMicros), 0)
+    + state.children.filter(child => child.status === 'running').reduce((sum, child) => sum
+      + Math.max(0, child.maxCostMicros - child.costMicros), 0)
 }
 
 export function reserveHarnessModel(state: HarnessSnapshot, id: string, maxCostMicros: number, now: number): HarnessSnapshot {
@@ -823,6 +828,25 @@ export function blockHarness(state: HarnessSnapshot, blocker: NonNullable<Harnes
   return changed(next, now)
 }
 
+export function recordHarnessDiagnostic(
+  state: HarnessSnapshot,
+  diagnostic: HarnessDiagnostic,
+  now: number,
+): HarnessSnapshot {
+  if (state.diagnostic) {
+    if (state.diagnostic.diagnosticId === diagnostic.diagnosticId) {
+      if (JSON.stringify(state.diagnostic) !== JSON.stringify(diagnostic)) {
+        throw new Error('Harness diagnostic identity cannot be reused.')
+      }
+      return state
+    }
+  }
+  const next = mutable(state)
+  next.diagnostic = { ...diagnostic }
+  if (state.status === 'failed') next.terminalReason = harnessDiagnosticMessage(diagnostic)
+  return changed(next, now, false)
+}
+
 export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnapshot {
   assertActive(state)
   if (state.modelReservation) throw new Error('A model hold must be reconciled before the run can resume.')
@@ -835,6 +859,7 @@ export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnaps
   if (!state.blocker && state.status !== 'waiting_for_children') throw new Error('There is no blocker to resolve.')
   const next = mutable(state)
   next.blocker = undefined
+  next.diagnostic = undefined
   next.status = 'running'
   next.stalledContinuations = 0
   next.lastContinuationProgressRevision = next.progressRevision
@@ -1108,12 +1133,19 @@ export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSn
   return changed(next, now)
 }
 
-export function terminateHarness(state: HarnessSnapshot, status: 'cancelled' | 'failed', reason: string, now: number): HarnessSnapshot {
+export function terminateHarness(
+  state: HarnessSnapshot,
+  status: 'cancelled' | 'failed',
+  reason: string,
+  now: number,
+  diagnostic?: HarnessDiagnostic,
+): HarnessSnapshot {
   if (['completed', 'cancelled', 'failed'].includes(state.status)) return state
   if (!reason.trim() || reason.length > 2_000) throw new Error('A concise termination reason is required.')
   const next = mutable(state)
   next.status = status
   next.terminalReason = reason
+  if (diagnostic) next.diagnostic = { ...diagnostic }
   next.children = next.children.map(child => child.status === 'running' ? { ...child, status: 'cancelled' } : child)
   return changed(next, now)
 }

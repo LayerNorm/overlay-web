@@ -10,16 +10,22 @@ const originalEnv = {
   nextPhase: process.env.NEXT_PHASE,
   deploymentEnv: process.env.OVERLAY_DEPLOYMENT_ENV,
   internalApiSecret: process.env.INTERNAL_API_SECRET,
+  cliproxyApiUrl: process.env.OVERLAY_CLIPROXYAPI_URL,
+  cliproxyApiSecret: process.env.OVERLAY_CLIPROXYAPI_SECRET,
 }
 process.env.NEXT_PHASE = 'phase-production-build'
 process.env.OVERLAY_DEPLOYMENT_ENV = 'test'
 process.env.INTERNAL_API_SECRET = 'test-internal-secret'
+process.env.OVERLAY_CLIPROXYAPI_URL = 'http://cliproxyapi.test'
+process.env.OVERLAY_CLIPROXYAPI_SECRET = 'test-cliproxyapi-secret-with-more-than-32-characters'
 
 test.after(() => {
   for (const [key, value] of Object.entries({
     NEXT_PHASE: originalEnv.nextPhase,
     OVERLAY_DEPLOYMENT_ENV: originalEnv.deploymentEnv,
     INTERNAL_API_SECRET: originalEnv.internalApiSecret,
+    OVERLAY_CLIPROXYAPI_URL: originalEnv.cliproxyApiUrl,
+    OVERLAY_CLIPROXYAPI_SECRET: originalEnv.cliproxyApiSecret,
   })) {
     if (value === undefined) delete process.env[key]
     else process.env[key] = value

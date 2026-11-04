@@ -1,18 +1,12 @@
+import { HARNESS_PUBLIC_PROGRESS_INSTRUCTION } from './public-progress'
 import { harnessCompletionIssues, reservedHarnessCostMicros, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { HARNESS_EVIDENCE_POLICY } from './continuity-policy'
 import { buildHarnessCheckpoint } from './continuity'
 
-export const HARNESS_CONTROL_TOOLS = [
-  'harness_set_plan',
-  'harness_update_step',
-  'harness_read_evidence',
-  'harness_read_artifact',
-  'harness_report_blocker',
-  'harness_delegate',
-  'harness_read_child',
-] as const
+export { HARNESS_CONTROL_TOOLS } from '@overlay/agent-runtime/harness-store'
 
 const HARNESS_INSTRUCTIONS = `You are running inside the Overlay Harness.
+Keep the user informed in ordinary assistant text, not private reasoning or tool arguments. Before the first tool call, briefly acknowledge the request and describe the next action. Between meaningful batches of tools, explain what you found, what changed, or what you will try next. When a tool fails or you change approach, explain the practical impact. Do not narrate every tool call, expose private reasoning, or claim work you did not do. Tool activity labels are not a substitute for these progress updates.
 If a task seems long and needs structure, create a concise plan with harness_set_plan before you start. Simple questions and quick tasks don't need a plan, so just answer them.
 When you have a plan, use harness_update_step to mark each step running when you start it and done when you finish it, so the person can follow your progress. Marking a step done means the work is finished. Mark your steps done before you write your final answer. Only say you did something if you actually did it.
 Before repeating an action, check the observations in the working state. If a successful result already covers it, use that result.
@@ -34,6 +28,7 @@ export type HarnessInstructionContext = {
   truncatedResponse: boolean
   finalAnswerRequired?: boolean
   stagnationRecoveryAttempt?: number
+  publicProgress?: boolean
 }
 
 export function hasPendingHarnessAnswer(state: HarnessSnapshot): boolean {
@@ -52,6 +47,7 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
     + (context.stagnationRecoveryAttempt !== undefined
       ? `\nRecovery attempt ${context.stagnationRecoveryAttempt}: inspect recent failed tool results and missing capabilities, then try a different approach. Do not repeat the same plan or tool call. Ask with harness_report_blocker only if you need a decision from the person.`
       : '')
+    + (context.publicProgress ? `\n${HARNESS_PUBLIC_PROGRESS_INSTRUCTION}` : '')
     + (context.finalAnswerRequired && !readyToAnswer
       ? '\nThe work is finished. Reply to the person now in plain text with the results and any requested links. Do not write tool calls as text.'
       : '')

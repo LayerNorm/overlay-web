@@ -26,6 +26,7 @@ export type SubscriptionState = {
 export type SubscriptionModel = {
   id: string
   name: string
+  reasoningLevels?: string[]
 }
 
 export type SubscriptionAuthorization = {

@@ -5,7 +5,7 @@ import {
   currentHarnessContext, finishHarness, harnessCompletionIssues, recordHarnessEvidence, recordHarnessReceipt, recordHarnessChildReceipt,
   replaceHarnessPlan, settleHarnessChild, terminateHarness, transitionHarnessStep, type HarnessChild, type HarnessEvidence,
   type HarnessPlanInput, type HarnessReceipt,
-  claimHarnessExecution, hasRunnableHarnessMilestones, waitForHarnessChildren, resumeHarness,
+  claimHarnessExecution, hasRunnableHarnessMilestones, waitForHarnessChildren, resumeHarness, recordHarnessDiagnostic,
   reserveHarnessModel, reservedHarnessCostMicros,
   bindHarnessModelDispatch,
   validateHarnessReceipt,
@@ -14,6 +14,7 @@ import {
   pauseHarnessForAuthorization,
   pauseHarnessForFunding, resumeHarnessFunding,
 } from './harness-state'
+import { createHarnessDiagnostic } from './harness-diagnostic'
 
 const now = 1_000
 

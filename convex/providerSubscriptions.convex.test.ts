@@ -404,3 +404,88 @@ test('discovery activation is atomic and rediscovery preserves an empty model se
     clock.mockRestore()
   }
 })
+
+test('failClosed and reconnect preserve enabled model selections', async () => {
+  let now = Date.now()
+  const clock = vi.spyOn(Date, 'now').mockImplementation(() => now)
+  try {
+    const convex = convexTest(schema, modules)
+    const pending = await createPendingAuthorization(convex)
+    const models = [
+      { id: 'codex-one', name: 'Codex One' },
+      { id: 'codex-two', name: 'Codex Two' },
+    ]
+    now += 3_000
+    const poll = await convex.mutation(mutation('acquirePoll'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      leaseToken: 'initial-poll',
+    })
+    await convex.mutation(mutation('commitCredentialForDiscovery'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      generation: poll.generation!, revision: poll.revision!, leaseToken: 'initial-poll',
+      credentialRef: 'vault-initial',
+    })
+    const discovery = await convex.mutation(mutation('acquireDiscovery'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      leaseToken: 'initial-discovery',
+    })
+    await convex.mutation(mutation('commitActive'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      generation: discovery.generation!, revision: discovery.revision!,
+      leaseToken: 'initial-discovery', credentialRef: 'vault-initial',
+      discoveredModelsJson: JSON.stringify({ data: models }),
+      discoveredModelIds: models.map(({ id }) => id),
+    })
+    const refresh = await convex.mutation(mutation('acquireRefresh'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      leaseToken: 'failed-refresh',
+    })
+    await convex.mutation(mutation('failClosed'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      generation: refresh.generation!, revision: refresh.revision!,
+      leaseToken: 'failed-refresh', error: 'Reconnect required',
+    })
+    const failed = await convex.query(connectionQuery('getByServer'), {
+      serverSecret: secret, connectionId: pending.connectionId,
+    })
+    expect(failed?.enabledModelIds).toEqual(['codex-one', 'codex-two'])
+
+    const authorization = await convex.mutation(mutation('reserveAuthorization'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      providerId: 'codex', leaseToken: 'reconnect-authorization',
+    })
+    await convex.mutation(mutation('savePendingAuthorization'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      generation: authorization.generation, revision: authorization.revision,
+      leaseToken: 'reconnect-authorization', pendingStateRef: 'vault-reconnect-pending',
+      expiresAt: now + 10 * 60_000, pollIntervalMs: 2_000,
+    })
+    now += 3_000
+    const reconnectPoll = await convex.mutation(mutation('acquirePoll'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      leaseToken: 'reconnect-poll',
+    })
+    await convex.mutation(mutation('commitCredentialForDiscovery'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      generation: reconnectPoll.generation!, revision: reconnectPoll.revision!,
+      leaseToken: 'reconnect-poll', credentialRef: 'vault-reconnected',
+    })
+    const reconnectDiscovery = await convex.mutation(mutation('acquireDiscovery'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      leaseToken: 'reconnect-discovery',
+    })
+    await convex.mutation(mutation('commitActive'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      generation: reconnectDiscovery.generation!, revision: reconnectDiscovery.revision!,
+      leaseToken: 'reconnect-discovery', credentialRef: 'vault-reconnected',
+      discoveredModelsJson: JSON.stringify({ data: models }),
+      discoveredModelIds: models.map(({ id }) => id),
+    })
+    const reconnected = await convex.query(connectionQuery('getByServer'), {
+      serverSecret: secret, connectionId: pending.connectionId,
+    })
+    expect(reconnected?.enabledModelIds).toEqual(['codex-one', 'codex-two'])
+  } finally {
+    clock.mockRestore()
+  }
+})

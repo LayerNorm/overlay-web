@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { GenerationMode, VideoSubMode } from '@/shared/ai/gateway/model-types'
 import type { ReasoningLevel } from '@overlay/chat-core'
 import {
@@ -9,11 +9,9 @@ import {
   DEFAULT_VIDEO_MODEL_ID,
 } from '@/shared/ai/gateway/model-types'
 import { IMAGE_MODELS, VIDEO_MODELS } from '@/shared/ai/gateway/model-data'
-import {
-  normalizeChatModelSelection,
-  readStoredReasoningLevel,
-  writeStoredReasoningLevel,
-} from '@/shared/chat/chat-model-prefs'
+import { normalizeChatModelSelection, type ChatReasoningScope } from '@/shared/chat/chat-model-prefs'
+import { useChatReasoningPreferences } from '@/components/providers/useChatReasoningPreferences'
+import { PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
 import { normalizeStoredModelId, safeSetLocalStorage } from './model-selection-utils'
 import {
   CHAT_MODEL_KEY,
@@ -28,7 +26,15 @@ import {
   VIDEO_SUB_MODE_KEY,
 } from '../chat-interface/constants'
 
-export function useChatPreferences() {
+export function useChatPreferences({
+  activeChatId,
+  activeWorkspaceId,
+  isTemporaryChat,
+}: {
+  activeChatId: string | null
+  activeWorkspaceId: string | null
+  isTemporaryChat: boolean
+}) {
   const [selectedActModel, setSelectedActModel] = useState<string>(DEFAULT_MODEL_ID)
   const [selectedModels, setSelectedModels] = useState<string[]>([DEFAULT_MODEL_ID])
   const [chatPrefsHydrated, setChatPrefsHydrated] = useState(false)
@@ -37,7 +43,14 @@ export function useChatPreferences() {
   const [generationChip, setGenerationChip] = useState<'image' | 'video' | null>(null)
   const [selectedImageModels, setSelectedImageModels] = useState<string[]>([DEFAULT_IMAGE_MODEL_ID])
   const [selectedVideoModels, setSelectedVideoModels] = useState<string[]>([DEFAULT_VIDEO_MODEL_ID])
-  const [reasoning, setReasoning] = useState<ReasoningLevel | undefined>(undefined)
+  const temporaryScopeId = useId()
+  const reasoningScope: ChatReasoningScope = isTemporaryChat
+    ? { type: 'temporary', id: temporaryScopeId }
+    : activeChatId && activeChatId !== PENDING_FIRST_CHAT_ID
+      ? { type: 'thread', id: activeChatId }
+      : { type: 'workspace', id: activeWorkspaceId ?? 'personal' }
+  const { reasoningByModel, onModelReasoningChange, reasoningStorageKey } = useChatReasoningPreferences(reasoningScope)
+  const reasoning = reasoningByModel[selectedActModel]
   const [videoSubMode, setVideoSubMode] = useState<VideoSubMode>('text-to-video')
   const lastGeneratedImageUrlRef = useRef<string | null>(null)
 
@@ -106,15 +119,9 @@ export function useChatPreferences() {
     }
   }, [])
 
-  // Hydrate reasoning level from localStorage after mount
-  useEffect(() => {
-    setReasoning(readStoredReasoningLevel())
-  }, [])
-
-  const handleSetReasoning = useRef((level: ReasoningLevel | undefined) => {
-    setReasoning(level)
-    if (level) writeStoredReasoningLevel(level)
-  }).current
+  const setReasoning = useCallback((level: ReasoningLevel | undefined) => {
+    onModelReasoningChange(selectedActModel, level)
+  }, [onModelReasoningChange, selectedActModel])
 
   // Persist text chat model selection to localStorage so it survives
   // navigation and app restarts for the new/personal chat surface.
@@ -146,8 +153,11 @@ export function useChatPreferences() {
     videoSubMode,
     setVideoSubMode,
     lastGeneratedImageUrlRef,
+    reasoningByModel,
     reasoning,
-    setReasoning: handleSetReasoning,
+    setReasoning,
+    onModelReasoningChange,
+    reasoningStorageKey,
   }
 }
 

@@ -228,9 +228,10 @@ export function useChatExperienceController({
     videoSubMode,
     setVideoSubMode,
     lastGeneratedImageUrlRef,
-    reasoning,
+    reasoningByModel,
     setReasoning,
-  } = useChatPreferences()
+    onModelReasoningChange,
+  } = useChatPreferences({ activeChatId, activeWorkspaceId, isTemporaryChat })
   const [, setIsSwitchingChat] = useState(false)
   const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: capabilities.integrations })
 
@@ -805,8 +806,9 @@ export function useChatExperienceController({
     generationMode,
     isActiveLoading,
     isTemporaryChat,
-    reasoning,
+    reasoningByModel,
     onReasoningChange: setReasoning,
+    onModelReasoningChange,
     selectableTextModels,
     selectedActModel,
     selectedImageModels,
@@ -895,7 +897,8 @@ export function useChatExperienceController({
     replyContext,
     requireAuth,
     resetComposerToolIds,
-    reasoning,
+    reasoningByModel,
+    reasoningModels: pickerTextModels,
     selectedActModel,
     selectedImageModels,
     selectedModels,

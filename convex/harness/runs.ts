@@ -1,3 +1,4 @@
+import { paginationOptsValidator } from 'convex/server'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import { requireConversationAccess } from '../collaboration/directMessages'
@@ -18,6 +19,7 @@ import {
   applyHarnessResourceGrant,
   consumeHarnessResourcePause,
   HarnessPlanValidationError,
+  recordHarnessDiagnostic,
   recordHarnessEvidence,
   recordHarnessVerification,
   setHarnessCompaction,
@@ -35,11 +37,13 @@ import {
   terminateHarness,
   transitionHarnessStep,
   waitForHarnessChildren,
+  type HarnessReceipt,
   type HarnessChild,
   type HarnessEvidence,
   type HarnessPolicy,
   type HarnessSnapshot,
 } from '../../packages/overlay-agent-runtime/src/harness-state'
+import { createHarnessDiagnostic, type HarnessDiagnostic } from '../../packages/overlay-agent-runtime/src/harness-diagnostic'
 import {
   assertSafeResourceMicros,
   calculateHarnessResourceGrantReceipt,
@@ -58,6 +62,8 @@ import type {
   HarnessWait,
   HarnessWaitReference,
   HarnessWaitRequest,
+  HarnessTranscriptPage,
+  HarnessTranscriptPersistence,
 } from '../../packages/overlay-agent-runtime/src/harness-store'
 import { ConvexError, v } from 'convex/values'
 
@@ -77,6 +83,7 @@ const MAX_HARNESS_DEPTH = 32
 const MAX_OPERATION_JSON_BYTES = 256 * 1024
 const MAX_PLAN_JSON_BYTES = 512 * 1024
 const MAX_WAIT_REQUESTS = 128
+const MAX_TRANSCRIPT_STEP_JSON_BYTES = 256 * 1024
 
 const waitRequestValidator = v.union(
   v.object({
@@ -106,6 +113,7 @@ const policyValidator = v.object({
   workspaceId: v.optional(v.string()),
   resourcePauseVersion: v.optional(v.literal(1)),
   executionPolicyVersion: v.optional(v.literal(2)),
+  publicProgressVersion: v.optional(v.literal(1)),
   spendingMode: v.optional(v.union(v.literal('workspace'), v.literal('external'), v.literal('none'))),
   allowedToolIds: v.array(v.string()),
   requiresPlan: v.boolean(),
@@ -263,6 +271,37 @@ const operationValidator = v.union(
       kind: v.union(v.literal('input'), v.literal('approval'), v.literal('budget'), v.literal('stuck')),
       question: v.string(),
     }),
+    diagnostic: v.optional(v.object({
+      diagnosticId: v.string(),
+      code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
+        v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'),
+        v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
+        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
+      stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
+        v.literal('persistence'), v.literal('delivery')),
+      operationId: v.optional(v.string()),
+      retryability: v.union(v.literal('automatic'), v.literal('user_action'), v.literal('reconcile'), v.literal('none')),
+      safeMessage: v.string(),
+      nextAction: v.string(),
+      occurredAt: v.number(),
+    })),
+  }),
+  v.object({
+    type: v.literal('record_diagnostic'),
+    diagnostic: v.object({
+      diagnosticId: v.string(),
+      code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
+        v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'),
+        v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
+        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
+      stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
+        v.literal('persistence'), v.literal('delivery')),
+      operationId: v.optional(v.string()),
+      retryability: v.union(v.literal('automatic'), v.literal('user_action'), v.literal('reconcile'), v.literal('none')),
+      safeMessage: v.string(),
+      nextAction: v.string(),
+      occurredAt: v.number(),
+    }),
   }),
   v.object({ type: v.literal('resume') }),
   v.object({
@@ -304,6 +343,20 @@ const operationValidator = v.union(
     type: v.literal('terminate'),
     status: v.union(v.literal('cancelled'), v.literal('failed')),
     reason: v.string(),
+    diagnostic: v.optional(v.object({
+      diagnosticId: v.string(),
+      code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
+        v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'),
+        v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
+        v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'), v.literal('UNKNOWN')),
+      stage: v.union(v.literal('admission'), v.literal('model'), v.literal('tool'),
+        v.literal('persistence'), v.literal('delivery')),
+      operationId: v.optional(v.string()),
+      retryability: v.union(v.literal('automatic'), v.literal('user_action'), v.literal('reconcile'), v.literal('none')),
+      safeMessage: v.string(),
+      nextAction: v.string(),
+      occurredAt: v.number(),
+    })),
   }),
 )
 
@@ -370,6 +423,7 @@ function metadataFromSnapshot(snapshot: HarnessSnapshot): HarnessMetadata {
     planRevision: snapshot.planRevision,
     ...(snapshot.blocker === undefined ? {} : { blocker: snapshot.blocker }),
     ...(snapshot.terminalReason === undefined ? {} : { terminalReason: snapshot.terminalReason }),
+    ...(snapshot.diagnostic === undefined ? {} : { diagnostic: snapshot.diagnostic }),
     workingSummary: snapshot.workingSummary,
     ...(snapshot.resultSummary === undefined ? {} : { resultSummary: snapshot.resultSummary }),
     continuations: snapshot.continuations,
@@ -679,7 +733,8 @@ function assertBoundedOperation(operation: HarnessOperation) {
       if (operation.resultSummary !== undefined && operation.resultSummary.length > MAX_WORKING_SUMMARY_LENGTH) throw new Error('Harness result summary exceeds 8,000 characters.')
       break
     case 'block':
-      if (!operation.blocker.question.trim() || operation.blocker.question.length > MAX_EVIDENCE_SUMMARY_LENGTH) {
+      if (!operation.blocker.question.trim() || operation.blocker.question.length > MAX_EVIDENCE_SUMMARY_LENGTH
+        || (operation.diagnostic && !isValidDiagnostic(operation.diagnostic))) {
         throw new Error('Harness blocker exceeds its bounds.')
       }
       break
@@ -688,6 +743,9 @@ function assertBoundedOperation(operation: HarnessOperation) {
         || (operation.pause.autoTopUpReason !== undefined && operation.pause.autoTopUpReason.length > MAX_EVIDENCE_SUMMARY_LENGTH)) {
         throw new Error('Harness funding pause exceeds its bounds.')
       }
+      break
+    case 'record_diagnostic':
+      if (!isValidDiagnostic(operation.diagnostic)) throw new Error('Harness diagnostic exceeds its bounds.')
       break
     case 'admit_child':
       if (!operation.child.id.trim() || operation.child.id.length > MAX_ID_LENGTH
@@ -728,11 +786,28 @@ function assertBoundedOperation(operation: HarnessOperation) {
       }
       break
     case 'terminate':
-      if (!operation.reason.trim() || operation.reason.length > MAX_EVIDENCE_SUMMARY_LENGTH) {
+      if (!operation.reason.trim() || operation.reason.length > MAX_EVIDENCE_SUMMARY_LENGTH
+        || (operation.diagnostic && !isValidDiagnostic(operation.diagnostic))) {
         throw new Error('Harness termination reason exceeds its bounds.')
       }
       break
   }
+}
+
+function isValidDiagnostic(diagnostic: HarnessDiagnostic): boolean {
+  const expected = createHarnessDiagnostic({
+    diagnosticId: diagnostic.diagnosticId,
+    code: diagnostic.code,
+    stage: diagnostic.stage,
+    operationId: diagnostic.operationId,
+    occurredAt: diagnostic.occurredAt,
+  })
+  return diagnostic.diagnosticId.length <= MAX_ID_LENGTH
+    && (diagnostic.operationId === undefined || diagnostic.operationId.length <= MAX_ID_LENGTH)
+    && Number.isSafeInteger(diagnostic.occurredAt) && diagnostic.occurredAt >= 0
+    && diagnostic.safeMessage === expected.safeMessage
+    && diagnostic.nextAction === expected.nextAction
+    && diagnostic.retryability === expected.retryability
 }
 
 function requireHarnessServerSecret(secret: string) {
@@ -1301,6 +1376,7 @@ function childAdmission(
     ...(parent.policy.workspaceId ? { workspaceId: parent.policy.workspaceId } : {}),
     allowedToolIds: [...new Set(operation.child.allowedToolIds)].sort(),
     requiresPlan: false,
+    ...(parent.policy.publicProgressVersion === 1 ? { publicProgressVersion: 1 as const } : {}),
     deadlineAt: parent.policy.deadlineAt,
     ...(parent.policy.taskDeadlineAt !== undefined ? { taskDeadlineAt: parent.policy.taskDeadlineAt } : {}),
     ...(parent.policy.executionPolicyVersion === 2 ? {
@@ -1439,7 +1515,10 @@ async function applyReducer(
     case 'checkpoint':
       return { snapshot: checkpointHarness(current, operation.summary, now, operation.purpose, operation.unverifiedNarrative) }
     case 'block':
-      return { snapshot: blockHarness(current, operation.blocker, now) }
+      return { snapshot: blockHarness(operation.diagnostic
+        ? recordHarnessDiagnostic(current, operation.diagnostic, now) : current, operation.blocker, now) }
+    case 'record_diagnostic':
+      return { snapshot: recordHarnessDiagnostic(current, operation.diagnostic, now) }
     case 'resume':
       return { snapshot: resumeHarness(current, now) }
     case 'pause_for_funding':
@@ -1552,7 +1631,7 @@ async function applyReducer(
     case 'finish':
       return { snapshot: finishHarness(current, now, operation.resultSummary) }
     case 'terminate':
-      return { snapshot: terminateHarness(current, operation.status, operation.reason, now) }
+      return { snapshot: terminateHarness(current, operation.status, operation.reason, now, operation.diagnostic) }
   }
 }
 
@@ -1650,6 +1729,101 @@ export const get = query({
     if (!run) return null
     const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
     return await currentSnapshot(ctx, run, lineage)
+  },
+})
+
+export const writeTranscriptStep = mutation({
+  args: {
+    actorUserId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.string(),
+    receiptId: v.string(),
+    stepNumber: v.number(),
+    persistence: v.object({ content: v.string(), parts: v.array(v.any()) }),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const sequenceMatch = /^model:(\d+)$/.exec(args.receiptId)
+    if (!args.actorUserId.trim() || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+      || !args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH
+      || !sequenceMatch || !Number.isSafeInteger(Number(sequenceMatch[1])) || !Number.isSafeInteger(args.stepNumber) || args.stepNumber < 0
+      || args.persistence.content.length > 160_000 || args.persistence.parts.length > 81
+      || args.persistence.parts.some(part => !part || typeof part !== 'object' || part.type === 'reasoning')) {
+      throw new Error('Invalid harness transcript step.')
+    }
+    const persistenceJson = stableJson(args.persistence as HarnessTranscriptPersistence)
+    if (new TextEncoder().encode(persistenceJson).byteLength > MAX_TRANSCRIPT_STEP_JSON_BYTES) {
+      throw new Error('Harness transcript step exceeds its storage limit.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    if (lineage[0]!.metadata.workflowRunId !== args.workflowRunId) {
+      throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    }
+    const receipt = await ctx.db.query('harnessReceipts')
+      .withIndex('by_runId_receiptId', query => query.eq('runId', run.runId).eq('receiptId', args.receiptId))
+      .unique()
+    if (!receipt || parseJson<HarnessReceipt>(receipt.receiptJson).id !== args.receiptId) {
+      throw new Error('HARNESS_TRANSCRIPT_RECEIPT_NOT_FOUND')
+    }
+    const existing = await ctx.db.query('harnessTranscriptSteps')
+      .withIndex('by_runId_receiptId', query => query.eq('runId', run.runId).eq('receiptId', args.receiptId))
+      .unique()
+    if (existing) {
+      if (existing.stepNumber !== args.stepNumber || existing.persistenceJson !== persistenceJson) {
+        throw new Error('HARNESS_TRANSCRIPT_CONFLICT')
+      }
+      return { persisted: false }
+    }
+    await ctx.db.insert('harnessTranscriptSteps', {
+      runId: run.runId,
+      receiptId: args.receiptId,
+      sequence: Number(sequenceMatch[1]),
+      stepNumber: args.stepNumber,
+      persistenceJson,
+      createdAt: receipt.createdAt,
+    })
+    return { persisted: true }
+  },
+})
+
+export const listTranscriptSteps = query({
+  args: {
+    actorUserId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.string(),
+    paginationOpts: paginationOptsValidator,
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args): Promise<HarnessTranscriptPage> => {
+    requireHarnessServerSecret(args.serverSecret)
+    if (!args.actorUserId.trim() || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+      || !args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH
+      || args.paginationOpts.numItems < 1 || args.paginationOpts.numItems > 100) {
+      throw new Error('Invalid harness transcript page request.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    if (lineage[0]!.metadata.workflowRunId !== args.workflowRunId) {
+      throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    }
+    const page = await ctx.db.query('harnessTranscriptSteps')
+      .withIndex('by_runId_sequence', query => query.eq('runId', run.runId))
+      .order('desc')
+      .paginate(args.paginationOpts)
+    return {
+      steps: page.page.map(row => ({
+        receiptId: row.receiptId,
+        stepNumber: row.stepNumber,
+        sequence: row.sequence,
+        persistence: parseJson<HarnessTranscriptPersistence>(row.persistenceJson),
+      })),
+      cursor: page.continueCursor,
+      isDone: page.isDone,
+    }
   },
 })
 

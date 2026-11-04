@@ -14,6 +14,7 @@ function checkpointDeliverySteps(
     steps,
   }, outcomes, denials).steps
   return settled.map(step => JSON.parse(JSON.stringify({
+    ...(step.stepNumber !== undefined ? { stepNumber: step.stepNumber } : {}),
     ...(step.content ? { content: step.content } : {}),
     ...(step.text !== undefined ? { text: step.text } : {}),
     ...(step.toolCalls ? { toolCalls: step.toolCalls } : {}),
@@ -24,6 +25,8 @@ function checkpointDeliverySteps(
 }
 
 export function buildHarnessRunnerCheckpoint(input: {
+  stepReceiptIds?: Array<string | undefined>
+  publicProgress?: HarnessRunnerCheckpoint['publicProgress']
   messages: ModelMessage[]
   invocation: number
   modelCall: number
@@ -39,7 +42,9 @@ export function buildHarnessRunnerCheckpoint(input: {
 }): HarnessRunnerCheckpoint {
   return {
     version: 1,
+    ...(input.stepReceiptIds ? { stepReceiptIds: input.stepReceiptIds } : {}),
     messages: input.messages,
+    ...(input.publicProgress ? { publicProgress: input.publicProgress } : {}),
     invocation: input.invocation,
     modelCall: input.modelCall,
     stagnantSegments: input.stagnantSegments,

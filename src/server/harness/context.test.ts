@@ -43,6 +43,14 @@ test('the model plans only when a task needs structure', () => {
   expect(instructions).not.toContain('\u2014')
 })
 
+test('progress is public text rather than private reasoning or tool labels', () => {
+  const instructions = buildHarnessInstructions('Surface instructions')
+  expect(instructions).toContain('Before the first tool call, briefly acknowledge the request')
+  expect(instructions).toContain('Between meaningful batches of tools, explain what you found')
+  expect(instructions).toContain('When a tool fails or you change approach, explain the practical impact')
+  expect(instructions).toContain('not private reasoning or tool arguments')
+})
+
 test('goal anchoring is present for plan-optional runs', () => {
   const instructions = buildHarnessStepInstructions(make(false), {
     instructions: 'Surface instructions', continuation: false, truncatedResponse: false,

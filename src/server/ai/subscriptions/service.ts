@@ -4,22 +4,18 @@ import { randomUUID } from 'node:crypto'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { ByokCredentialStore } from '@/server/ai/gateway/byok-credential-store'
 import {
-  codexAccessTokenExpiry,
-  codexTokensNeedRefresh,
-  CodexSignInError,
-  parseCodexTokens,
-  pollCodexDeviceCode,
-  refreshCodexTokens,
-  requestCodexDeviceCode,
-  serializeCodexTokens,
-  type CodexTokenSet,
-} from '@/server/agents/provider-accounts/codex-subscription'
-import {
   isSubscriptionProviderId,
   SUBSCRIPTION_PROVIDERS,
   type SubscriptionProviderId,
 } from '@/shared/ai/gateway/subscription-providers'
-import { discoverCodexModels } from './codex-discovery'
+import {
+  isBridgeCredential,
+  isBridgePendingState,
+  SubscriptionBridgeClient,
+  SubscriptionBridgeError,
+  type BridgeCredential,
+  type BridgePendingState,
+} from './bridge-client'
 import { ConvexSubscriptionRepository, type SubscriptionRepository } from './repository'
 import type {
   SubscriptionAuthorization,
@@ -35,61 +31,59 @@ type WrittenSecret = {
   name: string
 }
 
-type PendingCodexState = {
-  v: 1
-  deviceAuthId: string
-  userCode: string
-  interval: number
-}
-
-function parsePendingState(value: string): PendingCodexState | null {
+function parsePendingState(value: string): BridgePendingState | null {
   try {
     const parsed: unknown = JSON.parse(value)
-    if (!parsed || typeof parsed !== 'object' || !('v' in parsed) ||
-        parsed.v !== 1 || !('deviceAuthId' in parsed) ||
-        typeof parsed.deviceAuthId !== 'string' || !('userCode' in parsed) ||
-        typeof parsed.userCode !== 'string' || !('interval' in parsed) ||
-        typeof parsed.interval !== 'number') return null
-    return parsed as PendingCodexState
+    return isBridgePendingState(parsed) ? parsed : null
   } catch (_error) {
     return null
   }
 }
 
-function allowedProviders(): SubscriptionProviderId[] {
+function parseCredential(value: string): BridgeCredential | null {
+  try {
+    const parsed: unknown = JSON.parse(value)
+    return isBridgeCredential(parsed) ? parsed : null
+  } catch (_error) {
+    return null
+  }
+}
+
+function allowedProviders(bridgeConfigured: boolean): SubscriptionProviderId[] {
   const configured = new Set(
     (process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS ?? '')
       .split(',')
       .map((provider) => provider.trim()),
   )
+  if (!bridgeConfigured) return []
   return SUBSCRIPTION_PROVIDERS
     .filter(({ id }) => implementedProviders.has(id) && configured.has(id))
     .map(({ id }) => id)
 }
 
 function publicError(error: unknown): string {
-  if (error instanceof CodexSignInError) {
-    switch (error.code) {
-      case 'pending': return 'Waiting for authorization approval.'
-      case 'expired': return 'Authorization expired. Reconnect to continue.'
-      case 'denied':
-      case 'rejected': return 'Authorization was rejected. Reconnect to continue.'
-      case 'unsupported': return 'Codex subscription authorization is unavailable.'
-      default: return 'Codex authorization could not be completed. Retry or reconnect.'
-    }
-  }
+  if (error instanceof SubscriptionBridgeError &&
+      ['reconnect_required', 'model_unavailable', 'rate_limited', 'provider_unavailable', 'temporary_failure']
+        .includes(error.code)) return error.message
+  if (error instanceof Error && error.message.startsWith('Reconnect your Codex')) return error.message
+  if (error instanceof Error && error.message.startsWith('Codex subscriptions are unavailable')) return error.message
   return 'The subscription operation failed. Retry or reconnect.'
 }
 
 export class SubscriptionService {
+  private readonly bridge: SubscriptionBridgeClient
+
   constructor(
     private readonly repository: SubscriptionRepository = new ConvexSubscriptionRepository(),
     private readonly credentials: ByokCredentialStore = getOverlayServerContext().byokCredentialStore,
     private readonly fetcher: typeof fetch = fetch,
-  ) {}
+    bridge?: SubscriptionBridgeClient,
+  ) {
+    this.bridge = bridge ?? new SubscriptionBridgeClient(undefined, undefined, fetcher)
+  }
 
   providers() {
-    const enabled = new Set(allowedProviders())
+    const enabled = new Set(allowedProviders(this.bridge.isConfigured()))
     return {
       available: enabled.size > 0,
       providers: SUBSCRIPTION_PROVIDERS.map(({ id, label, description }) => ({
@@ -100,7 +94,8 @@ export class SubscriptionService {
   }
 
   isEnabled(providerId: unknown): providerId is SubscriptionProviderId {
-    return isSubscriptionProviderId(providerId) && allowedProviders().includes(providerId)
+    return isSubscriptionProviderId(providerId) &&
+      allowedProviders(this.bridge.isConfigured()).includes(providerId)
   }
 
   async startAuthorization(
@@ -116,15 +111,8 @@ export class SubscriptionService {
     })
     let candidate: WrittenSecret | undefined
     try {
-      const device = await requestCodexDeviceCode({
-        fetch: this.codexFetch(),
-      })
-      const pending: PendingCodexState = {
-        v: 1,
-        deviceAuthId: device.deviceAuthId,
-        userCode: device.userCode,
-        interval: device.interval,
-      }
+      const device = await this.bridge.authorize()
+      const pending = device.pendingState
       const written = await this.writeSecret(userId, connectionId, providerId, JSON.stringify(pending))
       candidate = written
       try {
@@ -135,8 +123,8 @@ export class SubscriptionService {
           leaseToken,
           pendingStateRef: written.ref,
           pendingWriteName: written.name,
-          expiresAt: device.expiresAt,
-          pollIntervalMs: device.interval * 1000,
+          expiresAt: device.authorization.expiresAt,
+          pollIntervalMs: device.authorization.interval * 1000,
         })
         await this.cleanupRefs(userId, connectionId, saved.cleanupRefs)
       } catch (error) {
@@ -144,10 +132,10 @@ export class SubscriptionService {
         throw error
       }
       return {
-        url: device.verificationUrl,
-        userCode: device.userCode,
-        expiresAt: device.expiresAt,
-        interval: device.interval,
+        url: device.authorization.url,
+        userCode: device.authorization.userCode,
+        expiresAt: device.authorization.expiresAt,
+        interval: device.authorization.interval,
       }
     } catch (error) {
       if (candidate) await this.deleteCandidateIfUncommitted(userId, connectionId, candidate)
@@ -170,36 +158,33 @@ export class SubscriptionService {
       userId, connectionId, generation: lease.generation,
       revision: lease.revision, leaseToken,
     }
-    let pending: PendingCodexState | null = null
+    let pending: BridgePendingState | null = null
     try {
       const secret = await this.credentials.read(lease.pendingStateRef)
       pending = secret ? parsePendingState(secret) : null
       if (!pending) throw new Error('Subscription authorization state is unavailable')
-      const tokens = await pollCodexDeviceCode({
-        deviceAuthId: pending.deviceAuthId,
-        userCode: pending.userCode,
-      }, { fetch: this.codexFetch() })
-      const expiry = codexAccessTokenExpiry(tokens)
-      if (!expiry || expiry <= Date.now()) throw new Error('Codex returned an expired subscription token')
-      const candidate = await this.writeSecret(
-        userId, connectionId, 'codex', serializeCodexTokens(tokens),
-      )
-      const committed = await this.commitCredentialCandidate(fenced, candidate)
-      if (!committed) throw new Error('Authorization could not be committed')
-      return await this.discover(userId, connectionId)
-    } catch (error) {
-      if (error instanceof CodexSignInError && error.code === 'pending') {
-        if (!pending) return { status: 'error', error: 'Subscription authorization state is unavailable' }
+      if (pending.expiresAt <= Date.now()) {
+        await this.repository.failClosed({ ...fenced, error: 'Authorization expired. Reconnect to continue.' })
+        return { status: 'expired' }
+      }
+      const result = await this.bridge.poll(pending)
+      if (result.status === 'pending') {
         await this.repository.releasePendingPoll({
           ...fenced,
           pollIntervalMs: pending.interval * 1000,
         })
         return { status: 'pending' }
       }
-      if (error instanceof CodexSignInError && error.code === 'expired') {
-        await this.repository.failClosed({ ...fenced, error: 'Codex authorization expired. Reconnect to continue.' })
-        return { status: 'expired' }
+      if (!result.credential || !parseCredential(JSON.stringify(result.credential))) {
+        throw new Error('Subscription credential is unavailable')
       }
+      const candidate = await this.writeSecret(
+        userId, connectionId, 'codex', JSON.stringify(result.credential),
+      )
+      const committed = await this.commitCredentialCandidate(fenced, candidate)
+      if (!committed) throw new Error('Authorization could not be committed')
+      return await this.discover(userId, connectionId)
+    } catch (error) {
       await this.repository.failClosed({
         ...fenced,
         error: 'Codex authorization could not be completed. Reconnect to continue.',
@@ -215,12 +200,6 @@ export class SubscriptionService {
     if (state?.phase !== 'active' || !state.credentialRef) {
       throw new Error('Subscription credential is unavailable')
     }
-    const currentSecret = await this.credentials.read(state.credentialRef)
-    const current = currentSecret ? parseCodexTokens(currentSecret) : null
-    if (!current) throw new Error('Subscription credential is unavailable')
-    if (!codexTokensNeedRefresh(current, Date.now())) {
-      return await this.discover(userId, connectionId)
-    }
     const leaseToken = randomUUID()
     const lease = await this.repository.acquireRefresh({ userId, connectionId, leaseToken })
     const fenced = {
@@ -229,18 +208,22 @@ export class SubscriptionService {
     }
     try {
       const latestSecret = await this.credentials.read(lease.credentialRef)
-      const latest = latestSecret ? parseCodexTokens(latestSecret) : null
+      const latest = latestSecret ? parseCredential(latestSecret) : null
       if (!latest) throw new Error('Subscription credential is unavailable')
-      if (!codexTokensNeedRefresh(latest, Date.now())) {
+      if (latest.expiresAt > Date.now() + 60_000) {
         await this.repository.releaseRefresh(fenced)
         return { status: 'connected', models: [] }
       }
-      const refreshed = await refreshCodexTokens(latest, { fetch: this.codexFetch() })
-      const candidate = await this.writeSecret(userId, connectionId, 'codex', serializeCodexTokens(refreshed))
+      const refreshed = await this.bridge.refresh(latest)
+      const candidate = await this.writeSecret(userId, connectionId, 'codex', JSON.stringify(refreshed.credential))
       const committed = await this.commitCredentialCandidate(fenced, candidate)
       if (!committed) throw new Error('Refreshed subscription credential could not be committed')
       return await this.discover(userId, connectionId)
     } catch (error) {
+      if (error instanceof SubscriptionBridgeError && error.code === 'rate_limited') {
+        await this.repository.releaseRefresh(fenced).catch((_releaseError) => undefined)
+        return { status: 'error', error: publicError(error) }
+      }
       await this.repository.failClosed({
         ...fenced,
         error: 'The rotating subscription credential could not be refreshed. Reconnect to continue.',
@@ -263,25 +246,28 @@ export class SubscriptionService {
     userId: string,
     connectionId: string,
     modelId: string,
-  ): Promise<CodexTokenSet> {
+  ): Promise<BridgeCredential> {
     if (!this.isEnabled('codex')) throw new Error('Subscription request adapter is not available')
     let authorized = await this.repository.forDispatch({ userId, connectionId, modelId })
     if (!authorized || authorized.providerId !== 'codex') {
       throw new Error('Subscription connection is unavailable or this model is not enabled.')
     }
-    const secret = await this.credentials.read(authorized.credentialRef)
-    let tokens = secret ? parseCodexTokens(secret) : null
-    if (!tokens) throw new Error('Subscription credential is unavailable')
-    if (codexTokensNeedRefresh(tokens, Date.now())) {
-      await this.refresh(userId, connectionId)
+    let secret = await this.credentials.read(authorized.credentialRef)
+    let credential = secret ? parseCredential(secret) : null
+    if (!credential) throw new Error('Reconnect your Codex subscription to continue.')
+    if (credential.expiresAt <= Date.now() + 60_000) {
+      const refreshed = await this.refresh(userId, connectionId)
+      if (refreshed.status !== 'connected') {
+        throw new Error(refreshed.status === 'error' ? refreshed.error : 'Reconnect your Codex subscription to continue.')
+      }
       authorized = await this.repository.forDispatch({ userId, connectionId, modelId })
       if (!authorized || authorized.providerId !== 'codex') {
         throw new Error('Subscription connection is unavailable or this model is not enabled.')
       }
-      const refreshedSecret = await this.credentials.read(authorized.credentialRef)
-      tokens = refreshedSecret ? parseCodexTokens(refreshedSecret) : null
-      if (!tokens || codexTokensNeedRefresh(tokens, Date.now())) {
-        throw new Error('Subscription credential is unavailable')
+      secret = await this.credentials.read(authorized.credentialRef)
+      credential = secret ? parseCredential(secret) : null
+      if (!credential || credential.expiresAt <= Date.now()) {
+        throw new Error('Reconnect your Codex subscription to continue.')
       }
     }
     const revalidated = await this.repository.forDispatch({ userId, connectionId, modelId })
@@ -290,7 +276,7 @@ export class SubscriptionService {
         revalidated.credentialRef !== authorized.credentialRef) {
       throw new Error('Subscription connection is unavailable or this model is not enabled.')
     }
-    return tokens
+    return credential
   }
 
   async revokeAllForUser(userId: string): Promise<void> {
@@ -314,15 +300,16 @@ export class SubscriptionService {
     }
     try {
       const secret = await this.credentials.read(lease.credentialRef)
-      const tokens = secret ? parseCodexTokens(secret) : null
-      if (!tokens) throw new Error('Subscription credential is unavailable')
-      const models = await discoverCodexModels(tokens, { fetch: this.fetcher })
+      const credential = secret ? parseCredential(secret) : null
+      if (!credential) throw new Error('Reconnect your Codex subscription to continue.')
+      const catalog = await this.bridge.models(credential)
+      const models = catalog.models
       const saved = await this.repository.commitActive({
         ...fenced,
         credentialRef: lease.credentialRef,
         discoveredModelsJson: JSON.stringify({ data: models }),
         discoveredModelIds: models.map((model) => model.id),
-        displayName: tokens.plan ? `ChatGPT ${tokens.plan}` : undefined,
+        displayName: credential.displayName,
       })
       await this.cleanupRefs(userId, connectionId, saved.cleanupRefs)
       return { status: 'connected', models }
@@ -472,22 +459,6 @@ export class SubscriptionService {
     }
   }
 
-  private codexFetch() {
-    const deadline = Date.now() + 25_000
-    return async (url: string, init: Parameters<typeof fetch>[1]) => {
-      const remaining = deadline - Date.now()
-      if (remaining <= 0) throw new Error('Subscription provider request deadline exceeded')
-      const timeout = AbortSignal.timeout(Math.min(remaining, 10_000))
-      const signal = init?.signal ? AbortSignal.any([init.signal, timeout]) : timeout
-      const response = await this.fetcher(url, {
-        ...init,
-        signal,
-        redirect: 'error',
-        cache: 'no-store',
-      })
-      return response
-    }
-  }
 }
 
 export function createSubscriptionService(): SubscriptionService {
