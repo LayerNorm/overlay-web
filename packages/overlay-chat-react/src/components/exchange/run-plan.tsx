@@ -2,16 +2,12 @@
 
 import {
   Trace,
-  TraceCollapsible,
-  TraceCollapsibleContent,
-  TraceCollapsibleTrigger,
   TraceDescription,
   TraceIcon,
   TraceLine,
   TraceTitle,
 } from '@overlay/ui/ai'
 import { Circle, CircleCheck, CircleDot, CircleHelp, CircleMinus, CircleSlash, Route, type LucideIcon } from 'lucide-react'
-import { useState } from 'react'
 
 export type RunPlanStep = {
   id: string
@@ -45,45 +41,36 @@ function currentStepId(steps: readonly RunPlanStep[]): string | undefined {
   return (steps.find(step => step.status === 'running') ?? steps.find(step => !isSettled(step)))?.id
 }
 
-/**
- * The agent's plan at the bottom of its response. It stays open until the
- * response has ended with every step settled; only then can it collapse.
- */
+/** Once a response has ended with every step settled, the plan moves into the "Worked for" dropdown. */
+export function isRunPlanSettled(steps: readonly RunPlanStep[], phase: RunPlanPhase): boolean {
+  return phase === 'ended' && steps.length > 0 && steps.every(isSettled)
+}
+
 export function RunPlan({ steps, phase }: { steps: readonly RunPlanStep[]; phase: RunPlanPhase }) {
-  const [expanded, setExpanded] = useState(false)
-  const settled = steps.filter(isSettled).length
-  const collapsible = phase === 'ended' && settled === steps.length
   const current = currentStepId(steps)
-  const header = (
-    <TraceLine>
-      <TraceIcon><Route /></TraceIcon>
-      <TraceTitle className="text-foreground">Plan</TraceTitle>
-      <TraceDescription>{`${settled} of ${steps.length} done`}</TraceDescription>
-    </TraceLine>
-  )
   return (
-    <Trace className={phase === 'active' ? 'sticky bottom-0 z-10 max-w-[min(100%,36rem)] bg-background py-2' : 'max-w-[min(100%,36rem)] py-2'}>
-      <TraceCollapsible open={collapsible ? expanded : true} onOpenChange={setExpanded}>
-        {collapsible ? <TraceCollapsibleTrigger>{header}</TraceCollapsibleTrigger> : header}
-        <TraceCollapsibleContent className="mt-1.5 ml-0 pl-0">
-          <ol className="flex flex-col gap-1.5" aria-label="Plan steps">
-            {steps.map((step) => {
-              const { Icon, line, iconClassName, note } = stepView(step, step.id === current, phase)
-              return (
-                <li key={step.id}>
-                  <TraceLine status={line} className={line === 'running' ? 'text-foreground' : undefined}>
-                    <TraceIcon className={iconClassName}><Icon /></TraceIcon>
-                    <TraceTitle className="whitespace-normal">
-                      {step.title}
-                      {note ? <span className="text-(--muted)"> · {note}</span> : null}
-                    </TraceTitle>
-                  </TraceLine>
-                </li>
-              )
-            })}
-          </ol>
-        </TraceCollapsibleContent>
-      </TraceCollapsible>
+    <Trace className="max-w-[min(100%,36rem)] gap-1.5 py-2">
+      <TraceLine>
+        <TraceIcon><Route /></TraceIcon>
+        <TraceTitle className="text-foreground">Plan</TraceTitle>
+        <TraceDescription>{`${steps.filter(isSettled).length} of ${steps.length} done`}</TraceDescription>
+      </TraceLine>
+      <ol className="flex flex-col gap-1.5" aria-label="Plan steps">
+        {steps.map((step) => {
+          const { Icon, line, iconClassName, note } = stepView(step, step.id === current, phase)
+          return (
+            <li key={step.id}>
+              <TraceLine status={line} className={line === 'running' ? 'text-foreground' : undefined}>
+                <TraceIcon className={iconClassName}><Icon /></TraceIcon>
+                <TraceTitle className="whitespace-normal">
+                  {step.title}
+                  {note ? <span className="text-(--muted)"> · {note}</span> : null}
+                </TraceTitle>
+              </TraceLine>
+            </li>
+          )
+        })}
+      </ol>
     </Trace>
   )
 }

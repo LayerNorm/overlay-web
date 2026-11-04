@@ -560,6 +560,9 @@ export default defineSchema({
     reservedTopUpCents: v.optional(v.number()),
     finalizedCents: v.optional(v.number()),
     providerCostMicros: v.optional(v.number()),
+    // Set once when the exact provider cost replaced a settled estimate.
+    estimatedCents: v.optional(v.number()),
+    costCorrectedAt: v.optional(v.number()),
     // Late provider evidence for a failed call whose wallet hold was already released.
     providerCostEvidence: v.optional(v.object({
       source: v.string(), reference: v.string(), reason: v.string(), recordedAt: v.number(),

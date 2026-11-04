@@ -250,8 +250,9 @@ async function authorizeModelBoundary(
   ports: HarnessExecutionPorts,
   operationId: string,
   estimatedCostMicros = 0,
+  renew = true,
 ): Promise<HarnessSnapshot> {
-  if (state.policy.executionPolicyVersion === 2) {
+  if (renew && state.policy.executionPolicyVersion === 2) {
     await ports.renewLease()
     state = await ports.read()
   }
@@ -372,7 +373,8 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         // This boundary includes completed tools, but none of the next call's partial output.
         recoveryMessages = prompt.filter(message => message.role !== 'system')
         recoverySteps = [...settledSteps]
-        let current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`)
+        // Authority and the lease are renewed once, just before the call is reserved.
+        let current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`, 0, false)
         const instructionContext = {
           instructions,
           continuation: segment > 0,

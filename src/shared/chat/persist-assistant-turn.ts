@@ -106,22 +106,16 @@ function attachWebSourcesToToolOutput(
   }
 }
 
-export function replaceAssistantTextForPersistence(
+/** Rewrites each text block where it stands, so text stays in order with the tools around it. */
+export function mapAssistantTextForPersistence(
   persistence: { content: string; parts: Array<Record<string, unknown>> },
-  text: string,
+  transform: (text: string) => string,
 ): { content: string; parts: Array<Record<string, unknown>> } {
-  const cleaned = ensureAssistantPersistContent(normalizeAgentAssistantText(text))
-  let replacedText = false
-  const parts = persistence.parts.flatMap((part) => {
-    if (part.type !== 'text') return [part]
-    if (replacedText) return []
-    replacedText = true
-    return [{ type: 'text', text: cleaned }]
-  })
-  if (!replacedText) parts.push({ type: 'text', text: cleaned })
   return {
-    content: cleaned,
-    parts,
+    content: ensureAssistantPersistContent(normalizeAgentAssistantText(transform(persistence.content))),
+    parts: persistence.parts.map((part) => part.type === 'text' && typeof part.text === 'string'
+      ? { ...part, text: normalizeAgentAssistantText(transform(part.text)) }
+      : part),
   }
 }
 

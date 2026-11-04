@@ -2,7 +2,7 @@ import type { StepResult, ToolSet } from 'ai'
 import type { HarnessExecutionResult } from './runner'
 import { isPersonalChatWorkToolOutputEnvelope } from '@/shared/agents/personal-chat-work'
 import {
-  buildAssistantPersistenceFromSteps, compactAssistantPersistenceForConvex, replaceAssistantTextForPersistence,
+  buildAssistantPersistenceFromSteps, compactAssistantPersistenceForConvex, mapAssistantTextForPersistence,
 } from '@/shared/chat/persist-assistant-turn'
 import { linkifySourceCitationsMarkdown } from '@/shared/knowledge/source-citations'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
@@ -44,7 +44,7 @@ export function buildPersonalHarnessDelivery(
     .find(candidate => candidate.length > 0) ?? ''
   let transcript = buildAssistantPersistenceFromSteps(steps, summary)
   if (sourceCitations && Object.keys(sourceCitations).length) {
-    transcript = replaceAssistantTextForPersistence(transcript, linkifySourceCitationsMarkdown(transcript.content, sourceCitations))
+    transcript = mapAssistantTextForPersistence(transcript, text => linkifySourceCitationsMarkdown(text, sourceCitations))
   }
   const persisted = compactAssistantPersistenceForConvex(transcript)
   return {

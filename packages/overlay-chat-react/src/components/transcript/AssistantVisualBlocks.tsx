@@ -14,7 +14,7 @@ import type {
   AttachmentPreviewOpenOptions,
 } from '../AttachmentPreviewShell'
 import type { GeneratedUiConnectorActions } from '../GeneratedUiCard'
-import { WorkedForGroup } from '../exchange'
+import { isRunPlanSettled, RunPlan, WorkedForGroup, type RunPlanPhase, type RunPlanStep } from '../exchange'
 import {
   AssistantSegmentItem,
   assistantSegmentKey,
@@ -40,6 +40,9 @@ export interface AssistantVisualBlocksProps {
   workedDurationMs?: number | null
   /** Agent replies: the collapsed view is the final answer only (earlier text folds with the work). */
   foldWorkIntoSummary?: boolean
+  /** The steps the agent is working through, shown after the message body. */
+  plan?: readonly RunPlanStep[]
+  planPhase?: RunPlanPhase
   onOpenDraft: (state: DraftModalState) => void
   onCreateAutomationDraft: (state: AutomationDraftModalState) => void | Promise<void>
   onOpenAttachmentPreview?: (
@@ -56,12 +59,12 @@ export interface AssistantVisualBlocksProps {
  * text, generated files, and generated UI. Shared by the single-model chat
  * transcript and multi-participant rooms so both surfaces read identically.
  *
- * Live turns retain every segment in original order through completion. On loading
- * history, all work — tool calls, reasoning, browser sessions — folds behind a
- * single expandable "Worked for N" row at the top so the reply reads as plain
- * text; expanding the row switches the message to the raw timeline with every
- * work segment back at its true position. Deliverables (draft cards, gated
- * callouts, generated files/UI) stay inline in both modes.
+ * Live turns show every segment in original order. Once a turn settles, all work
+ * — tool calls, reasoning, browser sessions — folds behind a single expandable
+ * "Worked for N" row at the top so the reply reads as plain text; expanding the
+ * row shows the plan and the raw timeline with every work segment back at its true
+ * position. Deliverables (draft cards, gated callouts, generated files/UI) stay
+ * inline in both modes.
  */
 export function AssistantVisualBlocks({
   blocks,
@@ -74,6 +77,8 @@ export function AssistantVisualBlocks({
   resolveFileHref,
   workedDurationMs,
   foldWorkIntoSummary = false,
+  plan,
+  planPhase = 'ended',
   onOpenDraft,
   onCreateAutomationDraft,
   onOpenAttachmentPreview,
@@ -108,20 +113,18 @@ export function AssistantVisualBlocks({
   }, [isStreaming, measuredWorkMs])
   const workedMs = workedDurationMs ?? measuredWorkMs
 
-  // Collapse history on load, not underneath an answer the user just watched stream.
-  const [hasStreamed, setHasStreamed] = useState(isStreaming)
-  if (isStreaming && !hasStreamed) setHasStreamed(true)
   const collapsePlan = useMemo(
-    () => isStreaming || hasStreamed
+    () => isStreaming || planPhase !== 'ended'
       ? { collapsedIndexes: [] as number[], collapsedToolCallCount: 0 }
       : planAssistantWorkCollapse(segments, { foldTextBeforeLastWork: foldWorkIntoSummary }),
-    [segments, isStreaming, hasStreamed, foldWorkIntoSummary],
+    [segments, isStreaming, planPhase, foldWorkIntoSummary],
   )
   const collapsedSet = useMemo(
     () => new Set(collapsePlan.collapsedIndexes),
     [collapsePlan],
   )
   const [workExpanded, setWorkExpanded] = useState(false)
+  const planSettled = Boolean(plan && isRunPlanSettled(plan, planPhase))
 
   const segmentCtx = useMemo<AssistantSegmentRenderContext>(() => ({
     keyPrefix: blockKeyPrefix,
@@ -150,7 +153,7 @@ export function AssistantVisualBlocks({
 
   return (
     <>
-      {collapsePlan.collapsedIndexes.length > 0 && (
+      {(collapsePlan.collapsedIndexes.length > 0 || planSettled) && (
         <WorkedForGroup
           durationMs={workedMs}
           toolCallCount={collapsePlan.collapsedToolCallCount}
@@ -158,6 +161,7 @@ export function AssistantVisualBlocks({
           onToggle={() => setWorkExpanded((v) => !v)}
         />
       )}
+      {plan && planSettled && workExpanded ? <RunPlan steps={plan} phase={planPhase} /> : null}
       {segments.map((seg, segIdx) => {
         if (!workExpanded && collapsedSet.has(segIdx)) return null
         const chain = toolChainFlags[segIdx]!
@@ -171,6 +175,7 @@ export function AssistantVisualBlocks({
           />
         )
       })}
+      {plan?.length && !planSettled ? <RunPlan steps={plan} phase={planPhase} /> : null}
     </>
   )
 }

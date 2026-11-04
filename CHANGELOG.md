@@ -4,7 +4,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Show an agent's plan at the bottom of its response, with live progress. The plan stays open while the agent works and collapses into a dropdown only after the response ends with every step finished, so unfinished work stays visible. Responses keep their plan after a reload. Internal plan and question tool calls no longer appear as rows in the transcript.
+- Speed up agent runs by no longer waiting for exact billing data after each model call, which could hold a run for up to 16 seconds per call. Calls now settle immediately from token counts and catalog prices, and a background job replaces the estimate with the exact cost once it is available, charging or refunding the difference once. Calls with no catalog price still wait for the exact cost. Each model call also renews its authorization once instead of twice.
+
+- Keep text and tool calls in the order they happened when a response has source citations. Saved responses previously merged all their text into one block ahead of every tool call; responses already saved stay merged.
+
+- Show an agent's plan with live progress at the end of its response. Once the response ends with every step finished, the plan moves into the "Worked for" dropdown, and unfinished plans stay visible. Finished personal replies now show only the final answer, with earlier narration, tool calls and the plan inside that dropdown. Internal plan and question tool calls no longer appear as rows.
 
 - Replace the one-box agent input prompt with a questionnaire, so agents ask real questions with choices, written answers and optional skips. Empty prompts such as "placeholder" are sent back to the model instead of reaching people, and stuck-run prompts now ask a plain question.
 

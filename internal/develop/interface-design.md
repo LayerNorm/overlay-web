@@ -635,8 +635,10 @@ Chat/notes `surface=panel` uses the compact desktop layout with the same provide
 and permission boundaries. See [Desktop web shell](desktop-web-shell.md).
 
 Agent questions use `QuestionnairePanel`, and agent plans use `RunPlan` on the
-`Trace` primitives. A plan stays open until the response has ended with every step
-finished or skipped; only then can it collapse. Don't use `Questionnaire.Input` in
+`Trace` primitives. A plan shows at the end of a response in normal flow, not pinned
+to the screen. Once the response has ended with every step finished or skipped, it
+moves into the "Worked for" dropdown above the work timeline; an unfinished plan
+stays visible. Don't use `Questionnaire.Input` in
 an item that also has choices: `@shadcn/react` 0.3.1 hits React's update limit and
 crashes in the browser, though not in server-rendered tests. `QuestionnairePanel`
 works around this with a hidden choice beside a normal input.

@@ -152,5 +152,5 @@ Update in the same PR as the matching code:
 
 Built alongside the removal:
 
-- **Plan progress:** `RunPlan` in `@overlay/chat-react/exchange`, built on the `Trace` primitives from `@overlay/ui/ai`. The header reads "Plan" rather than a named plan, because adding a title would need a stored field that the backend rejects until it deploys.
+- **Plan progress:** `RunPlan` in `@overlay/chat-react/exchange`, built on the `Trace` primitives from `@overlay/ui/ai`. It sits at the end of a response, then moves into the "Worked for" dropdown once every step is settled. The header reads "Plan" rather than a named plan, because adding a title would need a stored field that the backend rejects until it deploys.
 - **Questionnaire:** `QuestionnairePanel` in `@overlay/ui/primitives`, built on `@shadcn/react`. Questions are stored as JSON inside the existing `question` string, so no schema change is needed, and a plain string still renders as one free-text question.

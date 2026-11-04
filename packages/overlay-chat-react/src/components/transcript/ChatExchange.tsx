@@ -25,7 +25,7 @@ import type {
 import type { GeneratedUiConnectorActions } from '../GeneratedUiCard'
 import { UserMessageBubble } from '../UserMessageBubble'
 import { Message, MessageContent } from '@overlay/ui/ai'
-import { RunPlan, WorkedForGroup, type RunPlanPhase, type RunPlanStep } from '../exchange'
+import { isRunPlanSettled, RunPlan, WorkedForGroup, type RunPlanPhase, type RunPlanStep } from '../exchange'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { UsageExhaustedNotice } from '../UsageExhaustedNotice'
 import { ExchangeActions } from './ExchangeActions'
@@ -115,14 +115,16 @@ function useExchangeSegments(assistantVisualBlocks: Parameters<typeof buildAssis
   return { assistantSegments, toolChainFlags }
 }
 
-function useCollapsePlan(assistantSegments: ReturnType<typeof buildAssistantVisualSegments>, isStreaming: boolean) {
-  const [hasStreamed, setHasStreamed] = useState(isStreaming)
-  if (isStreaming && !hasStreamed) setHasStreamed(true)
+function useCollapsePlan(
+  assistantSegments: ReturnType<typeof buildAssistantVisualSegments>,
+  isStreaming: boolean,
+  foldText: boolean,
+) {
   const collapsePlan = useMemo(
-    () => isStreaming || hasStreamed
+    () => isStreaming
       ? { collapsedIndexes: [] as number[], collapsedToolCallCount: 0 }
-      : planAssistantWorkCollapse(assistantSegments),
-    [assistantSegments, isStreaming, hasStreamed],
+      : planAssistantWorkCollapse(assistantSegments, { foldTextBeforeLastWork: foldText }),
+    [assistantSegments, isStreaming, foldText],
   )
   const collapsedSet = useMemo(
     () => new Set(collapsePlan.collapsedIndexes),
@@ -170,7 +172,7 @@ export function ChatExchange({
     // live turns still measure on the streaming→settled edge.
     const workedMs = useWorkedMs(isStreaming, workedDurationMs)
 
-    const { collapsePlan, collapsedSet } = useCollapsePlan(assistantSegments, isStreaming)
+    const { collapsePlan, collapsedSet } = useCollapsePlan(assistantSegments, isStreaming || !responseSettled, !interrupted && !errorMessage)
     const [workExpanded, setWorkExpanded] = useState(false)
     const segmentCtx: AssistantSegmentRenderContext = {
       keyPrefix: exchIdx,
@@ -341,10 +343,11 @@ function ChatExchangeAssistantBody({
   actionVisibility,
   showModelLabel,
 }: ChatExchangeAssistantBodyProps) {
+  const planSettled = Boolean(plan && isRunPlanSettled(plan, planPhase))
   return (
     <Message>
       <MessageContent className="gap-2">
-        {collapsePlan.collapsedIndexes.length > 0 && (
+        {(collapsePlan.collapsedIndexes.length > 0 || planSettled) && (
           <WorkedForGroup
             durationMs={workedMs}
             toolCallCount={collapsePlan.collapsedToolCallCount}
@@ -352,6 +355,7 @@ function ChatExchangeAssistantBody({
             onToggle={() => setWorkExpanded((v) => !v)}
           />
         )}
+        {plan && planSettled && workExpanded ? <RunPlan steps={plan} phase={planPhase} /> : null}
         {assistantSegments.map((seg, segIdx) => {
           if (!workExpanded && collapsedSet.has(segIdx)) return null
           const chain = toolChainFlags[segIdx]!
@@ -366,7 +370,7 @@ function ChatExchangeAssistantBody({
           )
         })}
 
-        {plan?.length ? <RunPlan steps={plan} phase={planPhase} /> : null}
+        {plan?.length && !planSettled ? <RunPlan steps={plan} phase={planPhase} /> : null}
 
         {!errorMessage ? <ExchangeLoadingState presentation={loadingPresentation} /> : null}
 

@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto'
 import { FatalError } from 'workflow'
 import { validateHarnessReceipt } from '@overlay/agent-runtime/harness-state'
 import { getOverlayServerContext } from '@/server/bootstrap'
+import { logger } from '@/server/observability/logger'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import type { HarnessExecutionReference } from './state-steps'
 import type { resolveHarnessModelUsage } from './usage-steps'
@@ -14,7 +15,7 @@ export async function recordHarnessModelBilling(
 ): Promise<string> {
   'use step'
 
-  const { receipt, providerCostUsd, catalogCostUsd } = resolved
+  const { receipt, providerCostUsd, catalogCostUsd, correctionGenerationId } = resolved
   validateHarnessReceipt(receipt)
   const operationId = `harness-model:${createHash('sha256').update(JSON.stringify([reference.runId, receipt.id])).digest('hex')}`
   const state = await new ConvexHarnessRepository().get({ actorUserId: reference.actorUserId, runId: reference.runId })
@@ -47,6 +48,18 @@ export async function recordHarnessModelBilling(
     })
     if (dispatch.billingReservationId !== null && !result.finalized) {
       throw new FatalError('Harness model billing is awaiting reconciliation.')
+    }
+    if (correctionGenerationId && dispatch.billingReservationId !== null) {
+      // The estimate is already charged, so a failed start only leaves it uncorrected.
+      const { startHarnessCostCorrection } = await import('@/server/workflows/harness-cost-correction')
+      await startHarnessCostCorrection({
+        actorUserId: reference.actorUserId, generationId: correctionGenerationId,
+        reservationId: dispatch.billingReservationId,
+      }).catch((error: unknown) => {
+        logger.warn('[harness] cost correction could not start', {
+          runId: reference.runId, error: error instanceof Error ? error.message : String(error),
+        })
+      })
     }
   }
   return operationId
