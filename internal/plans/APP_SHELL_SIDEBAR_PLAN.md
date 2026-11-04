@@ -1,6 +1,10 @@
 # App shell redesign: single sidebar plan
 
-Mockup: `internal/plans/mockups/app-shell-sidebar-mockup.html`
+Historical plan. The single-sidebar default and its mockup are superseded by the
+approved double-sidebar workspace structure. The old mockup has been removed.
+Use `internal/plans/mockups/agent-thread-activity.html` and
+`internal/develop/interface-design.md` for current shell guidance; the decisions
+below are preserved as history, not implementation instructions.
 
 ## Goal
 
