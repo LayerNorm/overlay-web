@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Refresh subscription rollout status and remove the superseded in-process adapter plan so future agents follow the private bridge architecture.
+
 - Update YAML parsing used by development and repository tooling. (#329)
 
 - Update asynchronous OpenTelemetry context propagation. (#332)
