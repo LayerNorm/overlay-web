@@ -28,7 +28,7 @@ export function WorkspaceSwitcher({
 }: {
   onNavigate?: () => void
   compact?: boolean
-  /** Footer placement opens to the right and can host the account menu. */
+  /** Footer opens right on desktop, above on mobile, and can host the account menu. */
   placement?: 'header' | 'footer'
   accountHeader?: ReactNode
   accountMenu?: ReactNode

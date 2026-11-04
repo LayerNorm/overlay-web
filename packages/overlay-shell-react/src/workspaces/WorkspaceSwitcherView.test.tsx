@@ -3,11 +3,49 @@ import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { ReactNode } from 'react'
-import { WorkspaceSwitcherView } from './WorkspaceSwitcherView'
+import { getFooterWorkspaceMenuSide, subscribeToWorkspaceMenuViewport, WorkspaceSwitcherView } from './WorkspaceSwitcherView'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
 const noop = () => undefined
+
+test('footer account menu opens above mobile drawers and tracks the desktop breakpoint', () => {
+  const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+  let listener: (() => void) | undefined
+  let notifications = 0
+  const viewport = {
+    matches: false,
+    addEventListener(event: string, callback: () => void) {
+      assert.equal(event, 'change')
+      listener = callback
+    },
+    removeEventListener(event: string, callback: () => void) {
+      assert.equal(event, 'change')
+      assert.equal(callback, listener)
+      listener = undefined
+    },
+  }
+  Object.defineProperty(globalThis, 'window', {
+    configurable: true,
+    value: { matchMedia(query: string) { assert.equal(query, '(min-width: 768px)'); return viewport } },
+  })
+  try {
+    const unsubscribe = subscribeToWorkspaceMenuViewport(() => { notifications += 1 })
+    assert.equal(getFooterWorkspaceMenuSide(), 'top')
+    viewport.matches = true
+    listener?.()
+    assert.equal(getFooterWorkspaceMenuSide(), 'right')
+    viewport.matches = false
+    listener?.()
+    assert.equal(getFooterWorkspaceMenuSide(), 'top')
+    assert.equal(notifications, 2)
+    unsubscribe()
+    assert.equal(listener, undefined)
+  } finally {
+    if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow)
+    else Reflect.deleteProperty(globalThis, 'window')
+  }
+})
 
 function render(status: 'idle' | 'loading' | 'ready', userAvatar?: ReactNode) {
   return renderToStaticMarkup(

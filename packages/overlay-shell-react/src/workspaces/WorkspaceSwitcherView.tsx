@@ -2,7 +2,7 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { type ReactNode, type RefObject } from 'react'
+import { useSyncExternalStore, type ReactNode, type RefObject } from 'react'
 import { Check, ChevronDown, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { CollapsibleSection, MenuItem, Popover, PopoverContent, PopoverTrigger, Button } from '@overlay/ui/primitives'
 import { useShellAdapter } from '../adapter'
@@ -117,6 +117,20 @@ type WorkspaceSwitcherMenuProps = WorkspaceListProps & {
   accountMenu?: ReactNode
 }
 
+const DESKTOP_VIEWPORT = '(min-width: 768px)'
+
+export function subscribeToWorkspaceMenuViewport(onChange: () => void) {
+  const viewport = window.matchMedia(DESKTOP_VIEWPORT)
+  viewport.addEventListener('change', onChange)
+  return () => viewport.removeEventListener('change', onChange)
+}
+
+export function getFooterWorkspaceMenuSide() {
+  return window.matchMedia(DESKTOP_VIEWPORT).matches ? 'right' : 'top'
+}
+
+const getServerFooterWorkspaceMenuSide = () => 'right' as const
+
 function WorkspaceSwitcherMenu({
   isFooter,
   compact,
@@ -127,10 +141,15 @@ function WorkspaceSwitcherMenu({
   accountMenu,
   ...workspaceListProps
 }: WorkspaceSwitcherMenuProps) {
+  const footerSide = useSyncExternalStore(
+    subscribeToWorkspaceMenuViewport,
+    getFooterWorkspaceMenuSide,
+    getServerFooterWorkspaceMenuSide,
+  )
   return (
     <PopoverContent
       ref={menuRef}
-      side={isFooter ? 'right' : 'bottom'}
+      side={isFooter ? footerSide : 'bottom'}
       align={isFooter ? 'end' : compact ? 'end' : 'start'}
       aria-label={isFooter ? 'Workspace and account' : 'Workspaces'}
       className="w-[min(280px,calc(100vw-16px))] p-1"
