@@ -81,6 +81,8 @@ test('verified provider status and exact task policy failures use authored safe 
 })
 
 test.each([
+  'Harness request is not owned by an active execution.',
+  'HARNESS_EXECUTION_NOT_OWNED',
   'Native harness execution is no longer authorized.',
   'Personal harness execution is not authorized to continue.',
   'Native workspace identity changed.',

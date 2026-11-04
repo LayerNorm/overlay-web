@@ -13,8 +13,11 @@ import type { HarnessExecutionReference } from './state-steps'
  */
 export async function recordHarnessRequestUsage(reference: HarnessExecutionReference, modelId: string): Promise<void> {
   const state = await new ConvexHarnessRepository().get({ actorUserId: reference.actorUserId, runId: reference.runId })
-  if (!state || state.workflowRunId !== reference.workflowRunId || state.status !== 'running') {
-    throw new FatalError('Harness request is not owned by an active execution.')
+  if (!state || state.workflowRunId !== reference.workflowRunId
+    || (state.executionGeneration ?? 0) !== (reference.executionGeneration ?? 0)
+    || state.authorizationPause
+    || !['running', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children', 'waiting_for_resources'].includes(state.status)) {
+    throw new FatalError('HARNESS_EXECUTION_NOT_OWNED')
   }
   if (state.parentRunId || isByokModelId(modelId)) return
   await getOverlayServerContext().appData.repositories.usage.recordBatch({

@@ -4,7 +4,7 @@ import NextLink from 'next/link'
 import dynamic from 'next/dynamic'
 import { CircleHelp, Moon, Settings, Sun } from 'lucide-react'
 import { CollapsibleSection } from '@overlay/ui/primitives'
-import { DoubleSidebar, ShellAdapterProvider, SidebarAccountMenu, UnifiedSidebar, type PrimaryRailItem, type ShellAdapter } from '@overlay/shell-react'
+import { DoubleSidebar, ShellAdapterProvider, SidebarAccountAvatar, SidebarAccountMenu, SidebarAccountProfile, UnifiedSidebar, type PrimaryRailItem, type ShellAdapter } from '@overlay/shell-react'
 import { StorageBar, UsageBar } from './sidebar/SidebarUsageMeters'
 import {
   DesktopAccountSlot,
@@ -83,10 +83,32 @@ export default function AppSidebar({
     </>
   ) : null
   const accountMenuProps = { usageMeters }
+  const closeMobileAccountMenus = () => {
+    s.setMobileAccountOpen(false)
+    s.closeAccountMenus()
+  }
+  const accountHeader = s.user ? (
+    <SidebarAccountProfile
+      name={s.displayName}
+      email={s.user.email}
+      photoUrl={s.user.profilePictureUrl}
+      onAccountClick={s.closeAccountMenus}
+    />
+  ) : null
+  const mobileAccountHeader = s.user ? (
+    <SidebarAccountProfile
+      name={s.displayName}
+      email={s.user.email}
+      photoUrl={s.user.profilePictureUrl}
+      onAccountClick={closeMobileAccountMenus}
+    />
+  ) : null
+  const userAvatar = s.user ? (
+    <SidebarAccountAvatar name={s.displayName} photoUrl={s.user.profilePictureUrl} />
+  ) : null
   const accountMenuContent = (
     <SidebarAccountMenu
       {...accountMenuProps}
-      onAccountClick={s.closeAccountMenus}
       onSignOut={() => {
         s.closeAccountMenus()
         void signOutToLanding()
@@ -97,9 +119,8 @@ export default function AppSidebar({
     <SidebarAccountMenu
       {...accountMenuProps}
       itemPaddingClass="py-2.5"
-      onAccountClick={() => s.setMobileAccountOpen(false)}
       onSignOut={() => {
-        s.setMobileAccountOpen(false)
+        closeMobileAccountMenus()
         void signOutToLanding()
       }}
     />
@@ -114,7 +135,9 @@ export default function AppSidebar({
       displayName={s.displayName}
       accountMenuOpen={s.accountMenuOpen}
       onAccountMenuOpenChange={s.setAccountMenuOpen}
+      accountHeader={accountHeader}
       accountMenu={accountMenuContent}
+      userAvatar={userAvatar}
       onSignIn={() => s.requireAuth('send')}
     />
   )
@@ -190,13 +213,16 @@ export default function AppSidebar({
         displayName={s.displayName}
         mobileAccountOpen={s.mobileAccountOpen}
         onMobileAccountOpenChange={s.setMobileAccountOpen}
+        accountHeader={mobileAccountHeader}
         accountMenu={mobileAccountMenu}
+        userAvatar={userAvatar}
         accountRef={s.mobileAccountRef}
         onOpenMenu={() => {
           s.setMobileView('nav')
           s.setMobileMenuOpen(true)
         }}
         onCloseMenu={s.closeMobileDrawer}
+        onSignIn={() => s.requireAuth('send')}
       />
 
       {classicLayout ? null : (
@@ -282,7 +308,9 @@ export default function AppSidebar({
           displayName={s.displayName}
           accountMenuOpen={s.accountMenuOpen}
           onAccountMenuOpenChange={s.setAccountMenuOpen}
+          accountHeader={mobileAccountHeader}
           accountMenu={accountMenuContent}
+          userAvatar={userAvatar}
           onSignIn={() => s.requireAuth('send')}
         />
       ) : (

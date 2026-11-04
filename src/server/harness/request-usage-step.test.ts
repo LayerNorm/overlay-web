@@ -29,8 +29,21 @@ test('child and BYOK calls do not consume new request allowances, and execution 
   mocks.read.mockResolvedValueOnce({ ...snapshot(), parentRunId: 'parent' })
   await admitHarnessRequestUsage(reference, 'provider/free-model')
   expect(mocks.record).not.toHaveBeenCalled()
-  for (const value of [null, { ...snapshot(), workflowRunId: 'other' }, { ...snapshot(), status: 'cancelled' }]) {
+  for (const value of [null, { ...snapshot(), workflowRunId: 'other' }, { ...snapshot(), status: 'cancelled' },
+    { ...snapshot(), status: 'completed' }, { ...snapshot(), status: 'failed' },
+    { ...snapshot(), status: 'waiting_for_authorization' }, { ...snapshot(), executionGeneration: 1 }]) {
     mocks.read.mockResolvedValueOnce(value)
-    await expect(admitHarnessRequestUsage(reference, 'provider/free-model')).rejects.toThrow(/not owned/)
+    await expect(admitHarnessRequestUsage(reference, 'provider/free-model')).rejects.toThrow('HARNESS_EXECUTION_NOT_OWNED')
   }
+  expect(mocks.record).not.toHaveBeenCalled()
 })
+
+test.each(['waiting_for_children', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_resources'] as const)(
+  'an owned continuation can re-admit while %s without requiring the wait to have resolved', async status => {
+    const state = { ...snapshot(), status, executionGeneration: 2 }
+    mocks.read.mockResolvedValue(state)
+    await admitHarnessRequestUsage({ ...reference, executionGeneration: 2 }, 'provider/free-model')
+    expect(mocks.record).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ operationId: 'harness:root:request' }))
+    expect(state.status).toBe(status)
+  },
+)

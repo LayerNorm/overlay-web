@@ -56,12 +56,14 @@ export function AppShellSidebar() {
         activeWorkspaceId,
         buildHref: buildWorkspaceHref,
         resolveSurface: resolveWorkspaceSurface,
-        renderSwitcher: ({ compact, onNavigate, placement, userLabel, accountMenu }) => (
+        renderSwitcher: ({ compact, onNavigate, placement, userLabel, accountHeader, accountMenu, userAvatar }) => (
           <WorkspaceSwitcher
             compact={compact}
             placement={placement}
             userLabel={userLabel}
+            accountHeader={accountHeader}
             accountMenu={accountMenu}
+            userAvatar={userAvatar}
             onNavigate={onNavigate}
           />
         ),

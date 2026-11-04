@@ -21,14 +21,18 @@ export function WorkspaceSwitcher({
   onNavigate,
   compact = false,
   placement = 'header',
+  accountHeader,
   accountMenu,
+  userAvatar,
   userLabel,
 }: {
   onNavigate?: () => void
   compact?: boolean
-  /** Footer placement opens upward and can host the account menu. */
+  /** Footer placement opens to the right and can host the account menu. */
   placement?: 'header' | 'footer'
+  accountHeader?: ReactNode
   accountMenu?: ReactNode
+  userAvatar?: ReactNode
   userLabel?: string
 }) {
   const pathname = usePathname() ?? '/app/chat'
@@ -122,6 +126,7 @@ export function WorkspaceSwitcher({
       open={open}
       compact={compact}
       placement={placement}
+      accountHeader={accountHeader}
       accountMenu={accountMenu}
       createDialog={createOpen ? (
         <CreateWorkspaceDialog
@@ -137,6 +142,7 @@ export function WorkspaceSwitcher({
         />
       ) : null}
       userLabel={userLabel}
+      userAvatar={userAvatar}
       renderAvatar={(workspace, size) => <WorkspaceAvatar workspace={workspace} size={size} />}
       status={status}
       workspaces={shellWorkspaces}
