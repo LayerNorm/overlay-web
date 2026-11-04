@@ -609,4 +609,3 @@ test('response preparation failures escape without an artifact-unavailable block
     operationId === 'artifact-unavailable:response:prepare-sentinel' && operation.type === 'block'
   ))).toBe(false)
 })
-

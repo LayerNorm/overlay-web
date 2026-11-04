@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Resume waiting runs when a person skips a single optional questionnaire question, instead of silently leaving the run paused.
+- Resume waiting runs when a person skips a single optional questionnaire question, instead of silently leaving the run paused, with regression coverage for skipped optional and blank required replies.
 
 - Keep late model-cost corrections within unreserved credit and payer limits, and prevent old corrections from changing a renewed wallet while retaining the provider's full reported cost.
 
