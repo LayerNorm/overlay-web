@@ -224,12 +224,23 @@ export class RetiredCloudAgentService {
   }
 
   private async deleteReclaimableMachine(provider: string, providerReference: string): Promise<void> {
+    const runtime = this.runtime(provider)
     try {
-      const machine = await this.runtime(provider).reconnect(providerReference, { resume: false })
+      const machine = await runtime.reconnect(providerReference, { resume: false })
       await machine.delete()
     } catch (error) {
-      if (!isMissingSandboxError(error)) throw error
+      if (isMissingSandboxError(error)) return
+      throw error
     }
+    // A successful delete request can be asynchronous: retain ownership and retry
+    // until a fresh provider lookup confirms the machine is actually absent.
+    try {
+      await runtime.reconnect(providerReference, { resume: false })
+    } catch (error) {
+      if (isMissingSandboxError(error)) return
+      throw error
+    }
+    throw new Error('CLOUD_AGENT_DELETE_NOT_CONFIRMED')
   }
 
   private async readMachine(lease: AgentSandboxLease): Promise<NonNullable<CloudAgentStatus['machine']>> {

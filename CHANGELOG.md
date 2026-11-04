@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep retired hosted-machine cleanup pending until a fresh provider lookup confirms deletion, preventing asynchronous delete acknowledgements from discarding cleanup ownership.
+
 - Preserve private exact-origin hosting access for user-owned Agent Hosts, so retiring hosted Cloud runtimes does not break enrollment, signed API calls, or MCP tools on protected PR previews.
 
 - Retire hosted third-party Claude Code/Codex runtimes in Overlay Cloud. Cloud creation, restart, run credentials, profile import and desktop launch are blocked; legacy agents remain readable and cleanup is lease-reaper managed. Preserve BYOM Agent Host, native Computers, provider connections, billing settlement, and historical records. Deployment is gated on an operator inventory, drain/export, and provider-deletion verification; completion is not established.

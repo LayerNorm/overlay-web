@@ -161,6 +161,7 @@ test('explicit teardown queues ready provision cleanup until its lease is releas
       reconnect: async (reference, options) => {
         assert.equal(reference, 'provider-machine')
         assert.equal(options?.resume, false)
+        if (deletions > 0) throw new Error('404 sandbox not found')
         return {
           status: async () => 'stopped',
           delete: async () => { deletions += 1 },
@@ -198,4 +199,40 @@ test('explicit teardown queues ready provision cleanup until its lease is releas
   assert.deepEqual(await retirement.teardown({
     actorUserId: 'owner', workspaceId: 'workspace', agentId: 'agent',
   }), { cleanupPending: 0 })
+})
+
+
+test('a provider delete acknowledgement cannot finish cleanup while the machine still exists', async () => {
+  const provision = {
+    workspaceId: 'workspace', agentId: 'agent', userId: 'owner', phase: 'failed',
+    provider: 'box', providerReference: 'orphan-machine', allocationKey: 'allocation',
+    reclaimPending: true, createdAt: 1, updatedAt: 2,
+  }
+  let finishes = 0
+  let deletes = 0
+  let lookups = 0
+  const retirement = new RetiredCloudAgentService({
+    audit: { record: async () => undefined } as never,
+    controlPlane: { revokeEnvironment: async () => undefined },
+    repository: {
+      listBindings: async () => [], getEnvironment: async () => null,
+      getActiveSandboxLease: async () => null, listSandboxLeases: async () => [],
+    } as never,
+    provisions: {
+      listReclaimable: async () => [provision],
+      finishReclaim: async () => { finishes += 1; return true },
+    } as never,
+    runtime: () => ({
+      reconnect: async (_reference: string, options?: { resume?: boolean }) => {
+        assert.equal(options?.resume, false)
+        lookups += 1
+        return { delete: async () => { deletes += 1 } }
+      },
+    } as never),
+    now: () => now,
+  })
+  assert.deepEqual(await retirement.reclaimAbandonedProvisions(), { reclaimed: 0, skipped: 0, failed: 1 })
+  assert.equal(lookups, 2)
+  assert.equal(deletes, 1)
+  assert.equal(finishes, 0)
 })
