@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Upgrade Better Auth and its SSO integration to 1.7.16, including the November 3 security fixes for private deployments. Hosted WorkOS authentication and the dependency cooldown policy are unchanged.
+
 - Load complete public Harness text and tool records when expanding a response, with authenticated trace retrieval and separate full-payload storage. Compact chat snapshots no longer determine trace length; previously truncated historical payloads remain marked as legacy.
 
 - Show the user's photo, name, and email above the workspace list, keep sidebar Settings and sign out while removing duplicate menu rows, and allow owned Harness continuations waiting on input, approval, children, or resources to finish usage admission.
@@ -20,6 +22,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Remove harness-level checking of agent work: the final-answer verifier, its paid extra model call and retries, milestone evidence requirements, and the rewrite of unconfirmed note claims. This stops rejected drafts from repeating in responses. A step is now done when the model marks it done, so a model can report work that did not happen; people, or a verifier agent they add, check the result.
 
 - Stop forcing agents with write tools to make a plan. Simple questions now get a direct answer, and the model plans only when a task is long and needs structure.
+
 - Refresh subscription rollout status and remove the superseded in-process adapter plan so future agents follow the private bridge architecture.
 
 - Update YAML parsing used by development and repository tooling. (#329)
