@@ -94,7 +94,7 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/agent-profiles/upload`
 - `POST /api/v1/agent-environments/enrollment-sessions`
 - `POST /api/v1/agent-environments/cloud`
-- `POST /api/v1/agent-environments/[environmentId]/run-credentials`
+- `POST /api/v1/agent-environments/[environmentId]/run-credentials` (410 retired)
 - `POST /api/v1/agent-environments/[environmentId]/drive-credentials`
 - `POST /api/v1/agent-environments/operations/reconcile`
 - `GET /api/v1/agent-environments`

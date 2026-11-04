@@ -47,7 +47,7 @@ test('an unavailable default model falls back to the first enabled one', () => {
   assert.equal(resolveDraftModelId('byok/personal/sol', models), 'byok/personal/sol')
 })
 
-test('fields render in order with other agents disabled', () => {
+test('fields render native agent setup without hosted-runtime fields', () => {
   const markup = renderToStaticMarkup(
     <NewAgentFields draft={{ ...initialNewAgentDraft(), modelId: 'test-model' }} onChange={() => undefined} modelField={modelField} computersAvailable />,
   )
@@ -55,14 +55,17 @@ test('fields render in order with other agents disabled', () => {
   const positions = order.map((needle) => markup.indexOf(needle))
   assert.ok(positions.every((position) => position >= 0), `missing field: ${order[positions.indexOf(-1)]}`)
   assert.deepEqual([...positions].sort((a, b) => a - b), positions)
-  assert.doesNotMatch(markup, /Other agent|Coming soon|>Type</)
+  assert.doesNotMatch(markup, /Overlay Cloud|>Runs on<|>Account<|Connect your agent/)
 })
 
-test('a stale external draft cannot reveal external setup while disabled', () => {
+test('the type control opens user-owned machine setup and has no hosted fields', () => {
+  let opened = false
   const markup = renderToStaticMarkup(
-    <NewAgentFields draft={{ ...initialNewAgentDraft(), kind: 'other' }} onChange={() => undefined} modelField={modelField} computersAvailable />,
+    <NewAgentFields draft={initialNewAgentDraft()} onChange={() => undefined} modelField={modelField} computersAvailable onOpenMachineSetup={() => { opened = true }} />,
   )
-  assert.doesNotMatch(markup, /Other agent|>Runs on<|>Account<|>Machine</)
+  assert.match(markup, /Connect your agent/)
+  assert.doesNotMatch(markup, /Overlay Cloud|>Runs on<|>Account</)
+  assert.equal(opened, false)
   assert.match(markup, />Computer</)
   assert.match(markup, />Advanced</)
 })
@@ -71,30 +74,5 @@ test('the computer row is hidden when the deployment has no computers', () => {
   const markup = renderToStaticMarkup(
     <NewAgentFields draft={initialNewAgentDraft()} onChange={() => undefined} modelField={modelField} computersAvailable={false} />,
   )
-  assert.doesNotMatch(markup, />Computer</)
-})
-
-test('an agent on Overlay Cloud needs a name and an account, not instructions', () => {
-  const draft = { ...initialNewAgentDraft(), kind: 'other' as const }
-  assert.equal(isNewAgentDraftValid(draft), false)
-  assert.equal(isNewAgentDraftValid({ ...draft, name: 'Coder' }), false)
-  const withAccount = { ...draft, name: 'Coder', other: { ...draft.other, providerAccountId: 'acct-1' } }
-  assert.equal(isNewAgentDraftValid(withAccount), true)
-  // "Your machine" is set up in the full editor, so the dialog cannot create it.
-  assert.equal(isNewAgentDraftValid({ ...withAccount, other: { ...withAccount.other, runsOn: 'machine' } }), false)
-})
-
-test('other agents are selectable where cloud agents are available, and show their own fields', () => {
-  const draft = { ...initialNewAgentDraft(), kind: 'other' as const, modelId: 'test-model' }
-  const markup = renderToStaticMarkup(
-    <NewAgentFields draft={draft} onChange={() => undefined} modelField={modelField} computersAvailable otherAgentsAvailable />,
-  )
-  assert.doesNotMatch(markup, /Other agent: Coming soon/)
-  const order = ['>Type<', '>Agent<', '>Runs on<', '>Account<', '>Machine<', '>Access<']
-  const positions = order.map((needle) => markup.indexOf(needle))
-  assert.ok(positions.every((position) => position >= 0), `missing field: ${order[positions.indexOf(-1)]}`)
-  assert.deepEqual([...positions].sort((a, b) => a - b), positions)
-  // The agent brings its own model and tools; the machine is its computer.
-  assert.doesNotMatch(markup, />Advanced</)
   assert.doesNotMatch(markup, />Computer</)
 })

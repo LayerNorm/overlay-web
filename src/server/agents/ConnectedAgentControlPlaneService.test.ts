@@ -3,8 +3,7 @@ import 'server-only'
 import { createHash, generateKeyPairSync, sign } from 'node:crypto'
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { canonicalEnrollmentProof, canonicalHostRequestProof, MAX_HOST_REQUEST_BYTES } from '@layernorm/overlay-agent-bridge-protocol'
-import { AGENT_ENVIRONMENT_CREDENTIAL_METHODS } from '@overlay/workspace-contracts'
+import { canonicalHostRequestProof, MAX_HOST_REQUEST_BYTES } from '@layernorm/overlay-agent-bridge-protocol'
 import type { ObjectStore } from '@overlay/app-core'
 import type { AgentArtifact, AgentEnvironment, AgentEnvironmentCredential, AgentRemoteSession } from '@overlay/workspace-contracts'
 import { AuditService } from '@/server/admin'
@@ -263,16 +262,16 @@ test('polling without an injected launch policy uses the runtime release policy'
   }
 })
 
-test('drive activation persists only the managed Cloud root and is idempotent', async () => {
+test('drive activation refuses retired Cloud environments without changing their grant', async () => {
   const f = fixture({ kind: 'overlay_cloud', capabilities: { drive: { version: 1 } },
     filesystemGrant: { mode: 'selected_roots', roots: ['/home/user/workspace'] } }, {}, { driveEnabled: true })
-  await f.service.prepareDriveEnvironment({ workspaceId: f.environment.workspaceId, environmentId: f.environment.id })
-  assert.deepEqual(f.environment.filesystemGrant, { mode: 'selected_roots', roots: ['/home/user/workspace', '/home/user/drive'] })
-  assert.equal(f.scopeUpdates.length, 1)
-  assert.equal(f.audits[0]?.actorType, 'service')
-  assert.equal(f.audits[0]?.metadata.reason, 'connected_agent_drive')
-  await f.service.prepareDriveEnvironment({ workspaceId: f.environment.workspaceId, environmentId: f.environment.id })
-  assert.equal(f.scopeUpdates.length, 1)
+  await assertControlPlaneError(
+    () => f.service.prepareDriveEnvironment({ workspaceId: f.environment.workspaceId, environmentId: f.environment.id }),
+    'hosted_runtime_retired',
+  )
+  assert.deepEqual(f.environment.filesystemGrant, { mode: 'selected_roots', roots: ['/home/user/workspace'] })
+  assert.equal(f.scopeUpdates.length, 0)
+  assert.equal(f.audits.length, 0)
 })
 
 test('drive activation never expands local/VPS grants and refuses disabled, unupgraded or revoked Cloud hosts', async () => {
@@ -398,26 +397,12 @@ test('host authentication rejects cross-environment use, revoked hosts, and over
   await assertControlPlaneError(() => active.service.authenticateHostRequest(oversized), 'request_too_large')
 })
 
-test('an expired credential may only refresh itself, and only on an Overlay Cloud machine', async () => {
-  const methods: AgentEnvironmentCredential['methods'] = ['agent:commands:poll', 'agent:credentials:refresh']
-  const expired = { expiresAt: NOW - 3 * 60 * 60_000, methods }
-  const refresh = () => ({ ...signedRequest({ target: '/api/v1/agent-environments/environment-1/credentials/refresh' }), requiredMethod: 'agent:credentials:refresh' as const })
-
-  const cloud = fixture({ kind: 'overlay_cloud' }, expired)
-  assert.equal((await cloud.service.authenticateHostRequest(refresh())).environment.id, 'environment-1')
-
-  await assertControlPlaneError(() => cloud.service.authenticateHostRequest({
-    ...signedRequest({ target: '/api/v1/agent-environments/environment-1/events', nonce: 'nonce_nonce_nonce_nonce_02' }),
-  }), 'credential_invalid')
-
-  const laptop = fixture({ kind: 'local' }, expired)
-  await assertControlPlaneError(() => laptop.service.authenticateHostRequest(refresh()), 'credential_invalid')
-
-  const longGone = fixture({ kind: 'overlay_cloud' }, { ...expired, expiresAt: NOW - 8 * 24 * 60 * 60_000 })
-  await assertControlPlaneError(() => longGone.service.authenticateHostRequest(refresh()), 'credential_invalid')
-
-  const revoked = fixture({ kind: 'overlay_cloud' }, { ...expired, revokedAt: NOW - 1 })
-  await assertControlPlaneError(() => revoked.service.authenticateHostRequest(refresh()), 'credential_invalid')
+test('retired Cloud credentials cannot refresh', async () => {
+  const cloud = fixture({ kind: 'overlay_cloud' })
+  await assertControlPlaneError(
+    () => cloud.service.refreshCredential({ credential: cloud.credential, environment: cloud.environment }),
+    'hosted_runtime_retired',
+  )
 })
 
 test('working directories must stay within an explicitly approved project root', () => {
@@ -531,7 +516,7 @@ test('artifact retention cleanup drains multiple bounded batches without touchin
   assert.deepEqual(await setup.service.cleanupArtifacts(100), { deleted: 0 })
 })
 
-test('hosted harness adapters can no longer be bound', async () => {
+test('hosted harness bindings are rejected as retired Cloud environments', async () => {
   const environment: AgentEnvironment = {
     id: 'environment-hosted', workspaceId: 'workspace-1', kind: 'overlay_cloud',
     name: 'Overlay Cloud · claude-code', status: 'online', publicKey: 'public-key',
@@ -558,146 +543,9 @@ test('hosted harness adapters can no longer be bound', async () => {
       actorUserId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-1',
       environmentId: 'environment-hosted', adapterId: 'claude-code', workingDirectory: '/workspace',
     }),
-    'adapter_unavailable',
+    'hosted_runtime_retired',
   )
   assert.deepEqual(upserts, [])
-})
-
-function providerAccountHarness(options: {
-  bindingConfig?: Record<string, unknown>
-  sessionStatus?: string
-  environmentKind?: AgentEnvironment['kind']
-  resolve?: () => Promise<{ env: Record<string, string>; files: Array<{ path: string; contents: string; mode?: number }>; provider: 'claude-code' | 'codex'; method: 'subscription' }>
-  deliver?: 'fail' | 'none'
-  discoveryBindings?: 'none' | 'foreign' | 'disabled' | 'ambiguous'
-  activeRuns?: boolean
-  memberRevoked?: boolean
-} = {}) {
-  const delivered: unknown[] = []
-  const environment: AgentEnvironment = {
-    id: 'environment-cloud', workspaceId: 'workspace-1', kind: options.environmentKind ?? 'overlay_cloud',
-    name: 'Cloud machine', status: 'online', publicKey: 'public-key',
-    capabilities: { adapters: [{ id: 'claude-code', protocol: 'acp' }, { id: 'codex', protocol: 'acp' }, { id: 'hermes', protocol: 'acp' }, { id: 'eve', protocol: 'acp' }] },
-    filesystemGrant: { mode: 'selected_roots', roots: ['/home/user/workspace'] },
-    approvedAt: NOW - 1_000, approvedByUserId: 'user-1', createdAt: NOW - 2_000, updatedAt: NOW - 1_000,
-  }
-  const upserts: Array<{ adapterConfig: Record<string, unknown> }> = []
-  const reauth: string[] = []
-  const issued: Array<{ accountId: string; ownerUserId: string; expectedProvider: string }> = []
-  const binding = {
-    id: 'binding-1', workspaceId: 'workspace-1', agentId: 'agent-1', environmentId: environment.id,
-    protocolAdapter: 'acp', enabled: true, createdAt: 1, updatedAt: 1,
-    adapterConfig: options.bindingConfig ?? { adapterId: 'claude-code', workingDirectory: '/home/user/workspace', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1' },
-  }
-  const session = {
-    id: 'session-1', workspaceId: 'workspace-1', environmentId: environment.id, bindingId: 'binding-1', runId: 'run-1',
-    status: options.sessionStatus ?? 'running', capabilitySnapshot: { billing: { agentId: 'agent-1' } },
-  }
-  const service = new ConnectedAgentControlPlaneService({
-    repository: {
-      async getEnvironment() { return environment },
-      async upsertBinding(input: { adapterConfig: Record<string, unknown> }) { upserts.push(input); return { ...binding, adapterConfig: input.adapterConfig } },
-      async getRemoteSessionForRun(args: { runId: string }) { return args.runId === 'run-1' ? session : null },
-      async listBindings() {
-        if (options.discoveryBindings === 'none') return []
-        if (options.discoveryBindings === 'foreign') return [{ ...binding, environmentId: 'other-environment' }]
-        if (options.discoveryBindings === 'disabled') return [{ ...binding, enabled: false }]
-        if (options.discoveryBindings === 'ambiguous') return [binding, { ...binding, id: 'binding-2' }]
-        return [binding]
-      },
-      async environmentHasActiveRuns() { return options.activeRuns === true },
-    } as unknown as ConnectedAgentRepository,
-    audit: { record: async () => {} } as unknown as AuditService,
-    workspaces: { async resolveActiveWorkspace() { if (options.memberRevoked) throw Error('Workspace membership revoked'); return { membership: { role: 'admin' } } } } as unknown as WorkspaceService,
-    agentProviderAccounts: {
-      async requireUsable(args: { userId: string; accountId: string; provider: string }) {
-        if (args.accountId !== 'account-1' || args.userId !== 'user-1') throw Object.assign(new Error('Account not found'), { statusCode: 404 })
-        return {} as never
-      },
-      async resolveRunEnvironment(args: { accountId: string; ownerUserId: string; expectedProvider: string }) {
-        issued.push(args)
-        return await (options.resolve ?? (async () => ({ env: { CLAUDE_CODE_OAUTH_TOKEN: 'secret-token' }, files: [], provider: 'claude-code' as const, method: 'subscription' as const })))()
-      },
-      async markNeedsReauth(accountId: string) { reauth.push(accountId) },
-    },
-    ...(options.deliver === 'none' ? {} : { deliverMachineFiles: async (args: unknown) => { if (options.deliver === 'fail') throw new Error('machine down'); delivered.push(args) } }),
-    now: () => NOW,
-    isEnabled: () => true,
-    launchEnabled: () => true,
-  })
-  const auth = {
-    environment,
-    credential: { id: 'credential-1', workspaceId: 'workspace-1', environmentId: environment.id, methods: ['agent:run-credentials'] },
-  } as unknown as HostAuthentication
-  return { service, auth, upserts, reauth, issued, delivered }
-}
-
-test('a binding records the account and who chose it, and refuses accounts that are not the actor\'s', async () => {
-  const { service, upserts } = providerAccountHarness()
-  const base = { actorUserId: 'user-1', workspaceId: 'workspace-1', agentId: 'agent-1', environmentId: 'environment-cloud', adapterId: 'claude-code', workingDirectory: '/home/user/workspace' }
-  await service.upsertBinding({ ...base, providerAccountId: 'account-1' })
-  assert.equal(upserts[0]?.adapterConfig.providerAccountId, 'account-1')
-  assert.equal(upserts[0]?.adapterConfig.providerAccountOwnerUserId, 'user-1')
-  await assertControlPlaneError(() => service.upsertBinding({ ...base, providerAccountId: 'someone-elses' }), 'provider_account_invalid')
-  await assertControlPlaneError(() => service.upsertBinding({ ...base, adapterId: 'hermes', providerAccountId: 'account-1' }), 'adapter_unavailable')
-  await assertControlPlaneError(() => service.upsertBinding({ ...base, adapterId: 'eve', providerAccountId: 'account-1' }), 'adapter_unavailable')
-})
-
-test('run credentials go only to the Overlay Cloud host running that active run, for the account the binding chose', async () => {
-  const { service, auth, issued } = providerAccountHarness()
-  assert.deepEqual(await service.issueRunCredentials(auth, 'run-1'), { env: { CLAUDE_CODE_OAUTH_TOKEN: 'secret-token' } })
-  assert.deepEqual(issued, [{ accountId: 'account-1', ownerUserId: 'user-1', expectedProvider: 'claude-code' }])
-  await assertControlPlaneError(() => service.issueRunCredentials(auth, 'other-run'), 'run_not_active')
-})
-
-test('run credentials are refused for finished runs, other environment kinds, and bindings without an account', async () => {
-  await assertControlPlaneError(
-    () => providerAccountHarness({ sessionStatus: 'completed' }).service.issueRunCredentials(providerAccountHarness().auth, 'run-1'),
-    'run_not_active',
-  )
-  const local = providerAccountHarness({ environmentKind: 'local' })
-  await assertControlPlaneError(() => local.service.issueRunCredentials(local.auth, 'run-1'), 'run_credentials_forbidden')
-  const none = providerAccountHarness({ bindingConfig: { adapterId: 'claude-code', workingDirectory: '/home/user/workspace' } })
-  await assertControlPlaneError(() => none.service.issueRunCredentials(none.auth, 'run-1'), 'provider_account_missing')
-})
-
-test('an account that needs reconnecting surfaces its own code to the host', async () => {
-  const { service, auth } = providerAccountHarness({
-    resolve: async () => { throw Object.assign(new Error('Reconnect'), { statusCode: 409, code: 'account_needs_reauth' }) },
-  })
-  await assertControlPlaneError(() => service.issueRunCredentials(auth, 'run-1'), 'account_needs_reauth')
-})
-
-test('only Overlay Cloud credentials carry the run-credentials method, so older hosts keep parsing theirs', async () => {
-  assert.ok(AGENT_ENVIRONMENT_CREDENTIAL_METHODS.includes('agent:run-credentials'))
-  const issue = async (kind: AgentEnvironment['kind'], drive = false) => {
-    const issued: string[][] = []
-    const environment = fixture({ kind }).environment
-    if (drive) environment.capabilities = { ...environment.capabilities, drive: { version: 1 } }
-    const service = new ConnectedAgentControlPlaneService({
-      repository: {
-        async getEnvironmentProofChallenge() {
-          return { environment, proofChallenge: { id: 'p', challengeHash: sha256('challenge') } }
-        },
-        async issueEnvironmentCredential(input: { credential: AgentEnvironmentCredential }) {
-          issued.push([...input.credential.methods])
-          return input.credential
-        },
-      } as unknown as ConnectedAgentRepository,
-      audit: { record: async () => {} } as unknown as AuditService,
-      workspaces: {} as WorkspaceService, now: () => NOW, isEnabled: () => true, launchEnabled: () => true,
-    })
-    const signature = sign(null, Buffer.from(canonicalEnrollmentProof(environment.id, 'challenge')), privateKey).toString('base64url')
-    await service.issueInitialCredential({ environmentId: environment.id, proofChallenge: 'challenge', signature })
-    return issued[0] ?? []
-  }
-  assert.ok((await issue('overlay_cloud')).includes('agent:run-credentials'))
-  assert.equal((await issue('local')).includes('agent:run-credentials'), false)
-  assert.equal((await issue('vps')).includes('agent:run-credentials'), false)
-  for (const kind of ['overlay_cloud', 'local', 'vps'] as const) {
-    assert.equal((await issue(kind)).includes('agent:drive-credentials'), false)
-    assert.equal((await issue(kind, true)).includes('agent:drive-credentials'), true)
-  }
 })
 
 async function assertControlPlaneError(operation: () => Promise<unknown>, code: string) {
@@ -782,20 +630,6 @@ function artifactRecord(
     createdAt: NOW - 1_000, updatedAt: NOW - 1_000, ...overrides }
 }
 
-test('an account that needs a file on the machine (a Codex subscription) has it written first, and the run gets no secret in its environment', async () => {
-  const files = [{ path: '/home/user/.codex/auth.json', contents: '{"tokens":{}}', mode: 0o600 }]
-  const resolve = async () => ({ env: {}, files, provider: 'codex' as const, method: 'subscription' as const })
-  const ok = providerAccountHarness({ resolve, bindingConfig: { adapterId: 'codex', workingDirectory: '/home/user/workspace', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1' } })
-  assert.deepEqual(await ok.service.issueRunCredentials(ok.auth, 'run-1'), { env: {} })
-  assert.deepEqual(ok.delivered, [{ workspaceId: 'workspace-1', environmentId: 'environment-cloud', files }])
-
-  const down = providerAccountHarness({ resolve, deliver: 'fail', bindingConfig: { adapterId: 'codex', workingDirectory: '/home/user/workspace', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1' } })
-  await assertControlPlaneError(() => down.service.issueRunCredentials(down.auth, 'run-1'), 'machine_files_failed')
-  const none = providerAccountHarness({ resolve, deliver: 'none', bindingConfig: { adapterId: 'codex', workingDirectory: '/home/user/workspace', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1' } })
-  await assertControlPlaneError(() => none.service.issueRunCredentials(none.auth, 'run-1'), 'machine_files_unavailable')
-})
-
-
 test('poll extension is omitted for strict legacy hosts and sent only after v2 negotiation', async () => {
   for (const negotiated of [false, true]) {
     const f = fixture({ capabilities: negotiated ? { remoteLifecycleVersion: 2 } : {} })
@@ -816,7 +650,8 @@ test('legacy web-first controls omit the new argument until lifecycle v2 is enab
     for (const enabled of [false, true]) {
       if (enabled) process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION = '2'
       else delete process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION
-      const f = fixture()
+      const f = fixture({ kind: 'vps' })
+      f.repository.getRemoteSessionForRun = async () => null
       const received: Array<Parameters<ConnectedAgentRepository['controlRemoteAgentTurn']>[0]> = []
       f.repository.controlRemoteAgentTurn = async input => {
         if (!enabled) assert.equal(Object.hasOwn(input, 'controlRequestId'), false)
@@ -837,7 +672,7 @@ test('legacy web-first controls omit the new argument until lifecycle v2 is enab
   }
 })
 
-test('remote control wake forwards the authenticated actor and the run agent, not the environment approver', async () => {
+test('retired Cloud remote control cannot wake hosted machines', async () => {
   const f = fixture({ kind: 'overlay_cloud', approvedByUserId: 'approver-user' })
   const session: AgentRemoteSession = {
     id: 'session-1', workspaceId: f.environment.workspaceId, environmentId: f.environment.id,
@@ -855,17 +690,14 @@ test('remote control wake forwards the authenticated actor and the run agent, no
     launchEnabled: () => true,
     wakeMachine: async input => { wakes.push(input); return 'running' },
   })
-  await service.controlRemoteTurn({
+  await assertControlPlaneError(() => service.controlRemoteTurn({
     actorUserId: 'authenticated-actor', workspaceId: f.environment.workspaceId,
     conversationId: 'conversation-1', runId: 'run-1', action: 'resume',
-  })
-  assert.deepEqual(wakes, [{
-    actorUserId: 'authenticated-actor', workspaceId: f.environment.workspaceId,
-    agentId: 'run-agent', environmentId: f.environment.id,
-  }])
+  }), 'hosted_runtime_retired')
+  assert.deepEqual(wakes, [])
 })
 
-test('remote control admission refusal precedes the control mutation and wake', async () => {
+test('retired Cloud remote control refuses admission before mutation or wake', async () => {
   const f = fixture({ kind: 'overlay_cloud' })
   const session: AgentRemoteSession = {
     id: 'session-1', workspaceId: f.environment.workspaceId, environmentId: f.environment.id,
@@ -885,10 +717,10 @@ test('remote control admission refusal precedes the control mutation and wake', 
     wakeMachine: async input => { wakes.push(input); return 'running' },
     admitMachine: async () => { throw new Error('paid_plan_required') },
   })
-  await assert.rejects(service.controlRemoteTurn({
+  await assertControlPlaneError(() => service.controlRemoteTurn({
     actorUserId: 'free-actor', workspaceId: f.environment.workspaceId,
     conversationId: 'conversation-1', runId: 'run-1', action: 'resume',
-  }), /paid_plan_required/)
+  }), 'hosted_runtime_retired')
   assert.equal(mutations, 0)
   assert.deepEqual(wakes, [])
 })
@@ -988,46 +820,6 @@ test('ingestion uses current policy projections only for the canonical resolver 
       assert.equal(policyCalls, 1)
       assert.equal(legacyLookups, enabled && projection ? 0 : 1)
       assert.equal(applied[0]?.maxEventsPerMinute, enabled && projection?.planKind === 'paid' ? 10_000 : 1_000)
-    }
-  }
-})
-
-
-test('idle Cloud options discovery resolves only its unique enabled adapter binding account', async () => {
-  const {service, auth, issued} = providerAccountHarness()
-  assert.deepEqual(await service.issueDiscoveryCredentials(auth, 'claude-code'), {env: {CLAUDE_CODE_OAUTH_TOKEN: 'secret-token'}})
-  assert.deepEqual(issued, [{accountId: 'account-1', ownerUserId: 'user-1', expectedProvider: 'claude-code'}])
-})
-
-test('options discovery refuses local hosts, foreign/disabled/ambiguous bindings, unsupported adapters and active work before credential lookup', async () => {
-  for (const discoveryBindings of ['none', 'foreign', 'disabled', 'ambiguous'] as const) {
-    const {service, auth, issued} = providerAccountHarness({discoveryBindings})
-    await assertControlPlaneError(() => service.issueDiscoveryCredentials(auth, 'claude-code'), 'provider_account_missing')
-    assert.deepEqual(issued, [])
-  }
-  const local = providerAccountHarness({environmentKind: 'local'})
-  await assertControlPlaneError(() => local.service.issueDiscoveryCredentials(local.auth, 'claude-code'), 'run_credentials_forbidden')
-  assert.deepEqual(local.issued, [])
-  const busy = providerAccountHarness({activeRuns: true})
-  await assertControlPlaneError(() => busy.service.issueDiscoveryCredentials(busy.auth, 'claude-code'), 'provider_discovery_busy')
-  assert.deepEqual(busy.issued, [])
-  const unsupported = providerAccountHarness()
-  await assertControlPlaneError(() => unsupported.service.issueDiscoveryCredentials(unsupported.auth, 'eve'), 'provider_account_missing')
-  assert.deepEqual(unsupported.issued, [])
-  const revoked = providerAccountHarness({memberRevoked: true})
-  await assert.rejects(revoked.service.issueDiscoveryCredentials(revoked.auth, 'claude-code'), /membership revoked/)
-  assert.deepEqual(revoked.issued, [])
-})
-
-test('Codex catalog discovery uses broker-owned file delivery and fails closed if delivery is unavailable', async () => {
-  const files = [{path: '/home/user/.codex/auth.json', contents: 'placeholder-refresh-test-fixture', mode: 0o600}]
-  for (const deliver of [undefined, 'fail', 'none'] as const) {
-    const harness = providerAccountHarness({deliver, bindingConfig: {adapterId: 'codex', providerAccountId: 'account-1', providerAccountOwnerUserId: 'user-1'},
-      resolve: async () => ({env: {}, files, provider: 'codex', method: 'subscription'})})
-    if (deliver) await assertControlPlaneError(() => harness.service.issueDiscoveryCredentials(harness.auth, 'codex'), deliver === 'fail' ? 'machine_files_failed' : 'machine_files_unavailable')
-    else {
-      assert.deepEqual(await harness.service.issueDiscoveryCredentials(harness.auth, 'codex'), {env: {}})
-      assert.deepEqual(harness.delivered, [{workspaceId: 'workspace-1', environmentId: 'environment-cloud', files}])
     }
   }
 })

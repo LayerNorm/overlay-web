@@ -8,7 +8,8 @@ import type { AgentHostCommand, DriveCredentialsRequest, EventBatch, FilesystemG
 import type { AgentAdapter, EmitAgentEvent, StartAdapterSessionInput } from './adapter.js'
 import { AgentHostRuntime, type AgentHostRuntimeOptions } from './runtime.js'
 import { SqliteHostStateStore } from './state.js'
-import { ControlPlaneRequestError, type AgentControlPlaneClient } from './transport.js'
+import { ControlPlaneRequestError } from './transport.js'
+import { type AgentControlPlaneClient } from './transport.js'
 
 function deferred<T>() {
   let resolve: (value: T) => void = () => {throw Error('not initialized')}
@@ -24,7 +25,6 @@ async function fixture() {
   const order: string[] = [], events: EventBatch[] = [], starts: StartAdapterSessionInput[] = []
   const requests: Omit<DriveCredentialsRequest, 'protocolVersion'>[] = []
   let emit: EmitAgentEvent = async () => { throw Error('adapter not started') }, closes = 0
-  let credentialError: Error | undefined
   const filesystem: FilesystemGrant = { mode: 'selected_roots', roots: [project] }
   const adapter: AgentAdapter = {
     capability: { id: 'fixture', displayName: 'Fixture', protocol: 'fake', supports: { prompt: true, approval: true, cancel: true, resume: true } },
@@ -45,14 +45,9 @@ async function fixture() {
       return { protocolVersion: 1, scope: { kind: 'personal', workspaceId: 'workspace', ownerUserId: 'owner' },
         token: `ovdrive_${'x'.repeat(32)}.${'y'.repeat(43)}`, expiresAt: Date.now() + 3600000 }
     },
-    async fetchRunCredentials() {
-      order.push('provider-credentials')
-      if (credentialError) throw credentialError
-      return { PROVIDER_TOKEN: 'memory-only' }
-    },
   }
   const options: AgentHostRuntimeOptions = { environmentId: 'environment', workspaceId: 'workspace', filesystem,
-    durableLifecycle: true, fetchRunCredentials: true, adapters: [adapter], state, controlPlane,
+    durableLifecycle: true, adapters: [adapter], state, controlPlane,
     drive: { stateDirectory: directory, apiUrl: 'https://preview.invalid/api/agent-drive', create: async input => {
       order.push('hydrate')
       assert.deepEqual(input.filesystem, filesystem)
@@ -70,12 +65,11 @@ async function fixture() {
   const command: AgentHostCommand = { protocolVersion: 1, commandId: 'start', environmentId: 'environment',
     workspaceId: 'workspace', runId: 'run', sequence: 1, issuedAt: Date.now(), execution: { attemptId: 'attempt', generation: 2 },
     type: 'start', payload: { bindingId: 'binding', adapterId: 'fixture', workingDirectory: project, prompt: 'Write a report',
-      sessionId: 'native-session', metadata: { runCredentials: true,
+      sessionId: 'native-session', metadata: {
         overlayDrive: { version: 1, sessionId: 'internal-session', location: 'approved-root' } } },
   }
   return { runtime, command, order, events, starts, requests, options, drive, closes: () => closes,
     emit: (event: Parameters<EmitAgentEvent>[0]) => emit(event),
-    failCredentials() { credentialError = new ControlPlaneRequestError(409, 'account_needs_reauth') },
     async cleanup() { runtime.stopBackgroundUploads(); await runtime.flushOutbox(); state.close(); await rm(directory, { recursive: true, force: true }) },
   }
 }
@@ -115,7 +109,7 @@ test('runtime hydrates the fixed scope before provider start, then saves before 
   const f = await fixture()
   try {
     await f.runtime.processCommand(f.command)
-    assert.deepEqual(f.order.slice(0, 6), ['provider-credentials', 'refresh', 'hydrate', 'drive-credentials', 'adapter', 'prompt'])
+    assert.deepEqual(f.order.slice(0, 5), ['refresh', 'hydrate', 'drive-credentials', 'adapter', 'prompt'])
     assert.equal(f.starts[0]?.workingDirectory, f.drive)
     assert.deepEqual(f.starts[0]?.additionalDirectories, [])
     assert.deepEqual(f.requests, [{ runId: 'run', sessionId: 'internal-session', execution: { attemptId: 'attempt', generation: 2 } }])
@@ -124,7 +118,6 @@ test('runtime hydrates the fixed scope before provider start, then saves before 
     const events = f.events.flatMap(batch => batch.events)
     assert.deepEqual(events.slice(-3).map(event => event.type), ['drive_sync', 'drive_sync', 'completed'])
     assert.equal(f.closes(), 1)
-    assert.equal(JSON.stringify(events).includes('memory-only'), false)
   } finally { await f.cleanup() }
 })
 
@@ -170,17 +163,6 @@ test('a known native result cannot revoke authority during process cleanup or fi
     await f.runtime.flushOutbox()
     assert.equal(f.events.flatMap(batch => batch.events).at(-1)?.type, 'completed')
   } finally { release.resolve(); await ending; await f.cleanup() }
-})
-
-test('unavailable provider credentials never acquire a drive lease or launch an adapter', async () => {
-  const f = await fixture()
-  try {
-    f.failCredentials()
-    await f.runtime.processCommand(f.command)
-    assert.deepEqual(f.order, ['provider-credentials'])
-    assert.equal(f.starts.length, 0)
-    assert.equal(f.closes(), 0)
-  } finally { await f.cleanup() }
 })
 
 test('a fresh runtime stream uses the canonical continuation offset from its command', async () => {

@@ -116,12 +116,9 @@ and an existing install before binary publication. Desktop's existing release ga
 protected environments and publish freeze stay in force until their recorded
 acceptance is complete. A successful source build is not signed-release acceptance.
 
-For protected Preview QA, discovery uses the web partition's hosting cookie.
-Native Agent Host QA can receive `OVERLAY_DESKTOP_HOSTING_AUTH_FILE`, pointing to a
-fresh private bootstrap file for the existing CLI `--hosting-auth-file` option.
-The CLI verifies owner-only permissions and exact server origin, consumes the file
-before networking and keeps hosting access out of provider environments. Provision
-it from existing project access; never create a per-feature key or commit the file.
+Protected Preview hosting-auth files and the CLI `--hosting-auth-file` option were
+specific to the retired managed-runtime launcher. Do not create or distribute them.
+Agent Host connects only with its user-owned enrollment credential and signed requests.
 
 Release builds embed only the configured public crash-reporting DSN. The native
 crash-reporting toggle is opt-in, stored per device and checked again before each

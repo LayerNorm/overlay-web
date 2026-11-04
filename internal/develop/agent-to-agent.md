@@ -1,6 +1,6 @@
 # Agents asking agents
 
-Workstream 4 of `internal/plans/OVERLAY_CLOUD_AGENTS_PLAN.md`. An agent can ask another agent in the workspace for help and read its answer. It works the same for Overlay agents (native tools) and Claude Code / Codex agents on Overlay Cloud (the same tools over the Overlay MCP server).
+An agent can ask another agent in the workspace for help and read its answer. It works the same for Overlay agents (native tools) and user-owned BYOM agents connected through Agent Host (the same tools over the Overlay MCP server).
 
 ## Tools (group `agent_chat`, "Ask other agents")
 
@@ -24,7 +24,7 @@ ChatGPT, Claude, Cursor and other MCP clients at the Everything level get `list_
 ## Lineage and limits (`src/shared/agents/agent-lineage.ts`)
 
 - Lineage = root turn (the person's message), hop, and the chain of agent ids. It lives on the question message (`data-agent-lineage`); only an agent-authored message is trusted to carry one, and a person's message parts are restricted to text and files, so a lineage cannot be forged.
-- **Hop limit 3**, **no self-asks**, **no cycles** (an agent already in the chain cannot be asked), **3 questions per turn**, **12 per person's message** across the whole chain (`agentAskCounters`, claimed atomically in Convex before anything is posted and given back if delivery fails). **Posts**: 5 per turn, 20 per request. **Spend**: a chain whose asked agents have already used 500,000 tokens (input plus output of their replies, added up from the replies each request recorded) cannot ask again (`MAX_CHAIN_TOKENS`); counts alone do not bound cost, and tokens are what every provider reports. Cloud agents report tokens too. Each refusal is a plain tool error the agent can relay.
+- **Hop limit 3**, **no self-asks**, **no cycles** (an agent already in the chain cannot be asked), **3 questions per turn**, **12 per person's message** across the whole chain (`agentAskCounters`, claimed atomically in Convex before anything is posted and given back if delivery fails). **Posts**: 5 per turn, 20 per request. **Spend**: a chain whose asked agents have already used 500,000 tokens (input plus output of their replies, added up from the replies each request recorded) cannot ask again (`MAX_CHAIN_TOKENS`); counts alone do not bound cost, and tokens are what every provider reports. BYOM agents report tokens too. Each refusal is a plain tool error the agent can relay.
 - Visibility: only agents the person can see (`WorkspaceAgentService.list`) can be asked.
 
 ## UI

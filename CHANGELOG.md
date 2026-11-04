@@ -9,6 +9,14 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Route the first Codex subscription cutover through a private, pinned CLIProxyAPI bridge; keep credentials in Overlay Vault, refresh near-expiry credentials under Overlay's fenced pre-dispatch lease (never inside Go inference), and preserve saved model selections through reconnect failures. Keep isolated Preview backend provisioning in the web service build.
 - Give each subscription its own model-picker group below Recommended, with a plug badge, scope label, independent favorites and reconnect action. Load the same connections in chat and agent pickers while preserving paid-access requirements, without silently replacing unavailable subscription selections.
 
+- Keep the user-owned agent setup entry hidden when the deployment’s connected-agent rollout is disabled, while native agents and Computers remain available.
+
+- Keep retired hosted-machine cleanup pending until a fresh provider lookup confirms deletion, preventing asynchronous delete acknowledgements from discarding cleanup ownership.
+
+- Preserve private exact-origin hosting access for user-owned Agent Hosts, so retiring hosted Cloud runtimes does not break enrollment, signed API calls, or MCP tools on protected PR previews.
+
+- Retire hosted third-party Claude Code/Codex runtimes in Overlay Cloud. Cloud creation, restart, run credentials, profile import and desktop launch are blocked; legacy agents remain readable and cleanup is lease-reaper managed. Preserve BYOM Agent Host, native Computers, provider connections, billing settlement, and historical records. Deployment is gated on an operator inventory, drain/export, and provider-deletion verification; completion is not established.
+
 - Keep answer-correction instructions consistent with the available evidence-reading controls, so a verifier rejection does not also tell the agent to avoid those tools.
 
 - Start Harness answer corrections as explicit continuation turns for providers that reject assistant prefill, and keep evidence-reading controls available without replaying completed external actions.
