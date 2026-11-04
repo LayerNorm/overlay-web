@@ -6,7 +6,12 @@ import { Button } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { readPublicTrace, type PublicTrace } from './public-trace'
 
-type TraceState = { messageId: string; status: 'error' | 'ready'; trace?: PublicTrace | null }
+type TraceState = { messageId: string; enabled: boolean; status: 'error' | 'ready'; trace?: PublicTrace | null }
+type TraceCacheKey = { messageId?: string | null; enabled: boolean }
+
+export function publicTraceCacheKeyChanged(previous: TraceCacheKey, next: TraceCacheKey) {
+  return previous.messageId !== next.messageId || previous.enabled !== next.enabled
+}
 
 export function usePublicTrace({ messageId, enabled, blocks, terminalState = 'completed' }: {
   messageId?: string | null
@@ -17,16 +22,22 @@ export function usePublicTrace({ messageId, enabled, blocks, terminalState = 'co
   const [expanded, setExpanded] = useState(false)
   const [retry, setRetry] = useState(0)
   const [state, setState] = useState<TraceState | null>(null)
-  const loaded = state?.messageId === messageId && state?.status === 'ready'
+  const nextCacheKey = { messageId, enabled }
+  const [cacheKey, setCacheKey] = useState<TraceCacheKey>(nextCacheKey)
+  if (publicTraceCacheKeyChanged(cacheKey, nextCacheKey)) {
+    setCacheKey(nextCacheKey)
+    setState(null)
+  }
+  const loaded = state?.messageId === messageId && state?.enabled === enabled && state?.status === 'ready'
   useEffect(() => {
     if (!expanded || !enabled || !messageId || loaded) return
     const controller = new AbortController()
     void overlayAppClient.request(`/api/v1/conversations/trace?messageId=${encodeURIComponent(messageId)}`, {
       signal: controller.signal,
     }).then(readPublicTrace).then(trace => {
-      if (!controller.signal.aborted) setState({ messageId, status: 'ready', trace })
+      if (!controller.signal.aborted) setState({ messageId, enabled, status: 'ready', trace })
     }).catch(() => {
-      if (!controller.signal.aborted) setState({ messageId, status: 'error' })
+      if (!controller.signal.aborted) setState({ messageId, enabled, status: 'error' })
     })
     return () => controller.abort()
   }, [enabled, expanded, messageId, loaded, retry])
@@ -40,14 +51,18 @@ export function usePublicTrace({ messageId, enabled, blocks, terminalState = 'co
     || block.kind === 'file' && !fullBlocks.some(fullBlock => fullBlock.kind === 'file' && fullBlock.url === block.url)
     || block.kind === 'generated-ui' && !fullBlocks.some(fullBlock => fullBlock.kind === 'generated-ui' && fullBlock.part.id === block.part.id)
   ))
-  const currentState = state?.messageId === messageId ? state : null
+  const currentState = state?.messageId === messageId && state?.enabled === enabled ? state : null
+  const retryTrace = () => {
+    setState(null)
+    setRetry(value => value + 1)
+  }
   const workDetails = !expanded || !enabled || !messageId
     ? null
     : !loaded && currentState?.status !== 'error'
       ? <p role="status" className="text-xs text-(--muted)">Loading full trace…</p>
       : currentState?.status === 'error'
         ? <p role="status" className="text-xs text-(--muted)">Could not load the full trace.{' '}
-          <Button variant="link" className="h-auto p-0 text-xs" onClick={() => setRetry(value => value + 1)}>Retry</Button>
+          <Button variant="link" className="h-auto p-0 text-xs" onClick={retryTrace}>Retry</Button>
         </p>
         : full && state?.trace?.legacy
           ? <p className="text-xs text-(--muted)">Historical tool payloads may be truncated.</p>
