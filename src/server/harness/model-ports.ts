@@ -33,6 +33,7 @@ export function createHarnessModelPorts(input: {
   contextBudgetTokens?: number
 }): Pick<HarnessExecutionPorts, 'prepareModel' | 'recordModelStep' | 'recoverModelFailure' | 'verifyFinalAnswer'> {
   const preparedCalls = new Map<string, PreparedHarnessModel>()
+  const publicProgressReceipts = new Map<string, boolean>()
   const { reference, prepare } = input
   let activeToolNames = new Set<string>()
   // Catalog limits are fixed for a model, so read them once per run.
@@ -78,6 +79,7 @@ export function createHarnessModelPorts(input: {
       return false
     },
     prepareModel: async request => {
+      publicProgressReceipts.set(request.receiptId, request.instructionContext.publicProgress === true)
       activeToolNames = new Set(request.toolNames)
       const limits = await modelLimits(input.modelId)
       const modelContextWindow = limits.contextWindow ?? FALLBACK_CONTEXT_WINDOW
@@ -197,8 +199,9 @@ export function createHarnessModelPorts(input: {
       }
       await settle(step, receiptId, prepared)
       await writeSettledHarnessTranscriptStep(reference, receiptId, step.stepNumber,
-        publicHarnessStepPersistence(step, activeToolNames))
+        publicHarnessStepPersistence(step, activeToolNames, { textOnly: publicProgressReceipts.get(receiptId) === true }))
       preparedCalls.delete(receiptId)
+      publicProgressReceipts.delete(receiptId)
     },
   }
 }

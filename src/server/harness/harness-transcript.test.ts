@@ -226,3 +226,21 @@ test('an internal-only settled step journals no empty-response placeholder', () 
     content: [call, result], toolCalls: [call], toolResults: [result] } as never, new Set()))
     .toEqual({ content: '', parts: [] })
 })
+
+
+test('tool-only journal rows retain work results without synthetic assistant narration', () => {
+  const call = { type: 'tool-call', toolCallId: 'read', toolName: 'get_note', input: {} }
+  const result = { ...call, type: 'tool-result', output: { title: 'Verified note' } }
+  const persistence = publicHarnessStepPersistence({ stepNumber: 0, text: '', reasoning: [],
+    content: [call, result], toolCalls: [call], toolResults: [result] } as never, new Set(['get_note']))
+  expect(persistence.content).toBe('')
+  expect(persistence.parts.map(part => part.type)).toEqual(['tool-invocation'])
+  expect(JSON.stringify(persistence)).toContain('Verified note')
+})
+
+test('a tool attempt in a text-only progress phase contributes no public work row', () => {
+  const call = { type: 'tool-call', toolCallId: 'bad-progress', toolName: 'create_note', input: {} }
+  expect(publicHarnessStepPersistence({ stepNumber: 0, text: 'A malformed update', reasoning: [],
+    content: [call], toolCalls: [call], toolResults: [] } as never, new Set(['create_note']), { textOnly: true }))
+    .toEqual({ content: '', parts: [] })
+})

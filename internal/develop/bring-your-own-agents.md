@@ -1670,7 +1670,11 @@ New native and personal admissions set `publicProgressVersion: 1`; this is separ
 from the funding and execution-policy version. They emit a tool-free acknowledgment
 before work and a short progress update after three silent tool batches or an observed
 tool failure. These are ordinary metered calls on the selected model, never final
-answers. Progress counters and receipt identities survive workflow handoff.
+answers. Empty or malformed progress-only replies remain metered, execute no tools,
+create no work evidence and enter no approval wait. Discard their model history and
+resume the persisted task; presentation failure must not abort completed work.
+Tool-only journal rows keep their trace data without synthesizing extra assistant
+narration. Progress counters and receipt identities survive workflow handoff.
 
 Each settled model step journals bounded public text and tool display after receipt
 settlement. Private reasoning, internal control tools and model-only envelopes are

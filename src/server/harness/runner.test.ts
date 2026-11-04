@@ -264,15 +264,16 @@ test('a provider-ignored tool-free progress choice cannot execute or request app
     ? [call('write', 'ignored-progress-tool')]
     : 'The task is complete.')
 
-  await expect(runOverlayHarness({
+  const result = await runOverlayHarness({
     ...input,
     tools: { write: tool({ inputSchema: z.object({}), needsApproval: true, execute: write }) },
-  }, f.ports)).rejects.toThrow('safe text-only update')
+  }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
 
   expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'none' })
   expect(write).not.toHaveBeenCalled()
   expect(waitForApproval).not.toHaveBeenCalled()
-  expect((await f.ports.read()).status).toBe('running')
+  expect((await f.ports.read()).status).toBe('completed')
 })
 
 test('v2 commentary follows three silent tool batches and does not become the final answer', async () => {
@@ -305,11 +306,12 @@ test('a provider tool call during commentary cannot execute a mutation or enter 
   const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
   const write = vi.fn(async () => ({ success: true }))
   f.ports.waitForApproval = vi.fn(async () => [])
-  const provider = model(() => [call('write', 'commentary-mutation')])
-  await expect(runOverlayHarness({
+  const provider = model(index => index === 0 ? [call('write', 'commentary-mutation')] : 'The requested answer is ready.')
+  const result = await runOverlayHarness({
     ...input,
     tools: { write: tool({ inputSchema: z.object({}), execute: write }) },
-  }, f.ports)).rejects.toThrow('safe text-only update')
+  }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
   expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'none' })
   expect(write).not.toHaveBeenCalled()
   expect(f.ports.waitForApproval).not.toHaveBeenCalled()
@@ -1527,4 +1529,17 @@ test('settled empty and provider-error responses retry without losing tools, dup
   expect(result.snapshot.status).toBe('completed')
   expect(result.snapshot.modelRecovery).toBeUndefined()
   expect(result.steps).toHaveLength(2)
+})
+
+
+test('an empty progress-only reply settles once and resumes work without aborting or completing it', async () => {
+  const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
+  const read = vi.fn(async () => ({ success: true }))
+  const provider = model(index => index === 0 ? '' : index === 1 ? [call('read', 'after-empty-progress')] : 'The record was read.')
+  const result = await runOverlayHarness({ ...input, tools: { read: tool({ inputSchema: z.object({}), execute: read }) } }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('The record was read.')
+  expect(read).toHaveBeenCalledOnce()
+  expect(provider.doStreamCalls).toHaveLength(3)
+  expect(f.receipts.size).toBe(3)
 })

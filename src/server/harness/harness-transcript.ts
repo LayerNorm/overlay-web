@@ -1,3 +1,4 @@
+import { GENERATED_UI_DATA_TYPE } from '@overlay/chat-core/generated-ui'
 import type { StepResult, ToolSet } from 'ai'
 import { readHarnessState, applyHarnessOperation, type HarnessExecutionReference } from './state-steps'
 import { createHarnessDiagnostic, stableHarnessDiagnosticId } from '@overlay/agent-runtime/harness-diagnostic'
@@ -24,10 +25,13 @@ function transcriptError(error: unknown): Error {
 export function publicHarnessStepPersistence(
   step: StepResult<ToolSet>,
   activeToolNames: ReadonlySet<string>,
+  options: { textOnly?: boolean } = {},
 ): HarnessTranscriptPersistence {
+  if (options.textOnly && step.toolCalls.length) return { content: '', parts: [] }
   const sanitize = (text: string) => stripTextualToolCalls(text, new Set([...HARNESS_CONTROL_TOOLS, ...activeToolNames]))
   const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
-  const isPublic = (part: { type: string; toolName?: string }) => !part.toolName || !controls.has(part.toolName)
+  const isPublic = (part: { type: string; toolName?: string }) => options.textOnly
+    ? part.type === 'text' : !part.toolName || !controls.has(part.toolName)
   const displayResult = <T extends { type: string }>(part: T): T => {
     if (part.type !== 'tool-result' || !('output' in part)) return part
     const output = part.output
@@ -53,7 +57,13 @@ export function publicHarnessStepPersistence(
   // Internal-only and reasoning-only steps still have a settled receipt, but no
   // public output. Do not turn hidden bookkeeping into an empty-response bubble.
   if (!hasPublicContent) return { content: '', parts: [] }
-  const persistence = buildAssistantPersistenceFromSteps([publicStep], publicStep.text ?? '')
+  let persistence = buildAssistantPersistenceFromSteps([publicStep], publicStep.text ?? '')
+  const hasModelText = publicStep.text?.trim() || publicStep.content?.some(part => part.type === 'text' && part.text.trim())
+  if (!hasModelText && !persistence.parts.some(part => part.type === GENERATED_UI_DATA_TYPE)) {
+    // Keep genuine work-tool rows, without turning their synthesized summaries
+    // into additional assistant narration at every journal boundary.
+    persistence = { content: '', parts: persistence.parts.filter(part => part.type !== 'text') }
+  }
   return compactAssistantPersistenceForConvex({
     ...persistence,
     parts: persistence.parts.filter(part => part.type !== 'reasoning'),

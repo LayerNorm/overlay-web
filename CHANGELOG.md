@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Keep agent progress visible with brief metered updates and a durable, sanitized transcript that survives workflow handoffs and failures. Uncertain tool outcomes stop further actions and show a safe diagnostic instead of automatically repeating work. Existing paid-workspace admission, selected models, funding waits and renewable execution leases remain enforced.
+- Keep agent progress visible with brief metered updates and a durable, sanitized transcript that survives workflow handoffs and failures. Uncertain tool outcomes stop further actions and show a safe diagnostic instead of automatically repeating work. Empty progress-only replies cannot abort otherwise valid work. Existing paid-workspace admission, selected models, funding waits and renewable execution leases remain enforced.
 - Simplify agent Computer actions, retain document attachment chips after reloading a thread, and hide internal agent bookkeeping from saved responses. Computer artifact upload permissions now expire within 15 minutes independently of the task lease.
 
 - Keep the user-owned agent setup entry hidden when the deployment’s connected-agent rollout is disabled, while native agents and Computers remain available.

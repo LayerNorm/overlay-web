@@ -505,7 +505,12 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         await recordModelStep(step)
       },
       onToolExecutionEnd: async event => {
-        if (commentaryInvocation) commentaryAttemptedTool = true
+        if (commentaryInvocation) {
+          commentaryAttemptedTool = true
+          // No work can execute in this phase. A provider ignoring toolChoice
+          // must not create work evidence or enter an approval wait.
+          return
+        }
         if (!controls.has(event.toolCall.toolName)) {
           await ports.recordToolResult(event)
           captureObservedToolOutcome(event, executionOutcomes)
@@ -584,7 +589,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     if (updatedState.status !== 'running') continue
     if (commentaryInvocation) {
       if (commentaryAttemptedTool || !commentaryText) {
-        throw new Error('Harness public progress did not produce a safe text-only update.')
+        // A presentation-only response cannot abort otherwise valid work.
+        // Its known usage is settled; discard malformed model history, and
+        // resume the existing task without executing or approving its calls.
+        messages = recoveryMessages
       }
       silentToolBatches = 0
       finalAnswerRequired = false
