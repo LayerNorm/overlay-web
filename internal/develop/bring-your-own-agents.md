@@ -1773,6 +1773,20 @@ warn that partial output is incomplete. No new retries, provider fallback, tool
 replay, billing changes or lifecycle transitions are introduced by classification;
 SDK `isRetryable` metadata is not an instruction to retry.
 
+### Workspace-funded Harness continuation
+
+New versioned native and personal tasks reserve each provider call against their
+workspace wallet rather than a synthetic lifetime cap. BYO uses external provider
+credentials but still requires paid-workspace admission. Explicit legacy spend
+limits remain enforced. Funding pauses keep the selected model and logical task;
+a summary pause preserves the pending response call and full history.
+
+Execution leases renew only after current authorization and generation checks.
+Safe handoffs use compressed private checkpoints and a fenced successor; unresolved
+provider calls or tool effects cannot be replayed. Explicit task deadlines pause
+for authorization. Input and approval waits retain their exact pending identity,
+and stale workers or revoked members cannot resume execution.
+
 ### Native Overlay agent approvals
 
 Native Harness room turns (`executionEngine: overlay_harness`) retain their

@@ -108,6 +108,26 @@ export default defineSchema({
     .index('by_providerSubscriptionId', ['providerSubscriptionId'])
     .index('by_status_updatedAt', ['status', 'updatedAt']),
 
+  billingAutoTopUpIntents: defineTable({
+    billingAccountId: v.string(),
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    intentKey: v.string(),
+    idempotencyKey: v.string(),
+    amountCents: v.number(),
+    currentPeriodStart: v.optional(v.number()),
+    consentAt: v.number(),
+    paymentMethodId: v.string(),
+    customerId: v.string(),
+    state: v.union(v.literal('pending'), v.literal('payment_failed'), v.literal('succeeded')),
+    stripePaymentIntentId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_billingAccountId_intentKey', ['billingAccountId', 'intentKey'])
+    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
+    .index('by_paymentIntentId', ['stripePaymentIntentId']),
+
   billingAccountBalances: defineTable({
     billingAccountId: v.string(),
     mode: v.union(v.literal('unlimited'), v.literal('budgeted')),
@@ -370,9 +390,11 @@ export default defineSchema({
   budgetTopUps: defineTable({
     userId: v.string(),
     billingAccountId: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()),
     stripeCheckoutSessionId: v.optional(v.string()),
     stripePaymentIntentId: v.optional(v.string()),
+    autoTopUpIntentKey: v.optional(v.string()),
     stripeInvoiceId: v.optional(v.string()),
     billingPeriodStart: v.number(),
     billingPeriodEnd: v.optional(v.number()),
@@ -395,6 +417,7 @@ export default defineSchema({
     .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
     .index('by_userId_billingPeriodStart', ['userId', 'billingPeriodStart'])
     .index('by_paymentIntentId', ['stripePaymentIntentId'])
+    .index('by_autoTopUpIntentKey', ['autoTopUpIntentKey'])
     .index('by_checkoutSessionId', ['stripeCheckoutSessionId']),
 
   // Webhook event deduplication. Stores processed Stripe event IDs so that a
@@ -1336,6 +1359,7 @@ export default defineSchema({
       v.literal('waiting_for_input'),
       v.literal('waiting_for_children'),
       v.literal('waiting_for_resources'),
+      v.literal('waiting_for_authorization'),
       v.literal('completed'),
       v.literal('failed'),
       v.literal('cancelled'),
@@ -1370,6 +1394,25 @@ export default defineSchema({
       })),
     })),
     resourceRequest: v.optional(agentRunResourceRequestValidator),
+    fundingPause: v.optional(v.object({
+      reason: v.union(
+        v.literal('disabled'), v.literal('pending'), v.literal('payment_failed'),
+        v.literal('monthly_limit_reached'), v.literal('missing_payment_method'),
+        v.literal('missing_consent'), v.literal('amount_shortfall'), v.literal('not_paid'),
+        v.literal('authorization_changed'), v.literal('insufficient_budget'),
+        v.literal('task_deadline_expired'), v.literal('unknown_receipt'),
+      ),
+      requiredCents: v.number(),
+      availableCents: v.number(),
+      reservedCents: v.optional(v.number()),
+      receiptId: v.string(),
+      autoTopUpReason: v.optional(v.string()),
+    })),
+    authorizationPause: v.optional(v.object({
+      reason: v.literal('task_deadline_expired'),
+      deadlineAt: v.number(),
+      pausedAt: v.number(),
+    })),
     metrics: v.optional(v.object({
       firstTokenAt: v.optional(v.number()),
       inputTokens: v.optional(v.number()),
@@ -1559,6 +1602,11 @@ export default defineSchema({
             }),
           }),
           nativeAgentErrorPart,
+          v.object({
+            type: v.literal('text'),
+            text: v.string(),
+            storageOmittedParts: v.number(),
+          }),
           v.object({
             type: v.literal('tool-invocation'),
             toolInvocation: v.object({
@@ -2950,6 +2998,8 @@ export default defineSchema({
     question: v.string(),
     createdAt: v.number(),
     resolvedAt: v.optional(v.number()),
+    replyJson: v.optional(v.string()),
+    repliedAt: v.optional(v.number()),
   }).index('by_token', ['token'])
     .index('by_runId_resolvedAt', ['runId', 'resolvedAt', 'createdAt'])
     .index('by_rootRunId_resolvedAt', ['rootRunId', 'resolvedAt', 'createdAt']),
@@ -2991,6 +3041,30 @@ export default defineSchema({
     metadataJson: v.string(),
     planRevision: v.number(),
     purpose: v.optional(v.union(v.literal('continuation'), v.literal('compaction'))),
+    generation: v.optional(v.number()),
+    checkpointToken: v.optional(v.string()),
+    checkpointStorageId: v.optional(v.id('_storage')),
+    checkpointJson: v.optional(v.string()),
+    launchInputJson: v.optional(v.string()),
     createdAt: v.number(),
-  }).index('by_runId_revision', ['runId', 'revision']),
+  }).index('by_runId_revision', ['runId', 'revision'])
+    .index('by_checkpointToken', ['checkpointToken']),
+
+  harnessContinuationOutbox: defineTable({
+    runId: v.string(),
+    rootRunId: v.string(),
+    generation: v.number(),
+    previousWorkflowRunId: v.optional(v.string()),
+    previousExecutionGeneration: v.optional(v.number()),
+    checkpointToken: v.string(),
+    workflowKind: v.union(v.literal('native'), v.literal('personal')),
+    state: v.union(v.literal('pending'), v.literal('claimed')),
+    attempts: v.number(),
+    nextAttemptAt: v.number(),
+    lastAttemptAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt'])
+    .index('by_runId_generation', ['runId', 'generation']),
 })

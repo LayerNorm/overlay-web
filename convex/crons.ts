@@ -3,6 +3,8 @@ import { internal } from './_generated/api'
 
 const crons = cronJobs()
 
+crons.interval('Harness continuation reconciliation', { minutes: 1 }, internal.harness.continuations.dispatchDue, {})
+
 crons.interval('expired connected-agent MCP results', { hours: 1 }, internal.agents.mcpCalls.cleanupExpired)
 
 // Claims due automation runs every minute and dispatches each to the BFF,

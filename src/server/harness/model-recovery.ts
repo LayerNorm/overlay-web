@@ -5,7 +5,12 @@ import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessApprovalRequest, HarnessExecutionPorts } from './ports'
 import { readHarnessState, type HarnessExecutionReference } from './state-steps'
 
-export class HarnessYield extends Error {}
+export class HarnessYield extends Error {
+  readonly name = 'HarnessYield'
+  constructor(readonly receiptId: string) {
+    super(`HARNESS_SAFE_RESOURCE_PAUSE:${receiptId}`)
+  }
+}
 
 type HarnessInvocationState = {
   messages: ModelMessage[]
@@ -24,6 +29,7 @@ export async function runHarnessModelInvocation(
   readState: () => HarnessInvocationState,
   pendingFor: (result: WorkflowAgentStreamResult<ToolSet>) => HarnessApprovalRequest[],
   recover: HarnessExecutionPorts['recoverModelFailure'],
+  confirmYield: (receiptId: string) => Promise<boolean>,
 ): Promise<HarnessInvocationResult> {
   try {
     const result = await stream()
@@ -31,7 +37,18 @@ export async function runHarnessModelInvocation(
     return { ...readState(), messages: result.messages, steps: result.steps, pending: pendingFor(result), recovered: false }
   } catch (error) {
     const state = readState()
-    if (error instanceof HarnessYield) return { ...state, pending: [], recovered: false }
+    const message = error && typeof error === 'object' && 'message' in error
+      && typeof error.message === 'string' ? error.message : ''
+    const yieldedReceiptId = /(?:^|[^\w])HARNESS_SAFE_RESOURCE_PAUSE:((?:model:[0-9]+|summary:model:[0-9]+:[0-9]+(?::retry:[0-9]+)?))(?:$|[^\w:])/.exec(message)?.[1]
+    const summaryForPrepared = yieldedReceiptId?.startsWith(`summary:${state.preparedReceiptId}:`) === true
+    if (yieldedReceiptId && (yieldedReceiptId === state.preparedReceiptId || summaryForPrepared)
+      && await confirmYield(yieldedReceiptId)) return {
+      ...state,
+      pending: [],
+      recovered: true,
+      modelCall: yieldedReceiptId === state.preparedReceiptId && state.preparedReceiptId === `model:${state.modelCall}`
+        ? state.modelCall + 1 : state.modelCall,
+    }
     if (!await recover?.(state.preparedReceiptId)) throw error
     return {
       ...state,

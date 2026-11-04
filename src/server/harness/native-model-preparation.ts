@@ -14,7 +14,7 @@ export async function prepareNativeHarnessModel(input: {
 }): Promise<PreparedHarnessModel> {
   'use step'
 
-  const context = await refreshNativeHarnessAccess(input.access, input.context)
+  const context = await refreshNativeHarnessAccess(input.access, input.context, undefined, { renewalMode: true, renewLease: true })
   const { options, contextWindow, estimatedCostMicros, inputTokenBudget, maxOutputTokens } = await quoteHarnessModel({
     modelId: input.context.modelId, requiresZeroDataRetention: context.requiresZeroDataRetention, options: input.options,
   })
@@ -26,6 +26,7 @@ export async function prepareNativeHarnessModel(input: {
       native: {
         access: {
           actorUserId: access.actorUserId, runId: access.runId, workflowRunId: access.workflowRunId,
+          executionGeneration: access.executionGeneration ?? 0,
           workspaceId: access.workspaceId, principalId: access.principalId,
           agentId: access.agentId, agentPrincipalId: access.agentPrincipalId,
           conversationId: access.conversationId, agentRunId: access.agentRunId,

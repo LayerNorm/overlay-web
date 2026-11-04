@@ -303,10 +303,11 @@ test('compactAssistantPersistenceForConvex preserves only valid generated UI par
   })
 
   assert.equal(compacted.parts.length, 2)
-  assert.deepEqual(compacted.parts[0], validPart)
-  assert.deepEqual(compacted.parts[1], {
+  assert.deepEqual(compacted.parts[1], validPart)
+  assert.deepEqual(compacted.parts[0], {
     type: 'text',
     text: '[1 additional assistant parts omitted for storage]',
+    storageOmittedParts: 1,
   })
 })
 

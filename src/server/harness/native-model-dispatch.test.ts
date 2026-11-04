@@ -20,7 +20,8 @@ const reference: HarnessModelReference = { modelId: 'provider/model', credential
   native: { access, receiptId: 'model:0', memoryEnabled: true, sharedRoom: true, requestFingerprint: 'request',
     inputTokenBudget: 2_000, maxOutputTokens: 50, contextWindow: 10_000 } }
 const options: LanguageModelV4CallOptions = { prompt: [], maxOutputTokens: 50 }
-const state = { workflowRunId: 'workflow', revision: 1, modelReservation: { id: 'model:0', maxCostMicros: 60 } }
+const state = { workflowRunId: 'workflow', revision: 1, policy: { executionPolicyVersion: 1 },
+  modelReservation: { id: 'model:0', maxCostMicros: 60 } }
 
 beforeEach(() => {
   vi.resetAllMocks()
@@ -34,7 +35,8 @@ beforeEach(() => {
 test('native dispatch refreshes authority then atomically binds a human-funded, agent-attributed hold', async () => {
   await authorizeNativeHarnessModelDispatch(reference, options)
   expect(mocks.refresh).toHaveBeenCalledExactlyOnceWith(access, { modelId: reference.modelId,
-    memoryEnabled: true, sharedRoom: true, requestFingerprint: 'request' })
+    memoryEnabled: true, sharedRoom: true, requestFingerprint: 'request' }, undefined,
+  { renewalMode: true, renewLease: true })
   expect(mocks.reserve).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ userId: 'user', workspaceId: 'workspace',
     programmaticSubjectId: 'agent:agent', providerCostUsd: 0.00004, reservationId: expect.stringMatching(/^harness-model:[a-f0-9]{64}$/) }))
   expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ operation: {
@@ -61,6 +63,24 @@ test('native budget rejection records the receipt and does not start inference',
   expect(mocks.reject).toHaveBeenCalledExactlyOnceWith(reference, 'budget')
   expect(mocks.apply).not.toHaveBeenCalled()
   expect(mocks.started).not.toHaveBeenCalled()
+})
+
+test('workspace funding denial with fractional cents persists a pause before yielding without inference', async () => {
+  const active = { ...state, status: 'running', policy: { executionPolicyVersion: 2, spendingMode: 'workspace' } }
+  const settled = { ...active, modelReservation: undefined, latestReceipt: { id: 'model:0' } }
+  mocks.read.mockResolvedValue(active)
+  mocks.reject.mockImplementation(async () => { mocks.read.mockResolvedValue(settled) })
+  mocks.apply.mockResolvedValue({ applied: true, conflict: false, snapshot: { ...settled, status: 'waiting_for_resources' } })
+  mocks.reserve.mockResolvedValue({ ok: false, code: 'insufficient_budget', payload: {
+    resourceStatus: { reason: 'disabled', requiredCents: 38.96, remainingCents: 0.98, reservedCents: 0.02 },
+  } })
+  await expect(authorizeNativeHarnessModelDispatch(reference, options)).rejects.toThrow('HARNESS_SAFE_RESOURCE_PAUSE:model:0')
+  expect(mocks.reject).toHaveBeenCalledExactlyOnceWith(reference, 'budget')
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ operation: {
+    type: 'pause_for_funding', pause: { reason: 'disabled', requiredCents: 38.96, availableCents: 0.98, reservedCents: 0.02, receiptId: 'model:0' },
+  } }))
+  expect(mocks.started).not.toHaveBeenCalled()
+  expect(mocks.release).not.toHaveBeenCalled()
 })
 
 test('revoked access, fresh ZDR and replayed dispatch fail closed without a second hold', async () => {

@@ -37,14 +37,14 @@ beforeEach(() => {
 })
 
 const personal: PersonalHarnessModelDispatch = {
-  access: { actorUserId: 'fixture-user', runId: 'run', workflowRunId: 'workflow', conversationId: 'conversation',
+  access: { actorUserId: 'fixture-user', runId: 'run', workflowRunId: 'workflow', executionGeneration: 7, conversationId: 'conversation',
     workspaceId: 'workspace', principalId: 'principal', agentRunId: 'delivery', authentication: { type: 'api-key', apiKeyId: 'key-reference' } },
   receiptId: 'model:0', memoryEnabled: true, requestFingerprint: 'fingerprint', inputTokenBudget: 10_000,
   maxOutputTokens: 100, contextWindow: 100_000,
 }
 
 const native: NativeHarnessModelDispatch = {
-  access: { actorUserId: 'fixture-user', runId: 'workspace:delivery', workflowRunId: 'workflow',
+  access: { actorUserId: 'fixture-user', runId: 'workspace:delivery', workflowRunId: 'workflow', executionGeneration: 9,
     conversationId: 'room', agentRunId: 'delivery', workspaceId: 'workspace', principalId: 'principal',
     agentId: 'agent', agentPrincipalId: 'agent-principal', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
   receiptId: 'model:0', memoryEnabled: true, sharedRoom: false, requestFingerprint: 'request', streamToDelivery: true,

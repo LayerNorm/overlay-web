@@ -35,8 +35,9 @@ test('needs consent and a Stripe customer', () => {
   assert.equal(decideAutoTopUp({ ...ready, stripeCustomerId: undefined }).charge, false)
 })
 
-test('a top-up smaller than what is needed does not run', () => {
+test('does not charge when the configured top-up cannot cover the next shortfall', () => {
   assert.deepEqual(decideAutoTopUp(ready, 900), { charge: false, reason: 'amount_too_small' })
+  assert.deepEqual(decideAutoTopUp({ ...ready, amountCents: 900 }, 900), { charge: true, amountCents: 900 })
 })
 
 test('owner input: limit must cover one top-up; amount $8 to $500', () => {

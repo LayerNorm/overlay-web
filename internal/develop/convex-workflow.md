@@ -536,6 +536,53 @@ server secret and recheck the source resource's current access on every call. Th
 authenticates the caller before using this server-only repository; these are not direct
 browser APIs.
 
+### Long-running Harness lifecycle
+
+New Harness admissions without an explicit legacy spend override use execution policy
+version 2. Its payer mode remains independent: workspace-funded paid runs reserve each
+Overlay dispatch atomically, while BYOK and non-Overlay-funded runs do not route through
+Overlay billing. Existing explicit spend limits and durations remain task limits;
+otherwise the persisted deadline is a renewable execution lease. Lease renewal is
+authority-only and must revalidate the current source, membership, model/tool scope,
+delivery ownership, workflow owner, generation, and ancestors. It cannot expand access.
+
+Workspace funding denials are persisted as `waiting_for_resources` with bounded reasons,
+required and available amounts, and the reserved amount only when authoritative. Otherwise
+the projection explicitly reports that the reserved amount is unavailable. These amounts
+retain fractional cents from the billing ledger; they are not Stripe payment amounts.
+Workspace-funded budget rejections never fall back to another model, including when
+persisting the funding pause fails. Legacy routing behavior remains unchanged. The workflow
+polls on a durable 60-second sleep and rechecks authority and current funding before
+resuming the same task. Auto top-up remains opt-in:
+enabled setting, explicit consent, valid payment method, active paid subscription, and
+monthly ceiling are required. Pending claims reserve the ceiling account-wide; uncertain
+Stripe outcomes remain unresolved rather than receiving a new idempotency identity.
+
+An expired explicit `taskDeadlineAt` is distinct from the renewable lease: it persists as
+`waiting_for_authorization` with the deadline and pause time. This state is nonterminal,
+cancellable, and cannot be resumed by input, approval, chat, or lease renewal. Existing
+ordinary wait records remain intact; new authorization requires a future explicit flow.
+The passive UI text is: “The task reached its explicit deadline. Progress is saved;
+further execution requires new authorization.”
+
+Continuation checkpoints are protected server-side and are written only at settled
+invocation boundaries. New checkpoint and persisted launch-input payloads are gzip
+compressed into Convex File Storage; the checkpoint row and continuation outbox retain
+only the storage reference and small identity metadata. Legacy inline JSON fields remain
+readable during migration. An upload that succeeds before a fenced handoff fails can
+leave an unreferenced blob; retries may also create orphans, and the current implementation
+does not attempt destructive cleanup. The outbox starts the persisted workflow input on
+the receiving trusted BFF deployment; generation and owner claims fence duplicate starts
+and stale workers. Unknown provider effects and unresolved billing reservations do not
+qualify for automatic replay or rollover. Current tests cover targeted state, billing and
+continuation fixtures, including large storage-backed checkpoint handoff, native/personal
+delivery transfer, a compiled funding wake/poll path and authorization-pause
+reducer/projection checks; they do not qualify every input/approval/child wait handoff,
+deployment rollover across weeks, or actual multiweek operation. Rollback disables new
+version-2 admissions while retaining additive storage, server handlers, and legacy
+workflows until active runs drain; do not migrate historical failures automatically.
+No real-time multiweek production qualification or Preview acceptance is claimed.
+
 ### Harness web-first rollout
 
 Before creating a personal AgentRun, the web reads the server-owned

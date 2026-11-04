@@ -6,20 +6,23 @@ import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import * as state from '@overlay/agent-runtime/harness-state'
 import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import { KIMI_K3_MODEL_ID } from '@/shared/ai/gateway/model-types'
-import { createPersonalHarnessExecutionPorts } from './personal-ports'
+import { admitPersonalHarnessExecution, createPersonalHarnessExecutionPorts } from './personal-ports'
 import { createPersonalHarnessModelPorts } from './personal-model-ports'
 import { createHarnessModelPorts } from './model-ports'
 import { runOverlayHarness } from './runner'
 import { estimateHarnessInputTokens } from './model-forecast'
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), apply: vi.fn(), claim: vi.fn(), refresh: vi.fn(), catalog: vi.fn(),
-  model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), admit: vi.fn(), sleep: vi.fn() }))
+  model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), admit: vi.fn(),
+   sleep: vi.fn(), attach: vi.fn(), recordUsage: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('workflow', async importOriginal => {
   const actual = await importOriginal<typeof import('workflow')>()
   return { ...actual, sleep: mocks.sleep }
 })
 vi.mock('./personal-access', () => ({ refreshPersonalHarnessAccess: mocks.refresh }))
+vi.mock('./personal-delivery-attach', () => ({ attachPersonalDelivery: mocks.attach }))
+vi.mock('./request-usage', () => ({ recordHarnessRequestUsage: mocks.recordUsage }))
 vi.mock('@/server/ai/gateway/gateway-catalog', () => ({ getGatewayCatalogModel: mocks.catalog }))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: mocks.model }))
 vi.mock('./personal-model-dispatch', () => ({ authorizePersonalHarnessModelDispatch: mocks.authorize }))
@@ -41,6 +44,22 @@ const execution = { instructions: 'Read the requested records.', messages: [{ ro
   tools: {}, model: { modelId: 'fixture/model', credentialOwnerId: 'user' }, settings: { maxOutputTokens: 100 } }
 const surface = { recordToolResult: vi.fn(), delegate: vi.fn(), readChild: vi.fn(), waitForChildren: vi.fn(), waitForInput: vi.fn(), waitForApproval: vi.fn() }
 let current: HarnessSnapshot
+
+test('combined personal admission renews authority before recording the request', async () => {
+  await admitPersonalHarnessExecution({ access, context }, { attachDelivery: true })
+  expect(mocks.attach).toHaveBeenCalledExactlyOnceWith(access)
+  expect(mocks.refresh).toHaveBeenCalledExactlyOnceWith(access, context, undefined, { renewalMode: true, renewLease: true })
+  expect(mocks.recordUsage).toHaveBeenCalledExactlyOnceWith(access, context.effectiveModelId)
+  expect(mocks.attach.mock.invocationCallOrder[0]).toBeLessThan(mocks.refresh.mock.invocationCallOrder[0])
+  expect(mocks.refresh.mock.invocationCallOrder[0]).toBeLessThan(mocks.recordUsage.mock.invocationCallOrder[0])
+})
+
+test('combined child admission does not attach root delivery or count a rejected request', async () => {
+  mocks.refresh.mockRejectedValueOnce(new Error('Access revoked'))
+  await expect(admitPersonalHarnessExecution({ access, context }, { attachDelivery: false })).rejects.toThrow('Access revoked')
+  expect(mocks.attach).not.toHaveBeenCalled()
+  expect(mocks.recordUsage).not.toHaveBeenCalled()
+})
 
 function preparedHarnessModel(modelId: string, receiptId: string, options: LanguageModelV4CallOptions, contextWindow: number) {
   return {
@@ -108,7 +127,8 @@ test('Kimi K3 reasoning is prepared for the selected model', async () => {
 
   expect(prepared.model?.modelId).toBe(KIMI_K3_MODEL_ID)
   expect(prepared.settings?.reasoning).toBe('xhigh')
-  expect(mocks.refresh).toHaveBeenCalledWith(access, expect.objectContaining({ effectiveModelId: KIMI_K3_MODEL_ID }))
+  expect(mocks.refresh).toHaveBeenCalledWith(access, expect.objectContaining({ effectiveModelId: KIMI_K3_MODEL_ID }),
+    undefined, { renewalMode: true, renewLease: true })
 })
 
 beforeEach(() => {

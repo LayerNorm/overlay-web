@@ -269,6 +269,8 @@ export async function dispatchNativeHarnessAgentRequest(
           const result = await repository.apply({
             actorUserId: access.actorUserId,
             runId: access.runId,
+            workflowRunId: access.workflowRunId,
+            executionGeneration: access.executionGeneration ?? 0,
             operationId: `named-child:${toolCallId}:${invocation.agentId}`,
             expectedRevision: state.revision,
             operation: {

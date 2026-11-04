@@ -151,15 +151,24 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       },
     }),
     harness_delegate: tool({
-      description: 'Start a bounded child for an independent ready milestone. Reserve a budget and only the tools it needs. Children receive a brief, not the parent transcript.',
+      description: 'Start a bounded child for an independent ready milestone. Legacy runs require a spend allocation; v2 runs use their configured payer without a child lifetime cap. Grant only the tools it needs. Children receive a brief, not the parent transcript.',
       inputSchema: z.object({
         stepId: id,
         goal: z.string().min(1).max(32_000),
         constraints: z.array(z.string().min(1).max(2_000)).max(32),
         allowedToolIds: z.array(id).max(512),
-        maxCostMicros: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+        maxCostMicros: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
       }),
-      execute: async (input, { toolCallId }) => ports.delegate(input, toolCallId),
+      execute: async (input, { toolCallId }) => {
+        const parent = await ports.read()
+        if (parent.policy.executionPolicyVersion !== 2 && input.maxCostMicros === undefined) {
+          return { success: false, error: 'Specify a child spend allocation for this legacy run.' }
+        }
+        return ports.delegate({
+          ...input,
+          maxCostMicros: parent.policy.executionPolicyVersion === 2 ? 0 : input.maxCostMicros!,
+        }, toolCallId)
+      },
     }),
     harness_read_child: tool({
       description: 'Join an admitted child, waiting durably if it is still working. Start independent children before joining them. A completed result returns a parent evidenceRef for milestone completion, not independent verification.',

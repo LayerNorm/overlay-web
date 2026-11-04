@@ -6,7 +6,8 @@ import { waitForHarnessModelResources } from './resource-boundary'
 import type { HarnessExecutionReference } from './state-steps'
 
 export type HarnessSurfacePorts = Pick<HarnessExecutionPorts,
-  'recordToolResult' | 'delegate' | 'readChild' | 'waitForChildren' | 'waitForInput' | 'waitForApproval'>
+  'recordToolResult' | 'delegate' | 'readChild' | 'waitForChildren' | 'waitForInput' | 'waitForApproval' | 'waitForFunding' | 'checkFunding'>
+  & Partial<Pick<HarnessExecutionPorts, 'continueExecution'>>
 
 export function createHarnessExecutionPorts(input: {
   reference: HarnessExecutionReference
@@ -31,7 +32,26 @@ export function createHarnessExecutionPorts(input: {
       admitted = undefined
       return snapshot
     },
-    waitForResources: requiredCostMicros => waitForHarnessModelResources(input.reference, requiredCostMicros, state.read),
+    renewLease: () => input.authorize(),
+    continueExecution: input.surface.continueExecution ?? (async () => {
+      throw new Error('HARNESS_CONTINUATION_NOT_CONFIGURED')
+    }),
+    waitForResources: async requiredCostMicros => {
+      await input.authorize()
+      return waitForHarnessModelResources(input.reference, requiredCostMicros, state.read)
+    },
+    waitForChildren: async childRunIds => {
+      await input.authorize()
+      return input.surface.waitForChildren(childRunIds)
+    },
+    waitForInput: async current => {
+      await input.authorize()
+      return input.surface.waitForInput(current)
+    },
+    waitForApproval: async requests => {
+      await input.authorize()
+      return input.surface.waitForApproval(requests)
+    },
     claim: async () => {
       if (input.admitted) return true
       if (!await state.claim()) return false

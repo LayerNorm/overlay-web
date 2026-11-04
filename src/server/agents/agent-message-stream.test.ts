@@ -6,11 +6,35 @@ import {
   AGENT_STREAM_FLUSH_INTERVAL_MS,
   createAgentMessageStream,
   appendAgentTextPart,
+  compactAgentPartsForPersistence,
   persistAgentToolProgress,
   type AgentMessageStreamStore,
 } from './agent-message-stream'
 
 type Call = { method: string; args: Record<string, unknown> }
+
+test('stream compaction keeps new text separate from omission notices after many tools', () => {
+  const notice = { type: 'text', text: '[4 additional assistant parts omitted for storage]', storageOmittedParts: 4 }
+  const noticeOnly: Array<Record<string, unknown>> = [notice]
+  appendAgentTextPart(noticeOnly, 'New answer')
+  assert.deepEqual(noticeOnly, [notice, { type: 'text', text: 'New answer' }])
+
+  let parts: Array<Record<string, unknown>> = []
+  for (let index = 0; index < 85; index++) {
+    parts.push({ type: 'tool-invocation', toolInvocation: {
+      toolCallId: `call-${index}`, toolName: 'get_note', state: 'output-available', toolInput: {}, toolOutput: { ok: true },
+    } })
+    parts = compactAgentPartsForPersistence(parts)
+  }
+  appendAgentTextPart(parts, 'Final ')
+  parts = compactAgentPartsForPersistence(parts)
+  appendAgentTextPart(parts, 'report')
+  parts = compactAgentPartsForPersistence(parts)
+  assert.deepEqual(parts.at(-1), { type: 'text', text: 'Final report' })
+  assert.equal(parts.length, 81)
+  assert.equal(parts[0].storageOmittedParts, 6)
+  assert.deepEqual(compactAgentPartsForPersistence(parts), parts)
+})
 
 function recordingStore(overrides: Partial<AgentMessageStreamStore> = {}) {
   const calls: Call[] = []

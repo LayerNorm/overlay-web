@@ -61,6 +61,8 @@ import type * as files_ingestion_jobs from "../files/ingestion/jobs.js";
 import type * as files_ingestion_runner from "../files/ingestion/runner.js";
 import type * as files_lib_storageQuota from "../files/lib/storageQuota.js";
 import type * as files_storageAdmin from "../files/storageAdmin.js";
+import type * as harness_continuations from "../harness/continuations.js";
+import type * as harness_runs from "../harness/runs.js";
 import type * as http from "../http.js";
 import type * as imports_slackImporter from "../imports/slackImporter.js";
 import type * as imports_slackJobs from "../imports/slackJobs.js";
@@ -177,6 +179,8 @@ declare const fullApi: ApiFromModules<{
   "files/ingestion/runner": typeof files_ingestion_runner;
   "files/lib/storageQuota": typeof files_lib_storageQuota;
   "files/storageAdmin": typeof files_storageAdmin;
+  "harness/continuations": typeof harness_continuations;
+  "harness/runs": typeof harness_runs;
   http: typeof http;
   "imports/slackImporter": typeof imports_slackImporter;
   "imports/slackJobs": typeof imports_slackJobs;

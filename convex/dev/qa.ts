@@ -6,7 +6,7 @@ import { uniqueWorkspaceAccount } from '../billing/accountModel'
 /** Explicit recovery, never called by ordinary deployment seeding. */
 export const recover = internalMutation({
   args: {
-    fixture: v.union(v.literal('personal'), v.literal('paid-workspace'), v.literal('computer-workspace'), v.literal('exhausted-workspace')),
+    fixture: v.union(v.literal('personal'), v.literal('paid-workspace'), v.literal('computer-workspace'), v.literal('funding-workspace'), v.literal('exhausted-workspace')),
     requestId: v.string(),
     availableCents: v.optional(v.number()),
   },
@@ -20,6 +20,7 @@ export const recover = internalMutation({
       .withIndex('by_personalOwnerUserId', q => q.eq('personalOwnerUserId', userId)).unique()
     const workspaceId = args.fixture === 'personal' ? personal?.workspaceId
       : args.fixture === 'paid-workspace' ? `preview-qa-team-${userId}`
+      : args.fixture === 'funding-workspace' ? `preview-funding-qa-${userId}`
       : args.fixture === 'exhausted-workspace' ? `preview-exhausted-qa-${userId}` : `preview-computer-qa-${userId}`
     if (!workspaceId) throw new Error('Seed the Preview fixture before recovery')
     const workspace = await ctx.db.query('workspaces').withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).unique()

@@ -32,7 +32,7 @@ export async function preparePersonalHarnessModel(input: {
 }> {
   'use step'
 
-  const context = await refreshPersonalHarnessAccess(input.access, input.context)
+  const context = await refreshPersonalHarnessAccess(input.access, input.context, undefined, { renewalMode: true, renewLease: true })
   const { options, contextWindow, estimatedCostMicros, inputTokenBudget, maxOutputTokens } = await quoteHarnessModel({
     modelId: context.effectiveModelId, requiresZeroDataRetention: context.requiresZeroDataRetention, options: input.options,
   })
@@ -45,6 +45,7 @@ export async function preparePersonalHarnessModel(input: {
         access: {
           actorUserId: access.actorUserId, workspaceId: access.workspaceId, principalId: access.principalId,
           runId: access.runId, workflowRunId: access.workflowRunId, conversationId: access.conversationId, agentRunId: access.agentRunId,
+          executionGeneration: access.executionGeneration ?? 0,
           authentication: serializePersonalHarnessAuthentication(access.authentication),
         },
         receiptId: input.receiptId, memoryEnabled: context.memoryEnabled,
