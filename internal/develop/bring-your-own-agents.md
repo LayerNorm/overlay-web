@@ -1813,3 +1813,10 @@ completed external action tools remain disabled; correction limits still apply.
 
 Final-answer-only guidance does not prohibit evidence-reading controls when a
 verification rejection still needs correction.
+
+Verifier responses may be plain JSON or a single complete JSON code fence, with
+the same exact schema and current-run evidence-reference checks. Mixed prose,
+truncated fences and invalid verdicts remain rejected. An unusable verifier
+response pauses the run rather than asking the answer model to repair a parser
+error. Raw parser errors never become answer-correction feedback; unsettled
+verification calls retain their existing reconciliation path and holds.

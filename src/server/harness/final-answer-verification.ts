@@ -35,9 +35,10 @@ export async function verifyHarnessFinalAnswer(input: {
     }
   }
   let verification: Awaited<ReturnType<NonNullable<HarnessExecutionPorts['verifyFinalAnswer']>>>
+  let verificationUnavailable = false
   try {
     verification = await input.ports.verifyFinalAnswer!({ state: input.state, candidate: input.candidate })
-  } catch (error) {
+  } catch (_error) {
     const afterFailure = await input.ports.read()
     if (afterFailure.status !== 'running') {
       return { kind: 'continue', state: afterFailure, attempt, action: 'none' }
@@ -60,9 +61,10 @@ export async function verifyHarnessFinalAnswer(input: {
         question: 'Final-answer verification is awaiting provider settlement. No answer was accepted; resume after the hold reconciles.',
       }
     }
+    verificationUnavailable = true
     verification = {
       supported: false,
-      reason: error instanceof Error ? error.message : 'Final answer verification failed.',
+      reason: 'Final-answer verification did not return a usable verdict. No answer was accepted.',
       evidenceIds: [],
     }
   }
@@ -81,6 +83,9 @@ export async function verifyHarnessFinalAnswer(input: {
     },
   })
   if (verification.supported) return { kind: 'verified', state: verified }
+  if (verificationUnavailable) {
+    return { kind: 'continue', state: verified, attempt, action: 'block', question: verification.reason }
+  }
   return {
     kind: 'continue',
     state: verified,

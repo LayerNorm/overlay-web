@@ -205,7 +205,7 @@ test.each([false, true])('progress output is capped even during full-history fal
   expect(work.settings?.maxOutputTokens).toBe(1_000)
 })
 
-test('final verification is separately metered, tool-disabled, and validated against current-run evidence', async () => {
+test.each([false, true])('final verification is metered and validates current-run evidence with fenced JSON=%s', async fenced => {
   const state = {
     ...runningState(),
     workflowRunId: 'workflow',
@@ -219,7 +219,9 @@ test('final verification is separately metered, tool-disabled, and validated aga
   mocks.read.mockResolvedValue(state)
   mocks.stream.mockResolvedValue({
     steps: [{
-      text: '{"supported":true,"reason":"The answer matches page 1.","evidenceIds":["tool:read-current"]}',
+      text: (fenced ? '```json\n' : '')
+        + '{"supported":true,"reason":"The answer matches page 1.","evidenceIds":["tool:read-current"]}'
+        + (fenced ? '\n```' : ''),
       finishReason: 'stop',
     }],
   })

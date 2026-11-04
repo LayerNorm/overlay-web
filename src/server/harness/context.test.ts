@@ -329,6 +329,29 @@ test('final verifier JSON rejects malformed responses and evidence from outside 
   )).toThrow(/invalid evidence reference/)
 })
 
+test.each(['', 'json', 'JSON'])('final verifier accepts a single complete %s fence without relaxing evidence checks', language => {
+  const evidenceIds = new Set(['tool:current-run'])
+  const verdict = { supported: true, reason: 'Matches the observation.', evidenceIds: ['tool:current-run'] }
+  const wrap = (value: unknown) => `\n\`\`\`${language}\r\n${JSON.stringify(value)}\r\n\`\`\`\n`
+  expect(parseHarnessVerificationResponse(wrap(verdict), evidenceIds)).toEqual(verdict)
+  for (const invalid of [
+    { ...verdict, evidenceIds: ['tool:other-run'] },
+    { ...verdict, supported: 'true' },
+    { ...verdict, extra: 'ignored' },
+  ]) {
+    expect(() => parseHarnessVerificationResponse(wrap(invalid), evidenceIds)).toThrow()
+  }
+})
+
+test.each([
+  '```json\n{"supported":true,"reason":"ok","evidenceIds":[]}',
+  'Here is the verdict:\n```json\n{"supported":true,"reason":"ok","evidenceIds":[]}\n```',
+  '```json\n{"supported":true,"reason":"ok","evidenceIds":[]}\n```\nAdditional text',
+  '```json\n{}\n```\n```json\n{"supported":true,"reason":"ok","evidenceIds":[]}\n```',
+])('final verifier rejects incomplete or mixed-content fences: %s', raw => {
+  expect(() => parseHarnessVerificationResponse(raw, new Set())).toThrow()
+})
+
 test('unsupported final answers receive structured correction feedback', () => {
   const state = {
     ...make(false),

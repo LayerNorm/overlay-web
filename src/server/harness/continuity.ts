@@ -116,7 +116,9 @@ export function parseHarnessVerificationResponse(raw: string, evidenceIds: Reado
   reason: string
   evidenceIds: string[]
 } {
-  const parsed = JSON.parse(raw) as unknown
+  const text = raw.trim()
+  const fenced = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)\r?\n```$/i.exec(text)
+  const parsed = JSON.parse(fenced?.[1] ?? text) as unknown
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('Invalid verification JSON.')
   const record = parsed as Record<string, unknown>
   if (Object.keys(record).sort().join(',') !== 'evidenceIds,reason,supported'

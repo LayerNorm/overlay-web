@@ -558,6 +558,26 @@ test('unsupported final claims are corrected from persisted evidence without rep
   expect(correction.tools?.some(tool => tool.type === 'function' && tool.name === 'read_document')).toBe(false)
 })
 
+test('unusable verifier output pauses without sending parser errors into answer correction', async () => {
+  const f = fixture(false, ['read'])
+  const verify = vi.fn(async () => { throw new SyntaxError('Unexpected token: private verifier payload') })
+  f.ports.verifyFinalAnswer = verify
+  const execute = vi.fn(async () => 'Persisted record.')
+  const provider = model(index => index === 0 ? [call('read', 'read-once')] : 'The records were read.')
+  const result = await runOverlayHarness({
+    ...input, tools: { read: tool({ inputSchema: z.object({}), execute }) },
+  }, f.ports)
+
+  expect(result.outcome).toBe('blocked')
+  expect(result.snapshot.status).toBe('waiting_for_input')
+  expect(result.snapshot.finalVerification).toMatchObject({ supported: false, attempts: 1 })
+  expect(result.snapshot.blocker?.question).toContain('did not return a usable verdict')
+  expect(JSON.stringify(result.snapshot)).not.toContain('private verifier payload')
+  expect(provider.doStreamCalls).toHaveLength(2)
+  expect(verify).toHaveBeenCalledOnce()
+  expect(execute).toHaveBeenCalledOnce()
+})
+
 test('a paid verification hold records an unsupported attempt before blocking without releasing the hold', async () => {
   const f = fixture(false, ['read'])
   f.ports.verifyFinalAnswer = async () => {
