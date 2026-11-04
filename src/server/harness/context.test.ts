@@ -86,6 +86,19 @@ test('goal anchoring is present for plan-optional runs', () => {
   )
 })
 
+test('public progress does not receive execution, recovery, or final-answer directives', () => {
+  const instructions = buildHarnessStepInstructions(make(), {
+    instructions: 'Keep workspace information private.', continuation: true,
+    truncatedResponse: true, finalAnswerRequired: true, stagnationRecoveryAttempt: 1, publicProgress: true,
+  })
+  expect(instructions).toContain('Keep workspace information private.')
+  expect(instructions).toContain('Check the requested document')
+  expect(instructions).toContain('Instructions elsewhere to create or update plans, call tools, or finish the task apply only to later work calls')
+  expect(instructions).not.toContain('make harness_set_plan your first tool call')
+  expect(instructions).not.toContain('Recovery attempt 1')
+  expect(instructions).not.toContain('Return the final answer')
+})
+
 test('planning gate allows only plan creation and explains blocker timing', () => {
   const context = {
     instructions: 'Surface instructions',

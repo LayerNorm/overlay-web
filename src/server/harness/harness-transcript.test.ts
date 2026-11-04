@@ -5,6 +5,17 @@ vi.mock('./state-steps', () => ({ readHarnessState: vi.fn(), applyHarnessOperati
 import { publicHarnessStepPersistence, readSettledHarnessTranscript, readHarnessTranscriptForDelivery } from './harness-transcript'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
 
+test.each([
+  '<function_calls><invoke name="read_document">pretend read</invoke></function_calls>',
+  '{"name":"read_document","arguments":{}}',
+])('discards simulated progress including its unsupported answer: %s', invocation => {
+  const text = `I will read the document.\n\n${invocation}\n\nFinal Answer: Total 80`
+  const persistence = publicHarnessStepPersistence({
+    stepNumber: 0, text, content: [{ type: 'text', text }], toolCalls: [], toolResults: [],
+  } as never, new Set(['read_document']), { textOnly: true })
+  expect(persistence).toEqual({ content: '', parts: [] })
+})
+
 test('settled public persistence excludes private reasoning and keeps sanitized tool display', () => {
   const persistence = publicHarnessStepPersistence({
     stepNumber: 0,

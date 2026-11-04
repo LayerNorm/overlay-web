@@ -255,6 +255,27 @@ test('a planless acknowledgement alone cannot finish the run', async () => {
   expect(result.steps[0]?.text).toBe('I will begin now.')
 })
 
+test.each([
+  '<function_calls><invoke name="read">pretend execution</invoke></function_calls>',
+  '{"name":"read","arguments":{}}',
+])('simulated progress is settled but excluded from later prompts and delivery: %s', async invocation => {
+  const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
+  const read = vi.fn(async () => ({ total: 41 }))
+  const provider = model(index => index === 0
+    ? `I will read the document.\n\n${invocation}\n\nFinal Answer: Total 80`
+    : index === 1 ? [call('read', 'real-read')] : 'Total 41')
+  const result = await runOverlayHarness({
+    ...input, tools: { read: tool({ inputSchema: z.object({}), execute: read }) },
+  }, f.ports)
+  expect(provider.doStreamCalls).toHaveLength(3)
+  expect(JSON.stringify(provider.doStreamCalls[1]?.prompt)).not.toContain('Total 80')
+  expect(JSON.stringify(result.steps)).not.toContain('Total 80')
+  expect(f.receipts).toEqual(new Set(['model:0', 'model:1', 'model:2']))
+  expect(read).toHaveBeenCalledOnce()
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('Total 41')
+})
+
 test('a provider-ignored tool-free progress choice cannot execute or request approval for a tool', async () => {
   const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
   const write = vi.fn(async () => ({ success: true }))

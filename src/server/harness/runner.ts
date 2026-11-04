@@ -32,7 +32,7 @@ import {
   type AuthenticatedToolDenial,
   type ObservedToolOutcome,
 } from './tool-outcome-persistence'
-import { stripTextualToolCalls, TEXTUAL_TOOL_CALL_MARKERS } from './textual-tool-calls'
+import { hasTextualToolCalls, stripTextualToolCalls, TEXTUAL_TOOL_CALL_MARKERS } from './textual-tool-calls'
 import { HarnessWaitRollover } from './waits'
 import { buildHarnessRunnerCheckpoint } from './runner-checkpoint'
 import {
@@ -490,7 +490,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       onStepEnd: async step => {
         if (commentaryInvocation) {
           commentaryText = stripTextualToolCalls(step.text ?? '', toolNames).trim()
-          if (step.toolCalls.length) commentaryAttemptedTool = true
+          if (step.toolCalls.length || hasTextualToolCalls(step.text ?? '', toolNames)) commentaryAttemptedTool = true
         } else if (publicProgressEnabled) {
           const publicText = stripTextualToolCalls(step.text ?? '', toolNames).trim()
           if (step.toolCalls.length) {
@@ -576,9 +576,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     // WorkflowAgent returns its system prompt in history. Rebuild it exclusively
     // from trusted instructions and current durable state on every invocation.
     messages = invocationMessages.filter(message => message.role !== 'system')
-    stepReceiptIds.push(...invocationSteps.map(step => receiptByStepNumber.get(step.stepNumber)))
-    steps.push(...invocationSteps)
-    deliverySteps.push(...invocationSteps)
+    const publicSteps = commentaryInvocation && commentaryAttemptedTool ? [] : invocationSteps
+    stepReceiptIds.push(...publicSteps.map(step => receiptByStepNumber.get(step.stepNumber)))
+    steps.push(...publicSteps)
+    deliverySteps.push(...publicSteps)
     const updatedState = await ports.read()
     const finishReason = invocationSteps.at(-1)?.finishReason
     if (await terminateOnProviderFailure(updatedState, finishReason, ports, segment)) {

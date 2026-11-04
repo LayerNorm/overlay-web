@@ -1,7 +1,15 @@
 import { expect, test } from 'vitest'
-import { stripTextualToolCalls } from './textual-tool-calls'
+import { hasTextualToolCalls, stripTextualToolCalls } from './textual-tool-calls'
 
 const toolNames = new Set(['harness_update_step', 'read_file'])
+
+test('recognizes complete and truncated function-call XML without treating it as execution', () => {
+  const invocation = '<function_calls><invoke name="read_file"><parameter name="id">file</parameter></invoke>'
+  expect(stripTextualToolCalls(`Before\n${invocation}</function_calls>\nAfter`, toolNames)).toBe('Before\n\nAfter')
+  expect(stripTextualToolCalls(`Before\n${invocation}`, toolNames)).toBe('Before')
+  expect(hasTextualToolCalls(`${invocation}</function_calls>\nFinal Answer: Total 80`, toolNames)).toBe(true)
+  expect(hasTextualToolCalls('Before\n\n\nAfter', toolNames)).toBe(false)
+})
 
 test('strips XML and Python protocol forms while preserving surrounding text', () => {
   expect(stripTextualToolCalls(

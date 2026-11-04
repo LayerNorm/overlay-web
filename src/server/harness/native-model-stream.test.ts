@@ -76,6 +76,16 @@ test('native text streams before inference finishes, preserving usage and exclud
   expect(mocks.finalize).not.toHaveBeenCalled()
 })
 
+test('split function-call XML and subsequent fabricated results never reach live delivery', async () => {
+  const parts = [text('I will read the document.\n<function_'),
+    text('calls><invoke name="read_document">pretend execution</invoke></function_calls>'),
+    text('\nFinal Answer: North 42, South 38, Total 80'), finish]
+  expect(await drain(await projectNativeHarnessStream(reference, source(parts)))).toEqual(parts)
+  const visible = mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')
+  expect(visible.trim()).toBe('I will read the document.')
+  expect(visible).not.toContain('Final Answer')
+})
+
 test('native projection holds split protocol markers and drops the call and following deltas', async () => {
   const parts = [
     text('The capital of France is Paris. <tool_'),

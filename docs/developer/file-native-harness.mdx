@@ -66,6 +66,12 @@ complete-coverage claim. Completed child work is reused on replay.
 
 ## Preview acceptance
 
+Public progress is a separate, tool-free call capped at 256 output tokens, not
+an execution result or final answer. Simulated tool calls invalidate that progress
+step for saved transcripts and subsequent model history, while its actual usage
+still settles. Function-call XML is hidden from live delivery. Real document
+observations and final-answer verification remain required for acceptance.
+
 - Upload a PDF larger than 4.5 MB with file-first enabled; its original must remain
   downloadable if extraction fails. Retry registration without uploading again.
 - Read a multi-page PDF, a scanned page and a table on a provisioned Computer.

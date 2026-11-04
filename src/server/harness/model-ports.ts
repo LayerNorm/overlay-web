@@ -15,6 +15,7 @@ import { createHarnessVerificationPort } from './verification-port'
 import { settleHarnessModelUsage } from './settle-model-step'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
 import { estimateHarnessPromptTokens } from './artifact-context'
+import { HARNESS_PUBLIC_PROGRESS_MAX_OUTPUT_TOKENS } from './public-progress'
 
 export type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
 import { HarnessYield, waitForHarnessModelRecovery } from './model-recovery'
@@ -84,7 +85,9 @@ export function createHarnessModelPorts(input: {
       const limits = await modelLimits(input.modelId)
       const modelContextWindow = limits.contextWindow ?? FALLBACK_CONTEXT_WINDOW
       const contextWindow = Math.min(input.contextBudgetTokens ?? limits.previewContextBudgetTokens ?? contextBudgetTokens, modelContextWindow)
-      const maxOutputTokens = Math.min(request.settings.maxOutputTokens ?? 8_192,
+      const requestedMaxOutputTokens = Math.min(request.settings.maxOutputTokens ?? 8_192,
+        request.instructionContext.publicProgress ? HARNESS_PUBLIC_PROGRESS_MAX_OUTPUT_TOKENS : Infinity)
+      const maxOutputTokens = Math.min(requestedMaxOutputTokens,
         limits.maxOutputTokens ?? 8_192, Math.max(1, Math.floor(contextWindow / 4)))
       let state = request.state
       let promptMessages = request.messages
@@ -128,7 +131,7 @@ export function createHarnessModelPorts(input: {
           || state.modelReservation?.id.startsWith('summary:')) throw new HarnessYield()
         const fallbackInstructions = buildHarnessStepInstructions(state, request.instructionContext)
         const fallbackMessages = promptMessages.filter(message => message.role !== 'system')
-        const fallbackMaxOutputTokens = Math.min(request.settings.maxOutputTokens ?? 8_192,
+        const fallbackMaxOutputTokens = Math.min(requestedMaxOutputTokens,
           limits.maxOutputTokens ?? 8_192, Math.max(1, Math.floor(modelContextWindow / 4)))
         const fallbackFixedOverheadTokens = estimateContextTokens(fallbackInstructions)
           + estimateContextTokens(request.toolDefinitions)

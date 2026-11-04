@@ -8,6 +8,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Transfer large original files to Computers through Boat's signed upload API instead of its 5 MiB inline-write endpoint.
 - Apply document-reader page and mode defaults when durable tool calls omit those optional fields.
 - Preserve short tool observations in Harness checkpoints when they fit the existing byte budget, and direct truncated-observation lookups to persisted evidence instead of treating a preview as missing source data.
+- Bound Harness progress updates separately from work, reject simulated tool calls from progress history and saved transcripts, and hide streamed function-call XML instead of presenting it as execution.
 
 - Keep agent progress visible with brief metered updates and a durable, sanitized transcript that survives workflow handoffs and failures. Uncertain tool outcomes stop further actions and show a safe diagnostic instead of automatically repeating work. Empty progress-only replies cannot abort otherwise valid work. Existing paid-workspace admission, selected models, funding waits and renewable execution leases remain enforced.
 - Simplify agent Computer actions and correctly show the current operator and stopped state, retain document attachment chips after reloading a thread, and hide internal agent bookkeeping from saved responses. Computer artifact upload permissions now expire within 15 minutes independently of the task lease.

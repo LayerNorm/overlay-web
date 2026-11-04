@@ -1,5 +1,5 @@
 export const TEXTUAL_TOOL_CALL_MARKERS = [
-  '<tool_call>', '<|python_tag|>', '<｜DSML｜tool_calls>', '<|DSML|tool_calls>',
+  '<tool_call>', '<function_calls>', '<|python_tag|>', '<｜DSML｜tool_calls>', '<|DSML|tool_calls>',
 ] as const
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -45,11 +45,17 @@ function stripStandaloneToolCalls(text: string, toolNames: ReadonlySet<string>):
 export function stripTextualToolCalls(text: string, toolNames: ReadonlySet<string>): string {
   const withoutProtocol = text
     .replace(/<tool_call>[\s\S]*?(?:<\/tool_call>|$)/g, '')
+    .replace(/<function_calls>[\s\S]*?(?:<\/function_calls>|$)/g, '')
     .replace(/<\|python_tag\|>[\s\S]*$/g, '')
     .replace(/<[｜|]DSML[｜|]tool_calls>[\s\S]*?(?:<\/[｜|]DSML[｜|]tool_calls>|$)/g, '')
     .replace(/\r\n?/g, '\n')
   const withoutJson = stripStandaloneToolCalls(stripFencedToolCalls(withoutProtocol, toolNames), toolNames)
   return withoutJson.replace(/\n[ \t]*\n(?:[ \t]*\n)*/g, '\n\n').trim()
+}
+
+export function hasTextualToolCalls(text: string, toolNames: ReadonlySet<string>): boolean {
+  const normalize = (value: string) => value.replace(/\s+/g, ' ').trim()
+  return normalize(stripTextualToolCalls(text, toolNames)) !== normalize(text)
 }
 
 export function stripTextualToolCallsFromParts<T extends Record<string, unknown>>(

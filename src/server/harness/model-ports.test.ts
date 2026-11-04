@@ -182,6 +182,29 @@ test('summary funding denial yields its exact receipt instead of failing or prep
   expect(prepare).not.toHaveBeenCalled()
 })
 
+test.each([false, true])('progress output is capped even during full-history fallback=%s', async fallback => {
+  const state = runningState()
+  mocks.read.mockResolvedValue(state)
+  mocks.compact.mockImplementation(async ({ messages }) => ({
+    messages, didCompact: false, summaryFailed: fallback, fitsBudget: !fallback,
+  }))
+  const prepare = vi.fn(async (): Promise<PreparedHarnessModel> => ({
+    model: { modelId: 'fixture/model', credentialOwnerId: 'user' } as HarnessModelReference,
+    options: { prompt: [] }, contextWindow: 32_000, estimatedCostMicros: 0,
+  }))
+  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  const base = { state, messages: [], toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 1_000 },
+    instructionContext: { instructions: 'Keep user data private.', continuation: false, truncatedResponse: false } }
+  const progress = await ports.prepareModel({ ...base, receiptId: 'model:1',
+    instructionContext: { ...base.instructionContext, publicProgress: true } })
+  expect(progress.settings?.maxOutputTokens).toBe(256)
+  expect(prepare).toHaveBeenNthCalledWith(1, expect.objectContaining({
+    options: expect.objectContaining({ maxOutputTokens: 256 }),
+  }))
+  const work = await ports.prepareModel({ ...base, receiptId: 'model:2' })
+  expect(work.settings?.maxOutputTokens).toBe(1_000)
+})
+
 test('final verification is separately metered, tool-disabled, and validated against current-run evidence', async () => {
   const state = {
     ...runningState(),

@@ -10,7 +10,7 @@ import type {
 } from '@overlay/agent-runtime/harness-store'
 import { buildAssistantPersistenceFromSteps, compactAssistantPersistenceForConvex } from '@/shared/chat/persist-assistant-turn'
 import { HARNESS_CONTROL_TOOLS } from './context'
-import { stripTextualToolCalls } from './textual-tool-calls'
+import { hasTextualToolCalls, stripTextualToolCalls } from './textual-tool-calls'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { HarnessAuthorizationError, HarnessPersistenceError } from './harness-diagnostics'
 
@@ -27,8 +27,11 @@ export function publicHarnessStepPersistence(
   activeToolNames: ReadonlySet<string>,
   options: { textOnly?: boolean } = {},
 ): HarnessTranscriptPersistence {
-  if (options.textOnly && step.toolCalls.length) return { content: '', parts: [] }
-  const sanitize = (text: string) => stripTextualToolCalls(text, new Set([...HARNESS_CONTROL_TOOLS, ...activeToolNames]))
+  const toolNames = new Set([...HARNESS_CONTROL_TOOLS, ...activeToolNames])
+  if (options.textOnly && (step.toolCalls.length || hasTextualToolCalls(step.text ?? '', toolNames))) {
+    return { content: '', parts: [] }
+  }
+  const sanitize = (text: string) => stripTextualToolCalls(text, toolNames)
   const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
   const isPublic = (part: { type: string; toolName?: string }) => options.textOnly
     ? part.type === 'text' : !part.toolName || !controls.has(part.toolName)
