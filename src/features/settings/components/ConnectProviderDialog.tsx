@@ -42,7 +42,7 @@ function SubscriptionDialog({ connection, onClose, onConnected, tabs }: Props & 
   return <DialogFrame
     open
     title={title}
-    className="w-[min(480px,92vw)]"
+    className="w-[min(480px,92vw)] max-h-[calc(100dvh-2rem)] overflow-y-auto"
     onOpenChange={(open) => { if (!open) void flow.close() }}
     footer={<SubscriptionFooter
       flow={flow}

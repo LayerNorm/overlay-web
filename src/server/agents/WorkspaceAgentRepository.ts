@@ -8,6 +8,7 @@ import type {
   WorkspaceAgentHarness,
   WorkspaceAgentChiefScope,
   WorkspaceAgentRole,
+  WorkspaceAgentReasoningLevel,
   WorkspaceAgentThread,
   WorkspaceArchivedAgentThread,
   WorkspaceAgentVisibility,
@@ -22,6 +23,7 @@ export type CreateWorkspaceAgentRecord = {
   instructions: string
   harness: WorkspaceAgentHarness
   modelId: string
+  reasoning?: WorkspaceAgentReasoningLevel
   permissionMode?: string
   effort?: string
   avatarColor?: string
@@ -39,7 +41,7 @@ export type CreateWorkspaceAgentRecord = {
 
 export type UpdateWorkspaceAgentRecord = Partial<Pick<
   WorkspaceAgentDefinition,
-  'name' | 'description' | 'instructions' | 'harness' | 'modelId' | 'permissionMode' | 'effort' | 'avatarColor' | 'avatarShape' | 'allowedToolIds' | 'visibility'
+  'name' | 'description' | 'instructions' | 'harness' | 'modelId' | 'reasoning' | 'permissionMode' | 'effort' | 'avatarColor' | 'avatarShape' | 'allowedToolIds' | 'visibility'
 >> & {
   agentId: string
   workspaceId: string

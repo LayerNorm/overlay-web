@@ -255,6 +255,14 @@ export interface AttachmentDraft {
 export interface ChatModel {
   id: string
   name: string
+  sourceLabel?: string
+  connectionName?: string
+  subscription?: {
+    connectionId: string
+    scopeLabel: string
+    unavailable?: boolean
+    recoveryHref: string
+  }
   provider?: string
   description?: string
   intelligence?: number
@@ -262,6 +270,7 @@ export interface ChatModel {
   speedTier?: 1 | 2 | 3
   supportsVision?: boolean
   supportsReasoning?: boolean
+  reasoningLevels?: readonly { value: ReasoningLevel; label: string }[]
   supportsSearch?: boolean
   supportsZeroDataRetention?: boolean
   pricePer1mTokens?: number

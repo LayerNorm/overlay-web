@@ -7,11 +7,61 @@ import { parseByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 /** Persisted chat model selection — shared with ChatInterface and sidebar "new chat" actions. */
 export const CHAT_MODEL_KEY = 'overlay_chat_model'
 export const ACT_MODEL_KEY = 'overlay_act_model'
-export const REASONING_KEY = 'overlay_reasoning_level'
 
 const VALID_REASONING_LEVELS: readonly ReasoningLevel[] = [
   'provider-default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
 ]
+export type ReasoningByModel = Readonly<Record<string, ReasoningLevel | undefined>>
+
+export type ChatReasoningScope =
+  | { type: 'thread'; id: string }
+  | { type: 'workspace'; id: string }
+  | { type: 'temporary'; id: string }
+
+export function isPersistentChatReasoningScope(scope: ChatReasoningScope): boolean {
+  return scope.type !== 'temporary'
+}
+
+export function chatReasoningStorageKey(scope: ChatReasoningScope): string {
+  return `overlay_chat_reasoning_by_model_v1:${scope.type}:${encodeURIComponent(scope.id)}`
+}
+
+export function readStoredReasoningByModel(storageKey: string): Record<string, ReasoningLevel> {
+  if (typeof window === 'undefined') return {}
+  try {
+    const raw = localStorage.getItem(storageKey)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {}
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, ReasoningLevel] =>
+      entry[0].length > 0 &&
+      typeof entry[1] === 'string' &&
+      VALID_REASONING_LEVELS.includes(entry[1] as ReasoningLevel) &&
+      entry[1] !== 'provider-default',
+    ))
+  } catch {
+    return {}
+  }
+}
+
+export function writeStoredReasoningByModel(
+  storageKey: string,
+  reasoningByModel: ReasoningByModel,
+): void {
+  if (typeof window === 'undefined') return
+  try {
+    const saved = Object.fromEntries(Object.entries(reasoningByModel).filter(([modelId, level]) =>
+      modelId.length > 0 &&
+      typeof level === 'string' &&
+      VALID_REASONING_LEVELS.includes(level) &&
+      level !== 'provider-default',
+    ))
+    if (Object.keys(saved).length === 0) localStorage.removeItem(storageKey)
+    else localStorage.setItem(storageKey, JSON.stringify(saved))
+  } catch {
+    /* ignore */
+  }
+}
 function normalizeAskIds(raw: string[]): string[] {
   const seen = new Set<string>()
   const out: string[] = []
@@ -145,29 +195,5 @@ export function resolveNewChatModelFields({
     askModelIds: selection.askModelIds,
     actModelId: selection.actModelId,
     lastMode: 'act',
-  }
-}
-
-/** Read preferred reasoning level from localStorage (browser only). */
-export function readStoredReasoningLevel(): ReasoningLevel | undefined {
-  if (typeof window === 'undefined') return undefined
-  try {
-    const saved = localStorage.getItem(REASONING_KEY)?.trim()
-    if (saved && VALID_REASONING_LEVELS.includes(saved as ReasoningLevel)) {
-      return saved as ReasoningLevel
-    }
-  } catch {
-    /* ignore */
-  }
-  return undefined
-}
-
-/** Persist reasoning level to localStorage (browser only). */
-export function writeStoredReasoningLevel(level: ReasoningLevel): void {
-  if (typeof window === 'undefined') return
-  try {
-    localStorage.setItem(REASONING_KEY, level)
-  } catch {
-    /* ignore */
   }
 }

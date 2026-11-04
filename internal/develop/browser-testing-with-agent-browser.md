@@ -451,9 +451,10 @@ Never print or commit it; it grants access to a fully signed-in browser profile.
 ~/.config/devin/pw-chrome.sh run-code "$(cat script.js)"
 ```
 
-`run-code` scripts receive a `page` object and run inside an async function —
-`return` a value to print it, `await page.evaluate(...)` for page JS,
-`await page.screenshot()` for PNGs (base64 the result back).
+`run-code` expects a function receiving `page`, for example
+`async (page) => { return await page.title() }`. Use `--filename` for a
+multiline function. It does not accept a bare `await page...` statement.
+Use `page.evaluate(...)` for page JS and `page.screenshot()` for PNGs.
 
 ### The tab-group consent model
 

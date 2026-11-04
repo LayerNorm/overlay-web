@@ -26,7 +26,7 @@ export type AgentType = 'overlay' | 'byo'
 export type EnvironmentChoice = 'existing' | 'connect'
 export type AgentModelFieldProps = Pick<
   ChatModelPickerProps,
-  'favoriteScope' | 'selectableTextModels' | 'textModelsLoading'
+  'favoriteScope' | 'selectableTextModels' | 'textModelsLoading' | 'reasoningByModel' | 'onModelReasoningChange'
 > & {
   modelPickerLabel: string
 }
@@ -880,6 +880,10 @@ export function OverlayAgentFields({ instructions, onInstructionsChange, modelId
             selectableTextModels={modelField.selectableTextModels}
             selectedActModel={modelId}
             onToggleTextModel={onModelChange}
+            reasoning={modelField.reasoningByModel?.[modelId]}
+            onReasoningChange={(level) => modelField.onModelReasoningChange?.(modelId, level)}
+            reasoningByModel={modelField.reasoningByModel}
+            onModelReasoningChange={modelField.onModelReasoningChange}
             favoriteScope={modelField.favoriteScope}
             modelRecommendations={MODEL_RECOMMENDATIONS}
             textModelsLoading={modelField.textModelsLoading}

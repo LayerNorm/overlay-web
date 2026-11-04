@@ -19,6 +19,11 @@ const preview = {
   CONVEX_DEPLOY_KEY: 'preview:team:project|fixture-key',
 }
 
+test('the web service retains the isolated preview build hook', () => {
+  const config = JSON.parse(readFileSync(new URL('../../vercel.json', import.meta.url), 'utf8'))
+  assert.equal(config.services.web.buildCommand, 'bash scripts/vercel-build.sh')
+})
+
 test('Convex explicit env file retains the approved key and is removed after spawn', () => {
   let path
   const status = runBuild({ ...preview, CONVEX_DEPLOYMENT: 'prod:wrong' }, (command, args) => {

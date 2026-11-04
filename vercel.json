@@ -5,5 +5,29 @@
       "*": false,
       "main": true
     }
-  }
+  },
+  "services": {
+    "web": {
+      "root": ".",
+      "buildCommand": "bash scripts/vercel-build.sh",
+      "bindings": [
+        {
+          "type": "service",
+          "service": "subscriptions",
+          "format": "url",
+          "env": "OVERLAY_CLIPROXYAPI_URL"
+        }
+      ]
+    },
+    "subscriptions": {
+      "root": "services/cliproxyapi",
+      "runtime": "container"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": { "service": "web" }
+    }
+  ]
 }
