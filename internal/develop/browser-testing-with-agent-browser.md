@@ -202,9 +202,14 @@ For candidate-host regression QA, use a user-owned local machine or VPS with the
 current Agent Host package and standard user-initiated enrollment. Connect it to
 the isolated PR backend, approve its selected root, then verify bind, invoke,
 stream, cancel, reconnect, and revoke. Do not use hosted Cloud provisioning,
-managed images, or hosting-auth bootstrap files. Protected Preview access is
-established in the browser through the supported Vercel MCP or browser flow;
-host requests continue to use their signed enrollment credentials.
+or managed images. Browser protection access is separate from host access.
+For a user-owned QA host, retain `--hosting-auth-file`: a one-shot, mode-0600,
+host-owned file containing the exact HTTPS Preview origin and the existing
+project bypass secret. The host consumes it before enrollment, attaches it
+only to that origin’s API requests, refuses redirects, and proxies the run’s
+MCP through loopback without exposing hosting access to provider children.
+Signed enrollment and run authentication remain required. Restarts need a fresh
+private file at the configured path; never store it in a snapshot or Git.
 
 See [Vercel's automation bypass documentation](https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation).
 See also [Vercel MCP access tools](https://vercel.com/docs/agent-resources/vercel-mcp/tools).

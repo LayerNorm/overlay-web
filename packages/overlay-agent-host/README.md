@@ -158,3 +158,14 @@ An ACP/acpx adapter (including a manifest entry) may opt into guarded native rec
 has passed native recovery acceptance. The server still requires isolation of the old provider, the original
 conversation identity, current authority and a startup acknowledgement; the option does not allow
 live interrupted-turn continuation or restore pending approvals.
+
+### Protected PR Preview testing
+
+User-owned QA hosts may pass `--hosting-auth-file /private/path/access.json` to
+`connect` or `run`. The one-shot host-owned file must have mode 0600 and contain
+`origin` (the exact HTTPS Preview origin) and `secret` (the existing project
+automation bypass credential). It is consumed before networking; hosting access
+stays in the host transport and never enters provider environments or stored
+configuration. Only its path is retained, so restart requires a fresh private
+file. Signed host/run authentication is still required. Hosted `overlay_cloud`
+enrollment remains rejected.

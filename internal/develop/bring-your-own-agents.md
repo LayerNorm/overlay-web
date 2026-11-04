@@ -585,8 +585,9 @@ scanned in full by a production malware engine, validated by content magic, and 
 attachments after an immutable clean verdict. The existing checksum, size, tenancy, retention, and
 cleanup controls remain implemented but are not a substitute for that release gate.
 
-Hosted third-party runtimes, their managed images, Preview bootstrap credentials, and hosted
-provider credential delivery are retired. External Claude Code and Codex agents run on
+Hosted third-party runtimes, their managed images and hosted provider credential delivery are retired.
+User-owned QA hosts retain the private exact-origin `--hosting-auth-file` transport
+for protected PR previews; browser cookies do not authenticate host requests. External Claude Code and Codex agents run on
 user-owned computers or VPSs and connect through Agent Host. Provider-account records remain
 available for supported model/subscription adapters. For historical records, status, cleanup,
 and deployment prerequisites, see the [retirement runbook](./retire-overlay-cloud-agents.md).

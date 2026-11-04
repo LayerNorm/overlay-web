@@ -9,6 +9,7 @@ import { diagnoseHost } from './doctor.js'
 import { FakeAgentAdapter } from './fake-adapter.js'
 import { StructuredLogger } from './logger.js'
 import { AgentHostRuntime } from './runtime.js'
+import { withPreviewHostingAccess, type PreviewHostingTransport } from './preview-hosting.js'
 import { SqliteHostStateStore } from './state.js'
 import { HttpAgentControlPlaneClient } from './transport.js'
 import { connectAgentHost } from './enrollment.js'
@@ -73,18 +74,17 @@ if (command === 'export-config') {
   for (const check of checks) process.stdout.write(`${check.ok ? 'PASS' : 'FAIL'} ${check.name}: ${check.detail}\n`)
   if (checks.some((check) => !check.ok)) process.exitCode = 1
   } else {
-    await runHost(config)
+    await withPreviewHostingAccess(option(args, '--hosting-auth-file') ?? config.hostingAuthFile, config.controlPlaneUrl, hosting => runHost(config, hosting))
   }
 }
 
 async function connectFromArgs(args: string[]) {
-  if (args.includes('--hosting-auth-file')) {
-    throw new Error('--hosting-auth-file is retired. Connect a user-owned Agent Host instead.')
-  }
-  const code = args.find((value) => !value.startsWith('--') && value !== option(args, '--server') && value !== option(args, '--state-dir') && value !== option(args, '--name'))
+  const code = args.find((value) => !value.startsWith('--') && value !== option(args, '--server') && value !== option(args, '--state-dir') && value !== option(args, '--name') && value !== option(args, '--hosting-auth-file'))
   const serverUrl = option(args, '--server')
   if (!code || !serverUrl) usage()
   if (option(args, '--kind') === 'overlay_cloud') throw new Error('Hosted Overlay Cloud enrollment is retired.')
+  const hostingAuthFile = option(args, '--hosting-auth-file')
+  await withPreviewHostingAccess(hostingAuthFile, serverUrl, async hosting => {
     const stateDirectory = option(args, '--state-dir') ?? join(homedir(), '.overlay', 'agent-host')
     const adapterIds = options(args, '--adapter')
     // `--engine acpx` runs ACP agents through acpx's runtime.
@@ -106,6 +106,7 @@ async function connectFromArgs(args: string[]) {
     const connection = await connectAgentHost({
       code,
       serverUrl,
+      ...(hosting ? {fetch: hosting.fetch} : {}),
       ...(process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2' ? { durableLifecycle: true } : {}),
       stateDirectory,
       name: option(args, '--name'),
@@ -122,6 +123,7 @@ async function connectFromArgs(args: string[]) {
     })
     const persistentConfigPath = join(stateDirectory, 'config.json')
     const persistentConfig: Omit<AgentHostConfig, 'credential'> = {
+      ...(hostingAuthFile ? {hostingAuthFile} : {}),
       ...(process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2' ? { durableLifecycle: true } : {}),
       environmentId: connection.environmentId,
       workspaceId: connection.workspaceId,
@@ -135,6 +137,7 @@ async function connectFromArgs(args: string[]) {
       }),
     }
     await saveAgentHostConfig(persistentConfigPath, persistentConfig)
+    if (hostingAuthFile) process.stdout.write('Protected Preview restarts require a fresh private access file at the configured path.\n')
     process.stdout.write(`Connected ${connection.environmentId}. Credential and restart configuration stored with mode 0600 in ${stateDirectory}.\n`)
     process.stdout.write(`Restart later with: npx --yes --package node@24 --package ${PACKAGE_SPEC} overlay-agent-host run --config ${shellQuote(persistentConfigPath)}\n`)
     if (process.platform === 'darwin') {
@@ -144,16 +147,17 @@ async function connectFromArgs(args: string[]) {
       await runHost({
         ...persistentConfig,
         credential: connection.token,
-      })
+      }, hosting)
     }
+  })
 }
 
-async function runHost(config: AgentHostConfig) {
+async function runHost(config: AgentHostConfig, hosting?: PreviewHostingTransport) {
   const durableLifecycle = config.durableLifecycle === true || process.env.OVERLAY_REMOTE_RUN_LIFECYCLE_VERSION === '2'
   const configuredAdapters = managedRestorationAdapters(config.adapters, {
     durableLifecycle, rollout: process.env.OVERLAY_REMOTE_RUN_FENCED_RESTORATION,
   })
-  const adapters = buildAdapters(configuredAdapters, config.stateDirectory)
+  const adapters = buildAdapters(configuredAdapters, config.stateDirectory).map(adapter => hosting ? hosting.wrapAdapter(adapter) : adapter)
   if (!config.credential) throw new Error(`agent host credential is missing from ${config.credentialEnv} and local connection state`)
   const [keys, stored] = await Promise.all([
     loadOrCreateDeviceKeyPair(config.stateDirectory),
@@ -169,10 +173,11 @@ async function runHost(config: AgentHostConfig) {
     environmentId: config.environmentId,
     workspaceId: config.workspaceId,
     filesystem: stored?.filesystemGrant ?? config.filesystem,
-    drive: { stateDirectory: config.stateDirectory, apiUrl: new URL('/api/agent-drive', config.controlPlaneUrl).toString() },
+    drive: { stateDirectory: config.stateDirectory, apiUrl: new URL('/api/agent-drive', config.controlPlaneUrl).toString(), ...(hosting ? {fetch: hosting.fetch} : {}) },
     adapters,
     state,
     controlPlane: new HttpAgentControlPlaneClient({
+      ...(hosting ? {fetch: hosting.fetch} : {}),
       baseUrl: config.controlPlaneUrl,
       environmentId: config.environmentId,
       credential: config.credential,
@@ -228,7 +233,7 @@ function options(args: string[], name: string): string[] {
 }
 
 function usage(): never {
-  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|external] [--engine acpx] [--run] [--adapter codex|claude-code] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n')
+  process.stderr.write('Usage:\n  overlay-agent-host connect <code> --server https://getoverlay.io [--state-dir path] [--name name] [--kind local|vps|external] [--engine acpx] [--hosting-auth-file path] [--run] [--adapter codex|claude-code] [--adapter eve --eve-url http://127.0.0.1:3000 --eve-auth-env EVE_AGENT_TOKEN]\n  overlay-agent-host <run|doctor> --config /absolute/path/config.json [--hosting-auth-file path]\n  overlay-agent-host service <install|uninstall|status> --config /absolute/path/config.json\n')
   process.exit(2)
 }
 
