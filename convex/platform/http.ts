@@ -17,10 +17,12 @@ registerRoutes(http, components.stripe, {
     'customer.subscription.updated': processBillingEvent,
     'customer.subscription.deleted': processBillingEvent,
     'invoice.payment_failed': processBillingEvent,
+    'invoice.paid': processBillingEvent,
     'payment_intent.succeeded': processBillingEvent,
     'payment_intent.payment_failed': processBillingEvent,
     'payment_intent.canceled': processBillingEvent,
     'checkout.session.completed': processBillingEvent,
+    'checkout.session.async_payment_succeeded': processBillingEvent,
   },
   onEvent: async (_ctx, event: Stripe.Event) => {
     console.log(`[Stripe Webhook] Received event: ${event.type}`)

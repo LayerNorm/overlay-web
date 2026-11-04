@@ -107,4 +107,30 @@ describe('admin console functions', () => {
     await expect(convex.withIdentity({ subject: 'user_support' }).query(query('listUserDirectory'), { serverSecret: adminSecret })).resolves.toEqual([])
     await expect(convex.withIdentity({ subject: 'user_billing' }).query(query('listUserDirectory'), { serverSecret: adminSecret })).resolves.toEqual([])
   })
+
+  test('the user directory lists newest first with name, last active day and plan, and searches', async () => {
+    const convex = convexTest(schema, modules)
+    await seedPrincipal(convex, 'user_admin', 'admin')
+    await convex.run(async (ctx) => {
+      await ctx.db.insert('subscriptions', { userId: 'user_old', email: 'old@example.com', firstName: 'Olive', lastName: 'Old' })
+      await ctx.db.insert('subscriptions', { userId: 'user_paid', email: 'paid@example.com', name: 'Pat Paid', billingAccountId: 'ba_paid' })
+      await ctx.db.insert('billingAccountSubscriptions', {
+        billingAccountId: 'ba_paid', provider: 'stripe', planKind: 'paid', planVersion: 'variable_v2', planAmountCents: 2000,
+        markupBasisPoints: 2500, status: 'active', autoTopUpEnabled: false, autoTopUpAmountCents: 0, createdAt: 1, updatedAt: 1,
+      })
+      await ctx.db.insert('growthUserDays', { userId: 'user_paid', day: '2026-10-29' })
+      await ctx.db.insert('growthUserDays', { userId: 'user_paid', day: '2026-10-30' })
+    })
+    const asAdmin = convex.withIdentity(adminIdentity)
+    const people = await asAdmin.query(query('listUserDirectory'), { serverSecret: adminSecret })
+    expect(people.map((person: { userId: string }) => person.userId)).toEqual(['user_paid', 'user_old'])
+    expect(people[0]).toMatchObject({ name: 'Pat Paid', email: 'paid@example.com', lastActiveDay: '2026-10-30', plan: 'paid' })
+    expect(people[1]).toMatchObject({ name: 'Olive Old', plan: 'free' })
+    expect(people[1].lastActiveDay).toBeUndefined()
+
+    const byName = await asAdmin.query(query('listUserDirectory'), { serverSecret: adminSecret, query: 'olive' })
+    expect(byName.map((person: { userId: string }) => person.userId)).toEqual(['user_old'])
+    const byId = await asAdmin.query(query('listUserDirectory'), { serverSecret: adminSecret, query: 'user_paid' })
+    expect(byId.map((person: { userId: string }) => person.userId)).toEqual(['user_paid'])
+  })
 })

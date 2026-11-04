@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { AVAILABLE_MODELS, modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
-import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
+import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
+import { isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 
 test('known Gateway-backed ZDR models report support', () => {
   assert.equal(modelSupportsZeroDataRetention('anthropic/claude-opus-4.7'), true)
@@ -21,8 +21,9 @@ test('non-ZDR and non-Gateway models report no support', () => {
   assert.equal(modelSupportsZeroDataRetention('missing/model'), false)
 })
 
-test('free chat models never report ZDR support', () => {
-  for (const model of AVAILABLE_MODELS.filter((m) => isFreeTierChatModelId(m.id))) {
-    assert.equal(model.supportsZeroDataRetention, false, `${model.id} must not support ZDR`)
+test('retired hosted models never report ZDR support', () => {
+  for (const modelId of ['openrouter/free', 'deepseek-ai/deepseek-v3.2', 'minimaxai/minimax-m2.7']) {
+    assert.equal(isRetiredHostedModelId(modelId), true)
+    assert.equal(modelSupportsZeroDataRetention(modelId), false, `${modelId} must not support ZDR`)
   }
 })

@@ -14,7 +14,6 @@ import type { HarnessTranscriptPersistence, HarnessTranscriptStep } from '@overl
 export function buildPersonalHarnessDelivery(
   result: HarnessExecutionResult,
   sourceCitations?: SourceCitationMap,
-  fallbackNotices: string[] = [],
   activeToolNames: ReadonlySet<string> = new Set(),
   settledTranscript?: {
     persistence: HarnessTranscriptPersistence
@@ -24,6 +23,8 @@ export function buildPersonalHarnessDelivery(
 ) {
   const toolNames = new Set([...HARNESS_CONTROL_TOOLS, ...activeToolNames])
   const sanitize = (text: string) => stripTextualToolCalls(text, toolNames)
+  const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
+  const isPublic = (part: { type: string; toolName?: string }) => !part.toolName || !controls.has(part.toolName)
   const displayResult = <T extends { type: string }>(part: T): T => {
     if (part.type !== 'tool-result' || !('output' in part) || !isPersonalChatWorkToolOutputEnvelope(part.output)) return part
     return { ...part, output: part.output.display }
@@ -32,7 +33,7 @@ export function buildPersonalHarnessDelivery(
     ...step,
     ...(typeof step.text === 'string' ? { text: sanitize(step.text) } : {}),
     ...(typeof step.reasoningText === 'string' ? { reasoningText: sanitize(step.reasoningText) } : {}),
-    ...(step.content ? { content: step.content.map(part => {
+    ...(step.content ? { content: step.content.filter(isPublic).map(part => {
       const cleaned = (part.type === 'text' || part.type === 'reasoning') && typeof part.text === 'string'
         ? { ...part, text: sanitize(part.text) }
         : part
@@ -43,7 +44,8 @@ export function buildPersonalHarnessDelivery(
         ? { ...part, text: sanitize(part.text) }
         : part
     )) } : {}),
-    toolResults: step.toolResults.map(displayResult),
+    toolCalls: step.toolCalls.filter(isPublic),
+    toolResults: step.toolResults.filter(isPublic).map(displayResult),
   }))
   const journalStepKeys = new Set(settledTranscript?.steps.map(step => (
     `${step.receiptId}\u0000${step.stepNumber}`
@@ -76,9 +78,6 @@ export function buildPersonalHarnessDelivery(
       content: [transcript.content, resultSummary].filter(Boolean).join('\n\n'),
       parts: [...transcript.parts, { type: 'text', text: resultSummary }],
     })
-  }
-  if (fallbackNotices.length) {
-    transcript = replaceAssistantTextForPersistence(transcript, `${fallbackNotices.join('\n\n')}\n\n${transcript.content}`)
   }
   if (sourceCitations && Object.keys(sourceCitations).length) {
     transcript = replaceAssistantTextForPersistence(transcript, linkifySourceCitationsMarkdown(transcript.content, sourceCitations))

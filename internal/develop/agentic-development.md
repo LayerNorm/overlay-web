@@ -77,8 +77,13 @@ preview. Manual dispatch reconciles the label policy rather than overriding it.
 
 The PR must state outcome, important decisions, touched systems, dependencies,
 rollback, exact validation, backend/migration steps and current head SHA.
-Update applicable living documentation and root `CHANGELOG.md` under Unreleased
-in the same commit series. Do not include unrelated cleanup.
+Update applicable living documentation. Every PR must include a concise root
+`CHANGELOG.md` entry under Unreleased explaining what it adds, changes, fixes or
+removes and why it matters, including documentation, dependency, test and CI PRs.
+Keep the entry aligned with the final diff; Integration checks it before merging.
+Local direct-main changes follow the same rule. After each merge, Integration
+explains the functionality changed and reports deployment/verification status.
+Do not include unrelated cleanup.
 
 ## Proportionate checks
 

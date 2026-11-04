@@ -19,6 +19,8 @@ import {
   workspaceMetadataForHref,
   isWorkspaceManagementSettingsRoute,
   legacyWorkspaceScopeForRoute,
+  isSupportedWorkspaceRoute,
+  isSupportedLegacyWorkspaceRoute,
 } from './routing'
 
 test('workspace routing preserves the current canonical surface', () => {
@@ -31,6 +33,14 @@ test('Work is a workspace surface of its own', () => {
   assert.equal(resolveWorkspaceSurface('/app/work'), 'work')
   assert.equal(resolveWorkspaceSurface('/app/w/ws_1/work'), 'work')
   assert.equal(buildWorkspaceHref('ws_1', '/app/work'), '/app/w/ws_1/work')
+})
+
+test('Organization is an addressable Work subpage in either scope', () => {
+  assert.equal(isSupportedWorkspaceRoute('work', ['organization']), true)
+  assert.equal(isSupportedLegacyWorkspaceRoute('work', ['organization']), true)
+  assert.equal(isSupportedWorkspaceRoute('work', ['anything']), false)
+  assert.equal(buildWorkspaceHandleHref('acme', '/app/work/organization', 'workspace'), '/w/acme/workspace/work/organization')
+  assert.equal(buildWorkspaceHandleHref('acme', '/app/work/organization', 'personal'), '/w/acme/personal/work/organization')
 })
 
 test('workspace routing falls back to chat for unknown and non-app routes', () => {

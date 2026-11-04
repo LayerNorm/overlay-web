@@ -14,11 +14,10 @@ export function nativeHarnessToolMetrics(snapshot: Pick<HarnessSnapshot, 'eviden
 
 export function buildNativeHarnessDelivery(
   result: HarnessExecutionResult,
-  fallbackNotices: string[] = [],
   activeToolNames: ReadonlySet<string> = new Set(),
   settledTranscript?: { persistence: HarnessTranscriptPersistence; steps: HarnessTranscriptStep[] },
 ) {
-  const delivery = buildPersonalHarnessDelivery(result, undefined, fallbackNotices, activeToolNames, settledTranscript)
+  const delivery = buildPersonalHarnessDelivery(result, undefined, activeToolNames, settledTranscript)
   return {
     ...delivery,
     metrics: { ...delivery.metrics, ...nativeHarnessToolMetrics(result.snapshot) },

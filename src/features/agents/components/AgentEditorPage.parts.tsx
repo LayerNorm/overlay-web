@@ -27,10 +27,17 @@ import type { useAgentEditorForm } from './use-agent-editor-form'
 import type { useAgentRuntime } from './use-agent-runtime'
 import type { useAgentSurfaces } from './use-agent-surfaces'
 import { AgentSurfacesField } from './AgentSurfacesField'
-import { CloudAgentPanel } from './CloudAgentPanel'
-import { CloudAgentAccess } from './CloudAgentAccess'
 import { ConnectedAgentSettings } from './ConnectedAgentSettings'
 import { AgentEditorSkeleton, EditorLoadGate, useEditorLoad } from './EditorLoadGate'
+import { usesOverlayMark } from '@/shared/agents/chief-identity'
+
+function getAgentEditorControls(agent: WorkspaceAgentDirectoryItem | null, isDefaultMaster: boolean) {
+  return {
+    canEdit: agent?.canEdit !== false,
+    showMasterNotice: isDefaultMaster && agent?.agentRole !== 'personal_chief',
+    showAccessSelector: !agent?.agentRole || agent.agentRole === 'agent',
+  }
+}
 
 type AgentEditorFormSectionProps = {
   mode: 'new' | 'edit'
@@ -53,6 +60,31 @@ type AgentEditorFormSectionProps = {
   saveEdit(): void
   cancelEdit(): void
   archiveAgent(): void
+}
+
+type AgentRuntimeFlags = Pick<ReturnType<typeof useAgentRuntime>, 'cloudAgent' | 'legacyHostedRuntime'>
+
+function RetiredHostedRuntimeNotice({ runtime }: { runtime: AgentRuntimeFlags }) {
+  if (!runtime.cloudAgent && !runtime.legacyHostedRuntime) return null
+  return <p className="rounded-xl border border-(--border) px-4 py-3 text-sm text-(--muted)">Hosted Overlay Cloud runtimes are retired. This agent and its history remain readable, but it cannot run. Archive it to revoke access and queue provider cleanup.</p>
+}
+
+function ConnectedAgentSettingsSection({
+  agent,
+  connectedAgentsEnabled,
+  runtime,
+  agentType,
+}: {
+  agent: WorkspaceAgentDirectoryItem | null
+  connectedAgentsEnabled: boolean
+  runtime: AgentRuntimeFlags
+  agentType: ReturnType<typeof useAgentRuntime>['agentType']
+}) {
+  if (!agent || !connectedAgentsEnabled || runtime.cloudAgent || runtime.legacyHostedRuntime || agentType !== 'byo') {
+    return null
+  }
+  return <ConnectedAgentSettings key={agent.id}
+    agentId={agent.id} modelId={agent.modelId} permissionMode={agent.permissionMode} effort={agent.effort} />
 }
 
 function AgentEditorFormSection({
@@ -149,13 +181,16 @@ function AgentEditorFormSection({
     deleteAgentComputer,
   } = computer
 
+  const controls = getAgentEditorControls(agent, isDefaultMaster)
+  if (!controls.canEdit) return <p className="px-5 py-6 text-sm text-(--muted)">You do not have permission to edit this agent.</p>
+
   return (
     <div className="mx-auto w-full max-w-2xl">
-      {isDefaultMaster ? <MasterAgentNotice /> : null}
+      {controls.showMasterNotice ? <MasterAgentNotice /> : null}
 
       <div className="mt-5 space-y-5">
         <AgentAvatar
-          isDefault={agent?.isDefault}
+          isDefault={usesOverlayMark(agent)}
           color={avatarColor}
           shape={avatarShape}
           name={name}
@@ -173,9 +208,13 @@ function AgentEditorFormSection({
           onChange={(value) => { setAgentType(value); markDirty() }}
         />
         <div className="space-y-5">
-          {runtime.cloudAgent && agent ? <><CloudAgentPanel agentId={agent.id} /><CloudAgentAccess agentId={agent.id} allowedToolIds={agent.allowedToolIds} /></> : null}
-          {agent && connectedAgentsEnabled && (runtime.cloudAgent || agentType === 'byo') ? <ConnectedAgentSettings key={agent.id}
-            agentId={agent.id} modelId={agent.modelId} permissionMode={agent.permissionMode} effort={agent.effort} /> : null}
+          <RetiredHostedRuntimeNotice runtime={runtime} />
+          <ConnectedAgentSettingsSection
+            agent={agent}
+            connectedAgentsEnabled={connectedAgentsEnabled}
+            runtime={runtime}
+            agentType={agentType}
+          />
           {runtime.cloudAgent ? null : <AgentBehaviorFields
             agentType={agentType}
             connectedAgentsEnabled={connectedAgentsEnabled}
@@ -242,7 +281,7 @@ function AgentEditorFormSection({
             <AgentSurfacesField agentName={name} hasAgent={Boolean(agent)} surfaces={surfaces} />
           ) : null}
 
-          <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} />
+          {controls.showAccessSelector ? <AccessSelector value={visibility} onChange={(value) => { setVisibility(value); markDirty() }} /> : null}
 
           {mode === 'edit' && agent?.principalId ? (
             <AgentMemoriesSection agentPrincipalId={agent.principalId} />

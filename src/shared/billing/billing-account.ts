@@ -1,8 +1,5 @@
-import { DEFAULT_MARKUP_BASIS_POINTS } from './billing-pricing'
-
 export const BILLING_CREDITS_PER_CENT = 10
 export const CURRENT_BILLING_ACCOUNT_PRICING_VERSION = 'markup_25_v1' as const
-export const CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS = DEFAULT_MARKUP_BASIS_POINTS
 
 export type BillingAccountScope = 'personal' | 'workspace'
 export type BillingAccountStatus = 'active' | 'suspended' | 'closed'

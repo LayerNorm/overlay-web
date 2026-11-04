@@ -107,6 +107,7 @@ test('members may add usage only when the workspace lets them, and never change 
 
 test('workspace verification writes only the account-keyed subscription', async () => {
   const accountUpserts: Array<Record<string, unknown>> = []
+  const funding: Array<Record<string, unknown>> = []
   const service = fixture({
     role: 'admin',
     repository: repository({
@@ -117,6 +118,7 @@ test('workspace verification writes only the account-keyed subscription', async 
       async upsertSubscription() {
         throw new Error('personal subscription path must not run')
       },
+      async confirmBillingAccountPaidPeriod(args) { funding.push(args); return { applied: true } },
     }),
   })
   const result = await service.verify({
@@ -128,6 +130,25 @@ test('workspace verification writes only the account-keyed subscription', async 
   assert.deepEqual(result, { success: true, amountCents: 800, kind: 'paid_plan' })
   assert.equal(accountUpserts[0]?.billingAccountId, 'ba_workspace')
   assert.equal(accountUpserts[0]?.stripeSubscriptionId, 'sub_workspace')
+  assert.equal(funding[0]?.paidInvoiceId, 'in_workspace')
+  assert.equal(funding[0]?.amountCents, 800)
+})
+
+test('checkout success without paid invoice proof cannot activate the workspace', async () => {
+  let writes = 0
+  const service = fixture({ role: 'owner', provider: provider({ async verifyCheckoutSession() {
+    return { providerSessionId: 'cs_unfunded', providerCustomerId: 'cus_workspace', providerSubscriptionId: 'sub_workspace', status: 'active', planAmountCents: 800 }
+  } }), repository: repository({ async upsertBillingAccountSubscription() { writes++; return null } }) })
+  await assert.rejects(service.verify({ actorUserId: 'owner', workspaceId: 'workspace_1', sessionId: 'cs_unfunded', kind: 'paid_plan' }), /Subscription verification failed/)
+  assert.equal(writes, 0)
+})
+
+test('onboarding checkout returns to the initiating workspace without starting a task', async () => {
+  const calls: CheckoutArgs[] = []
+  const service = fixture({ role: 'owner', provider: provider({ async createCheckoutSession(args) { calls.push(args); return { url: 'https://stripe.test/checkout' } } }) })
+  await service.createSubscriptionCheckout({ actorUserId: 'owner', workspaceId: 'workspace_1', planAmountCents: 800, topUpAmountCents: 800, returnTo: 'onboarding' })
+  assert.equal(calls[0]?.successUrl, 'https://overlay.test/app/w/workspace_1/work?onboarding_billing=success&onboarding_session_id={CHECKOUT_SESSION_ID}')
+  assert.equal(calls[0]?.cancelUrl, 'https://overlay.test/app/w/workspace_1/work?onboarding_billing=canceled')
 })
 
 test('any workspace, including a first one, can be set up for a plan; until then it reads as free', async () => {
@@ -213,7 +234,7 @@ function fixture(args: {
     baseUrl: () => 'https://overlay.test',
     billingProvider: () => args.provider ?? provider(),
     repository: args.repository ?? repository(),
-    rollout: () => ({ checkoutEnabled: true, eligible: true, stage: 'general' }),
+    billingEnabled: async () => true,
     usage: {
       async getBillingAccountOperationalReport() {
         return {
@@ -246,6 +267,7 @@ function repository(overrides: Partial<BillingRepository> = {}): BillingReposito
     async getBillingAccountSubscriptionByServer() { return null },
     async getEntitlementsByServer() { return null },
     async upsertBillingAccountSubscription() { return null },
+    async confirmBillingAccountPaidPeriod() { return { applied: true } },
     async recordBillingAccountTopUp() { return null },
     ...overrides,
   } as BillingRepository
@@ -265,6 +287,10 @@ function provider(overrides: Partial<BillingProvider> = {}): BillingProvider {
         providerSubscriptionId: 'sub_workspace',
         providerPriceId: 'price_paid',
         providerQuantity: 8,
+        paidInvoiceId: 'in_workspace',
+        paymentStatus: 'paid',
+        paidPeriodStart: 1_000_000,
+        paidPeriodEnd: 2_000_000,
         planAmountCents: 800,
         status: 'active',
       }

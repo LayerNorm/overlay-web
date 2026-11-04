@@ -102,7 +102,7 @@ function subscriptionContent(event: LifecycleEmailEvent, appUrl: string): EmailC
   }
   if (status === 'canceled') {
     return {
-      body: 'Your paid plan has ended and the account moved to the free tier. You can restart it any time from billing settings.',
+      body: 'Your subscription has ended. Choose the $8/month usage credit in Billing settings to run models again. Your workspace history remains available.',
       ctaLabel: 'Review billing',
       ctaUrl: billingUrl,
       feature,
@@ -111,15 +111,24 @@ function subscriptionContent(event: LifecycleEmailEvent, appUrl: string): EmailC
       subject: 'Your Overlay subscription is canceled',
     }
   }
-  if (status === 'active' || status === 'trialing') {
+  if (status === 'trialing') {
     return {
-      body: status === 'trialing'
-        ? 'Your trial is active. Model usage, agents, and credits are all managed from Account settings.'
-        : `You're on a paid plan. Model usage, agents, and credits are all managed from Account settings.`,
+      body: 'Payment is pending. Model execution will be available after workspace funding is confirmed.',
       ctaLabel: 'Review billing',
       ctaUrl: billingUrl,
       feature,
-      heading: status === 'trialing' ? 'Your trial is active' : 'Your subscription is active',
+      heading: 'Payment pending',
+      reason: 'You received this because the subscription on your account is awaiting payment confirmation.',
+      subject: 'Payment is pending for your Overlay subscription',
+    }
+  }
+  if (status === 'active') {
+    return {
+      body: 'Your subscription is active. Manage workspace usage from Billing settings.',
+      ctaLabel: 'Review billing',
+      ctaUrl: billingUrl,
+      feature,
+      heading: 'Your subscription is active',
       reason: 'You received this because the subscription on your account changed.',
       subject: `Your Overlay subscription is ${label}`,
     }
@@ -185,7 +194,7 @@ function topUpLimitContent(event: LifecycleEmailEvent, appUrl: string): EmailCon
     ? new Date(event.attributes.periodEnd).toLocaleDateString('en-US', { month: 'long', day: 'numeric' })
     : null
   return {
-    body: `${workspaceName} used this month's credit and reached its ${limit} automatic top-up limit. Paid resources are paused${periodEnd ? ` until ${periodEnd}` : ' until next month'}. Free ones keep working. Add credit or raise the limit to keep going now.`,
+    body: `${workspaceName} used this month's credit and reached its ${limit} automatic top-up limit. Model execution is paused${periodEnd ? ` until ${periodEnd}` : ' until next month'}. Add credit or raise the limit to keep going now.`,
     ctaLabel: 'Open workspace billing',
     ctaUrl: appPath(appUrl, '/app/settings?section=workspace&workspace_tab=billing'),
     feature: card(

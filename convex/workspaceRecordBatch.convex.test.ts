@@ -31,10 +31,15 @@ test('usage recorded without a reservation is charged to the paid workspace, nev
   })
   await convex.mutation(api.billing.accountSubscriptions.upsertByServer, {
     billingAccountId: 'ba-1', serverSecret: 'test-secret', planKind: 'paid', planAmountCents: 800, status: 'active',
+    stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1', currentPeriodStart: 1_000, currentPeriodEnd: 2_000_000_000_000,
+  })
+  await convex.mutation(api.billing.accountSubscriptions.fundPaidPeriodByServer, {
+    billingAccountId: 'ba-1', serverSecret: 'test-secret', stripeCustomerId: 'cus_1', stripeSubscriptionId: 'sub_1',
+    paidInvoiceId: 'in_test', paidPeriodStart: 1_000, paidPeriodEnd: 2_000_000_000_000, amountCents: 800,
   })
   await convex.mutation(api.platform.usage.recordBatch, {
     serverSecret: 'test-secret', userId: 'user-1', operationId: 'chat.suggestions:1',
-    events: [{ type: 'generation', modelId: 'openrouter/free', cost: 3, inputTokens: 100, outputTokens: 50, timestamp: 5 }],
+    events: [{ type: 'generation', modelId: 'openai/gpt-5.4', cost: 3, inputTokens: 100, outputTokens: 50, timestamp: 5 }],
   })
   const state = await convex.run(async (ctx) => ({
     balance: (await ctx.db.query('billingAccountBalances').collect()).find((row) => row.billingAccountId === 'ba-1'),

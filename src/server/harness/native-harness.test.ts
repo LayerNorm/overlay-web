@@ -5,7 +5,7 @@ import { nativeHarnessChildInput, nativeHarnessWorkflow, startNativeHarnessChild
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), claim: vi.fn(), apply: vi.fn(), run: vi.fn(), ports: vi.fn(),
   tools: vi.fn(), waits: vi.fn(), attach: vi.fn(), finish: vi.fn(), notify: vi.fn(), child: vi.fn(),
-  admit: vi.fn(), start: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), fallback: vi.fn(), repositoryGet: vi.fn() }))
+  admit: vi.fn(), start: vi.fn(), conflict: vi.fn(), dispose: vi.fn(), repositoryGet: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('workflow', () => ({
   FatalError: class extends Error {}, getWorkflowMetadata: () => ({ workflowRunId: 'workflow' }),
@@ -23,13 +23,13 @@ vi.mock('./native-tools', () => ({ createNativeHarnessTools: mocks.tools }))
 vi.mock('./waits', () => ({ createHarnessWaitPorts: mocks.waits }))
 vi.mock('./native-child-steps', () => ({ admitNativeHarnessChild: mocks.admit }))
 vi.mock('./native-delivery-steps', () => ({ attachNativeHarnessDelivery: mocks.attach,
-  finishNativeHarnessDelivery: mocks.finish, projectNativeHarnessWait: mocks.waits, writeNativeHarnessFallback: mocks.fallback }))
+  finishNativeHarnessDelivery: mocks.finish, projectNativeHarnessWait: mocks.waits }))
 vi.mock('./personal-wait-steps', () => ({ harnessWakeToken: (id: string) => `harness:wake:${id}`,
   notifyHarnessAncestors: mocks.notify, readHarnessChild: mocks.child }))
 vi.mock('@/server/harness/native-tools', () => ({ createNativeHarnessTools: mocks.tools }))
 vi.mock('@/server/harness/harness-transcript', async importOriginal => ({
   ...(await importOriginal<typeof import('@/server/harness/harness-transcript')>()),
-  readSettledHarnessTranscript: vi.fn(async () => ({
+  readHarnessTranscriptForDelivery: vi.fn(async () => ({
     persistence: { content: '', parts: [] }, steps: [], truncated: false,
     newestSequence: null, oldestSequence: null,
   })),
@@ -136,12 +136,49 @@ test('execution failure terminates and finalizes an owning native Harness run', 
   mocks.run.mockRejectedValue(new Error('Harness execution failed.'))
   mocks.apply.mockResolvedValue(failed)
   await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed' })
-  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed',
-    expect.objectContaining({
-      type: 'terminate', status: 'failed', reason: expect.stringContaining('Diagnostic ID:'),
-      diagnostic: expect.objectContaining({ code: 'UNKNOWN', retryability: 'reconcile' }),
-    }))
-  expect(mocks.apply).toHaveBeenCalledTimes(1)
+  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 }, 'execution-failed', {
+    type: 'terminate', status: 'failed', reason: 'Harness execution failed.',
+  })
+  expect(mocks.finish).toHaveBeenCalledOnce()
+})
+
+test('serialized execution failures retain their cause without retrying the native run', async () => {
+  const reason = 'STREAM_ERROR: Stream failed. Caused by: Connection closed.'
+  mocks.run.mockRejectedValue({ code: 'STREAM_ERROR', message: 'Stream failed.', cause: { message: 'Connection closed.' } })
+  mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: reason })
+  await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed' })
+  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 }, 'execution-failed', {
+    type: 'terminate', status: 'failed', reason,
+  })
+  expect(mocks.run).toHaveBeenCalledOnce()
+  expect(mocks.finish).toHaveBeenCalledOnce()
+})
+
+test('SDK rate limits terminate once with descriptive delivery and no new retry or fallback', async () => {
+  const reason = 'The model provider rate limit or quota was exceeded. Check provider limits before trying again. (AI_APICallError, HTTP 429)'
+  mocks.run.mockRejectedValue({ name: 'AI_APICallError', statusCode: 429, isRetryable: true, message: 'private payload' })
+  mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: reason })
+  await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed' })
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 }, 'execution-failed', {
+    type: 'terminate', status: 'failed', reason,
+  })
+  expect(mocks.run).toHaveBeenCalledOnce()
+  expect(mocks.finish).toHaveBeenCalledOnce()
+})
+
+test('provider content-filter rejection terminates once with its actual reason', async () => {
+  const reason = 'The model provider blocked this response with its content filter (data_inspection_failed). Any partial response is incomplete.'
+  mocks.run.mockRejectedValue({ name: 'AI_TypeValidationError',
+    cause: { name: 'ZodError', message: 'Invalid input: expected array, received undefined at choices' },
+    value: { error: { code: 'data_inspection_failed' } },
+  })
+  const failed = { ...state, status: 'failed' as const, terminalReason: reason }
+  mocks.apply.mockResolvedValue(failed)
+  await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed' })
+  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 }, 'execution-failed', {
+    type: 'terminate', status: 'failed', reason,
+  })
+  expect(mocks.run).toHaveBeenCalledOnce()
   expect(mocks.finish).toHaveBeenCalledOnce()
 })
 

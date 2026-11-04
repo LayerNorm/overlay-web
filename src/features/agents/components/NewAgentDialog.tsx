@@ -13,7 +13,7 @@ import type {
 import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle, toast } from '@overlay/ui/primitives'
 import { ChatModelPicker } from '@overlay/chat-react'
 import { MODEL_RECOMMENDATIONS, getModelsByIntelligence, getGatewayCatalogRevision } from '@/shared/ai/gateway/model-data'
-import { NEW_AGENT_DEFAULT_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
+import { NEW_AGENT_DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import {
   AGENT_TOOL_GROUPS,
   AGENT_TOOL_PRESETS,
@@ -32,15 +32,8 @@ import type { AgentModelFieldProps } from './AgentEditorForm'
 import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
 import { FieldLabel } from './InfoTip'
-import { CloudAgentProgress } from './CloudAgentProgress'
-import { OtherAgentFields } from './OtherAgentFields'
-import { initialOtherAgentDraft, isOtherAgentDraftValid, type OtherAgentDraft } from './cloud-agent-draft'
-import { useCloudAgentCreate } from './use-cloud-agent-create'
-import { useIsFreePlan } from './use-paid-plan'
 
 export type NewAgentDraft = {
-  kind: 'overlay' | 'other'
-  other: OtherAgentDraft
   name: string
   instructions: string
   avatarShape: WorkspaceAgentCreatureShape
@@ -54,8 +47,6 @@ export type NewAgentDraft = {
 
 export function initialNewAgentDraft(): NewAgentDraft {
   return {
-    kind: 'overlay',
-    other: initialOtherAgentDraft(),
     name: '',
     instructions: '',
     avatarShape: 'hexagon',
@@ -70,7 +61,6 @@ export function initialNewAgentDraft(): NewAgentDraft {
 
 /** Overlay agents need a name and instructions; nothing else is required. */
 export function isNewAgentDraftValid(draft: NewAgentDraft): boolean {
-  if (draft.kind === 'other') return isOtherAgentDraftValid(draft.name, draft.other)
   return Boolean(draft.name.trim() && draft.instructions.trim() && draft.modelId.trim())
 }
 
@@ -82,7 +72,7 @@ const COMPUTER_SIZE_OPTIONS = [
 
 const TYPE_OPTIONS = [
   { value: 'overlay', label: 'Overlay agent' },
-  { value: 'other', label: 'Other agent' },
+  { value: 'other', label: 'Connect your agent' },
 ] as const
 
 const ACCESS_OPTIONS = [
@@ -102,7 +92,7 @@ const PRESET_SUMMARY: Record<AgentToolPreset, string> = {
   readonly: 'Read-only tools',
 }
 
-/** The draft's model when it is offered, else the first enabled model (e.g. free tier without the paid default). */
+/** The draft's model when it is offered, else the default model. */
 export function resolveDraftModelId(modelId: string, modelIds: readonly string[]): string {
   return modelIds.includes(modelId) ? modelId : (modelIds[0] ?? modelId)
 }
@@ -146,8 +136,6 @@ function AdvancedSection({ draft, onChange, modelField }: {
               selectableTextModels={modelField.selectableTextModels}
               selectedActModel={draft.modelId}
               onToggleTextModel={(modelId) => onChange({ modelId })}
-              isFreeTier={modelField.isFreeTier}
-              isFreeTierChatModelId={isFreeTierChatModelId}
               favoriteScope={modelField.favoriteScope}
               modelRecommendations={MODEL_RECOMMENDATIONS}
               textModelsLoading={modelField.textModelsLoading}
@@ -211,20 +199,13 @@ function ComputerSection({ draft, onChange }: {
 }
 
 /** The dialog's fields. Presentational: all state lives in `draft`. */
-export function NewAgentFields({ draft, onChange, modelField, computersAvailable, otherAgentsAvailable = false, otherAgentsEnabled = otherAgentsAvailable, otherAgentsNote = 'Paid plans', onOpenMachineSetup }: {
+export function NewAgentFields({ draft, onChange, modelField, computersAvailable, onOpenMachineSetup }: {
   draft: NewAgentDraft
   onChange(patch: Partial<NewAgentDraft>): void
   modelField: AgentModelFieldProps
   computersAvailable: boolean
-  /** Overlay Cloud agents are offered only where the deployment supports them. */
-  otherAgentsAvailable?: boolean
-  otherAgentsEnabled?: boolean
-  /** Why Other agent is unavailable ("Coming soon", or "Paid plans" on a free plan). */
-  otherAgentsNote?: string
   onOpenMachineSetup?(): void
 }) {
-  const other = otherAgentsAvailable && draft.kind === 'other'
-  const patchOther = useCallback((patch: Partial<OtherAgentDraft>) => onChange({ other: { ...draft.other, ...patch } }), [draft.other, onChange])
   return (
     <div className="space-y-3.5">
       <AgentAvatarPicker
@@ -256,27 +237,17 @@ export function NewAgentFields({ draft, onChange, modelField, computersAvailable
           className="min-h-20 resize-none!"
         />
       </div>
-      {otherAgentsEnabled ? <div>
-        <FieldLabel info="Overlay agents are built into Overlay. Other agents (Claude Code, Codex) bring their own tools and run on a machine.">Type</FieldLabel>
+      {onOpenMachineSetup ? <div>
+        <FieldLabel info="Overlay agents are built into Overlay. Connect a user-owned Agent Host to use an external agent.">Type</FieldLabel>
         <SegmentedControl
           ariaLabel="Agent type"
           layout="stretch"
-          value={draft.kind}
-          options={otherAgentsAvailable ? TYPE_OPTIONS : TYPE_OPTIONS.map((option) => (option.value === 'other' ? { ...option, description: otherAgentsNote, disabled: true } : option))}
-          onChange={(kind) => onChange({ kind })}
+          value="overlay"
+          options={TYPE_OPTIONS}
+          onChange={(kind) => { if (kind === 'other') onOpenMachineSetup() }}
         />
       </div> : null}
-      {other ? (
-        <OtherAgentFields
-          other={draft.other}
-          size={draft.computerSize}
-          onChange={patchOther}
-          onSizeChange={(computerSize) => onChange({ computerSize })}
-          onOpenMachineSetup={() => onOpenMachineSetup?.()}
-          active
-        />
-      ) : null}
-      {!other && computersAvailable ? <ComputerSection draft={draft} onChange={onChange} /> : null}
+      {computersAvailable ? <ComputerSection draft={draft} onChange={onChange} /> : null}
       <div>
         <FieldLabel info="Who can see, chat with, or @-mention this agent.">Access</FieldLabel>
         <SegmentedControl
@@ -287,7 +258,7 @@ export function NewAgentFields({ draft, onChange, modelField, computersAvailable
           onChange={(visibility) => onChange({ visibility })}
         />
       </div>
-      {other ? null : <AdvancedSection draft={draft} onChange={onChange} modelField={modelField} />}
+      <AdvancedSection draft={draft} onChange={onChange} modelField={modelField} />
     </div>
   )
 }
@@ -311,21 +282,19 @@ function useNewAgentModelField(workspaceId: string | null, draftModelId: string)
   const allTextModels = useMemo(() => {
     void revision
     void getGatewayCatalogRevision()
-    return getModelsByIntelligence(false)
+    return getModelsByIntelligence()
   }, [revision])
   const accessUnresolved = !modelAccess.entitlements
   const restricted = modelAccess.loading || accessUnresolved
   const selectableTextModels = useMemo(
     () => restricted
-      ? buildSelectableTextModels({ isModelAccessRestricted: true, effectiveOnlyAllowZdrModels: false })
+      ? buildSelectableTextModels({ effectiveOnlyAllowZdrModels: false })
       : modelAccess.selectableTextModels,
     [restricted, modelAccess.selectableTextModels],
   )
   const modelId = resolveDraftModelId(draftModelId, selectableTextModels.map((model) => model.id))
   const modelField = {
     favoriteScope: authUser?.id ?? null,
-    isFreeTier: modelAccess.isFreeTier || restricted,
-    isFreeTierWorkspace: modelAccess.isFreeTier,
     modelPickerLabel: allTextModels.find((model) => model.id === modelId)?.name ?? modelId,
     selectableTextModels,
     textModelsLoading: false,
@@ -371,7 +340,7 @@ async function createAgentFromDraft(workspaceId: string, draft: NewAgentDraft, c
   return { agent: created.agent, computerError }
 }
 
-/** New-agent dialog: an Overlay agent, or an agent (Claude Code, Codex) on Overlay Cloud. */
+/** New-agent dialog for native Overlay agents, with a direct path to BYOM setup. */
 export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMachineSetup }: {
   open: boolean
   workspaceId: string | null
@@ -382,46 +351,21 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
 }) {
   const { capabilities } = useOverlayCapabilities()
   const computersAvailable = capabilities.computers === true
-  const freePlan = useIsFreePlan(open && capabilities.cloudAgents === true && capabilities.billing === true, workspaceId)
-  const otherAgentsAvailable = capabilities.cloudAgents === true && !freePlan
-  const otherAgentsNote = freePlan ? 'Paid plans' : 'Coming soon'
   const [rawDraft, setDraft] = useState(initialNewAgentDraft)
   const { modelField, modelId } = useNewAgentModelField(workspaceId, rawDraft.modelId)
-  const draft = { ...rawDraft, kind: otherAgentsAvailable ? rawDraft.kind : 'overlay' as const, modelId }
+  const draft = { ...rawDraft, modelId }
   const [busy, setBusy] = useState(false)
   const update = useCallback((patch: Partial<NewAgentDraft>) => setDraft((current) => ({ ...current, ...patch })), [])
-  const cloud = useCloudAgentCreate({
-    workspaceId,
-    onReady: (agent) => { setDraft(initialNewAgentDraft()); cloud.reset(); onCreated(agent, null) },
-  })
-  const working = busy || cloud.busy
+  const working = busy
 
   const close = () => {
     if (working) return
-    // Closing while a machine starts keeps the agent; its page shows the same progress.
-    if (cloud.view) {
-      const agent = cloud.view.agent
-      cloud.reset()
-      setDraft(initialNewAgentDraft())
-      onCreated(agent, null)
-      return
-    }
     setDraft(initialNewAgentDraft())
     onClose()
   }
 
   const submit = async () => {
     if (!workspaceId || working || !isNewAgentDraftValid(draft)) return
-    if (draft.kind === 'other') {
-      await cloud.create({
-        name: draft.name,
-        description: draft.instructions,
-        avatarShape: draft.avatarShape,
-        avatarColor: draft.avatarColor,
-        visibility: draft.visibility,
-      }, draft.other, draft.computerSize)
-      return
-    }
     setBusy(true)
     try {
       const { agent, computerError } = await createAgentFromDraft(workspaceId, draft, computersAvailable)
@@ -435,14 +379,11 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
     }
   }
 
-  const shownError = cloud.error
-  const failed = cloud.view?.phase === 'failed'
-
   return (
     <DialogFrame
       open={open}
       onOpenChange={(next) => { if (!next) close() }}
-      title={cloud.view ? `Starting ${cloud.view.agent.name}` : 'New agent'}
+      title="New agent"
       aria-label="New agent"
       className="flex max-h-[min(860px,calc(100vh-32px))] w-[min(440px,94vw)]! flex-col rounded-[20px]! p-0! [&>div:first-child]:px-5 [&>div:first-child]:pt-4"
       actions={(
@@ -457,41 +398,19 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
       )}
     >
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5 pt-1">
-        {cloud.view ? (
-          <>
-            <CloudAgentProgress phase={cloud.view.phase} />
-            {failed ? <p role="alert" className="mt-2 text-xs text-red-500">{cloud.view.error}</p> : (
-              <p className="mt-2 text-xs text-(--muted)">This takes about a minute. You can close this; the agent keeps starting.</p>
-            )}
-          </>
-        ) : (
-          <NewAgentFields
-            draft={draft}
-            onChange={update}
-            modelField={modelField}
-            computersAvailable={computersAvailable}
-            otherAgentsAvailable={otherAgentsAvailable}
-            otherAgentsEnabled={capabilities.cloudAgents === true}
-            otherAgentsNote={otherAgentsNote}
-            {...(onOpenMachineSetup ? { onOpenMachineSetup } : {})}
-          />
-        )}
-        {shownError && !failed ? <p role="alert" className="mt-3 text-xs text-red-500">{shownError}</p> : null}
+        <NewAgentFields
+          draft={draft}
+          onChange={update}
+          modelField={modelField}
+          computersAvailable={computersAvailable}
+          {...(capabilities.connectedAgents === true && onOpenMachineSetup ? { onOpenMachineSetup } : {})}
+        />
       </div>
       <div className="flex shrink-0 justify-end gap-2 border-t border-(--border) px-5 py-3">
-        {cloud.view ? (
-          <>
-            <Button variant="secondary" size="sm" onClick={close}>{failed ? 'Close' : 'Continue in background'}</Button>
-            {failed ? <Button variant="primary" size="sm" onClick={() => void cloud.retry(draft.other, draft.computerSize)}>Try again</Button> : null}
-          </>
-        ) : (
-          <>
-            <Button variant="secondary" size="sm" onClick={close} disabled={working}>Cancel</Button>
-            <Button variant="primary" size="sm" onClick={() => void submit()} disabled={working || !isNewAgentDraftValid(draft)}>
-              {working ? 'Creating…' : 'Create agent'}
-            </Button>
-          </>
-        )}
+        <Button variant="secondary" size="sm" onClick={close} disabled={working}>Cancel</Button>
+        <Button variant="primary" size="sm" onClick={() => void submit()} disabled={working || !isNewAgentDraftValid(draft)}>
+          {working ? 'Creating…' : 'Create agent'}
+        </Button>
       </div>
     </DialogFrame>
   )

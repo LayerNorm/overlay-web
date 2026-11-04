@@ -2,6 +2,12 @@ import type { HarnessStatus } from './harness-state'
 
 export const MAX_HARNESS_RESOURCE_SPEND_MICROS = 100_000_000
 
+// Funding metadata retains fractional cents; the billing ledger uses dollar micros.
+export function isSafeHarnessFundingCents(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value)
+    && value >= 0 && value <= Number.MAX_SAFE_INTEGER / 10_000
+}
+
 export const HARNESS_RESOURCE_TIME_GRANTS_MS = [
   3_600_000,
   86_400_000,

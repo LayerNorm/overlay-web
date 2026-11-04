@@ -8,6 +8,7 @@ export interface InlineNavItem {
   icon?: LucideIcon
   locked?: boolean
   href?: string
+  onNavigate?: () => void
   badgeCount?: number
   children?: ReadonlyArray<InlineNavItem>
   expanded?: boolean

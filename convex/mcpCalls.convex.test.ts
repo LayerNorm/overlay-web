@@ -19,7 +19,7 @@ const modules = import.meta.glob('./**/*.ts')
 const secret = 'mcp-journal-test-only'
 beforeEach(() => { process.env.INTERNAL_API_SECRET = secret })
 afterEach(() => vi.useRealTimers())
-async function fixture() {
+async function fixture(environmentKind: 'overlay_cloud' | 'vps' = 'overlay_cloud') {
   const convex = convexTest(schema, modules)
   const now = Date.now()
   const ids = await convex.run(async ctx => {
@@ -27,7 +27,7 @@ async function fixture() {
     await ctx.db.insert('workspacePrincipals', { principalId: 'p', workspaceId: 'w', userId: 'u', type: 'human', displayName: 'Test', createdAt: now, updatedAt: now })
     const membership = await ctx.db.insert('workspaceMemberships', { membershipId: 'member', workspaceId: 'w', principalId: 'p', role: 'member', status: 'active', joinedAt: now, updatedAt: now })
     const agent = await ctx.db.insert('workspaceAgentDefinitions', { agentId: 'a', workspaceId: 'w', principalId: 'ap', name: 'Test', instructions: '', harness: 'codex', modelId: 'byo/codex', allowedToolIds: [], invocationPolicy: 'mention', visibility: 'creator', createdByPrincipalId: 'p', createdAt: now, updatedAt: now })
-    const environment = await ctx.db.insert('agentEnvironments', { environmentId: 'e', workspaceId: 'w', kind: 'overlay_cloud', name: 'Test', status: 'online', capabilities: {}, createdAt: now, updatedAt: now })
+    const environment = await ctx.db.insert('agentEnvironments', { environmentId: 'e', workspaceId: 'w', kind: environmentKind, name: 'Test', status: 'online', capabilities: {}, createdAt: now, updatedAt: now })
     const binding = await ctx.db.insert('agentBindings', { bindingId: 'b', workspaceId: 'w', agentId: 'a', environmentId: 'e', protocolAdapter: 'acp', adapterConfig: {}, enabled: true, createdAt: now, updatedAt: now })
     const conversationId = await ctx.db.insert('conversations', { userId: 'u', workspaceId: 'w', title: 'Test', lastModified: now, createdAt: now, updatedAt: now, lastMode: 'act', askModelIds: [], actModelId: 'openrouter/free' })
     const messageId = await ctx.db.insert('conversationMessages', { conversationId, userId: 'u', turnId: 't', role: 'assistant', mode: 'act', content: '', contentType: 'text', status: 'generating', createdAt: now, updatedAt: now })
@@ -127,7 +127,7 @@ test('a fresh server journal reconstructs an exact large result without claiming
 })
 
 async function httpFixture() {
-  const f = await fixture()
+  const f = await fixture('vps')
   const claims = { userId: 'u', workspaceId: 'w', agentId: 'a', agentPrincipalId: 'ap', conversationId: f.ids.conversationId,
     environmentId: 'e', runId: 'r', turnId: 't', invocationNonce: 'n', modelId: 'test', memoryEnabled: true,
     grant: { allowedToolIds: [], isDefaultMaster: false }, sessionId: 's', execution: { attemptId: 's', generation: 1 }, expiresAt: f.auth.expiresAt }

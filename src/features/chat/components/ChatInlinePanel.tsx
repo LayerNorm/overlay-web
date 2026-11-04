@@ -4,7 +4,7 @@ import { useState, useCallback, useEffect, useEffectEvent, useRef, type Dispatch
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
-import { Archive, Bot, Check, Hash, Pencil, Slack, UserRound, UsersRound } from 'lucide-react'
+import { Archive, Bot, Check, Hash, MessageSquare, Pencil, Slack, UserRound, UsersRound } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
 import {
@@ -123,7 +123,7 @@ function ChatConversationIcon({
   if (chat.conversationType === 'dm') {
     return <DirectMessageIcon participantTypes={chat.otherParticipantTypes} size={size} className={className} />
   }
-  return null
+  return <MessageSquare size={size} className={className} />
 }
 
 function useBrowserRouteVersion() {

@@ -8,7 +8,6 @@ import {
   initialCredentialRequestSchema,
   driveCredentialsRequestSchema,
   driveCredentialsResponseSchema,
-  providerCredentialsRequestSchema,
 } from '@layernorm/overlay-agent-bridge-protocol'
 import {
   CreateWebhookSubscriptionRequest,
@@ -302,20 +301,6 @@ export const webApiBoundaryDefinitions = [
   {
     method: 'POST', path: '/api/v1/agent-environments/enrollment-sessions', schema: { json: EmptyRequest, response: UnknownResponse },
     summary: 'Create a short-lived single-use environment enrollment code', tag: 'Agent environments',
-    publicReference: false,
-  },
-  {
-    method: 'POST', path: '/api/v1/agent-environments/cloud',
-    schema: {
-      json: z.object({
-        agentId: z.string().min(1).max(256),
-        adapterId: z.enum(['claude-code', 'codex']),
-        providerAccountId: z.string().min(1).max(64),
-        size: z.enum(['small', 'default', 'large']).optional(),
-      }).strict(),
-      response: UnknownResponse,
-    },
-    summary: 'Provision an Overlay Cloud machine for an agent (Claude Code or Codex)', tag: 'Agent environments',
     publicReference: false,
   },
   {
@@ -803,7 +788,7 @@ export const webApiBoundaryDefinitions = [
   { method: 'POST', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Create a model provider connection', tag: 'Model Providers' },
   { method: 'PATCH', path: '/api/v1/providers/connections', schema: { json: ProviderConnectionMutationRequest }, summary: 'Update a model provider connection', tag: 'Model Providers' },
   { method: 'DELETE', path: '/api/v1/providers/connections', schema: { query: ProviderConnectionDeleteQuery }, summary: 'Delete a model provider connection', tag: 'Model Providers' },
-  { method: 'GET', path: '/api/v1/agents/{agentId}/profile', routePath: '/api/v1/agents/[agentId]/profile', pattern: /^\/api\/v1\/agents\/[^/]+\/profile$/, schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'An Overlay Cloud agent\'s imported config: versions, what each needs, and the values it lacks', tag: 'Agents', publicReference: false },
+  { method: 'GET', path: '/api/v1/agents/{agentId}/profile', routePath: '/api/v1/agents/[agentId]/profile', pattern: /^\/api\/v1\/agents\/[^/]+\/profile$/, schema: { query: EmptyQuery, response: UnknownResponse }, summary: 'Read sanitized historical profile metadata for a retired hosted agent', tag: 'Agents', publicReference: false },
   {
     method: 'POST', path: '/api/v1/agents/{agentId}/profile', routePath: '/api/v1/agents/[agentId]/profile', pattern: /^\/api\/v1\/agents\/[^/]+\/profile$/,
     schema: {
@@ -898,13 +883,6 @@ export const webApiBoundaryDefinitions = [
     method: 'DELETE', path: '/api/v1/provider-accounts',
     schema: { query: z.object({ accountId: z.string().min(1) }), response: UnknownResponse },
     summary: 'Remove an account and delete its credential from the vault', tag: 'Provider accounts',
-  },
-  {
-    method: 'POST', path: '/api/v1/agent-environments/{environmentId}/run-credentials', routePath: '/api/v1/agent-environments/[environmentId]/run-credentials',
-    pattern: /^\/api\/v1\/agent-environments\/[^/]+\/run-credentials$/,
-    schema: { json: providerCredentialsRequestSchema, response: UnknownResponse },
-    summary: 'Release provider credentials for an active run or idle bound-adapter discovery to an Overlay Cloud host', tag: 'Agent environments',
-    publicReference: false,
   },
   {
     method: 'POST', path: '/api/v1/agent-environments/{environmentId}/drive-credentials', routePath: '/api/v1/agent-environments/[environmentId]/drive-credentials',
@@ -1133,6 +1111,7 @@ export const webApiBoundaryDefinitions = [
 ] satisfies readonly WebApiBoundaryDefinition[]
 
 export const webApiExcludedRouteDefinitions = [
+  { routePath: '/api/v1/harness/continuation', reason: 'Private continuation callback requires the internal API secret and is excluded from the public web API reference.' },
   {
     routePath: '/api/v1/mcps/oauth/callback',
     reason: 'Third-party OAuth redirect and desktop confirmation flow; it is protected by single-use state rather than the public API authentication scheme.',
@@ -1140,6 +1119,14 @@ export const webApiExcludedRouteDefinitions = [
   {
     routePath: '/api/v1/extensions/[extensionId]/[...path]',
     reason: 'Extension proxy route. It is not part of the stable public web API reference.',
+  },
+  {
+    routePath: '/api/v1/agent-environments/cloud',
+    reason: 'Retired hosted-runtime provisioning route. Returns 410 and is intentionally excluded from the API reference.',
+  },
+  {
+    routePath: '/api/v1/agent-environments/[environmentId]/run-credentials',
+    reason: 'Retired hosted-runtime credential route. Returns 410 and is intentionally excluded from the API reference.',
   },
   // Agent and agent-environment routes pending full boundary definitions.
   { routePath: '/api/v1/agent-bindings', reason: 'Agent binding management; boundary definition pending. Protected by workspace authorization.' },
@@ -1157,7 +1144,6 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/agent-environments/[environmentId]/artifacts/[artifactId]/complete', reason: 'Connected-agent artifact completion; boundary definition pending. Protected by device-key authentication.' },
   { routePath: '/api/v1/agent-environments/artifacts/cleanup', reason: 'Internal artifact cleanup cron trigger; not part of the public web API reference.' },
   { routePath: '/api/v1/agent-environments/operations/reconcile', reason: 'Internal reconciliation cron trigger; not part of the public web API reference.' },
-  { routePath: '/api/v1/models/overlay-free/refresh', reason: 'Private refresh callback requires the internal API secret and is excluded from the public web API reference.' },
   // Slack surfaces: a third-party install flow, a signed webhook, and binding management.
   { routePath: '/api/v1/surfaces/slack/connect', reason: 'Starts the Slack app install OAuth redirect; a browser flow, not a public API call.' },
   { routePath: '/api/v1/surfaces/slack/callback', reason: 'Slack OAuth redirect target, protected by single-use state rather than the public API authentication scheme.' },

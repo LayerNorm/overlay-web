@@ -164,7 +164,6 @@ export interface UsageRepository {
   }>
   recordBatch(args: {
     events: UsageEvent[]
-    forceFreeTierLimits?: boolean
     operationId: string
     userId: string
     workspaceId?: string

@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import { AdminConsolePage } from '@/features/admin/AdminConsolePage'
+import { ADMIN_THEME_COOKIE, parseAdminTheme } from '@/features/admin/admin-theme'
 import { SessionTouch } from '@/features/admin/SessionTouch'
 import { operatorCapabilities } from '@/server/operator-permissions'
 import { resolveOperator } from '@/server/operator'
@@ -16,11 +17,17 @@ export default async function Page() {
   if (outcome.kind === 'denied') redirect('/denied')
 
   const capabilities = operatorCapabilities(outcome.principal)
+  const { user } = outcome
+  const name = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.email
 
   return (
     <>
       <SessionTouch />
-      <AdminConsolePage capabilities={capabilities} />
+      <AdminConsolePage
+        capabilities={capabilities}
+        operator={{ name, email: user.email, role: outcome.principal.role }}
+        theme={parseAdminTheme(store.get(ADMIN_THEME_COOKIE)?.value)}
+      />
     </>
   )
 }

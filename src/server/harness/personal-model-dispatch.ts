@@ -37,5 +37,5 @@ export async function authorizePersonalHarnessModelDispatch(reference: HarnessMo
     ...(automationContext && input.access.authentication.type === 'automation'
       ? { ...automationContext, automationExecution: true, automationId: input.access.authentication.automationId,
         automationRunId: input.access.authentication.automationRunId } : {}),
-  }))
+  }, undefined, { renewalMode: true, renewLease: true }))
 }

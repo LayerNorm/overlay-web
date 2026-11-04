@@ -37,7 +37,6 @@ import {
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { contextForRequest, withObservabilityContext } from '@/server/observability/context'
-import { captureBffRequestMetric } from '@/server/observability/metrics'
 import { flushPostHog } from '@/server/observability/posthog-server'
 import { rejectCrossSiteBrowserMutation } from '@/server/security/browser-mutation-origin'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
@@ -156,9 +155,9 @@ async function handleScopedBffRoute(
   const startTime = performance.now()
   const route = request.nextUrl.pathname
 
-  // Helper to emit BFF metrics on every exit path (early returns + final return).
-  // Flushes PostHog before returning so events aren't lost when the serverless
-  // function exits.
+  // Logs a request metric on every exit path (early returns + final return).
+  // Flushes PostHog before returning so product events captured during the
+  // request aren't lost when the serverless function exits.
   async function emitMetric(
     response: Response,
     authType: 'api-key' | 'service' | 'session' | 'access-token' | 'anonymous' = 'anonymous',
@@ -178,16 +177,6 @@ async function handleScopedBffRoute(
       responseBytes,
       retryAfterMs: retryAfter ? parseRetryAfterMs(retryAfter) : undefined,
     }))
-    captureBffRequestMetric({
-      route,
-      method: request.method,
-      statusCode: response.status,
-      durationMs,
-      authType,
-      workspaceId,
-      responseBytes,
-      retryAfterMs: retryAfter ? parseRetryAfterMs(retryAfter) : undefined,
-    })
     await flushPostHog()
   }
 

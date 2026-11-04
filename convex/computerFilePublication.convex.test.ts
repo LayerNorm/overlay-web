@@ -28,7 +28,7 @@ const snapshot = {
   mimeType: 'video/mp4',
 }
 
-async function fixture(deadlineAt: number | null = Date.now() + 60_000) {
+async function fixture(deadlineAt: number = Date.now() + 60_000, renewable = false) {
   const convex = convexTest(schema, modules)
   const ids = await convex.run(async ctx => {
     await ctx.db.insert('workspacePrincipals', {
@@ -63,9 +63,9 @@ async function fixture(deadlineAt: number | null = Date.now() + 60_000) {
       workspaceId,
       allowedToolIds: ['computer_publish_file', 'write_file'],
       requiresPlan: true,
-      ...(deadlineAt === null ? { limitsVersion: 2 as const } : {}),
+      ...(renewable ? { executionPolicyVersion: 2 as const, spendingMode: 'workspace' as const } : {}),
       deadlineAt,
-      maxCostMicros: 100,
+      maxCostMicros: renewable ? 0 : 100,
       maxParallelChildren: 1,
       maxDepth: 1,
     },
@@ -76,6 +76,7 @@ async function fixture(deadlineAt: number | null = Date.now() + 60_000) {
   await convex.mutation(harnessMutation('apply'), {
     actorUserId: userId,
     runId: admission.runId,
+    workflowRunId: 'workflow-publication', executionGeneration: 0,
     operationId: 'claim-publication',
     expectedRevision: 0,
     operation: claim,
@@ -121,9 +122,9 @@ test('admitted and claimed run prepares concurrently once, then commits and repl
   })
 })
 
-test('unbounded authority uses request-scoped upload expiry while a finite task deadline clips it', async () => {
+test('renewable lease uses request-scoped upload expiry while a finite task deadline clips it', async () => {
   const requestStartedAt = Date.now()
-  const unbounded = await fixture(null)
+  const unbounded = await fixture(Date.now() + 24 * 60 * 60_000, true)
   const upload = await unbounded.convex.mutation(publicationMutation('prepare'), publicationArgs(unbounded.reference))
   expect(upload.uploadExpiresAt).toBeGreaterThan(requestStartedAt)
   expect(upload.uploadExpiresAt).toBeLessThanOrEqual(Date.now() + 15 * 60 * 1_000)
@@ -131,7 +132,7 @@ test('unbounded authority uses request-scoped upload expiry while a finite task 
     const run = await ctx.db.query('harnessRuns')
       .withIndex('by_runId', query => query.eq('runId', unbounded.admission.runId))
       .unique()
-    expect(run?.metadataJson).toContain('"deadlineAt":null')
+    expect(JSON.parse(run!.metadataJson).policy.deadlineAt).toBeGreaterThan(upload.uploadExpiresAt)
     expect(run?.metadataJson).toContain('"status":"running"')
     const intent = await ctx.db.query('r2UploadIntents')
       .withIndex('by_r2Key', query => query.eq('r2Key', upload.r2Key))

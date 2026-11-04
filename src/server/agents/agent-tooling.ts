@@ -22,18 +22,6 @@ import type { ArtifactPublicationAuthority } from '@/server/files/ArtifactPublic
 const WEB_SEARCH_TOOL_IDS = ['web_search', 'deep_search', 'web_fetch'] as const
 /** MCP meta-tools, which stand in for every tool on every connected server. */
 const MCP_TOOL_IDS = ['search_mcp_tools', 'call_mcp_tool'] as const
-/**
- * Free-tier stubs are merged after the overlay allow-list is applied, so they
- * are the one way an overlay tool id can reach an agent that was not granted
- * it. They only answer "that needs a paid plan", but an ungranted agent should
- * not see the tool at all.
- */
-const FREE_TIER_STUB_TOOL_IDS = [
-  'web_search',
-  'deep_search',
-  'web_fetch',
-] as const
-
 export type WorkspaceAgentToolGrant = {
   agentId: string
   allowedToolIds: readonly string[]
@@ -81,13 +69,6 @@ export function applyAgentCapabilityFilter(args: {
   if (!args.capabilities.has('web_search')) WEB_SEARCH_TOOL_IDS.forEach((id) => withheld.add(id))
   if (!args.capabilities.has('mcp')) MCP_TOOL_IDS.forEach((id) => withheld.add(id))
   if (!args.capabilities.has('integrations')) args.integrationToolIds.forEach((id) => withheld.add(id))
-  const granted = new Set(args.overlayToolIds)
-  for (const stubId of FREE_TIER_STUB_TOOL_IDS) {
-    const grantedByCapability = (WEB_SEARCH_TOOL_IDS as readonly string[]).includes(stubId)
-      ? args.capabilities.has('web_search')
-      : granted.has(stubId)
-    if (!grantedByCapability) withheld.add(stubId)
-  }
   if (withheld.size === 0) return args.tools
   return Object.fromEntries(
     Object.entries(args.tools).filter(([toolId]) => !withheld.has(toolId)),

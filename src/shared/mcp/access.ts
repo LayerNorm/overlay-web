@@ -56,7 +56,7 @@ export const MCP_EXTERNAL_WITHHELD_TOOL_IDS: readonly string[] = [
 export type McpGroupCoverage = { exposed: true } | { exposed: false; reason: string }
 
 export const MCP_GROUP_COVERAGE: {
-  /** Connected agents (Claude Code, Codex, … on their own machine or an Overlay Cloud machine), grant-limited per agent. */
+  /** Connected user-owned agents (Claude Code, Codex, …), grant-limited per agent. */
   connectedAgents: Record<string, McpGroupCoverage>
   /** Outside AI apps (ChatGPT, Claude, Cursor…) at the Everything level. */
   externalApps: Record<string, McpGroupCoverage>

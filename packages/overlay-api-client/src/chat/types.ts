@@ -4,6 +4,8 @@ import type { PaginationQuery } from '../shared/types'
 import type {
   HarnessResourceDeliveryProjection,
 } from '@overlay/agent-runtime/harness-resource'
+import type { HarnessFundingPause } from '@overlay/agent-runtime/harness-state'
+import type { HarnessAuthorizationPause } from '@overlay/agent-runtime/harness-state'
 
 export interface ConversationQuery extends PaginationQuery {
   view?: 'personal' | 'dms' | 'channels' | 'all'
@@ -91,7 +93,7 @@ export type AgentRunResource = {
   mode: 'chat' | 'work' | 'room'
   runner: 'tool_loop' | 'workflow' | 'remote'
   liveness?: RemoteRunLiveness
-  status: 'queued' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'waiting_for_children' | 'waiting_for_resources' | 'completed' | 'failed' | 'cancelled'
+  status: 'queued' | 'running' | 'waiting_for_approval' | 'waiting_for_input' | 'waiting_for_children' | 'waiting_for_resources' | 'waiting_for_authorization' | 'completed' | 'failed' | 'cancelled'
   variantIndex?: number
   workflowRunId?: string
   leaseExpiresAt?: number
@@ -115,6 +117,8 @@ export type AgentRunResource = {
   }
   inputRequest?: { token: string; requestedAt: number; question: string }
   resourceRequest?: AgentRunResourceRequest
+  fundingPause?: HarnessFundingPause
+  authorizationPause?: HarnessAuthorizationPause
   approval?: {
     token: string
     requestedAt: number

@@ -2,7 +2,7 @@ export type AgentStartFailureClass = 'host_offline' | 'runtime_removed' | 'machi
 
 export function agentStartFailureClass(error: unknown): AgentStartFailureClass {
   const message = error instanceof Error ? error.message : String(error)
-  if (/hosted runtime is no longer available/i.test(message)) return 'runtime_removed'
+  if (/hosted runtime is no longer available|hosted_runtime_retired|hosted Overlay Cloud runtime is retired/i.test(message)) return 'runtime_removed'
   if (/MANAGED_SANDBOX_LEASE_UNAVAILABLE|cloud_agent_unavailable|machine is not available/i.test(message)) return 'machine_gone'
   return /offline|environment_unavailable|no connected environment/i.test(message)
     ? 'host_offline'

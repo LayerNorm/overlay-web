@@ -9,9 +9,8 @@ import { PricingEnd, PricingFaq, PricingHero, PricingKinds, PricingTrust } from 
 import s from './pricing.module.css'
 
 /**
- * Pricing. A workspace is free or paid (never the account). Paid is a monthly
- * plan of $8 to $500 that becomes that month's credit, then a hard stop or
- * automatic top-ups up to a monthly limit, itemized per resource.
+ * Workspace pricing starts at $8 a month and converts to usage credit.
+ * Usage can stop at the budget or use automatic top-ups up to a monthly limit.
  */
 export function PricingPage({ billingEnabled }: { billingEnabled: boolean }) {
   const { isAuthenticated } = useAuth()

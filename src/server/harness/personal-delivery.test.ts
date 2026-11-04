@@ -67,7 +67,7 @@ test('personal transcript recognizes JSON calls from the active surface tool set
       { text: `Read complete.\n\n${call}`, content: [{ type: 'text', text: `Read complete.\n\n${call}` }], toolCalls: [], toolResults: [] },
     ],
   } as never
-  const delivery = buildPersonalHarnessDelivery(result, undefined, [], new Set(['read_file']))
+  const delivery = buildPersonalHarnessDelivery(result, undefined, new Set(['read_file']))
   expect(delivery.content).toBe('Read complete.')
   expect(JSON.stringify(delivery.parts)).not.toContain(call)
 })
@@ -87,7 +87,7 @@ test('personal persistence removes nested tool-call arrays from per-step text pa
       toolResults: [],
     }],
   } as never
-  const delivery = buildPersonalHarnessDelivery(result, undefined, [], new Set(['get_note']))
+  const delivery = buildPersonalHarnessDelivery(result, undefined, new Set(['get_note']))
   expect(delivery.parts).toEqual([{ type: 'text', text: 'Read complete.' }])
   expect(delivery.content).toBe('Read complete.')
 })

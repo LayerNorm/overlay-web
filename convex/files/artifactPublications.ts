@@ -42,7 +42,7 @@ const snapshotValidator = v.object({
 const MAX_ARTIFACT_BYTES = 100 * 1024 * 1024
 const MAX_NAME_LENGTH = 255
 const MAX_PATH_LENGTH = 4096
-// Upload authorization is request-scoped, even when the owning task has no deadline.
+// Upload authorization is request-scoped, independent of the renewable execution lease.
 const ARTIFACT_UPLOAD_AUTHORIZATION_MS = 15 * 60 * 1_000
 
 function assertArtifactInput(input: ComputerArtifactInput): void {
@@ -188,8 +188,8 @@ export const prepare = mutation({
     }
     const scope = await authorizeDestination(ctx, args.input, args.reference.actorUserId, authority.workspaceId)
     const now = Date.now()
-    if (authority.deadlineAt !== null && authority.deadlineAt <= now) throw new Error('artifact_authority_expired')
-    const uploadExpiresAt = Math.min(now + ARTIFACT_UPLOAD_AUTHORIZATION_MS, authority.deadlineAt ?? Infinity)
+    if (authority.deadlineAt <= now) throw new Error('artifact_authority_expired')
+    const uploadExpiresAt = Math.min(now + ARTIFACT_UPLOAD_AUTHORIZATION_MS, authority.deadlineAt)
     const existing = await getManifest(ctx, authority.rootRunId, args.input.artifactId)
     if (existing) {
       if (existing.userId !== args.reference.actorUserId || existing.workspaceId !== authority.workspaceId

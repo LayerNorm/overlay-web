@@ -24,7 +24,7 @@ import type {
  * - A machine is an E2B sandbox. Overlay's "stop" is E2B's **pause** (memory and disk are kept), "resume" is
  *   `Sandbox.connect`, and "delete" is `kill`. The sandbox's own timeout is set to pause rather than kill, so a lost
  *   cleanup cannot destroy a machine's disk.
- * - The image is an E2B template (`name` or `name:tag`), built by `infra/agent-image/build.e2b.ts`. A snapshot is an
+ * - The image is an E2B template (`name` or `name:tag`) configured for this self-hosted deployment. A snapshot is an
  *   E2B snapshot and is used as a template to restore.
  * - E2B templates fix a sandbox's size, so `resources` on a create request is not applied.
  * - Idle stop is Overlay's (like Box): E2B has no idle timer, only a hard timeout.
@@ -125,7 +125,7 @@ export class E2BSandboxRuntime implements SandboxRuntime {
 
   async create(request: SandboxCreateRequest): Promise<SandboxInstance> {
     const template = request.snapshotId ?? request.image ?? this.options.defaultTemplate
-    if (!template) throw new E2BError('No E2B template named: set OVERLAY_CLOUD_AGENT_IMAGE to the template built by infra/agent-image/build.e2b.ts', 'template_missing')
+    if (!template) throw new E2BError('No E2B template named: configure the E2B template for this self-hosted sandbox deployment', 'template_missing')
     const handle = await this.options.sandbox.create(template, {
       ...this.connection(),
       timeoutMs: Math.min(Math.max(request.hardTimeoutMs, 60_000), RUNTIME_FENCE_MS),

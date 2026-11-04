@@ -45,12 +45,10 @@ export function AutomationEditorPanel({
   automation,
   onSaved,
   onTested,
-  isFreeTier,
 }: {
   automation: AutomationDetail
   onSaved: (automation: AutomationDetail) => void
   onTested: (conversationId: string) => void
-  isFreeTier: boolean
 }) {
   const [draft, setDraft] = useState<AutomationEditorDraft>(() =>
     automationEditorDraftFromDetail(automation, DEFAULT_MODEL_ID),
@@ -64,11 +62,11 @@ export function AutomationEditorPanel({
   const timeZoneOptions = useMemo(() => supportedTimeZoneOptions(), [])
   const modelOptions = useMemo(
     () =>
-      getModelsByIntelligence(isFreeTier).filter(
+      getModelsByIntelligence().filter(
         (model) =>
           model.id !== 'nvidia/nemotron-nano-9b-v2' && !isByokModelId(model.id),
       ),
-    [isFreeTier],
+    [],
   )
 
   const loadRuns = useCallback(async () => {

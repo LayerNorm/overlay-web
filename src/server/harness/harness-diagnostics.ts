@@ -1,3 +1,4 @@
+import { describeAISDKFailure, readErrorField, PROVIDER_CONTENT_FILTER_REASON } from './ai-sdk-failure'
 import {
   createHarnessDiagnostic,
   harnessDiagnosticMessage,
@@ -101,6 +102,26 @@ export function harnessDiagnosticForFailure(
     code = 'TOOL_FAILED'
   } else if (snapshot.blocker?.kind === 'stuck') {
     code = 'STAGNATION'
+  }
+  // Durable Workflow transport strips SDK prototypes. Match authored descriptions
+  // and stable SDK names, never expose a raw provider message or nested payload.
+  if (code === 'UNKNOWN') {
+    const seen = new Set<object>()
+    let current = error
+    for (let depth = 0; depth < 4 && current && typeof current === 'object' && !seen.has(current); depth++) {
+      seen.add(current)
+      const name = readErrorField(current, 'name')
+      const description = name === 'HarnessModelFailure'
+        ? readErrorField(current, 'message') : describeAISDKFailure(current)
+      if (typeof description === 'string') {
+        if (description === PROVIDER_CONTENT_FILTER_REASON) code = 'PROVIDER_REJECTED'
+        else if (description.startsWith('The model provider rate limit or quota was exceeded.')) code = 'PROVIDER_RATE_LIMIT'
+        else if (description.startsWith('The model provider encountered a server error.')) code = 'PROVIDER_UNAVAILABLE'
+        else if (description.startsWith('The model provider request timed out.')) code = 'PROVIDER_TIMEOUT'
+      }
+      if (code !== 'UNKNOWN') break
+      current = readErrorField(current, 'cause')
+    }
   }
   const occurredAt = Date.now()
   const revision = snapshot.revision

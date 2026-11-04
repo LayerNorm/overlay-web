@@ -326,10 +326,12 @@ export function messagePartToGeneratedUiBlock(part: unknown): Extract<AssistantV
 }
 
 export function getUserMessageDocNames(msg: unknown): string[] {
-  const message = msg as { metadata?: ChatMessageMetadata }
+  const message = msg as { content?: string; metadata?: ChatMessageMetadata }
   const fromMeta = message.metadata?.indexedDocuments
   if (Array.isArray(fromMeta) && fromMeta.length > 0) return fromMeta
-  return []
+  const attachments = message.metadata?.indexedAttachments
+  if (Array.isArray(attachments) && attachments.length > 0) return attachments.map(attachment => attachment.name)
+  return typeof message.content === 'string' ? splitUserDisplayText(message.content).docNames : []
 }
 
 export function splitUserDisplayText(fullText: string): { bodyText: string; docNames: string[] } {
@@ -574,11 +576,11 @@ export function persistedGenerationErrorMessage(_responseText: string | null | u
 }
 
 export const USAGE_EXHAUSTED_LABEL =
-  "You're out of credits. Top up in Workspace Billing to continue."
+  'Subscribe or add usage credit in Workspace Billing to continue.'
 
 export function isUsageExhaustedError(text: string | null | undefined): boolean {
   if (!text) return false
-  return /insufficient_credits|insufficient_budget|no budget remaining|budget is exhausted|budget exhausted|paid budget is empty|add budget|top up your account|you('re| are) out of credits|you('ve| have) used your allowance|allowance is (used|spent)|usage is spent|no such subscription|resource_missing/i.test(
+  return /insufficient_credits|insufficient_budget|payment_required|no budget remaining|budget is exhausted|budget exhausted|paid budget is empty|add budget|usage credit|workspace billing is required|subscribe to this workspace|top up your account|you('re| are) out of credits|you('ve| have) used your allowance|allowance is (used|spent)|usage is spent|no such subscription|resource_missing/i.test(
     text,
   )
 }
@@ -609,10 +611,7 @@ export function errorLabel(err: Error | null | undefined): string | null {
   }
   if (hasOrderedErrorTerms(message, 'gateway', ['auth', 'key', 'billing', 'quota', 'limit'])
     || hasOrderedErrorTerms(message, 'provider', ['blocked', 'billing', 'quota', 'limit'])) return message
-  if (/weekly_limit|weekly limit|this week's free chats/i.test(message)) {
-    return "You've used this week's free chats. Upgrade for shared credits and every model."
-  }
-  if (message.includes('premium_model')) return 'This model requires a paid plan.'
+  if (message.includes('premium_model')) return 'This model is not available. Choose another supported model.'
   if (message.includes('generation_not_allowed')) return 'This action requires a paid plan.'
   if (message.includes('insufficient_credits') || message.includes('insufficient_budget')) {
     return USAGE_EXHAUSTED_LABEL

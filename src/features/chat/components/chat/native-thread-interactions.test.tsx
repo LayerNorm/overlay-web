@@ -4,6 +4,7 @@ import { createRequire } from 'node:module'
 import React, { act, type ReactElement, useEffect } from 'react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { savePendingCollaborationMessage } from '@/shared/chat/pending-collaboration-message'
+import { readDraft } from '@/shared/chat/conversation-drafts'
 import { useNativeThreadSafety } from './useNativeThreadSafety'
 import { useChatTurnActions } from './useChatTurnActions'
 import { useRoomComposer, useSendMessage, useThreadPanel } from '../DirectMessageExperience.hooks'
@@ -178,12 +179,12 @@ function roomArgs(): Parameters<typeof useSendMessage>[0] {
   }
 }
 
-test('mounted room admission clears drafts with a distinct presence session and retains newer attachments', async (t) => {
+test('mounted room admission preserves draft, prevents duplicate saves and retains newer attachments', async (t) => {
   browser(t)
   const saved = deferred<unknown>()
   const post = t.mock.method(overlayAppClient.conversations, 'addMessage', () => saved.promise)
   const args = roomArgs()
-  const sessionIdRef = { current: 'presence-session' }
+  const sessionIdRef = { current: crypto.randomUUID() }
   let allowed = false
   args.ensureCanSendToThread = async () => ({ accepted: allowed, status: allowed ? 'writable' : 'unavailable' })
   const hook = await mount(t, (input: typeof args) => {
@@ -193,13 +194,9 @@ test('mounted room admission clears drafts with a distinct presence session and 
       sendMessage, mentions: input.mentions, setMentions: noop,
     })
   }, args)
-  await act(() => {
-    hook.value.setInput('Keep this draft')
-    hook.value.setAttachedImages([{ name: 'sent.png', dataUrl: 'data:image/png;base64,AA==' }])
-  })
+  await act(() => { hook.value.setInput('Keep this draft') })
   await act(async () => { await hook.value.handleSend() })
   assert.equal(hook.value.inputRef.current, 'Keep this draft')
-  assert.equal(hook.value.attachedImages[0]?.name, 'sent.png')
   assert.equal(args.messagesRef.current.length, 0)
   assert.equal(post.mock.callCount(), 0)
   allowed = true
@@ -208,61 +205,71 @@ test('mounted room admission clears drafts with a distinct presence session and 
   await act(async () => { await hook.value.handleSend() })
   assert.equal(post.mock.callCount(), 1)
   assert.equal(args.messagesRef.current.length, 1)
-  assert.equal(hook.value.inputRef.current, '', 'clear at optimistic submission, before the server responds')
-  assert.equal(hook.value.attachedImages.length, 0)
-  await act(() => {
-    hook.value.setInput('Next draft')
-    hook.value.setAttachedImages([{ name: 'new.png', dataUrl: 'data:image/png;base64,AA==' }])
-  })
+  await act(() => { hook.value.setAttachedImages([{ name: 'new.png', dataUrl: 'data:image/png;base64,AA==' }]) })
   await act(async () => { saved.resolve({}); await send })
-  assert.equal(hook.value.inputRef.current, 'Next draft')
+  assert.equal(hook.value.inputRef.current, 'Keep this draft')
   assert.equal(hook.value.attachedImages[0]?.name, 'new.png')
 })
 
-test('failed room submission keeps attachments on the retryable optimistic message', async (t) => {
+test('accepted room sends clear typed text, attachments and stored draft with a distinct presence session', async (t) => {
   browser(t)
-  let shouldFail = true
-  const post = t.mock.method(overlayAppClient.conversations, 'addMessage', async () => {
-    if (shouldFail) throw new Error('Temporary network failure')
-    return {}
-  })
+  t.mock.method(overlayAppClient.conversations, 'updatePresence', async () => ({}))
+  const saved = deferred<unknown>()
+  const post = t.mock.method(overlayAppClient.conversations, 'addMessage', () => saved.promise)
   const args = roomArgs()
-  const sessionIdRef = { current: 'presence-session' }
   const hook = await mount(t, (input: typeof args) => {
     const sendMessage = useSendMessage(input)
-    const composer = useRoomComposer({
-      activeWorkspaceId: 'workspace', conversationId: input.conversationId, sessionIdRef,
+    return useRoomComposer({
+      activeWorkspaceId: 'workspace', conversationId: input.conversationId,
+      sessionIdRef: { current: 'presence-session-not-the-conversation' },
       sendMessage, mentions: input.mentions, setMentions: noop,
     })
-    return { composer, sendMessage }
   }, args)
-
   await act(() => {
-    hook.value.composer.setInput('Keep the attachment available')
-    hook.value.composer.setAttachedImages([{ name: 'retry.png', dataUrl: 'data:image/png;base64,AA==' }])
+    hook.value.onComposerInput('Read these attachments')
+    hook.value.setAttachedImages([{ name: 'image.png', dataUrl: 'data:image/png;base64,AA==' }])
+    hook.value.setPendingChatDocuments([{ clientId: 'document', name: 'brief.txt', fileIds: ['file'], status: 'ready' }])
+    hook.value.setReplyContext({ snippet: 'Earlier message', bodyForModel: 'Earlier message', replyToTurnId: 'earlier' })
   })
-  await act(async () => { await hook.value.composer.handleSend() })
+  let send!: Promise<void>
+  await act(() => { send = hook.value.handleSend() })
+  assert.equal(post.mock.callCount(), 1)
+  assert.equal(args.messagesRef.current.length, 1, 'the optimistic bubble is not an acknowledgement')
+  assert.equal(hook.value.inputRef.current, 'Read these attachments')
+  assert.equal(hook.value.attachedImages.length, 1)
+  await act(async () => { saved.resolve({}); await send })
+  assert.equal(hook.value.inputRef.current, '')
+  assert.equal(hook.value.hasComposerText, false)
+  assert.deepEqual(hook.value.attachedImages, [])
+  assert.deepEqual(hook.value.pendingChatDocuments, [])
+  assert.equal(hook.value.replyContext, null)
+  assert.equal(readDraft({ workspaceId: 'workspace', conversationId: 'room' }), '')
+})
 
-  const failedMessage = args.messagesRef.current[0]
-  assert.ok(failedMessage)
-  assert.equal(failedMessage.delivery, 'failed')
-  assert.equal(failedMessage.deliveryError, 'Temporary network failure')
-  assert.equal(failedMessage.parts?.find((part) => part.type === 'file')?.fileName, 'retry.png')
-  assert.equal(hook.value.composer.inputRef.current, '')
-  assert.equal(hook.value.composer.attachedImages.length, 0)
+test('a room send acknowledgement cannot clear a newer draft or a reopened scope', async (t) => {
+  browser(t)
+  const saved = deferred<{ accepted: boolean }>()
+  const args: Parameters<typeof useRoomComposer>[0] = {
+    activeWorkspaceId: 'workspace', conversationId: 'room', sessionIdRef: { current: 'presence' },
+    sendMessage: () => saved.promise, mentions: [], setMentions: noop,
+  }
+  const hook = await mount(t, useRoomComposer, args)
+  await act(() => { hook.value.setInput('Sent text') })
+  let send!: Promise<void>
+  await act(() => { send = hook.value.handleSend() })
+  await act(() => { hook.value.setInput('Newer draft') })
+  await act(async () => { saved.resolve({ accepted: true }); await send })
+  assert.equal(hook.value.inputRef.current, 'Newer draft')
 
-  shouldFail = false
-  await act(async () => {
-    await hook.value.sendMessage(failedMessage.content, {
-      existing: failedMessage,
-      threadRootMessageId: failedMessage.threadRootMessageId,
-    })
-  })
-  assert.equal(post.mock.callCount(), 2)
-  assert.equal(
-    post.mock.calls[1]?.arguments[0].parts?.find((part) => part.type === 'file')?.url,
-    'data:image/png;base64,AA==',
-  )
+  const reopened = deferred<{ accepted: boolean }>()
+  await hook.update({ ...args, sendMessage: () => reopened.promise })
+  await act(() => { hook.value.setInput('Same text') })
+  await act(() => { send = hook.value.handleSend() })
+  await hook.update({ ...args, conversationId: 'other-room' })
+  await hook.update(args)
+  await act(() => { hook.value.setInput('Same text') })
+  await act(async () => { reopened.resolve({ accepted: true }); await send })
+  assert.equal(hook.value.inputRef.current, 'Same text')
 })
 
 test('mounted nested draft completion never clears new text or another root', async (t) => {

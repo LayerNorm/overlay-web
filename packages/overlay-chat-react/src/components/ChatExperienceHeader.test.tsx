@@ -19,7 +19,6 @@ test('a locked text model picker keeps the generation toggle visible and disable
       modelPickerListScrollRef={createRef<HTMLDivElement>()}
       modelSearchInputRef={createRef<HTMLInputElement>()}
       textModelsLoading={false}
-      isFreeTier
       imageModels={[]}
       selectedImageModels={[]}
       onSelectImageModel={() => {}}
@@ -27,9 +26,8 @@ test('a locked text model picker keeps the generation toggle visible and disable
       selectedVideoModels={[]}
       onSelectVideoModel={() => {}}
       selectableTextModels={[]}
-      selectedActModel="openrouter/free"
+      selectedActModel="openai/gpt-5"
       onToggleTextModel={() => {}}
-      isFreeTierChatModelId={() => false}
       onHoveredModelChange={() => {}}
     />,
   )

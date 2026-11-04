@@ -9,12 +9,10 @@ import { reconcileUnverifiedAgentActionClaims } from '@/server/agents/workspace-
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { agentRunService } from '@/server/conversations/http'
-import { fallbackNoticeText } from '@/server/app-api/v1/conversations/act/route-helpers'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import type { NativeHarnessAccess } from './native-access'
 import type { buildPersonalHarnessDelivery } from './personal-delivery'
 import { projectHarnessDeliveryWait, type HarnessWaitProjection } from './delivery-wait-projection'
-import type { HarnessModelRouting } from './model-ports'
 import { postSlackAgentMessage } from '@/server/surfaces/slack-reply'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { getBaseUrl } from '@/server/web/app-url'
@@ -51,20 +49,6 @@ async function readNativeDelivery(access: NativeHarnessAccess) {
     conversationId: asConversationId(access.conversationId), userId: access.actorUserId, agentRunId: access.agentRunId,
   })
   return { state, run }
-}
-
-export async function writeNativeHarnessFallback(
-  access: NativeHarnessAccess,
-  event: Parameters<NonNullable<HarnessModelRouting['onFallback']>>[0],
-): Promise<string> {
-  'use step'
-  const { state, run } = await readNativeDelivery(access)
-  assertNativeDeliveryOwnership(access, state, run)
-  if (state.status !== 'running' || state.latestReceipt?.id !== event.receiptId
-    || state.latestReceipt.modelId !== event.from || state.latestReceipt.rejectionReason !== event.reason) {
-    throw new FatalError('Invalid native fallback authority.')
-  }
-  return fallbackNoticeText([{ modelId: event.from, reason: event.reason === 'budget' ? 'budget' : 'provider' }], event.to)
 }
 
 export async function attachNativeHarnessDelivery(access: NativeHarnessAccess): Promise<void> {

@@ -9,7 +9,7 @@ import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { assertUserCanUseByokModel } from '@/server/ai/model-runtime'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
-import { agentModelAttempts, loadRoomTurnContext } from '@/server/agents/workspace-agent-invocation'
+import { loadRoomTurnContext } from '@/server/agents/workspace-agent-invocation'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { actEntitlementService } from '@/server/conversations/http'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
@@ -35,34 +35,106 @@ export type NativeHarnessContext = {
   requestFingerprint: string
 }
 
+function nativeOwnerMatches(access: NativeHarnessAccess, state: HarnessSnapshot): boolean {
+  const ownerTransferInProgress = state.runId !== access.runId
+    && state.policy.executionPolicyVersion === 2 && !state.workflowRunId && Boolean(state.handoffWorkflowRunId)
+    && !['completed', 'cancelled', 'failed'].includes(state.status)
+  return !(!state.workflowRunId && !ownerTransferInProgress) && state.policy.actorUserId === access.actorUserId
+    && state.policy.workspaceId === access.workspaceId
+    && !(state.runId === access.runId && (state.executionGeneration ?? 0) !== (access.executionGeneration ?? 0))
+}
+
+function nativeDeadlineAllows(
+  access: NativeHarnessAccess,
+  state: HarnessSnapshot,
+  allowCancelledToolProgress: boolean,
+  renewalMode: boolean,
+): boolean {
+  const cancelledToolProgress = allowCancelledToolProgress && state.runId === access.runId && state.status === 'cancelled'
+  return !((state.policy.deadlineAt <= Date.now() && !cancelledToolProgress
+    && !(renewalMode && state.policy.executionPolicyVersion === 2))
+    || (state.policy.taskDeadlineAt !== undefined && state.policy.taskDeadlineAt <= Date.now()
+      && !cancelledToolProgress && !renewalMode))
+}
+
+function nativeStatusAllows(access: NativeHarnessAccess, state: HarnessSnapshot, allowCancelledToolProgress: boolean): boolean {
+  const cancelledToolProgress = allowCancelledToolProgress && state.runId === access.runId && state.status === 'cancelled'
+  return !(['completed', 'failed'].includes(state.status)
+    || (state.status === 'cancelled' && !cancelledToolProgress))
+}
+
+function hasActiveNativeAuthority(
+  access: NativeHarnessAccess,
+  state: HarnessSnapshot | null,
+  allowCancelledToolProgress = false,
+  renewalMode = false,
+): boolean {
+  if (!state) return false
+  return nativeOwnerMatches(access, state)
+    && nativeDeadlineAllows(access, state, allowCancelledToolProgress, renewalMode)
+    && nativeStatusAllows(access, state, allowCancelledToolProgress)
+}
+
 function assertActiveAuthority(
   access: NativeHarnessAccess,
   state: HarnessSnapshot | null,
   allowCancelledToolProgress = false,
+  renewalMode = false,
 ): asserts state is HarnessSnapshot {
-  const cancelledToolProgress = allowCancelledToolProgress && state?.runId === access.runId && state.status === 'cancelled'
-  if (!state?.workflowRunId || state.policy.actorUserId !== access.actorUserId
-    || state.policy.workspaceId !== access.workspaceId
-    || (state.policy.deadlineAt !== null && state.policy.deadlineAt <= Date.now() && !cancelledToolProgress)
-    || ['completed', 'failed'].includes(state.status)
-    || (state.status === 'cancelled' && !cancelledToolProgress)) {
+  if (!hasActiveNativeAuthority(access, state, allowCancelledToolProgress, renewalMode)) {
     throw new FatalError('Native harness execution is no longer authorized.')
   }
 }
 
-async function readNativeAuthority(access: NativeHarnessAccess, toolName?: string, allowCancelledToolProgress = false) {
+function assertNativeDeliveryIdentity(access: NativeHarnessAccess, run: AgentRun | null): asserts run is AgentRun {
+  if (!run || run.id !== access.agentRunId || run.userId !== access.actorUserId
+    || run.conversationId !== access.conversationId || run.agentId !== access.agentId
+    || run.agentPrincipalId !== access.agentPrincipalId || run.turnId !== access.turnId
+    || run.userMessageId !== access.userMessageId || run.assistantMessageId !== access.assistantMessageId) {
+    throw new FatalError('Native delivery identity changed.')
+  }
+}
+
+function nativeDeliveryIsCurrent(
+  access: NativeHarnessAccess,
+  state: HarnessSnapshot,
+  delivery: HarnessSnapshot,
+  run: AgentRun,
+  allowCancelledToolProgress: boolean,
+  renewalMode: boolean,
+): boolean {
+  const deliveryOwner = delivery.workflowRunId ?? delivery.handoffWorkflowRunId
+  const cancelledToolProgress = allowCancelledToolProgress && state.runId === access.runId && state.status === 'cancelled'
+  return run.runner === 'workflow' && run.executionEngine === 'overlay_harness' && run.mode === 'room'
+    && Boolean(deliveryOwner) && run.harnessRunId === delivery.runId && run.workflowRunId === deliveryOwner
+    && (run.status === 'running' || (state.runId !== delivery.runId
+      && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children', 'waiting_for_resources'].includes(run.status))
+      || (renewalMode && state.runId === delivery.runId
+        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status)
+        && run.status === state.status)
+      || (cancelledToolProgress && run.status === 'cancelled'))
+}
+
+async function readNativeAuthority(
+  access: NativeHarnessAccess,
+  toolName?: string,
+  allowCancelledToolProgress = false,
+  renewalMode = false,
+) {
   const repository = new ConvexHarnessRepository()
   const state = await repository.get(access)
-  assertActiveAuthority(access, state, allowCancelledToolProgress)
+  assertActiveAuthority(access, state, allowCancelledToolProgress, renewalMode)
   if (state.workflowRunId !== access.workflowRunId
-    || (state.status !== 'running' && !(allowCancelledToolProgress && state.status === 'cancelled'))) {
+    || (state.status !== 'running' && !(renewalMode
+      && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status))
+      && !(allowCancelledToolProgress && state.status === 'cancelled'))) {
     throw new FatalError('Native harness execution is not owned by this workflow.')
   }
   if (toolName && !state.policy.allowedToolIds.includes(toolName)) {
     throw new FatalError('Tool is outside this harness run\'s capabilities.')
   }
   const root = state.parentRunId ? await repository.get({ actorUserId: access.actorUserId, runId: state.rootRunId }) : state
-  assertActiveAuthority(access, root, allowCancelledToolProgress && root?.runId === state.runId)
+  assertActiveAuthority(access, root, allowCancelledToolProgress && root?.runId === state.runId, renewalMode)
   const deliveryRunId = `workspace:${access.agentRunId}`
   let delivery = state
   const visited = new Set<string>()
@@ -72,7 +144,7 @@ async function readNativeAuthority(access: NativeHarnessAccess, toolName?: strin
     }
     visited.add(delivery.runId)
     const parent = await repository.get({ actorUserId: access.actorUserId, runId: delivery.parentRunId })
-    assertActiveAuthority(access, parent)
+    assertActiveAuthority(access, parent, false, renewalMode)
     if (parent.rootRunId !== state.rootRunId || parent.depth !== delivery.depth - 1) {
       throw new FatalError('Native harness lineage changed.')
     }
@@ -87,19 +159,10 @@ function assertNativeDelivery(
   delivery: HarnessSnapshot,
   run: AgentRun | null,
   allowCancelledToolProgress = false,
+  renewalMode = false,
 ): void {
-  if (!run || run.id !== access.agentRunId || run.userId !== access.actorUserId
-    || run.conversationId !== access.conversationId || run.agentId !== access.agentId
-    || run.agentPrincipalId !== access.agentPrincipalId || run.turnId !== access.turnId
-    || run.userMessageId !== access.userMessageId || run.assistantMessageId !== access.assistantMessageId) {
-    throw new FatalError('Native delivery identity changed.')
-  }
-  const cancelledToolProgress = allowCancelledToolProgress && state.runId === access.runId && state.status === 'cancelled'
-  if (run.runner !== 'workflow' || run.executionEngine !== 'overlay_harness' || run.mode !== 'room'
-    || run.harnessRunId !== delivery.runId || run.workflowRunId !== delivery.workflowRunId
-    || (run.status !== 'running' && !(state.runId !== delivery.runId
-      && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(run.status))
-      && !(cancelledToolProgress && run.status === 'cancelled'))) {
+  assertNativeDeliveryIdentity(access, run)
+  if (!nativeDeliveryIsCurrent(access, state, delivery, run, allowCancelledToolProgress, renewalMode)) {
     throw new FatalError('Native delivery execution changed.')
   }
 }
@@ -171,7 +234,7 @@ function assertRoomIdentity(
     humanParticipants: room.participants.filter(participant => participant.principalType === 'human').length,
   })
   if (shared && !context.sharedRoom) throw new FatalError('Room visibility changed; private context cannot be reused.')
-  if (!agentModelAttempts(agent.modelId).includes(context.modelId)) {
+  if (agent.modelId !== context.modelId) {
     throw new FatalError('The model is no longer an admitted native agent candidate.')
   }
   return agent
@@ -198,10 +261,11 @@ export async function refreshNativeHarnessAccess(
   access: NativeHarnessAccess,
   context: NativeHarnessContext,
   toolName?: string,
-  options: { allowCancelledToolProgress?: boolean } = {},
+  options: { allowCancelledToolProgress?: boolean; renewalMode?: boolean; renewLease?: boolean } = {},
 ) {
   const allowCancelledToolProgress = options.allowCancelledToolProgress === true && Boolean(toolName)
-  const { state, delivery } = await readNativeAuthority(access, toolName, allowCancelledToolProgress)
+  if (options.renewLease && !options.renewalMode) throw new FatalError('Invalid lease renewal mode.')
+  const { state, delivery } = await readNativeAuthority(access, toolName, allowCancelledToolProgress, options.renewalMode)
   const server = getOverlayServerContext()
   const root = state.rootRunId === state.runId
     ? state
@@ -229,7 +293,7 @@ export async function refreshNativeHarnessAccess(
     }),
   ])
   const humanPrincipalId = await resolveHumanPrincipalId(access, state, workspace, room)
-  assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress)
+  assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress, options.renewalMode === true)
   const agent = assertRoomIdentity(access, context, room, humanPrincipalId)
   await assertNativeCapabilities(access, context, toolName)
   const billingProgrammaticSubjectId = surfaceExecution
@@ -241,6 +305,19 @@ export async function refreshNativeHarnessAccess(
     await assertUserCanUseByokModel(context.modelId, access.actorUserId)
   } else if (!(await resolveAuthorizedModelIds({ entitlements: gate.runtimeEntitlements })).chat.has(context.modelId)) {
     throw new FatalError('The native model is no longer allowed by server policy.')
+  }
+  if (options.renewLease && state.policy.executionPolicyVersion === 2) {
+    const repository = new ConvexHarnessRepository()
+    const current = await repository.get({ actorUserId: access.actorUserId, runId: access.runId })
+    if (!current || current.workflowRunId !== access.workflowRunId
+      || (current.executionGeneration ?? 0) !== (access.executionGeneration ?? 0)) {
+      throw new FatalError('Native harness execution ownership changed during lease renewal.')
+    }
+    await repository.renewLease({
+      actorUserId: access.actorUserId, runId: access.runId, workflowRunId: access.workflowRunId,
+      executionGeneration: access.executionGeneration ?? 0, expectedRevision: current.revision,
+      now: Date.now(), leaseMs: 24 * 60 * 60 * 1_000,
+    })
   }
   return { agent, latestUserText: room.latestUserText, entitlements: gate.runtimeEntitlements, paid: gate.paid,
     billingProgrammaticSubjectId,

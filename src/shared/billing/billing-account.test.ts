@@ -2,16 +2,14 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   BILLING_CREDITS_PER_CENT,
-  CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS,
   CURRENT_BILLING_ACCOUNT_PRICING_VERSION,
   assertBillingAccountOwnership,
   billingCreditsToCents,
   centsToBillingCredits,
 } from './billing-account'
 
-test('billing accounts preserve the current 25 percent markup policy', () => {
+test('billing accounts preserve the historical pricing version', () => {
   assert.equal(CURRENT_BILLING_ACCOUNT_PRICING_VERSION, 'markup_25_v1')
-  assert.equal(CURRENT_BILLING_ACCOUNT_MARKUP_BASIS_POINTS, 2_500)
 })
 
 test('credit presentation converts without changing internal cent accounting', () => {

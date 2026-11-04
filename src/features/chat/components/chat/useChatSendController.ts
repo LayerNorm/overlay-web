@@ -11,7 +11,6 @@ import {
   type RefObject,
   type SetStateAction,
 } from 'react'
-import posthog from 'posthog-js'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
@@ -75,7 +74,6 @@ export function useChatSendController({
   isBudgetExhaustedPaid,
   connectionUnavailable,
   isFirstMessage,
-  isFreeTier,
   isSendBlocked,
   premiumModelBlocked,
   isTemporaryChat,
@@ -153,7 +151,6 @@ export function useChatSendController({
   isBudgetExhaustedPaid: boolean
   connectionUnavailable: boolean
   isFirstMessage: boolean
-  isFreeTier: boolean
   isSendBlocked: boolean
   premiumModelBlocked: boolean
   isTemporaryChat: boolean
@@ -417,12 +414,6 @@ export function useChatSendController({
       || latestComposerStateRef.current !== submittedComposerState
     ) return
 
-    posthog.capture('chat_message_sent', {
-      mode: 'act',
-      generation_type: effectiveGenType,
-      has_attachments: snapshot.attachedImagesSnapshot.length > 0 || snapshot.pendingChatDocumentsSnapshot.length > 0,
-      is_first_message: isFirstMessage,
-    })
 
     beginTtftClientTurn({
       model: snapshot.selectedActModelSnapshot,
@@ -447,7 +438,7 @@ export function useChatSendController({
         effectiveGenType,
         emptyRuntime: emptyRuntimeRef.current,
         ensureConversationRuntime,
-        isFreeTier,
+        isSendBlocked,
         isFirstMessage,
         isTemporaryChatRef,
         loadChats,
@@ -521,7 +512,6 @@ export function useChatSendController({
     isBudgetExhaustedPaid,
     connectionUnavailable,
     isFirstMessage,
-    isFreeTier,
     isSendBlocked,
     premiumModelBlocked,
     isStreamChatActive,

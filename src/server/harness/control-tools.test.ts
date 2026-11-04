@@ -64,6 +64,29 @@ test('completed child results become parent observations without certifying inde
   expect((await f.ports.read()).plan[0].status).toBe('done')
 })
 
+test('artifact control reads selected media as typed binary model output', async () => {
+  const readArtifact = vi.fn(async () => ({
+    kind: 'media' as const,
+    data: new Uint8Array([0, 127, 255]),
+    mediaType: 'image/png',
+    metadata: {
+      artifactId: `ha_${'a'.repeat(64)}`, toolName: 'render_document', toolCallId: 'render-1',
+      mediaPartCount: 2, mediaPart: 1, resource: { id: 'file-1', revision: 'rev-7', page: 3 },
+    },
+  }))
+  const artifactTool = createHarnessControlTools({ ...fixture().ports, readArtifact }).harness_read_artifact
+  const input = { artifactId: `ha_${'a'.repeat(64)}`, mediaPart: 0 }
+  const result = await artifactTool.execute!(input, { toolCallId: 'reopen-1', messages: [] })
+  expect(readArtifact).toHaveBeenCalledWith(input)
+  expect(artifactTool.toModelOutput?.({ output: result })).toEqual({
+    type: 'content',
+    value: [
+      { type: 'text', text: `[Incomplete media selection; artifact ha_${'a'.repeat(64)}; render_document call render-1; resource file-1 revision rev-7 page 3; selected part 1 of 2.]` },
+      { type: 'file', data: { type: 'data', data: new Uint8Array([0, 127, 255]) }, mediaType: 'image/png' },
+    ],
+  })
+})
+
 test('plan tools accept answer-only milestones', () => {
   const planTool = createHarnessControlTools(fixture().ports).harness_set_plan
   expect(planTool.inputSchema.parse({
@@ -253,7 +276,7 @@ test.each([
     availableEvidenceIds: evidenceRefs
       ? [{ id: 'artifact:1', source: evidenceKind === 'tool_result' ? 'get_note' : 'file' }]
       : [],
-    hint: 'Cite tool:<id> evidence that supports this milestone, or revise the plan with harness_set_plan to mark a milestone that only reports results as answerOnly.',
+    hint: expect.stringContaining('use harness_set_plan to set answerOnly: true'),
   })
   expect((await f.ports.read()).plan[0]?.status).toBe('pending')
 })
@@ -285,8 +308,9 @@ test('tool-result evidence already used by another action milestone returns mode
     success: false,
     error: 'Evidence from a tool result already supports another milestone.',
     availableEvidenceIds: [],
-    hint: "Cite the tool result that performed this milestone's own action, or revise the plan to merge the milestones.",
+    hint: expect.stringContaining('one result cannot prove two actions'),
   })
+  expect(result).toMatchObject({ hint: expect.stringContaining('do not repeat the completed action') })
   expect((await f.ports.read()).plan.find(step => step.id === 'second')?.status).toBe('pending')
 })
 
@@ -384,4 +408,28 @@ test('answer-only plans normalize empty evidence tools without relaxing action p
     code: 'tool_validation_failure',
     error: expect.stringContaining('must declare evidenceTools'),
   })
+})
+
+test('reopened artifact excerpts become bounded observations for final verification', async () => {
+  const f = fixture()
+  f.ports.readArtifact = vi.fn(async () => ({ kind: 'text', text: 'Final validation code: HARBOR_384_END_9K2',
+    metadata: { artifactId: `ha_${'a'.repeat(64)}`, toolCallId: 'original-read', toolName: 'get_note',
+      byteSize: 90_000, mediaPartCount: 0, resource: { id: 'note-source', revision: 'rev-7', operation: 'get_note' } } }))
+  const control = createHarnessControlTools(f.ports).harness_read_artifact
+  await control.execute!({ artifactId: `ha_${'a'.repeat(64)}`, start: 89_000, end: 90_000 }, { toolCallId: 'reopen-tail', messages: [] })
+  const recorded = await f.ports.read()
+  expect(recorded.evidence).toContainEqual(expect.objectContaining({ id: 'tool:reopen-tail', source: 'harness_read_artifact',
+    resource: { id: 'note-source', revision: 'rev-7', operation: 'get_note' },
+    summary: expect.stringContaining('HARBOR_384_END_9K2'), verdict: 'observed' }))
+  expect(recorded.evidence.at(-1)!.summary.length).toBeLessThanOrEqual(2_000)
+})
+
+test('denied artifact reads never create observations', async () => {
+  const f = fixture()
+  f.ports.readArtifact = vi.fn(async () => { throw new Error('Source access revoked') })
+  await expect(createHarnessControlTools(f.ports).harness_read_artifact.execute!(
+    { artifactId: `ha_${'a'.repeat(64)}`, start: 0, end: 1_000 },
+    { toolCallId: 'denied-read', messages: [] },
+  )).rejects.toThrow('Source access revoked')
+  expect(f.apply).not.toHaveBeenCalled()
 })

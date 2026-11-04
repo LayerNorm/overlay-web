@@ -54,7 +54,8 @@ test('failed subscription persistence rolls back deduplication and the same even
   expect(persisted.events[0]).toMatchObject({ eventId: event.id, status: 'processed' })
   expect(persisted.subscriptions).toHaveLength(1)
   expect(persisted.subscriptions[0]).toMatchObject({ providerSubscriptionId: 'sub_retry', planAmountCents: 800 })
-  expect(persisted.balance).toMatchObject({ includedMicros: 8_000_000, usedMicros: 2_955_000,
+  expect(persisted.subscriptions[0]?.paidPeriodEnd).toBeUndefined()
+  expect(persisted.balance).toMatchObject({ includedMicros: 5_000_000, usedMicros: 2_955_000,
     allowanceUsedMicros: 2_955_000, reservedMicros: 933_000, institutionalGrantMicros: 100,
     topUpPurchasedMicros: 200, topUpBalanceMicros: 200 })
   await t.mutation(processEvent, { event })

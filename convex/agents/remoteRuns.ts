@@ -66,7 +66,7 @@ export const advanceByServer = mutation({
       const result = await applyRemoteFact(ctx, run!, fact, args.now)
       if (result?.applied) { state = result.state; run = { ...run!, remoteLifecycle: state } }
     }
-    if (!environment || environment.revokedAt || !binding?.enabled || membership?.status !== 'active' || participant?.status !== 'active') {
+    if (!environment || environment.kind === 'overlay_cloud' || environment.revokedAt || !binding?.enabled || membership?.status !== 'active' || participant?.status !== 'active') {
       await apply({ type: 'refuse', cause: 'authorization_revoked' })
     } else if (!fundingValid) await apply({ type: 'refuse', cause: 'funding_unavailable' })
     else if (args.wake) await apply({ type: 'wake' })

@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import { ConvexError } from 'convex/values'
+import { createHash } from 'node:crypto'
 import type {
   HarnessAdmission,
   HarnessMutationResult,
@@ -17,7 +18,9 @@ beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 const mutation = (name: string) => makeFunctionReference<'mutation'>(`harness/runs:${name}`)
 const query = (name: string) => makeFunctionReference<'query'>(`harness/runs:${name}`)
+const artifactAction = (name: string) => makeFunctionReference<'action'>(`harness/artifacts:${name}`)
 type Convex = ReturnType<typeof convexTest>
+const executionOwners = new WeakMap<Convex, Map<string, { workflowRunId: string; revisionOffset: number }>>()
 
 test('readiness is available only to the authenticated server', async () => {
   const convex = convexTest(schema, modules)
@@ -25,7 +28,7 @@ test('readiness is available only to the authenticated server', async () => {
   expect(await convex.query(settings, { userId: 'alice', serverSecret: secret }))
     .toMatchObject({ harnessRevision: 'overlay-harness-v1', harnessModelRecoveryRevision: 'settled-retry-v1',
       nativeThreadCompatibilityRevision: 'tracked-native-v1',
-      harnessArtifactPublicationRevision: 'binary-artifact-v1' })
+      harnessArtifactPublicationRevision: 'binary-artifact-v1', harnessTranscriptRevision: 'settled-public-v1' })
   await expect(convex.query(settings, { userId: 'alice', serverSecret: 'invalid' })).rejects.toThrow('Unauthorized')
 })
 
@@ -76,11 +79,34 @@ async function apply(
   actorUserId = input.policy.actorUserId,
   serverSecret = secret,
 ) {
+  const owners = executionOwners.get(convex) ?? new Map()
+  executionOwners.set(convex, owners)
+  let owner = owners.get(input.runId)
+  if (operation.type === 'claim_execution') {
+    owner = { workflowRunId: operation.workflowRunId, revisionOffset: 0 }
+    owners.set(input.runId, owner)
+  } else if (!owner) {
+    const workflowRunId = 'test-workflow'
+    await convex.run(async ctx => {
+      const run = await ctx.db.query('harnessRuns')
+        .withIndex('by_runId', q => q.eq('runId', input.runId))
+        .unique()
+      if (!run) throw new Error('HARNESS_RUN_NOT_FOUND')
+      const metadata = JSON.parse(run.metadataJson) as Record<string, unknown>
+      if (metadata.workflowRunId === undefined) {
+        await ctx.db.patch(run._id, { metadataJson: JSON.stringify({ ...metadata, workflowRunId }) })
+      }
+    })
+    owner = { workflowRunId, revisionOffset: 0 }
+    owners.set(input.runId, owner)
+  }
   return await convex.mutation(mutation('apply'), {
     actorUserId,
     runId: input.runId,
+    workflowRunId: owner!.workflowRunId,
+    executionGeneration: 0,
     operationId,
-    expectedRevision,
+    expectedRevision: expectedRevision + owner!.revisionOffset,
     operation,
     serverSecret,
   }) as HarnessMutationResult
@@ -195,16 +221,16 @@ describe('durable harness runs', () => {
     expect(first.snapshot[recoveryKey]).toEqual(loaded?.[recoveryKey])
   })
 
-  test.each(['budget', 'model_unavailable', 'route_capacity'] as const)('persists a zero-usage %s rejection through the mutation boundary', async rejectionReason => {
+  test.each(['budget', 'model_unavailable'] as const)('persists a zero-usage %s rejection through the mutation boundary', async rejectionReason => {
     const convex = convexTest(schema, modules)
     const input = admission('rejection', await seedConversation(convex))
     await admit(convex, input)
     let state = (await apply(convex, input, 'reserve', 0, { type: 'reserve_model', id: 'model:0', maxCostMicros: 600 })).snapshot
     if (rejectionReason !== 'budget') {
       state = (await apply(convex, input, 'dispatch', state.revision, { type: 'bind_model_dispatch', id: 'model:0',
-        modelId: 'openrouter/free', billingReservationId: 'billing-reservation' })).snapshot
+        modelId: 'fixture/model', billingReservationId: 'billing-reservation' })).snapshot
     }
-    const receipt = { id: 'model:0', modelId: 'openrouter/free', provider: 'overlay-free-router',
+    const receipt = { id: 'model:0', modelId: 'fixture/model', provider: 'fixture',
       inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
       contextWindow: null, costMicros: 0, costSource: 'catalog' as const, rejectionReason }
     await expect(apply(convex, input, 'invalid-rejection', state.revision, {
@@ -222,68 +248,25 @@ describe('durable harness runs', () => {
     expect(replay.snapshot.latestReceipt).toEqual(receipt)
   })
 
-  test.each(['route_interrupted', 'route_unavailable'] as const)('accepts %s with a released zero-cost hold and rejects paid or BYOK models', async rejectionReason => {
+  test.each(['route_capacity', 'route_interrupted', 'route_unavailable'] as const)('rejects new %s receipts without releasing the reservation', async rejectionReason => {
     const convex = convexTest(schema, modules)
     const input = admission('route-interruption', await seedConversation(convex))
     await admit(convex, input)
-    let state = (await apply(convex, input, 'route-interruption-reserve-0', 0, {
-      type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
+    const state = (await apply(convex, input, 'route-interruption-reserve-0', 0, {
+      type: 'reserve_model', id: 'model:0', maxCostMicros: 600,
     })).snapshot
-    state = (await apply(convex, input, 'route-interruption-dispatch-0', state.revision, {
-      type: 'bind_model_dispatch', id: 'model:0', modelId: 'openrouter/free', billingReservationId: null,
+    const dispatched = (await apply(convex, input, 'route-interruption-dispatch-0', state.revision, {
+      type: 'bind_model_dispatch', id: 'model:0', modelId: 'fixture/model', billingReservationId: 'hold',
     })).snapshot
-
-    for (let index = 0; index < 3; index += 1) {
-      const receipt = {
-        id: `model:${index}`,
-        modelId: 'openrouter/free',
-        provider: 'overlay-free-router',
-        inputTokens: 0,
-        outputTokens: 0,
-        reasoningTokens: 0,
-        cacheReadTokens: 0,
-        cacheWriteTokens: 0,
-        contextWindow: null,
-        costMicros: 0,
-        costSource: 'catalog' as const,
-        rejectionReason,
-      }
-      if (index > 0) {
-        state = (await apply(convex, input, `route-interruption-reserve-${index}`, state.revision, {
-          type: 'reserve_model', id: receipt.id, maxCostMicros: 0,
-        })).snapshot
-        state = (await apply(convex, input, `route-interruption-dispatch-${index}`, state.revision, {
-          type: 'bind_model_dispatch', id: receipt.id, modelId: 'openrouter/free', billingReservationId: null,
-        })).snapshot
-      }
-      state = (await apply(convex, input, `route-interruption-receipt-${index}`, state.revision, {
-        type: 'record_receipt', receipt,
-      })).snapshot
-      expect(state.modelReservation).toBeUndefined()
-      expect(state.routeInterruptionCount ?? 0).toBe(rejectionReason === 'route_interrupted' ? index + 1 : 0)
-      expect(state.modelRecovery).toMatchObject({ code: rejectionReason, attempt: index + 1 })
+    const receipt = {
+      id: 'model:0', modelId: 'fixture/model', provider: 'fixture',
+      inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
+      contextWindow: null, costMicros: 0, costSource: 'catalog' as const, rejectionReason,
     }
-    expect((await get(convex, input.runId))?.modelRecovery).toMatchObject({ code: rejectionReason, attempt: 3 })
-
-    for (const [index, modelId] of ['fixture/paid', 'byok/connection/model'].entries()) {
-      const rejectedConvex = convexTest(schema, modules)
-      const rejectedInput = admission(`route-interruption-rejected-${index}`, await seedConversation(rejectedConvex))
-      await admit(rejectedConvex, rejectedInput)
-      let reserved = (await apply(rejectedConvex, rejectedInput, 'reserve', 0, {
-        type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
-      })).snapshot
-      reserved = (await apply(rejectedConvex, rejectedInput, 'dispatch', reserved.revision, {
-        type: 'bind_model_dispatch', id: 'model:0', modelId, billingReservationId: null,
-      })).snapshot
-      await expect(apply(rejectedConvex, rejectedInput, 'reject', reserved.revision, {
-        type: 'record_receipt',
-        receipt: {
-          id: 'model:0', modelId, provider: 'overlay-free-router',
-          inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
-          contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason,
-        },
-      })).rejects.toThrow(/route rejection requires/i)
-    }
+    await expect(apply(convex, input, 'route-retired-receipt', dispatched.revision, {
+      type: 'record_receipt', receipt,
+    })).rejects.toThrow('This route receipt is retired.')
+    expect((await get(convex, input.runId))?.modelReservation).toEqual(dispatched.modelReservation)
   })
 
   test.each([
@@ -359,11 +342,11 @@ describe('durable harness runs', () => {
     expect((await get(convex, input.runId))?.usage.costMicros).toBe(500)
   })
 
-  test('failed runs release only zero-cost unbilled free-model reservations', async () => {
+  test('failed runs keep unresolved reservations without fabricating receipts', async () => {
     const scenarios = [
-      { runId: 'failed-free-model', modelId: 'openrouter/free', billingReservationId: null, maxCostMicros: 0, released: true },
-      { runId: 'failed-paid-model', modelId: 'fixture/model', billingReservationId: null, maxCostMicros: 500, released: false },
-      { runId: 'failed-billed-free-model', modelId: 'openrouter/free', billingReservationId: 'billing-hold', maxCostMicros: 0, released: false },
+      { runId: 'failed-zero-cost-model', modelId: 'fixture/model', billingReservationId: null, maxCostMicros: 0 },
+      { runId: 'failed-paid-model', modelId: 'fixture/model', billingReservationId: null, maxCostMicros: 500 },
+      { runId: 'failed-billed-model', modelId: 'fixture/model', billingReservationId: 'billing-hold', maxCostMicros: 0 },
     ] as const
 
     for (const scenario of scenarios) {
@@ -382,34 +365,21 @@ describe('durable harness runs', () => {
       })
       expect(failed.snapshot.status).toBe('failed')
       const reloaded = await get(convex, scenario.runId)
-      if (scenario.released) {
-        expect(reloaded?.modelReservation).toBeUndefined()
-        expect(reloaded?.latestReceipt).toMatchObject({
-          id: `model:${scenario.runId}`,
-          modelId: 'openrouter/free',
-          provider: 'overlay-free-router',
-          inputTokens: 0,
-          outputTokens: 0,
-          costMicros: 0,
-        })
-        expect(reloaded?.latestReceipt).not.toHaveProperty('rejectionReason')
-      } else {
-        expect(reloaded?.modelReservation).toMatchObject({
-          id: `model:${scenario.runId}`,
-          maxCostMicros: scenario.maxCostMicros,
-          dispatch: {
-            modelId: scenario.modelId,
-            billingReservationId: scenario.billingReservationId,
-          },
-        })
-        expect(reloaded?.latestReceipt).toBeUndefined()
-      }
+      expect(reloaded?.modelReservation).toMatchObject({
+        id: `model:${scenario.runId}`,
+        maxCostMicros: scenario.maxCostMicros,
+        dispatch: {
+          modelId: scenario.modelId,
+          billingReservationId: scenario.billingReservationId,
+        },
+      })
+      expect(reloaded?.latestReceipt).toBeUndefined()
     }
   })
 
-  test('cancelled runs release a zero-cost unbilled free-model reservation without a summary id', async () => {
+  test('cancelled runs retain an unresolved zero-cost reservation without fabricating a receipt', async () => {
     const convex = convexTest(schema, modules)
-    const input = admission('cancelled-free-model', await seedConversation(convex))
+    const input = admission('cancelled-zero-cost-model', await seedConversation(convex))
     await admit(convex, input)
     const reserved = await apply(convex, input, 'reserve', 0, {
       type: 'reserve_model', id: 'model:10', maxCostMicros: 0,
@@ -422,15 +392,8 @@ describe('durable harness runs', () => {
       type: 'terminate', status: 'cancelled', reason: 'User stopped.',
     })
     expect(cancelled.snapshot.status).toBe('cancelled')
-    expect(cancelled.snapshot.modelReservation).toBeUndefined()
-    expect(cancelled.snapshot.latestReceipt).toMatchObject({
-      id: 'model:10',
-      provider: 'overlay-free-router',
-      inputTokens: 0,
-      outputTokens: 0,
-      costMicros: 0,
-    })
-    expect(cancelled.snapshot.latestReceipt).not.toHaveProperty('rejectionReason')
+    expect(cancelled.snapshot.modelReservation).toEqual(dispatched.snapshot.modelReservation)
+    expect(cancelled.snapshot.latestReceipt).toBeUndefined()
   })
 
   test('reducer rejection exposes a typed operation error for workflow retry handling', async () => {
@@ -493,6 +456,48 @@ describe('durable harness runs', () => {
     expect(failedEvidence).toBeNull()
   })
 
+  test('authorized evidence lookup supports exact IDs and bounded chronological pages', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('paged-evidence', await seedConversation(convex))
+    await admit(convex, input)
+    await apply(convex, input, 'claim-evidence', 0, {
+      type: 'claim_execution', workflowRunId: 'evidence-workflow',
+    })
+    const observations = [1, 2, 3].map(index => ({
+      id: `tool:read-${index}`, kind: 'tool_result' as const, source: 'read_document',
+      summary: `Read page ${index}.`, verdict: 'observed' as const, createdAt: index,
+    }))
+    await convex.run(async ctx => {
+      for (const evidence of observations) {
+        await ctx.db.insert('harnessEvidence', {
+          runId: input.runId, evidenceId: evidence.id,
+          evidenceJson: JSON.stringify(evidence), createdAt: evidence.createdAt,
+        })
+      }
+    })
+
+    const first = await convex.query(query('readEvidence'), {
+      serverSecret: secret, actorUserId: 'alice', runId: input.runId, limit: 2,
+    })
+    expect(first).toMatchObject({
+      observations: observations.slice(0, 2).map(({ id, source, verdict, createdAt }) => ({ id, source, verdict, createdAt })),
+    })
+    if (!first || !('observations' in first) || !first.nextCursor) throw new Error('Expected a second evidence page.')
+    const second = await convex.query(query('readEvidence'), {
+      serverSecret: secret, actorUserId: 'alice', runId: input.runId, limit: 2, cursor: first.nextCursor,
+    })
+    expect(second).toMatchObject({
+      observations: [observations[2]].map(({ id, source, verdict, createdAt }) => ({ id, source, verdict, createdAt })),
+      nextCursor: null,
+    })
+    await expect(convex.query(query('readEvidence'), {
+      serverSecret: secret, actorUserId: 'alice', runId: input.runId, evidenceId: 'tool:read-2',
+    })).resolves.toMatchObject(observations[1])
+    await expect(convex.query(query('readEvidence'), {
+      serverSecret: secret, actorUserId: 'bob', runId: input.runId, evidenceId: 'tool:read-2',
+    })).rejects.toThrow()
+  })
+
   test('binds one workflow owner atomically and keeps the claim on reload', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('run-owner', await seedConversation(convex))
@@ -502,7 +507,7 @@ describe('durable harness runs', () => {
     const retry = await apply(convex, input, 'owner-retry', 1, { type: 'claim_execution', workflowRunId: 'workflow-first' })
     expect(retry.snapshot.revision).toBe(1)
     await expect(apply(convex, input, 'owner-second', 1, { type: 'claim_execution', workflowRunId: 'workflow-second' }))
-      .rejects.toThrow(/ALREADY_CLAIMED/)
+      .rejects.toThrow(/HARNESS_EXECUTION_NOT_OWNED/)
   })
 
   test('round-trips normalized plans and requires current independent verification', async () => {
@@ -1096,6 +1101,16 @@ describe('durable harness runs', () => {
     })).rejects.toThrow(/HARNESS_TRANSCRIPT_CONFLICT/)
     await expect(convex.mutation(write, { ...args, workflowRunId: 'other-workflow' }))
       .rejects.toThrow(/HARNESS_TRANSCRIPT_ACCESS_DENIED/)
+    await expect(convex.mutation(write, { ...args, actorUserId: 'foreign-actor' }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_ACCESS_DENIED/)
+    await expect(convex.mutation(write, { ...args, receiptId: 'model:1' }))
+      .rejects.toThrow(/HARNESS_TRANSCRIPT_RECEIPT_NOT_FOUND/)
+    await expect(convex.mutation(write, { ...args, receiptId: 'model:9999999999999999999999999' }))
+      .rejects.toThrow(/Invalid harness transcript step/)
+    await expect(convex.query(query('listTranscriptSteps'), {
+      actorUserId: input.policy.actorUserId, runId: input.runId, workflowRunId: 'stale-workflow',
+      paginationOpts: { cursor: null, numItems: 25 }, serverSecret: secret,
+    })).rejects.toThrow(/HARNESS_TRANSCRIPT_ACCESS_DENIED/)
     const page = await convex.query(query('listTranscriptSteps'), {
       actorUserId: input.policy.actorUserId,
       runId: input.runId,
@@ -1109,4 +1124,119 @@ describe('durable harness runs', () => {
       isDone: true,
     })
   })
+})
+
+test('public artifact attachment validates actual bytes, supports chunks, and rechecks source access', async () => {
+  const convex = convexTest(schema, modules)
+  const input = admission('public-artifact-run', await seedConversation(convex))
+  await admit(convex, input)
+  await apply(convex, input, 'claim-public-artifacts', 0, {
+    type: 'claim_execution', workflowRunId: 'artifact-workflow',
+  })
+  const access = { serverSecret: secret, actorUserId: 'alice', runId: input.runId, workflowRunId: 'artifact-workflow' }
+  const sourceId = await convex.run(ctx => ctx.db.insert('files', {
+    userId: 'alice', name: 'Source', type: 'file', createdAt: Date.now(), updatedAt: Date.now(),
+  }))
+  const bytes = new Uint8Array([0, 1, 127, 255])
+  const storageId = await convex.run(ctx => ctx.storage.store(new Blob([bytes])))
+  const args = {
+    ...access, artifactId: `ha_${'b'.repeat(64)}`, toolCallId: 'render-public', toolName: 'render_document',
+    digest: createHash('sha256').update(bytes).digest('hex'), storageId, byteSize: bytes.byteLength,
+    mediaPartCount: 1, resource: { id: sourceId, revision: 'rev-7', page: 2 },
+  }
+  await expect(convex.action(artifactAction('attachUploaded'), args)).resolves.toMatchObject({ storageId })
+  const chunk = await convex.action(artifactAction('readChunk'), {
+    ...access, artifactId: args.artifactId, offset: 1, length: 2,
+  }) as ArrayBuffer
+  expect(Array.from(new Uint8Array(chunk))).toEqual([1, 127])
+  const badStorageId = await convex.run(ctx => ctx.storage.store(new Blob([bytes])))
+  await expect(convex.action(artifactAction('attachUploaded'), {
+    ...args, artifactId: `ha_${'c'.repeat(64)}`, toolCallId: 'bad-digest', storageId: badStorageId, digest: '0'.repeat(64),
+  })).rejects.toThrow('HARNESS_ARTIFACT_DIGEST_MISMATCH')
+  expect(await convex.run(ctx => ctx.storage.get(badStorageId))).toBeNull()
+  await convex.run(ctx => ctx.db.patch(sourceId, { userId: 'bob' }))
+  await expect(convex.action(artifactAction('readChunk'), {
+    ...access, artifactId: args.artifactId, offset: 0, length: 1,
+  })).rejects.toThrow('HARNESS_ARTIFACT_SOURCE_UNAVAILABLE')
+})
+
+test('private context artifacts are run-owned, idempotent, and reject conflicting retries', async () => {
+  const convex = convexTest(schema, modules)
+  const input = admission('artifact-run', await seedConversation(convex))
+  await admit(convex, input)
+  await apply(convex, input, 'claim-artifact-run', 0, {
+    type: 'claim_execution', workflowRunId: 'artifact-workflow',
+  })
+  const bytes = new Uint8Array([0, 1, 2, 127, 255])
+  const sourceId = await convex.run(ctx => ctx.db.insert('files', {
+    userId: 'alice', name: 'Source', type: 'file', createdAt: Date.now(), updatedAt: Date.now(),
+  }))
+  const digest = createHash('sha256').update(bytes).digest('hex')
+  const args = {
+    serverSecret: secret,
+    actorUserId: 'alice',
+    runId: input.runId,
+    workflowRunId: 'artifact-workflow',
+    toolCallId: 'render-1',
+    toolName: 'render_document',
+    artifactId: `ha_${'a'.repeat(64)}`,
+    digest,
+    data: bytes.slice().buffer as ArrayBuffer,
+    mediaPartCount: 1,
+    resource: { id: sourceId, revision: 'rev-7', page: 1 },
+  }
+
+  const stored = await convex.action(artifactAction('put'), args) as {
+    artifactId: string; storageId: string; byteSize: number; resource: { revision: string }
+  }
+  const replay = await convex.action(artifactAction('put'), args)
+  expect(replay).toMatchObject({ artifactId: stored.artifactId, storageId: stored.storageId })
+  expect(stored.byteSize).toBe(bytes.byteLength)
+  expect(stored.resource.revision).toBe('rev-7')
+  const read = await convex.action(artifactAction('read'), {
+    serverSecret: secret, actorUserId: 'alice', runId: input.runId,
+    workflowRunId: 'artifact-workflow', artifactId: stored.artifactId,
+  }) as ArrayBuffer
+  expect(Array.from(new Uint8Array(read))).toEqual(Array.from(bytes))
+  await expect(convex.action(artifactAction('read'), {
+    serverSecret: secret, actorUserId: 'bob', runId: input.runId,
+    workflowRunId: 'artifact-workflow', artifactId: stored.artifactId,
+  })).rejects.toThrow('HARNESS_ARTIFACT_UNAUTHORIZED')
+  await expect(convex.action(artifactAction('read'), {
+    serverSecret: secret, actorUserId: 'alice', runId: 'another-run',
+    workflowRunId: 'artifact-workflow', artifactId: stored.artifactId,
+  })).rejects.toThrow('HARNESS_ARTIFACT_UNAUTHORIZED')
+  await expect(convex.action(artifactAction('put'), {
+    ...args,
+    digest: createHash('sha256').update(new Uint8Array([9])).digest('hex'),
+    data: new Uint8Array([9]).buffer as ArrayBuffer,
+  })).rejects.toThrow('HARNESS_ARTIFACT_IDENTITY_CONFLICT')
+  const rows = await convex.run(ctx => ctx.db.query('harnessContextArtifacts').collect())
+  expect(rows).toHaveLength(1)
+})
+
+test('a current successor can read prior artifacts while stale workflows and actors remain fenced', async () => {
+  const convex = convexTest(schema, modules)
+  const input = admission('artifact-successor', await seedConversation(convex))
+  await admit(convex, input)
+  await apply(convex, input, 'claim-artifact-owner', 0, { type: 'claim_execution', workflowRunId: 'artifact-original' })
+  const bytes = new Uint8Array([7, 8, 9])
+  const artifactId = `ha_${'b'.repeat(64)}`
+  await convex.action(artifactAction('put'), {
+    serverSecret: secret, actorUserId: 'alice', runId: input.runId, workflowRunId: 'artifact-original',
+    toolCallId: 'read-before-handoff', toolName: 'read_document', artifactId,
+    digest: createHash('sha256').update(bytes).digest('hex'), data: bytes.buffer, mediaPartCount: 0,
+  })
+  await convex.run(async ctx => {
+    const run = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', input.runId)).unique()
+    const state = JSON.parse(run!.metadataJson)
+    await ctx.db.patch(run!._id, { metadataJson: JSON.stringify({ ...state,
+      workflowRunId: 'artifact-successor', executionGeneration: 1, revision: state.revision + 1 }) })
+  })
+  const read = { serverSecret: secret, actorUserId: 'alice', runId: input.runId, workflowRunId: 'artifact-successor', artifactId }
+  expect(new Uint8Array(await convex.action(artifactAction('read'), read) as ArrayBuffer)).toEqual(bytes)
+  await expect(convex.action(artifactAction('read'), { ...read, workflowRunId: 'artifact-original' }))
+    .rejects.toThrow('HARNESS_ARTIFACT_UNAUTHORIZED')
+  await expect(convex.action(artifactAction('read'), { ...read, actorUserId: 'bob' }))
+    .rejects.toThrow('HARNESS_ARTIFACT_UNAUTHORIZED')
 })

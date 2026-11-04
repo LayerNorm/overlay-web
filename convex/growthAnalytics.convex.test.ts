@@ -10,7 +10,11 @@ const startBackfill = makeFunctionReference<'mutation'>('platform/growth:startBa
 const startDaily = makeFunctionReference<'mutation'>('platform/growth:startDaily')
 const updateFile = makeFunctionReference<'mutation'>('files/files:update')
 const secret = 'growth-analytics-secret'
-beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
+const adminSecret = 'growth-admin-secret'
+beforeAll(() => {
+  process.env.INTERNAL_API_SECRET = secret
+  process.env.ADMIN_API_SECRET = adminSecret
+})
 
 // A Monday, so the signup week starts on DAY1.
 const DAY1 = '2026-03-02'
@@ -400,6 +404,49 @@ describe('account deletion', () => {
     await runAll(convex)
     expect(await rowsFor('user-a')).toEqual({ users: 0, days: 0 })
     expect(await rowsFor('user-b')).toEqual({ users: 0, days: 0 })
+    vi.useRealTimers()
+  })
+})
+
+describe('admin growth summary', () => {
+  const getGrowthSummary = makeFunctionReference<'query'>('admin/console:getGrowthSummary')
+  const asOperator = async (convex: Convex, role: 'admin' | 'auditor' | 'billing_admin' | 'support') => {
+    await convex.run(async (ctx) => { await ctx.db.insert('administrativePrincipals', { userId: `op-${role}`, role, createdAt: 1, updatedAt: 1 }) })
+    return convex.withIdentity({ subject: `op-${role}` })
+  }
+
+  test('is empty before the first run and open to admin, auditor and billing only', async () => {
+    const convex = convexTest(schema, modules)
+    for (const role of ['admin', 'auditor', 'billing_admin'] as const) {
+      await expect((await asOperator(convex, role)).query(getGrowthSummary, { serverSecret: adminSecret }))
+        .resolves.toEqual({ lastCompletedDay: null, computedAt: null, days: [], cohorts: [], topWorkspaces: [] })
+    }
+    const support = await asOperator(convex, 'support')
+    await expect(support.query(getGrowthSummary, { serverSecret: adminSecret })).rejects.toThrow(/Unauthorized/)
+    const admin = convex.withIdentity({ subject: 'op-admin' })
+    await expect(admin.query(getGrowthSummary, { serverSecret: secret })).rejects.toThrow(/Unauthorized/)
+  })
+
+  test('returns days, new paid accounts, cohorts and top workspaces from the rollups', async () => {
+    vi.useFakeTimers()
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    await convex.run(async (ctx) => {
+      await ctx.db.insert('workspaces', { workspaceId: 'w1', kind: 'organization', name: 'Acme', slug: 'acme', status: 'active', createdAt: 1, updatedAt: 1 })
+    })
+    const day8 = addDays(DAY1, 7)
+    vi.setSystemTime(at(addDays(day8, 1), 1))
+    await convex.mutation(startBackfill, {})
+    await runAll(convex)
+    const admin = await asOperator(convex, 'admin')
+    const summary = await admin.query(getGrowthSummary, { serverSecret: adminSecret })
+    expect(summary.lastCompletedDay).toBe(day8)
+    expect(summary.days.map((row: { day: string }) => row.day)).toEqual(Array.from({ length: 8 }, (_, i) => addDays(DAY1, i)))
+    expect(summary.days[0]).toMatchObject({ day: DAY1, usersCreated: 2, messagesSent: 20, newPaidSubscriptions: 1, newPaidApproximate: 1 })
+    expect(summary.days[0]).not.toHaveProperty('topWorkspaces')
+    // DAY1's week has only had 8 days, so neither window is final yet.
+    expect(summary.cohorts).toEqual([{ weekStart: DAY1, users: 2, w1Active: 2, w4Active: 0, w1Final: false, w4Final: false }])
+    expect(summary.topWorkspaces).toEqual([{ workspaceId: 'w1', name: 'Acme', kind: 'organization', cents: 75, sandboxSeconds: 30 }])
     vi.useRealTimers()
   })
 })

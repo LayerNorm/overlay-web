@@ -6,7 +6,7 @@ import type { BoxSandboxRuntime } from '@overlay/sandbox-runtime/box'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import type { GenerationUsagePolicy } from '@/server/outputs/GenerationUsagePolicy'
 import { billableBudgetCentsFromProviderUsd, resolveBillingPayer } from '@/server/billing/billing-runtime'
-import { getMarkupBasisPoints } from '@/shared/billing/billing-pricing'
+import { configuredUsageMarkupBasisPoints } from '@/server/env/usage-markup'
 import { logger } from '@/server/observability/logger'
 import {
   reportSandboxAlert as reportSandboxAlertDefault,
@@ -31,7 +31,6 @@ const DEFAULT_METER_LEASE_LIMIT = 100
 const CLEANUP_RETRY_BASE_MS = 60_000
 const CLEANUP_RETRY_MAX_MS = 30 * 60_000
 export const SANDBOX_METER_DELAY_ALERT_MS = 15 * 60_000
-const MARKUP_MULTIPLIER = 1 + getMarkupBasisPoints() / 10_000
 /** How long past its idle window a machine may run before the sweep (the fallback) stops it itself. */
 const IDLE_FALLBACK_GRACE_MS = 2 * 60_000
 /**
@@ -147,7 +146,7 @@ export class ManagedAgentSandboxBilling {
       kind: 'sandbox',
       modelId: `sandbox/${lease.provider}`,
       operationId: args.operationId,
-      providerCostUsd: bootstrapCents / (100 * MARKUP_MULTIPLIER),
+      providerCostUsd: bootstrapCents / (100 * (1 + configuredUsageMarkupBasisPoints() / 10_000)),
       requestFingerprint: args.requestFingerprint,
       programmaticSubjectId: `agent:${args.agentId}`,
       userId: args.userId,

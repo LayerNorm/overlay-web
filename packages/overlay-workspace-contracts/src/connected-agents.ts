@@ -346,8 +346,6 @@ export const AGENT_ENVIRONMENT_CREDENTIAL_METHODS = [
   'agent:events:write',
   'agent:artifacts:write',
   'agent:credentials:refresh',
-  /** Overlay Cloud machines only: fetch the provider credentials for one of their runs. */
-  'agent:run-credentials',
   /** Only hosts advertising drive v1: exact run/session/attempt-scoped drive credentials. */
   'agent:drive-credentials',
 ] as const

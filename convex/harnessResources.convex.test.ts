@@ -86,7 +86,8 @@ async function resourceApply(
   operation: Record<string, unknown>,
 ) {
   const result = await convex.mutation(makeFunctionReference<'mutation'>('harness/runs:apply'), {
-    actorUserId: 'alice', runId: input.runId, operationId: `op-${expectedRevision}-${String(operation.type)}`,
+    actorUserId: 'alice', runId: input.runId, workflowRunId,
+    executionGeneration: 0, operationId: `op-${expectedRevision}-${String(operation.type)}`,
     expectedRevision, operation, serverSecret: secret,
   }) as { snapshot: HarnessSnapshot }
   if (operation.type === 'claim_execution') {

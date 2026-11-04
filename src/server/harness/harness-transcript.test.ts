@@ -1,7 +1,8 @@
 import { expect, test, vi } from 'vitest'
 import type { HarnessExecutionResult } from './runner'
 vi.mock('server-only', () => ({}))
-import { publicHarnessStepPersistence, readSettledHarnessTranscript } from './harness-transcript'
+vi.mock('./state-steps', () => ({ readHarnessState: vi.fn(), applyHarnessOperation: vi.fn() }))
+import { publicHarnessStepPersistence, readSettledHarnessTranscript, readHarnessTranscriptForDelivery } from './harness-transcript'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
 
 test('settled public persistence excludes private reasoning and keeps sanitized tool display', () => {
@@ -61,7 +62,7 @@ test('failure delivery restores journal order, deduplicates matching settled ste
     ],
   }
 
-  const delivery = buildPersonalHarnessDelivery(result, undefined, [], new Set(), settledTranscript)
+  const delivery = buildPersonalHarnessDelivery(result, undefined, new Set(), settledTranscript)
   expect(delivery.content).toBe('First settled step.\n\nSecond settled step.\n\nUnsettled live text.')
   expect(delivery.content.match(/First settled step\./g)).toHaveLength(1)
   expect(delivery.content.match(/Second settled step\./g)).toHaveLength(1)
@@ -79,7 +80,7 @@ test('a caught failure with lost local steps still reconstructs the settled tran
     messages: [],
     steps: [],
   } as unknown as HarnessExecutionResult
-  const delivery = buildPersonalHarnessDelivery(result, undefined, [], new Set(), {
+  const delivery = buildPersonalHarnessDelivery(result, undefined, new Set(), {
     persistence: { content: 'Saved before the interruption.', parts: [{ type: 'text', text: 'Saved before the interruption.' }] },
     steps: [{ receiptId: 'model:3', sequence: 3, stepNumber: 0,
       persistence: { content: 'Saved before the interruption.', parts: [{ type: 'text', text: 'Saved before the interruption.' }] } }],
@@ -98,7 +99,7 @@ test('final result summary survives an empty or compacted journal window', () =>
     messages: [],
     steps: [],
   } as unknown as HarnessExecutionResult
-  const delivery = buildPersonalHarnessDelivery(result, undefined, [], new Set(), {
+  const delivery = buildPersonalHarnessDelivery(result, undefined, new Set(), {
     persistence: { content: '', parts: [] }, steps: [], newestSequence: null,
   })
   expect(delivery.content).toContain('The final result is preserved.')
@@ -116,7 +117,7 @@ test('final result summary survives a full newest transcript content and part wi
     messages: [],
     steps: [],
   } as unknown as HarnessExecutionResult
-  const delivery = buildPersonalHarnessDelivery(result, undefined, [], new Set(), {
+  const delivery = buildPersonalHarnessDelivery(result, undefined, new Set(), {
     persistence: {
       content: 'x'.repeat(160_000),
       parts: Array.from({ length: 80 }, (_, index) => ({ type: 'text', text: `journal part ${index}` })),
@@ -125,7 +126,7 @@ test('final result summary survives a full newest transcript content and part wi
     newestSequence: 79,
   })
   expect(delivery.content).toContain(summary)
-  expect(delivery.parts).toHaveLength(80)
+  expect(delivery.parts).toHaveLength(81)
   expect(delivery.parts.at(-1)).toEqual({ type: 'text', text: summary })
 })
 
@@ -158,7 +159,7 @@ test('settled transcript reads keep the newest 500 steps and preserve final answ
     ],
     stepReceiptIds: ['model:1', 'model:501'],
   } as unknown as HarnessExecutionResult
-  const delivery = buildPersonalHarnessDelivery(result, undefined, [], new Set(), window)
+  const delivery = buildPersonalHarnessDelivery(result, undefined, new Set(), window)
   expect(delivery.content).not.toContain('old live')
   expect(delivery.content).toContain('new live')
 })
@@ -174,4 +175,45 @@ test('non-advancing or malformed journal pagination remains a persistence failur
   await expect(readSettledHarnessTranscript(reference, stuck as never)).rejects.toThrow('Harness persistence failed.')
   await expect(readSettledHarnessTranscript(reference, malformed as never)).rejects.toThrow('Harness persistence failed.')
   await expect(readSettledHarnessTranscript(reference, malformedStep as never)).rejects.toThrow('Harness persistence failed.')
+})
+
+
+test('public bookkeeping is hidden without discarding real work tools', () => {
+  const control = { type: 'tool-result', toolName: 'harness_update_step', toolCallId: 'control', input: {}, output: { success: true } }
+  const work = { type: 'tool-result', toolName: 'get_note', toolCallId: 'work', input: {}, output: { title: 'Verified note' } }
+  const step = { stepNumber: 0, text: '', reasoning: [], content: [control, work],
+    toolCalls: [control, work].map(part => ({ ...part, type: 'tool-call' })), toolResults: [control, work] }
+  const journal = publicHarnessStepPersistence(step as never, new Set(['get_note']))
+  expect(JSON.stringify(journal)).not.toContain('harness_update_step')
+  expect(JSON.stringify(journal)).toContain('get_note')
+  const result = { snapshot: { status: 'completed', usage: { inputTokens: 1, outputTokens: 1, costMicros: 1 } },
+    steps: [step], messages: [], outcome: 'finished' } as unknown as HarnessExecutionResult
+  const delivery = buildPersonalHarnessDelivery(result)
+  expect(JSON.stringify(delivery)).not.toContain('harness_update_step')
+  expect(JSON.stringify(delivery)).toContain('get_note')
+})
+
+
+test('journal read outage finalizes with a reconciliation diagnostic without repeating work', async () => {
+  const { readHarnessState, applyHarnessOperation } = await import('./state-steps')
+  const state = { runId: 'root', workflowRunId: 'workflow', revision: 3, status: 'completed' }
+  vi.mocked(readHarnessState).mockResolvedValue(state as never)
+  vi.mocked(applyHarnessOperation).mockImplementation(async (_ref, _id, operation) => ({ ...state,
+    diagnostic: operation.type === 'record_diagnostic' ? operation.diagnostic : undefined }) as never)
+  const result = { snapshot: state, steps: [], messages: [], outcome: 'finished' } as unknown as HarnessExecutionResult
+  const reader = vi.fn(async () => { throw new Error('private database details') })
+  expect(await readHarnessTranscriptForDelivery({ actorUserId: 'user', runId: 'root', workflowRunId: 'workflow' }, result, reader)).toBeUndefined()
+  expect(result.snapshot.diagnostic).toMatchObject({ code: 'PERSISTENCE_FAILED', retryability: 'reconcile' })
+  expect(JSON.stringify(result)).not.toContain('private database details')
+  expect(reader).toHaveBeenCalledOnce()
+})
+
+test('a stale workflow cannot replace a successor transcript after a read failure', async () => {
+  const { readHarnessState, applyHarnessOperation } = await import('./state-steps')
+  vi.mocked(applyHarnessOperation).mockClear()
+  vi.mocked(readHarnessState).mockResolvedValue({ workflowRunId: 'successor', executionGeneration: 1 } as never)
+  const reader = vi.fn(async () => { throw new Error('database unavailable') })
+  await expect(readHarnessTranscriptForDelivery({ actorUserId: 'user', runId: 'root', workflowRunId: 'workflow' }, {} as never, reader))
+    .rejects.toThrow('authorization was revoked')
+  expect(applyHarnessOperation).not.toHaveBeenCalled()
 })

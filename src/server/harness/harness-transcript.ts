@@ -1,7 +1,7 @@
 import type { StepResult, ToolSet } from 'ai'
-import type {
-  HarnessExecutionReference,
-} from './state-steps'
+import { readHarnessState, applyHarnessOperation, type HarnessExecutionReference } from './state-steps'
+import { createHarnessDiagnostic, stableHarnessDiagnosticId } from '@overlay/agent-runtime/harness-diagnostic'
+import type { HarnessExecutionResult } from './runner'
 import type {
   HarnessTranscriptPage,
   HarnessTranscriptPersistence,
@@ -14,6 +14,7 @@ import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { HarnessAuthorizationError, HarnessPersistenceError } from './harness-diagnostics'
 
 function transcriptError(error: unknown): Error {
+  if (error instanceof HarnessAuthorizationError || error instanceof HarnessPersistenceError) return error
   const message = error instanceof Error ? error.message : ''
   if (['HARNESS_TRANSCRIPT_ACCESS_DENIED', 'HARNESS_EXECUTION_NOT_OWNED', 'HARNESS_RUN_NOT_FOUND',
     'CONVERSATION_ACCESS_DENIED'].some(code => message.includes(code))) return new HarnessAuthorizationError()
@@ -25,6 +26,8 @@ export function publicHarnessStepPersistence(
   activeToolNames: ReadonlySet<string>,
 ): HarnessTranscriptPersistence {
   const sanitize = (text: string) => stripTextualToolCalls(text, new Set([...HARNESS_CONTROL_TOOLS, ...activeToolNames]))
+  const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
+  const isPublic = (part: { type: string; toolName?: string }) => !part.toolName || !controls.has(part.toolName)
   const displayResult = <T extends { type: string }>(part: T): T => {
     if (part.type !== 'tool-result' || !('output' in part)) return part
     const output = part.output
@@ -36,13 +39,14 @@ export function publicHarnessStepPersistence(
     reasoningText: undefined,
     reasoning: [],
     text: typeof step.text === 'string' ? sanitize(step.text) : step.text,
-    content: step.content?.filter(part => part.type !== 'reasoning').map(part => {
+    content: step.content?.filter(part => part.type !== 'reasoning' && isPublic(part)).map(part => {
       const cleaned = part.type === 'text' && typeof part.text === 'string'
         ? { ...part, text: sanitize(part.text) }
         : part
       return displayResult(cleaned)
     }),
-    toolResults: step.toolResults.map(displayResult),
+    toolCalls: step.toolCalls.filter(isPublic),
+    toolResults: step.toolResults.filter(isPublic).map(displayResult),
   }
   const persistence = buildAssistantPersistenceFromSteps([publicStep], publicStep.text ?? '')
   return compactAssistantPersistenceForConvex({
@@ -59,7 +63,11 @@ export async function writeSettledHarnessTranscriptStep(
 ): Promise<void> {
   'use step'
   try {
-    await new ConvexHarnessRepository().writeTranscriptStep({
+    const repository = new ConvexHarnessRepository()
+    const state = await repository.get(reference)
+    if (!state) throw new HarnessAuthorizationError()
+    if (state.policy.publicProgressVersion !== 1) return
+    await repository.writeTranscriptStep({
       actorUserId: reference.actorUserId,
       runId: reference.runId,
       workflowRunId: reference.workflowRunId,
@@ -78,7 +86,11 @@ export async function readSettledHarnessTranscriptPage(
 ): Promise<HarnessTranscriptPage> {
   'use step'
   try {
-    return await new ConvexHarnessRepository().listTranscriptSteps({
+    const repository = new ConvexHarnessRepository()
+    const state = await repository.get(reference)
+    if (!state) throw new HarnessAuthorizationError()
+    if (state.policy.publicProgressVersion !== 1) return { steps: [], cursor: '', isDone: true }
+    return await repository.listTranscriptSteps({
       actorUserId: reference.actorUserId,
       runId: reference.runId,
       workflowRunId: reference.workflowRunId,
@@ -104,7 +116,7 @@ export function compactHarnessTranscriptPersistence(input: HarnessTranscriptPers
   const contentPrefix = '[earlier transcript content omitted]\n\n'
   const content = input.content.length > 160_000
     ? `${contentPrefix}${input.content.slice(-(160_000 - contentPrefix.length))}` : input.content
-  const parts = input.parts.slice(-80).map(part => {
+  const parts = input.parts.map(part => {
     if (part.type !== 'text' || typeof part.text !== 'string' || part.text.length <= 80_000) return part
     return { ...part, text: `[earlier text omitted]\n\n${part.text.slice(-79_970)}` }
   })
@@ -171,5 +183,28 @@ export async function readSettledHarnessTranscript(
     persistence, steps, truncated,
     newestSequence,
     oldestSequence,
+  }
+}
+
+/** A journal outage must not strand finalization or cause work to run again. */
+export async function readHarnessTranscriptForDelivery(
+  reference: HarnessExecutionReference,
+  result: HarnessExecutionResult,
+  reader: typeof readSettledHarnessTranscript = readSettledHarnessTranscript,
+): Promise<SettledHarnessTranscriptWindow | undefined> {
+  try {
+    return await reader(reference)
+  } catch (error) {
+    if (error instanceof HarnessAuthorizationError) throw error
+    const state = await readHarnessState(reference)
+    if (state.workflowRunId !== reference.workflowRunId
+      || (state.executionGeneration ?? 0) !== (reference.executionGeneration ?? 0)) throw new HarnessAuthorizationError()
+    const operationId = 'transcript-read'
+    const diagnostic = createHarnessDiagnostic({
+      diagnosticId: stableHarnessDiagnosticId(state.runId, operationId, state.revision),
+      code: 'PERSISTENCE_FAILED', stage: 'persistence', operationId, occurredAt: Date.now(),
+    })
+    result.snapshot = await applyHarnessOperation(reference, 'transcript-read-failed', { type: 'record_diagnostic', diagnostic })
+    return undefined
   }
 }

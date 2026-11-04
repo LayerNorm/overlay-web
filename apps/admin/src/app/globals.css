@@ -1,12 +1,13 @@
 @import '@overlay/ui/styles.css' layer(base);
 
 @import 'tailwindcss';
+@import './admin-shell.css';
 
 /* Workspace packages ship components consumed by this app; scan them for
    utilities in addition to ./src. */
 @source '../**/*.{ts,tsx,mdx}';
-@source '../../../packages/overlay-ui/src/**/*.{ts,tsx,mdx}';
-@source '../../../packages/overlay-modules-react/src/**/*.{ts,tsx,mdx}';
+@source '../../../../packages/overlay-ui/src/**/*.{ts,tsx,mdx}';
+@source '../../../../packages/overlay-modules-react/src/**/*.{ts,tsx,mdx}';
 
 /* `dark:` follows the [data-theme] attribute like the web app. */
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));

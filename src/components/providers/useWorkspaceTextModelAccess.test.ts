@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
-import { FREE_TIER_AUTO_MODEL_ID, isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
+import { isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 import {
   buildPickerTextModels,
   buildSelectableTextModels,
@@ -9,11 +9,15 @@ import {
   resolveEntitlementDerived,
 } from './useWorkspaceTextModelAccess'
 
-test('free workspaces see only free models, while paid workspaces retain the full list', () => {
-  const freeAccess = resolveEntitlementDerived({
-    tier: 'free',
-    creditsUsed: 0,
-    creditsTotal: 0,
+test('unsubscribed and exhausted workspaces browse the full catalog but cannot use models', () => {
+  const unpaidAccess = resolveEntitlementDerived(null, true, false)
+  const exhaustedAccess = resolveEntitlementDerived({
+    tier: 'pro',
+    planKind: 'paid',
+    creditsUsed: 100,
+    creditsTotal: 100,
+    budgetTotalCents: 10_000,
+    budgetRemainingCents: 0,
   }, true, false)
   const paidAccess = resolveEntitlementDerived({
     tier: 'pro',
@@ -23,24 +27,20 @@ test('free workspaces see only free models, while paid workspaces retain the ful
     budgetTotalCents: 10_000,
     budgetRemainingCents: 10_000,
   }, true, false)
-  const freeModels = buildSelectableTextModels(freeAccess)
+  const unpaidModels = buildSelectableTextModels(unpaidAccess)
+  const exhaustedModels = buildSelectableTextModels(exhaustedAccess)
   const paidModels = buildSelectableTextModels(paidAccess)
+  const expected = getModelsByIntelligence()
+    .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
+    .map((model) => model.id)
 
-  assert.deepEqual(
-    freeModels.map((model) => model.id),
-    getModelsByIntelligence(true)
-      .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
-      .filter((model) => isFreeTierChatModelId(model.id))
-      .map((model) => model.id),
-  )
-  assert.ok(freeModels.every((model) => isFreeTierChatModelId(model.id)))
-  assert.deepEqual(
-    paidModels.map((model) => model.id),
-    getModelsByIntelligence(false)
-      .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
-      .map((model) => model.id),
-  )
-  assert.ok(paidModels.length > freeModels.length)
+  assert.deepEqual(unpaidModels.map((model) => model.id), expected)
+  assert.deepEqual(exhaustedModels.map((model) => model.id), expected)
+  assert.deepEqual(paidModels.map((model) => model.id), expected)
+  assert.equal(unpaidAccess.isModelAccessRestricted, true)
+  assert.equal(exhaustedAccess.isModelAccessRestricted, true)
+  assert.equal(isTextModelLocked('byok/personal/custom:free', true), true)
+  assert.equal(isRetiredHostedModelId('byok/personal/custom:free'), false)
 })
 
 test('ZDR-only access excludes models without zero-data-retention support', () => {
@@ -58,42 +58,26 @@ test('ZDR-only access excludes models without zero-data-retention support', () =
   assert.ok(zdrModels.every((model) => model.supportsZeroDataRetention))
 })
 
-test('billing-disabled deployments still restrict free workspaces to Auto and OpenRouter free', () => {
-  const freeAccess = resolveEntitlementDerived({
-    tier: 'free',
-    creditsUsed: 0,
-    creditsTotal: 0,
-  }, false, false)
-  assert.equal(freeAccess.isFreeTier, true)
-  assert.deepEqual(
-    buildSelectableTextModels(freeAccess).map((model) => model.id).sort(),
-    ['openrouter/free', 'overlay-free'],
-  )
-})
-
-test('billing-disabled deployments without entitlements keep the full list', () => {
+test('billing-disabled deployments keep the full list without subscription data', () => {
   const unknownAccess = resolveEntitlementDerived(null, false, false)
-  assert.equal(unknownAccess.isFreeTier, false)
+  assert.equal(unknownAccess.isModelAccessRestricted, false)
   assert.ok(buildSelectableTextModels(unknownAccess).length > 2)
 })
 
-test('picker models include paid models for restricted workspaces and keep Auto first', () => {
+test('picker models keep the complete paid catalog visible when access is restricted', () => {
   const pickerModels = buildPickerTextModels({
     effectiveOnlyAllowZdrModels: false,
-    isModelAccessRestricted: true,
   })
 
-  assert.equal(pickerModels[0]?.id, FREE_TIER_AUTO_MODEL_ID)
-  assert.ok(pickerModels.some((model) => !isFreeTierChatModelId(model.id)))
+  assert.ok(pickerModels.length > 2)
   assert.ok(pickerModels.every((model) => model.id !== 'nvidia/nemotron-nano-9b-v2'))
 })
 
 test('picker models apply the effective ZDR filter without changing ordering', () => {
   const pickerModels = buildPickerTextModels({
     effectiveOnlyAllowZdrModels: true,
-    isModelAccessRestricted: true,
   })
-  const expectedModels = getModelsByIntelligence(true)
+  const expectedModels = getModelsByIntelligence()
     .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
     .filter((model) => model.supportsZeroDataRetention)
 
@@ -102,9 +86,8 @@ test('picker models apply the effective ZDR filter without changing ordering', (
   assert.deepEqual(pickerModels.map((model) => model.id), expectedModels.map((model) => model.id))
 })
 
-test('premium text models lock only when access is restricted and are exempt for BYOK and free models', () => {
+test('all text models, including BYOK, lock when access is restricted', () => {
   assert.equal(isTextModelLocked('anthropic/claude-opus-4.7', true), true)
-  assert.equal(isTextModelLocked(FREE_TIER_AUTO_MODEL_ID, true), false)
-  assert.equal(isTextModelLocked('byok/personal/gpt-5', true), false)
+  assert.equal(isTextModelLocked('byok/personal/gpt-5', true), true)
   assert.equal(isTextModelLocked('anthropic/claude-opus-4.7', false), false)
 })

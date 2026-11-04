@@ -5,7 +5,7 @@ import {
   QuotaEnforcer,
   UsageMeter,
   canUsePaidBudgetFeatures,
-  createFreeEntitlements,
+  createUnsubscribedEntitlements,
   evaluateQuota,
   StripeBillingProvider,
 } from './index'
@@ -27,11 +27,11 @@ function paidEntitlements(overrides: Partial<Entitlements> = {}): Entitlements {
 }
 
 describe('@overlay/billing', () => {
-  it('exposes free no-op billing provider defaults', async () => {
+  it('exposes unsubscribed no-op billing provider defaults', async () => {
     const provider = new NoOpBillingProvider()
     const entitlements = await provider.getEntitlements('user_1')
 
-    assert.deepEqual(entitlements, createFreeEntitlements())
+    assert.deepEqual(entitlements, createUnsubscribedEntitlements())
     assert.equal(canUsePaidBudgetFeatures(entitlements), false)
     await assert.rejects(
       () => provider.createCheckoutSession({ userId: 'user_1' }),

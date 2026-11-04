@@ -128,6 +128,22 @@ test('BillingCustomerService.getBillingSettings: an account has no plan or autom
   assert.equal(settings.autoTopUpEnabled, false)
 })
 
+test('an unfunded workspace reports zero budget without inheriting the member personal plan', async () => {
+  const service = new BillingCustomerService({ repository: createRepository() })
+  const response = await service.getAppSubscription({ userId: 'member_1', unfundedWorkspace: true })
+  assert.equal(response.planKind, 'free')
+  assert.equal(response.planAmountCents, 0)
+  assert.equal(response.budgetTotalCents, 0)
+  assert.equal(response.budgetRemainingCents, 0)
+  assert.equal(response.creditsTotal, 0)
+  assert.equal(response.autoTopUpEnabled, false)
+  assert.equal(response.autoTopUpConsentGranted, false)
+  assert.equal(response.paidPeriodEnd, undefined)
+  assert.deepEqual(response.dailyLimits, { ask: 0, write: 0, agent: 0 })
+  assert.equal(response.overlayStorageBytesUsed, 100)
+  assert.equal(response.overlayStorageBytesLimit, 1000)
+})
+
 test('BillingCustomerService.getEntitlements preserves nested entitlement shape', async () => {
   const service = new BillingCustomerService({ repository: createRepository() })
   const response = await service.getEntitlements({ userId: 'user_1' })

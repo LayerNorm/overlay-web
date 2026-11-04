@@ -8,9 +8,7 @@ import { getServerProviderKey } from './server-provider-keys'
 /**
  * Global `AI_GATEWAY_API_KEY` credit tracking.
  *
- * When the shared gateway key's balance falls below the threshold, chat model
- * resolution prefers free models (the OpenRouter free router or a NIM free
- * model) so the remaining credit is preserved. The balance is read via
+ * The shared gateway key's balance is read via
  * `gateway.getCredits()` (GET /v1/credits) and cached briefly; a 402 from any
  * gateway call also marks the key as low until the cache refreshes.
  */
@@ -80,9 +78,7 @@ export async function isGatewayCreditLow(
 
 /**
  * Mark the global key as effectively empty until the cache TTL expires. Called
- * when a gateway response returns 402 (insufficient credits / spend limit), so
- * subsequent model resolutions skip straight to the free fallback instead of
- * burning paid attempts that will fail.
+ * when a gateway response returns 402 (insufficient credits / spend limit).
  */
 export function markGatewayCreditLow(apiKey?: string): void {
   const now = Date.now()

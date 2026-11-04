@@ -1,14 +1,12 @@
 import { lstat, readFile, readdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join, relative, sep } from 'node:path'
-import { gzipSync } from 'node:zlib'
 import {
   AGENT_PROFILE_LIMITS,
   analyzeAgentProfile,
   summarizeAgentProfile,
   type AgentProfileFile,
   type AgentProfileHarness,
-  type AgentProfileUpload,
   type AnalyzedProfile,
 } from '@layernorm/overlay-agent-bridge-protocol'
 
@@ -70,16 +68,6 @@ export async function collectProfileFiles(harness: AgentProfileHarness, home = h
   return out
 }
 
-export function uploadFromAnalysis(analysis: AnalyzedProfile): AgentProfileUpload {
-  return {
-    harness: analysis.harness,
-    files: analysis.files,
-    mcpServers: analysis.mcpServers,
-    hooks: analysis.hooks,
-    secrets: analysis.secrets,
-  }
-}
-
 export function describeAnalysis(analysis: AnalyzedProfile): string[] {
   const summary = summarizeAgentProfile(analysis)
   const lines = [
@@ -99,16 +87,12 @@ export function describeAnalysis(analysis: AnalyzedProfile): string[] {
 
 export type ExportConfigOptions = {
   harness: AgentProfileHarness
-  serverUrl: string
-  code: string
   home?: string
-  dryRun?: boolean
-  fetchImpl?: typeof fetch
   log?: (line: string) => void
 }
 
-/** Collects, cleans on this computer, and uploads one profile. Nothing leaves the computer before it is cleaned. */
-export async function exportConfig(options: ExportConfigOptions): Promise<{ analysis: AnalyzedProfile; uploaded: boolean }> {
+/** Locally inspect a sanitized configuration summary; this command never uploads files. */
+export async function exportConfig(options: ExportConfigOptions): Promise<{ analysis: AnalyzedProfile; uploaded: false }> {
   const log = options.log ?? ((line: string) => process.stdout.write(`${line}\n`))
   const files = await collectProfileFiles(options.harness, options.home)
   const analysis = analyzeAgentProfile(options.harness, [
@@ -116,23 +100,9 @@ export async function exportConfig(options: ExportConfigOptions): Promise<{ anal
     ...files.filter((file) => file.path === 'claude.json'),
   ])
   for (const line of describeAnalysis(analysis)) log(line)
-  if (options.dryRun) {
-    log('Dry run: nothing was uploaded.')
-    return { analysis, uploaded: false }
-  }
   if (analysis.files.length === 0 && Object.keys(analysis.mcpServers).length === 0) {
-    throw new Error(`Nothing to import: no ${options.harness === 'claude-code' ? 'Claude Code' : 'Codex'} configuration was found.`)
+    throw new Error(`No ${options.harness === 'claude-code' ? 'Claude Code' : 'Codex'} configuration was found to inspect.`)
   }
-  const body = gzipSync(Buffer.from(JSON.stringify(uploadFromAnalysis(analysis))))
-  const response = await (options.fetchImpl ?? fetch)(`${options.serverUrl.replace(/\/+$/, '')}/api/v1/agent-profiles/upload`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/gzip', authorization: `Bearer ${options.code}` },
-    body,
-  })
-  if (!response.ok) {
-    const message = await response.json().then((json: { error?: string }) => json.error, () => undefined)
-    throw new Error(message ?? `Overlay refused the upload (${response.status}).`)
-  }
-  log('Uploaded. Open the agent in Overlay to review and apply it.')
-  return { analysis, uploaded: true }
+  log('Local dry run only: no files or credentials were uploaded.')
+  return { analysis, uploaded: false }
 }

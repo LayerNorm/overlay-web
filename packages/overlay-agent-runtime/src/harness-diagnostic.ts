@@ -1,6 +1,6 @@
 export type HarnessDiagnosticCode =
   | 'TASK_DEADLINE' | 'TASK_SPEND_LIMIT' | 'WORKSPACE_FUNDS'
-  | 'PROVIDER_TIMEOUT' | 'PROVIDER_RATE_LIMIT' | 'PROVIDER_UNAVAILABLE'
+  | 'PROVIDER_REJECTED' | 'PROVIDER_TIMEOUT' | 'PROVIDER_RATE_LIMIT' | 'PROVIDER_UNAVAILABLE'
   | 'TOOL_FAILED' | 'TOOL_OUTCOME_UNKNOWN' | 'MODEL_OUTCOME_UNKNOWN'
   | 'AUTHORIZATION_REVOKED' | 'PERSISTENCE_FAILED' | 'STAGNATION' | 'UNKNOWN'
 
@@ -33,6 +33,7 @@ const descriptions: Record<HarnessDiagnosticCode, Pick<HarnessDiagnostic, 'safeM
   WORKSPACE_FUNDS: { safeMessage: 'The workspace could not fund the next model request.', nextAction: 'Check the workspace credit balance and spending controls before continuing.', retryability: 'user_action' },
   PROVIDER_TIMEOUT: { safeMessage: 'The model provider did not respond in time.', nextAction: 'Review the saved work before retrying the request.', retryability: 'user_action' },
   PROVIDER_RATE_LIMIT: { safeMessage: 'The model provider temporarily limited requests.', nextAction: 'Wait before retrying, or select another available model.', retryability: 'user_action' },
+  PROVIDER_REJECTED: { safeMessage: 'The model provider blocked this response with its content filter. Any partial response is incomplete.', nextAction: 'Review the request before trying again.', retryability: 'user_action' },
   PROVIDER_UNAVAILABLE: { safeMessage: 'The model provider could not complete the request.', nextAction: 'Review the saved work and retry when the provider is available.', retryability: 'user_action' },
   TOOL_FAILED: { safeMessage: 'A tool could not complete its operation.', nextAction: 'Review the failed tool and saved work before continuing.', retryability: 'user_action' },
   TOOL_OUTCOME_UNKNOWN: { safeMessage: 'A tool operation ended without a confirmed outcome.', nextAction: 'Check whether the action took effect before retrying it.', retryability: 'reconcile' },

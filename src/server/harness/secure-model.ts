@@ -8,7 +8,7 @@ export type HarnessModelReference = {
   modelId: string
   credentialOwnerId: string
   sessionId?: string
-  allowLowBalanceFallback?: boolean
+  purpose?: 'response' | 'summary' | 'verification'
   personal?: PersonalHarnessModelDispatch
   native?: NativeHarnessModelDispatch
 }
@@ -34,10 +34,11 @@ export class HarnessLanguageModel implements LanguageModelV4 {
       modelId: model.reference.modelId,
       credentialOwnerId: model.reference.credentialOwnerId,
       ...(model.reference.sessionId ? { sessionId: model.reference.sessionId } : {}),
-      ...(model.reference.allowLowBalanceFallback !== undefined ? { allowLowBalanceFallback: model.reference.allowLowBalanceFallback } : {}),
+      ...(model.reference.purpose ? { purpose: model.reference.purpose } : {}),
       ...(personal ? { personal: {
         access: {
           actorUserId: personal.access.actorUserId, runId: personal.access.runId, workflowRunId: personal.access.workflowRunId,
+          executionGeneration: personal.access.executionGeneration ?? 0,
           conversationId: personal.access.conversationId, agentRunId: personal.access.agentRunId,
           workspaceId: personal.access.workspaceId, principalId: personal.access.principalId,
           authentication: serializePersonalHarnessAuthentication(personal.access.authentication),
@@ -55,6 +56,7 @@ export class HarnessLanguageModel implements LanguageModelV4 {
       ...(native ? { native: {
         access: {
           actorUserId: native.access.actorUserId, runId: native.access.runId, workflowRunId: native.access.workflowRunId,
+          executionGeneration: native.access.executionGeneration ?? 0,
           workspaceId: native.access.workspaceId, principalId: native.access.principalId,
           agentId: native.access.agentId, agentPrincipalId: native.access.agentPrincipalId,
           conversationId: native.access.conversationId, agentRunId: native.access.agentRunId,

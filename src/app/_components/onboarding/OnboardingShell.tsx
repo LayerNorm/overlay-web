@@ -132,10 +132,11 @@ function AuthenticatedOnboardingShell({
     const timer = window.setTimeout(openWork, 1400);
     return () => window.clearTimeout(timer);
   }, [active, result?.completed, showWork, openWork]);
-  const locked = !bypass && (!result || (active && !result.completed));
+  const billingRecovery = pathname?.endsWith('/settings') && result?.session?.step === 'task';
+  const locked = !bypass && !billingRecovery && (!result || (active && !result.completed));
   const atWork = pathname?.endsWith("/work");
   const showConversation =
-    !bypass && active && result?.session && (!showWork || !atWork);
+    !bypass && !billingRecovery && active && result?.session && (!showWork || !atWork);
   return (
     <>
       <div
@@ -192,7 +193,7 @@ function AuthenticatedOnboardingShell({
         ) : (
           children
         )}
-        {intro ? <OnboardingIntro onDone={dismissIntro} /> : null}
+        {intro && !billingRecovery ? <OnboardingIntro onDone={dismissIntro} /> : null}
         {tour && atWork && result?.session?.taskId ? (
           <OnboardingTour
             workspaceId={workspaceId}

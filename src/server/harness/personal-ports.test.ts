@@ -6,22 +6,24 @@ import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import * as state from '@overlay/agent-runtime/harness-state'
 import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import { KIMI_K3_MODEL_ID } from '@/shared/ai/gateway/model-types'
-import { createPersonalHarnessExecutionPorts } from './personal-ports'
+import { admitPersonalHarnessExecution, createPersonalHarnessExecutionPorts } from './personal-ports'
 import { createPersonalHarnessModelPorts } from './personal-model-ports'
 import { createHarnessModelPorts } from './model-ports'
+import { HarnessYield } from './model-recovery'
 import { runOverlayHarness } from './runner'
 import { estimateHarnessInputTokens } from './model-forecast'
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), apply: vi.fn(), claim: vi.fn(), refresh: vi.fn(), catalog: vi.fn(),
-  model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), admit: vi.fn(), capacity: vi.fn(),
-  capacityReset: vi.fn(), sleep: vi.fn() }))
-vi.mock('./model-capacity', () => ({ createHarnessCapacityWaiter: () => ({ wait: mocks.capacity, reset: mocks.capacityReset }) }))
+  model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), admit: vi.fn(),
+   sleep: vi.fn(), attach: vi.fn(), recordUsage: vi.fn() }))
 vi.mock('server-only', () => ({}))
 vi.mock('workflow', async importOriginal => {
   const actual = await importOriginal<typeof import('workflow')>()
   return { ...actual, sleep: mocks.sleep }
 })
 vi.mock('./personal-access', () => ({ refreshPersonalHarnessAccess: mocks.refresh }))
+vi.mock('./personal-delivery-attach', () => ({ attachPersonalDelivery: mocks.attach }))
+vi.mock('./request-usage', () => ({ recordHarnessRequestUsage: mocks.recordUsage }))
 vi.mock('@/server/ai/gateway/gateway-catalog', () => ({ getGatewayCatalogModel: mocks.catalog }))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: mocks.model }))
 vi.mock('./personal-model-dispatch', () => ({ authorizePersonalHarnessModelDispatch: mocks.authorize }))
@@ -47,6 +49,22 @@ const execution = { instructions: 'Read the requested records.', messages: [{ ro
   tools: {}, model: { modelId: 'fixture/model', credentialOwnerId: 'user' }, settings: { maxOutputTokens: 100 } }
 const surface = { recordToolResult: vi.fn(), delegate: vi.fn(), readChild: vi.fn(), waitForChildren: vi.fn(), waitForInput: vi.fn(), waitForApproval: vi.fn() }
 let current: HarnessSnapshot
+
+test('combined personal admission renews authority before recording the request', async () => {
+  await admitPersonalHarnessExecution({ access, context }, { attachDelivery: true })
+  expect(mocks.attach).toHaveBeenCalledExactlyOnceWith(access)
+  expect(mocks.refresh).toHaveBeenCalledExactlyOnceWith(access, context, undefined, { renewalMode: true, renewLease: true })
+  expect(mocks.recordUsage).toHaveBeenCalledExactlyOnceWith(access, context.effectiveModelId)
+  expect(mocks.attach.mock.invocationCallOrder[0]).toBeLessThan(mocks.refresh.mock.invocationCallOrder[0])
+  expect(mocks.refresh.mock.invocationCallOrder[0]).toBeLessThan(mocks.recordUsage.mock.invocationCallOrder[0])
+})
+
+test('combined child admission does not attach root delivery or count a rejected request', async () => {
+  mocks.refresh.mockRejectedValueOnce(new Error('Access revoked'))
+  await expect(admitPersonalHarnessExecution({ access, context }, { attachDelivery: false })).rejects.toThrow('Access revoked')
+  expect(mocks.attach).not.toHaveBeenCalled()
+  expect(mocks.recordUsage).not.toHaveBeenCalled()
+})
 
 function preparedHarnessModel(modelId: string, receiptId: string, options: LanguageModelV4CallOptions, contextWindow: number) {
   return {
@@ -90,97 +108,20 @@ test('shared model preparation delegates surface authority without requiring per
   expect(mocks.refresh).not.toHaveBeenCalled()
 })
 
-test('a confirmed rejection continues through the SDK with a fresh candidate and receipt, admitting only one request', async () => {
-  provider()
-  const onFallback = vi.fn()
-  mocks.authorize.mockImplementationOnce(async reference => {
-    current = state.recordHarnessReceipt(current, { id: reference.personal.receiptId, modelId: reference.modelId,
-      provider: 'overlay-admission', inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0,
-      cacheWriteTokens: 0, contextWindow: 64_000, costMicros: 0, costSource: 'catalog', rejectionReason: 'budget' }, Date.now())
-    throw new Error('Budget declined before provider dispatch.')
-  })
-  const ports = createPersonalHarnessExecutionPorts({ access, context }, surface,
-    { candidateIds: ['fixture/model', 'fixture/fallback'], onFallback })
-  const result = await runOverlayHarness(execution, ports)
-  expect(result.snapshot.status).toBe('completed')
-  expect(onFallback).toHaveBeenCalledExactlyOnceWith({ from: 'fixture/model', to: 'fixture/fallback', receiptId: 'model:0', reason: 'budget' })
-  expect(mocks.model).toHaveBeenCalledExactlyOnceWith('fixture/fallback', undefined, 'user', expect.objectContaining({ allowLowBalanceFallback: false }))
-  expect(mocks.refresh).toHaveBeenCalledWith(access, expect.objectContaining({ effectiveModelId: 'fixture/fallback' }))
-  expect(mocks.settle).toHaveBeenCalledWith(expect.objectContaining({ receiptId: 'model:1' }))
-  expect(mocks.admit).toHaveBeenCalledOnce()
-  expect(current.modelReservation).toBeUndefined()
-})
-
 test('an ambiguous provider error retains its hold and never tries another model', async () => {
-  const onFallback = vi.fn()
   const failed = new MockLanguageModelV4({ doStream: async () => { throw new Error('Network timeout') } })
   mocks.model.mockResolvedValue(failed)
-  const ports = createPersonalHarnessExecutionPorts({ access, context }, surface,
-    { candidateIds: ['fixture/model', 'fixture/fallback'], onFallback })
+  const ports = createPersonalHarnessExecutionPorts({ access, context }, surface)
   await expect(runOverlayHarness(execution, ports)).rejects.toThrow('Network timeout')
   expect(mocks.model).toHaveBeenCalledOnce()
   expect(current.modelReservation?.dispatch?.modelId).toBe('fixture/model')
-  expect(onFallback).not.toHaveBeenCalled()
 })
 
-test('confirmed capacity rejection resumes the same free model with a fresh receipt and one admission', async () => {
-  provider()
-  const onFallback = vi.fn()
-  const freeContext = { ...context, effectiveModelId: 'openrouter/free' }
-  let nextRetryAt: number | undefined
-  mocks.refresh.mockImplementation(async (_access, supplied) => ({ ...supplied, requiresZeroDataRetention: false }))
-  mocks.authorize.mockImplementation(async reference => {
-    current = state.bindHarnessModelDispatch(current, reference.personal.receiptId, { modelId: reference.modelId, billingReservationId: null }, Date.now())
-  }).mockImplementationOnce(async reference => {
-    current = state.recordHarnessReceipt(current, { id: reference.personal.receiptId, modelId: reference.modelId,
-      provider: 'overlay-free-router', inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0,
-      cacheWriteTokens: 0, contextWindow: null, costMicros: 0, costSource: 'catalog', rejectionReason: 'route_capacity' }, Date.now())
-    nextRetryAt = current.modelRecovery?.nextRetryAt
-    throw new Error('Confirmed capacity rejection before inference.')
-  })
-  mocks.settle.mockImplementation(async ({ receiptId, observation, contextWindow }) => {
-    current = state.recordHarnessReceipt(current, { ...observation, id: receiptId, contextWindow, costMicros: 0, costSource: 'provider' }, Date.now())
-    return current.latestReceipt
-  })
-  const ports = createPersonalHarnessExecutionPorts({ access, context: freeContext }, surface,
-    { candidateIds: ['openrouter/free'], onFallback })
-  const result = await runOverlayHarness({ ...execution, model: { ...execution.model, modelId: 'openrouter/free' } }, ports)
-  expect(result.snapshot.status).toBe('completed')
-  expect(mocks.sleep).toHaveBeenCalledExactlyOnceWith(new Date(nextRetryAt!))
-  expect(mocks.capacity).not.toHaveBeenCalled()
-  expect(mocks.model).toHaveBeenCalledExactlyOnceWith('openrouter/free', undefined, 'user', expect.objectContaining({ allowLowBalanceFallback: false }))
-  expect(mocks.settle).toHaveBeenCalledWith(expect.objectContaining({ receiptId: 'model:1' }))
-  expect(mocks.admit).toHaveBeenCalledOnce()
-  expect(onFallback).not.toHaveBeenCalled()
-  expect(current.modelReservation).toBeUndefined()
-})
-
-test('BYOK routing cannot acquire an Overlay-funded fallback', () => {
-  expect(() => createPersonalHarnessExecutionPorts({ access, context: { ...context, effectiveModelId: 'byok/key/model' } }, surface,
-    { candidateIds: ['byok/key/model', 'fixture/model'] })).toThrow('Invalid admitted model routing')
-})
-
-test('Kimi K3 reasoning is prepared for the active fallback candidate', async () => {
-  const ports = createPersonalHarnessModelPorts({ access, context }, {
-    candidateIds: ['fixture/model', KIMI_K3_MODEL_ID],
-  })
-  current = state.recordHarnessReceipt(current, {
-    id: 'model:0',
-    modelId: 'fixture/model',
-    provider: 'overlay-admission',
-    inputTokens: 0,
-    outputTokens: 0,
-    reasoningTokens: 0,
-    cacheReadTokens: 0,
-    cacheWriteTokens: 0,
-    contextWindow: 64_000,
-    costMicros: 0,
-    costSource: 'catalog',
-    rejectionReason: 'budget',
-  }, Date.now())
-  expect(await ports.recoverModelFailure?.('model:0')).toBe(true)
+test('Kimi K3 reasoning is prepared for the selected model', async () => {
+  const selectedContext = { ...context, effectiveModelId: KIMI_K3_MODEL_ID }
+  const ports = createPersonalHarnessModelPorts({ access, context: selectedContext })
   const prepared = await ports.prepareModel({
-    receiptId: 'model:1',
+    receiptId: 'model:0',
     state: current,
     messages: [{ role: 'user', content: [{ type: 'text', text: 'Check the requested result.' }] }],
     instructionContext: { instructions: 'Check the requested result.', continuation: false, truncatedResponse: false },
@@ -191,7 +132,8 @@ test('Kimi K3 reasoning is prepared for the active fallback candidate', async ()
 
   expect(prepared.model?.modelId).toBe(KIMI_K3_MODEL_ID)
   expect(prepared.settings?.reasoning).toBe('xhigh')
-  expect(mocks.refresh).toHaveBeenCalledWith(access, expect.objectContaining({ effectiveModelId: KIMI_K3_MODEL_ID }))
+  expect(mocks.refresh).toHaveBeenCalledWith(access, expect.objectContaining({ effectiveModelId: KIMI_K3_MODEL_ID }),
+    undefined, { renewalMode: true, renewLease: true })
 })
 
 beforeEach(() => {
@@ -208,6 +150,8 @@ beforeEach(() => {
     pricing: { input: '0.000001', output: '0.000002' } })
   mocks.apply.mockImplementation(async (_reference, _id, operation: HarnessOperation) => {
     if (operation.type === 'reserve_model') current = state.reserveHarnessModel(current, operation.id, operation.maxCostMicros, Date.now())
+    else if (operation.type === 'set_compaction') current = state.setHarnessCompaction(current, operation.compaction, Date.now())
+    else if (operation.type === 'block') current = state.blockHarness(current, operation.blocker, Date.now())
     else if (operation.type === 'checkpoint') current = state.checkpointHarness(current, operation.summary, Date.now())
     else if (operation.type === 'record_receipt') current = state.recordHarnessReceipt(current, operation.receipt, Date.now())
     else if (operation.type === 'finish') current = state.finishHarness(current, Date.now())
@@ -320,16 +264,18 @@ test('a failed summary with an unsettled reservation cannot dispatch the main ca
   const model = provider()
   mocks.settle.mockRejectedValue(new Error('Billing unavailable'))
   const ports = createPersonalHarnessExecutionPorts({ access, context, contextBudgetTokens: 8_192 }, surface)
-  await expect(runOverlayHarness({ ...execution, messages: history() }, ports)).rejects.toThrow(/safely compacted/)
+  const result = await runOverlayHarness({ ...execution, messages: history() }, ports)
+  expect(result.outcome).toBe('blocked')
+  expect(result.snapshot.status).toBe('waiting_for_input')
   expect(model.doStreamCalls).toHaveLength(1)
   expect(current.workingSummary).toBe('')
   expect(current.modelReservation?.dispatch).toBeDefined()
-  expect(mocks.sleep).not.toHaveBeenCalled()
+  expect(mocks.sleep).toHaveBeenCalledTimes(3)
 })
 
 test('settled empty summaries retry with durable backoff before compacting or dispatching the response', async () => {
   let summaries = 0
-  const model = provider('stop', false, () => ++summaries <= 2 ? ''
+  const model = provider('stop', false, () => ++summaries <= 1 ? ''
     : 'Earlier records were read. Do not publish. Verify the final result. The user asked to check the supplied records and preserve the original constraints. No external changes were made. Confirm each result before reporting it, and use the persisted observations as the source of truth.')
   const delays: number[] = []
   mocks.sleep.mockImplementation(async (until: Date) => {
@@ -342,9 +288,11 @@ test('settled empty summaries retry with durable backoff before compacting or di
   const ports = createPersonalHarnessExecutionPorts({ access, context, contextBudgetTokens: 8_192 }, surface)
   const result = await runOverlayHarness({ ...execution, messages: history() }, ports)
   expect(result.snapshot.status).toBe('completed')
-  expect(delays).toEqual([5_000, 10_000])
+  expect(delays).toHaveLength(1)
+  expect(delays[0]).toBeGreaterThanOrEqual(4_900)
+  expect(delays[0]).toBeLessThanOrEqual(5_000)
   const receiptIds = mocks.settle.mock.calls.map(([call]) => call.receiptId)
-  expect(receiptIds.slice(0, 3)).toEqual(['summary:model:0:0', 'summary:model:0:0:retry:1', 'summary:model:0:0:retry:2'])
+  expect(receiptIds.slice(0, 2)).toEqual(['summary:model:0:0', 'summary:model:0:0:retry:1'])
   expect(new Set(receiptIds).size).toBe(receiptIds.length)
   expect(receiptIds.filter(id => !id.startsWith('summary:'))).toEqual(['model:0'])
   expect(result.snapshot.usage.costMicros).toBe(receiptIds.length * 120)
@@ -352,7 +300,6 @@ test('settled empty summaries retry with durable backoff before compacting or di
   expect(result.snapshot.workingSummary).toContain('Do not publish')
   expect(model.doStreamCalls).toHaveLength(receiptIds.length)
   expect(mocks.admit).toHaveBeenCalledOnce()
-  expect(mocks.capacity).not.toHaveBeenCalled()
 })
 
 test('provider-variable compaction settles actual usage before reserving the response', async () => {
@@ -431,7 +378,7 @@ test.each([
   expect(current.latestReceipt?.id).toMatch(/^summary:model:summary-quality-rejected:/)
   expect(current.latestReceipt?.rejectionReason).toBeUndefined()
   expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(1)
-  expect(model.doStreamCalls).toHaveLength(1)
+  expect(model.doStreamCalls).toHaveLength(2)
 })
 
 test('a 200-character summary remains accepted', async () => {
@@ -465,11 +412,11 @@ test('a failed summary falls back to uncompacted history when it fits the real m
   expect(responseRequest?.options.maxOutputTokens).toBe(12_000)
   expect(result.messages).toHaveLength(originalMessages.length)
   expect(result.settings?.maxOutputTokens).toBe(12_000)
-  expect(model.doStreamCalls).toHaveLength(1)
+  expect(model.doStreamCalls).toHaveLength(2)
   expect(current.modelReservation).toBeUndefined()
 })
 
-test.each(['openrouter/free', 'overlay-free'])('an ambiguous %s summary keeps its reservation without fabricating a zero-cost receipt', async modelId => {
+test('an interrupted zero-cost summary preserves its hold and cannot dispatch the response', async () => {
   const model = provider('stop', true)
   mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })
   const prepare = vi.fn(async ({ modelId, receiptId, options }) => ({
@@ -479,7 +426,7 @@ test.each(['openrouter/free', 'overlay-free'])('an ambiguous %s summary keeps it
   const originalMessages = compactableHistory()
   const ports = createHarnessModelPorts({
     reference: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' },
-    modelId,
+    modelId: 'openrouter/free',
     contextBudgetTokens: 8_192,
     prepare,
   })
@@ -487,10 +434,35 @@ test.each(['openrouter/free', 'overlay-free'])('an ambiguous %s summary keeps it
     receiptId: 'model:free-summary-fallback', state: current, messages: originalMessages,
     instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
     toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 512 },
-  })).rejects.toThrow(/safely compacted/)
+  })).rejects.toBeInstanceOf(HarnessYield)
+  expect(current.modelReservation).toBeDefined()
+  expect(mocks.settle).not.toHaveBeenCalled()
+  expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(0)
+  expect(model.doStreamCalls).toHaveLength(1)
+})
+
+test('a mismatched overlay-free summary hold pauses without fabricating a zero-cost receipt', async () => {
+  const model = provider('stop', true)
+  mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })
+  const prepare = vi.fn(async ({ modelId, receiptId, options }) => ({
+    ...preparedHarnessModel(modelId, receiptId, options, 128_000),
+    estimatedCostMicros: 0,
+  }))
+  const originalMessages = compactableHistory()
+  const ports = createHarnessModelPorts({
+    reference: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' },
+    modelId: 'overlay-free',
+    contextBudgetTokens: 8_192,
+    prepare,
+  })
+  await expect(ports.prepareModel({
+    receiptId: 'model:free-summary-fallback', state: current, messages: originalMessages,
+    instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
+    toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 512 },
+  })).rejects.toBeInstanceOf(HarnessYield)
   expect(current.modelReservation).toMatchObject({
     id: expect.stringMatching(/^summary:model:free-summary-fallback:/), maxCostMicros: 0,
-    dispatch: { modelId },
+    dispatch: { modelId: 'overlay-free', billingReservationId: 'billing' },
   })
   expect(current.latestReceipt).toBeUndefined()
   expect(mocks.settle).not.toHaveBeenCalled()
@@ -498,7 +470,7 @@ test.each(['openrouter/free', 'overlay-free'])('an ambiguous %s summary keeps it
   expect(model.doStreamCalls).toHaveLength(1)
 })
 
-test('a failed summary remains fatal when the uncompacted prompt exceeds the real model window', async () => {
+test('a failed summary pauses when the uncompacted prompt exceeds the real model window', async () => {
   const model = provider('length')
   mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 8_192, maxTokens: 8_192 })
   const prepare = vi.fn(async ({ modelId, receiptId, options }) => preparedHarnessModel(modelId, receiptId, options, 8_192))
@@ -513,12 +485,14 @@ test('a failed summary remains fatal when the uncompacted prompt exceeds the rea
     messages: [{ role: 'assistant', content: [{ type: 'text' as const, text: 'Large history '.repeat(10_000) }] }],
     instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
     toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 8_000 },
-  })).rejects.toThrow(/safely compacted/)
+  })).rejects.toBeInstanceOf(HarnessYield)
+  expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(0)
   expect(prepare).not.toHaveBeenCalled()
   expect(model.doStreamCalls).toHaveLength(0)
+  expect(current.status).toBe('waiting_for_input')
 })
 
-test('a failed summary remains fatal while its model reservation is pending', async () => {
+test('a failed summary pauses while its model reservation is pending', async () => {
   const model = provider('length')
   mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })
   mocks.settle.mockImplementationOnce(async () => undefined)
@@ -533,9 +507,10 @@ test('a failed summary remains fatal while its model reservation is pending', as
     receiptId: 'model:fallback-pending', state: current, messages: compactableHistory(),
     instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
     toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 512 },
-  })).rejects.toThrow(/safely compacted/)
+  })).rejects.toBeInstanceOf(HarnessYield)
   expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(0)
   expect(current.modelReservation).toBeDefined()
+  expect(current.status).toBe('waiting_for_input')
   expect(model.doStreamCalls).toHaveLength(1)
 })
 

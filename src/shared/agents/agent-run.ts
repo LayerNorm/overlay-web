@@ -1,8 +1,10 @@
+import type { HarnessDiagnostic } from '@overlay/agent-runtime/harness-diagnostic'
 import type { RemoteRunLiveness } from './remote-run-liveness'
 import type { RemoteRunState } from './remote-run'
 import type { RemoteRunStreamStats } from './remote-run-stream-stats'
 import type { HarnessResourceDeliveryProjection } from '@overlay/agent-runtime/harness-resource'
-import type { HarnessDiagnostic } from '@overlay/agent-runtime/harness-diagnostic'
+import type { HarnessFundingPause } from '@overlay/agent-runtime/harness-state'
+import type { HarnessAuthorizationPause } from '@overlay/agent-runtime/harness-state'
 
 /**
  * `room` is a workspace-agent turn in a DM or channel. It is a distinct mode
@@ -30,6 +32,7 @@ export const ACTIVE_AGENT_RUN_STATUSES = [
   'waiting_for_input',
   'waiting_for_children',
   'waiting_for_resources',
+  'waiting_for_authorization',
 ] as const
 
 export const AGENT_RUN_STATUSES = [
@@ -118,6 +121,8 @@ export type AgentRun = {
   approval?: AgentRunApproval
   inputRequest?: { token: string; requestedAt: number; question: string }
   resourceRequest?: AgentRunResourceRequest
+  fundingPause?: HarnessFundingPause
+  authorizationPause?: HarnessAuthorizationPause
   metrics?: AgentRunMetrics
   /** Connected-agent transport counters; remote runs only. */
   streamStats?: RemoteRunStreamStats
@@ -128,11 +133,12 @@ export type AgentRun = {
 
 const ALLOWED_TRANSITIONS: Readonly<Record<AgentRunStatus, readonly AgentRunStatus[]>> = {
   queued: ['running', 'failed', 'cancelled'],
-  running: ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'completed', 'failed', 'cancelled'],
+  running: ['waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'waiting_for_authorization', 'completed', 'failed', 'cancelled'],
   waiting_for_approval: ['running', 'failed', 'cancelled'],
   waiting_for_input: ['running', 'failed', 'cancelled'],
   waiting_for_children: ['running', 'failed', 'cancelled'],
   waiting_for_resources: ['failed', 'cancelled'],
+  waiting_for_authorization: ['cancelled'],
   completed: [],
   failed: [],
   cancelled: [],

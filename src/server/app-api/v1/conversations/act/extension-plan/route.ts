@@ -7,12 +7,9 @@ import {
 import { generateObject } from '@/server/ai/sdk'
 import { z } from 'zod/v3'
 import {
-  FREE_TIER_DEFAULT_MODEL_ID,
-  isFreeTierChatModelId,
-  isLegacyFreeTierDefaultModelId,
+  isRetiredHostedModelId,
 } from '@/shared/ai/gateway/model-types'
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
-import { isPremiumModel } from '@/server/ai/pricing'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -304,9 +301,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
 
     const requestedModelId: string = modelId || 'claude-sonnet-4-6'
-    const effectiveModelId: string = isLegacyFreeTierDefaultModelId(requestedModelId)
-      ? FREE_TIER_DEFAULT_MODEL_ID
-      : requestedModelId
+    const effectiveModelId = requestedModelId
     const generationUsagePolicy = getOverlayServerContext().generationUsagePolicy
     const billingProgrammaticSubjectId = getBillingProgrammaticSubjectId(context)
     const billingWorkspaceId = context.workspace.workspace.id
@@ -349,16 +344,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    if (!paid && !isFreeTierChatModelId(effectiveModelId)) {
-      if (isPaidPlan(runtimeEntitlements)) {
-        return NextResponse.json(
-          buildInsufficientCreditsPayload(runtimeEntitlements, 'No budget remaining. Switch to a free model or top up your account.'),
-          { status: 402 },
-        )
-      }
+    if (isRetiredHostedModelId(effectiveModelId)) {
       return NextResponse.json(
-        { error: 'premium_model_not_allowed', message: 'Free tier is limited to free models. Upgrade to a paid plan to use premium models.' },
-        { status: 403 },
+        { error: 'model_retired', message: 'This hosted model is retired. Select a paid model to continue.' },
+        { status: 409 },
+      )
+    }
+    if (!paid) {
+      return NextResponse.json(
+        buildInsufficientCreditsPayload(runtimeEntitlements, 'Fund this workspace to run a model.'),
+        { status: 402 },
       )
     }
 
@@ -410,7 +405,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const estimatedInputTokens = Math.ceil(prompt.length / 4) + 256
     const maxOutputTokens = 1200
     let reservationId: string | null = null
-    if (paid && isPremiumModel(effectiveModelId)) {
+    if (paid) {
       const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
         effectiveModelId,
         estimatedInputTokens,

@@ -11,7 +11,18 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/agent-environments/enroll': agentHostException(['POST'], 'Single-use enrollment code redemption plus device public-key registration.'),
   '/api/v1/agent-environments/[environmentId]/credentials': agentHostException(['POST'], 'One-time challenge and Ed25519 proof-of-possession credential issuance.'),
   '/api/v1/agent-environments/[environmentId]/credentials/refresh': agentHostException(['POST'], 'Signed environment credential rotation.'),
-  '/api/v1/agent-environments/[environmentId]/run-credentials': agentHostException(['POST'], 'Signed release of provider credentials for one active Overlay Cloud run.'),
+  '/api/v1/agent-environments/[environmentId]/run-credentials': {
+    methods: ['POST'],
+    reason: 'Retired hosted-runtime credential endpoint; returns HTTP 410 without reading data, issuing credentials, or mutating state.',
+    controls: {
+      authentication: 'not-applicable-retired-410; the fixed response does not inspect request identity',
+      authorization: 'not-applicable-retired-410; no user data is read or changed',
+      rateLimit: 'not-applicable-retired-410; the response has no side effects',
+      csrf: 'not-applicable-retired-410; no browser-authorized mutation occurs',
+      idempotency: 'not-applicable-retired-410; no mutation occurs',
+      audit: 'not-applicable-retired-410; no state or credentials are written',
+    },
+  },
   '/api/v1/agent-environments/[environmentId]/drive-credentials': agentHostException(['POST'], 'Device-signed issuance or renewal of drive credentials bound to the current run, session, execution and persisted scope.'),
   '/api/v1/agent-environments/[environmentId]/heartbeat': agentHostException(['POST'], 'Signed environment heartbeat.'),
   '/api/v1/agent-environments/[environmentId]/capabilities': agentHostException(['PUT'], 'Signed environment capability refresh.'),
@@ -37,7 +48,7 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/files/ingest-jobs/process': internalServiceException(['POST'], 'Internal-secret authenticated Convex file-ingestion worker bridge.'),
   '/api/v1/imports/slack/process': internalServiceException(['POST'], 'Internal-secret authenticated Slack import worker bridge.'),
   '/api/v1/automations/project-events': internalServiceException(['POST'], 'Internal-secret authenticated Workflow SDK event projection bridge.'),
-  '/api/v1/models/overlay-free/refresh': internalServiceException(['POST'], 'Internal-secret authenticated overlay-free catalog refresh worker bridge.'),
+  '/api/v1/harness/continuation': internalContinuationException(),
   '/api/v1/surfaces/slack/connect': {
     methods: ['GET'],
     reason: 'Browser navigation that must end in a redirect to Slack consent, not a JSON envelope.',
@@ -138,6 +149,21 @@ function internalServiceException(methods: readonly string[], reason: string) {
       csrf: 'no browser cookie authority',
       idempotency: 'object deletion and metadata tombstoning are idempotent',
       audit: 'artifact metadata retains cleanup state and timestamps',
+    },
+  } as const
+}
+
+function internalContinuationException() {
+  return {
+    methods: ['POST'],
+    reason: 'Internal-secret authenticated continuation launch callback.',
+    controls: {
+      authentication: 'deployment-scoped internal service secret',
+      authorization: 'the persisted checkpoint token binds the run and generation; launch identity is revalidated before workflow start',
+      rateLimit: 'durable continuation outbox backoff and bounded dispatch batches',
+      csrf: 'no browser cookie authority',
+      idempotency: 'generation and checkpoint-token fencing plus successor claim make retry launches safe',
+      audit: 'checkpoint and continuation outbox rows preserve the handoff and attempt history',
     },
   } as const
 }

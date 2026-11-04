@@ -5,28 +5,15 @@ import { Button, toast } from '@overlay/ui/primitives'
 
 import { useCallback, useEffect, useState } from 'react'
 import { Monitor, Plus, RefreshCw, Square, Play, Trash2 } from 'lucide-react'
-import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { Computer } from '@overlay/workspace-contracts'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
-/**
- * An Overlay Cloud environment's sandbox is also its bound agent's machine —
- * listed here alongside computer rows so "Computers" is the single desktop
- * surface rather than a parallel primitive.
- */
-type EnvironmentMachineRow = {
-  environment: AgentEnvironmentResource
-  /** Name of the agent bound to this environment, when one is. */
-  agentName: string | null
-}
-
 export function ComputerSettings() {
   const { activeWorkspaceId } = useWorkspace()
   const { user } = useAuth()
   const [computers, setComputers] = useState<Computer[]>([])
-  const [environmentMachines, setEnvironmentMachines] = useState<EnvironmentMachineRow[]>([])
   const [agentNames, setAgentNames] = useState<Record<string, string>>({})
   const [busy, setBusy] = useState<string | null>(null)
   const [controlBusyId, setControlBusyId] = useState<string | null>(null)
@@ -36,32 +23,15 @@ export function ComputerSettings() {
   const refresh = useCallback(async () => {
     if (!activeWorkspaceId) return
     try {
-      const [computerData, agentData, environmentData, bindingData] = await Promise.all([
+      const [computerData, agentData] = await Promise.all([
         overlayAppClient.computers.list(activeWorkspaceId, { cache: 'no-store' }),
         overlayAppClient.agents.list(activeWorkspaceId, { cache: 'no-store' }),
-        overlayAppClient.agentEnvironments.list(activeWorkspaceId, { cache: 'no-store' })
-          .catch(() => ({ environments: [] as AgentEnvironmentResource[] })),
-        overlayAppClient.agentEnvironments.listBindings(activeWorkspaceId, undefined, { cache: 'no-store' })
-          .catch(() => ({ bindings: [] as Array<{ agentId: string; environmentId: string; enabled: boolean }> })),
       ])
       setComputers(computerData.computers)
       const names = Object.fromEntries(
         agentData.agents.map((agent) => [agent.id, agent.name]),
       )
       setAgentNames(names)
-      const agentByEnvironment = new Map(
-        bindingData.bindings
-          .filter((binding) => binding.enabled)
-          .map((binding) => [binding.environmentId, binding.agentId] as const),
-      )
-      setEnvironmentMachines(
-        environmentData.environments
-          .filter((environment) => environment.kind === 'overlay_cloud' && environment.status !== 'revoked')
-          .map((environment) => {
-            const agentId = agentByEnvironment.get(environment.id)
-            return { environment, agentName: agentId ? names[agentId] ?? null : null }
-          }),
-      )
       setLoadError(null)
     } catch (value) {
       setLoadError(value instanceof Error ? value.message : 'Failed to load computers')
@@ -123,19 +93,6 @@ export function ComputerSettings() {
     } finally {
       setBusy(null)
       setControlBusyId(null)
-    }
-  }
-
-  async function openEnvironmentDesktop(environmentId: string) {
-    if (!activeWorkspaceId) return
-    setBusy(environmentId)
-    try {
-      const ticket = await overlayAppClient.agentEnvironments.openDesktop(activeWorkspaceId, environmentId)
-      window.open(ticket.url, '_blank', 'noopener,noreferrer')
-    } catch (value) {
-      toast.error(value instanceof Error ? value.message : 'Could not open the desktop')
-    } finally {
-      setBusy(null)
     }
   }
 
@@ -201,33 +158,7 @@ export function ComputerSettings() {
             <Button variant="ghost" type="button" aria-label="Refresh computers" onClick={() => void refresh()} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}><RefreshCw size={15} /></Button>
           </div>
         </div>
-        {computers.length === 0 && environmentMachines.length === 0 ? <p className="rounded-xl border border-dashed border-(--border) p-8 text-center text-sm text-(--muted)">No computers yet. Create one to give yourself a persistent cloud desktop.</p> : null}
-        {environmentMachines.map(({ environment, agentName }) => (
-          <div key={environment.id} className="rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center self-start rounded-xl bg-(--surface-subtle) text-(--muted)"><Monitor size={17} /></div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-sm font-medium text-(--foreground)">{environment.name}</h3>
-                  <span className="rounded-full border border-(--border) px-2 py-0.5 text-[10px] uppercase tracking-wide text-(--muted)">{environment.status}</span>
-                  <span className="rounded-full border border-(--border) px-2 py-0.5 text-[10px] uppercase tracking-wide text-(--muted)">Agent machine</span>
-                </div>
-                <p className="mt-1 truncate text-xs text-(--muted)">
-                  {agentName ?? 'Unbound agent environment'} · lifecycle managed by Overlay
-                </p>
-              </div>
-              <div className="flex shrink-0 items-center gap-1">
-                <Button variant="secondary" size="sm"
-                  type="button"
-                  disabled={busy !== null}
-                  onClick={() => void openEnvironmentDesktop(environment.id)}
-                >
-                  Open
-                </Button>
-              </div>
-            </div>
-          </div>
-        ))}
+        {computers.length === 0 ? <p className="rounded-xl border border-dashed border-(--border) p-8 text-center text-sm text-(--muted)">No computers yet. Create one to give yourself a persistent cloud desktop.</p> : null}
         {computers.map((computer) => (
           <ComputerSettingsCard
             key={computer.id}

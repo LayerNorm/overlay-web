@@ -25,18 +25,13 @@ test('automation run boundary rejects missing run IDs', () => {
   )
 })
 
-test('agent accounts and cloud machines accept supported providers only', () => {
+test('provider accounts accept supported providers only', () => {
   for (const provider of ['claude-code', 'codex']) {
     assert.doesNotThrow(() => {
       validateApiClientBoundary({
         path: '/api/v1/provider-accounts',
         method: 'POST',
         body: { provider, method: 'api_key', secret: 'sk-test-secret-value' },
-      })
-      validateApiClientBoundary({
-        path: '/api/v1/agent-environments/cloud',
-        method: 'POST',
-        body: { agentId: 'a1', adapterId: provider, providerAccountId: 'acc1' },
       })
     }, provider)
   }
@@ -47,12 +42,11 @@ test('agent accounts and cloud machines accept supported providers only', () => 
       method: 'POST',
       body: { provider, method: 'api_key', secret: 'sk-test-secret-value' },
     }), /Invalid POST \/api\/v1\/provider-accounts body: Invalid enum value/)
-    assert.throws(() => validateApiClientBoundary({
-      path: '/api/v1/agent-environments/cloud',
-      method: 'POST',
-      body: { agentId: 'a1', adapterId: provider, providerAccountId: 'acc1' },
-    }), /Invalid POST \/api\/v1\/agent-environments\/cloud body: Invalid enum value/)
   }
+})
+
+test('retired cloud provisioning is excluded from API boundary schemas', () => {
+  assert.equal(getApiBoundarySchema('/api/v1/agent-environments/cloud', 'POST'), undefined)
 })
 
 test('scope request parsing preserves native task activity attribution', () => {

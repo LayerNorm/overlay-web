@@ -6,7 +6,6 @@ import {
   AcpxAgentAdapter,
   acpxAgentNameFor,
 } from './acpx-adapter.js'
-import { checkOverlayImage } from './image-check.js'
 
 test('Claude Code and Codex are the only built-in acpx agents', () => {
   assert.equal(acpxAgentNameFor('claude-code'), 'claude')
@@ -15,16 +14,6 @@ test('Claude Code and Codex are the only built-in acpx agents', () => {
   assert.deepEqual(ACPX_AGENT_DISPLAY_NAMES, { 'claude-code': 'Claude Code', codex: 'Codex' })
   for (const id of ['opencode', 'cursor', 'hermes']) assert.equal(acpxAgentNameFor(id), undefined)
   assert.equal(acpxAgentNameFor('unknown-agent'), undefined)
-})
-
-test('the image check does not require an experimental agent to be installed', () => {
-  const checks = checkOverlayImage({
-    manifest: { imageVersion: 2, hostVersion: '0', packages: {}, builtAt: '' } as never,
-    resolveAgent: (agent) => (agent === 'claude' || agent === 'codex' ? { command: agent } : undefined),
-    exists: () => false,
-  })
-  assert.deepEqual(checks.filter((check) => !check.ok), [])
-  assert.deepEqual(checks.filter((check) => check.name.startsWith('agent:')).map((check) => check.name).sort(), ['agent:claude-code', 'agent:codex'])
 })
 
 test('an unknown acpx agent cannot be discovered through a product built-in', async () => {

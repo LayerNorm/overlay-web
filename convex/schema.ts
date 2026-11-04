@@ -53,42 +53,6 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_key', ['key']),
 
-  overlayFreeRoutes: defineTable({
-    routeKey: v.string(),
-    transport: v.union(v.literal('gateway'), v.literal('openrouter')),
-    modelId: v.string(),
-    provider: v.string(),
-    capabilitiesJson: v.string(),
-    pricingJson: v.string(),
-    catalogVerifiedAt: v.number(),
-    catalogExpiresAt: v.number(),
-    generation: v.number(),
-    canaryVerifiedAt: v.optional(v.number()),
-    canaryExpiresAt: v.optional(v.number()),
-    quarantineReason: v.optional(v.string()),
-    quarantineAt: v.optional(v.number()),
-    cooldownUntil: v.optional(v.number()),
-    latestReceiptAt: v.optional(v.number()),
-    latestReceiptJson: v.optional(v.string()),
-    latestActualModelId: v.optional(v.string()),
-    latestActualProvider: v.optional(v.string()),
-    activeLeaseToken: v.optional(v.string()),
-    activeLeaseExpiresAt: v.optional(v.number()),
-    updatedAt: v.number(),
-  })
-    .index('by_routeKey', ['routeKey'])
-    .index('by_transport_generation', ['transport', 'generation'])
-    .index('by_catalogExpiresAt', ['catalogExpiresAt']),
-
-  overlayFreeRefreshLocks: defineTable({
-    key: v.string(),
-    leaseToken: v.string(),
-    leaseExpiresAt: v.number(),
-    retryAfter: v.number(),
-    generation: v.number(),
-    updatedAt: v.number(),
-  }).index('by_key', ['key']),
-
   billingAccounts: defineTable({
     billingAccountId: v.string(),
     scope: v.union(v.literal('personal'), v.literal('workspace')),
@@ -132,7 +96,9 @@ export default defineSchema({
     offSessionConsentAt: v.optional(v.number()),
     currentPeriodStart: v.optional(v.number()),
     currentPeriodEnd: v.optional(v.number()),
-    // Legacy Stripe-migrated rows can carry this field; not written by current code.
+    paidPeriodStart: v.optional(v.number()),
+    paidPeriodEnd: v.optional(v.number()),
+    paidInvoiceId: v.optional(v.string()),
     cancelAtPeriodEnd: v.optional(v.boolean()),
     providerEventCreatedAt: v.optional(v.number()),
     createdAt: v.number(),
@@ -142,6 +108,26 @@ export default defineSchema({
     .index('by_providerCustomerId', ['providerCustomerId'])
     .index('by_providerSubscriptionId', ['providerSubscriptionId'])
     .index('by_status_updatedAt', ['status', 'updatedAt']),
+
+  billingAutoTopUpIntents: defineTable({
+    billingAccountId: v.string(),
+    actorUserId: v.string(),
+    workspaceId: v.string(),
+    intentKey: v.string(),
+    idempotencyKey: v.string(),
+    amountCents: v.number(),
+    currentPeriodStart: v.optional(v.number()),
+    consentAt: v.number(),
+    paymentMethodId: v.string(),
+    customerId: v.string(),
+    state: v.union(v.literal('pending'), v.literal('payment_failed'), v.literal('succeeded')),
+    stripePaymentIntentId: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_billingAccountId_intentKey', ['billingAccountId', 'intentKey'])
+    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
+    .index('by_paymentIntentId', ['stripePaymentIntentId']),
 
   billingAccountBalances: defineTable({
     billingAccountId: v.string(),
@@ -252,10 +238,8 @@ export default defineSchema({
     .index('by_connectionId', ['connectionId'])
     .index('by_userId', ['userId']),
 
-  // Metadata for the credentials an Overlay Cloud agent runs on (a Claude Code
-  // setup-token or API key, an OpenAI API key). The secret itself lives in the
-  // credential vault; only its opaque reference is stored here, and it is
-  // delivered to a machine one run at a time.
+  // Historical provider-account metadata. Provider/model adapters may still
+  // use these records; retired Cloud runtimes cannot receive credentials.
   agentProviderAccounts: defineTable({
     userId: v.string(),
     provider: v.union(v.literal('claude-code'), v.literal('codex'), v.literal('opencode'), v.literal('hermes'), v.literal('cursor')),
@@ -405,9 +389,11 @@ export default defineSchema({
   budgetTopUps: defineTable({
     userId: v.string(),
     billingAccountId: v.optional(v.string()),
+    workspaceId: v.optional(v.string()),
     stripeCustomerId: v.optional(v.string()),
     stripeCheckoutSessionId: v.optional(v.string()),
     stripePaymentIntentId: v.optional(v.string()),
+    autoTopUpIntentKey: v.optional(v.string()),
     stripeInvoiceId: v.optional(v.string()),
     billingPeriodStart: v.number(),
     billingPeriodEnd: v.optional(v.number()),
@@ -430,6 +416,7 @@ export default defineSchema({
     .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
     .index('by_userId_billingPeriodStart', ['userId', 'billingPeriodStart'])
     .index('by_paymentIntentId', ['stripePaymentIntentId'])
+    .index('by_autoTopUpIntentKey', ['autoTopUpIntentKey'])
     .index('by_checkoutSessionId', ['stripeCheckoutSessionId']),
 
   // Webhook event deduplication. Stores processed Stripe event IDs so that a
@@ -568,6 +555,10 @@ export default defineSchema({
     reservedTopUpCents: v.optional(v.number()),
     finalizedCents: v.optional(v.number()),
     providerCostMicros: v.optional(v.number()),
+    // Late provider evidence for a failed call whose wallet hold was already released.
+    providerCostEvidence: v.optional(v.object({
+      source: v.string(), reference: v.string(), reason: v.string(), recordedAt: v.number(),
+    })),
     // Quantities for the itemized usage list, summed from the usage events at finalize.
     usageTokens: v.optional(v.number()),
     usageSeconds: v.optional(v.number()),
@@ -759,7 +750,7 @@ export default defineSchema({
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_turnId_createdAt', ['turnId', 'createdAt']),
 
-  // Daily counters used exclusively for free-tier weekly limit enforcement.
+  // Legacy daily usage records retained for historical audit reads.
   dailyUsage: defineTable({
     userId: v.string(),
     date: v.string(), // YYYY-MM-DD format
@@ -923,6 +914,16 @@ export default defineSchema({
       searchField: 'name',
       filterFields: ['userId', 'workspaceId'],
     }),
+
+  personalChiefIdentities: defineTable({
+    userId: v.string(),
+    name: v.string(),
+    description: v.optional(v.string()),
+    avatarColor: v.string(),
+    avatarShape: v.string(),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  }).index('by_userId', ['userId']),
 
   // Work: tasks shown as a list, a board and a timeline. Personal / Workspace / Archived like other content; see
   // Dates are `YYYY-MM-DD` strings (no timezone shift); `rank` is a fractional string.
@@ -1357,6 +1358,7 @@ export default defineSchema({
       v.literal('waiting_for_input'),
       v.literal('waiting_for_children'),
       v.literal('waiting_for_resources'),
+      v.literal('waiting_for_authorization'),
       v.literal('completed'),
       v.literal('failed'),
       v.literal('cancelled'),
@@ -1392,6 +1394,25 @@ export default defineSchema({
       })),
     })),
     resourceRequest: v.optional(agentRunResourceRequestValidator),
+    fundingPause: v.optional(v.object({
+      reason: v.union(
+        v.literal('disabled'), v.literal('pending'), v.literal('payment_failed'),
+        v.literal('monthly_limit_reached'), v.literal('missing_payment_method'),
+        v.literal('missing_consent'), v.literal('amount_shortfall'), v.literal('not_paid'),
+        v.literal('authorization_changed'), v.literal('insufficient_budget'),
+        v.literal('task_deadline_expired'), v.literal('unknown_receipt'),
+      ),
+      requiredCents: v.number(),
+      availableCents: v.number(),
+      reservedCents: v.optional(v.number()),
+      receiptId: v.string(),
+      autoTopUpReason: v.optional(v.string()),
+    })),
+    authorizationPause: v.optional(v.object({
+      reason: v.literal('task_deadline_expired'),
+      deadlineAt: v.number(),
+      pausedAt: v.number(),
+    })),
     metrics: v.optional(v.object({
       firstTokenAt: v.optional(v.number()),
       inputTokens: v.optional(v.number()),
@@ -1581,6 +1602,11 @@ export default defineSchema({
             }),
           }),
           nativeAgentErrorPart,
+          v.object({
+            type: v.literal('text'),
+            text: v.string(),
+            storageOmittedParts: v.number(),
+          }),
           v.object({
             type: v.literal('tool-invocation'),
             toolInvocation: v.object({
@@ -2204,6 +2230,8 @@ export default defineSchema({
     serviceId: v.optional(v.string()),
     displayName: v.string(),
     displayNameOverride: v.optional(v.string()),
+    avatarColor: v.optional(v.string()),
+    avatarShape: v.optional(v.string()),
     photoObjectKey: v.optional(v.string()),
     email: v.optional(v.string()),
     createdByPrincipalId: v.optional(v.string()),
@@ -2390,12 +2418,16 @@ export default defineSchema({
     teamIds: v.optional(v.array(v.string())),
     roomCount: v.optional(v.number()),
     isDefault: v.optional(v.boolean()),
+    agentRole: v.optional(v.union(v.literal('workspace_chief'), v.literal('personal_chief'), v.literal('agent'))),
+    chiefOwnerUserId: v.optional(v.string()),
+    chiefScope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     // Compatibility-only field for agent rows written by external-surface
     // releases on shared deployments; not read or written here.
     platforms: v.optional(v.array(v.string())),
   })
     .index('by_agentId', ['agentId'])
-    .index('by_workspaceId', ['workspaceId']),
+    .index('by_workspaceId', ['workspaceId'])
+    .index('by_chiefOwnerUserId', ['chiefOwnerUserId']),
 
   workspaceAuditExports: defineTable({
     exportId: v.string(),
@@ -2616,7 +2648,7 @@ export default defineSchema({
     .index('by_workspaceId_userId_providerKey', ['workspaceId', 'userId', 'providerKey'])
     .index('by_userId', ['userId']),
 
-  /** Function-level metrics for Convex observability. TTL-cleaned. */
+  /** Retired: nothing writes it. Kept until the cleanup cron empties it (`platform/metrics`). */
   functionMetrics: defineTable({
     functionName: v.string(),
     durationMs: v.number(),
@@ -2939,6 +2971,29 @@ export default defineSchema({
   }).index('by_runId_evidenceId', ['runId', 'evidenceId'])
     .index('by_runId_createdAt', ['runId', 'createdAt']),
 
+  harnessContextArtifacts: defineTable({
+    runId: v.string(),
+    workflowRunId: v.string(),
+    toolCallId: v.string(),
+    toolName: v.string(),
+    digest: v.string(),
+    storageId: v.id('_storage'),
+    byteSize: v.number(),
+    mediaPartCount: v.number(),
+    createdAt: v.number(),
+    expiresAt: v.number(),
+    artifactId: v.string(),
+    resource: v.optional(v.object({
+      id: v.string(),
+      revision: v.optional(v.string()),
+      operation: v.optional(v.string()),
+      page: v.optional(v.number()),
+    })),
+  }).index('by_runId_toolCallId', ['runId', 'toolCallId'])
+    .index('by_runId_artifactId', ['runId', 'artifactId'])
+    .index('by_runId_createdAt', ['runId', 'createdAt'])
+    .index('by_expiresAt', ['expiresAt']),
+
   /** Exactly-once billing: one row per (runId, receiptId). */
   harnessReceipts: defineTable({
     runId: v.string(),
@@ -2976,6 +3031,8 @@ export default defineSchema({
     question: v.string(),
     createdAt: v.number(),
     resolvedAt: v.optional(v.number()),
+    replyJson: v.optional(v.string()),
+    repliedAt: v.optional(v.number()),
   }).index('by_token', ['token'])
     .index('by_runId_resolvedAt', ['runId', 'resolvedAt', 'createdAt'])
     .index('by_rootRunId_resolvedAt', ['rootRunId', 'resolvedAt', 'createdAt']),
@@ -3017,6 +3074,30 @@ export default defineSchema({
     metadataJson: v.string(),
     planRevision: v.number(),
     purpose: v.optional(v.union(v.literal('continuation'), v.literal('compaction'))),
+    generation: v.optional(v.number()),
+    checkpointToken: v.optional(v.string()),
+    checkpointStorageId: v.optional(v.id('_storage')),
+    checkpointJson: v.optional(v.string()),
+    launchInputJson: v.optional(v.string()),
     createdAt: v.number(),
-  }).index('by_runId_revision', ['runId', 'revision']),
+  }).index('by_runId_revision', ['runId', 'revision'])
+    .index('by_checkpointToken', ['checkpointToken']),
+
+  harnessContinuationOutbox: defineTable({
+    runId: v.string(),
+    rootRunId: v.string(),
+    generation: v.number(),
+    previousWorkflowRunId: v.optional(v.string()),
+    previousExecutionGeneration: v.optional(v.number()),
+    checkpointToken: v.string(),
+    workflowKind: v.union(v.literal('native'), v.literal('personal')),
+    state: v.union(v.literal('pending'), v.literal('claimed')),
+    attempts: v.number(),
+    nextAttemptAt: v.number(),
+    lastAttemptAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt'])
+    .index('by_runId_generation', ['runId', 'generation']),
 })

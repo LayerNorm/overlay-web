@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { GET } from './route'
+import { BillingPayerResolutionError } from '@/server/billing/BillingPayerResolver'
 
 test('workspace members receive the workspace payer subscription', async () => {
   const calls: Array<{ billingAccountId?: string; userId: string }> = []
@@ -58,3 +59,25 @@ function routeContext(userId: string, workspaceId: string): AppApiRouteContext {
     },
   } as AppApiRouteContext
 }
+
+test('uninitialized workspace subscription reads report unfunded instead of falling back to personal billing', async () => {
+  const response = await GET(new Request('https://example.test/api/v1/subscription') as never,
+    routeContext('member_1', 'workspace_1'), {
+      resolvePayer: async () => { throw new BillingPayerResolutionError('workspace_wallet_not_configured') },
+      getAppSubscription: async (args) => {
+        assert.deepEqual(args, { userId: 'member_1', unfundedWorkspace: true })
+        return { planKind: 'free', budgetRemainingCents: 0 } as never
+      },
+    })
+  assert.equal(response.status, 200)
+  assert.deepEqual(await response.json(), { planKind: 'free', budgetRemainingCents: 0 })
+})
+
+test('inactive wallet failures cannot use the unfunded workspace response', async () => {
+  const response = await GET(new Request('https://example.test/api/v1/subscription') as never,
+    routeContext('member_1', 'workspace_1'), {
+      resolvePayer: async () => { throw new BillingPayerResolutionError('billing_account_inactive') },
+      getAppSubscription: async () => { assert.fail('must not read another subscription') },
+    })
+  assert.equal(response.status, 500)
+})

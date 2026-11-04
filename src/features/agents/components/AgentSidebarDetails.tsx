@@ -5,7 +5,6 @@ import { ChevronRight } from 'lucide-react'
 import { ChatModelPicker } from '@overlay/chat-react'
 import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Textarea } from '@overlay/ui/primitives'
 import { useAutosizeTextarea } from '@overlay/ui/hooks'
-import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
 import { MODEL_RECOMMENDATIONS } from '@/shared/ai/gateway/model-data'
 import {
   AgentSidebarAdvancedSettings,
@@ -13,6 +12,7 @@ import {
   getEnabledToolGroupCount,
 } from './AgentSidebarDetails.parts'
 import type { useAgentEditorController } from './AgentEditorPage'
+import { chiefRoleLabel, isChief } from '@/shared/agents/chief-identity'
 
 type Controller = ReturnType<typeof useAgentEditorController>
 
@@ -91,10 +91,20 @@ export function AgentSidebarDetails({
     return <p className="text-xs text-(--muted)">Loading agent details...</p>
   }
 
+  if (editor.agent?.canEdit === false) {
+    return <p className="text-xs leading-5 text-(--muted)">{editor.agent.agentRole === 'personal_chief' ? 'Only the owner can customize this personal Overlay.' : 'You do not have permission to edit this agent.'}</p>
+  }
+
   const overlaySettings = runtime.agentType === 'overlay' && !runtime.cloudAgent
 
   return (
     <div className="space-y-[22px]">
+      {editor.agent && isChief(editor.agent) ? (
+        <div className="space-y-2 text-xs text-(--muted)">
+          <p>{chiefRoleLabel(editor.agent)} · Pinned</p>
+          {editor.agent.agentRole === 'personal_chief' ? <p>Your name and avatar follow you across scopes. Owner, role, and permissions stay unchanged. Private threads and context stay separate.</p> : null}
+        </div>
+      ) : null}
       {saveFailed ? (
         <p className="flex items-center gap-2 text-xs text-red-600 dark:text-red-400" role="alert">
           Couldn&apos;t save
@@ -115,19 +125,12 @@ export function AgentSidebarDetails({
                 form.setModelId(value)
                 form.markDirty()
               }}
-              isFreeTier={modelField.isFreeTier}
-              isFreeTierChatModelId={isFreeTierChatModelId}
               favoriteScope={modelField.favoriteScope}
               modelRecommendations={MODEL_RECOMMENDATIONS}
               textModelsLoading={modelField.textModelsLoading}
               generationMode="text"
               lockedGenerationMode="text"
             />
-            {modelField.isFreeTierWorkspace && !isFreeTierChatModelId(form.modelId) ? (
-              <p className="mt-1.5 text-[11px] leading-4 text-(--muted)">
-                Free workspaces use free models. This agent will use Auto.
-              </p>
-            ) : null}
           </DetailsDisclosure>
           <DetailsDisclosure
             label="Instructions"

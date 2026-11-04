@@ -7,7 +7,6 @@ import {
   allAgentToolGrantIds,
   toolIdsForEnabledGroups,
 } from '@/shared/agents/tool-groups'
-import { FREE_TIER_AUTO_MODEL_ID } from '@/shared/ai/gateway/model-types'
 
 test('the default master agent holds every grant without enumerating them', () => {
   const grant = resolveAgentGrant({ agentId: 'a1', allowedToolIds: [], isDefaultMaster: true })
@@ -58,15 +57,8 @@ test('capability grants never leak into the overlay tool-id list', () => {
   assert.equal(grant.capabilities.size, capabilityGroups.length)
 })
 
-test('a paid model falls back to the free router when the payer cannot reach it', () => {
-  assert.deepEqual(agentModelAttempts('claude-sonnet-4-6'), [
-    'claude-sonnet-4-6',
-    FREE_TIER_AUTO_MODEL_ID,
-  ])
-})
-
-test('a free model has nothing to fall back to and is attempted once', () => {
-  assert.deepEqual(agentModelAttempts(FREE_TIER_AUTO_MODEL_ID), [FREE_TIER_AUTO_MODEL_ID])
+test('an agent only attempts its configured model and never falls back to free inference', () => {
+  assert.deepEqual(agentModelAttempts('claude-sonnet-4-6'), ['claude-sonnet-4-6'])
 })
 
 test('a BYOK model does not fall back to Overlay-paid inference', () => {

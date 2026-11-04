@@ -28,7 +28,9 @@ export function decideAutoTopUp(settings: AutoTopUpSettings, minimumRequiredCent
   if (!settings.stripeCustomerId) return { charge: false, reason: 'missing_customer' }
   const amountCents = Math.round(settings.amountCents)
   if (!isValidTopUpAmount(amountCents)) return { charge: false, reason: 'invalid_amount' }
-  if (amountCents < Math.max(1, Math.round(minimumRequiredCents))) return { charge: false, reason: 'amount_too_small' }
+  if (amountCents < Math.max(1, Math.round(minimumRequiredCents))) {
+    return { charge: false, reason: 'amount_too_small' }
+  }
   if (!autoTopUpFitsLimit(settings, amountCents)) return { charge: false, reason: 'monthly_limit_reached' }
   return { charge: true, amountCents }
 }

@@ -18,7 +18,7 @@ import type { UsageRepository } from '@/server/usage'
 
 const usage: ActFinishedUsage = {
   userId: 'user', modelId: 'provider/model', inputTokens: 1_000, outputTokens: 100,
-  cachedInputTokens: 600, cacheWriteTokens: 200, reservationId: 'reservation', forceFreeTierLimits: false,
+  cachedInputTokens: 600, cacheWriteTokens: 200, reservationId: 'reservation',
 }
 const policy = new BillingBackedActUsagePolicy({
   repository: { getEntitlements: async () => null, recordUsageBatch: async () => undefined },

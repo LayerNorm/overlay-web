@@ -5,7 +5,6 @@ import { Button } from '@overlay/ui/primitives'
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { notifyOpenerIntegrationsChanged } from '@/shared/integrations/integrations-events'
-import posthog from 'posthog-js'
 
 function CallbackContent() {
   const searchParams = useSearchParams()
@@ -16,23 +15,17 @@ function CallbackContent() {
   const isSuccess = status === 'success' && !error
 
   useEffect(() => {
-    if (isSuccess) {
-      posthog.capture('integration_connect_completed')
-      notifyOpenerIntegrationsChanged()
-      const interval = setInterval(() => {
-        setCountdown((n) => (n <= 1 ? 0 : n - 1))
-      }, 1000)
-      const closeTimer = setTimeout(() => window.close(), 3000)
-      return () => {
-            clearInterval(interval)
-        clearTimeout(closeTimer)
-          }
-    } else {
-      posthog.capture('integration_connect_failed', {
-        failure_class: error ? 'provider_error' : 'unknown',
-      })
+    if (!isSuccess) return
+    notifyOpenerIntegrationsChanged()
+    const interval = setInterval(() => {
+      setCountdown((n) => (n <= 1 ? 0 : n - 1))
+    }, 1000)
+    const closeTimer = setTimeout(() => window.close(), 3000)
+    return () => {
+      clearInterval(interval)
+      clearTimeout(closeTimer)
     }
-  }, [isSuccess, error])
+  }, [isSuccess])
 
   useEffect(() => {
     if (isSuccess && countdown <= 0) window.close()

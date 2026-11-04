@@ -1,5 +1,3 @@
-import { isFreeTierChatModelId } from '@/shared/ai/gateway/model-types'
-
 export type GatewayPricingTier = {
   cost: string | number
   min?: number
@@ -147,12 +145,4 @@ export function calculateGatewayVideoCostOrNull(
   const durationRate = highestVideoDurationRate(pricing)
   if (durationRate !== null) return durationRate * safeDuration
   return parsePrice(pricing.video)
-}
-
-export function isExplicitFreeModel(modelId: string): boolean {
-  return isFreeTierChatModelId(modelId)
-}
-
-export function isPremiumModel(modelId: string): boolean {
-  return !isExplicitFreeModel(modelId)
 }

@@ -102,16 +102,14 @@ export function readStoredActModelId(): string {
 }
 
 /** Body fields for POST /api/v1/conversations. Prefers explicit account defaults,
- * then the user\'s most recent text model selection from localStorage, then tier defaults. */
+ * then the user\'s most recent text model selection from localStorage, then the paid default. */
 export function resolveNewChatModelFields({
   defaultActModelId,
   defaultAskModelIds,
-  isFreeTier = false,
   onlyAllowZdrModels = false,
 }: {
   defaultActModelId?: string
   defaultAskModelIds?: readonly string[]
-  isFreeTier?: boolean
   onlyAllowZdrModels?: boolean
 }): {
   askModelIds: string[]
@@ -141,7 +139,6 @@ export function resolveNewChatModelFields({
   const selection = resolveDefaultChatModelSelection({
     defaultActModelId,
     defaultAskModelIds,
-    isFreeTier,
     onlyAllowZdrModels,
   })
   return {

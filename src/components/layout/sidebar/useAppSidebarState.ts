@@ -558,27 +558,12 @@ function useSidebarDerivedPanels(args: {
     mobileAccountOpen,
     filesSectionOpen: routeState.filesSectionOpen,
   })
-  const sidebarIsFreeTier = (() => {
-    if (!billingEnabled || !entitlements) return false
-    const planKind = entitlements.planKind ?? (entitlements.tier === 'free' ? 'free' : 'paid')
-    const isPaidSubscription = planKind === 'paid'
-    const budgetRemainingCents =
-      entitlements.budgetRemainingCents ??
-      Math.max(
-        0,
-        (entitlements.budgetTotalCents ?? Math.max(0, Math.round((entitlements.creditsTotal ?? 0) * 100))) -
-          (entitlements.budgetUsedCents ?? Math.max(0, Math.round((entitlements.creditsUsed ?? 0) * 100))),
-      )
-    const isBudgetExhaustedPaid = isPaidSubscription && budgetRemainingCents <= 0
-    return !isPaidSubscription || isBudgetExhaustedPaid
-  })()
   const {
     createChat,
     runSidebarAction,
   } = useAppSidebarActions({
     user,
     pathname,
-    isFreeTier: sidebarIsFreeTier,
     requireAuth,
     onCloseMobileMenu: closeMobileDrawer,
     onChatCreated: () => setChatPanelRefreshKey((value: number) => value + 1),
@@ -726,7 +711,7 @@ export function useAppSidebarState({
     [routeSearchParams],
   )
   const { capabilities } = useOverlayCapabilities()
-  const { allows, can } = useAuthorization()
+  const { allows } = useAuthorization()
   const { requireAuth } = useGuestGate()
   const { user, isLoading: authLoading } = useAuth()
   const appShell = useMemo(
