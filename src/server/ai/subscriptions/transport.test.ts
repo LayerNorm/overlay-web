@@ -224,3 +224,11 @@ test('AI SDK streamText preserves Responses SSE mode and requires terminal compl
   assert.equal(bridgeRequest.stream, true)
   assert.equal(bridgeRequest.store, false)
 })
+
+
+test('translator event-only frames do not turn into invalid JSON data', async () => {
+  const source = new Response('event: response.created\n\ndata: {"type":"response.created"}\n\nevent: response.completed\n\ndata: {"type":"response.completed","response":{"id":"done"}}\n\n')
+  const output = await new Response(boundedStream(source.body!)).text()
+  assert.doesNotMatch(output, /data: event:/)
+  assert.match(output, /"type":"response.completed"/)
+})

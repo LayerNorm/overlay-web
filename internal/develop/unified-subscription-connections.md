@@ -82,7 +82,9 @@ saved model choices for later reconnect.
 Overlay validates the selected model and supported stateless Responses request
 before sending it to the private service. The bridge requires `stream: true`
 and `store: false`; it has no stateful response or conversation continuation
-store. CLIProxyAPI owns Codex provider translation. Overlay returns bounded
+store. CLIProxyAPI owns Codex provider translation. Its SSE field lines and combined
+event/data frames pass through unchanged; only bare JSON chunks receive a
+`data:` prefix. Overlay returns bounded
 streaming events for `streamText` and converts a completed Responses event to
 JSON for `generateText`. Cancellation, response/event size limits, and safe
 typed errors are enforced at the boundary. There is no timeout after an

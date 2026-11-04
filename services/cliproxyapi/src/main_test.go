@@ -78,6 +78,19 @@ func TestNormalizeSSEFramePreservesTranslatorDataPrefix(t *testing.T) {
 	}
 }
 
+func TestNormalizeSSEFramePreservesTranslatorEventFields(t *testing.T) {
+	for _, field := range []string{"event: response.created", "id: 1", "retry: 1000", ": heartbeat"} {
+		got := string(normalizeSSEFrame([]byte(field)))
+		if got != field+"\n\n" {
+			t.Fatalf("SSE field changed: %q", got)
+		}
+	}
+	combined := "event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n"
+	if got := string(normalizeSSEFrame([]byte(combined))); got != combined {
+		t.Fatalf("combined event changed: %q", got)
+	}
+}
+
 func TestInferUsesConnectionIdentityAndStreamsTranslatorFrames(t *testing.T) {
 	models, err := catalog("plus")
 	if err != nil || len(models) == 0 {

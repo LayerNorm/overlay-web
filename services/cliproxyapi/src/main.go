@@ -470,7 +470,16 @@ func (b *bridge) infer(w http.ResponseWriter, r *http.Request) {
 
 func normalizeSSEFrame(payload []byte) []byte {
 	event := bytes.TrimSpace(payload)
-	if !bytes.HasPrefix(event, []byte("data:")) {
+	// The translator emits both SSE field lines and bare JSON payloads.
+	// Preserve field lines: prefixing an event label with data makes it invalid JSON.
+	isSSEField := false
+	for _, prefix := range []string{"data:", "event:", "id:", "retry:", ":"} {
+		if bytes.HasPrefix(event, []byte(prefix)) {
+			isSSEField = true
+			break
+		}
+	}
+	if !isSSEField {
 		event = append([]byte("data: "), event...)
 	}
 	frame := make([]byte, 0, len(event)+2)
