@@ -109,12 +109,16 @@ test('legacy subscription rows remain personal and public listings omit Vault re
   const ownerRows = await convex.query(listForUse, {
     serverSecret: secret,
     actorUserId: 'owner',
-    workspaceId: 'missing-workspace',
   })
   expect(ownerRows).toHaveLength(1)
   expect(ownerRows[0]).toMatchObject({ _id: connectionId, scope: 'personal', canManage: true })
   expect(ownerRows[0]).not.toHaveProperty('vaultKeyName')
   expect(ownerRows[0]).not.toHaveProperty('vaultObjectId')
+  await expect(convex.query(listForUse, {
+    serverSecret: secret,
+    actorUserId: 'owner',
+    workspaceId: 'missing-workspace',
+  })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
   expect(await convex.query(listForUse, {
     serverSecret: secret,
     actorUserId: 'viewer',
@@ -226,6 +230,14 @@ test('workspace subscriptions are shared only with active members of the exact a
     generation: 3,
     revision: 7,
   })
+  expect(await convex.query(getForDispatchOwner, {
+    ...dispatchArgs,
+    userId: 'owner',
+  })).toBeNull()
+  expect(await convex.query(getForDispatchOwner, {
+    ...dispatchArgs,
+    userId: 'member',
+  })).toBeNull()
   expect(await convex.query(getForUse, {
     serverSecret: secret,
     connectionId,
@@ -262,11 +274,34 @@ test('workspace subscriptions are shared only with active members of the exact a
     actorUserId: 'member',
     workspaceId: 'workspace-one',
   })).toBeNull()
-  expect(await convex.query(listForUse, {
+  await expect(convex.query(listForUse, {
     serverSecret: secret,
     actorUserId: 'member',
     workspaceId: 'workspace-one',
-  })).toEqual([])
+  })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+
+  await convex.run(async (ctx) => {
+    const principal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', 'workspace-one').eq('userId', 'owner'))
+      .unique()
+    if (!principal) throw new Error('fixture owner principal missing')
+    const membership = await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', (q) =>
+        q.eq('workspaceId', 'workspace-one').eq('principalId', principal.principalId),
+      )
+      .unique()
+    if (!membership) throw new Error('fixture owner membership missing')
+    await ctx.db.patch(membership._id, { status: 'suspended' })
+  })
+  expect(await convex.query(getForDispatchOwner, {
+    ...dispatchArgs,
+    userId: 'owner',
+  })).toBeNull()
+  expect(await convex.query(getForDispatch, {
+    ...dispatchArgs,
+    actorUserId: 'owner',
+    workspaceId: 'workspace-one',
+  })).toBeNull()
 
   await convex.run(async (ctx) => {
     const workspace = await ctx.db.query('workspaces')
@@ -280,6 +315,19 @@ test('workspace subscriptions are shared only with active members of the exact a
     connectionId,
     actorUserId: 'owner',
     workspaceId: 'workspace-one',
+  })).toBeNull()
+  await expect(convex.query(listForUse, {
+    serverSecret: secret,
+    actorUserId: 'owner',
+    workspaceId: 'workspace-one',
+  })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+  expect(await convex.query(getForDispatchOwner, {
+    ...dispatchArgs,
+    userId: 'owner',
+  })).toBeNull()
+  expect(await convex.query(getForDispatchOwner, {
+    ...dispatchArgs,
+    userId: 'member',
   })).toBeNull()
 })
 

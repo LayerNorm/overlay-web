@@ -9,7 +9,6 @@ import { requireServerSecret } from '../lib/auth'
 import {
   assertActiveWorkspaceMember,
   canUseProviderConnection,
-  isActiveWorkspaceMember,
 } from '../lib/providerConnectionScope'
 import type { Doc } from '../_generated/dataModel'
 
@@ -123,12 +122,13 @@ export const listPublicForUseByServer = query({
       .withIndex('by_userId', (q) => q.eq('userId', args.actorUserId))
       .collect()
     const personalRows = ownedRows.filter((row) => (row.scope ?? 'personal') === 'personal')
-    if (!args.workspaceId || !(await isActiveWorkspaceMember(ctx, {
-      userId: args.actorUserId,
-      workspaceId: args.workspaceId,
-    }))) {
+    if (!args.workspaceId) {
       return personalRows.map((row) => stripSecrets(row, true))
     }
+    await assertActiveWorkspaceMember(ctx, {
+      userId: args.actorUserId,
+      workspaceId: args.workspaceId,
+    })
 
     const workspaceRows = await ctx.db
       .query('userProviderConnections')

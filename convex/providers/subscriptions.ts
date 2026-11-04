@@ -174,7 +174,9 @@ export const getForDispatchByServer = query({
       return null
     }
     const connection = await loadConnection(ctx, args.connectionId, state.userId, state.providerId)
-    if (!isDispatchableConnection(connection, args.modelId)) return null
+    if (connection.scope === 'workspace' || !isDispatchableConnection(connection, args.modelId)) {
+      return null
+    }
     return {
       providerId: state.providerId,
       credentialRef: state.credentialRef,

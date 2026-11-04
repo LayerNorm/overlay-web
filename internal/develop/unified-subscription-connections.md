@@ -31,11 +31,17 @@ it returns owner identity and revision for server-side Vault and fencing
 operations. The current web service calls this new endpoint and does not fall
 back to the owner-only endpoint for workspace access.
 
-Deploy the additive Convex change before the web service that calls the new
-query. Rolling the web service back to the previous version remains compatible
-with the owner-only endpoint, but workspace sharing is unavailable until the
-actor-aware web service is restored. Keep the legacy query until all deployed
-and rollback-eligible web versions no longer depend on it.
+Production sequencing is web first, then the matching Convex synchronization:
+ship the web through the native Git deployment from clean canonical `main`,
+wait for the matching production web to be live, then sync the additive Convex
+backend from clean current canonical `main`. Never deploy the customer backend
+from a feature worktree. Until that synchronization, the new actor-aware query
+is unavailable and subscription dispatch requests fail closed; this interval
+is an availability gap, not a zero-downtime rollout.
+
+Keep the legacy query for rollback and older web versions. Those callers remain
+compatible with its owner-only contract and can dispatch personal connections
+only; workspace use requires the actor-aware endpoint, with no legacy fallback.
 
 The plan-based Codex catalog is sourced from CLIProxyAPI's plan registry. The
 `prolite` and `promax` variants additionally intersect that pinned registry with

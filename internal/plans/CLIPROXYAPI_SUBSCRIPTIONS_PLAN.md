@@ -58,10 +58,13 @@ remain pending and are not implied by synthetic tests.
 Dispatch rollout is additive: `getForDispatchByServer` retains its legacy
 owner-only `userId` contract, while the current web uses
 `getForDispatchForActorByServer` for actor/workspace authorization. Deploy the
-Convex endpoint before the new web caller. Rolling back to the previous web
-version remains compatible but disables workspace sharing until the
-actor-aware caller is restored; it must never fall back to the legacy query
-for workspace use.
+web first through native Git from clean canonical `main`; after the matching
+production web is live, synchronize the additive Convex backend from clean
+current canonical `main`, never from a feature worktree. Until that sync, the
+new actor-aware query is unavailable and subscription dispatch fails closed.
+Treat this as an availability gap, not a zero-downtime rollout. Keep the
+legacy endpoint for rollback and older web versions; it supports personal-only
+dispatch and is never a workspace fallback.
 
 ## 7. Verify and roll out
 
