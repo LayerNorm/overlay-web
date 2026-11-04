@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Update container registry login handling for image publication. (#376)
+
 - Refresh Python setup support and diagnostics for security scans. (#377)
 
 - Preserve Codex event-stream framing and optional function-tool arguments so connected subscription responses can complete in chats and native agents.
