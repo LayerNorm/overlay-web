@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Update the development regular-expression engine while retaining Node 22 compatibility. (#343)
+
 - Update CodeQL initialization, analysis and SARIF upload together. (#334)
 
 - Update lint and compiler cache actions, including read-only cache handling. (#373)
