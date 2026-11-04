@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Improve artifact upload/download retry handling when GitHub rate-limits CI. (#375)
+
 - Update container registry login handling for image publication. (#376)
 
 - Refresh Python setup support and diagnostics for security scans. (#377)
