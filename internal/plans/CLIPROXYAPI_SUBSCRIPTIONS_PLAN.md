@@ -1,5 +1,7 @@
 # Plan: Replace subscription plumbing with CLIProxyAPI
 
+Status: Codex-only implementation in review; real-account hosted acceptance pending. Broader provider and workspace-scope work remains planned.
+
 > Progress note: this plan is broader than the current implementation slice.
 > The first slice is Codex-only and uses a same-project private bridge; no other
 > subscription provider, workspace-scope schema expansion, or production picker

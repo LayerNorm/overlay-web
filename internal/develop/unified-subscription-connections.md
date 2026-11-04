@@ -45,9 +45,9 @@ it never activates the old native subscription backend.
 
 The old native Codex token format is not imported. Existing subscription
 credentials in that format require one explicit reconnect. The shared
-`codex-subscription.ts` helper remains for native/external Codex agent runs
-through `AgentProviderAccountService`; it is not an inference or refresh
-fallback for unified subscription connections.
+`codex-subscription.ts` helper remains behind provider-account compatibility
+services; retired hosted third-party runtimes still receive no credentials. It
+is not an inference or refresh fallback for unified subscription connections.
 
 ## Credential lifecycle and dispatch
 
@@ -99,7 +99,11 @@ reasoning defaults are written to global account settings.
 Configure `OVERLAY_CLIPROXYAPI_URL` as the private service binding and
 `OVERLAY_CLIPROXYAPI_SECRET` as a secret of at least 32 characters. Keep
 `OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS` limited to `codex` to enable this
-implemented adapter. Do not expose the subscriptions service through a public
+implemented adapter. The bearer secret is shared between web and the private
+service within each environment; Preview and Production use separate secrets.
+The URL is supplied by the service binding, not a manually copied deployment
+URL. Rebuild after changing settings and verify live provider availability before
+starting authorization. Do not expose the subscriptions service through a public
 rewrite. Hosting compatibility, preview behavior, cold starts, real-account
 refresh, and end-to-end hosted streaming require isolated preview validation;
 local tests and builds do not establish those hosted results.
