@@ -17,6 +17,11 @@ import type {
 import { resetRuntimeState } from './conversation-runtime-utils'
 import type { EnsureConversationRuntime } from './chat-send-body-builders'
 import { startPendingFirstSendRename, type PendingFirstSendState } from './chat-send-pending-first'
+import {
+  chatReasoningStorageKey,
+  writeStoredReasoningByModel,
+  type ReasoningByModel,
+} from '@/shared/chat/chat-model-prefs'
 
 export type CreateNewChatOptions = {
   title?: string
@@ -28,6 +33,7 @@ export type CreateNewChatOptions = {
     selectedModels: string[]
     selectedActModel: string
   }) => void
+  reasoningByModelSnapshot?: ReasoningByModel
 }
 
 export async function createHandoffConversation({
@@ -144,6 +150,12 @@ export async function createNewChatForSend({
 
   const data = await res.json()
   markConversationScopeVerified(workspaceScoped ? 'workspace' : 'personal', data.id)
+  if (options.reasoningByModelSnapshot) {
+    writeStoredReasoningByModel(
+      chatReasoningStorageKey({ type: 'thread', id: data.id }),
+      options.reasoningByModelSnapshot,
+    )
+  }
   setInterruptedExchangeIdx(null)
   const newChat: Conversation = {
     _id: data.id,

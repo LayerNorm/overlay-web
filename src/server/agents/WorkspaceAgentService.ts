@@ -22,7 +22,7 @@ import {
   withAgentDirectoryMetadata,
 } from './WorkspaceAgentService.helpers'
 import { applyChiefIdentityUpdate } from './WorkspaceAgentService.identity'
-import { WorkspaceAgentServiceError, assertSupportedWorkspaceAgentHarness, assertSupportedAgentConfiguration, assertValidOverlayPermissionMode, normalizeVisibility, required, optional, color, shape, unique } from './workspace-agent-validation'
+import { WorkspaceAgentServiceError, assertSupportedWorkspaceAgentHarness, assertSupportedAgentConfiguration, assertValidOverlayPermissionMode, normalizeVisibility, required, optional, color, shape, unique, workspaceAgentCreateModelFields, workspaceAgentUpdateModelFields } from './workspace-agent-validation'
 export { WorkspaceAgentServiceError } from './workspace-agent-validation'
 export { canCreateAgent, canSeeAgent } from './WorkspaceAgentService.helpers'
 
@@ -201,7 +201,7 @@ export class WorkspaceAgentService {
         description: optional(args.input.description, 240),
         instructions,
         harness,
-        modelId,
+        ...workspaceAgentCreateModelFields(modelId, args.input.reasoning),
         ...(args.input.permissionMode === undefined ? {} : { permissionMode: required(args.input.permissionMode, 'Permission mode', 200) }),
         ...(args.input.effort === undefined ? {} : { effort: required(args.input.effort, 'Effort', 200) }),
         avatarColor: color(args.input.avatarColor),
@@ -272,7 +272,7 @@ export class WorkspaceAgentService {
       ...(args.input.instructions === undefined
         ? {}
         : { instructions: required(args.input.instructions, 'Agent instructions', 20_000) }),
-      ...(args.input.modelId === undefined ? {} : { modelId: required(args.input.modelId, 'Model', 200) }),
+      ...workspaceAgentUpdateModelFields(args.input, agent.modelId),
       ...(args.input.permissionMode === undefined ? {} : { permissionMode: required(args.input.permissionMode, 'Permission mode', 200) }),
       ...(args.input.effort === undefined ? {} : { effort: required(args.input.effort, 'Effort', 200) }),
       ...(args.input.harness === undefined ? {} : { harness: args.input.harness }),

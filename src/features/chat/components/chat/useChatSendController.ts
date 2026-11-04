@@ -14,7 +14,8 @@ import {
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { MentionItem } from '@/shared/knowledge/mention-types'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
-import type { VideoSubMode } from '@/shared/ai/gateway/model-types'
+import type { ChatModel, VideoSubMode } from '@/shared/ai/gateway/model-types'
+import { getEffectiveReasoningByModel } from '@overlay/chat-core'
 import type { ReasoningLevel } from '@overlay/chat-core'
 import {
   beginTtftClientTurn,
@@ -95,7 +96,8 @@ export function useChatSendController({
   replyContext,
   requireAuth,
   resetComposerToolIds,
-  reasoning,
+  reasoningByModel,
+  reasoningModels,
   selectedActModel,
   selectedImageModels,
   selectedModels,
@@ -177,7 +179,8 @@ export function useChatSendController({
   replyContext: ReplyContext
   requireAuth: (reason: 'send') => void
   resetComposerToolIds: (temporary: boolean) => void
-  reasoning?: ReasoningLevel
+  reasoningByModel: Readonly<Record<string, ReasoningLevel | undefined>>
+  reasoningModels: readonly Pick<ChatModel, 'id' | 'reasoningLevels'>[]
   selectedActModel: string
   selectedImageModels: string[]
   selectedModels: string[]
@@ -212,6 +215,10 @@ export function useChatSendController({
   userId: string | null
   videoSubMode: VideoSubMode
 }) {
+  const effectiveReasoningByModel = useMemo(
+    () => getEffectiveReasoningByModel(reasoningModels, reasoningByModel),
+    [reasoningByModel, reasoningModels],
+  )
   const preflightInFlight = useRef(false)
   const composerState = useMemo(() => ({ attachedImages, pendingChatDocuments, replyContext, mentions }),
     [attachedImages, pendingChatDocuments, replyContext, mentions])
@@ -327,6 +334,7 @@ export function useChatSendController({
           void createNewChat({
             clientId: conversationClientId,
             deferActivation: true,
+            reasoningByModelSnapshot: pendingFirstSendRef.current?.reasoningByModelSnapshot,
           }).catch(() => showPendingFirstSendSaveFailure())
         },
         pendingFirstSendRef,
@@ -482,7 +490,8 @@ export function useChatSendController({
       refreshSelectedAutomation,
       replyContext: replyCtxSnapshot,
       selectedActModelSnapshot: snapshot.selectedActModelSnapshot,
-      reasoning,
+      reasoning: effectiveReasoningByModel[snapshot.selectedActModelSnapshot],
+      reasoningByModelSnapshot: effectiveReasoningByModel,
       setIsFirstMessage,
       setRuntimeHydrationVersion,
       snapshot,
@@ -532,7 +541,7 @@ export function useChatSendController({
     replyContext,
     requireAuth,
     resetComposerToolIds,
-    reasoning,
+    effectiveReasoningByModel,
     selectedActModel,
     selectedImageModels,
     selectedModels,

@@ -699,7 +699,6 @@ export const failClosed = mutation({
     await ctx.db.patch(connection._id, {
       status: 'error',
       lastError: args.error.slice(0, 160),
-      enabledModelIds: [],
       updatedAt: Date.now(),
     })
     const updated = await loadState(ctx, args.connectionId)
@@ -940,7 +939,6 @@ async function markNeedsReconnect(
   if (connection && connection.userId === state.userId) {
     await ctx.db.patch(connection._id, {
       status: 'error',
-      enabledModelIds: [],
       updatedAt: now,
     })
   }

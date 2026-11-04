@@ -11,12 +11,17 @@ import {
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useAppSettings } from '@/components/providers/AppSettingsProvider'
-import { useWorkspaceTextModelAccess, buildSelectableTextModels } from '@/components/providers/useWorkspaceTextModelAccess'
+import { useWorkspaceTextModelAccess } from '@/components/providers/useWorkspaceTextModelAccess'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { parseByoModelId } from '@/shared/agents/agent-model'
-import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from '../lib/agent-editor-input'
+import {
+  buildWorkspaceAgentInput,
+  isAgentEditorValid,
+  isDefaultMasterAgent,
+  workspaceAgentReasoningForSave,
+} from '../lib/agent-editor-input'
 import { getInitialEditorState } from '../lib/agent-editor-state'
 import { useByoConnection } from './use-byo-connection'
 import { useAgentSurfaces } from './use-agent-surfaces'
@@ -121,25 +126,23 @@ export function useAgentEditorController({
       .filter((model) => model.id !== 'nvidia/nemotron-nano-9b-v2')
   }, [revision])
   const modelField = useMemo(() => {
-    const accessUnresolved = !modelAccess.entitlements
-    const selectableTextModels = modelAccess.loading || accessUnresolved
-      ? buildSelectableTextModels({
-          effectiveOnlyAllowZdrModels: false,
-        })
-      : modelAccess.selectableTextModels
+    const selectableTextModels = modelAccess.pickerTextModels
     return {
       favoriteScope: authUser?.id ?? null,
-      modelPickerLabel: allTextModels.find((model) => model.id === form.modelId)?.name ?? form.modelId,
+      modelPickerLabel: selectableTextModels.find((model) => model.id === form.modelId)?.name ?? allTextModels.find((model) => model.id === form.modelId)?.name ?? form.modelId,
       selectableTextModels,
-      textModelsLoading: false,
+      textModelsLoading: modelAccess.connectionsLoading,
+      reasoningByModel: form.reasoningByModel,
+      onModelReasoningChange: form.onModelReasoningChange,
     }
   }, [
     allTextModels,
     authUser?.id,
     form.modelId,
-    modelAccess.entitlements,
-    modelAccess.loading,
-    modelAccess.selectableTextModels,
+    modelAccess.pickerTextModels,
+    modelAccess.connectionsLoading,
+    form.reasoningByModel,
+    form.onModelReasoningChange,
   ])
 
   const isDefaultMaster = isDefaultMasterAgent(agent)
@@ -168,6 +171,13 @@ export function useAgentEditorController({
         enabledToolGroups: form.enabledToolGroups,
         visibility: form.visibility,
         permissionMode: form.permissionMode,
+        reasoning: workspaceAgentReasoningForSave({
+          modelId: form.modelId,
+          reasoning: form.reasoning,
+          reasoningModels: modelAccess.pickerTextModels,
+          existingModelId: agent?.modelId,
+          existingReasoning: agent?.reasoning,
+        }),
       }),
       teamIds: agent?.teamIds ?? [],
     }
@@ -177,6 +187,7 @@ export function useAgentEditorController({
     if (runtime.cloudAgent) {
       delete built.allowedToolIds
       delete (built as { modelId?: string }).modelId
+      delete (built as { reasoning?: WorkspaceAgentCreateInput['reasoning'] }).reasoning
     }
     if (agent && runtime.agentType === 'byo' && parseByoModelId(agent.modelId)?.adapterId === byo.adapterId) {
       // The separate settings controls own this choice; an identity edit must not reset it.
@@ -186,7 +197,7 @@ export function useAgentEditorController({
   }, [runtime.cloudAgent, byo.selectedHarness, byo.adapterId, form.name, form.description, form.instructions,
     runtime.agentType,
     form.modelId, form.avatarColor, form.avatarShape, form.enabledToolGroups, form.visibility,
-    form.permissionMode,
+    form.permissionMode, form.reasoning, modelAccess.pickerTextModels,
     agent])
 
   const { persistNew, saveEdit, cancelEdit, archiveAgent, sayHello } = useAgentEditorActions({

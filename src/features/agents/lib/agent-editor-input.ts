@@ -1,11 +1,38 @@
 import type {
   WorkspaceAgentCreateInput,
   WorkspaceAgentCreatureShape,
+  WorkspaceAgentReasoningLevel,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
+import { getEffectiveReasoningForModel } from '@overlay/chat-core'
+import type { ReasoningModelCapabilities } from '@overlay/chat-core'
 import { byoModelId } from '@/shared/agents/agent-model'
 import { toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
 import { generatedByoInstructions, workspaceHarnessForByo } from './byo-agent-setup'
+
+export function workspaceAgentReasoningForSave({
+  modelId,
+  reasoning,
+  reasoningModels,
+  existingModelId,
+  existingReasoning,
+}: {
+  modelId: string
+  reasoning?: WorkspaceAgentReasoningLevel
+  reasoningModels: readonly ReasoningModelCapabilities[]
+  existingModelId?: string
+  existingReasoning?: WorkspaceAgentReasoningLevel
+}): WorkspaceAgentReasoningLevel | undefined {
+  const effective = getEffectiveReasoningForModel(
+    reasoningModels.find((model) => model.id === modelId),
+    reasoning,
+  )
+  if (effective) return effective
+  if (existingModelId === modelId && existingReasoning && existingReasoning !== 'provider-default') {
+    return 'provider-default'
+  }
+  return undefined
+}
 
 /** Builds the agent create/update payload from editor state (overlay + BYO shapes). */
 export function buildWorkspaceAgentInput(args: {
@@ -21,6 +48,7 @@ export function buildWorkspaceAgentInput(args: {
   enabledToolGroups: ReadonlySet<string>
   visibility: WorkspaceAgentVisibility
   permissionMode?: 'ask' | 'auto'
+  reasoning?: WorkspaceAgentReasoningLevel
   /** The Overlay tools a connected user-owned agent may use over MCP. */
   mcpToolIds?: readonly string[]
   /** A connected agent's chosen model (its own model id); empty means the agent's default. */
@@ -39,7 +67,10 @@ export function buildWorkspaceAgentInput(args: {
     // tool-group grants apply to the native agent only.
     allowedToolIds: byo ? [...(args.mcpToolIds ?? [])] : toolIdsForEnabledGroups(args.enabledToolGroups),
     visibility: args.visibility,
-    ...(byo ? {} : { permissionMode: args.permissionMode ?? 'ask' }),
+    ...(byo ? {} : {
+      permissionMode: args.permissionMode ?? 'ask',
+      ...(args.reasoning === undefined ? {} : { reasoning: args.reasoning }),
+    }),
   }
 }
 
