@@ -269,6 +269,10 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   {
+    path: '/api/v1/conversations/trace',
+    methods: { GET: capability('conversations.read') },
+  },
+  {
     path: '/api/v1/conversations/events',
     methods: { GET: capability('conversations.read') },
   },
