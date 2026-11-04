@@ -50,6 +50,8 @@ export type AttachmentPreviewRequest = AttachmentPreview
 type AutomationDraftModalState = Extract<DraftModalState, { kind: 'automation' }>
 
 export interface ChatExchangeProps {
+  onWorkExpandedChange?: (expanded: boolean) => void
+  workDetails?: import('react').ReactNode
   userMsgId: string
   userBodyText: string
   userDocumentNames: string[]
@@ -153,7 +155,7 @@ export function ChatExchange({
   responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue,
-  generatedUiConnectorActions, generatedUiReadOnly, onGeneratedUiChange, presentation,
+  generatedUiConnectorActions, generatedUiReadOnly, onGeneratedUiChange, presentation, onWorkExpandedChange, workDetails,
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
@@ -174,6 +176,7 @@ export function ChatExchange({
 
     const { collapsePlan, collapsedSet } = useCollapsePlan(assistantSegments, isStreaming || !responseSettled, !interrupted && !errorMessage)
     const [workExpanded, setWorkExpanded] = useState(false)
+    useEffect(() => { onWorkExpandedChange?.(workExpanded) }, [workExpanded, onWorkExpandedChange])
     const segmentCtx: AssistantSegmentRenderContext = {
       keyPrefix: exchIdx,
       markdownKeyPrefix: `${userMsgId}-${responseModelId}`,
@@ -229,6 +232,7 @@ export function ChatExchange({
           workedMs={workedMs}
           workExpanded={workExpanded}
           setWorkExpanded={setWorkExpanded}
+          workDetails={workDetails}
           assistantSegments={assistantSegments}
           collapsedSet={collapsedSet}
           toolChainFlags={toolChainFlags}
@@ -267,6 +271,7 @@ export function ChatExchange({
 }
 
 type ChatExchangeAssistantBodyProps = {
+  workDetails?: import('react').ReactNode
   collapsePlan: ReturnType<typeof useCollapsePlan>['collapsePlan']
   workedMs: number | null
   workExpanded: boolean
@@ -306,6 +311,7 @@ type ChatExchangeAssistantBodyProps = {
 }
 
 function ChatExchangeAssistantBody({
+  workDetails,
   collapsePlan,
   workedMs,
   workExpanded,
@@ -356,6 +362,7 @@ function ChatExchangeAssistantBody({
           />
         )}
         {plan && planSettled && workExpanded ? <RunPlan steps={plan} phase={planPhase} /> : null}
+        {workExpanded ? workDetails : null}
         {assistantSegments.map((seg, segIdx) => {
           if (!workExpanded && collapsedSet.has(segIdx)) return null
           const chain = toolChainFlags[segIdx]!

@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { RemoteRunDeadline } from './RemoteRunDeadline'
+import { usePublicTrace } from '../chat/usePublicTrace'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks, messageActionVisibilityClass } from '@overlay/chat-react/transcript'
@@ -736,6 +737,8 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onContro
 }) {
   const collapseAgentWork = useOptionalAppSettings()?.settings.collapseAgentWork !== false
   const resolveFileHref = useSavedDriveLinkResolver(message.remoteDrive)
+  const trace = usePublicTrace({ messageId: message.id, enabled: !message.streaming && (!message.planPhase || message.planPhase === 'ended'),
+    blocks: message.blocks, terminalState: message.generationError ? 'error' : 'completed' })
   return (
     <>
       {message.askedBy ? (
@@ -755,7 +758,9 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onContro
         </p>
       ) : null}
       <AssistantVisualBlocks
-        blocks={message.blocks}
+        blocks={trace.blocks}
+        onWorkExpandedChange={trace.onWorkExpandedChange}
+        workDetails={trace.workDetails}
         blockKeyPrefix={message.id}
         markdownKeyPrefix={message.id}
         workedDurationMs={message.workedDurationMs}

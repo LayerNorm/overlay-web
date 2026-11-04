@@ -1,6 +1,8 @@
 import 'server-only'
 
 import { gunzipSync, gzipSync } from 'node:zlib'
+import { createHash } from 'node:crypto'
+import { compactTranscriptSnapshot } from './transcript-snapshot'
 import type {
   HarnessAdmission,
   HarnessMutationInput,
@@ -139,11 +141,32 @@ export class ConvexHarnessRepository implements HarnessRepository {
     stepNumber: number
     persistence: HarnessTranscriptPersistence
   }): Promise<{ persisted: boolean }> {
-    const result = await convex.mutation<{ persisted: boolean }>('harness/runs:writeTranscriptStep', {
-      ...input, serverSecret: this.serverSecret,
-    }, { throwOnError: true })
-    if (!result) throw new Error('Harness transcript persistence returned no result.')
-    return result
+    const identity = { actorUserId: input.actorUserId, runId: input.runId, workflowRunId: input.workflowRunId,
+      receiptId: input.receiptId, serverSecret: this.serverSecret }
+    const serialized = JSON.stringify(input.persistence)
+    const uploadUrl = await convex.mutation<string>('harness/runs:beginTranscriptUpload', identity, { throwOnError: true })
+    if (!uploadUrl) throw new Error('Harness transcript upload returned no URL.')
+    const bytes = gzipSync(serialized)
+    const response = await fetch(uploadUrl, { method: 'POST', headers: { 'Content-Type': 'application/gzip' },
+      body: Uint8Array.from(bytes).buffer, redirect: 'error', signal: AbortSignal.timeout(120_000) })
+    if (!response.ok) throw new Error('Harness transcript upload failed.')
+    const uploaded = await response.json() as { storageId?: string }
+    if (typeof uploaded.storageId !== 'string') throw new Error('Harness transcript upload returned no storage identity.')
+    try {
+      const result = await convex.mutation<{ persisted: boolean }>('harness/runs:writeTranscriptStep', {
+        ...input, serverSecret: this.serverSecret,
+        persistence: compactTranscriptSnapshot(input.persistence),
+        fullPersistenceStorageId: uploaded.storageId,
+        fullPersistenceDigest: createHash('sha256').update(serialized).digest('hex'),
+      }, { throwOnError: true })
+      if (!result) throw new Error('Harness transcript persistence returned no result.')
+      return result
+    } finally {
+      // Also cleans up a duplicate upload after an idempotent workflow replay.
+      await convex.mutation('harness/runs:discardTranscriptUpload', {
+        ...identity, storageId: uploaded.storageId,
+      }, { throwOnError: true }).catch(() => undefined)
+    }
   }
 
   async listTranscriptSteps(input: {

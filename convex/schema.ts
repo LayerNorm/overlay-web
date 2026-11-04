@@ -3032,6 +3032,8 @@ export default defineSchema({
     sequence: v.number(),
     stepNumber: v.number(),
     persistenceJson: v.string(),
+    fullPersistenceStorageId: v.optional(v.id('_storage')),
+    fullPersistenceDigest: v.optional(v.string()),
     createdAt: v.number(),
   }).index('by_runId_receiptId', ['runId', 'receiptId'])
     .index('by_runId_sequence', ['runId', 'sequence']),

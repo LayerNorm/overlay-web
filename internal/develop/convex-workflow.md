@@ -21,6 +21,17 @@ keeps new admissions closed during web-first deployment until the journal and
 safe-diagnostic backend contract is available. Existing run records without
 `publicProgressVersion: 1` do not call the new transcript endpoints.
 
+Complete public traces additionally require `harnessFullTranscriptRevision:
+full-public-v1` before new web admissions. Keep the original markers for pinned
+older executions. Each new settled step stores a gzip-compressed public payload
+in Convex file storage with its SHA256 digest, separately from the bounded chat
+snapshot. Expanded traces are authenticated by assistant-message and conversation
+access, then streamed through the server; storage URLs never reach the browser.
+Legacy journal rows remain readable, but already-truncated values cannot be
+recovered. Rollback leaves the optional storage fields and existing objects in
+place while older executions finish. Do not remove payloads independently of
+their journal rows.
+
 Frontend-only releases need no backend push. Use the production-scoped key through
 a private key-only env file; never pass .env.local or use convex:push:all.
 

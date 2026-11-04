@@ -38,6 +38,7 @@ import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { ChatToolSurface } from './ChatToolSurface'
 import { ChatMediaMessage } from './ChatMediaMessage'
 import { readNativeAgentError } from '@/shared/agents/native-agent-error'
+import { usePublicTrace } from './chat/usePublicTrace'
 
 type ChatInstance = UseChatHelpers<UIMessage>
 
@@ -349,6 +350,8 @@ function TextChatMessage(props: TextChatMessageProps) {
   const userDisplay = resolveUserDisplayParts(message)
   const responseMessageId = response.responseMessageId
   const { plan, planPhase } = useExchangePlan(getUserTurnId(message), response.responseMsg, instLoading)
+  const trace = usePublicTrace({ messageId: responseMessageId, enabled: !instLoading && planPhase === 'ended',
+    blocks: assistantVisualBlocks, terminalState: persistedError ? 'error' : turn.interruptedHere ? 'interrupted' : 'completed' })
 
   return (
     <ChatToolSurface
@@ -359,8 +362,10 @@ function TextChatMessage(props: TextChatMessageProps) {
       userImages={userDisplay.userImages}
       exchIdx={exchangeIndex}
       responseModelId={selection.selectedModelId}
-      assistantVisualBlocks={assistantVisualBlocks}
-      responseSources={normalizedAssistant.sources}
+      assistantVisualBlocks={trace.blocks}
+      responseSources={[...normalizedAssistant.sources, ...(trace.sources?.filter(source => !normalizedAssistant.sources.some(saved => saved.id === source.id)) ?? [])]}
+      onWorkExpandedChange={trace.onWorkExpandedChange}
+      workDetails={trace.workDetails}
       isStreaming={isStreaming}
       isTextStreaming={isTextStreaming}
       workedDurationMs={response.workedDurationMs}

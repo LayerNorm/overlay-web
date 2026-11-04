@@ -24,6 +24,8 @@ import {
 type AutomationDraftModalState = Extract<DraftModalState, { kind: 'automation' }>
 
 export interface AssistantVisualBlocksProps {
+  onWorkExpandedChange?: (expanded: boolean) => void
+  workDetails?: import('react').ReactNode
   /** Ordered tools, text, reasoning, and file parts as they appear in the message. */
   blocks: AssistantVisualBlock[]
   /** Stable prefix for React keys — the exchange index in a transcript, the message id elsewhere. */
@@ -85,6 +87,8 @@ export function AssistantVisualBlocks({
   generatedUiConnectorActions,
   generatedUiReadOnly,
   onGeneratedUiChange,
+  onWorkExpandedChange,
+  workDetails,
 }: AssistantVisualBlocksProps) {
   const segments = useMemo(() => buildAssistantVisualSegments(blocks), [blocks])
   const toolChainFlags = useMemo(() => computeToolChainFlags(segments), [segments])
@@ -124,6 +128,7 @@ export function AssistantVisualBlocks({
     [collapsePlan],
   )
   const [workExpanded, setWorkExpanded] = useState(false)
+  useEffect(() => { onWorkExpandedChange?.(workExpanded) }, [workExpanded, onWorkExpandedChange])
   const planSettled = Boolean(plan && isRunPlanSettled(plan, planPhase))
 
   const segmentCtx = useMemo<AssistantSegmentRenderContext>(() => ({
@@ -162,6 +167,7 @@ export function AssistantVisualBlocks({
         />
       )}
       {plan && planSettled && workExpanded ? <RunPlan steps={plan} phase={planPhase} /> : null}
+      {workExpanded ? workDetails : null}
       {segments.map((seg, segIdx) => {
         if (!workExpanded && collapsedSet.has(segIdx)) return null
         const chain = toolChainFlags[segIdx]!

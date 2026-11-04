@@ -28,7 +28,8 @@ test('readiness is available only to the authenticated server', async () => {
   expect(await convex.query(settings, { userId: 'alice', serverSecret: secret }))
     .toMatchObject({ harnessRevision: 'overlay-harness-v1', harnessModelRecoveryRevision: 'settled-retry-v1',
       nativeThreadCompatibilityRevision: 'tracked-native-v1',
-      harnessArtifactPublicationRevision: 'binary-artifact-v1', harnessTranscriptRevision: 'settled-public-v1' })
+      harnessArtifactPublicationRevision: 'binary-artifact-v1', harnessTranscriptRevision: 'settled-public-v1',
+      harnessFullTranscriptRevision: 'full-public-v1' })
   await expect(convex.query(settings, { userId: 'alice', serverSecret: 'invalid' })).rejects.toThrow('Unauthorized')
 })
 
@@ -1048,6 +1049,7 @@ describe('durable harness runs', () => {
       },
     })
     const write = mutation('writeTranscriptStep')
+    const fullPersistenceStorageId = await convex.run(ctx => ctx.storage.store(new Blob(['full transcript'])))
     const args = {
       actorUserId: input.policy.actorUserId,
       runId: input.runId,
@@ -1055,10 +1057,20 @@ describe('durable harness runs', () => {
       receiptId: 'model:0',
       stepNumber: 0,
       persistence: { content: 'A settled public update.', parts: [{ type: 'text', text: 'A settled public update.' }] },
+      fullPersistenceStorageId,
+      fullPersistenceDigest: createHash('sha256').update('full transcript').digest('hex'),
       serverSecret: secret,
     }
     expect(await convex.mutation(write, args)).toEqual({ persisted: true })
     expect(await convex.mutation(write, args)).toEqual({ persisted: false })
+    const duplicate = await convex.run(ctx => ctx.storage.store(new Blob(['full transcript'])))
+    expect(await convex.mutation(write, { ...args, fullPersistenceStorageId: duplicate })).toEqual({ persisted: false })
+    const discard = { actorUserId: args.actorUserId, runId: args.runId, workflowRunId: args.workflowRunId,
+      receiptId: args.receiptId, serverSecret: secret }
+    await convex.mutation(mutation('discardTranscriptUpload'), { ...discard, storageId: duplicate })
+    await convex.mutation(mutation('discardTranscriptUpload'), { ...discard, storageId: fullPersistenceStorageId })
+    expect(await convex.run(ctx => ctx.storage.get(duplicate))).toBeNull()
+    expect(await convex.run(ctx => ctx.storage.get(fullPersistenceStorageId))).not.toBeNull()
     await expect(convex.mutation(write, {
       ...args,
       persistence: { content: 'Different replay.', parts: [{ type: 'text', text: 'Different replay.' }] },
@@ -1088,6 +1100,57 @@ describe('durable harness runs', () => {
       isDone: true,
     })
   })
+})
+
+test('message trace retrieval enforces conversation access and reads every page in sequence', async () => {
+  const convex = convexTest(schema, modules)
+  const workspaceId = 'trace-workspace'
+  const now = Date.now()
+  await convex.run(async ctx => {
+    await ctx.db.insert('workspaces', { workspaceId, kind: 'organization', name: 'Trace QA', slug: 'trace-qa',
+      status: 'active', createdAt: now, updatedAt: now })
+    for (const userId of ['alice', 'bob']) {
+      await ctx.db.insert('workspacePrincipals', { principalId: `principal-${userId}`, workspaceId, type: 'human', userId,
+        displayName: userId, createdAt: now, updatedAt: now })
+      await ctx.db.insert('workspaceMemberships', { membershipId: `member-${userId}`, workspaceId, principalId: `principal-${userId}`,
+        role: 'member', status: 'active', joinedAt: now, updatedAt: now })
+    }
+  })
+  const conversationId = await seedConversation(convex, 'alice', workspaceId)
+  const input = admission('message-trace-run', conversationId, { workspaceId })
+  await admit(convex, input)
+  const ids = await convex.run(async ctx => {
+    const base = { conversationId, userId: 'alice', turnId: 'turn', mode: 'act' as const,
+      content: 'Public response', contentType: 'text' as const, createdAt: now }
+    const userMessageId = await ctx.db.insert('conversationMessages', { ...base, role: 'user' })
+    const messageId = await ctx.db.insert('conversationMessages', { ...base, role: 'assistant' })
+    const deliveryId = await ctx.db.insert('conversationAgentRuns', { conversationId, turnId: 'turn', userId: 'alice',
+      userMessageId, assistantMessageId: messageId, mode: 'work', runner: 'workflow', status: 'completed',
+      harnessRunId: input.runId, createdAt: now, updatedAt: now })
+    for (let sequence = 0; sequence < 11; sequence++) {
+      await ctx.db.insert('harnessTranscriptSteps', { runId: input.runId, receiptId: `model:${sequence}`, sequence,
+        stepNumber: 0, persistenceJson: JSON.stringify({ content: `Step ${sequence}`, parts: [] }), createdAt: now })
+    }
+    return { messageId, userMessageId, deliveryId }
+  })
+  const args = { actorUserId: 'alice', workspaceId, messageId: ids.messageId, serverSecret: secret }
+  const read = query('listMessageTranscriptSteps')
+  const first = await convex.query(read, args)
+  expect(first.steps.map((step: { sequence: number }) => step.sequence)).toEqual(Array.from({ length: 10 }, (_, index) => index))
+  const second = await convex.query(read, { ...args, afterSequence: first.nextSequence })
+  expect(second.steps.map((step: { sequence: number }) => step.sequence)).toEqual([10])
+  expect(second.nextSequence).toBeNull()
+  await expect(convex.query(read, { ...args, actorUserId: 'bob' })).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+  await expect(convex.query(read, { ...args, workspaceId: 'foreign-workspace' })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+  await expect(convex.query(read, { ...args, serverSecret: 'wrong' })).rejects.toThrow('Unauthorized')
+  expect(await convex.query(read, { ...args, messageId: ids.userMessageId })).toBeNull()
+  await convex.run(ctx => ctx.db.patch(ids.messageId, { deletedAt: now }))
+  expect(await convex.query(read, args)).toBeNull()
+  await convex.run(async ctx => {
+    await ctx.db.patch(ids.messageId, { deletedAt: undefined })
+    await ctx.db.patch(ids.deliveryId, { harnessRunId: 'missing-run' })
+  })
+  expect(await convex.query(read, args)).toBeNull()
 })
 
 test('public artifact attachment validates actual bytes, supports chunks, and rechecks source access', async () => {

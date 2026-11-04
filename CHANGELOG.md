@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Load complete public Harness text and tool records when expanding a response, with authenticated trace retrieval and separate full-payload storage. Compact chat snapshots no longer determine trace length; previously truncated historical payloads remain marked as legacy.
+
 - Show the user's photo, name, and email above the workspace list, keep sidebar Settings and sign out while removing duplicate menu rows, and allow owned Harness continuations waiting on input, approval, children, or resources to finish usage admission.
 
 - Recover personal chat responses after a dropped connection. Saved updates for these chats were ignored, so the text froze and the finished answer stayed hidden until a reload; they now appear while a run is followed, without blanking text already shown.

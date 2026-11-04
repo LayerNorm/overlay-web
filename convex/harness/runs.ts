@@ -1732,6 +1732,70 @@ export const get = query({
   },
 })
 
+export const beginTranscriptUpload = mutation({
+  args: { actorUserId: v.string(), runId: v.string(), workflowRunId: v.string(), receiptId: v.string(), serverSecret: v.string() },
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    if (lineage[0]!.metadata.workflowRunId !== args.workflowRunId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    const receipt = await ctx.db.query('harnessReceipts')
+      .withIndex('by_runId_receiptId', q => q.eq('runId', args.runId).eq('receiptId', args.receiptId)).unique()
+    if (!receipt) throw new Error('HARNESS_TRANSCRIPT_RECEIPT_NOT_FOUND')
+    return await ctx.storage.generateUploadUrl()
+  },
+})
+
+export const discardTranscriptUpload = mutation({
+  args: { actorUserId: v.string(), runId: v.string(), workflowRunId: v.string(), receiptId: v.string(), storageId: v.id('_storage'), serverSecret: v.string() },
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
+    const row = await ctx.db.query('harnessTranscriptSteps')
+      .withIndex('by_runId_receiptId', q => q.eq('runId', args.runId).eq('receiptId', args.receiptId)).unique()
+    if (row?.fullPersistenceStorageId !== args.storageId) await ctx.storage.delete(args.storageId)
+  },
+})
+
+export const listMessageTranscriptSteps = query({
+  args: {
+    actorUserId: v.string(), workspaceId: v.string(), messageId: v.string(),
+    afterSequence: v.optional(v.number()), serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const id = ctx.db.normalizeId('conversationMessages', args.messageId)
+    const message = id ? await ctx.db.get(id) : null
+    if (!message || message.deletedAt || message.role !== 'assistant') return null
+    await requireConversationAccess(ctx, { ...args, conversationId: message.conversationId })
+    const delivery = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', message._id)).unique()
+    if (!delivery?.harnessRunId || delivery.conversationId !== message.conversationId) return null
+    const run = await findRun(ctx, delivery.harnessRunId)
+    if (!run || parseJson<HarnessSource>(run.sourceJson).conversationId !== message.conversationId) return null
+    const metadata = run ? parseJson<{ resultSummary?: string }>(run.metadataJson) : null
+    if (args.afterSequence !== undefined && (!Number.isSafeInteger(args.afterSequence) || args.afterSequence < -1)) {
+      throw new Error('Invalid transcript cursor.')
+    }
+    const rows = await ctx.db.query('harnessTranscriptSteps').withIndex('by_runId_sequence', q =>
+      q.eq('runId', delivery.harnessRunId!).gt('sequence', args.afterSequence ?? -1)).order('asc').take(10)
+    return {
+      resultSummary: metadata?.resultSummary ?? null,
+      steps: await Promise.all(rows.map(async row => ({
+        sequence: row.sequence,
+        persistence: parseJson<{ content: string; parts: Array<Record<string, unknown>> }>(row.persistenceJson),
+        ...(row.fullPersistenceStorageId ? {
+          fullPersistenceUrl: await ctx.storage.getUrl(row.fullPersistenceStorageId),
+          fullPersistenceDigest: row.fullPersistenceDigest,
+        } : {}),
+      }))),
+      nextSequence: rows.length === 10 ? rows.at(-1)!.sequence : null,
+    }
+  },
+})
+
 export const writeTranscriptStep = mutation({
   args: {
     actorUserId: v.string(),
@@ -1740,6 +1804,8 @@ export const writeTranscriptStep = mutation({
     receiptId: v.string(),
     stepNumber: v.number(),
     persistence: v.object({ content: v.string(), parts: v.array(v.any()) }),
+    fullPersistenceStorageId: v.optional(v.id('_storage')),
+    fullPersistenceDigest: v.optional(v.string()),
     serverSecret: v.string(),
   },
   handler: async (ctx, args) => {
@@ -1768,11 +1834,17 @@ export const writeTranscriptStep = mutation({
     if (!receipt || parseJson<HarnessReceipt>(receipt.receiptJson).id !== args.receiptId) {
       throw new Error('HARNESS_TRANSCRIPT_RECEIPT_NOT_FOUND')
     }
+    if (Boolean(args.fullPersistenceStorageId) !== Boolean(args.fullPersistenceDigest)
+      || args.fullPersistenceDigest && !/^[a-f0-9]{64}$/.test(args.fullPersistenceDigest)
+      || args.fullPersistenceStorageId && !await ctx.db.system.get(args.fullPersistenceStorageId)) {
+      throw new Error('Invalid full harness transcript payload.')
+    }
     const existing = await ctx.db.query('harnessTranscriptSteps')
       .withIndex('by_runId_receiptId', query => query.eq('runId', run.runId).eq('receiptId', args.receiptId))
       .unique()
     if (existing) {
-      if (existing.stepNumber !== args.stepNumber || existing.persistenceJson !== persistenceJson) {
+      if (existing.stepNumber !== args.stepNumber || existing.persistenceJson !== persistenceJson
+        || existing.fullPersistenceDigest && existing.fullPersistenceDigest !== args.fullPersistenceDigest) {
         throw new Error('HARNESS_TRANSCRIPT_CONFLICT')
       }
       return { persisted: false }
@@ -1783,6 +1855,10 @@ export const writeTranscriptStep = mutation({
       sequence: Number(sequenceMatch[1]),
       stepNumber: args.stepNumber,
       persistenceJson,
+      ...(args.fullPersistenceStorageId ? {
+        fullPersistenceStorageId: args.fullPersistenceStorageId,
+        fullPersistenceDigest: args.fullPersistenceDigest,
+      } : {}),
       createdAt: receipt.createdAt,
     })
     return { persisted: true }
