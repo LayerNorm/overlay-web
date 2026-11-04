@@ -553,9 +553,9 @@ it('Plan: rejected reporting and textual DSML recover without repeating the comp
   expect(result.snapshot.plan[1]).toMatchObject({ answerOnly: true, status: 'done' })
   const recoveryPrompt = JSON.stringify(provider.doStreamCalls[5]?.prompt)
   expect(recoveryPrompt).toContain('one result cannot prove two actions')
-  expect(recoveryPrompt).toContain('use harness_set_plan to set answerOnly: true')
-  expect(recoveryPrompt).toContain('Preserve every other milestone exactly')
-  expect(recoveryPrompt).toContain('do not repeat the completed action')
+  expect(recoveryPrompt).toContain('use harness_revise_step with its exact id and patch {answerOnly: true, evidenceTools: [], requiresVerification: false}')
+  expect(recoveryPrompt).toContain('unrelated completed milestones are preserved')
+  expect(recoveryPrompt).toContain('do not repeat completed actions')
   expect(JSON.stringify(provider.doStreamCalls[6]?.prompt)).toContain('Reporting-only milestones finish with your answer')
   for (const call of [provider.doStreamCalls[6], provider.doStreamCalls.at(-1)]) {
     expect(call?.toolChoice).toEqual({ type: 'auto' })
