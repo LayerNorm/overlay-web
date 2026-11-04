@@ -9,7 +9,8 @@ const create = makeFunctionReference<'mutation'>('providers/connections:createBy
 const listForUse = makeFunctionReference<'query'>('providers/connections:listPublicForUseByServer')
 const getForUse = makeFunctionReference<'query'>('providers/connections:getForUseByServer')
 const getByServer = makeFunctionReference<'query'>('providers/connections:getByServer')
-const getForDispatch = makeFunctionReference<'query'>('providers/subscriptions:getForDispatchByServer')
+const getForDispatchOwner = makeFunctionReference<'query'>('providers/subscriptions:getForDispatchByServer')
+const getForDispatch = makeFunctionReference<'query'>('providers/subscriptions:getForDispatchForActorByServer')
 
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
@@ -81,6 +82,29 @@ function subscriptionConnection(userId: string, options: {
 test('legacy subscription rows remain personal and public listings omit Vault references', async () => {
   const convex = convexTest(schema, modules)
   const connectionId = await convex.mutation(create, subscriptionConnection('owner'))
+  await convex.run(async (ctx) => {
+    await ctx.db.patch(connectionId, {
+      scope: undefined,
+      workspaceId: undefined,
+      status: 'active',
+      discoveredModelsJson: JSON.stringify({ data: [{ id: 'codex-model', name: 'Codex' }] }),
+    })
+    await ctx.db.insert('providerSubscriptionStates', {
+      userId: 'owner',
+      connectionId,
+      providerId: 'codex',
+      generation: 3,
+      revision: 7,
+      phase: 'active',
+      credentialRef: 'vault-reference',
+      cleanupRefs: [],
+      cleanupStatus: 'clean',
+      createdAt: 1,
+      updatedAt: 1,
+    })
+  })
+  const storedRow = await convex.run((ctx) => ctx.db.get(connectionId))
+  expect(storedRow?.scope).toBeUndefined()
 
   const ownerRows = await convex.query(listForUse, {
     serverSecret: secret,
@@ -110,6 +134,22 @@ test('legacy subscription rows remain personal and public listings omit Vault re
     userId: 'owner',
     scope: 'personal',
   })
+  expect(await convex.query(getForDispatchOwner, {
+    serverSecret: secret,
+    userId: 'owner',
+    connectionId,
+    modelId: 'codex-model',
+  })).toEqual({
+    providerId: 'codex',
+    credentialRef: 'vault-reference',
+    generation: 3,
+  })
+  expect(await convex.query(getForDispatchOwner, {
+    serverSecret: secret,
+    userId: 'viewer',
+    connectionId,
+    modelId: 'codex-model',
+  })).toBeNull()
 })
 
 test('workspace subscriptions are shared only with active members of the exact active workspace', async () => {

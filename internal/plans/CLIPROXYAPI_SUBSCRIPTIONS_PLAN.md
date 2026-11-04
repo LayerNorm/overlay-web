@@ -55,6 +55,14 @@ nonowner management safeguards are workspace-aware. The scope selector/privacy
 copy, full shared-picker QA, hosted acceptance, and real-account validation
 remain pending and are not implied by synthetic tests.
 
+Dispatch rollout is additive: `getForDispatchByServer` retains its legacy
+owner-only `userId` contract, while the current web uses
+`getForDispatchForActorByServer` for actor/workspace authorization. Deploy the
+Convex endpoint before the new web caller. Rolling back to the previous web
+version remains compatible but disables workspace sharing until the
+actor-aware caller is restored; it must never fall back to the legacy query
+for workspace use.
+
 ## 7. Verify and roll out
 
 Test scope enforcement, discovery changes, tool streaming, refresh races,

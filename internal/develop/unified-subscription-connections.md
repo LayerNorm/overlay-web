@@ -20,6 +20,23 @@ management, and expose no reconnect URL. Scope-selection UI and related privacy
 copy remain pending approval. Model visibility does not grant execution access:
 existing paid-access requirements still apply to all models, including BYOK.
 
+### Dispatch endpoint rollout compatibility
+
+The owner-only `getForDispatchByServer` endpoint retains its `userId` argument
+and provider, credential-reference, and generation response. It never
+authorizes another user through a workspace row. The
+`getForDispatchForActorByServer` endpoint accepts the authenticated actor and
+workspace context and is the only endpoint that can authorize workspace use;
+it returns owner identity and revision for server-side Vault and fencing
+operations. The current web service calls this new endpoint and does not fall
+back to the owner-only endpoint for workspace access.
+
+Deploy the additive Convex change before the web service that calls the new
+query. Rolling the web service back to the previous version remains compatible
+with the owner-only endpoint, but workspace sharing is unavailable until the
+actor-aware web service is restored. Keep the legacy query until all deployed
+and rollback-eligible web versions no longer depend on it.
+
 The plan-based Codex catalog is sourced from CLIProxyAPI's plan registry. The
 `prolite` and `promax` variants additionally intersect that pinned registry with
 its Codex client catalog's explicit per-model plan membership; they do not

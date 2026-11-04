@@ -118,6 +118,12 @@ function cleanupStatus(refs: string[]) {
   return refs.length ? 'pending' as const : 'clean' as const
 }
 
+function isDispatchableConnection(connection: Doc<'userProviderConnections'>, modelId: string): boolean {
+  return connection.status === 'active' &&
+    connection.enabledModelIds.includes(modelId) &&
+    isDiscovered(connection.discoveredModelsJson, modelId)
+}
+
 export const getByServer = query({
   args: {
     serverSecret: v.string(),
@@ -149,6 +155,37 @@ export const listByUserByServer = query({
 export const getForDispatchByServer = query({
   args: {
     serverSecret: v.string(),
+    userId: v.string(),
+    connectionId: v.id('userProviderConnections'),
+    modelId: v.string(),
+  },
+  returns: v.union(
+    v.object({
+      providerId: providerValidator,
+      credentialRef: v.string(),
+      generation: v.number(),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const state = await loadState(ctx, args.connectionId)
+    if (!state || state.userId !== args.userId || state.phase !== 'active' || !state.credentialRef) {
+      return null
+    }
+    const connection = await loadConnection(ctx, args.connectionId, state.userId, state.providerId)
+    if (!isDispatchableConnection(connection, args.modelId)) return null
+    return {
+      providerId: state.providerId,
+      credentialRef: state.credentialRef,
+      generation: state.generation,
+    }
+  },
+})
+
+export const getForDispatchForActorByServer = query({
+  args: {
+    serverSecret: v.string(),
     actorUserId: v.string(),
     workspaceId: v.optional(v.string()),
     connectionId: v.id('userProviderConnections'),
@@ -167,15 +204,10 @@ export const getForDispatchByServer = query({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const state = await loadState(ctx, args.connectionId)
-    if (!state || state.phase !== 'active' ||
-        !state.credentialRef) return null
+    if (!state || state.phase !== 'active' || !state.credentialRef) return null
     const connection = await loadConnection(ctx, args.connectionId, state.userId, state.providerId)
-    if (!(await canUseProviderConnection(ctx, connection, args))) return null
-    if (
-      connection.status !== 'active' ||
-      !connection.enabledModelIds.includes(args.modelId) ||
-      !isDiscovered(connection.discoveredModelsJson, args.modelId)
-    ) return null
+    if (!(await canUseProviderConnection(ctx, connection, args)) ||
+        !isDispatchableConnection(connection, args.modelId)) return null
     return {
       providerId: state.providerId,
       credentialRef: state.credentialRef,

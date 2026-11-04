@@ -9,6 +9,7 @@ import {
   isByokConnectionRow,
   type ByokConnectionRow,
 } from '@/shared/ai/gateway/byok-model-conversion'
+import { ByokRegistryOwnership } from './byok-registry-ownership'
 
 type UserConnectionCache = {
   connections: ByokConnectionRow[] | null
@@ -17,7 +18,7 @@ type UserConnectionCache = {
 }
 
 const cacheByUser = new Map<string, UserConnectionCache>()
-let activeRegistryScopeKey: string | null = null
+const registryOwnership = new ByokRegistryOwnership(registerByokModels)
 
 export function byokConnectionScopeKey(userId: string, workspaceId?: string | null): string {
   return `${userId}\u0000${workspaceId ?? 'personal'}`
@@ -45,8 +46,7 @@ function cacheFor(scopeKey: string): UserConnectionCache {
 function setCachedConnections(scopeKey: string, connections: ByokConnectionRow[]): void {
   const cache = cacheFor(scopeKey)
   cache.connections = connections
-  if (canApplyByokConnectionResponse(activeRegistryScopeKey, scopeKey)) {
-    registerByokModels(connections)
+  if (registryOwnership.publish(scopeKey, connections)) {
     cache.listeners.forEach((listener) => listener(connections))
   }
 }
@@ -74,7 +74,6 @@ export function normalizeByokConnectionsPayload(payload: unknown): ByokConnectio
 }
 
 async function loadConnections(
-  userId: string,
   workspaceId: string | null,
   scopeKey: string,
   force = false,
@@ -94,7 +93,7 @@ async function loadConnections(
         throw new Error(payloadErrorMessage(payload) ?? 'Failed to load BYOK provider connections')
       }
       const connections = normalizeByokConnectionsPayload(payload)
-      if (canApplyByokConnectionResponse(activeRegistryScopeKey, scopeKey)) {
+      if (registryOwnership.isActive(scopeKey)) {
         setCachedConnections(scopeKey, connections)
       }
       return connections
@@ -109,8 +108,11 @@ export function useByokModels({ enabled = true }: { enabled?: boolean } = {}) {
   const { user } = useAuth()
   const workspace = useOptionalWorkspace()
   const userId = user?.id ?? null
-  const workspaceId = workspace?.activeWorkspaceId ?? null
-  const scopeKey = userId ? byokConnectionScopeKey(userId, workspaceId) : null
+  const workspaceResolved = workspace === null ||
+    (workspace.status === 'ready' && Boolean(workspace.activeWorkspaceId))
+  const workspaceId = workspaceResolved ? workspace?.activeWorkspaceId ?? null : null
+  const scopeKey = userId && workspaceResolved ? byokConnectionScopeKey(userId, workspaceId) : null
+  const workspacePending = Boolean(enabled && userId && workspace && !workspaceResolved)
   const initialConnections = scopeKey ? cacheFor(scopeKey).connections : null
   const [connectionSnapshot, setConnectionSnapshot] = useState(() => ({
     scopeKey,
@@ -122,14 +124,13 @@ export function useByokModels({ enabled = true }: { enabled?: boolean } = {}) {
   const setConnections = useCallback((value: ByokConnectionRow[]) => {
     setConnectionSnapshot({ scopeKey, connections: value })
   }, [scopeKey])
-  const [isLoading, setIsLoading] = useState(enabled && Boolean(scopeKey) && !initialConnections)
+  const [isLoading, setIsLoading] = useState(enabled && Boolean(userId) &&
+    (workspacePending || Boolean(scopeKey && !initialConnections)))
   const [error, setError] = useState<string | null>(null)
 
   useLayoutEffect(() => {
-    const nextScopeKey = enabled ? scopeKey : null
-    if (activeRegistryScopeKey === nextScopeKey) return
-    activeRegistryScopeKey = nextScopeKey
-    registerByokModels([])
+    if (!enabled || !scopeKey) return
+    return registryOwnership.subscribe(scopeKey, (key) => cacheFor(key).connections)
   }, [enabled, scopeKey])
 
   const updateConnection = useCallback((
@@ -152,16 +153,16 @@ export function useByokModels({ enabled = true }: { enabled?: boolean } = {}) {
     setIsLoading(true)
     setError(null)
     try {
-      const next = await loadConnections(userId, workspaceId, scopeKey, true)
-      if (canApplyByokConnectionResponse(activeRegistryScopeKey, scopeKey)) {
+      const next = await loadConnections(workspaceId, scopeKey, true)
+      if (canApplyByokConnectionResponse(registryOwnership.activeScopeKey, scopeKey)) {
         setConnections(next)
       }
     } catch (value) {
-      if (canApplyByokConnectionResponse(activeRegistryScopeKey, scopeKey)) {
+      if (canApplyByokConnectionResponse(registryOwnership.activeScopeKey, scopeKey)) {
         setError(value instanceof Error ? value.message : 'Failed to load connections')
       }
     } finally {
-      if (canApplyByokConnectionResponse(activeRegistryScopeKey, scopeKey)) setIsLoading(false)
+      if (canApplyByokConnectionResponse(registryOwnership.activeScopeKey, scopeKey)) setIsLoading(false)
     }
   }, [enabled, scopeKey, setConnections, userId, workspaceId])
 
@@ -169,7 +170,7 @@ export function useByokModels({ enabled = true }: { enabled?: boolean } = {}) {
     if (!enabled || !userId || !scopeKey) return
     const revalidate = () => {
       if (document.visibilityState !== 'visible') return
-      void loadConnections(userId, workspaceId, scopeKey, true).catch(() => {})
+      void loadConnections(workspaceId, scopeKey, true).catch(() => {})
     }
     window.addEventListener('focus', revalidate)
     const timer = window.setInterval(revalidate, 60_000)
@@ -184,38 +185,26 @@ export function useByokModels({ enabled = true }: { enabled?: boolean } = {}) {
   useEffect(() => {
     if (!enabled || !userId || !scopeKey) {
       setConnections([])
-      setIsLoading(false)
+      setIsLoading(workspacePending)
       setError(null)
-      if (activeRegistryScopeKey !== null) {
-        activeRegistryScopeKey = null
-        registerByokModels([])
-      }
       return
-    }
-    if (activeRegistryScopeKey !== scopeKey) {
-      registerByokModels([])
-      activeRegistryScopeKey = scopeKey
     }
     const cache = cacheFor(scopeKey)
     cache.listeners.add(setConnections)
     if (cache.connections) {
       setConnections(cache.connections)
-      registerByokModels(cache.connections)
+      registryOwnership.publish(scopeKey, cache.connections)
       setIsLoading(false)
       setError(null)
       return () => {
         cache.listeners.delete(setConnections)
-        if (cache.listeners.size === 0 && activeRegistryScopeKey === scopeKey) {
-          activeRegistryScopeKey = null
-          registerByokModels([])
-        }
       }
     }
     let active = true
     setConnections([])
     setIsLoading(true)
     setError(null)
-    void loadConnections(userId, workspaceId, scopeKey)
+    void loadConnections(workspaceId, scopeKey)
       .then((next) => {
         if (active) {
           setConnections(next)
@@ -231,12 +220,8 @@ export function useByokModels({ enabled = true }: { enabled?: boolean } = {}) {
     return () => {
       active = false
       cache.listeners.delete(setConnections)
-      if (cache.listeners.size === 0 && activeRegistryScopeKey === scopeKey) {
-        activeRegistryScopeKey = null
-        registerByokModels([])
-      }
     }
-  }, [enabled, scopeKey, setConnections, userId, workspaceId])
+  }, [enabled, scopeKey, setConnections, userId, workspacePending, workspaceId])
 
   return { connections, isLoading, error, refresh, updateConnection }
 }

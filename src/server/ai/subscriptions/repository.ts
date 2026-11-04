@@ -252,7 +252,7 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
       generation: number
       revision: number
     } | null>(
-      'providers/subscriptions:getForDispatchByServer',
+      'providers/subscriptions:getForDispatchForActorByServer',
       { serverSecret: this.secret, ...args },
       { throwOnError: true },
     )
