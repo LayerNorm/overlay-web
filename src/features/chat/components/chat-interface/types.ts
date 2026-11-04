@@ -143,6 +143,7 @@ export type ServerConversationMessage = {
 }
 
 export type LiveConversationMessage = {
+  agentPlan?: Array<{ id: string; title: string; status: string }>
   _id: Id<'conversationMessages'>
   turnId: string
   role: 'user' | 'assistant'

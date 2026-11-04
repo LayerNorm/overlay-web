@@ -118,6 +118,7 @@ export type AgentRun = {
   terminalError?: AgentRunTerminalError
   approval?: AgentRunApproval
   inputRequest?: { token: string; requestedAt: number; question: string }
+  plan?: Array<{ id: string; title: string; status: string }>
   resourceRequest?: AgentRunResourceRequest
   fundingPause?: HarnessFundingPause
   authorizationPause?: HarnessAuthorizationPause

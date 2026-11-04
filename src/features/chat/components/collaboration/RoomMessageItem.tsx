@@ -40,6 +40,7 @@ import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
 import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
 import { RemoteRunTrace } from './RemoteRunTrace'
 import { NativeAgentApprovalCard } from './NativeAgentApprovalCard'
+import { RunPlan, type RunPlanPhase, type RunPlanStep } from '@overlay/chat-react/exchange'
 import { NativeAgentInputCard } from './NativeAgentInputCard'
 import type { NativeAgentApproval } from '@/shared/agents/native-agent-approval'
 import type { NativeAgentInput } from '@/shared/agents/native-agent-input'
@@ -96,6 +97,8 @@ export type RoomMessageView = {
   askedBy?: { name: string; hop: number; parentConversationId?: string }
   nativeApproval?: NativeAgentApproval
   nativeInput?: NativeAgentInput
+  plan?: readonly RunPlanStep[]
+  planPhase?: RunPlanPhase
   generationError?: string
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
@@ -766,6 +769,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onContro
         onOpenAttachmentPreview={onOpenAttachmentPreview}
         generatedUiReadOnly={readOnly}
       />
+      {message.plan?.length ? <RunPlan steps={message.plan} phase={message.planPhase ?? 'ended'} /> : null}
       {message.remoteDrive ? <RemoteDriveStatus status={message.remoteDrive} /> : null}
       {message.streaming ? (
         <div className="flex items-center gap-1 py-1" aria-label={`${message.authorName} is responding`}>

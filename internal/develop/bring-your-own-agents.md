@@ -356,11 +356,9 @@ and exact-run authorization before rollout.
 
 Harness continuity is grounded in the current goal, plan, and persisted tool
 observations; prior assistant summaries are explicitly unverified context, not
-evidence. Before accepting a nontrivial final answer with tool observations,
-Harness runs a separately metered, tool-disabled support check against the
-persisted evidence. This model-based check is a bounded safeguard, not a
-mathematical guarantee. Unsupported claims receive at most two correction
-continuations before the run pauses. Large and binary tool results are stored as
+evidence. The harness does not check answers or completed steps: a step is done
+when the model marks it done, and a final answer with no work left finishes the
+run. People, or a verifier agent they add, judge the result. Large and binary tool results are stored as
 private, run-owned artifacts and replaced in older prompt history with bounded
 references. `harness_read_artifact` rechecks the original tool permission; for
 file-backed resources it also resolves the persisted source ID to a current Files
@@ -383,7 +381,7 @@ on a canonical isolated PR origin with both deployment markers set to `preview`.
 It accepts integers from 8192 through 32000; missing or invalid values, other
 actors and production retain normal budgets. Explicit runtime test budgets still
 take precedence. Provider context limits, output limits, billing and reservation
-rules are unchanged. Verify persisted compaction attempts and final verification,
+rules are unchanged. Verify persisted compaction attempts,
 not merely a short response or a completed status, then remove the QA override.
 
 A connected agent gets the same Overlay workspace tools a native agent with the same grant gets —
@@ -1729,22 +1727,10 @@ checks; the former workflow and other actors cannot. Artifact metadata retains i
 original workflow, tool, digest and source revision. Summary and answer-verification
 calls use the same paid-workspace admission, markup and receipt-backed settlement
 as response calls. Unknown outcomes retain their holds; full history is preserved,
-compaction retries once and final answers allow at most two corrections. Failed
-verification cannot complete the run. Context pauses also verify durable current
+compaction retries once. Context pauses also verify durable current
 ownership after error serialization, rather than trusting an exception name alone.
 
 Authorized artifact reopens persist a bounded excerpt observation with the original
-source revision for final verification. Media reopens record selection metadata,
+source revision. Media reopens record selection metadata,
 not inferred image content; denied reads create no evidence, and rereading an
 artifact never certifies a new source mutation.
-
-Artifact-reading milestones declare `evidenceTools: ["harness_read_artifact"]`.
-These control-tool observations can prove the read, while source-tool writes
-continue to require their own successful execution evidence.
-
-Answer corrections start a new continuation turn rather than an assistant
-prefill. Verification feedback can reopen evidence through control tools while
-completed external action tools remain disabled; correction limits still apply.
-
-Final-answer-only guidance does not prohibit evidence-reading controls when a
-verification rejection still needs correction.

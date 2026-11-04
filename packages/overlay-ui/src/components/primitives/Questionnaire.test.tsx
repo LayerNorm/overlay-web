@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { QuestionnaireSuggestions } from './Questionnaire'
+import { QuestionnairePanel, QuestionnaireSuggestions } from './Questionnaire'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -43,4 +43,24 @@ test('enabled suggestions render enabled choice inputs', () => {
 
   assert.equal(inputs.length, choices.length)
   assert.ok(inputs.every((input) => !/\sdisabled(?:\s|=|>)/.test(input)))
+})
+
+test('a question with choices and a written answer never renders the primitive input that crashes beside choices', () => {
+  const markup = renderToStaticMarkup(<QuestionnairePanel
+    items={[
+      { name: 'first', prompt: 'Who is this for?', required: true, choices: [{ value: 'Team', label: 'Team', description: 'Everyone' }], input: { label: 'Or write your own answer' } },
+      { name: 'second', prompt: 'Should it name customers?', input: { label: 'Your answer' } },
+    ]}
+    onAnswers={() => undefined}
+  />)
+  assert.match(markup, /Who is this for\?/)
+  assert.match(markup, /Should it name customers\?/)
+  assert.match(markup, /Or write your own answer/)
+  assert.match(markup, /role="progressbar"/)
+  assert.equal((markup.match(/value="__written_answer__"/g) ?? []).length, 2)
+})
+
+test('one question needs no progress label', () => {
+  const markup = renderToStaticMarkup(<QuestionnairePanel items={[{ name: 'only', prompt: 'Which currency?', input: { label: 'Your answer' } }]} onAnswers={() => undefined} />)
+  assert.doesNotMatch(markup, /progressbar/)
 })

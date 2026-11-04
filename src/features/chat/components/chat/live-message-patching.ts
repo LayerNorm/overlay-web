@@ -6,6 +6,7 @@ import type {
 import { sameAssistantSnapshot } from './chat-runtime-helpers'
 
 export type ServerAssistantMessageRow = {
+  agentPlan?: Array<{ id: string; title: string; status: string }>
   id: string
   turnId?: string
   role: 'assistant'
@@ -29,6 +30,7 @@ function patchMessageIntoList(messages: UIMessage[], incoming: LiveConversationM
     metadata: {
       ...(incoming.routedModelId ? { routedModelId: incoming.routedModelId } : {}),
     },
+    ...(incoming.agentPlan?.length ? { agentPlan: incoming.agentPlan } : {}),
     turnId: incoming.turnId,
     mode: incoming.mode,
     model: incoming.modelId,
@@ -85,6 +87,7 @@ function patchServerMessageIntoList(messages: UIMessage[], incoming: ServerAssis
     metadata: {
       ...(incoming.routedModelId ? { routedModelId: incoming.routedModelId } : {}),
     },
+    ...(incoming.agentPlan?.length ? { agentPlan: incoming.agentPlan } : {}),
     turnId: incoming.turnId,
     mode: incoming.mode ?? 'act',
     model: incoming.model,

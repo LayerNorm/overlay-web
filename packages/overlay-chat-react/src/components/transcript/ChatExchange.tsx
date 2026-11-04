@@ -25,7 +25,7 @@ import type {
 import type { GeneratedUiConnectorActions } from '../GeneratedUiCard'
 import { UserMessageBubble } from '../UserMessageBubble'
 import { Message, MessageContent } from '@overlay/ui/ai'
-import { WorkedForGroup } from '../exchange'
+import { RunPlan, WorkedForGroup, type RunPlanPhase, type RunPlanStep } from '../exchange'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { UsageExhaustedNotice } from '../UsageExhaustedNotice'
 import { ExchangeActions } from './ExchangeActions'
@@ -66,6 +66,9 @@ export interface ChatExchangeProps {
   isTextStreaming: boolean
   /** Persisted turn time (assistant row createdAt→updatedAt); falls back to the live measure. */
   workedDurationMs?: number | null
+  /** The steps the agent is working through, shown at the bottom of the response. */
+  plan?: readonly RunPlanStep[]
+  planPhase?: RunPlanPhase
   errorMessage: string | null
   responseInProgress: boolean
   /** Normalized selected-response status. Host booleans remain as a compatibility fallback. */
@@ -144,7 +147,7 @@ function useWorkedMs(isStreaming: boolean, workedDurationMs: number | null | und
 }
 
 export function ChatExchange({
-  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, responseSources, isStreaming, isTextStreaming, workedDurationMs, errorMessage,
+  userMsgId, userBodyText, userDocumentNames, userIndexedAttachments, userImages, exchIdx, responseModelId, assistantVisualBlocks, responseSources, isStreaming, isTextStreaming, workedDurationMs, plan, planPhase = 'ended', errorMessage,
   responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue,
@@ -230,6 +233,8 @@ export function ChatExchange({
           exchIdx={exchIdx}
           isStreaming={isStreaming}
           segmentCtx={segmentCtx}
+          plan={plan}
+          planPhase={planPhase}
           errorMessage={errorMessage}
           loadingPresentation={loadingPresentation}
           hasPersistedInterruptionNotice={hasInterruptionNotice(assistantPlainText)}
@@ -270,6 +275,8 @@ type ChatExchangeAssistantBodyProps = {
   exchIdx: number
   isStreaming: boolean
   segmentCtx: AssistantSegmentRenderContext
+  plan: ChatExchangeProps['plan']
+  planPhase: RunPlanPhase
   errorMessage: ChatExchangeProps['errorMessage']
   loadingPresentation: ReturnType<typeof exchangeLoadingPresentation>
   hasPersistedInterruptionNotice: boolean
@@ -307,6 +314,8 @@ function ChatExchangeAssistantBody({
   exchIdx,
   isStreaming,
   segmentCtx,
+  plan,
+  planPhase,
   errorMessage,
   loadingPresentation,
   hasPersistedInterruptionNotice,
@@ -356,6 +365,8 @@ function ChatExchangeAssistantBody({
             />
           )
         })}
+
+        {plan?.length ? <RunPlan steps={plan} phase={planPhase} /> : null}
 
         {!errorMessage ? <ExchangeLoadingState presentation={loadingPresentation} /> : null}
 

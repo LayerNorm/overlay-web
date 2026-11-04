@@ -254,12 +254,12 @@ do not write tool progress into the parent's room.
 Native tool steps persist tool results before returning, allowing a
 tool that finishes during Stop to retain its evidence; the workflow event hook
 skips evidence already recorded by the step.
-Native Harness roots require a durable plan when their effective tool set
-includes a write-capable tool. Action milestones require tool-result evidence.
-Each action milestone declares `evidenceTools`; only results from those tools
-can support it, and a tool result can support only one action milestone.
-Read-only runs can answer without action milestones by using one answer-only
-milestone. Native descendants derive the same policy from their admitted tools.
+Plans are optional for every run. The model makes one when a task is long and
+needs structure, and a step is done when the model marks it done. Plan changes
+on a root run are copied to its delivery run (`plan`) and assistant message
+(`agentPlan`), where the chat reads them. Those fields sit apart from message
+`parts`, which streaming and finalization replace. Stored `requiresPlan` and
+`evidenceTools` values remain for runs already in progress and are not enforced.
 Personal Chat roots and descendants remain plan-optional.
 When OpenRouter cost confirmation proves an interrupted free-route stream cost
 zero, the Harness records a durable `route_interrupted` receipt and immediately
@@ -662,10 +662,8 @@ evidence. Original child evidence IDs remain scoped to their child run.
 System-owned `ask:<toolCallId>:<agentId>` milestones settle from the joined
 child's terminal status: completion marks them done, while failure or
 cancellation skips them with the child's reason. Other delegated milestones
-still require the parent to complete them with evidence.
-Children inherit the parent's `requiresPlan` policy. Optional planning stays
-optional for a trivial delegated reply; an explicit plan requirement cannot be
-weakened through delegation. The parent still needs a milestone to delegate.
+are completed by the parent.
+Children need no plan. The parent still needs a plan step to delegate.
 
 `HarnessLanguageModel` delegates to named `streamHarnessModel` and
 `generateHarnessModel` steps with `maxRetries = 0`. Do not assign retry metadata

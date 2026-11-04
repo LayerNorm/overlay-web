@@ -4,6 +4,14 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Show an agent's plan at the bottom of its response, with live progress. The plan stays open while the agent works and collapses into a dropdown only after the response ends with every step finished, so unfinished work stays visible. Responses keep their plan after a reload.
+
+- Replace the one-box agent input prompt with a questionnaire, so agents ask real questions with choices, written answers and optional skips. Empty prompts such as "placeholder" are sent back to the model instead of reaching people, and stuck-run prompts now ask a plain question.
+
+- Remove harness-level checking of agent work: the final-answer verifier, its paid extra model call and retries, milestone evidence requirements, and the rewrite of unconfirmed note claims. This stops rejected drafts from repeating in responses. A step is now done when the model marks it done, so a model can report work that did not happen; people, or a verifier agent they add, check the result.
+
+- Stop forcing agents with write tools to make a plan. Simple questions now get a direct answer, and the model plans only when a task is long and needs structure.
+
 - Keep the user-owned agent setup entry hidden when the deployment’s connected-agent rollout is disabled, while native agents and Computers remain available.
 
 - Keep retired hosted-machine cleanup pending until a fresh provider lookup confirms deletion, preventing asynchronous delete acknowledgements from discarding cleanup ownership.

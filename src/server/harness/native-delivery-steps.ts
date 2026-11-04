@@ -6,7 +6,6 @@ import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 import { compactAssistantPersistenceForConvex } from '@/shared/chat/persist-assistant-turn'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '@/shared/ai/textual-tool-calls'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
-import { reconcileUnverifiedAgentActionClaims } from '@/server/agents/workspace-agent-invocation'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { agentRunService } from '@/server/conversations/http'
@@ -136,11 +135,11 @@ export async function finishNativeHarnessDelivery(
     return
   }
   if (state.status === 'completed') {
-    const persistence = compactAssistantPersistenceForConvex(reconcileUnverifiedAgentActionClaims({
+    const persistence = compactAssistantPersistenceForConvex({
       content: stripTextualToolCalls(delivery.content, activeToolNames),
       parts: stripTextualToolCallsFromParts(delivery.parts, activeToolNames)
         .filter(part => (part as { type?: unknown }).type !== 'reasoning'),
-    }))
+    })
     await server.appData.repositories.conversationCollaboration.finalizeAgentMessage({
       actorUserId: access.actorUserId, content: persistence.content, conversationId: access.conversationId,
       messageId: access.assistantMessageId, parts: persistence.parts, tokens: delivery.tokens,

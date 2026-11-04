@@ -422,6 +422,7 @@ function serializeConversationMessage(message: ConversationMessageRow) {
     ...(message.replyToTurnId ? { replyToTurnId: message.replyToTurnId } : {}),
     ...(message.replySnippet ? { replySnippet: message.replySnippet } : {}),
     ...(message.routedModelId ? { routedModelId: message.routedModelId } : {}),
+    ...(message.agentPlan?.length ? { agentPlan: message.agentPlan } : {}),
     ...(message.status ? { status: message.status } : {}),
     ...(message.authorKind ? { authorKind: message.authorKind } : {}),
     ...(message.authorPrincipalId ? { authorPrincipalId: message.authorPrincipalId } : {}),

@@ -31,6 +31,7 @@ type ConvexAgentRunDoc = {
   _id: string
   _creationTime: number
   conversationId: string
+  turnId?: string
   userId: string
   status: string
   updatedAt: number
@@ -38,6 +39,7 @@ type ConvexAgentRunDoc = {
   terminalError?: { code: string; message: string; retryable: boolean }
   approval?: AgentRunResource['approval']
   inputRequest?: AgentRunResource['inputRequest']
+  plan?: AgentRunResource['plan']
   resourceRequest?: AgentRunResource['resourceRequest']
   fundingPause?: AgentRunResource['fundingPause']
   authorizationPause?: AgentRunResource['authorizationPause']
@@ -98,12 +100,14 @@ export function toAgentRunResource(doc: ConvexAgentRunDoc): AgentRunResource | n
   return {
     id: doc._id,
     conversationId: doc.conversationId,
+    turnId: doc.turnId,
     userId: doc.userId,
     status: doc.status as AgentRunResource['status'],
     updatedAt: doc.updatedAt,
     terminalError: doc.terminalError,
     approval: doc.approval,
     inputRequest: doc.inputRequest,
+    plan: doc.plan,
     resourceRequest: doc.resourceRequest,
     fundingPause: doc.fundingPause,
     authorizationPause: doc.authorizationPause,

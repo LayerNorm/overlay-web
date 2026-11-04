@@ -59,7 +59,6 @@ import type {
   HarnessWaitReference,
   HarnessWaitRequest,
 } from '../../packages/overlay-agent-runtime/src/harness-store'
-import { harnessToolsRequirePlan } from '../../packages/overlay-agent-runtime/src/harness-write-tools'
 import { ConvexError, v } from 'convex/values'
 
 const MAX_ID_LENGTH = 256
@@ -1243,6 +1242,17 @@ async function persistPlan(
   }
 }
 
+async function projectPlanToDelivery(ctx: MutationCtx, run: RunRow, plan: HarnessSnapshot['plan'], now: number) {
+  if (run.parentRunId !== undefined || !run.deliveryAgentRunId) return
+  const delivery = await ctx.db.get(run.deliveryAgentRunId as Id<'conversationAgentRuns'>)
+  if (!delivery || delivery.harnessRunId !== run.runId) return
+  const steps = plan.map(({ id, title, status }) => ({ id, title, status }))
+  await ctx.db.patch(delivery._id, { plan: steps, updatedAt: now })
+  if (await ctx.db.get(delivery.assistantMessageId)) {
+    await ctx.db.patch(delivery.assistantMessageId, { agentPlan: steps, updatedAt: now })
+  }
+}
+
 async function persistChildren(
   ctx: MutationCtx,
   runId: string,
@@ -1290,7 +1300,7 @@ function childAdmission(
     actorUserId: parent.policy.actorUserId,
     ...(parent.policy.workspaceId ? { workspaceId: parent.policy.workspaceId } : {}),
     allowedToolIds: [...new Set(operation.child.allowedToolIds)].sort(),
-    requiresPlan: parent.policy.requiresPlan && harnessToolsRequirePlan(operation.child.allowedToolIds),
+    requiresPlan: false,
     deadlineAt: parent.policy.deadlineAt,
     ...(parent.policy.taskDeadlineAt !== undefined ? { taskDeadlineAt: parent.policy.taskDeadlineAt } : {}),
     ...(parent.policy.executionPolicyVersion === 2 ? {
@@ -1802,6 +1812,7 @@ export const apply = mutation({
     if (changed) {
       await persistMetadata(ctx, run, next)
       await persistPlan(ctx, run.runId, current.planRevision, current.plan, next, now)
+      if (stableJson(current.plan) !== stableJson(next.plan)) await projectPlanToDelivery(ctx, run, next.plan, now)
       await persistChildren(ctx, run.runId, current.children, next.children)
     }
     if (run.deliveryAgentRunId && (operation.type === 'pause_for_funding' || operation.type === 'resume_funding'

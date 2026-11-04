@@ -10,7 +10,6 @@ import { captureHarnessModelUsage } from './model-usage'
 import type { HarnessExecutionPorts } from './ports'
 import type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
 import { readHarnessModelLimits } from './model-preparation'
-import { createHarnessVerificationPort } from './verification-port'
 import { settleHarnessModelUsage } from './settle-model-step'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
 import { estimateHarnessPromptTokens } from './artifact-context'
@@ -30,7 +29,7 @@ export function createHarnessModelPorts(input: {
     options: LanguageModelV4CallOptions
   }) => Promise<PreparedHarnessModel>
   contextBudgetTokens?: number
-}): Pick<HarnessExecutionPorts, 'prepareModel' | 'recordModelStep' | 'recoverModelFailure' | 'verifyFinalAnswer'> {
+}): Pick<HarnessExecutionPorts, 'prepareModel' | 'recordModelStep' | 'recoverModelFailure'> {
   const preparedCalls = new Map<string, PreparedHarnessModel>()
   const { reference, prepare } = input
   // Catalog limits are fixed for a model, so read them once per run.
@@ -56,15 +55,8 @@ export function createHarnessModelPorts(input: {
     settle,
     getCurrentModelId: () => input.modelId,
   })
-  const verification = createHarnessVerificationPort({
-    reference,
-    prepare,
-    settle,
-    getCurrentModelId: () => input.modelId,
-  })
 
   return {
-    verifyFinalAnswer: verification.verifyFinalAnswer,
     recoverModelFailure: async receiptId => {
       const state = await readHarnessState(reference)
       const receipt = state.latestReceipt

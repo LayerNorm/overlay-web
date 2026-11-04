@@ -22,7 +22,7 @@ Model admission uses a reservation ceiling, not the headline catalog price. For 
 
 Harness cancellation and failure retain provider-started or uncertain model holds until authoritative usage settles them. Historical retired-route receipts do not authorize new inference or synthetic zero-usage settlement.
 
-Harness summaries and final-answer verification use distinct metered dispatches.
+Harness summaries use their own metered dispatch. Runs already in progress can still hold a final-answer verification reservation until they finish, so its settlement stays until those runs are gone.
 Failed, interrupted or malformed responses cannot invent zero-usage receipts or
 release paid, BYO or unknown holds. Retain full history and pause until provider
 settlement; retry compaction at most once. Funding pauses preserve the selected

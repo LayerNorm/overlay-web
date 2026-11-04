@@ -68,7 +68,7 @@ test('authorization deadline projects the pause and renders passive text without
   }
   const markup = renderToStaticMarkup(createElement(AuthorizationPauseCard))
   assert.match(markup, /The task reached its explicit deadline\. Progress is saved; further execution requires new authorization\./)
-  assert.doesNotMatch(markup, /aria-label="Your reply"|Send reply|Approve|Deny/)
+  assert.doesNotMatch(markup, /Your answer|>Send<|Approve|Deny/)
 })
 
 test('run snapshot merge applies newer and different runs but ignores stale same-id runs', () => {
@@ -122,8 +122,8 @@ test('input waits render the persisted question and a reply control instead of a
   }
   const markup = renderToStaticMarkup(createElement(InputCard))
   assert.match(markup, /Which folder should I use\?/)
-  assert.match(markup, /aria-label="Your reply"/)
-  assert.match(markup, /Send reply/)
+  assert.match(markup, /Your answer/)
+  assert.match(markup, />Send</)
   assert.doesNotMatch(markup, />Approve<|>Deny</)
   assert.doesNotMatch(markup, /input-token/)
 })

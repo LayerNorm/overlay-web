@@ -4,7 +4,6 @@ import { tool } from 'ai'
 import { z } from 'zod'
 import type { LanguageModelV4FinishReason, LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import * as runtime from '@overlay/agent-runtime/harness-state'
-import { harnessToolsRequirePlan } from './write-tools'
 import type { HarnessExecutionPorts } from './ports'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
 import { runOverlayHarness } from './runner'
@@ -143,7 +142,7 @@ function harnessFixture(options: { allowedToolIds?: string[]; requiresPlan?: boo
       actorUserId: 'human',
       workspaceId: 'workspace',
       allowedToolIds,
-      requiresPlan: options.requiresPlan ?? harnessToolsRequirePlan(allowedToolIds),
+      requiresPlan: options.requiresPlan ?? false,
       deadlineAt: Date.now() + 60_000,
       maxCostMicros: 100,
       maxParallelChildren: 2,
@@ -359,9 +358,6 @@ it('Revocation mid-run — the next step fails closed and cannot complete or wri
         id: 'read',
         title: 'Read source',
         dependsOn: [],
-        acceptanceCriteria: ['Read the source.'],
-        requiresVerification: false,
-        evidenceTools: ['read_file'],
       }] },
     }]
     : [{ name: 'read_file', id: 'read-1' }])
@@ -480,66 +476,33 @@ it('Streaming — live text/tool parts arrive before finalization, and final per
   expect(new Set(toolIds).size).toBe(toolIds.length)
 })
 
-it('Plan: write claims without a plan stay blocked, while answer-only Q&A completes', async () => {
-  const writeFixture = harnessFixture({ allowedToolIds: ['write_file'] })
-  const writeTools = createHarnessTools([definition('write_file')], {
+it('Plan: an agent with write tools answers a simple question without a plan', async () => {
+  const fixture = harnessFixture({ allowedToolIds: ['write_file'] })
+  const tools = createHarnessTools([definition('write_file')], {
     needsApproval: async () => false,
     execute: async () => 'created',
   })
-  const textOnly = model(() => 'I created notes 01 through 08 with IDs.')
-  const blocked = await writeFixture.run(writeTools)
-  expect(blocked.outcome).toBe('blocked')
-  expect(blocked.snapshot.status).not.toBe('completed')
-  expect(blocked.snapshot.blocker?.kind).toBe('stuck')
-  expect(textOnly.doStreamCalls).toHaveLength(6)
-  expect(textOnly.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
-
-  const qaFixture = harnessFixture({ allowedToolIds: ['write_file'] })
-  const answer = model(index => index === 0
-    ? [{
-      name: 'harness_set_plan',
-      id: 'answer-plan',
-      input: { steps: [{
-        id: 'answer',
-        title: 'Answer from knowledge',
-        dependsOn: [],
-        acceptanceCriteria: ['Answer the question.'],
-        requiresVerification: false,
-        answerOnly: true,
-      }] },
-    }]
-    : 'Here is the answer based on prior knowledge.')
-  const completed = await qaFixture.run(writeTools)
+  const answer = model(() => 'Here is the answer based on prior knowledge.')
+  const completed = await fixture.run(tools)
   expect(completed.snapshot.status).toBe('completed')
-  expect(completed.snapshot.plan[0]).toMatchObject({ id: 'answer', answerOnly: true, status: 'done' })
-  expect(answer.doStreamCalls[0]?.toolChoice).toEqual({ type: 'required' })
-  expect(answer.doStreamCalls[1]?.toolChoice).toEqual({ type: 'auto' })
+  expect(completed.snapshot.plan).toEqual([])
+  expect(answer.doStreamCalls).toHaveLength(1)
+  expect(answer.doStreamCalls[0]?.toolChoice).toEqual({ type: 'auto' })
 })
 
-it('Plan: rejected reporting and textual DSML recover without repeating the completed action', async () => {
+it('Plan: textual DSML after finished steps recovers without repeating the completed action', async () => {
   const f = harnessFixture({ allowedToolIds: ['create_note'] })
   const noteLink = '/notes/launch-checklist'
-  const create = { id: 'create', title: 'Create the launch checklist', dependsOn: [],
-    acceptanceCriteria: ['Save eight checklist items'], requiresVerification: false, evidenceTools: ['create_note'] }
-  const report = { id: 'report', title: 'Return the note link', dependsOn: ['create'],
-    acceptanceCriteria: ['Return the saved note link'], requiresVerification: false, evidenceTools: ['create_note'] }
-  const execute = vi.fn(async () => ({ success: true, noteId: 'launch-checklist', url: noteLink,
-    saved: { title: 'Launch checklist', content: Array.from({ length: 8 }, (_, i) => `- [ ] Item ${i + 1}`).join('\n') } }))
+  const create = { id: 'create', title: 'Create the launch checklist' }
+  const report = { id: 'report', title: 'Return the note link', dependsOn: ['create'] }
+  const execute = vi.fn(async () => ({ success: true, noteId: 'launch-checklist', url: noteLink }))
   const tools = createHarnessTools([definition('create_note')], { needsApproval: async () => false, execute })
   const provider = model(index => {
     if (index === 0) return [{ name: 'harness_set_plan', id: 'plan', input: { steps: [create, report] } }]
     if (index === 1) return [{ name: 'create_note', id: 'note', input: {} }]
-    if (index === 2) return [{ name: 'harness_update_step', id: 'created', input: {
-      id: 'create', status: 'done', evidenceRefs: ['tool:note'],
-    } }]
-    if (index === 3) return [{ name: 'harness_update_step', id: 'reused', input: {
-      id: 'report', status: 'done', evidenceRefs: ['tool:note'],
-    } }]
-    if (index === 4) return [{ name: 'harness_update_step', id: 'missing', input: { id: 'report', status: 'done' } }]
-    if (index === 5) return [{ name: 'harness_set_plan', id: 'recover', input: { steps: [create, {
-      ...report, evidenceTools: [], answerOnly: true,
-    }] } }]
-    if (index === 6) return 'Marking the report done.\n\n<｜DSML｜tool_calls>\n<｜DSML｜invoke name="harness_update_step">\n<｜DSML｜parameter name="id" string="true">report</｜DSML｜parameter>\n<｜DSML｜parameter name="status" string="true">done</｜DSML｜parameter>\n</｜DSML｜invoke>\n</｜DSML｜tool_calls>'
+    if (index === 2) return [{ name: 'harness_update_step', id: 'created', input: { id: 'create', status: 'done' } }]
+    if (index === 3) return [{ name: 'harness_update_step', id: 'reported', input: { id: 'report', status: 'done' } }]
+    if (index === 4) return 'Marking the report done.\n\n<｜DSML｜tool_calls>\n<｜DSML｜invoke name="harness_update_step">'
     return `Created your eight-item checklist: [Launch checklist](${noteLink}).`
   })
 
@@ -547,21 +510,9 @@ it('Plan: rejected reporting and textual DSML recover without repeating the comp
   expect(result.snapshot.status).toBe('completed')
   expect(result.snapshot.resultSummary).toContain(noteLink)
   expect(result.snapshot.resultSummary).not.toContain('DSML')
-  expect(provider.doStreamCalls).toHaveLength(8)
+  expect(provider.doStreamCalls).toHaveLength(6)
   expect(execute).toHaveBeenCalledOnce()
-  expect(result.snapshot.plan[0]).toMatchObject({ ...create, status: 'done', evidenceRefs: ['tool:note'] })
-  expect(result.snapshot.plan[1]).toMatchObject({ answerOnly: true, status: 'done' })
-  const recoveryPrompt = JSON.stringify(provider.doStreamCalls[5]?.prompt)
-  expect(recoveryPrompt).toContain('one result cannot prove two actions')
-  expect(recoveryPrompt).toContain('use harness_set_plan to set answerOnly: true')
-  expect(recoveryPrompt).toContain('Preserve every other milestone exactly')
-  expect(recoveryPrompt).toContain('do not repeat the completed action')
-  expect(JSON.stringify(provider.doStreamCalls[6]?.prompt)).toContain('Reporting-only milestones finish with your answer')
-  for (const call of [provider.doStreamCalls[6], provider.doStreamCalls.at(-1)]) {
-    expect(call?.toolChoice).toEqual({ type: 'auto' })
-    expect(call?.tools?.map(tool => tool.name)).not.toContain('create_note')
-    expect(call?.tools?.map(tool => tool.name)).toContain('harness_report_blocker')
-  }
+  expect(result.snapshot.plan.map(step => step.status)).toEqual(['done', 'done'])
 })
 
 it('Budget — two named children plus the parent remain within the ceiling and a third ask is refused before a turn row', () => {
@@ -686,7 +637,6 @@ it('Unbounded loop — more tool calls than legacy maxSteps complete, and premat
       dependsOn: [],
       acceptanceCriteria: ['The work is complete.'],
       requiresVerification: false,
-      evidenceTools: ['read_file'],
     }],
   })
   const tools = {
@@ -699,7 +649,7 @@ it('Unbounded loop — more tool calls than legacy maxSteps complete, and premat
   model(index => index < 4
     ? [{ name: 'read_file', id: `read-${index}` }]
     : index === 4
-      ? [{ name: 'harness_update_step', id: 'finish-plan', input: { id: 'work', status: 'done', evidenceRefs: ['tool:read-3'] } }]
+      ? [{ name: 'harness_update_step', id: 'finish-plan', input: { id: 'work', status: 'done' } }]
       : 'done')
   const result = await fixture.run(tools)
   expect(result.snapshot.status).toBe('completed')

@@ -633,3 +633,10 @@ existing settings rows and UI primitives. Reserve traffic-light space only when
 the bridge marks the document; header buttons and links remain non-draggable.
 Chat/notes `surface=panel` uses the compact desktop layout with the same providers
 and permission boundaries. See [Desktop web shell](desktop-web-shell.md).
+
+Agent questions use `QuestionnairePanel`, and agent plans use `RunPlan` on the
+`Trace` primitives. A plan stays open until the response has ended with every step
+finished or skipped; only then can it collapse. Don't use `Questionnaire.Input` in
+an item that also has choices: `@shadcn/react` 0.3.1 hits React's update limit and
+crashes in the browser, though not in server-rendered tests. `QuestionnairePanel`
+works around this with a hidden choice beside a normal input.

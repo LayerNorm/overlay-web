@@ -1,9 +1,23 @@
 'use client'
 
 import { useRef, useState } from 'react'
-import { Confirmation, ConfirmationAction, ConfirmationActions, ConfirmationBody, ConfirmationIcon, ConfirmationRequest, ConfirmationTitle } from '@overlay/chat-react'
-import { Textarea, toast } from '@overlay/ui/primitives'
+import { QuestionnairePanel, toast, type QuestionnairePanelItem } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { decodeRunQuestions, formatRunAnswers, type RunQuestion } from '@/shared/agents/run-questions'
+
+function questionItem(question: RunQuestion, index: number): QuestionnairePanelItem {
+  const choices = question.choices?.map(({ label, description }) => ({ value: label, label, description }))
+  const writesOwn = question.allowCustomAnswer || !choices?.length
+  return {
+    name: `question-${index}`,
+    prompt: question.prompt,
+    description: question.description,
+    required: !question.optional,
+    multiple: question.multiple,
+    choices,
+    ...(writesOwn ? { input: { label: choices?.length ? 'Or write your own answer' : 'Your answer' } } : {}),
+  }
+}
 
 export function RunInputRequest({ conversationId, runId, token, question, refresh, canRespond = true }: {
   conversationId: string
@@ -13,13 +27,15 @@ export function RunInputRequest({ conversationId, runId, token, question, refres
   refresh?: () => Promise<unknown>
   canRespond?: boolean
 }) {
-  const [reply, setReply] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const pending = useRef(false)
-  const submit = async () => {
-    const text = reply.trim()
-    if (!canRespond || !text || pending.current || submitted) return
+  const questions = decodeRunQuestions(question)
+  const items = questions.map(questionItem)
+
+  const submit = async (answers: Record<string, string[]>) => {
+    const text = formatRunAnswers(questions, items.map(item => answers[item.name])).trim()
+    if (!text || pending.current || submitted) return
     pending.current = true
     setSubmitting(true)
     try {
@@ -42,32 +58,17 @@ export function RunInputRequest({ conversationId, runId, token, question, refres
     }
   }
 
+  if (!canRespond) {
+    return (
+      <div className="mb-2 rounded-xl border border-(--border) bg-card p-4">
+        {questions.map(({ prompt }) => <p key={prompt} className="text-[15px] leading-[22px] font-medium text-foreground">{prompt}</p>)}
+        <p className="mt-2 text-xs text-(--muted)" role="status">Waiting for the person who started this run.</p>
+      </div>
+    )
+  }
   return (
-    <Confirmation className="mb-2">
-      <ConfirmationIcon running={submitting} />
-      <ConfirmationBody>
-        <ConfirmationTitle>Your input is needed</ConfirmationTitle>
-        <ConfirmationRequest className="whitespace-pre-wrap">{question}</ConfirmationRequest>
-        {canRespond ? <>
-          <Textarea
-            aria-label="Your reply"
-            className="mt-2 min-h-16"
-            value={reply}
-            onChange={(event) => setReply(event.target.value)}
-            maxLength={32_000}
-            disabled={submitting || submitted}
-          />
-          <ConfirmationActions>
-            <ConfirmationAction
-              tone="primary"
-              disabled={!reply.trim() || submitting || submitted}
-              onClick={() => void submit()}
-            >
-              {submitted ? 'Reply sent' : 'Send reply'}
-            </ConfirmationAction>
-          </ConfirmationActions>
-        </> : <p className="mt-2 text-xs text-(--muted)" role="status">Waiting for the person who started this run.</p>}
-      </ConfirmationBody>
-    </Confirmation>
+    <div className="mb-2">
+      <QuestionnairePanel items={items} onAnswers={(answers) => void submit(answers)} disabled={submitting || submitted} submitLabel={submitted ? 'Sent' : 'Send'} />
+    </div>
   )
 }

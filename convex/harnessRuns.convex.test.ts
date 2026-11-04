@@ -116,14 +116,13 @@ async function get(convex: Convex, runId: string, actorUserId = 'alice', serverS
   return await convex.query(query('get'), { actorUserId, runId, serverSecret }) as HarnessSnapshot | null
 }
 
-function oneStep(id: string, requiresVerification = false, evidenceTools = ['tool:read']) {
+function oneStep(id: string) {
   return [{
     id,
     title: `Complete ${id}`,
     dependsOn: [],
     acceptanceCriteria: ['The milestone is complete.'],
-    requiresVerification,
-    evidenceTools,
+    requiresVerification: false,
   }]
 }
 
@@ -269,33 +268,21 @@ describe('durable harness runs', () => {
     expect((await get(convex, input.runId))?.modelReservation).toEqual(dispatched.modelReservation)
   })
 
-  test.each([
-    { parentRequiresPlan: true, parentToolIds: ['write_file'], childToolIds: ['write_file'], requiresPlan: true },
-    { parentRequiresPlan: true, parentToolIds: ['read_file', 'write_file'], childToolIds: ['read_file'], requiresPlan: false },
-    { parentRequiresPlan: false, parentToolIds: ['write_file'], childToolIds: ['write_file'], requiresPlan: false },
-  ])('children derive plan policy from native ancestry and their own tools: $childToolIds', async ({
-    parentRequiresPlan, parentToolIds, childToolIds, requiresPlan,
-  }) => {
+  test('a child needs no plan to finish', async () => {
     const convex = convexTest(schema, modules)
-    const input = admission('planning-parent', await seedConversation(convex), {
-      requiresPlan: parentRequiresPlan,
-      allowedToolIds: parentToolIds,
-    })
+    const input = admission('planning-parent', await seedConversation(convex), { allowedToolIds: ['write_file'] })
     await admit(convex, input)
-    const planned = await apply(convex, input, 'plan', 0, {
-      type: 'replace_plan', steps: oneStep('delegated', false, parentToolIds),
-    })
+    const planned = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('delegated') })
     await apply(convex, input, 'delegate', planned.snapshot.revision, {
-      type: 'admit_child', child: { id: 'planning-child', stepId: 'delegated', allowedToolIds: childToolIds,
+      type: 'admit_child', child: { id: 'planning-child', stepId: 'delegated', allowedToolIds: ['write_file'],
         maxCostMicros: 0, costMicros: 0, status: 'running', evidenceRefs: [] },
       goal: 'Return a short answer.', constraints: [],
     })
     const child = await get(convex, 'planning-child')
-    expect(child?.policy.requiresPlan).toBe(requiresPlan)
-    const finish = apply(convex, { ...input, runId: 'planning-child' }, 'finish', child!.revision,
+    expect(child?.policy.requiresPlan).toBe(false)
+    const finished = await apply(convex, { ...input, runId: 'planning-child' }, 'finish', child!.revision,
       { type: 'finish', resultSummary: 'A short answer.' })
-    if (requiresPlan) await expect(finish).rejects.toThrow(/plan is required/)
-    else expect((await finish).snapshot.status).toBe('completed')
+    expect(finished.snapshot.status).toBe('completed')
   })
 
   test('persists billing dispatch ownership for settlement after cancellation', async () => {
@@ -403,11 +390,10 @@ describe('durable harness runs', () => {
     const plan = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('inspect') })
     let rejection: unknown
     try {
-      await apply(convex, input, 'invalid-evidence', plan.snapshot.revision, {
+      await apply(convex, input, 'unknown-step', plan.snapshot.revision, {
         type: 'transition_step',
-        id: 'inspect',
+        id: 'missing',
         status: 'done',
-        evidenceRefs: ['missing-evidence'],
       })
     } catch (error) {
       rejection = error
@@ -416,7 +402,7 @@ describe('durable harness runs', () => {
     expect(rejection).toMatchObject({
       data: {
         code: 'HARNESS_OPERATION_REJECTED',
-        message: 'Evidence must reference successful observations from this run.',
+        message: 'Unknown milestone.',
       },
     })
   })
@@ -510,13 +496,13 @@ describe('durable harness runs', () => {
       .rejects.toThrow(/HARNESS_EXECUTION_NOT_OWNED/)
   })
 
-  test('round-trips normalized plans and requires current independent verification', async () => {
+  test('round-trips normalized plans and completes a step when it is marked done', async () => {
     const convex = convexTest(schema, modules)
     const conversationId = await seedConversation(convex)
     const input = admission('run-plan', conversationId)
     await admit(convex, input)
 
-    const plan = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('inspect', true) })
+    const plan = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('inspect') })
     expect(plan.snapshot.planRevision).toBe(1)
     expect(plan.snapshot.plan[0]).toMatchObject({ id: 'inspect', status: 'pending', evidenceRefs: [] })
 
@@ -532,35 +518,16 @@ describe('durable harness runs', () => {
     const recorded = await apply(convex, input, 'tool-output', 1, { type: 'record_evidence', evidence: firstEvidence })
     expect(recorded.snapshot.revision).toBe(2)
     expect(recorded.snapshot.evidence.find(item => item.id === firstEvidence.id)?.inputDigest).toBe(firstEvidence.inputDigest)
-    await expect(apply(convex, input, 'premature-completion', 2, {
+    const completed = await apply(convex, input, 'complete-inspect', 2, {
       type: 'transition_step',
       id: 'inspect',
       status: 'done',
-      evidenceRefs: ['tool-output'],
-    })).rejects.toThrow(/Independent verification/)
-
-    const verification = {
-      id: 'verification',
-      kind: 'verification' as const,
-      summary: 'An independent check passed.',
-      source: 'reviewer:independent',
-      verdict: 'passed' as const,
-      createdAt: Date.now(),
-      verification: { stepId: 'inspect', planRevision: 1 },
-    }
-    await apply(convex, input, 'verification', 2, { type: 'record_evidence', evidence: verification })
-    const completed = await apply(convex, input, 'complete-inspect', 3, {
-      type: 'transition_step',
-      id: 'inspect',
-      status: 'done',
-      evidenceRefs: ['tool-output', 'verification'],
     })
     expect(completed.snapshot.plan[0]?.status).toBe('done')
 
     const fresh = await get(convex, input.runId)
     expect(fresh?.plan).toEqual(completed.snapshot.plan)
-    expect(fresh?.plan[0]?.evidenceTools).toEqual(['tool:read'])
-    expect(fresh?.evidence.map(item => item.id)).toEqual(['tool-output', 'verification'])
+    expect(fresh?.evidence.map(item => item.id)).toEqual(['tool-output'])
     expect(fresh?.evidence.find(item => item.id === firstEvidence.id)?.inputDigest).toBe(firstEvidence.inputDigest)
     const persisted = await convex.run(async ctx => ({
       planRows: await ctx.db.query('harnessPlanSteps').withIndex('by_runId', q => q.eq('runId', input.runId)).collect(),
@@ -594,17 +561,14 @@ describe('durable harness runs', () => {
     const rejectedInput = admission('run-answer-only-verification', await seedConversation(convex))
     await admit(convex, rejectedInput)
     await expect(apply(convex, rejectedInput, 'invalid-answer-plan', 0, {
-      type: 'replace_plan', steps: [{ ...oneStep('answer', true)[0]!, answerOnly: true }],
+      type: 'replace_plan', steps: [{ ...oneStep('answer')[0]!, requiresVerification: true, answerOnly: true }],
     })).rejects.toThrow(/Answer-only/)
   })
 
-  test('requires evidenceTools for action plans and bounds the tool list', async () => {
+  test('still bounds evidenceTools on plans from runs already in progress', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('run-evidence-tools', await seedConversation(convex))
     await admit(convex, input)
-    await expect(apply(convex, input, 'missing-tools', 0, {
-      type: 'replace_plan', steps: [{ ...oneStep('create')[0]!, evidenceTools: undefined }],
-    })).rejects.toThrow(/must declare evidenceTools/)
     await expect(apply(convex, input, 'too-many-tools', 0, {
       type: 'replace_plan', steps: [{ ...oneStep('create')[0]!, evidenceTools: Array(9).fill('tool:read') }],
     })).rejects.toThrow(/evidenceTools exceed their bounds/)
@@ -704,7 +668,7 @@ describe('durable harness runs', () => {
     const input = admission('run-settlement-root', await seedConversation(convex), { maxParallelChildren: 2 })
     await admit(convex, input)
     await apply(convex, input, 'settlement-root-plan', 0, {
-      type: 'replace_plan', steps: oneStep('delegated', false, ['harness_read_child']),
+      type: 'replace_plan', steps: oneStep('delegated'),
     })
     const childInput = { ...input, runId: 'run-settlement-child' }
     await apply(convex, input, 'settlement-admit-child', 1, {
@@ -954,7 +918,7 @@ describe('durable harness runs', () => {
       policy: {
         actorUserId: 'alice',
         allowedToolIds: ['tool:read'],
-        requiresPlan: true,
+        requiresPlan: false,
         maxCostMicros: 400,
       },
     })

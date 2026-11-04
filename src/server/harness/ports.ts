@@ -29,12 +29,6 @@ export type HarnessApprovalRequest = {
   input: unknown
 }
 
-export type HarnessAnswerVerification = {
-  supported: boolean
-  reason: string
-  evidenceIds: string[]
-}
-
 export type HarnessArtifactRead = {
   artifactId: string
   start?: number
@@ -99,10 +93,6 @@ export interface HarnessExecutionPorts {
   }>
   recordModelStep(step: Parameters<WorkflowAgentOnStepEndCallback<ToolSet>>[0], receiptId: string): Promise<void>
   recoverModelFailure?(receiptId: string): Promise<boolean>
-  verifyFinalAnswer?(input: {
-    state: HarnessSnapshot
-    candidate: string
-  }): Promise<HarnessAnswerVerification>
   recordToolResult(event: WorkflowAgentToolExecutionEndEvent<ToolSet>): Promise<void>
   delegate(input: HarnessDelegation, toolCallId: string): Promise<HarnessChild>
   readChild(childRunId: string): Promise<HarnessSnapshot>

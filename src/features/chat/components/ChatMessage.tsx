@@ -1,7 +1,9 @@
 'use client'
 
+import type { RunPlanPhase, RunPlanStep } from '@overlay/chat-react/exchange'
+import { ACTIVE_RUN_STATUSES, RunPlanContext } from './chat/run-plan-context'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
-import { type ComponentProps, memo } from 'react'
+import { type ComponentProps, memo, useContext } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import {
   getChatModelDisplayName,
@@ -313,6 +315,17 @@ function resolveContinueHandler(assistantPlainForReply: string, onContinue: () =
   return CONTINUE_PROMPTS.some((s) => assistantPlainForReply.includes(s)) ? onContinue : undefined
 }
 
+/** The latest run's plan is live; every earlier response keeps the copy on its message. */
+function useExchangePlan(turnId: string | null | undefined, responseMsg: UIMessage | null, loading: boolean) {
+  const run = useContext(RunPlanContext)
+  const live = Boolean(turnId && run?.turnId === turnId)
+  const stored = (responseMsg as { agentPlan?: readonly RunPlanStep[] } | null)?.agentPlan
+  const planPhase: RunPlanPhase = live && run?.status === 'waiting_for_input'
+    ? 'waiting'
+    : loading || (live && run && ACTIVE_RUN_STATUSES.has(run.status)) ? 'active' : 'ended'
+  return { plan: live && run?.plan?.length ? run.plan : stored, planPhase }
+}
+
 function TextChatMessage(props: TextChatMessageProps) {
   recordRender('TextChatMessage')
   const { message, exchangeIndex } = props
@@ -335,6 +348,7 @@ function TextChatMessage(props: TextChatMessageProps) {
   const modelLabel = resolveModelLabel(response.responseMsg, selection.selectedModelId)
   const userDisplay = resolveUserDisplayParts(message)
   const responseMessageId = response.responseMessageId
+  const { plan, planPhase } = useExchangePlan(getUserTurnId(message), response.responseMsg, instLoading)
 
   return (
     <ChatToolSurface
@@ -350,6 +364,8 @@ function TextChatMessage(props: TextChatMessageProps) {
       isStreaming={isStreaming}
       isTextStreaming={isTextStreaming}
       workedDurationMs={response.workedDurationMs}
+      plan={plan}
+      planPhase={planPhase}
       errorMessage={turn.errLabelForTurn}
       responseInProgress={instLoading}
       status={props.status}

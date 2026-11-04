@@ -1,3 +1,4 @@
+import { runQuestionSummary } from '@/shared/agents/run-questions'
 import { createHook, FatalError, getWorkflowMetadata, getWritable } from 'workflow'
 import { start } from 'workflow/api'
 import type { ModelCallStreamPart } from '@ai-sdk/workflow'
@@ -206,7 +207,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     if (executionProjection) return executionProjection
     if (!isTerminalHarnessStatus(result.snapshot.status)) {
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
-        type: 'terminate', status: 'failed', reason: result.snapshot.blocker?.question || 'The task is blocked and cannot continue.',
+        type: 'terminate', status: 'failed', reason: (result.snapshot.blocker && runQuestionSummary(result.snapshot.blocker.question)) || 'The task is blocked and cannot continue.',
       })
     }
   } catch (error) {

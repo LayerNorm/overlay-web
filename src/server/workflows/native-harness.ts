@@ -1,3 +1,4 @@
+import { runQuestionSummary } from '@/shared/agents/run-questions'
 import { createHook, FatalError, getWorkflowMetadata } from 'workflow'
 import { start } from 'workflow/api'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
@@ -117,7 +118,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     if (executionProjection) return executionProjection
     if (!isTerminalHarnessStatus(result.snapshot.status)) {
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
-        type: 'terminate', status: 'failed', reason: result.snapshot.blocker?.question || 'The task is blocked and cannot continue.',
+        type: 'terminate', status: 'failed', reason: (result.snapshot.blocker && runQuestionSummary(result.snapshot.blocker.question)) || 'The task is blocked and cannot continue.',
       })
     }
   } catch (error) {
