@@ -5,6 +5,9 @@ import type {nativeRecoverySnapshotSchema} from './nativeRecoveryPayload'
 
 export async function nativeRecoveryIsAuthorized(ctx: MutationCtx, run: Doc<'conversationAgentRuns'>,
   attempt: Doc<'agentRemoteSessions'>, snapshot: z.infer<typeof nativeRecoverySnapshotSchema>) {
+  const environment = await ctx.db.query('agentEnvironments')
+    .withIndex('by_environmentId', q => q.eq('environmentId', attempt.environmentId)).unique()
+  if (!environment || environment.kind === 'overlay_cloud') return false
   const principalId = run.initiatorPrincipalId
   if (!principalId || !run.bindingId || attempt.bindingId !== run.bindingId
     || attempt.environmentId !== run.environmentId || attempt.runId !== run.externalRunId) return false

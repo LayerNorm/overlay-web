@@ -21,7 +21,7 @@ export function buildWorkspaceAgentInput(args: {
   enabledToolGroups: ReadonlySet<string>
   visibility: WorkspaceAgentVisibility
   permissionMode?: 'ask' | 'auto'
-  /** The Overlay tools a connected agent may use over MCP (Overlay Cloud agents); other connected agents hold none. */
+  /** The Overlay tools a connected user-owned agent may use over MCP. */
   mcpToolIds?: readonly string[]
   /** A connected agent's chosen model (its own model id); empty means the agent's default. */
   byoModel?: string

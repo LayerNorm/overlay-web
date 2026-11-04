@@ -4,11 +4,9 @@ import { pathToFileURL } from 'node:url'
 const HOST = 'packages/overlay-agent-host/package.json'
 const PROTOCOL = 'packages/overlay-agent-bridge-protocol/package.json'
 const MANIFESTS = 'packages/overlay-agent-host/src/adapter-manifests.ts'
-const IMAGE = 'infra/agent-image/versions.json'
 const LOCK = 'package-lock.json'
-export const ADAPTER_UPDATE_FILES = [HOST, PROTOCOL, MANIFESTS, IMAGE, LOCK,
+export const ADAPTER_UPDATE_FILES = [HOST, PROTOCOL, MANIFESTS, LOCK,
   'packages/overlay-agent-host/src/adapter-manifests.test.ts',
-  'packages/overlay-agent-host/src/image-check.ts',
   'packages/overlay-agent-host/src/runtime.ts',
   'packages/overlay-agent-host/src/enrollment.ts',
   'packages/overlay-agent-host/src/cli.ts',
@@ -28,13 +26,17 @@ function compare(left, right) {
 
 /** Plan every lockstep change before writing any file; registry downgrades fail closed. */
 export function planAdapterUpdate(files, latest) {
-  const image = JSON.parse(files[IMAGE])
   const specs = [
     ['claude-agent-acp', 'CLAUDE_AGENT_ACP_PACKAGE_VERSION'],
     ['codex-acp', 'CODEX_ACP_PACKAGE_VERSION'],
   ]
+  const current = Object.fromEntries(specs.map(([name, constant]) => {
+    const match = files[MANIFESTS].match(new RegExp(`${constant} = '([^']+)'`))
+    if (!match) throw Error(`Missing BYOM adapter pin: ${name}`)
+    return [name, match[1]]
+  }))
   const changes = specs.filter(([name]) => {
-    const difference = compare(latest[name], image.packages[`@agentclientprotocol/${name}`])
+    const difference = compare(latest[name], current[name])
     if (difference < 0) throw Error(`Registry version would downgrade ${name}`)
     return difference > 0
   })
@@ -46,18 +48,14 @@ export function planAdapterUpdate(files, latest) {
   const version = `${major}.${minor}.${patch + 1}`
   const output = { ...files }
   for (const [name, constant] of changes) {
-    const old = image.packages[`@agentclientprotocol/${name}`], next = latest[name]
+    const old = current[name], next = latest[name]
     const pattern = new RegExp(`${constant} = '${old.replaceAll('.', '\\.')}'`)
-    if (!pattern.test(output[MANIFESTS])) throw Error(`Host/image pin mismatch: ${name}`)
+    if (!pattern.test(output[MANIFESTS])) throw Error(`BYOM adapter pin mismatch: ${name}`)
     output[MANIFESTS] = output[MANIFESTS].replace(pattern, `${constant} = '${next}'`)
     for (const path of ['packages/overlay-agent-host/src/adapter-manifests.test.ts', 'internal/develop/bring-your-own-agents.md']) {
       output[path] = output[path].replaceAll(`@agentclientprotocol/${name}@${old}`, `@agentclientprotocol/${name}@${next}`)
     }
-    image.packages[`@agentclientprotocol/${name}`] = next
   }
-  image.imageVersion += 1
-  output['packages/overlay-agent-host/src/image-check.ts'] = output['packages/overlay-agent-host/src/image-check.ts']
-    .replace(/max: \d+/, `max: ${image.imageVersion}`)
   host.version = protocol.version = version
   host.dependencies['@layernorm/overlay-agent-bridge-protocol'] = version
   for (const path of [HOST, PROTOCOL]) lock.packages[path.replace('/package.json', '')].version = version
@@ -65,9 +63,9 @@ export function planAdapterUpdate(files, latest) {
   for (const path of ['packages/overlay-agent-host/src/runtime.ts', 'packages/overlay-agent-host/src/enrollment.ts', 'packages/overlay-agent-host/src/cli.ts', 'src/server/agents/agent-enrollment-command.ts', 'src/features/settings/components/AgentEnvironmentSettings.tsx']) {
     output[path] = output[path].replaceAll(oldVersion, version)
   }
-  output[HOST] = json(host); output[PROTOCOL] = json(protocol); output[IMAGE] = json(image); output[LOCK] = json(lock)
+  output[HOST] = json(host); output[PROTOCOL] = json(protocol); output[LOCK] = json(lock)
   output['CHANGELOG.md'] = output['CHANGELOG.md'].replace('## Unreleased\n',
-    `## Unreleased\n\n- Update connected-agent adapters to Claude ACP ${latest['claude-agent-acp']} and Codex ACP ${latest['codex-acp']}; prepare host/protocol ${version} and image v${image.imageVersion}.\n`)
+    `## Unreleased\n\n- Update user-owned Agent Host ACP pins to Claude ${latest['claude-agent-acp']} and Codex ${latest['codex-acp']}; prepare host/protocol ${version}.\n`)
   return { files: output, version, branch: `codex/agent-adapters-${latest['claude-agent-acp']}-${latest['codex-acp']}` }
 }
 

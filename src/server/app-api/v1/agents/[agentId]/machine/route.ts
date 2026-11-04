@@ -1,22 +1,13 @@
 import { NextResponse } from 'next/server'
-import { z } from 'zod/v3'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import { getOverlayRuntimeConfig } from '@/server/config'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { WorkspaceAgentServiceError } from '@/server/agents'
-import { CloudAgentMachineError } from '@/server/agents/cloud/CloudAgentMachineService'
-import { createCloudAgentMachineService } from '@/server/agents/cloud/create-cloud-agent-machine-service'
-import { CLOUD_AGENT_ACTIONS } from '@/shared/agents/cloud-agent'
+import { createRetiredCloudAgentService } from '@/server/agents/cloud/create-retired-cloud-agent-service'
 import { agentErrorResponse } from '../../shared'
 
 const NO_STORE = { 'Cache-Control': 'no-store' }
-const actionSchema = z.object({ action: z.enum(CLOUD_AGENT_ACTIONS) }).strict()
 
-async function gate(context: AppApiRouteContext, allowWhenCloudDisabled = false) {
-  const config = await getOverlayRuntimeConfig()
-  if (!allowWhenCloudDisabled && config.features.overlayCloudEnvironments !== true) {
-    return NextResponse.json({ error: 'Overlay Cloud agents are disabled', code: 'capability_disabled' }, { status: 404 })
-  }
+async function gate(context: AppApiRouteContext) {
   const params = await context.params
   const agentId = typeof params.agentId === 'string' ? params.agentId.trim() : ''
   if (!agentId) throw new WorkspaceAgentServiceError('validation', 'Agent ID is required')
@@ -28,51 +19,52 @@ async function gate(context: AppApiRouteContext, allowWhenCloudDisabled = false)
 }
 
 function failure(error: unknown) {
-  if (error instanceof z.ZodError) {
-    return NextResponse.json({ error: 'Choose pause, resume, or restart.', code: 'validation' }, { status: 400, headers: NO_STORE })
-  }
-  if (error instanceof CloudAgentMachineError) {
-    return NextResponse.json({ error: error.message, code: error.code }, { status: error.statusCode, headers: NO_STORE })
-  }
   return agentErrorResponse(error)
 }
 
 /** The agent's Overlay Cloud machine: startup progress, running state, account. */
 export async function GET(_request: Request, context: AppApiRouteContext) {
   try {
-    const agentId = await gate(context, true)
+    const agentId = await gate(context)
     if (typeof agentId !== 'string') return agentId
-    const status = await createCloudAgentMachineService().status({ workspaceId: context.workspace.workspace.id, agentId })
+    const status = await createRetiredCloudAgentService().status({ workspaceId: context.workspace.workspace.id, agentId })
     return NextResponse.json(status, { headers: NO_STORE })
   } catch (error) {
     return failure(error)
   }
 }
 
-/** Pause, resume, or restart the machine. */
+/** Legacy controls are retained as an explicit retirement response for stale clients. */
 export async function POST(_request: Request, context: AppApiRouteContext) {
   try {
-    const agentId = await gate(context, true)
-    if (typeof agentId !== 'string') return agentId
-    const { action } = actionSchema.parse(context.parsedJson)
-    await createCloudAgentMachineService().control({
-      actorUserId: context.auth.userId, workspaceId: context.workspace.workspace.id, agentId, action,
-    })
-    return NextResponse.json({ ok: true }, { headers: NO_STORE })
+    await gate(context)
+    return NextResponse.json({
+      error: 'Hosted Overlay Cloud agents are retired. Connect a user-owned Agent Host instead.',
+      code: 'hosted_runtime_retired',
+    }, { status: 410, headers: NO_STORE })
   } catch (error) {
     return failure(error)
   }
 }
 
-/** Delete the machine and everything on it. */
+/** Revoke access and queue provider cleanup; the lease reaper reports any deletion failure. */
 export async function DELETE(_request: Request, context: AppApiRouteContext) {
   try {
-    const agentId = await gate(context, true)
+    const agentId = await gate(context)
     if (typeof agentId !== 'string') return agentId
-    await createCloudAgentMachineService().teardown({
+    await getOverlayServerContext().workspaceAgentService.requireEditable({
+      actorUserId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      agentId,
+    })
+    const result = await createRetiredCloudAgentService().teardown({
       actorUserId: context.auth.userId, workspaceId: context.workspace.workspace.id, agentId,
     })
-    return NextResponse.json({ deleted: true }, { headers: NO_STORE })
+    return NextResponse.json({
+      revoked: true,
+      cleanupPending: result.cleanupPending,
+      ...(result.cleanupPending ? { message: 'Provider cleanup is pending; status remains visible until the lease reaper confirms deletion.' } : {}),
+    }, { status: result.cleanupPending ? 202 : 200, headers: NO_STORE })
   } catch (error) {
     return failure(error)
   }

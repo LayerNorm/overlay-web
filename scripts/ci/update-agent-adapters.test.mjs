@@ -6,11 +6,13 @@ import { ADAPTER_UPDATE_FILES, planAdapterUpdate } from './update-agent-adapters
 
 const root = new URL('../../', import.meta.url)
 const files = Object.fromEntries(await Promise.all(ADAPTER_UPDATE_FILES.map(async path => [path, await readFile(new URL(path, root), 'utf8')])))
-const image = JSON.parse(files['infra/agent-image/versions.json'])
-const current = Object.fromEntries(Object.entries(image.packages).map(([name, version]) => [name.split('/')[1], version]))
+const current = Object.fromEntries([
+  ['claude-agent-acp', 'CLAUDE_AGENT_ACP_PACKAGE_VERSION'],
+  ['codex-acp', 'CODEX_ACP_PACKAGE_VERSION'],
+].map(([name, constant]) => [name, files['packages/overlay-agent-host/src/adapter-manifests.ts'].match(new RegExp(`${constant} = '([^']+)'`))[1]]))
 const nextPatch = version => { const parts = version.split('.').map(Number); parts[2]++; return parts.join('.') }
 
-test('an adapter update keeps every public host pin and image consistent', () => {
+test('an adapter update keeps the BYOM adapter, package and lockfile pins consistent', () => {
   const latest = { ...current, 'claude-agent-acp': nextPatch(current['claude-agent-acp']) }
   const plan = planAdapterUpdate(files, latest)
   const host = JSON.parse(plan.files['packages/overlay-agent-host/package.json'])
@@ -26,13 +28,8 @@ test('an adapter update keeps every public host pin and image consistent', () =>
   for (const path of ['packages/overlay-agent-host/src/runtime.ts', 'packages/overlay-agent-host/src/enrollment.ts', 'packages/overlay-agent-host/src/cli.ts', 'src/server/agents/agent-enrollment-command.ts', 'src/features/settings/components/AgentEnvironmentSettings.tsx']) {
     assert.ok(plan.files[path].includes(host.version), `missing new pin in ${path}`)
   }
-  const nextImage = JSON.parse(plan.files['infra/agent-image/versions.json'])
-  assert.equal(nextImage.imageVersion, image.imageVersion + 1)
-  assert.equal(nextImage.packages['@agentclientprotocol/claude-agent-acp'], latest['claude-agent-acp'])
-  assert.equal(nextImage.packages['@agentclientprotocol/codex-acp'], current['codex-acp'])
-  assert.ok(plan.files['packages/overlay-agent-host/src/image-check.ts'].includes(`max: ${nextImage.imageVersion}`))
   assert.match(plan.branch, /^codex\/agent-adapters-\d+\.\d+\.\d+-\d+\.\d+\.\d+$/)
-  assert.equal(files['infra/agent-image/versions.json'], JSON.stringify(image, null, 2) + '\n')
+  assert.ok(plan.files['packages/overlay-agent-host/src/adapter-manifests.ts'].includes(`CLAUDE_AGENT_ACP_PACKAGE_VERSION = '${latest['claude-agent-acp']}'`))
 })
 
 test('current pins do nothing and malformed or downgraded registry versions fail closed', () => {
@@ -42,9 +39,9 @@ test('current pins do nothing and malformed or downgraded registry versions fail
   assert.throws(() => planAdapterUpdate(files, { ...current, 'claude-agent-acp': undefined }), /Invalid stable version/)
 })
 
-test('mismatched host and image pins cannot produce a partially updated release', () => {
+test('missing BYOM adapter pins cannot produce a partially updated release', () => {
   const changed = { ...files, 'packages/overlay-agent-host/src/adapter-manifests.ts': '' }
-  assert.throws(() => planAdapterUpdate(changed, { ...current, 'claude-agent-acp': nextPatch(current['claude-agent-acp']) }), /pin mismatch/)
+  assert.throws(() => planAdapterUpdate(changed, { ...current, 'claude-agent-acp': nextPatch(current['claude-agent-acp']) }), /Missing BYOM adapter pin/)
 })
 
 test('scheduled updates cannot open a PR before successful release conformance or force-push an existing branch', async () => {

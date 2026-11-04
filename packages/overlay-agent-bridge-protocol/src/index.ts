@@ -78,20 +78,6 @@ export const hostCapabilitiesSchema = z.object({
 }).strict()
 export type HostCapabilities = z.infer<typeof hostCapabilitiesSchema>
 
-/** A host asks for the provider credentials of one run; the secret is never part of a stored command. */
-export const runCredentialsRequestSchema = z.object({
-  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
-  runId: identifier,
-}).strict()
-export type RunCredentialsRequest = z.infer<typeof runCredentialsRequestSchema>
-
-/** A Cloud host discovers options using its sole enabled binding for this adapter. */
-export const providerDiscoveryCredentialsRequestSchema = z.object({
-  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
-  adapterId: identifier,
-}).strict()
-export const providerCredentialsRequestSchema = z.union([runCredentialsRequestSchema, providerDiscoveryCredentialsRequestSchema])
-
 export const driveCredentialsRequestSchema = z.object({
   protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION), runId: identifier, sessionId: identifier,
   execution: executionFenceSchema.omit({ hostBootId: true }).optional(),
@@ -108,13 +94,6 @@ export const driveCredentialsResponseSchema = z.object({
 }).strict()
 export type DriveCredentialsResponse = z.infer<typeof driveCredentialsResponseSchema>
 
-export const runCredentialsResponseSchema = z.object({
-  protocolVersion: z.literal(OVERLAY_AGENT_PROTOCOL_VERSION),
-  /** Provider environment for the run or isolated option probe, never stored in commands or capabilities. */
-  env: z.record(z.string().min(1).max(128), z.string().min(1).max(8_192)),
-}).strict()
-export type RunCredentialsResponse = z.infer<typeof runCredentialsResponseSchema>
-
 export const enrollmentRequestSchema = z.object({
   code: z.string().trim().min(16).max(512),
   name: z.string().trim().min(1).max(200),
@@ -122,7 +101,7 @@ export const enrollmentRequestSchema = z.object({
   hostVersion: z.string().trim().min(1).max(100),
   platform: z.string().trim().min(1).max(200),
   capabilities: hostCapabilitiesSchema,
-  kind: z.enum(['local', 'vps', 'overlay_cloud', 'external']).default('local'),
+  kind: z.enum(['local', 'vps', 'external']).default('local'),
 }).strict()
 export type EnrollmentRequest = z.infer<typeof enrollmentRequestSchema>
 
@@ -156,7 +135,6 @@ export const environmentCredentialResponseSchema = z.object({
     'agent:events:write',
     'agent:artifacts:write',
     'agent:credentials:refresh',
-    'agent:run-credentials',
     'agent:drive-credentials',
   ])).min(1),
   token: z.string().trim().min(32).max(512),

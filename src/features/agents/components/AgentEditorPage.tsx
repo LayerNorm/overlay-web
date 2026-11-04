@@ -171,7 +171,7 @@ export function useAgentEditorController({
       }),
       teamIds: agent?.teamIds ?? [],
     }
-    // An Overlay Cloud agent's Overlay access is set by its own control on this page, not by Save; sending the
+    // A legacy Cloud agent's Overlay access is controlled separately from this form; sending the
     // editor's copy (empty for connected agents) would wipe it.
     // Its model is likewise set by its own control (Model).
     if (runtime.cloudAgent) {

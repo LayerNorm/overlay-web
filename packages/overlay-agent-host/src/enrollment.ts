@@ -17,7 +17,7 @@ export type ConnectAgentHostOptions = {
   serverUrl: string
   stateDirectory?: string
   name?: string
-  kind?: 'local' | 'vps' | 'overlay_cloud' | 'external'
+  kind?: 'local' | 'vps' | 'external'
   adapters?: HostCapabilities['adapters']
   fetch?: typeof globalThis.fetch
   waitTimeoutMs?: number

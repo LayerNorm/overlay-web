@@ -27,8 +27,6 @@ import {
   OverlayAgentPermissionsField,
 } from './AgentEditorForm'
 import { AgentSurfacesField } from './AgentSurfacesField'
-import { CloudAgentPanel } from './CloudAgentPanel'
-import { CloudAgentAccess } from './CloudAgentAccess'
 import { ConnectedAgentSettings } from './ConnectedAgentSettings'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import type { ReactNode } from 'react'
@@ -131,25 +129,13 @@ export function AgentSidebarAdvancedSettings({ editor }: { editor: Controller })
           />
         </section>
       ) : null}
-      {runtime.cloudAgent && agent ? (
+      {runtime.cloudAgent || runtime.legacyHostedRuntime ? (
         <section>
-          <SectionHeading>Computer</SectionHeading>
-          <div className="mt-2 space-y-3">
-            <CloudAgentPanel agentId={agent.id} />
-            <CloudAgentAccess agentId={agent.id} allowedToolIds={agent.allowedToolIds} />
-            {editor.connectedAgentsEnabled ? (
-              <ConnectedAgentSettings
-                key={agent.id}
-                agentId={agent.id}
-                modelId={agent.modelId}
-                permissionMode={agent.permissionMode}
-                effort={agent.effort}
-              />
-            ) : null}
-          </div>
+          <SectionHeading>Retired runtime</SectionHeading>
+          <p className="mt-2 text-sm text-(--muted)">This agent and its history remain readable, but it cannot run. Archive it to revoke access and queue provider cleanup.</p>
         </section>
       ) : null}
-      {runtime.agentType === 'byo' && !runtime.cloudAgent ? (
+      {runtime.agentType === 'byo' && !runtime.cloudAgent && !runtime.legacyHostedRuntime ? (
         <section>
           <SectionHeading>Connected agent</SectionHeading>
           <div className="mt-2 space-y-3 rounded-[10px] bg-(--surface-subtle) p-3">

@@ -122,6 +122,7 @@ export const redeemEnrollmentSessionByServer = mutation({
     assertHash(args.proofChallenge.challengeHash, 'AGENT_PROOF_CHALLENGE_HASH_INVALID')
     assertExpiry(args.proofChallenge.expiresAt, args.now, MAX_CREDENTIAL_LIFETIME_MS, 'AGENT_PROOF_CHALLENGE_EXPIRY_INVALID')
     assertCapabilities(args.environment.capabilities)
+    if (args.environment.kind === 'overlay_cloud') throw new Error('HOSTED_RUNTIME_RETIRED')
     if (args.environment.publicKey && (args.environment.publicKey.length < 8 || args.environment.publicKey.length > 8_192)) throw new Error('AGENT_PUBLIC_KEY_INVALID')
     const enrollment = await ctx.db.query('agentEnrollmentSessions').withIndex('by_codeHash', q => q.eq('codeHash', args.codeHash)).unique()
     if (!enrollment || enrollment.expiresAt <= args.now || enrollment.status !== 'created') return null

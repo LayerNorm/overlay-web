@@ -2,7 +2,7 @@ import { dispatchRemoteRunIntents } from '@/server/agents/remote-agent-run-dispa
 import { NextResponse } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getInternalApiSecret, matchesInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { createCloudAgentMachineService } from '@/server/agents/cloud/create-cloud-agent-machine-service'
+import { createRetiredCloudAgentService } from '@/server/agents/cloud/create-retired-cloud-agent-service'
 import { ProviderInventoryReconciler } from '@/server/agents/ProviderInventoryReconciler'
 import { logger } from '@/server/observability/logger'
 import { agentEnvironmentErrorResponse } from '../../shared'
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     }
     const controlPlane = server.connectedAgentControlPlane
     const cloudReclaim = Promise.resolve()
-      .then(() => createCloudAgentMachineService().reclaimAbandonedProvisions())
+      .then(() => createRetiredCloudAgentService().reclaimAbandonedProvisions())
       .catch((error) => {
         logger.warn('[operations-reconcile] cloud agent allocation reclaim failed', {
           error: error instanceof Error ? error.name : 'UnknownError',
