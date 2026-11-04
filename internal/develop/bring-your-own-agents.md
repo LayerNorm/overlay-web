@@ -387,6 +387,38 @@ tool grants, entitlements, takeover protection, or deny policy. Release QA must
 cover approval denial and approval resumption, cancellation and revoked grants,
 and exact-run authorization before rollout.
 
+Harness continuity is grounded in the current goal, plan, and persisted tool
+observations; prior assistant summaries are explicitly unverified context, not
+evidence. Before accepting a nontrivial final answer with tool observations,
+Harness runs a separately metered, tool-disabled support check against the
+persisted evidence. This model-based check is a bounded safeguard, not a
+mathematical guarantee. Unsupported claims receive at most two correction
+continuations before the run pauses. Large and binary tool results are stored as
+private, run-owned artifacts and replaced in older prompt history with bounded
+references. `harness_read_artifact` rechecks the original tool permission; for
+file-backed resources it also resolves the persisted source ID to a current Files
+row and checks readability under the run's workspace policy. This Files check
+does not imply that every third-party resource has a corresponding permission
+adapter. Stored artifact bytes remain from the recorded source revision.
+Compaction preserves the full transcript on failure and keeps unresolved
+provider reservations held until their matching receipt is observed.
+Checkpoint fields are structurally bounded and disclose omitted goal, plan, and
+evidence details; `harness_read_evidence` can page chronological observation IDs
+and outcomes when a checkpoint omits them. Artifact bytes travel through an
+authorized Harness action and a signed Convex storage upload URL, while reads
+are returned in bounded chunks. Reopened excerpts are explicitly incomplete,
+including tail reads, and preserve the source identity.
+
+For controlled compaction QA, set `HARNESS_PREVIEW_CONTEXT_TOKENS=16000` on only
+the feature branch's Vercel Preview environment before its exact-SHA build.
+This optional working-context override applies only to `PREVIEW_LOGIN_USER_ID`
+on a canonical isolated PR origin with both deployment markers set to `preview`.
+It accepts integers from 8192 through 32000; missing or invalid values, other
+actors and production retain normal budgets. Explicit runtime test budgets still
+take precedence. Provider context limits, output limits, billing and reservation
+rules are unchanged. Verify persisted compaction attempts and final verification,
+not merely a short response or a completed status, then remove the QA override.
+
 A connected agent gets the same Overlay workspace tools a native agent with the same grant gets —
 notes (including the patch-style `edit_note`, `replace_note_section`, and `append_to_note`), files
 (`list_files`, `read_file`, `write_file`, `create_folder`, `move_file`), memory, knowledge search,
@@ -1773,6 +1805,20 @@ warn that partial output is incomplete. No new retries, provider fallback, tool
 replay, billing changes or lifecycle transitions are introduced by classification;
 SDK `isRetryable` metadata is not an instruction to retry.
 
+### Workspace-funded Harness continuation
+
+New versioned native and personal tasks reserve each provider call against their
+workspace wallet rather than a synthetic lifetime cap. BYO uses external provider
+credentials but still requires paid-workspace admission. Explicit legacy spend
+limits remain enforced. Funding pauses keep the selected model and logical task;
+a summary pause preserves the pending response call and full history.
+
+Execution leases renew only after current authorization and generation checks.
+Safe handoffs use compressed private checkpoints and a fenced successor; unresolved
+provider calls or tool effects cannot be replayed. Explicit task deadlines pause
+for authorization. Input and approval waits retain their exact pending identity,
+and stale workers or revoked members cannot resume execution.
+
 ### Native Overlay agent approvals
 
 Native Harness room turns (`executionEngine: overlay_harness`) retain their
@@ -1814,3 +1860,32 @@ by the user; selected-root approval and heartbeat readiness stay server-owned.
 The window owns the cookie session. Sign-out stops the child and closes panels;
 native code never stores a second rotating WorkOS session. See
 [Desktop web shell](desktop-web-shell.md) for the bridge and QA contract.
+
+
+### Harness context across workflow handoffs
+
+Private context artifacts belong to the logical Harness run. The current workflow
+owner can reopen prior-generation artifacts after fresh tool and Files permission
+checks; the former workflow and other actors cannot. Artifact metadata retains its
+original workflow, tool, digest and source revision. Summary and answer-verification
+calls use the same paid-workspace admission, markup and receipt-backed settlement
+as response calls. Unknown outcomes retain their holds; full history is preserved,
+compaction retries once and final answers allow at most two corrections. Failed
+verification cannot complete the run. Context pauses also verify durable current
+ownership after error serialization, rather than trusting an exception name alone.
+
+Authorized artifact reopens persist a bounded excerpt observation with the original
+source revision for final verification. Media reopens record selection metadata,
+not inferred image content; denied reads create no evidence, and rereading an
+artifact never certifies a new source mutation.
+
+Artifact-reading milestones declare `evidenceTools: ["harness_read_artifact"]`.
+These control-tool observations can prove the read, while source-tool writes
+continue to require their own successful execution evidence.
+
+Answer corrections start a new continuation turn rather than an assistant
+prefill. Verification feedback can reopen evidence through control tools while
+completed external action tools remain disabled; correction limits still apply.
+
+Final-answer-only guidance does not prohibit evidence-reading controls when a
+verification rejection still needs correction.

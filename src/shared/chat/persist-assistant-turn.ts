@@ -150,77 +150,121 @@ function clampNestingDepth(value: unknown, maxDepth = 10, currentDepth = 0): unk
   return value
 }
 
-export function compactAssistantPersistenceForConvex(input: {
-  content: string
-  parts: Array<Record<string, unknown>>
-}): { content: string; parts: Array<Record<string, unknown>> } {
-  const content = truncateForPersistence(input.content, MAX_PERSISTED_ASSISTANT_CONTENT_CHARS)
-  const parts: Array<Record<string, unknown>> = []
-  let remainingPartTextChars = MAX_PERSISTED_PART_TEXT_TOTAL_CHARS
+export function isAssistantStorageOmission(part: Record<string, unknown>): boolean {
+  return part.type === 'text' && typeof part.storageOmittedParts === 'number'
+    && Number.isSafeInteger(part.storageOmittedParts) && part.storageOmittedParts > 0
+}
 
-  for (const part of input.parts) {
-    if (parts.length >= MAX_PERSISTED_ASSISTANT_PARTS) break
+function selectAssistantPartsForPersistence(input: Array<Record<string, unknown>>) {
+  let previousOmissions = 0
+  const candidates = input.filter(part => {
+    if (!isAssistantStorageOmission(part)) return true
+    previousOmissions = Math.min(Number.MAX_SAFE_INTEGER, previousOmissions + Number(part.storageOmittedParts))
+    return false
+  })
+  const answer = candidates.findLast(part => part.type === 'text' && typeof part.text === 'string' && part.text.trim().length > 0)
+  let selected = candidates.slice(-MAX_PERSISTED_ASSISTANT_PARTS)
+  if (answer && !selected.includes(answer)) {
+    selected = [answer, ...selected.slice(1)]
+  }
+  return { candidates, selected, answer, previousOmissions }
+}
 
-    if (part.type === 'text') {
-      const text = typeof part.text === 'string' ? part.text : ''
-      const max = Math.min(MAX_PERSISTED_TEXT_PART_CHARS, Math.max(0, remainingPartTextChars))
-      if (!max) continue
-      const nextText = truncateForPersistence(text, max)
-      remainingPartTextChars -= Math.min(text.length, max)
-      parts.push({ ...part, text: nextText })
-      continue
+type AssistantPartCompaction = {
+  part: Record<string, unknown> | null
+  consumedTextChars: number
+}
+
+function compactAssistantPartForPersistence(
+  part: Record<string, unknown>,
+  remainingTextChars: number,
+  answer: Record<string, unknown> | undefined,
+  answerChars: number,
+): AssistantPartCompaction {
+  if (part.type === 'text') {
+    const text = typeof part.text === 'string' ? part.text : ''
+    const max = part === answer ? answerChars : Math.min(MAX_PERSISTED_TEXT_PART_CHARS, Math.max(0, remainingTextChars))
+    if (!max) return { part: null, consumedTextChars: 0 }
+    return {
+      part: { ...part, text: truncateForPersistence(text, max) },
+      consumedTextChars: part === answer ? 0 : Math.min(text.length, max),
     }
+  }
 
-    if (part.type === 'reasoning') {
-      const text = typeof part.text === 'string' ? part.text : ''
-      const max = Math.min(MAX_PERSISTED_REASONING_PART_CHARS, Math.max(0, remainingPartTextChars))
-      if (!max) continue
-      const nextText = truncateForPersistence(text, max)
-      remainingPartTextChars -= Math.min(text.length, max)
-      parts.push({ ...part, text: nextText, state: part.state ?? 'done' })
-      continue
+  if (part.type === 'reasoning') {
+    const text = typeof part.text === 'string' ? part.text : ''
+    const max = Math.min(MAX_PERSISTED_REASONING_PART_CHARS, Math.max(0, remainingTextChars))
+    if (!max) return { part: null, consumedTextChars: 0 }
+    return {
+      part: { ...part, text: truncateForPersistence(text, max), state: part.state ?? 'done' },
+      consumedTextChars: Math.min(text.length, max),
     }
+  }
 
-    if (part.type === 'tool-invocation') {
-      const invocation = part.toolInvocation && typeof part.toolInvocation === 'object'
-        ? (part.toolInvocation as Record<string, unknown>)
-        : {}
-      const toolName = typeof invocation.toolName === 'string' ? invocation.toolName : ''
-      const webSources = compactWebSourcesForPersistence(toolName, invocation.toolOutput)
-      const compactedToolOutput = compactToolValueForPersistence(invocation.toolOutput)
-      parts.push({
+  if (part.type === 'tool-invocation') {
+    const invocation = part.toolInvocation && typeof part.toolInvocation === 'object'
+      ? part.toolInvocation as Record<string, unknown>
+      : {}
+    const toolName = typeof invocation.toolName === 'string' ? invocation.toolName : ''
+    const webSources = compactWebSourcesForPersistence(toolName, invocation.toolOutput)
+    const compactedToolOutput = compactToolValueForPersistence(invocation.toolOutput)
+    return {
+      part: {
         ...part,
         toolInvocation: {
           ...invocation,
           toolInput: compactToolValueForPersistence(invocation.toolInput),
           toolOutput: attachWebSourcesToToolOutput(compactedToolOutput, webSources),
         },
-      })
-      continue
+      },
+      consumedTextChars: 0,
     }
+  }
 
-    if (part.type === 'data' && part.dataType === GENERATED_UI_DATA_TYPE) {
-      const normalized = normalizeGeneratedUiData(part.data)
-      const id = typeof part.id === 'string' && part.id.trim() ? part.id.trim() : ''
-      if (normalized && id) {
-        parts.push({
+  if (part.type === 'data' && part.dataType === GENERATED_UI_DATA_TYPE) {
+    const normalized = normalizeGeneratedUiData(part.data)
+    const id = typeof part.id === 'string' && part.id.trim() ? part.id.trim() : ''
+    return {
+      part: normalized && id
+        ? {
           type: 'data',
           id,
           dataType: GENERATED_UI_DATA_TYPE,
           data: normalized,
           ...(part.transient === true ? { transient: true } : {}),
-        })
-      }
-      continue
+        }
+        : null,
+      consumedTextChars: 0,
     }
-
-    parts.push(clampNestingDepth(part) as Record<string, unknown>)
   }
 
-  if (input.parts.length > parts.length) {
-    parts.push({
+  return { part: clampNestingDepth(part) as Record<string, unknown>, consumedTextChars: 0 }
+}
+
+export function compactAssistantPersistenceForConvex(input: {
+  content: string
+  parts: Array<Record<string, unknown>>
+}): { content: string; parts: Array<Record<string, unknown>> } {
+  const content = input.content.length > MAX_PERSISTED_ASSISTANT_CONTENT_CHARS
+    ? `[Earlier response text omitted for storage]\n\n${input.content.slice(-MAX_PERSISTED_ASSISTANT_CONTENT_CHARS)}`
+    : input.content
+  const { candidates, selected, answer, previousOmissions } = selectAssistantPartsForPersistence(input.parts)
+  const answerChars = answer ? Math.min(MAX_PERSISTED_TEXT_PART_CHARS, String(answer.text).length) : 0
+  const parts: Array<Record<string, unknown>> = []
+  let remainingPartTextChars = MAX_PERSISTED_PART_TEXT_TOTAL_CHARS - answerChars
+
+  for (const part of selected) {
+    const compacted = compactAssistantPartForPersistence(part, remainingPartTextChars, answer, answerChars)
+    if (compacted.part) parts.push(compacted.part)
+    remainingPartTextChars -= compacted.consumedTextChars
+  }
+
+  const omittedParts = Math.min(Number.MAX_SAFE_INTEGER, previousOmissions + candidates.length - parts.length)
+  if (omittedParts > 0) {
+    parts.unshift({
       type: 'text',
-      text: `[${input.parts.length - parts.length} additional assistant parts omitted for storage]`,
+      text: `[${omittedParts} additional assistant parts omitted for storage]`,
+      storageOmittedParts: omittedParts,
     })
   }
 

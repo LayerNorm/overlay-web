@@ -21,5 +21,5 @@ export async function authorizeNativeHarnessModelDispatch(reference: HarnessMode
   }, () => refreshNativeHarnessAccess(input.access, {
     modelId: reference.modelId, memoryEnabled: input.memoryEnabled, sharedRoom: input.sharedRoom,
     requestFingerprint: input.requestFingerprint,
-  }))
+  }, undefined, { renewalMode: true, renewLease: true }))
 }

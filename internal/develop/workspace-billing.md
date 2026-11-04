@@ -87,6 +87,23 @@ The audit defaults to the development Convex deployment. Production inspection r
 - [ ] Fix the unrelated on-prem Convex inventory mismatch in the existing chat and auth files.
 - [ ] Fix the unrelated conversation smoke-test index mismatch.
 
+## Workspace-funded continuation
+
+Versioned Harness tasks reserve each next call against the workspace wallet instead
+of receiving a synthetic lifetime cap. Funding shortfalls pause the same task;
+continuation rechecks current membership, paid admission and execution ownership.
+A typed payment-verification-pending result may keep an already owned funding
+wait paused; it cannot renew a lease or admit a model/tool call. Other billing
+errors and ownership changes remain fail-closed.
+BYO credentials do not bypass workspace admission. The selected model is retained;
+no budget failure recovers through a free or alternate model.
+
+Automatic top-up claims require the current verified paid period as well as active
+billing, explicit off-session consent, the bound customer/payment method and the
+monthly ceiling. Pending or ambiguous payments retain one stable payment identity;
+retries cannot create another charge or credit the wallet twice. Existing prices,
+included credit, configured markup and subscriptions remain unchanged.
+
 ## Preview fixture recovery
 
 Paid and Computer fixtures compose through the comma-separated Preview fixture

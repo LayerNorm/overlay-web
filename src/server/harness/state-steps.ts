@@ -10,6 +10,7 @@ export type HarnessExecutionReference = {
   actorUserId: string
   runId: string
   workflowRunId: string
+  executionGeneration?: number
 }
 
 export type HarnessOperationStepResult =
@@ -36,17 +37,26 @@ type HarnessClaim = { snapshot: HarnessSnapshot; claimed: boolean }
 
 // A claimed snapshot is post-claim, so a caller can use it as the run's current
 // state without another read.
-async function readAndClaim(reference: HarnessExecutionReference, skipTerminal: boolean): Promise<HarnessClaim> {
+async function readAndClaim(reference: HarnessExecutionReference, skipInactive: boolean): Promise<HarnessClaim> {
   const repository = new ConvexHarnessRepository()
   for (let attempt = 0; attempt < 8; attempt++) {
     const state = await repository.get({ actorUserId: reference.actorUserId, runId: reference.runId })
     if (!state) throw new FatalError('HARNESS_RUN_NOT_FOUND')
-    if (skipTerminal && ['completed', 'failed', 'cancelled'].includes(state.status)) return { snapshot: state, claimed: false }
+    if ((state.executionGeneration ?? 0) !== (reference.executionGeneration ?? 0)) return { snapshot: state, claimed: false }
+    if (skipInactive && ['completed', 'failed', 'cancelled', 'waiting_for_authorization'].includes(state.status)) {
+      return { snapshot: state, claimed: false }
+    }
     if (state.workflowRunId) return { snapshot: state, claimed: state.workflowRunId === reference.workflowRunId }
     const result = await repository.apply({
       actorUserId: reference.actorUserId, runId: reference.runId,
+      workflowRunId: reference.workflowRunId,
+      executionGeneration: reference.executionGeneration ?? 0,
       operationId: `claim:${reference.workflowRunId}`, expectedRevision: state.revision,
-      operation: { type: 'claim_execution', workflowRunId: reference.workflowRunId },
+      operation: {
+        type: 'claim_execution',
+        workflowRunId: reference.workflowRunId,
+        generation: reference.executionGeneration ?? 0,
+      },
     })
     if (!result.conflict) return { snapshot: result.snapshot, claimed: true }
   }
@@ -60,7 +70,7 @@ export async function claimHarnessState(reference: HarnessExecutionReference): P
 
 /**
  * One durable boundary for a workflow's initial read and execution claim.
- * A terminal run is returned unclaimed, matching a read-then-claim sequence.
+ * Terminal and authorization-blocked runs are returned unclaimed.
  */
 export async function readAndClaimHarnessState(reference: HarnessExecutionReference): Promise<HarnessClaim> {
   'use step'
@@ -77,11 +87,16 @@ export async function applyHarnessOperationStep(
   for (let attempt = 0; attempt < 8; attempt++) {
     const state = await repository.get({ actorUserId: reference.actorUserId, runId: reference.runId })
     if (!state) throw new FatalError('HARNESS_RUN_NOT_FOUND')
-    if (state.workflowRunId !== reference.workflowRunId) throw new FatalError('HARNESS_EXECUTION_NOT_OWNED')
+    if (state.workflowRunId !== reference.workflowRunId
+      || (state.executionGeneration ?? 0) !== (reference.executionGeneration ?? 0)) {
+      throw new FatalError('HARNESS_EXECUTION_NOT_OWNED')
+    }
     let result: HarnessMutationResult
     try {
       result = await repository.apply({
         actorUserId: reference.actorUserId, runId: reference.runId,
+        workflowRunId: reference.workflowRunId,
+        executionGeneration: reference.executionGeneration ?? 0,
         operationId, expectedRevision: state.revision, operation,
       })
     } catch (error) {
@@ -124,7 +139,15 @@ export async function applyHarnessOperation(
   }
 }
 
-export async function readHarnessEvidence(reference: HarnessExecutionReference, evidenceId: string): Promise<HarnessEvidence | null> {
+export async function readHarnessEvidence(
+  reference: HarnessExecutionReference,
+  evidenceId: string,
+  cursor?: string,
+  limit?: number,
+): Promise<HarnessEvidence | null | { observations: Array<Pick<HarnessEvidence, 'id' | 'source' | 'verdict' | 'createdAt'>>; nextCursor: string | null }> {
   'use step'
-  return new ConvexHarnessRepository().readEvidence({ actorUserId: reference.actorUserId, runId: reference.runId, evidenceId })
+  return new ConvexHarnessRepository().readEvidence({
+    actorUserId: reference.actorUserId, runId: reference.runId,
+    ...(evidenceId ? { evidenceId } : {}), ...(cursor ? { cursor } : {}), ...(limit !== undefined ? { limit } : {}),
+  })
 }

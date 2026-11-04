@@ -59,7 +59,7 @@ test('serialized personal failures retain their cause without retrying the run',
   mocks.run.mockRejectedValue({ code: 'STREAM_ERROR', message: 'Stream failed.', cause: { message: 'Connection closed.' } })
   mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: reason })
   await expect(personalHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed', terminalReason: reason })
-  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 }, 'execution-failed', {
     type: 'terminate', status: 'failed', reason,
   })
   expect(mocks.run).toHaveBeenCalledOnce()
@@ -72,7 +72,7 @@ test('SDK streaming failures close personal delivery descriptively without retry
   mocks.run.mockRejectedValue({ name: 'AI_StreamProviderError', statusCode: 503, isRetryable: true, message: 'private payload' })
   mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: reason })
   await expect(personalHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed', terminalReason: reason })
-  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 }, 'execution-failed', {
     type: 'terminate', status: 'failed', reason,
   })
   expect(mocks.run).toHaveBeenCalledOnce()
@@ -105,12 +105,21 @@ test('a duplicate workflow cannot build tools, bill or finalize another executio
   expect(mocks.run).not.toHaveBeenCalled()
 })
 
+test('successor admission retains its generation and reuses the claimed snapshot', async () => {
+  state.executionGeneration = 3
+  const access = { ...input.access, executionGeneration: 3 }
+  await personalHarnessWorkflow({ ...input, access })
+  expect(mocks.readAndClaim).toHaveBeenCalledExactlyOnceWith({ ...access, workflowRunId: 'workflow' })
+  expect(mocks.admission).toHaveBeenCalledExactlyOnceWith({ access: { ...access, workflowRunId: 'workflow' }, context: input.context }, { attachDelivery: true })
+  expect(mocks.ports.mock.calls[0][2]).toBe(state)
+})
+
 test('a completed child notifies ancestors without writing the root transcript', async () => {
   state.parentRunId = 'parent'
   await personalHarnessWorkflow(input)
   expect(mocks.admission).toHaveBeenCalledExactlyOnceWith(expect.anything(), { attachDelivery: false })
   expect(mocks.finish).not.toHaveBeenCalled()
-  expect(mocks.notify).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow' })
+  expect(mocks.notify).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 })
 })
 
 test('child execution receives a focused brief and tool subset while retaining system guardrails', () => {

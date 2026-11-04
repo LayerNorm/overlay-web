@@ -20,7 +20,13 @@ Gateway usage 404s retry with exponential backoff for about ten minutes, then se
 
 Model admission uses a reservation ceiling, not the headline catalog price. For models marked `varies_by_provider`, the web server loads Gateway's public model-endpoints pricing, caches validated results for five minutes, and reserves at the maximum published provider, tier, regional, fast and peak rates. Missing endpoint pricing blocks admission before inference rather than falling back to a cheaper quote. Both Harness quotes/dispatch and legacy chat reservations use this ceiling. These rates are never used as the actual charge: provider receipts, markup, idempotent settlement and the over-reservation reconciliation guard are unchanged. Existing failed runs and reconciliation rows are not replayed or rewritten by this change.
 
-Harness terminal cancellation and failure may release a zero-cost free-router model hold only when no provider billing reservation exists. Paid, externally billed, nonzero-cost, and provider-started holds remain unresolved until authoritative usage evidence settles them.
+Harness cancellation and failure retain provider-started or uncertain model holds until authoritative usage settles them. Historical retired-route receipts do not authorize new inference or synthetic zero-usage settlement.
+
+Harness summaries and final-answer verification use distinct metered dispatches.
+Failed, interrupted or malformed responses cannot invent zero-usage receipts or
+release paid, BYO or unknown holds. Retain full history and pause until provider
+settlement; retry compaction at most once. Funding pauses preserve the selected
+model and pending response. All calls use the configured usage markup.
 
 ## Reconciling held credit
 

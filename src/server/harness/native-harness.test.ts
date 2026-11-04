@@ -129,7 +129,7 @@ test('execution failure terminates and finalizes an owning native Harness run', 
   mocks.run.mockRejectedValue(new Error('Harness execution failed.'))
   mocks.apply.mockResolvedValue(failed)
   await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed' })
-  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 }, 'execution-failed', {
     type: 'terminate', status: 'failed', reason: 'Harness execution failed.',
   })
   expect(mocks.finish).toHaveBeenCalledOnce()
@@ -140,7 +140,7 @@ test('serialized execution failures retain their cause without retrying the nati
   mocks.run.mockRejectedValue({ code: 'STREAM_ERROR', message: 'Stream failed.', cause: { message: 'Connection closed.' } })
   mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: reason })
   await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed' })
-  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 }, 'execution-failed', {
     type: 'terminate', status: 'failed', reason,
   })
   expect(mocks.run).toHaveBeenCalledOnce()
@@ -152,7 +152,7 @@ test('SDK rate limits terminate once with descriptive delivery and no new retry 
   mocks.run.mockRejectedValue({ name: 'AI_APICallError', statusCode: 429, isRetryable: true, message: 'private payload' })
   mocks.apply.mockResolvedValue({ ...state, status: 'failed', terminalReason: reason })
   await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed' })
-  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+  expect(mocks.apply).toHaveBeenCalledExactlyOnceWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 }, 'execution-failed', {
     type: 'terminate', status: 'failed', reason,
   })
   expect(mocks.run).toHaveBeenCalledOnce()
@@ -168,7 +168,7 @@ test('provider content-filter rejection terminates once with its actual reason',
   const failed = { ...state, status: 'failed' as const, terminalReason: reason }
   mocks.apply.mockResolvedValue(failed)
   await expect(nativeHarnessWorkflow(input)).resolves.toEqual({ runId: state.runId, status: 'failed' })
-  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow' }, 'execution-failed', {
+  expect(mocks.apply).toHaveBeenCalledWith({ ...input.access, workflowRunId: 'workflow', executionGeneration: 0 }, 'execution-failed', {
     type: 'terminate', status: 'failed', reason,
   })
   expect(mocks.run).toHaveBeenCalledOnce()

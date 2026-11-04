@@ -1,4 +1,24 @@
 import { harnessExecutionFailureReason, preserveHarnessSDKFailure } from '../../src/server/harness/execution-failure'
+import { FatalError } from 'workflow'
+import { createHarnessControlTools } from '../../src/server/harness/control-tools'
+import type { HarnessExecutionPorts } from '../../src/server/harness/ports'
+
+async function rejectEvidenceStep(): Promise<never> {
+  'use step'
+  throw new FatalError('Evidence must reference successful observations from this run.')
+}
+
+export async function evidenceValidationFixture() {
+  'use workflow'
+  const ports = {
+    apply: () => rejectEvidenceStep(),
+    read: async () => ({ plan: [], evidence: [] }),
+  } as unknown as HarnessExecutionPorts
+  return createHarnessControlTools(ports).harness_update_step.execute!(
+    { id: 'work', status: 'done', evidenceRefs: ['missing'] },
+    { toolCallId: 'invalid-evidence', messages: [], context: {} },
+  )
+}
 
 async function failSDKStep(kind: 'retry' | 'stream' | 'validation'): Promise<void> {
   'use step'

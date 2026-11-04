@@ -5,9 +5,6 @@ import { v } from 'convex/values'
 import { internalAction } from '../_generated/server'
 import { internal } from '../_generated/api'
 
-/** A top-up still waiting on the customer (3-D Secure, bank) this long is given up on, falling back to the hard stop. */
-const GIVE_UP_AFTER_MS = 24 * 60 * 60 * 1000
-
 /**
  * Backstop for the Stripe webhook: asks Stripe about automatic workspace top-ups that are still pending and settles
  * them (credit on success, failed or canceled otherwise). Runs every few minutes.
@@ -29,12 +26,23 @@ export const reconcilePendingAutoTopUps = internalAction({
       // Sequential on purpose: a handful of rows, and each settlement touches the same balance.
       // react-doctor-disable-next-line react-doctor/async-await-in-loop
       const intent = await stripe.paymentIntents.retrieve(row.stripePaymentIntentId).catch((_error) => null)
-      const outcome = settlementFor(intent?.status, Date.now() - row.createdAt)
+      const outcome = settlementFor(intent?.status)
       if (!outcome) continue
+      const customerId = typeof intent?.customer === 'string' ? intent.customer : intent?.customer?.id
+      if (!intent || intent.metadata.kind !== 'budget_topup' || intent.metadata.source !== 'auto'
+        || !intent.metadata.billingAccountId || !intent.metadata.workspaceId
+        || !intent.metadata.userId || !customerId) continue
       // react-doctor-disable-next-line react-doctor/async-await-in-loop
       const result: { settled: boolean; granted: boolean } = await ctx.runMutation(internal.billing.autoTopUpSettlement.settlePendingTopUpInternal, {
         stripePaymentIntentId: row.stripePaymentIntentId,
         outcome,
+        billingAccountId: intent.metadata.billingAccountId,
+        intentKey: intent.metadata.intentKey,
+        workspaceId: intent.metadata.workspaceId,
+        userId: intent.metadata.userId,
+        customerId,
+        amountCents: outcome === 'succeeded' ? intent.amount_received : intent.amount,
+        currency: intent.currency,
         ...(outcome === 'succeeded' ? {} : { errorMessage: `stripe_status:${intent?.status ?? 'unknown'}` }),
       })
       if (result.granted) granted += 1
@@ -44,10 +52,10 @@ export const reconcilePendingAutoTopUps = internalAction({
   },
 })
 
-function settlementFor(status: string | undefined, ageMs: number): 'succeeded' | 'failed' | 'canceled' | null {
+function settlementFor(status: string | undefined): 'succeeded' | 'failed' | 'canceled' | null {
   if (status === 'succeeded') return 'succeeded'
   if (status === 'canceled') return 'canceled'
   if (status === 'requires_payment_method') return 'failed'
-  // requires_action / processing / requires_confirmation: still in progress, unless it has waited too long.
-  return ageMs > GIVE_UP_AFTER_MS ? 'failed' : null
+  // Time and a failed lookup cannot prove that a payment did not settle.
+  return null
 }

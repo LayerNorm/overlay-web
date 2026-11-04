@@ -1,7 +1,7 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { HarnessPlanValidationError, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
-import type { HarnessExecutionPorts } from './ports'
+import type { HarnessArtifactReadResult, HarnessExecutionPorts } from './ports'
 import { HARNESS_STEP_VALIDATION } from './step-validation'
 
 const id = z.string().min(1).max(256)
@@ -14,7 +14,14 @@ const completionErrors = new Set<string>([
 const dependencyError = HARNESS_STEP_VALIDATION.dependencies
 const reusedToolResultEvidenceError = HARNESS_STEP_VALIDATION.reusedToolEvidence
 const reportingHint = 'If this milestone only reports prior results, use harness_set_plan to set answerOnly: true, omit evidenceTools, and set requiresVerification: false for this milestone. Preserve every other milestone exactly, including completed action IDs, titles, dependencies and acceptance criteria. Then return the requested answer using the saved result; do not repeat the completed action.'
-const completionHint = `Cite tool:<id> evidence that supports this milestone. ${reportingHint}`
+const completionHint = `Cite tool:<id> evidence that supports this milestone. For a milestone that reopens an artifact, declare evidenceTools: ["harness_read_artifact"] with harness_set_plan; a reopened excerpt cannot prove a new source-tool write. ${reportingHint}`
+
+function artifactIdentity(metadata: HarnessArtifactReadResult['metadata']): string {
+  const resource = metadata.resource
+    ? `; resource ${metadata.resource.id}${metadata.resource.revision ? ` revision ${metadata.resource.revision}` : ''}${metadata.resource.operation ? ` operation ${metadata.resource.operation}` : ''}${metadata.resource.page ? ` page ${metadata.resource.page}` : ''}`
+    : ''
+  return `artifact ${metadata.artifactId}; ${metadata.toolName} call ${metadata.toolCallId}${resource}`
+}
 
 function availableEvidenceIds(state: HarnessSnapshot) {
   const usedByAction = new Set(state.plan
@@ -134,9 +141,48 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       },
     }),
     harness_read_evidence: tool({
-      description: 'Retrieve persisted evidence by reference when it is no longer in the recent context.',
-      inputSchema: z.object({ evidenceId: z.string().min(1).max(512) }),
-      execute: async ({ evidenceId }) => ports.readEvidence(evidenceId),
+      description: 'Read a persisted observation by evidence ID, or list a bounded chronological page of observation IDs and outcomes. Omitted or truncated content is not proof of absence.',
+      inputSchema: z.object({
+        evidenceId: z.string().min(1).max(512).optional(),
+        cursor: z.string().max(512).optional(),
+        limit: z.number().int().min(1).max(32).optional(),
+      }),
+      execute: async ({ evidenceId, cursor, limit }) => ports.readEvidence(evidenceId ?? '', cursor, limit),
+    }),
+    harness_read_artifact: tool({
+      description: 'Reopen a private tool-result artifact using a bounded text range or a selected media-part index. Access is reauthorized against the original source tool. Read milestones should declare evidenceTools: ["harness_read_artifact"]; this observation cannot prove a new source-tool write.',
+      inputSchema: z.object({
+        artifactId: z.string().min(67).max(67).regex(/^ha_[a-f0-9]{64}$/),
+        start: z.number().int().nonnegative().optional(),
+        end: z.number().int().nonnegative().optional(),
+        mediaPart: z.number().int().nonnegative().optional(),
+      }).strict().refine(input => {
+        if (input.mediaPart !== undefined) return input.start === undefined && input.end === undefined
+        return input.end === undefined || input.start === undefined || input.end >= input.start
+      }),
+      execute: async (input, { toolCallId }) => {
+        if (!ports.readArtifact) throw new Error('Harness artifact reads are unavailable.')
+        const output = await ports.readArtifact(input)
+        const selection = output.kind === 'text'
+          ? `Incomplete text excerpt, range ${input.start ?? 0}:${input.end ?? 'bounded default'}:\n${output.text.slice(0, 1_200)}`
+          : `Opened media part ${output.metadata.mediaPart} of ${output.metadata.mediaPartCount} (${output.mediaType}); no semantic content is certified by this observation.`
+        await ports.apply(`artifact-read:${toolCallId}`, { type: 'record_evidence', evidence: {
+          id: `tool:${toolCallId}`, kind: 'tool_result', source: 'harness_read_artifact',
+          resource: output.metadata.resource,
+          summary: `${artifactIdentity(output.metadata)}\n${selection}`.slice(0, 2_000),
+          verdict: 'observed', createdAt: Date.now(),
+        } })
+        return output
+      },
+      toModelOutput: ({ output }) => output.kind === 'media'
+        ? {
+            type: 'content',
+            value: [
+              { type: 'text', text: `[Incomplete media selection; ${artifactIdentity(output.metadata)}; selected part ${output.metadata.mediaPart} of ${output.metadata.mediaPartCount}.]` },
+              { type: 'file', data: { type: 'data', data: output.data }, mediaType: output.mediaType },
+            ],
+          }
+        : { type: 'text', value: `[Incomplete artifact excerpt; ${artifactIdentity(output.metadata)}]\n${output.text}` },
     }),
     harness_report_blocker: tool({
       description: 'Pause for essential user input. Ask one concise question rather than guessing sensitive choices.',
@@ -151,15 +197,24 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       },
     }),
     harness_delegate: tool({
-      description: 'Start a bounded child for an independent ready milestone. Reserve a budget and only the tools it needs. Children receive a brief, not the parent transcript.',
+      description: 'Start a bounded child for an independent ready milestone. Legacy runs require a spend allocation; v2 runs use their configured payer without a child lifetime cap. Grant only the tools it needs. Children receive a brief, not the parent transcript.',
       inputSchema: z.object({
         stepId: id,
         goal: z.string().min(1).max(32_000),
         constraints: z.array(z.string().min(1).max(2_000)).max(32),
         allowedToolIds: z.array(id).max(512),
-        maxCostMicros: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+        maxCostMicros: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).optional(),
       }),
-      execute: async (input, { toolCallId }) => ports.delegate(input, toolCallId),
+      execute: async (input, { toolCallId }) => {
+        const parent = await ports.read()
+        if (parent.policy.executionPolicyVersion !== 2 && input.maxCostMicros === undefined) {
+          return { success: false, error: 'Specify a child spend allocation for this legacy run.' }
+        }
+        return ports.delegate({
+          ...input,
+          maxCostMicros: parent.policy.executionPolicyVersion === 2 ? 0 : input.maxCostMicros!,
+        }, toolCallId)
+      },
     }),
     harness_read_child: tool({
       description: 'Join an admitted child, waiting durably if it is still working. Start independent children before joining them. A completed result returns a parent evidenceRef for milestone completion, not independent verification.',
