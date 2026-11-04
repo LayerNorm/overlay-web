@@ -132,8 +132,12 @@ export class SubscriptionBridgeClient {
     const value = await this.request<unknown>('/internal/v1/models', { credential })
     if (!isRecord(value) || value.source !== 'provider_catalog' || !Array.isArray(value.models) ||
         !value.models.every((model) => isRecord(model) &&
-          typeof model.id === 'string' && typeof model.name === 'string')) throw new Error(safeError)
-    return value as { models: Array<{ id: string; name: string }>; source: 'provider_catalog' }
+          typeof model.id === 'string' && typeof model.name === 'string' &&
+          (model.reasoningLevels === undefined ||
+            (Array.isArray(model.reasoningLevels) && model.reasoningLevels.every((level) => typeof level === 'string'))))) {
+      throw new Error(safeError)
+    }
+    return value as { models: Array<{ id: string; name: string; reasoningLevels?: string[] }>; source: 'provider_catalog' }
   }
 
   async infer(

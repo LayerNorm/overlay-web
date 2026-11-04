@@ -270,6 +270,7 @@ export interface ChatModel {
   speedTier?: 1 | 2 | 3
   supportsVision?: boolean
   supportsReasoning?: boolean
+  reasoningLevels?: readonly { value: ReasoningLevel; label: string }[]
   supportsSearch?: boolean
   supportsZeroDataRetention?: boolean
   pricePer1mTokens?: number

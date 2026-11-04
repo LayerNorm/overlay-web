@@ -1,6 +1,35 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { buildWorkspaceAgentInput, isAgentEditorValid, isDefaultMasterAgent } from './agent-editor-input'
+import {
+  buildWorkspaceAgentInput,
+  isAgentEditorValid,
+  isDefaultMasterAgent,
+  workspaceAgentReasoningForSave,
+} from './agent-editor-input'
+
+test('agent reasoning save uses advertised levels and clears unsupported persisted values', () => {
+  const reasoningModels = [
+    { id: 'model-a', reasoningLevels: [{ value: 'provider-default' as const }, { value: 'low' as const }] },
+    { id: 'model-b', reasoningLevels: [{ value: 'provider-default' as const }, { value: 'high' as const }] },
+  ]
+  assert.equal(workspaceAgentReasoningForSave({
+    modelId: 'model-a',
+    reasoning: 'high',
+    reasoningModels,
+    existingModelId: 'model-a',
+    existingReasoning: 'high',
+  }), 'provider-default')
+  assert.equal(workspaceAgentReasoningForSave({
+    modelId: 'model-b',
+    reasoning: 'high',
+    reasoningModels,
+  }), 'high')
+  assert.equal(workspaceAgentReasoningForSave({
+    modelId: 'model-a',
+    reasoning: 'high',
+    reasoningModels,
+  }), undefined)
+})
 
 test('chief protection follows explicit role or legacy flag, never display name', () => {
   assert.equal(isDefaultMasterAgent({ name: 'Overlay' }), false)
@@ -18,6 +47,7 @@ test('overlay input trims fields and maps tool groups', () => {
     harnessLabel: 'Codex',
     adapterId: 'codex',
     modelId: '  test-model  ',
+    reasoning: 'high',
     avatarColor: '#2563eb',
     avatarShape: 'droplet',
     enabledToolGroups: new Set(['memory']),
@@ -28,6 +58,7 @@ test('overlay input trims fields and maps tool groups', () => {
   assert.equal(input.instructions, 'Find evidence.')
   assert.equal(input.harness, 'overlay')
   assert.equal(input.modelId, 'test-model')
+  assert.equal(input.reasoning, 'high')
   assert.equal(input.visibility, 'creator')
   assert.equal(input.avatarShape, 'droplet')
   assert.ok(Array.isArray(input.allowedToolIds))
@@ -42,6 +73,7 @@ test('byo input generates instructions, harness, and model from the adapter', ()
     harnessLabel: 'Codex',
     adapterId: 'codex',
     modelId: 'test-model',
+    reasoning: 'high',
     avatarColor: '#059669',
     avatarShape: 'cloud',
     enabledToolGroups: new Set(['memory']),
@@ -50,6 +82,7 @@ test('byo input generates instructions, harness, and model from the adapter', ()
   assert.match(input.instructions, /Codex/)
   assert.equal(input.harness, 'overlay')
   assert.equal(input.modelId, 'byo/codex')
+  assert.equal(input.reasoning, undefined)
   assert.deepEqual(input.allowedToolIds, [])
   assert.equal(input.description, 'Works locally')
 })

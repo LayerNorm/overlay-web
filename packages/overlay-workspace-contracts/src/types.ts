@@ -608,6 +608,7 @@ export type WorkspaceAgentDefinition = {
   instructions: string
   harness: WorkspaceAgentHarness
   modelId: string
+  reasoning?: WorkspaceAgentReasoningLevel
   /** Adapter-owned permission and effort ids; omitted uses the deployment default. */
   permissionMode?: string
   effort?: string
@@ -627,6 +628,11 @@ export type WorkspaceAgentDefinition = {
   chiefScope?: WorkspaceAgentChiefScope
 }
 
+export const WORKSPACE_AGENT_REASONING_LEVELS = [
+  'provider-default', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh',
+] as const
+export type WorkspaceAgentReasoningLevel = (typeof WORKSPACE_AGENT_REASONING_LEVELS)[number]
+
 export const WORKSPACE_AGENT_ROLES = ['workspace_chief', 'personal_chief', 'agent'] as const
 export type WorkspaceAgentRole = (typeof WORKSPACE_AGENT_ROLES)[number]
 
@@ -639,6 +645,7 @@ export type WorkspaceAgentCreateInput = {
   instructions: string
   harness?: WorkspaceAgentHarness
   modelId: string
+  reasoning?: WorkspaceAgentReasoningLevel
   /** Adapter-owned permission and effort ids; omitted uses the deployment default. */
   permissionMode?: string
   effort?: string

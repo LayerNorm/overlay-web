@@ -59,12 +59,12 @@ const responseBody = {
   },
 }
 
-function modelWithFetch(fetcher: typeof fetch) {
+function modelWithFetch(fetcher: typeof fetch, modelId = 'account-model') {
   return createSubscriptionLanguageModel({
     ownerId: 'user-1',
     connectionId: 'connection-1',
     providerId: 'codex',
-    modelId: 'account-model',
+    modelId,
     dispatchService: {
       credentialForDispatch: async () => ({
         v: 1,
@@ -110,6 +110,28 @@ test('AI SDK generateText uses a completed JSON fixture and stateless storage', 
   assert.equal(bridgeRequest.stream, true)
   assert.equal(bridgeRequest.store, false)
   assert.equal(Object.hasOwn(bridgeRequest, 'max_output_tokens'), true)
+})
+
+test('supported OpenAI reasoning effort reaches the subscription bridge request', async () => {
+  let requestBody: Record<string, unknown> | undefined
+  const modelId = 'gpt-5.4'
+  const model = modelWithFetch(async (_input, init) => {
+    requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+    return new Response(
+      'data: {"type":"response.completed","response":' + JSON.stringify({ ...responseBody, model: modelId }) + '}\n\n',
+      { headers: { 'content-type': 'text/event-stream' } },
+    )
+  }, modelId)
+  await generateText({
+    model,
+    prompt: 'reason carefully',
+    maxRetries: 0,
+    maxOutputTokens: 8192,
+    reasoning: 'high',
+  })
+  const request = requestBody?.request as Record<string, unknown>
+  const reasoning = request.reasoning as { effort?: string } | undefined
+  assert.equal(reasoning?.effort, 'high')
 })
 
 test('AI SDK tool continuation sends complete history rather than stored item references', { timeout: 5_000 }, async () => {

@@ -53,7 +53,10 @@ test('subscription models keep provider identity and connection source labels', 
     endpoint: '',
     displayName: 'Personal ChatGPT',
     enabledModelIds: ['openai/gpt-4.1'],
-    discoveredModelsJson: JSON.stringify({ data: [{ id: 'openai/gpt-4.1' }] }),
+    discoveredModelsJson: JSON.stringify({ data: [{
+      id: 'openai/gpt-4.1',
+      reasoningLevels: ['low', 'high', 'unsupported', 'low'],
+    }] }),
     status: 'active',
     isDefault: false,
     isDeletable: true,
@@ -65,6 +68,29 @@ test('subscription models keep provider identity and connection source labels', 
   assert.equal(model?.subscription?.connectionId, 'subscription_1')
   assert.equal(model?.subscription?.scopeLabel, 'Personal')
   assert.equal(model?.subscription?.unavailable, false)
+  assert.equal(model?.supportsReasoning, true)
+  assert.deepEqual(model?.reasoningLevels, [
+    { value: 'low', label: 'Low' },
+    { value: 'high', label: 'High' },
+  ])
+})
+
+test('unknown discovered reasoning metadata remains provider-managed', () => {
+  const [model] = byokConnectionsToChatModels([{
+    _id: 'subscription_custom',
+    authKind: 'subscription',
+    subscriptionProvider: 'codex',
+    providerId: 'subscription:codex',
+    endpoint: '',
+    displayName: 'Personal ChatGPT',
+    enabledModelIds: ['custom/model'],
+    discoveredModelsJson: JSON.stringify({ data: [{ id: 'custom/model', reasoningLevels: ['future-level'] }] }),
+    status: 'active',
+    isDefault: false,
+    isDeletable: true,
+  }])
+  assert.equal(model?.supportsReasoning, false)
+  assert.equal(model?.reasoningLevels, undefined)
 })
 
 test('only the picker can include inactive subscriptions, without changing identity or model order', () => {

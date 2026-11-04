@@ -8,6 +8,7 @@ import type {
   ComputerSize,
   WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
+  WorkspaceAgentReasoningLevel,
   WorkspaceAgentVisibility,
 } from '@overlay/workspace-contracts'
 import { Button, DialogFrame, Input, ListboxSelect, SegmentedControl, Textarea, Toggle, toast } from '@overlay/ui/primitives'
@@ -30,7 +31,7 @@ import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useWorkspaceTextModelAccess } from '@/components/providers/useWorkspaceTextModelAccess'
 import { useAuth } from '@/contexts/AuthContext'
 import type { AgentModelFieldProps } from './AgentEditorForm'
-import { buildWorkspaceAgentInput } from '../lib/agent-editor-input'
+import { buildWorkspaceAgentInput, workspaceAgentReasoningForSave } from '../lib/agent-editor-input'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
 import { FieldLabel } from './InfoTip'
 import { CloudAgentProgress } from './CloudAgentProgress'
@@ -50,6 +51,7 @@ export type NewAgentDraft = {
   computerSize: ComputerSize
   visibility: WorkspaceAgentVisibility
   modelId: string
+  reasoningByModel: Readonly<Record<string, WorkspaceAgentReasoningLevel | undefined>>
   toolGroups: ReadonlySet<string>
 }
 
@@ -65,6 +67,7 @@ export function initialNewAgentDraft(): NewAgentDraft {
     computerSize: 'default',
     visibility: 'creator',
     modelId: NEW_AGENT_DEFAULT_MODEL_ID,
+    reasoningByModel: {},
     toolGroups: new Set(AGENT_TOOL_PRESETS.everything),
   }
 }
@@ -148,6 +151,14 @@ function AdvancedSection({ draft, onChange, modelField }: {
               selectableTextModels={modelField.selectableTextModels}
               selectedActModel={draft.modelId}
               onToggleTextModel={(modelId) => onChange({ modelId })}
+              reasoning={draft.reasoningByModel[draft.modelId]}
+              onReasoningChange={(level) => onChange({
+                reasoningByModel: { ...draft.reasoningByModel, [draft.modelId]: level ?? 'provider-default' },
+              })}
+              reasoningByModel={draft.reasoningByModel}
+              onModelReasoningChange={(modelId, level) => onChange({
+                reasoningByModel: { ...draft.reasoningByModel, [modelId]: level ?? 'provider-default' },
+              })}
               favoriteScope={modelField.favoriteScope}
               modelRecommendations={MODEL_RECOMMENDATIONS}
               textModelsLoading={modelField.textModelsLoading}
@@ -325,7 +336,12 @@ function useNewAgentModelField(workspaceId: string | null, draftModelId: string)
 }
 
 /** Creates the agent (and its computer when asked for), then refreshes the roster. */
-async function createAgentFromDraft(workspaceId: string, draft: NewAgentDraft, computersAvailable: boolean) {
+async function createAgentFromDraft(
+  workspaceId: string,
+  draft: NewAgentDraft,
+  computersAvailable: boolean,
+  reasoningModels: AgentModelFieldProps['selectableTextModels'],
+) {
   const toolGroups = new Set(draft.toolGroups)
   const withComputer = computersAvailable && draft.computer
   if (withComputer) toolGroups.add('computer')
@@ -338,6 +354,11 @@ async function createAgentFromDraft(workspaceId: string, draft: NewAgentDraft, c
       harnessLabel: '',
       adapterId: '',
       modelId: draft.modelId,
+      reasoning: workspaceAgentReasoningForSave({
+        modelId: draft.modelId,
+        reasoning: draft.reasoningByModel[draft.modelId],
+        reasoningModels,
+      }),
       avatarColor: draft.avatarColor,
       avatarShape: draft.avatarShape,
       enabledToolGroups: toolGroups,
@@ -415,7 +436,12 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
     }
     setBusy(true)
     try {
-      const { agent, computerError } = await createAgentFromDraft(workspaceId, draft, computersAvailable)
+      const { agent, computerError } = await createAgentFromDraft(
+        workspaceId,
+        draft,
+        computersAvailable,
+        modelField.selectableTextModels,
+      )
       setDraft(initialNewAgentDraft())
       toast.success('Agent created.')
       onCreated(agent, computerError)

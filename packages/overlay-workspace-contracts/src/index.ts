@@ -88,6 +88,8 @@ export {
   type WorkspaceChatSearchResult,
   WORKSPACE_AGENT_HARNESSES,
   type WorkspaceAgentHarness,
+  WORKSPACE_AGENT_REASONING_LEVELS,
+  type WorkspaceAgentReasoningLevel,
   WORKSPACE_AGENT_VISIBILITIES,
   type WorkspaceAgentVisibility,
   WORKSPACE_AGENT_CREATURE_SHAPES,

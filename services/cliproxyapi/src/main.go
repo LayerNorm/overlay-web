@@ -487,7 +487,27 @@ func hasStatefulOption(payload *ojson.Doc) bool {
 	return false
 }
 
-func catalog(plan string) ([]map[string]string, error) {
+func reasoningLevels(model *registry.ModelInfo) []string {
+	if model == nil || model.Thinking == nil {
+		return nil
+	}
+	allowed := map[string]bool{
+		"none": true, "minimal": true, "low": true,
+		"medium": true, "high": true, "xhigh": true,
+	}
+	seen := make(map[string]bool)
+	levels := make([]string, 0, len(model.Thinking.Levels))
+	for _, level := range model.Thinking.Levels {
+		level = strings.ToLower(strings.TrimSpace(level))
+		if allowed[level] && !seen[level] {
+			levels = append(levels, level)
+			seen[level] = true
+		}
+	}
+	return levels
+}
+
+func catalog(plan string) ([]map[string]any, error) {
 	normalized := strings.ToLower(strings.TrimSpace(plan))
 	var source []*registry.ModelInfo
 	switch normalized {
@@ -502,7 +522,7 @@ func catalog(plan string) ([]map[string]string, error) {
 	default:
 		return nil, errors.New("unknown Codex plan")
 	}
-	models := make([]map[string]string, 0, len(source))
+	models := make([]map[string]any, 0, len(source))
 	for _, model := range source {
 		if model == nil || strings.TrimSpace(model.ID) == "" {
 			continue
@@ -511,12 +531,16 @@ func catalog(plan string) ([]map[string]string, error) {
 		if name == "" {
 			name = model.ID
 		}
-		models = append(models, map[string]string{"id": model.ID, "name": name})
+		entry := map[string]any{"id": model.ID, "name": name}
+		if levels := reasoningLevels(model); len(levels) > 0 {
+			entry["reasoningLevels"] = levels
+		}
+		models = append(models, entry)
 	}
 	return models, nil
 }
 
-func catalogModel(plan, modelID string) (map[string]string, error) {
+func catalogModel(plan, modelID string) (map[string]any, error) {
 	models, err := catalog(plan)
 	if err != nil {
 		return nil, err

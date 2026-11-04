@@ -13,6 +13,7 @@ import (
 
 	"github.com/MoeForge/moego/ojson"
 	codexauth "github.com/router-for-me/CLIProxyAPI/v8/internal/auth/codex"
+	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
 	cliproxyexecutor "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/executor"
 )
@@ -51,6 +52,21 @@ func TestUnknownPlanDoesNotGetCatalog(t *testing.T) {
 	}
 }
 
+func TestCatalogReasoningLevelsUseOnlyPinnedCanonicalThinkingLevels(t *testing.T) {
+	got := reasoningLevels(&registry.ModelInfo{
+		Thinking: &registry.ThinkingSupport{Levels: []string{"low", " high ", "unknown", "low", "none"}},
+	})
+	want := []string{"low", "high", "none"}
+	if len(got) != len(want) {
+		t.Fatalf("levels = %v, want %v", got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Fatalf("levels = %v, want %v", got, want)
+		}
+	}
+}
+
 func TestNormalizeSSEFramePreservesTranslatorDataPrefix(t *testing.T) {
 	translatorFrame := []byte(`data: {"type":"response.output_text.delta","delta":"hello"}`)
 	got := normalizeSSEFrame(translatorFrame)
@@ -67,7 +83,7 @@ func TestInferUsesConnectionIdentityAndStreamsTranslatorFrames(t *testing.T) {
 	if err != nil || len(models) == 0 {
 		t.Fatalf("Codex Plus catalog unavailable: %v", err)
 	}
-	modelID := models[0]["id"]
+	modelID := models[0]["id"].(string)
 	credential, err := newCredential(&codexauth.CodexTokenStorage{
 		AccessToken: "access", RefreshToken: "refresh", PlanType: "plus",
 		Expire: time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
@@ -135,7 +151,7 @@ func TestInferCancelsExecutorWhenStreamWriteFails(t *testing.T) {
 	if err != nil || len(models) == 0 {
 		t.Fatalf("Codex Plus catalog unavailable: %v", err)
 	}
-	modelID := models[0]["id"]
+	modelID := models[0]["id"].(string)
 	credential, err := newCredential(&codexauth.CodexTokenStorage{
 		AccessToken: "access", RefreshToken: "refresh", PlanType: "plus",
 		Expire: time.Now().Add(time.Hour).UTC().Format(time.RFC3339),

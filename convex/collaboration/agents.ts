@@ -28,6 +28,15 @@ const agentValidator = v.object({
   instructions: v.string(),
   harness,
   modelId: v.string(),
+  reasoning: v.optional(v.union(
+    v.literal('provider-default'),
+    v.literal('none'),
+    v.literal('minimal'),
+    v.literal('low'),
+    v.literal('medium'),
+    v.literal('high'),
+    v.literal('xhigh'),
+  )),
   permissionMode: v.optional(v.string()),
   effort: v.optional(v.string()),
   avatarColor: v.optional(v.string()),
@@ -52,6 +61,15 @@ export const createByServer = mutation({
     serverSecret: v.string(), agentId: v.string(), principalId: v.string(), workspaceId: v.string(),
     name: v.string(), description: v.optional(v.string()), instructions: v.string(), harness: writableHarness,
     permissionMode: v.optional(v.string()), effort: v.optional(v.string()),
+    reasoning: v.optional(v.union(
+      v.literal('provider-default'),
+      v.literal('none'),
+      v.literal('minimal'),
+      v.literal('low'),
+      v.literal('medium'),
+      v.literal('high'),
+      v.literal('xhigh'),
+    )),
     modelId: v.string(), avatarColor: v.optional(v.string()), avatarShape: v.optional(v.string()),
     allowedToolIds: v.array(v.string()),
     teamIds: v.array(v.string()), visibility: v.optional(agentVisibility),
@@ -104,6 +122,7 @@ export const createByServer = mutation({
       instructions: args.instructions.trim(), harness: args.harness, modelId: args.modelId.trim(),
       ...(args.permissionMode === undefined ? {} : { permissionMode: args.permissionMode.trim() }),
       ...(args.effort === undefined ? {} : { effort: args.effort.trim() }),
+      ...(args.reasoning === undefined ? {} : { reasoning: args.reasoning }),
       avatarColor: cleanOptional(args.avatarColor), avatarShape: cleanOptional(args.avatarShape),
       allowedToolIds: unique(args.allowedToolIds),
       invocationPolicy: 'mention', visibility: args.visibility ?? 'workspace',
@@ -413,6 +432,15 @@ export const updateByServer = mutation({
     serverSecret: v.string(), agentId: v.string(), workspaceId: v.string(),
     name: v.optional(v.string()), description: v.optional(v.string()), instructions: v.optional(v.string()),
     permissionMode: v.optional(v.string()), effort: v.optional(v.string()),
+    reasoning: v.optional(v.union(
+      v.literal('provider-default'),
+      v.literal('none'),
+      v.literal('minimal'),
+      v.literal('low'),
+      v.literal('medium'),
+      v.literal('high'),
+      v.literal('xhigh'),
+    )),
     harness: v.optional(writableHarness), modelId: v.optional(v.string()), avatarColor: v.optional(v.string()),
     avatarShape: v.optional(v.string()),
     allowedToolIds: v.optional(v.array(v.string())), now: v.number(),
@@ -491,6 +519,7 @@ export const updateByServer = mutation({
       modelId?: string
       permissionMode?: string
       effort?: string
+      reasoning?: 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
       avatarColor?: string
       avatarShape?: string
       allowedToolIds?: string[]
@@ -505,6 +534,7 @@ export const updateByServer = mutation({
       ...(args.modelId === undefined ? {} : { modelId: args.modelId.trim() }),
       ...(args.permissionMode === undefined ? {} : { permissionMode: args.permissionMode.trim() }),
       ...(args.effort === undefined ? {} : { effort: args.effort.trim() }),
+      ...(args.reasoning === undefined ? {} : { reasoning: args.reasoning }),
       ...(args.avatarColor === undefined || row.agentRole === 'personal_chief' ? {} : { avatarColor: cleanOptional(args.avatarColor) }),
       ...(args.avatarShape === undefined || row.agentRole === 'personal_chief' ? {} : { avatarShape: cleanOptional(args.avatarShape) }),
       ...(args.allowedToolIds === undefined ? {} : { allowedToolIds: unique(args.allowedToolIds) }),

@@ -40,6 +40,23 @@ test('authorization rejects expired pending state', async () => {
   await assert.rejects(client.authorize(), /could not complete this request/)
 })
 
+test('model discovery preserves optional reasoning capability metadata', async () => {
+  const client = new SubscriptionBridgeClient(serviceUrl, secret, async () => Response.json({
+    source: 'provider_catalog',
+    models: [{ id: 'model-a', name: 'Model A', reasoningLevels: ['low', 'high'] }],
+  }))
+  assert.deepEqual(await client.models({
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'codex',
+    metadata: {},
+    expiresAt: Date.now() + 60_000,
+  }), {
+    source: 'provider_catalog',
+    models: [{ id: 'model-a', name: 'Model A', reasoningLevels: ['low', 'high'] }],
+  })
+})
+
 test('oversized bridge responses are cancelled before the body is fully read', async () => {
   let canceled = false
   const body = new ReadableStream<Uint8Array>({

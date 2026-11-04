@@ -1,12 +1,14 @@
 'use client'
 
 import { useMemo, useRef, useState, type ComponentProps, type ReactNode, type Ref } from 'react'
-import { Check, LayoutGrid, Lock, Plug, ScanEye, Search, Sparkles, Star } from 'lucide-react'
+import { Check, LayoutGrid, Lock, Plug, ScanEye, Search, Star } from 'lucide-react'
+import type { ReasoningLevel } from '@overlay/chat-core'
 import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 import { Button, Input } from '@overlay/ui/primitives'
 import { ProviderLogo, providerLabel } from '@overlay/ui/ai'
 import { DelayedTooltip } from '@overlay/ui/overlays'
 import { GenerationModeToggle } from './GenerationModeToggle'
+import { ModelReasoningControl, type ModelReasoningProps } from './ModelReasoningControl'
 
 type GenerationModeToggleProps = ComponentProps<typeof GenerationModeToggle>
 
@@ -18,6 +20,7 @@ export type ModelSelectorItem = {
   connectionName?: string
   supportsVision?: boolean
   supportsReasoning?: boolean
+  reasoningLevels?: readonly { value: ReasoningLevel; label: string }[]
   subscription?: { connectionId: string; scopeLabel: string; unavailable?: boolean; recoveryHref: string }
 }
 
@@ -97,7 +100,7 @@ export function filterModels<T extends ModelSelectorItem>(models: readonly T[], 
   )
 }
 
-export interface ModelSelectorProps<T extends ModelSelectorItem> {
+export interface ModelSelectorProps<T extends ModelSelectorItem> extends ModelReasoningProps {
   mode?: GenerationModeToggleProps['mode']
   onModeChange?: GenerationModeToggleProps['onChange']
   modeDisabled?: boolean
@@ -116,6 +119,17 @@ export interface ModelSelectorProps<T extends ModelSelectorItem> {
   searchInputRef?: Ref<HTMLInputElement>
   beforeList?: ReactNode
   footer?: ReactNode
+  showReasoning?: boolean
+}
+
+function ModelRowLabel({ model, showConnection }: { model: ModelSelectorItem; showConnection: boolean }) {
+  return <>
+    <span className="min-w-0 flex-1 truncate" title={model.connectionName ? `${model.name} · ${model.connectionName}` : model.name}>
+      <span className="block truncate">{model.name}</span>
+      {model.connectionName && showConnection ? <span className="block truncate text-[10px] font-normal text-(--muted-light)">{model.connectionName}{model.subscription ? ` · ${model.subscription.scopeLabel}` : ''}</span> : null}
+    </span>
+    {model.sourceLabel && !model.subscription ? <span className="shrink-0 rounded border border-(--border) px-1.5 py-0.5 text-[9px] font-normal text-(--muted)">{model.sourceLabel}</span> : null}
+  </>
 }
 
 export function ModelSelector<T extends ModelSelectorItem>({
@@ -137,6 +151,9 @@ export function ModelSelector<T extends ModelSelectorItem>({
   searchInputRef,
   beforeList,
   footer,
+  reasoningByModel,
+  onModelReasoningChange,
+  showReasoning = Boolean(onModelReasoningChange),
 }: ModelSelectorProps<T>) {
   const [query, setQuery] = useState('')
   const [activeSection, setActiveSection] = useState('recommended')
@@ -191,11 +208,7 @@ export function ModelSelector<T extends ModelSelectorItem>({
           } ${selected ? 'font-medium text-(--foreground)' : 'text-(--muted)'}`)}
         >
           <ProviderLogo provider={model.provider ?? 'other'} size={14} className="text-(--foreground)" />
-          <span className="min-w-0 flex-1 truncate" title={model.connectionName ? `${model.name} · ${model.connectionName}` : model.name}>
-            <span className="block truncate">{model.name}</span>
-            {model.connectionName && (!model.subscription || searching || currentSection.id === 'favorites' || currentSection.id === 'recommended') ? <span className="block truncate text-[10px] font-normal text-(--muted-light)">{model.connectionName}{model.subscription ? ` · ${model.subscription.scopeLabel}` : ''}</span> : null}
-          </span>
-          {model.sourceLabel && !model.subscription ? <span className="shrink-0 rounded border border-(--border) px-1.5 py-0.5 text-[9px] font-normal text-(--muted)">{model.sourceLabel}</span> : null}
+          <ModelRowLabel model={model} showConnection={!model.subscription || searching || currentSection.id === 'favorites' || currentSection.id === 'recommended'} />
         </Button>
         <Button
           variant="ghost"
@@ -219,14 +232,16 @@ export function ModelSelector<T extends ModelSelectorItem>({
         </span>
         <span className="flex shrink-0 gap-1">
           {model.supportsVision ? <span title="Vision" className="inline-flex size-4 items-center justify-center rounded bg-(--surface-muted) text-(--muted)"><ScanEye size={11} strokeWidth={1.75} /><span className="sr-only">Vision</span></span> : null}
-          {model.supportsReasoning ? <span title="Reasoning" className="inline-flex size-4 items-center justify-center rounded bg-(--surface-muted) text-(--muted)"><Sparkles size={11} strokeWidth={1.75} /><span className="sr-only">Reasoning</span></span> : null}
         </span>
+        {showReasoning ? <ModelReasoningControl model={model} value={reasoningByModel?.[model.id]} disabled={disabled || Boolean(isLocked?.(model))}
+          onChange={onModelReasoningChange ? (level) => onModelReasoningChange(model.id, level) : undefined} /> : null}
       </div>
     )
   }
 
   return (
     <div data-slot="model-selector" className="flex min-w-0 flex-col gap-1.5 p-1.5" onKeyDown={(event) => {
+      if (event.defaultPrevented || (event.target as HTMLElement).closest('[data-slot="model-reasoning"]')) return
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
       const rows = [...event.currentTarget.querySelectorAll<HTMLButtonElement>('[data-model-row] > button:first-child:not(:disabled)')]
       if (!rows.length) return

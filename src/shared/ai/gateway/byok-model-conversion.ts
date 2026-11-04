@@ -7,7 +7,11 @@
  * client hooks alike.
  */
 
-import type { ChatModel } from '@/shared/ai/gateway/model-types'
+import type {
+  ChatModel,
+  ModelReasoningLevel,
+  ModelReasoningOption,
+} from '@/shared/ai/gateway/model-types'
 import {
   isSubscriptionProviderId,
   isSubscriptionConnection,
@@ -77,6 +81,29 @@ export interface ByokConnectionRow {
 interface DiscoveredModel {
   id: string
   name?: string
+  reasoningLevels?: unknown
+}
+
+const reasoningLabels: Partial<Record<ModelReasoningLevel, string>> = {
+  none: 'None',
+  minimal: 'Minimal',
+  low: 'Low',
+  medium: 'Medium',
+  high: 'High',
+  xhigh: 'Extra high',
+}
+const supportedReasoningLevels = Object.keys(reasoningLabels) as ModelReasoningLevel[]
+
+function parseReasoningLevels(value: unknown): ModelReasoningOption[] {
+  if (!Array.isArray(value)) return []
+  const seen = new Set<string>()
+  return value.flatMap(level => {
+    if (typeof level !== 'string' || !supportedReasoningLevels.includes(level as ModelReasoningLevel) || seen.has(level)) {
+      return []
+    }
+    seen.add(level)
+    return [{ value: level as ModelReasoningLevel, label: reasoningLabels[level as ModelReasoningLevel]! }]
+  })
 }
 
 const MODEL_TOKEN_LABELS: Record<string, string> = {
@@ -208,6 +235,7 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
 
   return connection.enabledModelIds.map((rawModelId) => {
     const discovered = discoveredById.get(rawModelId)
+    const reasoningLevels = parseReasoningLevels(discovered?.reasoningLevels)
     return {
       id: byokModelId(connection._id, rawModelId),
       name: formatByokModelDisplayName(rawModelId, discovered?.name),
@@ -224,7 +252,8 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
       cost: 1,
       speedTier: 2,
       supportsVision: false,
-      supportsReasoning: false,
+      supportsReasoning: reasoningLevels.length > 0,
+      ...(reasoningLevels.length > 0 ? { reasoningLevels } : {}),
       supportsSearch: false,
       supportsZeroDataRetention: false,
     }

@@ -4,6 +4,7 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { ModelSelector, filterModels, groupModelsByProvider } from './ModelSelector'
 import { ModelQualitiesPanel } from './ModelQualitiesPanel'
+import { ModelReasoningControl, modelReasoningLabel } from './ModelReasoningControl'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
@@ -13,6 +14,29 @@ const MODELS = [
   { id: 'claude-opus', name: 'Claude Opus', provider: 'anthropic' },
   { id: 'gpt-5-mini', name: 'GPT-5 mini', provider: 'openai' },
 ]
+
+test('reasoning controls are text-only, model-specific, and disabled for unavailable subscriptions', () => {
+  const model = { id: 'byok/personal/sol', name: 'Sol', provider: 'openai',
+    reasoningLevels: [{ value: 'low' as const, label: 'Low' }, { value: 'high' as const, label: 'High' }],
+    subscription: { connectionId: 'personal', scopeLabel: 'Personal', unavailable: true, recoveryHref: '/settings' } }
+  const html = renderToStaticMarkup(<ModelSelector models={[model]} recommendedIds={[model.id]} favoriteIds={[]}
+    onToggleFavorite={() => {}} onSelect={() => {}} isSelected={() => true}
+    reasoningByModel={{ [model.id]: 'high', 'byok/another/sol': 'low' }} onModelReasoningChange={() => {}} />)
+  assert.match(html, /aria-label="Reasoning for Sol"/)
+  assert.match(html, /role="combobox"[^>]*disabled=""/)
+  assert.match(html, />High</)
+  assert.doesNotMatch(html, /lucide-sparkles|lucide-brain/)
+  assert.match(html, /data-slot="model-favorite"/)
+  assert.equal(modelReasoningLabel(model, 'xhigh'), 'Default')
+})
+
+test('models without advertised reasoning levels remain provider managed', () => {
+  const model = { id: 'custom', name: 'Custom' }
+  const html = renderToStaticMarkup(<ModelReasoningControl model={model} value="high" onChange={() => {}} />)
+  assert.match(html, /Provider managed/)
+  assert.doesNotMatch(html, /combobox/)
+  assert.equal(modelReasoningLabel(model, 'high'), 'Provider managed')
+})
 
 test('Favorites and Recommended are independent collections and providers keep every model in quality order', () => {
   const sections = groupModelsByProvider(MODELS, {
@@ -132,5 +156,5 @@ test('unavailable subscription models retain favorites and selection but disable
   const row = html.slice(html.indexOf('data-model-row='))
   assert.match(row.slice(0, row.indexOf('data-slot="model-favorite"')), /disabled=""/)
   assert.ok(row.indexOf('data-slot="model-selected"') < row.indexOf('lucide-scan-eye'))
-  assert.match(row, /lucide-sparkles/)
+  assert.doesNotMatch(row, /lucide-sparkles/)
 })

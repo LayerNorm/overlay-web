@@ -19,6 +19,14 @@ The plan-based Codex catalog is sourced from CLIProxyAPI's plan registry. It is
 catalog provenance, not proof that a particular account is entitled to every
 listed model. Unknown plans fail closed.
 
+Reasoning controls use optional levels from the pinned registry's explicit
+`Thinking.Levels` metadata. Unsupported and unknown values are omitted; provider
+default remains the universal choice. Chat overrides are stored per exact model
+ID and conversation scope, and are not migrated from the legacy global effort.
+Native agents persist one optional model reasoning choice and pass it through
+their workflow settings. Missing values on legacy agents remain provider-managed.
+Neither capability metadata nor a saved effort changes paid-access enforcement.
+
 ## Responsibilities
 
 Overlay owns the authenticated connection, its generation and revision fences,

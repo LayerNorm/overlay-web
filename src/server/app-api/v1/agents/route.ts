@@ -38,6 +38,7 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
         instructions: typeof body.instructions === 'string' ? body.instructions : '',
         harness: body.harness,
         modelId: typeof body.modelId === 'string' ? body.modelId : '',
+        ...(body.reasoning === undefined ? {} : { reasoning: body.reasoning as WorkspaceAgentCreateInput['reasoning'] }),
         ...(body.permissionMode === undefined ? {} : { permissionMode: body.permissionMode }),
         ...(body.effort === undefined ? {} : { effort: body.effort }),
         avatarColor: typeof body.avatarColor === 'string' ? body.avatarColor : undefined,
