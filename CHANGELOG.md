@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep subscription device sign-in polling after retryable provider failures, so a temporary outage does not silently stall authorization.
+
 - Show each subscription connection's saved Personal or Workspace scope in Settings instead of always labeling it Personal.
 
 - Add immutable personal/workspace subscription scope, active-member authorization, owner-only lifecycle management, and workspace-aware picker caching. The approved scope selector defaults to Personal, supports explicit Workspace sharing, and preserves scope on reconnect; hosted/live acceptance remains pending.

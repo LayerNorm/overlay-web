@@ -111,7 +111,9 @@ credentials. An uncertain rotating-token result fails closed rather than
 blindly retrying a possibly consumed token.
 Explicit refresh always rediscovers the provider catalog, including when the
 credential is non-expiring or not near expiry. Temporary provider failures
-release leases and preserve valid credentials and saved selections. Definite
+release leases and preserve valid credentials and saved selections. Device sign-in
+continues polling after retryable errors until completion or authorization expiry;
+terminal failures stop the flow. Definite
 credential rejection and uncertain rotation outcomes remain fail-closed.
 
 Catalog reconciliation removes selections only when a successful catalog

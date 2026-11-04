@@ -85,8 +85,9 @@ export function useSubscriptionConnection({ connection, scope = 'personal', work
         const progress = await subscriptionRequest<SubscriptionProgress>({ connectionId: login.connectionId, action: 'poll' }, { signal: abort.signal, workspaceId })
         if (abort.signal.aborted) return
         await accept(progress)
-        if (progress.status !== 'pending') return
-        setError(null)
+        if (progress.status !== 'pending' &&
+            !(progress.status === 'error' && progress.retryable === true)) return
+        if (progress.status === 'pending') setError(null)
       } catch (value) {
         if (abort.signal.aborted) return
         setError(value instanceof Error ? value.message : 'Could not check sign-in. Retrying.')
