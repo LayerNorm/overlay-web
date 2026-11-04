@@ -15,3 +15,14 @@ test('an overlapping streamed suffix is appended once and terminal tool rows rem
   expect(result.content).toBe('start middle end')
   expect(result.parts.filter(value => value.type === 'tool-invocation')).toHaveLength(1)
 })
+
+
+test('failure recovery strips streamed internal controls but preserves real work rows', () => {
+  const result = mergeHarnessFailureTranscript({ liveContent: 'Saved update',
+    liveParts: ['harness_update_step', 'get_note'].map(toolName => ({ type: 'tool-invocation',
+      toolInvocation: { toolName, toolCallId: toolName } })),
+    settledContent: 'Saved update', settledParts: [{ type: 'text', text: 'Saved update' }],
+  })
+  expect(JSON.stringify(result)).not.toContain('harness_update_step')
+  expect(JSON.stringify(result)).toContain('get_note')
+})

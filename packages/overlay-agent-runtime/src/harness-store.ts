@@ -1,3 +1,13 @@
+export const HARNESS_CONTROL_TOOLS = [
+  'harness_set_plan',
+  'harness_update_step',
+  'harness_read_evidence',
+  'harness_read_artifact',
+  'harness_report_blocker',
+  'harness_delegate',
+  'harness_read_child',
+] as const
+
 import type {
   HarnessFundingPause,
   HarnessCheckpointPurpose, HarnessChild, HarnessEvidence, HarnessPlanInput, HarnessPolicy, HarnessReceipt,

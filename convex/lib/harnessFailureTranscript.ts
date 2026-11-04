@@ -1,3 +1,13 @@
+import { HARNESS_CONTROL_TOOLS } from '../../packages/overlay-agent-runtime/src/harness-store'
+
+const controlTools = new Set<string>(HARNESS_CONTROL_TOOLS)
+
+function isPublicPart(part: TranscriptPart): boolean {
+  const invocation = part.toolInvocation as Record<string, unknown> | undefined
+  const name = typeof part.toolName === 'string' ? part.toolName : invocation?.toolName
+  return typeof name !== 'string' || !controlTools.has(name)
+}
+
 type TranscriptPart = { type: string; [key: string]: unknown }
 
 function textPartText(part: TranscriptPart): string {
@@ -63,12 +73,12 @@ export function mergeHarnessFailureTranscript(input: {
   settledParts?: TranscriptPart[]
 }): { content: string; parts: TranscriptPart[] } {
   const settledParts = (input.settledParts ?? []).filter(part => (
-    part && typeof part === 'object' && part.type !== 'reasoning'
+    part && typeof part === 'object' && isPublicPart(part) && part.type !== 'reasoning'
       && part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'
       && part.type !== 'data-native-agent-error'
   ))
   const liveParts = (input.liveParts ?? []).filter(part => (
-    part && typeof part === 'object' && part.type !== 'reasoning'
+    part && typeof part === 'object' && isPublicPart(part) && part.type !== 'reasoning'
       && part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'
       && part.type !== 'data-native-agent-error'
   ))
