@@ -30,8 +30,18 @@ function mergeText(settled: string, live: string): string {
       return unmatchedLines.length ? `${left}\n\n${unmatchedLines.join('\n')}` : left
     }
   }
-  let overlap = Math.min(left.length, right.length)
-  while (overlap > 0 && left.slice(-overlap) !== right.slice(0, overlap)) overlap--
+  // Long repeated streamed text must not turn suffix matching into quadratic work.
+  const prefix = new Uint32Array(right.length)
+  for (let index = 1, matched = 0; index < right.length; index++) {
+    while (matched && right[index] !== right[matched]) matched = prefix[matched - 1]!
+    if (right[index] === right[matched]) matched++
+    prefix[index] = matched
+  }
+  let overlap = 0
+  for (let index = Math.max(0, left.length - right.length); index < left.length; index++) {
+    while (overlap && (overlap === right.length || left[index] !== right[overlap])) overlap = prefix[overlap - 1]!
+    if (left[index] === right[overlap]) overlap++
+  }
   return overlap ? `${left}${right.slice(overlap)}` : `${left}\n\n${right}`
 }
 
