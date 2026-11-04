@@ -34,6 +34,9 @@ Harness checkpoints retain short tool observations when they fit the existing
 use `harness_read_evidence` to inspect persisted details before treating missing
 preview text as missing source data. Image artifacts still require authorized
 reopening and visual inspection, not an inference from render metadata.
+Document evidence preserves observed page counts, pixel dimensions, and image
+format without embedding binary data. These facts support render-metadata claims
+in final verification, not claims that the image was visually inspected.
 
 Hybrid file retrieval falls back to lexical results when embedding pricing,
 reservation, or provider calls fail. It preserves provider reservation and

@@ -38,6 +38,11 @@ export function documentReadEvidenceValue(output: unknown, input: unknown, faile
     page: value.page ?? request.page,
     mode: value.mode,
     coverageComplete: Boolean(observation),
+    ...Object.fromEntries(['pageCount', 'imageWidth', 'imageHeight']
+      .filter(key => Number.isSafeInteger(value[key]) && Number(value[key]) > 0)
+      .map(key => [key, value[key]])),
+    ...(typeof value.imageMediaType === 'string' && /^image\/[a-z0-9.+-]{1,80}$/i.test(value.imageMediaType)
+      ? { imageMediaType: value.imageMediaType } : {}),
     ...(!observation ? {
       status: typeof value.error === 'string' && value.error.startsWith('Source revision mismatch') ? 'stale' : 'unavailable',
     } : {}),

@@ -10,6 +10,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Preserve short tool observations in Harness checkpoints when they fit the existing byte budget, and direct truncated-observation lookups to persisted evidence instead of treating a preview as missing source data.
 - Bound Harness progress updates separately from work, reject simulated tool calls from progress history and saved transcripts, and hide streamed function-call XML instead of presenting it as execution.
 - Accept a single JSON fence around Harness verifier verdicts without weakening evidence validation; pause on unusable verifier responses instead of leaking parser errors into answer corrections.
+- Retain observed document-render dimensions and image format in bounded tool evidence so final verification can check those facts without embedding image bytes or claiming visual understanding.
 
 - Refresh subscription rollout status and remove the superseded in-process adapter plan so future agents follow the private bridge architecture.
 

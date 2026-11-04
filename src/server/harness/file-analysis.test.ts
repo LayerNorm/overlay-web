@@ -58,6 +58,21 @@ test('bounded page evidence retains facts without binary payloads or false full-
   expect(fileAnalysisCoverage([partition], [partial]).examined).toEqual([])
 })
 
+test('render evidence preserves observed image metadata without binary data or a visual-inspection claim', () => {
+  const evidence = observation(2, { mode: 'render', pageCount: 3, imageWidth: 1224, imageHeight: 1584,
+    imageMediaType: 'image/png', image: new Uint8Array(51_973) })
+  expect(JSON.parse(evidence.summary)).toEqual({ success: true, fileId: 'file', revision: 'revision',
+    page: 2, mode: 'render', coverageComplete: true, pageCount: 3, imageWidth: 1224, imageHeight: 1584,
+    imageMediaType: 'image/png' })
+  expect(evidence.resource).toEqual({ id: 'file', revision: 'revision', page: 2, operation: 'read_document' })
+  expect(evidence.summary.length).toBeLessThanOrEqual(2_000)
+
+  const invalid = observation(2, { mode: 'render', pageCount: -1, imageWidth: Infinity, imageHeight: 1.5,
+    imageMediaType: 'data:image/png;base64,not-an-image' })
+  const omitted = JSON.parse(invalid.summary)
+  for (const key of ['pageCount', 'imageWidth', 'imageHeight', 'imageMediaType']) expect(omitted).not.toHaveProperty(key)
+})
+
 test('analysis schema bounds work and delegates only inherited tools with a durable assignment manifest', async () => {
   const policy = { actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: ['read_file', 'read_document', 'computer_exec', 'send_message'],
     requiresPlan: false, deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxParallelChildren: 2, maxDepth: 2 }
