@@ -54,7 +54,7 @@ test('fields render native agent setup without hosted-runtime fields', () => {
   const positions = order.map((needle) => markup.indexOf(needle))
   assert.ok(positions.every((position) => position >= 0), `missing field: ${order[positions.indexOf(-1)]}`)
   assert.deepEqual([...positions].sort((a, b) => a - b), positions)
-  assert.doesNotMatch(markup, /Overlay Cloud|>Runs on<|>Account</)
+  assert.doesNotMatch(markup, /Overlay Cloud|>Runs on<|>Account<|Connect your agent/)
 })
 
 test('the type control opens user-owned machine setup and has no hosted fields', () => {

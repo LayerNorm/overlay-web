@@ -403,7 +403,7 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
           onChange={update}
           modelField={modelField}
           computersAvailable={computersAvailable}
-          {...(onOpenMachineSetup ? { onOpenMachineSetup } : {})}
+          {...(capabilities.connectedAgents === true && onOpenMachineSetup ? { onOpenMachineSetup } : {})}
         />
       </div>
       <div className="flex shrink-0 justify-end gap-2 border-t border-(--border) px-5 py-3">

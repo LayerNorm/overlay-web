@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep the user-owned agent setup entry hidden when the deployment’s connected-agent rollout is disabled, while native agents and Computers remain available.
+
 - Keep retired hosted-machine cleanup pending until a fresh provider lookup confirms deletion, preventing asynchronous delete acknowledgements from discarding cleanup ownership.
 
 - Preserve private exact-origin hosting access for user-owned Agent Hosts, so retiring hosted Cloud runtimes does not break enrollment, signed API calls, or MCP tools on protected PR previews.
