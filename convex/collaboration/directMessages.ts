@@ -14,6 +14,7 @@ import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
+import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
 
 type CollaborationCtx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
 
@@ -1189,6 +1190,8 @@ export const failAgentMessage = mutation({
     messageId: v.id('conversationMessages'),
     parts: v.optional(v.array(v.any())),
     toolNames: v.optional(v.array(v.string())),
+    runId: v.optional(v.id('conversationAgentRuns')),
+    workflowRunId: v.optional(v.string()),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
   },
@@ -1196,16 +1199,27 @@ export const failAgentMessage = mutation({
     await requireConversationAccess(ctx, args)
     const message = await loadGeneratingAgentMessage(ctx, args)
     if (!message) return
+    if (args.runId || args.workflowRunId) {
+      if (!args.runId || !args.workflowRunId) throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
+      const run = await ctx.db.get(args.runId)
+      if (!run || run.assistantMessageId !== message._id || run.workflowRunId !== args.workflowRunId
+        || run.executionEngine !== 'overlay_harness' || ['completed', 'failed', 'cancelled'].includes(run.status)) {
+        throw new Error('HARNESS_DELIVERY_ACCESS_DENIED')
+      }
+    }
     const toolNames = args.toolNames ? new Set(args.toolNames) : undefined
-    const content = args.content === undefined
-      ? toolNames ? stripTextualToolCalls(message.content, toolNames) : undefined
-      : toolNames ? stripTextualToolCalls(args.content, toolNames) : args.content
-    const parts = args.parts === undefined
-      ? toolNames && message.parts ? stripTextualToolCallsFromParts(message.parts, toolNames) : undefined
-      : toolNames ? stripTextualToolCallsFromParts(args.parts, toolNames) : args.parts
+    const liveContent = toolNames ? stripTextualToolCalls(message.content, toolNames) : message.content
+    const liveParts = toolNames && message.parts ? stripTextualToolCallsFromParts(message.parts, toolNames) : message.parts ?? []
+    const settledContent = args.content === undefined ? '' : toolNames
+      ? stripTextualToolCalls(args.content, toolNames) : args.content
+    const settledParts = args.parts === undefined ? [] : toolNames
+      ? stripTextualToolCallsFromParts(args.parts, toolNames) : args.parts
+    const merged = mergeHarnessFailureTranscript({
+      liveContent, liveParts, settledContent, settledParts,
+    })
     await ctx.db.patch(args.messageId, {
-      ...(content === undefined ? {} : { content }),
-      ...(parts === undefined ? {} : { parts }),
+      content: merged.content,
+      parts: merged.parts,
       status: 'error',
       updatedAt: Date.now(),
     })

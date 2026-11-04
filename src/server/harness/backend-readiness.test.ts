@@ -16,7 +16,7 @@ test('a backend with only the original Harness marker remains unavailable to new
 test('all server-owned markers admit Harness', () => {
   const settings = { ...DEFAULT_APP_SETTINGS, harnessRevision: 'overlay-harness-v1',
     harnessModelRecoveryRevision: 'settled-retry-v1',
-    harnessArtifactPublicationRevision: 'binary-artifact-v1' }
+    harnessArtifactPublicationRevision: 'binary-artifact-v1', harnessTranscriptRevision: 'settled-public-v1' }
   expect(isHarnessBackendReady(settings)).toBe(true)
 })
 
@@ -38,4 +38,10 @@ test.each([undefined, null, false, 'future-revision'])('rejects unsupported read
 test.each([undefined, null, false, 'future-revision'])('rejects missing or unsupported recovery readiness %s', harnessModelRecoveryRevision => {
   const settings = { ...DEFAULT_APP_SETTINGS, harnessRevision: 'overlay-harness-v1', harnessModelRecoveryRevision }
   expect(isHarnessBackendReady(settings)).toBe(false)
+})
+
+ test.each([undefined, null, false, 'future-revision'])('rejects missing or unsupported transcript readiness %s', harnessTranscriptRevision => {
+  expect(isHarnessBackendReady({ ...DEFAULT_APP_SETTINGS, harnessRevision: 'overlay-harness-v1',
+    harnessModelRecoveryRevision: 'settled-retry-v1', harnessArtifactPublicationRevision: 'binary-artifact-v1',
+    harnessTranscriptRevision })).toBe(false)
 })

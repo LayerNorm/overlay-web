@@ -28,6 +28,13 @@ release paid, BYO or unknown holds. Retain full history and pause until provider
 settlement; retry compaction at most once. Funding pauses preserve the selected
 model and pending response. All calls use the configured usage markup.
 
+Harness public acknowledgment and progress updates use the selected model and
+normal receipt-backed reservation/settlement. Transcript storage follows settlement;
+a storage outage must not release incurred usage or trigger another work action.
+An ambiguous thrown tool invocation stops subsequent actions and requires outcome
+reconciliation. Unknown model usage retains its reservation. None of these paths
+bypass paid-workspace admission or switch to a free model.
+
 ## Reconciling held credit
 
 Use the internal reconciliation audit to identify provider-started holds requiring

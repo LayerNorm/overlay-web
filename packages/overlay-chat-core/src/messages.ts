@@ -326,10 +326,12 @@ export function messagePartToGeneratedUiBlock(part: unknown): Extract<AssistantV
 }
 
 export function getUserMessageDocNames(msg: unknown): string[] {
-  const message = msg as { metadata?: ChatMessageMetadata }
+  const message = msg as { content?: string; metadata?: ChatMessageMetadata }
   const fromMeta = message.metadata?.indexedDocuments
   if (Array.isArray(fromMeta) && fromMeta.length > 0) return fromMeta
-  return []
+  const attachments = message.metadata?.indexedAttachments
+  if (Array.isArray(attachments) && attachments.length > 0) return attachments.map(attachment => attachment.name)
+  return typeof message.content === 'string' ? splitUserDisplayText(message.content).docNames : []
 }
 
 export function splitUserDisplayText(fullText: string): { bodyText: string; docNames: string[] } {

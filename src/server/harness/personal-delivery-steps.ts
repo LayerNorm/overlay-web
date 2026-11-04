@@ -1,3 +1,5 @@
+import { harnessDiagnosticForFailure, harnessDiagnosticTerminalError } from './harness-diagnostics'
+import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 import 'server-only'
 
 import { FatalError, getWritable } from 'workflow'
@@ -32,9 +34,10 @@ export async function finishPersonalHarnessDelivery(
     || run.harnessRunId !== state.runId || run.workflowRunId !== access.workflowRunId
     || run.runner !== 'workflow' || run.executionEngine !== 'overlay_harness' || run.mode === 'room') throw new FatalError('Personal delivery ownership changed.')
   if (run.status === 'cancelled' || run.status === 'failed') return
-  if (state.status === 'completed') {
+  if (state.status === 'completed' && state.diagnostic?.code !== 'PERSISTENCE_FAILED') {
     // Every model/summary receipt was already billed by the model ports.
-    const completed = await agentRunService.complete({ ...delivery, runId: access.agentRunId, userId: access.actorUserId })
+    const { diagnostic: _diagnostic, ...completion } = delivery
+    const completed = await agentRunService.complete({ ...completion, runId: access.agentRunId, userId: access.actorUserId })
     if (options.emitWebhook && completed?.status === 'completed') {
       const { emitChatCompleted } = await import('@/server/shared/webhooks')
       emitChatCompleted({
@@ -42,18 +45,22 @@ export async function finishPersonalHarnessDelivery(
         modelId: delivery.routedModelId,
       })
     }
-  } else if (state.status === 'failed' || state.status === 'cancelled') {
+  } else if (state.status === 'failed' || state.status === 'cancelled'
+    || (state.status === 'completed' && state.diagnostic?.code === 'PERSISTENCE_FAILED')) {
     if (state.status === 'cancelled') {
       await server.appData.repositories.conversations.transitionAgentRun({
         runId: access.agentRunId, userId: access.actorUserId, status: 'cancelled', expectedWorkflowRunId: access.workflowRunId,
       })
       return
     }
-    const reason = state.terminalReason || 'The harness could not complete this task.'
-    await agentRunService.recordProgress({ content: delivery.content, runId: access.agentRunId, userId: access.actorUserId })
+    const diagnostic = harnessDiagnosticForFailure(state.runId, state, new Error(state.terminalReason ?? ''), 'delivery')
+    const reason = harnessDiagnosticMessage(diagnostic)
     await agentRunService.fail({
       runId: access.agentRunId, userId: access.actorUserId, errorText: reason,
-      error: { code: 'harness_failed', message: reason, retryable: true }, metrics: delivery.metrics,
+      expectedWorkflowRunId: access.workflowRunId,
+      failureTranscript: { content: delivery.content, parts: delivery.parts },
+      error: harnessDiagnosticTerminalError(diagnostic),
+      metrics: delivery.metrics,
     })
   } else {
     throw new FatalError('Cannot finalize an active harness delivery.')

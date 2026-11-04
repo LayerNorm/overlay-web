@@ -1664,6 +1664,35 @@ warn that partial output is incomplete. No new retries, provider fallback, tool
 replay, billing changes or lifecycle transitions are introduced by classification;
 SDK `isRetryable` metadata is not an instruction to retry.
 
+### Public progress and settled transcripts
+
+New native and personal admissions set `publicProgressVersion: 1`; this is separate
+from the funding and execution-policy version. They emit a tool-free acknowledgment
+before work and a short progress update after three silent tool batches or an observed
+tool failure. These are ordinary metered calls on the selected model, never final
+answers. Empty or malformed progress-only replies remain metered, execute no tools,
+create no work evidence and enter no approval wait. Discard their model history and
+resume the persisted task; presentation failure must not abort completed work.
+Tool-only journal rows keep their trace data without synthesizing extra assistant
+narration. Progress counters and receipt identities survive workflow handoff.
+
+Each settled model step journals bounded public text and tool display after receipt
+settlement. Private reasoning, internal control tools and model-only envelopes are
+excluded. Finalization reconstructs the newest bounded window (500 steps / four
+million serialized characters) and deduplicates live steps by receipt and step ID;
+the durable journal retains earlier history. Current actor, lineage and workflow
+ownership are checked on reads and writes. Old runs without the marker retain their
+existing delivery contract and do not call the journal endpoints.
+
+A journal outage records a persistence diagnostic and finalizes available partial
+output; it never reruns work to recover missing text. Thrown work-tool invocations
+have an uncertain outcome: settle known inference usage, stop queued work, and
+require reconciliation before repeating the action. Stable diagnostics use authored
+safe messages and next actions; unknown provider usage keeps its hold. Existing
+paid admission, selected-model policy, authorization renewals, bounded summary and
+answer-verification gates remain authoritative. Computer upload permissions expire
+within 15 minutes, clipped by the current authorized task/lease boundary.
+
 ### Workspace-funded Harness continuation
 
 New versioned native and personal tasks reserve each provider call against their

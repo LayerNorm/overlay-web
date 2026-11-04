@@ -13,6 +13,20 @@ test('structured failures survive reload without deriving causes from assistant 
   }
 })
 
+test('structured Harness diagnostics survive native error parsing', () => {
+  const diagnostic = {
+    diagnosticId: 'hd_parser_roundtrip',
+    code: 'MODEL_OUTCOME_UNKNOWN',
+    stage: 'model',
+    retryability: 'reconcile',
+    safeMessage: 'A model request ended without confirmed usage.',
+    nextAction: 'Reconcile the outstanding request before retrying it.',
+    occurredAt: 2,
+  } as const
+  const error = { ...failure, retryable: false, diagnostic }
+  assert.deepEqual(readNativeAgentError([{ type: NATIVE_AGENT_ERROR_PART, data: error }]), error)
+})
+
 test('projected explanations redact credentials and URLs without reclassifying the cause', () => {
   const cause = 'Provider request failed: https://provider.test?token=private Bearer opaque-token api_key=private-key token=private-token client_secret=private-secret sk-examplecredential12345'
   const message = nativeAgentErrorMessage(cause)

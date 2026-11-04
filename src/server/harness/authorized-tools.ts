@@ -21,16 +21,20 @@ export function createHarnessAuthorizedTools(
   ports: HarnessExecutionPorts,
   controls: Set<string>,
   initialApprovals?: Parameters<typeof createHarnessToolApprovals>[0],
+  guard?: { publicProgress(): boolean; uncertain(error: Error): void },
 ): { tools: ToolSet; approvals: HarnessToolApprovals } {
   const approvals = createHarnessToolApprovals(initialApprovals)
   const definitions = { ...surfaceTools, ...createHarnessControlTools(ports) }
   let toolTail: Promise<unknown> = Promise.resolve()
+  let uncertainOutcome: Error | undefined
   const tools = Object.fromEntries(Object.entries(definitions).sort(([a], [b]) => a.localeCompare(b)).map(([name, definition]) => {
     const execute = definition.execute
     return [name, !execute ? definition : {
       ...definition,
       execute: (value: unknown, options: Parameters<NonNullable<typeof execute>>[1]) => {
         const pending = toolTail.then(async () => {
+          if (uncertainOutcome) throw uncertainOutcome
+          if (guard?.publicProgress()) throw new Error("Tools are disabled during a public progress update.")
           let state = await ports.read()
           if (state.policy.executionPolicyVersion === 2) {
             await ports.renewLease()
@@ -53,7 +57,16 @@ export function createHarnessAuthorizedTools(
             input: unknown,
             options: HarnessToolExecutionOptions,
           ) => unknown
-          return invoke(value, { ...options, harnessApproved: approvals.consume(name, options.toolCallId, value) })
+          try {
+            return await invoke(value, { ...options, harnessApproved: approvals.consume(name, options.toolCallId, value) })
+          } catch (error) {
+            if (controls.has(name) || !guard) throw error
+            uncertainOutcome = Object.assign(new Error('A tool operation ended without a confirmed outcome.'), {
+              code: 'HARNESS_TOOL_OUTCOME_UNKNOWN', operationId: options.toolCallId,
+            })
+            guard.uncertain(uncertainOutcome)
+            throw uncertainOutcome
+          }
         })
         toolTail = pending.then(() => undefined, () => undefined)
         return pending
