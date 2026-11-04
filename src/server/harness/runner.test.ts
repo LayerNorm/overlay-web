@@ -221,55 +221,58 @@ test('V2 input rollover checkpoints the invocation and resumes through the succe
 
 const input = { instructions: 'Use the tools to perform the requested work.', messages: [{ role: 'user' as const, content: 'Read the records.' }], model: { modelId: 'fixture/model', credentialOwnerId: 'user' } }
 
-test('v2 public progress is tool-free, retained in the transcript, and resumes work without becoming the answer', async () => {
+test('the first model call acknowledges and works in one step, with no separate progress call', async () => {
   const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
   const read = vi.fn(async () => ({ record: 'found' }))
   const provider = model(index => index === 0
-    ? 'I will read the requested records.'
-    : index === 1
-      ? [call('read', 'public-progress-read')]
-      : 'The requested record was found.')
+    ? { text: 'I will read the requested records.', calls: [call('read', 'first-read')] }
+    : 'The requested record was found.')
 
   const result = await runOverlayHarness({
     ...input,
     tools: { read: tool({ inputSchema: z.object({}), execute: read }) },
   }, f.ports)
 
-  expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'none' })
+  expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'auto' })
   expect(read).toHaveBeenCalledOnce()
   expect(result.steps[0]?.text).toBe('I will read the requested records.')
-  expect(result.snapshot.status).toBe('completed')
   expect(result.snapshot.resultSummary).toBe('The requested record was found.')
-  expect(provider.doStreamCalls).toHaveLength(3)
+  expect(provider.doStreamCalls).toHaveLength(2)
 })
 
-test('a planless acknowledgement alone cannot finish the run', async () => {
+test('a simple question is answered by a single model call', async () => {
   const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
-  model(index => index === 0 ? 'I will begin now.' : '')
+  const provider = model(() => 'The capital of Japan is Tokyo.')
 
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
 
-  expect(result.snapshot.status).not.toBe('completed')
-  expect(result.snapshot.resultSummary).toBeUndefined()
-  expect(result.steps[0]?.text).toBe('I will begin now.')
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('The capital of Japan is Tokyo.')
+  expect(provider.doStreamCalls).toHaveLength(1)
 })
 
 test('a provider-ignored tool-free progress choice cannot execute or request approval for a tool', async () => {
   const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
+  const read = vi.fn(async () => ({ success: false }))
   const write = vi.fn(async () => ({ success: true }))
   const waitForApproval = vi.fn(async () => [])
   f.ports.waitForApproval = waitForApproval
   const provider = model(index => index === 0
-    ? [call('write', 'ignored-progress-tool')]
-    : 'The task is complete.')
+    ? [call('read', 'failed-read')]
+    : index === 1
+      ? [call('write', 'ignored-progress-tool')]
+      : 'The task is complete.')
 
   const result = await runOverlayHarness({
     ...input,
-    tools: { write: tool({ inputSchema: z.object({}), needsApproval: true, execute: write }) },
+    tools: {
+      read: tool({ inputSchema: z.object({}), execute: read }),
+      write: tool({ inputSchema: z.object({}), needsApproval: true, execute: write }),
+    },
   }, f.ports)
   expect(result.snapshot.status).toBe('completed')
 
-  expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'none' })
+  expect(provider.doStreamCalls[1]?.toolChoice).toEqual({ type: 'none' })
   expect(write).not.toHaveBeenCalled()
   expect(waitForApproval).not.toHaveBeenCalled()
   expect((await f.ports.read()).status).toBe('completed')
@@ -279,10 +282,9 @@ test('v2 commentary follows three silent tool batches and does not become the fi
   const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
   const read = vi.fn(async ({ id }: { id: string }) => ({ success: true, id }))
   const provider = model(index => {
-    if (index === 0) return 'I will check the records now.'
-    if (index >= 1 && index <= 3) return [call('read', `silent-${index}`, { id: `${index}` })]
-    if (index === 4) return 'Three checks are complete; I am verifying the result.'
-    if (index === 5) return [call('read', 'resumed-work', { id: 'verified' })]
+    if (index <= 2) return [call('read', `silent-${index}`, { id: `${index}` })]
+    if (index === 3) return 'Three checks are complete; I am verifying the result.'
+    if (index === 4) return [call('read', 'resumed-work', { id: 'verified' })]
     return 'The records are verified.'
   })
   const result = await runOverlayHarness({
@@ -290,30 +292,12 @@ test('v2 commentary follows three silent tool batches and does not become the fi
     tools: { read: tool({ inputSchema: z.object({ id: z.string() }), execute: read }) },
   }, f.ports)
 
-  expect(result.snapshot.resultSummary).toBe('The records are verified.')
-  expect(provider.doStreamCalls).toHaveLength(7)
-  expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'none' })
-  expect(provider.doStreamCalls[4]?.toolChoice).toEqual({ type: 'none' })
+  expect(provider.doStreamCalls).toHaveLength(6)
+  expect(provider.doStreamCalls[3]?.toolChoice).toEqual({ type: 'none' })
   expect(read).toHaveBeenCalledTimes(4)
   expect(result.snapshot.status).toBe('completed')
   expect(result.snapshot.resultSummary).toBe('The records are verified.')
-  expect(result.snapshot.resultSummary).not.toContain('Three checks are complete')
   expect(result.steps.some(step => step.text?.includes('Three checks are complete'))).toBe(true)
-})
-
-test('a provider tool call during commentary cannot execute a mutation or enter approval', async () => {
-  const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
-  const write = vi.fn(async () => ({ success: true }))
-  f.ports.waitForApproval = vi.fn(async () => [])
-  const provider = model(index => index === 0 ? [call('write', 'commentary-mutation')] : 'The requested answer is ready.')
-  const result = await runOverlayHarness({
-    ...input,
-    tools: { write: tool({ inputSchema: z.object({}), execute: write }) },
-  }, f.ports)
-  expect(result.snapshot.status).toBe('completed')
-  expect(provider.doStreamCalls[0]?.toolChoice).toEqual({ type: 'none' })
-  expect(write).not.toHaveBeenCalled()
-  expect(f.ports.waitForApproval).not.toHaveBeenCalled()
 })
 
 test('an ambiguous write exception settles its step and stops before model retry', async () => {
@@ -324,10 +308,8 @@ test('an ambiguous write exception settles its step and stops before model retry
     throw new Error('private transport details')
   })
   const provider = model(index => index === 0
-    ? 'I will make the change.'
-    : index === 1
-      ? [call('write', 'ambiguous-write')]
-      : [call('write', 'model-requested-repeat')])
+    ? [call('write', 'ambiguous-write')]
+    : [call('write', 'model-requested-repeat')])
   const result = await runOverlayHarness({
     ...input,
     tools: { write: tool({ inputSchema: z.object({}), execute: write }) },
@@ -335,7 +317,7 @@ test('an ambiguous write exception settles its step and stops before model retry
 
   expect(write).toHaveBeenCalledOnce()
   expect(applied).toBe(1)
-  expect(provider.doStreamCalls).toHaveLength(2)
+  expect(provider.doStreamCalls).toHaveLength(1)
   expect(result.snapshot).toMatchObject({
     status: 'failed',
     diagnostic: { code: 'TOOL_OUTCOME_UNKNOWN', stage: 'tool', retryability: 'reconcile' },
@@ -1377,12 +1359,13 @@ test('settled empty and provider-error responses retry without losing tools, dup
 
 test('an empty progress-only reply settles once and resumes work without aborting or completing it', async () => {
   const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
-  const read = vi.fn(async () => ({ success: true }))
-  const provider = model(index => index === 0 ? '' : index === 1 ? [call('read', 'after-empty-progress')] : 'The record was read.')
+  let reads = 0
+  const read = vi.fn(async () => ({ success: ++reads > 1 }))
+  const provider = model(index => index === 0 ? [call('read', 'failed-read')] : index === 1 ? '' : index === 2 ? [call('read', 'after-empty-progress')] : 'The record was read.')
   const result = await runOverlayHarness({ ...input, tools: { read: tool({ inputSchema: z.object({}), execute: read }) } }, f.ports)
   expect(result.snapshot.status).toBe('completed')
   expect(result.snapshot.resultSummary).toBe('The record was read.')
-  expect(read).toHaveBeenCalledOnce()
-  expect(provider.doStreamCalls).toHaveLength(3)
-  expect(f.receipts.size).toBe(3)
+  expect(read).toHaveBeenCalledTimes(2)
+  expect(provider.doStreamCalls).toHaveLength(4)
+  expect(f.receipts.size).toBe(4)
 })

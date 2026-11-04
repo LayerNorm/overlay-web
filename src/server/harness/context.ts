@@ -42,7 +42,11 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
     + '\nThe goal in the working state is the current request and the only task for this run. Use earlier conversation only to interpret it; never resume, repeat or plan an earlier request unless the goal asks for it.'
     + (readyToAnswer
       ? '\nEvery plan step is finished. Give your final answer now, respecting any requested output format. If you already wrote it, end your turn without repeating it.'
-      : context.continuation ? '\nInternal continuation: finish the remaining plan steps. This is not a new user request.' : '')
+      : context.continuation
+        ? state.plan.length
+          ? '\nInternal continuation: finish the remaining plan steps. This is not a new user request.'
+          : '\nInternal continuation of the current request. Only work shown in the observations has been done, so carry on with what remains.'
+        : '')
     + (context.truncatedResponse ? '\nThe previous response reached its output limit, not task completion. Continue from the saved partial response without repeating it.' : '')
     + (context.stagnationRecoveryAttempt !== undefined
       ? `\nRecovery attempt ${context.stagnationRecoveryAttempt}: inspect recent failed tool results and missing capabilities, then try a different approach. Do not repeat the same plan or tool call. Ask with harness_report_blocker only if you need a decision from the person.`

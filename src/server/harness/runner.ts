@@ -320,7 +320,9 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   let observedState = acquisition.initial
   const { executionOwner, executionGeneration } = acquisition
   const publicProgressEnabled = acquisition.initial.policy.publicProgressVersion === 1
-  let publicProgressDue = publicProgressEnabled && (input.continuation?.publicProgress?.due ?? !input.continuation)
+  // The first model call acknowledges and works in one step; a separate call here
+  // would answer simple questions before the real call starts.
+  let publicProgressDue = publicProgressEnabled && (input.continuation?.publicProgress?.due ?? false)
   let publicProgressActive = false
   let silentToolBatches = input.continuation?.publicProgress?.silentToolBatches ?? 0
   let uncertainToolOutcome: Error | undefined
@@ -565,7 +567,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       finalAnswerRequired = false
       truncatedResponse = false
       if (messages.at(-1)?.role === 'assistant') {
-        messages = [...messages, { role: 'user', content: 'Continue the existing task after the public progress update. Use the current persisted state and evidence; do not repeat completed actions.' }]
+        messages = [...messages, { role: 'user', content: 'Continue with the task now that the progress update is posted. Only work shown in tool results has been done; do not repeat it.' }]
       }
       continue
     }

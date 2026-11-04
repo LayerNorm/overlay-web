@@ -216,3 +216,11 @@ test('checkpoint limits include JSON escaping and UTF-8 without truncating evide
   }, 1_001)
   expect(buildHarnessCheckpoint(observed).evidence[0]?.id).toBe(evidenceId)
 })
+
+test('a continuation with no plan never implies that plan steps were done', () => {
+  const instructions = buildHarnessStepInstructions(make(false), {
+    instructions: 'Surface instructions', continuation: true, truncatedResponse: false,
+  })
+  expect(instructions).toContain('Only work shown in the observations has been done')
+  expect(instructions).not.toContain('remaining plan steps')
+})
