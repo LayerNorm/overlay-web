@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Recognize Codex Pro Lite/Max catalogs using explicit pinned plan membership, and preserve newly authorized credentials when catalog discovery is unavailable while continuing to block unknown-plan inference.
+
 - Keep provider sign-in dialogs scrollable within short viewports so the connection action remains reachable.
 
 - Use the shared reasoning-enabled model picker in General settings, reusing workspace-scoped new-chat preferences without changing existing threads.

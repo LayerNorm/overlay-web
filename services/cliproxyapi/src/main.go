@@ -283,6 +283,7 @@ func (b *bridge) poll(w http.ResponseWriter, r *http.Request) {
 	}
 	credential, err := newCredential(storage)
 	if err != nil {
+		log.Printf("codex bridge authorization rejected: %s", credentialFailureCode(err))
 		writeError(w, http.StatusBadGateway, "reconnect_required", "Codex authorization could not be completed. Reconnect to continue.")
 		return
 	}
@@ -513,6 +514,10 @@ func catalog(plan string) ([]map[string]any, error) {
 	switch normalized {
 	case "pro":
 		source = registry.GetCodexProModels()
+	case "prolite", "promax":
+		// These plan names are explicit in the pinned Codex client registry.
+		// Intersect with its per-model list instead of assuming Pro entitlement.
+		source = codexClientPlanModels(normalized)
 	case "plus":
 		source = registry.GetCodexPlusModels()
 	case "team", "business", "go":
@@ -538,6 +543,26 @@ func catalog(plan string) ([]map[string]any, error) {
 		models = append(models, entry)
 	}
 	return models, nil
+}
+
+func codexClientPlanModels(plan string) []*registry.ModelInfo {
+	allowed := make(map[string]bool)
+	ojson.ParseBytes(registry.GetCodexClientModelsJSON()).Get("models").ForEach(func(_, model ojson.Result) bool {
+		model.Get("available_in_plans").ForEach(func(_, value ojson.Result) bool {
+			if value.String() == plan {
+				allowed[model.Get("slug").String()] = true
+			}
+			return true
+		})
+		return true
+	})
+	var models []*registry.ModelInfo
+	for _, model := range registry.GetCodexProModels() {
+		if model != nil && allowed[model.ID] {
+			models = append(models, model)
+		}
+	}
+	return models
 }
 
 func catalogModel(plan, modelID string) (map[string]any, error) {
@@ -587,6 +612,18 @@ func decodeStorage(value envelope, requireUnexpired bool) (*codexauth.CodexToken
 	return storage, true
 }
 
+// Credential failures are static codes only; never log provider payloads or tokens.
+func credentialFailureCode(err error) string {
+	switch err.Error() {
+	case "invalid Codex token storage":
+		return "invalid_token_storage"
+	case "invalid Codex token expiry":
+		return "invalid_token_expiry"
+	default:
+		return "credential_encoding_failed"
+	}
+}
+
 func newCredential(storage *codexauth.CodexTokenStorage) (envelope, error) {
 	if storage == nil || storage.AccessToken == "" || storage.RefreshToken == "" {
 		return envelope{}, errors.New("invalid Codex token storage")
@@ -594,9 +631,6 @@ func newCredential(storage *codexauth.CodexTokenStorage) (envelope, error) {
 	expiresAt, err := time.Parse(time.RFC3339, storage.Expire)
 	if err != nil {
 		return envelope{}, errors.New("invalid Codex token expiry")
-	}
-	if _, err := catalog(storage.PlanType); err != nil {
-		return envelope{}, err
 	}
 	tokenDoc := ojson.NewDoc([]byte("{}"))
 	fields := map[string]string{

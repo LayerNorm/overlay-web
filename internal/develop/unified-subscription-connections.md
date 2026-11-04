@@ -15,9 +15,14 @@ provider-connection schema; it does not add workspace-scoped connections or
 other providers. Model visibility does not grant execution access: existing
 paid-access requirements still apply to all models, including BYOK.
 
-The plan-based Codex catalog is sourced from CLIProxyAPI's plan registry. It is
+The plan-based Codex catalog is sourced from CLIProxyAPI's plan registry. The
+`prolite` and `promax` variants additionally intersect that pinned registry with
+its Codex client catalog's explicit per-model plan membership; they do not
+inherit unverified Pro-only models. It is
 catalog provenance, not proof that a particular account is entitled to every
-listed model. Unknown plans fail closed.
+listed model. Unknown plans fail closed at catalog discovery and inference. A successful
+authorization still saves the valid credential before discovery, so a missing
+catalog cannot discard a newly exchanged rotating token.
 
 Reasoning controls use optional levels from the pinned registry's explicit
 `Thinking.Levels` metadata. Unsupported and unknown values are omitted; provider

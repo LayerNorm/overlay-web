@@ -222,3 +222,48 @@ func TestSafeRefreshErrorsUseActualUpstreamRefreshStatus(t *testing.T) {
 		}
 	}
 }
+
+func TestUnknownCatalogDoesNotDiscardAuthorizedCredentials(t *testing.T) {
+	credential, err := newCredential(&codexauth.CodexTokenStorage{
+		AccessToken: "access", RefreshToken: "refresh", PlanType: "unrecognized",
+		Expire: time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("authorized credential discarded: %v", err)
+	}
+	storage, ok := decodeStorage(credential, true)
+	if !ok || storage.PlanType != "unrecognized" {
+		t.Fatal("credential did not survive storage round trip")
+	}
+	if _, err := catalog(storage.PlanType); err == nil {
+		t.Fatal("unknown catalog must still fail closed")
+	}
+}
+
+func TestProVariantsUseExplicitPinnedClientPlanMembership(t *testing.T) {
+	for _, plan := range []string{"prolite", "promax"} {
+		models, err := catalog(plan)
+		if err != nil || len(models) == 0 {
+			t.Fatalf("known plan %s has no catalog: %v", plan, err)
+		}
+		for _, model := range models {
+			id := model["id"].(string)
+			found := false
+			ojson.ParseBytes(registry.GetCodexClientModelsJSON()).Get("models").ForEach(func(_, candidate ojson.Result) bool {
+				if candidate.Get("slug").String() != id {
+					return true
+				}
+				candidate.Get("available_in_plans").ForEach(func(_, value ojson.Result) bool {
+					if value.String() == plan {
+						found = true
+					}
+					return true
+				})
+				return true
+			})
+			if !found {
+				t.Fatalf("model %s not explicitly advertised for %s", id, plan)
+			}
+		}
+	}
+}
