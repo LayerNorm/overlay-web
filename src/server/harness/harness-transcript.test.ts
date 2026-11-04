@@ -255,3 +255,14 @@ test('a tool attempt in a text-only progress phase contributes no public work ro
     content: [call], toolCalls: [call], toolResults: [] } as never, new Set(['create_note']), { textOnly: true }))
     .toEqual({ content: '', parts: [] })
 })
+
+test('settled transcript removes repair prose but retains surrounding answer text', () => {
+  const leaked = 'The plan needs to be adjusted to mark `handle_artifact` as answerOnly since no tool action is needed when no artifact is returned. Updating the plan:'
+  const text = `The source was reviewed.\n\n${leaked}\n\nThe final count is 12.`
+  const persistence = publicHarnessStepPersistence({
+    stepNumber: 0, text, content: [{ type: 'text', text }], toolCalls: [], toolResults: [],
+  } as never, new Set())
+  expect(persistence.content).toContain('The source was reviewed.')
+  expect(persistence.content).toContain('The final count is 12.')
+  expect(persistence.content).not.toContain(leaked)
+})

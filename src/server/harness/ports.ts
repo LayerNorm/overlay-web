@@ -11,6 +11,7 @@ import type { HarnessModelReference } from './secure-model'
 import type { HarnessInstructionContext } from './context'
 import type { HarnessToolApprovalGrant } from './tool-approvals'
 import type { AuthenticatedToolDenial, ObservedToolOutcome } from './tool-outcome-persistence'
+import type { HarnessPlanRepairState } from './plan-repair'
 
 export type HarnessModelSettings = Pick<WorkflowAgentOptions, 'maxOutputTokens' | 'temperature' | 'reasoning' | 'providerOptions'>
 
@@ -55,6 +56,7 @@ export type HarnessRunnerCheckpoint = {
   modelCall: number
   stagnantSegments: number
   finalAnswerRequired: boolean
+  planRepair?: HarnessPlanRepairState
   truncatedResponse: boolean
   segmentStartedAt: number
   publicProgress?: { due: boolean; silentToolBatches: number }

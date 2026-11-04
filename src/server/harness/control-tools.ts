@@ -15,8 +15,8 @@ const completionErrors = new Set<string>([
 ])
 const dependencyError = HARNESS_STEP_VALIDATION.dependencies
 const reusedToolResultEvidenceError = HARNESS_STEP_VALIDATION.reusedToolEvidence
-const reportingHint = 'If this milestone only reports prior results, use harness_set_plan to set answerOnly: true, omit evidenceTools, and set requiresVerification: false for this milestone. Preserve every other milestone exactly, including completed action IDs, titles, dependencies and acceptance criteria. Then return the requested answer using the saved result; do not repeat the completed action.'
-const completionHint = `Cite tool:<id> evidence that supports this milestone. For a milestone that reopens an artifact, declare evidenceTools: ["harness_read_artifact"] with harness_set_plan; a reopened excerpt cannot prove a new source-tool write. ${reportingHint}`
+const reportingHint = 'If this milestone only reports prior results, use harness_revise_step with its exact id and patch {answerOnly: true, evidenceTools: [], requiresVerification: false}. Do not rewrite the whole plan. If a conditional action is not needed, use harness_update_step with status: "skipped" and a factual skipReason instead; first check saved tool results and artifact references. Then return the requested answer using the saved result; do not repeat completed actions.'
+const completionHint = `Cite tool:<id> evidence that supports this milestone. For a milestone that reopens an artifact, use harness_revise_step to set evidenceTools: ["harness_read_artifact"]; a reopened excerpt cannot prove a new source-tool write. ${reportingHint}`
 
 function artifactIdentity(metadata: HarnessArtifactReadResult['metadata']): string {
   const resource = metadata.resource
@@ -157,7 +157,38 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
               success: false,
               code: 'tool_validation_failure',
               error: error.message,
-              hint: 'Correct the plan fields and retry. Preserve existing milestone IDs and cite only authorized evidenceTools.',
+              hint: 'Correct the plan fields and retry. Preserve existing milestone IDs and cite only authorized evidenceTools. Use harness_revise_step for changes to one existing milestone.',
+            }
+          }
+          throw error
+        }
+        return { planRevision: state.planRevision, plan: state.plan }
+      },
+    }),
+    harness_revise_step: tool({
+      description: 'Revise one existing milestone definition without rewriting other milestones. Omit unchanged fields. Changed requirements invalidate affected completion; status and evidence belong in harness_update_step.',
+      inputSchema: z.object({
+        id,
+        patch: z.object({
+          title: z.string().min(1).max(500).optional(),
+          dependsOn: z.array(id).max(128).optional(),
+          acceptanceCriteria: z.array(z.string().min(1).max(2_000)).min(1).max(16).optional(),
+          evidenceTools: z.array(id).max(8).optional(),
+          requiresVerification: z.boolean().optional(),
+          answerOnly: z.boolean().optional(),
+        }).strict().refine(patch => Object.keys(patch).length > 0, { message: 'Patch at least one milestone definition field.' }),
+      }).strict(),
+      execute: async ({ id: stepId, patch }, { toolCallId }) => {
+        let state: HarnessSnapshot
+        try {
+          state = await ports.apply(`control:${toolCallId}`, { type: 'revise_step', id: stepId, patch })
+        } catch (error) {
+          if (error instanceof HarnessPlanValidationError) {
+            return {
+              success: false,
+              code: 'tool_validation_failure',
+              error: error.message,
+              hint: 'Correct only this milestone definition and retry with harness_revise_step. Do not include status or evidenceRefs. Keep authorized evidenceTools; use harness_update_step to skip unnecessary conditional work with a factual reason.',
             }
           }
           throw error
@@ -182,7 +213,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
           const verificationError = HARNESS_STEP_VALIDATION.verification
           if (error.message === verificationError) {
             return { success: false, error: verificationError,
-              hint: 'Revise the plan if no independent verifier is available for this milestone.' }
+              hint: 'Use harness_revise_step for this milestone if no independent verifier is available. Do not rewrite completed milestones or claim verification that did not occur.' }
           }
           if (error.message === evidenceReferenceError || completionErrors.has(error.message)
             || error.message === dependencyError || error.message === reusedToolResultEvidenceError) {

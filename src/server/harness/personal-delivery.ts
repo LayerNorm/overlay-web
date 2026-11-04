@@ -7,7 +7,7 @@ import {
 import { linkifySourceCitationsMarkdown } from '@/shared/knowledge/source-citations'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import { HARNESS_CONTROL_TOOLS } from './context'
-import { stripTextualToolCalls } from './textual-tool-calls'
+import { stripHarnessBookkeeping } from './public-text'
 import { compactHarnessTranscriptPersistence } from './harness-transcript'
 import type { HarnessTranscriptPersistence, HarnessTranscriptStep } from '@overlay/agent-runtime/harness-store'
 
@@ -22,7 +22,7 @@ export function buildPersonalHarnessDelivery(
   },
 ) {
   const toolNames = new Set([...HARNESS_CONTROL_TOOLS, ...activeToolNames])
-  const sanitize = (text: string) => stripTextualToolCalls(text, toolNames)
+  const sanitize = (text: string) => stripHarnessBookkeeping(text, toolNames)
   const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
   const isPublic = (part: { type: string; toolName?: string }) => !part.toolName || !controls.has(part.toolName)
   const displayResult = <T extends { type: string }>(part: T): T => {

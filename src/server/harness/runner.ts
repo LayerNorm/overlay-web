@@ -32,9 +32,14 @@ import {
   type AuthenticatedToolDenial,
   type ObservedToolOutcome,
 } from './tool-outcome-persistence'
-import { hasTextualToolCalls, stripTextualToolCalls, TEXTUAL_TOOL_CALL_MARKERS } from './textual-tool-calls'
+import { hasTextualToolCalls, TEXTUAL_TOOL_CALL_MARKERS } from './textual-tool-calls'
 import { HarnessWaitRollover } from './waits'
 import { buildHarnessRunnerCheckpoint } from './runner-checkpoint'
+import { stripHarnessBookkeeping } from './public-text'
+import {
+  advancePlanRepair, HARNESS_PLAN_REPAIR_LIMIT, HARNESS_PLAN_REPAIR_PAUSE, planRepairEvidence,
+  type HarnessPlanRepairState,
+} from './plan-repair'
 import {
   handleWaitingState as handleHarnessWaitingState,
   resumePendingApprovals,
@@ -279,7 +284,7 @@ function latestFinalAnswerText(
     const step = steps[index]
     if (step.toolCalls.length) break
     if (TEXTUAL_TOOL_CALL_MARKERS.some(marker => step.text?.includes(marker))) return ''
-    const text = stripTextualToolCalls(step.text ?? '', toolNames)
+    const text = stripHarnessBookkeeping(step.text ?? '', toolNames)
     if (text) return text
   }
   return ''
@@ -287,10 +292,68 @@ function latestFinalAnswerText(
 
 function latestCheckpointSummaryText(steps: StepResult<ToolSet>[], toolNames: ReadonlySet<string>): string {
   for (let index = steps.length - 1; index >= 0; index--) {
-    const text = stripTextualToolCalls(steps[index]?.text ?? '', toolNames)
+    const text = stripHarnessBookkeeping(steps[index]?.text ?? '', toolNames)
     if (text) return text
   }
   return ''
+}
+
+function planRepairCalls(step: StepResult<ToolSet>, selectedControlNames: string[], unambiguousControl: boolean) {
+  const controlNames = new Set(['harness_set_plan', 'harness_revise_step', 'harness_update_step'])
+  const record = step as unknown as {
+    toolCalls?: Array<{ toolName?: string; toolCallId?: string }>
+    toolErrors?: Array<{ toolName?: string; toolCallId?: string }>
+    toolResults?: Array<{ toolName?: string; toolCallId?: string; type?: string; output?: unknown; error?: unknown }>
+  }
+  const contentCalls = step.content.filter(part => part.type === 'tool-call' || part.type === 'tool-error')
+  const contentToolErrors = step.content.filter(part => part.type === 'tool-error')
+  const contentToolResults = step.content.filter(part => part.type === 'tool-result')
+  const namesByCall = new Map<string, string>()
+  const names = new Set<string>()
+  const toolErrors = [
+    ...(record.toolErrors ?? []),
+    ...contentToolErrors.map(item => ({ toolName: item.toolName, toolCallId: item.toolCallId })),
+  ]
+  const toolResults = [
+    ...(record.toolResults ?? []),
+    ...contentToolResults.map(item => ({
+      toolName: item.toolName, toolCallId: item.toolCallId, type: item.type, output: item.output, error: undefined,
+    })),
+  ]
+  for (const item of [...(record.toolCalls ?? []), ...(record.toolErrors ?? []), ...toolResults, ...contentCalls]) {
+    if (typeof item.toolName === 'string') {
+      namesByCall.set(item.toolCallId ?? '', item.toolName)
+      if (controlNames.has(item.toolName)) names.add(item.toolName)
+    }
+  }
+  const updateFailed = toolErrors.some(item => (
+    item.toolName === 'harness_update_step' || namesByCall.get(item.toolCallId ?? '') === 'harness_update_step'
+  )) || toolResults.some(item => {
+    if (item.toolName !== 'harness_update_step' && namesByCall.get(item.toolCallId ?? '') !== 'harness_update_step') return false
+    if (item.type === 'tool-error' || item.error !== undefined) return true
+    return item.output !== null && typeof item.output === 'object'
+      && ('success' in item.output && item.output.success === false || 'error' in item.output)
+  })
+  const unparsedToolCall = step.finishReason === 'tool-calls' && !step.text.trim() && step.content.length === 0
+    && step.toolCalls.length === 0 && !(record.toolCalls?.length) && !(record.toolErrors?.length) && !(record.toolResults?.length)
+  const unparsedControl = unparsedToolCall && unambiguousControl ? selectedControlNames[0] : undefined
+  if (unparsedControl === 'harness_set_plan' || unparsedControl === 'harness_revise_step') names.add(unparsedControl)
+  return {
+    names: [...names],
+    failedUpdateStep: updateFailed || unparsedControl === 'harness_update_step',
+  }
+}
+
+async function pauseForPlanRepair(ports: HarnessExecutionPorts, state: HarnessSnapshot): Promise<HarnessSnapshot> {
+  const operationId = `plan-repair:${state.revision}`
+  return ports.apply(`stuck:${operationId}`, {
+    type: 'block',
+    blocker: { kind: 'stuck', question: HARNESS_PLAN_REPAIR_PAUSE },
+    diagnostic: createHarnessDiagnostic({
+      diagnosticId: stableHarnessDiagnosticId(state.runId, operationId, state.revision),
+      code: 'STAGNATION', stage: 'model', operationId, occurredAt: Date.now(),
+    }),
+  })
 }
 
 async function authorizeModelBoundary(
@@ -326,6 +389,7 @@ async function authorizeModelBoundary(
     }
   }
   if (state.status !== 'running') {
+    if (state.blocker?.kind === 'stuck') throw new HarnessYield()
     const receiptId = operationId.startsWith('budget:') ? `model:${operationId.split(':').at(-1)}` : state.latestReceipt?.id
     if (receiptId) throw new HarnessYield(receiptId)
     throw new Error('Harness execution is not runnable.')
@@ -350,6 +414,11 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   const acquisition = await acquireHarnessExecution(ports, messages, deliverySteps, executionOutcomes, authenticatedDenials)
   if ('outcome' in acquisition) return acquisition.outcome
   let observedState = acquisition.initial
+  let planRepair: HarnessPlanRepairState = input.continuation?.planRepair
+    ?? { attempts: 0, evidence: planRepairEvidence(acquisition.initial) }
+  if (planRepair.evidence !== planRepairEvidence(acquisition.initial)) {
+    planRepair = { attempts: 0, evidence: planRepairEvidence(acquisition.initial) }
+  }
   const { executionOwner, executionGeneration } = acquisition
   const publicProgressEnabled = acquisition.initial.policy.publicProgressVersion === 1
   let publicProgressDue = publicProgressEnabled && (input.continuation?.publicProgress?.due ?? !input.continuation)
@@ -371,9 +440,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   let pendingApproval = input.continuation?.pendingApproval
   const handoff = async (): Promise<HarnessExecutionResult> => {
     const checkpoint = buildHarnessRunnerCheckpoint({
-      messages, invocation, modelCall, stagnantSegments, finalAnswerRequired, truncatedResponse,
+      messages, invocation, modelCall, stagnantSegments, finalAnswerRequired, truncatedResponse, planRepair,
       segmentStartedAt: Date.now(), deliverySteps, pendingApproval, toolApprovals: approvals.snapshot(),
       executionOutcomes, authenticatedDenials, stepReceiptIds, publicProgress: { due: publicProgressDue, silentToolBatches },
+      toolNames,
     })
     if ((await ports.read()).modelReservation) throw new Error('HARNESS_CONTINUATION_HAS_UNRESOLVED_MODEL_RESERVATION')
     const handedOff = await ports.continueExecution(checkpoint)
@@ -382,9 +452,17 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   }
 
   while (true) {
-    const state = await ports.read()
+    let state = await ports.read()
     if (isTerminal(state)) {
       return withObservedToolOutcomes({ outcome: 'finished', snapshot: state, messages, steps: deliverySteps, stepReceiptIds }, executionOutcomes, authenticatedDenials)
+    }
+    const currentEvidence = planRepairEvidence(state)
+    if (planRepair.evidence !== currentEvidence) planRepair = { attempts: 0, evidence: currentEvidence }
+    if (state.status === 'running' && planRepair.attempts >= HARNESS_PLAN_REPAIR_LIMIT) {
+      state = await pauseForPlanRepair(ports, state)
+      observedState = await ports.read()
+      return withObservedToolOutcomes({ outcome: 'blocked', snapshot: state, messages, steps: deliverySteps, stepReceiptIds },
+        executionOutcomes, authenticatedDenials)
     }
     if (segmentLimitReached(state, modelCall, segmentModelCallStart, segmentStartedAt)) return handoff()
     const waiting = await processHarnessWait({
@@ -421,14 +499,35 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     let preparedReceiptId = `model:${modelCall}`
     const recordedSteps = new Set<number>()
     const receiptByStepNumber = new Map<number, string>()
+    const repairedSteps = new Set<number>()
+    const hadPlanByReceiptId = new Map<string, boolean>()
+    const planningControlsByReceiptId = new Map<string, { names: string[]; unambiguous: boolean }>()
     const recordModelStep = async (step: Parameters<HarnessExecutionPorts['recordModelStep']>[0]) => {
       const receiptId = receiptByStepNumber.get(step.stepNumber) ?? `model:${modelCall++}`
       receiptByStepNumber.set(step.stepNumber, receiptId)
       receiptIdsByStep.set(step as StepResult<ToolSet>, receiptId)
-      if (recordedSteps.has(step.stepNumber)) return
-      await ports.recordModelStep(step, receiptId)
-      recordedSteps.add(step.stepNumber)
-      settledSteps.push(step)
+      if (!recordedSteps.has(step.stepNumber)) {
+        await ports.recordModelStep(step, receiptId)
+        recordedSteps.add(step.stepNumber)
+        settledSteps.push(step)
+      }
+      if (repairedSteps.has(step.stepNumber)) return
+      const current = await ports.read()
+      observedState = current
+      const selectedControls = planningControlsByReceiptId.get(receiptId) ?? { names: [], unambiguous: false }
+      const calls = planRepairCalls(step, selectedControls.names, selectedControls.unambiguous)
+      planRepair = advancePlanRepair(
+        planRepair,
+        current,
+        calls.names,
+        hadPlanByReceiptId.get(receiptId) ?? current.plan.length > 0,
+        calls.failedUpdateStep,
+      )
+      repairedSteps.add(step.stepNumber)
+      if (planRepair.attempts >= HARNESS_PLAN_REPAIR_LIMIT && current.status === 'running') {
+        await pauseForPlanRepair(ports, current)
+        observedState = await ports.read()
+      }
     }
     const agent = new WorkflowAgent({
       model: new HarnessLanguageModel(input.model),
@@ -440,7 +539,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         // The SDK checks stop conditions before onStepEnd updates our counters.
         const currentStep = currentSteps.at(-1)
         if (publicProgressEnabled && !commentaryInvocation && currentStep?.toolCalls.length
-          && !stripTextualToolCalls(currentStep.text ?? '', toolNames).trim()
+          && !stripHarnessBookkeeping(currentStep.text ?? '', toolNames).trim()
           && silentToolBatches + 1 >= HARNESS_SILENT_TOOL_BATCHES) publicProgressDue = true
         const progress = harnessProgressFingerprint(observedState)
         stagnantCalls = progress === previous ? stagnantCalls + 1 : 0
@@ -466,6 +565,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         }
         const receiptId = `model:${modelCall}`
         preparedReceiptId = receiptId
+        hadPlanByReceiptId.set(receiptId, current.plan.length > 0)
         const prepared = await ports.prepareModel({ receiptId, state: current, messages: prompt, instructionContext,
           toolNames: Object.keys(tools), toolDefinitions, settings: input.settings ?? {} })
         assertPreparedModelAuthority(prepared, input.model.credentialOwnerId)
@@ -476,6 +576,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         observedState = current
         const activeTools = activeModelTools(current, prepared.activeToolNames, tools, controls, complete, needsPlan)
         const pendingAnswerControls = complete && activeTools.length > 0
+        planningControlsByReceiptId.set(receiptId, {
+          names: activeTools.filter(name => ['harness_set_plan', 'harness_revise_step', 'harness_update_step'].includes(name)),
+          unambiguous: activeTools.length === 1,
+        })
         return {
           system: prepared.instructions ?? buildHarnessStepInstructions(current, instructionContext),
           messages: prepared.messages.filter(message => message.role !== 'system'),
@@ -489,10 +593,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       },
       onStepEnd: async step => {
         if (commentaryInvocation) {
-          commentaryText = stripTextualToolCalls(step.text ?? '', toolNames).trim()
+          commentaryText = stripHarnessBookkeeping(step.text ?? '', toolNames).trim()
           if (step.toolCalls.length || hasTextualToolCalls(step.text ?? '', toolNames)) commentaryAttemptedTool = true
         } else if (publicProgressEnabled) {
-          const publicText = stripTextualToolCalls(step.text ?? '', toolNames).trim()
+          const publicText = stripHarnessBookkeeping(step.text ?? '', toolNames).trim()
           if (step.toolCalls.length) {
             silentToolBatches = publicText ? 0 : silentToolBatches + 1
             if (!publicText && (failedToolResultObserved || silentToolBatches >= HARNESS_SILENT_TOOL_BATCHES)) {

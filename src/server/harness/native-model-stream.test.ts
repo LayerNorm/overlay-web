@@ -65,6 +65,7 @@ test('native text streams before inference finishes, preserving usage and exclud
   const reading = drain(await projectNativeHarnessStream(reference, provider))
   controller.enqueue({ type: 'reasoning-delta', id: 'reason', delta: 'private planning' })
   controller.enqueue(text('Visible response '.repeat(20)))
+  controller.enqueue({ type: 'text-end', id: 'text' })
   await firstWrite
   expect(mocks.append).toHaveBeenCalledWith(expect.objectContaining({ messageId: 'answer', conversationId: 'room' }))
   expect(JSON.stringify(mocks.append.mock.calls)).not.toContain('private planning')
@@ -94,7 +95,7 @@ test('native projection holds split protocol markers and drops the call and foll
     finish,
   ]
   expect(await drain(await projectNativeHarnessStream(reference, source(parts)))).toEqual(parts)
-  expect(mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')).toBe('The capital of France is Paris. ')
+  expect(mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')).toBe('The capital of France is Paris.')
   expect(JSON.stringify(mocks.append.mock.calls)).not.toContain('<tool_call>')
   expect(JSON.stringify(mocks.append.mock.calls)).not.toContain('must stay hidden')
 })
@@ -171,4 +172,41 @@ test('live text remains bounded while provider output is untouched', async () =>
   expect(await drain(await projectNativeHarnessStream(reference, source(parts)))).toEqual(parts)
   expect(mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')).toBe('\n\nMore o')
   expect(JSON.stringify(mocks.append.mock.calls)).not.toContain('old secret')
+})
+
+test('repair paragraphs split across native deltas are withheld while ordinary prose and code remain', async () => {
+  const leaked = [
+    'The plan needs to be adjusted to mark `handle_artifact` as answerOnly since no tool action is needed when no artifact is returned. Updating the plan:',
+    'Fixing the plan format - `status` should not be included in the set operation:',
+    'Plan reset. Now updating the milestones with the correct answerOnly configuration:',
+  ]
+  const prose = [
+    'The source was reviewed.',
+    ...leaked,
+    'My plan is to summarize the document.',
+    `\`\`\`text\n${leaked[1]}\n\`\`\``,
+    'The final count is 12.',
+  ].join('\n\n')
+  const parts: LanguageModelV4StreamPart[] = [
+    ...Array.from(prose, character => text(character)),
+    { type: 'text-end', id: 'text' },
+    finish,
+  ]
+  expect(await drain(await projectNativeHarnessStream(reference, source(parts)))).toEqual(parts)
+  const visible = mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')
+  expect(visible).toContain('The source was reviewed.')
+  expect(visible).toContain('My plan is to summarize the document.')
+  expect(visible).toContain(leaked[1])
+  expect(visible).toContain('The final count is 12.')
+  expect(visible).not.toContain(leaked[0])
+  expect(visible).not.toContain(leaked[2])
+})
+
+test('an oversized unclassified paragraph is dropped instead of leaking a prefix', async () => {
+  const oversized = 'x'.repeat(MAX_PERSISTED_ASSISTANT_CONTENT_CHARS + 1)
+  const parts = [text(oversized), text('\n\nThe next result is ready.'), finish]
+  expect(await drain(await projectNativeHarnessStream(reference, source(parts)))).toEqual(parts)
+  const visible = mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')
+  expect(visible).toBe('The next result is ready.')
+  expect(visible).not.toContain('x'.repeat(100))
 })

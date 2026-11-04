@@ -6,92 +6,54 @@ import { createAgentMessageStream, appendAgentTextPart } from '@/server/agents/a
 import { logger } from '@/server/observability/logger'
 import { compactAssistantPersistenceForConvex, MAX_PERSISTED_ASSISTANT_CONTENT_CHARS } from '@/shared/chat/persist-assistant-turn'
 import { stripTextualToolCalls, TEXTUAL_TOOL_CALL_MARKERS } from '@/shared/ai/textual-tool-calls'
+import { stripHarnessBookkeeping } from './public-text'
 import { refreshNativeHarnessAccess } from './native-access'
 import type { HarnessModelReference } from './secure-model'
-
-function couldBeginTextualToolCall(value: string): boolean {
-  const trimmed = value.trimStart()
-  if (!trimmed || trimmed.startsWith('```') || '```'.startsWith(trimmed)) return true
-  if (trimmed.startsWith('{')) {
-    const next = trimmed.slice(1).trimStart()
-    return !next || next.startsWith('"')
-  }
-  if (trimmed.startsWith('[')) {
-    const next = trimmed.slice(1).trimStart()
-    return !next || next.startsWith('{') || next.startsWith('[')
-  }
-  return false
-}
 
 function createTextualToolCallProjector(
   toolNames: ReadonlySet<string>,
   appendVisibleText: (text: string) => void,
 ) {
-  let partialLine = ''
-  let candidateParagraph = ''
-  let codeFence = ''
+  let paragraph = ''
+  let droppingParagraph = false
   let insideCodeFence = false
+  let emittedParagraph = false
 
-  const flushCandidate = (separator = '') => {
-    const visible = stripTextualToolCalls(candidateParagraph, toolNames)
-    if (visible) appendVisibleText(visible + separator)
-    candidateParagraph = ''
-  }
-
-  const projectLine = (line: string) => {
-    if (candidateParagraph) {
-      if (/^[ \t]*\n$/.test(line)) flushCandidate(line)
-      else candidateParagraph += line
-      return
-    }
-    if (insideCodeFence) {
-      codeFence += line
-      if (/^[ \t]*```/.test(line)) {
-        appendVisibleText(stripTextualToolCalls(codeFence, toolNames))
-        codeFence = ''
-        insideCodeFence = false
-      }
-      return
-    }
-    if (/^[ \t]*```/.test(line)) {
-      codeFence = line
-      insideCodeFence = true
-      return
-    }
-    if (/^[ \t]*[\[{]/.test(line)) {
-      candidateParagraph = line
-      return
-    }
-    appendVisibleText(line)
+  const emitParagraph = (text: string) => {
+    const fences = text.match(/^\s*```/gm)?.length ?? 0
+    const code = insideCodeFence || fences > 0
+    if (fences % 2) insideCodeFence = !insideCodeFence
+    const visible = code ? stripTextualToolCalls(text, toolNames) : stripHarnessBookkeeping(text, toolNames)
+    if (!visible) return
+    appendVisibleText(`${emittedParagraph ? '\n\n' : ''}${visible}`)
+    emittedParagraph = true
   }
 
   return {
     push(text: string) {
-      const combined = partialLine + text
-      partialLine = ''
+      const combined = paragraph + text
+      const boundary = /\n[ \t]*\n/g
       let start = 0
-      while (start < combined.length) {
-        const newline = combined.indexOf('\n', start)
-        if (newline < 0) {
-          const remainder = combined.slice(start)
-          if (candidateParagraph || insideCodeFence || couldBeginTextualToolCall(remainder)) {
-            partialLine = remainder
-          } else {
-            appendVisibleText(remainder)
-          }
-          return
+      let match: RegExpExecArray | null
+      while ((match = boundary.exec(combined))) {
+        const next = combined.slice(start, match.index)
+        if (!droppingParagraph && next.length + match[0].length <= MAX_PERSISTED_ASSISTANT_CONTENT_CHARS) {
+          emitParagraph(next + match[0])
         }
-        projectLine(combined.slice(start, newline + 1))
-        start = newline + 1
+        paragraph = ''
+        droppingParagraph = false
+        start = match.index + match[0].length
       }
+      const remainder = combined.slice(start)
+      if (droppingParagraph || remainder.length > MAX_PERSISTED_ASSISTANT_CONTENT_CHARS) {
+        paragraph = ''
+        droppingParagraph = true
+      } else paragraph = remainder
     },
     flush() {
-      if (partialLine) projectLine(partialLine)
-      partialLine = ''
-      if (candidateParagraph) flushCandidate()
-      if (codeFence) appendVisibleText(stripTextualToolCalls(codeFence, toolNames))
-      codeFence = ''
-      insideCodeFence = false
+      if (!droppingParagraph && paragraph) emitParagraph(paragraph)
+      paragraph = ''
+      droppingParagraph = false
     },
   }
 }
@@ -177,6 +139,7 @@ export async function projectNativeHarnessStream(
           if (part.type === 'text-delta') {
             projectTextDelta(part.delta)
           }
+          if (part.type === 'text-end' || part.type === 'tool-input-start') flushPendingText()
           if (part.type === 'finish' || part.type === 'error') {
             flushPendingText()
             await stream.flush()

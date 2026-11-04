@@ -615,6 +615,22 @@ describe('durable harness runs', () => {
     expect((await get(convex, input.runId))?.plan[0]?.evidenceTools).toEqual(['tool:read', 'tool:write'])
   })
 
+  test('revises a single existing milestone and rejects status or evidence injection', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('run-revise-step', await seedConversation(convex))
+    await admit(convex, input)
+    const planned = await apply(convex, input, 'initial-plan', 0, {
+      type: 'replace_plan', steps: oneStep('work'),
+    })
+    const revised = await apply(convex, input, 'revise-one-step', planned.snapshot.revision, {
+      type: 'revise_step', id: 'work', patch: { title: 'Read the revised source' },
+    })
+    expect(revised.snapshot.plan[0]?.title).toBe('Read the revised source')
+    await expect(apply(convex, input, 'invalid-revision', revised.snapshot.revision, {
+      type: 'revise_step', id: 'work', patch: { status: 'done' },
+    } as never)).rejects.toThrow()
+  })
+
   test('checks operation idempotency before CAS and leaves stale mutations without writes', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('run-cas', await seedConversation(convex))

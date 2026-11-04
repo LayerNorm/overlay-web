@@ -7,6 +7,7 @@ import { harnessToolOutputEvidence } from './tool-evidence'
 
 test('shared Harness controls retain file analysis after transcript integration', () => {
   expect(HARNESS_CONTROL_TOOLS).toContain('harness_analyze_files')
+  expect(HARNESS_CONTROL_TOOLS).toContain('harness_revise_step')
 })
 
 const make = (requiresPlan = true) => createHarnessSnapshot({

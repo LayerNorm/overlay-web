@@ -37,6 +37,13 @@ reopening and visual inspection, not an inference from render metadata.
 Document evidence preserves observed page counts, pixel dimensions, and image
 format without embedding binary data. These facts support render-metadata claims
 in final verification, not claims that the image was visually inspected.
+Use `harness_revise_step` to change one existing milestone definition; unchanged
+milestones retain their evidence and completion state, while the existing plan
+validation and invalidation rules still apply. Repeated planning repairs are
+bounded to four model steps without new successful tool-result evidence. The
+counter survives checkpoints, resets on new evidence, and pauses truthfully at
+the limit. Repair bookkeeping is removed from public progress, transcript,
+delivery and native streaming without hiding ordinary plan discussion or code.
 
 Hybrid file retrieval falls back to lexical results when embedding pricing,
 reservation, or provider calls fail. It preserves provider reservation and
@@ -74,6 +81,12 @@ an execution result or final answer. Simulated tool calls invalidate that progre
 step for saved transcripts and subsequent model history, while its actual usage
 still settles. Function-call XML is hidden from live delivery. Real document
 observations and final-answer verification remain required for acceptance.
+
+The latest hosted failure showed a valid PDF read and render followed by
+unrelated completed milestones being reopened by full-plan rewrites; repair
+prose also reached public text and final verification was not reached. Targeted
+milestone revision and bounded private repair are implemented locally, but a
+hosted rerun is still needed to validate recovery through final verification.
 
 - Upload a PDF larger than 4.5 MB with file-first enabled; its original must remain
   downloadable if extraction fails. Retry registration without uploading again.

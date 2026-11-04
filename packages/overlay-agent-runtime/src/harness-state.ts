@@ -200,6 +200,7 @@ export type HarnessSnapshot = {
 }
 
 export type HarnessPlanInput = Pick<HarnessPlanStep, 'id' | 'title' | 'dependsOn' | 'acceptanceCriteria' | 'requiresVerification' | 'evidenceTools' | 'answerOnly'>
+export type HarnessPlanStepPatch = Partial<Omit<HarnessPlanInput, 'id'>>
 export type HarnessCheckpointPurpose = 'continuation' | 'compaction'
 
 export class HarnessPlanValidationError extends Error {
@@ -397,6 +398,24 @@ export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInp
   if (JSON.stringify(next.plan) === JSON.stringify(state.plan)) return state
   next.planRevision++
   return changed(next, now)
+}
+
+export function reviseHarnessPlanStep(state: HarnessSnapshot, id: string, patch: HarnessPlanStepPatch, now: number): HarnessSnapshot {
+  if (!state.plan.some(step => step.id === id)) throw new HarnessPlanValidationError('Unknown milestone ID.')
+  const keys = ['title', 'dependsOn', 'acceptanceCriteria', 'requiresVerification', 'evidenceTools', 'answerOnly'] as const
+  if (!Object.keys(patch).length || Object.keys(patch).some(key => !(keys as readonly string[]).includes(key))) {
+    throw new HarnessPlanValidationError('Revise only milestone definition fields; use a step transition for status and evidence.')
+  }
+  const steps = state.plan.map(step => {
+    const definition: HarnessPlanInput = {
+      id: step.id, title: step.title, dependsOn: step.dependsOn, acceptanceCriteria: step.acceptanceCriteria,
+      requiresVerification: step.requiresVerification,
+      ...(step.evidenceTools !== undefined ? { evidenceTools: step.evidenceTools } : {}),
+      ...(step.answerOnly !== undefined ? { answerOnly: step.answerOnly } : {}),
+    }
+    return step.id === id ? { ...definition, ...patch } : definition
+  })
+  return replaceHarnessPlan(state, steps, now)
 }
 
 export function recordHarnessEvidence(state: HarnessSnapshot, evidence: HarnessEvidence, now: number): HarnessSnapshot {

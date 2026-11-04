@@ -14,6 +14,7 @@ import type { HarnessToolExecutionOptions } from './tool-approvals'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
 import { harnessModelResponseFailure } from './model-usage'
 import { HarnessWaitRollover } from './waits'
+import { planRepairEvidence } from './plan-repair'
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
@@ -69,6 +70,7 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = [], option
       switch (operation.type) {
         case 'reserve_model': current = state.reserveHarnessModel(current, operation.id, operation.maxCostMicros, now); break
         case 'replace_plan': current = state.replaceHarnessPlan(current, operation.steps, now); break
+        case 'revise_step': current = state.reviseHarnessPlanStep(current, operation.id, operation.patch, now); break
         case 'transition_step': current = state.transitionHarnessStep(current, operation, now); break
         case 'block':
           if (operation.diagnostic) current = state.recordHarnessDiagnostic(current, operation.diagnostic, now)
@@ -1583,4 +1585,100 @@ test('an empty progress-only reply settles once and resumes work without abortin
   expect(read).toHaveBeenCalledOnce()
   expect(provider.doStreamCalls).toHaveLength(3)
   expect(f.receipts.size).toBe(3)
+})
+
+test('repeated plan repairs stop after four attempts without replaying completed tool work', async () => {
+  const f = fixture()
+  const read = vi.fn(async () => ({ text: 'source was read' }))
+  const provider = model(index => {
+    if (index === 0) return [call('harness_set_plan', 'initial-plan', { steps: [
+      { ...plan[0], evidenceTools: ['read', 'write'] },
+      { id: 'answer', title: 'Answer', dependsOn: ['work'], acceptanceCriteria: ['Answer the user'],
+        requiresVerification: false, answerOnly: true },
+    ] })]
+    if (index === 1) return [call('read', 'source')]
+    if (index === 2) return [call('harness_update_step', 'complete-work', {
+      id: 'work', status: 'done', evidenceRefs: ['tool:source'],
+    })]
+    const attempt = index - 2
+    return [call('harness_set_plan', `repair-${attempt}`, { steps: [
+      { ...plan[0], title: `Read records ${attempt}`, evidenceTools: ['read', 'write'] },
+      { id: 'answer', title: 'Answer', dependsOn: ['work'], acceptanceCriteria: ['Answer the user'],
+        requiresVerification: false, answerOnly: true },
+    ] })]
+  })
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute: read }) },
+  }, f.ports)
+  expect(read).toHaveBeenCalledOnce()
+  expect(provider.doStreamCalls).toHaveLength(7)
+  expect(result.snapshot.blocker).toMatchObject({ kind: 'stuck' })
+  expect(result.snapshot.blocker?.question).toContain('Completed tool results are saved')
+  expect(result.snapshot.diagnostic?.code).toBe('STAGNATION')
+})
+
+test('invalid initial plan schema attempts count toward the repair pause', async () => {
+  const f = fixture()
+  let providerCalls = 0
+  const provider = model(() => [call('harness_set_plan', `invalid-${providerCalls++}`, { steps: [] })])
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(provider.doStreamCalls).toHaveLength(4)
+  expect(result.snapshot.blocker).toMatchObject({ kind: 'stuck' })
+})
+
+test('invalid targeted revision schemas count toward the repair pause', async () => {
+  const f = fixture()
+  const provider = model(index => index === 0
+    ? [call('harness_set_plan', 'initial-plan', { steps: plan })]
+    : [call('harness_revise_step', `invalid-${index}`, { id: 'work', patch: {} })])
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(provider.doStreamCalls).toHaveLength(5)
+  expect(result.snapshot.blocker).toMatchObject({ kind: 'stuck' })
+})
+
+test('a resumed checkpoint at the repair limit blocks before another model dispatch', async () => {
+  const f = fixture()
+  await f.ports.apply('seed-plan', { type: 'replace_plan', steps: plan })
+  const current = await f.ports.read()
+  const continuation: HarnessRunnerCheckpoint = {
+    version: 1, messages: [], invocation: 0, modelCall: 0, stagnantSegments: 0,
+    finalAnswerRequired: true, truncatedResponse: false, segmentStartedAt: Date.now(),
+    deliverySteps: [], toolApprovals: [], executionOutcomes: [], authenticatedDenials: [],
+    planRepair: { attempts: 4, evidence: planRepairEvidence(current) },
+  }
+  const result = await runOverlayHarness({ ...input, tools: {}, continuation }, f.ports)
+  expect(getLanguageModel).not.toHaveBeenCalled()
+  expect(result.snapshot.blocker).toMatchObject({ kind: 'stuck' })
+})
+
+test('final verification receives real prose after internal plan repair paragraphs are filtered', async () => {
+  const f = fixture(false)
+  const read = vi.fn(async () => ({ text: 'The source is readable.' }))
+  const candidates: string[] = []
+  f.ports.verifyFinalAnswer = async ({ candidate }) => {
+    candidates.push(candidate)
+    return { supported: true, reason: 'Supported by the read result.', evidenceIds: ['tool:source'] }
+  }
+  const answer = [
+    'The document was reviewed.',
+    'The plan needs to be adjusted to mark `handle_artifact` as answerOnly since no tool action is needed when no artifact is returned. Updating the plan:',
+    'Fixing the plan format - `status` should not be included in the set operation:',
+    'Plan reset. Now updating the milestones with the correct answerOnly configuration:',
+    'The final count is 12.',
+  ].join('\n\n')
+  const repairOnly = [
+    'The plan needs to be adjusted to mark `handle_artifact` as answerOnly since no tool action is needed when no artifact is returned. Updating the plan:',
+    'Fixing the plan format - `status` should not be included in the set operation:',
+    'Plan reset. Now updating the milestones with the correct answerOnly configuration:',
+  ].join('\n\n')
+  model(index => index === 0 ? [call('read', 'source')] : index === 1 ? repairOnly : answer)
+  const result = await runOverlayHarness({
+    ...input,
+    tools: { read: tool({ inputSchema: z.object({}), execute: read }) },
+    model: { ...input.model, modelId: 'openrouter/free' },
+  }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(candidates).toEqual(['The document was reviewed.\n\nThe final count is 12.'])
+  expect(read).toHaveBeenCalledOnce()
 })

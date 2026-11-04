@@ -3,9 +3,9 @@ import test from 'node:test'
 import {
   admitHarnessChild, admitHarnessNamedChild, assertHarnessRunnable, blockHarness, checkpointHarness, createHarnessSnapshot,
   currentHarnessContext, finishHarness, harnessCompletionIssues, recordHarnessEvidence, recordHarnessReceipt, recordHarnessChildReceipt,
-  replaceHarnessPlan, settleHarnessChild, terminateHarness, transitionHarnessStep, type HarnessChild, type HarnessEvidence,
+  replaceHarnessPlan, reviseHarnessPlanStep, settleHarnessChild, terminateHarness, transitionHarnessStep, type HarnessChild, type HarnessEvidence,
   type HarnessPlanInput, type HarnessReceipt,
-  claimHarnessExecution, hasRunnableHarnessMilestones, waitForHarnessChildren, resumeHarness, recordHarnessDiagnostic,
+  claimHarnessExecution, hasRunnableHarnessMilestones, waitForHarnessChildren, resumeHarness,
   reserveHarnessModel, reservedHarnessCostMicros,
   bindHarnessModelDispatch,
   validateHarnessReceipt,
@@ -14,7 +14,6 @@ import {
   pauseHarnessForAuthorization,
   pauseHarnessForFunding, resumeHarnessFunding,
 } from './harness-state'
-import { createHarnessDiagnostic } from './harness-diagnostic'
 
 const now = 1_000
 
@@ -493,6 +492,41 @@ test('plan revisions reject cycles and invalidate completed downstream work', ()
   assert.deepEqual(state.plan.map(step => step.status), ['pending', 'pending'])
   assert.deepEqual(previous.plan.map(step => step.status), ['done', 'done'])
   assert.throws(() => replaceHarnessPlan(state, [steps[0]!], now), /Keep existing/)
+})
+
+test('targeted milestone revisions preserve unrelated completion and invalidate changed dependents', () => {
+  let state = replaceHarnessPlan(make(), [
+    { id: 'first', title: 'First', dependsOn: [], acceptanceCriteria: ['First'], requiresVerification: false, evidenceTools: ['read'] },
+    { id: 'second', title: 'Second', dependsOn: ['first'], acceptanceCriteria: ['Second'], requiresVerification: false, evidenceTools: ['read'] },
+    { id: 'unrelated', title: 'Unrelated', dependsOn: [], acceptanceCriteria: ['Unrelated'], requiresVerification: false, evidenceTools: ['read'] },
+  ], now)
+  for (const id of ['first', 'second', 'unrelated']) {
+    state = recordHarnessEvidence(state, {
+      id: `evidence:${id}`, kind: 'tool_result', source: 'read', summary: id, verdict: 'observed', createdAt: now,
+    }, now)
+    state = transitionHarnessStep(state, { id, status: 'done', evidenceRefs: [`evidence:${id}`] }, now)
+  }
+
+  const revised = reviseHarnessPlanStep(state, 'first', { dependsOn: ['unrelated'] }, now + 1)
+  assert.deepEqual(revised.plan.find(step => step.id === 'first'), {
+    ...state.plan.find(step => step.id === 'first'),
+    dependsOn: ['unrelated'], status: 'pending', evidenceRefs: [],
+  })
+  assert.deepEqual(revised.plan.find(step => step.id === 'second'), {
+    ...state.plan.find(step => step.id === 'second'), status: 'pending', evidenceRefs: [],
+  })
+  assert.deepEqual(revised.plan.find(step => step.id === 'unrelated'), state.plan.find(step => step.id === 'unrelated'))
+  assert.deepEqual(revised.evidence, state.evidence)
+})
+
+test('targeted revisions reject unauthorized evidence tools, attached-child edits, and status injection', () => {
+  const planned = replaceHarnessPlan(make(), [{
+    id: 'work', title: 'Work', dependsOn: [], acceptanceCriteria: ['Done'], requiresVerification: false, evidenceTools: ['read'],
+  }], now)
+  assert.throws(() => reviseHarnessPlanStep(planned, 'work', { evidenceTools: ['missing'] }, now + 1), /unsupported evidence tool/)
+  assert.throws(() => reviseHarnessPlanStep(planned, 'work', { status: 'done' } as never, now + 1), /definition fields/)
+  const attached = admitHarnessChild(planned, child('child', 'work', 0), now + 1)
+  assert.throws(() => reviseHarnessPlanStep(attached, 'work', { title: 'Changed' }, now + 2), /attached to a child/)
 })
 
 test('continuation checkpoint keeps model narrative separate from authoritative summary', () => {

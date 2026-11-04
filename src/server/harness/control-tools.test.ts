@@ -213,7 +213,7 @@ test('verification rejection tells the model to revise an unsatisfiable plan', a
   expect(result).toEqual({
     success: false,
     error: 'Independent verification of this milestone in the current plan revision is required.',
-    hint: 'Revise the plan if no independent verifier is available for this milestone.',
+    hint: 'Use harness_revise_step for this milestone if no independent verifier is available. Do not rewrite completed milestones or claim verification that did not occur.',
   })
   expect((await f.ports.read()).plan[0].status).toBe('pending')
 })
@@ -276,7 +276,7 @@ test.each([
     availableEvidenceIds: evidenceRefs
       ? [{ id: 'artifact:1', source: evidenceKind === 'tool_result' ? 'get_note' : 'file' }]
       : [],
-    hint: expect.stringContaining('use harness_set_plan to set answerOnly: true'),
+    hint: expect.stringContaining('harness_revise_step with its exact id and patch'),
   })
   expect((await f.ports.read()).plan[0]?.status).toBe('pending')
 })
@@ -310,7 +310,7 @@ test('tool-result evidence already used by another action milestone returns mode
     availableEvidenceIds: [],
     hint: expect.stringContaining('one result cannot prove two actions'),
   })
-  expect(result).toMatchObject({ hint: expect.stringContaining('do not repeat the completed action') })
+  expect(result).toMatchObject({ hint: expect.stringContaining('do not repeat completed actions') })
   expect((await f.ports.read()).plan.find(step => step.id === 'second')?.status).toBe('pending')
 })
 

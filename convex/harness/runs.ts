@@ -31,6 +31,7 @@ import {
   pauseHarnessForFunding,
   pauseHarnessForAuthorization,
   replaceHarnessPlan,
+  reviseHarnessPlanStep,
   resumeHarness,
   resumeHarnessFunding,
   settleHarnessChild,
@@ -41,6 +42,7 @@ import {
   type HarnessChild,
   type HarnessEvidence,
   type HarnessPolicy,
+  type HarnessPlanStepPatch,
   type HarnessSnapshot,
 } from '../../packages/overlay-agent-runtime/src/harness-state'
 import { createHarnessDiagnostic, type HarnessDiagnostic } from '../../packages/overlay-agent-runtime/src/harness-diagnostic'
@@ -149,6 +151,14 @@ const planInputValidator = v.object({
   requiresVerification: v.boolean(),
   answerOnly: v.optional(v.boolean()),
 })
+const planStepPatchValidator = v.object({
+  title: v.optional(v.string()),
+  dependsOn: v.optional(v.array(v.string())),
+  acceptanceCriteria: v.optional(v.array(v.string())),
+  evidenceTools: v.optional(v.array(v.string())),
+  requiresVerification: v.optional(v.boolean()),
+  answerOnly: v.optional(v.boolean()),
+})
 
 const evidenceValidator = v.object({
   id: v.string(),
@@ -216,6 +226,7 @@ const operationValidator = v.union(
   v.object({ type: v.literal('bind_model_dispatch'), id: v.string(), modelId: v.string(), billingReservationId: v.union(v.string(), v.null()) }),
   v.object({ type: v.literal('claim_execution'), workflowRunId: v.string(), generation: v.optional(v.number()) }),
   v.object({ type: v.literal('replace_plan'), steps: v.array(planInputValidator) }),
+  v.object({ type: v.literal('revise_step'), id: v.string(), patch: planStepPatchValidator }),
   v.object({
     type: v.literal('transition_step'),
     id: v.string(),
@@ -659,6 +670,24 @@ function assertBoundedOperation(operation: HarnessOperation) {
         }
       }
       break
+    case 'revise_step': {
+      const patch = operation.patch as Record<string, unknown>
+      if (!operation.id.trim() || operation.id.length > MAX_ID_LENGTH
+        || !Object.keys(patch).length
+        || Object.keys(patch).some(key => !['title', 'dependsOn', 'acceptanceCriteria', 'evidenceTools', 'requiresVerification', 'answerOnly'].includes(key))
+        || (patch.title !== undefined && (typeof patch.title !== 'string' || !patch.title.trim() || patch.title.length > 500))
+        || (patch.dependsOn !== undefined && (!Array.isArray(patch.dependsOn) || patch.dependsOn.length > MAX_PLAN_STEPS
+          || patch.dependsOn.some(id => typeof id !== 'string' || !id.trim() || id.length > MAX_ID_LENGTH)))
+        || (patch.acceptanceCriteria !== undefined && (!Array.isArray(patch.acceptanceCriteria)
+          || patch.acceptanceCriteria.length < 1 || patch.acceptanceCriteria.length > MAX_ACCEPTANCE_CRITERIA
+          || patch.acceptanceCriteria.some(item => typeof item !== 'string' || !item.trim() || item.length > MAX_CONSTRAINT_LENGTH)))
+        || (patch.evidenceTools !== undefined && (!Array.isArray(patch.evidenceTools)
+          || patch.evidenceTools.length > 8
+          || patch.evidenceTools.some(id => typeof id !== 'string' || !id.trim() || id.length > MAX_ID_LENGTH)))) {
+        throw new Error('Harness plan milestone revision exceeds its bounds.')
+      }
+      break
+    }
     case 'transition_step':
       if (!operation.id.trim() || operation.id.length > MAX_ID_LENGTH
         || (operation.evidenceRefs?.length ?? 0) > MAX_EVIDENCE_REFS
@@ -1477,6 +1506,8 @@ async function applyReducer(
       }, now) }
     case 'replace_plan':
       return { snapshot: replaceHarnessPlan(current, operation.steps, now) }
+    case 'revise_step':
+      return { snapshot: reviseHarnessPlanStep(current, operation.id, operation.patch as HarnessPlanStepPatch, now) }
     case 'transition_step':
       return { snapshot: transitionHarnessStep(current, operation, now) }
     case 'record_evidence': {
