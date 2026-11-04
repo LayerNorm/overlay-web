@@ -57,17 +57,16 @@ const WRITTEN_ANSWER = '__written_answer__'
  * an item with Questionnaire.Choice. A hidden choice stands in for the written
  * answer instead, so the primitive still sees the question as answered.
  */
-function WrittenAnswer({ label, placeholder, value, disabled, onChange }: {
+function WrittenAnswer({ label, placeholder, value, onChange }: {
   label: string
   placeholder?: string
   value: string
-  disabled: boolean
   onChange(value: string): void
 }) {
   const input = useRef<HTMLInputElement>(null)
   return (
     <>
-      <Primitive.Choice value={WRITTEN_ANSWER} checked={value.trim().length > 0} disabled={disabled} className="sr-only">
+      <Primitive.Choice value={WRITTEN_ANSWER} checked={value.trim().length > 0} className="sr-only">
         <Primitive.ChoiceInput aria-label={label} onFocus={() => input.current?.focus()} />
       </Primitive.Choice>
       <label className="mt-1 block">
@@ -76,7 +75,6 @@ function WrittenAnswer({ label, placeholder, value, disabled, onChange }: {
           ref={input}
           value={value}
           placeholder={placeholder}
-          disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key !== 'Enter') return
@@ -90,7 +88,11 @@ function WrittenAnswer({ label, placeholder, value, disabled, onChange }: {
   )
 }
 
-/** A multi-step set of questions. `onAnswers` gets each item's answers by name. */
+/**
+ * A multi-step set of questions. `onAnswers` gets each item's answers by name.
+ * `disabled` covers only the buttons: the primitive treats a disabled answer as
+ * unanswered, which would send people back to a question they already answered.
+ */
 export function QuestionnairePanel({
   items, onAnswers, disabled = false, submitLabel = 'Send',
 }: {
@@ -128,7 +130,7 @@ export function QuestionnairePanel({
             }}
           >
             {item.choices?.map((choice) => (
-              <Primitive.Choice key={choice.value} value={choice.value} disabled={disabled} className="relative flex cursor-pointer items-center gap-2.5 rounded-lg border border-(--border) py-2 pr-2 pl-3 transition-colors hover:bg-(--surface-muted) has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring data-[checked]:border-(--muted-light) data-[checked]:bg-(--surface-subtle) data-[disabled]:pointer-events-none data-[disabled]:opacity-50">
+              <Primitive.Choice key={choice.value} value={choice.value} className="relative flex cursor-pointer items-center gap-2.5 rounded-lg border border-(--border) py-2 pr-2 pl-3 transition-colors hover:bg-(--surface-muted) has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-ring data-[checked]:border-(--muted-light) data-[checked]:bg-(--surface-subtle)">
                 <Primitive.ChoiceInput className="sr-only" />
                 <span className="min-w-0 flex-1">
                   <Primitive.ChoiceLabel className="block text-[13px] leading-5 font-medium">{choice.label}</Primitive.ChoiceLabel>
@@ -142,7 +144,6 @@ export function QuestionnairePanel({
                 label={item.input.label}
                 placeholder={item.input.placeholder}
                 value={written[item.name] ?? ''}
-                disabled={disabled}
                 onChange={(value) => setWritten(current => ({ ...current, [item.name]: value }))}
               />
             ) : null}
@@ -151,8 +152,8 @@ export function QuestionnairePanel({
         </Primitive.Item>
       ))}
       <div className="mt-3.5 flex items-center gap-2">
-        <Primitive.Previous render={<Button variant="ghost" className={navButton} />}>Previous</Primitive.Previous>
-        <Primitive.Skip render={<Button variant="ghost" className={navButton} />}>Skip</Primitive.Skip>
+        <Primitive.Previous render={<Button variant="ghost" className={navButton} />} disabled={disabled}>Previous</Primitive.Previous>
+        <Primitive.Skip render={<Button variant="ghost" className={navButton} />} disabled={disabled}>Skip</Primitive.Skip>
         <span className="flex-1" />
         <Primitive.Next render={<Button className={navButton} />} disabled={disabled}>Next</Primitive.Next>
         <Primitive.Submit render={<Button className={navButton} />} disabled={disabled}>{submitLabel}</Primitive.Submit>

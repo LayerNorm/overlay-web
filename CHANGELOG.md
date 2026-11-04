@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Show an agent's plan at the bottom of its response, with live progress. The plan stays open while the agent works and collapses into a dropdown only after the response ends with every step finished, so unfinished work stays visible. Responses keep their plan after a reload.
+- Show an agent's plan at the bottom of its response, with live progress. The plan stays open while the agent works and collapses into a dropdown only after the response ends with every step finished, so unfinished work stays visible. Responses keep their plan after a reload. Internal plan and question tool calls no longer appear as rows in the transcript.
 
 - Replace the one-box agent input prompt with a questionnaire, so agents ask real questions with choices, written answers and optional skips. Empty prompts such as "placeholder" are sent back to the model instead of reaching people, and stuck-run prompts now ask a plain question.
 

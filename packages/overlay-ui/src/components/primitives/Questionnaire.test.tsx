@@ -64,3 +64,13 @@ test('one question needs no progress label', () => {
   const markup = renderToStaticMarkup(<QuestionnairePanel items={[{ name: 'only', prompt: 'Which currency?', input: { label: 'Your answer' } }]} onAnswers={() => undefined} />)
   assert.doesNotMatch(markup, /progressbar/)
 })
+
+test('sending disables only the buttons, because the primitive treats disabled answers as unanswered', () => {
+  const markup = renderToStaticMarkup(<QuestionnairePanel
+    disabled
+    items={[{ name: 'only', prompt: 'Who is this for?', required: true, choices: [{ value: 'Team', label: 'Team' }], input: { label: 'Or write your own answer' } }]}
+    onAnswers={() => undefined}
+  />)
+  assert.doesNotMatch(markup, /<input[^>]* disabled=""/)
+  assert.match(markup, /<button[^>]* disabled=""/)
+})

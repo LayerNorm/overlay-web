@@ -66,9 +66,10 @@ export function RunInputRequest({ conversationId, runId, token, question, refres
       </div>
     )
   }
+  if (submitted) return <p className="mb-2 text-xs text-(--muted)" role="status">Answer sent. Continuing…</p>
   return (
     <div className="mb-2">
-      <QuestionnairePanel items={items} onAnswers={(answers) => void submit(answers)} disabled={submitting || submitted} submitLabel={submitted ? 'Sent' : 'Send'} />
+      <QuestionnairePanel items={items} onAnswers={(answers) => void submit(answers)} disabled={submitting} />
     </div>
   )
 }
