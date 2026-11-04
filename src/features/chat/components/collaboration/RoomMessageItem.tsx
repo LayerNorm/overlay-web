@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { RemoteRunDeadline } from './RemoteRunDeadline'
+import { usePublicTrace } from '../chat/usePublicTrace'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
 import { AssistantVisualBlocks, messageActionVisibilityClass } from '@overlay/chat-react/transcript'
@@ -40,6 +41,7 @@ import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
 import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
 import { RemoteRunTrace } from './RemoteRunTrace'
 import { NativeAgentApprovalCard } from './NativeAgentApprovalCard'
+import type { RunPlanPhase, RunPlanStep } from '@overlay/chat-react/exchange'
 import { NativeAgentInputCard } from './NativeAgentInputCard'
 import type { NativeAgentApproval } from '@/shared/agents/native-agent-approval'
 import type { NativeAgentInput } from '@/shared/agents/native-agent-input'
@@ -96,6 +98,8 @@ export type RoomMessageView = {
   askedBy?: { name: string; hop: number; parentConversationId?: string }
   nativeApproval?: NativeAgentApproval
   nativeInput?: NativeAgentInput
+  plan?: readonly RunPlanStep[]
+  planPhase?: RunPlanPhase
   generationError?: string
   remoteQueue?: { runId: string; environmentName: string; queueExpiresAt: number }
   remoteRequest?: { pendingDelivery?: boolean; expiresAt?: number; machineCostContinues?: boolean; runId: string; requestKey: string; kind: 'permission' | 'elicitation'; prompt: string;
@@ -733,6 +737,8 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onContro
 }) {
   const collapseAgentWork = useOptionalAppSettings()?.settings.collapseAgentWork !== false
   const resolveFileHref = useSavedDriveLinkResolver(message.remoteDrive)
+  const trace = usePublicTrace({ messageId: message.id, enabled: !message.streaming && (!message.planPhase || message.planPhase === 'ended'),
+    blocks: message.blocks, terminalState: message.generationError ? 'error' : 'completed' })
   return (
     <>
       {message.askedBy ? (
@@ -752,10 +758,14 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onContro
         </p>
       ) : null}
       <AssistantVisualBlocks
-        blocks={message.blocks}
+        blocks={trace.blocks}
+        onWorkExpandedChange={trace.onWorkExpandedChange}
+        workDetails={trace.workDetails}
         blockKeyPrefix={message.id}
         markdownKeyPrefix={message.id}
         workedDurationMs={message.workedDurationMs}
+        plan={message.plan}
+        planPhase={message.planPhase}
         foldWorkIntoSummary={collapseAgentWork && !['cancelled', 'failed', 'recoverable'].includes(message.remoteRun?.state ?? '')}
         isStreaming={Boolean(message.streaming)}
         isTextStreaming={Boolean(message.streaming)}

@@ -172,6 +172,7 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/conversations/run`
 - `GET, PATCH /api/v1/conversations/saved-messages`
 - `GET /api/v1/conversations/search`
+- `GET /api/v1/conversations/trace`
 - `PATCH /api/v1/conversations/share`
 - `POST /api/v1/conversations/stop`
 

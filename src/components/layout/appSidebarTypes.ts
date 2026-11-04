@@ -27,7 +27,9 @@ export interface AppSidebarWorkspaceAdapter {
     onNavigate: () => void
     placement: 'footer' | 'header'
     userLabel: string
+    accountHeader?: React.ReactNode
     accountMenu: React.ReactNode
+    userAvatar?: React.ReactNode
   }) => React.ReactNode
 }
 

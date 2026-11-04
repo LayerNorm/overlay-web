@@ -19,7 +19,6 @@ import {
   HARNESS_CONTROL_TOOLS, harnessProgressFingerprint, hasPendingHarnessAnswer,
 } from './context'
 import { buildHarnessCheckpoint } from './continuity'
-import { verifyHarnessFinalAnswer } from './final-answer-verification'
 import type { HarnessApprovalRequest, HarnessExecutionPorts, HarnessModelSettings, HarnessRunnerCheckpoint } from './ports'
 import { HarnessLanguageModel, type HarnessModelReference } from './secure-model'
 import type { HarnessToolApprovals } from './tool-approvals'
@@ -128,14 +127,11 @@ function activeModelTools(
   tools: ToolSet,
   controls: Set<string>,
   complete: boolean,
-  needsPlan: boolean,
 ): string[] {
   const allowed = new Set(preparedActiveToolNames)
   return Object.keys(tools).filter(name => complete
-    ? (hasPendingHarnessAnswer(current) || current.finalVerification?.supported === false) && controls.has(name)
-    : needsPlan
-      ? name === 'harness_set_plan'
-      : controls.has(name) || (current.policy.allowedToolIds.includes(name) && allowed.has(name)))
+    ? hasPendingHarnessAnswer(current) && controls.has(name)
+    : controls.has(name) || (current.policy.allowedToolIds.includes(name) && allowed.has(name)))
 }
 
 function assertPreparedModelAuthority(
@@ -210,37 +206,6 @@ async function finishOrCheckpointInvocation(
   const resultSummary = latestFinalAnswerText(runSteps, toolNames)
   const finalAnswerRequired = !truncatedResponse && !completionIssues.length && !resultSummary
   if (!truncatedResponse && !completionIssues.length && resultSummary) {
-    const observedToolEvidence = state.evidence.filter(evidence => evidence.kind === 'tool_result')
-    if (observedToolEvidence.length && ports.verifyFinalAnswer) {
-      const verification = await verifyHarnessFinalAnswer({ state, candidate: resultSummary, segment, ports })
-      if (verification.kind === 'continue') {
-        if (verification.action === 'none') {
-          return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
-        }
-        if (verification.action === 'checkpoint') {
-          await ports.apply(`checkpoint:${segment}:verification`, {
-            type: 'checkpoint',
-            summary: JSON.stringify(buildHarnessCheckpoint(verification.state)),
-            purpose: 'continuation',
-            unverifiedNarrative: resultSummary.slice(0, 8_000),
-          })
-          return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
-        }
-        if (verification.action === 'pending') {
-          await ports.apply(`verification-pending:${segment}`, {
-            type: 'block',
-            blocker: { kind: 'stuck', question: verification.question! },
-          })
-          return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
-        }
-        await ports.apply(`verify-block:${segment}`, {
-          type: 'block',
-          blocker: { kind: 'stuck', question: verification.question! },
-        })
-        return { kind: 'continue', stagnantSegments, finalAnswerRequired: true }
-      }
-      state = verification.state
-    }
     const completed = await ports.apply(`finish:${segment}`, {
       type: 'finish', ...(resultSummary ? { resultSummary: resultSummary.slice(0, 8_000) } : {}),
     })
@@ -251,7 +216,7 @@ async function finishOrCheckpointInvocation(
     const operationId = `stuck:${segment}`
     await ports.apply(`stuck:${segment}`, {
       type: 'block',
-      blocker: { kind: 'stuck', question: buildHarnessStuckQuestion(state, STAGNATION_PAUSE_AFTER) },
+      blocker: { kind: 'stuck', question: buildHarnessStuckQuestion(state) },
       diagnostic: createHarnessDiagnostic({
         diagnosticId: stableHarnessDiagnosticId(state.runId, operationId, state.revision),
         code: 'STAGNATION',
@@ -277,10 +242,12 @@ function latestFinalAnswerText(
 ): string {
   for (let index = steps.length - 1; index >= 0; index--) {
     const step = steps[index]
-    if (step.toolCalls.length) break
+    // Marking a step done after writing the answer doesn't replace that answer.
+    if (step.toolCalls.some(call => call.toolName !== 'harness_update_step')) break
     if (TEXTUAL_TOOL_CALL_MARKERS.some(marker => step.text?.includes(marker))) return ''
     const text = stripTextualToolCalls(step.text ?? '', toolNames)
     if (text) return text
+    if (step.text?.trim()) return ''
   }
   return ''
 }
@@ -298,8 +265,9 @@ async function authorizeModelBoundary(
   ports: HarnessExecutionPorts,
   operationId: string,
   estimatedCostMicros = 0,
+  renew = true,
 ): Promise<HarnessSnapshot> {
-  if (state.policy.executionPolicyVersion === 2) {
+  if (renew && state.policy.executionPolicyVersion === 2) {
     await ports.renewLease()
     state = await ports.read()
   }
@@ -352,7 +320,9 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   let observedState = acquisition.initial
   const { executionOwner, executionGeneration } = acquisition
   const publicProgressEnabled = acquisition.initial.policy.publicProgressVersion === 1
-  let publicProgressDue = publicProgressEnabled && (input.continuation?.publicProgress?.due ?? !input.continuation)
+  // The first model call acknowledges and works in one step; a separate call here
+  // would answer simple questions before the real call starts.
+  let publicProgressDue = publicProgressEnabled && (input.continuation?.publicProgress?.due ?? false)
   let publicProgressActive = false
   let silentToolBatches = input.continuation?.publicProgress?.silentToolBatches ?? 0
   let uncertainToolOutcome: Error | undefined
@@ -454,7 +424,8 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         // This boundary includes completed tools, but none of the next call's partial output.
         recoveryMessages = prompt.filter(message => message.role !== 'system')
         recoverySteps = [...settledSteps]
-        let current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`)
+        // Authority and the lease are renewed once, just before the call is reserved.
+        let current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`, 0, false)
         const instructionContext = {
           instructions,
           publicProgress: commentaryInvocation,
@@ -472,16 +443,14 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`, prepared.estimatedCostMicros)
         const complete = harnessCompletionIssues(current).length === 0 && current.plan.length > 0
         current = await ports.apply(`reserve:${receiptId}`, { type: 'reserve_model', id: receiptId, maxCostMicros: prepared.estimatedCostMicros })
-        const needsPlan = current.policy.requiresPlan && !current.plan.length
         observedState = current
-        const activeTools = activeModelTools(current, prepared.activeToolNames, tools, controls, complete, needsPlan)
+        const activeTools = activeModelTools(current, prepared.activeToolNames, tools, controls, complete)
         const pendingAnswerControls = complete && activeTools.length > 0
         return {
           system: prepared.instructions ?? buildHarnessStepInstructions(current, instructionContext),
           messages: prepared.messages.filter(message => message.role !== 'system'),
           ...prepared.settings,
           activeTools: commentaryInvocation ? [] : activeTools,
-          ...(needsPlan && !commentaryInvocation ? { toolChoice: 'required' as const } : {}),
           ...(pendingAnswerControls ? { toolChoice: 'auto' as const } : {}),
           ...(!commentaryInvocation && activeTools.length ? {} : { toolChoice: 'none' as const }),
           ...(prepared.model ? { model: new HarnessLanguageModel(prepared.model) } : {}),
@@ -598,7 +567,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       finalAnswerRequired = false
       truncatedResponse = false
       if (messages.at(-1)?.role === 'assistant') {
-        messages = [...messages, { role: 'user', content: 'Continue the existing task after the public progress update. Use the current persisted state and evidence; do not repeat completed actions.' }]
+        messages = [...messages, { role: 'user', content: 'Continue with the task now that the progress update is posted. Only work shown in tool results has been done; do not repeat it.' }]
       }
       continue
     }
@@ -618,7 +587,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     // A continuation is a new turn, not an assistant prefill. Some providers
     // reject assistant-tailed prompts, including after verification feedback.
     if (messages.at(-1)?.role === 'assistant') {
-      messages = [...messages, { role: 'user', content: 'Continue the existing task using the current persisted state and verification feedback. Obtain any missing evidence before correcting the answer. Do not repeat completed actions.' }]
+      messages = [...messages, { role: 'user', content: 'Continue the existing task from its current state. Do not repeat completed actions or text you already wrote.' }]
     }
   }
 }

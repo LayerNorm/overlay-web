@@ -6,6 +6,23 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Upgrade Better Auth and its SSO integration to 1.7.16, including the November 3 security fixes for private deployments. Hosted WorkOS authentication and the dependency cooldown policy are unchanged.
 
+- Load complete public Harness text and tool records when expanding a response, with authenticated trace retrieval and separate full-payload storage. Compact chat snapshots no longer determine trace length; previously truncated historical payloads remain marked as legacy.
+
+- Show the user's photo, name, and email above the workspace list, keep sidebar Settings and sign out while removing duplicate menu rows, and allow owned Harness continuations waiting on input, approval, children, or resources to finish usage admission.
+
+- Recover personal chat responses after a dropped connection. Saved updates for these chats were ignored, so the text froze and the finished answer stayed hidden until a reload; they now appear while a run is followed, without blanking text already shown.
+- Speed up agent runs by no longer waiting for exact billing data after each model call, which could hold a run for up to 16 seconds per call. Calls now settle immediately from token counts and catalog prices, and a background job replaces the estimate with the exact cost once it is available, charging or refunding the difference once. Calls with no catalog price still wait for the exact cost. Each model call also renews its authorization once instead of twice, and runs no longer make a separate progress-update call before starting work, which answered simple questions early and left the real reply with nothing to say.
+
+- Keep text and tool calls in the order they happened when a response has source citations. Saved responses previously merged all their text into one block ahead of every tool call; responses already saved stay merged.
+
+- Show an agent's plan with live progress at the end of its response. Once the response ends with every step finished, the plan moves into the "Worked for" dropdown, and unfinished plans stay visible. Finished personal replies now show only the final answer, with earlier narration, tool calls and the plan inside that dropdown. Internal plan and question tool calls no longer appear as rows.
+
+- Replace the one-box agent input prompt with a questionnaire, so agents ask real questions with choices, written answers and optional skips. Empty prompts such as "placeholder" are sent back to the model instead of reaching people, and stuck-run prompts now ask a plain question.
+
+- Remove harness-level checking of agent work: the final-answer verifier, its paid extra model call and retries, milestone evidence requirements, and the rewrite of unconfirmed note claims. This stops rejected drafts from repeating in responses. A step is now done when the model marks it done, so a model can report work that did not happen; people, or a verifier agent they add, check the result.
+
+- Stop forcing agents with write tools to make a plan. Simple questions now get a direct answer, and the model plans only when a task is long and needs structure.
+
 - Refresh subscription rollout status and remove the superseded in-process adapter plan so future agents follow the private bridge architecture.
 
 - Update YAML parsing used by development and repository tooling. (#329)

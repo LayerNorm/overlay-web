@@ -9,7 +9,6 @@ export function personalHarnessPolicy(input: {
   actorUserId: string
   workspaceId: string
   allowedToolIds: string[]
-  requiresPlan?: boolean
   modelId: string
   paid: boolean
   createdAt: number
@@ -35,7 +34,7 @@ export function personalHarnessPolicy(input: {
       spendingMode: workspaceFunded ? 'workspace' as const : byok ? 'external' as const : 'none' as const,
     } : {}),
     allowedToolIds: [...new Set(input.allowedToolIds)].sort(),
-    requiresPlan: input.requiresPlan ?? false,
+    requiresPlan: false,
     deadlineAt: input.createdAt + (versioned ? DAY_MS : durationMs),
     ...(versioned && input.budget?.durationMs !== undefined
       ? { taskDeadlineAt: input.createdAt + durationMs } : {}),

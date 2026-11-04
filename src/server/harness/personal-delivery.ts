@@ -2,7 +2,7 @@ import type { StepResult, ToolSet } from 'ai'
 import type { HarnessExecutionResult } from './runner'
 import { isPersonalChatWorkToolOutputEnvelope } from '@/shared/agents/personal-chat-work'
 import {
-  buildAssistantPersistenceFromSteps, replaceAssistantTextForPersistence,
+  buildAssistantPersistenceFromSteps, mapAssistantTextForPersistence,
 } from '@/shared/chat/persist-assistant-turn'
 import { linkifySourceCitationsMarkdown } from '@/shared/knowledge/source-citations'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
@@ -80,7 +80,7 @@ export function buildPersonalHarnessDelivery(
     })
   }
   if (sourceCitations && Object.keys(sourceCitations).length) {
-    transcript = replaceAssistantTextForPersistence(transcript, linkifySourceCitationsMarkdown(transcript.content, sourceCitations))
+    transcript = mapAssistantTextForPersistence(transcript, text => linkifySourceCitationsMarkdown(text, sourceCitations))
   }
   const persisted = compactHarnessTranscriptPersistence(transcript)
   return {

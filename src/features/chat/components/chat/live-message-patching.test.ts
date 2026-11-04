@@ -107,3 +107,23 @@ test('patches fallback server rows and ignores identical snapshots', () => {
     status: 'completed',
   }]), false)
 })
+
+test('ask rows recover a dropped stream only while a run is followed, without blanking shown text', () => {
+  const runtime = runtimeFor()
+  const local = {
+    id: 'local', role: 'assistant', turnId: 'turn-1', parts: [{ type: 'text', text: 'partial' }],
+  } as unknown as UIMessage
+  runtime.askChats[0].messages = [...runtime.askChats[0].messages, local]
+  runtime.actChat.messages = [...runtime.actChat.messages, local]
+  const row = {
+    _id: 'message-1', turnId: 'turn-1', role: 'assistant', mode: 'ask', modelId: 'model-a', variantIndex: 0,
+  } as LiveConversationMessage
+  const shown = () => (runtime.askChats[0].messages[1] as unknown as { parts: Array<{ text: string }> }).parts[0]!.text
+  const finished = { ...row, status: 'completed', content: 'done', parts: [{ type: 'text', text: 'done' }] } as LiveConversationMessage
+
+  assert.equal(patchLiveMessagesIntoRuntime(runtime, [finished]), false)
+  assert.equal(patchLiveMessagesIntoRuntime(runtime, [{ ...row, status: 'generating', content: '' }], { includeAskRows: true }), false)
+  assert.equal(shown(), 'partial')
+  assert.equal(patchLiveMessagesIntoRuntime(runtime, [finished], { includeAskRows: true }), true)
+  assert.equal(shown(), 'done')
+})

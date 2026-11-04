@@ -7,29 +7,41 @@ import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { harnessCostMicros, type HarnessModelObservation } from './model-usage'
 
-const GATEWAY_USAGE_MAX_RETRIES = 14
-const GATEWAY_USAGE_MAX_RETRY_SECONDS = 60
+export const GATEWAY_USAGE_MAX_RETRIES = 14
+export const GATEWAY_USAGE_MAX_RETRY_SECONDS = 60
 
 type HarnessModelUsageResolution = {
   receipt: HarnessReceipt
   providerCostUsd: number | null
   catalogCostUsd: number | null
+  /** Set when settling from an estimate, so the exact cost can correct it later. */
+  correctionGenerationId?: string
 }
 
 type HarnessReceiptBase = Omit<HarnessReceipt, 'costMicros' | 'costSource' | 'externalCostMicros'>
 
-async function resolveCatalogUsage(
+async function catalogEstimate(
   observation: Omit<HarnessModelObservation, 'generationId'>,
-  base: HarnessReceiptBase,
-): Promise<HarnessModelUsageResolution> {
-  const estimate = await calculateLanguageModelTokenCostOrNull(observation.modelId,
+): Promise<number | null> {
+  return calculateLanguageModelTokenCostOrNull(observation.modelId,
     observation.inputTokens, observation.cacheReadTokens, observation.outputTokens, observation.cacheWriteTokens)
-  if (estimate === null) throw new FatalError('Provider cost is unknown; reconcile the model reservation.')
+}
+
+function catalogUsage(estimate: number, base: HarnessReceiptBase): HarnessModelUsageResolution {
   return {
     receipt: { ...base, costMicros: harnessCostMicros(estimate), costSource: 'catalog' },
     providerCostUsd: null,
     catalogCostUsd: estimate,
   }
+}
+
+async function resolveCatalogUsage(
+  observation: Omit<HarnessModelObservation, 'generationId'>,
+  base: HarnessReceiptBase,
+): Promise<HarnessModelUsageResolution> {
+  const estimate = await catalogEstimate(observation)
+  if (estimate === null) throw new FatalError('Provider cost is unknown; reconcile the model reservation.')
+  return catalogUsage(estimate, base)
 }
 
 export async function resolveHarnessModelUsage(input: {
@@ -48,6 +60,12 @@ export async function resolveHarnessModelUsage(input: {
       providerCostUsd: null,
       catalogCostUsd: null,
     }
+  }
+  // Gateway usage takes seconds to appear, so a run never waits for it when a
+  // catalog price exists. The exact cost corrects this estimate in the background.
+  const estimate = await catalogEstimate(observation)
+  if (estimate !== null) {
+    return { ...catalogUsage(estimate, base), ...(generationId ? { correctionGenerationId: generationId } : {}) }
   }
   if (generationId) {
     const gateway = await getOrCreateGateway()

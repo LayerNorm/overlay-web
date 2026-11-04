@@ -5,7 +5,7 @@ import type { StepResult, ToolSet } from 'ai'
 import {
   buildAssistantPersistenceFromSteps,
   compactAssistantPersistenceForConvex,
-  replaceAssistantTextForPersistence,
+  mapAssistantTextForPersistence,
 } from '@/shared/chat/persist-assistant-turn'
 import {
   buildPersistedMessageContent,
@@ -196,9 +196,10 @@ export class ActMessagePersistenceService {
         args.event.text,
       )
       if (args.sourceCitations && Object.keys(args.sourceCitations).length > 0) {
-        assistantPersistence = replaceAssistantTextForPersistence(
+        const sourceCitations = args.sourceCitations
+        assistantPersistence = mapAssistantTextForPersistence(
           assistantPersistence,
-          linkifySourceCitationsMarkdown(assistantPersistence.content, args.sourceCitations),
+          (text) => linkifySourceCitationsMarkdown(text, sourceCitations),
         )
       }
       const { content: rawPersistContent, parts: persistParts } = assistantPersistence

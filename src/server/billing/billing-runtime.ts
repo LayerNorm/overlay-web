@@ -388,6 +388,20 @@ export async function finalizeProviderBudgetReservation(params: {
   })
 }
 
+/** Replaces a settled estimate with the exact provider cost. Applies at most once. */
+export async function correctProviderBudgetReservationCost(params: {
+  userId: string
+  reservationId: string
+  actualProviderCostUsd: number
+}) {
+  return await (await usageRepository()).correctFinalizedCost({
+    actualCostCents: billableBudgetCentsFromProviderUsd(params.actualProviderCostUsd),
+    providerCostUsd: params.actualProviderCostUsd,
+    reservationId: params.reservationId,
+    userId: params.userId,
+  })
+}
+
 export async function markProviderBudgetStarted(params: {
   userId: string
   reservationId: string | null | undefined

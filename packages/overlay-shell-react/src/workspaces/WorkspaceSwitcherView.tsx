@@ -2,7 +2,7 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { type ReactNode, type RefObject } from 'react'
+import { useSyncExternalStore, type ReactNode, type RefObject } from 'react'
 import { Check, ChevronDown, Loader2, Plus, RefreshCw } from 'lucide-react'
 import { CollapsibleSection, MenuItem, Popover, PopoverContent, PopoverTrigger, Button } from '@overlay/ui/primitives'
 import { useShellAdapter } from '../adapter'
@@ -113,8 +113,23 @@ type WorkspaceSwitcherMenuProps = WorkspaceListProps & {
   menuRef: RefObject<HTMLDivElement | null>
   activeWorkspaceName?: string
   actionError: string | null
+  accountHeader?: ReactNode
   accountMenu?: ReactNode
 }
+
+const DESKTOP_VIEWPORT = '(min-width: 768px)'
+
+export function subscribeToWorkspaceMenuViewport(onChange: () => void) {
+  const viewport = window.matchMedia(DESKTOP_VIEWPORT)
+  viewport.addEventListener('change', onChange)
+  return () => viewport.removeEventListener('change', onChange)
+}
+
+export function getFooterWorkspaceMenuSide() {
+  return window.matchMedia(DESKTOP_VIEWPORT).matches ? 'right' : 'top'
+}
+
+const getServerFooterWorkspaceMenuSide = () => 'right' as const
 
 function WorkspaceSwitcherMenu({
   isFooter,
@@ -122,17 +137,24 @@ function WorkspaceSwitcherMenu({
   menuRef,
   activeWorkspaceName,
   actionError,
+  accountHeader,
   accountMenu,
   ...workspaceListProps
 }: WorkspaceSwitcherMenuProps) {
+  const footerSide = useSyncExternalStore(
+    subscribeToWorkspaceMenuViewport,
+    getFooterWorkspaceMenuSide,
+    getServerFooterWorkspaceMenuSide,
+  )
   return (
     <PopoverContent
       ref={menuRef}
-      side={isFooter ? 'top' : 'bottom'}
-      align={compact && !isFooter ? 'end' : 'start'}
+      side={isFooter ? footerSide : 'bottom'}
+      align={isFooter ? 'end' : compact ? 'end' : 'start'}
       aria-label={isFooter ? 'Workspace and account' : 'Workspaces'}
       className="w-[min(280px,calc(100vw-16px))] p-1"
     >
+      {accountHeader ? <div className="border-b border-(--border) pb-1">{accountHeader}</div> : null}
       <CollapsibleSection
         label="Workspaces"
         defaultOpen
@@ -159,6 +181,7 @@ type WorkspaceSwitcherTriggerProps = {
   status: WorkspaceLifecycleStatus
   activeWorkspace: ShellWorkspace | null
   renderAvatar(workspace: ShellWorkspace, size: 'sm' | 'md' | 'lg'): ReactNode
+  userAvatar?: ReactNode
   userLabel?: string
 }
 
@@ -194,12 +217,15 @@ function WorkspaceSwitcherTriggerAvatar({
   isFooter,
   activeWorkspace,
   renderAvatar,
+  userAvatar,
 }: {
   compact: boolean
   isFooter: boolean
   activeWorkspace: ShellWorkspace | null
   renderAvatar(workspace: ShellWorkspace, size: 'sm' | 'md' | 'lg'): ReactNode
+  userAvatar?: ReactNode
 }) {
+  if (userAvatar) return <span className="flex shrink-0 items-center justify-center">{userAvatar}</span>
   if (activeWorkspace) {
     return renderAvatar(activeWorkspace, compact || isFooter ? 'sm' : 'md')
   }
@@ -238,6 +264,7 @@ function WorkspaceSwitcherTrigger({
   status,
   activeWorkspace,
   renderAvatar,
+  userAvatar,
   userLabel,
 }: WorkspaceSwitcherTriggerProps) {
   return (
@@ -253,6 +280,7 @@ function WorkspaceSwitcherTrigger({
           isFooter={isFooter}
           activeWorkspace={activeWorkspace}
           renderAvatar={renderAvatar}
+          userAvatar={userAvatar}
         />
         {!compact ? (
           <WorkspaceSwitcherTriggerLabels
@@ -278,8 +306,10 @@ export type WorkspaceSwitcherViewProps = {
   open: boolean
   compact: boolean
   placement: 'header' | 'footer'
+  accountHeader?: ReactNode
   accountMenu?: ReactNode
   createDialog?: ReactNode
+  userAvatar?: ReactNode
   userLabel?: string
   renderAvatar(workspace: ShellWorkspace, size: 'sm' | 'md' | 'lg'): ReactNode
   status: WorkspaceLifecycleStatus
@@ -301,8 +331,10 @@ export function WorkspaceSwitcherView({
   open,
   compact,
   placement,
+  accountHeader,
   accountMenu,
   createDialog,
+  userAvatar,
   userLabel,
   renderAvatar,
   status,
@@ -321,7 +353,7 @@ export function WorkspaceSwitcherView({
 
   // Footer hosts the account control. Never unmount it while workspaces are idle
   // (first paint before the client session enables the workspace provider).
-  if (status === 'idle' && !isFooter && !accountMenu) return null
+  if (status === 'idle' && !isFooter && !accountMenu && !accountHeader) return null
 
   return (
     <>
@@ -334,6 +366,7 @@ export function WorkspaceSwitcherView({
             status={status}
             activeWorkspace={activeWorkspace}
             renderAvatar={renderAvatar}
+            userAvatar={userAvatar}
             userLabel={userLabel}
           />
           <WorkspaceSwitcherMenu
@@ -342,6 +375,7 @@ export function WorkspaceSwitcherView({
             menuRef={menuRef}
             activeWorkspaceName={activeWorkspace?.name}
             actionError={actionError}
+            accountHeader={accountHeader}
             accountMenu={accountMenu}
             renderAvatar={renderAvatar}
             status={status}

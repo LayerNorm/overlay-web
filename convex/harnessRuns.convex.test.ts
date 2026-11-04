@@ -28,7 +28,8 @@ test('readiness is available only to the authenticated server', async () => {
   expect(await convex.query(settings, { userId: 'alice', serverSecret: secret }))
     .toMatchObject({ harnessRevision: 'overlay-harness-v1', harnessModelRecoveryRevision: 'settled-retry-v1',
       nativeThreadCompatibilityRevision: 'tracked-native-v1',
-      harnessArtifactPublicationRevision: 'binary-artifact-v1', harnessTranscriptRevision: 'settled-public-v1' })
+      harnessArtifactPublicationRevision: 'binary-artifact-v1', harnessTranscriptRevision: 'settled-public-v1',
+      harnessFullTranscriptRevision: 'full-public-v1' })
   await expect(convex.query(settings, { userId: 'alice', serverSecret: 'invalid' })).rejects.toThrow('Unauthorized')
 })
 
@@ -116,14 +117,13 @@ async function get(convex: Convex, runId: string, actorUserId = 'alice', serverS
   return await convex.query(query('get'), { actorUserId, runId, serverSecret }) as HarnessSnapshot | null
 }
 
-function oneStep(id: string, requiresVerification = false, evidenceTools = ['tool:read']) {
+function oneStep(id: string) {
   return [{
     id,
     title: `Complete ${id}`,
     dependsOn: [],
     acceptanceCriteria: ['The milestone is complete.'],
-    requiresVerification,
-    evidenceTools,
+    requiresVerification: false,
   }]
 }
 
@@ -269,33 +269,21 @@ describe('durable harness runs', () => {
     expect((await get(convex, input.runId))?.modelReservation).toEqual(dispatched.modelReservation)
   })
 
-  test.each([
-    { parentRequiresPlan: true, parentToolIds: ['write_file'], childToolIds: ['write_file'], requiresPlan: true },
-    { parentRequiresPlan: true, parentToolIds: ['read_file', 'write_file'], childToolIds: ['read_file'], requiresPlan: false },
-    { parentRequiresPlan: false, parentToolIds: ['write_file'], childToolIds: ['write_file'], requiresPlan: false },
-  ])('children derive plan policy from native ancestry and their own tools: $childToolIds', async ({
-    parentRequiresPlan, parentToolIds, childToolIds, requiresPlan,
-  }) => {
+  test('a child needs no plan to finish', async () => {
     const convex = convexTest(schema, modules)
-    const input = admission('planning-parent', await seedConversation(convex), {
-      requiresPlan: parentRequiresPlan,
-      allowedToolIds: parentToolIds,
-    })
+    const input = admission('planning-parent', await seedConversation(convex), { allowedToolIds: ['write_file'] })
     await admit(convex, input)
-    const planned = await apply(convex, input, 'plan', 0, {
-      type: 'replace_plan', steps: oneStep('delegated', false, parentToolIds),
-    })
+    const planned = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('delegated') })
     await apply(convex, input, 'delegate', planned.snapshot.revision, {
-      type: 'admit_child', child: { id: 'planning-child', stepId: 'delegated', allowedToolIds: childToolIds,
+      type: 'admit_child', child: { id: 'planning-child', stepId: 'delegated', allowedToolIds: ['write_file'],
         maxCostMicros: 0, costMicros: 0, status: 'running', evidenceRefs: [] },
       goal: 'Return a short answer.', constraints: [],
     })
     const child = await get(convex, 'planning-child')
-    expect(child?.policy.requiresPlan).toBe(requiresPlan)
-    const finish = apply(convex, { ...input, runId: 'planning-child' }, 'finish', child!.revision,
+    expect(child?.policy.requiresPlan).toBe(false)
+    const finished = await apply(convex, { ...input, runId: 'planning-child' }, 'finish', child!.revision,
       { type: 'finish', resultSummary: 'A short answer.' })
-    if (requiresPlan) await expect(finish).rejects.toThrow(/plan is required/)
-    else expect((await finish).snapshot.status).toBe('completed')
+    expect(finished.snapshot.status).toBe('completed')
   })
 
   test('persists billing dispatch ownership for settlement after cancellation', async () => {
@@ -403,11 +391,10 @@ describe('durable harness runs', () => {
     const plan = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('inspect') })
     let rejection: unknown
     try {
-      await apply(convex, input, 'invalid-evidence', plan.snapshot.revision, {
+      await apply(convex, input, 'unknown-step', plan.snapshot.revision, {
         type: 'transition_step',
-        id: 'inspect',
+        id: 'missing',
         status: 'done',
-        evidenceRefs: ['missing-evidence'],
       })
     } catch (error) {
       rejection = error
@@ -416,7 +403,7 @@ describe('durable harness runs', () => {
     expect(rejection).toMatchObject({
       data: {
         code: 'HARNESS_OPERATION_REJECTED',
-        message: 'Evidence must reference successful observations from this run.',
+        message: 'Unknown milestone.',
       },
     })
   })
@@ -510,13 +497,13 @@ describe('durable harness runs', () => {
       .rejects.toThrow(/HARNESS_EXECUTION_NOT_OWNED/)
   })
 
-  test('round-trips normalized plans and requires current independent verification', async () => {
+  test('round-trips normalized plans and completes a step when it is marked done', async () => {
     const convex = convexTest(schema, modules)
     const conversationId = await seedConversation(convex)
     const input = admission('run-plan', conversationId)
     await admit(convex, input)
 
-    const plan = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('inspect', true) })
+    const plan = await apply(convex, input, 'plan', 0, { type: 'replace_plan', steps: oneStep('inspect') })
     expect(plan.snapshot.planRevision).toBe(1)
     expect(plan.snapshot.plan[0]).toMatchObject({ id: 'inspect', status: 'pending', evidenceRefs: [] })
 
@@ -532,35 +519,16 @@ describe('durable harness runs', () => {
     const recorded = await apply(convex, input, 'tool-output', 1, { type: 'record_evidence', evidence: firstEvidence })
     expect(recorded.snapshot.revision).toBe(2)
     expect(recorded.snapshot.evidence.find(item => item.id === firstEvidence.id)?.inputDigest).toBe(firstEvidence.inputDigest)
-    await expect(apply(convex, input, 'premature-completion', 2, {
+    const completed = await apply(convex, input, 'complete-inspect', 2, {
       type: 'transition_step',
       id: 'inspect',
       status: 'done',
-      evidenceRefs: ['tool-output'],
-    })).rejects.toThrow(/Independent verification/)
-
-    const verification = {
-      id: 'verification',
-      kind: 'verification' as const,
-      summary: 'An independent check passed.',
-      source: 'reviewer:independent',
-      verdict: 'passed' as const,
-      createdAt: Date.now(),
-      verification: { stepId: 'inspect', planRevision: 1 },
-    }
-    await apply(convex, input, 'verification', 2, { type: 'record_evidence', evidence: verification })
-    const completed = await apply(convex, input, 'complete-inspect', 3, {
-      type: 'transition_step',
-      id: 'inspect',
-      status: 'done',
-      evidenceRefs: ['tool-output', 'verification'],
     })
     expect(completed.snapshot.plan[0]?.status).toBe('done')
 
     const fresh = await get(convex, input.runId)
     expect(fresh?.plan).toEqual(completed.snapshot.plan)
-    expect(fresh?.plan[0]?.evidenceTools).toEqual(['tool:read'])
-    expect(fresh?.evidence.map(item => item.id)).toEqual(['tool-output', 'verification'])
+    expect(fresh?.evidence.map(item => item.id)).toEqual(['tool-output'])
     expect(fresh?.evidence.find(item => item.id === firstEvidence.id)?.inputDigest).toBe(firstEvidence.inputDigest)
     const persisted = await convex.run(async ctx => ({
       planRows: await ctx.db.query('harnessPlanSteps').withIndex('by_runId', q => q.eq('runId', input.runId)).collect(),
@@ -594,17 +562,14 @@ describe('durable harness runs', () => {
     const rejectedInput = admission('run-answer-only-verification', await seedConversation(convex))
     await admit(convex, rejectedInput)
     await expect(apply(convex, rejectedInput, 'invalid-answer-plan', 0, {
-      type: 'replace_plan', steps: [{ ...oneStep('answer', true)[0]!, answerOnly: true }],
+      type: 'replace_plan', steps: [{ ...oneStep('answer')[0]!, requiresVerification: true, answerOnly: true }],
     })).rejects.toThrow(/Answer-only/)
   })
 
-  test('requires evidenceTools for action plans and bounds the tool list', async () => {
+  test('still bounds evidenceTools on plans from runs already in progress', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('run-evidence-tools', await seedConversation(convex))
     await admit(convex, input)
-    await expect(apply(convex, input, 'missing-tools', 0, {
-      type: 'replace_plan', steps: [{ ...oneStep('create')[0]!, evidenceTools: undefined }],
-    })).rejects.toThrow(/must declare evidenceTools/)
     await expect(apply(convex, input, 'too-many-tools', 0, {
       type: 'replace_plan', steps: [{ ...oneStep('create')[0]!, evidenceTools: Array(9).fill('tool:read') }],
     })).rejects.toThrow(/evidenceTools exceed their bounds/)
@@ -704,7 +669,7 @@ describe('durable harness runs', () => {
     const input = admission('run-settlement-root', await seedConversation(convex), { maxParallelChildren: 2 })
     await admit(convex, input)
     await apply(convex, input, 'settlement-root-plan', 0, {
-      type: 'replace_plan', steps: oneStep('delegated', false, ['harness_read_child']),
+      type: 'replace_plan', steps: oneStep('delegated'),
     })
     const childInput = { ...input, runId: 'run-settlement-child' }
     await apply(convex, input, 'settlement-admit-child', 1, {
@@ -954,7 +919,7 @@ describe('durable harness runs', () => {
       policy: {
         actorUserId: 'alice',
         allowedToolIds: ['tool:read'],
-        requiresPlan: true,
+        requiresPlan: false,
         maxCostMicros: 400,
       },
     })
@@ -1084,6 +1049,7 @@ describe('durable harness runs', () => {
       },
     })
     const write = mutation('writeTranscriptStep')
+    const fullPersistenceStorageId = await convex.run(ctx => ctx.storage.store(new Blob(['full transcript'])))
     const args = {
       actorUserId: input.policy.actorUserId,
       runId: input.runId,
@@ -1091,10 +1057,20 @@ describe('durable harness runs', () => {
       receiptId: 'model:0',
       stepNumber: 0,
       persistence: { content: 'A settled public update.', parts: [{ type: 'text', text: 'A settled public update.' }] },
+      fullPersistenceStorageId,
+      fullPersistenceDigest: createHash('sha256').update('full transcript').digest('hex'),
       serverSecret: secret,
     }
     expect(await convex.mutation(write, args)).toEqual({ persisted: true })
     expect(await convex.mutation(write, args)).toEqual({ persisted: false })
+    const duplicate = await convex.run(ctx => ctx.storage.store(new Blob(['full transcript'])))
+    expect(await convex.mutation(write, { ...args, fullPersistenceStorageId: duplicate })).toEqual({ persisted: false })
+    const discard = { actorUserId: args.actorUserId, runId: args.runId, workflowRunId: args.workflowRunId,
+      receiptId: args.receiptId, serverSecret: secret }
+    await convex.mutation(mutation('discardTranscriptUpload'), { ...discard, storageId: duplicate })
+    await convex.mutation(mutation('discardTranscriptUpload'), { ...discard, storageId: fullPersistenceStorageId })
+    expect(await convex.run(ctx => ctx.db.system.get(duplicate))).toBeNull()
+    expect(await convex.run(ctx => ctx.db.system.get(fullPersistenceStorageId))).not.toBeNull()
     await expect(convex.mutation(write, {
       ...args,
       persistence: { content: 'Different replay.', parts: [{ type: 'text', text: 'Different replay.' }] },
@@ -1124,6 +1100,57 @@ describe('durable harness runs', () => {
       isDone: true,
     })
   })
+})
+
+test('message trace retrieval enforces conversation access and reads every page in sequence', async () => {
+  const convex = convexTest(schema, modules)
+  const workspaceId = 'trace-workspace'
+  const now = Date.now()
+  await convex.run(async ctx => {
+    await ctx.db.insert('workspaces', { workspaceId, kind: 'organization', name: 'Trace QA', slug: 'trace-qa',
+      status: 'active', createdAt: now, updatedAt: now })
+    for (const userId of ['alice', 'bob']) {
+      await ctx.db.insert('workspacePrincipals', { principalId: `principal-${userId}`, workspaceId, type: 'human', userId,
+        displayName: userId, createdAt: now, updatedAt: now })
+      await ctx.db.insert('workspaceMemberships', { membershipId: `member-${userId}`, workspaceId, principalId: `principal-${userId}`,
+        role: 'member', status: 'active', joinedAt: now, updatedAt: now })
+    }
+  })
+  const conversationId = await seedConversation(convex, 'alice', workspaceId)
+  const input = admission('message-trace-run', conversationId, { workspaceId })
+  await admit(convex, input)
+  const ids = await convex.run(async ctx => {
+    const base = { conversationId, userId: 'alice', turnId: 'turn', mode: 'act' as const,
+      content: 'Public response', contentType: 'text' as const, createdAt: now }
+    const userMessageId = await ctx.db.insert('conversationMessages', { ...base, role: 'user' })
+    const messageId = await ctx.db.insert('conversationMessages', { ...base, role: 'assistant' })
+    const deliveryId = await ctx.db.insert('conversationAgentRuns', { conversationId, turnId: 'turn', userId: 'alice',
+      userMessageId, assistantMessageId: messageId, mode: 'work', runner: 'workflow', status: 'completed',
+      harnessRunId: input.runId, createdAt: now, updatedAt: now })
+    for (let sequence = 0; sequence < 11; sequence++) {
+      await ctx.db.insert('harnessTranscriptSteps', { runId: input.runId, receiptId: `model:${sequence}`, sequence,
+        stepNumber: 0, persistenceJson: JSON.stringify({ content: `Step ${sequence}`, parts: [] }), createdAt: now })
+    }
+    return { messageId, userMessageId, deliveryId }
+  })
+  const args = { actorUserId: 'alice', workspaceId, messageId: ids.messageId, serverSecret: secret }
+  const read = query('listMessageTranscriptSteps')
+  const first = await convex.query(read, args)
+  expect(first.steps.map((step: { sequence: number }) => step.sequence)).toEqual(Array.from({ length: 10 }, (_, index) => index))
+  const second = await convex.query(read, { ...args, afterSequence: first.nextSequence })
+  expect(second.steps.map((step: { sequence: number }) => step.sequence)).toEqual([10])
+  expect(second.nextSequence).toBeNull()
+  await expect(convex.query(read, { ...args, actorUserId: 'bob' })).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+  await expect(convex.query(read, { ...args, workspaceId: 'foreign-workspace' })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+  await expect(convex.query(read, { ...args, serverSecret: 'wrong' })).rejects.toThrow('Unauthorized')
+  expect(await convex.query(read, { ...args, messageId: ids.userMessageId })).toBeNull()
+  await convex.run(ctx => ctx.db.patch(ids.messageId, { deletedAt: now }))
+  expect(await convex.query(read, args)).toBeNull()
+  await convex.run(async ctx => {
+    await ctx.db.patch(ids.messageId, { deletedAt: undefined })
+    await ctx.db.patch(ids.deliveryId, { harnessRunId: 'missing-run' })
+  })
+  expect(await convex.query(read, args)).toBeNull()
 })
 
 test('public artifact attachment validates actual bytes, supports chunks, and rechecks source access', async () => {

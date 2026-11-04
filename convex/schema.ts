@@ -9,6 +9,12 @@ import { agentRunResourceRequestValidator } from './harness/resourceValidators'
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
+const runPlanStepValidator = v.object({
+  id: v.string(),
+  title: v.string(),
+  status: v.string(),
+})
+
 export default defineSchema({
   previewProviderBudget: defineTable({
     key: v.string(), spentMicros: v.number(), updatedAt: v.number(),
@@ -555,6 +561,9 @@ export default defineSchema({
     reservedTopUpCents: v.optional(v.number()),
     finalizedCents: v.optional(v.number()),
     providerCostMicros: v.optional(v.number()),
+    // Set once when the exact provider cost replaced a settled estimate.
+    estimatedCents: v.optional(v.number()),
+    costCorrectedAt: v.optional(v.number()),
     // Late provider evidence for a failed call whose wallet hold was already released.
     providerCostEvidence: v.optional(v.object({
       source: v.string(), reference: v.string(), reason: v.string(), recordedAt: v.number(),
@@ -1382,6 +1391,9 @@ export default defineSchema({
       requestedAt: v.number(),
       question: v.string(),
     })),
+    // The harness plan as people see it. Mirrored on the assistant message so
+    // the response keeps its plan after this run stops being the latest.
+    plan: v.optional(v.array(runPlanStepValidator)),
     approval: v.optional(v.object({
       token: v.string(),
       requestedAt: v.number(),
@@ -1470,6 +1482,8 @@ export default defineSchema({
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
     userId: v.string(),
+    // Kept apart from `parts`, which streaming and finalization replace.
+    agentPlan: v.optional(v.array(runPlanStepValidator)),
     // Compatibility-only fields retained for rows written during the reverted
     // collaboration release. See the equivalent note on `conversations`.
     authorKind: v.optional(v.union(
@@ -3018,6 +3032,8 @@ export default defineSchema({
     sequence: v.number(),
     stepNumber: v.number(),
     persistenceJson: v.string(),
+    fullPersistenceStorageId: v.optional(v.id('_storage')),
+    fullPersistenceDigest: v.optional(v.string()),
     createdAt: v.number(),
   }).index('by_runId_receiptId', ['runId', 'receiptId'])
     .index('by_runId_sequence', ['runId', 'sequence']),

@@ -1,20 +1,23 @@
 import { tool } from 'ai'
 import { z } from 'zod'
 import { HarnessPlanValidationError, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
+import { encodeRunQuestions, runQuestionIssue, type RunQuestion } from '@/shared/agents/run-questions'
 import type { HarnessArtifactReadResult, HarnessExecutionPorts } from './ports'
-import { HARNESS_STEP_VALIDATION } from './step-validation'
+import { HARNESS_STEP_VALIDATION, isHarnessStepValidation } from './step-validation'
 
 const id = z.string().min(1).max(256)
-const evidenceReferenceError = HARNESS_STEP_VALIDATION.evidenceReference
-const completionErrors = new Set<string>([
-  HARNESS_STEP_VALIDATION.evidenceRequired,
-  HARNESS_STEP_VALIDATION.toolEvidenceRequired,
-  HARNESS_STEP_VALIDATION.matchingToolEvidenceRequired,
-])
-const dependencyError = HARNESS_STEP_VALIDATION.dependencies
-const reusedToolResultEvidenceError = HARNESS_STEP_VALIDATION.reusedToolEvidence
-const reportingHint = 'If this milestone only reports prior results, use harness_set_plan to set answerOnly: true, omit evidenceTools, and set requiresVerification: false for this milestone. Preserve every other milestone exactly, including completed action IDs, titles, dependencies and acceptance criteria. Then return the requested answer using the saved result; do not repeat the completed action.'
-const completionHint = `Cite tool:<id> evidence that supports this milestone. For a milestone that reopens an artifact, declare evidenceTools: ["harness_read_artifact"] with harness_set_plan; a reopened excerpt cannot prove a new source-tool write. ${reportingHint}`
+
+const runQuestion = z.object({
+  prompt: z.string().min(1).max(300).describe('The question, written for the person reading it'),
+  description: z.string().max(300).optional().describe('Why it matters, or what the answer changes'),
+  choices: z.array(z.object({
+    label: z.string().min(1).max(80),
+    description: z.string().max(160).optional(),
+  })).max(6).optional().describe('Likely answers. Offer these whenever the options are knowable'),
+  multiple: z.boolean().optional().describe('true when more than one choice can apply'),
+  allowCustomAnswer: z.boolean().optional().describe('true to also let the person write their own answer'),
+  optional: z.boolean().optional().describe('true when the person can skip this and you can continue without it'),
+})
 
 function artifactIdentity(metadata: HarnessArtifactReadResult['metadata']): string {
   const resource = metadata.resource
@@ -23,76 +26,32 @@ function artifactIdentity(metadata: HarnessArtifactReadResult['metadata']): stri
   return `artifact ${metadata.artifactId}; ${metadata.toolName} call ${metadata.toolCallId}${resource}`
 }
 
-function availableEvidenceIds(state: HarnessSnapshot) {
-  const usedByAction = new Set(state.plan
-    .filter(step => step.status === 'done' && !step.answerOnly)
-    .flatMap(step => step.evidenceRefs))
-  return state.evidence
-    .filter(evidence => evidence.verdict !== 'failed' && !usedByAction.has(evidence.id))
-    .sort((left, right) => right.createdAt - left.createdAt)
-    .slice(0, 12)
-    .map(evidence => ({ id: evidence.id, source: evidence.source }))
-}
-
 function rejectedStepUpdate(error: string, state: HarnessSnapshot, stepId: string) {
-  const evidenceIds = availableEvidenceIds(state)
-  if (error === evidenceReferenceError) {
-    return { success: false, error, availableEvidenceIds: evidenceIds }
-  }
-  if (completionErrors.has(error)) {
-    return { success: false, error, availableEvidenceIds: evidenceIds, hint: completionHint }
-  }
-  if (error === reusedToolResultEvidenceError) {
-    return {
-      success: false,
-      error,
-      availableEvidenceIds: evidenceIds,
-      hint: `For a separate action, cite its own successful tool result; one result cannot prove two actions. ${reportingHint}`,
-    }
-  }
-  if (error === dependencyError) {
-    const step = state.plan.find(candidate => candidate.id === stepId)
-    const pendingDependencyIds = step?.dependsOn.filter(dependencyId => {
-      const dependency = state.plan.find(candidate => candidate.id === dependencyId)
-      return !dependency || !['done', 'skipped'].includes(dependency.status)
-    }) ?? []
-    return {
-      success: false,
-      error,
-      availableEvidenceIds: evidenceIds,
-      pendingDependencyIds,
-      hint: 'Complete or skip these milestones first.',
-    }
-  }
-  return undefined
+  if (error !== HARNESS_STEP_VALIDATION.dependencies) return { success: false, error }
+  const step = state.plan.find(candidate => candidate.id === stepId)
+  const pendingDependencyIds = step?.dependsOn.filter(dependencyId => {
+    const dependency = state.plan.find(candidate => candidate.id === dependencyId)
+    return !dependency || !['done', 'skipped'].includes(dependency.status)
+  }) ?? []
+  return { success: false, error, pendingDependencyIds, hint: 'Complete or skip these steps first.' }
 }
 
 export function createHarnessControlTools(ports: HarnessExecutionPorts) {
   return {
     harness_set_plan: tool({
-      description: 'Create or revise durable milestones. Keep existing IDs; explicitly skip obsolete work. Completion requires persisted evidence.',
+      description: 'Create or revise a plan for a long task that needs structure. The person sees these steps as your progress, so write short, plain titles. Keep existing IDs and skip steps that no longer apply.',
       inputSchema: z.object({ steps: z.array(z.object({
         id,
         title: z.string().min(1).max(500),
-        dependsOn: z.array(id).max(128),
-        acceptanceCriteria: z.array(z.string().min(1).max(2_000)).min(1).max(16),
-        evidenceTools: z.array(id).max(8)
-          .describe('Tool IDs whose successful results will prove this milestone, e.g. ["create_note"]')
-          .optional(),
-        requiresVerification: z.boolean().optional()
-          .describe('true only when a delegated verifier will independently check this milestone'),
-        answerOnly: z.boolean().optional().describe('true only for a milestone that is answering from knowledge or prior evidence with no external effect'),
+        dependsOn: z.array(id).max(128).optional(),
       })).min(1).max(128) }),
       execute: async ({ steps }, { toolCallId }) => {
         const normalizedSteps = steps.map(step => ({
           id: step.id,
           title: step.title,
-          dependsOn: step.dependsOn,
-          acceptanceCriteria: step.acceptanceCriteria,
-          requiresVerification: step.requiresVerification === true,
-          ...(step.evidenceTools && (step.evidenceTools.length > 0 || step.answerOnly !== true)
-            ? { evidenceTools: step.evidenceTools } : {}),
-          ...(step.answerOnly === true ? { answerOnly: true } : {}),
+          dependsOn: step.dependsOn ?? [],
+          acceptanceCriteria: [step.title],
+          requiresVerification: false,
         }))
         let state: HarnessSnapshot
         try {
@@ -103,7 +62,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
               success: false,
               code: 'tool_validation_failure',
               error: error.message,
-              hint: 'Correct the plan fields and retry. Preserve existing milestone IDs and cite only authorized evidenceTools.',
+              hint: 'Correct the plan and retry. Keep existing step IDs.',
             }
           }
           throw error
@@ -112,11 +71,10 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       },
     }),
     harness_update_step: tool({
-      description: 'Update a persisted milestone using its exact ID and evidence references. Do not mark incomplete or unverified work done.',
+      description: 'Set a plan step to running when you start it and done when you finish it. Marking a step done means the work is finished.',
       inputSchema: z.object({
         id,
-        status: z.enum(['pending', 'running', 'blocked', 'verifying', 'done', 'skipped']),
-        evidenceRefs: z.array(z.string().min(1).max(512)).max(32).optional(),
+        status: z.enum(['pending', 'running', 'blocked', 'done', 'skipped']),
         skipReason: z.string().max(2_000).optional(),
       }),
       execute: async (input, { toolCallId }) => {
@@ -124,18 +82,8 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         try {
           state = await ports.apply(`control:${toolCallId}`, { type: 'transition_step', ...input })
         } catch (error) {
-          if (!(error instanceof Error)) throw error
-          const verificationError = HARNESS_STEP_VALIDATION.verification
-          if (error.message === verificationError) {
-            return { success: false, error: verificationError,
-              hint: 'Revise the plan if no independent verifier is available for this milestone.' }
-          }
-          if (error.message === evidenceReferenceError || completionErrors.has(error.message)
-            || error.message === dependencyError || error.message === reusedToolResultEvidenceError) {
-            const rejection = rejectedStepUpdate(error.message, await ports.read(), input.id)
-            if (rejection) return rejection
-          }
-          throw error
+          if (!(error instanceof Error) || !isHarnessStepValidation(error.message)) throw error
+          return rejectedStepUpdate(error.message, await ports.read(), input.id)
         }
         return { planRevision: state.planRevision, step: state.plan.find(step => step.id === input.id) }
       },
@@ -150,7 +98,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       execute: async ({ evidenceId, cursor, limit }) => ports.readEvidence(evidenceId ?? '', cursor, limit),
     }),
     harness_read_artifact: tool({
-      description: 'Reopen a private tool-result artifact using a bounded text range or a selected media-part index. Access is reauthorized against the original source tool. Read milestones should declare evidenceTools: ["harness_read_artifact"]; this observation cannot prove a new source-tool write.',
+      description: 'Reopen a private tool-result artifact using a bounded text range or a selected media-part index. Access is reauthorized against the original source tool. ',
       inputSchema: z.object({
         artifactId: z.string().min(67).max(67).regex(/^ha_[a-f0-9]{64}$/),
         start: z.number().int().nonnegative().optional(),
@@ -185,19 +133,22 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         : { type: 'text', value: `[Incomplete artifact excerpt; ${artifactIdentity(output.metadata)}]\n${output.text}` },
     }),
     harness_report_blocker: tool({
-      description: 'Pause for essential user input. Ask one concise question rather than guessing sensitive choices.',
-      inputSchema: z.object({ question: z.string().min(1).max(2_000) }),
-      execute: async ({ question }, { toolCallId }) => {
-        const current = await ports.read()
-        if (current.policy.requiresPlan && !current.plan.length) {
-          return { success: false, error: 'Call harness_set_plan first; report blockers after the plan exists.' }
+      description: 'Pause and ask the person when you need a decision only they can make. Ask real questions they can answer without knowing how you work, and offer choices whenever you can. Never use this to report internal problems or to end your turn.',
+      inputSchema: z.object({ questions: z.array(runQuestion).min(1).max(4) }),
+      execute: async ({ questions }, { toolCallId }) => {
+        const asked = questions as RunQuestion[]
+        const issue = runQuestionIssue(asked)
+        if (issue) return { success: false, error: issue }
+        const encoded = encodeRunQuestions(asked)
+        if (encoded.length > 2_000) {
+          return { success: false, error: 'These questions are too long. Shorten them or ask fewer.' }
         }
-        const state = await ports.apply(`control:${toolCallId}`, { type: 'block', blocker: { kind: 'input', question } })
-        return { status: state.status, question }
+        const state = await ports.apply(`control:${toolCallId}`, { type: 'block', blocker: { kind: 'input', question: encoded } })
+        return { status: state.status, questions: asked }
       },
     }),
     harness_delegate: tool({
-      description: 'Start a bounded child for an independent ready milestone. Legacy runs require a spend allocation; v2 runs use their configured payer without a child lifetime cap. Grant only the tools it needs. Children receive a brief, not the parent transcript.',
+      description: 'Start a bounded child for an independent ready plan step. Legacy runs require a spend allocation; v2 runs use their configured payer without a child lifetime cap. Grant only the tools it needs. Children receive a brief, not the parent transcript.',
       inputSchema: z.object({
         stepId: id,
         goal: z.string().min(1).max(32_000),
@@ -217,7 +168,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       },
     }),
     harness_read_child: tool({
-      description: 'Join an admitted child, waiting durably if it is still working. Start independent children before joining them. A completed result returns a parent evidenceRef for milestone completion, not independent verification.',
+      description: 'Join an admitted child, waiting durably if it is still working. Start independent children before joining them. ',
       inputSchema: z.object({ childRunId: id }),
       execute: async ({ childRunId }, { toolCallId }) => {
         const parent = await ports.read()

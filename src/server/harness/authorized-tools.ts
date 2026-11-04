@@ -43,14 +43,13 @@ export function createHarnessAuthorizedTools(
           assertHarnessRunnable(state, Date.now())
           if (!controls.has(name)) {
             if (!state.policy.allowedToolIds.includes(name)) throw new Error('This tool is not authorized for this run.')
-            if (state.policy.requiresPlan && !state.plan.length) throw new Error('Create the required plan before executing work.')
             await ports.authorizeTool(name)
           }
           const duplicate = duplicateCreateEvidence(state, name, value)
           if (duplicate) {
             return {
               success: false,
-              error: `Duplicate: this exact ${name} call already succeeded as evidence ${duplicate.id}. Cite that evidence instead of repeating it.`,
+              error: `Duplicate: this exact ${name} call already succeeded as evidence ${duplicate.id}. Use that result instead of repeating it.`,
             }
           }
           const invoke = execute as (

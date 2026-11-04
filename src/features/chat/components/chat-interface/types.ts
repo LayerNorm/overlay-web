@@ -143,6 +143,7 @@ export type ServerConversationMessage = {
 }
 
 export type LiveConversationMessage = {
+  agentPlan?: Array<{ id: string; title: string; status: string }>
   _id: Id<'conversationMessages'>
   turnId: string
   role: 'user' | 'assistant'
@@ -154,6 +155,8 @@ export type LiveConversationMessage = {
   variantIndex?: number
   routedModelId?: string
   status?: 'generating' | 'completed' | 'error'
+  createdAt?: number
+  updatedAt?: number
 }
 
 export interface GenerationResult {

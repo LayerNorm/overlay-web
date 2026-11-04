@@ -180,7 +180,7 @@ export function useLiveConversationSync({
     const runtime = runtimesRef.current.get(activeChatId)
     if (!runtime) return
 
-    const changed = patchLiveMessagesIntoRuntime(runtime, liveMessages)
+    const changed = patchLiveMessagesIntoRuntime(runtime, liveMessages, { includeAskRows: shouldSyncMessages })
     if (changed) {
       cloneRuntimeMessageArrays(runtime)
       if (activeChatIdRef.current === activeChatId) {

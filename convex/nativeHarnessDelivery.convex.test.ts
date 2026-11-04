@@ -1,3 +1,4 @@
+import type { Id } from './_generated/dataModel'
 import { beforeAll, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
@@ -771,4 +772,31 @@ test('room Stop fences the invoker root and child even after agent revocation, w
   await expect(convex.query(query('harness/runs:listDeliveryWorkflowRuns'), {
     actorUserId: 'bob', agentRunId: turn.runId, rootRunId: input.runId, cursor: null, serverSecret: secret,
   })).rejects.toThrow()
+})
+
+test('plan changes reach the run and its message, and survive message updates', async () => {
+  const convex = convexTest(schema, modules)
+  const fixture = await seed(convex)
+  const turn = await open(convex, fixture)
+  const root = await convex.mutation(mutation('harness/runs:admit'), { ...admission(fixture.conversationId, turn.runId), serverSecret: secret })
+  await claimAndAttachWorkflow(convex, root.runId, turn.runId, 'workflow-plan')
+  const step = (id: string) => ({ id, title: `Do ${id}`, dependsOn: [], acceptanceCriteria: [id], requiresVerification: false })
+  const applyOwned = async (operation: HarnessOperation) => {
+    const state = await convex.query(query('harness/runs:get'), { actorUserId: 'alice', runId: root.runId, serverSecret: secret })
+    return convex.mutation(mutation('harness/runs:apply'), { actorUserId: 'alice', runId: root.runId, expectedRevision: state.revision,
+      workflowRunId: 'workflow-plan', executionGeneration: state.executionGeneration ?? 0,
+      operationId: `${operation.type}:${state.revision}`, operation, serverSecret: secret })
+  }
+  await applyOwned({ type: 'replace_plan', steps: [step('first'), step('second')] })
+  await applyOwned({ type: 'transition_step', id: 'first', status: 'done' })
+  const expected = [{ id: 'first', title: 'Do first', status: 'done' }, { id: 'second', title: 'Do second', status: 'pending' }]
+  const read = () => convex.run(async ctx => {
+    const run = await ctx.db.get(turn.runId as Id<'conversationAgentRuns'>)
+    return { run, message: run && await ctx.db.get(run.assistantMessageId) }
+  })
+  const { run, message } = await read()
+  expect(run?.plan).toEqual(expected)
+  expect(message?.agentPlan).toEqual(expected)
+  await convex.run(ctx => ctx.db.patch(message!._id, { parts: [{ type: 'text', text: 'Final answer' }], content: 'Final answer' }))
+  expect((await read()).message?.agentPlan).toEqual(expected)
 })

@@ -8,7 +8,6 @@ test('new admissions use v2 lifecycle while only Overlay-funded paid runs use wo
   expect(personalHarnessPolicy(input)).toEqual({ actorUserId: 'user', workspaceId: 'workspace',
     publicProgressVersion: 1, executionPolicyVersion: 2, spendingMode: 'workspace', allowedToolIds: ['read', 'write'], requiresPlan: false,
     deadlineAt: 86_401_000, maxCostMicros: 0, maxParallelChildren: 3, maxDepth: 2 })
-  expect(personalHarnessPolicy({ ...input, requiresPlan: true }).requiresPlan).toBe(true)
   expect(personalHarnessPolicy({ ...input, paid: false }))
     .toMatchObject({ publicProgressVersion: 1, executionPolicyVersion: 2, spendingMode: 'none', maxCostMicros: 0 })
   expect(personalHarnessPolicy({ ...input, modelId: 'byok/key/model' }))

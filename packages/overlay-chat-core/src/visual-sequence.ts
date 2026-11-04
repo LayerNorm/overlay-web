@@ -15,6 +15,11 @@ import { getToolName, isReasoningUIPart, isToolUIPart } from './ui-parts'
 /** Preserve message `parts` order so tools and text interleave (matches stream / persisted transcript). */
 export type TerminalAssistantState = 'completed' | 'error' | 'cancelled' | 'interrupted'
 
+/** Plans and questions have their own UI, so their tool calls aren't work to show. */
+function isHarnessControlTool(toolName: string | undefined): boolean {
+  return Boolean(toolName?.startsWith('harness_'))
+}
+
 export function buildAssistantVisualSequence(
   parts: unknown[] | undefined,
   options: { terminalState?: TerminalAssistantState } = {},
@@ -47,6 +52,7 @@ export function buildAssistantVisualSequence(
     }
     if (legacy?.type === 'tool-invocation' && legacy.toolInvocation?.toolName) {
       const inv = legacy.toolInvocation
+      if (isHarnessControlTool(inv.toolName)) continue
       if (inv.toolName === 'present_generated_ui') {
         const output = inv.toolOutput && typeof inv.toolOutput === 'object'
           ? inv.toolOutput as Record<string, unknown>
@@ -91,6 +97,7 @@ export function buildAssistantVisualSequence(
         output?: unknown
       }
       const toolName = getToolName(p)
+      if (isHarnessControlTool(toolName)) continue
       if (toolName === 'present_generated_ui') {
         const output = part.output && typeof part.output === 'object'
           ? part.output as Record<string, unknown>

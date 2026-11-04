@@ -65,7 +65,7 @@ export function harnessDiagnosticForFailure(
     stage = 'model'
     operationId = snapshot.modelReservation.id
   } else if (error instanceof HarnessAuthorizationError || value.code === 'HARNESS_AUTHORIZATION_REVOKED'
-    || ['HARNESS_EXECUTION_NOT_OWNED', 'HARNESS_RUN_NOT_FOUND', 'CONVERSATION_ACCESS_DENIED',
+    || ['HARNESS_EXECUTION_NOT_OWNED', 'Harness request is not owned by an active execution.', 'HARNESS_RUN_NOT_FOUND', 'CONVERSATION_ACCESS_DENIED',
     'NOTE_ACCESS_DENIED', 'HARNESS_DELIVERY_ACCESS_DENIED', 'Native harness execution is no longer authorized.',
     'Native harness execution is not owned by this workflow.', 'Personal harness execution is not authorized to continue.',
     'Personal harness identity does not match its tooling context.', 'The root harness execution is no longer active.',

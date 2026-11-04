@@ -14,7 +14,7 @@ import { collectWebSourcesFromBlocks } from '@overlay/chat-core/sources'
 import {
   buildAssistantPersistenceFromSteps,
   compactAssistantPersistenceForConvex,
-  replaceAssistantTextForPersistence,
+  mapAssistantTextForPersistence,
 } from './persist-assistant-turn'
 
 test('normalizeGeneratedUiData validates and trims text draft payloads', () => {
@@ -362,7 +362,7 @@ test('compactAssistantPersistenceForConvex preserves normalized web sources', ()
   ])
 })
 
-test('replaceAssistantTextForPersistence retains source-bearing tool parts', () => {
+test('rewriting saved text keeps each block in order with the tools around it', () => {
   const toolPart = {
     type: 'tool-invocation',
     toolInvocation: {
@@ -372,18 +372,20 @@ test('replaceAssistantTextForPersistence retains source-bearing tool parts', () 
       toolOutput: { sources: [{ url: 'https://example.com', title: 'Example' }] },
     },
   }
-  const replaced = replaceAssistantTextForPersistence({
-    content: 'Leaked tool syntax',
+  const mapped = mapAssistantTextForPersistence({
+    content: 'First\n\nSecond',
     parts: [
+      { type: 'text', text: 'First' },
       toolPart,
-      { type: 'text', text: 'Leaked tool syntax' },
+      { type: 'text', text: 'Second' },
     ],
-  }, 'Clean answer')
+  }, text => text.toUpperCase())
 
-  assert.equal(replaced.content, 'Clean answer')
-  assert.deepEqual(replaced.parts, [
+  assert.equal(mapped.content, 'FIRST\n\nSECOND')
+  assert.deepEqual(mapped.parts, [
+    { type: 'text', text: 'FIRST' },
     toolPart,
-    { type: 'text', text: 'Clean answer' },
+    { type: 'text', text: 'SECOND' },
   ])
 })
 

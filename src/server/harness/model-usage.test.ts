@@ -32,7 +32,7 @@ const response = (
 const request = () => ({ receiptId: 'model:0', requestedModelId: 'provider/requested', contextWindow: 100_000,
   observation: captureHarnessModelUsage(step, 'provider/requested') })
 
-beforeEach(() => { vi.clearAllMocks(); mocks.attempt = 1 })
+beforeEach(() => { vi.clearAllMocks(); mocks.attempt = 1; mocks.pricing.mockResolvedValue(null) })
 
 async function retryDelaySeconds(input: ReturnType<typeof request>): Promise<number> {
   let thrown: unknown
@@ -81,7 +81,6 @@ test('uses exact Gateway receipts, including zero, without persisting unrelated 
     expect(result.receipt).toMatchObject({ costMicros: totalCost === 0 ? 0 : 710, costSource: 'provider', cacheReadTokens: 600, cacheWriteTokens: 200 })
     expect(JSON.stringify(result)).not.toContain('fixture-do-not-store')
   }
-  expect(mocks.pricing).not.toHaveBeenCalled()
 })
 
 test('propagates response failure to a charged provider receipt without treating it as a rejection', async () => {
@@ -104,7 +103,6 @@ test('delayed receipt ingestion retries only lookup, while other lookup failures
   expect(await retryDelaySeconds(request())).toBe(2)
   mocks.generation.mockRejectedValue({ statusCode: 403 })
   await expect(resolveHarnessModelUsage(request())).rejects.toMatchObject({ name: 'FatalError' })
-  expect(mocks.pricing).not.toHaveBeenCalled()
 })
 
 test('a delayed Gateway receipt eventually resolves to a provider receipt', async () => {
@@ -117,12 +115,10 @@ test('a delayed Gateway receipt eventually resolves to a provider receipt', asyn
   expect(result.receipt).toMatchObject({ costSource: 'provider', costMicros: 710 })
   expect(result.providerCostUsd).toBe(0.00071)
   expect(mocks.generation).toHaveBeenCalledTimes(2)
-  expect(mocks.pricing).not.toHaveBeenCalled()
 })
 
-test('404s retry with growing delays before settling from catalog pricing', async () => {
+test('404s retry with growing delays when no catalog price exists', async () => {
   mocks.generation.mockRejectedValue({ statusCode: 404 })
-  mocks.pricing.mockResolvedValue(0.00071)
   const delays: number[] = []
   for (let attempt = 1; attempt <= 14; attempt++) {
     mocks.attempt = attempt
@@ -130,14 +126,18 @@ test('404s retry with growing delays before settling from catalog pricing', asyn
   }
   expect(delays).toEqual([2, 4, 8, 16, 32, ...Array(9).fill(60)])
   expect(resolveHarnessModelUsage.maxRetries).toBe(14)
+})
 
-  mocks.attempt = 15
+test('a known catalog price settles without waiting on the gateway', async () => {
+  mocks.pricing.mockResolvedValue(0.00071)
   const result = await resolveHarnessModelUsage(request())
   expect(result).toMatchObject({
     receipt: { costSource: 'catalog', costMicros: 710, inputTokens: 1_000, outputTokens: 100 },
     providerCostUsd: null,
     catalogCostUsd: 0.00071,
+    correctionGenerationId: 'gen_fixture',
   })
+  expect(mocks.generation).not.toHaveBeenCalled()
   expect(mocks.pricing).toHaveBeenCalledWith('provider/actual', 1_000, 600, 100, 200)
 })
 
@@ -165,7 +165,6 @@ test('BYOK has no Overlay charge but preserves an unknown external cost and cann
   const result = await resolveHarnessModelUsage({ ...request(), requestedModelId: 'byok/connection/model' })
   expect(result).toMatchObject({ providerCostUsd: null, receipt: { costMicros: 0, costSource: 'external', externalCostMicros: null } })
   expect(mocks.generation).not.toHaveBeenCalled()
-  expect(mocks.pricing).not.toHaveBeenCalled()
 })
 
 test('rejects invalid costs and receipts from another generation or funding source', async () => {
