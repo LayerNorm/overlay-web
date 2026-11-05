@@ -20,10 +20,9 @@
 .main{background:var(--shell-panel,var(--surface-elevated))}
 .agent-row{padding:7px 0 0;gap:0}
 .agent-name{font-size:14px!important;padding:6px 8px!important;gap:10px!important;min-width:0}
-.thread-tree{padding-left:28px}
-.thread-row{padding:8px 10px!important}
-.thread-title{font-size:13px}
-.thread-meta{font-size:10px}
+.single-line-thread{font-weight:400!important;gap:7px!important}
+.thread-status{display:inline-flex;width:14px;height:14px;align-items:center;justify-content:center;flex-shrink:0;color:var(--muted)}
+.single-line-thread .thread-title{min-width:0;width:auto;flex:1;font-size:13px;line-height:19px}
 .other-agent{padding-left:9px;padding-top:15px;font-size:14px}
 .account-avatar{width:28px!important;height:28px!important;border-radius:50%!important;margin:6px auto 0;font-size:10px!important;background:#e8a33d!important;color:#111!important}
 .header{height:48px;gap:8px;padding:8px 10px;font-size:13px}
@@ -55,6 +54,9 @@
 .workspace-navigation .double-sidebar{width:100%}
 .workspace-navigation .double-sidebar-panel{width:calc(100% - 60px)!important;visibility:visible;opacity:1}
 .workspace-navigation .double-sidebar-rail{flex-shrink:0}
+.workspace-navigation .agent-thread-tree{margin:0 0 8px 36px;width:calc(100% - 36px)}
+.workspace-navigation .agent-thread-tree>li::before{content:'';position:absolute;left:-13px;top:5px;width:10px;height:10px;border-left:1.5px solid var(--shell-guide,var(--border));border-bottom:1.5px solid var(--shell-guide,var(--border));border-bottom-left-radius:4px;pointer-events:none}
+.workspace-navigation .single-line-thread{height:30px;font-size:13px}
 .mobile-sidebar-close{display:inline-flex!important;position:absolute;bottom:8px;right:8px}
 .conversation{padding:20px 16px 16px}
 .header{font-size:11px;gap:4px}

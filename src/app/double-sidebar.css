@@ -116,38 +116,6 @@
     border-radius: 8px;
   }
 
-  .double-sidebar .agent-thread-tree {
-    margin: 0 0 8px 36px;
-    width: calc(100% - 36px);
-  }
-
-  .double-sidebar .agent-thread-tree > li::before {
-    content: '';
-    position: absolute;
-    left: -13px;
-    top: 5px;
-    width: 10px;
-    height: 10px;
-    border-left: 1.5px solid var(--shell-guide);
-    border-bottom: 1.5px solid var(--shell-guide);
-    border-bottom-left-radius: 4px;
-    pointer-events: none;
-  }
-
-  .double-sidebar .agent-thread-tree [data-slot='sidebar-menu-sub-button'] {
-    height: 30px;
-    font-size: 13px;
-    color: var(--muted);
-  }
-
-  .double-sidebar .agent-thread-tree [data-slot='sidebar-menu-sub-button'][data-active='true'] {
-    color: var(--foreground);
-  }
-
-  .double-sidebar .agent-thread-tree .lucide-message-square {
-    display: none;
-  }
-
   html[data-desktop='mac'] [data-app-shell]:has([data-double-sidebar]) {
     padding-top: 32px;
   }
@@ -160,6 +128,58 @@
     -webkit-app-region: drag;
   }
 }
+
+.agent-thread-tree {
+  margin: 0 0 8px 36px;
+  width: calc(100% - 36px);
+}
+
+.agent-thread-tree > li::before {
+  content: '';
+  position: absolute;
+  left: -13px;
+  top: 5px;
+  width: 10px;
+  height: 10px;
+  border-left: 1.5px solid var(--shell-guide, var(--border));
+  border-bottom: 1.5px solid var(--shell-guide, var(--border));
+  border-bottom-left-radius: 4px;
+  pointer-events: none;
+}
+
+.agent-thread-tree [data-slot='sidebar-menu-sub-button'] {
+  height: 30px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.agent-thread-tree [data-slot='sidebar-menu-sub-button'][data-active='true'] {
+  color: var(--foreground);
+}
+
+.agent-thread-status, .agent-activity-count {
+  --thread-ready: #157349;
+  --thread-attention: #986611;
+}
+
+[data-theme='dark'] .agent-thread-status, [data-theme='dark'] .agent-activity-count {
+  --thread-ready: #55bf91;
+  --thread-attention: #dfbc74;
+}
+
+.agent-thread-status {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+:is(.agent-thread-status, .agent-activity-count)[data-status='ready'] { color: var(--thread-ready); }
+:is(.agent-thread-status, .agent-activity-count)[data-status='needs_input'] { color: var(--thread-attention); }
+:is(.agent-thread-status, .agent-activity-count)[data-status='failed'] { color: var(--danger); }
 
 @media (min-width: 1024px) {
   [data-app-shell]:has([data-double-sidebar]) .app-main:not([data-desktop-panel]) [data-slot='app-screen-shell']:not([data-slot='app-screen-shell'] [data-slot='app-screen-shell']) > [data-slot='app-screen-layout'] > [data-slot='app-screen-right-panel'][data-mode='docked'] {

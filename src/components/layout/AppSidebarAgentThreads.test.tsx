@@ -4,18 +4,21 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { AgentThreadRows } from './AppSidebarAgentThreads'
+import { AgentActivitySummary } from './sidebar/ThreadActivityIndicator'
+import type { ThreadActivity, ThreadActivityStatus } from '@/shared/agents/thread-activity'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
 
 const agent = { id: 'agent_1', name: 'Overlay' } as WorkspaceAgentDirectoryItem
 const noop = () => undefined
 
-function render(bundle: WorkspaceAgentBundle | 'loading' | 'error', props: { activeConversationId?: string | null } = {}) {
+function render(bundle: WorkspaceAgentBundle | 'loading' | 'error', props: { activeConversationId?: string | null; activity?: ThreadActivity[] } = {}) {
   return renderToStaticMarkup(
     <AgentThreadRows
       agent={agent}
       bundle={bundle}
       activeConversationId={props.activeConversationId ?? null}
+      activity={props.activity}
       onOpenThread={noop}
       onOpenAutomation={noop}
       onArchiveThread={noop}
@@ -71,4 +74,32 @@ test('threads that are loading show placeholders; a failed load says so', () => 
   assert.equal(loading.match(/data-slot="sidebar-menu-skeleton"/g)?.length, 3)
   assert.match(loading, /aria-label="Loading Overlay threads"/)
   assert.match(render('error'), /Could not load threads/)
+})
+
+test('single-line titles have accessible live status icons without status subtitles', () => {
+  for (const [status, label, icon] of [
+    ['working', 'Working', 'lucide-loader-circle'],
+    ['ready', 'Ready to review', 'lucide-check'],
+    ['completed', 'Completed', 'lucide-check'],
+    ['needs_input', 'Needs you', 'lucide-message-circle-question'],
+    ['failed', 'Failed', 'lucide-circle-alert'],
+    ['cancelled', 'Cancelled', 'lucide-square'],
+  ] as const) {
+    const html = render(bundle, { activity: [{ conversationId: 'c_plan', status }] })
+    assert.match(html, new RegExp(`aria-label="Q4 launch plan, ${label}"`))
+    assert.match(html, new RegExp(`data-status="${status}"`))
+    assert.match(html, new RegExp(icon))
+    assert.doesNotMatch(html, new RegExp(`>${label}<`))
+    assert.match(html, /agent-thread-tree/)
+  }
+})
+
+test('agent subtitles retain working and ready counts and preserve the chief fallback', () => {
+  const activity = (['working', 'working', 'ready', 'needs_input'] as ThreadActivityStatus[])
+    .map((status, i) => ({ conversationId: String(i), status }))
+  const html = renderToStaticMarkup(<AgentActivitySummary activity={activity} />)
+  assert.match(html, /2 working/)
+  assert.match(html, /1 ready/)
+  assert.match(html, /1 needs you/)
+  assert.match(renderToStaticMarkup(<AgentActivitySummary activity={[]} fallback="Dev · You" />), /Dev · You/)
 })

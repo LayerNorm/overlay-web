@@ -3,6 +3,8 @@
 import type { ComponentProps } from 'react'
 import { Archive, Trash2, Workflow } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
+import { ThreadActivityIndicator } from './sidebar/ThreadActivityIndicator'
+import { THREAD_ACTIVITY_LABELS, type ThreadActivity } from '@/shared/agents/thread-activity'
 import {
   SidebarMenuAction,
   SidebarMenuSkeleton,
@@ -19,6 +21,7 @@ export function AgentThreadRows({
   agent,
   bundle,
   activeConversationId,
+  activity,
   onOpenThread,
   onOpenAutomation,
   onArchiveThread,
@@ -27,6 +30,7 @@ export function AgentThreadRows({
   agent: WorkspaceAgentDirectoryItem
   bundle: WorkspaceAgentBundle | 'loading' | 'error'
   activeConversationId: string | null
+  activity?: ThreadActivity[]
   onOpenThread(agent: WorkspaceAgentDirectoryItem, conversationId: string): void
   onOpenAutomation(automationId: string): void
   onArchiveThread(agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean): void
@@ -53,19 +57,24 @@ export function AgentThreadRows({
     )
   }
   const threads = bundle.threads.filter((thread) => !thread.archivedAt)
+  const statuses = new Map(activity?.map(item => [item.conversationId, item.status]))
   const automations = bundle.automations
   return (
     <SidebarMenu className="agent-thread-tree mb-2.5" aria-label={`${agent.name} threads`}>
       {threads.map((thread) => {
         const active = activeConversationId === thread.conversationId
+        const status = statuses.get(thread.conversationId)
         return (
           <SidebarMenuSubItem key={thread.conversationId}>
             <ThreadButton
               isActive={active}
               aria-current={active ? 'page' : undefined}
+              aria-label={status ? `${thread.title}, ${THREAD_ACTIVITY_LABELS[status]}` : thread.title}
+              title={status ? `${thread.title} · ${THREAD_ACTIVITY_LABELS[status]}` : thread.title}
               onClick={() => onOpenThread(agent, thread.conversationId)}
-              className="pr-14"
+              className="agent-thread-button gap-[7px] pr-14"
             >
+              <ThreadActivityIndicator status={status} />
               <span className="flex-1 truncate">{thread.title}</span>
             </ThreadButton>
             <SidebarMenuAction

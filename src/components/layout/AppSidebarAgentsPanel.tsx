@@ -49,6 +49,8 @@ import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-worksp
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { useAgentExpansion } from './sidebar/useAgentExpansion'
 import { resolveAgentEntryThread } from './sidebar/resolveAgentEntryThread'
+import { AgentThreadActivityProvider, useAgentThreadActivity } from './sidebar/AgentThreadActivityProvider'
+import { AgentActivitySummary } from './sidebar/ThreadActivityIndicator'
 
 type AgentBundleMap = Record<string, WorkspaceAgentBundle | 'loading' | 'error'>
 
@@ -494,6 +496,7 @@ function AgentListRow({
   onArchiveThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean) => void
   onDeleteThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
 }) {
+  const activity = useAgentThreadActivity(agent.id)
   return (
     <SidebarMenuItem>
       <div className="group/agent-row relative">
@@ -501,7 +504,7 @@ function AgentListRow({
           isActive={isActive}
           disabled={anyOpening}
           // Reserve both actions on touch too; they are always visible below md.
-          className={`${isChief(agent) ? 'h-12' : 'h-[38px]'} text-sm font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14`}
+          className="h-12 text-sm font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14"
           onClick={() => {
             if (!isExpanded) onToggleExpanded(agent.id)
             onOpenAgent(agent)
@@ -514,14 +517,14 @@ function AgentListRow({
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5"><span className="truncate">{agent.name}</span>{pinned ? <Pin size={11} className="shrink-0 text-(--muted)" aria-label="Pinned chief of staff" /> : null}</span>
-            {isChief(agent) ? <span className="block truncate text-[11px] leading-4 text-(--muted)">{ownerLabel}</span> : null}
+            <AgentActivitySummary activity={activity} fallback={isChief(agent) ? ownerLabel : undefined} />
           </span>
         </SidebarMenuButton>
         <SidebarMenuAction
           aria-label={`New thread with ${agent.name}`}
           title="New thread"
           disabled={creatingThread}
-          className={`right-7 ${isChief(agent) ? 'top-[14px]' : 'top-[9px]'}`}
+          className="right-7 top-[14px]"
           onClick={(event) => {
             event.stopPropagation()
             if (!isExpanded) onToggleExpanded(agent.id)
@@ -531,7 +534,7 @@ function AgentListRow({
           {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
         </SidebarMenuAction>
         <SidebarMenuAction
-          className={isChief(agent) ? 'top-[14px]' : 'top-[9px]'}
+          className="top-[14px]"
           aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
           aria-expanded={isExpanded}
           onClick={(event) => {
@@ -546,6 +549,7 @@ function AgentListRow({
         <AgentThreadRows
           agent={agent}
           bundle={bundle}
+          activity={activity}
           activeConversationId={activeConversationId}
           onOpenThread={onOpenThread}
           onOpenAutomation={onOpenAutomation}
@@ -614,6 +618,7 @@ export function AgentsInlinePanel({
     () => pinChiefs(sortAgentsByRecency(tabAgents, getAgentOpenedAt(workspaceId)), viewerPrincipalId),
     [tabAgents, workspaceId, viewerPrincipalId],
   )
+  const activityAgentIds = useMemo(() => sortedAgents.map(agent => agent.id), [sortedAgents])
 
   const {
     openingAgentId,
@@ -675,6 +680,7 @@ export function AgentsInlinePanel({
   }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname, buildWorkspaceHref, workspaceId])
 
   return (
+    <AgentThreadActivityProvider workspaceId={workspaceId} agentIds={activityAgentIds}>
     <SidebarMenu>
       {loading ? (
         // Placeholders as tall as the rows they replace, so the list does not jump when the agents arrive.
@@ -732,5 +738,6 @@ export function AgentsInlinePanel({
         </SidebarMenuItem>
       ) : null}
     </SidebarMenu>
+    </AgentThreadActivityProvider>
   )
 }
