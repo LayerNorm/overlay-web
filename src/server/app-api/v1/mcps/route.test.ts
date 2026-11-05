@@ -75,3 +75,70 @@ for (const authType of ['oauth', 'bearer', 'header', 'none'] as const) {
     assert.equal(calls.find((call) => call.path.endsWith(':update'))?.args.authType, authType)
   })
 }
+
+test('MCP endpoint changes forward the revision and clear stored OAuth state', async (t) => {
+  const calls: Array<{ path: string; args: Record<string, unknown> }> = []
+  t.mock.method(convex, 'query', async (path: string, args: Record<string, unknown>) => {
+    calls.push({ path, args })
+    return {
+      _id: 'mcp_1',
+      userId: 'user_1',
+      workspaceId: 'ws_1',
+      name: 'Server',
+      url: 'https://localhost/old',
+      transport: 'streamable-http',
+      enabled: true,
+      authType: 'oauth',
+      oauthStatus: 'connected',
+      updatedAt: 17,
+    }
+  })
+  t.mock.method(convex, 'mutation', async (path: string, args: Record<string, unknown>) => {
+    calls.push({ path, args })
+    return undefined
+  })
+  const route = await import('./route')
+  const response = await route.PATCH(request('PATCH'), routeContext({
+    mcpServerId: 'mcp_1',
+    expectedUpdatedAt: 17,
+    url: 'https://localhost/new',
+    enabled: false,
+  }))
+  assert.equal(response.status, 200)
+  const get = calls.find((call) => call.path === 'integrations/mcpServers:get')
+  const update = calls.find((call) => call.path === 'integrations/mcpServers:update')
+  assert.equal(get?.args.workspaceId, 'ws_1')
+  assert.equal(update?.args.expectedUpdatedAt, 17)
+  assert.equal(update?.args.clearOAuthState, true)
+  assert.equal(update?.args.clearAuthConfig, true)
+  assert.equal(update?.args.authConfig, undefined)
+  assert.equal(update?.args.encryptedAuthConfig, undefined)
+})
+
+test('MCP update maps a stale server revision to a safe reopen response', async (t) => {
+  t.mock.method(convex, 'query', async () => ({
+    _id: 'mcp_1',
+    userId: 'user_1',
+    workspaceId: 'ws_1',
+    name: 'Server',
+    url: 'https://localhost/mcp',
+    transport: 'streamable-http',
+    enabled: true,
+    authType: 'none',
+    updatedAt: 18,
+  }))
+  t.mock.method(convex, 'mutation', async () => {
+    throw new Error('MCP_REVISION_CONFLICT')
+  })
+  const route = await import('./route')
+  const response = await route.PATCH(request('PATCH'), routeContext({
+    mcpServerId: 'mcp_1',
+    expectedUpdatedAt: 17,
+    name: 'Stale name',
+    enabled: false,
+  }))
+  assert.equal(response.status, 409)
+  assert.deepEqual(await response.json(), {
+    error: 'This MCP server changed while you were editing. Reopen it to review the latest settings.',
+  })
+})

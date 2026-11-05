@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { McpCredentialConfigurationError, type McpOAuthSurface } from '@/server/extensions'
-import { logger } from '@/server/observability/logger'
 import { getBaseUrl } from '@/server/web/app-url'
 import {
   disconnectMcpOAuth,
   McpOAuthAlreadyAuthorizedError,
   startMcpOAuth,
 } from '@/server/tools/mcp-oauth'
+import { beginMcpCommand, finishMcpCommand } from '@/server/extensions/McpCommandState'
 
 function repository() {
   return getOverlayServerContext().appData.repositories.mcpServers
@@ -31,16 +31,22 @@ function parseSurface(value: unknown): McpOAuthSurface {
 
 /** Begin an authorization-code flow and hand the browser the provider's authorization URL. */
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
+  let commandId: string | undefined
+  let mcpServerId: string | undefined
   try {
     const body = Object.keys(context.parsedJson).length > 0
       ? context.parsedJson
       : await request.json()
-    const mcpServerId = typeof body.mcpServerId === 'string' ? body.mcpServerId.trim() : ''
+    mcpServerId = typeof body.mcpServerId === 'string' ? body.mcpServerId.trim() : ''
     if (!mcpServerId) {
       return NextResponse.json({ error: 'mcpServerId is required' }, { status: 400 })
     }
 
-    const server = await repository().get({ mcpServerId, userId: context.auth.userId })
+    const server = await repository().get({
+      mcpServerId,
+      userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+    })
     if (!server) return NextResponse.json({ error: 'MCP server not found' }, { status: 404 })
     if (server.authType !== 'oauth') {
       return NextResponse.json(
@@ -48,6 +54,12 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         { status: 400 },
       )
     }
+    commandId = await beginMcpCommand({
+      mcpServerId,
+      userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      kind: 'connect',
+    })
 
     const { authorizationUrl } = await startMcpOAuth({
       baseUrl: getBaseUrl(),
@@ -58,42 +70,85 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       surface: parseSurface(body.surface),
       ...(typeof body.scope === 'string' && body.scope.trim() ? { scope: body.scope.trim() } : {}),
     })
+    await finishMcpCommand({
+      mcpServerId,
+      userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      commandId,
+      status: 'succeeded',
+    })
 
     return NextResponse.json({ redirectUrl: authorizationUrl })
   } catch (error) {
     if (error instanceof McpOAuthAlreadyAuthorizedError) {
+      if (commandId && mcpServerId) {
+        await finishMcpCommand({
+          mcpServerId,
+          userId: context.auth.userId,
+          workspaceId: context.workspace.workspace.id,
+          commandId,
+          status: 'succeeded',
+        }).catch((_error) => undefined)
+      }
       return NextResponse.json({ alreadyConnected: true })
     }
-    if (error instanceof McpCredentialConfigurationError) {
-      return NextResponse.json({ error: error.message }, { status: 503 })
+    if (commandId && mcpServerId) {
+      await finishMcpCommand({
+        mcpServerId,
+        userId: context.auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        commandId,
+        status: 'failed',
+      }).catch((_error) => undefined)
     }
-    logger.warn('[MCP] OAuth start failed', {
-      reason: error instanceof Error ? error.message : 'unknown',
-    })
     return NextResponse.json(
-      {
-        error: error instanceof Error
-          ? `Could not start OAuth for this server: ${error.message}`
-          : 'Could not start OAuth for this server',
-      },
-      { status: 502 },
+      { error: error instanceof McpCredentialConfigurationError ? 'MCP credential storage is not configured.' : 'Could not start OAuth for this server.' },
+      { status: error instanceof McpCredentialConfigurationError ? 503 : 502 },
     )
   }
 }
 
 /** Forget stored tokens and any registered client for this server. */
 export async function DELETE(request: NextRequest, context: AppApiRouteContext) {
+  let commandId: string | undefined
+  let mcpServerId: string | null = null
   try {
-    const mcpServerId = request.nextUrl.searchParams.get('mcpServerId')?.trim()
+    mcpServerId = request.nextUrl.searchParams.get('mcpServerId')?.trim() ?? null
     if (!mcpServerId) {
       return NextResponse.json({ error: 'mcpServerId is required' }, { status: 400 })
     }
-    const server = await repository().get({ mcpServerId, userId: context.auth.userId })
+    const server = await repository().get({
+      mcpServerId,
+      userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+    })
     if (!server) return NextResponse.json({ error: 'MCP server not found' }, { status: 404 })
 
+    commandId = await beginMcpCommand({
+      mcpServerId,
+      userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      kind: 'disconnect',
+    })
     await disconnectMcpOAuth({ server })
+    await finishMcpCommand({
+      mcpServerId,
+      userId: context.auth.userId,
+      workspaceId: context.workspace.workspace.id,
+      commandId,
+      status: 'succeeded',
+    })
     return NextResponse.json({ success: true })
   } catch (_error) {
+    if (commandId && mcpServerId) {
+      await finishMcpCommand({
+        mcpServerId,
+        userId: context.auth.userId,
+        workspaceId: context.workspace.workspace.id,
+        commandId,
+        status: 'failed',
+      }).catch((_error) => undefined)
+    }
     return NextResponse.json({ error: 'Failed to disconnect this MCP server' }, { status: 500 })
   }
 }

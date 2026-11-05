@@ -73,11 +73,12 @@ export class ConvexMcpServerRepository implements McpServerRepository {
    * pass a much wider object, and spreading it here made Convex reject the query outright with
    * "extra field", which surfaced to the user as a bogus "Unauthorized" on every save.
    */
-  async get(args: { mcpServerId: string; userId: string }): Promise<McpServerRecord | null> {
+  async get(args: { mcpServerId: string; userId: string; workspaceId?: string }): Promise<McpServerRecord | null> {
     const row = await convex.query<ConvexMcpRecord | null>('integrations/mcpServers:get', {
       mcpServerId: args.mcpServerId as Id<'mcpServers'>,
       serverSecret: this.serverSecret,
       userId: args.userId,
+      ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
     })
     return row ? this.normalizeRecord(row) : null
   }
@@ -100,9 +101,13 @@ export class ConvexMcpServerRepository implements McpServerRepository {
     const current = await this.get(args)
     if (!current) throw new Error('Unauthorized')
     const authType = args.authType ?? current.authType
+    const connectionChanged = (args.url !== undefined && args.url !== current.url)
+      || (args.transport !== undefined && args.transport !== current.transport)
     const shouldReplaceCredentials = args.authConfig !== undefined ||
       authType === 'none' ||
-      (args.authType !== undefined && args.authType !== current.authType)
+      (args.authType !== undefined && args.authType !== current.authType) ||
+      connectionChanged
+    const clearOAuthState = connectionChanged || (current.authType === 'oauth' && authType !== 'oauth')
     const encryptedAuthConfig = shouldReplaceCredentials
       ? this.cipher.encrypt(authType === 'none' ? undefined : args.authConfig)
       : undefined
@@ -110,10 +115,13 @@ export class ConvexMcpServerRepository implements McpServerRepository {
     // would fail the same way the `get` query did.
     await convex.mutation('integrations/mcpServers:update', {
       clearAuthConfig: shouldReplaceCredentials && !encryptedAuthConfig,
+      ...(clearOAuthState ? { clearOAuthState: true } : {}),
       encryptedAuthConfig,
       mcpServerId: args.mcpServerId as Id<'mcpServers'>,
       serverSecret: this.serverSecret,
       userId: args.userId,
+      ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
+      ...(args.expectedUpdatedAt !== undefined ? { expectedUpdatedAt: args.expectedUpdatedAt } : {}),
       ...(args.name !== undefined ? { name: args.name } : {}),
       ...(args.description !== undefined ? { description: args.description } : {}),
       ...(args.transport !== undefined ? { transport: args.transport } : {}),

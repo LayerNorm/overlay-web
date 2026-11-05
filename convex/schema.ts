@@ -1182,6 +1182,11 @@ export default defineSchema({
     .index('by_automationRunId_createdAt', ['automationRunId', 'createdAt']),
 
   mcpServers: defineTable({
+    commandState: v.optional(v.object({
+      id: v.string(), kind: v.union(v.literal('test'), v.literal('connect'), v.literal('disconnect')),
+      status: v.union(v.literal('pending'), v.literal('succeeded'), v.literal('failed')),
+      startedAt: v.number(), finishedAt: v.optional(v.number()), toolCount: v.optional(v.number()),
+    })),
     // Personal / Workspace / Archived. Absent `scope` means personal.
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     archivedAt: v.optional(v.number()),

@@ -1,6 +1,9 @@
+import { paginationOptsValidator } from 'convex/server'
 import { v } from 'convex/values'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
+import { nativeViewer, requireNativeWorkspace } from '../lib/nativeViewer'
+import { admitMcpWrite } from '../integrations/nativeMcpServers'
 import type { Doc } from '../_generated/dataModel'
 
 const accessValidator = v.union(v.literal('read'), v.literal('write'), v.literal('full'))
@@ -135,6 +138,55 @@ export const revokeByServer = mutation({
     if (!row || row.userId !== args.userId || row.revokedAt !== undefined) return false
     await ctx.db.patch(row._id, { revokedAt: args.now })
     return true
+  },
+})
+
+/** Native settings view; grants are visible only to their owner and active workspace members. */
+export const listNative = query({
+  args: { paginationOpts: paginationOptsValidator },
+  handler: async (ctx, args) => {
+    const viewer = await nativeViewer(ctx)
+    if (!viewer) throw new Error('UNAUTHENTICATED')
+    const result = await ctx.db.query('mcpGrants')
+      .withIndex('by_userId', (q) => q.eq('userId', viewer.userId))
+      .order('desc')
+      .paginate({ ...args.paginationOpts, numItems: Math.max(1, Math.min(100, args.paginationOpts.numItems)) })
+    const page = await Promise.all(result.page.map(async (row) => {
+      if (row.revokedAt !== undefined) return null
+      try {
+        await requireNativeWorkspace(ctx, row.workspaceId)
+      } catch {
+        return null
+      }
+      return {
+        id: row._id,
+        name: row.clientName,
+        kind: row.kind,
+        access: row.access,
+        workspaceId: row.workspaceId,
+        createdAt: row.createdAt,
+        lastUsedAt: row.lastUsedAt ?? null,
+        expiresAt: row.expiresAt ?? null,
+      }
+    }))
+    return { ...result, page: page.filter((row) => row !== null) }
+  },
+})
+
+/** Revoke only an owned grant in a workspace the current human still belongs to. */
+export const revokeNative = mutation({
+  args: { grantId: v.id('mcpGrants') },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const viewer = await nativeViewer(ctx)
+    if (!viewer) throw new Error('UNAUTHENTICATED')
+    const row = await ctx.db.get(args.grantId)
+    if (!row || row.userId !== viewer.userId) throw new Error('MCP_GRANT_ACCESS_DENIED')
+    await requireNativeWorkspace(ctx, row.workspaceId)
+    if (row.revokedAt !== undefined) return null
+    await admitMcpWrite(ctx, viewer.userId, row._id, 'mcp.grant.revoked')
+    await ctx.db.patch(row._id, { revokedAt: Date.now() })
+    return null
   },
 })
 

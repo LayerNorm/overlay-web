@@ -27,6 +27,12 @@ function mutationErrorResponse(error: unknown, fallback: string) {
       { status: 503 },
     )
   }
+  if (error instanceof Error && error.message.includes('MCP_REVISION_CONFLICT')) {
+    return NextResponse.json(
+      { error: 'This MCP server changed while you were editing. Reopen it to review the latest settings.' },
+      { status: 409 },
+    )
+  }
   return NextResponse.json(
     { error: error instanceof Error ? error.message : fallback },
     { status: 500 },
@@ -99,6 +105,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
     const body = Object.keys(context.parsedJson).length > 0 ? context.parsedJson : await request.json()
     const mcpServerId = stringValue(body.mcpServerId)
     if (!mcpServerId) return NextResponse.json({ error: 'mcpServerId required' }, { status: 400 })
+    if (body.expectedUpdatedAt !== undefined
+      && (typeof body.expectedUpdatedAt !== 'number' || !Number.isFinite(body.expectedUpdatedAt))) {
+      return NextResponse.json({ error: 'expectedUpdatedAt must be a finite number' }, { status: 400 })
+    }
     if (body.url !== undefined) {
       const urlError = await validateMcpUrl(body.url)
       if (urlError) return NextResponse.json({ error: urlError }, { status: 400 })
@@ -116,6 +126,7 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       mcpServerId,
       userId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
+      ...(typeof body.expectedUpdatedAt === 'number' ? { expectedUpdatedAt: body.expectedUpdatedAt } : {}),
       ...(body.name !== undefined ? { name: stringValue(body.name) } : {}),
       ...(body.description !== undefined ? { description: stringValue(body.description) } : {}),
       ...(body.transport !== undefined ? { transport: parseTransport(body.transport) ?? undefined } : {}),

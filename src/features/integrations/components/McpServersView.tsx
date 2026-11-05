@@ -34,13 +34,36 @@ import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope, scopeForNewItem } from '@/shared/workspaces/panel-scope'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
+import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
+import { useAuth } from '@/contexts/AuthContext'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import NativeMcpServersView, { NativeMcpErrorBoundary, NativeMcpUnavailable } from './NativeMcpServersView'
+import { nativeMcpSettingsMode } from '@/shared/mcp/native-settings-mode'
 
 interface DialogState {
   mode: 'create' | 'edit'
   server?: McpServerSummary
 }
 
-export default function McpServersView({ userId: _userId }: { userId: string }) {
+export default function McpServersView({ userId }: { userId: string }) {
+  const configuration = useConvexAuthConfiguration()
+  const { user } = useAuth()
+  const workspace = useWorkspace()
+  const mode = nativeMcpSettingsMode(configuration)
+  if (mode === 'legacy') return <LegacyMcpServersView userId={userId} />
+  if (mode === 'unavailable') return <NativeMcpUnavailable />
+  const identity = user?.id ?? userId
+  const workspaceKey = workspace.switchingWorkspaceId
+    ? `switching:${workspace.switchingWorkspaceId}`
+    : workspace.activeWorkspaceId ?? 'unavailable'
+  return (
+    <NativeMcpErrorBoundary key={`${identity}:${workspaceKey}`}>
+      <NativeMcpServersView />
+    </NativeMcpErrorBoundary>
+  )
+}
+
+function LegacyMcpServersView({ userId: _userId }: { userId: string }) {
   void _userId
   const [servers, setServers] = useState<McpServerSummary[]>([])
   const [loading, setLoading] = useState(true)

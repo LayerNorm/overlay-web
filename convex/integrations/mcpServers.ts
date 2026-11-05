@@ -221,6 +221,7 @@ export const update = mutation({
     workspaceId: v.optional(v.string()),
     accessToken: v.optional(v.string()),
     serverSecret: v.optional(v.string()),
+    expectedUpdatedAt: v.optional(v.number()),
     name: v.optional(v.string()),
     description: v.optional(v.string()),
     transport: v.optional(v.union(v.literal('sse'), v.literal('streamable-http'))),
@@ -236,18 +237,22 @@ export const update = mutation({
     ),
     encryptedAuthConfig: v.optional(v.string()),
     clearAuthConfig: v.optional(v.boolean()),
+    clearOAuthState: v.optional(v.boolean()),
     timeoutMs: v.optional(v.number()),
     defaultToolPolicy: v.optional(v.union(v.literal('allow'), v.literal('approval_required'), v.literal('deny'))),
     toolPolicies: v.optional(v.record(v.string(), v.union(v.literal('allow'), v.literal('approval_required'), v.literal('deny')))),
   },
-  handler: async (ctx, { mcpServerId, userId, workspaceId, accessToken, serverSecret, ...updates }) => {
+  handler: async (ctx, { mcpServerId, userId, workspaceId, accessToken, serverSecret, expectedUpdatedAt, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     if (updates.url !== undefined) validateMcpUrl(updates.url)
     const server = await ctx.db.get(mcpServerId)
     if (!server || (workspaceId !== undefined && server.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, userId).canEdit(server))) {
       throw new Error('Unauthorized')
     }
-    const patch: Record<string, unknown> = { updatedAt: Date.now() }
+    if (expectedUpdatedAt !== undefined && server.updatedAt !== expectedUpdatedAt) {
+      throw new Error('MCP_REVISION_CONFLICT')
+    }
+    const patch: Record<string, unknown> = { updatedAt: Math.max(Date.now(), server.updatedAt + 1) }
     if (updates.name !== undefined) patch.name = updates.name
     if (updates.description !== undefined) patch.description = updates.description
     if (updates.transport !== undefined) patch.transport = updates.transport
@@ -263,6 +268,17 @@ export const update = mutation({
         patch.authConfig = undefined
         patch.encryptedAuthConfig = updates.encryptedAuthConfig
       }
+    }
+    if (updates.clearOAuthState) {
+      patch.encryptedOAuthTokens = undefined
+      patch.encryptedOAuthClient = undefined
+      patch.oauthClientId = undefined
+      patch.oauthIssuer = undefined
+      patch.oauthScope = undefined
+      patch.oauthResource = undefined
+      patch.oauthConnectedAt = undefined
+      patch.oauthError = undefined
+      patch.oauthStatus = undefined
     }
     if (updates.timeoutMs !== undefined) patch.timeoutMs = updates.timeoutMs
     if (updates.defaultToolPolicy !== undefined) patch.defaultToolPolicy = updates.defaultToolPolicy

@@ -9,9 +9,14 @@ import type { WorkspaceSummary } from '@overlay/workspace-contracts'
 import { Button, toast } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
+import { useAuth } from '@/contexts/AuthContext'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import NativeConnectedAppsSettings, { NativeConnectedAppsErrorBoundary } from './NativeConnectedAppsSettings'
 import { MCP_ACCESS_LABEL } from '@/shared/mcp/access'
 import { ConnectAppGuide } from './ConnectAppGuide'
 import { McpTokenDialog } from './McpTokenDialog'
+import { nativeMcpSettingsMode } from '@/shared/mcp/native-settings-mode'
 
 function formatWhen(timestamp: number | null, fallback: string): string {
   if (!timestamp) return fallback
@@ -24,6 +29,25 @@ function formatWhen(timestamp: number | null, fallback: string): string {
  * agents) over MCP. Each connection is something you granted and can end here.
  */
 export function ConnectedAppsSettings() {
+  const configuration = useConvexAuthConfiguration()
+  const { user } = useAuth()
+  const workspace = useWorkspace()
+  const mode = nativeMcpSettingsMode(configuration)
+  if (mode === 'legacy') return <LegacyConnectedAppsSettings />
+  if (mode === 'unavailable') {
+    return <p role="alert" className="text-sm text-red-500">Connected apps are unavailable in this session. Reload the page or contact your workspace administrator.</p>
+  }
+  if (workspace.status !== 'ready' || workspace.switchingWorkspaceId) {
+    return <p className="text-sm text-(--muted)">Loading connected apps…</p>
+  }
+  return (
+    <NativeConnectedAppsErrorBoundary key={user?.id ?? 'anonymous'}>
+      <NativeConnectedAppsSettings workspaces={workspace.workspaces} />
+    </NativeConnectedAppsErrorBoundary>
+  )
+}
+
+function LegacyConnectedAppsSettings() {
   const [endpoint, setEndpoint] = useState('')
   const [connections, setConnections] = useState<McpConnectionResource[] | null>(null)
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])

@@ -111,6 +111,7 @@ export type CreateMcpServerInput = {
 export type UpdateMcpServerInput = Partial<Omit<CreateMcpServerInput, 'userId'>> & {
   mcpServerId: string
   userId: string
+  expectedUpdatedAt?: number
 }
 
 export type McpExecutionRecord = {
