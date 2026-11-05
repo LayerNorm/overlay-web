@@ -16,7 +16,7 @@ import {
   isTextModelLocked,
   useWorkspaceTextModelAccess,
 } from '@/components/providers/useWorkspaceTextModelAccess'
-import { CONNECTION_UNAVAILABLE_NOTICE, hasUnavailableByokModel } from './chat-composer-blocking'
+import { CONNECTION_UNAVAILABLE_NOTICE, getBillingAccessNotice, hasUnavailableByokModel } from './chat-composer-blocking'
 import { showUsageExhaustedToast, WORKSPACE_BILLING_PATH } from './usage-exhausted-toast'
 
 type ChatRouter = {
@@ -215,6 +215,11 @@ export function useChatBillingControls({
     selectableTextModels,
   } = modelAccess
   const premiumModelBlocked = isTextModelLocked(selectedActModel, isModelAccessRestricted)
+  const billingAccessNotice = getBillingAccessNotice({
+    billingEnabled,
+    hasEntitlements: entitlements !== null,
+    loading: modelAccess.loading,
+  })
   const retiredModelSelected = [selectedActModel, ...selectedModels].some(isRetiredHostedModelId)
   const retiredModelNotice = 'This model is retired. Choose a supported paid model before sending.'
   useEffect(() => {
@@ -247,6 +252,7 @@ export function useChatBillingControls({
 
   return {
     autoTopUpEnabledDraft,
+    billingAccessNotice,
     billingActionLoading,
     budgetRemainingCents,
     budgetTotalCents,

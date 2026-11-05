@@ -72,6 +72,7 @@ export function useChatSendController({
   inputRef,
   invalidateLoadChatRequest,
   isActiveLoading,
+  billingAccessNotice,
   isBudgetExhaustedPaid,
   connectionUnavailable,
   isFirstMessage,
@@ -152,6 +153,7 @@ export function useChatSendController({
   inputRef: MutableRefObject<string>
   invalidateLoadChatRequest: () => void
   isActiveLoading: boolean
+  billingAccessNotice: string | null
   isBudgetExhaustedPaid: boolean
   connectionUnavailable: boolean
   isFirstMessage: boolean
@@ -401,6 +403,7 @@ export function useChatSendController({
     }
     if (sendValidationError === 'empty') return
     if (isSendBlocked) {
+      if (billingAccessNotice) return
       setComposerNotice(getBlockedSendNotice({
         connectionUnavailable,
         isBudgetExhaustedPaid,
@@ -528,6 +531,7 @@ export function useChatSendController({
     ensureConversationRuntime,
     inputRef,
     isActiveLoading,
+    billingAccessNotice,
     isBudgetExhaustedPaid,
     connectionUnavailable,
     isFirstMessage,
