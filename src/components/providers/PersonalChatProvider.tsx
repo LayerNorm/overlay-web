@@ -78,13 +78,13 @@ const PersonalChatContext = createContext<PersonalChatContextValue>({
   async setRead() {},
 })
 
-export function PersonalChatProvider({ children }: { children: ReactNode }) {
+export function PersonalChatProvider({ children, backendReady = false }: { children: ReactNode; backendReady?: boolean }) {
   const authConfiguration = useConvexAuthConfiguration()
   const workspace = useWorkspace()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const workspaceId = workspace.activeWorkspaceId
-  const nativeConfigured = authConfiguration.nativeAuthConfigured
+  const nativeConfigured = authConfiguration.nativeAuthConfigured && backendReady
   const available = nativeConfigured && authConfiguration.hasConvexClient
 
   if (!available) {

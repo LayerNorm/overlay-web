@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep personal chat working during web-first releases and backend rollback by enabling native list ownership only when the backend advertises the matching revision. Validate all native personal-chat response shapes explicitly.
+
 - Add private, opt-in two-client chat and navigation baselines that distinguish query readiness, local feedback, HTTP acknowledgement, content visibility, and remote convergence without collecting chat or file content. Correlate acknowledgements to the exact mutation and sanitize setup failures.
 
 - Preserve unsent drafts and source-page state during pending workspace activation, while keeping that page hidden and discarding it when the route or scope changes.

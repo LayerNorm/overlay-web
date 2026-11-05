@@ -262,7 +262,9 @@ preserve model, transcript and generation state without another metadata write.
 
 The browser's personal-chat list, selected title, archive/restore state and basic
 unread flag are owned by `chat/personal:list`, `getSummary`, `rename`,
-`setArchived` and `setRead`. The additive indexes require no backfill. Queries
+`setArchived` and `setRead`. Every public native function has explicit argument
+and return validators, including bounded pagination and minimal summary fields.
+The additive indexes require no backfill. Queries
 return bounded pages and apply ownership/automation filters after pagination, so
 an empty page can still have a continuation cursor; keep loading while Convex
 reports more pages and never invent a cursor. The selected summary is queried
@@ -298,6 +300,16 @@ streaming and permanent deletion are not migrated here. Rollback is web-first:
 disable native web ownership before removing backend support, and keep additive
 fields/indexes and handlers available to older web revisions. No hosted QA is
 claimed by this local implementation.
+
+The shell and chat route enable native personal ownership only after a fresh,
+request-local server probe of the existing `platform/uiSettings:getByServer`
+endpoint reports `nativePersonalChatRevision: native-personal-list-v1`. Missing,
+unknown or failed readiness keeps the guarded legacy transport through web-first
+upgrades and backend rollback; cached browser preferences cannot enable it. A
+reload after the backend sync activates native ownership. This is separate from
+native authentication readiness; configured-but-failing native operations do not
+fall back after activation. The marker is server-owned and cannot be saved as a
+user preference.
 
 Web and Convex deploy independently. The incoming web must work with the old
 backend, and the incoming backend must work with the old web, including retained
