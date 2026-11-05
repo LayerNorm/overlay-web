@@ -17,10 +17,10 @@ export function previewPath(value) {
 
 // All elapsed times use the same runner clock, not clocks from different tabs.
 // Observers must be armed synchronously and reject on their own timeout.
-export async function measureInteraction({ trigger, observers, now = () => performance.now() }) {
-  const allowed = ['localFeedback', 'mutationAcknowledged', 'remoteVisible']
+export async function measureInteraction({ trigger, observers, now = () => performance.now(),
+  stages = ['localFeedback', 'mutationAcknowledged', 'remoteVisible'] }) {
   let startedAt
-  const pending = Object.fromEntries(allowed.map((stage) => {
+  const pending = Object.fromEntries(stages.map((stage) => {
     const observe = observers[stage]
     if (!observe) return [stage, Promise.resolve({ status: 'unavailable', ms: null })]
     const promise = observe().then(() => {
@@ -40,7 +40,7 @@ export async function measureInteraction({ trigger, observers, now = () => perfo
   return { action, stages }
 }
 
-export async function openIndependentClients(browser, { origin, path, storageState }) {
+export async function openIndependentClients(browser, { origin, path, storageState, requirePersonalQueryReady = true }) {
   const base = previewOrigin(origin)
   const destination = `${base}${previewPath(path)}`
   const contexts = []
@@ -55,10 +55,12 @@ export async function openIndependentClients(browser, { origin, path, storageSta
       const start = performance.now()
       await page.goto(destination, { waitUntil: 'domcontentloaded' })
       // A missing auth session, wrong route, or disabled subscription fails setup.
-      await page.waitForFunction(() => performance.getEntriesByName('overlay:baseline:personal-query-ready').length > 0,
-        null, { timeout: 30_000 })
+      if (requirePersonalQueryReady) {
+        await page.waitForFunction(() => performance.getEntriesByName('overlay:baseline:personal-query-ready').length > 0,
+          null, { timeout: 30_000 })
+      }
       if (new URL(page.url()).origin !== base) throw new Error('Preview navigation left its origin')
-      return Math.round(performance.now() - start)
+      return requirePersonalQueryReady ? Math.round(performance.now() - start) : null
     }))
     return { pages, queryReady, close: () => Promise.all(contexts.map((context) => context.close())) }
   } catch (error) {

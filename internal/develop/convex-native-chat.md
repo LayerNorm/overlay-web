@@ -68,9 +68,30 @@ that distinction is the original personal-chat defect. The send scenario waits
 up to five minutes for the sender to leave generation and does not cancel/retry.
 Terminal correctness and reconnect/duplicate-run tests belong to CN-06.
 
-Opening files and detailed chat navigation/paint timings are not covered by this
-personal-chat runner. Measure those surfaces independently before their migration;
-do not present the query-ready timing as proof of a fast file viewer or paint.
+### Thread and file opening
+
+Use `scripts/qa/navigation-baseline.mjs` for read-only navigation in two independent
+contexts. Set the same Preview, SHA and private storage-state variables as above,
+then set `CN01_START_PATH` to a different personal chat (for thread opening) or the
+Files list in list layout with its viewer closed (for file opening). Supply
+`CN01_FIXTURE_NAME`, `CN01_RESOURCE_ID`, and `CN01_SENTINEL` for a disposable fixture.
+Names and sentinel text must start with `CN01 QA `. Use a `.txt` file containing
+exactly the synthetic sentinel, or an existing personal chat containing that
+unique sentinel as one user message. No generation is started by this runner.
+
+Run once with `CN01_SCENARIO=open-thread` and once with `CN01_SCENARIO=open-file`.
+The fixture must not already be open. The two contexts each perform their own
+navigation; this is not a remote mutation-convergence test. Samples separate:
+
+- `localFeedback`: target sidebar selection or file viewer shell becomes visible.
+- `readAcknowledged`: the matching target HTTP read fully completes successfully.
+- `contentVisible`: the known synthetic message/file contents render.
+
+These are DOM/automation timings, not compositor paint or isolated server CPU
+times. Cached reads without an HTTP response remain `not-observed`, not a fake
+zero-millisecond backend sample. Record cache conditions externally. All fixture
+values stay private; emitted JSON contains only revision, scenario, status and
+timings. This complements, rather than replaces, the query-ready measurement.
 
 ## Retained consumer and policy inventory
 

@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add a private, opt-in two-client personal-chat baseline harness that distinguishes query readiness, local feedback, HTTP acknowledgement, and remote convergence without collecting chat content.
+- Add private, opt-in two-client chat and navigation baselines that distinguish query readiness, local feedback, HTTP acknowledgement, content visibility, and remote convergence without collecting chat or file content.
 
 - Document subscription callback completion and workspace sharing in the API catalog, including active-member use and owner-only management.
 

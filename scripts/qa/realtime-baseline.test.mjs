@@ -83,3 +83,29 @@ test('clients use separate contexts, not two pages sharing local storage', async
   await clients.close()
   assert.ok(contexts.every((context) => context.closed))
 })
+
+test('navigation stages preserve read and rendered-content timing separately', async () => {
+  let clock = 0
+  let feedback
+  let read
+  let content
+  const sample = await measureInteraction({
+    stages: ['localFeedback', 'readAcknowledged', 'contentVisible'],
+    now: () => clock,
+    observers: {
+      localFeedback: () => new Promise(resolve => { feedback = resolve }),
+      readAcknowledged: () => new Promise(resolve => { read = resolve }),
+      contentVisible: () => new Promise(resolve => { content = resolve }),
+    },
+    trigger: async () => {
+      clock = 5; feedback(); await Promise.resolve()
+      clock = 30; read(); await Promise.resolve()
+      clock = 45; content()
+    },
+  })
+  assert.deepEqual(sample.stages, {
+    localFeedback: { status: 'observed', ms: 5 },
+    readAcknowledged: { status: 'observed', ms: 30 },
+    contentVisible: { status: 'observed', ms: 45 },
+  })
+})
