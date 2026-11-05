@@ -667,5 +667,6 @@ Native-agent and room composers, including thread replies, clear text and submit
 attachments when the optimistic user bubble is inserted, before the save request
 finishes. Admission rejection leaves the draft intact. A failed save restores the
 submitted draft only if the same conversation/thread scope still has the untouched
-empty draft; typing, adding attachments or leaving/reopening the scope protects
+empty draft. An editor value-sync that refreshes an empty mentions list is not
+a user edit; typing, adding attachments or leaving/reopening the scope protects
 the newer draft. Late acknowledgements never clear edits made after submission.

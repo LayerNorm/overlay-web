@@ -1589,7 +1589,9 @@ export function useRoomComposer({
         && latest.attachedImages === expected.state.attachedImages
         && latest.pendingChatDocuments === expected.state.pendingChatDocuments
         && latest.replyContext === expected.state.replyContext
-        && latest.mentions === expected.state.mentions
+        && (latest.mentions === expected.state.mentions
+          // The rich editor resynchronizes empty mentions after an external clear.
+          || (expected === cleared.current && latest.mentions.length === 0))
     }
     function clearSubmittedDraft() {
       if (cleared.current || !draftMatches(submitted)) return
@@ -1626,7 +1628,7 @@ export function useRoomComposer({
     setAttachedImages(current => current === empty.state.attachedImages ? submitted.state.attachedImages : current)
     setPendingChatDocuments(current => current === empty.state.pendingChatDocuments ? submitted.state.pendingChatDocuments : current)
     setReplyContext(current => current === empty.state.replyContext ? submitted.state.replyContext : current)
-    setMentions(current => current === empty.state.mentions ? submitted.state.mentions : current)
+    setMentions(current => current.length === 0 ? submitted.state.mentions : current)
     writeDraft({ workspaceId: activeWorkspaceId, conversationId }, submitted.text)
   }
 

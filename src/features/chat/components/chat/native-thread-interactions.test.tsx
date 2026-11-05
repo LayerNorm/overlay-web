@@ -390,8 +390,9 @@ async function roomComposerWithPendingSave(t: TestContext) {
   const args = roomArgs()
   const hook = await mount(t, (input: typeof args) => {
     const [mentions, setMentions] = useState(input.mentions)
-    return useRoomComposer({ activeWorkspaceId: 'workspace', conversationId: input.conversationId,
+    const composer = useRoomComposer({ activeWorkspaceId: 'workspace', conversationId: input.conversationId,
       sessionIdRef: { current: 'presence' }, sendMessage: useSendMessage(input), mentions, setMentions })
+    return { ...composer, syncEmptyEditorMentions: () => setMentions([]) }
   }, args)
   return { hook, saved, args }
 }
@@ -410,6 +411,8 @@ test('a failed optimistic room send restores its text, attachments, reply and st
   let send!: Promise<void>
   await act(() => { send = hook.value.handleSend() })
   assert.equal(hook.value.inputRef.current, '')
+  // MentionInput's value-sync effect emits a fresh empty list after clearing.
+  await act(() => { hook.value.syncEmptyEditorMentions() })
   await act(async () => { saved.reject(new Error('Network failed')); await send })
   assert.equal(hook.value.inputRef.current, 'Recover this draft')
   assert.deepEqual(hook.value.attachedImages, images)
