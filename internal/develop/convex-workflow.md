@@ -169,6 +169,62 @@ corresponding Convex preview defaults remain separate from customer Production.
 
 ## Expand, migrate, then contract
 
+### Native browser authentication (CN-02)
+
+Browser identity now uses `ConvexProviderWithAuth` and the verified provider JWT
+from `/api/auth/convex-token?native=1`, not the legacy HS256 query-argument token.
+The default endpoint and legacy room subscriptions remain compatible. No server
+secret or refresh token reaches the browser. User IDs remain the provider subject;
+the endpoint rejects a verified token whose subject differs from its session user.
+Changing accounts remounts the client cache and its UI subtree. Refresh uses the
+existing browser session lock; token flights cannot cross identities.
+
+Hosted WorkOS is enabled by default because existing backend revisions already
+trust its issuer/JWKS. Preview login retains real sandbox WorkOS tokens. Set
+`OVERLAY_CONVEX_NATIVE_AUTH_ENABLED=false` on the web to disable native token
+issuance without removing legacy subscriptions during rollback.
+
+For OIDC or Better Auth private installations, native issuance remains disabled
+until explicitly enabled. Deploy the additive `convex/auth.config.ts` update with
+the explicit `OVERLAY_PROVIDER_AUTH` and matching provider
+configuration on the isolated/private backend, then set
+`OVERLAY_CONVEX_NATIVE_AUTH_ENABLED=true` on the web. An upgraded web with an older
+backend continues legacy subscriptions until that opt-in. These are rollout
+controls, not an alternative database implementation.
+
+Convex's auth evaluator throws on any missing environment read, including optional
+fallbacks. Set `OVERLAY_PROVIDER_AUTH` explicitly before the backend upgrade:
+`workos`, `oidc`, `better-auth`, or `none`. WorkOS additionally requires
+`WORKOS_CLIENT_ID`. The hosted Preview build sets both WorkOS values on its claimed
+PR backend before auth evaluation; Production is never touched by this preflight.
+
+OIDC requires `OIDC_ISSUER_URL` and the effective `OIDC_AUDIENCE`, matching the JWT
+exactly. Better Auth uses RS256 and requires explicit `BETTER_AUTH_URL`,
+`BETTER_AUTH_JWT_ISSUER`, `BETTER_AUTH_JWT_AUDIENCE` and `BETTER_AUTH_JWKS_URL`.
+Resolve defaults and aliases from the web configuration before setting these
+backend values. Only selected-provider settings are read. Only the
+selected provider is trusted; do not combine unrelated issuers with overlapping
+subject IDs. Anonymous/no-op mode has no native identity.
+
+Before promotion verify login, forced refresh, expiration, logout/account switch,
+legacy subscriptions and desktop/mobile session handoff on the current-head
+isolated Preview. Native identity is only authentication: each new query/mutation
+must still enforce resource, membership and role authorization (CN-03). CN-02 does
+not migrate list or transcript ownership.
+
+The additive `auth/viewer:current` query accepts no caller identity or token
+arguments and returns only the platform-verified subject, or null anonymously.
+After verifying exact Preview SHA and backend ownership through the trusted
+controller/team API, run `node scripts/qa/native-convex-auth.mjs` with
+`CN02_PREVIEW_ORIGIN`, `CN02_PREVIEW_SHA`, `CN02_CONVEX_URL`,
+`CN02_VERIFIED_BACKEND_TYPE=preview`, `CN02_VERIFIED_PREVIEW_NAME=pr-<number>`
+and a mode-0600 `CN02_STORAGE_STATE` file outside the checkout. This checks the
+real authenticated Next.js `preloadQuery` result against the session user, checks
+an anonymous preload, and confirms no token enters the serialized preload.
+Output contains booleans and revision only. This does not replace the browser
+lifecycle acceptance tests. Do not reuse a preload across users or cache it
+globally; resource preloads need their own authorization.
+
 Web and Convex deploy independently. The incoming web must work with the old
 backend, and the incoming backend must work with the old web, including retained
 rollback revisions. Never remove an old field or require a new field in the same

@@ -7,6 +7,6 @@ const convexUrl = resolveConvexUrl()
 
 export const convexReactClientEnabled = Boolean(convexUrl)
 
-export const convexReactClient = convexUrl
-  ? new ConvexReactClient(convexUrl)
-  : null
+export function createConvexReactClient() {
+  return convexUrl ? new ConvexReactClient(convexUrl) : null
+}

@@ -47,5 +47,8 @@ test('browser handler tokens cannot impersonate another query user', async () =>
 test('browser transport does not register a handler HMAC token as native Convex identity', () => {
   const source = readFileSync(new URL('../../components/providers/ConvexAuthProvider.tsx', import.meta.url), 'utf8')
   assert.doesNotMatch(source, /convexReactClient\s*\.\s*setAuth\s*\(/)
-  assert.match(source, /<ConvexProvider client=\{convexReactClient\}>/)
+  assert.match(source, /<ConvexProviderWithAuth client=\{client\} useAuth=\{useNativeConvexAuth\}>/)
+  const nativeBroker = readFileSync(new URL('../../components/providers/native-convex-token-broker.ts', import.meta.url), 'utf8')
+  assert.match(nativeBroker, /fetch\('\/api\/auth\/convex-token\?native=1'/)
+  assert.doesNotMatch(nativeBroker, /fetchConvexToken|mintBrowserConvexAccessToken/)
 })
