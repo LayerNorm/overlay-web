@@ -583,39 +583,6 @@ scanned in full by a production malware engine, validated by content magic, and 
 attachments after an immutable clean verdict. The existing checksum, size, tenancy, retention, and
 cleanup controls remain implemented but are not a substitute for that release gate.
 
-Historical Overlay Cloud provisioning and runtime details below are retained for reference only;
-hosted third-party runtimes are retired.
-
-Overlay Cloud machines run on Boat, formerly Box (`BOAT_API_KEY`, or the legacy `BOX_API_KEY`).
-Use `BOAT_ENVIRONMENT=overlay-preview` with a separate environment-scoped key for
-hosted Preview QA. Machine creation retains `noEnv: true`, so attaching an
-environment never injects the account's credentials. Preview snapshots must also
-originate in that environment; a destination grant cannot read production images.
-The owner approved a Boat-specific expiry exception: the `overlay-preview` CI key
-expires **2027-10-15** (Boat requires expiry, maximum 365 days). Renew it in the
-same environment before that date, update shared Vercel Preview `BOAT_API_KEY`,
-verify Preview access and production denial, then revoke the predecessor. Do not
-copy the production key or treat the exception as permission to expire other
-shared Preview credentials. No automatic renewal is configured.
-
-Protected PR Preview machines receive the existing environment-scoped hosting credential in
-a mode-0600 `preview-hosting.json` under host state. Managed provisioning and host restart
-prepare it through the machine file API; commands and saved configuration carry only its path
-(`--hosting-auth-file`). A compatible host verifies ownership, mode and exact HTTPS origin,
-then consumes/unlinks it before provider startup. Windows rejects this POSIX-only Cloud path.
-The in-memory transport adds hosting authentication only to that Preview's `/api/` origin and
-refuses redirects. Provider MCP uses a loopback relay authorized by the original active run token;
-hosting access stays out of provider environment/configuration and response headers. Application
-authentication, device signing and run fences still apply. Production never receives this file.
-Candidate source tests do not prove unattended enrollment: the compatible candidate image must
-pass fresh-machine Preview provisioning and resume without a manual shim before activation.
-Only leases enrolled through this path record `previewHostingAccessVersion: 1` and receive
-a new access file on restart. Older leases retain their original restart path until explicitly
-upgraded, so an older host cannot leave a newly delivered hosting file unconsumed.
-The Boat adapter applies explicit file modes through its command channel because the file
-API does not apply them; a failed permission change fails delivery. Preview startup secures
-the dedicated host-state directory to 0700 before writing the access file, keeping its bytes
-private during upload as well as after the file becomes 0600.
 Hosted third-party runtimes, their managed images and hosted provider credential delivery are retired.
 User-owned QA hosts retain the private exact-origin `--hosting-auth-file` transport
 for protected PR previews; browser cookies do not authenticate host requests. External Claude Code and Codex agents run on
