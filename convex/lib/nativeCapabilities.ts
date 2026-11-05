@@ -1,14 +1,18 @@
 import type { QueryCtx } from '../_generated/server'
+import type { AuthorizationCapability } from '@overlay/authz-contracts'
+import { CAPABILITY_FEATURE } from '@/shared/authorization/capability-features'
+import { requireNativeDeploymentFeature } from './nativeDeploymentPolicy'
 
-type PersonalCapability = 'conversations.read' | 'conversations.edit' | 'conversations.create'
 const MAX_ASSIGNMENTS = 100
 
 // No deployment-owner or operator bypass belongs in the customer browser path.
 export async function requireNativeCapability(
   ctx: Pick<QueryCtx, 'db'>,
   userId: string,
-  capability: PersonalCapability,
+  capability: AuthorizationCapability,
 ) {
+  const feature = CAPABILITY_FEATURE[capability]
+  if (feature) await requireNativeDeploymentFeature(ctx, feature)
   const [direct, memberships] = await Promise.all([
     ctx.db.query('authorizationUserRoles').withIndex('by_userId', q => q.eq('userId', userId)).take(MAX_ASSIGNMENTS),
     ctx.db.query('authorizationGroupMemberships').withIndex('by_userId', q => q.eq('userId', userId)).take(MAX_ASSIGNMENTS),
