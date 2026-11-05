@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Establish native Convex browser authentication with identity-isolated clients and refresh handling, preserving legacy subscriptions and allowing private providers to opt in after their backend upgrade.
+
 - Document subscription callback completion and workspace sharing in the API catalog, including active-member use and owner-only management.
 
 - Keep subscription device sign-in polling after retryable provider failures, so a temporary outage does not silently stall authorization.
