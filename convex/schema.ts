@@ -1333,6 +1333,7 @@ export default defineSchema({
   }).index('by_userId', ['userId'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_lastModified', ['userId', 'lastModified'])
+    .index('by_workspaceId_userId_lastModified', ['workspaceId', 'userId', 'lastModified'])
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_shareToken', ['shareToken'])
     .index('by_createdAt', ['createdAt'])
