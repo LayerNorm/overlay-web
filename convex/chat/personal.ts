@@ -1,5 +1,5 @@
 import { paginationOptsValidator } from 'convex/server'
-import { v } from 'convex/values'
+import { convexToJson, v } from 'convex/values'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { nativePersonalChatScope, requireNativePersonalChat, requireNativeWorkspace } from '../lib/nativeViewer'
 import { recordConversationEvent } from '../collaboration/events'
@@ -11,6 +11,7 @@ import { buildPersistedMessageContent, sanitizeMessagePartsForPersistence } from
 import type { Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { userMessageMetadata } from '../lib/userMessageMetadata'
+import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 
 const resourceArgs = { workspaceId: v.string(), conversationId: v.id('conversations') }
 type Access = Awaited<ReturnType<typeof requireNativePersonalChat>>
@@ -112,8 +113,7 @@ async function personalOutputs(
   turnIds: string[],
 ) {
   const allowed = await canReadOutputs(ctx, userId)
-  return new Map(await Promise.all(turnIds.map(async turnId => {
-    if (!allowed) return [turnId, []] as const
+  return new Map(await Promise.all((allowed ? turnIds : []).map(async turnId => {
     const files = await ctx.db.query('files').withIndex('by_userId_conversationId_turnId', q =>
       q.eq('userId', userId).eq('conversationId', args.conversationId).eq('turnId', turnId)).take(101)
     if (files.length > 100) throw new Error('PERSONAL_TURN_OUTPUT_LIMIT')
@@ -196,6 +196,7 @@ export const submit = mutation({
     })
     const access = await requireNativePersonalChat(ctx, { workspaceId: args.workspaceId, conversationId })
     await requireNativeCapability(ctx, access.userId, 'conversations.edit')
+    await assertNativeThreadWritable(ctx, access.conversation)
     const options = { attachmentNames: args.attachmentNames }
     const sanitizedParts = sanitizeMessagePartsForPersistence(args.parts, options)
     const text = args.parts.filter(part => part.type === 'text').map(part => part.text).join('')
@@ -206,10 +207,12 @@ export const submit = mutation({
     const existing = await ctx.db.query('conversationMessages')
       .withIndex('by_conversationId_turnId_role', q => q.eq('conversationId', conversationId).eq('turnId', turnId).eq('role', 'user')).first()
     if (existing) {
-      if (existing.content !== content || JSON.stringify(existing.parts) !== JSON.stringify(parts)
+      if (existing.content !== content
+        || JSON.stringify(convexToJson(existing.parts ?? null)) !== JSON.stringify(convexToJson(parts ?? null))
+        || existing.mode !== args.mode || existing.contentType !== args.contentType || existing.modelId !== args.modelId
         || existing.deletedAt !== undefined || existing.replyToTurnId !== args.replyToTurnId
         || existing.replySnippet !== args.replySnippet
-        || JSON.stringify(existing.userMetadata) !== JSON.stringify(args.userMetadata)) throw new Error('TURN_ID_REUSED')
+        || JSON.stringify(convexToJson(existing.userMetadata ?? null)) !== JSON.stringify(convexToJson(args.userMetadata ?? null))) throw new Error('TURN_ID_REUSED')
       return { conversationId, messageId: existing._id }
     }
     await admitWrite(ctx, access.userId)

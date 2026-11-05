@@ -5,22 +5,18 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
-  useState,
   type ReactNode,
 } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useConvexAuth, useMutation, usePaginatedQuery, useQuery } from 'convex/react'
-import type { OptimisticLocalStore } from 'convex/browser'
-import type { FunctionReturnType } from 'convex/server'
+import { useConvexAuth, useMutation, usePaginatedQuery } from 'convex/react'
+import { usePersonalChatTranscript } from './usePersonalChatTranscript'
+import { updatePersonalChatList, findPersonalChatSummary, minimalSummary, movePersonalChatRow, personalChatListStatus } from './personal-chat-store'
+import type { FunctionArgs, FunctionReturnType } from 'convex/server'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import {
   createPersonalChatArchiveOptimisticUpdate,
-  insertPersonalChatRow,
-  removePersonalChatRow,
-  updatePersonalChatRow,
   updatePersonalChatUnread,
 } from './personal-chat-optimistic'
 import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
@@ -34,11 +30,25 @@ import {
 } from '@/shared/workspaces/routing'
 
 export type PersonalChatSummary = NonNullable<FunctionReturnType<typeof api.chat.personal.getSummary>>
+export type NativePersonalCreateArgs = FunctionArgs<typeof api.chat.personal.create>
+export type NativePersonalSubmitArgs = FunctionArgs<typeof api.chat.personal.submit>
+export type NativePersonalPreferencesArgs = FunctionArgs<typeof api.chat.personal.setPreferences>
 type ListStatus = 'disabled' | 'loading' | 'ready' | 'unavailable'
+type PersonalTranscriptRow = FunctionReturnType<typeof api.chat.personal.getMessages>['page'][number]
 
 type PersonalChatList = {
   rows: PersonalChatSummary[]
   status: ListStatus
+  hasMore: boolean
+  loadingMore: boolean
+  loadMore(): void
+}
+
+type PersonalChatTranscript = {
+  conversationId: string | null
+  rows: PersonalTranscriptRow[]
+  status: ListStatus
+  queryStatus: string
   hasMore: boolean
   loadingMore: boolean
   loadMore(): void
@@ -50,8 +60,17 @@ type PersonalChatContextValue = {
   workspaceId: string | null
   selectedConversationId: string | null
   selectedSummary: PersonalChatSummary | null | undefined
+  transcript: PersonalChatTranscript
   active: PersonalChatList
   archived: PersonalChatList
+  create(args: NativePersonalCreateArgs): Promise<Id<'conversations'>>
+  submit(args: NativePersonalSubmitArgs): Promise<FunctionReturnType<typeof api.chat.personal.submit>>
+  setPreferences(args: NativePersonalPreferencesArgs): Promise<void>
+  setPendingTranscriptConversation(
+    conversationId: string | null,
+    ownerId?: string | null,
+    intentKey?: string | null,
+  ): void
   rename(conversationId: string, title: string): Promise<void>
   setArchived(summary: PersonalChatSummary, archived: boolean): Promise<void>
   setRead(summary: PersonalChatSummary, unread: boolean, throughMessageId?: Id<'conversationMessages'>): Promise<void>
@@ -65,14 +84,29 @@ const emptyList: PersonalChatList = {
   loadMore() {},
 }
 
+const emptyTranscript: PersonalChatTranscript = {
+  conversationId: null,
+  rows: [],
+  status: 'disabled',
+  queryStatus: 'Skipped',
+  hasMore: false,
+  loadingMore: false,
+  loadMore() {},
+}
+
 const PersonalChatContext = createContext<PersonalChatContextValue>({
   configured: false,
   available: false,
   workspaceId: null,
   selectedConversationId: null,
   selectedSummary: undefined,
+  transcript: emptyTranscript,
   active: emptyList,
   archived: emptyList,
+  async create() { throw new Error('Native personal chat is unavailable') },
+  async submit() { throw new Error('Native personal chat is unavailable') },
+  async setPreferences() { throw new Error('Native personal chat is unavailable') },
+  setPendingTranscriptConversation() {},
   async rename() {},
   async setArchived() {},
   async setRead() {},
@@ -95,8 +129,13 @@ export function PersonalChatProvider({ children }: { children: ReactNode }) {
       workspaceId,
       selectedConversationId: null,
       selectedSummary: undefined,
+      transcript: { ...emptyTranscript, status },
       active: { ...emptyList, status },
       archived: { ...emptyList, status },
+      async create() { throw new Error('Native personal chat is unavailable') },
+      async submit() { throw new Error('Native personal chat is unavailable') },
+      async setPreferences() { throw new Error('Native personal chat is unavailable') },
+      setPendingTranscriptConversation() {},
       async rename() { throw new Error('Native personal chat is unavailable') },
       async setArchived() { throw new Error('Native personal chat is unavailable') },
       async setRead() { throw new Error('Native personal chat is unavailable') },
@@ -114,8 +153,13 @@ export function PersonalChatProvider({ children }: { children: ReactNode }) {
         workspaceId,
         selectedConversationId: null,
         selectedSummary: undefined,
+        transcript: { ...emptyTranscript, status: 'unavailable' },
         active: { ...emptyList, status: 'unavailable' },
         archived: { ...emptyList, status: 'unavailable' },
+        async create() { throw new Error('Native personal chat is unavailable') },
+        async submit() { throw new Error('Native personal chat is unavailable') },
+        async setPreferences() { throw new Error('Native personal chat is unavailable') },
+        setPendingTranscriptConversation() {},
         async rename() { throw new Error('Native personal chat is unavailable') },
         async setArchived() { throw new Error('Native personal chat is unavailable') },
         async setRead() { throw new Error('Native personal chat is unavailable') },
@@ -227,12 +271,13 @@ function NativePersonalChatProvider({
   const searchParams = useSearchParams()
   const routeParams = useMemo(() => new URLSearchParams(searchParams.toString()), [searchParams])
   const { needsActiveList, needsArchivedList, canReadSelectedSummary, routeId } = personalChatQueryDemand(pathname, routeParams)
-  const [routeConversationId, setRouteConversationId] = useState<string | null>(null)
-  const selectedConversationId = routeConversationId
   const canQuery = Boolean(workspaceReady && workspaceId && !authLoading && isAuthenticated)
   const canQueryActive = canQuery && needsActiveList
   const canQueryArchived = canQuery && needsArchivedList
   const canQuerySummary = canQuery && canReadSelectedSummary
+  const { selectedConversationId, selectedSummary, transcript, setPendingTranscriptConversation } = usePersonalChatTranscript({
+    workspaceId, canQuery, canRead: canReadSelectedSummary, pathname, routeId,
+  })
   const activeQuery = usePaginatedQuery(
     api.chat.personal.list,
     canQueryActive ? { workspaceId: workspaceId!, archived: false } : 'skip',
@@ -243,31 +288,6 @@ function NativePersonalChatProvider({
     canQueryArchived ? { workspaceId: workspaceId!, archived: true } : 'skip',
     { initialNumItems: 30 },
   )
-  const selectedSummary = useQuery(
-    api.chat.personal.getSummary,
-    canQuerySummary && selectedConversationId
-      ? { workspaceId: workspaceId!, conversationId: selectedConversationId as Id<'conversations'> }
-      : 'skip',
-  )
-
-  useEffect(() => {
-    setRouteConversationId(routeId)
-  }, [routeId])
-
-  useEffect(() => {
-    function syncRoute() {
-      setRouteConversationId(canReadSelectedSummary
-        ? new URLSearchParams(window.location.search).get('id')
-        : null)
-    }
-    window.addEventListener('overlay:chat-route-selected', syncRoute)
-    window.addEventListener('popstate', syncRoute)
-    return () => {
-      window.removeEventListener('overlay:chat-route-selected', syncRoute)
-      window.removeEventListener('popstate', syncRoute)
-    }
-  }, [canReadSelectedSummary])
-
   const renameMutation = useMutation(api.chat.personal.rename).withOptimisticUpdate((store, args) => {
     const update = (row: PersonalChatSummary) => ({
       ...row,
@@ -283,6 +303,23 @@ function NativePersonalChatProvider({
   })
 
   const archiveMutation = useMutation(api.chat.personal.setArchived)
+  const createMutation = useMutation(api.chat.personal.create)
+  const submitMutation = useMutation(api.chat.personal.submit)
+  const preferencesMutation = useMutation(api.chat.personal.setPreferences)
+    .withOptimisticUpdate((store, args) => {
+      const update = (row: PersonalChatSummary) => ({
+        ...row,
+        ...(args.askModelIds !== undefined ? { askModelIds: args.askModelIds } : {}),
+        ...(args.actModelId !== undefined ? { actModelId: args.actModelId } : {}),
+        ...(args.lastMode !== undefined ? { lastMode: args.lastMode } : {}),
+      })
+      const queryArgs = { workspaceId: args.workspaceId, conversationId: args.conversationId }
+      const summary = store.getQuery(api.chat.personal.getSummary, queryArgs)
+      if (summary) store.setQuery(api.chat.personal.getSummary, queryArgs, update(summary))
+      for (const archived of [false, true]) {
+        updatePersonalChatList(store, args.workspaceId, archived, args.conversationId, update)
+      }
+    })
 
   const readMutation = useMutation(api.chat.personal.setRead).withOptimisticUpdate((store, args) => {
     const update = (row: PersonalChatSummary) => updatePersonalChatUnread(
@@ -358,15 +395,16 @@ function NativePersonalChatProvider({
     })
   }, [readMutation])
 
-  const baseListStatus: ListStatus = !configured
-    ? 'disabled'
-    : !workspaceReady || authLoading
-      ? 'loading'
-      : !workspaceId
-        ? 'unavailable'
-      : isAuthenticated
-        ? 'ready'
-        : 'unavailable'
+  const create = useCallback(async (args: NativePersonalCreateArgs) => {
+    return await createMutation(args)
+  }, [createMutation])
+  const submit = useCallback(async (args: NativePersonalSubmitArgs) => {
+    return await submitMutation(args)
+  }, [submitMutation])
+  const setPreferences = useCallback(async (args: NativePersonalPreferencesArgs) => {
+    await preferencesMutation(args)
+  }, [preferencesMutation])
+  const baseListStatus = personalChatListStatus({ configured, workspaceReady, authLoading, workspaceId, isAuthenticated })
   const activeStatus = !needsActiveList
     ? 'disabled'
     : baseListStatus !== 'ready'
@@ -396,6 +434,7 @@ function NativePersonalChatProvider({
     workspaceId,
     selectedConversationId,
     selectedSummary: visibleSelectedSummary,
+    transcript,
     active: {
       rows: visibleActiveRows,
       status: activeStatus,
@@ -413,8 +452,13 @@ function NativePersonalChatProvider({
     rename,
     setArchived,
     setRead,
+    create,
+    submit,
+    setPreferences,
+    setPendingTranscriptConversation,
   }), [
     activeQuery,
+    transcript,
     archivedQuery,
     canQueryActive,
     canQueryArchived,
@@ -422,6 +466,10 @@ function NativePersonalChatProvider({
     activeStatus,
     archivedStatus,
     rename,
+    create,
+    submit,
+    setPreferences,
+    setPendingTranscriptConversation,
     selectedConversationId,
     setArchived,
     setRead,
@@ -432,78 +480,6 @@ function NativePersonalChatProvider({
   ])
 
   return <PersonalChatContext.Provider value={value}>{children}</PersonalChatContext.Provider>
-}
-
-function updatePersonalChatList(
-  store: OptimisticLocalStore,
-  workspaceId: string,
-  archived: boolean,
-  conversationId: string,
-  update: (row: PersonalChatSummary) => PersonalChatSummary,
-) {
-  for (const query of store.getAllQueries(api.chat.personal.list)) {
-    if (query.value === undefined || query.args.workspaceId !== workspaceId || query.args.archived !== archived) continue
-    store.setQuery(api.chat.personal.list, query.args, {
-      ...query.value,
-      page: updatePersonalChatRow(query.value.page, conversationId, update),
-    })
-  }
-}
-
-function findPersonalChatSummary(
-  store: OptimisticLocalStore,
-  workspaceId: string,
-  conversationId: string,
-): PersonalChatSummary | undefined {
-  for (const query of store.getAllQueries(api.chat.personal.list)) {
-    if (query.args.workspaceId !== workspaceId || query.value === undefined) continue
-    const summary = query.value.page.find((row) => row._id === conversationId)
-    if (summary) return summary
-  }
-  return undefined
-}
-
-function minimalSummary(summary: PersonalChatSummary): PersonalChatSummary {
-  return {
-    _id: summary._id,
-    workspaceId: summary.workspaceId,
-    createdAt: summary.createdAt,
-    scope: summary.scope,
-    conversationType: summary.conversationType,
-    title: summary.title,
-    lastModified: summary.lastModified,
-    archivedAt: summary.archivedAt,
-    lastMessageId: summary.lastMessageId,
-    lastMessageAt: summary.lastMessageAt,
-    unread: summary.unread,
-    lastReadAt: summary.lastReadAt,
-    markedUnreadAt: summary.markedUnreadAt,
-  }
-}
-
-function movePersonalChatRow(
-  store: OptimisticLocalStore,
-  workspaceId: string,
-  conversationId: string,
-  archived: boolean,
-  summary: PersonalChatSummary | null,
-) {
-  for (const query of store.getAllQueries(api.chat.personal.list)) {
-    if (query.value === undefined || query.args.workspaceId !== workspaceId) continue
-    const isTargetList = query.args.archived === archived
-    const pageHasRow = query.value.page.some((row) => row._id === conversationId)
-    if (isTargetList && summary && query.args.paginationOpts.cursor === null) {
-      store.setQuery(api.chat.personal.list, query.args, {
-        ...query.value,
-        page: insertPersonalChatRow(query.value.page, summary),
-      })
-    } else if (!isTargetList || pageHasRow) {
-      store.setQuery(api.chat.personal.list, query.args, {
-        ...query.value,
-        page: removePersonalChatRow(query.value.page, conversationId),
-      })
-    }
-  }
 }
 
 export function usePersonalChat() {

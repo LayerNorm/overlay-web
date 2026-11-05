@@ -1,5 +1,7 @@
 import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
+import type { NativePersonalSubmitArgs } from '@/components/providers/PersonalChatProvider'
+import type { PersonalPendingTurn, PersonalTranscriptMessage } from './personal-transcript'
 import { AUTOMATIONS_UPDATED_EVENT } from '@overlay/app-core/automations'
 import { createConversationUiState } from '@overlay/chat-core'
 import type { ReasoningLevel } from '@overlay/chat-core'
@@ -29,7 +31,22 @@ import {
 import type { PendingFirstSendState } from './chat-send-pending-first'
 import { workspaceChatsViewActive, type CreateNewChatOptions } from './chat-send-create'
 
-export function sendTextTurn({
+function submissionKey(snapshot: SubmittedComposerSnapshot, replyContext: ReplyContext, workspaceId: string | null | undefined, conversationId: string | null) {
+  return JSON.stringify([
+    workspaceId,
+    conversationId,
+    snapshot.text,
+    snapshot.selectedActModelSnapshot,
+    snapshot.textModelsForTurn,
+    snapshot.attachedImagesSnapshot.map(image => [image.dataUrl, image.mimeType, image.name]),
+    snapshot.pendingChatDocumentsSnapshot.map(document => [document.fileIds, document.name, document.status]),
+    snapshot.mentionsSnapshot,
+    snapshot.requestMode,
+    replyContext,
+  ])
+}
+
+export async function sendTextTurn({
   activeChatId,
   activeChatIdRef,
   applyUiStateToView,
@@ -41,10 +58,16 @@ export function sendTextTurn({
   emptyRuntime,
   ensureConversationRuntime,
   isFirstMessage,
+  isCurrentScope,
   isStreamChatActive,
   loadChats,
   loadSubscription,
   nativePersonalEnabled = false,
+  nativePersonalRoute = false,
+  nativeOwnerId,
+  nativeWorkspaceId,
+  submitNativePersonalTurn,
+  setPendingTranscriptConversation,
   onUsageExhaustedError,
   markChatModified,
   pendingFirstSendRef,
@@ -69,10 +92,16 @@ export function sendTextTurn({
   emptyRuntime: ConversationRuntime
   ensureConversationRuntime: EnsureConversationRuntime
   isFirstMessage: boolean
+  isCurrentScope: () => boolean
   isStreamChatActive: (chatId: string, temporaryChatSnapshot: boolean) => boolean
   loadChats: () => Promise<void>
   loadSubscription: () => Promise<unknown>
   nativePersonalEnabled?: boolean
+  nativePersonalRoute?: boolean
+  nativeOwnerId?: string | null
+  nativeWorkspaceId?: string | null
+  submitNativePersonalTurn?: (args: NativePersonalSubmitArgs) => Promise<{ conversationId: string; messageId: string }>
+  setPendingTranscriptConversation?: (conversationId: string | null, ownerId?: string | null, intentKey?: string) => void
   onUsageExhaustedError: (message: string) => boolean
   markChatModified: (chatId: string, titleSnapshot?: string | null) => void
   pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
@@ -90,7 +119,16 @@ export function sendTextTurn({
   startSession: StartSession
   updateRuntimeUiState: UpdateRuntimeUiState
 }) {
-  const textTurnId = crypto.randomUUID()
+  const existingChatId = snapshot.temporaryChatSnapshot
+    ? TEMPORARY_CHAT_ID
+    : (activeChatIdRef.current ?? activeChatId)
+  const nativeSubmitEnabled = nativePersonalEnabled && nativePersonalRoute && !snapshot.temporaryChatSnapshot
+  const retryRuntime = existingChatId ? ensureConversationRuntime(existingChatId) : emptyRuntime
+  const attemptKey = submissionKey(snapshot, replyContext, nativeWorkspaceId, existingChatId)
+  const previousNativeAttempt = nativeSubmitEnabled
+    ? [...(retryRuntime.nativePendingTurns?.values() ?? [])].find(turn => turn.submissionKey === attemptKey && turn.submitArgs)
+    : undefined
+  const textTurnId = previousNativeAttempt?.turnId ?? crypto.randomUUID()
   setTtftClientTurnId(textTurnId)
   const payload = buildTextTurnPayload({
     text: snapshot.text,
@@ -116,17 +154,18 @@ export function sendTextTurn({
     })
     runtime.askChats[0].messages = [
       ...runtime.askChats[0].messages,
-      payload.userUIMessage as UIMessage,
+      ...(!runtime.askChats[0].messages.some(message => message.id === payload.userUIMessage.id)
+        ? [payload.userUIMessage as UIMessage]
+        : []),
     ]
     runtime.actChat.messages = [
       ...runtime.actChat.messages,
-      payload.userUIMessage as UIMessage,
+      ...(!runtime.actChat.messages.some(message => message.id === payload.userUIMessage.id)
+        ? [payload.userUIMessage as UIMessage]
+        : []),
     ]
   }
 
-  const existingChatId = snapshot.temporaryChatSnapshot
-    ? TEMPORARY_CHAT_ID
-    : (activeChatIdRef.current ?? activeChatId)
   pendingScrollTurnIdRef.current = textTurnId
   pendingScrollChatIdRef.current = snapshot.temporaryChatSnapshot ? null : existingChatId
   let chatId = existingChatId
@@ -152,7 +191,9 @@ export function sendTextTurn({
     setIsFirstMessage(false)
     setRuntimeHydrationVersion((value) => value + 1)
 
-    const conversationClientId = crypto.randomUUID()
+    const conversationClientId = typeof previousNativeAttempt?.submitArgs?.clientId === 'string'
+      ? previousNativeAttempt.submitArgs.clientId
+      : crypto.randomUUID()
     pendingFirstSendRef.current = {
       conversationClientId,
       previewRuntime,
@@ -169,18 +210,43 @@ export function sendTextTurn({
     targetRuntime = previewRuntime
     preparedFirstSendRuntime = true
 
-    void createNewChat({
-      clientId: conversationClientId,
-      deferActivation: true,
-      reasoningByModelSnapshot,
-    }).catch(() => {
-      toast.error('Could not create chat. Your reply may still stream.')
-    })
-    markTtftClientMilestone('create_started', { conversationClientId })
+    if (!nativeSubmitEnabled) {
+      void createNewChat({
+        clientId: conversationClientId,
+        deferActivation: true,
+        reasoningByModelSnapshot,
+      }).catch(() => {
+        toast.error('Could not create chat. Your reply may still stream.')
+      })
+      markTtftClientMilestone('create_started', { conversationClientId })
+    }
   } else {
     targetRuntime = ensureConversationRuntime(existingChatId)
   }
   if (!chatId) return
+  let pendingNativeTurn: PersonalPendingTurn | undefined
+  let nativeSubmittedConversationId: string | null = null
+  if (nativeSubmitEnabled) {
+    const user = {
+      ...payload.userUIMessage,
+      id: textTurnId,
+      turnId: textTurnId,
+      mode: 'act',
+      contentType: 'text',
+      createdAt: Date.now(),
+    } as PersonalTranscriptMessage
+    pendingNativeTurn = {
+      turnId: textTurnId,
+      user: previousNativeAttempt?.user ?? user,
+      responses: [],
+      userAcknowledged: previousNativeAttempt?.userAcknowledged ?? false,
+      submissionKey: attemptKey,
+      submitArgs: previousNativeAttempt?.submitArgs,
+    }
+    targetRuntime.nativePendingTurns ??= new Map()
+    targetRuntime.nativePendingTurns.set(textTurnId, pendingNativeTurn)
+    setRuntimeHydrationVersion((value) => value + 1)
+  }
   if (!snapshot.temporaryChatSnapshot && chatId !== PENDING_FIRST_CHAT_ID) {
     markChatModified(chatId, snapshot.activeChatTitleSnapshot)
   }
@@ -218,6 +284,85 @@ export function sendTextTurn({
     ]
   }
 
+  const transportParts = payload.partsForModel.length > 0
+    ? payload.partsForModel
+    : payload.indexedFileNames.length > 0
+      ? [{ type: 'text' as const, text: '[Attached documents]' }]
+      : payload.partsForModel
+  if (nativeSubmitEnabled && pendingNativeTurn) {
+    const pendingIntent = pendingFirstSendRef.current
+    const isCurrentSend = () => isCurrentScope()
+      && isStreamChatActive(chatId, snapshot.temporaryChatSnapshot)
+      && (chatId !== PENDING_FIRST_CHAT_ID || pendingFirstSendRef.current === pendingIntent)
+    const conversationClientId = pendingFirstSendRef.current?.conversationClientId
+    const nativeArgs = (previousNativeAttempt?.submitArgs as NativePersonalSubmitArgs | undefined) ?? {
+      workspaceId: nativeWorkspaceId!,
+      ...(existingChatId ? { conversationId: existingChatId as NativePersonalSubmitArgs['conversationId'] } : {}),
+      ...(!existingChatId ? {
+        clientId: conversationClientId!,
+        title: snapshot.activeChatTitleSnapshot ?? 'New conversation',
+      } : {}),
+      turnId: textTurnId,
+      mode: 'act' as const,
+      modelId: effectiveTextModelsForTurn[0]!,
+      contentType: 'text' as const,
+      parts: transportParts as NativePersonalSubmitArgs['parts'],
+      attachmentNames: payload.indexedFileNames,
+      userMetadata: payload.userMetadata ? {
+        ...(payload.userMetadata.indexedDocuments
+          ? { indexedDocuments: payload.userMetadata.indexedDocuments }
+          : {}),
+        ...(payload.userMetadata.indexedAttachments
+          ? { indexedAttachments: payload.userMetadata.indexedAttachments }
+          : {}),
+        ...(payload.userMetadata.mentions ? { mentions: payload.userMetadata.mentions } : {}),
+      } : undefined,
+      ...(replyContext?.replyToTurnId
+        ? { replyToTurnId: replyContext.replyToTurnId, replySnippet: replyContext.snippet }
+        : {}),
+    }
+    pendingNativeTurn.submitArgs = nativeArgs as unknown as Record<string, unknown>
+    try {
+      if (!nativeWorkspaceId || !submitNativePersonalTurn) throw new Error('Native personal chat is unavailable')
+      const submitted = await submitNativePersonalTurn(nativeArgs)
+      if (!isCurrentSend()) return
+      nativeSubmittedConversationId = submitted.conversationId
+      if (!existingChatId) {
+        const realChatId = await createNewChat({
+          clientId: typeof nativeArgs.clientId === 'string' ? nativeArgs.clientId : conversationClientId,
+          deferActivation: true,
+          persistedChatId: submitted.conversationId,
+          reasoningByModelSnapshot,
+        })
+        if (!realChatId) throw new Error('Could not activate native personal chat')
+        if (!isCurrentSend()) return
+        setPendingTranscriptConversation?.(realChatId, nativeOwnerId, textTurnId)
+      }
+    } catch (error) {
+      if (!isCurrentSend()) return
+      if (isCurrentScope() && isStreamChatActive(chatId, snapshot.temporaryChatSnapshot)) {
+        pendingNativeTurn.responses = [{
+          id: `native-submit-error:${textTurnId}`,
+          turnId: textTurnId,
+          role: 'assistant',
+          mode: 'act',
+          model: effectiveTextModelsForTurn[0],
+          variantIndex: 0,
+          createdAt: Date.now(),
+          contentType: 'text',
+          status: 'error',
+          parts: [{ type: 'text', text: 'Message could not be saved. Retry to send.' }],
+        } as PersonalTranscriptMessage]
+        if (pendingFirstSendRef.current?.conversationClientId === conversationClientId) {
+          pendingFirstSendRef.current = null
+        }
+        setPendingTranscriptConversation?.(null, nativeOwnerId, textTurnId)
+        setRuntimeHydrationVersion((value) => value + 1)
+      }
+      throw error
+    }
+  }
+
   startSession(
     chatId,
     'act',
@@ -228,9 +373,9 @@ export function sendTextTurn({
 
   const commonActBody = buildCommonActBody({
     scope: workspaceChatsViewActive() ? 'workspace' : 'personal',
-    chatId,
+    chatId: nativeSubmittedConversationId ?? chatId,
     pendingConversationClientId:
-      chatId === PENDING_FIRST_CHAT_ID
+      chatId === PENDING_FIRST_CHAT_ID && !nativeSubmittedConversationId
         ? pendingFirstSendRef.current!.conversationClientId
         : null,
     temporaryChatSnapshot: snapshot.temporaryChatSnapshot,
@@ -263,14 +408,26 @@ export function sendTextTurn({
     textModelsForTurn: effectiveTextModelsForTurn,
     selectedActModel: selectedActModelSnapshot,
     turnId: textTurnId,
-    partsForModel: payload.partsForModel,
+    partsForModel: transportParts,
     userMetadata: payload.userMetadata,
     commonBody: commonActBody,
     isChatActive: (id) => isStreamChatActive(id, snapshot.temporaryChatSnapshot),
     completeSession: completeSessionForStream,
     loadChats: snapshot.temporaryChatSnapshot ? (() => {}) : loadChats,
     loadSubscription: refreshAfterActTextTurn,
-    onError: (error, fallbackMessage) => reportTextStreamError(error, fallbackMessage, onUsageExhaustedError),
+    onError: (error, fallbackMessage) => {
+      const pending = targetRuntime.nativePendingTurns?.get(textTurnId)
+      if (pending) {
+        pending.responses = [{
+          id: `native-stream-error:${textTurnId}`, turnId: textTurnId, role: 'assistant',
+          mode: 'act', model: effectiveTextModelsForTurn[0], variantIndex: 0,
+          createdAt: Date.now(), contentType: 'text', status: 'error',
+          parts: [{ type: 'text', text: 'The response could not be received. Retry to continue.' }],
+        }]
+        setRuntimeHydrationVersion(version => version + 1)
+      }
+      reportTextStreamError(error, fallbackMessage, onUsageExhaustedError)
+    },
     logPrefix: 'Act',
   })
 }

@@ -11,6 +11,7 @@ export function resetRuntimeState(
   uiOverrides: Partial<ConversationUiState> = {},
 ) {
   clearRuntimeMessages(runtime)
+  runtime.nativePendingTurns?.clear()
   runtime.ui = createConversationUiState(uiOverrides)
 }
 

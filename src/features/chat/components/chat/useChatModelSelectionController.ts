@@ -178,6 +178,7 @@ function useTextModelSelection({
   activeChatId,
   chatPrefsHydrated,
   isTemporaryChat,
+  onExplicitTextModelChange,
   selectedActModel,
   selectedModels,
   setSelectedActModel,
@@ -189,6 +190,7 @@ function useTextModelSelection({
   activeChatId: string | null
   chatPrefsHydrated: boolean
   isTemporaryChat: boolean
+  onExplicitTextModelChange?: (askModelIds: string[], actModelId: string) => void
   selectedActModel: string
   selectedModels: string[]
   setSelectedActModel: (modelId: string) => void
@@ -236,10 +238,12 @@ function useTextModelSelection({
     userAskModelOverrideRef.current = isOnNewChatSurface
     setSelectedActModel(modelId)
     setSelectedModels([modelId])
+    onExplicitTextModelChange?.([modelId], modelId)
     persistNewChatModel(modelId)
     setShowModelPicker(false)
   }, [
     isOnNewChatSurface,
+    onExplicitTextModelChange,
     persistNewChatModel,
     setSelectedActModel,
     setSelectedModels,
@@ -295,6 +299,7 @@ export function useChatModelSelectionController({
   reasoningByModel,
   onReasoningChange,
   onModelReasoningChange,
+  onExplicitTextModelChange,
   selectableTextModels,
   selectedActModel,
   selectedImageModels,
@@ -322,6 +327,7 @@ export function useChatModelSelectionController({
   reasoningByModel: Readonly<Record<string, ReasoningLevel | undefined>>
   onReasoningChange?: (level: ReasoningLevel | undefined) => void
   onModelReasoningChange: (modelId: string, level: ReasoningLevel | undefined) => void
+  onExplicitTextModelChange?: (askModelIds: string[], actModelId: string) => void
   selectableTextModels: ChatModel[]
   selectedActModel: string
   selectedImageModels: string[]
@@ -374,6 +380,7 @@ export function useChatModelSelectionController({
     activeChatId,
     chatPrefsHydrated,
     isTemporaryChat,
+    onExplicitTextModelChange,
     selectedActModel,
     selectedModels,
     setSelectedActModel,

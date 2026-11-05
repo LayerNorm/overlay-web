@@ -1,5 +1,6 @@
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { HydratedRemoteMessage } from '../../../../../convex/lib/remoteMessageText'
+import type { GenerationResult } from '../chat-interface/types'
 
 export type PersonalTranscriptRow = {
   message: HydratedRemoteMessage
@@ -36,6 +37,9 @@ export type PersonalPendingTurn = {
   user: PersonalTranscriptMessage
   responses: PersonalTranscriptMessage[]
   userAcknowledged: boolean
+  submissionKey?: string
+  submitArgs?: Record<string, unknown>
+  localGenerationResults?: GenerationResult[]
 }
 
 export type PersonalTranscriptExchange = {
@@ -44,8 +48,13 @@ export type PersonalTranscriptExchange = {
   responses: PersonalTranscriptMessage[]
 }
 
-function messageVersion(message: HydratedRemoteMessage) {
-  return Math.max(message.eventSequence ?? 0, message.updatedAt ?? message.createdAt)
+function isAtLeastAsRecent(message: HydratedRemoteMessage, previous: HydratedRemoteMessage) {
+  if (message.eventSequence !== undefined && previous.eventSequence !== undefined) {
+    return message.eventSequence >= previous.eventSequence
+  }
+  if (message.eventSequence !== undefined) return true
+  if (previous.eventSequence !== undefined) return false
+  return (message.updatedAt ?? message.createdAt) >= (previous.updatedAt ?? previous.createdAt)
 }
 
 export function personalMessageToUi(message: HydratedRemoteMessage): PersonalTranscriptMessage {
@@ -71,6 +80,7 @@ export function personalMessageToUi(message: HydratedRemoteMessage): PersonalTra
       replySnippet: message.replySnippet,
       routedModelId: message.routedModelId,
       agentPlan: message.agentPlan,
+      ...(message.deletedAt !== undefined ? { deletedAt: message.deletedAt } : {}),
     },
   }
 }
@@ -90,7 +100,14 @@ function applyPendingTurn(exchanges: Map<string, PersonalTranscriptExchange>, pe
     const key = responseKey(response)
     const canonical = responses.get(key)
     if (canonical?.status === 'completed' || canonical?.status === 'error') continue
-    responses.set(key, canonical ? { ...response, id: canonical.id, persistedId: canonical.persistedId } : response)
+    if (canonical?.status === 'generating' && response.status === 'error') continue
+    responses.set(key, canonical ? {
+      ...canonical, ...response, id: canonical.id, persistedId: canonical.persistedId,
+      metadata: {
+        ...(canonical.metadata as Record<string, unknown> | undefined),
+        ...(response.metadata as Record<string, unknown> | undefined),
+      },
+    } : response)
   }
   exchange.responses = [...responses.values()]
   exchanges.set(pending.turnId, exchange)
@@ -107,7 +124,7 @@ export function projectPersonalTranscript(
     for (const message of [row.contextUser, row.message]) {
       if (!message) continue
       const previous = messages.get(message._id)
-      if (!previous || messageVersion(message) >= messageVersion(previous)) messages.set(message._id, message)
+      if (!previous || isAtLeastAsRecent(message, previous)) messages.set(message._id, message)
     }
   }
   const ordered = [...messages.values()].sort((a, b) => a.createdAt - b.createdAt

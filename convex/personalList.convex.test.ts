@@ -43,14 +43,14 @@ test('native transcript pagination preserves timestamp ties, variants and partia
     const first = await ctx.db.insert('conversationMessages', { ...base, role: 'assistant', content: 'First',
       variantIndex: 0, parts: [{ type: 'text', text: 'First' }] })
     const second = await ctx.db.insert('conversationMessages', { ...base, role: 'assistant', content: 'Second',
-      variantIndex: 1, parts: [{ type: 'tool-invocation', toolInvocation: { toolCallId: 'call', toolName: 'lookup', state: 'result', args: {}, result: { ok: true } } }] })
+      variantIndex: 1, parts: [{ type: 'tool-invocation', toolInvocation: { toolCallId: 'call', toolName: 'lookup', state: 'result', toolInput: {}, toolOutput: { ok: true } } }] })
     return [userId, first, second]
   })
   const first = await user.query(messages, { ...args, paginationOpts: { numItems: 1, cursor: null } })
   expect(first.page[0].message._id).toBe(ids[2])
   expect(first.page[0].contextUser._id).toBe(ids[0])
   expect(first.page[0].contextUser.parts[0].fileName).toBe('image.png')
-  expect(first.page[0].message.parts[0].toolInvocation.result).toEqual({ ok: true })
+  expect(first.page[0].message.parts[0].toolInvocation.toolOutput).toEqual({ ok: true })
   const seen: string[] = []
   let cursor: string | null = null
   let done = false
@@ -86,7 +86,7 @@ test('native transcript hydrates remote text only behind current parent authoriz
   expect(result.page[0].contextUser).toBeNull()
   await t.run(async ctx => {
     const membership = (await ctx.db.query('workspaceMemberships').first())!
-    await ctx.db.patch(membership._id, { status: 'removed' })
+    await ctx.db.patch(membership._id, { status: 'suspended' })
   })
   await expect(user.query(messages, queryArgs)).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
 })
@@ -129,6 +129,36 @@ test('native submission commits one authenticated user turn before execution and
   expect(rows).toHaveLength(1)
   expect(rows[0]).toMatchObject({ _id: first.messageId, content: 'Durable prompt', mode: 'act', userId: 'u' })
   expect(rows[0].parts?.[1]).toMatchObject({ fileName: 'file.png' })
+})
+
+test('native submit rejects retired threads before writing a user turn', async () => {
+  const { t, user, args } = await fixture()
+  const retiredTurnId = 'retired-root'
+  await t.run(async ctx => {
+    const userMessageId = await ctx.db.insert('conversationMessages', {
+      conversationId: args.conversationId, userId: 'u', turnId: retiredTurnId, role: 'user',
+      mode: 'act', content: 'Old prompt', contentType: 'text', createdAt: 2,
+    })
+    const assistantMessageId = await ctx.db.insert('conversationMessages', {
+      conversationId: args.conversationId, userId: 'u', turnId: retiredTurnId, role: 'assistant',
+      mode: 'act', content: 'Old response', contentType: 'text', status: 'completed', createdAt: 3,
+    })
+    await ctx.db.insert('conversationAgentRuns', {
+      conversationId: args.conversationId, userId: 'u', turnId: retiredTurnId,
+      userMessageId, assistantMessageId, mode: 'work', runner: 'tool_loop',
+      status: 'completed', createdAt: 2, updatedAt: 3,
+    })
+  })
+  const turnId = 'blocked-native-submit'
+  await expect(user.mutation(submit, {
+    ...args, turnId, mode: 'act', modelId: 'model', contentType: 'text',
+    parts: [{ type: 'text', text: 'Must not be stored' }],
+  })).rejects.toThrow('native_runner_retired')
+  const rows = await t.run(ctx => ctx.db.query('conversationMessages')
+    .withIndex('by_conversationId_turnId_role', q =>
+      q.eq('conversationId', args.conversationId).eq('turnId', turnId).eq('role', 'user'))
+    .collect())
+  expect(rows).toEqual([])
 })
 
 test('first native send creates chat and user atomically and a denied send leaves no chat behind', async () => {

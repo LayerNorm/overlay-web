@@ -137,6 +137,24 @@ an otherwise eligible chat. Keep this index through rollout and rollback; no
 document backfill is required. The scope helper is shared with the subsequent
 personal-list migration rather than delaying this authorization rule until it.
 
+### Native personal transcript
+
+Native Convex owns the browser's personal-chat transcript, preference summary,
+and initial user-turn write. The browser paginates canonical messages directly;
+the existing scoped HTTP execution path remains responsible for provider
+streaming, memory, billing, and server-side assistant persistence. Native submit
+must pass the retired-thread write guard before reusing or inserting a turn.
+
+Transcript pages are capped at 100 rows. Generated outputs are authorized with
+`files.read`, capped at 100 per turn using a 101-row sentinel, and exposed only
+through the existing authorized file-content URL. Missing or stale output
+policy suppresses file metadata without suppressing text history.
+
+`nativeSubmittedAt`, `userMetadata`, `conversationMessages.by_conversationId_turnId_role`,
+and `files.by_userId_conversationId_turnId` are additive. Roll back browser
+ownership before removing any of them; keep the fields and indexes through
+rollout rollback, with no backfill requirement.
+
 ## Local checks
 
 ```bash

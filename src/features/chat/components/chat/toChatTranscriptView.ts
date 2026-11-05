@@ -98,7 +98,7 @@ export function createWebChatTranscriptAdapter() {
         : input.selectedModels[0]
           ? [input.selectedModels[0]]
           : []
-      const selectedModelId = modelIds[0] ?? null
+      const selectedModelId = modelIds.at(-1) ?? null
       const responseSources = nativeResponses ?? [input.getResponseForExchange(exchangeIndex)]
       const mediaResults = input.generationResults?.get(exchangeIndex)?.slice(0, 1)
       const isLatest = exchangeIndex === input.latestExchangeIndex
@@ -126,7 +126,7 @@ export function createWebChatTranscriptAdapter() {
           error: runtime?.error,
         })
       })
-      const selectedStatus = responseStatuses[0]
+      const selectedStatus = responseStatuses.at(-1)
       const exchangeStatus = generationMode === 'text'
         ? selectedStatus ?? deriveChatExchangeStatus({
             runtimeStatus: runtimeStatusForCore(fallbackRuntimeStatus),
@@ -186,8 +186,14 @@ export function createWebChatTranscriptAdapter() {
         const responseError = runtime?.error ?? (persistedStatus === 'error' ? 'Generation failed' : null)
         const sourceCitations = (response as { metadata?: { sourceCitations?: SourceCitationMap } }).metadata?.sourceCitations
         const routedModelId = getRoutedModelId(response)
+        const persistedId = (response as { persistedId?: string }).persistedId
+        const variantIndex = (response as { variantIndex?: number }).variantIndex
         return [{
-          id: transcriptResponseId(turnId, modelId, (response as { variantIndex?: number }).variantIndex ?? responseIndex),
+          id: persistedId
+            ? `${turnId}:response:${persistedId}`
+            : variantIndex !== undefined
+              ? `${turnId}:response:${modelId}:${variantIndex}`
+              : transcriptResponseId(turnId, modelId, responseIndex),
           modelId,
           blocks: normalized.blocks,
           sources: normalized.sources,
@@ -197,7 +203,7 @@ export function createWebChatTranscriptAdapter() {
           errorMessage: errorMessage(responseError),
         }]
       })
-      const selectedResponse = responses[0]
+      const selectedResponse = responses.at(-1)
       const exchange: ChatTranscriptExchangeView = {
         id: turnId,
         turnId,
@@ -215,7 +221,7 @@ export function createWebChatTranscriptAdapter() {
           createdAt: typeof createdAt === 'number' ? createdAt : undefined,
         },
         responses,
-        selectedResponseIndex: selectedResponse ? 0 : -1,
+        selectedResponseIndex: selectedResponse ? responses.length - 1 : -1,
         selectedModelId: selectedResponse?.modelId ?? selectedModelId,
         status: exchangeStatus,
         media: generationMode === 'image' || generationMode === 'video'

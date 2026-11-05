@@ -72,6 +72,7 @@ export function useChatSendController({
   inputRef,
   invalidateLoadChatRequest,
   isActiveLoading,
+  createNativePersonalChat,
   billingAccessNotice,
   isBudgetExhaustedPaid,
   connectionUnavailable,
@@ -83,6 +84,11 @@ export function useChatSendController({
   loadChats,
   loadSubscription,
   nativePersonalEnabled = false,
+  nativePersonalRoute = false,
+  nativeOwnerId,
+  nativeWorkspaceId,
+  submitNativePersonalTurn,
+  setPendingTranscriptConversation,
   onUsageExhaustedError,
   markChatModified,
   memoryEnabled,
@@ -153,6 +159,7 @@ export function useChatSendController({
   inputRef: MutableRefObject<string>
   invalidateLoadChatRequest: () => void
   isActiveLoading: boolean
+  createNativePersonalChat?: Parameters<typeof createNewChatForSend>[0]['createNativePersonalChat']
   billingAccessNotice: string | null
   isBudgetExhaustedPaid: boolean
   connectionUnavailable: boolean
@@ -164,6 +171,11 @@ export function useChatSendController({
   loadChats: () => Promise<void>
   loadSubscription: () => Promise<unknown>
   nativePersonalEnabled?: boolean
+  nativePersonalRoute?: boolean
+  nativeOwnerId?: string | null
+  nativeWorkspaceId?: string | null
+  submitNativePersonalTurn?: Parameters<typeof sendTextTurn>[0]['submitNativePersonalTurn']
+  setPendingTranscriptConversation?: Parameters<typeof sendTextTurn>[0]['setPendingTranscriptConversation']
   onUsageExhaustedError: (message: string) => boolean
   markChatModified: (chatId: string, titleSnapshot?: string | null, nativePersonalOwner?: boolean) => void
   memoryEnabled: boolean
@@ -284,9 +296,12 @@ export function useChatSendController({
       clearTransientComposerState,
       emptyRuntime: emptyRuntimeRef.current,
       ensureConversationRuntime,
+      createNativePersonalChat,
       invalidateLoadChatRequest,
+      isCurrentScope,
       mode,
       nativePersonalEnabled,
+      nativePersonalRoute,
       options,
       pendingFirstSendRef,
       pendingScrollChatIdRef,
@@ -313,9 +328,12 @@ export function useChatSendController({
     clearTransientComposerState,
     emptyRuntimeRef,
     ensureConversationRuntime,
+    createNativePersonalChat,
     invalidateLoadChatRequest,
+    isCurrentScope,
     mode,
     nativePersonalEnabled,
+    nativePersonalRoute,
     pendingFirstSendRef,
     pendingScrollChatIdRef,
     pendingScrollTurnIdRef,
@@ -424,15 +442,14 @@ export function useChatSendController({
     } finally {
       preflightInFlight.current = false
     }
-    if (
-      !writable
-      || !isCurrentScope()
+    function sendIntentChanged() {
+      return !isCurrentScope()
       || activeChatIdRef.current !== originalChatId
       || isTemporaryChatRef.current !== originalTemporary
       || inputRef.current !== submittedInput
       || latestComposerStateRef.current !== submittedComposerState
-    ) return
-
+    }
+    if (!writable || sendIntentChanged()) return
 
     beginTtftClientTurn({
       model: snapshot.selectedActModelSnapshot,
@@ -446,72 +463,115 @@ export function useChatSendController({
       prefetchFirstMessageTitle(snapshot.text)
     }
 
+    function restoreFailedSubmission() {
+      if (!isCurrentScope() || activeChatIdRef.current !== originalChatId) return
+      setIsOptimisticLoading(false)
+      setComposerNotice('Could not save your message. Retry to send it.')
+      const currentComposer = latestComposerStateRef.current
+      if (
+        inputRef.current === ''
+        && currentComposer.attachedImages.length === 0
+        && currentComposer.pendingChatDocuments.length === 0
+        && currentComposer.mentions.length === 0
+        && !currentComposer.replyContext
+      ) {
+        setInput(submittedInput)
+        setAttachedImages(snapshot.attachedImagesSnapshot)
+        setPendingChatDocuments(snapshot.pendingChatDocumentsSnapshot)
+        setMentions(snapshot.mentionsSnapshot)
+        setReplyContext(replyCtxSnapshot)
+      }
+    }
+
     if (effectiveGenType === 'image' || effectiveGenType === 'video') {
       clearSubmittedComposer()
-      await sendMediaTurn({
+      try {
+        await sendMediaTurn({
+          activeChatId,
+          activeChatIdRef,
+          applyUiStateToView,
+          completeSession,
+          createNewChat,
+          effectiveGenType,
+          emptyRuntime: emptyRuntimeRef.current,
+          ensureConversationRuntime,
+          isSendBlocked,
+          isFirstMessage,
+          isTemporaryChatRef,
+          loadChats,
+          loadSubscription,
+          nativePersonalEnabled,
+          nativePersonalRoute,
+          nativeOwnerId,
+          nativeWorkspaceId,
+          submitNativePersonalTurn,
+          setPendingTranscriptConversation,
+          isCurrentScope,
+          isStreamChatActive,
+          pendingFirstSendRef,
+          completeSessionForStream,
+          markChatModified,
+          pendingScrollChatIdRef,
+          pendingScrollTurnIdRef,
+          replyContext: replyCtxSnapshot,
+          selectedActModel,
+          setGenerationChip,
+          setIsFirstMessage,
+          setRuntimeHydrationVersion,
+          snapshot,
+          startFirstMessageRename,
+          startSession,
+          updateRuntimeUiState,
+          videoSubMode,
+        })
+      } catch {
+        restoreFailedSubmission()
+      }
+      return
+    }
+
+    clearSubmittedComposer()
+    try {
+      await sendTextTurn({
         activeChatId,
         activeChatIdRef,
         applyUiStateToView,
-        completeSession,
+        automationIdParam,
+        completeSessionForStream,
         createNewChat,
-        effectiveGenType,
         emptyRuntime: emptyRuntimeRef.current,
         ensureConversationRuntime,
-        isSendBlocked,
         isFirstMessage,
-        isTemporaryChatRef,
+        isCurrentScope,
+        isStreamChatActive,
         loadChats,
         loadSubscription,
         nativePersonalEnabled,
+        nativePersonalRoute,
+        nativeOwnerId,
+        nativeWorkspaceId,
+        submitNativePersonalTurn,
+        setPendingTranscriptConversation,
+        onUsageExhaustedError,
         markChatModified,
+        pendingFirstSendRef,
         pendingScrollChatIdRef,
         pendingScrollTurnIdRef,
+        refreshSelectedAutomation,
         replyContext: replyCtxSnapshot,
-        selectedActModel,
-        setGenerationChip,
+        selectedActModelSnapshot: snapshot.selectedActModelSnapshot,
+        reasoning: effectiveReasoningByModel[snapshot.selectedActModelSnapshot],
+        reasoningByModelSnapshot: effectiveReasoningByModel,
         setIsFirstMessage,
         setRuntimeHydrationVersion,
         snapshot,
         startFirstMessageRename,
         startSession,
         updateRuntimeUiState,
-        videoSubMode,
       })
-      return
+    } catch {
+      restoreFailedSubmission()
     }
-
-    clearSubmittedComposer()
-    sendTextTurn({
-      activeChatId,
-      activeChatIdRef,
-      applyUiStateToView,
-      automationIdParam,
-      completeSessionForStream,
-      createNewChat,
-      emptyRuntime: emptyRuntimeRef.current,
-      ensureConversationRuntime,
-      isFirstMessage,
-      isStreamChatActive,
-      loadChats,
-      loadSubscription,
-      nativePersonalEnabled,
-      onUsageExhaustedError,
-      markChatModified,
-      pendingFirstSendRef,
-      pendingScrollChatIdRef,
-      pendingScrollTurnIdRef,
-      refreshSelectedAutomation,
-      replyContext: replyCtxSnapshot,
-      selectedActModelSnapshot: snapshot.selectedActModelSnapshot,
-      reasoning: effectiveReasoningByModel[snapshot.selectedActModelSnapshot],
-      reasoningByModelSnapshot: effectiveReasoningByModel,
-      setIsFirstMessage,
-      setRuntimeHydrationVersion,
-      snapshot,
-      startFirstMessageRename,
-      startSession,
-      updateRuntimeUiState,
-    })
   }, [
     nativeThreadReadOnly,
     ensureWritable,
@@ -543,6 +603,11 @@ export function useChatSendController({
     loadChats,
     loadSubscription,
     nativePersonalEnabled,
+    nativePersonalRoute,
+    nativeOwnerId,
+    nativeWorkspaceId,
+    submitNativePersonalTurn,
+    setPendingTranscriptConversation,
     onUsageExhaustedError,
     markChatModified,
     memoryEnabled,

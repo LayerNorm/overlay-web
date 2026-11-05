@@ -27,6 +27,7 @@ export type CreateNewChatOptions = {
   title?: string
   clientId?: string
   deferActivation?: boolean
+  persistedChatId?: string
   prepareRuntime?: (args: {
     chatId: string
     runtime: ConversationRuntime
@@ -85,8 +86,11 @@ export async function createNewChatForSend({
   emptyRuntime,
   ensureConversationRuntime,
   invalidateLoadChatRequest,
+  isCurrentScope,
   mode,
+  createNativePersonalChat,
   nativePersonalEnabled = false,
+  nativePersonalRoute = false,
   options,
   pendingFirstSendRef,
   pendingScrollChatIdRef,
@@ -113,8 +117,18 @@ export async function createNewChatForSend({
   emptyRuntime: ConversationRuntime
   ensureConversationRuntime: EnsureConversationRuntime
   invalidateLoadChatRequest: () => void
+  isCurrentScope?: () => boolean
   mode: 'chat' | 'automate'
+  createNativePersonalChat?: (args: {
+    workspaceId: string
+    clientId: string
+    title: string
+    askModelIds: string[]
+    actModelId: string
+    lastMode: 'act'
+  }) => Promise<string>
   nativePersonalEnabled?: boolean
+  nativePersonalRoute?: boolean
   options: CreateNewChatOptions
   pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
   pendingScrollChatIdRef: MutableRefObject<string | null>
@@ -135,32 +149,68 @@ export async function createNewChatForSend({
   tryActivatePendingFirstSend: () => void
   workspaceId?: string | null
 }): Promise<string | null> {
-  invalidateLoadChatRequest()
-  persistActiveRuntimeUiState()
-  setIsTemporaryChat(false)
-  resetComposerToolIds(false)
   const initialTitle = newChatTitle(mode, options, pendingFirstSendRef.current)
   const normalizedInitialSelection = normalizeChatModelSelection({
     askModelIds: selectedModels.slice(0, 1),
     actModelId: selectedActModel,
   })
   const initialSelectedModels = normalizedInitialSelection.askModelIds
-  const trimmedClientId = options.clientId?.trim()
   const workspaceScoped = workspaceChatsViewActive()
-  const res = await overlayAppClient.conversations.createResponse(
-    {
-      title: initialTitle,
-      askModelIds: initialSelectedModels,
-      actModelId: normalizedInitialSelection.actModelId,
-      lastMode: 'act',
-      ...(trimmedClientId ? { clientId: trimmedClientId } : {}),
-      ...(workspaceScoped ? { scope: 'workspace' as const } : {}),
-    },
-    { idempotencyKey: trimmedClientId ?? createIdempotencyKey() },
-  )
-  if (!res.ok) return null
-
-  const data = await res.json()
+  const nativePersonalCreated = nativePersonalEnabled && nativePersonalRoute && !workspaceScoped
+  const trimmedClientId = options.clientId?.trim()
+    || (nativePersonalCreated ? crypto.randomUUID() : undefined)
+  const prepareActivation = () => {
+    invalidateLoadChatRequest()
+    persistActiveRuntimeUiState()
+    setIsTemporaryChat(false)
+    resetComposerToolIds(false)
+  }
+  if (!nativePersonalCreated) prepareActivation()
+  async function persistConversation() {
+    let data: { id: string }
+    if (nativePersonalCreated) {
+      if (!isCurrentScope) throw new Error('Native personal chat scope is unavailable')
+      if (!isCurrentScope()) return null
+      if (options.persistedChatId) {
+        data = { id: options.persistedChatId }
+      } else {
+        if (!workspaceId || !trimmedClientId || !createNativePersonalChat) {
+          throw new Error('Native personal chat is unavailable')
+        }
+        data = {
+          id: await createNativePersonalChat({
+            workspaceId,
+            clientId: trimmedClientId,
+            title: initialTitle,
+            askModelIds: initialSelectedModels,
+            actModelId: normalizedInitialSelection.actModelId,
+            lastMode: 'act',
+          }),
+        }
+      }
+      if (!isCurrentScope()) return null
+    } else if (options.persistedChatId) {
+      data = { id: options.persistedChatId }
+    } else {
+      const res = await overlayAppClient.conversations.createResponse(
+        {
+          title: initialTitle,
+          askModelIds: initialSelectedModels,
+          actModelId: normalizedInitialSelection.actModelId,
+          lastMode: 'act',
+          ...(trimmedClientId ? { clientId: trimmedClientId } : {}),
+          ...(workspaceScoped ? { scope: 'workspace' as const } : {}),
+        },
+        { idempotencyKey: trimmedClientId ?? createIdempotencyKey() },
+      )
+      if (!res.ok) return null
+      data = await res.json()
+    }
+    return data
+  }
+  const data = await persistConversation()
+  if (!data) return null
+  if (nativePersonalCreated) prepareActivation()
   markConversationScopeVerified(workspaceScoped ? 'workspace' : 'personal', data.id)
   if (options.reasoningByModelSnapshot) {
     writeStoredReasoningByModel(
@@ -180,7 +230,6 @@ export async function createNewChatForSend({
     askModelIds: initialSelectedModels,
     actModelId: normalizedInitialSelection.actModelId,
   }
-  const nativePersonalCreated = nativePersonalEnabled && !workspaceScoped
   const pendingFirstSend = pendingFirstSendRef.current
   if (pendingFirstSend) pendingFirstSend.nativePersonalOwner = nativePersonalCreated
   if (!nativePersonalCreated) {
