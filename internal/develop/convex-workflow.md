@@ -169,6 +169,43 @@ corresponding Convex preview defaults remain separate from customer Production.
 
 ## Expand, migrate, then contract
 
+### Native browser authentication (CN-02)
+
+Browser identity now uses `ConvexProviderWithAuth` and the verified provider JWT
+from `/api/auth/convex-token?native=1`, not the legacy HS256 query-argument token.
+The default endpoint and legacy room subscriptions remain compatible. No server
+secret or refresh token reaches the browser. User IDs remain the provider subject;
+the endpoint rejects a verified token whose subject differs from its session user.
+Changing accounts remounts the client cache and its UI subtree. Refresh uses the
+existing browser session lock; token flights cannot cross identities.
+
+Hosted WorkOS is enabled by default because existing backend revisions already
+trust its issuer/JWKS. Preview login retains real sandbox WorkOS tokens. Set
+`OVERLAY_CONVEX_NATIVE_AUTH_ENABLED=false` on the web to disable native token
+issuance without removing legacy subscriptions during rollback.
+
+For OIDC or Better Auth private installations, native issuance remains disabled
+until explicitly enabled. Deploy the additive `convex/auth.config.ts` update with
+the selected `AUTH_PROVIDER` (or `OVERLAY_PROVIDER_AUTH`) and matching provider
+configuration on the isolated/private backend, then set
+`OVERLAY_CONVEX_NATIVE_AUTH_ENABLED=true` on the web. An upgraded web with an older
+backend continues legacy subscriptions until that opt-in. These are rollout
+controls, not an alternative database implementation.
+
+OIDC needs `OIDC_ISSUER_URL` and `OIDC_AUDIENCE` (or `OIDC_CLIENT_ID`), matching the
+JWT exactly. Better Auth uses RS256 and requires `BETTER_AUTH_URL` (or the app
+origin), with optional `BETTER_AUTH_JWT_ISSUER`, `BETTER_AUTH_JWT_AUDIENCE`,
+`BETTER_AUTH_JWKS_URL` and `BETTER_AUTH_BASE_PATH` overrides matching the web config.
+Mirror config-file settings into these backend environment variables. Only the
+selected provider is trusted; do not combine unrelated issuers with overlapping
+subject IDs. Anonymous/no-op mode has no native identity.
+
+Before promotion verify login, forced refresh, expiration, logout/account switch,
+legacy subscriptions and desktop/mobile session handoff on the current-head
+isolated Preview. Native identity is only authentication: each new query/mutation
+must still enforce resource, membership and role authorization (CN-03). CN-02 does
+not migrate list or transcript ownership.
+
 Web and Convex deploy independently. The incoming web must work with the old
 backend, and the incoming backend must work with the old web, including retained
 rollback revisions. Never remove an old field or require a new field in the same

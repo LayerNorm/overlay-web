@@ -7,6 +7,13 @@ const refreshSession = async () => {
   if (!response.ok) throw Error('session refresh failed')
 }
 
+test('legacy token requests are partitioned by identity and reject session switches', async t => {
+  t.mock.method(globalThis, 'fetch', async () => Response.json({ token: 'user-b-token', userId: 'user-b' }))
+  assert.deepEqual(await Promise.all([
+    fetchConvexToken(refreshSession, 'user-a'), fetchConvexToken(refreshSession, 'user-b'),
+  ]), [null, 'user-b-token'])
+})
+
 test('concurrent realtime callers share token issuance and a single expired-session recovery', async t => {
   const paths: string[] = []
   t.mock.method(globalThis, 'fetch', async (input: string, options?: RequestInit) => {
