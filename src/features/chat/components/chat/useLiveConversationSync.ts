@@ -11,6 +11,7 @@ import {
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { useQuery } from '@/components/providers/convex-hooks'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { markPersonalChatQueryReady } from '../../lib/realtime-baseline'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import type {
@@ -88,9 +89,10 @@ function ConvexLiveQueryBridge({
   ) as Array<LiveConversationMessage> | undefined
 
   useEffect(() => {
+    if (activeChatId && authUserId && convexAccessToken && liveMessages !== undefined) markPersonalChatQueryReady()
     // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
     onUpdate({ chatId: activeChatId, liveMessages })
-  }, [activeChatId, liveMessages, onUpdate])
+  }, [activeChatId, liveMessages, onUpdate, authUserId, convexAccessToken])
 
   return null
 }
