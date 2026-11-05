@@ -26,9 +26,11 @@ import {
 import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import {
+  isWorkspaceRouteTargetPending,
   legacyWorkspaceScopeForRoute,
   parseWorkspaceHandleRoute,
   readWorkspacePathScope,
+  readWorkspaceRouteTarget,
 } from '@/shared/workspaces/routing'
 
 export type PersonalChatSummary = NonNullable<FunctionReturnType<typeof api.chat.personal.getSummary>>
@@ -81,7 +83,7 @@ export function PersonalChatProvider({ children }: { children: ReactNode }) {
   const workspace = useWorkspace()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const workspaceId = workspace.switchingWorkspaceId ? null : workspace.activeWorkspaceId
+  const workspaceId = workspace.activeWorkspaceId
   const nativeConfigured = authConfiguration.nativeAuthConfigured
   const available = nativeConfigured && authConfiguration.hasConvexClient
 
@@ -122,7 +124,9 @@ export function PersonalChatProvider({ children }: { children: ReactNode }) {
       <NativePersonalChatProvider
         configured
         workspaceId={workspaceId}
-        workspaceReady={workspace.status === 'ready' && !workspace.switchingWorkspaceId}
+        workspaceReady={workspace.status === 'ready' && !isWorkspaceRouteTargetPending(
+          readWorkspaceRouteTarget(pathname ?? ''), workspace.resolvedRouteTargetKey,
+        )}
       >
         {children}
       </NativePersonalChatProvider>

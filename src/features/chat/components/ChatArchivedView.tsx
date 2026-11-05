@@ -85,7 +85,7 @@ export function ChatArchivedView({
   const searchId = searchParams?.get('id') ?? null
   const nativePersonal = usePersonalChat()
   const workspace = useOptionalWorkspace()
-  const workspaceId = workspace?.switchingWorkspaceId ? null : workspace?.activeWorkspaceId ?? null
+  const workspaceId = workspace?.activeWorkspaceId ?? null
   const nativePersonalEnabled = nativePersonal.configured && Boolean(userId)
   const [state, setState] = useState<ViewState>({ status: 'loading', workspaceId: null })
   const [routeVersion, setRouteVersion] = useState(0)
