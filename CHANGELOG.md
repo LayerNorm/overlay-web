@@ -4,7 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add private, opt-in two-client chat and navigation baselines that distinguish query readiness, local feedback, HTTP acknowledgement, content visibility, and remote convergence without collecting chat or file content.
+
 - Clear native-agent, room and thread-reply composers as soon as the optimistic user message appears, instead of waiting for the save response. Restore failed submissions even after the rich editor resynchronizes, without overwriting newer drafts or another conversation.
+
 - Remove the unused kimi.ai subscription variant from the bridge, API, configuration and database validators after confirming there are no production connections or pending authorizations. Kimi remains available through kimi.com, and the living adapter documentation lists only the supported providers.
 
 - Enable Claude, Grok Build, Meta Muse, Kimi and Devin alongside ChatGPT/Codex in Production and shared Preview. Offer one Kimi choice using kimi.com and render the actual Meta and Devin logos instead of letter placeholders.
