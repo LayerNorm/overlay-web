@@ -42,6 +42,7 @@ export interface WebChatTranscriptAdapterInput {
   isOptimisticLoading?: boolean
   interruptedExchangeIdx?: number | null
   getResponseForExchange: (exchangeIndex: number) => UIMessage | null
+  getResponsesForExchange?: (exchangeIndex: number) => readonly UIMessage[]
   getResponseRuntime?: (
     modelId: string,
     exchangeIndex: number,
@@ -89,13 +90,16 @@ export function createWebChatTranscriptAdapter() {
       const turnId = getUserTurnId(message) ?? message.id
       const mode = input.exchangeModes[exchangeIndex] ?? 'ask'
       const generationMode = input.exchangeGenTypes?.[exchangeIndex] ?? 'text'
-      const modelIds = input.exchangeModels[exchangeIndex]?.length
+      const nativeResponses = input.getResponsesForExchange?.(exchangeIndex)
+      const modelIds = nativeResponses?.length
+        ? nativeResponses.map(response => (response as { model?: string }).model ?? input.selectedModels[0] ?? '')
+        : input.exchangeModels[exchangeIndex]?.length
         ? [...input.exchangeModels[exchangeIndex]!.slice(0, 1)]
         : input.selectedModels[0]
           ? [input.selectedModels[0]]
           : []
       const selectedModelId = modelIds[0] ?? null
-      const responseSources = [input.getResponseForExchange(exchangeIndex)]
+      const responseSources = nativeResponses ?? [input.getResponseForExchange(exchangeIndex)]
       const mediaResults = input.generationResults?.get(exchangeIndex)?.slice(0, 1)
       const isLatest = exchangeIndex === input.latestExchangeIndex
       const interrupted = input.interruptedExchangeIdx === exchangeIndex
@@ -183,7 +187,7 @@ export function createWebChatTranscriptAdapter() {
         const sourceCitations = (response as { metadata?: { sourceCitations?: SourceCitationMap } }).metadata?.sourceCitations
         const routedModelId = getRoutedModelId(response)
         return [{
-          id: transcriptResponseId(turnId, modelId, responseIndex),
+          id: transcriptResponseId(turnId, modelId, (response as { variantIndex?: number }).variantIndex ?? responseIndex),
           modelId,
           blocks: normalized.blocks,
           sources: normalized.sources,

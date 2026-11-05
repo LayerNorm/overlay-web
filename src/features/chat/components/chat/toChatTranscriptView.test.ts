@@ -8,6 +8,20 @@ function message(value: Record<string, unknown>): UIMessage {
   return value as unknown as UIMessage
 }
 
+test('native transcript keeps every assistant variant with stable response identities', () => {
+  const user = message({ id: 'turn', turnId: 'turn', role: 'user', parts: [{ type: 'text', text: 'Question' }] })
+  const responses = [0, 1].map(variantIndex => message({ id: `response-${variantIndex}`, role: 'assistant',
+    model: 'model', variantIndex, status: 'completed', parts: [{ type: 'text', text: `Answer ${variantIndex}` }] }))
+  const adapter = createWebChatTranscriptAdapter()
+  const input = { primaryMessages: [user], exchangeModes: ['act' as const], exchangeModels: [['model']],
+    selectedModels: ['model'], latestExchangeIndex: 0, getResponseForExchange: () => null }
+  const partial = adapter({ ...input, getResponsesForExchange: () => [responses[1]] })
+  const complete = adapter({ ...input, getResponsesForExchange: () => responses })
+  assert.equal(complete.exchanges[0].responses.length, 2)
+  assert.equal(partial.exchanges[0].responses[0].id, complete.exchanges[0].responses[1].id)
+  assert.notEqual(complete.exchanges[0].responses[0].id, complete.exchanges[0].responses[1].id)
+})
+
 test('web transcript renders one selected model response', () => {
   const user = message({
     id: 'user-1',

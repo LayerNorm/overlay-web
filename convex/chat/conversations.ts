@@ -858,7 +858,7 @@ export const addMessage = mutation({
     }
     const existing = await ctx.db
       .query('conversationMessages')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
+      .withIndex('by_conversationId_turnId_role', (q) => q.eq('conversationId', args.conversationId).eq('turnId', args.turnId))
       .collect()
     const match = existing.find(
       (message) => sameMessageVariant(message, {
@@ -898,6 +898,10 @@ export const addMessage = mutation({
       status: 'completed' as const,
       updatedAt: now,
       createdAt: match?.createdAt ?? now,
+      ...(match?.role === 'user' && match.nativeSubmittedAt !== undefined ? {
+        mode: match.mode, content: match.content, contentType: match.contentType, parts: match.parts,
+        modelId: match.modelId, replyToTurnId: match.replyToTurnId, replySnippet: match.replySnippet,
+      } : {}),
     }
     const msgId = match
       ? (await ctx.db.patch(match._id, payload), match._id)
