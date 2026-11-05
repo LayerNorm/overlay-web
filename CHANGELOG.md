@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add private, opt-in two-client chat and navigation baselines that distinguish query readiness, local feedback, HTTP acknowledgement, content visibility, and remote convergence without collecting chat or file content. Correlate acknowledgements to the exact mutation and sanitize setup failures.
 
+- Preserve unsent drafts and source-page state during pending workspace activation, while keeping that page hidden and discarding it when the route or scope changes.
+
 - Keep the chat composer visible while workspace access is being verified after navigation or rollback, without mistaking pending or failed entitlement reads for a billing denial; sending remains blocked until access is confirmed.
 
 - Keep URL-driven chat hydration read-only so remounting the previous chat cannot replace a pending workspace navigation with its old URL.
