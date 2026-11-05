@@ -38,7 +38,7 @@ try {
       if (await message(page).count()) throw new Error('Message already exists')
       if (await page.getByRole('button', { name: 'Stop generating', exact: true }).count()) throw new Error('A run is already active')
     }
-    await sender.getByPlaceholder('Ask anything...', { exact: true }).fill(prompt)
+    await sender.getByRole('combobox', { name: 'What do you want to get done?', exact: true }).fill(prompt)
     result = await measureInteraction({
       trigger: () => sender.getByRole('button', { name: 'Send message', exact: true }).click({ timeout }),
       observers: {
