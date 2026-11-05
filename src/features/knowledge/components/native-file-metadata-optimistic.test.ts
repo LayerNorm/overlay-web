@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { OptimisticLocalStore } from 'convex/browser'
+import { getFunctionName } from 'convex/server'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
-import { optimisticRename } from './native-file-metadata-optimistic'
+import { optimisticRename } from '@/shared/knowledge/native-file-metadata-optimistic'
 
 type NativeFile = {
   _id: Id<'files'>
@@ -18,15 +19,17 @@ type NativeFile = {
   updatedAt: number
 }
 
-type CachedQuery = { reference: unknown; args: Record<string, unknown>; value: any }
+type CachedQuery = { reference: unknown; args: Record<string, unknown>; value: unknown }
 
 function createStore(entries: CachedQuery[]) {
+  const sameReference = (left: unknown, right: unknown) =>
+    getFunctionName(left as never) === getFunctionName(right as never)
   const store = {
     getAllQueries(reference: unknown) {
-      return entries.filter((entry) => entry.reference === reference)
+      return entries.filter((entry) => sameReference(entry.reference, reference))
     },
     setQuery(reference: unknown, args: Record<string, unknown>, value: unknown) {
-      const entry = entries.find((candidate) => candidate.reference === reference
+      const entry = entries.find((candidate) => sameReference(candidate.reference, reference)
         && JSON.stringify(candidate.args) === JSON.stringify(args))
       if (entry) entry.value = value
       else entries.push({ reference, args, value })
@@ -35,7 +38,7 @@ function createStore(entries: CachedQuery[]) {
   return {
     store,
     read(reference: unknown, args: Record<string, unknown>) {
-      return entries.find((entry) => entry.reference === reference
+      return entries.find((entry) => sameReference(entry.reference, reference)
         && JSON.stringify(entry.args) === JSON.stringify(args))?.value
     },
   }
@@ -76,11 +79,11 @@ test('native rename rebases by entity, preserving unrelated and newer cached val
   }
 
   optimisticRename(cache.store, mutation)
-  let current = cache.read(api.files.nativeMetadata.list, personalArgs)
+  let current = cache.read(api.files.nativeMetadata.list, personalArgs) as { nodes: NativeFile[] }
   assert.equal(current.nodes.find((node: NativeFile) => node._id === target._id)?.name, 'Optimistic.txt')
   assert.equal(current.nodes.find((node: NativeFile) => node._id === unrelated._id)?.name, 'Other.txt')
-  assert.equal(cache.read(api.files.nativeMetadata.list, foreignArgs).nodes[0].name, 'Other scope.txt')
-  assert.equal(cache.read(api.files.nativeMetadata.detail, detailArgs).name, 'Optimistic.txt')
+  assert.equal((cache.read(api.files.nativeMetadata.list, foreignArgs) as { nodes: NativeFile[] }).nodes[0]?.name, 'Other scope.txt')
+  assert.equal((cache.read(api.files.nativeMetadata.detail, detailArgs) as NativeFile).name, 'Optimistic.txt')
 
   const newerTarget = { ...target, name: 'Remote rename.txt', updatedAt: 12 }
   const newerUnrelated = { ...unrelated, name: 'Remote unrelated.txt', updatedAt: 13 }
@@ -91,7 +94,7 @@ test('native rename rebases by entity, preserving unrelated and newer cached val
   cache.store.setQuery(api.files.nativeMetadata.detail, detailArgs, newerTarget)
   optimisticRename(cache.store, mutation)
 
-  current = cache.read(api.files.nativeMetadata.list, personalArgs)
+  current = cache.read(api.files.nativeMetadata.list, personalArgs) as { nodes: NativeFile[] }
   assert.deepEqual(current.nodes.map((node: NativeFile) => [node._id, node.name, node.updatedAt]), [
     [target._id, 'Remote rename.txt', 12],
     [unrelated._id, 'Remote unrelated.txt', 13],

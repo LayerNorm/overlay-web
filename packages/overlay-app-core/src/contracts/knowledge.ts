@@ -79,6 +79,7 @@ export interface CreateFileResponse {
 
 export interface UpdateFileRequest {
   fileId: string
+  expectedUpdatedAt?: number
   name?: string
   content?: string
   textContent?: string

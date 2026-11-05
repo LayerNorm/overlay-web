@@ -231,6 +231,7 @@ function KnowledgeSurfaceBody({
   renderFileViewer,
   memories,
   fileList,
+  selectedFileUnavailable,
   opened,
   folderBrowser,
   mutations,
@@ -245,6 +246,7 @@ function KnowledgeSurfaceBody({
   renderFileViewer: (props: { file: FileNode; name: string; content: string; url?: string }) => ReactNode
   memories: ReturnType<typeof useSurfaceMemories>
   fileList: ReturnType<typeof useSurfaceFileList>
+  selectedFileUnavailable: boolean
   opened: ReturnType<typeof useOpenedFile>
   folderBrowser: ReturnType<typeof useFolderBrowser>
   mutations: ReturnType<typeof useFileMutations>
@@ -279,9 +281,10 @@ function KnowledgeSurfaceBody({
           <KnowledgeFileDetailPanel
             fileName={opened.selectedFile.name}
             isEditable={opened.contentStatus === 'ready' && filePort.isEditable(opened.selectedFile.name)
-              && !opened.selectedFile.textInObjectStore && !opened.contentConflict}
+              && !opened.selectedFile.textInObjectStore}
             fileContent={opened.fileContent}
             onContentChange={opened.handleFileContentChange}
+            isReadOnly={opened.contentConflict}
             renderViewer={() =>
               renderFileViewer({
                 name: opened.selectedFile!.name,
@@ -302,6 +305,11 @@ function KnowledgeSurfaceBody({
         <KnowledgeFilesTabNotices
           fileList={fileList}
         />
+      )}
+      {activeTab === 'files' && selectedFileUnavailable && (
+        <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
+          This file is unavailable.
+        </p>
       )}
       {activeTab === 'files' && fileList.filesRefreshing && (
         <span className="sr-only" role="status">Refreshing files</span>
@@ -390,7 +398,7 @@ export function SharedKnowledgeSurface({
   })
 
   const fileList = useSurfaceFileList({ initialFiles, adapters, activeTab, controlledSnapshot: controlledFileSnapshot })
-  const { files, setFiles, filesLoading } = fileList
+  const { files, setFiles } = fileList
 
   const opened = useOpenedFile({
     adapters,
@@ -467,14 +475,21 @@ export function SharedKnowledgeSurface({
       ? controlledFileSnapshot.detail
       : null
     : files.find((file) => file._id === fileOpenParam) ?? null
+  const deepLinkFileId = deepLinkFile?._id
+  const deepLinkFileRevision = deepLinkFile?.updatedAt
+  const deepLinkFileType = deepLinkFile?.type
+  const selectedFileUnavailable = Boolean(controlledFileSnapshot && fileOpenParam
+    && controlledFileSnapshot.detailFileId === fileOpenParam
+    && !controlledFileSnapshot.detailLoading
+    && (controlledFileSnapshot.detailError || !controlledFileSnapshot.detail))
 
   useEffect(() => {
     if (!fileOpenParam || opened.selectedFile?._id !== fileOpenParam
-      || !deepLinkFile || deepLinkFile.type !== 'file') return
+      || deepLinkFileId !== fileOpenParam || deepLinkFileType !== 'file') return
     // Deep-link file open — intentional state write from the param effect.
     // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent
-    void loadFile(deepLinkFile._id, deepLinkFile)
-  }, [fileOpenParam, deepLinkFile?._id, deepLinkFile?.updatedAt, deepLinkFile?.type, loadFile, opened.selectedFile?._id])
+    void loadFile(fileOpenParam)
+  }, [deepLinkFileId, deepLinkFileRevision, deepLinkFileType, fileOpenParam, loadFile, opened.selectedFile?._id])
 
   return (
     <>
@@ -570,6 +585,7 @@ export function SharedKnowledgeSurface({
           renderFileViewer={renderFileViewer}
           memories={memories}
           fileList={fileList}
+          selectedFileUnavailable={selectedFileUnavailable}
           opened={opened}
           folderBrowser={folderBrowser}
           mutations={mutations}

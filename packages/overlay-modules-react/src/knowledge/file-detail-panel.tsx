@@ -8,12 +8,14 @@ export function KnowledgeFileDetailPanel({
   isEditable,
   fileContent,
   onContentChange,
+  isReadOnly,
   renderViewer,
 }: {
   fileName: string
   isEditable: boolean
   fileContent: string
   onContentChange: (value: string) => void
+  isReadOnly?: boolean
   renderViewer: () => ReactNode
 }) {
   return (
@@ -23,6 +25,7 @@ export function KnowledgeFileDetailPanel({
           <Textarea
             aria-label="File contents"
             value={fileContent}
+            readOnly={isReadOnly}
             onChange={(e) => onContentChange(e.target.value)}
             placeholder="Start typing..."
             className={unstyledTextarea("min-h-[calc(100vh-11rem)] w-full flex-1 resize-none bg-transparent px-2 py-4 font-mono text-sm leading-relaxed text-(--foreground) outline-hidden placeholder:text-(--muted-light)")}

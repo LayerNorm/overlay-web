@@ -76,6 +76,7 @@ import type * as email_deliveryRunner from "../email/deliveryRunner.js";
 import type * as email_outbox from "../email/outbox.js";
 import type * as files_artifactPublications from "../files/artifactPublications.js";
 import type * as files_files from "../files/files.js";
+import type * as files_nativeMetadata from "../files/nativeMetadata.js";
 import type * as files_ingestion_jobs from "../files/ingestion/jobs.js";
 import type * as files_ingestion_runner from "../files/ingestion/runner.js";
 import type * as files_lib_storageQuota from "../files/lib/storageQuota.js";
@@ -247,6 +248,7 @@ declare const fullApi: ApiFromModules<{
   "email/outbox": typeof email_outbox;
   "files/artifactPublications": typeof files_artifactPublications;
   "files/files": typeof files_files;
+  "files/nativeMetadata": typeof files_nativeMetadata;
   "files/ingestion/jobs": typeof files_ingestion_jobs;
   "files/ingestion/runner": typeof files_ingestion_runner;
   "files/lib/storageQuota": typeof files_lib_storageQuota;

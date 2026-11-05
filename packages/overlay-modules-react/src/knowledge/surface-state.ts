@@ -11,6 +11,7 @@ import {
   filterMemoryRows,
   folderBreadcrumb as buildFolderBreadcrumb,
   knowledgePendingPreview,
+  normalizeKnowledgeSurfaceNode,
   opensInDocumentEditor,
   removeKnowledgeFileSubtrees,
   resolveKnowledgeLayout,
@@ -501,9 +502,10 @@ export function useOpenedFile({
       : null
   const selectedFileRef = useRef<FileNode | null>(selectedFile)
   selectedFileRef.current = selectedFile
+  const selectedFileIdentity = selectedFile ? `${selectedFile._id}:${selectedFile.updatedAt}` : null
 
   useEffect(() => {
-    const key = selectedFile ? `${selectedFile._id}:${selectedFile.updatedAt}` : null
+    const key = selectedFileIdentity
     if (activeLoadKeyRef.current && activeLoadKeyRef.current !== key) {
       loadVersionRef.current += 1
       loadControllerRef.current?.abort()
@@ -520,7 +522,7 @@ export function useOpenedFile({
       titleSaveTimerRef.current = null
     }
     setSavingIdentity(null)
-  }, [selectedFile?._id, selectedFile?.updatedAt])
+  }, [selectedFileIdentity])
 
   const clearOpenedFile = useCallback(() => {
     loadVersionRef.current += 1
@@ -538,6 +540,7 @@ export function useOpenedFile({
     setSavingIdentity(null)
   }, [])
 
+  const { navigation, repository } = adapters
   const loadFile = useCallback((fileId: string, knownFile?: FileNode): Promise<void> => {
     const file = knownFile
       ?? (snapshotRef.current?.detailFileId === fileId ? snapshotRef.current.detail : null)
@@ -546,7 +549,7 @@ export function useOpenedFile({
     const key = `${fileId}:${file?.updatedAt ?? 'unknown'}`
     if (activeLoadKeyRef.current === key && activeLoadPromiseRef.current) return activeLoadPromiseRef.current
     if (file && opensInDocumentEditor(file)) {
-      void adapters.navigation.open(file, { replace: true })
+      void navigation.open(normalizeKnowledgeSurfaceNode(file), { replace: true })
       return Promise.resolve()
     }
     const currentSelection = selectedFileRef.current
@@ -579,7 +582,7 @@ export function useOpenedFile({
     }
     const promise = (async () => {
       try {
-        const loaded = await adapters.repository.get(fileId, controller.signal)
+        const loaded = await repository.get(fileId, controller.signal)
         if (controller.signal.aborted || loadVersion !== loadVersionRef.current) return
         if (!loaded || loaded._id !== fileId) {
           if (file) setContentState({ fileId, revision: file.updatedAt, status: 'error', dirty: false, error: 'File is unavailable.' })
@@ -612,7 +615,7 @@ export function useOpenedFile({
     })()
     activeLoadPromiseRef.current = promise
     return promise
-  }, [adapters.navigation, adapters.repository])
+  }, [navigation, repository])
 
   useEffect(() => () => {
     loadVersionRef.current += 1
@@ -660,7 +663,7 @@ export function useOpenedFile({
         : 'loading'
   const contentError = contentConflict
     ? 'This file changed elsewhere. Your draft is still here; reopen the file before saving.'
-    : contentState?.fileId === selectedFile?._id ? contentState.error ?? null : null
+    : contentState && contentState.fileId === selectedFile?._id ? contentState.error ?? null : null
   const visibleContent = selectedFile && contentState?.fileId === selectedFile._id
     && (contentState.dirty || contentState.revision === selectedFile.updatedAt)
     ? fileContent : ''
@@ -671,8 +674,17 @@ export function useOpenedFile({
     && titleDraft.dirty && titleDraft.revision !== selectedFile.updatedAt)
   const isSavingFile = Boolean(selectedFile && savingIdentity === `${selectedFile._id}:${selectedFile.updatedAt}`)
 
-  function setFileTitle(value: string) {
-    if (selectedFile) setTitleDraft({ fileId: selectedFile._id, value, revision: selectedFile.updatedAt, dirty: false })
+  function setFileTitle(value: React.SetStateAction<string>) {
+    if (!selectedFile) return
+    setTitleDraft((current) => {
+      const currentValue = current?.fileId === selectedFile._id ? current.value : selectedFile.name
+      return {
+        fileId: selectedFile._id,
+        value: typeof value === 'function' ? value(currentValue) : value,
+        revision: selectedFile.updatedAt,
+        dirty: false,
+      }
+    })
   }
 
   function handleSelectFile(node: FileNode) {

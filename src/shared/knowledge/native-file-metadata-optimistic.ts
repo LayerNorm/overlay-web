@@ -1,7 +1,7 @@
 import type { OptimisticLocalStore } from 'convex/browser'
 import type { FunctionReturnType } from 'convex/server'
-import { api } from '../../../../convex/_generated/api'
-import type { Id } from '../../../../convex/_generated/dataModel'
+import { api } from '../../../convex/_generated/api'
+import type { Id } from '../../../convex/_generated/dataModel'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 
 type NativeList = FunctionReturnType<typeof api.files.nativeMetadata.list>
@@ -125,7 +125,7 @@ export function optimisticScopeChange(
   }
   const root = allNodes.get(args.fileId)
   if (!root || root.updatedAt !== args.expectedUpdatedAt) return
-  const subtree = new Set([root._id])
+  const subtree = new Set<string>([root._id])
   let changed = true
   while (changed) {
     changed = false
@@ -161,7 +161,7 @@ export function optimisticScopeChange(
   }
   for (const query of queries) {
     const view = query.args.view
-    const nodes = new Map(query.value!.nodes.map((node) => [node._id, node]))
+    const nodes = new Map<string, NativeFile>(query.value!.nodes.map((node) => [node._id, node]))
     for (const [id, node] of updatedNodes) {
       const inView = view === 'archived'
         ? node.archivedAt !== undefined

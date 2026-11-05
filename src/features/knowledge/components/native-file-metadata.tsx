@@ -1,7 +1,7 @@
 'use client'
 
-import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from 'react'
-import { useConvex, useConvexAuth, useMutation, useQueries } from 'convex/react'
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useConvex, useConvexAuth, useMutation, useQuery_experimental } from 'convex/react'
 import { Archive, RotateCcw, User, Users } from 'lucide-react'
 import { Button, toast } from '@overlay/ui/primitives'
 import { unstyledButton } from '@overlay/ui/control-reset'
@@ -26,7 +26,7 @@ import type { Id } from '../../../../convex/_generated/dataModel'
 import { useScopeItemActions, type ScopedItem } from '@/hooks/use-scope-item-actions'
 import { announceArchived, refreshAfterRestore } from '@/shared/app/archive-toast'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
-import { optimisticMove, optimisticRename, optimisticScopeChange } from './native-file-metadata-optimistic'
+import { optimisticMove, optimisticRename, optimisticScopeChange } from '@/shared/knowledge/native-file-metadata-optimistic'
 
 type ScopeAction = 'move' | 'archive' | 'restore'
 
@@ -44,20 +44,21 @@ const NativeActionsContext = createContext<NativeActions | null>(null)
 
 function NativeFileRowActions({ node, onChanged }: { node: KnowledgeFileNode; onChanged(): void }) {
   const actions = useScopeItemActions('content', 'files')
-  const native = useContext(NativeActionsContext)
+  const nativeActions = useContext(NativeActionsContext)
   const [busy, setBusy] = useState(false)
   const options = actions.optionsFor(node as ScopedItem)
-  if (!native || (!options.moveTo && !options.canArchive && !options.canRestore)) return null
+  if (!nativeActions || (!options.moveTo && !options.canArchive && !options.canRestore)) return null
+  const fileActions = nativeActions as NativeActions
 
   async function run(action: ScopeAction, to?: PanelScope) {
     setBusy(true)
     try {
-      await native.run(node._id, action, to)
+      await fileActions.run(node._id, action, to)
       onChanged()
       if (action === 'archive') {
         announceArchived({
           name: node.name,
-          undo: () => native.restoreFresh(node._id),
+          undo: () => fileActions.restoreFresh(node._id),
           onUndone: () => refreshAfterRestore('files'),
         })
       }
@@ -99,9 +100,10 @@ function NativeFileRowActions({ node, onChanged }: { node: KnowledgeFileNode; on
 function NativeFileBulkActions({ selection }: { selection: KnowledgeBulkSelection }) {
   const { nodes, afterChange } = selection
   const actions = useScopeItemActions('content', 'files')
-  const native = useContext(NativeActionsContext)
+  const nativeActions = useContext(NativeActionsContext)
   const [busy, setBusy] = useState(false)
-  if (!native || nodes.length === 0) return null
+  if (!nativeActions || nodes.length === 0) return null
+  const fileActions = nativeActions as NativeActions
   const options = nodes.map((node) => actions.optionsFor(node as ScopedItem))
   const moveTo = options.every((option) => option.moveTo && option.moveTo === options[0]?.moveTo)
     ? options[0]?.moveTo ?? null : null
@@ -110,17 +112,31 @@ function NativeFileBulkActions({ selection }: { selection: KnowledgeBulkSelectio
 
   async function run(action: ScopeAction, to?: PanelScope) {
     setBusy(true)
-    const results = await Promise.allSettled(nodes.map((node) => native.run(node._id, action, to)))
+    const results = await Promise.allSettled(nodes.map((node) => fileActions.run(node._id, action, to)))
     const changed = nodes.filter((_, index) => results[index]?.status === 'fulfilled')
-    const failures = nodes.length - changed.length
+    const failures = nodes.filter((_, index) => results[index]?.status === 'rejected')
     setBusy(false)
-    if (changed.length === nodes.length) afterChange()
-    if (failures) toast.error(`${action === 'move' ? 'Moved' : action === 'archive' ? 'Archived' : 'Restored'} ${changed.length} of ${nodes.length} items. ${failures} could not be ${action === 'move' ? 'moved' : action === 'archive' ? 'archived' : 'restored'}.`)
+    if (changed.length) afterChange()
+    if (failures.length) {
+      const outcomes = nodes.map((node, index) => {
+        const result = results[index]
+        if (result?.status === 'fulfilled') return `${node.name}: succeeded`
+        const error = result?.status === 'rejected' ? result.reason : null
+        return `${node.name}: failed${error instanceof Error ? ` (${error.message})` : ''}`
+      })
+      toast.error(outcomes.join('; '))
+    }
     if (action === 'archive' && changed.length) {
       announceArchived({
         name: changed.length === 1 ? changed[0]!.name : `${changed.length} items`,
         ...(changed.length > 1 ? { summary: `Archived ${changed.length} items` } : {}),
-        undo: async () => Promise.all(changed.map((node) => native.restoreFresh(node._id))).then(() => undefined),
+        undo: async () => {
+          const undone = await Promise.allSettled(changed.map((node) => fileActions.restoreFresh(node._id)))
+          const failedUndos = changed.filter((_, index) => undone[index]?.status === 'rejected')
+          if (failedUndos.length) {
+            toast.error(`Restore failed for: ${failedUndos.map((node) => node.name).join(', ')}`)
+          }
+        },
         onUndone: () => refreshAfterRestore('files'),
       })
     }
@@ -251,16 +267,21 @@ function NativeKnowledgeConnected({
   const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
   const convex = useConvex()
   const canQuery = Boolean(workspaceReady && workspaceId && !authLoading && isAuthenticated)
+  const readinessLoading = !workspaceReady || authLoading
   const listArgs = canQuery
     ? { workspaceId: workspaceId!, view: listView === 'workspace' ? 'workspace' as const : 'personal' as const }
     : 'skip' as const
   const detailArgs = canQuery && route.file
     ? { workspaceId: workspaceId!, fileId: route.file as Id<'files'> }
     : 'skip' as const
-  const queryResults = useQueries({
-    list: { query: api.files.nativeMetadata.list, args: listArgs },
-    detail: { query: api.files.nativeMetadata.detail, args: detailArgs },
-  })
+  const listQuery = useQuery_experimental({ query: api.files.nativeMetadata.list, args: listArgs })
+  const detailQuery = useQuery_experimental({ query: api.files.nativeMetadata.detail, args: detailArgs })
+  const listResult = listQuery.status === 'success'
+    ? listQuery.data
+    : listQuery.status === 'error' ? listQuery.error : undefined
+  const detailResult = detailQuery.status === 'success'
+    ? detailQuery.data
+    : detailQuery.status === 'error' ? detailQuery.error : undefined
   const renameMutation = useMutation(api.files.nativeMetadata.rename).withOptimisticUpdate((store, args) => {
     optimisticRename(store, args)
   })
@@ -271,34 +292,34 @@ function NativeKnowledgeConnected({
     optimisticScopeChange(store, args)
   })
 
-  const listResult = queryResults.list
-  const detailResult = queryResults.detail
-  const nativeNodes = listResult && !(listResult instanceof Error)
+  const nativeNodes = useMemo(() => listResult && !(listResult instanceof Error)
     ? listResult.nodes.map((node) => normalizeKnowledgeSurfaceNode(node))
-    : []
+    : [], [listResult])
   const listError = listResult instanceof Error
     ? listResult.message
     : workspaceReady && !workspaceId ? 'Workspace is unavailable.'
       : !authLoading && !isAuthenticated ? 'Native file metadata is unavailable.' : null
-  const detailNode = detailResult && !(detailResult instanceof Error)
+  const detailNode = useMemo(() => detailResult && !(detailResult instanceof Error)
     ? normalizeKnowledgeSurfaceNode(detailResult)
-    : null
+    : null, [detailResult])
   const nativeNodesRef = useRef(nativeNodes)
   const detailNodeRef = useRef(detailNode)
-  nativeNodesRef.current = nativeNodes
-  detailNodeRef.current = detailNode
+  useEffect(() => {
+    nativeNodesRef.current = nativeNodes
+    detailNodeRef.current = detailNode
+  }, [detailNode, nativeNodes])
   const detailError = detailResult instanceof Error
     ? detailResult.message
     : route.file && workspaceReady && !workspaceId ? 'Workspace is unavailable.'
       : route.file && !authLoading && !isAuthenticated ? 'Native file metadata is unavailable.' : null
   const snapshot: ControlledKnowledgeFileSnapshot = {
     nodes: nativeNodes,
-    loading: !canQuery || listResult === undefined,
+    loading: readinessLoading || (canQuery && listResult === undefined),
     error: listError,
     truncated: listResult && !(listResult instanceof Error) ? listResult.truncated : false,
     detailFileId: route.file,
     detail: detailNode,
-    detailLoading: Boolean(route.file && (!canQuery || detailResult === undefined)),
+    detailLoading: Boolean(route.file && (readinessLoading || (canQuery && detailResult === undefined))),
     detailError,
   }
 

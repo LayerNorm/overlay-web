@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useConvexAuth, useMutation, useQueries } from 'convex/react'
+import { useConvexAuth, useMutation, useQuery_experimental } from 'convex/react'
 import { ChevronRight, Loader2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
@@ -44,7 +44,7 @@ import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthPro
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
-import { optimisticMove } from '@/features/knowledge/components/native-file-metadata-optimistic'
+import { optimisticMove } from '@/shared/knowledge/native-file-metadata-optimistic'
 
 import { arrayOrEmpty } from './sidebar-nav'
 import type { InlineNavItem } from '@overlay/shell-react'
@@ -272,9 +272,10 @@ function NativeFilesInlinePanel({
   const listArgs = canQuery
     ? { workspaceId: workspaceId!, view: listView === 'workspace' ? 'workspace' as const : 'personal' as const }
     : 'skip' as const
-  const queryResults = useQueries({
-    files: { query: api.files.nativeMetadata.list, args: listArgs },
-  })
+  const fileQuery = useQuery_experimental({ query: api.files.nativeMetadata.list, args: listArgs })
+  const fileResult = fileQuery.status === 'success'
+    ? fileQuery.data
+    : fileQuery.status === 'error' ? fileQuery.error : undefined
   const moveMutation = useMutation(api.files.nativeMetadata.move).withOptimisticUpdate((store, args) => {
     optimisticMove(store, args)
   })
@@ -315,14 +316,13 @@ function NativeFilesInlinePanel({
     }
   }, [loadNotes])
 
-  const fileResult = queryResults.files
-  const nativeFiles = fileResult && !(fileResult instanceof Error)
+  const nativeFiles = useMemo(() => fileResult && !(fileResult instanceof Error)
     ? fileResult.nodes as unknown as FileTreeEntry[]
-    : []
-  const nativeIds = new Set(nativeFiles.map((file) => file._id))
+    : [], [fileResult])
+  const nativeIds = useMemo(() => new Set(nativeFiles.map((file) => file._id)), [nativeFiles])
   const files = useMemo(
     () => [...nativeFiles, ...legacyNotes.filter((note) => !nativeIds.has(note._id))],
-    [legacyNotes, nativeFiles],
+    [legacyNotes, nativeFiles, nativeIds],
   )
   const queryError = fileResult instanceof Error
     ? fileResult.message

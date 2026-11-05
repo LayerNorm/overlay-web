@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import test from 'node:test'
+import { after, before, test } from 'node:test'
 import React from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import {
@@ -8,6 +8,21 @@ import {
   type KnowledgeFileNode,
 } from '@overlay/app-core'
 import { SharedKnowledgeSurface, type ControlledKnowledgeFileSnapshot } from './surface'
+
+const requestAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'requestAnimationFrame')
+const cancelAnimationFrameDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'cancelAnimationFrame')
+
+before(() => {
+  globalThis.requestAnimationFrame = (callback) => setTimeout(() => callback(Date.now()), 0) as unknown as number
+  globalThis.cancelAnimationFrame = (handle) => clearTimeout(handle)
+})
+
+after(() => {
+  if (requestAnimationFrameDescriptor) Object.defineProperty(globalThis, 'requestAnimationFrame', requestAnimationFrameDescriptor)
+  else Reflect.deleteProperty(globalThis, 'requestAnimationFrame')
+  if (cancelAnimationFrameDescriptor) Object.defineProperty(globalThis, 'cancelAnimationFrame', cancelAnimationFrameDescriptor)
+  else Reflect.deleteProperty(globalThis, 'cancelAnimationFrame')
+})
 
 const fileA: KnowledgeFileNode = {
   _id: 'file-a',
@@ -165,6 +180,7 @@ test('file selection shows B immediately and ignores A content arriving late', a
     ...snapshotB,
     detail: null,
     detailLoading: false,
+    detailError: 'Permission denied.',
   }
   await act(async () => {
     renderer.update(React.createElement(SharedKnowledgeSurface, createSurfaceProps({
@@ -174,13 +190,52 @@ test('file selection shows B immediately and ignores A content arriving late', a
     })))
   })
   assert.deepEqual(viewer(renderer), [])
+  assert.equal(renderer.root.findByProps({ role: 'alert' }).children.join(''), 'This file is unavailable.')
+  await act(async () => {
+    renderer.update(React.createElement(SharedKnowledgeSurface, createSurfaceProps({
+      snapshot: { ...revoked, detailError: null, nodes: [] },
+      routeFile: fileB._id,
+      getFile,
+    })))
+  })
+  assert.deepEqual(viewer(renderer), [])
+  assert.equal(renderer.root.findByProps({ role: 'alert' }).children.join(''), 'This file is unavailable.')
+  await act(async () => renderer.unmount())
+})
+
+test('content from a different metadata revision is never shown', async () => {
+  let resolveFile: ((value: KnowledgeFileNode) => void) | undefined
+  const getFile = () => new Promise<KnowledgeFileNode>((resolve) => { resolveFile = resolve })
+  const snapshot: ControlledKnowledgeFileSnapshot = {
+    nodes: [fileA],
+    loading: false,
+    error: null,
+    truncated: false,
+    detailFileId: fileA._id,
+    detail: fileA,
+    detailLoading: false,
+    detailError: null,
+  }
+  let renderer!: ReactTestRenderer
+  await act(async () => {
+    renderer = create(React.createElement(SharedKnowledgeSurface, createSurfaceProps({
+      snapshot,
+      routeFile: fileA._id,
+      getFile,
+    })))
+  })
+  await act(async () => {
+    resolveFile?.({ ...fileA, updatedAt: 9, textContent: 'stale revision content' })
+  })
+  assert.deepEqual(viewer(renderer), [{ id: fileA._id, text: 'A.txt:' }])
+  assert.match(renderer.root.findByProps({ role: 'alert' }).children.join(''), /changed while it was opening/)
   await act(async () => renderer.unmount())
 })
 
 test('remote metadata revisions preserve a dirty draft and report the conflict', async () => {
   let resolveFile: ((value: KnowledgeFileNode) => void) | undefined
   const getFile = () => new Promise<KnowledgeFileNode>((resolve) => { resolveFile = resolve })
-  const original: KnowledgeFileNode = { ...fileA, name: 'A.md', updatedAt: 10 }
+  const original: KnowledgeFileNode = { ...fileA, updatedAt: 10 }
   const snapshot: ControlledKnowledgeFileSnapshot = {
     nodes: [original],
     loading: false,
@@ -220,5 +275,47 @@ test('remote metadata revisions preserve a dirty draft and report the conflict',
   await act(async () => renderer.update(React.createElement(SharedKnowledgeSurface, makeProps(remoteSnapshot))))
   assert.match(renderer.root.findByProps({ role: 'alert' }).children.join(''), /draft is still here/)
   assert.equal(renderer.root.findByType('textarea').props.value, 'my draft')
+  assert.equal(renderer.root.findByType('textarea').props.readOnly, true)
+  await act(async () => renderer.unmount())
+})
+
+test('content saves use the selected metadata revision', async () => {
+  let resolveFile: ((value: KnowledgeFileNode) => void) | undefined
+  const getFile = () => new Promise<KnowledgeFileNode>((resolve) => { resolveFile = resolve })
+  const saved: Array<{ id: string; content: string; expectedUpdatedAt: number | undefined }> = []
+  const snapshot: ControlledKnowledgeFileSnapshot = {
+    nodes: [fileA],
+    loading: false,
+    error: null,
+    truncated: false,
+    detailFileId: fileA._id,
+    detail: fileA,
+    detailLoading: false,
+    detailError: null,
+  }
+  const baseProps = createSurfaceProps({ snapshot, routeFile: fileA._id, getFile })
+  const props = {
+    ...baseProps,
+    files: {
+      ...baseProps.files,
+      isEditable: () => true,
+      async saveContent(id: string, content: string, expectedUpdatedAt?: number) {
+        saved.push({ id, content, expectedUpdatedAt })
+        return true
+      },
+    },
+  }
+  let renderer!: ReactTestRenderer
+  await act(async () => {
+    renderer = create(React.createElement(SharedKnowledgeSurface, props))
+  })
+  await act(async () => {
+    resolveFile?.({ ...fileA, textContent: 'server content' })
+  })
+  await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'draft' } }))
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 850))
+  })
+  assert.deepEqual(saved, [{ id: fileA._id, content: 'draft', expectedUpdatedAt: fileA.updatedAt }])
   await act(async () => renderer.unmount())
 })
