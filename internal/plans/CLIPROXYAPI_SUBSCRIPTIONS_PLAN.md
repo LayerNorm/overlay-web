@@ -3,8 +3,8 @@
 Status: The Codex implementation is merged in #386. The provider implementation and workspace control plane have hosted Claude text/tool and sandbox isolation acceptance. The owner authorized Production/shared Preview activation of all six selectable providers after real authorization-start and adapter checks. Kimi uses kimi.com; the unused kimi-ai variant has been removed after a zero-connection production inventory. Live shared inference, rotating refresh and remaining provider-account acceptance are still unverified.
 
 > Progress note: the original Codex slice uses a same-project private bridge.
-> This branch extends its backend and control plane to Claude, xAI, Meta, Kimi,
-> Kimi AI, and Devin, and adds immutable personal/workspace subscription scope,
+> The implementation extends its backend and control plane to Claude, xAI, Meta,
+> Kimi and Devin, and adds immutable personal/workspace subscription scope,
 > active-member authorization, workspace-aware dispatch, and picker/cache
 > isolation. The approved scope selector defaults to Personal and offers explicit
 > Workspace sharing, with scope-specific privacy copy and immutable reconnects.

@@ -7,7 +7,7 @@ Every internal endpoint requires `Authorization: Bearer …`; set
 The service listens on `PORT` or `8317`.
 
 `build.sh` fetches and verifies the pinned source, applies the focused
-single-poll shims required by xAI, Kimi/Kimi AI, and Meta device flows, copies
+single-poll shims required by xAI, Kimi, and Meta device flows, copies
 the bridge command into that module, and runs focused tests before building.
 Build/cache output stays in `.build/` and is ignored by Docker. No upstream
 credential files or manager are initialized. Overlay Vault owns durable

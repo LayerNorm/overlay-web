@@ -93,7 +93,7 @@ The old native Codex token format is not imported. Existing subscription
 credentials in that format require one explicit reconnect. Claude and Devin
 use generated PKCE authorization and callback URLs validated locally against
 their pending flow; the bridge never fetches a supplied URL or opens a
-localhost listener. xAI, Kimi/Kimi AI, and Meta device flows advance one
+localhost listener. xAI, Kimi, and Meta device flows advance one
 bounded poll per browser request. Kimi's domain and device identity remain
 connection-bound. Devin session tokens and minted Meta API keys may use
 nullable expiry only for upstream-confirmed non-expiring credentials. The shared
