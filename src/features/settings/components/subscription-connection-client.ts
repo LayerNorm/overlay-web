@@ -7,7 +7,7 @@ export function subscriptionAuthorizationBody(providerId: string, scope: Subscri
   return connectionId ? { providerId, connectionId } : { providerId, scope }
 }
 
-export type SubscriptionProvider = { id: string; label: string; description: string; enabled: boolean }
+export type SubscriptionProvider = { id: string; label: string; description: string; enabled: boolean; selectable?: boolean }
 export type SubscriptionAvailability = { available: boolean; providers: SubscriptionProvider[]; reason?: string }
 export type SubscriptionAuthorization = {
   connectionId: string

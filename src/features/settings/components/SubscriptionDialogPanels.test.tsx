@@ -2,10 +2,11 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { SubscriptionFooter, SubscriptionPrivacyNote, SubscriptionScopeSelector } from './SubscriptionDialogPanels'
+import { ProviderChoicePanel, SubscriptionFooter, SubscriptionPrivacyNote, SubscriptionScopeSelector } from './SubscriptionDialogPanels'
 import { subscriptionAuthorizationBody, subscriptionRequest } from './subscription-connection-client'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { ProviderConnectionRow } from './ProviderConnectionRow'
+import { SUBSCRIPTION_PROVIDERS, isSelectableSubscriptionProvider } from '@/shared/ai/gateway/subscription-providers'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -76,4 +77,31 @@ test('authorization includes explicit new scope, preserves reconnect scope, and 
   for (const request of requests) assert.equal(new Headers(request.headers).get(ACTIVE_WORKSPACE_HEADER), 'workspace-a')
   assert.equal(new Headers(requests[0].headers).get('Idempotency-Key'), 'request-1')
   assert.deepEqual(JSON.parse(String(requests[0].body)), { providerId: 'claude', scope: 'workspace' })
+})
+
+
+test('new subscription choices show one Kimi and SVG logos, while legacy reconnect retains its domain', () => {
+  const flow: React.ComponentProps<typeof ProviderChoicePanel>['flow'] = {
+    availability: { available: true, providers: SUBSCRIPTION_PROVIDERS.map(provider => ({
+      ...provider, enabled: true, selectable: isSelectableSubscriptionProvider(provider.id),
+    })) },
+    login: null, connected: null, error: null, busy: false, stopped: false, selectionLocked: false,
+    start: async () => {}, completeCallback: async () => {}, close: async () => {},
+  }
+  const render = (connection?: ByokConnectionRow) => renderToStaticMarkup(
+    <ProviderChoicePanel flow={flow} connection={connection} providerId={connection?.subscriptionProvider ?? ''} onProviderChange={() => {}} />,
+  )
+  const html = render()
+  assert.equal((html.match(/data-slot="provider-logo"/g) ?? []).length, 6)
+  assert.doesNotMatch(html, /Kimi AI/)
+  for (const provider of ['meta-llama', 'devin']) {
+    assert.match(html, new RegExp('<svg[^>]*data-provider="' + provider + '"'))
+    assert.doesNotMatch(html, new RegExp('<span[^>]*data-provider="' + provider + '"'))
+  }
+  assert.match(html, /viewBox="0 0 425 425"/)
+  const legacy = render({ _id: 'legacy', authKind: 'subscription', subscriptionProvider: 'kimi-ai',
+    providerId: 'subscription:kimi-ai', endpoint: '', displayName: 'Existing Kimi', enabledModelIds: [],
+    status: 'error', isDefault: false, isDeletable: true })
+  assert.match(legacy, /Kimi AI/)
+  assert.doesNotMatch(legacy, /ChatGPT|Meta Muse|Devin/)
 })

@@ -3,6 +3,7 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { createSubscriptionService } from '@/server/ai/subscriptions/service'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 import {
+  isSelectableSubscriptionProvider,
   type SubscriptionProviderId,
 } from '@/shared/ai/gateway/subscription-providers'
 import type { ProviderConnectionRecord } from '@/server/ai/provider-connections/ProviderConnectionRepository'
@@ -55,6 +56,9 @@ export async function startSubscriptionConnection(
   scope?: 'personal' | 'workspace',
   workspaceId?: string,
 ) {
+  if (!requestedConnectionId && !isSelectableSubscriptionProvider(providerId)) {
+    return responseError('Choose Kimi to create a new subscription connection.', 400)
+  }
   const service = createSubscriptionService()
   if (!service.isEnabled(providerId)) {
     return responseError('This subscription request adapter is not available for this deployment', 404)
