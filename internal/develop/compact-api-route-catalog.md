@@ -20,6 +20,7 @@ For a description of what each route does and its associated implementation file
 - `POST /api/agent-drive`
 - `GET, POST /api/agent-gateway/[provider]/[...path]`
 - `GET /api/auth/callback`
+- `GET /api/auth/convex-policy`
 - `GET /api/auth/convex-token`
 - `GET, POST /api/auth/desktop-link`
 - `POST /api/auth/forgot-password`
