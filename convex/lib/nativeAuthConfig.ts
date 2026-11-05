@@ -1,5 +1,25 @@
 import type { AuthConfig } from 'convex/server'
 
+// Convex auth-config evaluation throws on missing env reads, even with ??/?.
+// Read only the selected provider's explicit deployment settings.
+export function deployedNativeAuthConfig(env: Record<string, string | undefined>): AuthConfig {
+  const selected = env.OVERLAY_PROVIDER_AUTH?.trim()
+  const fields: Record<string, string[]> = {
+    none: [],
+    workos: ['WORKOS_CLIENT_ID'],
+    oidc: ['OIDC_ISSUER_URL', 'OIDC_AUDIENCE'],
+    'better-auth': ['BETTER_AUTH_URL', 'BETTER_AUTH_JWT_ISSUER', 'BETTER_AUTH_JWT_AUDIENCE', 'BETTER_AUTH_JWKS_URL'],
+  }
+  if (!selected || !Object.hasOwn(fields, selected)) throw new Error('Set OVERLAY_PROVIDER_AUTH on the Convex deployment')
+  const values: Record<string, string> = { OVERLAY_PROVIDER_AUTH: selected }
+  for (const name of fields[selected]) {
+    const value = env[name]?.trim()
+    if (!value) throw new Error(`Native auth requires ${name}`)
+    values[name] = value
+  }
+  return nativeAuthConfig(values)
+}
+
 export function nativeAuthConfig(env: Record<string, string | undefined>): AuthConfig {
   const selected = env.OVERLAY_PROVIDER_AUTH?.trim() || env.AUTH_PROVIDER?.trim() || 'workos'
   if (selected === 'none') return { providers: [] }

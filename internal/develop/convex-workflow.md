@@ -186,17 +186,23 @@ issuance without removing legacy subscriptions during rollback.
 
 For OIDC or Better Auth private installations, native issuance remains disabled
 until explicitly enabled. Deploy the additive `convex/auth.config.ts` update with
-the selected `AUTH_PROVIDER` (or `OVERLAY_PROVIDER_AUTH`) and matching provider
+the explicit `OVERLAY_PROVIDER_AUTH` and matching provider
 configuration on the isolated/private backend, then set
 `OVERLAY_CONVEX_NATIVE_AUTH_ENABLED=true` on the web. An upgraded web with an older
 backend continues legacy subscriptions until that opt-in. These are rollout
 controls, not an alternative database implementation.
 
-OIDC needs `OIDC_ISSUER_URL` and `OIDC_AUDIENCE` (or `OIDC_CLIENT_ID`), matching the
-JWT exactly. Better Auth uses RS256 and requires `BETTER_AUTH_URL` (or the app
-origin), with optional `BETTER_AUTH_JWT_ISSUER`, `BETTER_AUTH_JWT_AUDIENCE`,
-`BETTER_AUTH_JWKS_URL` and `BETTER_AUTH_BASE_PATH` overrides matching the web config.
-Mirror config-file settings into these backend environment variables. Only the
+Convex's auth evaluator throws on any missing environment read, including optional
+fallbacks. Set `OVERLAY_PROVIDER_AUTH` explicitly before the backend upgrade:
+`workos`, `oidc`, `better-auth`, or `none`. WorkOS additionally requires
+`WORKOS_CLIENT_ID`. The hosted Preview build sets both WorkOS values on its claimed
+PR backend before auth evaluation; Production is never touched by this preflight.
+
+OIDC requires `OIDC_ISSUER_URL` and the effective `OIDC_AUDIENCE`, matching the JWT
+exactly. Better Auth uses RS256 and requires explicit `BETTER_AUTH_URL`,
+`BETTER_AUTH_JWT_ISSUER`, `BETTER_AUTH_JWT_AUDIENCE` and `BETTER_AUTH_JWKS_URL`.
+Resolve defaults and aliases from the web configuration before setting these
+backend values. Only selected-provider settings are read. Only the
 selected provider is trusted; do not combine unrelated issuers with overlapping
 subject IDs. Anonymous/no-op mode has no native identity.
 

@@ -1,3 +1,3 @@
-import { nativeAuthConfig } from './lib/nativeAuthConfig'
+import { deployedNativeAuthConfig } from './lib/nativeAuthConfig'
 
-export default nativeAuthConfig(process.env)
+export default deployedNativeAuthConfig(process.env)

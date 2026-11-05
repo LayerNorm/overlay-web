@@ -1,6 +1,27 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { nativeAuthConfig } from './nativeAuthConfig'
+import { deployedNativeAuthConfig, nativeAuthConfig } from './nativeAuthConfig'
+
+test('deployment config never reads absent optional or unselected provider settings', () => {
+  const strictEnv = (values: Record<string, string>) => new Proxy(values, {
+    get(target, key: string) {
+      if (!(key in target)) throw new Error(`Missing environment variable ${key}`)
+      return target[key]
+    },
+  })
+  for (const values of [
+    { OVERLAY_PROVIDER_AUTH: 'workos', WORKOS_CLIENT_ID: 'client_fixture' },
+    { OVERLAY_PROVIDER_AUTH: 'none' },
+    { OVERLAY_PROVIDER_AUTH: 'oidc', OIDC_ISSUER_URL: 'https://issuer.test/', OIDC_AUDIENCE: 'app' },
+    { OVERLAY_PROVIDER_AUTH: 'better-auth', BETTER_AUTH_URL: 'https://auth.test',
+      BETTER_AUTH_JWT_ISSUER: 'https://auth.test', BETTER_AUTH_JWT_AUDIENCE: 'app',
+      BETTER_AUTH_JWKS_URL: 'https://auth.test/custom/jwks' },
+  ] as Record<string, string>[]) {
+    assert.deepEqual(deployedNativeAuthConfig(strictEnv(values)), nativeAuthConfig(values))
+  }
+  assert.throws(() => deployedNativeAuthConfig(strictEnv({})), /Missing environment/)
+  assert.throws(() => deployedNativeAuthConfig(strictEnv({ OVERLAY_PROVIDER_AUTH: 'oidc' })), /Missing environment/)
+})
 
 test('hosted WorkOS trust remains scoped to its client and exact supported issuers', () => {
   const config = nativeAuthConfig({ WORKOS_CLIENT_ID: 'client_fixture', DEV_WORKOS_CLIENT_ID: 'not-trusted' })
