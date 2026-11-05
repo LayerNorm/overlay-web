@@ -3,7 +3,8 @@ import { v } from 'convex/values'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { nativePersonalChatScope, requireNativePersonalChat, requireNativeWorkspace } from '../lib/nativeViewer'
 import { recordConversationEvent } from '../collaboration/events'
-import { sanitizeChatTitle } from '../../src/shared/chat/chat-title'
+import { sanitizeChatTitle } from '@/shared/chat/chat-title'
+import { requireNativeCapability } from '../lib/nativeCapabilities'
 
 const resourceArgs = { workspaceId: v.string(), conversationId: v.id('conversations') }
 type Access = Awaited<ReturnType<typeof requireNativePersonalChat>>
@@ -34,6 +35,7 @@ export const list = query({
   args: { workspaceId: v.string(), archived: v.boolean(), paginationOpts: paginationOptsValidator },
   handler: async (ctx, args) => {
     const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
+    await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
     const result = await ctx.db.query('conversations')
       .withIndex('by_workspaceId_userId_lastModified', q => q.eq('workspaceId', args.workspaceId).eq('userId', viewer.userId))
       .order('desc').paginate({ ...args.paginationOpts, numItems: Math.max(1, Math.min(100, args.paginationOpts.numItems)) })
@@ -50,6 +52,7 @@ export const getSummary = query({
   args: resourceArgs,
   handler: async (ctx, args) => {
     const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
+    await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
     const access = await nativePersonalChatScope(ctx, viewer, await ctx.db.get(args.conversationId))
     return access ? summary(ctx, access) : null
   },
@@ -83,6 +86,7 @@ export const rename = mutation({
   handler: async (ctx, args) => {
     const access = await requireNativePersonalChat(ctx, args)
     const title = sanitizeChatTitle(args.title, access.conversation.title)
+    await requireNativeCapability(ctx, access.userId, 'conversations.edit')
     if (title === access.conversation.title) return
     await admitWrite(ctx, access.userId)
     const now = Date.now()
@@ -95,6 +99,7 @@ export const setArchived = mutation({
   args: { ...resourceArgs, archived: v.boolean() },
   handler: async (ctx, args) => {
     const access = await requireNativePersonalChat(ctx, args)
+    await requireNativeCapability(ctx, access.userId, 'conversations.read')
     if ((access.participant?.archivedAt !== undefined) === args.archived) return
     await admitWrite(ctx, access.userId)
     const now = Date.now()
@@ -108,6 +113,7 @@ export const setRead = mutation({
   handler: async (ctx, args) => {
     const access = await requireNativePersonalChat(ctx, args)
     const message = args.throughMessageId ? await ctx.db.get(args.throughMessageId) : null
+    await requireNativeCapability(ctx, access.userId, 'conversations.read')
     if (args.throughMessageId && (!message || message.conversationId !== args.conversationId)) throw new Error('MESSAGE_ACCESS_DENIED')
     if (!args.unread && !message) return
     if (!args.unread && !access.participant?.markedUnreadAt && (access.participant?.lastReadAt ?? -1) >= message!.createdAt) return

@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add private, opt-in two-client chat and navigation baselines that distinguish query readiness, local feedback, HTTP acknowledgement, content visibility, and remote convergence without collecting chat or file content. Correlate acknowledgements to the exact mutation and sanitize setup failures.
 
+- Move browser personal-chat list, title, archive/restore and basic unread ownership to native Convex with additive indexes and no backfill. Persisted `conversations.read` / `conversations.edit` capabilities are enforced even when the legacy BFF is in observe mode; native calls accept no caller policy flags or operator bypass. Optimistic writes rebase by row, bounded pages may be empty while filtered results remain, and verified-user writes are capped at 300 per 10 minutes because native calls have no BFF IP context. Legacy HTTP remains for native-off installations and non-pilot workspace chats, DMs, channels and other resources; transcript/history/streaming and deletion retain their existing server boundaries. Roll back web ownership first and leave backend fields/indexes in place.
+
 - Add native Convex viewer and personal-chat scope guards that derive identity from authentication and recheck workspace membership, ownership and participant access on every call, excluding legacy automation-linked conversations even without their old flag.
 
 - Clear native-agent, room and thread-reply composers as soon as the optimistic user message appears, instead of waiting for the save response. Restore failed submissions even after the rich editor resynchronizes, without overwriting newer drafts or another conversation.

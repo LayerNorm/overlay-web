@@ -48,6 +48,8 @@ export interface ArchivedItem {
   agentArchived?: boolean
   /** Chats only: how to delete it. */
   conversationType?: string
+  /** Chats only: the workspace and ownership scope returned by the archive source. */
+  workspaceId?: string
   /** Chats and the like that can be opened to read before deciding. */
   href?: string
 }

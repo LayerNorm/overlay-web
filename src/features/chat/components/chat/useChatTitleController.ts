@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   dispatchChatModified,
@@ -22,7 +23,9 @@ export function useChatTitleController({
   activeChatIdRef,
   activeChatTitle,
   chats,
+  isNativePersonalChat,
   loadChats,
+  renameNative,
   pendingTitleRef,
   setActiveChatTitle,
   setChats,
@@ -33,7 +36,9 @@ export function useChatTitleController({
   activeChatIdRef: MutableRefObject<string | null>
   activeChatTitle: string | null
   chats: Conversation[]
+  isNativePersonalChat: (chatId: string) => boolean
   loadChats: () => Promise<void>
+  renameNative: (chatId: string, title: string) => Promise<void>
   pendingTitleRef: MutableRefObject<{ chatId: string; title: string } | null>
   setActiveChatTitle: Dispatch<SetStateAction<string | null>>
   setChats: Dispatch<SetStateAction<Conversation[]>>
@@ -51,25 +56,28 @@ export function useChatTitleController({
 
   const applyChatTitleUpdate = useCallback((chatId: string, title: string) => {
     const nextTitle = sanitizeChatTitle(title, DEFAULT_CHAT_TITLE)
-    pendingTitleRef.current = { chatId, title: nextTitle }
-    setChats((prev) => {
-      const exists = prev.some((chat) => chat._id === chatId)
-      if (!exists) {
-        return [{ _id: chatId, title: nextTitle, lastModified: Date.now() }, ...prev]
-      }
+    if (!isNativePersonalChat(chatId)) {
+      pendingTitleRef.current = { chatId, title: nextTitle }
+      setChats((prev) => {
+        const exists = prev.some((chat) => chat._id === chatId)
+        if (!exists) {
+          return [{ _id: chatId, title: nextTitle, lastModified: Date.now() }, ...prev]
+        }
         return prev.map((chat) =>
           chat._id === chatId ? { ...chat, title: nextTitle } : chat,
         )
-    })
+      })
+      dispatchChatTitleUpdated({ chatId, title: nextTitle })
+    }
     updateRuntimeUiState(chatId, (prev) => ({ ...prev, activeChatTitle: nextTitle }))
     if (activeChatIdRef.current === chatId) {
-        setActiveChatTitle((prev) => (prev !== null ? nextTitle : prev))
+      setActiveChatTitle((prev) => (prev !== null ? nextTitle : prev))
     }
-    dispatchChatTitleUpdated({ chatId, title: nextTitle })
     return nextTitle
-  }, [activeChatIdRef, pendingTitleRef, setActiveChatTitle, setChats, updateRuntimeUiState])
+  }, [activeChatIdRef, isNativePersonalChat, pendingTitleRef, setActiveChatTitle, setChats, updateRuntimeUiState])
 
   const markChatModified = useCallback((chatId: string, title?: string | null) => {
+    if (isNativePersonalChat(chatId)) return
     const pendingTitle = pendingTitleRef.current?.chatId === chatId
       ? pendingTitleRef.current.title
       : null
@@ -96,7 +104,7 @@ export function useChatTitleController({
       return [merged, ...prev.filter((item) => item._id !== chatId)]
     })
     dispatchChatModified({ chat })
-  }, [pendingTitleRef, setChats])
+  }, [isNativePersonalChat, pendingTitleRef, setChats])
 
   const beginHeaderChatRename = useCallback(() => {
     if (!activeChatId) return
@@ -141,6 +149,16 @@ export function useChatTitleController({
 
     applyChatTitleUpdate(chatId, nextTitle)
 
+    if (isNativePersonalChat(chatId)) {
+      try {
+        await renameNative(chatId, nextTitle)
+      } catch {
+        applyChatTitleUpdate(chatId, previousTitle)
+        toast.error('Could not rename chat.')
+      }
+      return
+    }
+
     try {
       const res = await overlayAppClient.conversations.updateResponse({ conversationId: chatId, title: nextTitle })
       if (!res.ok) throw new Error('Failed to rename chat')
@@ -156,7 +174,9 @@ export function useChatTitleController({
     cancelChatRename,
     chats,
     editingChatTitle,
+    isNativePersonalChat,
     loadChats,
+    renameNative,
   ])
 
   /**
@@ -187,13 +207,17 @@ export function useChatTitleController({
       if (!aiTitle) return
       const finalTitle = applyChatTitleUpdate(chatId, aiTitle)
       try {
-        const res = await overlayAppClient.conversations.updateResponse({ conversationId: chatId, title: finalTitle })
-        if (res.ok) void loadChats()
+        if (isNativePersonalChat(chatId)) {
+          await renameNative(chatId, finalTitle)
+        } else {
+          const res = await overlayAppClient.conversations.updateResponse({ conversationId: chatId, title: finalTitle })
+          if (res.ok) void loadChats()
+        }
       } catch {
         // Keep the local optimistic title.
       }
     })
-  }, [applyChatTitleUpdate, loadChats, titleGenerationEnabled])
+  }, [applyChatTitleUpdate, isNativePersonalChat, loadChats, renameNative, titleGenerationEnabled])
 
   return {
     applyChatTitleUpdate,

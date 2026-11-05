@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useEffect, useEffectEvent, useRef, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
+import { useState, useCallback, useEffect, useEffectEvent, useMemo, useRef, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
@@ -46,6 +46,7 @@ import {
   SidebarMenuSub,
   SidebarMenuSubButton,
   SidebarMenuSubItem,
+  toast,
 } from '@overlay/ui/primitives'
 import { cn } from '@overlay/ui'
 import { useAuth, type AuthUser } from '@/contexts/AuthContext'
@@ -63,6 +64,8 @@ import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { usePersonalChat, type PersonalChatSummary } from '@/components/providers/PersonalChatProvider'
+import { excludeNativePersonalChats, isNativePersonalChatCandidate } from '@/shared/chat/native-personal-chat'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
 
 type Conversation = {
@@ -71,6 +74,10 @@ type Conversation = {
   lastModified: number
   conversationType?: 'personal' | 'dm' | 'channel'
   scope?: 'personal' | 'workspace'
+  workspaceId?: string
+  archivedAt?: number
+  unread?: boolean
+  lastMessageId?: string
   otherParticipantTypes?: Array<'human' | 'agent'>
   externalPlatform?: string
 }
@@ -206,6 +213,7 @@ function useCollaborationUnread({
 function useChatListData({
   authLoading,
   chatView,
+  nativePersonalView,
   refreshKey,
   user,
   workspaceId,
@@ -213,6 +221,7 @@ function useChatListData({
 }: {
   authLoading: boolean
   chatView: ChatView
+  nativePersonalView: boolean
   refreshKey: number
   user: AuthUser | null
   workspaceId: string | null | undefined
@@ -227,6 +236,12 @@ function useChatListData({
 
   const loadChats = useCallback(async (signal?: { cancelled: boolean }) => {
 
+    if (nativePersonalView) {
+      setChats([])
+      setHasMore(false)
+      setLoading(false)
+      return
+    }
     if (authLoading) return
     if (!user) {
       clearChatListCache()
@@ -264,10 +279,10 @@ function useChatListData({
     }
     // Exhausted retries; stop the skeleton so the UI doesn't hang indefinitely.
     if (!signal?.cancelled) setLoading(false)
-  }, [authLoading, user])
+  }, [authLoading, nativePersonalView, user])
 
   async function loadMoreChats() {
-    if (!user) return
+    if (!user || nativePersonalView) return
     setLoadingMore(true)
     try {
       setChats(await fetchNextChatListPage())
@@ -282,6 +297,12 @@ function useChatListData({
     let timeoutId: number | undefined
     queueMicrotask(() => {
       if (signal.cancelled) return
+      if (nativePersonalView) {
+        setChats([])
+        setHasMore(false)
+        setLoading(false)
+        return
+      }
       if (authLoading) {
         setLoading(true)
         return
@@ -311,9 +332,11 @@ function useChatListData({
       signal.cancelled = true
       if (timeoutId !== undefined) window.clearTimeout(timeoutId)
     }
-  }, [authLoading, chatView, loadChats, refreshKey, user, workspaceId])
+  }, [authLoading, chatView, loadChats, nativePersonalView, refreshKey, user, workspaceId])
 
-  useWorkspaceChanged(useCallback(() => { void loadChats() }, [loadChats]))
+  useWorkspaceChanged(useCallback(() => {
+    if (!nativePersonalView) void loadChats()
+  }, [loadChats, nativePersonalView]))
 
   useEffect(() => {
     lastConversationListVersionRef.current = null
@@ -323,6 +346,10 @@ function useChatListData({
   // only upserts already-fresh rows.
   // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
   useEffect(() => {
+    if (nativePersonalView) {
+      lastConversationListVersionRef.current = null
+      return
+    }
     if (conversationListVersion === null) return
     const previous = lastConversationListVersionRef.current
     lastConversationListVersionRef.current = conversationListVersion
@@ -366,7 +393,7 @@ function useChatListData({
       }
     }
     void reconcileDelta()
-  }, [conversationListVersion, loadChats])
+  }, [conversationListVersion, loadChats, nativePersonalView])
 
   return { chats, setChats, loading, setLoading, hasMore, loadingMore, loadChats, loadMoreChats }
 }
@@ -375,7 +402,8 @@ function useChatListEvents({
   activeId,
   baseHref,
   chatView,
-
+  nativePersonalIds,
+  nativePersonalView,
   openChat,
   pathname,
   router,
@@ -387,7 +415,8 @@ function useChatListEvents({
   activeId: string | null
   baseHref: string
   chatView: ChatView
-
+  nativePersonalIds: ReadonlySet<string>
+  nativePersonalView: boolean
   openChat: (chat: Conversation) => void
   pathname: string
   router: ReturnType<typeof useRouter>
@@ -413,6 +442,7 @@ function useChatListEvents({
       const { detail } = event as CustomEvent<ChatCreatedDetail>
       const nextChat = detail?.chat
       if (!nextChat?._id) return
+      if (nativePersonalView || isNativePersonalChatCandidate(nextChat, workspaceId)) return
       upsertCachedChat(nextChat)
       setLoading(false)
       setChats((prev) => {
@@ -432,6 +462,7 @@ function useChatListEvents({
     const handleChatTitleUpdated = useEffectEvent((event: Event) => {
       const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
       if (!detail?.chatId || !detail.title) return
+      if (nativePersonalView || nativePersonalIds.has(detail.chatId)) return
       upsertCachedChat({
         _id: detail.chatId,
         title: detail.title,
@@ -455,6 +486,8 @@ function useChatListEvents({
       const { detail } = event as CustomEvent<ChatArchivedDetail>
       const archivedChatId = detail?.chat?._id
       if (!archivedChatId) return
+      if (nativePersonalView || nativePersonalIds.has(archivedChatId)
+        || isNativePersonalChatCandidate(detail.chat, workspaceId)) return
       removeActiveChat(archivedChatId)
       clearLastChatForView(workspaceId, chatView, archivedChatId)
       if (activeId !== archivedChatId) return
@@ -496,16 +529,20 @@ function useChatListEvents({
       window.removeEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
       window.removeEventListener(CHAT_ARCHIVED_EVENT, handleChatArchived)
     }
-  }, [activeId, baseHref, chatView,  openChat, pathname, router, setChats, setLoading, user, workspaceId])
+  }, [activeId, baseHref, chatView, nativePersonalIds, nativePersonalView, openChat, pathname, router, setChats, setLoading, user, workspaceId])
 
   return deletingChatIds
 }
 
 function useChatRename({
   chats,
+  getNativeSummary,
+  renameNative,
   setChats,
 }: {
   chats: Conversation[]
+  getNativeSummary: (chatId: string) => PersonalChatSummary | undefined
+  renameNative: (chatId: string, title: string) => Promise<void>
   setChats: Dispatch<SetStateAction<Conversation[]>>
 }) {
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
@@ -527,6 +564,16 @@ function useChatRename({
     const nextTitle = sanitizeChatTitle(editingTitle, previousTitle)
     cancelRename()
     if (nextTitle === previousTitle) return
+
+    const nativeSummary = getNativeSummary(chatId)
+    if (nativeSummary) {
+      try {
+        await renameNative(nativeSummary._id, nextTitle)
+      } catch {
+        toast.error('Could not rename chat.')
+      }
+      return
+    }
 
     setChats((prev) => prev.map((chat) => (
       chat._id === chatId ? { ...chat, title: nextTitle } : chat
@@ -556,10 +603,18 @@ function useChatRename({
 }
 
 function useChatArchive({
+  activeChatId,
+  getNativeSummary,
   loadChats,
+  navigateAwayFromArchivedChat,
+  setNativeArchived,
   setEditingChatId,
 }: {
+  activeChatId: string | null
+  getNativeSummary: (chatId: string) => PersonalChatSummary | undefined
   loadChats: (signal?: { cancelled: boolean }) => Promise<void>
+  navigateAwayFromArchivedChat: (chatId: string) => void
+  setNativeArchived: (summary: PersonalChatSummary, archived: boolean) => Promise<void>
   setEditingChatId: Dispatch<SetStateAction<string | null>>
 }) {
   const [pendingArchiveChat, setPendingArchiveChat] = useState<Conversation | null>(null)
@@ -583,6 +638,24 @@ function useChatArchive({
   async function archiveChat(chat: Conversation, scope: 'self' | 'everyone') {
     setArchiveBusy(true)
     setArchiveError(null)
+    const nativeSummary = scope === 'self' ? getNativeSummary(chat._id) : undefined
+    if (nativeSummary) {
+      if (activeChatId === chat._id) navigateAwayFromArchivedChat(chat._id)
+      const pendingArchive = setNativeArchived(nativeSummary, true)
+      announceArchived({
+        name: chat.title?.trim() || 'Untitled conversation',
+        undo: () => setNativeArchived(nativeSummary, false),
+      })
+      setPendingArchiveChat(null)
+      try {
+        await pendingArchive
+      } catch {
+        toast.error('Conversation could not be archived.')
+      } finally {
+        setArchiveBusy(false)
+      }
+      return
+    }
     try {
       await overlayAppClient.conversations.updateParticipantState(chat._id, {
         archived: true,
@@ -734,6 +807,7 @@ function ChatListRow({
 
 function ChatListBody({
   loading,
+  personalUnavailable,
   chatView,
   chats,
   searchQuery,
@@ -743,6 +817,7 @@ function ChatListBody({
   sessions,
   getUnread,
   collaborationUnread,
+  nativePersonalIds,
   editingTitle,
 
   hasMore,
@@ -756,6 +831,7 @@ function ChatListBody({
   cancelRename,
 }: {
   loading: boolean
+  personalUnavailable: boolean
   chatView: ChatView
   chats: Conversation[]
   searchQuery: string
@@ -765,6 +841,7 @@ function ChatListBody({
   sessions: ReturnType<typeof useAsyncSessions>['sessions']
   getUnread: ReturnType<typeof useAsyncSessions>['getUnread']
   collaborationUnread: ReturnType<typeof useCollaborationUnread>
+  nativePersonalIds: ReadonlySet<string>
   editingTitle: string
 
   hasMore: boolean
@@ -808,15 +885,37 @@ function ChatListBody({
       <SidebarMenuSub className={listClassName}>
         <SidebarMenuSubItem>
           <p className="px-2 py-1.5 text-xs text-(--muted-light)">
-            {viewChats.length === 0 ? emptyLabel : 'No results'}
+            {personalUnavailable
+              ? 'Personal chats are unavailable'
+              : viewChats.length === 0 ? emptyLabel : 'No results'}
           </p>
         </SidebarMenuSubItem>
+        {hasMore ? (
+          <SidebarMenuSubItem>
+            <Button
+              variant="ghost"
+              type="button"
+              disabled={loadingMore}
+              onClick={() => void loadMoreChats()}
+              className="h-7 w-full justify-start rounded-md px-2.5 text-left text-xs font-normal text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-wait disabled:opacity-60"
+            >
+              {loadingMore ? 'Loading...' : 'Load more'}
+            </Button>
+          </SidebarMenuSubItem>
+        ) : null}
       </SidebarMenuSub>
     )
   }
   return (
     <SidebarMenuSub className={listClassName}>
       <>
+          {personalUnavailable ? (
+            <SidebarMenuSubItem>
+              <p role="alert" className="px-2 py-1.5 text-xs text-(--muted-light)">
+                Personal chats are unavailable
+              </p>
+            </SidebarMenuSubItem>
+          ) : null}
           {filteredChats.map((chat) => (
             <ChatListRow
               key={chat._id}
@@ -825,7 +924,9 @@ function ChatListBody({
               isEditing={editingChatId === chat._id}
               isDeleting={deletingChatIdSet.has(chat._id)}
               isStreaming={sessions[chat._id]?.status === 'streaming'}
-              unread={Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)}
+              unread={nativePersonalIds.has(chat._id)
+                ? (chat.unread ? 1 : 0)
+                : Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0)}
               editingTitle={editingTitle}
 
               onOpenChat={openChat}
@@ -882,6 +983,8 @@ export function ChatInlinePanel({
     conversationListVersion,
     notifications: collaborationNotifications,
   } = useCollaborationRealtime()
+  const nativePersonal = usePersonalChat()
+  const nativePersonalOwner = nativePersonal.configured && Boolean(user)
 
   useBrowserRouteVersion()
   const searchActiveId = searchParams?.get('id') ?? null
@@ -950,7 +1053,7 @@ export function ChatInlinePanel({
     collaborationNotifications,
   })
   const {
-    chats,
+    chats: legacyChats,
     setChats,
     loading,
     setLoading,
@@ -961,21 +1064,92 @@ export function ChatInlinePanel({
   } = useChatListData({
     authLoading,
     chatView,
+    nativePersonalView: nativePersonalOwner && chatView === 'personal',
     refreshKey,
-      user,
+    user,
     workspaceId,
     conversationListVersion,
   })
+  const nativePersonalView = nativePersonalOwner && chatView === 'personal'
+  const nativePersonalRelevant = nativePersonalOwner && (chatView === 'personal' || chatView === 'all')
+  const nativeWorkspaceReady = !nativePersonalOwner || Boolean(nativePersonal.workspaceId)
+  const nativePersonalIds = useMemo(() => nativePersonalOwner ? new Set([
+    ...nativePersonal.active.rows.map((chat) => chat._id),
+    ...nativePersonal.archived.rows.map((chat) => chat._id),
+    ...(nativePersonal.selectedSummary ? [nativePersonal.selectedSummary._id] : []),
+  ]) : new Set<string>(), [
+    nativePersonal.active.rows,
+    nativePersonal.archived.rows,
+    nativePersonal.selectedSummary,
+    nativePersonalOwner,
+  ])
+  const getNativeSummary = useCallback((chatId: string) => (
+    nativePersonalOwner
+      ? nativePersonal.active.rows.find((chat) => chat._id === chatId)
+        ?? nativePersonal.archived.rows.find((chat) => chat._id === chatId)
+        ?? (nativePersonal.selectedSummary?._id === chatId ? nativePersonal.selectedSummary : undefined)
+        ?? undefined
+      : undefined
+  ), [
+    nativePersonal.active.rows,
+    nativePersonal.archived.rows,
+    nativePersonal.selectedSummary,
+    nativePersonalOwner,
+  ])
+  const nonPilotChats = useMemo(() => nativeWorkspaceReady
+    ? excludeNativePersonalChats(legacyChats, nativePersonalOwner ? nativePersonal.workspaceId : workspaceId)
+      .filter((chat) => !chat.workspaceId || chat.workspaceId === (nativePersonalOwner ? nativePersonal.workspaceId : workspaceId))
+    : [], [
+    legacyChats,
+    nativePersonal.workspaceId,
+    nativePersonalOwner,
+    nativeWorkspaceReady,
+    workspaceId,
+  ])
+  const chats: Conversation[] = useMemo(() => !nativeWorkspaceReady
+    ? []
+    : nativePersonalRelevant
+      ? chatView === 'personal'
+        ? nativePersonal.active.rows
+        : [...nativePersonal.active.rows, ...nonPilotChats]
+      : legacyChats, [
+    chatView,
+    legacyChats,
+    nativePersonal.active.rows,
+    nativePersonalRelevant,
+    nativeWorkspaceReady,
+    nonPilotChats,
+  ])
+  const listLoading = !nativeWorkspaceReady || (nativePersonalView
+    ? nativePersonal.active.status === 'loading'
+    : loading || (nativePersonalRelevant && nativePersonal.active.status === 'loading'))
+  const listUnavailable = nativePersonalRelevant && nativePersonal.active.status === 'unavailable'
+  const listHasMore = nativePersonalView
+    ? nativePersonal.active.hasMore
+    : hasMore || (chatView === 'all' && nativePersonalOwner && nativePersonal.active.hasMore)
+  const listLoadingMore = nativePersonalView
+    ? nativePersonal.active.loadingMore
+    : loadingMore || (chatView === 'all' && nativePersonalOwner && nativePersonal.active.loadingMore)
+  const loadMoreVisibleChats = async () => {
+    if (!nativeWorkspaceReady) return
+    if (nativePersonalView) {
+      nativePersonal.active.loadMore()
+      return
+    }
+    if (chatView === 'all' && nativePersonalOwner) nativePersonal.active.loadMore()
+    if (hasMore) await loadMoreChats()
+  }
   const deletingChatIds = useChatListEvents({
     activeId,
     baseHref: scopedBaseHref,
     chatView,
-
+    nativePersonalIds,
+    nativePersonalView,
     openChat,
     pathname,
     router,
     user,
-    workspaceId,
+    workspaceId: nativePersonalOwner ? workspaceId : null,
     setChats,
     setLoading,
   })
@@ -987,7 +1161,50 @@ export function ChatInlinePanel({
     beginRename,
     cancelRename,
     saveRename,
-  } = useChatRename({ chats, setChats })
+  } = useChatRename({
+    chats,
+    getNativeSummary,
+    renameNative: nativePersonal.rename,
+    setChats,
+  })
+  const navigateAwayFromArchivedChat = useCallback((archivedId: string) => {
+    if (activeId !== archivedId
+      || pathname === '/app/archived'
+      || pathname.startsWith('/app/archived/')) return
+    const nextChat = chats.find((candidate) => candidate._id !== archivedId && (
+      chatView === 'personal' || chatView === 'workspace-chats'
+        ? isAiChatInView(candidate, chatView)
+        : chatView === 'dms'
+          ? candidate.conversationType === 'dm'
+          : chatView === 'channels'
+            ? candidate.conversationType === 'channel'
+            : true
+    ))
+    clearLastChatForView(workspaceId, chatView, archivedId)
+    if (nextChat) {
+      openChat(nextChat)
+      return
+    }
+    const emptyHref = mergeHrefSearchParams(scopedBaseHref, new URLSearchParams({ view: chatView }))
+    if (isSameChatSurface(pathname, baseHref)) {
+      window.history.pushState(null, '', emptyHref)
+      window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
+        detail: { chatId: null, view: chatView },
+      }))
+    } else {
+      router.push(emptyHref)
+    }
+  }, [
+    activeId,
+    baseHref,
+    chatView,
+    chats,
+    openChat,
+    pathname,
+    router,
+    scopedBaseHref,
+    workspaceId,
+  ])
   const {
     pendingArchiveChat,
     closeArchiveDialog,
@@ -995,12 +1212,26 @@ export function ChatInlinePanel({
     archiveError,
     requestArchive,
     archiveChat,
-  } = useChatArchive({ loadChats, setEditingChatId })
+  } = useChatArchive({
+    activeChatId: activeId,
+    getNativeSummary,
+    loadChats,
+    navigateAwayFromArchivedChat,
+    setNativeArchived: nativePersonal.setArchived,
+    setEditingChatId,
+  })
+
+  useEffect(() => {
+    const archived = nativePersonal.selectedSummary
+    if (!nativePersonal.configured || !archived?.archivedAt) return
+    navigateAwayFromArchivedChat(archived._id)
+  }, [navigateAwayFromArchivedChat, nativePersonal.configured, nativePersonal.selectedSummary])
 
   return (
     <>
     <ChatListBody
-      loading={loading}
+      loading={listLoading}
+      personalUnavailable={listUnavailable}
       chatView={chatView}
       chats={chats}
       searchQuery={searchQuery}
@@ -1010,11 +1241,12 @@ export function ChatInlinePanel({
       sessions={sessions}
       getUnread={getUnread}
       collaborationUnread={collaborationUnread}
+      nativePersonalIds={nativePersonalIds}
       editingTitle={editingTitle}
 
-      hasMore={hasMore}
-      loadingMore={loadingMore}
-      loadMoreChats={loadMoreChats}
+      hasMore={listHasMore}
+      loadingMore={listLoadingMore}
+      loadMoreChats={loadMoreVisibleChats}
       openChat={openChat}
       beginRename={beginRename}
       requestArchive={requestArchive}

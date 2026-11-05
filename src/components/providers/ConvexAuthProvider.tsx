@@ -12,21 +12,42 @@ import { createNativeConvexTokenFetcher } from './native-convex-token-broker'
 
 type ConvexAuthContextValue = {
   accessToken: string | null
+  nativeAuthConfigured: boolean
+  hasConvexClient: boolean
 }
 
-const ConvexAuthContext = createContext<ConvexAuthContextValue>({ accessToken: null })
+const ConvexAuthContext = createContext<ConvexAuthContextValue>({
+  accessToken: null,
+  nativeAuthConfigured: false,
+  hasConvexClient: false,
+})
 
 export function ConvexAuthProvider({
   children,
   requiresConvexClient = convexReactClientEnabled,
+  nativeAuthConfigured = false,
 }: {
   children: React.ReactNode
   requiresConvexClient?: boolean
+  nativeAuthConfigured?: boolean
 }) {
   const { user } = useAuth()
-  if (!requiresConvexClient || !convexReactClientEnabled) return children
+  if (!requiresConvexClient || !convexReactClientEnabled) {
+    return (
+      <ConvexAuthContext.Provider value={{ accessToken: null, nativeAuthConfigured, hasConvexClient: false }}>
+        {children}
+      </ConvexAuthContext.Provider>
+    )
+  }
   // Remount query caches and transient children before another identity can render.
-  return <ConvexIdentityScope key={user ? `user:${user.id}` : 'anonymous'}>{children}</ConvexIdentityScope>
+  return (
+    <ConvexIdentityScope
+      key={user ? `user:${user.id}` : 'anonymous'}
+      nativeAuthConfigured={nativeAuthConfigured}
+    >
+      {children}
+    </ConvexIdentityScope>
+  )
 }
 
 function useNativeConvexAuth() {
@@ -36,7 +57,13 @@ function useNativeConvexAuth() {
   return useMemo(() => ({ isLoading, isAuthenticated: Boolean(userId), fetchAccessToken }), [isLoading, userId, fetchAccessToken])
 }
 
-function ConvexIdentityScope({ children }: { children: React.ReactNode }) {
+function ConvexIdentityScope({
+  children,
+  nativeAuthConfigured,
+}: {
+  children: React.ReactNode
+  nativeAuthConfigured: boolean
+}) {
   const { user, isLoading, refreshSession } = useAuth()
   const userId = user?.id ?? null
   const [client] = useState(createConvexReactClient)
@@ -81,7 +108,11 @@ function ConvexIdentityScope({ children }: { children: React.ReactNode }) {
   // Unmigrated rooms still use HS256 arguments; native auth receives only the
   // upstream asymmetric identity token through its separate broker.
 
-  const value = useMemo(() => ({ accessToken }), [accessToken])
+  const value = useMemo(() => ({
+    accessToken,
+    nativeAuthConfigured,
+    hasConvexClient: Boolean(client),
+  }), [accessToken, client, nativeAuthConfigured])
   const content = (
     <ConvexAuthContext.Provider value={value}>
       {children}
@@ -95,4 +126,9 @@ function ConvexIdentityScope({ children }: { children: React.ReactNode }) {
 
 export function useConvexAuthToken(): string | null {
   return useContext(ConvexAuthContext).accessToken
+}
+
+export function useConvexAuthConfiguration(): Pick<ConvexAuthContextValue, 'nativeAuthConfigured' | 'hasConvexClient'> {
+  const { nativeAuthConfigured, hasConvexClient } = useContext(ConvexAuthContext)
+  return { nativeAuthConfigured, hasConvexClient }
 }

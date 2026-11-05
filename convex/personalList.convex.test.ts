@@ -13,6 +13,8 @@ const read = makeFunctionReference<'mutation'>('chat/personal:setRead')
 async function fixture() {
   const t = convexTest(schema, modules)
   const conversationId = await t.run(async ctx => {
+    await ctx.db.insert('authorizationRoles', { roleId: 'member', name: 'Member', capabilities: ['conversations.read', 'conversations.edit'], isSystem: false, createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('authorizationUserRoles', { roleId: 'member', userId: 'u', createdAt: 1 })
     await ctx.db.insert('workspaces', { workspaceId: 'ws', kind: 'organization', name: 'QA', slug: 'qa', status: 'active', createdAt: 1, updatedAt: 1 })
     await ctx.db.insert('workspacePrincipals', { workspaceId: 'ws', principalId: 'p', userId: 'u', type: 'human', displayName: 'QA', createdAt: 1, updatedAt: 1 })
     await ctx.db.insert('workspaceMemberships', { workspaceId: 'ws', principalId: 'p', membershipId: 'm', role: 'member', status: 'active', joinedAt: 1, updatedAt: 1 })
@@ -66,7 +68,14 @@ test('pagination preserves its cursor across excluded rows, equal timestamps and
 test('read acknowledgement is bounded by the observed message, not a later completion', async () => {
   const { t, user, args } = await fixture()
   const [first, second] = await t.run(async ctx => Promise.all([2, 3].map(createdAt => ctx.db.insert('conversationMessages', {
-    conversationId: args.conversationId, userId: 'u', role: 'assistant', content: 'QA', createdAt,
+    conversationId: args.conversationId,
+    userId: 'u',
+    turnId: `turn-${createdAt}`,
+    role: 'assistant',
+    mode: 'act',
+    content: 'QA',
+    contentType: 'text',
+    createdAt,
   }))))
   await user.mutation(read, { ...args, unread: false, throughMessageId: first })
   expect((await user.query(getSummary, args)).unread).toBe(true)
@@ -75,4 +84,30 @@ test('read acknowledgement is bounded by the observed message, not a later compl
   expect((await user.query(getSummary, args)).unread).toBe(false)
   await user.mutation(read, { ...args, unread: true })
   expect((await user.query(getSummary, args)).unread).toBe(true)
+})
+
+test('native operations enforce current direct and group capabilities independently of ownership', async () => {
+  const { t, user, args, page } = await fixture()
+  await t.run(async ctx => {
+    const role = await ctx.db.query('authorizationRoles').first()
+    await ctx.db.patch(role!._id, { capabilities: ['conversations.read'] })
+  })
+  expect((await user.query(list, page)).page).toHaveLength(1)
+  await expect(user.mutation(rename, { ...args, title: 'Denied' })).rejects.toThrow('CAPABILITY_ACCESS_DENIED')
+  const groupId = await t.run(async ctx => {
+    await ctx.db.insert('authorizationRoles', { roleId: 'editors', name: 'Editors', capabilities: ['conversations.edit'], isSystem: false, createdAt: 1, updatedAt: 1 })
+    const id = await ctx.db.insert('authorizationGroups', { groupId: 'editors', name: 'Editors', source: 'local', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('authorizationGroupMemberships', { groupId: 'editors', userId: 'u', source: 'local', createdAt: 1 })
+    await ctx.db.insert('authorizationGroupRoles', { groupId: 'editors', roleId: 'editors', createdAt: 1 })
+    return id
+  })
+  await user.mutation(rename, { ...args, title: 'Allowed' })
+  await t.run(ctx => ctx.db.patch(groupId, { archivedAt: 2 }))
+  await expect(user.mutation(rename, { ...args, title: 'Denied again' })).rejects.toThrow('CAPABILITY_ACCESS_DENIED')
+  await t.run(async ctx => {
+    const role = await ctx.db.query('authorizationRoles').withIndex('by_roleId', q => q.eq('roleId', 'member')).unique()
+    await ctx.db.patch(role!._id, { archivedAt: 2 })
+  })
+  await expect(user.query(list, page)).rejects.toThrow('CAPABILITY_ACCESS_DENIED')
+  await expect(user.mutation(archive, { ...args, archived: true })).rejects.toThrow('CAPABILITY_ACCESS_DENIED')
 })

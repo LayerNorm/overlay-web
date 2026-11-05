@@ -251,6 +251,40 @@ Output contains booleans and revision only. This does not replace the browser
 lifecycle acceptance tests. Do not reuse a preload across users or cache it
 globally; resource preloads need their own authorization.
 
+### Native personal-chat list ownership (CN-04)
+
+The browser's personal-chat list, selected title, archive/restore state and basic
+unread flag are owned by `chat/personal:list`, `getSummary`, `rename`,
+`setArchived` and `setRead`. The additive indexes require no backfill. Queries
+return bounded pages and apply ownership/automation filters after pagination, so
+an empty page can still have a continuation cursor; keep loading while Convex
+reports more pages and never invent a cursor. The selected summary is queried
+independently of loaded pages and contains no transcript content.
+
+Every native operation derives identity from Convex auth, validates workspace
+membership and exact personal-chat ownership, and enforces persisted role
+capabilities: list/read/archive/restore require `conversations.read`, and rename
+requires `conversations.edit`. This enforcement remains active when the legacy
+BFF is in observe mode; native calls accept no caller policy flags and have no
+operator bypass. The app shell already provisions the ordinary member role.
+There is no feature capability-disable mapping for these operations.
+
+`useMutation.withOptimisticUpdate` owns row-level optimistic rename, archive and
+restore changes, including captured minimal summary data for Undo. Convex
+rebases pending operations and rolls back failed mutations without restoring a
+whole stale array. Native writes are budgeted at 300 per verified user per
+10-minute window because they have no BFF IP context.
+
+Native personal data is used only when native auth is configured and its client
+is available and authenticated. Private installations that have not opted in
+retain the legacy path; configured-but-unavailable native auth does not fall back
+to HTTP ownership. Unmigrated workspace-scoped chats, DMs, channels, agents and
+other resources remain on their existing paths. Transcript/history loading,
+streaming and permanent deletion are not migrated here. Rollback is web-first:
+disable native web ownership before removing backend support, and keep additive
+fields/indexes and handlers available to older web revisions. No hosted QA is
+claimed by this local implementation.
+
 Web and Convex deploy independently. The incoming web must work with the old
 backend, and the incoming backend must work with the old web, including retained
 rollback revisions. Never remove an old field or require a new field in the same

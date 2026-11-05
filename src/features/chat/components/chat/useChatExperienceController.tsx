@@ -55,10 +55,16 @@ import { useGeneratedUiConnectorActions } from './useGeneratedUiConnectorActions
 import { useChatMentions } from '../use-chat-mentions'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { usePersonalChat, type PersonalChatSummary } from '@/components/providers/PersonalChatProvider'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
 import { buildNativeThreadHandoff } from '@/shared/chat/native-thread-handoff'
 import { agentConversationRedirect } from '@/shared/chat/chat-view-navigation'
+import {
+  legacyWorkspaceScopeForRoute,
+  readWorkspacePathScope,
+} from '@/shared/workspaces/routing'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
 import type { Conversation, ConversationRuntime } from '../chat-interface/types'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
@@ -128,6 +134,7 @@ export function useChatExperienceController({
     revision: gatewayCatalogRevision,
   } = useGatewayModelCatalog({ enabled: gatewayCatalogEnabled })
   const { activeWorkspaceId } = useWorkspace()
+  const nativePersonal = usePersonalChat()
   const { connections: byokConnections, isLoading: byokModelsLoading } = useByokModels({
     enabled: gatewayCatalogEnabled && capabilities.modelRouting,
   })
@@ -168,9 +175,55 @@ export function useChatExperienceController({
     initialChatPageInfo,
     initialChats,
     pendingTitleRef,
+    nativePersonalChats: nativePersonal.active.rows,
+    nativeSelectedSummary: nativePersonal.selectedSummary,
+    nativePersonalEnabled: nativePersonal.configured && Boolean(userId) && mode === 'chat',
+    workspaceId: nativePersonal.configured ? nativePersonal.workspaceId : activeWorkspaceId,
     userId,
   })
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
+  const nativePersonalChatIds = useMemo(() => new Set<string>([
+    ...nativePersonal.active.rows.map((chat) => chat._id),
+    ...nativePersonal.archived.rows.map((chat) => chat._id),
+    ...(nativePersonal.selectedSummary ? [nativePersonal.selectedSummary._id] : []),
+  ]), [nativePersonal.active.rows, nativePersonal.archived.rows, nativePersonal.selectedSummary])
+  const routeScope = readWorkspacePathScope(pathname ?? '') ?? legacyWorkspaceScopeForRoute(
+    'chat',
+    new URLSearchParams(searchParams.toString()),
+  )
+  const nativePersonalRoute = nativePersonal.configured
+    && Boolean(userId)
+    && mode === 'chat'
+    && routeScope !== 'workspace'
+    && !['workspace-chats', 'dms', 'channels'].includes(searchParams.get('view') ?? '')
+  const isNativePersonalChat = useCallback((chatId: string) => (
+    nativePersonalChatIds.has(chatId)
+    || (nativePersonalRoute && nativePersonal.selectedConversationId === chatId)
+    || (nativePersonalRoute && activeChatId === chatId)
+  ), [
+    activeChatId,
+    nativePersonal.selectedConversationId,
+    nativePersonalChatIds,
+    nativePersonalRoute,
+  ])
+  const getNativePersonalSummary = useCallback((chatId: string) => (
+    nativePersonal.selectedSummary?._id === chatId
+      ? nativePersonal.selectedSummary
+      : nativePersonal.active.rows.find((chat) => chat._id === chatId)
+        ?? nativePersonal.archived.rows.find((chat) => chat._id === chatId)
+  ), [nativePersonal.active.rows, nativePersonal.archived.rows, nativePersonal.selectedSummary])
+  const setNativePersonalRead = nativePersonal.setRead
+  const markNativePersonalRead = useCallback((
+    summary: PersonalChatSummary,
+    throughMessageId: string,
+  ) => {
+    if (!summary.unread) return
+    void setNativePersonalRead(
+      summary,
+      false,
+      throughMessageId as Id<'conversationMessages'>,
+    ).catch(() => toast.error('Could not mark chat as read.'))
+  }, [setNativePersonalRead])
   const {
     runtimesRef,
     emptyRuntimeRef,
@@ -436,6 +489,38 @@ export function useChatExperienceController({
     setSourcesPanel,
   })
 
+  useEffect(() => {
+    const summary = nativePersonal.selectedSummary
+    if (!nativePersonalRoute || !summary || summary._id !== activeChatId) return
+    setActiveChatTitle(summary.title)
+    updateRuntimeUiState(summary._id, (previous) => ({
+      ...previous,
+      activeChatTitle: summary.title,
+    }))
+  }, [activeChatId, nativePersonal.selectedSummary, nativePersonalRoute, setActiveChatTitle, updateRuntimeUiState])
+
+  useEffect(() => {
+    const summary = nativePersonal.selectedSummary
+    if (!nativePersonalRoute || !summary || summary._id !== activeChatId
+      || !summary.unread || !summary.lastMessageId) return
+    const runtime = runtimesRef.current.get(summary._id)
+    if (!runtime) return
+    const loadedMessages = [
+      ...runtime.askChats[0].messages,
+      ...runtime.actChat.messages,
+    ]
+    if (loadedMessages.some((message) => message.id === summary.lastMessageId)) {
+      markNativePersonalRead(summary, summary.lastMessageId)
+    }
+  }, [
+    activeChatId,
+    markNativePersonalRead,
+    nativePersonal.selectedSummary,
+    nativePersonalRoute,
+    runtimeHydrationVersion,
+    runtimesRef,
+  ])
+
   const {
     automationConversationId,
     automationDetailTab,
@@ -477,6 +562,10 @@ export function useChatExperienceController({
 
   useChatListEventSync({
     activeChatIdRef,
+    nativePersonalEnabled: nativePersonal.configured && Boolean(userId) && mode === 'chat',
+    nativePersonalIds: nativePersonalChatIds,
+    nativePersonalRoute,
+    workspaceId: nativePersonal.configured ? nativePersonal.workspaceId : activeWorkspaceId,
     resetActiveChatAfterDelete,
     setActiveChatDeleting,
     setActiveChatTitle,
@@ -579,7 +668,9 @@ export function useChatExperienceController({
     activeChatIdRef,
     activeChatTitle,
     chats,
+    isNativePersonalChat,
     loadChats,
+    renameNative: nativePersonal.rename,
     pendingTitleRef,
     setActiveChatTitle,
     setChats,
@@ -712,10 +803,13 @@ export function useChatExperienceController({
     clearTransientComposerState,
     ensureConversationRuntime,
     emptyRuntimeRef,
+    getNativeSummary: getNativePersonalSummary,
     hasAutomationContext,
+    isNativePersonalChat,
     isTemporaryChatRef,
     loadGeneratedOutputs: generatedOutputsEnabled,
     markRead,
+    markNativeRead: markNativePersonalRead,
     pendingTitleRef,
     persistActiveRuntimeUiState,
     resetComposerToolIds,

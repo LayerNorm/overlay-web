@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { Archive, Loader2 } from 'lucide-react'
@@ -10,6 +10,8 @@ import {
   CHAT_ARCHIVED_EVENT,
   type ChatArchivedDetail,
 } from '@/shared/chat/chat-title'
+import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
+import { excludeNativePersonalChats, isNativePersonalChatCandidate } from '@/shared/chat/native-personal-chat'
 
 const ChatExperience = dynamic(() => import('./ChatExperience'))
 const DirectMessageExperience = dynamic(
@@ -20,6 +22,8 @@ type ArchivedConversation = {
   _id: string
   title?: string | null
   conversationType?: string
+  scope?: 'personal' | 'workspace'
+  workspaceId?: string
   lastModified?: number
   archivedAt?: number
 }
@@ -57,6 +61,8 @@ export function ChatArchivedView({
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
   const searchId = searchParams?.get('id') ?? null
+  const nativePersonal = usePersonalChat()
+  const nativePersonalEnabled = nativePersonal.configured && Boolean(userId)
   const [state, setState] = useState<ViewState>({ status: 'loading' })
   const [routeVersion, setRouteVersion] = useState(0)
   const archivedHeader = <AppScreenHeader title="Archived" />
@@ -69,14 +75,20 @@ export function ChatArchivedView({
         credentials: 'same-origin',
       })
       if (!response.ok) throw new Error('Could not load archived conversations.')
-      setState({ status: 'ready', conversations: unwrapList<ArchivedConversation>(await response.json()) })
+      const rows = unwrapList<ArchivedConversation>(await response.json())
+      const retainedRows = nativePersonalEnabled
+        ? nativePersonal.workspaceId
+          ? excludeNativePersonalChats(rows, nativePersonal.workspaceId)
+          : rows.filter((row) => (row.conversationType ?? 'personal') !== 'personal' || row.scope === 'workspace')
+        : rows
+      setState({ status: 'ready', conversations: retainedRows })
     } catch (error) {
       setState({
         status: 'error',
         message: error instanceof Error ? error.message : 'Could not load archived conversations.',
       })
     }
-  }, [])
+  }, [nativePersonalEnabled, nativePersonal.workspaceId])
 
   useEffect(() => {
     void load()
@@ -89,6 +101,10 @@ export function ChatArchivedView({
     function handleChatArchived(event: Event) {
       const archived = (event as CustomEvent<ChatArchivedDetail>).detail?.chat
       if (!archived?._id) return
+      if (nativePersonalEnabled && (
+        nativePersonal.archived.rows.some((row) => row._id === archived._id)
+        || isNativePersonalChatCandidate(archived, nativePersonal.workspaceId)
+      )) return
       setState((current) => {
         if (current.status !== 'ready') return current
         if (current.conversations.some((conversation) => conversation._id === archived._id)) return current
@@ -98,6 +114,8 @@ export function ChatArchivedView({
             _id: archived._id,
             title: archived.title,
             conversationType: archived.conversationType,
+            scope: archived.scope,
+            workspaceId: archived.workspaceId,
             lastModified: archived.lastModified,
             archivedAt: archived.archivedAt,
           }, ...current.conversations],
@@ -113,15 +131,38 @@ export function ChatArchivedView({
       window.removeEventListener(CHAT_ARCHIVED_EVENT, handleChatArchived)
       window.removeEventListener('popstate', bumpRoute)
     }
-  }, [])
+  }, [nativePersonal.archived.rows, nativePersonalEnabled, nativePersonal.workspaceId])
 
   void routeVersion
   const selectedId = readSelectedId(searchId)
+  const conversations = useMemo(() => {
+    const legacy = state.status === 'ready' ? state.conversations : []
+    if (!nativePersonalEnabled) return legacy
+    if (!nativePersonal.workspaceId) return []
+    const nativeRows = [...nativePersonal.archived.rows]
+    const selectedSummary = nativePersonal.selectedSummary
+    if (selectedSummary?.archivedAt
+      && selectedSummary.workspaceId === nativePersonal.workspaceId
+      && !nativeRows.some((row) => row._id === selectedSummary._id)) {
+      nativeRows.push(selectedSummary)
+    }
+    const byId = new Map<string, ArchivedConversation>()
+    for (const row of [...legacy, ...nativeRows]) byId.set(row._id, row)
+    return [...byId.values()].sort((left, right) => (right.archivedAt ?? 0) - (left.archivedAt ?? 0))
+  }, [
+    nativePersonal.archived.rows,
+    nativePersonal.selectedSummary,
+    nativePersonal.workspaceId,
+    nativePersonalEnabled,
+    state,
+  ])
+  const loading = state.status === 'loading'
+    || (nativePersonalEnabled && nativePersonal.archived.status === 'loading')
 
   useEffect(() => {
-    if (state.status !== 'ready' || state.conversations.length === 0) return
-    const selected = state.conversations.find((conversation) => conversation._id === selectedId)
-      ?? state.conversations[0]
+    if (loading || conversations.length === 0) return
+    const selected = conversations.find((conversation) => conversation._id === selectedId)
+      ?? conversations[0]
     if (!selected || selected._id === selectedId) return
     const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
     params.set('id', selected._id)
@@ -130,9 +171,9 @@ export function ChatArchivedView({
     window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
       detail: { chatId: selected._id },
     }))
-  }, [pathname, selectedId, state])
+  }, [conversations, loading, pathname, selectedId])
 
-  if (state.status === 'loading') {
+  if (loading) {
     return (
       <AppScreenShell className="h-full" header={archivedHeader}>
         <div className="flex h-full min-h-72 items-center justify-center text-sm text-(--muted)">
@@ -143,7 +184,7 @@ export function ChatArchivedView({
     )
   }
 
-  if (state.status === 'error') {
+  if (state.status === 'error' && conversations.length === 0) {
     return (
       <AppScreenShell className="h-full" header={archivedHeader}>
         <EmptyState
@@ -157,20 +198,33 @@ export function ChatArchivedView({
     )
   }
 
-  if (state.conversations.length === 0) {
+  if (conversations.length === 0) {
     return (
       <AppScreenShell className="h-full" header={archivedHeader}>
         <EmptyState
           className="h-full min-h-72 px-6 py-12"
           icon={<Archive size={28} />}
-          title="Nothing archived"
-          description="Archived direct messages and channels are kept here. Archive one from its conversation menu."
+          title={nativePersonalEnabled && nativePersonal.archived.status === 'unavailable'
+            ? 'Archived chats are unavailable'
+            : 'Nothing archived'}
+          description={nativePersonalEnabled && nativePersonal.archived.status === 'unavailable'
+            ? 'Native archived conversations could not be loaded.'
+            : 'Archived direct messages and channels are kept here. Archive one from its conversation menu.'}
+          action={nativePersonalEnabled && nativePersonal.archived.hasMore ? (
+            <Button
+              size="sm"
+              disabled={nativePersonal.archived.loadingMore}
+              onClick={() => nativePersonal.archived.loadMore()}
+            >
+              {nativePersonal.archived.loadingMore ? 'Loading…' : 'Load more'}
+            </Button>
+          ) : undefined}
         />
       </AppScreenShell>
     )
   }
 
-  const selected = state.conversations.find((conversation) => conversation._id === selectedId)
+  const selected = conversations.find((conversation) => conversation._id === selectedId)
   if (!selected) {
     return (
       <AppScreenShell className="h-full" header={archivedHeader}>
