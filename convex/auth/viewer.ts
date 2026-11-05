@@ -11,6 +11,10 @@ export const current = query({
 
 export const workspace = query({
   args: { workspaceId: v.string() },
+  returns: v.object({
+    userId: v.string(), workspaceId: v.string(), principalId: v.string(),
+    role: v.union(v.literal('owner'), v.literal('admin'), v.literal('member'), v.literal('guest')),
+  }),
   handler: async (ctx, { workspaceId }) => {
     const viewer = await requireNativeWorkspace(ctx, workspaceId)
     return { userId: viewer.userId, workspaceId, principalId: viewer.principal.principalId, role: viewer.membership.role }
@@ -19,6 +23,7 @@ export const workspace = query({
 
 export const personalChat = query({
   args: { workspaceId: v.string(), conversationId: v.id('conversations') },
+  returns: v.object({ conversationId: v.id('conversations'), workspaceId: v.string() }),
   handler: async (ctx, args) => {
     const viewer = await requireNativePersonalChat(ctx, args)
     return { conversationId: viewer.conversation._id, workspaceId: viewer.workspaceId }
