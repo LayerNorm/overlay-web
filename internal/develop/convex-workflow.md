@@ -48,6 +48,13 @@ PR previews deploy only their per-PR backend. Preview builds copy the shared
 billing code is deployed, set and read back the same rate on its matching Next
 and Convex environments; see [Workspace billing](workspace-billing.md#usage-markup-configuration).
 
+Component-aware `convex codegen`, including `--dry-run`, can contact the selected
+backend's `start_push` endpoint and upload packages before auth validation fails.
+It is not an offline type-generation command, and a failure does not prove that
+remote state is unchanged. Never run codegen, dev or deploy against ambient shared
+development or customer backends from a feature worktree. Regenerate combined API
+bindings only through explicitly authorized isolated Preview infrastructure.
+
 Vercel’s native Git integration deploys main to production. Integration verifies
 the exact live web SHA, synchronizes customer Convex only for backend changes from
 clean current canonical main, and runs proportionate authenticated smoke.
