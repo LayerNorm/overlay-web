@@ -96,6 +96,7 @@ The `internal/develop/` directory contains living documentation that coding agen
 | `internal/develop/cache-components-design-decisions.md` | Any change to `instant = false` opt-outs, `<Suspense>` boundaries in routes, `cacheComponents`/`partialPrefetching` config, or route-level PPR status. Add the route to the converted list or update its opt-out reason. |
 | `internal/develop/browser-testing-with-agent-browser.md` | Any change to browser QA tooling — agent-browser for testing passes, or driving the user's Chrome (LayerNorm Profile 6) via the Playwright extension + `pw-chrome`/`pw-bg` wrappers (the "Alternative" section): tab-group consent, trusted-input quirks, Slack console internal-API fallbacks, or cross-project browser use. |
 | `internal/develop/worktree-staging-qa.md` | Any change to hosted Preview QA, native production verification, or Convex deploy lanes. |
+| `internal/develop/convex-native-chat.md` | Any change to Convex-native chat ownership, baseline tooling, retained consumers or migration security requirements. |
 | `internal/develop/convex-workflow.md` | Any change to Convex deploy commands, environment selection, or boundary rules. |
 | `docs/developer/contribute/architecture.mdx` | Any change to the app's layer structure (`src/features`, `src/server`, `src/shared`, `packages/`), import boundaries, or module conventions. |
 | `internal/develop/admin-console.md` | Any change to `apps/admin/**` (the standalone operator console), its auth/session model, Convex access path, env contract, or deployment lifecycle. |

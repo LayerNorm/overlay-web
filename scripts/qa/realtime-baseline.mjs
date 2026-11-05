@@ -68,3 +68,18 @@ export async function openIndependentClients(browser, { origin, path, storageSta
     throw error
   }
 }
+
+// Ignore read cursors, other chats and failed writes when measuring an acknowledgement.
+export function matchesConversationMutation(response, { origin, conversationId, title, archived }) {
+  try {
+    const url = new URL(response.url())
+    const request = response.request()
+    if (url.origin !== origin || request.method() !== 'PATCH' || !response.ok()) return false
+    const body = request.postDataJSON()
+    return title !== undefined
+      ? url.pathname === '/api/v1/conversations' && body.conversationId === conversationId && body.title === title
+      : url.pathname === `/api/v1/conversations/${encodeURIComponent(conversationId)}/state` && body.archived === archived
+  } catch {
+    return false
+  }
+}

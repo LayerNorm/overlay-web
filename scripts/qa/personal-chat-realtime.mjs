@@ -1,29 +1,37 @@
 import { randomUUID } from 'node:crypto'
 import { stat } from 'node:fs/promises'
 import { chromium } from 'playwright'
-import { measureInteraction, openIndependentClients, previewOrigin, previewPath } from './realtime-baseline.mjs'
+import { measureInteraction, openIndependentClients, previewOrigin, previewPath, matchesConversationMutation } from './realtime-baseline.mjs'
 
-const origin = previewOrigin(process.env.CN01_PREVIEW_ORIGIN)
-const path = previewPath(process.env.CN01_CHAT_PATH)
-const revision = process.env.CN01_PREVIEW_SHA
-if (!/^[a-f0-9]{40}$/.test(revision ?? '')) throw new Error('Verified current Preview SHA is required')
-if (!process.env.CN01_STORAGE_STATE) throw new Error('Private sandbox storage-state file is required')
-if ((await stat(process.env.CN01_STORAGE_STATE)).mode & 0o077) throw new Error('Storage state must be private')
-const scenario = process.env.CN01_SCENARIO ?? 'send'
-if (!['send', 'rename', 'archive'].includes(scenario)) throw new Error('Unknown scenario')
-const title = process.env.CN01_CHAT_TITLE
-if (!title?.startsWith('CN01 QA ')) throw new Error('Use a disposable personal chat named CN01 QA ...')
-
-const browser = await chromium.launch({
-  headless: true,
-  ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH } : {}),
-})
+let browser
 let clients
-let phase = 'query-readiness'
+let revision
+let scenario
+let phase = 'configuration'
 let keepOpen = false
 try {
+  const origin = previewOrigin(process.env.CN01_PREVIEW_ORIGIN)
+  const path = previewPath(process.env.CN01_CHAT_PATH)
+  const requestedRevision = process.env.CN01_PREVIEW_SHA
+  if (!/^[a-f0-9]{40}$/.test(requestedRevision ?? '')) throw new Error('Verified current Preview SHA is required')
+  revision = requestedRevision
+  if (!process.env.CN01_STORAGE_STATE) throw new Error('Private sandbox storage-state file is required')
+  if ((await stat(process.env.CN01_STORAGE_STATE)).mode & 0o077) throw new Error('Storage state must be private')
+  const requestedScenario = process.env.CN01_SCENARIO ?? 'send'
+  if (!['send', 'rename', 'archive'].includes(requestedScenario)) throw new Error('Unknown scenario')
+  scenario = requestedScenario
+  const title = process.env.CN01_CHAT_TITLE
+  if (!title?.startsWith('CN01 QA ')) throw new Error('Use a disposable personal chat named CN01 QA ...')
+
+  browser = await chromium.launch({
+    headless: true,
+    ...(process.env.PLAYWRIGHT_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH } : {}),
+  })
+  phase = 'query-readiness'
   clients = await openIndependentClients(browser, { origin, path, storageState: process.env.CN01_STORAGE_STATE })
   const [sender, observer] = clients.pages
+  const conversationId = new URL(path, origin).searchParams.get('id')
+  if (!conversationId) throw new Error('Fixture requires an exact conversation id')
   const timeout = 30_000
   const row = (page, name) => page.locator('[data-slot="sidebar-menu-sub-item"]').filter({ has: page.getByText(name, { exact: true }) })
   phase = 'fixture-readiness'
@@ -74,8 +82,7 @@ try {
         localFeedback: () => row(sender, newTitle).waitFor({ state: 'visible', timeout }),
         remoteVisible: () => row(observer, newTitle).waitFor({ state: 'visible', timeout }),
         mutationAcknowledged: () => sender.waitForResponse((response) => {
-          const url = new URL(response.url())
-          return url.origin === origin && url.pathname === '/api/v1/conversations' && response.request().method() === 'PATCH' && response.ok()
+          return matchesConversationMutation(response, { origin, conversationId, title: newTitle })
         }, { timeout }),
       },
     })
@@ -87,9 +94,7 @@ try {
         localFeedback: () => row(sender, title).waitFor({ state: 'hidden', timeout }),
         remoteVisible: () => row(observer, title).waitFor({ state: 'hidden', timeout }),
         mutationAcknowledged: () => sender.waitForResponse((response) => {
-          const url = new URL(response.url())
-          return url.origin === origin && /^\/api\/v1\/conversations\/[^/]+\/state$/.test(url.pathname)
-            && response.request().method() === 'PATCH' && response.ok()
+          return matchesConversationMutation(response, { origin, conversationId, archived: true })
         }, { timeout }),
       },
     })
@@ -112,6 +117,6 @@ try {
     console.error('Generation did not settle. Browser retained; stop and inspect without resending or cancelling.')
   } else {
     await clients?.close()
-    await browser.close()
+    await browser?.close()
   }
 }

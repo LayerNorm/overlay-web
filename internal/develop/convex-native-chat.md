@@ -31,7 +31,7 @@ development. The runner rejects noncanonical Preview origins.
 CN01_PREVIEW_ORIGIN=https://pr-123.preview.getoverlay.io \
 CN01_PREVIEW_SHA=<verified-full-head-sha> \
 CN01_STORAGE_STATE=<private-storage-state-path> \
-CN01_CHAT_PATH=<relative-personal-chat-url> \
+CN01_CHAT_PATH=<relative-personal-chat-url-with-id-query> \
 CN01_CHAT_TITLE='CN01 QA <unique suffix>' \
 CN01_SCENARIO=send \
 node scripts/qa/personal-chat-realtime.mjs
@@ -74,7 +74,9 @@ fixed `no-sample` status and phase, never an exception or private page text.
 Query readiness is not sidebar readiness: the runner separately waits for the
 fixture row before asserting uniqueness and selection. Sent-message observations
 are scoped to `[data-chat-transcript]`, so an unsent composer draft cannot count
-as local feedback. Rename/archive acknowledgement failures also fail the run.
+as local feedback. Rename/archive acknowledgements match the exact conversation and submitted
+title/archive value; read cursors and unrelated writes cannot satisfy them.
+Acknowledgement failures also fail the run.
 Terminal correctness and reconnect/duplicate-run tests belong to CN-06.
 
 ### Thread and file opening
