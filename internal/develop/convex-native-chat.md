@@ -66,6 +66,15 @@ installs `overlay:baseline:enabled`. It sends no telemetry. The observer is allo
 to receive a query result while still failing to display the remote user message:
 that distinction is the original personal-chat defect. The send scenario waits
 up to five minutes for the sender to leave generation and does not cancel/retry.
+If generation does not settle, the sample records `generationSettled: false` and
+the browser is retained rather than closing an active stream. Stop and inspect;
+do not invoke another scenario while it is active. Setup failures emit only a
+fixed `no-sample` status and phase, never an exception or private page text.
+
+Query readiness is not sidebar readiness: the runner separately waits for the
+fixture row before asserting uniqueness and selection. Sent-message observations
+are scoped to `[data-chat-transcript]`, so an unsent composer draft cannot count
+as local feedback. Rename/archive acknowledgement failures also fail the run.
 Terminal correctness and reconnect/duplicate-run tests belong to CN-06.
 
 ### Thread and file opening
