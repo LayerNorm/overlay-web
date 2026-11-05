@@ -14,6 +14,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add a server-controlled, fail-closed deployment-feature projection for native Convex domains. Policies are backend-bound, refreshed from the actual web configuration, fenced against stale callbacks and expired reactively; browser calls cannot publish policy. Existing conversation CRUD remains independent of deployment-feature mappings. Privileged agent Computer/credential cleanup stays server-owned.
 
+- Keep the chat composer visible while workspace access is being verified after navigation or rollback, without mistaking pending or failed entitlement reads for a billing denial; sending remains blocked until access is confirmed.
+
 - Keep URL-driven chat hydration read-only so remounting the previous chat cannot replace a pending workspace navigation with its old URL.
 
 - Keep native personal-chat title synchronization field-scoped so live summary updates cannot reset model selection and repeatedly trigger metadata saves that exhaust the shared API rate limit.

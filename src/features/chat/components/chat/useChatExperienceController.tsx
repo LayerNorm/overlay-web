@@ -373,6 +373,7 @@ export function useChatExperienceController({
     setComposerNotice,
   })
   const {
+    billingAccessNotice,
     connectionUnavailable,
     isBudgetExhaustedPaid,
     isModelAccessRestricted,
@@ -981,6 +982,7 @@ export function useChatExperienceController({
     inputRef,
     invalidateLoadChatRequest,
     isActiveLoading,
+    billingAccessNotice,
     isBudgetExhaustedPaid,
     isFirstMessage,
     isSendBlocked,
@@ -1336,6 +1338,7 @@ export function useChatExperienceController({
     dragCounterRef,
     isDragging,
     setIsDragging,
+    billingAccessNotice,
     isBudgetExhaustedPaid,
     isSendBlocked,
     connectionUnavailable,
