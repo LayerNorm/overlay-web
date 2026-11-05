@@ -62,7 +62,8 @@ existing migration path rather than being silently assigned to the selected
 workspace.
 
 `auth/viewer:workspace` and `auth/viewer:personalChat` expose minimal verified
-scope projections for acceptance checks. They do not grant write, execution,
+scope projections with explicit return validators for acceptance checks; workspace
+roles are restricted to the canonical owner/admin/member/guest values. They do not grant write, execution,
 billing, provider, operator or workspace-management authority. Domain mutations
 must preserve their own role/policy, audit, idempotency and admission rules;
 run admission and provider execution remain server-owned. Existing explicit-token
