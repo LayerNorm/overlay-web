@@ -5,6 +5,7 @@ import ChatSuspenseBoundary from '@/features/chat/components/ChatSuspenseBoundar
 import { getOverlaySession } from '@/server/auth/session'
 import { getInitialChatHistory } from '@/server/app/route-data'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
+import { nativePersonalChatBackendReady } from '@/server/chat/native-personal-readiness'
 import { nativeConvexAuthEnabled } from '@/server/auth/native-convex-token'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
 async function ChatRouteContent({
@@ -26,7 +27,7 @@ async function ChatRouteContent({
   const nativePersonalRoute = requestedScope !== 'workspace'
     && requestedView !== 'all'
     && !['workspace-chats', 'dms', 'channels'].includes(requestedView ?? '')
-  const initialChatPage = userId && !(nativeAuthConfigured && nativePersonalRoute)
+  const initialChatPage = userId && !(nativeAuthConfigured && nativePersonalRoute && await nativePersonalChatBackendReady(userId))
     ? await getInitialChatHistory(params?.scope !== undefined || params?.view !== undefined)
     : null
   return (
