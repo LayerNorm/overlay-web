@@ -44,3 +44,10 @@ not establish live provider acceptance. Callback UX, provider account
 entitlement, refresh behavior, hosted restart and streaming behavior still
 require isolated real-account QA. The web scope selector now supports explicit
 workspace sharing; the production provider allowlist is unchanged.
+
+New connections offer six choices; Kimi uses `kimi.com`. The `kimi-ai` backend
+ID remains bound to `kimi.ai` for existing credentials and reconnects only.
+Production/shared Preview enable the six providers by owner authorization; keep
+`kimi-ai` in the allowlist for legacy dispatch without showing a second picker
+choice. Real authorization-start requests pass for all six; live-account inference
+for every provider remains separate from pinned-executor fixture coverage.

@@ -15,6 +15,11 @@ export function isSubscriptionProviderId(value: unknown): value is SubscriptionP
     SUBSCRIPTION_PROVIDERS.some((provider) => provider.id === value)
 }
 
+/** New connections use kimi.com; retain kimi-ai for saved credentials only. */
+export function isSelectableSubscriptionProvider(value: SubscriptionProviderId): boolean {
+  return value !== 'kimi-ai'
+}
+
 export function subscriptionProvider(value: SubscriptionProviderId) {
   return SUBSCRIPTION_PROVIDERS.find((provider) => provider.id === value)!
 }

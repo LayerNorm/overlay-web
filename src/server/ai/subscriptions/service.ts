@@ -6,6 +6,7 @@ import type { ByokCredentialStore } from '@/server/ai/gateway/byok-credential-st
 import {
   isSubscriptionProviderId,
   SUBSCRIPTION_PROVIDERS,
+  isSelectableSubscriptionProvider,
   type SubscriptionProviderId,
 } from '@/shared/ai/gateway/subscription-providers'
 import {
@@ -52,6 +53,7 @@ export class SubscriptionService {
       available: enabled.size > 0,
       providers: SUBSCRIPTION_PROVIDERS.map(({ id, label, description }) => ({
         id, label, description, enabled: enabled.has(id),
+        selectable: isSelectableSubscriptionProvider(id),
       })),
       ...(!enabled.size ? { reason: 'No implemented subscription request adapter is enabled for this deployment.' } : {}),
     }
