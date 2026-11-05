@@ -12,7 +12,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Enable Claude, Grok Build, Meta Muse, Kimi and Devin alongside ChatGPT/Codex in Production and shared Preview. Offer one Kimi choice using kimi.com and render the actual Meta and Devin logos instead of letter placeholders.
 
-- Establish native Convex browser authentication with identity-isolated clients and refresh handling, preserving legacy subscriptions and allowing private providers to opt in after their backend upgrade.
+- Establish native Convex browser authentication with identity-isolated clients and refresh handling, preserving legacy subscriptions and allowing private providers to opt in after their backend upgrade; preflight hosted Preview builds with WorkOS on the exact claimed PR backend.
 
 - Document subscription callback completion and workspace sharing in the API catalog, including active-member use and owner-only management.
 
