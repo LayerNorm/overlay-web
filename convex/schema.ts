@@ -1081,6 +1081,7 @@ export default defineSchema({
     .index('by_userId_updatedAt', ['userId', 'updatedAt'])
     .index('by_userId_enabled', ['userId', 'enabled'])
     .index('by_agentId', ['agentId'])
+    .index('by_conversationId_deletedAt', ['conversationId', 'deletedAt'])
     .index('by_enabled_nextRunAt', ['enabled', 'nextRunAt'])
     .index('by_schedulerWorkflowRunId', ['schedulerWorkflowRunId'])
     .searchIndex('search_name', {
