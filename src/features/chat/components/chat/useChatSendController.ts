@@ -459,6 +459,7 @@ export function useChatSendController({
         isTemporaryChatRef,
         loadChats,
         loadSubscription,
+        nativePersonalEnabled,
         markChatModified,
         pendingScrollChatIdRef,
         pendingScrollTurnIdRef,

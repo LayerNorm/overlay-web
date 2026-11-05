@@ -22,7 +22,7 @@ import {
   type StartSession,
   type UpdateRuntimeUiState,
 } from './chat-send-body-builders'
-import type { CreateNewChatOptions } from './chat-send-create'
+import { workspaceChatsViewActive, type CreateNewChatOptions } from './chat-send-create'
 
 export async function sendMediaTurn({
   activeChatId,
@@ -38,6 +38,7 @@ export async function sendMediaTurn({
   isTemporaryChatRef,
   loadChats,
   loadSubscription,
+  nativePersonalEnabled = false,
   markChatModified,
   pendingScrollChatIdRef,
   pendingScrollTurnIdRef,
@@ -65,7 +66,8 @@ export async function sendMediaTurn({
   isTemporaryChatRef: MutableRefObject<boolean>
   loadChats: () => Promise<void>
   loadSubscription: () => Promise<unknown>
-  markChatModified: (chatId: string, titleSnapshot?: string | null) => void
+  nativePersonalEnabled?: boolean
+  markChatModified: (chatId: string, titleSnapshot?: string | null, nativePersonalOwner?: boolean) => void
   pendingScrollChatIdRef: MutableRefObject<string | null>
   pendingScrollTurnIdRef: MutableRefObject<string | null>
   replyContext: ReplyContext
@@ -74,7 +76,7 @@ export async function sendMediaTurn({
   setIsFirstMessage: (isFirstMessage: boolean) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   snapshot: SubmittedComposerSnapshot
-  startFirstMessageRename: (chatId: string, seedText: string) => void
+  startFirstMessageRename: (chatId: string, seedText: string, nativePersonalOwner?: boolean) => void
   startSession: StartSession
   updateRuntimeUiState: UpdateRuntimeUiState
   videoSubMode: VideoSubMode
@@ -119,6 +121,7 @@ export async function sendMediaTurn({
   const existingChatId = snapshot.temporaryChatSnapshot
     ? TEMPORARY_CHAT_ID
     : (activeChatIdRef.current ?? activeChatId)
+  const nativePersonalCreated = !existingChatId && nativePersonalEnabled && !workspaceChatsViewActive()
   pendingScrollTurnIdRef.current = mediaTurnId
   pendingScrollChatIdRef.current = snapshot.temporaryChatSnapshot ? null : existingChatId
   let chatId = existingChatId
@@ -151,7 +154,7 @@ export async function sendMediaTurn({
     })
   }
   if (!chatId) return
-  if (!snapshot.temporaryChatSnapshot) markChatModified(chatId, snapshot.activeChatTitleSnapshot)
+  if (!snapshot.temporaryChatSnapshot) markChatModified(chatId, snapshot.activeChatTitleSnapshot, nativePersonalCreated)
   if (!snapshot.temporaryChatSnapshot) targetRuntime = ensureConversationRuntime(chatId)
   else targetRuntime = emptyRuntime
 
@@ -192,7 +195,7 @@ export async function sendMediaTurn({
       },
       { idempotencyKey: `${mediaTurnId}:user` },
     )
-    if (wasFirst && snapshot.text) startFirstMessageRename(chatId, snapshot.text)
+    if (wasFirst && snapshot.text) startFirstMessageRename(chatId, snapshot.text, nativePersonalCreated)
   }
   startSession(
     chatId,
