@@ -8,8 +8,6 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add native Convex viewer and personal-chat scope guards that derive identity from authentication and recheck workspace membership, ownership and participant access on every call.
 
-- Establish native Convex browser authentication with identity-isolated clients and refresh handling, preserving legacy subscriptions and allowing private providers to opt in after their backend upgrade; preflight hosted Preview builds with WorkOS on the exact claimed PR backend.
-
 - Clear native-agent, room and thread-reply composers as soon as the optimistic user message appears, instead of waiting for the save response. Restore failed submissions even after the rich editor resynchronizes, without overwriting newer drafts or another conversation.
 
 - Remove the unused kimi.ai subscription variant from the bridge, API, configuration and database validators after confirming there are no production connections or pending authorizations. Kimi remains available through kimi.com, and the living adapter documentation lists only the supported providers.
