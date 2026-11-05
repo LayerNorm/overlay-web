@@ -25,6 +25,7 @@ import {
 import { Button, Input, ListboxSelect, toast } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
+import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { ScopeTag } from '@/components/layout/ScopeTag'
 import {
@@ -81,28 +82,87 @@ function deleteDescription(items: readonly ArchivedItem[]): string {
  * forever one at a time or many at once. Restore puts an item back where it came from; the server decides who may.
  */
 export function ArchivedSettings() {
-  const workspaceId = useOptionalWorkspace()?.activeWorkspaceId ?? null
-  const [items, setItems] = useState<ArchivedItem[] | null>(null)
-  const [failedSources, setFailedSources] = useState<string[]>([])
+  const workspace = useOptionalWorkspace()
+  const workspaceId = workspace?.switchingWorkspaceId ? null : workspace?.activeWorkspaceId ?? null
+  const nativePersonal = usePersonalChat()
+  const [legacyState, setLegacyState] = useState<{
+    workspaceId: string | null
+    items: ArchivedItem[]
+    failedSources: string[]
+  } | null>(null)
+  const legacyItems = legacyState?.workspaceId === workspaceId ? legacyState.items : null
+  const failedSources = legacyState?.workspaceId === workspaceId ? legacyState.failedSources : []
   const [category, setCategory] = useState<ArchivedCategoryFilter>('all')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [pendingDelete, setPendingDelete] = useState<ArchivedItem[] | null>(null)
   const [busy, setBusy] = useState(false)
   const lastToggled = useRef<string | null>(null)
+  const requestEpoch = useRef(0)
+  const workspaceIdRef = useRef(workspaceId)
+  workspaceIdRef.current = workspaceId
 
   const load = useCallback(async () => {
-    const result = await loadArchivedItems(workspaceId)
-    setItems(result.items)
-    setFailedSources(result.failed.map((source) => ARCHIVED_CATEGORY_LABELS[source].toLowerCase()))
-    setSelected((current) => pruneSelection(current, result.items))
-  }, [workspaceId])
+    const requestWorkspaceId = workspaceId
+    if (requestWorkspaceId !== workspaceIdRef.current) return
+    const requestId = ++requestEpoch.current
+    const result = await loadArchivedItems(workspaceId, {
+      nativePersonalConfigured: nativePersonal.configured,
+    })
+    if (requestId !== requestEpoch.current || requestWorkspaceId !== workspaceIdRef.current) return
+    setLegacyState({
+      workspaceId: requestWorkspaceId,
+      items: result.items,
+      failedSources: result.failed.map((source) => ARCHIVED_CATEGORY_LABELS[source].toLowerCase()),
+    })
+  }, [nativePersonal.configured, workspaceId])
 
   useEffect(() => {
     void load()
   }, [load])
   useWorkspaceChanged(load)
 
+  const nativeItems = useMemo<ArchivedItem[]>(() => {
+    if (!nativePersonal.configured || !workspaceId) return []
+    const summaries = [...nativePersonal.archived.rows]
+    const selectedSummary = nativePersonal.selectedSummary
+    if (selectedSummary?.archivedAt
+      && selectedSummary.workspaceId === workspaceId
+      && !summaries.some((summary) => summary._id === selectedSummary._id)) {
+      summaries.push(selectedSummary)
+    }
+    return summaries.map((summary) => ({
+      key: `chat:${summary._id}`,
+      kind: 'chat',
+      category: 'chats',
+      id: summary._id,
+      name: summary.title?.trim() || 'Untitled conversation',
+      scope: summary.scope ?? 'personal',
+      archivedAt: summary.archivedAt,
+      conversationType: summary.conversationType ?? 'personal',
+      workspaceId: summary.workspaceId,
+      href: `/app/archived?id=${encodeURIComponent(summary._id)}`,
+    }))
+  }, [
+    nativePersonal.archived.rows,
+    nativePersonal.configured,
+    nativePersonal.selectedSummary,
+    workspaceId,
+  ])
+  const items = useMemo(() => {
+    if (legacyItems === null) return null
+    const byKey = new Map<string, ArchivedItem>()
+    for (const item of [...legacyItems, ...nativeItems]) byKey.set(item.key, item)
+    return [...byKey.values()]
+  }, [legacyItems, nativeItems])
+  useEffect(() => {
+    if (items) setSelected((current) => pruneSelection(current, items))
+  }, [items])
+  const reportedFailedSources = nativePersonal.configured
+    && nativePersonal.archived.status === 'unavailable'
+    && !failedSources.includes('chats')
+    ? [...failedSources, 'chats']
+    : failedSources
   const visible = useMemo(() => filterArchivedItems(items ?? [], category, query), [items, category, query])
   const selectedItems = useMemo(() => (items ?? []).filter((item) => selected.has(item.key)), [items, selected])
   const allVisibleSelected = visible.length > 0 && visible.every((item) => selected.has(item.key))
@@ -140,10 +200,19 @@ export function ArchivedSettings() {
     setBusy(true)
     try {
       if (targets.length === 1) {
-        await restoreArchivedItem(targets[0]!, workspaceId)
+        await restoreArchivedItem(
+          targets[0]!,
+          workspaceId,
+          nativePersonal.configured ? restoreNativePersonal : undefined,
+        )
         toast.success(`Restored “${targets[0]!.name}”.`)
       } else {
-        const outcome = await runBulk(targets, 'restore', workspaceId)
+        const outcome = await runBulk(
+          targets,
+          'restore',
+          workspaceId,
+          nativePersonal.configured ? restoreNativePersonal : undefined,
+        )
         const summary = summarizeBulk('restored', outcome)
         if (outcome.failed.length === 0) toast.success(summary)
         else toast.error(summary)
@@ -155,6 +224,16 @@ export function ArchivedSettings() {
       await load()
     }
   }
+
+  const nativeArchivedRows = nativePersonal.archived.rows
+  const nativeSelectedSummary = nativePersonal.selectedSummary
+  const setNativeArchived = nativePersonal.setArchived
+  const restoreNativePersonal = useCallback(async (item: ArchivedItem) => {
+    const summary = nativeArchivedRows.find((row) => row._id === item.id)
+      ?? (nativeSelectedSummary?._id === item.id ? nativeSelectedSummary : undefined)
+    if (!summary) throw new Error('Archived conversation is no longer available')
+    await setNativeArchived(summary, false)
+  }, [nativeArchivedRows, nativeSelectedSummary, setNativeArchived])
 
   async function confirmDelete() {
     if (!pendingDelete) return
@@ -179,7 +258,7 @@ export function ArchivedSettings() {
     }
   }
 
-  if (items === null) {
+  if (items === null || (nativePersonal.configured && nativePersonal.archived.status === 'loading')) {
     return (
       <div className="flex min-h-48 items-center justify-center text-(--muted)">
         <Loader2 size={18} className="animate-spin" aria-label="Loading archived items" />
@@ -212,9 +291,9 @@ export function ArchivedSettings() {
         />
       </div>
 
-      {failedSources.length > 0 ? (
+      {reportedFailedSources.length > 0 ? (
         <p role="alert" className="text-xs text-red-500">
-          Could not load archived {failedSources.join(', ')}. The rest are shown below.
+          Could not load archived {reportedFailedSources.join(', ')}. The rest are shown below.
         </p>
       ) : null}
       {visible.length === 0 ? (
@@ -318,6 +397,16 @@ export function ArchivedSettings() {
           </ul>
         </div>
       )}
+
+      {nativePersonal.configured && nativePersonal.archived.hasMore ? (
+        <Button
+          variant="ghost"
+          disabled={nativePersonal.archived.loadingMore}
+          onClick={() => nativePersonal.archived.loadMore()}
+        >
+          {nativePersonal.archived.loadingMore ? 'Loading archived chats…' : 'Load more archived chats'}
+        </Button>
+      ) : null}
 
       <ConfirmDialog
         isOpen={pendingDelete !== null}

@@ -476,3 +476,9 @@ callers. Convex stores `createdByAgent` for creations; Harness binary publicatio
 and agent-drive uploads set it directly. These records count as work produced
 without crediting the owner as a human active user. Existing ownership, quota and
 revision checks still apply.
+
+Native personal-chat ownership uses a request-local server readiness probe through
+the existing settings read. Only the backend-owned `nativePersonalChatRevision`
+marker activates the new queries; cached browser preferences cannot select a
+transport. Old or unavailable readiness retains legacy guarded reads and writes
+during web-first upgrades and rollback.

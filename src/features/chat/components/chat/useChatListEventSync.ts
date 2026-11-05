@@ -13,13 +13,20 @@ import {
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
 import {
+  getCachedChatList,
   removeCachedChat,
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
 import type { Conversation, ConversationUiState } from '../chat-interface/types'
+import { isNativePersonalChatCandidate } from '@/shared/chat/native-personal-chat'
 
 export function useChatListEventSync({
   activeChatIdRef,
+  nativePersonalEnabled,
+  nativePersonalIds,
+  nativePersonalRoute,
+  isNativePersonalChat,
+  workspaceId,
   resetActiveChatAfterDelete,
   setActiveChatDeleting,
   setActiveChatTitle,
@@ -28,6 +35,11 @@ export function useChatListEventSync({
   updateRuntimeUiState,
 }: {
   activeChatIdRef: { current: string | null }
+  nativePersonalEnabled: boolean
+  nativePersonalIds: ReadonlySet<string>
+  nativePersonalRoute: boolean
+  isNativePersonalChat: (chatId: string) => boolean
+  workspaceId?: string | null
   resetActiveChatAfterDelete: (chatId: string) => void
   setActiveChatDeleting: Dispatch<SetStateAction<boolean>>
   setActiveChatTitle: Dispatch<SetStateAction<string | null>>
@@ -43,6 +55,17 @@ export function useChatListEventSync({
       const { detail } = event as CustomEvent<ChatCreatedDetail | ChatModifiedDetail>
       const nextChat = detail?.chat
       if (!nextChat?._id) return
+      const ambiguousPersonal = (nextChat.conversationType ?? 'personal') === 'personal'
+        && (!nextChat.workspaceId || nextChat.scope === undefined || nextChat.scope === 'personal')
+      if (nativePersonalEnabled && (
+        !workspaceId
+        || nativePersonalIds.has(nextChat._id)
+        || isNativePersonalChatCandidate(nextChat, workspaceId)
+        || (nativePersonalRoute && isNativePersonalChat(nextChat._id))
+        || ambiguousPersonal
+        || (nextChat.scope === 'workspace' && !nextChat.workspaceId)
+        || Boolean(workspaceId && nextChat.workspaceId && nextChat.workspaceId !== workspaceId)
+      )) return
       upsertCachedChat(nextChat)
       setChats((prev) => {
         const existingIndex = prev.findIndex((chat) => chat._id === nextChat._id)
@@ -61,6 +84,19 @@ export function useChatListEventSync({
     function handleChatTitleUpdated(event: Event) {
       const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
       if (!detail?.chatId || !detail.title) return
+      const cachedChat = getCachedChatList()?.find((chat) => chat._id === detail.chatId)
+      const knownNonPilot = Boolean(cachedChat && (
+        cachedChat.scope === 'workspace'
+          ? Boolean(workspaceId && cachedChat.workspaceId === workspaceId)
+          : ['dm', 'channel'].includes(cachedChat.conversationType ?? '')
+            && (!cachedChat.workspaceId || cachedChat.workspaceId === workspaceId)
+      ))
+      if (nativePersonalEnabled && (
+        !workspaceId
+        || nativePersonalIds.has(detail.chatId)
+        || (nativePersonalRoute && isNativePersonalChat(detail.chatId))
+        || !knownNonPilot
+      )) return
       upsertCachedChat({
         _id: detail.chatId,
         title: detail.title,
@@ -111,11 +147,16 @@ export function useChatListEventSync({
     }
   }, [
     activeChatIdRef,
+    nativePersonalEnabled,
+    nativePersonalIds,
+    nativePersonalRoute,
+    isNativePersonalChat,
     resetActiveChatAfterDelete,
     setActiveChatDeleting,
     setActiveChatTitle,
     setChats,
     setDeletingChatIds,
     updateRuntimeUiState,
+    workspaceId,
   ])
 }

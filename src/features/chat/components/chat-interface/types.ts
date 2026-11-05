@@ -11,6 +11,12 @@ export interface Conversation {
   _id: string
   title: string
   lastModified: number
+  workspaceId?: string
+  scope?: 'personal' | 'workspace'
+  conversationType?: 'personal' | 'dm' | 'channel'
+  archivedAt?: number
+  unread?: boolean
+  lastMessageId?: Id<'conversationMessages'> | null
   createdAt?: number
   updatedAt?: number
   lastMode?: 'ask' | 'act'

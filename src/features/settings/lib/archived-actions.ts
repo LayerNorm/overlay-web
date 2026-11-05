@@ -19,6 +19,7 @@ import type { WorkspaceAgentDirectoryItem, WorkspaceArchivedAgentThread } from '
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { dispatchChatDeleted, dispatchChatModified } from '@/shared/chat/chat-title'
+import { excludeNativePersonalChats } from '@/shared/chat/native-personal-chat'
 import {
   archivedItemKey,
   orderForDelete,
@@ -37,6 +38,8 @@ type ArchivedConversationRow = {
   _id: string
   title?: string | null
   conversationType?: string
+  scope?: 'personal' | 'workspace'
+  workspaceId?: string
   archivedAt?: number
   lastModified?: number
 }
@@ -47,11 +50,16 @@ export interface ArchivedLoadResult {
   failed: ArchivedCategory[]
 }
 
-async function loadChats(): Promise<ArchivedItem[]> {
+async function loadChats(nativePersonalConfigured: boolean, workspaceId: string | null): Promise<ArchivedItem[]> {
   const response = await fetch('/api/v1/conversations?archived=true', { cache: 'no-store', credentials: 'same-origin' })
   if (!response.ok) throw new Error('Could not load archived chats.')
   const body: unknown = await response.json()
-  const rows = asArray<ArchivedConversationRow>(Array.isArray(body) ? body : (body as { data?: unknown } | null)?.data)
+  const allRows = asArray<ArchivedConversationRow>(Array.isArray(body) ? body : (body as { data?: unknown } | null)?.data)
+  const rows = nativePersonalConfigured
+    ? workspaceId
+      ? excludeNativePersonalChats(allRows, workspaceId)
+      : []
+    : allRows
   return rows.map((row) => ({
     key: archivedItemKey('chat', row._id),
     kind: 'chat' as const,
@@ -59,7 +67,8 @@ async function loadChats(): Promise<ArchivedItem[]> {
     id: row._id,
     name: row.title?.trim() || 'Untitled conversation',
     detail: row.conversationType === 'channel' ? 'Channel' : row.conversationType === 'dm' ? 'Direct message' : undefined,
-    scope: null,
+    scope: row.scope ?? 'personal',
+    workspaceId: row.workspaceId,
     archivedAt: row.archivedAt,
     conversationType: row.conversationType,
     href: `/app/archived?id=${encodeURIComponent(row._id)}`,
@@ -203,9 +212,12 @@ async function loadAgents(workspaceId: string): Promise<ArchivedItem[]> {
 }
 
 /** Everything the person has archived, from every source. A source that fails is reported; the others still show. */
-export async function loadArchivedItems(workspaceId: string | null): Promise<ArchivedLoadResult> {
+export async function loadArchivedItems(
+  workspaceId: string | null,
+  options: { nativePersonalConfigured?: boolean } = {},
+): Promise<ArchivedLoadResult> {
   const sources: Array<[ArchivedCategory, Promise<ArchivedItem[]>]> = [
-    ['chats', loadChats()],
+    ['chats', loadChats(Boolean(options.nativePersonalConfigured), workspaceId)],
     ['files', loadFiles()],
     ['extensions', loadExtensions()],
     ['automations', loadAutomations()],
@@ -227,9 +239,25 @@ async function requireOk(response: Response, message: string): Promise<void> {
 }
 
 /** Puts one archived item back where it came from. The server decides who may; a refusal throws. */
-export async function restoreArchivedItem(item: ArchivedItem, workspaceId: string | null): Promise<void> {
+type NativePersonalRestore = (item: ArchivedItem) => Promise<void>
+
+function isPersonalChatRestore(item: ArchivedItem): boolean {
+  return item.kind === 'chat'
+    && item.scope === 'personal'
+    && (item.conversationType ?? 'personal') === 'personal'
+}
+
+export async function restoreArchivedItem(
+  item: ArchivedItem,
+  workspaceId: string | null,
+  restoreNativePersonal?: NativePersonalRestore,
+): Promise<void> {
   switch (item.kind) {
     case 'chat':
+      if (restoreNativePersonal && isPersonalChatRestore(item)) {
+        await restoreNativePersonal(item)
+        return
+      }
       await overlayAppClient.conversations.updateParticipantState(item.id, { archived: false })
       dispatchChatModified({
         chat: {
@@ -237,6 +265,8 @@ export async function restoreArchivedItem(item: ArchivedItem, workspaceId: strin
           title: item.name,
           lastModified: Date.now(),
           conversationType: item.conversationType === 'channel' || item.conversationType === 'dm' ? item.conversationType : 'personal',
+          scope: item.scope ?? 'personal',
+          workspaceId: item.workspaceId,
         },
       })
       return
@@ -382,6 +412,15 @@ export async function runBulkWith(
   return outcome
 }
 
-export function runBulk(items: readonly ArchivedItem[], mode: 'restore' | 'delete', workspaceId: string | null): Promise<BulkOutcome> {
-  return runBulkWith(items, mode, (item) => (mode === 'delete' ? deleteArchivedItem(item, workspaceId) : restoreArchivedItem(item, workspaceId)))
+export function runBulk(
+  items: readonly ArchivedItem[],
+  mode: 'restore' | 'delete',
+  workspaceId: string | null,
+  restoreNativePersonal?: NativePersonalRestore,
+): Promise<BulkOutcome> {
+  return runBulkWith(items, mode, (item) => (
+    mode === 'delete'
+      ? deleteArchivedItem(item, workspaceId)
+      : restoreArchivedItem(item, workspaceId, restoreNativePersonal)
+  ))
 }
