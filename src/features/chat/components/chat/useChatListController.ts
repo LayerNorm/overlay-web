@@ -16,10 +16,19 @@ function filterLegacyRows(
   rows: Conversation[],
   nativePersonalEnabled: boolean,
   workspaceId?: string | null,
+  nativePersonalRoute = false,
 ): Conversation[] {
   if (!nativePersonalEnabled) return rows
   return excludeNativePersonalChats(rows, workspaceId)
-    .filter((chat) => !chat.workspaceId || chat.workspaceId === workspaceId)
+    .filter((chat) => {
+      if (chat.workspaceId && chat.workspaceId !== workspaceId) return false
+      if (!chat.workspaceId && !['dm', 'channel'].includes(chat.conversationType ?? '')) return false
+      if (nativePersonalRoute && (
+        chat.scope === 'personal'
+        || (chat.scope === undefined && (chat.conversationType === undefined || chat.conversationType === 'personal'))
+      )) return false
+      return true
+    })
 }
 
 export function useChatListController({
@@ -29,6 +38,8 @@ export function useChatListController({
   nativePersonalChats = [],
   nativeSelectedSummary,
   nativePersonalEnabled = false,
+  nativePersonalRoute = false,
+  allowLegacyMixedList = false,
   workspaceId,
   userId,
 }: {
@@ -38,13 +49,20 @@ export function useChatListController({
   nativePersonalChats?: PersonalChatSummary[]
   nativeSelectedSummary?: PersonalChatSummary | null
   nativePersonalEnabled?: boolean
+  nativePersonalRoute?: boolean
+  allowLegacyMixedList?: boolean
   workspaceId?: string | null
   userId: string | null
 }) {
   const [legacyChatState, setLegacyChatState] = useState(() => ({
     workspaceId,
-    chats: userId
-      ? filterLegacyRows(initialChats ?? getCachedChatList() ?? [], nativePersonalEnabled, workspaceId)
+    chats: userId && !(nativePersonalRoute && !allowLegacyMixedList)
+      ? filterLegacyRows(
+        initialChats ?? getCachedChatList() ?? [],
+        nativePersonalEnabled,
+        workspaceId,
+        nativePersonalRoute,
+      )
       : [],
   }))
   const legacyChats = useMemo(
@@ -52,15 +70,30 @@ export function useChatListController({
     [legacyChatState, workspaceId],
   )
   const chats = useMemo(() => {
+    if (nativePersonalRoute && !nativePersonalEnabled && !allowLegacyMixedList) return []
     if (!nativePersonalEnabled) return legacyChats
     if (!workspaceId) return []
+    if (!nativePersonalRoute) {
+      return filterLegacyRows(legacyChats, nativePersonalEnabled, workspaceId)
+    }
     const rows = [...nativePersonalChats]
     if (nativeSelectedSummary && !rows.some((row) => row._id === nativeSelectedSummary._id)) {
       rows.push(nativeSelectedSummary)
     }
-    return [...rows, ...filterLegacyRows(legacyChats, nativePersonalEnabled, workspaceId)]
+    const legacyRows = allowLegacyMixedList
+      ? filterLegacyRows(legacyChats, nativePersonalEnabled, workspaceId, nativePersonalRoute)
+      : []
+    return [...rows, ...legacyRows]
       .sort((a, b) => b.lastModified - a.lastModified)
-  }, [legacyChats, nativePersonalChats, nativePersonalEnabled, nativeSelectedSummary, workspaceId])
+  }, [
+    allowLegacyMixedList,
+    legacyChats,
+    nativePersonalChats,
+    nativePersonalEnabled,
+    nativePersonalRoute,
+    nativeSelectedSummary,
+    workspaceId,
+  ])
 
   const setChats: Dispatch<SetStateAction<Conversation[]>> = useCallback((update) => {
     setLegacyChatState((current) => {
@@ -68,25 +101,39 @@ export function useChatListController({
       const next = typeof update === 'function' ? update(currentChats) : update
       return {
         workspaceId,
-        chats: filterLegacyRows(next, nativePersonalEnabled, workspaceId),
+        chats: filterLegacyRows(next, nativePersonalEnabled, workspaceId, nativePersonalRoute),
       }
     })
-  }, [nativePersonalEnabled, workspaceId])
+  }, [nativePersonalEnabled, nativePersonalRoute, workspaceId])
 
   useEffect(() => {
-    if (userId && initialChats && !(nativePersonalEnabled && !workspaceId)) {
-      primeChatList(filterLegacyRows(initialChats, nativePersonalEnabled, workspaceId), initialChatPageInfo)
+    if (userId && initialChats && !(
+      (nativePersonalRoute && !allowLegacyMixedList)
+      || (nativePersonalEnabled && !workspaceId)
+    )) {
+      primeChatList(
+        filterLegacyRows(initialChats, nativePersonalEnabled, workspaceId, nativePersonalRoute),
+        initialChatPageInfo,
+      )
     }
-  }, [initialChatPageInfo, initialChats, nativePersonalEnabled, userId, workspaceId])
+  }, [
+    allowLegacyMixedList,
+    initialChatPageInfo,
+    initialChats,
+    nativePersonalEnabled,
+    nativePersonalRoute,
+    userId,
+    workspaceId,
+  ])
 
   // Snapshot pendingTitleRef before the async fetch so a concurrent PATCH completing
   // mid-flight can't clear the ref before we apply the local title override.
   const loadChats = useCallback(async () => {
-    if (nativePersonalEnabled && !workspaceId) return
+    if ((nativePersonalRoute && !allowLegacyMixedList) || (nativePersonalEnabled && !workspaceId)) return
     try {
       const pending = pendingTitleRef.current
       const loadedChats = await fetchChatList({ force: true })
-      const serverChats = filterLegacyRows(loadedChats, nativePersonalEnabled, workspaceId)
+      const serverChats = filterLegacyRows(loadedChats, nativePersonalEnabled, workspaceId, nativePersonalRoute)
       const nextChats = pending
         ? serverChats.map((chat) => (
           chat._id === pending.chatId ? { ...chat, title: pending.title } : chat
@@ -106,7 +153,7 @@ export function useChatListController({
     } catch {
       // Chat list refresh is best-effort; existing local/cached state remains usable.
     }
-  }, [nativePersonalEnabled, pendingTitleRef, setChats, workspaceId])
+  }, [allowLegacyMixedList, nativePersonalEnabled, nativePersonalRoute, pendingTitleRef, setChats, workspaceId])
 
   useWorkspaceChanged(loadChats)
 
