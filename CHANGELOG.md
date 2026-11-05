@@ -14,6 +14,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add a server-controlled, fail-closed deployment-feature projection for native Convex domains. Policies are backend-bound, refreshed from the actual web configuration, fenced against stale callbacks and expired reactively; browser calls cannot publish policy. Existing conversation CRUD remains independent of deployment-feature mappings. Privileged agent Computer/credential cleanup stays server-owned.
 
+- Keep native personal-chat title synchronization field-scoped so live summary updates cannot reset model selection and repeatedly trigger metadata saves that exhaust the shared API rate limit.
+
 - Move browser personal-chat list, title, archive/restore and basic unread ownership to native Convex with additive indexes and no backfill. Persisted `conversations.read` / `conversations.edit` capabilities are enforced even when the legacy BFF is in observe mode; native calls accept no caller policy flags or operator bypass. Optimistic writes rebase by row, bounded pages may be empty while filtered results remain, and verified-user writes are capped at 300 per 10 minutes because native calls have no BFF IP context. Legacy HTTP remains for native-off installations and non-pilot workspace chats, DMs, channels and other resources; transcript/history/streaming and deletion retain their existing server boundaries. Roll back web ownership first and leave backend fields/indexes in place.
 
 - Add native Convex viewer and personal-chat scope guards that derive identity from authentication and recheck workspace membership, ownership and participant access on every call.
