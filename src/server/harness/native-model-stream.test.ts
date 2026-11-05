@@ -179,6 +179,7 @@ test('repair paragraphs split across native deltas are withheld while ordinary p
     'The plan needs to be adjusted to mark `handle_artifact` as answerOnly since no tool action is needed when no artifact is returned. Updating the plan:',
     'Fixing the plan format - `status` should not be included in the set operation:',
     'Plan reset. Now updating the milestones with the correct answerOnly configuration:',
+    'I need to mark the `locate_pdf` milestone complete first, since the file was found in the persisted evidence.',
   ]
   const prose = [
     'The source was reviewed.',
@@ -200,6 +201,7 @@ test('repair paragraphs split across native deltas are withheld while ordinary p
   expect(visible).toContain('The final count is 12.')
   expect(visible).not.toContain(leaked[0])
   expect(visible).not.toContain(leaked[2])
+  expect(visible).not.toContain(leaked[3])
 })
 
 test('fenced tool JSON with blank lines is withheld and ordinary fenced code roundtrips', async () => {

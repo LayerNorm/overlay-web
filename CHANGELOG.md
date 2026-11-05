@@ -12,6 +12,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Accept a single JSON fence around Harness verifier verdicts without weakening evidence validation; pause on unusable verifier responses instead of leaking parser errors into answer corrections.
 - Retain observed document-render dimensions and image format in bounded tool evidence so final verification can check those facts without embedding image bytes or claiming visual understanding.
 - Revise individual Harness milestones without rewriting unrelated completed work, bound repeated private plan repair, and filter repair bookkeeping from public text.
+- Hide milestone bookkeeping that references internal step identifiers or persisted evidence, even when it omits Harness tool and schema names.
 - Upgrade Better Auth and its SSO integration to 1.7.16, including the November 3 security fixes for private deployments. Hosted WorkOS authentication and the dependency cooldown policy are unchanged.
 
 - Refresh subscription rollout status and remove the superseded in-process adapter plan so future agents follow the private bridge architecture.

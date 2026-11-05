@@ -92,8 +92,10 @@ test('personal persistence removes nested tool-call arrays from per-step text pa
   expect(delivery.content).toBe('Read complete.')
 })
 
-test('personal delivery removes repair paragraphs while keeping the actual answer', () => {
-  const leaked = 'Fixing the plan format - `status` should not be included in the set operation:'
+test.each([
+  'Fixing the plan format - `status` should not be included in the set operation:',
+  'I need to mark the `locate_pdf` milestone complete first, since the file was found in the persisted evidence.',
+])('personal delivery removes repair paragraphs while keeping the actual answer: %s', leaked => {
   const answer = `I reviewed the file.\n\n${leaked}\n\nThe total is 80.`
   const delivery = buildPersonalHarnessDelivery({
     snapshot: { resultSummary: answer, usage: { inputTokens: 0, outputTokens: 0, costMicros: 0 } },

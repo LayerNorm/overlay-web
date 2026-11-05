@@ -1,8 +1,10 @@
 import { expect, test } from 'vitest'
 import { buildHarnessRunnerCheckpoint } from './runner-checkpoint'
 
-test('checkpoint persists repair accounting and strips internal prose from public text', () => {
-  const repair = 'Fixing the plan format - `status` should not be included in the set operation:'
+test.each([
+  'Fixing the plan format - `status` should not be included in the set operation:',
+  'I need to mark the `locate_pdf` milestone complete first, since the file was found in the persisted evidence.',
+])('checkpoint persists repair accounting and strips internal prose: %s', repair => {
   const text = `The source was read.\n\n${repair}\n\nThe result is ready.`
   const checkpoint = buildHarnessRunnerCheckpoint({
     messages: [{ role: 'assistant', content: text }],

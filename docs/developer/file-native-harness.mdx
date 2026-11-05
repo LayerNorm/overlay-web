@@ -44,6 +44,9 @@ bounded to four model steps without new successful tool-result evidence. The
 counter survives checkpoints, resets on new evidence, and pauses truthfully at
 the limit. Repair bookkeeping is removed from public progress, transcript,
 delivery and native streaming without hiding ordinary plan discussion or code.
+This includes milestone updates that reference internal step identifiers or
+persisted evidence without naming a control tool. Acceptance must check these
+plain-language updates as well as explicit tool-schema repair messages.
 
 Hybrid file retrieval falls back to lexical results when embedding pricing,
 reservation, or provider calls fail. It preserves provider reservation and
