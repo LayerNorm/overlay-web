@@ -652,3 +652,11 @@ delete controls so narrow editor panels remain usable. Pass the current operator
 through every card entry point so taking control identifies the viewer correctly. User document chips derive from persisted attachment
 metadata or the indexed-document marker even when structured text parts take priority
 for the displayed message body.
+
+## Subscription provider marks
+
+Subscription rows use the shared `ProviderLogo` SVG renderer. Resolve `meta-llama`
+to the canonical Meta mark and render the bundled Devin mark in its original
+425-unit viewBox with `currentColor`, so both themes retain the real logo. New
+connections hide nonselectable legacy provider variants; reconnect shows only the
+connection's exact saved provider without changing its credential domain.
