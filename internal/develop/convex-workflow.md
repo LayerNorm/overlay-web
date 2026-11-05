@@ -272,14 +272,21 @@ There is no feature capability-disable mapping for these operations.
 `useMutation.withOptimisticUpdate` owns row-level optimistic rename, archive and
 restore changes, including captured minimal summary data for Undo. Convex
 rebases pending operations and rolls back failed mutations without restoring a
-whole stale array. Native writes are budgeted at 300 per verified user per
-10-minute window because they have no BFF IP context.
+whole stale array. Each archive/restore updater captures only its call's
+minimal fallback summary, prefers current cached summary/list data, and patches
+only `archivedAt`; mark-read optimism clears unread only when the observed
+message is still the summary's latest message. Native writes are budgeted at
+300 per verified user per 10-minute window because they have no BFF IP context.
 
 Native personal data is used only when native auth is configured and its client
 is available and authenticated. Private installations that have not opted in
 retain the legacy path; configured-but-unavailable native auth does not fall back
-to HTTP ownership. Unmigrated workspace-scoped chats, DMs, channels, agents and
-other resources remain on their existing paths. Transcript/history loading,
+to HTTP ownership. Browser queries are limited to chat/archive consumers, so
+unrelated route IDs never enter Convex conversation-ID validation. Auth or
+capability query failures expose an unavailable personal-chat context while
+preserving the rest of the page. Mixed views may read legacy data only for
+classified non-pilot rows. Unmigrated workspace-scoped chats, DMs, channels,
+agents and other resources remain on their existing paths. Transcript/history loading,
 streaming and permanent deletion are not migrated here. Rollback is web-first:
 disable native web ownership before removing backend support, and keep additive
 fields/indexes and handlers available to older web revisions. No hosted QA is

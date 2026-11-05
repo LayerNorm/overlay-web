@@ -24,6 +24,7 @@ async function ChatRouteContent({
   const requestedView = Array.isArray(params?.view) ? params?.view[0] : params?.view
   const requestedScope = Array.isArray(params?.scope) ? params?.scope[0] : params?.scope
   const nativePersonalRoute = requestedScope !== 'workspace'
+    && requestedView !== 'all'
     && !['workspace-chats', 'dms', 'channels'].includes(requestedView ?? '')
   const initialChatPage = userId && !(nativeAuthConfigured && nativePersonalRoute)
     ? await getInitialChatHistory(params?.scope !== undefined || params?.view !== undefined)

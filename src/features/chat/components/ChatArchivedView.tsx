@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import { Archive, Loader2 } from 'lucide-react'
@@ -12,6 +12,7 @@ import {
 } from '@/shared/chat/chat-title'
 import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
 import { excludeNativePersonalChats, isNativePersonalChatCandidate } from '@/shared/chat/native-personal-chat'
+import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 
 const ChatExperience = dynamic(() => import('./ChatExperience'))
 const DirectMessageExperience = dynamic(
@@ -29,9 +30,9 @@ type ArchivedConversation = {
 }
 
 type ViewState =
-  | { status: 'loading' }
-  | { status: 'error'; message: string }
-  | { status: 'ready'; conversations: ArchivedConversation[] }
+  | { status: 'loading'; workspaceId: string | null }
+  | { status: 'error'; workspaceId: string | null; message: string }
+  | { status: 'ready'; workspaceId: string | null; conversations: ArchivedConversation[] }
 
 function unwrapList<T>(body: unknown): T[] {
   if (Array.isArray(body)) return body as T[]
@@ -62,13 +63,21 @@ export function ChatArchivedView({
   const searchParams = useSearchParams()
   const searchId = searchParams?.get('id') ?? null
   const nativePersonal = usePersonalChat()
+  const workspace = useOptionalWorkspace()
+  const workspaceId = workspace?.switchingWorkspaceId ? null : workspace?.activeWorkspaceId ?? null
   const nativePersonalEnabled = nativePersonal.configured && Boolean(userId)
-  const [state, setState] = useState<ViewState>({ status: 'loading' })
+  const [state, setState] = useState<ViewState>({ status: 'loading', workspaceId: null })
   const [routeVersion, setRouteVersion] = useState(0)
+  const requestEpoch = useRef(0)
+  const workspaceIdRef = useRef(workspaceId)
+  workspaceIdRef.current = workspaceId
   const archivedHeader = <AppScreenHeader title="Archived" />
 
   const load = useCallback(async () => {
-    setState({ status: 'loading' })
+    const requestWorkspaceId = workspaceId
+    if (requestWorkspaceId !== workspaceIdRef.current) return
+    const requestId = ++requestEpoch.current
+    setState({ status: 'loading', workspaceId: requestWorkspaceId })
     try {
       const response = await fetch('/api/v1/conversations?archived=true', {
         cache: 'no-store',
@@ -76,19 +85,22 @@ export function ChatArchivedView({
       })
       if (!response.ok) throw new Error('Could not load archived conversations.')
       const rows = unwrapList<ArchivedConversation>(await response.json())
+      if (requestId !== requestEpoch.current || requestWorkspaceId !== workspaceIdRef.current) return
       const retainedRows = nativePersonalEnabled
         ? nativePersonal.workspaceId
           ? excludeNativePersonalChats(rows, nativePersonal.workspaceId)
-          : rows.filter((row) => (row.conversationType ?? 'personal') !== 'personal' || row.scope === 'workspace')
+          : []
         : rows
-      setState({ status: 'ready', conversations: retainedRows })
+      setState({ status: 'ready', workspaceId: requestWorkspaceId, conversations: retainedRows })
     } catch (error) {
+      if (requestId !== requestEpoch.current || requestWorkspaceId !== workspaceIdRef.current) return
       setState({
         status: 'error',
+        workspaceId: requestWorkspaceId,
         message: error instanceof Error ? error.message : 'Could not load archived conversations.',
       })
     }
-  }, [nativePersonalEnabled, nativePersonal.workspaceId])
+  }, [nativePersonalEnabled, nativePersonal.workspaceId, workspaceId])
 
   useEffect(() => {
     void load()
@@ -106,10 +118,11 @@ export function ChatArchivedView({
         || isNativePersonalChatCandidate(archived, nativePersonal.workspaceId)
       )) return
       setState((current) => {
-        if (current.status !== 'ready') return current
+        if (current.status !== 'ready' || current.workspaceId !== workspaceId) return current
         if (current.conversations.some((conversation) => conversation._id === archived._id)) return current
         return {
           status: 'ready',
+          workspaceId,
           conversations: [{
             _id: archived._id,
             title: archived.title,
@@ -131,12 +144,14 @@ export function ChatArchivedView({
       window.removeEventListener(CHAT_ARCHIVED_EVENT, handleChatArchived)
       window.removeEventListener('popstate', bumpRoute)
     }
-  }, [nativePersonal.archived.rows, nativePersonalEnabled, nativePersonal.workspaceId])
+  }, [nativePersonal.archived.rows, nativePersonalEnabled, nativePersonal.workspaceId, workspaceId])
 
   void routeVersion
   const selectedId = readSelectedId(searchId)
   const conversations = useMemo(() => {
-    const legacy = state.status === 'ready' ? state.conversations : []
+    const legacy = state.status === 'ready' && state.workspaceId === workspaceId
+      ? state.conversations
+      : []
     if (!nativePersonalEnabled) return legacy
     if (!nativePersonal.workspaceId) return []
     const nativeRows = [...nativePersonal.archived.rows]
@@ -155,12 +170,22 @@ export function ChatArchivedView({
     nativePersonal.workspaceId,
     nativePersonalEnabled,
     state,
+    workspaceId,
   ])
+  const waitingForSelectedSummary = Boolean(nativePersonalEnabled && selectedId
+    && (
+      nativePersonal.selectedConversationId !== selectedId
+      || nativePersonal.selectedSummary === undefined
+    ))
+  const selectedSummaryUnavailable = waitingForSelectedSummary
+    && nativePersonal.archived.status === 'unavailable'
   const loading = state.status === 'loading'
+    || state.workspaceId !== workspaceId
+    || (waitingForSelectedSummary && !selectedSummaryUnavailable)
     || (nativePersonalEnabled && nativePersonal.archived.status === 'loading')
 
   useEffect(() => {
-    if (loading || conversations.length === 0) return
+    if (loading || waitingForSelectedSummary || conversations.length === 0) return
     const selected = conversations.find((conversation) => conversation._id === selectedId)
       ?? conversations[0]
     if (!selected || selected._id === selectedId) return
@@ -171,7 +196,7 @@ export function ChatArchivedView({
     window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
       detail: { chatId: selected._id },
     }))
-  }, [conversations, loading, pathname, selectedId])
+  }, [conversations, loading, pathname, selectedId, waitingForSelectedSummary])
 
   if (loading) {
     return (
@@ -184,7 +209,7 @@ export function ChatArchivedView({
     )
   }
 
-  if (state.status === 'error' && conversations.length === 0) {
+  if (state.status === 'error' && state.workspaceId === workspaceId && conversations.length === 0) {
     return (
       <AppScreenShell className="h-full" header={archivedHeader}>
         <EmptyState
@@ -193,6 +218,19 @@ export function ChatArchivedView({
           title="Archived chats are unavailable"
           description={state.message}
           action={<Button size="sm" onClick={() => void load()}>Try again</Button>}
+        />
+      </AppScreenShell>
+    )
+  }
+
+  if (selectedSummaryUnavailable && !conversations.some((conversation) => conversation._id === selectedId)) {
+    return (
+      <AppScreenShell className="h-full" header={archivedHeader}>
+        <EmptyState
+          className="h-full min-h-72 px-6 py-12"
+          icon={<Archive size={28} />}
+          title="Archived chats are unavailable"
+          description="The selected conversation could not be checked."
         />
       </AppScreenShell>
     )

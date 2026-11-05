@@ -68,6 +68,7 @@ export async function createNewChatForSend({
   ensureConversationRuntime,
   invalidateLoadChatRequest,
   mode,
+  nativePersonalEnabled = false,
   options,
   pendingFirstSendRef,
   pendingScrollChatIdRef,
@@ -86,6 +87,7 @@ export async function createNewChatForSend({
   syncStandaloneChatUrl,
   startFirstMessageRename,
   tryActivatePendingFirstSend,
+  workspaceId,
 }: {
   activeChatIdRef: MutableRefObject<string | null>
   applyUiStateToView: (ui: ConversationUiState) => void
@@ -94,6 +96,7 @@ export async function createNewChatForSend({
   ensureConversationRuntime: EnsureConversationRuntime
   invalidateLoadChatRequest: () => void
   mode: 'chat' | 'automate'
+  nativePersonalEnabled?: boolean
   options: CreateNewChatOptions
   pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
   pendingScrollChatIdRef: MutableRefObject<string | null>
@@ -110,8 +113,9 @@ export async function createNewChatForSend({
   setPendingRunConversationId: (conversationId: string | null) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   syncStandaloneChatUrl: (chatId: string | null) => void
-  startFirstMessageRename: (chatId: string, seedText: string) => void
+  startFirstMessageRename: (chatId: string, seedText: string, nativePersonalOwner?: boolean) => void
   tryActivatePendingFirstSend: () => void
+  workspaceId?: string | null
 }): Promise<string | null> {
   invalidateLoadChatRequest()
   persistActiveRuntimeUiState()
@@ -161,13 +165,21 @@ export async function createNewChatForSend({
     _id: data.id,
     title: initialTitle,
     lastModified: Date.now(),
+    conversationType: 'personal',
+    scope: workspaceScoped ? 'workspace' : 'personal',
+    ...(workspaceId ? { workspaceId } : {}),
     lastMode: 'act',
     askModelIds: initialSelectedModels,
     actModelId: normalizedInitialSelection.actModelId,
   }
-  upsertCachedChat(newChat)
-  setChats((prev) => [newChat, ...prev])
-  dispatchChatCreated({ chat: newChat })
+  const nativePersonalCreated = nativePersonalEnabled && !workspaceScoped
+  const pendingFirstSend = pendingFirstSendRef.current
+  if (pendingFirstSend) pendingFirstSend.nativePersonalOwner = nativePersonalCreated
+  if (!nativePersonalCreated) {
+    upsertCachedChat(newChat)
+    setChats((prev) => [newChat, ...prev])
+    dispatchChatCreated({ chat: newChat })
+  }
   if (options.deferActivation) {
     const pending = pendingFirstSendRef.current
     if (pending && trimmedClientId && pending.conversationClientId === trimmedClientId) {
