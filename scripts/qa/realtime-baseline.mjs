@@ -18,9 +18,9 @@ export function previewPath(value) {
 // All elapsed times use the same runner clock, not clocks from different tabs.
 // Observers must be armed synchronously and reject on their own timeout.
 export async function measureInteraction({ trigger, observers, now = () => performance.now(),
-  stages = ['localFeedback', 'mutationAcknowledged', 'remoteVisible'] }) {
+  stages: stageNames = ['localFeedback', 'mutationAcknowledged', 'remoteVisible'] }) {
   let startedAt
-  const pending = Object.fromEntries(stages.map((stage) => {
+  const pending = Object.fromEntries(stageNames.map((stage) => {
     const observe = observers[stage]
     if (!observe) return [stage, Promise.resolve({ status: 'unavailable', ms: null })]
     const promise = observe().then(() => {
