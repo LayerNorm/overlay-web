@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep the chat composer visible while workspace access is being verified after navigation or rollback, without mistaking pending or failed entitlement reads for a billing denial; sending remains blocked until access is confirmed.
+
 - Keep URL-driven chat hydration read-only so remounting the previous chat cannot replace a pending workspace navigation with its old URL.
 
 - Keep native personal-chat title synchronization field-scoped so live summary updates cannot reset model selection and repeatedly trigger metadata saves that exhaust the shared API rate limit.
