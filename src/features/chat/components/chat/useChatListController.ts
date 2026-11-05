@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
 import {
   fetchChatList,
   getCachedChatList,
@@ -54,8 +54,22 @@ export function useChatListController({
   workspaceId?: string | null
   userId: string | null
 }) {
+  const ownerKey = JSON.stringify([userId, workspaceId])
+  const scope = useMemo(
+    () => [userId, workspaceId, nativePersonalEnabled, nativePersonalRoute, allowLegacyMixedList] as const,
+    [userId, workspaceId, nativePersonalEnabled, nativePersonalRoute, allowLegacyMixedList],
+  )
+  const scopeRef = useRef({ token: scope, requestEpoch: 0, active: true })
+  useLayoutEffect(() => {
+    const currentScope = { token: scope, requestEpoch: 0, active: true }
+    scopeRef.current = currentScope
+    return () => {
+      currentScope.active = false
+      currentScope.requestEpoch++
+    }
+  }, [scope])
   const [legacyChatState, setLegacyChatState] = useState(() => ({
-    workspaceId,
+    ownerKey,
     chats: userId && !(nativePersonalRoute && !allowLegacyMixedList)
       ? filterLegacyRows(
         initialChats ?? getCachedChatList() ?? [],
@@ -66,8 +80,8 @@ export function useChatListController({
       : [],
   }))
   const legacyChats = useMemo(
-    () => legacyChatState.workspaceId === workspaceId ? legacyChatState.chats : [],
-    [legacyChatState, workspaceId],
+    () => legacyChatState.ownerKey === ownerKey ? legacyChatState.chats : [],
+    [legacyChatState, ownerKey],
   )
   const chats = useMemo(() => {
     if (nativePersonalRoute && !nativePersonalEnabled && !allowLegacyMixedList) return []
@@ -97,14 +111,16 @@ export function useChatListController({
 
   const setChats: Dispatch<SetStateAction<Conversation[]>> = useCallback((update) => {
     setLegacyChatState((current) => {
-      const currentChats = current.workspaceId === workspaceId ? current.chats : []
+      const activeScope = scopeRef.current
+      if (activeScope.token !== scope || !activeScope.active) return current
+      const currentChats = current.ownerKey === ownerKey ? current.chats : []
       const next = typeof update === 'function' ? update(currentChats) : update
       return {
-        workspaceId,
+        ownerKey,
         chats: filterLegacyRows(next, nativePersonalEnabled, workspaceId, nativePersonalRoute),
       }
     })
-  }, [nativePersonalEnabled, nativePersonalRoute, workspaceId])
+  }, [nativePersonalEnabled, nativePersonalRoute, ownerKey, scope, workspaceId])
 
   useEffect(() => {
     if (userId && initialChats && !(
@@ -129,10 +145,14 @@ export function useChatListController({
   // Snapshot pendingTitleRef before the async fetch so a concurrent PATCH completing
   // mid-flight can't clear the ref before we apply the local title override.
   const loadChats = useCallback(async () => {
+    const activeScope = scopeRef.current
+    if (activeScope.token !== scope || !activeScope.active) return
     if ((nativePersonalRoute && !allowLegacyMixedList) || (nativePersonalEnabled && !workspaceId)) return
+    const requestEpoch = ++activeScope.requestEpoch
     try {
       const pending = pendingTitleRef.current
       const loadedChats = await fetchChatList({ force: true })
+      if (scopeRef.current !== activeScope || !activeScope.active || requestEpoch !== activeScope.requestEpoch) return
       const serverChats = filterLegacyRows(loadedChats, nativePersonalEnabled, workspaceId, nativePersonalRoute)
       const nextChats = pending
         ? serverChats.map((chat) => (
@@ -153,7 +173,7 @@ export function useChatListController({
     } catch {
       // Chat list refresh is best-effort; existing local/cached state remains usable.
     }
-  }, [allowLegacyMixedList, nativePersonalEnabled, nativePersonalRoute, pendingTitleRef, setChats, workspaceId])
+  }, [allowLegacyMixedList, nativePersonalEnabled, nativePersonalRoute, pendingTitleRef, scope, setChats, workspaceId])
 
   useWorkspaceChanged(loadChats)
 
