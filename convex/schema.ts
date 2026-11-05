@@ -9,6 +9,7 @@ import { agentRunResourceRequestValidator } from './harness/resourceValidators'
 import { defineSchema, defineTable } from 'convex/server'
 import { userMessageMetadata } from './lib/userMessageMetadata'
 import { v } from 'convex/values'
+import { nativePolicySnapshotValidator } from './lib/nativePolicySchema'
 
 const runPlanStepValidator = v.object({
   id: v.string(),
@@ -17,6 +18,14 @@ const runPlanStepValidator = v.object({
 })
 
 export default defineSchema({
+  nativeDeploymentPolicies: defineTable({
+    key: v.literal('web'),
+    sequence: v.number(),
+    challenge: v.string(),
+    sourceOrigin: v.string(),
+    expiresAt: v.number(),
+    snapshot: v.optional(nativePolicySnapshotValidator),
+  }).index('by_key', ['key']),
   previewProviderBudget: defineTable({
     key: v.string(), spentMicros: v.number(), updatedAt: v.number(),
   }).index('by_key', ['key']),
