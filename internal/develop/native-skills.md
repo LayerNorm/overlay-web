@@ -20,7 +20,10 @@ Resource rules remain those in `resource-scope.ts`: creator-only personal items;
 active-member read access to shared items; creator or workspace manager edits;
 creator-only scope moves subject to workspace extension and move policy. Restoring
 retains the archived scope. Queries select by workspace indexes and authorize rows
-before returning them. Lists paginate at most 25 source rows, so a filtered page
+before returning them. List and availability pages impose server-owned limits of
+25 source rows and 2 MiB read, regardless of larger caller limits. This bounds
+reads of full legacy documents even though projections omit instructions.
+Cursor boundaries and Convex split metadata are preserved, so a filtered page
 may be empty with a remaining cursor. Continue paging rather than interpreting an
 empty page as exhaustion. Instructions load only through authorized detail queries.
 
@@ -41,10 +44,9 @@ the existing dialog, not a fabricated persisted ID. A stable request ID and a
 payload hash in `skillCreationReceipts` deduplicate creation, including retries after
 the skill has been deleted. Reusing a request ID with another payload is rejected.
 Receipts contain no instruction text; they remain to prevent resurrection on retry.
-The master account-deletion integration must delete `skillCreationReceipts` by
-`by_userId_requestId` prefix alongside the existing skills sweep in
-`convex/auth/users.ts`. Do not leave per-user idempotency metadata after account
-erasure; this shared auth module is outside the child ownership boundary.
+Account deletion in `convex/auth/users.ts` deletes `skillCreationReceipts` by
+`by_userId_requestId` prefix immediately alongside the skills sweep, including
+receipts for previously deleted skills. Other users' receipts are retained.
 
 Native mutations enforce a verified-user budget of 600 successful writes per ten
 minutes, across workspaces, matching the existing BFF default user allowance. Native
@@ -92,31 +94,38 @@ MCP or transport behavior changes belong here.
 
 ## Verification and rollback
 
-After the native deployment-policy prerequisite, `npx vitest run
-convex/nativeSkills.convex.test.ts` passed all 10 tests. Fixtures publish a real
-policy through `platform/nativePolicy:beginRefresh` and `publish`, with the skills
-feature enabled for normal authorization coverage. A focused case verifies list
-and create reject a `skills.use` actor when policy is missing, expired or has
-`skills: false`. Existing membership, role, scope, paging, availability,
-idempotency, revision, rate-limit and audit tests remain enabled.
+After the native deployment-policy prerequisite, `npx vitest run --config
+vitest.config.mts convex/nativeSkills.convex.test.ts` passed all 12 tests. Fixtures
+publish the real policy through `platform/nativePolicy:beginRefresh` and
+`publish`; a focused case verifies list and create reject a `skills.use` actor
+when policy is missing, expired or has `skills: false`. Existing membership,
+role, scope, paging, availability, idempotency, revision, rate-limit and audit
+tests remain enabled. The byte-cap case inserts eight 600 KiB instruction
+documents, verifies an empty `SplitRequired` first page, and follows continuation
+pages to recover all visible rows through both list and availability. Oversized
+caller row/byte limits are capped server-side, and bounded end-cursor behavior is
+covered. Account erasure deletes the user's receipts, including one for an
+already-deleted skill, while retaining another user's receipt.
 
-The native editor and optimistic tests passed with this exact loader command:
+The native editor, pagination layout and optimistic tests passed with this exact
+loader command:
 
 ```sh
-TSX_TSCONFIG_PATH=tsconfig.json NODE_OPTIONS="--require=./scripts/ci/register-style-noop.cjs" node --import tsx --test src/features/automations/lib/native-skills-optimistic.test.ts src/features/automations/components/native-skills-component.test.tsx
+TSX_TSCONFIG_PATH=tsconfig.json NODE_OPTIONS="--require=./scripts/ci/register-style-noop.cjs" node --import tsx --test src/features/automations/components/native-skills-component.test.tsx src/features/automations/lib/native-skills-optimistic.test.ts
 ```
 
-All 7 tests passed, including the native dirty-draft conflict and captured
-`expectedRevision` cases. The optimistic helper is exercised with a fake store;
-Convex's actual optimistic layer is not. `react-test-renderer` reports its
-deprecation warning.
+All 8 tests passed. Component coverage checks the flexible panel and non-shrinking
+pagination footer, `loadMore(50)`, disabled loading state, and footer absence
+while exhausted or on first-page loading. The native dirty-draft conflict and
+captured `expectedRevision` cases remain covered. The optimistic helper uses a
+fake store; Convex's actual optimistic layer is not exercised.
+`react-test-renderer` reports its deprecation warning.
 
-Targeted ESLint for all changed CN20 TypeScript/TSX source (excluding generated
-API typings), `npm run check:shared-isomorphic` (215 modules),
-`npm run check:tenant-boundaries` (142 tables), and `npx tsc --noEmit` passed.
-`npm run typecheck` passed its boundary suites but stopped before TypeScript
-checking because `.next/types/routes.d.ts` is missing. Its suggested Next type
-generation was not run.
+Targeted ESLint on the changed correction source passed.
+`npm run check:shared-isomorphic` passed (215 modules);
+`npm run check:tenant-boundaries` passed (142 tables, 50 user-owned);
+`npx tsc --noEmit -p convex/tsconfig.json` and `npx tsc --noEmit` passed.
+`git diff --check` passed.
 
 Browser acceptance was not performed. Dependent drafts have no standalone
 trusted Preview. Hosted acceptance remains for the master main-targeted

@@ -13,11 +13,11 @@ import type { FunctionReturnType } from 'convex/server'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import SkillsView from './SkillsView'
-import { SkillDraft } from './NativeSkillsView'
+import { NativeSkillsList, SkillDraft } from './NativeSkillsView'
 import { SkillDialog } from '@overlay/modules-react/extensions'
 import type { SkillFormValues } from '@overlay/app-core'
 
-type Instance = { props: Record<string, unknown>; children: Array<Instance | string> }
+type Instance = { props: Record<string, unknown>; children: Array<Instance | string>; parent: Instance | null }
 type Renderer = { root: { findAllByType(type: string): Instance[] }; update(element: ReactElement): void; unmount(): void }
 const { create } = createRequire(import.meta.url)('react-test-renderer') as {
   create(element: ReactElement): Renderer
@@ -96,6 +96,34 @@ function NativeSkillDraftFields({ captureOnSave, ...props }: SkillDraftProps & {
   captureOnSave(dialog.props.onSave)
   return <SkillDialogFields {...dialog.props} />
 }
+
+test('native pagination stays in a non-shrinking footer after an empty flexible panel', async t => {
+  const cleanup = installBrowser(t)
+  const loads: number[] = []
+  const props = { loading: false, skills: [], filteredSkills: [], onEdit: () => undefined,
+    loadMore: (count: number) => { loads.push(count) } }
+  let renderer!: Renderer
+  await act(async () => { renderer = create(<NativeSkillsList {...props} status="CanLoadMore" />) })
+  cleanup(async () => { await act(async () => renderer.unmount()) })
+  const button = renderer.root.findAllByType('button')[0]
+  assert.ok(button)
+  const footer = button.parent
+  // Shared Button may include component wrappers in the renderer tree.
+  let hostFooter = footer
+  while (hostFooter && hostFooter.props.className !== 'shrink-0') hostFooter = hostFooter.parent
+  assert.ok(hostFooter)
+  assert.equal(hostFooter.parent?.props.className, 'flex min-h-0 flex-1 flex-col')
+  const panel = hostFooter.parent?.children[0] as Instance
+  assert.equal(panel.props.className, 'min-h-0 flex-1')
+  await act(async () => { (button.props.onClick as () => void)() })
+  assert.deepEqual(loads, [50])
+  await act(async () => { renderer.update(<NativeSkillsList {...props} status="LoadingMore" />) })
+  assert.equal(renderer.root.findAllByType('button')[0].props.disabled, true)
+  await act(async () => { renderer.update(<NativeSkillsList {...props} status="Exhausted" />) })
+  assert.equal(renderer.root.findAllByType('button').length, 0)
+  await act(async () => { renderer.update(<NativeSkillsList {...props} loading status="LoadingFirstPage" />) })
+  assert.equal(renderer.root.findAllByType('button').length, 0)
+})
 
 test('a native dirty draft survives a remote revision and rejects its stale save', async t => {
   const previousAct = Object.getOwnPropertyDescriptor(globalThis, 'IS_REACT_ACT_ENVIRONMENT')

@@ -1,6 +1,6 @@
 'use client'
 
-import { Component, useMemo, useState, type ReactNode } from 'react'
+import { Component, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 import { useConvexAuth, useQuery } from 'convex/react'
 import type { FunctionReturnType } from 'convex/server'
 import { Archive, Plus, RotateCcw, User, Users } from 'lucide-react'
@@ -35,16 +35,13 @@ export function NativeSkillsView({ workspaceId, view }: { workspaceId: string; v
   const canAdd = view !== 'archived' && controller.permissions?.[view] === true
   const openCreate = () => setDialog({ mode: 'create', requestId: crypto.randomUUID() })
   const close = () => setDialog(null)
-  return <AppScreenShell header={<ExtensionPageHeader title="Skills" tabs={<PageSubviewTabs />}
+  return <AppScreenShell contentClassName="flex flex-col" header={<ExtensionPageHeader title="Skills" tabs={<PageSubviewTabs />}
     searchQuery={searchQuery} searchPlaceholder="Search skills…" searchTitle="Search skills" onSearchQueryChange={setSearchQuery}
     action={canAdd ? <Button variant="primary" size="sm" onClick={openCreate}><Plus size={12} />New Skill</Button> : undefined} />}>
-    {controller.denied ? <p role="alert">Sign in to load skills.</p> : <>
-      <SkillsPanel loading={controller.loading} skills={skills} filteredSkills={filteredSkills}
-        onCreate={canAdd ? openCreate : undefined} onEdit={skill => setDialog({ mode: 'edit', skillId: skill._id as Id<'skills'> })}
-        onToggle={() => undefined} />
-      {controller.status === 'CanLoadMore' || controller.status === 'LoadingMore' ? <Button variant="ghost"
-        disabled={controller.status === 'LoadingMore'} onClick={() => controller.loadMore(50)}>Load more</Button> : null}
-    </>}
+    {controller.denied ? <p role="alert">Sign in to load skills.</p> : <NativeSkillsList
+      loading={controller.loading} skills={skills} filteredSkills={filteredSkills}
+      status={controller.status} loadMore={controller.loadMore}
+      onCreate={canAdd ? openCreate : undefined} onEdit={skill => setDialog({ mode: 'edit', skillId: skill._id as Id<'skills'> })} />}
     {dialog?.mode === 'create' ? <SkillDialog key={dialog.requestId} state={{ mode: 'create' }} onClose={close} onDelete={async () => false}
       onSave={async values => {
         try {
@@ -55,6 +52,19 @@ export function NativeSkillsView({ workspaceId, view }: { workspaceId: string; v
     {dialog?.mode === 'edit' ? <NativeSkillEditor key={dialog.skillId} workspaceId={workspaceId} skillId={dialog.skillId}
       controller={controller} onClose={close} /> : null}
   </AppScreenShell>
+}
+
+export function NativeSkillsList({ status, loadMore, ...panelProps }:
+  Pick<ComponentProps<typeof SkillsPanel>, 'loading' | 'skills' | 'filteredSkills' | 'onCreate' | 'onEdit'>
+  & Pick<Controller, 'status' | 'loadMore'>) {
+  return <div className="flex min-h-0 flex-1 flex-col">
+    <div className="min-h-0 flex-1">
+      <SkillsPanel {...panelProps} onToggle={() => undefined} />
+    </div>
+    {status === 'CanLoadMore' || status === 'LoadingMore' ? <div className="shrink-0">
+      <Button variant="ghost" disabled={status === 'LoadingMore'} onClick={() => loadMore(50)}>Load more</Button>
+    </div> : null}
+  </div>
 }
 
 function NativeSkillEditor({ workspaceId, skillId, controller, onClose }: {

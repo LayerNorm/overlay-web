@@ -43,7 +43,8 @@ export const list = query({
       : args.view === 'workspace'
         ? ctx.db.query('skills').withIndex('by_workspaceId_scope_archivedAt', q => q.eq('workspaceId', args.workspaceId).eq('scope', 'workspace').eq('archivedAt', undefined))
         : ctx.db.query('skills').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId))
-    const result = await source.order('desc').paginate({ ...args.paginationOpts, numItems: Math.max(1, Math.min(25, args.paginationOpts.numItems)) })
+    const result = await source.order('desc').paginate({ ...args.paginationOpts,
+      numItems: Math.max(1, Math.min(25, args.paginationOpts.numItems)), maximumRowsRead: 25, maximumBytesRead: 2 * 1024 * 1024 })
     return { ...result, page: result.page.filter(row => rowInView(row, args.view, context.viewer)).map(row => summary(row, context)) }
   },
 })
@@ -75,7 +76,8 @@ export const availability = query({
     const source = args.legacyPersonal
       ? ctx.db.query('skills').withIndex('by_workspaceId_userId', q => q.eq('workspaceId', undefined).eq('userId', context.viewer.userId))
       : ctx.db.query('skills').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId))
-    const result = await source.order('desc').paginate({ ...args.paginationOpts, numItems: Math.max(1, Math.min(25, args.paginationOpts.numItems)) })
+    const result = await source.order('desc').paginate({ ...args.paginationOpts,
+      numItems: Math.max(1, Math.min(25, args.paginationOpts.numItems)), maximumRowsRead: 25, maximumBytesRead: 2 * 1024 * 1024 })
     return { ...result, page: result.page.filter(row => row.archivedAt === undefined && row.enabled !== false
       && (args.legacyPersonal || canReadResource(row, context.viewer))
       && (!args.workspaceOnly || row.scope === 'workspace'))

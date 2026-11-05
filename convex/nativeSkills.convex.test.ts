@@ -277,15 +277,22 @@ test('bounded native pages preserve cursors across filtered rows', async () => {
   })
   const owner = actor('alice')
   const bounded = await owner.query(listRef, {
-    workspaceId: 'ws', view: 'personal', paginationOpts: { numItems: 1000, cursor: null },
+    workspaceId: 'ws', view: 'personal', paginationOpts: { numItems: 1000, cursor: null, maximumRowsRead: 1000, maximumBytesRead: 100_000_000 },
   })
   expect(bounded.page).toHaveLength(25)
   expect(bounded.isDone).toBe(false)
+  expect(bounded.pageStatus).toBe('SplitRequired')
+  expect(bounded.splitCursor).toBeTruthy()
+  const boundedRange = await owner.query(listRef, {
+    workspaceId: 'ws', view: 'personal', paginationOpts: { numItems: 1, cursor: null, endCursor: bounded.continueCursor },
+  })
+  expect(boundedRange.page.map(row => row._id)).toEqual(bounded.page.map(row => row._id))
   const available = await owner.query(availabilityRef, {
     workspaceId: 'ws', workspaceOnly: false, legacyPersonal: false,
-    paginationOpts: { numItems: 1000, cursor: null },
+    paginationOpts: { numItems: 1000, cursor: null, maximumRowsRead: 1000, maximumBytesRead: 100_000_000 },
   })
   expect(available.page).toHaveLength(25)
+  expect(available.pageStatus).toBe('SplitRequired')
 
   const filtered = await fixture()
   const inserted = await filtered.t.run(async ctx => {
@@ -319,6 +326,63 @@ test('bounded native pages preserve cursors across filtered rows', async () => {
   expect(names).toHaveLength(inserted.length)
   expect(new Set(names).size).toBe(names.length)
   expect(names.sort()).toEqual(inserted.sort())
+})
+
+test('large legacy source rows enforce byte-limited continuation even across empty filtered pages', async () => {
+  const { t, actor } = await fixture()
+  const expected = await t.run(async ctx => {
+    const visible: string[] = []
+    for (let index = 0; index < 8; index += 1) {
+      const id = await insertSkill(ctx, { name: `large-${index}`, userId: 'alice',
+        ...(index >= 4 ? { archivedAt: now, archivedFromScope: 'personal' as const } : {}) })
+      await ctx.db.patch(id, { instructions: 'x'.repeat(600 * 1024) })
+      if (index < 4) visible.push(id)
+    }
+    return visible
+  })
+  const owner = actor('alice')
+  for (const [ref, args] of [
+    [listRef, { workspaceId: 'ws', view: 'personal' }],
+    [availabilityRef, { workspaceId: 'ws', workspaceOnly: false, legacyPersonal: false }],
+  ] as const) {
+    let cursor: string | null = null
+    const found: string[] = []
+    let done = false
+    for (let pageIndex = 0; pageIndex < 10 && !done; pageIndex += 1) {
+      const result = await owner.query(ref, { ...args, paginationOpts: {
+        numItems: 1000, maximumRowsRead: 1000, maximumBytesRead: 100_000_000, cursor,
+      } })
+      if (pageIndex === 0) {
+        expect(result.page).toEqual([])
+        expect(result.isDone).toBe(false)
+        expect(result.pageStatus).toBe('SplitRequired')
+        expect(result.splitCursor).toBeTruthy()
+      }
+      for (const row of result.page) {
+        expect(row).not.toHaveProperty('instructions')
+        found.push(row._id)
+      }
+      cursor = result.continueCursor
+      done = result.isDone
+    }
+    expect(done).toBe(true)
+    expect(found.sort()).toEqual([...expected].sort())
+  }
+})
+
+test('account erasure removes only the deleted user creation receipts, including deleted skills', async () => {
+  const { t, actor } = await fixture()
+  await actor('alice').mutation(createRef, createArgs('alice-kept-skill'))
+  const deletedSkill = await actor('alice').mutation(createRef, createArgs('alice-deleted-skill'))
+  await actor('alice').mutation(removeRef, { workspaceId: 'ws', skillId: deletedSkill, expectedRevision: 1 })
+  await actor('bob').mutation(createRef, createArgs('bob-kept-skill'))
+  const before = await t.run(ctx => ctx.db.query('skillCreationReceipts').collect())
+  expect(before.filter(row => row.userId === 'alice')).toHaveLength(2)
+  const bobReceipts = before.filter(row => row.userId === 'bob')
+  expect(bobReceipts).toHaveLength(1)
+  await t.mutation(mutation('auth/users:deleteUserAccountByServer'), { serverSecret: secret, userId: 'alice' })
+  const after = await t.run(ctx => ctx.db.query('skillCreationReceipts').collect())
+  expect(after).toEqual(bobReceipts)
 })
 
 test('availability excludes disabled, archived, and private rows and returns safe legacy summaries', async () => {

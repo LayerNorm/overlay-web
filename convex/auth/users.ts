@@ -497,6 +497,12 @@ export const deleteUserAccountByServer = mutation({
     )
     await deleteIndexed(() =>
       ctx.db
+        .query('skillCreationReceipts')
+        .withIndex('by_userId_requestId', (q) => q.eq('userId', userId))
+        .collect(),
+    )
+    await deleteIndexed(() =>
+      ctx.db
         .query('automations')
         .withIndex('by_userId', (q) => q.eq('userId', userId))
         .collect(),
