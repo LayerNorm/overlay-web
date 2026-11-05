@@ -1,4 +1,4 @@
-import { paginationOptsValidator } from 'convex/server'
+import { paginationOptsValidator, paginationResultValidator } from 'convex/server'
 import { convexToJson, v } from 'convex/values'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { nativePersonalChatScope, requireNativePersonalChat, requireNativeWorkspace } from '../lib/nativeViewer'
@@ -15,6 +15,16 @@ import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 
 const resourceArgs = { workspaceId: v.string(), conversationId: v.id('conversations') }
 type Access = Awaited<ReturnType<typeof requireNativePersonalChat>>
+
+const summaryValidator = v.object({
+  _id: v.id('conversations'), workspaceId: v.string(), title: v.string(),
+  lastModified: v.number(), createdAt: v.number(),
+  askModelIds: v.array(v.string()), actModelId: v.string(), lastMode: v.union(v.literal('ask'), v.literal('act')),
+  conversationType: v.literal('personal'), scope: v.literal('personal'),
+  archivedAt: v.optional(v.number()), lastReadAt: v.optional(v.number()),
+  markedUnreadAt: v.optional(v.number()), lastMessageId: v.optional(v.id('conversationMessages')),
+  lastMessageAt: v.optional(v.number()), unread: v.boolean(),
+})
 
 async function summary(ctx: QueryCtx, access: Access) {
   const { conversation, participant } = access
@@ -43,6 +53,7 @@ async function summary(ctx: QueryCtx, access: Access) {
 
 export const list = query({
   args: { workspaceId: v.string(), archived: v.boolean(), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(summaryValidator),
   handler: async (ctx, args) => {
     const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
     await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
@@ -60,6 +71,7 @@ export const list = query({
 
 export const getSummary = query({
   args: resourceArgs,
+  returns: v.union(v.null(), summaryValidator),
   handler: async (ctx, args) => {
     const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
     await requireNativeCapability(ctx, viewer.userId, 'conversations.read')

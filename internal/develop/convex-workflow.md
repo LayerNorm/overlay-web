@@ -296,6 +296,17 @@ globally; resource preloads need their own authorization.
 
 ### Native personal-chat list ownership (CN-04)
 
+The native transcript client additionally requires the server-owned
+`nativePersonalTranscriptRevision: "native-personal-transcript-v1"` marker from
+the existing `platform/uiSettings:getByServer` endpoint, alongside
+`nativePersonalChatRevision: "native-personal-list-v1"`. The shell and chat route
+share a request-local readiness probe. An old, unknown or unavailable backend
+keeps both list and history ownership on the guarded legacy path, including
+server-preloaded history. This is an expand/contract release gate, not a runtime
+database abstraction. Backend rollback leaves the additive transcript fields
+and indexes in place. Native summaries validate model preferences as well as
+list metadata so the transcript UI can consume one typed contract.
+
 Canonical title projection updates only the selected runtime's title and title
 display state. It must not hydrate the entire UI snapshot: doing so creates a new
 model-selection array, triggers the legacy metadata autosave, and feeds that write
