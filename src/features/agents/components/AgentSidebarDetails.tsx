@@ -113,6 +113,20 @@ export function AgentSidebarDetails({
           </Button>
         </p>
       ) : null}
+      {form.conflict ? (
+        <div role="alert" className="space-y-2 rounded-lg border border-(--border) p-3 text-xs">
+          <p>This agent changed elsewhere. Your draft is preserved.</p>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={editor.busy || !editor.agent}
+            onClick={() => form.discardChanges(editor.agent)}
+          >
+            Discard draft and reload
+          </Button>
+        </div>
+      ) : null}
       {overlaySettings && !runtime.legacyHostedRuntime ? (
         <>
           <DetailsDisclosure label="Model" summary={modelField.modelPickerLabel}>

@@ -10,6 +10,7 @@ import { toast } from '@overlay/ui/primitives'
 import { changeAgentComputerControl } from '../lib/agent-computer-control'
 import { AgentComputerCoordinator } from './agent-computer-coordinator'
 import type { AgentType } from './AgentEditorForm'
+import { useAgentDirectory } from './AgentDirectoryProvider'
 
 export function useAgentComputer({
 
@@ -31,6 +32,7 @@ export function useAgentComputer({
   markDirty(): void
 }) {
   const [agentComputer, setAgentComputerState] = useState<Computer | null>(null)
+  const nativeDirectory = useAgentDirectory()
   const { user } = useAuth()
   const [computerSize, setComputerSize] = useState<ComputerSize>('default')
   const [computerLoadError, setComputerLoadError] = useState<string | null>(null)
@@ -166,9 +168,20 @@ export function useAgentComputer({
       // away — otherwise the saved grant would keep offering computer tools
       // the agent can no longer use. Strip computer ids from the *stored*
       // grant so the user's other unsaved edits stay unsaved.
-      await overlayAppClient.agents.update(activeWorkspaceId, agent.id, {
+      const patch = {
         allowedToolIds: agent.allowedToolIds.filter((id) => !(COMPUTER_TOOL_IDS as readonly string[]).includes(id)),
-      })
+      }
+      if (nativeDirectory.mode === 'native') {
+        const revision = nativeDirectory.detail?.id === agent.id
+          ? nativeDirectory.detail.revision
+          : ('revision' in agent && typeof agent.revision === 'string' ? agent.revision : undefined)
+        if (!revision) throw new Error('The agent profile revision is unavailable')
+        await nativeDirectory.update(agent.id, patch, revision)
+      } else if (nativeDirectory.mode === 'legacy') {
+        await overlayAppClient.agents.update(activeWorkspaceId, agent.id, patch)
+      } else {
+        throw new Error(nativeDirectory.error ?? 'Native agent directory is unavailable')
+      }
       return true
     }, () => {
       const nextGroups = new Set(enabledToolGroups)

@@ -31,6 +31,7 @@ import { useAgentEditorForm } from './use-agent-editor-form'
 import { useAgentComputer } from './use-agent-computer'
 import { useAgentEditorActions } from './use-agent-editor-actions'
 import { AgentEditorView } from './AgentEditorPage.parts'
+import { AgentDirectoryProvider } from './AgentDirectoryProvider'
 
 export type AgentEditorPageProps = {
   mode: 'new' | 'edit'
@@ -48,6 +49,16 @@ export type AgentEditorPageProps = {
 }
 
 export function AgentEditorPage(props: AgentEditorPageProps) {
+  const { activeWorkspaceId } = useWorkspace()
+  const scopeKey = JSON.stringify([activeWorkspaceId, props.mode, props.agentId ?? null])
+  return (
+    <AgentDirectoryProvider>
+      <AgentEditorPageScope key={scopeKey} props={props} />
+    </AgentDirectoryProvider>
+  )
+}
+
+function AgentEditorPageScope({ props }: { props: AgentEditorPageProps }) {
   const { viewProps } = useAgentEditorController(props)
   return createAgentEditorPageView(viewProps)
 }

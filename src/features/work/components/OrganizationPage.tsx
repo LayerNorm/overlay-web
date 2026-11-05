@@ -15,8 +15,9 @@ import { agentsForCreatorScope } from '@/shared/agents/last-agent-by-workspace'
 import { chiefRoleLabel, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identity'
 import { AGENT_DIRECTORY_CHANGED_EVENT } from '@/shared/workspace/sidebar-events'
 import { OrganizationAgentDetails } from './OrganizationAgentDetails'
+import { AgentDirectoryProvider, useAgentDirectory } from '@/features/agents/components/AgentDirectoryProvider'
 
-type Agent = WorkspaceAgentDirectoryItem
+type Agent = WorkspaceAgentDirectoryItem & { revision?: string }
 
 function AgentNode({ agent, owner, pinned, selected, onSelect }: {
   agent: Agent; owner: string; pinned: boolean; selected: boolean; onSelect(): void
@@ -36,7 +37,16 @@ function AgentNode({ agent, owner, pinned, selected, onSelect }: {
 }
 
 export function OrganizationPage() {
+  return (
+    <AgentDirectoryProvider>
+      <OrganizationPageScope />
+    </AgentDirectoryProvider>
+  )
+}
+
+function OrganizationPageScope() {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
+  const native = useAgentDirectory()
   const scope = usePanelScope()
   const href = useWorkspaceHref()
   const { capabilities, isLoading } = useOverlayCapabilities()
@@ -45,6 +55,7 @@ export function OrganizationPage() {
   const [revision, setRevision] = useState(0)
   const [selection, setSelection] = useState<{ key: string; id: string } | null>(null)
   useEffect(() => {
+    if (native.mode !== 'legacy') return
     if (!activeWorkspaceId || !capabilities.work) return
     let live = true
     void overlayAppClient.agents.list(activeWorkspaceId).then(
@@ -52,13 +63,22 @@ export function OrganizationPage() {
       () => { if (live) setState({ key, error: true }) },
     )
     return () => { live = false }
-  }, [activeWorkspaceId, capabilities.work, key, revision])
+  }, [activeWorkspaceId, capabilities.work, key, native.mode, revision])
   useEffect(() => {
     const refresh = () => setRevision(n => n + 1)
     window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refresh)
     return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refresh)
   }, [])
-  const data = state.key === key ? state.data : undefined
+  const legacyData = state.key === key ? state.data : undefined
+  const data = native.mode === 'native'
+    ? { agents: native.directory ?? [], viewerPrincipalId: native.viewerPrincipalId }
+    : native.mode === 'legacy' ? legacyData : undefined
+  const loadError = native.mode === 'unavailable'
+    ? !native.loading
+    : native.mode === 'legacy' && state.key === key && state.error
+  const directoryLoading = native.mode === 'native' || native.mode === 'unavailable'
+    ? native.loading
+    : !legacyData && !loadError
   const agents = pinChiefs(agentsForCreatorScope((data?.agents ?? []).filter(a => !a.archivedAt), data?.viewerPrincipalId, scope), data?.viewerPrincipalId)
   const root = agents.find(a => scope === 'workspace' ? a.agentRole === 'workspace_chief' : a.agentRole === 'personal_chief')
   const children = agents.filter(a => a.id !== root?.id)
@@ -76,8 +96,8 @@ export function OrganizationPage() {
           <h1 className="text-lg font-medium">{scope === 'workspace' ? activeWorkspace?.name || 'Workspace' : 'Your organization'}</h1>
           <p className="mt-2 text-center text-sm text-(--muted)">{scope === 'workspace' ? 'Workspace agents and member chiefs of staff.' : 'Your chief of staff and personal agents.'}</p>
           {!isLoading && !capabilities.work ? <p className="mt-12 text-sm text-(--muted)">Work is unavailable for this deployment.</p>
-            : isLoading || (!data && !(state.key === key && state.error)) ? <p role="status" className="mt-12 text-sm text-(--muted)">Loading organization...</p>
-              : state.key === key && state.error ? <div role="alert" className="mt-12 space-y-3 text-center"><p className="text-sm">Could not load organization.</p><Button variant="secondary" onClick={() => setRevision(n => n + 1)}>Try again</Button></div>
+            : isLoading || directoryLoading ? <p role="status" className="mt-12 text-sm text-(--muted)">Loading organization...</p>
+              : loadError ? <div role="alert" className="mt-12 space-y-3 text-center"><p className="text-sm">Could not load organization.</p><Button variant="secondary" onClick={() => native.mode === 'legacy' ? setRevision(n => n + 1) : native.retry()}>Try again</Button></div>
                 : !root ? <p className="mt-12 text-sm text-(--muted)">No chief of staff is available in this scope.</p> : (
                   <section aria-label="Agent organization" className="mt-10 flex w-full flex-col items-center">
                     {node(root)}
@@ -85,7 +105,7 @@ export function OrganizationPage() {
                       {children.map(agent => <li key={agent.id} className="flex w-full min-w-0 flex-col items-center"><div aria-hidden className="h-7 border-l border-(--border)" />{node(agent)}{scope === 'workspace' && agent.agentRole === 'personal_chief' ? <span className="mt-3 flex items-center gap-1.5 text-[11px] text-(--muted)"><LockKeyhole size={12} />Personal agents are private</span> : null}</li>)}
                     </ul></> : null}
                     <p className="mt-10 text-center text-xs text-(--muted)">Lines show coordination, not access permissions.</p>
-                    {scope === 'workspace' ? <p className="mt-2 text-center text-xs text-(--muted)">Personal agents and private threads are not exposed here.</p> : null}
+                    {scope === 'workspace' ? <p className="mt-2 text-center text-xs text-(--muted)">Private agent profiles and threads are not exposed here.</p> : null}
                   </section>
                 )}
         </div>

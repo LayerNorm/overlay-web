@@ -49,8 +49,11 @@ import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-worksp
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { useAgentExpansion } from './sidebar/useAgentExpansion'
 import { resolveAgentEntryThread } from './sidebar/resolveAgentEntryThread'
+// eslint-disable-next-line no-restricted-imports -- AppSidebarAgentsPanel is the approved agent-directory summary consumer.
+import { AgentDirectoryProvider, useAgentDirectory as useNativeAgentDirectory } from '@/features/agents/components/AgentDirectoryProvider'
 
 type AgentBundleMap = Record<string, WorkspaceAgentBundle | 'loading' | 'error'>
+type DirectoryAgent = WorkspaceAgentDirectoryItem & { revision?: string }
 
 function bundleThreadTitle(bundle: AgentBundleMap[string] | undefined, conversationId: string): string {
   if (!bundle || bundle === 'loading' || bundle === 'error') return 'Thread'
@@ -169,7 +172,8 @@ function useAgentDirectory(
   loadBundle: (agentId: string) => Promise<void>,
   setBundles: Dispatch<SetStateAction<AgentBundleMap>>,
 ) {
-  const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
+  const native = useNativeAgentDirectory()
+  const [agents, setAgents] = useState<DirectoryAgent[]>([])
   const [viewerPrincipalId, setViewerPrincipalId] = useState<string | null>(null)
   const [draftPreviews, setDraftPreviews] = useState<Record<string, AgentDraftPreviewPatch>>({})
   const [loading, setLoading] = useState(true)
@@ -193,13 +197,15 @@ function useAgentDirectory(
     }
   }, [workspaceId])
 
-  useEffect(() => { void loadAgents() }, [loadAgents])
+  useEffect(() => {
+    if (native.mode === 'legacy') void loadAgents()
+  }, [loadAgents, native.mode])
 
   useEffect(() => {
     const refreshAgents = (event: Event) => {
       const changedWorkspaceId = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail?.workspaceId
       if (changedWorkspaceId && changedWorkspaceId !== workspaceId) return
-      void loadAgents(false)
+      if (native.mode === 'legacy') void loadAgents(false)
       // Agent lifecycle events (rename/archive/restore) can change what the
       // expanded bundles contain — refetch them rather than diffing.
       setBundles((current) => {
@@ -211,7 +217,7 @@ function useAgentDirectory(
     }
     window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
     return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
-  }, [expanded, loadAgents, loadBundle, setBundles, workspaceId])
+  }, [expanded, loadAgents, loadBundle, native.mode, setBundles, workspaceId])
 
   useEffect(() => {
     setDraftPreviews({})
@@ -229,7 +235,27 @@ function useAgentDirectory(
     return () => window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
   }, [workspaceId])
 
-  return { agents, viewerPrincipalId, draftPreviews, loading }
+  if (native.mode === 'native') {
+    return {
+      agents: native.directory ?? [],
+      viewerPrincipalId: native.viewerPrincipalId,
+      draftPreviews,
+      loading: native.loading,
+      pendingAgentIds: native.pendingAgentIds,
+      pendingArchiveIds: native.pendingArchiveIds,
+    }
+  }
+  if (native.mode === 'unavailable') {
+    return {
+      agents: [],
+      viewerPrincipalId: null,
+      draftPreviews,
+      loading: native.loading,
+      pendingAgentIds: native.pendingAgentIds,
+      pendingArchiveIds: native.pendingArchiveIds,
+    }
+  }
+  return { agents, viewerPrincipalId, draftPreviews, loading, pendingAgentIds: new Set(), pendingArchiveIds: new Set() }
 }
 
 function useAgentActions({
@@ -255,7 +281,7 @@ function useAgentActions({
   loadBundle: (agentId: string) => Promise<void>
   activeAgentId: string | null
   activeConversationId: string | null
-  sortedAgents: WorkspaceAgentDirectoryItem[]
+  sortedAgents: DirectoryAgent[]
 }) {
   const router = useRouter()
   const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
@@ -460,6 +486,8 @@ function useAgentActions({
 function AgentListRow({
   agent,
   pinned,
+  pending,
+  pendingArchive,
   ownerLabel,
   isExpanded,
   isActive,
@@ -476,8 +504,10 @@ function AgentListRow({
   onArchiveThread,
   onDeleteThread,
 }: {
-  agent: WorkspaceAgentDirectoryItem
+  agent: DirectoryAgent
   pinned: boolean
+  pending: boolean
+  pendingArchive: boolean
   ownerLabel: string
   isExpanded: boolean
   isActive: boolean
@@ -495,11 +525,11 @@ function AgentListRow({
   onDeleteThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
 }) {
   return (
-    <SidebarMenuItem>
+    <SidebarMenuItem aria-busy={pending || pendingArchive}>
       <div className="group/agent-row relative">
         <SidebarMenuButton
           isActive={isActive}
-          disabled={anyOpening}
+          disabled={anyOpening || pending || pendingArchive}
           // Reserve both actions on touch too; they are always visible below md.
           className={`${isChief(agent) ? 'h-12' : 'h-[38px]'} text-sm font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14`}
           onClick={() => {
@@ -508,19 +538,26 @@ function AgentListRow({
           }}
         >
           <span className="flex size-6 shrink-0 items-center justify-center">
-            {isOpening
+            {isOpening || pending || pendingArchive
               ? <Loader2 size={16} className="animate-spin" />
               : <AgentCreature isDefault={agent.isDefault} agent={agent} size={24} />}
           </span>
           <span className="min-w-0 flex-1">
-            <span className="flex items-center gap-1.5"><span className="truncate">{agent.name}</span>{pinned ? <Pin size={11} className="shrink-0 text-(--muted)" aria-label="Pinned chief of staff" /> : null}</span>
+            <span className="flex items-center gap-1.5">
+              <span className="truncate">{agent.name}</span>
+              {pending ? <span className="shrink-0 text-[10px] text-(--muted)">
+                {agent.revision === 'pending' ? 'Creating…' : 'Saving…'}
+              </span> : null}
+              {pendingArchive ? <span className="shrink-0 text-[10px] text-(--muted)">Archiving…</span> : null}
+              {pinned ? <Pin size={11} className="shrink-0 text-(--muted)" aria-label="Pinned chief of staff" /> : null}
+            </span>
             {isChief(agent) ? <span className="block truncate text-[11px] leading-4 text-(--muted)">{ownerLabel}</span> : null}
           </span>
         </SidebarMenuButton>
         <SidebarMenuAction
           aria-label={`New thread with ${agent.name}`}
           title="New thread"
-          disabled={creatingThread}
+          disabled={creatingThread || pending || pendingArchive}
           className={`right-7 ${isChief(agent) ? 'top-[14px]' : 'top-[9px]'}`}
           onClick={(event) => {
             event.stopPropagation()
@@ -557,17 +594,27 @@ function AgentListRow({
   )
 }
 
-export function AgentsInlinePanel({
-  workspaceId,
-  baseHref = '/app/agents',
-  view = 'personal',
-  onNavigate,
-}: {
+type AgentsInlinePanelProps = {
   workspaceId: string | null
   baseHref?: string
   view?: AgentsPanelView
   onNavigate?: () => void
-}) {
+}
+
+export function AgentsInlinePanel(props: AgentsInlinePanelProps) {
+  return (
+    <AgentDirectoryProvider>
+      <AgentsInlinePanelScope {...props} />
+    </AgentDirectoryProvider>
+  )
+}
+
+function AgentsInlinePanelScope({
+  workspaceId,
+  baseHref = '/app/agents',
+  view = 'personal',
+  onNavigate,
+}: AgentsInlinePanelProps) {
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -586,6 +633,8 @@ export function AgentsInlinePanel({
     viewerPrincipalId,
     draftPreviews,
     loading,
+    pendingAgentIds,
+    pendingArchiveIds,
   } = useAgentDirectory(workspaceId, expanded, loadBundle, setBundles)
 
   // Unsaved editor drafts overlay the fetched directory so the row renames and
@@ -689,6 +738,8 @@ export function AgentsInlinePanel({
               key={agent.id}
               agent={agent}
               pinned={isPinnedChief(agent, viewerPrincipalId)}
+              pending={pendingAgentIds.has(agent.id)}
+              pendingArchive={pendingArchiveIds.has(agent.id)}
               ownerLabel={agent.agentRole === 'workspace_chief' ? `${workspaceName} · Workspace` : `${agent.createdByDisplayName || 'Member'}${agent.createdByPrincipalId === viewerPrincipalId ? ' · You' : ''}`}
               isExpanded={isExpanded}
               isActive={activeAgentId === agent.id && !activeConversationId}

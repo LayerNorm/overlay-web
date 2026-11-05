@@ -84,91 +84,116 @@ export const createByServer = mutation({
     if (!args.name.trim() || !args.instructions.trim() || !args.modelId.trim()) {
       throw new Error('WORKSPACE_AGENT_INVALID')
     }
-    const duplicate = (
-      await ctx.db
-        .query('workspaceAgentDefinitions')
-        .withIndex('by_workspaceId', (q) =>
-          q.eq('workspaceId', args.workspaceId),
-        )
-        .collect()
-    ).find(
-      (item) =>
-        item.name.toLowerCase() === args.name.trim().toLowerCase() &&
-        !item.archivedAt,
-    )
-    if (duplicate && !duplicate.archivedAt)
-      throw new Error('WORKSPACE_AGENT_ALREADY_EXISTS')
-    if (
-      await ctx.db
-        .query('workspaceAgentDefinitions')
-        .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId))
-        .unique()
-    ) {
-      throw new Error('WORKSPACE_AGENT_ALREADY_EXISTS')
-    }
-    await ctx.db.insert('workspacePrincipals', {
-      principalId: args.principalId, workspaceId: args.workspaceId, type: 'agent', agentId: args.agentId,
-      displayName: args.name.trim(), createdByPrincipalId: args.createdByPrincipalId,
-      createdAt: args.now, updatedAt: args.now,
-    })
-    await ctx.db.insert('workspaceMemberships', {
-      membershipId: `${args.agentId}:membership`, workspaceId: args.workspaceId,
-      principalId: args.principalId, role: 'member', status: 'active',
-      invitedByPrincipalId: args.createdByPrincipalId, joinedAt: args.now, updatedAt: args.now,
-    })
-    const definitionId = await ctx.db.insert('workspaceAgentDefinitions', {
-      agentId: args.agentId, workspaceId: args.workspaceId, principalId: args.principalId,
-      name: args.name.trim(), description: cleanOptional(args.description),
-      instructions: args.instructions.trim(), harness: args.harness, modelId: args.modelId.trim(),
-      ...(args.permissionMode === undefined ? {} : { permissionMode: args.permissionMode.trim() }),
-      ...(args.effort === undefined ? {} : { effort: args.effort.trim() }),
-      ...(args.reasoning === undefined ? {} : { reasoning: args.reasoning }),
-      avatarColor: cleanOptional(args.avatarColor), avatarShape: cleanOptional(args.avatarShape),
-      allowedToolIds: unique(args.allowedToolIds),
-      invocationPolicy: 'mention', visibility: args.visibility ?? 'workspace',
-      createdByPrincipalId: args.createdByPrincipalId,
-      teamIds: unique(args.teamIds), roomCount: 0,
-      createdAt: args.now, updatedAt: args.now,
-      ...(args.isDefault === undefined ? {} : { isDefault: args.isDefault }),
-    })
-    const newTeams = await Promise.all(unique(args.teamIds).map((teamId) =>
-      ctx.db.query('workspaceTeams').withIndex('by_teamId', (q) => q.eq('teamId', teamId)).unique()))
-    const joinableTeamIds = unique(args.teamIds).filter((teamId, i) => {
-      const team = newTeams[i]
-      return team && team.workspaceId === args.workspaceId && !team.archivedAt
-    })
-    await Promise.all(joinableTeamIds.map((teamId) =>
-      ctx.db.insert('workspaceTeamMemberships', {
-        teamMembershipId: `${teamId}:${args.principalId}`, workspaceId: args.workspaceId,
-        teamId, principalId: args.principalId, principalType: 'agent',
-        addedByPrincipalId: args.createdByPrincipalId, createdAt: args.now,
-      })))
-    // Creator-only agents join no channels implicitly: only their creator can
-    // place them anywhere, and only the creator can invoke them.
-    if ((args.visibility ?? 'workspace') !== 'creator') {
-      const channels = await ctx.db
-        .query('conversations')
-        .withIndex('by_workspaceId_conversationType_lastModified', (q) =>
-          q
-            .eq('workspaceId', args.workspaceId)
-            .eq('conversationType', 'channel'),
-        )
-        .collect()
-      await Promise.all(channels
-        .filter((channel) => !channel.deletedAt && channel.channelVisibility === 'public')
-        .map((channel) => ctx.db.insert('conversationParticipants', {
-          conversationId: channel._id, workspaceId: args.workspaceId, principalId: args.principalId,
-          principalType: 'agent', role: 'member', status: 'active', notificationLevel: 'mentions',
-          joinedAt: args.now, updatedAt: args.now,
-        })))
-    }
-    await ctx.db.insert('workspaceResourceScopes', {
-      workspaceId: args.workspaceId, resourceType: 'agent', resourceId: args.agentId,
-      createdAt: args.now, updatedAt: args.now,
-    })
-    return await directoryValue(ctx, (await ctx.db.get(definitionId))!)
+    const row = await createWorkspaceAgentRecord(ctx, args)
+    return await directoryValue(ctx, row)
   },
 })
+
+export async function createWorkspaceAgentRecord(
+  ctx: MutationCtx,
+  args: {
+    agentId: string
+    principalId: string
+    workspaceId: string
+    name: string
+    description?: string
+    instructions: string
+    harness: 'overlay' | 'claude-code' | 'codex'
+    permissionMode?: string
+    effort?: string
+    reasoning?: 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+    modelId: string
+    avatarColor?: string
+    avatarShape?: string
+    allowedToolIds: string[]
+    teamIds: string[]
+    visibility?: 'creator' | 'workspace'
+    createdByPrincipalId: string
+    now: number
+    isDefault?: boolean
+    maxRelatedRecords?: number
+  },
+) {
+  await requireActiveWorkspace(ctx, args.workspaceId)
+  await requirePrincipal(ctx, args.workspaceId, args.createdByPrincipalId)
+  const definitionsQuery = ctx.db.query('workspaceAgentDefinitions')
+    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+  const definitions = args.maxRelatedRecords === undefined
+    ? await definitionsQuery.collect()
+    : await definitionsQuery.take(args.maxRelatedRecords + 1)
+  if (args.maxRelatedRecords !== undefined && definitions.length > args.maxRelatedRecords) {
+    throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+  }
+  const duplicate = definitions.find((item) =>
+    item.name.toLowerCase() === args.name.trim().toLowerCase() && !item.archivedAt)
+  if (duplicate) throw new Error('WORKSPACE_AGENT_ALREADY_EXISTS')
+  if (await ctx.db.query('workspaceAgentDefinitions')
+    .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId)).unique()) {
+    throw new Error('WORKSPACE_AGENT_ALREADY_EXISTS')
+  }
+  await ctx.db.insert('workspacePrincipals', {
+    principalId: args.principalId, workspaceId: args.workspaceId, type: 'agent', agentId: args.agentId,
+    displayName: args.name.trim(), createdByPrincipalId: args.createdByPrincipalId,
+    createdAt: args.now, updatedAt: args.now,
+  })
+  await ctx.db.insert('workspaceMemberships', {
+    membershipId: `${args.agentId}:membership`, workspaceId: args.workspaceId,
+    principalId: args.principalId, role: 'member', status: 'active',
+    invitedByPrincipalId: args.createdByPrincipalId, joinedAt: args.now, updatedAt: args.now,
+  })
+  const definitionId = await ctx.db.insert('workspaceAgentDefinitions', {
+    agentId: args.agentId, workspaceId: args.workspaceId, principalId: args.principalId,
+    name: args.name.trim(), description: cleanOptional(args.description),
+    instructions: args.instructions.trim(), harness: args.harness, modelId: args.modelId.trim(),
+    ...(args.permissionMode === undefined ? {} : { permissionMode: args.permissionMode.trim() }),
+    ...(args.effort === undefined ? {} : { effort: args.effort.trim() }),
+    ...(args.reasoning === undefined ? {} : { reasoning: args.reasoning }),
+    avatarColor: cleanOptional(args.avatarColor), avatarShape: cleanOptional(args.avatarShape),
+    allowedToolIds: unique(args.allowedToolIds),
+    invocationPolicy: 'mention', visibility: args.visibility ?? 'workspace',
+    createdByPrincipalId: args.createdByPrincipalId,
+    teamIds: unique(args.teamIds), roomCount: 0,
+    createdAt: args.now, updatedAt: args.now,
+    ...(args.isDefault === undefined ? {} : { isDefault: args.isDefault }),
+  })
+  const newTeams = await Promise.all(unique(args.teamIds).map((teamId) =>
+    ctx.db.query('workspaceTeams').withIndex('by_teamId', (q) => q.eq('teamId', teamId)).unique()))
+  const joinableTeamIds = unique(args.teamIds).filter((teamId, i) => {
+    const team = newTeams[i]
+    return team && team.workspaceId === args.workspaceId && !team.archivedAt
+  })
+  await Promise.all(joinableTeamIds.map((teamId) =>
+    ctx.db.insert('workspaceTeamMemberships', {
+      teamMembershipId: `${teamId}:${args.principalId}`, workspaceId: args.workspaceId,
+      teamId, principalId: args.principalId, principalType: 'agent',
+      addedByPrincipalId: args.createdByPrincipalId, createdAt: args.now,
+    })))
+  if ((args.visibility ?? 'workspace') !== 'creator') {
+    const channelQuery = ctx.db.query('conversations')
+      .withIndex('by_workspaceId_conversationType_lastModified', (q) =>
+        q.eq('workspaceId', args.workspaceId).eq('conversationType', 'channel'))
+    const channels = args.maxRelatedRecords === undefined
+      ? await channelQuery.collect()
+      : await channelQuery.take(args.maxRelatedRecords + 1)
+    if (args.maxRelatedRecords !== undefined && channels.length > args.maxRelatedRecords) {
+      throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+    }
+    await Promise.all(channels
+      .filter((channel) => !channel.deletedAt && channel.channelVisibility === 'public')
+      .map((channel) => ctx.db.insert('conversationParticipants', {
+        conversationId: channel._id, workspaceId: args.workspaceId, principalId: args.principalId,
+        principalType: 'agent', role: 'member', status: 'active', notificationLevel: 'mentions',
+        joinedAt: args.now, updatedAt: args.now,
+      })))
+  }
+  await ctx.db.insert('workspaceResourceScopes', {
+    workspaceId: args.workspaceId, resourceType: 'agent', resourceId: args.agentId,
+    createdAt: args.now, updatedAt: args.now,
+  })
+  const inserted = await ctx.db.get(definitionId)
+  if (!inserted) throw new Error('WORKSPACE_AGENT_NOT_FOUND')
+  return inserted
+}
 
 export const getByServer = query({
   args: { serverSecret: v.string(), agentId: v.string(), workspaceId: v.string() },
@@ -235,86 +260,106 @@ export const ensureChiefsByServer = mutation({
   returns: v.array(agentValidator),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
-    const actor = await requireActiveHumanMembership(ctx, args.workspaceId, args.actorUserId, args.actorPrincipalId)
-    if (actor.membership.role === 'guest') throw new Error('WORKSPACE_AGENT_EDIT_FORBIDDEN')
-    const definitions = await ctx.db.query('workspaceAgentDefinitions')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId)).collect()
-    const live = definitions.filter((row) => !row.deletedAt)
-    const legacy = findAdoptableLegacyDefault(live, args.workspaceId)
-
-    const workspaceChiefRows = live.filter((row) => row.agentRole === 'workspace_chief')
-    if (workspaceChiefRows.length > 1) throw new Error('CHIEF_ROLE_NOT_UNIQUE')
-    let workspaceChief = workspaceChiefRows[0]
-    if (workspaceChief && (workspaceChief.chiefScope !== 'workspace'
-      || (workspaceChief.visibility ?? 'workspace') !== 'workspace'
-      || workspaceChief.harness !== 'overlay'
-      || workspaceChief.archivedAt)) throw new Error('CHIEF_BINDING_INVARIANT')
-    if (!workspaceChief) {
-      const candidate = workspace.kind === 'organization' ? legacy : undefined
-      if (candidate?.archivedAt) throw new Error('CHIEF_BINDING_INVARIANT')
-      workspaceChief = candidate
-        ? await adoptChief(ctx, candidate, 'workspace_chief', 'workspace', undefined, args.now)
-        : await insertChief(ctx, {
-            workspace,
-            agentId: `workspace-chief-${args.workspaceId}`,
-            principalId: `workspace-chief-principal-${args.workspaceId}`,
-            role: 'workspace_chief',
-            scope: 'workspace',
-            ownerUserId: undefined,
-            createdByPrincipalId: actor.principal.principalId,
-            visibility: 'workspace',
-            name: 'Overlay',
-            description: 'Workspace chief of staff.',
-            instructions: 'You are the workspace chief of staff. Help coordinate work across this workspace.',
-            allowedToolIds: [],
-            isDefault: true,
-            now: args.now,
-          })
-    }
-
-    const eligible = await eligiblePersonalOwners(ctx, workspace, args.actorUserId, args.actorPrincipalId)
-    const ensured: Doc<'workspaceAgentDefinitions'>[] = [workspaceChief]
-    for (const owner of eligible) {
-      const existingRows = live.filter((row) =>
-        row.agentRole === 'personal_chief'
-        && row.chiefOwnerUserId === owner.userId)
-      if (existingRows.some((row) => row.chiefScope !== 'personal' && row.chiefScope !== 'workspace')) {
-        throw new Error('CHIEF_BINDING_INVARIANT')
-      }
-      const existingPrivateRows = existingRows.filter((row) => row.chiefScope === 'personal')
-      const existingWorkspaceRows = existingRows.filter((row) => row.chiefScope === 'workspace')
-      if (existingPrivateRows.length > 1 || existingWorkspaceRows.length > 1) {
-        throw new Error('CHIEF_ROLE_NOT_UNIQUE')
-      }
-      const existingPrivate = existingPrivateRows[0]
-      const existingWorkspace = existingWorkspaceRows[0]
-      if (existingPrivate && (existingPrivate.harness !== 'overlay' || existingPrivate.archivedAt)) {
-        throw new Error('CHIEF_BINDING_INVARIANT')
-      }
-      if (existingWorkspace && ((existingWorkspace.visibility ?? 'workspace') !== 'workspace'
-        || existingWorkspace.harness !== 'overlay' || existingWorkspace.archivedAt)) {
-        throw new Error('CHIEF_BINDING_INVARIANT')
-      }
-      const oldDefault = workspace.kind === 'personal' && owner.userId === workspace.personalOwnerUserId
-        ? legacy
-        : undefined
-      if (oldDefault?.archivedAt) throw new Error('CHIEF_BINDING_INVARIANT')
-      const personal = existingPrivate
-        ?? (oldDefault && oldDefault.agentRole === undefined
-          ? await adoptChief(ctx, oldDefault, 'personal_chief', 'personal', owner.userId, args.now)
-          : await createPersonalChief(ctx, workspace, owner, 'personal', args.now))
-      const privateBinding = personal.visibility === 'creator'
-        ? personal
-        : (await ctx.db.patch(personal._id, { visibility: 'creator', updatedAt: args.now }),
-          { ...personal, visibility: 'creator' as const, updatedAt: args.now })
-      const workspaceBinding = existingWorkspace
-        ?? await createPersonalChief(ctx, workspace, owner, 'workspace', args.now)
-      ensured.push(privateBinding, workspaceBinding)
-    }
+    const ensured = await ensureWorkspaceAgentChiefRecords(ctx, args)
     return await Promise.all(ensured.map((row) => directoryValue(ctx, row)))
   },
 })
+
+export async function ensureWorkspaceAgentChiefRecords(
+  ctx: MutationCtx,
+  args: {
+    workspaceId: string
+    actorUserId: string
+    actorPrincipalId: string
+    now: number
+    maxRelatedRecords?: number
+  },
+) {
+  const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
+  const actor = await requireActiveHumanMembership(ctx, args.workspaceId, args.actorUserId, args.actorPrincipalId)
+  if (actor.membership.role === 'guest') throw new Error('WORKSPACE_AGENT_EDIT_FORBIDDEN')
+  const definitionsQuery = ctx.db.query('workspaceAgentDefinitions')
+    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+  const definitions = args.maxRelatedRecords === undefined
+    ? await definitionsQuery.collect()
+    : await definitionsQuery.take(args.maxRelatedRecords + 1)
+  if (args.maxRelatedRecords !== undefined && definitions.length > args.maxRelatedRecords) {
+    throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+  }
+  const live = definitions.filter((row) => !row.deletedAt)
+  const legacy = findAdoptableLegacyDefault(live, args.workspaceId)
+  const workspaceChiefRows = live.filter((row) => row.agentRole === 'workspace_chief')
+  if (workspaceChiefRows.length > 1) throw new Error('CHIEF_ROLE_NOT_UNIQUE')
+  let workspaceChief = workspaceChiefRows[0]
+  if (workspaceChief && (workspaceChief.chiefScope !== 'workspace'
+    || (workspaceChief.visibility ?? 'workspace') !== 'workspace'
+    || workspaceChief.harness !== 'overlay'
+    || workspaceChief.archivedAt)) throw new Error('CHIEF_BINDING_INVARIANT')
+  if (!workspaceChief) {
+    const candidate = workspace.kind === 'organization' ? legacy : undefined
+    if (candidate?.archivedAt) throw new Error('CHIEF_BINDING_INVARIANT')
+    workspaceChief = candidate
+      ? await adoptChief(ctx, candidate, 'workspace_chief', 'workspace', undefined, args.now, args.maxRelatedRecords)
+      : await insertChief(ctx, {
+          workspace,
+          agentId: `workspace-chief-${args.workspaceId}`,
+          principalId: `workspace-chief-principal-${args.workspaceId}`,
+          role: 'workspace_chief',
+          scope: 'workspace',
+          ownerUserId: undefined,
+          createdByPrincipalId: actor.principal.principalId,
+          visibility: 'workspace',
+          name: 'Overlay',
+          description: 'Workspace chief of staff.',
+          instructions: 'You are the workspace chief of staff. Help coordinate work across this workspace.',
+          allowedToolIds: [],
+          isDefault: true,
+          now: args.now,
+          maxRelatedRecords: args.maxRelatedRecords,
+        })
+  }
+  const eligible = await eligiblePersonalOwners(
+    ctx, workspace, args.actorUserId, args.actorPrincipalId, args.maxRelatedRecords,
+  )
+  const ensured: Doc<'workspaceAgentDefinitions'>[] = [workspaceChief]
+  for (const owner of eligible) {
+    const existingRows = live.filter((row) =>
+      row.agentRole === 'personal_chief' && row.chiefOwnerUserId === owner.userId)
+    if (existingRows.some((row) => row.chiefScope !== 'personal' && row.chiefScope !== 'workspace')) {
+      throw new Error('CHIEF_BINDING_INVARIANT')
+    }
+    const existingPrivateRows = existingRows.filter((row) => row.chiefScope === 'personal')
+    const existingWorkspaceRows = existingRows.filter((row) => row.chiefScope === 'workspace')
+    if (existingPrivateRows.length > 1 || existingWorkspaceRows.length > 1) {
+      throw new Error('CHIEF_ROLE_NOT_UNIQUE')
+    }
+    const existingPrivate = existingPrivateRows[0]
+    const existingWorkspace = existingWorkspaceRows[0]
+    if (existingPrivate && (existingPrivate.harness !== 'overlay' || existingPrivate.archivedAt)) {
+      throw new Error('CHIEF_BINDING_INVARIANT')
+    }
+    if (existingWorkspace && ((existingWorkspace.visibility ?? 'workspace') !== 'workspace'
+      || existingWorkspace.harness !== 'overlay' || existingWorkspace.archivedAt)) {
+      throw new Error('CHIEF_BINDING_INVARIANT')
+    }
+    const oldDefault = workspace.kind === 'personal' && owner.userId === workspace.personalOwnerUserId
+      ? legacy
+      : undefined
+    if (oldDefault?.archivedAt) throw new Error('CHIEF_BINDING_INVARIANT')
+    const personal = existingPrivate
+      ?? (oldDefault && oldDefault.agentRole === undefined
+        ? await adoptChief(ctx, oldDefault, 'personal_chief', 'personal', owner.userId, args.now, args.maxRelatedRecords)
+        : await createPersonalChief(ctx, workspace, owner, 'personal', args.now, args.maxRelatedRecords))
+    const privateBinding = personal.visibility === 'creator'
+      ? personal
+      : (await ctx.db.patch(personal._id, { visibility: 'creator', updatedAt: args.now }),
+        { ...personal, visibility: 'creator' as const, updatedAt: args.now })
+    const workspaceBinding = existingWorkspace
+      ?? await createPersonalChief(ctx, workspace, owner, 'workspace', args.now, args.maxRelatedRecords)
+    ensured.push(privateBinding, workspaceBinding)
+  }
+  return ensured
+}
 
 export const updateChiefIdentityByServer = mutation({
   args: {
@@ -354,7 +399,7 @@ export const updateChiefIdentityByServer = mutation({
   },
 })
 
-async function applyChiefIdentityPatch(
+export async function applyChiefIdentityPatch(
   ctx: MutationCtx,
   args: {
     ownerUserId: string
@@ -363,13 +408,20 @@ async function applyChiefIdentityPatch(
     avatarColor?: string
     avatarShape?: string
     now: number
+    maxRelatedRecords?: number
   },
 ) {
   const existing = await ctx.db.query('personalChiefIdentities')
     .withIndex('by_userId', (q) => q.eq('userId', args.ownerUserId)).unique()
-  const chief = await ctx.db.query('workspaceAgentDefinitions')
-    .withIndex('by_chiefOwnerUserId', (q) => q.eq('chiefOwnerUserId', args.ownerUserId)).collect()
-    .then((rows) => rows.find((row) => row.agentRole === 'personal_chief' && !row.deletedAt))
+  const chiefsQuery = ctx.db.query('workspaceAgentDefinitions')
+    .withIndex('by_chiefOwnerUserId', (q) => q.eq('chiefOwnerUserId', args.ownerUserId))
+  const chiefs = args.maxRelatedRecords === undefined
+    ? await chiefsQuery.collect()
+    : await chiefsQuery.take(args.maxRelatedRecords + 1)
+  if (args.maxRelatedRecords !== undefined && chiefs.length > args.maxRelatedRecords) {
+    throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+  }
+  const chief = chiefs.find((row) => row.agentRole === 'personal_chief' && !row.deletedAt)
   if (!chief && !existing) throw new Error('CHIEF_IDENTITY_NOT_FOUND')
   const identity = existing ?? await ctx.db.insert('personalChiefIdentities', {
     userId: args.ownerUserId,
@@ -402,8 +454,9 @@ async function applyChiefIdentityPatch(
   }
   await ctx.db.patch(identity._id, patch)
   const next = { ...identity, ...patch }
-  const rows = await ctx.db.query('workspaceAgentDefinitions')
-    .withIndex('by_chiefOwnerUserId', (q) => q.eq('chiefOwnerUserId', args.ownerUserId)).collect()
+  const rows = args.maxRelatedRecords === undefined
+    ? chiefs
+    : chiefs
   await Promise.all(rows.filter((row) => row.agentRole === 'personal_chief').map(async (row) => {
     const agentPrincipal = await ctx.db.query('workspacePrincipals')
       .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
@@ -425,6 +478,116 @@ async function applyChiefIdentityPatch(
     createdAt: next.createdAt,
     updatedAt: next.updatedAt,
   }
+}
+
+export async function persistWorkspaceAgentProfile(
+  ctx: MutationCtx,
+  row: Doc<'workspaceAgentDefinitions'>,
+  args: {
+    agentId: string
+    workspaceId: string
+    name?: string
+    description?: string
+    instructions?: string
+    permissionMode?: string
+    effort?: string
+    reasoning?: 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+    harness?: 'overlay' | 'claude-code' | 'codex'
+    modelId?: string
+    avatarColor?: string
+    avatarShape?: string
+    allowedToolIds?: string[]
+    now: number
+    teamIds?: string[]
+    visibility?: 'creator' | 'workspace'
+    updatedByPrincipalId?: string
+    maxRelatedRecords?: number
+  },
+) {
+  const bounded = args.maxRelatedRecords !== undefined
+  if (row.agentRole !== 'personal_chief' && args.name
+    && args.name.trim().toLowerCase() !== row.name.toLowerCase()) {
+    const definitionsQuery = ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId))
+    const definitions = bounded
+      ? await definitionsQuery.take(args.maxRelatedRecords! + 1)
+      : await definitionsQuery.collect()
+    if (bounded && definitions.length > args.maxRelatedRecords!) {
+      throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+    }
+    const duplicate = definitions.find((item) =>
+      item._id !== row._id && !item.archivedAt
+      && item.name.toLowerCase() === args.name!.trim().toLowerCase())
+    if (duplicate) throw new Error('WORKSPACE_AGENT_ALREADY_EXISTS')
+  }
+  const patch: {
+    name?: string
+    description?: string
+    instructions?: string
+    harness?: 'overlay' | 'claude-code' | 'codex' | 'opencode' | 'pi' | 'hermes'
+    modelId?: string
+    permissionMode?: string
+    effort?: string
+    reasoning?: 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+    avatarColor?: string
+    avatarShape?: string
+    allowedToolIds?: string[]
+    teamIds?: string[]
+    visibility?: 'creator' | 'workspace'
+    updatedAt: number
+  } = {
+    ...(args.name === undefined || row.agentRole === 'personal_chief' ? {} : { name: args.name.trim() }),
+    ...(args.description === undefined || row.agentRole === 'personal_chief' ? {} : { description: cleanOptional(args.description) }),
+    ...(args.instructions === undefined ? {} : { instructions: args.instructions.trim() }),
+    ...(args.harness === undefined ? {} : { harness: args.harness }),
+    ...(args.modelId === undefined ? {} : { modelId: args.modelId.trim() }),
+    ...(args.permissionMode === undefined ? {} : { permissionMode: args.permissionMode.trim() }),
+    ...(args.effort === undefined ? {} : { effort: args.effort.trim() }),
+    ...(args.reasoning === undefined ? {} : { reasoning: args.reasoning }),
+    ...(args.avatarColor === undefined || row.agentRole === 'personal_chief' ? {} : { avatarColor: cleanOptional(args.avatarColor) }),
+    ...(args.avatarShape === undefined || row.agentRole === 'personal_chief' ? {} : { avatarShape: cleanOptional(args.avatarShape) }),
+    ...(args.allowedToolIds === undefined ? {} : { allowedToolIds: unique(args.allowedToolIds) }),
+    ...(args.visibility === undefined ? {} : { visibility: args.visibility }),
+    updatedAt: args.now,
+  }
+  if (('name' in patch && !patch.name) || ('instructions' in patch && !patch.instructions)
+    || ('modelId' in patch && !patch.modelId)) {
+    throw new Error('WORKSPACE_AGENT_INVALID')
+  }
+  await ctx.db.patch(row._id, patch)
+  if ('name' in patch && patch.name) {
+    const principal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
+    if (principal) await ctx.db.patch(principal._id, { displayName: patch.name, updatedAt: args.now })
+  }
+  if (args.teamIds) {
+    const membershipsQuery = ctx.db.query('workspaceTeamMemberships')
+      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId))
+    const memberships = bounded
+      ? await membershipsQuery.take(args.maxRelatedRecords! + 1)
+      : await membershipsQuery.collect()
+    if (bounded && memberships.length > args.maxRelatedRecords!) {
+      throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+    }
+    await Promise.all(memberships.map((membership) => ctx.db.delete(membership._id)))
+    const updatedTeams = await Promise.all(unique(args.teamIds).map((teamId) =>
+      ctx.db.query('workspaceTeams').withIndex('by_teamId', (q) => q.eq('teamId', teamId)).unique()))
+    const updatedJoinableTeamIds = unique(args.teamIds).filter((teamId, i) => {
+      const team = updatedTeams[i]
+      return team && team.workspaceId === args.workspaceId && !team.archivedAt
+    })
+    await Promise.all(updatedJoinableTeamIds.map((teamId) =>
+      ctx.db.insert('workspaceTeamMemberships', {
+        teamMembershipId: `${teamId}:${row.principalId}`, workspaceId: args.workspaceId,
+        teamId, principalId: row.principalId, principalType: 'agent',
+        addedByPrincipalId: args.updatedByPrincipalId, createdAt: args.now,
+      })))
+    patch.teamIds = unique(args.teamIds)
+    await ctx.db.patch(row._id, { teamIds: patch.teamIds })
+  }
+  const updated = await ctx.db.get(row._id)
+  if (!updated) throw new Error('WORKSPACE_AGENT_NOT_FOUND')
+  return updated
 }
 
 export const updateByServer = mutation({
@@ -485,104 +648,8 @@ export const updateByServer = mutation({
         })
       }
     }
-    if (
-      row.agentRole !== 'personal_chief' &&
-      args.name &&
-      args.name.trim().toLowerCase() !== row.name.toLowerCase()
-    ) {
-      const duplicate = (
-        await ctx.db
-          .query('workspaceAgentDefinitions')
-          .withIndex('by_workspaceId', (q) =>
-            q.eq('workspaceId', args.workspaceId),
-          )
-          .collect()
-      ).find(
-        (item) =>
-          item._id !== row._id &&
-          !item.archivedAt &&
-          item.name.toLowerCase() === args.name!.trim().toLowerCase(),
-      )
-      if (duplicate) throw new Error('WORKSPACE_AGENT_ALREADY_EXISTS')
-    }
-    const patch: {
-      name?: string
-      description?: string
-      instructions?: string
-      harness?:
-        | 'overlay'
-        | 'claude-code'
-        | 'codex'
-        | 'opencode'
-        | 'pi'
-        | 'hermes'
-      modelId?: string
-      permissionMode?: string
-      effort?: string
-      reasoning?: 'provider-default' | 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
-      avatarColor?: string
-      avatarShape?: string
-      allowedToolIds?: string[]
-      teamIds?: string[]
-      visibility?: 'creator' | 'workspace'
-      updatedAt: number
-    } = {
-      ...(args.name === undefined || row.agentRole === 'personal_chief' ? {} : { name: args.name.trim() }),
-      ...(args.description === undefined || row.agentRole === 'personal_chief' ? {} : { description: cleanOptional(args.description) }),
-      ...(args.instructions === undefined ? {} : { instructions: args.instructions.trim() }),
-      ...(args.harness === undefined ? {} : { harness: args.harness }),
-      ...(args.modelId === undefined ? {} : { modelId: args.modelId.trim() }),
-      ...(args.permissionMode === undefined ? {} : { permissionMode: args.permissionMode.trim() }),
-      ...(args.effort === undefined ? {} : { effort: args.effort.trim() }),
-      ...(args.reasoning === undefined ? {} : { reasoning: args.reasoning }),
-      ...(args.avatarColor === undefined || row.agentRole === 'personal_chief' ? {} : { avatarColor: cleanOptional(args.avatarColor) }),
-      ...(args.avatarShape === undefined || row.agentRole === 'personal_chief' ? {} : { avatarShape: cleanOptional(args.avatarShape) }),
-      ...(args.allowedToolIds === undefined ? {} : { allowedToolIds: unique(args.allowedToolIds) }),
-      ...(args.visibility === undefined ? {} : { visibility: args.visibility }),
-      updatedAt: args.now,
-    }
-    if (
-      ('name' in patch && !patch.name) ||
-      ('instructions' in patch && !patch.instructions) ||
-      ('modelId' in patch && !patch.modelId)
-    ) {
-      throw new Error('WORKSPACE_AGENT_INVALID')
-    }
-    await ctx.db.patch(row._id, patch)
-    if ('name' in patch && patch.name) {
-      const principal = await ctx.db
-        .query('workspacePrincipals')
-        .withIndex('by_principalId', (q) =>
-          q.eq('principalId', row.principalId),
-        )
-        .unique()
-      if (principal)
-        await ctx.db.patch(principal._id, {
-          displayName: patch.name,
-          updatedAt: args.now,
-        })
-    }
-    if (args.teamIds) {
-      const existing = await ctx.db.query('workspaceTeamMemberships')
-        .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).collect()
-      await Promise.all(existing.map((membership) => ctx.db.delete(membership._id)))
-      const updatedTeams = await Promise.all(unique(args.teamIds).map((teamId) =>
-        ctx.db.query('workspaceTeams').withIndex('by_teamId', (q) => q.eq('teamId', teamId)).unique()))
-      const updatedJoinableTeamIds = unique(args.teamIds).filter((teamId, i) => {
-        const team = updatedTeams[i]
-        return team && team.workspaceId === args.workspaceId && !team.archivedAt
-      })
-      await Promise.all(updatedJoinableTeamIds.map((teamId) =>
-        ctx.db.insert('workspaceTeamMemberships', {
-          teamMembershipId: `${teamId}:${row.principalId}`, workspaceId: args.workspaceId,
-          teamId, principalId: row.principalId, principalType: 'agent',
-          addedByPrincipalId: args.updatedByPrincipalId, createdAt: args.now,
-        })))
-      // Store the updated teamIds projection on the definition row so
-      // listByServer can read it without N+1 queries.
-      patch.teamIds = unique(args.teamIds)
-    }
-    return await directoryValue(ctx, { ...row, ...patch })
+    const updated = await persistWorkspaceAgentProfile(ctx, row, args)
+    return await directoryValue(ctx, updated)
   },
 })
 
@@ -657,46 +724,46 @@ export const unarchiveByServer = mutation({
       .unique()
     if (!row || row.workspaceId !== args.workspaceId || !row.archivedAt)
       return false
-    await ctx.db.patch(row._id, { archivedAt: undefined, updatedAt: args.now })
-    const principal = await ctx.db
-      .query('workspacePrincipals')
-      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId))
-      .unique()
-    if (principal)
-      await ctx.db.patch(principal._id, {
-        archivedAt: undefined,
-        updatedAt: args.now,
-      })
-    const membership = await ctx.db
-      .query('workspaceMemberships')
-      .withIndex('by_workspaceId_principalId', (q) =>
-        q
-          .eq('workspaceId', args.workspaceId)
-          .eq('principalId', row.principalId),
-      )
-      .unique()
-    if (membership)
-      await ctx.db.patch(membership._id, {
-        status: 'active',
-        updatedAt: args.now,
-      })
-    // Restore the agent's participant rows on its own threads if an older
-    // archive removed them (threads written before this change shipped).
-    const threads = await ctx.db
-      .query('conversations')
-      .withIndex('by_workspaceId_agentId', (q) =>
-        q.eq('workspaceId', args.workspaceId).eq('agentId', row.agentId)).collect()
-    const liveThreads = threads.filter((thread) => !thread.deletedAt)
-    const threadParticipants = await Promise.all(liveThreads.map((thread) =>
-      ctx.db.query('conversationParticipants')
-        .withIndex('by_conversationId_principalId', (q) =>
-          q.eq('conversationId', thread._id).eq('principalId', row.principalId)).unique()))
-    await Promise.all(threadParticipants
-      .filter((participant) => participant && participant.status !== 'active')
-      .map((participant) => ctx.db.patch(participant!._id, { status: 'active', removedAt: undefined, updatedAt: args.now })))
+    await restoreWorkspaceAgentRecord(ctx, row, args.now, args.workspaceId)
     return true
   },
 })
+
+export async function restoreWorkspaceAgentRecord(
+  ctx: MutationCtx,
+  row: Doc<'workspaceAgentDefinitions'>,
+  now: number,
+  workspaceId: string,
+  maxRelatedRecords?: number,
+) {
+  await ctx.db.patch(row._id, { archivedAt: undefined, updatedAt: now })
+  const principal = await ctx.db.query('workspacePrincipals')
+    .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId)).unique()
+  if (principal) await ctx.db.patch(principal._id, { archivedAt: undefined, updatedAt: now })
+  const membership = await ctx.db.query('workspaceMemberships')
+    .withIndex('by_workspaceId_principalId', (q) =>
+      q.eq('workspaceId', workspaceId).eq('principalId', row.principalId)).unique()
+  if (membership) await ctx.db.patch(membership._id, { status: 'active', updatedAt: now })
+  const threadsQuery = ctx.db.query('conversations')
+    .withIndex('by_workspaceId_agentId', (q) =>
+      q.eq('workspaceId', workspaceId).eq('agentId', row.agentId))
+  const threads = maxRelatedRecords === undefined
+    ? await threadsQuery.collect()
+    : await threadsQuery.take(maxRelatedRecords + 1)
+  if (maxRelatedRecords !== undefined && threads.length > maxRelatedRecords) {
+    throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+  }
+  const liveThreads = threads.filter((thread) => !thread.deletedAt)
+  const threadParticipants = await Promise.all(liveThreads.map((thread) =>
+    ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_principalId', (q) =>
+        q.eq('conversationId', thread._id).eq('principalId', row.principalId)).unique()))
+  await Promise.all(threadParticipants
+    .filter((participant) => participant && participant.status !== 'active')
+    .map((participant) => ctx.db.patch(participant!._id, {
+      status: 'active', removedAt: undefined, updatedAt: now,
+    })))
+}
 
 /**
  * Deletes an archived agent for good. Only an archived agent qualifies, and never the default one. The definition row
@@ -745,9 +812,10 @@ export const purgeOrphanedByServer = mutation({
   },
 })
 
-async function directoryValue(
+export async function directoryValue(
   ctx: QueryCtx | MutationCtx,
   row: Doc<'workspaceAgentDefinitions'>,
+  maxRelatedRecords?: number,
 ) {
   const { _id, _creationTime, ...rawValue } = row
   void _id
@@ -778,21 +846,18 @@ async function directoryValue(
   }
 
   // Legacy fallback: compute from related tables.
-  const [teams, rooms] = await Promise.all([
-    ctx.db
-      .query('workspaceTeamMemberships')
-      .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId))
-      .collect(),
-    ctx.db
-      .query('conversationParticipants')
+  const teamsQuery = ctx.db.query('workspaceTeamMemberships')
+    .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId))
+  const roomsQuery = ctx.db.query('conversationParticipants')
     .withIndex('by_workspaceId_principalId_status', (q) =>
-        q
-          .eq('workspaceId', row.workspaceId)
-          .eq('principalId', row.principalId)
-          .eq('status', 'active'),
-      )
-      .collect(),
+      q.eq('workspaceId', row.workspaceId).eq('principalId', row.principalId).eq('status', 'active'))
+  const [teams, rooms] = await Promise.all([
+    maxRelatedRecords === undefined ? teamsQuery.collect() : teamsQuery.take(maxRelatedRecords + 1),
+    maxRelatedRecords === undefined ? roomsQuery.collect() : roomsQuery.take(maxRelatedRecords + 1),
   ])
+  if (maxRelatedRecords !== undefined && (teams.length > maxRelatedRecords || rooms.length > maxRelatedRecords)) {
+    throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+  }
   return {
     ...value,
     visibility,
@@ -835,11 +900,22 @@ async function eligiblePersonalOwners(
   workspace: Doc<'workspaces'>,
   actorUserId: string,
   actorPrincipalId: string,
+  maxRelatedRecords?: number,
 ) {
-  const memberships = await ctx.db.query('workspaceMemberships')
-    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspace.workspaceId)).collect()
-  const principals = await ctx.db.query('workspacePrincipals')
-    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspace.workspaceId)).collect()
+  const membershipQuery = ctx.db.query('workspaceMemberships')
+    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspace.workspaceId))
+  const principalQuery = ctx.db.query('workspacePrincipals')
+    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspace.workspaceId))
+  const memberships = maxRelatedRecords === undefined
+    ? await membershipQuery.collect()
+    : await membershipQuery.take(maxRelatedRecords + 1)
+  const principals = maxRelatedRecords === undefined
+    ? await principalQuery.collect()
+    : await principalQuery.take(maxRelatedRecords + 1)
+  if (maxRelatedRecords !== undefined
+    && (memberships.length > maxRelatedRecords || principals.length > maxRelatedRecords)) {
+    throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+  }
   const principalById = new Map(principals.map((principal) => [principal.principalId, principal]))
   return memberships
     .filter((membership) => membership.status === 'active' && membership.role !== 'guest')
@@ -860,6 +936,7 @@ async function adoptChief(
   scope: 'workspace' | 'personal',
   ownerUserId: string | undefined,
   now: number,
+  maxRelatedRecords?: number,
 ) {
   const patch = {
     agentRole: role,
@@ -870,7 +947,7 @@ async function adoptChief(
   }
   await ctx.db.patch(row._id, patch)
   if (role === 'personal_chief' && ownerUserId) {
-    await ensureIdentity(ctx, ownerUserId, row, now)
+    await ensureIdentity(ctx, ownerUserId, row, now, maxRelatedRecords)
   }
   return { ...row, ...patch }
 }
@@ -881,8 +958,9 @@ async function createPersonalChief(
   owner: { userId: string; principalId: string },
   scope: 'personal' | 'workspace',
   now: number,
+  maxRelatedRecords?: number,
 ) {
-  const profile = await ensureIdentity(ctx, owner.userId, undefined, now)
+  const profile = await ensureIdentity(ctx, owner.userId, undefined, now, maxRelatedRecords)
   return await insertChief(ctx, {
     workspace,
     agentId: scope === 'personal'
@@ -903,6 +981,7 @@ async function createPersonalChief(
     avatarColor: profile.avatarColor,
     avatarShape: profile.avatarShape,
     now,
+    maxRelatedRecords,
   })
 }
 
@@ -911,15 +990,23 @@ async function ensureIdentity(
   userId: string,
   source: Doc<'workspaceAgentDefinitions'> | undefined,
   now: number,
+  maxRelatedRecords?: number,
 ) {
   const existing = await ctx.db.query('personalChiefIdentities')
     .withIndex('by_userId', (q) => q.eq('userId', userId)).unique()
   if (existing) return existing
-  const personalDefault = source ?? await findPersonalWorkspaceDefault(ctx, userId)
+  const personalDefault = source ?? await findPersonalWorkspaceDefault(ctx, userId, maxRelatedRecords)
   const account = await ctx.db.query('subscriptions')
     .withIndex('by_userId', (q) => q.eq('userId', userId)).first()
-  const ownerPrincipals = (await ctx.db.query('workspacePrincipals')
-    .withIndex('by_userId', (q) => q.eq('userId', userId)).collect())
+  const ownerPrincipalsQuery = ctx.db.query('workspacePrincipals')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+  const ownerPrincipalRows = maxRelatedRecords === undefined
+    ? await ownerPrincipalsQuery.collect()
+    : await ownerPrincipalsQuery.take(maxRelatedRecords + 1)
+  if (maxRelatedRecords !== undefined && ownerPrincipalRows.length > maxRelatedRecords) {
+    throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+  }
+  const ownerPrincipals = ownerPrincipalRows
     .filter((principal) => principal.type === 'human' && !principal.archivedAt)
     .sort((a, b) => a.workspaceId.localeCompare(b.workspaceId))
   let ownerDisplayName: string | undefined
@@ -952,9 +1039,19 @@ async function ensureIdentity(
   return inserted
 }
 
-async function findPersonalWorkspaceDefault(ctx: MutationCtx, userId: string) {
-  const principals = await ctx.db.query('workspacePrincipals')
-    .withIndex('by_userId', (q) => q.eq('userId', userId)).collect()
+async function findPersonalWorkspaceDefault(
+  ctx: MutationCtx,
+  userId: string,
+  maxRelatedRecords?: number,
+) {
+  const principalQuery = ctx.db.query('workspacePrincipals')
+    .withIndex('by_userId', (q) => q.eq('userId', userId))
+  const principals = maxRelatedRecords === undefined
+    ? await principalQuery.collect()
+    : await principalQuery.take(maxRelatedRecords + 1)
+  if (maxRelatedRecords !== undefined && principals.length > maxRelatedRecords) {
+    throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+  }
   const personalWorkspaces = await Promise.all(principals
     .filter((principal) => principal.type === 'human' && !principal.archivedAt)
     .map(async (principal) => {
@@ -969,8 +1066,14 @@ async function findPersonalWorkspaceDefault(ctx: MutationCtx, userId: string) {
     }))
   for (const workspace of personalWorkspaces.filter((item): item is NonNullable<typeof item> => item !== null)
     .sort((a, b) => a.workspaceId.localeCompare(b.workspaceId))) {
-    const candidates = await ctx.db.query('workspaceAgentDefinitions')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspace.workspaceId)).collect()
+    const candidateQuery = ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspace.workspaceId))
+    const candidates = maxRelatedRecords === undefined
+      ? await candidateQuery.collect()
+      : await candidateQuery.take(maxRelatedRecords + 1)
+    if (maxRelatedRecords !== undefined && candidates.length > maxRelatedRecords) {
+      throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+    }
     const row = candidates
       .filter((candidate) => candidate.agentRole === undefined || candidate.agentRole === 'personal_chief')
       .filter((candidate) => candidate.isDefault || candidate.agentId === `default-overlay-${workspace.workspaceId}`)
@@ -1013,6 +1116,7 @@ async function insertChief(
     avatarShape?: string
     isDefault?: boolean
     now: number
+    maxRelatedRecords?: number
   },
 ) {
   const existing = await ctx.db.query('workspaceAgentDefinitions')
@@ -1079,10 +1183,15 @@ async function insertChief(
     updatedAt: args.now,
   })
   if (args.visibility === 'workspace') {
-    const channels = await ctx.db.query('conversations')
+    const channelsQuery = ctx.db.query('conversations')
       .withIndex('by_workspaceId_conversationType_lastModified', (q) =>
         q.eq('workspaceId', args.workspace.workspaceId).eq('conversationType', 'channel'))
-      .collect()
+    const channels = args.maxRelatedRecords === undefined
+      ? await channelsQuery.collect()
+      : await channelsQuery.take(args.maxRelatedRecords + 1)
+    if (args.maxRelatedRecords !== undefined && channels.length > args.maxRelatedRecords) {
+      throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
+    }
     await Promise.all(channels.filter((channel) => !channel.deletedAt && channel.channelVisibility === 'public')
       .map((channel) => ctx.db.insert('conversationParticipants', {
         conversationId: channel._id,

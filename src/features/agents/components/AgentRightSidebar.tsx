@@ -45,8 +45,8 @@ export function AgentRightSidebar({
 
   const saveRef = useRef(editor.saveEdit)
   saveRef.current = editor.saveEdit
-  const validRef = useRef(editor.valid && editor.form.dirty)
-  validRef.current = editor.valid && editor.form.dirty
+  const validRef = useRef(editor.valid && editor.form.dirty && !editor.form.conflict)
+  validRef.current = editor.valid && editor.form.dirty && !editor.form.conflict
   const saveNow = useCallback(async () => {
     setSaveFailed(false)
     const result = await saveRef.current({ silent: true, ignoreBusy: true })
@@ -61,8 +61,8 @@ export function AgentRightSidebar({
     }
   }, [])
   useEffect(() => {
-    schedulerRef.current?.schedule(saveNow, editor.valid && editor.form.dirty)
-  }, [editor.form.dirty, editor.form.version, editor.valid, saveNow])
+    schedulerRef.current?.schedule(saveNow, editor.valid && editor.form.dirty && !editor.form.conflict)
+  }, [editor.form.conflict, editor.form.dirty, editor.form.version, editor.valid, saveNow])
   const flushSave = useCallback(() => {
     schedulerRef.current?.flush(saveNow, validRef.current)
   }, [saveNow])

@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type {
   WorkspaceAgentCreatureShape,
@@ -18,6 +18,8 @@ import { AVATAR_FALLBACK_COLOR } from '../lib/agent-editor-utils'
 import type { getInitialEditorState } from '../lib/agent-editor-state'
 import type { AgentType } from './AgentEditorForm'
 
+export type EditableAgent = WorkspaceAgentDirectoryItem & { revision?: string }
+
 export function useAgentEditorForm({
   initial,
   agent,
@@ -27,7 +29,7 @@ export function useAgentEditorForm({
   setAgentType,
 }: {
   initial: ReturnType<typeof getInitialEditorState>
-  agent: WorkspaceAgentDirectoryItem | null
+  agent: EditableAgent | null
 
   activeWorkspaceId: string | null
   setLegacyHostedRuntime: Dispatch<SetStateAction<boolean>>
@@ -49,6 +51,12 @@ export function useAgentEditorForm({
   const [enabledToolGroups, setEnabledToolGroups] = useState<Set<string>>(() => new Set(DEFAULT_AGENT_TOOL_GROUP_IDS))
   const [advanced, setAdvanced] = useState(false)
   const [dirty, setDirty] = useState(false)
+  const [conflict, setConflict] = useState(false)
+  const [baseRevision, setBaseRevision] = useState(agent?.revision)
+  const baseRevisionRef = useRef(agent?.revision)
+  const staleRevisionsRef = useRef(new Set<string>())
+  const acceptedSavedAgentRef = useRef<EditableAgent | null>(null)
+  const currentAgentRef = useRef(agent)
   const [version, setVersion] = useState(0)
   const versionRef = useRef(0)
 
@@ -58,6 +66,7 @@ export function useAgentEditorForm({
     setDirty(true)
   }, [])
   const isVersionCurrent = useCallback((candidate: number) => versionRef.current === candidate, [])
+  const isBaseRevisionCurrent = useCallback((candidate?: string) => baseRevisionRef.current === candidate, [])
 
   const toggleToolGroup = (groupId: string) => {
     markDirty()
@@ -69,34 +78,99 @@ export function useAgentEditorForm({
     })
   }
 
-  // Reset the form whenever a different agent loads.
-  const [loadedAgent, setLoadedAgent] = useState(agent)
-  if (agent !== loadedAgent) {
-    setLoadedAgent(agent)
-    if (agent) {
-      setName(agent.name)
-      setDescription(agent.description ?? '')
-      setInstructions(agent.instructions)
-      setModelId(agent.modelId)
-      setReasoningByModel(agent.reasoning && agent.reasoning !== 'provider-default'
-        ? { [agent.modelId]: agent.reasoning }
-        : {})
-      setAvatarColor(agent.avatarColor ?? AVATAR_FALLBACK_COLOR)
-      setAvatarShape(agent.avatarShape ?? 'circle')
-      setVisibility(agent.visibility)
-      setPermissionMode(agent.permissionMode === 'auto' ? 'auto' : 'ask')
-      setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
-      // The agent record marks a removed hosted runtime via `harness`.
-      setLegacyHostedRuntime(workspaceAgentUsesManagedHarness(agent))
-      setAgentType(workspaceAgentUsesByo(agent) ? 'byo' : 'overlay')
-      setDirty(false)
-      setVersion(0)
-    }
-  }
-  useLayoutEffect(() => {
+  const resetFieldsFromAgent = useCallback((next: EditableAgent) => {
+    setName(next.name)
+    setDescription(next.description ?? '')
+    setInstructions(next.instructions)
+    setModelId(next.modelId)
+    setReasoningByModel(next.reasoning && next.reasoning !== 'provider-default'
+      ? { [next.modelId]: next.reasoning }
+      : {})
+    setAvatarColor(next.avatarColor ?? AVATAR_FALLBACK_COLOR)
+    setAvatarShape(next.avatarShape ?? 'circle')
+    setVisibility(next.visibility)
+    setPermissionMode(next.permissionMode === 'auto' ? 'auto' : 'ask')
+    setEnabledToolGroups(enabledAgentToolGroupIds(next.allowedToolIds))
+    setLegacyHostedRuntime(workspaceAgentUsesManagedHarness(next))
+    setAgentType(workspaceAgentUsesByo(next) ? 'byo' : 'overlay')
+  }, [setAgentType, setLegacyHostedRuntime])
+
+  // Remote profile updates may replace the object while an edit is in flight.
+  useEffect(() => {
+    currentAgentRef.current = agent
     if (!agent) return
+    if (dirty) {
+      if (
+        agent.revision !== undefined
+        && agent.revision !== baseRevisionRef.current
+        && !staleRevisionsRef.current.has(agent.revision)
+      ) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- Remote revisions must pause autosave without replacing the dirty draft.
+        setConflict(true)
+      }
+      return
+    }
+    const acceptedSavedAgent = acceptedSavedAgentRef.current
+    if (
+      agent.revision !== undefined
+      && agent.revision !== baseRevisionRef.current
+      && staleRevisionsRef.current.has(agent.revision)
+    ) return
+    if (acceptedSavedAgent) {
+      acceptedSavedAgentRef.current = null
+    }
+    resetFieldsFromAgent(agent)
+    baseRevisionRef.current = agent.revision
+    setBaseRevision(agent.revision)
+    setConflict(false)
+    setDirty(false)
     versionRef.current = 0
-  }, [agent])
+    setVersion(0)
+  }, [agent, dirty, resetFieldsFromAgent])
+
+  const acceptSavedAgent = useCallback((
+    savedAgent: EditableAgent,
+    capturedVersion: number,
+    expectedRevision?: string,
+  ) => {
+    if (expectedRevision) {
+      staleRevisionsRef.current.add(expectedRevision)
+      if (staleRevisionsRef.current.size > 8) {
+        staleRevisionsRef.current.delete(staleRevisionsRef.current.values().next().value as string)
+      }
+    }
+    const latestRevision = currentAgentRef.current?.revision
+    acceptedSavedAgentRef.current = savedAgent
+    baseRevisionRef.current = savedAgent.revision
+    setBaseRevision(savedAgent.revision)
+    setConflict(
+      latestRevision !== undefined
+      && latestRevision !== savedAgent.revision
+      && !staleRevisionsRef.current.has(latestRevision),
+    )
+    if (versionRef.current === capturedVersion) {
+      resetFieldsFromAgent(savedAgent)
+      setDirty(false)
+    } else {
+      setDirty(true)
+    }
+  }, [resetFieldsFromAgent])
+
+  const discardChanges = useCallback((source: EditableAgent | null) => {
+    acceptedSavedAgentRef.current = null
+    if (source) {
+      resetFieldsFromAgent(source)
+      baseRevisionRef.current = source.revision
+      staleRevisionsRef.current.clear()
+      setBaseRevision(source.revision)
+    } else {
+      staleRevisionsRef.current.clear()
+    }
+    setConflict(false)
+    setDirty(false)
+    versionRef.current = 0
+    setVersion(0)
+  }, [resetFieldsFromAgent])
 
   // Stream unsaved identity drafts so the sidebar roster and the conversation
   // header update while typing; a clean form or an unmounted editor clears the
@@ -161,9 +235,15 @@ export function useAgentEditorForm({
     setAdvanced,
     dirty,
     setDirty,
+    conflict,
+    setConflict,
+    baseRevision,
+    acceptSavedAgent,
+    discardChanges,
     markDirty,
     version,
     isVersionCurrent,
+    isBaseRevisionCurrent,
     toggleToolGroup,
   }
 }

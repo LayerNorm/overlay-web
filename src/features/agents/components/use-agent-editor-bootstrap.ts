@@ -5,6 +5,7 @@ import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import type { getInitialEditorState } from '../lib/agent-editor-state'
+import { useAgentDirectory } from './AgentDirectoryProvider'
 
 export function useAgentEditorBootstrap({
 
@@ -20,6 +21,9 @@ export function useAgentEditorBootstrap({
   initial: ReturnType<typeof getInitialEditorState>
 }) {
   const { capabilities } = useOverlayCapabilities()
+  const native = useAgentDirectory()
+  const nativeMode = native.mode
+  const setNativeDetailAgentId = native.setDetailAgentId
   const [agent, setAgent] = useState<WorkspaceAgentDirectoryItem | null>(initial.agent)
   const [loading, setLoading] = useState(initial.loading)
   const [loadFailed, setLoadFailed] = useState(false)
@@ -44,8 +48,14 @@ export function useAgentEditorBootstrap({
 
   // Load the agent (edit) or the create permission (new).
   useEffect(() => {
-
     if (!activeWorkspaceId) return
+    if (nativeMode === 'native') {
+      setNativeDetailAgentId(mode === 'edit' ? agentId ?? null : null)
+      return
+    }
+    if (nativeMode === 'unavailable') {
+      return
+    }
     let cancelled = false
     if (mode === 'edit' && agentId) {
       void overlayAppClient.agents.get(activeWorkspaceId, agentId).then(
@@ -59,7 +69,13 @@ export function useAgentEditorBootstrap({
       )
     }
     return () => { cancelled = true }
-  }, [activeWorkspaceId, agentId, mode, ])
+  }, [
+    activeWorkspaceId,
+    agentId,
+    mode,
+    nativeMode,
+    setNativeDetailAgentId,
+  ])
 
   // Connected-agent availability gates the BYO type.
   useEffect(() => {
@@ -74,5 +90,48 @@ export function useAgentEditorBootstrap({
     return () => { cancelled = true }
   }, [activeWorkspaceId, capabilities.externalAgents, ])
 
-  return { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked }
+  const directoryAgent = mode === 'edit' && agentId
+    ? native.detail === null
+      ? null
+      : native.detail?.id === agentId
+        ? native.detail
+        : native.directory?.find((item) => item.id === agentId) ?? null
+    : null
+  const resolvedAgent = native.mode === 'native'
+    ? mode === 'edit' && agentId
+      ? directoryAgent
+      : null
+    : native.mode === 'unavailable'
+      ? null
+      : agent
+  const resolvedLoading = native.mode === 'native'
+    ? native.loading || Boolean(
+      mode === 'edit' && agentId && native.detail === undefined && !directoryAgent,
+    )
+    : native.mode === 'unavailable'
+      ? native.loading
+      : loading
+  const resolvedLoadFailed = native.mode === 'native'
+    ? Boolean(
+      mode === 'edit' && agentId && !native.loading && native.detail === null
+      && !directoryAgent,
+    )
+    : native.mode === 'unavailable'
+      ? !native.loading
+      : loadFailed
+  const resolvedCanCreate = native.mode === 'native'
+    ? native.canCreate
+    : native.mode === 'unavailable'
+      ? false
+      : canCreate
+
+  return {
+    agent: resolvedAgent,
+    setAgent,
+    loading: resolvedLoading,
+    loadFailed: resolvedLoadFailed,
+    canCreate: resolvedCanCreate,
+    connectedAgentsEnabled,
+    connectedAgentsChecked,
+  }
 }

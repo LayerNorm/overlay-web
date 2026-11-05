@@ -2,10 +2,11 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ChevronDown, X } from 'lucide-react'
 import type {
   ComputerSize,
+  WorkspaceAgentCreateInput,
   WorkspaceAgentCreatureShape,
   WorkspaceAgentDirectoryItem,
   WorkspaceAgentReasoningLevel,
@@ -34,6 +35,7 @@ import type { AgentModelFieldProps } from './AgentEditorForm'
 import { buildWorkspaceAgentInput, workspaceAgentReasoningForSave } from '../lib/agent-editor-input'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
 import { FieldLabel } from './InfoTip'
+import { AgentDirectoryProvider, useAgentDirectory } from './AgentDirectoryProvider'
 
 export type NewAgentDraft = {
   name: string
@@ -309,16 +311,17 @@ function useNewAgentModelField(workspaceId: string | null, draftModelId: string)
 }
 
 /** Creates the agent (and its computer when asked for), then refreshes the roster. */
-async function createAgentFromDraft(
+export async function createAgentFromDraft(
   workspaceId: string,
   draft: NewAgentDraft,
   computersAvailable: boolean,
   reasoningModels: AgentModelFieldProps['selectableTextModels'],
+  createAgent?: (input: WorkspaceAgentCreateInput) => Promise<WorkspaceAgentDirectoryItem>,
 ) {
   const toolGroups = new Set(draft.toolGroups)
   const withComputer = computersAvailable && draft.computer
   if (withComputer) toolGroups.add('computer')
-  const created = await overlayAppClient.agents.create(workspaceId, {
+  const input = {
     ...buildWorkspaceAgentInput({
       name: draft.name,
       description: '',
@@ -338,22 +341,25 @@ async function createAgentFromDraft(
       visibility: draft.visibility,
     }),
     teamIds: [],
-  })
+  }
+  const createProfile = createAgent ?? (async (value: WorkspaceAgentCreateInput) =>
+    (await overlayAppClient.agents.create(workspaceId, value)).agent)
+  const createdAgent = await createProfile(input)
   let computerError: string | null = null
   if (withComputer) {
     await overlayAppClient.computers.provision(workspaceId, {
       ownerType: 'agent',
-      ownerId: created.agent.id,
+      ownerId: createdAgent.id,
       size: draft.computerSize,
-      name: `${created.agent.name} computer`,
+      name: `${createdAgent.name} computer`,
     }).catch((error: unknown) => {
       // The agent is durable either way; report and let the editor retry.
       computerError = error instanceof Error ? error.message : 'Could not create the computer.'
     })
   }
   dispatchAgentDirectoryChanged(workspaceId)
-  rememberAgentOpened(workspaceId, created.agent.id)
-  return { agent: created.agent, computerError }
+  rememberAgentOpened(workspaceId, createdAgent.id)
+  return { agent: createdAgent, computerError }
 }
 
 /** New-agent dialog for native Overlay agents, with a direct path to BYOM setup. */
@@ -365,6 +371,28 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
   /** Opens the full agent editor, where "Your machine" agents are connected. */
   onOpenMachineSetup?(): void
 }) {
+  return (
+    <AgentDirectoryProvider>
+      <NewAgentDialogScope
+        open={open}
+        workspaceId={workspaceId}
+        onClose={onClose}
+        onCreated={onCreated}
+        onOpenMachineSetup={onOpenMachineSetup}
+      />
+    </AgentDirectoryProvider>
+  )
+}
+
+function NewAgentDialogScope({ open, workspaceId, onClose, onCreated, onOpenMachineSetup }: {
+  open: boolean
+  workspaceId: string | null
+  onClose(): void
+  onCreated(agent: WorkspaceAgentDirectoryItem, warning: string | null): void
+  onOpenMachineSetup?(): void
+}) {
+  const nativeDirectory = useAgentDirectory()
+  const requestId = useRef(globalThis.crypto.randomUUID())
   const { capabilities } = useOverlayCapabilities()
   const computersAvailable = capabilities.computers === true
   const [rawDraft, setDraft] = useState(initialNewAgentDraft)
@@ -377,6 +405,7 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
   const close = () => {
     if (working) return
     setDraft(initialNewAgentDraft())
+    requestId.current = globalThis.crypto.randomUUID()
     onClose()
   }
 
@@ -389,7 +418,13 @@ export function NewAgentDialog({ open, workspaceId, onClose, onCreated, onOpenMa
         draft,
         computersAvailable,
         modelField.selectableTextModels,
+        nativeDirectory.mode === 'native'
+          ? (input) => nativeDirectory.create(input, requestId.current)
+          : nativeDirectory.mode === 'legacy'
+            ? undefined
+            : async () => { throw new Error(nativeDirectory.error ?? 'Native agent directory is unavailable') },
       )
+      requestId.current = globalThis.crypto.randomUUID()
       setDraft(initialNewAgentDraft())
       toast.success('Agent created.')
       onCreated(agent, computerError)

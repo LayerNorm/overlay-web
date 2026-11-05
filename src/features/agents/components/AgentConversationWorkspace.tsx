@@ -39,6 +39,7 @@ import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { AgentDirectoryScreen, AgentEditorPanel } from './AgentConversationWorkspace.parts'
 import { subscribeAgentDirectory, type AgentDirectoryState } from '../lib/agent-directory'
+import { AgentDirectoryProvider, useAgentDirectory as useNativeAgentDirectory } from './AgentDirectoryProvider'
 import { openAgentComputerControl } from '../lib/agent-computer-control'
 
 type EditorMode = 'new' | 'edit' | null
@@ -119,6 +120,7 @@ function useAgentWorkspaceActions(args: {
 function useAgentDirectory(
   activeWorkspaceId: string | null,
 ): { directory: WorkspaceAgentDirectoryItem[] | null; viewerPrincipalId: string | null; loadError: string | null; refreshing: boolean } {
+  const native = useNativeAgentDirectory()
   const [state, setState] = useState<AgentDirectoryState & { refreshing: boolean }>({
     workspaceId: null,
     agents: null,
@@ -127,13 +129,29 @@ function useAgentDirectory(
     refreshing: false,
   })
   useEffect(() => {
-    if (!activeWorkspaceId) return
+    if (native.mode !== 'legacy' || !activeWorkspaceId) return
     return subscribeAgentDirectory(activeWorkspaceId, (next) => {
       setState((current) => next.agents === null && current.workspaceId === next.workspaceId
         ? { ...current, error: null, refreshing: true }
         : { ...next, refreshing: next.agents === null })
     }, window)
-  }, [activeWorkspaceId])
+  }, [activeWorkspaceId, native.mode])
+  if (native.mode === 'native') {
+    return {
+      directory: native.directory,
+      viewerPrincipalId: native.viewerPrincipalId,
+      loadError: native.error,
+      refreshing: native.loading,
+    }
+  }
+  if (native.mode === 'unavailable') {
+    return {
+      directory: null,
+      viewerPrincipalId: null,
+      loadError: native.loading ? null : native.error ?? 'Native agent directory is unavailable.',
+      refreshing: native.loading,
+    }
+  }
   if (state.workspaceId !== activeWorkspaceId) {
     return { directory: null, viewerPrincipalId: null, loadError: null, refreshing: true }
   }
@@ -243,7 +261,11 @@ function agentDetailRouteState(args: {
 }
 
 export function AgentConversationWorkspace() {
-  return <ScopedAgentConversationWorkspace />
+  return (
+    <AgentDirectoryProvider>
+      <ScopedAgentConversationWorkspace />
+    </AgentDirectoryProvider>
+  )
 }
 
 function ScopedAgentConversationWorkspace() {

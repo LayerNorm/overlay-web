@@ -1,6 +1,7 @@
 'use client'
 
 import type { Dispatch, SetStateAction } from 'react'
+import { useRef } from 'react'
 import type { useRouter } from 'next/navigation'
 import type {
   WorkspaceAgentCreateInput,
@@ -8,22 +9,22 @@ import type {
 } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
-import { enabledAgentToolGroupIds } from '@/shared/agents/tool-groups'
 import { announceArchived } from '@/shared/app/archive-toast'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
 import { startAgentChat } from '../lib/agent-chat'
 import {
   confirmComputerToolRemoval,
+  isAgentRevisionConflict,
   type AgentEditSaveResult,
 } from '../lib/agent-edit-save-result'
-import { AVATAR_FALLBACK_COLOR } from '../lib/agent-editor-utils'
 import { toast } from '@overlay/ui/primitives'
 import { notifyActionError } from './notification-events'
 import type { useAgentRuntime } from './use-agent-runtime'
 import type { useByoConnection } from './use-byo-connection'
-import type { useAgentEditorForm } from './use-agent-editor-form'
+import type { EditableAgent, useAgentEditorForm } from './use-agent-editor-form'
 import type { useAgentComputer } from './use-agent-computer'
+import { useAgentDirectory } from './AgentDirectoryProvider'
 
 export function useAgentEditorActions({
 
@@ -69,19 +70,12 @@ export function useAgentEditorActions({
   keepOpenOnSave?: boolean
 }) {
   const buildWorkspaceHref = useWorkspaceHref()
+  const nativeDirectory = useAgentDirectory()
+  const createRequestId = useRef<string | null>(null)
   const { agentType, cloudAgent } = runtime
   const { environmentId, adapterId, workingDirectory } = byo
   const {
     enabledToolGroups,
-    setEnabledToolGroups,
-    setName,
-    setDescription,
-    setInstructions,
-    setModelId,
-    setAvatarColor,
-    setAvatarShape,
-    setVisibility,
-    setDirty,
   } = form
   const { agentComputer, computerSize, setComputerProvisionError } = computer
 
@@ -91,17 +85,26 @@ export function useAgentEditorActions({
     setBusy(true)
     void (async () => {
       try {
-        const saved = await overlayAppClient.agents.create(activeWorkspaceId, buildInput())
+        const requestId = createRequestId.current ??= globalThis.crypto.randomUUID()
+        let savedAgent: WorkspaceAgentDirectoryItem
+        if (nativeDirectory.mode === 'native') {
+          savedAgent = await nativeDirectory.create(buildInput(), requestId)
+        } else if (nativeDirectory.mode === 'legacy') {
+          savedAgent = (await overlayAppClient.agents.create(activeWorkspaceId, buildInput())).agent
+        } else {
+          throw new Error(nativeDirectory.error ?? 'Native agent directory is unavailable')
+        }
+        createRequestId.current = null
         if (agentType === 'byo') {
           await overlayAppClient.agentEnvironments.upsertBinding(activeWorkspaceId, {
-            agentId: saved.agent.id,
+            agentId: savedAgent.id,
             environmentId, adapterId, workingDirectory: workingDirectory.trim(),
           }).catch(async (bindingError) => {
             // Agent identity may already be durable even if its remote binding
             // fails. Land on the edit page so a retry never creates a duplicate.
-            setAgent(saved.agent)
+            setAgent(savedAgent)
             if (presentation === 'page') {
-              router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.agent.id)}?hello=1`, 'personal'))
+              router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(savedAgent.id)}?hello=1`, 'personal'))
             }
             throw bindingError
           })
@@ -110,27 +113,27 @@ export function useAgentEditorActions({
           setComputerProvisionError(null)
           await overlayAppClient.computers.provision(activeWorkspaceId, {
             ownerType: 'agent',
-            ownerId: saved.agent.id,
+            ownerId: savedAgent.id,
             size: computerSize,
-            name: `${saved.agent.name} computer`,
+            name: `${savedAgent.name} computer`,
           }).catch(async (computerError) => {
             setComputerProvisionError(
               computerError instanceof Error ? computerError.message : 'Could not create the computer.',
-              saved.agent.id,
+              savedAgent.id,
             )
             // The agent is durable even if its computer fails to provision —
             // land on the edit page so a retry never creates a duplicate agent.
-            setAgent(saved.agent)
+            setAgent(savedAgent)
             if (presentation === 'page') {
-              router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.agent.id)}?hello=1`, 'personal'))
+              router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(savedAgent.id)}?hello=1`, 'personal'))
             }
             throw computerError
           })
         }
         dispatchAgentDirectoryChanged(activeWorkspaceId)
         toast.success('Agent created.')
-        if (onCreated) onCreated(saved.agent)
-        else router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.agent.id)}?hello=1`, 'personal'))
+        if (onCreated) onCreated(savedAgent)
+        else router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(savedAgent.id)}?hello=1`, 'personal'))
       } catch (saveError) {
         notifyActionError((message) => toast.error(message), saveError, 'Could not save agent.')
       } finally {
@@ -147,6 +150,7 @@ export function useAgentEditorActions({
     ignoreBusy?: boolean
   } = {}): Promise<AgentEditSaveResult> => {
     if (!activeWorkspaceId || !agent || (busy && !ignoreBusy)) return 'failed'
+    if (form.conflict) return 'conflict'
     const confirmation = confirmComputerToolRemoval({
       shouldConfirm: Boolean(
         agentType === 'overlay' && agentComputer && !enabledToolGroups.has('computer'),
@@ -158,12 +162,38 @@ export function useAgentEditorActions({
     })
     if (confirmation === 'cancelled') return 'cancelled'
     const editVersion = form.version
+    const expectedRevision = form.baseRevision ?? (
+      'revision' in agent && typeof agent.revision === 'string' ? agent.revision : undefined
+    )
     setBusy(true)
     try {
       const saved = await persistAgentEdit({
         workspaceId: activeWorkspaceId,
         agent,
-        buildInput,
+        persistProfile: async () => {
+          if (nativeDirectory.mode === 'native') {
+            if (!expectedRevision) throw new Error('The agent profile revision is unavailable')
+            return { agent: await nativeDirectory.update(agent.id, buildInput(), expectedRevision) }
+          }
+          if (nativeDirectory.mode === 'legacy') return overlayAppClient.agents.update(activeWorkspaceId, agent.id, buildInput())
+          throw new Error(nativeDirectory.error ?? 'Native agent directory is unavailable')
+        },
+        onProfileSaved: (savedAgent) => {
+          form.acceptSavedAgent(savedAgent, editVersion, expectedRevision)
+          setAgent((current) => {
+            const currentRevision = current && 'revision' in current && typeof current.revision === 'string'
+              ? current.revision
+              : undefined
+            if (
+              expectedRevision
+              && currentRevision
+              && currentRevision !== expectedRevision
+              && currentRevision !== savedAgent.revision
+            ) return current
+            return savedAgent
+          })
+          dispatchAgentDirectoryChanged(activeWorkspaceId)
+        },
         agentType,
         cloudAgent,
         environmentId,
@@ -173,16 +203,18 @@ export function useAgentEditorActions({
         enabledToolGroups,
         computer,
       })
-      dispatchAgentDirectoryChanged(activeWorkspaceId)
-      if (form.isVersionCurrent(editVersion)) {
-        setAgent(saved.agent)
-        setDirty(false)
-      }
+      void saved
       if (!silent) toast.success('Agent saved.')
       if (onSaved) onSaved()
       if (presentation === 'panel' && !keepOpenOnSave) closeEditor()
       return 'saved'
     } catch (saveError) {
+      if (isAgentRevisionConflict(saveError)) {
+        if (!form.isBaseRevisionCurrent(expectedRevision) || !form.isVersionCurrent(editVersion)) return 'failed'
+        form.setConflict(true)
+        toast.error('This agent changed elsewhere. Your draft is preserved; reload before saving again.')
+        return 'conflict'
+      }
       if (!silent) toast.error(saveError instanceof Error ? saveError.message : 'Could not save agent.')
       return 'failed'
     } finally {
@@ -195,15 +227,7 @@ export function useAgentEditorActions({
       closeEditor()
       return
     }
-    setName(agent.name)
-    setDescription(agent.description ?? '')
-    setInstructions(agent.instructions)
-    setModelId(agent.modelId)
-    setAvatarColor(agent.avatarColor ?? AVATAR_FALLBACK_COLOR)
-    setAvatarShape(agent.avatarShape ?? 'circle')
-    setVisibility(agent.visibility)
-    setEnabledToolGroups(enabledAgentToolGroupIds(agent.allowedToolIds))
-    setDirty(false)
+    form.discardChanges(agent)
     closeEditor()
   }
 
@@ -217,14 +241,20 @@ export function useAgentEditorActions({
     try {
       // Revoke the hosted environment before archiving so cleanup remains attributable to the agent.
       if (cloudAgent) await overlayAppClient.cloudAgents.remove(activeWorkspaceId, agent.id)
-      await overlayAppClient.agents.archive(activeWorkspaceId, agent.id)
+      if (nativeDirectory.mode === 'native') await nativeDirectory.archive(agent.id)
+      else if (nativeDirectory.mode === 'legacy') await overlayAppClient.agents.archive(activeWorkspaceId, agent.id)
+      else throw new Error(nativeDirectory.error ?? 'Native agent directory is unavailable')
       dispatchAgentDirectoryChanged(activeWorkspaceId)
       const workspaceId = activeWorkspaceId
       announceArchived({
         name: agent.name,
         // Hosted agents stay archived; restoring one does not restore its retired runtime.
         ...(cloudAgent ? {} : {
-          undo: async () => { await overlayAppClient.agents.restore(workspaceId, agent.id) },
+          undo: async () => {
+            if (nativeDirectory.mode === 'native') await nativeDirectory.restore(agent.id)
+            else if (nativeDirectory.mode === 'legacy') await overlayAppClient.agents.restore(workspaceId, agent.id)
+            else throw new Error(nativeDirectory.error ?? 'Native agent directory is unavailable')
+          },
           onUndone: () => dispatchAgentDirectoryChanged(workspaceId),
         }),
       })
@@ -256,7 +286,8 @@ export function useAgentEditorActions({
 async function persistAgentEdit({
   workspaceId,
   agent,
-  buildInput,
+  persistProfile,
+  onProfileSaved,
   agentType,
   cloudAgent,
   environmentId,
@@ -268,7 +299,8 @@ async function persistAgentEdit({
 }: {
   workspaceId: string
   agent: WorkspaceAgentDirectoryItem
-  buildInput(): WorkspaceAgentCreateInput
+  persistProfile(): Promise<{ agent: EditableAgent }>
+  onProfileSaved(agent: EditableAgent): void
   agentType: ReturnType<typeof useAgentRuntime>['agentType']
   cloudAgent: ReturnType<typeof useAgentRuntime>['cloudAgent']
   environmentId: ReturnType<typeof useByoConnection>['environmentId']
@@ -278,7 +310,8 @@ async function persistAgentEdit({
   enabledToolGroups: Set<string>
   computer: ReturnType<typeof useAgentComputer>
 }) {
-  const saved = await overlayAppClient.agents.update(workspaceId, agent.id, buildInput())
+  const saved = await persistProfile()
+  onProfileSaved(saved.agent)
   await updateAgentBinding({
     workspaceId,
     agent,
