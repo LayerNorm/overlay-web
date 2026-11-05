@@ -11,7 +11,7 @@ import {
   type ReactNode,
 } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useConvexAuth, useMutation, usePaginatedQuery, useQuery } from 'convex/react'
+import { useConvex, useConvexAuth, useMutation, usePaginatedQuery, useQuery } from 'convex/react'
 import type { OptimisticLocalStore } from 'convex/browser'
 import type { FunctionReturnType } from 'convex/server'
 import { api } from '../../../convex/_generated/api'
@@ -223,6 +223,7 @@ function NativePersonalChatProvider({
   workspaceReady: boolean
 }) {
   const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
+  const client = useConvex()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const routeParams = useMemo(() => new URLSearchParams(searchParams.toString()), [searchParams])
@@ -308,7 +309,14 @@ function NativePersonalChatProvider({
   }, [renameMutation, workspaceId])
 
   const setArchived = useCallback(async (summary: PersonalChatSummary, archived: boolean) => {
-    const fallbackSummary = minimalSummary(summary)
+    const current = client.watchQuery(api.chat.personal.getSummary, {
+      workspaceId: summary.workspaceId,
+      conversationId: summary._id,
+    }).localQueryResult()
+    if (current === null) throw new Error('Conversation is no longer available')
+    // Undo may be invoked from a toast that captured an older row. Preserve
+    // the latest optimistic summary even after the earlier mutation settles.
+    const fallbackSummary = minimalSummary(current ?? summary)
     const mutateWithOptimism = archiveMutation.withOptimisticUpdate((store, args) => {
       const applyArchiveUpdate = createPersonalChatArchiveOptimisticUpdate(fallbackSummary, {
         getCurrent: (mutationArgs) => {
@@ -326,15 +334,14 @@ function NativePersonalChatProvider({
           mutationArgs.archived,
           next,
         ),
-        updateSelected: (mutationArgs, archivedAt) => {
+        updateSummary: (mutationArgs, next) => {
           const queryArgs = {
             workspaceId: mutationArgs.workspaceId,
             conversationId: mutationArgs.conversationId as Id<'conversations'>,
           }
-          const selected = store.getQuery(api.chat.personal.getSummary, queryArgs)
-          if (selected) {
-            store.setQuery(api.chat.personal.getSummary, queryArgs, { ...selected, archivedAt })
-          }
+          // Keep pending operations on one summary even if its list row moves
+          // out of the only loaded page. Convex rebases this from server data.
+          store.setQuery(api.chat.personal.getSummary, queryArgs, next)
         },
       })
       applyArchiveUpdate(args)
@@ -344,7 +351,7 @@ function NativePersonalChatProvider({
       conversationId: summary._id,
       archived,
     })
-  }, [archiveMutation])
+  }, [archiveMutation, client])
 
   const setRead = useCallback(async (
     summary: PersonalChatSummary,

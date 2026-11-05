@@ -64,9 +64,7 @@ test('archive and Undo prefer current store fields over a stale fallback snapsho
   const applyArchiveUpdate = createPersonalChatArchiveOptimisticUpdate(fallback, {
     getCurrent: () => current,
     move: (_args, row) => { current = row ?? undefined },
-    updateSelected: (_args, archivedAt) => {
-      if (current) current = { ...current, archivedAt }
-    },
+    updateSummary: (_args, next) => { current = next ?? undefined },
   })
   applyArchiveUpdate({
     workspaceId: 'workspace-a',
@@ -121,8 +119,30 @@ test('Undo does not reconstruct a record whose current summary is known missing'
   const apply = createPersonalChatArchiveOptimisticUpdate(stale, {
     getCurrent: () => null,
     move: (_args, row) => { moved = row },
-    updateSelected: () => {},
+    updateSummary: () => {},
   })
   apply({ workspaceId: 'workspace-a', conversationId: stale._id, archived: false })
   assert.equal(moved, null)
+})
+
+test('queued Undo preserves a remote rename after archive removes the only loaded list row', () => {
+  const stale = { _id: 'chat-a', title: 'Original', unread: false, archivedAt: undefined as number | undefined }
+  let active = [stale]
+  let summary: typeof stale | null | undefined
+  const effects = {
+    getCurrent: () => summary === null ? null : summary ?? active[0],
+    move: (_args: unknown, row: typeof stale | null) => { active = row && row.archivedAt === undefined ? [row] : [] },
+    updateSummary: (_args: unknown, row: typeof stale | null) => { summary = row },
+  }
+  const archive = createPersonalChatArchiveOptimisticUpdate(stale, effects)
+  const undo = createPersonalChatArchiveOptimisticUpdate(stale, effects)
+  archive({ workspaceId: 'workspace-a', conversationId: stale._id, archived: true })
+  // Convex replays pending operations on the new server base. The archived
+  // list and detail query are not mounted; only the active list is loaded.
+  active = [{ ...stale, title: 'Concurrent rename', unread: true }]
+  summary = undefined
+  archive({ workspaceId: 'workspace-a', conversationId: stale._id, archived: true })
+  assert.equal(active.length, 0)
+  undo({ workspaceId: 'workspace-a', conversationId: stale._id, archived: false })
+  assert.deepEqual(active, [{ ...stale, title: 'Concurrent rename', unread: true }])
 })

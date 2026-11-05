@@ -22,14 +22,15 @@ export function createPersonalChatArchiveOptimisticUpdate<Row extends PersonalCh
   effects: {
     getCurrent(args: PersonalChatArchiveArgs): Row | null | undefined
     move(args: PersonalChatArchiveArgs, row: Row | null): void
-    updateSelected(args: PersonalChatArchiveArgs, archivedAt: number | undefined): void
+    updateSummary(args: PersonalChatArchiveArgs, row: Row | null): void
   },
 ): (args: PersonalChatArchiveArgs) => void {
   return (args) => {
     const archivedAt = args.archived ? Date.now() : undefined
     const current = effects.getCurrent(args)
-    effects.move(args, archivePersonalChatRow(current, fallback, archivedAt))
-    effects.updateSelected(args, archivedAt)
+    const next = archivePersonalChatRow(current, fallback, archivedAt)
+    effects.move(args, next)
+    effects.updateSummary(args, next)
   }
 }
 

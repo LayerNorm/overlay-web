@@ -284,7 +284,10 @@ rebases pending operations and rolls back failed mutations without restoring a
 whole stale array. Each archive/restore updater captures only its call's
 minimal fallback summary, preserves an explicit null summary as a tombstone
 (instead of reconstructing a deleted record), prefers current cached summary/list data, and patches
-only `archivedAt`; mark-read optimism clears unread only when the observed
+only `archivedAt`. The updater also publishes the resulting full summary in the
+local query store, including when that summary has no mounted consumer. This
+keeps a queued Undo on the same fresh metadata after archive removes the row
+from the only loaded list. Mark-read optimism clears unread only when the observed
 message is still the summary's latest message. Native writes are budgeted at
 300 per verified user per 10-minute window because they have no BFF IP context.
 
