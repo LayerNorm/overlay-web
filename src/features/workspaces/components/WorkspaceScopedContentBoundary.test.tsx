@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
+import { createRequire } from 'node:module'
 import test from 'node:test'
-import React from 'react'
+import React, { act, useEffect, useState } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { WorkspaceScopedContentGate } from './WorkspaceScopedContentBoundary'
 import {
@@ -67,11 +68,88 @@ test('legacy scoped routes remain gated until a confirmed handle redirect is app
 })
 
 test('legacy and immutable-ID personal routes remain usable without a confirmed handle', () => {
-  const legacy = renderBoundary('/app/chat', '', false, null)
+  const legacy = renderBoundary('/app/chat', '', null)
   assert.match(legacy, /Scoped page/)
   assert.doesNotMatch(legacy, /Opening workspace/)
 
-  const personalId = renderBoundary('/app/w/workspace-1/chat', 'scope=personal', false, null)
+  const personalId = renderBoundary('/app/w/workspace-1/chat', 'scope=personal', null)
   assert.match(personalId, /Scoped page/)
   assert.doesNotMatch(personalId, /Opening workspace/)
+})
+
+test('rejected activation preserves hidden source state, but a target route discards it', async (t) => {
+  const previousAct = Object.getOwnPropertyDescriptor(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
+  Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { configurable: true, value: true })
+  t.after(() => {
+    if (previousAct) Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', previousAct)
+    else Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
+  })
+  const { create } = createRequire(import.meta.url)('react-test-renderer') as {
+    create(element: React.ReactElement): {
+      root: { findByType(type: string): { props: { onClick: () => void } } }
+      update(element: React.ReactElement): void
+      toJSON(): unknown
+      unmount(): void
+    }
+  }
+  let mounts = 0
+  const recordMount = () => { mounts += 1 }
+  function SourcePage() {
+    const [draft, updateDraft] = useState('')
+    useEffect(recordMount, [recordMount])
+    return <button type="button" onClick={() => updateDraft('Unsent source draft')}>{draft}</button>
+  }
+  function stateFor(workspaceId: string) {
+    const pathname = `/app/w/${workspaceId}/chat`
+    const routeTarget = readWorkspaceRouteTarget(pathname)
+    return {
+      switchingWorkspaceId: null,
+      waitingForNavigation: false,
+      routeTarget,
+      status: 'ready' as const,
+      currentWorkspace: { id: workspaceId, slug: workspaceId } as WorkspaceSummary,
+      resolvedRouteTargetKey: routeTarget ? workspaceRouteTargetKey(routeTarget) : null,
+      descriptor: readWorkspaceRouteDescriptor(pathname),
+      routeWorkspaceId: workspaceId,
+      activeWorkspaceId: workspaceId,
+      pathname,
+      routeSearch: 'scope=personal',
+      currentScope: 'personal' as const,
+    }
+  }
+  const source = stateFor('source')
+  const target = stateFor('target')
+  const render = (state: React.ComponentProps<typeof WorkspaceScopedContentGate>['state']) => (
+    <WorkspaceScopedContentGate state={state} fallback={<span>Opening workspace</span>}>
+      <SourcePage />
+    </WorkspaceScopedContentGate>
+  )
+  let tree!: ReturnType<typeof create>
+  await act(() => { tree = create(render(source)) })
+  t.after(async () => { await act(() => tree.unmount()) })
+  await act(() => { tree.root.findByType('button').props.onClick() })
+  await act(() => { tree.update(render({ ...source, switchingWorkspaceId: 'target' })) })
+  assert.equal(mounts, 1)
+  assert.match(JSON.stringify(tree.toJSON()), /"hidden":true/)
+  assert.match(JSON.stringify(tree.toJSON()), /"inert":true/)
+  assert.match(JSON.stringify(tree.toJSON()), /Opening workspace/)
+
+  await act(() => { tree.update(render(source)) })
+  assert.match(JSON.stringify(tree.toJSON()), /Unsent source draft/)
+  assert.equal(mounts, 1)
+  assert.match(JSON.stringify(tree.toJSON()), /"hidden":false/)
+  assert.doesNotMatch(JSON.stringify(tree.toJSON()), /Opening workspace/)
+
+  await act(() => {
+    tree.update(render({
+      ...target,
+      activeWorkspaceId: source.activeWorkspaceId,
+      resolvedRouteTargetKey: source.resolvedRouteTargetKey,
+    }))
+  })
+  assert.doesNotMatch(JSON.stringify(tree.toJSON()), /Unsent source draft/)
+  assert.match(JSON.stringify(tree.toJSON()), /Opening workspace/)
+  await act(() => { tree.update(render(target)) })
+  assert.equal(mounts, 2)
+  assert.doesNotMatch(JSON.stringify(tree.toJSON()), /Unsent source draft/)
 })
