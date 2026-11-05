@@ -126,7 +126,7 @@ func (b *bridge) refreshProvider(w http.ResponseWriter, r *http.Request, credent
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"credential": envelopeValue(refreshed)})
 		return
-	case "kimi", "kimi-ai":
+	case "kimi":
 		storage, ok := decodeKimiCredential(credential)
 		if !ok {
 			writeProviderError(w, providerID, http.StatusUnauthorized, "reconnect_required")
@@ -139,7 +139,7 @@ func (b *bridge) refreshProvider(w http.ResponseWriter, r *http.Request, credent
 			return
 		}
 		updated := kimiStorageFromAuth(refreshedAuth, storage, providerID)
-		refreshed, err := newKimiCredential(providerID, updated)
+		refreshed, err := newKimiCredential(updated)
 		if err != nil {
 			writeProviderError(w, providerID, http.StatusBadGateway, "reconnect_required")
 			return
@@ -232,7 +232,7 @@ func validProviderCredential(credential envelope) bool {
 	case "meta":
 		_, ok := decodeMetaCredential(credential)
 		return ok
-	case "kimi", "kimi-ai":
+	case "kimi":
 		_, ok := decodeKimiCredential(credential)
 		return ok
 	case "devin":
@@ -274,7 +274,7 @@ func buildProviderAuth(credential envelope, connectionID string) *cliproxyauth.A
 			},
 			Attributes: map[string]string{"type": "xai", "auth_kind": "oauth"},
 		}
-	case "kimi", "kimi-ai":
+	case "kimi":
 		storage, ok := decodeKimiCredential(credential)
 		if !ok {
 			return nil
@@ -367,7 +367,7 @@ func kimiStorageFromAuth(auth *cliproxyauth.Auth, previous *kimiauth.KimiTokenSt
 		}
 	}
 	result.Type = providerID
-	result.Domain = kimiDomain(providerID)
+	result.Domain = kimiauth.KimiDefaultDomain
 	result.BaseURL = kimiauth.ResolveKimiAPIBaseURL(result.Domain)
 	if result.AccessToken == "" || result.RefreshToken == "" {
 		return nil
@@ -446,7 +446,7 @@ func (b *bridge) inferProvider(w http.ResponseWriter, r *http.Request, doc *ojso
 			execute = executor.NewXAIExecutor(cfg).ExecuteStream
 		case "meta":
 			execute = executor.NewMetaExecutor(cfg).ExecuteStream
-		case "kimi", "kimi-ai":
+		case "kimi":
 			execute = executor.NewKimiExecutor(cfg).ExecuteStream
 		case "devin":
 			execute = executor.NewDevinExecutor(cfg).ExecuteStream

@@ -4,7 +4,6 @@ import { subscriptionLogo, subscriptionRequest } from './subscription-connection
 
 test('provider logos reflect providers rather than coding harnesses', () => {
   assert.equal(subscriptionLogo('subscription:codex'), 'openai')
-  assert.equal(subscriptionLogo('kimi-ai'), 'moonshotai')
   assert.equal(subscriptionLogo('meta'), 'meta-llama')
 })
 

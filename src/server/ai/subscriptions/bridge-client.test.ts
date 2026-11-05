@@ -127,7 +127,7 @@ test('oversized bridge responses are cancelled before the body is fully read', a
 })
 
 test('provider-bound model requests preserve the exact provider for all supported IDs', async () => {
-  const providers = ['codex', 'claude', 'xai', 'meta', 'kimi', 'kimi-ai', 'devin'] as const
+  const providers = ['codex', 'claude', 'xai', 'meta', 'kimi', 'devin'] as const
   for (const providerId of providers) {
     let requestedProvider = ''
     const client = new SubscriptionBridgeClient(serviceUrl, secret, async (input, init) => {
