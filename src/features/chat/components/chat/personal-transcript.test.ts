@@ -8,6 +8,28 @@ function message(id: string, turnId: string, role: 'user' | 'assistant', extra: 
     role, mode: 'act', content: id, contentType: 'text', createdAt: 1, ...extra } as HydratedRemoteMessage
 }
 
+test('native run sequence wins over stale timestamps and terminal snapshots win over progress', () => {
+  const current = message('assistant', 'turn', 'assistant', { status: 'generating', nativeRunId: 'run' as HydratedRemoteMessage['nativeRunId'],
+    nativeProgressSequence: 2, updatedAt: 2, content: 'Current' })
+  const stale = { ...current, nativeProgressSequence: 1, updatedAt: 20, content: 'Stale' }
+  const final = { ...current, status: 'completed' as const, content: 'Final', updatedAt: 3 }
+  const project = (...messages: HydratedRemoteMessage[]) => projectPersonalTranscript(messages.map(message => ({ message, contextUser: null })))
+  assert.deepEqual(project(current, stale).messages[0].parts, [{ type: 'text', text: 'Current' }])
+  assert.deepEqual(project(final, stale, current).messages[0].parts, [{ type: 'text', text: 'Final' }])
+  assert.equal(project(final).messages[0].nativeRunId, 'run')
+})
+
+test('a durable checkpoint cannot be replaced by an older local stream snapshot', () => {
+  const user = message('user', 'turn', 'user')
+  const canonical = message('assistant', 'turn', 'assistant', { status: 'generating', nativeProgressSequence: 1,
+    parts: [{ type: 'text', text: 'Committed output', id: 'stable-part' }] })
+  const pending: PersonalPendingTurn = { turnId: 'turn', user: personalMessageToUi(user), userAcknowledged: true,
+    responses: [personalMessageToUi(message('local', 'turn', 'assistant', { content: 'Older local text', status: 'generating' }))] }
+  const result = projectPersonalTranscript([{ message: canonical, contextUser: user }], [pending])
+  assert.deepEqual(result.exchanges[0].responses[0].parts, canonical.parts)
+  assert.equal(result.exchanges[0].responses[0].id, 'assistant')
+})
+
 test('canonical projection includes remote users, all variants and exact partial-turn parents', () => {
   const user = message('user-db', 'turn', 'user')
   const variant = message('variant-db', 'turn', 'assistant', { variantIndex: 1, modelId: 'model' })

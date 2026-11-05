@@ -28,6 +28,8 @@ export type PersonalTranscriptMessage = UIMessage & {
   updatedAt?: number
   status?: 'generating' | 'completed' | 'error'
   persistedId?: string
+  nativeRunId?: string
+  nativeProgressSequence?: number
   contentType: 'text' | 'image' | 'video'
   deletedAt?: number
 }
@@ -49,6 +51,14 @@ export type PersonalTranscriptExchange = {
 }
 
 function isAtLeastAsRecent(message: HydratedRemoteMessage, previous: HydratedRemoteMessage) {
+  if (message.nativeRunId && message.nativeRunId === previous.nativeRunId) {
+    const terminal = (row: HydratedRemoteMessage) => row.status === 'completed' || row.status === 'error'
+    if (terminal(message) !== terminal(previous)) return terminal(message)
+    if (message.nativeProgressSequence !== previous.nativeProgressSequence) {
+      return (message.nativeProgressSequence ?? -1) > (previous.nativeProgressSequence ?? -1)
+    }
+    return (message.updatedAt ?? message.createdAt) >= (previous.updatedAt ?? previous.createdAt)
+  }
   if (message.eventSequence !== undefined && previous.eventSequence !== undefined) {
     return message.eventSequence >= previous.eventSequence
   }
@@ -63,6 +73,8 @@ export function personalMessageToUi(message: HydratedRemoteMessage): PersonalTra
   return {
     id: message.role === 'user' ? message.turnId : message._id,
     persistedId: message._id,
+    nativeRunId: message.nativeRunId,
+    nativeProgressSequence: message.nativeProgressSequence,
     turnId: message.turnId,
     role: message.role,
     mode: message.mode,
@@ -100,9 +112,11 @@ function applyPendingTurn(exchanges: Map<string, PersonalTranscriptExchange>, pe
     const key = responseKey(response)
     const canonical = responses.get(key)
     if (canonical?.status === 'completed' || canonical?.status === 'error') continue
+    if (canonical?.nativeProgressSequence !== undefined) continue
     if (canonical?.status === 'generating' && response.status === 'error') continue
     responses.set(key, canonical ? {
       ...canonical, ...response, id: canonical.id, persistedId: canonical.persistedId,
+      nativeRunId: canonical.nativeRunId, nativeProgressSequence: canonical.nativeProgressSequence,
       metadata: {
         ...(canonical.metadata as Record<string, unknown> | undefined),
         ...(response.metadata as Record<string, unknown> | undefined),

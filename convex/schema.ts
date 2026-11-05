@@ -1499,6 +1499,8 @@ export default defineSchema({
     conversationId: v.id('conversations'),
     userId: v.string(),
     nativeSubmittedAt: v.optional(v.number()),
+    nativeRunId: v.optional(v.id('conversationAgentRuns')),
+    nativeProgressSequence: v.optional(v.number()),
     userMetadata: v.optional(userMessageMetadata),
     // Kept apart from `parts`, which streaming and finalization replace.
     agentPlan: v.optional(v.array(runPlanStepValidator)),
@@ -1638,9 +1640,11 @@ export default defineSchema({
             type: v.literal('text'),
             text: v.string(),
             storageOmittedParts: v.number(),
+            id: v.optional(v.string()),
           }),
           v.object({
             type: v.literal('tool-invocation'),
+            id: v.optional(v.string()),
             toolInvocation: v.object({
               toolCallId: v.optional(v.string()),
               toolName: v.string(),
@@ -1652,6 +1656,7 @@ export default defineSchema({
           v.object({
             type: v.string(),
             text: v.optional(v.string()),
+            id: v.optional(v.string()),
             url: v.optional(v.string()),
             mediaType: v.optional(v.string()),
             /** Optional display name for file parts */

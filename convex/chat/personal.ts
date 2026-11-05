@@ -11,7 +11,9 @@ import { buildPersistedMessageContent, sanitizeMessagePartsForPersistence } from
 import type { Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { userMessageMetadata } from '../lib/userMessageMetadata'
-import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
+import { assertNativeThreadWritable, nativeThreadCompatibility } from '../lib/nativeThreadCompatibility'
+import { ACTIVE_AGENT_RUN_STATUSES } from '@/shared/agents/agent-run'
+import { publicPersonalRun } from '../lib/nativePersonalExecution'
 
 const resourceArgs = { workspaceId: v.string(), conversationId: v.id('conversations') }
 type Access = Awaited<ReturnType<typeof requireNativePersonalChat>>
@@ -65,6 +67,28 @@ export const getSummary = query({
     await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
     const access = await nativePersonalChatScope(ctx, viewer, await ctx.db.get(args.conversationId))
     return access ? summary(ctx, access) : null
+  },
+})
+
+export const getExecution = query({
+  args: resourceArgs,
+  handler: async (ctx, args) => {
+    const access = await requireNativePersonalChat(ctx, args)
+    await requireNativeCapability(ctx, access.userId, 'conversations.read')
+    const active = await Promise.all(ACTIVE_AGENT_RUN_STATUSES.map(status => ctx.db
+      .query('conversationAgentRuns').withIndex('by_conversationId_status_updatedAt', q => q
+        .eq('conversationId', args.conversationId).eq('status', status)).order('desc').first()))
+    const latest = active.filter(run => run !== null)
+      .sort((a, b) => b.updatedAt - a.updatedAt || b._creationTime - a._creationTime)[0]
+      ?? await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', args.conversationId)).order('desc').first()
+    return {
+      conversationId: args.conversationId,
+      workspaceId: access.workspaceId,
+      userId: access.userId,
+      compatibility: await nativeThreadCompatibility(ctx, access.conversation),
+      run: latest && latest.userId === access.userId && latest.mode !== 'room' ? publicPersonalRun(latest) : null,
+    }
   },
 })
 
