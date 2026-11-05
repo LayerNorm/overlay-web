@@ -1003,37 +1003,19 @@ function ChatListBody({
   )
 }
 
-export function ChatInlinePanel({
-  refreshKey,
-  searchQuery = '',
-  onNavigate,
-  baseHref = '/app/chat',
+function useChatPanelRoute({
+  baseHref,
   workspaceId,
-  view: sectionView,
+  sectionView,
 }: {
-  refreshKey: number
-  searchQuery?: string
-  onNavigate?: () => void
-  baseHref?: string
+  baseHref: string
   workspaceId?: string | null
-  /** Pins the list to one view (a sidebar section) instead of following the route. */
-  view?: ChatView
+  sectionView?: ChatView
 }) {
-  const router = useRouter()
   const buildWorkspaceHref = useWorkspaceHref()
-  const { activeWorkspace } = useWorkspace()
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
   const rememberedScope = usePanelScope()
-  const { sessions, getUnread } = useAsyncSessions()
-  const { user, isLoading: authLoading } = useAuth()
-  const {
-    conversationListVersion,
-    notifications: collaborationNotifications,
-  } = useCollaborationRealtime()
-  const nativePersonal = usePersonalChat()
-  const nativePersonalOwner = nativePersonal.configured && (Boolean(user) || authLoading)
-
   useBrowserRouteVersion()
   const searchActiveId = searchParams?.get('id') ?? null
   const browserActiveId = typeof window === 'undefined'
@@ -1058,6 +1040,38 @@ export function ChatInlinePanel({
   // Both AI chat views share the personal list; the scope filter runs here.
   // Sections share one list of every conversation and each filters its own view.
   setActiveChatListView(sectionView ? 'all' : chatView === 'workspace-chats' ? 'personal' : chatView)
+  return { activeId, buildWorkspaceHref, chatView, pathname, scopedBaseHref }
+}
+
+export function ChatInlinePanel({
+  refreshKey,
+  searchQuery = '',
+  onNavigate,
+  baseHref = '/app/chat',
+  workspaceId,
+  view: sectionView,
+}: {
+  refreshKey: number
+  searchQuery?: string
+  onNavigate?: () => void
+  baseHref?: string
+  workspaceId?: string | null
+  /** Pins the list to one view (a sidebar section) instead of following the route. */
+  view?: ChatView
+}) {
+  const router = useRouter()
+  const { activeWorkspace } = useWorkspace()
+  const { sessions, getUnread } = useAsyncSessions()
+  const { user, isLoading: authLoading } = useAuth()
+  const {
+    conversationListVersion,
+    notifications: collaborationNotifications,
+  } = useCollaborationRealtime()
+  const nativePersonal = usePersonalChat()
+  const nativePersonalOwner = nativePersonal.configured && (Boolean(user) || authLoading)
+  const { activeId, buildWorkspaceHref, chatView, pathname, scopedBaseHref } = useChatPanelRoute({
+    baseHref, workspaceId, sectionView,
+  })
 
   const openChat = useCallback((chat: Conversation) => {
     const targetView = chat.conversationType === 'channel'

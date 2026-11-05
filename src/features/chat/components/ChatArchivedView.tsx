@@ -47,6 +47,27 @@ function readSelectedId(searchId: string | null): string | null {
   return new URLSearchParams(window.location.search).get('id') ?? searchId
 }
 
+function archivedLoadingState(
+  state: ViewState,
+  workspaceId: string | null,
+  selectedId: string | null,
+  nativePersonal: ReturnType<typeof usePersonalChat>,
+  nativePersonalEnabled: boolean,
+) {
+  const waitingForSelectedSummary = Boolean(nativePersonalEnabled && selectedId
+    && (
+      nativePersonal.selectedConversationId !== selectedId
+      || nativePersonal.selectedSummary === undefined
+    ))
+  const selectedSummaryUnavailable = waitingForSelectedSummary
+    && nativePersonal.archived.status === 'unavailable'
+  const loading = state.status === 'loading'
+    || state.workspaceId !== workspaceId
+    || (waitingForSelectedSummary && !selectedSummaryUnavailable)
+    || (nativePersonalEnabled && nativePersonal.archived.status === 'loading')
+  return { waitingForSelectedSummary, selectedSummaryUnavailable, loading }
+}
+
 /**
  * Archived chats open as the conversation itself. The sidebar list is the
  * index; this page is only ever empty-state or the most recently archived
@@ -172,17 +193,9 @@ export function ChatArchivedView({
     state,
     workspaceId,
   ])
-  const waitingForSelectedSummary = Boolean(nativePersonalEnabled && selectedId
-    && (
-      nativePersonal.selectedConversationId !== selectedId
-      || nativePersonal.selectedSummary === undefined
-    ))
-  const selectedSummaryUnavailable = waitingForSelectedSummary
-    && nativePersonal.archived.status === 'unavailable'
-  const loading = state.status === 'loading'
-    || state.workspaceId !== workspaceId
-    || (waitingForSelectedSummary && !selectedSummaryUnavailable)
-    || (nativePersonalEnabled && nativePersonal.archived.status === 'loading')
+  const { waitingForSelectedSummary, selectedSummaryUnavailable, loading } = archivedLoadingState(
+    state, workspaceId, selectedId, nativePersonal, nativePersonalEnabled,
+  )
 
   useEffect(() => {
     if (loading || waitingForSelectedSummary || conversations.length === 0) return

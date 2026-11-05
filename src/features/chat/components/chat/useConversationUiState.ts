@@ -2,6 +2,7 @@
 
 import {
   useCallback,
+  useEffect,
   useLayoutEffect,
   useRef,
   useState,
@@ -27,6 +28,7 @@ type SourcesPanelSetter = (panel: null) => void
 export type UseConversationUiStateParams = {
   activeChatId: string | null
   activeChatIdRef: MutableRefObject<string | null>
+  canonicalChatTitle?: { _id: string; title: string } | null
   applyDefaultChatModelsToView: (ui: Partial<ConversationUiState>) => ConversationUiState
   clearTransientComposerState: () => void
   ensureConversationRuntime: (chatId: string) => ConversationRuntime
@@ -49,6 +51,7 @@ export type UseConversationUiStateParams = {
 export function useConversationUiState({
   activeChatId,
   activeChatIdRef,
+  canonicalChatTitle,
   applyDefaultChatModelsToView,
   clearTransientComposerState,
   ensureConversationRuntime,
@@ -73,6 +76,18 @@ export function useConversationUiState({
   const [generationResults, setGenerationResults] = useState<Map<number, GenerationResult[]>>(new Map())
   const [exchangeGenTypes, setExchangeGenTypes] = useState<('text' | 'image' | 'video')[]>([])
   const [isFirstMessage, setIsFirstMessage] = useState(true)
+  const canonicalConversationId = canonicalChatTitle?._id
+  const canonicalTitle = canonicalChatTitle?.title
+
+  useEffect(() => {
+    if (!canonicalConversationId || canonicalTitle === undefined
+      || canonicalConversationId !== activeChatId
+      || activeChatIdRef.current !== canonicalConversationId) return
+    const runtime = ensureConversationRuntime(canonicalConversationId)
+    if (runtime.ui.activeChatTitle !== canonicalTitle) {
+      runtime.ui = { ...runtime.ui, activeChatTitle: canonicalTitle }
+    }
+  }, [activeChatId, activeChatIdRef, canonicalConversationId, canonicalTitle, ensureConversationRuntime])
 
   const applyUiStateToView = useCallback((ui: ConversationUiState) => {
     const normalizedTextModels = normalizeChatModelSelection({
@@ -99,12 +114,18 @@ export function useConversationUiState({
       askModelIds: selectedModels,
       actModelId: selectedActModel,
     })
+    const snapshotTitle = canonicalConversationId
+      && canonicalTitle !== undefined
+      && canonicalConversationId === activeChatId
+      && activeChatIdRef.current === canonicalConversationId
+      ? canonicalTitle
+      : activeChatTitle
     return createConversationUiState({
       selectedActModel: normalizedTextModels.actModelId,
       selectedModels: normalizedTextModels.askModelIds,
       exchangeModes,
       exchangeModels,
-      activeChatTitle,
+      activeChatTitle: snapshotTitle,
       generationResults,
       exchangeGenTypes,
       isFirstMessage,
@@ -112,7 +133,10 @@ export function useConversationUiState({
     })
   }, [
     activeChatId,
+    activeChatIdRef,
     activeChatTitle,
+    canonicalConversationId,
+    canonicalTitle,
     exchangeGenTypes,
     exchangeModels,
     exchangeModes,

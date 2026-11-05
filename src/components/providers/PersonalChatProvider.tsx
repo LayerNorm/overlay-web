@@ -186,21 +186,7 @@ function isChatConsumerPath(pathname: string | null): boolean {
   return segments[1] === 'chat'
 }
 
-function NativePersonalChatProvider({
-  children,
-  configured,
-  workspaceId,
-  workspaceReady,
-}: {
-  children: ReactNode
-  configured: boolean
-  workspaceId: string | null
-  workspaceReady: boolean
-}) {
-  const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
-  const pathname = usePathname()
-  const searchParams = useSearchParams()
-  const routeParams = useMemo(() => new URLSearchParams(searchParams.toString()), [searchParams])
+function personalChatQueryDemand(pathname: string | null, routeParams: URLSearchParams) {
   const isChatSurface = isChatConsumerPath(pathname)
   const routeScope = readWorkspacePathScope(pathname ?? '')
     ?? legacyWorkspaceScopeForRoute('chat', routeParams)
@@ -218,6 +204,25 @@ function NativePersonalChatProvider({
   const needsArchivedList = isArchivedRoute || isArchivedSettings
   const canReadSelectedSummary = isNativePersonalChatSurface || isArchivedRoute
   const routeId = canReadSelectedSummary ? routeParams.get('id') : null
+  return { needsActiveList, needsArchivedList, canReadSelectedSummary, routeId }
+}
+
+function NativePersonalChatProvider({
+  children,
+  configured,
+  workspaceId,
+  workspaceReady,
+}: {
+  children: ReactNode
+  configured: boolean
+  workspaceId: string | null
+  workspaceReady: boolean
+}) {
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const routeParams = useMemo(() => new URLSearchParams(searchParams.toString()), [searchParams])
+  const { needsActiveList, needsArchivedList, canReadSelectedSummary, routeId } = personalChatQueryDemand(pathname, routeParams)
   const [routeConversationId, setRouteConversationId] = useState<string | null>(null)
   const selectedConversationId = routeConversationId
   const canQuery = Boolean(workspaceReady && workspaceId && !authLoading && isAuthenticated)

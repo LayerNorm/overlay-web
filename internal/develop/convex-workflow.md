@@ -253,6 +253,12 @@ globally; resource preloads need their own authorization.
 
 ### Native personal-chat list ownership (CN-04)
 
+Canonical title projection updates only the selected runtime's title and title
+display state. It must not hydrate the entire UI snapshot: doing so creates a new
+model-selection array, triggers the legacy metadata autosave, and feeds that write
+back into the subscribed summary. Metadata-only refreshes and remote renames must
+preserve model, transcript and generation state without another metadata write.
+
 The browser's personal-chat list, selected title, archive/restore state and basic
 unread flag are owned by `chat/personal:list`, `getSummary`, `rename`,
 `setArchived` and `setRead`. The additive indexes require no backfill. Queries
