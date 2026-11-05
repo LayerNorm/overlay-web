@@ -43,6 +43,40 @@ function renderAccountProfile(
   )
 }
 
+function resolveMobileSidebarProps({
+  classicLayout,
+  railItems,
+  classicFooterItems,
+  unifiedFooterItems,
+  closeMobileDrawer,
+}: {
+  classicLayout: boolean
+  railItems: PrimaryRailItem[]
+  classicFooterItems: PrimaryRailItem[]
+  unifiedFooterItems: PrimaryRailItem[] | undefined
+  closeMobileDrawer: () => void
+}) {
+  const closeAfterSelect = (item: PrimaryRailItem) => ({
+    ...item,
+    onSelect: () => {
+      closeMobileDrawer()
+      item.onSelect()
+    },
+  })
+  if (classicLayout) {
+    return {
+      drawerClassName: 'w-[calc(100vw-1rem)] max-w-[340px]',
+      items: railItems,
+      footerItems: classicFooterItems,
+    }
+  }
+  return {
+    drawerClassName: undefined,
+    items: railItems.map(closeAfterSelect),
+    footerItems: unifiedFooterItems?.map(closeAfterSelect),
+  }
+}
+
 export type {
   AppSidebarChatPanelContext,
   AppSidebarNavigateContext,
@@ -208,6 +242,13 @@ export default function AppSidebar({
     { id: 'settings', label: 'Settings', icon: Settings, active: s.routeState.panelKind === 'settings', href: settingsHref, onSelect: () => s.router.push(settingsHref) },
     ...s.railFooterItems,
   ]
+  const mobileSidebarProps = resolveMobileSidebarProps({
+    classicLayout,
+    railItems: s.railItems,
+    classicFooterItems: railFooterItems,
+    unifiedFooterItems: s.railFooterItems,
+    closeMobileDrawer: s.closeMobileDrawer,
+  })
   const sidebarProps = {
     useSecondarySidebar: classicLayout,
     brand: brandLink,
@@ -278,15 +319,15 @@ export default function AppSidebar({
       ) : null}
 
         <MobileDrawer open={s.mobileMenuOpen} hidden={s.hideTemporaryChatChrome} onClose={s.closeMobileDrawer}
-          className={classicLayout ? 'w-[calc(100vw-1rem)] max-w-[340px]' : undefined}>
+          className={mobileSidebarProps.drawerClassName}>
           <SelectedSidebar
             {...sidebarProps}
             collapsed={false}
             inlineMore
             publishSubviews={false}
             onCollapsedChange={(collapsed) => { if (collapsed) s.closeMobileDrawer() }}
-            items={classicLayout ? s.railItems : s.railItems.map((item) => ({ ...item, onSelect: () => { s.closeMobileDrawer(); item.onSelect() } }))}
-            footerItems={classicLayout ? railFooterItems : s.railFooterItems?.map((item) => ({ ...item, onSelect: () => { s.closeMobileDrawer(); item.onSelect() } }))}
+            items={mobileSidebarProps.items}
+            footerItems={mobileSidebarProps.footerItems}
             onSearch={() => { s.closeMobileDrawer(); s.openGlobalSearch(null) }}
             account={mobileAccountSlot}
             className="mobile-sidebar-layout h-full w-full bg-transparent"
