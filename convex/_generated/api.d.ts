@@ -58,6 +58,7 @@ import type * as billing_subscriptions from "../billing/subscriptions.js";
 import type * as billing_usageTotals from "../billing/usageTotals.js";
 import type * as billing_workspacePayer from "../billing/workspacePayer.js";
 import type * as chat_conversations from "../chat/conversations.js";
+import type * as chat_personal from "../chat/personal.js";
 import type * as collaboration_agents from "../collaboration/agents.js";
 import type * as collaboration_channels from "../collaboration/channels.js";
 import type * as collaboration_conversationMigration from "../collaboration/conversationMigration.js";
@@ -227,6 +228,7 @@ declare const fullApi: ApiFromModules<{
   "billing/usageTotals": typeof billing_usageTotals;
   "billing/workspacePayer": typeof billing_workspacePayer;
   "chat/conversations": typeof chat_conversations;
+  "chat/personal": typeof chat_personal;
   "collaboration/agents": typeof collaboration_agents;
   "collaboration/channels": typeof collaboration_channels;
   "collaboration/conversationMigration": typeof collaboration_conversationMigration;

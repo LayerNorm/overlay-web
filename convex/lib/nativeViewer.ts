@@ -1,4 +1,4 @@
-import type { Id } from '../_generated/dataModel'
+import type { Doc, Id } from '../_generated/dataModel'
 import type { QueryCtx } from '../_generated/server'
 
 type NativeContext = Pick<QueryCtx, 'auth' | 'db'>
@@ -27,27 +27,34 @@ export async function requireNativeWorkspace(ctx: NativeContext, workspaceId: st
   return { ...viewer, workspaceId, principal, membership }
 }
 
+export async function nativePersonalChatScope(
+  ctx: NativeContext,
+  viewer: Awaited<ReturnType<typeof requireNativeWorkspace>>,
+  conversation: Doc<'conversations'> | null,
+) {
+  if (!conversation || conversation.deletedAt !== undefined
+    || conversation.workspaceId !== viewer.workspaceId || conversation.userId !== viewer.userId
+    || (conversation.conversationType ?? 'personal') !== 'personal'
+    || (conversation.scope ?? 'personal') !== 'personal'
+    || conversation.agentId || conversation.isAutomation || conversation.externalPlatform || conversation.surfaceBindingId) return null
+  const automation = await ctx.db.query('automations')
+    .withIndex('by_conversationId_deletedAt', q => q.eq('conversationId', conversation._id).eq('deletedAt', undefined)).first()
+  if (automation) return null
+  const participant = await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversation._id)
+      .eq('principalId', viewer.principal.principalId)).unique()
+  if (participant && (participant.workspaceId !== viewer.workspaceId || participant.principalType !== 'human'
+    || participant.status !== 'active' || participant.removedAt !== undefined)) return null
+  return { ...viewer, conversation, participant }
+}
+
 // This pilot deliberately excludes shared, agent, external and automation chats.
 export async function requireNativePersonalChat(
   ctx: NativeContext,
   args: { workspaceId: string; conversationId: Id<'conversations'> },
 ) {
   const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
-  const conversation = await ctx.db.get(args.conversationId)
-  if (!conversation || conversation.deletedAt !== undefined
-    || conversation.workspaceId !== viewer.workspaceId || conversation.userId !== viewer.userId
-    || (conversation.conversationType ?? 'personal') !== 'personal'
-    || (conversation.scope ?? 'personal') !== 'personal'
-    || conversation.agentId || conversation.isAutomation || conversation.externalPlatform || conversation.surfaceBindingId) {
-    throw new Error('CONVERSATION_ACCESS_DENIED')
-  }
-  const participant = await ctx.db.query('conversationParticipants')
-    .withIndex('by_conversationId_principalId', q => q.eq('conversationId', args.conversationId)
-      .eq('principalId', viewer.principal.principalId)).unique()
-  // Personal chats can predate participant rows; existing rows must stay scoped.
-  if (participant && (participant.workspaceId !== viewer.workspaceId || participant.principalType !== 'human'
-    || participant.status !== 'active' || participant.removedAt !== undefined)) {
-    throw new Error('CONVERSATION_ACCESS_DENIED')
-  }
-  return { ...viewer, conversation, participant }
+  const scope = await nativePersonalChatScope(ctx, viewer, await ctx.db.get(args.conversationId))
+  if (!scope) throw new Error('CONVERSATION_ACCESS_DENIED')
+  return scope
 }
