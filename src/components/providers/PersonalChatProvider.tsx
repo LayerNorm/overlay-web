@@ -311,13 +311,14 @@ function NativePersonalChatProvider({
     const fallbackSummary = minimalSummary(summary)
     const mutateWithOptimism = archiveMutation.withOptimisticUpdate((store, args) => {
       const applyArchiveUpdate = createPersonalChatArchiveOptimisticUpdate(fallbackSummary, {
-        getCurrent: (mutationArgs) => (
-          store.getQuery(api.chat.personal.getSummary, {
+        getCurrent: (mutationArgs) => {
+          const selected = store.getQuery(api.chat.personal.getSummary, {
             workspaceId: mutationArgs.workspaceId,
             conversationId: mutationArgs.conversationId as Id<'conversations'>,
           })
-          ?? findPersonalChatSummary(store, mutationArgs.workspaceId, mutationArgs.conversationId)
-        ),
+          return selected === null ? null
+            : selected ?? findPersonalChatSummary(store, mutationArgs.workspaceId, mutationArgs.conversationId)
+        },
         move: (mutationArgs, next) => movePersonalChatRow(
           store,
           mutationArgs.workspaceId,

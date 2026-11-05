@@ -282,7 +282,8 @@ There is no feature capability-disable mapping for these operations.
 restore changes, including captured minimal summary data for Undo. Convex
 rebases pending operations and rolls back failed mutations without restoring a
 whole stale array. Each archive/restore updater captures only its call's
-minimal fallback summary, prefers current cached summary/list data, and patches
+minimal fallback summary, preserves an explicit null summary as a tombstone
+(instead of reconstructing a deleted record), prefers current cached summary/list data, and patches
 only `archivedAt`; mark-read optimism clears unread only when the observed
 message is still the summary's latest message. Native writes are budgeted at
 300 per verified user per 10-minute window because they have no BFF IP context.

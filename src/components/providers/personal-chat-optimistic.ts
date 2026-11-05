@@ -20,7 +20,7 @@ export type PersonalChatArchiveArgs = {
 export function createPersonalChatArchiveOptimisticUpdate<Row extends PersonalChatArchiveRow>(
   fallback: Row,
   effects: {
-    getCurrent(args: PersonalChatArchiveArgs): Row | undefined
+    getCurrent(args: PersonalChatArchiveArgs): Row | null | undefined
     move(args: PersonalChatArchiveArgs, row: Row | null): void
     updateSelected(args: PersonalChatArchiveArgs, archivedAt: number | undefined): void
   },
@@ -34,10 +34,12 @@ export function createPersonalChatArchiveOptimisticUpdate<Row extends PersonalCh
 }
 
 export function archivePersonalChatRow<Row extends PersonalChatRow>(
-  current: Row | undefined,
+  current: Row | null | undefined,
   fallback: Row | undefined,
   archivedAt: number | undefined,
 ): Row | null {
+  // A resolved missing summary is a tombstone, not an unloaded query.
+  if (current === null) return null
   const row = current ?? fallback
   return row ? { ...row, archivedAt } : null
 }

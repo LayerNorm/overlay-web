@@ -114,3 +114,15 @@ test('native title rejection does not invoke a local rollback path', async () =>
   assert.equal(persisted, false)
   assert.deepEqual(calls, [['chat-a', 'New title']])
 })
+
+test('Undo does not reconstruct a record whose current summary is known missing', () => {
+  const stale = { _id: 'deleted-chat', title: 'Deleted elsewhere', archivedAt: 1 }
+  let moved: typeof stale | null | undefined = stale
+  const apply = createPersonalChatArchiveOptimisticUpdate(stale, {
+    getCurrent: () => null,
+    move: (_args, row) => { moved = row },
+    updateSelected: () => {},
+  })
+  apply({ workspaceId: 'workspace-a', conversationId: stale._id, archived: false })
+  assert.equal(moved, null)
+})

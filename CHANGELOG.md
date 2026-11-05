@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Keep personal chat working during web-first releases and backend rollback by enabling native list ownership only when the backend advertises the matching revision. Validate all native personal-chat response shapes explicitly.
+- Keep personal chat working during web-first releases and backend rollback by enabling native list ownership only when the backend advertises the matching revision. Validate all native personal-chat response shapes explicitly, and prevent Undo from reconstructing a record already known to be missing.
 
 - Add private, opt-in two-client chat and navigation baselines that distinguish query readiness, local feedback, HTTP acknowledgement, content visibility, and remote convergence without collecting chat or file content. Correlate acknowledgements to the exact mutation and sanitize setup failures.
 
