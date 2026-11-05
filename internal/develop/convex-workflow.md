@@ -206,6 +206,19 @@ isolated Preview. Native identity is only authentication: each new query/mutatio
 must still enforce resource, membership and role authorization (CN-03). CN-02 does
 not migrate list or transcript ownership.
 
+The additive `auth/viewer:current` query accepts no caller identity or token
+arguments and returns only the platform-verified subject, or null anonymously.
+After verifying exact Preview SHA and backend ownership through the trusted
+controller/team API, run `node scripts/qa/native-convex-auth.mjs` with
+`CN02_PREVIEW_ORIGIN`, `CN02_PREVIEW_SHA`, `CN02_CONVEX_URL`,
+`CN02_VERIFIED_BACKEND_TYPE=preview`, `CN02_VERIFIED_PREVIEW_NAME=pr-<number>`
+and a mode-0600 `CN02_STORAGE_STATE` file outside the checkout. This checks the
+real authenticated Next.js `preloadQuery` result against the session user, checks
+an anonymous preload, and confirms no token enters the serialized preload.
+Output contains booleans and revision only. This does not replace the browser
+lifecycle acceptance tests. Do not reuse a preload across users or cache it
+globally; resource preloads need their own authorization.
+
 Web and Convex deploy independently. The incoming web must work with the old
 backend, and the incoming backend must work with the old web, including retained
 rollback revisions. Never remove an old field or require a new field in the same
