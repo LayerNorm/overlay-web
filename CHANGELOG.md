@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Document subscription callback completion and workspace sharing in the API catalog, including active-member use and owner-only management.
+
 - Keep subscription device sign-in polling after retryable provider failures, so a temporary outage does not silently stall authorization.
 
 - Show each subscription connection's saved Personal or Workspace scope in Settings instead of always labeling it Personal.
