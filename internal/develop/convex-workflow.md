@@ -290,6 +290,46 @@ backend, and the incoming backend must work with the old web, including retained
 rollback revisions. Never remove an old field or require a new field in the same
 release that first introduces its replacement.
 
+### Native file metadata ownership (CN-12)
+
+When native Convex auth is configured, `KnowledgeView` and only the Files section
+of `AppSidebarInlinePanels` read canonical file metadata from
+`files/nativeMetadata:list` and `detail`. Each surface scopes its own queries by
+user, workspace and list view; query errors or an unavailable client are shown
+locally and never fall back to HTTP file metadata. Native hooks mount only below
+the ready Convex client. With native auth disabled, the existing web adapters
+remain authoritative.
+
+The native metadata allowlist contains identity, display, scope, revision and
+small file descriptors only. It never returns content, storage identifiers,
+provider URLs or share tokens. File bytes and downloads continue through the
+existing authorized HTTP content/download paths. Opening content requires a
+successful subscribed detail result; the HTTP response must match both file ID
+and `updatedAt`, and the content URL includes that revision. The viewer selects
+the metadata shell immediately, aborts or ignores obsolete requests, and clears
+content when detail authorization is lost. Dirty drafts remain visible with an
+explicit conflict until reopened; saves and metadata renames carry the revision
+captured at edit time.
+
+Rename, folder move, scope move, archive, restore and share-visibility mutations
+require `expectedUpdatedAt`. List and detail optimistic updates are scoped to
+the matching workspace and use Convex rebase/rollback rather than restoring a
+captured array. Scope/archive updates include the bounded subtree; archive Undo
+fetches fresh detail before sending its revision. Non-owner reads and edits must
+satisfy both workspace resource-scope visibility and active direct, group or
+role grants, as well as the mapped capability and current `files` deployment
+policy lease. There is no operator bypass. Lists check at most 501 rows per
+indexed scope, subtree mutations are capped at 500 rows, and successful writes
+are audited and rate-limited to 300 per verified user per 10 minutes.
+
+The API supports owner-only share-visibility changes subject to the persisted
+workspace `publicLinksEnabled` policy; no share controls are migrated into these
+surfaces. Notes, memory, create/upload/delete cleanup and legacy HTTP consumers
+remain on their existing paths. Native metadata mutations do not publish
+synthetic legacy commit events. Rollback is web-first: disable native web
+ownership before removing handlers or schema support, and retain the authorized
+content/download routes.
+
 Worked example: rename `files.name` to `displayName` (illustrative; this migration
 does not change the current schema).
 

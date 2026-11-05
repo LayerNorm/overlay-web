@@ -53,16 +53,28 @@ export interface SharedKnowledgeMemoryPort {
 }
 
 export interface SharedKnowledgeFilePort {
-  saveContent(fileId: string, content: string): Promise<boolean>
+  saveContent(fileId: string, content: string, expectedUpdatedAt?: number): Promise<boolean>
   upload(file: File, parentId: string | null): Promise<{ ok: boolean; error?: string; file?: FileNode }>
   isEditable(name: string): boolean
   contentUrl(file: FileNode): string | undefined
   entityChanged(entity: 'file' | 'note', id: string, operation: 'created' | 'updated' | 'moved' | 'deleted'): void
 }
 
+export interface ControlledKnowledgeFileSnapshot {
+  nodes: FileNode[]
+  loading: boolean
+  error: string | null
+  truncated: boolean
+  detailFileId: string | null
+  detail: FileNode | null
+  detailLoading: boolean
+  detailError: string | null
+}
+
 export interface SharedKnowledgeSurfaceProps {
   mode?: 'knowledge' | 'files'
   initialFiles?: FileNode[]
+  controlledFileSnapshot?: ControlledKnowledgeFileSnapshot
   initialMemories?: MemoryListItem[]
   route: SharedKnowledgeRouteState
   queryPending?: boolean
@@ -247,21 +259,39 @@ function KnowledgeSurfaceBody({
       aria-busy={fileList.filesLoading || fileList.filesRefreshing || undefined}
     >
       {activeTab === 'files' && opened.selectedFile && (
-        <KnowledgeFileDetailPanel
-          fileName={opened.selectedFile.name}
-          // Only a prefix of text kept in object storage is loaded here; saving it would truncate the file.
-          isEditable={filePort.isEditable(opened.selectedFile.name) && !opened.selectedFile.textInObjectStore}
-          fileContent={opened.fileContent}
-          onContentChange={opened.handleFileContentChange}
-          renderViewer={() =>
-            renderFileViewer({
-              name: opened.selectedFile!.name,
-              file: opened.selectedFile!,
-              content: opened.fileContent,
-              url: filePort.contentUrl(opened.selectedFile!),
-            })
-          }
-        />
+        <>
+          {opened.contentStatus === 'loading' && (
+            <p className="mx-auto mb-3 max-w-3xl text-xs text-(--muted-light)" role="status">Loading file…</p>
+          )}
+          {opened.contentStatus === 'error' && (
+            <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">{opened.contentError}</p>
+          )}
+          {opened.contentConflict && (
+            <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
+              This file changed elsewhere. Your draft is still here; reopen the file before saving.
+            </p>
+          )}
+          {opened.titleConflict && (
+            <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
+              This file changed elsewhere. Your title draft is still here; reopen the file before saving.
+            </p>
+          )}
+          <KnowledgeFileDetailPanel
+            fileName={opened.selectedFile.name}
+            isEditable={opened.contentStatus === 'ready' && filePort.isEditable(opened.selectedFile.name)
+              && !opened.selectedFile.textInObjectStore && !opened.contentConflict}
+            fileContent={opened.fileContent}
+            onContentChange={opened.handleFileContentChange}
+            renderViewer={() =>
+              renderFileViewer({
+                name: opened.selectedFile!.name,
+                file: opened.selectedFile!,
+                content: opened.fileContent,
+                url: filePort.contentUrl(opened.selectedFile!),
+              })
+            }
+          />
+        </>
       )}
 
       {activeTab === 'memories' && (
@@ -303,6 +333,7 @@ function KnowledgeSurfaceBody({
 export function SharedKnowledgeSurface({
   mode = 'knowledge',
   initialFiles,
+  controlledFileSnapshot,
   initialMemories,
   route,
   queryPending = false,
@@ -358,7 +389,7 @@ export function SharedKnowledgeSurface({
     updateQuery,
   })
 
-  const fileList = useSurfaceFileList({ initialFiles, adapters, activeTab })
+  const fileList = useSurfaceFileList({ initialFiles, adapters, activeTab, controlledSnapshot: controlledFileSnapshot })
   const { files, setFiles, filesLoading } = fileList
 
   const opened = useOpenedFile({
@@ -368,6 +399,8 @@ export function SharedKnowledgeSurface({
     openFilesInHost,
     fileOpenParam,
     updateQuery,
+    controlledSnapshot: controlledFileSnapshot,
+    files,
   })
   const { loadFile } = opened
 
@@ -429,14 +462,19 @@ export function SharedKnowledgeSurface({
     setFiles,
   })
 
+  const deepLinkFile = controlledFileSnapshot
+    ? controlledFileSnapshot.detailFileId === fileOpenParam && !controlledFileSnapshot.detailError
+      ? controlledFileSnapshot.detail
+      : null
+    : files.find((file) => file._id === fileOpenParam) ?? null
+
   useEffect(() => {
-    if (!fileOpenParam || filesLoading || files.length === 0) return
-    const node = files.find((f) => f._id === fileOpenParam && f.type === 'file')
-    if (!node) return
+    if (!fileOpenParam || opened.selectedFile?._id !== fileOpenParam
+      || !deepLinkFile || deepLinkFile.type !== 'file') return
     // Deep-link file open — intentional state write from the param effect.
     // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent
-    void loadFile(node._id)
-  }, [fileOpenParam, files, filesLoading, loadFile])
+    void loadFile(deepLinkFile._id, deepLinkFile)
+  }, [fileOpenParam, deepLinkFile?._id, deepLinkFile?.updatedAt, deepLinkFile?.type, loadFile, opened.selectedFile?._id])
 
   return (
     <>

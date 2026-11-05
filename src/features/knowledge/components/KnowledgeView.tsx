@@ -25,6 +25,9 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useCallback, useMemo, useTransition } from 'react'
 import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
+import { useAuth } from '@/contexts/AuthContext'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { ScopeBulkActions } from '@/components/layout/ScopeBulkActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
@@ -32,6 +35,7 @@ import { newItemScope } from '@/shared/workspaces/panel-scope'
 import { createWebKnowledgeSurfaceAdapters } from '../adapters/webKnowledgeSurfaceAdapters'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 import { responseError, uploadWebFile } from '../adapters/webKnowledgeFilePort'
+import { NativeKnowledgeBoundary } from './native-file-metadata'
 
 const nextKnowledgeMutation = createKnowledgeMutationPublisher(
   `web-knowledge:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
@@ -61,6 +65,9 @@ export default function KnowledgeView({
   renderFileViewer(props: { file: KnowledgeFileNode; name: string; content: string; url?: string }): ReactNode
 }) {
   void _userId
+  const auth = useAuth()
+  const convexConfiguration = useConvexAuthConfiguration()
+  const workspace = useWorkspace()
   const router = useRouter()
   const pathname = usePathname()
   const searchParams = useSearchParams()
@@ -116,14 +123,16 @@ export default function KnowledgeView({
   }), [])
 
   const files = useMemo<SharedKnowledgeFilePort>(() => ({
-    async saveContent(fileId, content) {
-      return (await overlayAppClient.files.updateResponse({ fileId, textContent: content })).ok
+    async saveContent(fileId, content, expectedUpdatedAt) {
+      const response = await overlayAppClient.files.updateResponse({ fileId, textContent: content, expectedUpdatedAt })
+      if (!response.ok) throw new Error(await responseError(response, 'Could not save file'))
+      return true
     },
     upload: (file, parentId) => uploadWebFile(file, parentId, newItemScope(scope)),
     isEditable: isEditableType,
     contentUrl(file) {
       return file.downloadUrl || file.isStorageBacked
-        ? `/api/v1/files/${file._id}/content`
+        ? `/api/v1/files/${file._id}/content?updatedAt=${file.updatedAt}`
         : undefined
     },
     entityChanged(entity, id, operation) {
@@ -159,6 +168,30 @@ export default function KnowledgeView({
       }}
     />
   ), [])
+
+  if (convexConfiguration.nativeAuthConfigured) {
+    const workspaceId = workspace.switchingWorkspaceId ? null : workspace.activeWorkspaceId
+    return (
+      <NativeKnowledgeBoundary
+        key={`${auth.user?.id ?? _userId}:${workspaceId ?? 'unavailable'}:${listView}`}
+        mode={mode}
+        initialMemories={initialMemories}
+        route={route}
+        queryPending={queryPending}
+        onUpdateQuery={updateQuery}
+        headerTabs={mode === 'files' ? <PageSubviewTabs /> : undefined}
+        adapters={adapters}
+        memories={memories}
+        files={files}
+        renderFileViewer={renderFileViewer}
+        canAdd={canAdd}
+        workspaceId={workspaceId}
+        workspaceReady={workspace.status === 'ready' && !workspace.switchingWorkspaceId}
+        listView={listView}
+        hasConvexClient={convexConfiguration.hasConvexClient}
+      />
+    )
+  }
 
   return (
     <KnowledgeCreateAccessContext.Provider value={canAdd}>

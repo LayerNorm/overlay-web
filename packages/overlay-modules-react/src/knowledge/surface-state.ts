@@ -28,12 +28,14 @@ import {
   type MemoryRow as MemoryListItem,
 } from '@overlay/app-core'
 import type {
+  ControlledKnowledgeFileSnapshot,
   SharedKnowledgeFilePort,
   SharedKnowledgeMemoryPort,
   SharedKnowledgeRouteState,
 } from './surface'
 
 type FilesCategory = 'all' | 'notes' | 'files' | 'outputs'
+const ignoreControlledFiles: Dispatch<SetStateAction<FileNode[]>> = () => undefined
 
 function resolveFilesCategory(view: string | null | undefined): FilesCategory {
   if (view === 'notes' || view === 'files' || view === 'outputs') return view
@@ -343,10 +345,12 @@ export function useSurfaceFileList({
   initialFiles,
   adapters,
   activeTab,
+  controlledSnapshot,
 }: {
   initialFiles: FileNode[] | undefined
   adapters: KnowledgeSurfaceAdapters
   activeTab: Tab
+  controlledSnapshot?: ControlledKnowledgeFileSnapshot
 }) {
   const [files, setFiles] = useState<FileNode[]>(() => initialFiles ?? [])
   const [filesLoading, setFilesLoading] = useState(initialFiles === undefined)
@@ -355,6 +359,7 @@ export function useSurfaceFileList({
   const hasLoadedFilesRef = useRef(initialFiles !== undefined)
 
   const loadFiles = useCallback(async () => {
+    if (controlledSnapshot) return
     const initial = !hasLoadedFilesRef.current
     if (initial) setFilesLoading(true)
     else setFilesRefreshing(true)
@@ -369,9 +374,11 @@ export function useSurfaceFileList({
       setFilesLoading(false)
       setFilesRefreshing(false)
     }
-  }, [adapters.repository])
+  }, [adapters.repository, controlledSnapshot])
 
-  useEffect(() => adapters.repository.subscribe((event) => {
+  useEffect(() => {
+    if (controlledSnapshot) return
+    return adapters.repository.subscribe((event) => {
     if (event.type === 'reset') {
       setFiles([...event.nodes])
       return
@@ -400,9 +407,11 @@ export function useSurfaceFileList({
         ? { ...node, ...(event.type === 'conflict' ? { conflict: event.conflict } : { upload: event.upload }) }
         : node))
     }
-  }), [adapters.repository])
+    })
+  }, [adapters.repository, controlledSnapshot])
 
   useEffect(() => {
+    if (controlledSnapshot) return
     if (activeTab !== 'files' && activeTab !== 'outputs') return
     // `initialFiles` seeds the first paint so there is no spinner, but it must not
     // suppress loading forever. It is a server snapshot taken when the route
@@ -411,14 +420,14 @@ export function useSurfaceFileList({
     // never reached this list, so a new note stayed invisible until a hard reload.
     // Revalidate on mount and let the seeded rows cover the gap.
     void loadFiles()
-  }, [activeTab, loadFiles])
+  }, [activeTab, controlledSnapshot, loadFiles])
 
   return {
-    files,
-    setFiles,
-    filesLoading,
-    filesRefreshing,
-    filesLoadError,
+    files: controlledSnapshot?.nodes ?? files,
+    setFiles: controlledSnapshot ? ignoreControlledFiles : setFiles,
+    filesLoading: controlledSnapshot?.loading ?? filesLoading,
+    filesRefreshing: controlledSnapshot ? false : filesRefreshing,
+    filesLoadError: controlledSnapshot?.error ?? filesLoadError,
     loadFiles,
   }
 }
@@ -430,69 +439,258 @@ export function useOpenedFile({
   openFilesInHost,
   fileOpenParam,
   updateQuery,
+  controlledSnapshot,
+  files,
 }: {
   adapters: KnowledgeSurfaceAdapters
   filePort: SharedKnowledgeFilePort
-  setFiles: React.Dispatch<React.SetStateAction<FileNode[]>>
+  setFiles: Dispatch<SetStateAction<FileNode[]>>
   openFilesInHost: boolean
   fileOpenParam: string | null
   updateQuery: (updates: Record<string, string | null | undefined>) => void
+  controlledSnapshot?: ControlledKnowledgeFileSnapshot
+  files: FileNode[]
 }) {
-  const [selectedFile, setSelectedFile] = useState<FileNode | null>(null)
+  const [localSelectedFile, setSelectedFile] = useState<FileNode | null>(null)
   const [fileContent, setFileContent] = useState('')
-  const [fileTitle, setFileTitle] = useState('')
-  const [isSavingFile, setIsSavingFile] = useState(false)
-  const [previousFileOpenParam, setPreviousFileOpenParam] = useState(fileOpenParam)
+  const [pendingFileId, setPendingFileId] = useState<string | null>(null)
+  const [titleDraft, setTitleDraft] = useState<{ fileId: string; value: string; revision: number; dirty: boolean } | null>(null)
+  const [contentState, setContentState] = useState<{
+    fileId: string
+    revision: number
+    status: 'loading' | 'ready' | 'error'
+    dirty: boolean
+    error?: string
+  } | null>(null)
+  const [savingIdentity, setSavingIdentity] = useState<string | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastFileTriggerRef = useRef<HTMLElement | null>(null)
   const loadVersionRef = useRef(0)
+  const loadControllerRef = useRef<AbortController | null>(null)
+  const activeLoadKeyRef = useRef<string | null>(null)
+  const activeLoadPromiseRef = useRef<Promise<void> | null>(null)
+  const filesRef = useRef(files)
+  const snapshotRef = useRef(controlledSnapshot)
+  const localSelectedFileRef = useRef(localSelectedFile)
+  const contentStateRef = useRef(contentState)
+  filesRef.current = files
+  snapshotRef.current = controlledSnapshot
+  localSelectedFileRef.current = localSelectedFile
+  contentStateRef.current = contentState
+
+  const pendingRouteRef = useRef<string | null>(null)
+  const activeFileId = pendingFileId && fileOpenParam === pendingRouteRef.current
+    ? pendingFileId
+    : fileOpenParam ?? pendingFileId
+  const listedFile = activeFileId ? files.find((file) => file._id === activeFileId) ?? null : null
+  const detailMatches = Boolean(controlledSnapshot && controlledSnapshot.detailFileId === activeFileId)
+  const detailSettled = Boolean(detailMatches && !controlledSnapshot?.detailLoading)
+  const selectedFile = controlledSnapshot
+    ? activeFileId && detailMatches && controlledSnapshot.detailError
+      ? null
+      : activeFileId && detailMatches && detailSettled && !controlledSnapshot.detail
+        ? null
+        : activeFileId && detailMatches && controlledSnapshot.detail
+          ? controlledSnapshot.detail
+          : activeFileId && !detailSettled
+            ? (localSelectedFile?._id === activeFileId ? localSelectedFile : listedFile)
+            : null
+    : activeFileId
+      ? (localSelectedFile?._id === activeFileId ? localSelectedFile : listedFile)
+      : null
+  const selectedFileRef = useRef<FileNode | null>(selectedFile)
+  selectedFileRef.current = selectedFile
+
+  useEffect(() => {
+    const key = selectedFile ? `${selectedFile._id}:${selectedFile.updatedAt}` : null
+    if (activeLoadKeyRef.current && activeLoadKeyRef.current !== key) {
+      loadVersionRef.current += 1
+      loadControllerRef.current?.abort()
+      loadControllerRef.current = null
+      activeLoadKeyRef.current = null
+      activeLoadPromiseRef.current = null
+    }
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current)
+      saveTimerRef.current = null
+    }
+    if (titleSaveTimerRef.current) {
+      clearTimeout(titleSaveTimerRef.current)
+      titleSaveTimerRef.current = null
+    }
+    setSavingIdentity(null)
+  }, [selectedFile?._id, selectedFile?.updatedAt])
 
   const clearOpenedFile = useCallback(() => {
     loadVersionRef.current += 1
+    loadControllerRef.current?.abort()
+    loadControllerRef.current = null
+    activeLoadKeyRef.current = null
+    activeLoadPromiseRef.current = null
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
     setSelectedFile(null)
+    setPendingFileId(null)
     setFileContent('')
-    setFileTitle('')
+    setTitleDraft(null)
+    setContentState(null)
+    setSavingIdentity(null)
   }, [])
 
-  if (previousFileOpenParam !== fileOpenParam) {
-    setPreviousFileOpenParam(fileOpenParam)
-    if (!fileOpenParam) {
-      setSelectedFile(null)
-      setFileContent('')
-      setFileTitle('')
+  const loadFile = useCallback((fileId: string, knownFile?: FileNode): Promise<void> => {
+    const file = knownFile
+      ?? (snapshotRef.current?.detailFileId === fileId ? snapshotRef.current.detail : null)
+      ?? filesRef.current.find((candidate) => candidate._id === fileId)
+      ?? (localSelectedFileRef.current?._id === fileId ? localSelectedFileRef.current : null)
+    const key = `${fileId}:${file?.updatedAt ?? 'unknown'}`
+    if (activeLoadKeyRef.current === key && activeLoadPromiseRef.current) return activeLoadPromiseRef.current
+    if (file && opensInDocumentEditor(file)) {
+      void adapters.navigation.open(file, { replace: true })
+      return Promise.resolve()
     }
-  }
-
-  useEffect(() => () => { loadVersionRef.current += 1 }, [fileOpenParam])
-
-  const loadFile = useCallback(async (fileId: string) => {
+    const currentSelection = selectedFileRef.current
+    if (currentSelection && (currentSelection._id !== fileId || currentSelection.updatedAt !== file?.updatedAt)) {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+      if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+      setSavingIdentity(null)
+    }
+    if (file) {
+      setSelectedFile(file)
+      setPendingFileId(fileId)
+      setTitleDraft((current) => current?.fileId === fileId && current.dirty
+        ? current
+        : { fileId, value: file.name, revision: file.updatedAt, dirty: false })
+      const currentContent = contentStateRef.current
+      if (currentContent?.fileId === fileId && currentContent.revision === file.updatedAt
+        && currentContent.status === 'ready') return Promise.resolve()
+      if (currentContent?.fileId === fileId && currentContent.dirty
+        && currentContent.revision !== file.updatedAt) return Promise.resolve()
+      setFileContent('')
+      setContentState({ fileId, revision: file.updatedAt, status: 'loading', dirty: false })
+    }
+    loadControllerRef.current?.abort()
+    const controller = new AbortController()
+    loadControllerRef.current = controller
     const loadVersion = ++loadVersionRef.current
-    if (document.activeElement instanceof HTMLElement) {
+    activeLoadKeyRef.current = key
+    if (typeof document !== 'undefined' && document.activeElement instanceof HTMLElement) {
       lastFileTriggerRef.current = document.activeElement
     }
-    const file = await adapters.repository.get(fileId)
-    if (!file || loadVersion !== loadVersionRef.current) return
-    if (opensInDocumentEditor(file)) {
-      await adapters.navigation.open(file, { replace: true })
-      return
-    }
-    setSelectedFile(file)
-    setFileTitle(file.name)
-    setFileContent(file.textContent ?? file.content ?? '')
+    const promise = (async () => {
+      try {
+        const loaded = await adapters.repository.get(fileId, controller.signal)
+        if (controller.signal.aborted || loadVersion !== loadVersionRef.current) return
+        if (!loaded || loaded._id !== fileId) {
+          if (file) setContentState({ fileId, revision: file.updatedAt, status: 'error', dirty: false, error: 'File is unavailable.' })
+          return
+        }
+        if (file && loaded.updatedAt !== file.updatedAt) {
+          setContentState({ fileId, revision: file.updatedAt, status: 'error', dirty: false, error: 'The file changed while it was opening. Reopen it to load the latest version.' })
+          return
+        }
+        if (!snapshotRef.current) {
+          setSelectedFile((current) => current?._id === fileId ? { ...current, ...loaded } : current ?? loaded)
+        }
+        setFileContent(loaded.textContent ?? loaded.content ?? '')
+        setContentState({ fileId, revision: loaded.updatedAt, status: 'ready', dirty: false })
+      } catch (error) {
+        if (controller.signal.aborted || loadVersion !== loadVersionRef.current) return
+        if (file) setContentState({
+          fileId,
+          revision: file.updatedAt,
+          status: 'error',
+          dirty: false,
+          error: error instanceof Error ? error.message : 'Could not load file.',
+        })
+      } finally {
+        if (activeLoadKeyRef.current === key) {
+          activeLoadKeyRef.current = null
+          activeLoadPromiseRef.current = null
+        }
+      }
+    })()
+    activeLoadPromiseRef.current = promise
+    return promise
   }, [adapters.navigation, adapters.repository])
 
   useEffect(() => () => {
+    loadVersionRef.current += 1
+    loadControllerRef.current?.abort()
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
   }, [])
+
+  useEffect(() => () => {
+    loadControllerRef.current?.abort()
+    loadControllerRef.current = null
+    activeLoadKeyRef.current = null
+    activeLoadPromiseRef.current = null
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+  }, [fileOpenParam])
+
+  useEffect(() => {
+    if (!pendingFileId) return
+    if (fileOpenParam === pendingFileId || fileOpenParam !== pendingRouteRef.current) {
+      pendingRouteRef.current = null
+      setPendingFileId(null)
+    }
+  }, [fileOpenParam, pendingFileId])
+
+  useEffect(() => {
+    if (!controlledSnapshot || !activeFileId || !detailMatches || !detailSettled
+      || (!controlledSnapshot.detailError && controlledSnapshot.detail)) return
+    loadVersionRef.current += 1
+    loadControllerRef.current?.abort()
+    loadControllerRef.current = null
+    activeLoadKeyRef.current = null
+    activeLoadPromiseRef.current = null
+    setSelectedFile(null)
+    setFileContent('')
+    setContentState(null)
+  }, [activeFileId, controlledSnapshot, detailMatches, detailSettled])
+
+  const contentConflict = Boolean(selectedFile && contentState?.fileId === selectedFile._id
+    && contentState.dirty && contentState.revision !== selectedFile.updatedAt)
+  const contentStatus = !selectedFile ? 'idle'
+    : contentConflict ? 'ready'
+      : contentState?.fileId === selectedFile._id && contentState.revision === selectedFile.updatedAt
+        ? contentState.status
+        : 'loading'
+  const contentError = contentConflict
+    ? 'This file changed elsewhere. Your draft is still here; reopen the file before saving.'
+    : contentState?.fileId === selectedFile?._id ? contentState.error ?? null : null
+  const visibleContent = selectedFile && contentState?.fileId === selectedFile._id
+    && (contentState.dirty || contentState.revision === selectedFile.updatedAt)
+    ? fileContent : ''
+  const fileTitle = selectedFile
+    ? titleDraft?.fileId === selectedFile._id ? titleDraft.value : selectedFile.name
+    : ''
+  const titleConflict = Boolean(selectedFile && titleDraft?.fileId === selectedFile._id
+    && titleDraft.dirty && titleDraft.revision !== selectedFile.updatedAt)
+  const isSavingFile = Boolean(selectedFile && savingIdentity === `${selectedFile._id}:${selectedFile.updatedAt}`)
+
+  function setFileTitle(value: string) {
+    if (selectedFile) setTitleDraft({ fileId: selectedFile._id, value, revision: selectedFile.updatedAt, dirty: false })
+  }
 
   function handleSelectFile(node: FileNode) {
     if (openFilesInHost || opensInDocumentEditor(node)) {
       void adapters.navigation.open(node as Parameters<typeof adapters.navigation.open>[0])
       return
     }
-    void loadFile(node._id)
+    if (controlledSnapshot) {
+      pendingRouteRef.current = fileOpenParam
+      setSelectedFile(node)
+      setPendingFileId(node._id)
+      if (controlledSnapshot.detailFileId === node._id && controlledSnapshot.detail) {
+        void loadFile(node._id, controlledSnapshot.detail)
+      }
+      updateQuery({ view: 'files', file: node._id })
+      return
+    }
+    void loadFile(node._id, node)
     updateQuery({ view: 'files', file: node._id })
   }
 
@@ -505,44 +703,81 @@ export function useOpenedFile({
   }
 
   function handleFileContentChange(val: string) {
+    if (!selectedFile || contentStatus !== 'ready' || contentConflict || !contentState) return
     setFileContent(val)
-    if (!selectedFile) return
+    const fileId = selectedFile._id
+    const revision = selectedFile.updatedAt
+    const identity = `${fileId}:${revision}`
+    setContentState({ fileId, revision, status: 'ready', dirty: true })
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
-      setIsSavingFile(true)
-      const saved = await filePort.saveContent(selectedFile._id, val)
-      if (saved) filePort.entityChanged('file', selectedFile._id, 'updated')
-      setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f } : f))
-      setIsSavingFile(false)
+      const active = selectedFileRef.current
+      const draft = contentStateRef.current
+      if (!active || active._id !== fileId || active.updatedAt !== revision
+        || !draft?.dirty || draft.fileId !== fileId || draft.revision !== revision) return
+      setSavingIdentity(identity)
+      try {
+        const saved = await filePort.saveContent(fileId, val, revision)
+        if (!saved) throw new Error('Could not save file.')
+        if (selectedFileRef.current?._id !== fileId || selectedFileRef.current.updatedAt !== revision) return
+        filePort.entityChanged('file', fileId, 'updated')
+        setContentState((current) => current?.fileId === fileId && current.revision === revision
+          ? { ...current, dirty: false }
+          : current)
+        setFiles((prev) => prev.map((f) => f._id === fileId ? { ...f } : f))
+      } catch (error) {
+        if (selectedFileRef.current?._id !== fileId) return
+        setContentState((current) => current?.fileId === fileId && current.revision === revision
+          ? { ...current, status: 'error', dirty: true, error: error instanceof Error ? error.message : 'Could not save file.' }
+          : current)
+      } finally {
+        setSavingIdentity((current) => current === identity ? null : current)
+      }
     }, 800)
   }
 
   function handleFileTitleChange(val: string) {
-    setFileTitle(val)
-    if (!selectedFile) return
+    if (!selectedFile || titleConflict) return
+    const fileId = selectedFile._id
+    const revision = selectedFile.updatedAt
+    setTitleDraft({ fileId, value: val, revision, dirty: true })
     const nextName = val.trim() || 'Untitled'
     if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
     titleSaveTimerRef.current = setTimeout(async () => {
-      setIsSavingFile(true)
+      const active = selectedFileRef.current
+      if (!active || active._id !== fileId || active.updatedAt !== revision) return
+      const identity = `${fileId}:${revision}`
+      setSavingIdentity(identity)
       try {
-        await adapters.repository.rename({ id: selectedFile._id, name: nextName })
-        setSelectedFile((prev) => prev ? { ...prev, name: nextName } : prev)
-        setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f, name: nextName } : f))
-      } catch {
-        // Keep the previous persisted title when the host rejects the rename.
+        const renamed = await adapters.repository.rename({ id: fileId, name: nextName, expectedRevision: String(revision) })
+        if (selectedFileRef.current?._id !== fileId || selectedFileRef.current.updatedAt !== revision) return
+        setSelectedFile(renamed)
+        setTitleDraft({ fileId, value: renamed.name, revision: renamed.updatedAt, dirty: false })
+        setFiles((prev) => prev.map((f) => f._id === fileId
+          ? { ...f, name: renamed.name, updatedAt: renamed.updatedAt }
+          : f))
+      } catch (error) {
+        if (selectedFileRef.current?._id === fileId) {
+          toast.error(error instanceof Error ? error.message : 'Could not rename file.')
+        }
+      } finally {
+        setSavingIdentity((current) => current === identity ? null : current)
       }
-      setIsSavingFile(false)
     }, 600)
   }
 
   return {
     selectedFile,
     setSelectedFile,
-    fileContent,
+    fileContent: visibleContent,
     setFileContent,
     fileTitle,
     setFileTitle,
     isSavingFile,
+    contentStatus,
+    contentError,
+    contentConflict,
+    titleConflict,
     loadFile,
     handleSelectFile,
     closeFileDialog,
