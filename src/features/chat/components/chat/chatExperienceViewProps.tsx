@@ -103,6 +103,7 @@ export function buildChatExperienceViewProps(
       renderExportMenu,
       ...c.headerModelProps,
       pickerTextModels: c.pickerTextModels,
+      modelAccessPending: c.billingAccessNotice !== null,
       isTextModelLocked: c.isTextModelLocked,
       onLockedTextModelSelect: c.setUpgradeModel,
       automationHeaderModelId: c.automationHeaderModelId,

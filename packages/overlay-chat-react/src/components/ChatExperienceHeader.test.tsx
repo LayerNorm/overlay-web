@@ -2,10 +2,29 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import React, { createRef } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { ChatExperienceHeader, ChatModelPickerDropdown } from './ChatExperienceHeader'
+import { ChatExperienceHeader, ChatModelPicker, ChatModelPickerDropdown } from './ChatExperienceHeader'
 import type { ChatExperienceHeaderProps } from './ChatExperienceHeader'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
+
+test('model picker cannot open while workspace access is unresolved', () => {
+  for (const modelAccessPending of [true, false]) {
+    const html = renderToStaticMarkup(
+      <ChatModelPicker
+        modelPickerLabel="Selected model"
+        modelAccessPending={modelAccessPending}
+        showModelPicker
+        selectableTextModels={[]}
+        selectedActModel="openai/gpt-5"
+        onToggleTextModel={() => {}}
+      />,
+    )
+    const trigger = html.match(/<button\b[^>]*>/)?.[0]
+    assert.ok(trigger)
+    assert.equal(trigger.includes('disabled=""'), modelAccessPending)
+    assert.ok(trigger.includes(`aria-expanded="${!modelAccessPending}"`))
+  }
+})
 
 test('a locked text model picker keeps the generation toggle visible and disabled on Text', () => {
   const html = renderToStaticMarkup(
