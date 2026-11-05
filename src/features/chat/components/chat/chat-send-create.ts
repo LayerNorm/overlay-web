@@ -36,6 +36,24 @@ export type CreateNewChatOptions = {
   reasoningByModelSnapshot?: ReasoningByModel
 }
 
+function newChatTitle(
+  mode: 'chat' | 'automate',
+  options: CreateNewChatOptions,
+  pendingFirstSend: PendingFirstSendState | null,
+) {
+  const pendingTitleSeed = options.clientId
+    ? pendingFirstSend?.conversationClientId === options.clientId
+      ? pendingFirstSend.renameSeed
+      : undefined
+    : undefined
+  const prefetchedTitle = mode === 'chat' && pendingTitleSeed
+    ? peekResolvedTitle(pendingTitleSeed)
+    : null
+  return isPlaceholderChatTitle(options.title)
+    ? prefetchedTitle ?? (mode === 'automate' ? options.title?.trim() || 'New automation' : DEFAULT_CHAT_TITLE)
+    : options.title!
+}
+
 export async function createHandoffConversation({
   workspaceId,
   title,
@@ -121,17 +139,7 @@ export async function createNewChatForSend({
   persistActiveRuntimeUiState()
   setIsTemporaryChat(false)
   resetComposerToolIds(false)
-  const pendingTitleSeed = options.clientId
-    ? pendingFirstSendRef.current?.conversationClientId === options.clientId
-      ? pendingFirstSendRef.current.renameSeed
-      : undefined
-    : undefined
-  const prefetchedTitle = mode === 'chat' && pendingTitleSeed
-    ? peekResolvedTitle(pendingTitleSeed)
-    : null
-  const initialTitle = isPlaceholderChatTitle(options.title)
-    ? prefetchedTitle ?? (mode === 'automate' ? options.title?.trim() || 'New automation' : DEFAULT_CHAT_TITLE)
-    : options.title!
+  const initialTitle = newChatTitle(mode, options, pendingFirstSendRef.current)
   const normalizedInitialSelection = normalizeChatModelSelection({
     askModelIds: selectedModels.slice(0, 1),
     actModelId: selectedActModel,

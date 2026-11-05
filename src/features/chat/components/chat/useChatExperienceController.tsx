@@ -98,6 +98,15 @@ export type ChatExperienceProps = {
 
 }
 
+function isNativePersonalRoute(pathname: string | null, searchParams: Pick<URLSearchParams, 'get' | 'toString'>) {
+  const routeScope = readWorkspacePathScope(pathname ?? '') ?? legacyWorkspaceScopeForRoute(
+    'chat',
+    new URLSearchParams(searchParams.toString()),
+  )
+  return routeScope !== 'workspace'
+    && !['workspace-chats', 'dms', 'channels'].includes(searchParams.get('view') ?? '')
+}
+
 export function useChatExperienceController({
   userId,
   firstName,
@@ -163,16 +172,10 @@ export function useChatExperienceController({
   const composerMode: 'chat' | 'automate' = isTemporaryChat ? 'chat' : mode
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
-  const routeScope = readWorkspacePathScope(pathname ?? '') ?? legacyWorkspaceScopeForRoute(
-    'chat',
-    new URLSearchParams(searchParams.toString()),
-  )
   const nativePersonalEnabled = nativePersonal.configured
     && (Boolean(userId) || authLoading)
     && mode === 'chat'
-  const nativePersonalRoute = nativePersonalEnabled
-    && routeScope !== 'workspace'
-    && !['workspace-chats', 'dms', 'channels'].includes(searchParams.get('view') ?? '')
+  const nativePersonalRoute = nativePersonalEnabled && isNativePersonalRoute(pathname, searchParams)
 
   // Clear active viewer + ref when this tab unmounts so any in-flight .then() sees isActive=false
   useEffect(() => {
@@ -481,6 +484,7 @@ export function useChatExperienceController({
   } = useConversationUiState({
     activeChatId,
     activeChatIdRef,
+    canonicalChatTitle: nativePersonalRoute ? nativePersonal.selectedSummary : null,
     applyDefaultChatModelsToView,
     clearTransientComposerState,
     ensureConversationRuntime,
@@ -507,16 +511,6 @@ export function useChatExperienceController({
       activeChatTitle,
     )
     : activeChatTitle
-
-  useEffect(() => {
-    const summary = nativePersonal.selectedSummary
-    if (!nativePersonalRoute || !summary || summary._id !== activeChatId) return
-    setActiveChatTitle(summary.title)
-    updateRuntimeUiState(summary._id, (previous) => ({
-      ...previous,
-      activeChatTitle: summary.title,
-    }))
-  }, [activeChatId, nativePersonal.selectedSummary, nativePersonalRoute, setActiveChatTitle, updateRuntimeUiState])
 
   useEffect(() => {
     const summary = nativePersonal.selectedSummary
