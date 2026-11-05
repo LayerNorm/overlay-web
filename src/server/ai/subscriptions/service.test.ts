@@ -11,6 +11,13 @@ class FakeRepository {
   reads = 0
   forgetDisconnectedCalls = 0
   forgetAllCalls = 0
+  pollReleaseIntervals: number[] = []
+  callbackModeCalls: boolean[] = []
+  failClosedCalls = 0
+  discoveryReleaseCalls = 0
+  dispatchCalls: Array<{ actorUserId: string; workspaceId?: string }> = []
+  refreshOwners: string[] = []
+  revokedActors = new Set<string>()
 
   async reserveAuthorization(args: Record<string, unknown>) {
     const leaseUntil = this.state?.leaseUntil
@@ -97,12 +104,13 @@ class FakeRepository {
     return { revision, cleanupRefs: nextCleanupRefs }
   }
 
-  async acquireRefresh() {
+  async acquireRefresh(args?: { userId?: string }) {
+    if (args?.userId) this.refreshOwners.push(args.userId)
     return {
       generation: Number(this.state?.generation ?? 1),
       revision: Number(this.state?.revision ?? 1),
       credentialRef: String(this.state?.credentialRef ?? ''),
-      providerId: 'codex' as const,
+      providerId: String(this.state?.providerId ?? 'codex') as BridgeCredential['providerId'],
     }
   }
 
@@ -111,7 +119,7 @@ class FakeRepository {
       generation: Number(this.state?.generation ?? 1),
       revision: Number(this.state?.revision ?? 1),
       credentialRef: String(this.state?.credentialRef ?? ''),
-      providerId: 'codex' as const,
+      providerId: String(this.state?.providerId ?? 'codex') as BridgeCredential['providerId'],
     }
   }
 
@@ -133,21 +141,38 @@ class FakeRepository {
     }
   }
   async get() { this.reads += 1; return this.state }
-  async failClosed() { return [] }
+  async failClosed() { this.failClosedCalls += 1; return [] }
   async disconnect() {
     const cleanupRefs = Array.isArray(this.state?.cleanupRefs) ? this.state.cleanupRefs as string[] : []
     this.state = { ...this.state, phase: 'disconnected', cleanupRefs }
     return cleanupRefs
   }
-  async acquirePoll() { throw new Error('not used') }
-  async releasePendingPoll() { return }
-  async releaseDiscovery() { return }
-  async forDispatch() {
+  async acquirePoll(args?: { callbackMode?: boolean }) {
+    if (!this.state) throw new Error('not used')
+    this.callbackModeCalls.push(args?.callbackMode === true)
+    return {
+      generation: Number(this.state.generation ?? 1),
+      revision: Number(this.state.revision ?? 1),
+      pendingStateRef: String(this.state.pendingStateRef ?? ''),
+      expiresAt: Number(this.state.expiresAt ?? Date.now() + 600_000),
+      providerId: String(this.state.providerId ?? 'codex') as BridgeCredential['providerId'],
+      pollIntervalMs: Number(this.state.pollIntervalMs ?? 5_000),
+    }
+  }
+  async releasePendingPoll(args: { pollIntervalMs?: number }) {
+    if (args.pollIntervalMs !== undefined) this.pollReleaseIntervals.push(args.pollIntervalMs)
+  }
+  async releaseDiscovery() { this.discoveryReleaseCalls += 1; return }
+  async forDispatch(args: { actorUserId: string; workspaceId?: string }) {
+    this.dispatchCalls.push(args)
+    if (this.revokedActors.has(args.actorUserId)) return null
     if (this.state?.phase !== 'active' || typeof this.state.credentialRef !== 'string') return null
     return {
-      providerId: 'codex' as const,
+      providerId: String(this.state.providerId ?? 'codex') as BridgeCredential['providerId'],
       credentialRef: this.state.credentialRef,
+      ownerUserId: String(this.state.userId ?? args.actorUserId),
       generation: Number(this.state.generation ?? 1),
+      revision: Number(this.state.revision ?? 1),
     }
   }
   async revokeAllByUser() {
@@ -315,7 +340,7 @@ test('Codex authorization reserves a durable generation before requesting and va
   assert.equal(repository.state?.ownerId, undefined)
   assert.equal(credentials.contexts[0]?.providerId, 'subscription-codex')
   assert.equal(service.isEnabled('codex'), true)
-  assert.equal(service.isEnabled('xai'), false)
+  assert.equal(service.isEnabled('xai'), true)
 })
 
 test('ambiguous pending-state commit keeps a vault candidate referenced by durable state', async (t) => {
@@ -640,6 +665,7 @@ test('credential dispatch refreshes a near-expiry bridge credential under the re
     }
     if (url.pathname === '/internal/v1/models') {
       return Response.json({
+        providerId: 'codex',
         models: [{ id: 'codex-model', name: 'Codex Model' }],
         source: 'provider_catalog',
       })
@@ -688,13 +714,89 @@ test('credential dispatch rereads under the refresh lease and skips redundant ro
   let refreshRequests = 0
   const service = createService(repository, credentials, async (input) => {
     if (new URL(String(input)).pathname === '/internal/v1/refresh') refreshRequests += 1
-    return Response.json({ models: [{ id: 'codex-model', name: 'Codex Model' }], source: 'provider_catalog' })
+    return Response.json({ providerId: 'codex', models: [{ id: 'codex-model', name: 'Codex Model' }], source: 'provider_catalog' })
   })
 
   const result = await service.credentialForDispatch('owner-1', 'connection-1', 'codex-model')
 
   assert.deepEqual(result, fresh)
   assert.equal(refreshRequests, 0)
+})
+
+test('shared dispatch refreshes as the owner and blocks after actor membership is revoked', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex'
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  const repository = new FakeRepository()
+  const credentials = new FakeCredentials()
+  const expiredSoon: BridgeCredential = {
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'codex',
+    metadata: { tokenStorage: { accessToken: 'owner-access', refreshToken: 'owner-refresh' } },
+    expiresAt: Date.now() + 20_000,
+  }
+  const refreshed: BridgeCredential = {
+    ...expiredSoon,
+    metadata: { tokenStorage: { accessToken: 'owner-access-new', refreshToken: 'owner-refresh-new' } },
+    expiresAt: Date.now() + 3_600_000,
+  }
+  const oldRef = await credentials.write({
+    apiKey: JSON.stringify(expiredSoon),
+    context: { purpose: 'subscription', userId: 'owner-1', connectionId: 'connection-1', providerId: 'subscription-codex' },
+  })
+  repository.state = {
+    userId: 'owner-1',
+    connectionId: 'connection-1',
+    providerId: 'codex',
+    generation: 2,
+    revision: 4,
+    phase: 'active',
+    credentialRef: oldRef,
+    cleanupRefs: [],
+    pendingWrites: [],
+  }
+  const commitActive = repository.commitActive.bind(repository)
+  repository.commitActive = async (args) => {
+    const result = await commitActive(args)
+    repository.revokedActors.add('member-1')
+    return result
+  }
+  const paths: string[] = []
+  const service = createService(repository, credentials, async (input, init) => {
+    const path = new URL(String(input)).pathname
+    paths.push(path)
+    if (path === '/internal/v1/refresh') {
+      const body = JSON.parse(String(init?.body)) as { credential: BridgeCredential }
+      assert.equal(body.credential.metadata?.tokenStorage && typeof body.credential.metadata.tokenStorage, 'object')
+      return Response.json({ credential: refreshed })
+    }
+    if (path === '/internal/v1/models') {
+      return Response.json({
+        providerId: 'codex',
+        models: [{ id: 'codex-model', name: 'Codex Model' }],
+        source: 'provider_catalog',
+      })
+    }
+    throw new Error(`Unexpected bridge request: ${path}`)
+  })
+
+  await assert.rejects(
+    service.credentialForDispatch('member-1', 'connection-1', 'codex-model', 'workspace-1'),
+    /unavailable/,
+  )
+  assert.deepEqual(repository.refreshOwners, ['owner-1'])
+  assert.ok(repository.dispatchCalls.length >= 2)
+  assert.ok(repository.dispatchCalls.every((call) =>
+    call.actorUserId === 'member-1' && call.workspaceId === 'workspace-1',
+  ))
+  assert.ok(credentials.contexts.some((context) => context.userId === 'owner-1'))
+  assert.ok(paths.includes('/internal/v1/refresh'))
+  assert.ok(paths.includes('/internal/v1/models'))
+  assert.ok(!paths.includes('/internal/v1/infer'))
 })
 
 test('legacy native Codex credentials require reconnect without bridge import', async (t) => {
@@ -721,7 +823,7 @@ test('legacy native Codex credentials require reconnect without bridge import', 
   })
   await assert.rejects(
     service.credentialForDispatch('owner-1', 'connection-1', 'codex-model'),
-    /Reconnect your Codex subscription/,
+    /Reconnect your subscription/,
   )
   assert.equal(bridgeRequests, 0)
 })
@@ -749,6 +851,8 @@ test('expired persisted authorization returns expired without contacting the bri
     generation: 2,
     revision: 4,
     pendingStateRef: 'expired-pending-state',
+    expiresAt: Date.now() - 1,
+    providerId: 'codex',
   })
   let failClosedCalled = false
   repository.failClosed = async () => {
@@ -817,11 +921,277 @@ test('an explicit refresh rate limit releases the lease and preserves the creden
 
   assert.deepEqual(result, {
     status: 'error',
-    error: 'Codex is rate-limiting requests. Retry later.',
+    error: 'The provider is rate-limiting requests. Retry later.',
   })
   assert.equal(refreshLeaseReleased, true)
   assert.equal(failClosedCalled, false)
   assert.equal(repository.state?.credentialRef, credentialRef)
   assert.equal(credentials.values.get(credentialRef), serializedCredential)
   assert.equal(credentials.values.size, 1)
+})
+
+test('ordinary callback-provider polling remains pending without consuming the flow', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'claude'
+  const repository = new FakeRepository()
+  repository.state = {
+    userId: 'owner-1',
+    connectionId: 'connection-1',
+    providerId: 'claude',
+    generation: 1,
+    revision: 2,
+    phase: 'pending',
+    pendingStateRef: 'pending-ref',
+    expiresAt: Date.now() + 600_000,
+    pollIntervalMs: 12_000,
+    cleanupRefs: [],
+  }
+  const credentials = new FakeCredentials()
+  credentials.values.set('pending-ref', JSON.stringify({
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'claude',
+    metadata: { state: 'opaque', codeVerifier: 'opaque' },
+    expiresAt: Date.now() + 600_000,
+    interval: 5,
+    callbackRequired: true,
+  }))
+  let bridgeRequests = 0
+  const service = createService(repository, credentials, async () => {
+    bridgeRequests += 1
+    throw new Error('ordinary polling must not complete a callback')
+  })
+
+  assert.deepEqual(await service.poll('owner-1', 'connection-1'), { status: 'pending' })
+  assert.equal(bridgeRequests, 0)
+  assert.equal(repository.failClosedCalls, 0)
+  assert.deepEqual(repository.pollReleaseIntervals, [12_000])
+  assert.equal(repository.state?.phase, 'pending')
+})
+
+test('discovery refuses a credential whose provider differs from the lease', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'claude,codex'
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  const repository = new FakeRepository()
+  repository.state = {
+    userId: 'owner-1',
+    connectionId: 'connection-1',
+    providerId: 'claude',
+    generation: 1,
+    revision: 2,
+    phase: 'discovering',
+    credentialRef: 'credential-ref',
+    cleanupRefs: [],
+  }
+  const credentials = new FakeCredentials()
+  credentials.values.set('credential-ref', JSON.stringify({
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'codex',
+    metadata: {},
+    expiresAt: Date.now() + 60_000,
+  }))
+  let bridgeCalls = 0
+  const service = createService(repository, credentials, async () => {
+    bridgeCalls += 1
+    throw new Error('provider mismatch reached the bridge')
+  })
+
+  const result = await service.poll('owner-1', 'connection-1')
+  assert.equal(result.status, 'error')
+  assert.equal(bridgeCalls, 0)
+  assert.equal(repository.state?.phase, 'discovering')
+})
+
+test('callback completion retries invalid input and a replay does not exchange again', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'claude'
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  const repository = new FakeRepository()
+  repository.state = {
+    userId: 'owner-1',
+    connectionId: 'connection-1',
+    providerId: 'claude',
+    generation: 1,
+    revision: 2,
+    phase: 'pending',
+    pendingStateRef: 'pending-ref',
+    expiresAt: Date.now() + 600_000,
+    pollIntervalMs: 12_000,
+    cleanupRefs: [],
+  }
+  const credentials = new FakeCredentials()
+  credentials.values.set('pending-ref', JSON.stringify({
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'claude',
+    metadata: { state: 'opaque', codeVerifier: 'opaque' },
+    expiresAt: Date.now() + 600_000,
+    interval: 5,
+    callbackRequired: true,
+  }))
+  let completionCalls = 0
+  const service = createService(repository, credentials, async (input) => {
+    const path = new URL(String(input)).pathname
+    if (path.endsWith('/complete')) {
+      completionCalls += 1
+      if (completionCalls === 1) {
+        return Response.json({ error: { code: 'invalid_callback' } }, { status: 400 })
+      }
+      return Response.json({
+        status: 'connected',
+        credential: {
+          backend: 'cliproxyapi',
+          version: 1,
+          providerId: 'claude',
+          metadata: { accessToken: 'access', refreshToken: 'refresh' },
+          expiresAt: Date.now() + 3_600_000,
+        },
+      })
+    }
+    if (path.endsWith('/models')) {
+      return Response.json({
+        providerId: 'claude',
+        source: 'provider_catalog',
+        models: [{ id: 'claude-sonnet', name: 'Claude Sonnet' }],
+      })
+    }
+    throw new Error(`unexpected bridge path: ${path}`)
+  })
+
+  const callbackUrl = 'http://127.0.0.1:54545/callback?code=opaque&state=opaque'
+  const failed = await service.poll('owner-1', 'connection-1', callbackUrl)
+  assert.deepEqual(failed, {
+    status: 'error',
+    error: 'The callback does not match this authorization. Check the URL and retry.',
+    retryable: true,
+  })
+  assert.equal(repository.state?.phase, 'pending')
+  assert.equal(repository.failClosedCalls, 0)
+
+  const completed = await service.poll('owner-1', 'connection-1', callbackUrl)
+  assert.deepEqual(completed, {
+    status: 'connected',
+    models: [{ id: 'claude-sonnet', name: 'Claude Sonnet' }],
+  })
+  const replay = await service.poll('owner-1', 'connection-1', callbackUrl)
+  assert.deepEqual(replay, { status: 'connected', models: [] })
+  assert.equal(completionCalls, 2)
+  assert.deepEqual(repository.callbackModeCalls, [true, true])
+})
+
+test('device-flow slowdown interval is saved with the pending provider state', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'xai'
+  const repository = new FakeRepository()
+  repository.state = {
+    userId: 'owner-1',
+    connectionId: 'connection-1',
+    providerId: 'xai',
+    generation: 1,
+    revision: 2,
+    phase: 'pending',
+    pendingStateRef: 'pending-ref',
+    expiresAt: Date.now() + 600_000,
+    pollIntervalMs: 5_000,
+    cleanupRefs: [],
+  }
+  const credentials = new FakeCredentials()
+  credentials.values.set('pending-ref', JSON.stringify({
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'xai',
+    metadata: { deviceCode: 'opaque', tokenEndpoint: 'https://auth.x.ai/token' },
+    expiresAt: Date.now() + 600_000,
+    interval: 5,
+  }))
+  const service = createService(repository, credentials, async () => Response.json({
+    status: 'pending',
+    pendingState: {
+      backend: 'cliproxyapi',
+      version: 1,
+      providerId: 'xai',
+      metadata: { deviceCode: 'opaque', tokenEndpoint: 'https://auth.x.ai/token' },
+      expiresAt: Date.now() + 600_000,
+      interval: 15,
+    },
+  }))
+
+  assert.deepEqual(await service.poll('owner-1', 'connection-1'), { status: 'pending' })
+  assert.deepEqual(repository.pollReleaseIntervals, [15_000])
+  assert.equal(repository.failClosedCalls, 0)
+})
+
+test('explicit refresh discovers exact provider catalog for non-expiring credentials and preserves them on failure', async (t) => {
+  const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+  t.after(() => {
+    if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
+    else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
+  })
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'devin'
+  const repository = new FakeRepository()
+  const credentials = new FakeCredentials()
+  const credential: BridgeCredential = {
+    backend: 'cliproxyapi',
+    version: 1,
+    providerId: 'devin',
+    metadata: { tokenStorage: { type: 'devin' } },
+    expiresAt: null,
+    nonExpiring: true,
+  }
+  const serialized = JSON.stringify(credential)
+  const credentialRef = await credentials.write({ apiKey: serialized })
+  repository.state = {
+    userId: 'owner-1',
+    connectionId: 'connection-1',
+    providerId: 'devin',
+    generation: 3,
+    revision: 6,
+    phase: 'active',
+    credentialRef,
+    cleanupRefs: [],
+    pendingWrites: [],
+  }
+  let refreshLeaseReleased = false
+  let modelDiscoveryRequested = false
+  const service = createService(repository, credentials, async (input, init) => {
+    const path = new URL(String(input)).pathname
+    const body = JSON.parse(String(init?.body)) as { providerId: string }
+    assert.equal(body.providerId, 'devin')
+    if (path === '/internal/v1/models') {
+      modelDiscoveryRequested = true
+      return Response.json({ error: { code: 'provider_unavailable' } }, { status: 502 })
+    }
+    if (path === '/internal/v1/refresh') {
+      refreshLeaseReleased = false
+      throw new Error('non-expiring credentials must not be rotated')
+    }
+    throw new Error(`unexpected bridge request: ${path}`)
+  })
+  repository.releaseRefresh = async () => { refreshLeaseReleased = true }
+
+  const result = await service.refresh('owner-1', 'connection-1')
+
+  assert.equal(result.status, 'error')
+  assert.equal(modelDiscoveryRequested, true)
+  assert.equal(refreshLeaseReleased, true)
+  assert.equal(repository.discoveryReleaseCalls, 1)
+  assert.equal(repository.state?.credentialRef, credentialRef)
+  assert.equal(repository.state?.phase, 'active')
+  assert.equal(credentials.values.get(credentialRef), serialized)
 })

@@ -21,7 +21,7 @@ export type ModelSelectorItem = {
   supportsVision?: boolean
   supportsReasoning?: boolean
   reasoningLevels?: readonly { value: ReasoningLevel; label: string }[]
-  subscription?: { connectionId: string; scopeLabel: string; unavailable?: boolean; recoveryHref: string }
+  subscription?: { connectionId: string; scopeLabel: string; unavailable?: boolean; recoveryHref?: string }
 }
 
 export function ModelProviderLogo({ model, size = 14 }: { model: Pick<ModelSelectorItem, 'provider' | 'subscription'>; size?: number }) {
@@ -32,7 +32,7 @@ export function ModelProviderLogo({ model, size = 14 }: { model: Pick<ModelSelec
 }
 
 function SubscriptionRecovery({ model }: { model: ModelSelectorItem }) {
-  if (!model.subscription?.unavailable) return null
+  if (!model.subscription?.unavailable || !model.subscription.recoveryHref) return null
   return <div className="mx-1 mb-2 rounded-md bg-(--surface-muted) p-2.5 text-xs leading-relaxed text-(--muted)">
     <p>{model.connectionName} needs to be reconnected. No alternate model will be used.</p>
     <Button asChild variant="link" className="h-auto p-0 text-xs"><a href={model.subscription.recoveryHref}>Reconnect {model.connectionName}</a></Button>

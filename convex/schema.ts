@@ -9,6 +9,12 @@ import { agentRunResourceRequestValidator } from './harness/resourceValidators'
 import { defineSchema, defineTable } from 'convex/server'
 import { v } from 'convex/values'
 
+const runPlanStepValidator = v.object({
+  id: v.string(),
+  title: v.string(),
+  status: v.string(),
+})
+
 export default defineSchema({
   previewProviderBudget: defineTable({
     key: v.string(), spentMicros: v.number(), updatedAt: v.number(),
@@ -175,8 +181,11 @@ export default defineSchema({
     discoveredModelsJson: v.optional(v.string()),
     discoveredAt: v.optional(v.number()),
     authKind: v.optional(v.union(v.literal('api_key'), v.literal('subscription'))),
+    scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
+    workspaceId: v.optional(v.string()),
     subscriptionProvider: v.optional(v.union(
       v.literal('codex'),
+      v.literal('claude'),
       v.literal('xai'),
       v.literal('meta'),
       v.literal('kimi'),
@@ -192,13 +201,15 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_userId', ['userId'])
-    .index('by_userId_providerId', ['userId', 'providerId']),
+    .index('by_userId_providerId', ['userId', 'providerId'])
+    .index('by_workspaceId_scope', ['workspaceId', 'scope']),
 
   providerSubscriptionStates: defineTable({
     userId: v.string(),
     connectionId: v.id('userProviderConnections'),
     providerId: v.union(
       v.literal('codex'),
+      v.literal('claude'),
       v.literal('xai'),
       v.literal('meta'),
       v.literal('kimi'),
@@ -216,6 +227,7 @@ export default defineSchema({
     ),
     credentialRef: v.optional(v.string()),
     pendingStateRef: v.optional(v.string()),
+    pollIntervalMs: v.optional(v.number()),
     nextPollAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
     leaseToken: v.optional(v.string()),
@@ -555,6 +567,9 @@ export default defineSchema({
     reservedTopUpCents: v.optional(v.number()),
     finalizedCents: v.optional(v.number()),
     providerCostMicros: v.optional(v.number()),
+    // Set once when the exact provider cost replaced a settled estimate.
+    estimatedCents: v.optional(v.number()),
+    costCorrectedAt: v.optional(v.number()),
     // Late provider evidence for a failed call whose wallet hold was already released.
     providerCostEvidence: v.optional(v.object({
       source: v.string(), reference: v.string(), reason: v.string(), recordedAt: v.number(),
@@ -1382,6 +1397,9 @@ export default defineSchema({
       requestedAt: v.number(),
       question: v.string(),
     })),
+    // The harness plan as people see it. Mirrored on the assistant message so
+    // the response keeps its plan after this run stops being the latest.
+    plan: v.optional(v.array(runPlanStepValidator)),
     approval: v.optional(v.object({
       token: v.string(),
       requestedAt: v.number(),
@@ -1470,6 +1488,8 @@ export default defineSchema({
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
     userId: v.string(),
+    // Kept apart from `parts`, which streaming and finalization replace.
+    agentPlan: v.optional(v.array(runPlanStepValidator)),
     // Compatibility-only fields retained for rows written during the reverted
     // collaboration release. See the equivalent note on `conversations`.
     authorKind: v.optional(v.union(
@@ -3035,6 +3055,8 @@ export default defineSchema({
     sequence: v.number(),
     stepNumber: v.number(),
     persistenceJson: v.string(),
+    fullPersistenceStorageId: v.optional(v.id('_storage')),
+    fullPersistenceDigest: v.optional(v.string()),
     createdAt: v.number(),
   }).index('by_runId_receiptId', ['runId', 'receiptId'])
     .index('by_runId_sequence', ['runId', 'sequence']),

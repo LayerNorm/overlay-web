@@ -331,7 +331,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
       try {
         emit({ type: 'thinking', thinking: 'Analyzing note...' })
-        const model = await getLanguageModel(effectiveModelId, auth.accessToken, userId)
+        const model = await getLanguageModel(effectiveModelId, auth.accessToken, userId, { workspaceId })
         const mentionsContext = await resolveMentionsContext(rawMentions, {
           userId,
           serverSecret,

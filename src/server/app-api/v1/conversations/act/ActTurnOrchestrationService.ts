@@ -245,7 +245,7 @@ export async function executeActTurn(
     })
     const byokRequest = isByokModelId(effectiveModelId)
     if (byokRequest) {
-      await assertUserCanUseByokModel(effectiveModelId, userId)
+      await assertUserCanUseByokModel(effectiveModelId, userId, billingWorkspaceId)
     }
     const authorizedModelIds = await resolveAuthorizedModelIds({ entitlements: runtimeEntitlements })
     if (!byokRequest && !authorizedModelIds.chat.has(effectiveModelId)) {

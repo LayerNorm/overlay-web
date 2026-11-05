@@ -2,9 +2,11 @@ import { v } from 'convex/values'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
+import { canUseProviderConnection } from '../lib/providerConnectionScope'
 
 const providerValidator = v.union(
   v.literal('codex'),
+  v.literal('claude'),
   v.literal('xai'),
   v.literal('meta'),
   v.literal('kimi'),
@@ -36,6 +38,7 @@ const stateValidator = v.object({
   ),
   credentialRef: v.optional(v.string()),
   pendingStateRef: v.optional(v.string()),
+  pollIntervalMs: v.optional(v.number()),
   nextPollAt: v.optional(v.number()),
   expiresAt: v.optional(v.number()),
   leaseToken: v.optional(v.string()),
@@ -115,6 +118,12 @@ function cleanupStatus(refs: string[]) {
   return refs.length ? 'pending' as const : 'clean' as const
 }
 
+function isDispatchableConnection(connection: Doc<'userProviderConnections'>, modelId: string): boolean {
+  return connection.status === 'active' &&
+    connection.enabledModelIds.includes(modelId) &&
+    isDiscovered(connection.discoveredModelsJson, modelId)
+}
+
 export const getByServer = query({
   args: {
     serverSecret: v.string(),
@@ -161,18 +170,52 @@ export const getForDispatchByServer = query({
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const state = await loadState(ctx, args.connectionId)
-    if (!state || state.userId !== args.userId || state.phase !== 'active' ||
-        !state.credentialRef) return null
-    const connection = await loadConnection(ctx, args.connectionId, args.userId, state.providerId)
-    if (
-      connection.status !== 'active' ||
-      !connection.enabledModelIds.includes(args.modelId) ||
-      !isDiscovered(connection.discoveredModelsJson, args.modelId)
-    ) return null
+    if (!state || state.userId !== args.userId || state.phase !== 'active' || !state.credentialRef) {
+      return null
+    }
+    const connection = await loadConnection(ctx, args.connectionId, state.userId, state.providerId)
+    if (connection.scope === 'workspace' || !isDispatchableConnection(connection, args.modelId)) {
+      return null
+    }
     return {
       providerId: state.providerId,
       credentialRef: state.credentialRef,
       generation: state.generation,
+    }
+  },
+})
+
+export const getForDispatchForActorByServer = query({
+  args: {
+    serverSecret: v.string(),
+    actorUserId: v.string(),
+    workspaceId: v.optional(v.string()),
+    connectionId: v.id('userProviderConnections'),
+    modelId: v.string(),
+  },
+  returns: v.union(
+    v.object({
+      providerId: providerValidator,
+      credentialRef: v.string(),
+      ownerUserId: v.string(),
+      generation: v.number(),
+      revision: v.number(),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const state = await loadState(ctx, args.connectionId)
+    if (!state || state.phase !== 'active' || !state.credentialRef) return null
+    const connection = await loadConnection(ctx, args.connectionId, state.userId, state.providerId)
+    if (!(await canUseProviderConnection(ctx, connection, args)) ||
+        !isDispatchableConnection(connection, args.modelId)) return null
+    return {
+      providerId: state.providerId,
+      credentialRef: state.credentialRef,
+      ownerUserId: state.userId,
+      generation: state.generation,
+      revision: state.revision,
     }
   },
 })
@@ -312,8 +355,9 @@ export const savePendingAuthorization = mutation({
     await ctx.db.patch(state._id, {
       revision: state.revision + 1,
       pendingStateRef: args.pendingStateRef,
+      pollIntervalMs: Math.max(2_000, Math.min(args.pollIntervalMs, 1_800_000)),
       expiresAt: args.expiresAt,
-      nextPollAt: now + Math.max(2_000, Math.min(args.pollIntervalMs, 30_000)),
+      nextPollAt: now + Math.max(2_000, Math.min(args.pollIntervalMs, 1_800_000)),
       leaseToken: undefined,
       leaseUntil: undefined,
       leaseOperation: undefined,
@@ -334,13 +378,16 @@ export const acquirePoll = mutation({
     userId: v.string(),
     connectionId: v.id('userProviderConnections'),
     leaseToken: v.string(),
+    callbackMode: v.optional(v.boolean()),
   },
   returns: v.object({
     generation: v.optional(v.number()),
     revision: v.optional(v.number()),
     leaseUntil: v.optional(v.number()),
     pendingStateRef: v.optional(v.string()),
+    pollIntervalMs: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
+    providerId: v.optional(providerValidator),
     error: v.optional(v.string()),
   }),
   handler: async (ctx, args) => {
@@ -356,7 +403,12 @@ export const acquirePoll = mutation({
       await markNeedsReconnect(ctx, state, now)
       return { error: 'Subscription authorization expired' }
     }
-    if (state.nextPollAt && state.nextPollAt > now) throw new Error('Subscription poll is not due')
+    if (args.callbackMode && !['claude', 'devin'].includes(state.providerId)) {
+      throw new Error('Callback completion is unavailable for this provider')
+    }
+    if (!args.callbackMode && state.nextPollAt && state.nextPollAt > now) {
+      throw new Error('Subscription poll is not due')
+    }
     if (state.leaseUntil && state.leaseUntil > now) throw new Error('Subscription connection is busy')
     if (state.leaseOperation === 'authorization' && state.leaseUntil && state.leaseUntil <= now) {
       await markNeedsReconnect(ctx, state, now)
@@ -380,7 +432,9 @@ export const acquirePoll = mutation({
       revision,
       leaseUntil,
       pendingStateRef: state.pendingStateRef,
+      pollIntervalMs: state.pollIntervalMs,
       expiresAt: state.expiresAt,
+      providerId: state.providerId,
     }
   },
 })
@@ -405,7 +459,8 @@ export const releasePendingPoll = mutation({
     const now = Date.now()
     await ctx.db.patch(state._id, {
       revision: state.revision + 1,
-      nextPollAt: now + Math.max(2_000, Math.min(args.pollIntervalMs, 30_000)),
+      pollIntervalMs: Math.max(2_000, Math.min(args.pollIntervalMs, 1_800_000)),
+      nextPollAt: now + Math.max(2_000, Math.min(args.pollIntervalMs, 1_800_000)),
       leaseToken: undefined,
       leaseUntil: undefined,
       leaseOperation: undefined,

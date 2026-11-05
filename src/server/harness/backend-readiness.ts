@@ -17,4 +17,6 @@ export function isHarnessBackendReady(settings: AppSettings | null): boolean {
     && settings.harnessArtifactPublicationRevision === 'binary-artifact-v1'
     && 'harnessTranscriptRevision' in settings
     && settings.harnessTranscriptRevision === 'settled-public-v1'
+    && 'harnessFullTranscriptRevision' in settings
+    && settings.harnessFullTranscriptRevision === 'full-public-v1'
 }

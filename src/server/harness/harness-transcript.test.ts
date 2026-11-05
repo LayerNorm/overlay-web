@@ -42,6 +42,37 @@ test('settled public persistence excludes private reasoning and keeps sanitized 
   expect(JSON.stringify(persistence)).not.toContain('overlayModelOutput')
 })
 
+test('public journal keeps every part and full tool payload independently of the compact chat snapshot', () => {
+  const output = { body: 'public result '.repeat(1_000), nested: Array.from({ length: 30 }).reduce(value => ({ child: value }), 'deep leaf' as unknown) }
+  const content = Array.from({ length: 96 }, (_, index) => index % 2 === 0
+    ? { type: 'text', text: `Update ${index}.` }
+    : { type: 'tool-result', toolCallId: `call-${index}`, toolName: 'get_note', input: { noteId: `n${index}` }, output })
+  const persistence = publicHarnessStepPersistence({
+    stepNumber: 0, text: '', reasoning: [], content, toolCalls: [], toolResults: [],
+  } as never, new Set(['get_note']))
+  expect(persistence.parts).toHaveLength(96)
+  expect(persistence.parts[0]).toEqual({ type: 'text', text: 'Update 0.' })
+  expect(JSON.stringify(persistence.parts[1])).toContain(output.body)
+  expect(JSON.stringify(persistence.parts[1])).toContain('deep leaf')
+  expect(JSON.stringify(persistence)).not.toContain('storageOmittedParts')
+  expect(JSON.stringify(persistence)).not.toContain('"truncated":true')
+})
+
+test('full public persistence retains long tool errors but excludes control approvals and reasoning', () => {
+  const error = 'Public tool failure.'.repeat(1_000)
+  const persistence = publicHarnessStepPersistence({
+    stepNumber: 0, text: '', reasoning: [], toolCalls: [], toolResults: [], content: [
+      { type: 'reasoning', text: 'private thought' },
+      { type: 'tool-approval-request', approvalId: 'private-approval', toolCall: {
+        toolCallId: 'private-call', toolName: 'harness_update_step', input: { private: true },
+      } },
+      { type: 'tool-error', toolCallId: 'public-call', toolName: 'get_note', input: {}, error },
+    ],
+  } as never, new Set(['get_note']))
+  expect(JSON.stringify(persistence)).toContain(error)
+  expect(JSON.stringify(persistence)).not.toContain('private')
+})
+
 test('failure delivery restores journal order, deduplicates matching settled steps, and keeps new live text', () => {
   const result = {
     outcome: 'finished',

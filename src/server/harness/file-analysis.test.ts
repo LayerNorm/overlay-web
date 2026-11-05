@@ -95,6 +95,44 @@ test('analysis schema bounds work and delegates only inherited tools with a dura
   expect(delegate).toHaveBeenCalledTimes(1)
 })
 
+test('file analysis defaults an omitted v2 child allocation to zero', async () => {
+  const policy = { actorUserId: 'user', workspaceId: 'workspace', spendingMode: 'workspace' as const,
+    allowedToolIds: ['read_file', 'read_document', 'computer_exec'], requiresPlan: false,
+    deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2,
+    executionPolicyVersion: 2 as const }
+  const state = createHarnessSnapshot({ runId: 'parent-v2', goal: 'Analyze files', constraints: [], policy }, Date.now())
+  const delegate = vi.fn<HarnessExecutionPorts['delegate']>(async () => ({ id: 'child' }) as never)
+  const tool = createHarnessControlTools({
+    fileAnalysisEnabled: true, read: async () => state, delegate,
+  } as unknown as HarnessExecutionPorts).harness_analyze_files!
+
+  await tool.execute!(
+    { stepId: 'work', goal: 'Read the page', partitions: [partition] },
+    { toolCallId: 'v2-default-allocation', messages: [] },
+  )
+
+  expect(delegate.mock.calls[0]?.[0].maxCostMicros).toBe(0)
+})
+
+test('file analysis rejects an omitted legacy child allocation', async () => {
+  const policy = { actorUserId: 'user', allowedToolIds: ['read_document'], requiresPlan: false,
+    deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxParallelChildren: 2, maxDepth: 2,
+    executionPolicyVersion: 1 as const }
+  const state = createHarnessSnapshot({ runId: 'parent-legacy', goal: 'Analyze files', constraints: [], policy }, Date.now())
+  const delegate = vi.fn<HarnessExecutionPorts['delegate']>(async () => ({ id: 'child' }) as never)
+  const tool = createHarnessControlTools({
+    fileAnalysisEnabled: true, read: async () => state, delegate,
+  } as unknown as HarnessExecutionPorts).harness_analyze_files!
+
+  await expect(tool.execute!(
+    { stepId: 'work', goal: 'Read the page', partitions: [partition] },
+    { toolCallId: 'legacy-missing-allocation', messages: [] },
+  )).resolves.toEqual({
+    success: false, error: 'Specify a child spend allocation for this legacy run.',
+  })
+  expect(delegate).not.toHaveBeenCalled()
+})
+
 test('nested assignments replace inherited manifests while fitting durable constraint limits', () => {
   const partitions = Array.from({ length: 32 }, (_, index) => ({ ...partition, fileId: `${'f'.repeat(240)}${index}` }))
   const inherited = fileAnalysisConstraints(partitions, 'parent-call')

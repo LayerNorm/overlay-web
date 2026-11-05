@@ -114,6 +114,7 @@ export type RoomMessageRecord = {
   importedAuthorStatus?: 'member' | 'invited' | 'not_invited'
   content: string
   parts?: RoomMessagePart[]
+  agentPlan?: RoomMessageView['plan']
   createdAt: number
   updatedAt?: number
   eventSequence?: number
@@ -332,6 +333,8 @@ export function toRoomMessageView({
       ? readNativeAgentApproval(message.parts?.find((part) => part.type === NATIVE_AGENT_APPROVAL_PART)?.data)
       : undefined,
     nativeInput: nativeInputRequest(message),
+    plan: message.agentPlan,
+    planPhase: nativeInputRequest(message) ? 'waiting' : message.status === 'generating' ? 'active' : 'ended',
     generationError: isAgent && message.status === 'error' && !remoteRun
       ? readNativeAgentError(message.parts)?.message ?? errorLabel(new Error(persistedGenerationErrorMessage(message.content))) ?? undefined
       : undefined,

@@ -48,6 +48,7 @@ import { isChief, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identit
 import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-workspace'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { useAgentExpansion } from './sidebar/useAgentExpansion'
+import { resolveAgentEntryThread } from './sidebar/resolveAgentEntryThread'
 
 type AgentBundleMap = Record<string, WorkspaceAgentBundle | 'loading' | 'error'>
 
@@ -273,9 +274,10 @@ function useAgentActions({
     setOpeningAgentId(agent.id)
     try {
       if (!workspaceId) return
-      // Agents open into their main thread; the resolver adopts the legacy
-      // DM or creates the first thread when the agent has none yet.
-      const { thread } = await overlayAppClient.agents.resolveMainThread(workspaceId, agent.id)
+      const thread = await resolveAgentEntryThread({
+        list: async () => (await overlayAppClient.agents.bundle(workspaceId, agent.id)).threads,
+        fallback: async () => (await overlayAppClient.agents.resolveMainThread(workspaceId, agent.id)).thread,
+      })
       rememberAgentOpened(workspaceId, agent.id)
       setOpenError(null)
       dispatchChatCreated({

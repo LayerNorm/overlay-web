@@ -36,7 +36,6 @@ export function buildHarnessRunnerCheckpoint(input: {
   modelCall: number
   stagnantSegments: number
   finalAnswerRequired: boolean
-  planRepair?: HarnessRunnerCheckpoint['planRepair']
   toolNames?: ReadonlySet<string>
   truncatedResponse: boolean
   segmentStartedAt: number
@@ -66,7 +65,6 @@ export function buildHarnessRunnerCheckpoint(input: {
     modelCall: input.modelCall,
     stagnantSegments: input.stagnantSegments,
     finalAnswerRequired: input.finalAnswerRequired,
-    ...(input.planRepair ? { planRepair: input.planRepair } : {}),
     truncatedResponse: input.truncatedResponse,
     segmentStartedAt: input.segmentStartedAt,
     deliverySteps,

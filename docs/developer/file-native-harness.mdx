@@ -24,8 +24,8 @@ separately and capped at 10 MiB; truncated text is labeled as incomplete.
 `read_document` uses the authorized Computer and is currently limited to PDF
 page reading, rendering, candidate-table extraction, and optional OCR. It
 prepares a dedicated Python environment with PyMuPDF 1.26.7. OCR additionally
-requires Tesseract on the Computer. Table detection and OCR are candidates
-that require human/model verification; neither is a guarantee of correctness.
+requires Tesseract on the Computer. Table detection and OCR are candidate
+extractions, not a guarantee of correctness.
 Rendered images are bounded, and missing or unreadable pages must be reported
 as missing rather than treated as evidence of absence.
 
@@ -33,20 +33,14 @@ Harness checkpoints retain short tool observations when they fit the existing
 7,500-byte checkpoint budget. Larger observations remain marked as truncated;
 use `harness_read_evidence` to inspect persisted details before treating missing
 preview text as missing source data. Image artifacts still require authorized
-reopening and visual inspection, not an inference from render metadata.
+reopening and actual visual inspection, not an inference from render metadata.
 Document evidence preserves observed page counts, pixel dimensions, and image
-format without embedding binary data. These facts support render-metadata claims
-in final verification, not claims that the image was visually inspected.
-Use `harness_revise_step` to change one existing milestone definition; unchanged
-milestones retain their evidence and completion state, while the existing plan
-validation and invalidation rules still apply. Repeated planning repairs are
-bounded to four model steps without new successful tool-result evidence. The
-counter survives checkpoints, resets on new evidence, and pauses truthfully at
-the limit. Repair bookkeeping is removed from public progress, transcript,
-delivery and native streaming without hiding ordinary plan discussion or code.
-This includes milestone updates that reference internal step identifiers or
-persisted evidence without naming a control tool. Acceptance must check these
-plain-language updates as well as explicit tool-schema repair messages.
+format without embedding binary data. Render metadata supports claims about
+those observed dimensions and formats, not claims that the image was visually
+inspected. Plans are optional; when useful, short titles and dependencies
+organize the work, and `harness_update_step` records ordinary running/done
+transitions. Public text boundaries filter private Harness bookkeeping without
+hiding ordinary plan discussion or code.
 
 Hybrid file retrieval falls back to lexical results when embedding pricing,
 reservation, or provider calls fail. It preserves provider reservation and
@@ -82,10 +76,9 @@ complete-coverage claim. Completed child work is reused on replay.
 Public progress is a separate, tool-free call capped at 256 output tokens, not
 an execution result or final answer. Simulated tool calls invalidate that progress
 step for saved transcripts and subsequent model history, while its actual usage
-still settles. Function-call XML is hidden from live delivery. Real document
-observations and final-answer verification remain required for acceptance.
-
-Acceptance must exercise a targeted milestone revision after successful tool work, preserve unrelated completion, and finish through supported final verification. An unrecoverable repair sequence must pause truthfully without repeating completed actions or exposing private bookkeeping.
+still settles. Function-call XML is hidden from live delivery. Acceptance checks
+actual tool observations, source revisions and coverage, authorized artifact
+reopening when provided, and an accurate completed response.
 
 - Upload a PDF larger than 4.5 MB with file-first enabled; its original must remain
   downloadable if extraction fails. Retry registration without uploading again.

@@ -3,7 +3,7 @@ import test from 'node:test'
 import {
   admitHarnessChild, admitHarnessNamedChild, assertHarnessRunnable, blockHarness, checkpointHarness, createHarnessSnapshot,
   currentHarnessContext, finishHarness, harnessCompletionIssues, recordHarnessEvidence, recordHarnessReceipt, recordHarnessChildReceipt,
-  replaceHarnessPlan, reviseHarnessPlanStep, settleHarnessChild, terminateHarness, transitionHarnessStep, type HarnessChild, type HarnessEvidence,
+  replaceHarnessPlan, settleHarnessChild, terminateHarness, transitionHarnessStep, type HarnessChild, type HarnessEvidence,
   type HarnessPlanInput, type HarnessReceipt,
   claimHarnessExecution, hasRunnableHarnessMilestones, waitForHarnessChildren, resumeHarness,
   reserveHarnessModel, reservedHarnessCostMicros,
@@ -329,21 +329,12 @@ test('one workflow owns a run and child-only waiting preserves resumable state',
   assert.equal(state.children[0].status, 'running')
 })
 
-test('completion requires persisted evidence, satisfied dependencies and independent verification', () => {
+test('a step is done when marked done, once its dependencies are complete', () => {
   let state = replaceHarnessPlan(make(), steps, now)
   assert.throws(() => finishHarness(state, now), /unfinished/)
-  assert.throws(() => transitionHarnessStep(state, { id: 'read', status: 'done' }, now), /evidence/)
-  state = recordHarnessEvidence(state, {
-    id: 'prompt', kind: 'user_input', source: 'user', summary: 'Create a note.', verdict: 'observed', createdAt: now,
-  }, now)
-  assert.throws(() => transitionHarnessStep(state, { id: 'read', status: 'done', evidenceRefs: ['prompt'] }, now), /tool-result evidence/)
-  state = recordHarnessEvidence(state, { id: 'source', kind: 'tool_result', source: 'read', summary: 'Read source', verdict: 'observed', createdAt: now }, now)
-  assert.throws(() => transitionHarnessStep(state, { id: 'report', status: 'done', evidenceRefs: ['source'] }, now), /Dependencies/)
-  state = transitionHarnessStep(state, { id: 'read', status: 'done', evidenceRefs: ['source'] }, now)
-  state = recordHarnessEvidence(state, { id: 'report-source', kind: 'tool_result', source: 'read', summary: 'Report source checked', verdict: 'observed', createdAt: now }, now)
-  assert.throws(() => transitionHarnessStep(state, { id: 'report', status: 'done', evidenceRefs: ['report-source'] }, now), /verification/)
-  state = recordHarnessEvidence(state, { id: 'check', kind: 'verification', source: 'check:report:revision-1', summary: 'Figures match source', verdict: 'passed', createdAt: now, verification: { stepId: 'report', planRevision: state.planRevision } }, now)
-  state = transitionHarnessStep(state, { id: 'report', status: 'done', evidenceRefs: ['report-source', 'check'] }, now)
+  assert.throws(() => transitionHarnessStep(state, { id: 'report', status: 'done' }, now), /Dependencies/)
+  state = transitionHarnessStep(state, { id: 'read', status: 'done' }, now)
+  state = transitionHarnessStep(state, { id: 'report', status: 'done' }, now)
   assert.equal(finishHarness(state, now).status, 'completed')
   assert.equal(state.status, 'running')
 })
@@ -374,7 +365,7 @@ test('expired authorization cannot bypass completion blockers or unresolved hold
   const at = running.policy.deadlineAt + 1
   const reserved = reserveHarnessModel(running, 'unresolved', 1, now)
   assert.throws(() => finishHarness(reserved, at), /reconciliation/)
-  assert.throws(() => finishHarness(make(), at), /plan is required/)
+  assert.equal(finishHarness(make(), at).status, 'completed')
   const blocked = blockHarness(running, { kind: 'input', question: 'Which result?' }, now)
   assert.throws(() => finishHarness(blocked, at), /blocker/)
   assert.throws(() => finishHarness({ ...running, status: 'waiting_for_resources', resourceRequestToken: 'pending' }, at), /not running/)
@@ -494,41 +485,6 @@ test('plan revisions reject cycles and invalidate completed downstream work', ()
   assert.throws(() => replaceHarnessPlan(state, [steps[0]!], now), /Keep existing/)
 })
 
-test('targeted milestone revisions preserve unrelated completion and invalidate changed dependents', () => {
-  let state = replaceHarnessPlan(make(), [
-    { id: 'first', title: 'First', dependsOn: [], acceptanceCriteria: ['First'], requiresVerification: false, evidenceTools: ['read'] },
-    { id: 'second', title: 'Second', dependsOn: ['first'], acceptanceCriteria: ['Second'], requiresVerification: false, evidenceTools: ['read'] },
-    { id: 'unrelated', title: 'Unrelated', dependsOn: [], acceptanceCriteria: ['Unrelated'], requiresVerification: false, evidenceTools: ['read'] },
-  ], now)
-  for (const id of ['first', 'second', 'unrelated']) {
-    state = recordHarnessEvidence(state, {
-      id: `evidence:${id}`, kind: 'tool_result', source: 'read', summary: id, verdict: 'observed', createdAt: now,
-    }, now)
-    state = transitionHarnessStep(state, { id, status: 'done', evidenceRefs: [`evidence:${id}`] }, now)
-  }
-
-  const revised = reviseHarnessPlanStep(state, 'first', { dependsOn: ['unrelated'] }, now + 1)
-  assert.deepEqual(revised.plan.find(step => step.id === 'first'), {
-    ...state.plan.find(step => step.id === 'first'),
-    dependsOn: ['unrelated'], status: 'pending', evidenceRefs: [],
-  })
-  assert.deepEqual(revised.plan.find(step => step.id === 'second'), {
-    ...state.plan.find(step => step.id === 'second'), status: 'pending', evidenceRefs: [],
-  })
-  assert.deepEqual(revised.plan.find(step => step.id === 'unrelated'), state.plan.find(step => step.id === 'unrelated'))
-  assert.deepEqual(revised.evidence, state.evidence)
-})
-
-test('targeted revisions reject unauthorized evidence tools, attached-child edits, and status injection', () => {
-  const planned = replaceHarnessPlan(make(), [{
-    id: 'work', title: 'Work', dependsOn: [], acceptanceCriteria: ['Done'], requiresVerification: false, evidenceTools: ['read'],
-  }], now)
-  assert.throws(() => reviseHarnessPlanStep(planned, 'work', { evidenceTools: ['missing'] }, now + 1), /unsupported evidence tool/)
-  assert.throws(() => reviseHarnessPlanStep(planned, 'work', { status: 'done' } as never, now + 1), /definition fields/)
-  const attached = admitHarnessChild(planned, child('child', 'work', 0), now + 1)
-  assert.throws(() => reviseHarnessPlanStep(attached, 'work', { title: 'Changed' }, now + 2), /attached to a child/)
-})
-
 test('continuation checkpoint keeps model narrative separate from authoritative summary', () => {
   let state = make()
   state = checkpointHarness(state, 'Authoritative checkpoint', now, 'continuation', 'Unverified model narrative.')
@@ -587,7 +543,6 @@ test('named child admission appends and assigns its synthetic milestone atomical
     dependsOn: [],
     acceptanceCriteria: ['Planner returns a reply.'],
     requiresVerification: false,
-    evidenceTools: ['harness_read_child'],
     status: 'running',
     evidenceRefs: [],
     childRunId: 'workspace:delivery',
@@ -654,7 +609,7 @@ for (const status of ['failed', 'cancelled'] as const) {
   })
 }
 
-test('revising an attached named-child milestone inherits its evidenceTools', () => {
+test('revising an attached named-child milestone keeps its child', () => {
   const admitted = admitHarnessNamedChild(make(), child('workspace:delivery', 'ask:call:planner', 40), {
     title: 'Ask Planner',
     acceptanceCriteria: ['Planner returns a reply.'],
@@ -668,31 +623,8 @@ test('revising an attached named-child milestone inherits its evidenceTools', ()
   }], now + 1)
   assert.equal(revised, admitted)
   assert.equal(revised.planRevision, admitted.planRevision)
-  assert.deepEqual(revised.plan[0]?.evidenceTools, ['harness_read_child'])
   assert.equal(revised.plan[0]?.childRunId, 'workspace:delivery')
   assert.equal(revised.plan[0]?.status, 'running')
-})
-
-test('revising an attached delegated step merges its original evidenceTools', () => {
-  const planned = replaceHarnessPlan(make(), [{
-    id: 'delegate',
-    title: 'Delegate the work',
-    dependsOn: [],
-    acceptanceCriteria: ['Child result read'],
-    requiresVerification: false,
-    evidenceTools: ['write', 'read'],
-  }], now)
-  const admitted = admitHarnessChild(planned, child('child-1', 'delegate', 0), now + 1)
-  const revised = replaceHarnessPlan(admitted, [{
-    id: 'delegate',
-    title: 'Delegate the work',
-    dependsOn: [],
-    acceptanceCriteria: ['Child result read'],
-    requiresVerification: false,
-    evidenceTools: ['write', 'read'],
-  }], now + 2)
-  assert.equal(revised, admitted)
-  assert.deepEqual(revised.plan[0]?.evidenceTools, ['write', 'read', 'harness_read_child'])
 })
 
 test('delegation preserves verification evidence for another milestone', () => {
@@ -740,45 +672,6 @@ test('delegation preserves verification evidence for another milestone', () => {
     evidenceRefs: ['verified-result', 'verification'],
   }, now + 4)
   assert.equal(state.plan.find(step => step.id === 'verified')?.status, 'done')
-})
-
-test('a requiresPlan delegated milestone completes with harness_read_child evidence', () => {
-  const planned = replaceHarnessPlan(make(), [{
-    id: 'delegate',
-    title: 'Delegate the work',
-    dependsOn: [],
-    acceptanceCriteria: ['Child result read'],
-    requiresVerification: false,
-    evidenceTools: ['read'],
-  }], now)
-  const admitted = admitHarnessChild(planned, child('child-1', 'delegate', 0), now + 1)
-  assert.deepEqual(admitted.plan[0]?.evidenceTools, ['read', 'harness_read_child'])
-  const childRun = createHarnessSnapshot({
-    runId: 'child-1',
-    parentRunId: 'root',
-    rootRunId: 'root',
-    depth: 1,
-    goal: 'Complete the delegated work',
-    constraints: [],
-    policy: { ...admitted.policy, allowedToolIds: ['read'], requiresPlan: false, maxCostMicros: 0 },
-  }, now + 2)
-  const completedChild = finishHarness(childRun, now + 3, 'Delegated result')
-  const settled = settleHarnessChild(admitted, completedChild, now + 4)
-  assert.deepEqual(settled.plan, admitted.plan)
-  const evidence = recordHarnessEvidence(settled, {
-    id: 'child-result',
-    kind: 'tool_result',
-    source: 'harness_read_child:child-1',
-    summary: 'Child completed',
-    verdict: 'observed',
-    createdAt: now + 5,
-  }, now + 5)
-  const completed = transitionHarnessStep(evidence, {
-    id: 'delegate',
-    status: 'done',
-    evidenceRefs: ['child-result'],
-  }, now + 6)
-  assert.equal(completed.plan[0]?.status, 'done')
 })
 
 test('named child admission enforces spending, depth, concurrency and plan size', () => {
@@ -880,16 +773,6 @@ test('reconciliation does not let child overspend create a negative reservation'
   assert.throws(() => assertHarnessRunnable(parent, now, 31), /spending/)
 })
 
-test('plan-optional runs still require evidence for non-answer milestones and may omit evidenceTools', () => {
-  const base = make()
-  let state = { ...base, policy: { ...base.policy, requiresPlan: false } }
-  state = replaceHarnessPlan(state, [{ id: 'read', title: 'Read', dependsOn: [], acceptanceCriteria: ['Read'], requiresVerification: false }], now)
-  assert.throws(() => transitionHarnessStep(state, { id: 'read', status: 'done' }, now), /Completion requires evidence/)
-  state = recordHarnessEvidence(state, { id: 'artifact', kind: 'artifact', source: 'export', summary: 'Saved result', verdict: 'observed', createdAt: now }, now)
-  state = transitionHarnessStep(state, { id: 'read', status: 'done', evidenceRefs: ['artifact'] }, now)
-  assert.equal(state.plan[0]?.status, 'done')
-})
-
 test('plan-optional action milestones may share a tool result', () => {
   const base = make()
   const planOptional = { ...base, policy: { ...base.policy, requiresPlan: false } }
@@ -903,67 +786,6 @@ test('plan-optional action milestones may share a tool result', () => {
   state = transitionHarnessStep(state, { id: 'first', status: 'done', evidenceRefs: ['read-result'] }, now)
   state = transitionHarnessStep(state, { id: 'second', status: 'done', evidenceRefs: ['read-result'] }, now)
   assert.deepEqual(state.plan.map(step => step.status), ['done', 'done'])
-})
-
-test('requires evidenceTools for action milestones and validates their tool IDs', () => {
-  assert.throws(() => replaceHarnessPlan(make(), [{
-    id: 'create', title: 'Create a note', dependsOn: [], acceptanceCriteria: ['Note created'], requiresVerification: false,
-  }], now), /Milestone "create" must declare evidenceTools/)
-  assert.throws(() => replaceHarnessPlan(make(), [{
-    id: 'create', title: 'Create a note', dependsOn: [], acceptanceCriteria: ['Note created'], requiresVerification: false,
-    evidenceTools: ['harness_set_plan'],
-  }], now), /Milestone "create" lists unsupported evidence tool "harness_set_plan"/)
-  const answer = replaceHarnessPlan(make(), [{
-    id: 'answer', title: 'Answer from knowledge', dependsOn: [], acceptanceCriteria: ['Answer'], requiresVerification: false,
-    answerOnly: true,
-  }], now)
-  assert.equal(answer.plan[0]?.evidenceTools, undefined)
-})
-
-test('action milestones require cited tool results from their declared evidence tools', () => {
-  const state = replaceHarnessPlan({
-    ...make(),
-    policy: { ...make().policy, allowedToolIds: ['create_note', 'get_note'] },
-  }, [{
-    id: 'create', title: 'Create a note', dependsOn: [], acceptanceCriteria: ['Note created'], requiresVerification: false,
-    evidenceTools: ['create_note'],
-  }], now)
-  const readResult = recordHarnessEvidence(state, {
-    id: 'read-note', kind: 'tool_result', source: 'get_note', summary: 'Read another note', verdict: 'observed', createdAt: now,
-  }, now)
-  assert.throws(() => transitionHarnessStep(readResult, {
-    id: 'create', status: 'done', evidenceRefs: ['read-note'],
-  }, now), /evidenceTools/)
-  const createResult = recordHarnessEvidence(readResult, {
-    id: 'created-note', kind: 'tool_result', source: 'create_note', summary: 'Created the requested note', verdict: 'observed', createdAt: now,
-  }, now)
-  assert.equal(transitionHarnessStep(createResult, {
-    id: 'create', status: 'done', evidenceRefs: ['created-note'],
-  }, now).plan[0]?.status, 'done')
-})
-
-test('one tool-result observation supports one action milestone, while answer-only may reuse it', () => {
-  const plan: HarnessPlanInput[] = [
-    { id: 'first', title: 'First action', dependsOn: [], acceptanceCriteria: ['First action done'], requiresVerification: false, evidenceTools: ['read'] },
-    { id: 'second', title: 'Second action', dependsOn: [], acceptanceCriteria: ['Second action done'], requiresVerification: false, evidenceTools: ['read'] },
-  ]
-  const initial = replaceHarnessPlan(make(), plan, now)
-  const readEvidence = recordHarnessEvidence(initial, {
-    id: 'read-result', kind: 'tool_result', source: 'read', summary: 'Read a note', verdict: 'observed', createdAt: now,
-  }, now)
-  const afterFirst = transitionHarnessStep(readEvidence, {
-    id: 'first', status: 'done', evidenceRefs: ['read-result'],
-  }, now)
-  assert.throws(() => transitionHarnessStep(afterFirst, {
-    id: 'second', status: 'done', evidenceRefs: ['read-result'],
-  }, now), /Evidence from a tool result already supports another milestone/)
-  const answerPlan = replaceHarnessPlan(afterFirst, [...plan, {
-    id: 'answer', title: 'Summarize', dependsOn: ['first'], acceptanceCriteria: ['Summary returned'],
-    requiresVerification: false, answerOnly: true,
-  }], now)
-  assert.equal(transitionHarnessStep(answerPlan, {
-    id: 'answer', status: 'done', evidenceRefs: ['read-result'],
-  }, now).plan[0]?.status, 'done')
 })
 
 test('cancelled runs accept late tool results without advancing progress', () => {
@@ -1006,21 +828,21 @@ test('harness_read_child evidence matches its declared tool ID', () => {
   }, now).plan[0]?.status, 'done')
 })
 
-test('authorized artifact observations prove artifact reads but cannot certify source writes', () => {
-  const initial = { ...make(), policy: { ...make().policy, allowedToolIds: ['get_note', 'create_note'] } }
-  const read = { id: 'reopen', title: 'Read the omitted source', dependsOn: [],
-    acceptanceCriteria: ['Read the omitted excerpt'], requiresVerification: false, evidenceTools: ['harness_read_artifact'] }
-  const planned = replaceHarnessPlan(initial, [read], now)
-  const observed = recordHarnessEvidence(planned, {
-    id: 'tool:reopen', kind: 'tool_result', source: 'harness_read_artifact',
-    resource: { id: 'source', revision: 'rev-1', operation: 'create_note' },
-    summary: 'Reopened the original source excerpt', verdict: 'observed', createdAt: now,
-  }, now)
-  assert.equal(transitionHarnessStep(observed, {
-    id: 'reopen', status: 'done', evidenceRefs: ['tool:reopen'],
-  }, now).plan[0]?.status, 'done')
-  const writePlan = replaceHarnessPlan(observed, [{ ...read, evidenceTools: ['create_note'] }], now)
-  assert.throws(() => transitionHarnessStep(writePlan, {
-    id: 'reopen', status: 'done', evidenceRefs: ['tool:reopen'],
-  }, now), /evidenceTools/)
+test('a delegated step completes once its child has finished', () => {
+  const planned = replaceHarnessPlan(make(), [{
+    id: 'delegate', title: 'Delegate the work', dependsOn: [], acceptanceCriteria: ['Child result read'], requiresVerification: false,
+  }], now)
+  const admitted = admitHarnessChild(planned, child('child-1', 'delegate', 0), now + 1)
+  assert.throws(() => transitionHarnessStep(admitted, { id: 'delegate', status: 'done' }, now + 2), /has not completed/)
+  const childRun = createHarnessSnapshot({
+    runId: 'child-1', parentRunId: 'root', rootRunId: 'root', depth: 1, goal: 'Complete the delegated work', constraints: [],
+    policy: { ...admitted.policy, allowedToolIds: ['read'], requiresPlan: false, maxCostMicros: 0 },
+  }, now + 2)
+  const settled = settleHarnessChild(admitted, finishHarness(childRun, now + 3, 'Delegated result'), now + 4)
+  assert.equal(transitionHarnessStep(settled, { id: 'delegate', status: 'done' }, now + 5).plan[0]?.status, 'done')
+})
+
+test('a run without a plan can finish, whatever its stored policy says', () => {
+  assert.equal(finishHarness(make(), now, 'Paris.').status, 'completed')
+  assert.equal(hasRunnableHarnessMilestones(make()), false)
 })

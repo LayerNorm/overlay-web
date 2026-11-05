@@ -19,6 +19,8 @@ export type CreateProviderConnectionInput = {
   providerId: string
   authKind?: 'api_key' | 'subscription'
   subscriptionProvider?: SubscriptionProviderId
+  scope?: 'personal' | 'workspace'
+  workspaceId?: string
   endpoint: string
   displayName: string
   credentialRef?: string
@@ -45,8 +47,13 @@ export type UpdateProviderConnectionInput = {
 
 export interface ProviderConnectionRepository {
   count(args: { userId: string }): Promise<number>
-  listPublic(args: { userId: string }): Promise<ByokConnectionRow[]>
+  listPublic(args: { userId: string; workspaceId?: string }): Promise<ByokConnectionRow[]>
   get(args: { connectionId: string; userId: string }): Promise<ProviderConnectionRecord | null>
+  getForUse(args: {
+    connectionId: string
+    actorUserId: string
+    workspaceId?: string
+  }): Promise<ProviderConnectionRecord | null>
   create(args: CreateProviderConnectionInput): Promise<string>
   update(args: UpdateProviderConnectionInput): Promise<void>
   remove(args: { connectionId: string; userId: string }): Promise<ProviderConnectionRecord | null>

@@ -9,11 +9,41 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Apply document-reader page and mode defaults when durable tool calls omit those optional fields.
 - Preserve short tool observations in Harness checkpoints when they fit the existing byte budget, and direct truncated-observation lookups to persisted evidence instead of treating a preview as missing source data.
 - Bound Harness progress updates separately from work, reject simulated tool calls from progress history and saved transcripts, and hide streamed function-call XML instead of presenting it as execution.
-- Accept a single JSON fence around Harness verifier verdicts without weakening evidence validation; pause on unusable verifier responses instead of leaking parser errors into answer corrections.
-- Retain observed document-render dimensions and image format in bounded tool evidence so final verification can check those facts without embedding image bytes or claiming visual understanding.
-- Revise individual Harness milestones without rewriting unrelated completed work, bound repeated private plan repair, and filter repair bookkeeping from public text.
+- Retain observed document-render dimensions and image format in bounded tool evidence without embedding image bytes or claiming visual understanding.
 - Hide milestone bookkeeping that references internal step identifiers or persisted evidence, even when it omits Harness tool and schema names.
+- Document subscription callback completion and workspace sharing in the API catalog, including active-member use and owner-only management.
+
+- Keep subscription device sign-in polling after retryable provider failures, so a temporary outage does not silently stall authorization.
+
+- Show each subscription connection's saved Personal or Workspace scope in Settings instead of always labeling it Personal.
+
+- Add immutable personal/workspace subscription scope, active-member authorization, owner-only lifecycle management, and workspace-aware picker caching. The approved scope selector defaults to Personal, supports explicit Workspace sharing, and preserves scope on reconnect.
+
+- Tighten subscription auth error classification, callback retry/fencing and provider identity checks; local fixtures remain distinct from hosted and live-account acceptance.
+
+- Extend the private pinned subscription bridge and fenced control plane to Claude, xAI, Meta, Kimi, Kimi AI, and Devin, including callback/device authorization and provider-bound catalogs/inference. Added providers remain disabled in production until their individual rollout checks pass.
+- Resume waiting runs when a person skips a single optional questionnaire question, instead of silently leaving the run paused, with regression coverage for skipped optional and blank required replies.
+
+- Keep late model-cost corrections within unreserved credit and payer limits, and prevent old corrections from changing a renewed wallet while retaining the provider's full reported cost.
+
 - Upgrade Better Auth and its SSO integration to 1.7.16, including the November 3 security fixes for private deployments. Hosted WorkOS authentication and the dependency cooldown policy are unchanged.
+
+- Load complete public Harness text and tool records when expanding a response, with authenticated trace retrieval and separate full-payload storage. Compact chat snapshots no longer determine trace length; previously truncated historical payloads remain marked as legacy.
+
+- Show the user's photo, name, and email above the workspace list, keep sidebar Settings and sign out while removing duplicate menu rows, and allow owned Harness continuations waiting on input, approval, children, or resources to finish usage admission.
+
+- Recover personal chat responses after a dropped connection. Saved updates for these chats were ignored, so the text froze and the finished answer stayed hidden until a reload; they now appear while a run is followed, without blanking text already shown.
+- Speed up agent runs by no longer waiting for exact billing data after each model call, which could hold a run for up to 16 seconds per call. Calls now settle immediately from token counts and catalog prices, and a background job replaces the estimate with the exact cost once it is available, charging or refunding the difference once. Calls with no catalog price still wait for the exact cost. Each model call also renews its authorization once instead of twice, and runs no longer make a separate progress-update call before starting work, which answered simple questions early and left the real reply with nothing to say.
+
+- Keep text and tool calls in the order they happened when a response has source citations. Saved responses previously merged all their text into one block ahead of every tool call; responses already saved stay merged.
+
+- Show an agent's plan with live progress at the end of its response. Once the response ends with every step finished, the plan moves into the "Worked for" dropdown, and unfinished plans stay visible. Finished personal replies now show only the final answer, with earlier narration, tool calls and the plan inside that dropdown. Internal plan and question tool calls no longer appear as rows.
+
+- Replace the one-box agent input prompt with a questionnaire, so agents ask real questions with choices, written answers and optional skips. Empty prompts such as "placeholder" are sent back to the model instead of reaching people, and stuck-run prompts now ask a plain question.
+
+- Remove harness-level checking of agent work: the final-answer verifier, its paid extra model call and retries, milestone evidence requirements, and the rewrite of unconfirmed note claims. This stops rejected drafts from repeating in responses. A step is now done when the model marks it done, so a model can report work that did not happen; people, or a verifier agent they add, check the result.
+
+- Stop forcing agents with write tools to make a plan. Simple questions now get a direct answer, and the model plans only when a task is long and needs structure.
 
 - Refresh subscription rollout status and remove the superseded in-process adapter plan so future agents follow the private bridge architecture.
 
@@ -61,19 +91,13 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Retire hosted third-party Claude Code/Codex runtimes in Overlay Cloud. Cloud creation, restart, run credentials, profile import and desktop launch are blocked; legacy agents remain readable and cleanup is lease-reaper managed. Preserve BYOM Agent Host, native Computers, provider connections, billing settlement, and historical records. Deployment is gated on an operator inventory, drain/export, and provider-deletion verification; completion is not established.
 
-- Keep answer-correction instructions consistent with the available evidence-reading controls, so a verifier rejection does not also tell the agent to avoid those tools.
+- Preserve bounded, source-revision-linked observations when reopening private Harness artifacts without treating reads as new writes.
 
-- Start Harness answer corrections as explicit continuation turns for providers that reject assistant prefill, and keep evidence-reading controls available without replaying completed external actions.
+- Preserve private Harness artifacts across authorized workflow handoffs while rejecting stale workers, and retain response and summary holds until measured usage settles without restoring free-model execution.
 
-- Allow authorized artifact reads to satisfy explicitly declared artifact-reading milestones, while keeping reopened excerpts ineligible as proof of a new write.
-
-- Preserve bounded, source-revision-linked observations when reopening private Harness artifacts, so final verification can inspect retrieved excerpts without treating them as new writes or independent verification.
-
-- Preserve private Harness artifacts across authorized workflow handoffs while rejecting stale workers, and retain summary/verification holds until measured usage settles without restoring free-model execution.
-
-- Keep Harness model-port, verification, compaction, artifact-prompt, and reducer validation paths focused and maintainable without changing their behavior or limits.
+- Keep Harness model-port, compaction, artifact-prompt, and reducer validation paths focused and maintainable without changing their behavior or limits.
 - Allow isolated Preview QA to lower the test owner's Harness working-context budget to exercise compaction, without changing production or other users' budgets.
-- Keep Harness continuations grounded in persisted evidence, page omitted observations, verify nontrivial final answers, preserve context in private chunk-transport artifacts, and recover from failed compaction or verification without releasing paid or unknown provider holds.
+- Keep Harness continuations grounded in persisted tool observations, page omitted observations, preserve context in private chunk-transport artifacts, and recover from failed compaction without releasing paid or unknown provider holds.
 - Keep owned funding-paused Harness tasks waiting while payment verification is pending, without renewing execution authority or bypassing paid admission; revoked and stale runs still fail closed.
 
 - Preserve the pending response when context summarization pauses for workspace funding, including after durable workflow serialization; foreign pause receipts cannot resume the task.

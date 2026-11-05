@@ -4,7 +4,6 @@ import test from 'node:test'
 import {
   buildRemoteAgentPrompt,
   permissionModeForConnectedHarness,
-  reconcileUnverifiedAgentActionClaims,
   shouldPrepareConnectedAgentDrive,
   startRemoteWorkspaceAgentTurn,
   WorkspaceAgentInvocationError,
@@ -79,30 +78,6 @@ test('a legacy external agent with no usable target cannot be classified as nati
     harness: 'overlay',
     modelId: 'openai/gpt-4.1',
   }, false, false), false)
-})
-
-test('agent external-action claims require a successful tool result', () => {
-  const corrected = reconcileUnverifiedAgentActionClaims({
-    content: 'Done — I saved a note titled "Overlay reference".',
-    parts: [{ type: 'text', text: 'Done — I saved a note titled "Overlay reference".' }],
-  })
-  assert.match(corrected.content, /could not create or save a note/i)
-  assert.doesNotMatch(corrected.content, /I saved a note/i)
-
-  const confirmed = reconcileUnverifiedAgentActionClaims({
-    content: 'Done — I saved a note titled "Overlay reference".',
-    parts: [
-      {
-        type: 'tool-invocation',
-        toolInvocation: {
-          toolName: 'create_note',
-          toolOutput: { success: true, noteId: 'note_1' },
-        },
-      },
-      { type: 'text', text: 'Done — I saved a note titled "Overlay reference".' },
-    ],
-  })
-  assert.equal(confirmed.content, 'Done — I saved a note titled "Overlay reference".')
 })
 
 test('workspace agents use participant-scoped room history and persistence', async () => {

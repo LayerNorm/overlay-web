@@ -1,0 +1,266 @@
+diff --git a/internal/auth/claude/provider_auth_error_test.go b/internal/auth/claude/provider_auth_error_test.go
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/internal/auth/claude/provider_auth_error_test.go
+@@ -0,0 +1,44 @@
++package claude
++
++import (
++	"context"
++	"errors"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++)
++
++type authErrorRoundTripper func(*http.Request) (*http.Response, error)
++
++func (roundTrip authErrorRoundTripper) RoundTrip(request *http.Request) (*http.Response, error) {
++	return roundTrip(request)
++}
++
++func TestRefreshDecodesTypedHTTPErrorWithoutBodyDetails(t *testing.T) {
++	auth := &ClaudeAuth{httpClient: &http.Client{Transport: authErrorRoundTripper(func(request *http.Request) (*http.Response, error) {
++		return &http.Response{
++			StatusCode: http.StatusBadRequest,
++			Header:     make(http.Header),
++			Body:       io.NopCloser(strings.NewReader(`{"error":"invalid_grant","error_description":"private response detail"}`)),
++			Request:    request,
++		}, nil
++	})}}
++
++	_, err := auth.refreshTokensSingleFlight(context.Background(), "opaque-refresh-token")
++	var providerErr interface {
++		error
++		StatusCode() int
++		OAuthError() string
++	}
++	if !errors.As(err, &providerErr) {
++		t.Fatalf("refresh error type = %T", err)
++	}
++	if providerErr.StatusCode() != http.StatusBadRequest || providerErr.OAuthError() != "invalid_grant" {
++		t.Fatalf("typed refresh error = (%d, %q)", providerErr.StatusCode(), providerErr.OAuthError())
++	}
++	if strings.Contains(err.Error(), "private response detail") {
++		t.Fatal("refresh error exposed response details")
++	}
++}
+diff --git a/internal/auth/kimi/provider_auth_error_test.go b/internal/auth/kimi/provider_auth_error_test.go
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/internal/auth/kimi/provider_auth_error_test.go
+@@ -0,0 +1,39 @@
++package kimi
++
++import (
++	"context"
++	"errors"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++)
++
++func TestRefreshDecodesTypedHTTPErrorWithoutBodyDetails(t *testing.T) {
++	client := &DeviceFlowClient{httpClient: &http.Client{Transport: providerPollRoundTripper(func(request *http.Request) (*http.Response, error) {
++		return &http.Response{
++			StatusCode: http.StatusBadRequest,
++			Header:     make(http.Header),
++			Body:       io.NopCloser(strings.NewReader(`{"error":"invalid_grant","error_description":"private response detail"}`)),
++			Request:    request,
++		}, nil
++	})}, domain: KimiAIDomain, deviceID: "per-connection-device", oauthHost: "https://auth.kimi.ai"}
++
++	_, err := client.refreshTokenSingleFlight(context.Background(), "opaque-refresh-token")
++	var providerErr interface {
++		error
++		StatusCode() int
++		OAuthError() string
++	}
++	if !errors.As(err, &providerErr) {
++		t.Fatalf("refresh error type = %T", err)
++	}
++	if providerErr.StatusCode() != http.StatusBadRequest || providerErr.OAuthError() != "invalid_grant" {
++		t.Fatalf("typed refresh error = (%d, %q)", providerErr.StatusCode(), providerErr.OAuthError())
++	}
++	if strings.Contains(err.Error(), "private response detail") {
++		t.Fatal("refresh error exposed response details")
++	}
++}
+diff --git a/internal/auth/xai/provider_auth_error_test.go b/internal/auth/xai/provider_auth_error_test.go
+new file mode 100644
+index 0000000..0000000 100644
+--- /dev/null
++++ b/internal/auth/xai/provider_auth_error_test.go
+@@ -0,0 +1,39 @@
++package xai
++
++import (
++	"context"
++	"errors"
++	"io"
++	"net/http"
++	"net/url"
++	"strings"
++	"testing"
++)
++
++func TestRefreshDecodesTypedHTTPErrorWithoutBodyDetails(t *testing.T) {
++	auth := &XAIAuth{httpClient: &http.Client{Transport: providerPollRoundTripper(func(request *http.Request) (*http.Response, error) {
++		return &http.Response{
++			StatusCode: http.StatusBadRequest,
++			Header:     make(http.Header),
++			Body:       io.NopCloser(strings.NewReader(`{"error":"invalid_grant","error_description":"private response detail"}`)),
++			Request:    request,
++		}, nil
++	})}}
++
++	_, err := auth.postTokenForm(context.Background(), "https://auth.x.ai/oauth/token", url.Values{})
++	var providerErr interface {
++		error
++		StatusCode() int
++		OAuthError() string
++	}
++	if !errors.As(err, &providerErr) {
++		t.Fatalf("refresh error type = %T", err)
++	}
++	if providerErr.StatusCode() != http.StatusBadRequest || providerErr.OAuthError() != "invalid_grant" {
++		t.Fatalf("typed refresh error = (%d, %q)", providerErr.StatusCode(), providerErr.OAuthError())
++	}
++	if strings.Contains(err.Error(), "private response detail") {
++		t.Fatal("refresh error exposed response details")
++	}
++}
+diff --git a/internal/auth/meta/provider_auth_error_test.go b/internal/auth/meta/provider_auth_error_test.go
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/internal/auth/meta/provider_auth_error_test.go
+@@ -0,0 +1,39 @@
++package meta
++
++import (
++	"context"
++	"errors"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++	"time"
++)
++
++func TestDevicePollDecodesTypedOAuthErrorWithoutBodyDetails(t *testing.T) {
++	auth := &MetaAuth{httpClient: &http.Client{Transport: providerPollRoundTripper(func(request *http.Request) (*http.Response, error) {
++		return &http.Response{
++			StatusCode: http.StatusBadRequest,
++			Header:     make(http.Header),
++			Body:       io.NopCloser(strings.NewReader(`{"error":"access_denied","error_description":"private response detail"}`)),
++			Request:    request,
++		}, nil
++	})}}
++	device := &DeviceCodeResponse{DeviceCode: "opaque-device-code", TokenEndpoint: "https://auth.meta.com/token"}
++
++	_, _, _, err := auth.PollForAuthorizationOnce(context.Background(), device, 5*time.Second)
++	var providerErr interface {
++		error
++		StatusCode() int
++		OAuthError() string
++	}
++	if !errors.As(err, &providerErr) {
++		t.Fatalf("device poll error type = %T", err)
++	}
++	if providerErr.StatusCode() != http.StatusBadRequest || providerErr.OAuthError() != "access_denied" {
++		t.Fatalf("typed device error = (%d, %q)", providerErr.StatusCode(), providerErr.OAuthError())
++	}
++	if strings.Contains(err.Error(), "private response detail") {
++		t.Fatal("device poll error exposed response details")
++	}
++}
+diff --git a/internal/auth/xai/provider_device_error_test.go b/internal/auth/xai/provider_device_error_test.go
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/internal/auth/xai/provider_device_error_test.go
+@@ -0,0 +1,42 @@
++package xai
++
++import (
++	"context"
++	"errors"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++	"time"
++)
++
++func TestDevicePollDecodesTypedAuthorizationDenial(t *testing.T) {
++	auth := &XAIAuth{httpClient: &http.Client{Transport: providerPollRoundTripper(func(request *http.Request) (*http.Response, error) {
++		return &http.Response{
++			StatusCode: http.StatusBadRequest, Header: make(http.Header),
++			Body: io.NopCloser(strings.NewReader(`{"error":"access_denied","error_description":"private response detail"}`)), Request: request,
++		}, nil
++	})}}
++	token, err, _, pending := auth.PollDeviceCodeOnce(context.Background(), "https://auth.x.ai/oauth/token", "opaque-device-code", time.Second)
++	if token != nil || pending {
++		t.Fatalf("device poll result = (%v, %v)", token, pending)
++	}
++	var providerErr interface {
++		error
++		StatusCode() int
++		OAuthError() string
++	}
++	if !errors.As(err, &providerErr) || providerErr.StatusCode() != http.StatusBadRequest || providerErr.OAuthError() != "access_denied" {
++		t.Fatalf("device poll error = %T (%v)", err, err)
++	}
++	if strings.Contains(err.Error(), "private response detail") {
++		t.Fatal("device poll error exposed response details")
++	}
++}
+diff --git a/internal/auth/kimi/provider_device_error_test.go b/internal/auth/kimi/provider_device_error_test.go
+new file mode 100644
+index 0000000..0000000
+--- /dev/null
++++ b/internal/auth/kimi/provider_device_error_test.go
+@@ -0,0 +1,43 @@
++package kimi
++
++import (
++	"context"
++	"errors"
++	"io"
++	"net/http"
++	"strings"
++	"testing"
++	"time"
++)
++
++func TestDevicePollDecodesTypedAuthorizationDenial(t *testing.T) {
++	client := &DeviceFlowClient{
++		httpClient: &http.Client{Transport: providerPollRoundTripper(func(request *http.Request) (*http.Response, error) {
++			return &http.Response{
++				StatusCode: http.StatusBadRequest, Header: make(http.Header),
++				Body: io.NopCloser(strings.NewReader(`{"error":"access_denied","error_description":"private response detail"}`)), Request: request,
++			}, nil
++		})},
++		deviceID: "per-connection-device", domain: KimiDefaultDomain, oauthHost: "https://auth.kimi.com",
++	}
++	token, pending, _, err := client.PollDeviceCodeOnce(context.Background(), "opaque-device-code", time.Second)
++	if token != nil || pending {
++		t.Fatalf("device poll result = (%v, %v)", token, pending)
++	}
++	var providerErr interface {
++		error
++		StatusCode() int
++		OAuthError() string
++	}
++	if !errors.As(err, &providerErr) || providerErr.StatusCode() != http.StatusBadRequest || providerErr.OAuthError() != "access_denied" {
++		t.Fatalf("device poll error = %T (%v)", err, err)
++	}
++	if strings.Contains(err.Error(), "private response detail") {
++		t.Fatal("device poll error exposed response details")
++	}
++}

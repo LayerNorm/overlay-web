@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import React from 'react'
-import { Bot, FileText, ListChecks, MessageSquare, Puzzle, Workflow } from 'lucide-react'
+import { Bot, FileText, ListChecks, MessageSquare, Puzzle, Settings, Workflow } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { DoubleSidebar, selectDoubleSidebarItem, type DoubleSidebarProps } from './DoubleSidebar'
 import type { PrimaryRailItem } from '../types'
@@ -23,14 +23,19 @@ function render(props: Partial<DoubleSidebarProps> = {}) {
 }
 
 test('double sidebar keeps the rail and account outside the collapsible contextual panel', () => {
-  const html = render({ collapsed: true })
+  const html = render({
+    collapsed: true,
+    footerItems: [{ id: 'settings', label: 'Settings', icon: Settings, href: '/app/settings', onSelect: noop }],
+  })
   const split = html.indexOf('id="context-panel"')
   const rail = html.slice(0, split)
   const panel = html.slice(split)
   assert.match(rail, /aria-label="Primary navigation"/)
   for (const href of ['/app/work', '/app/agents', '/app/chat']) assert.ok(rail.includes(`href="${href}"`))
   assert.match(rail, /Account/)
-  assert.match(rail, /aria-label="Expand sidebar"/)
+  assert.match(rail, /Settings/)
+  assert.match(rail, /href="\/app\/settings"/)
+  assert.doesNotMatch(rail, /double-sidebar-toggle|aria-label="Expand sidebar"|aria-label="Collapse sidebar"/)
   assert.match(panel, /aria-hidden="true"/)
   assert.match(panel, /inert=""/)
   assert.match(panel, /w-0/)

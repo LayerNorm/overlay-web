@@ -1,13 +1,12 @@
 import { expect, test } from 'vitest'
 import { createHarnessSnapshot, recordHarnessEvidence, recordHarnessReceipt, replaceHarnessPlan, transitionHarnessStep } from '@overlay/agent-runtime/harness-state'
 import { buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessWorkingContext, harnessProgressFingerprint, HARNESS_CONTROL_TOOLS } from './context'
-import { buildHarnessCheckpoint, parseHarnessVerificationResponse } from './continuity'
-import { HARNESS_ANSWER_CORRECTION_INSTRUCTIONS, HARNESS_EVIDENCE_POLICY } from './continuity-policy'
+import { buildHarnessCheckpoint } from './continuity'
+import { HARNESS_EVIDENCE_POLICY } from './continuity-policy'
 import { harnessToolOutputEvidence } from './tool-evidence'
 
 test('shared Harness controls retain file analysis after transcript integration', () => {
   expect(HARNESS_CONTROL_TOOLS).toContain('harness_analyze_files')
-  expect(HARNESS_CONTROL_TOOLS).toContain('harness_revise_step')
 })
 
 const make = (requiresPlan = true) => createHarnessSnapshot({
@@ -20,52 +19,32 @@ const make = (requiresPlan = true) => createHarnessSnapshot({
 
 test('completed plans request the final deliverable instead of more bookkeeping', () => {
   let state = replaceHarnessPlan(make(), [{ id: 'work', title: 'Read document', dependsOn: [],
-    acceptanceCriteria: ['Document read'], requiresVerification: false, evidenceTools: ['read'] }], 1_000)
+    acceptanceCriteria: ['Document read'], requiresVerification: false }], 1_000)
   const context = { instructions: 'Surface instructions', continuation: true, truncatedResponse: false }
-  expect(buildHarnessStepInstructions(state, context)).toContain('complete the remaining milestones')
-  state = recordHarnessEvidence(state, { id: 'read', kind: 'tool_result', source: 'read',
-    summary: 'Document read', verdict: 'observed', createdAt: 1_000 }, 1_000)
-  state = transitionHarnessStep(state, { id: 'work', status: 'done', evidenceRefs: ['read'] }, 1_000)
+  expect(buildHarnessStepInstructions(state, context)).toContain('finish the remaining plan steps')
+  state = transitionHarnessStep(state, { id: 'work', status: 'done' }, 1_000)
   const instructions = buildHarnessStepInstructions(state, context)
-  expect(instructions).toContain('All plan milestones and required evidence are complete')
-  expect(instructions).toContain('respecting its requested output format')
-  expect(instructions).not.toContain('complete the remaining milestones')
+  expect(instructions).toContain('Every plan step is finished.')
+  expect(instructions).toContain('If you already wrote it, end your turn without repeating it.')
+  expect(instructions).not.toContain('finish the remaining plan steps')
 })
 
-test('pending answer-only milestones can still ask for essential input', () => {
-  const state = replaceHarnessPlan(make(), [{ id: 'answer', title: 'Confirm the word', dependsOn: [],
-    acceptanceCriteria: ['Repeat the user confirmation word'], requiresVerification: false, answerOnly: true }], 1_000)
-  const instructions = buildHarnessStepInstructions(state, {
-    instructions: 'Surface instructions', continuation: true, truncatedResponse: false, finalAnswerRequired: true,
-  })
-  expect(instructions).toContain('call harness_report_blocker rather than guessing')
-  expect(instructions).toContain('external action tools are unavailable')
-  expect(instructions).not.toContain('All plan milestones and required evidence are complete')
-  expect(instructions).not.toContain('Do not call tools')
-})
-
-test('write-capable runs receive evidence-backed planning instructions', () => {
+test('the model plans only when a task needs structure', () => {
   const instructions = buildHarnessStepInstructions(make(), {
     instructions: 'Surface instructions', continuation: false, truncatedResponse: false,
   })
-  expect(instructions).toContain('make harness_set_plan your first tool call, after a brief user-facing acknowledgment')
-  expect(instructions).toContain('tool:<id> evidence IDs from observations')
-  expect(instructions).toContain('Give each action milestone evidenceTools listing the tools whose results prove it; cite only results from those tools.')
-  expect(instructions).toContain('one answerOnly milestone')
-  expect(instructions).toContain('Mark a final milestone that only reports results as answerOnly.')
-  expect(instructions).toContain(
-    'Before marking an action milestone done, compare the saved fields in its cited tool results with its acceptance criteria; if any differ, correct them with another tool call first.',
-  )
-  expect(instructions).toContain(
-    'Before acting on a pending milestone, check observations; if a successful result already satisfies it, cite that evidence instead of repeating the action.',
-  )
+  const system = buildHarnessInstructions('Surface instructions')
+  expect(system).toContain('If a task seems long and needs structure, create a concise plan with harness_set_plan')
+  expect(system).toContain('Simple questions and quick tasks don\'t need a plan')
+  expect(system).toContain('For comprehensive document work, partition versioned page ranges, delegate bounded analysis with harness_analyze_files when available, join completed children, and check reported missing ranges before claiming complete coverage. Use deterministic code for exact aggregation.')
+  expect(system).toContain('Marking a step done means the work is finished.')
+  expect(system).not.toContain('evidenceTools')
+  expect(instructions).not.toContain('before anything else')
+  expect(instructions).not.toContain('evidenceTools')
+  expect(instructions).not.toContain('answerOnly')
   expect(instructions).toContain(
     'The goal in the working state is the current request and the only task for this run. Use earlier conversation only to interpret it; never resume, repeat or plan an earlier request unless the goal asks for it.',
   )
-  expect(buildHarnessInstructions('Surface instructions')).toContain(
-    'Before acting on a pending milestone, check observations; if a successful result already satisfies it, cite that evidence instead of repeating the action.',
-  )
-  expect(instructions).toContain('Never describe actions that were not executed')
   expect(instructions).not.toContain('\u2013')
   expect(instructions).not.toContain('\u2014')
 })
@@ -87,43 +66,12 @@ test('goal anchoring is present for plan-optional runs', () => {
   )
 })
 
-test('public progress does not receive execution, recovery, or final-answer directives', () => {
-  const instructions = buildHarnessStepInstructions(make(), {
-    instructions: 'Keep workspace information private.', continuation: true,
-    truncatedResponse: true, finalAnswerRequired: true, stagnationRecoveryAttempt: 1, publicProgress: true,
-  })
-  expect(instructions).toContain('Keep workspace information private.')
-  expect(instructions).toContain('Check the requested document')
-  expect(instructions).toContain('Instructions elsewhere to create or update plans, call tools, or finish the task apply only to later work calls')
-  expect(instructions).not.toContain('make harness_set_plan your first tool call')
-  expect(instructions).not.toContain('Recovery attempt 1')
-  expect(instructions).not.toContain('Return the final answer')
-})
-
-test('planning gate allows only plan creation and explains blocker timing', () => {
-  const context = {
-    instructions: 'Surface instructions',
-    continuation: false,
-    truncatedResponse: false,
-  }
-  const gateInstructions = buildHarnessStepInstructions(make(), context)
-  expect(gateInstructions).toContain(
-    'Before a plan exists, only harness_set_plan is callable. If the request needs no action, use one answerOnly milestone. If you need user input, create the plan first, then report the blocker.',
-  )
-
-  const planned = replaceHarnessPlan(make(), [{
-    id: 'work', title: 'Create a note', dependsOn: [], acceptanceCriteria: ['Note created'], requiresVerification: false,
-    evidenceTools: ['read'],
-  }], 1_000)
-  expect(buildHarnessStepInstructions(planned, context)).not.toContain('Before a plan exists')
-})
-
 test('requests a plain-text final answer after a protocol-only response', () => {
   const state = make()
   const context = { instructions: 'Surface instructions', continuation: true, truncatedResponse: false }
   const required = buildHarnessStepInstructions(state, { ...context, finalAnswerRequired: true })
-  expect(required).toContain('All action milestones are complete. Reply to the user now in plain text with the saved results and requested links. Reporting-only milestones finish with your answer; do not call tools or write tool calls as text.')
-  expect(buildHarnessStepInstructions(state, context)).not.toContain('Reply to the user now in plain text')
+  expect(required).toContain('Reply to the person now in plain text with the results and any requested links.')
+  expect(buildHarnessStepInstructions(state, context)).not.toContain('Reply to the person now in plain text')
 })
 
 test('keeps the cacheable instruction prefix separate from changing working state', () => {
@@ -206,7 +154,6 @@ test('checkpoints separate stale narrative from chronological exact-resource obs
     verdict: 'observed', resource: { id: 'file-1', revision: 'rev-7', page: 1 },
   })
   expect(buildHarnessInstructions('Surface instructions')).toContain(HARNESS_EVIDENCE_POLICY)
-  expect(HARNESS_EVIDENCE_POLICY).toContain('Use harness_read_evidence to read a truncated observation by evidenceId or list omitted observations before claiming details were absent or repeating a successful tool')
 })
 
 test('checkpoints preserve short document facts after resource metadata within the existing byte budget', () => {
@@ -319,60 +266,10 @@ test('checkpoint limits include JSON escaping and UTF-8 without truncating evide
   expect(buildHarnessCheckpoint(observed).evidence[0]?.id).toBe(evidenceId)
 })
 
-test('final verifier JSON rejects malformed responses and evidence from outside the run', () => {
-  const evidenceIds = new Set(['tool:current-run'])
-  expect(parseHarnessVerificationResponse(
-    '{"supported":false,"reason":"Unsupported","evidenceIds":[]}', evidenceIds,
-  )).toEqual({ supported: false, reason: 'Unsupported', evidenceIds: [] })
-  expect(() => parseHarnessVerificationResponse('not-json', evidenceIds)).toThrow()
-  expect(() => parseHarnessVerificationResponse(
-    '{"supported":true,"reason":"ok","evidenceIds":["tool:other-run"]}', evidenceIds,
-  )).toThrow(/invalid evidence reference/)
-})
-
-test.each(['', 'json', 'JSON'])('final verifier accepts a single complete %s fence without relaxing evidence checks', language => {
-  const evidenceIds = new Set(['tool:current-run'])
-  const verdict = { supported: true, reason: 'Matches the observation.', evidenceIds: ['tool:current-run'] }
-  const wrap = (value: unknown) => `\n\`\`\`${language}\r\n${JSON.stringify(value)}\r\n\`\`\`\n`
-  expect(parseHarnessVerificationResponse(wrap(verdict), evidenceIds)).toEqual(verdict)
-  for (const invalid of [
-    { ...verdict, evidenceIds: ['tool:other-run'] },
-    { ...verdict, supported: 'true' },
-    { ...verdict, extra: 'ignored' },
-  ]) {
-    expect(() => parseHarnessVerificationResponse(wrap(invalid), evidenceIds)).toThrow()
-  }
-})
-
-test.each([
-  '```json\n{"supported":true,"reason":"ok","evidenceIds":[]}',
-  'Here is the verdict:\n```json\n{"supported":true,"reason":"ok","evidenceIds":[]}\n```',
-  '```json\n{"supported":true,"reason":"ok","evidenceIds":[]}\n```\nAdditional text',
-  '```json\n{}\n```\n```json\n{"supported":true,"reason":"ok","evidenceIds":[]}\n```',
-])('final verifier rejects incomplete or mixed-content fences: %s', raw => {
-  expect(() => parseHarnessVerificationResponse(raw, new Set())).toThrow()
-})
-
-test('unsupported final answers receive structured correction feedback', () => {
-  const state = {
-    ...make(false),
-    finalVerification: {
-      attemptId: 'segment:1',
-      candidateDigest: 'a'.repeat(64),
-      planRevision: 0,
-      evidenceRevision: 0,
-      supported: false,
-      reason: 'The render shows page 1.',
-      evidenceIds: ['tool:render'],
-      attempts: 1,
-      createdAt: 1_000,
-    },
-  }
-  const instructions = buildHarnessStepInstructions(state, {
+test('a continuation with no plan never implies that plan steps were done', () => {
+  const instructions = buildHarnessStepInstructions(make(false), {
     instructions: 'Surface instructions', continuation: true, truncatedResponse: false,
   })
-  expect(instructions).toContain(HARNESS_ANSWER_CORRECTION_INSTRUCTIONS)
-  expect(instructions).toContain(
-    'Verification feedback: {"supported":false,"reason":"The render shows page 1.","evidenceIds":["tool:render"]}',
-  )
+  expect(instructions).toContain('Only work shown in the observations has been done')
+  expect(instructions).not.toContain('remaining plan steps')
 })

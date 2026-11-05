@@ -24,6 +24,8 @@ explicit role/flags, never the agent name. See Bring Your Own Agents for isolati
 
 ## Double-sidebar shell
 
+An optional run questionnaire skipped without an answer sends an explicit `(skipped)` reply, including a single-question panel, so the waiting run can resume. Required empty answers remain blocked.
+
 The web shell's **Double sidebar** setting uses `DoubleSidebar` from `@overlay/shell-react`: a fixed 60px primary rail and a 272px contextual panel, resizable between 220px and 360px. The active rail destination toggles only its panel without navigating; another destination opens its panel and uses the existing scope-aware navigation handler. Files, Extensions, and Automations stay in More when their existing gates allow them.
 
 `src/app/double-sidebar.css` scopes the rounded content frame, default light/dark chrome, compact chat presentation, and curved agent-thread guides to this layout at desktop widths. Custom theme presets retain semantic colors. The mobile drawer, onboarding, and compact native desktop panel retain their existing layouts; macOS keeps a dedicated drag region above the shell.
@@ -636,6 +638,14 @@ the bridge marks the document; header buttons and links remain non-draggable.
 Chat/notes `surface=panel` uses the compact desktop layout with the same providers
 and permission boundaries. See [Desktop web shell](desktop-web-shell.md).
 
+Agent questions use `QuestionnairePanel`, and agent plans use `RunPlan` on the
+`Trace` primitives. A plan shows at the end of a response in normal flow, not pinned
+to the screen. Once the response has ended with every step finished or skipped, it
+moves into the "Worked for" dropdown above the work timeline; an unfinished plan
+stays visible. Don't use `Questionnaire.Input` in
+an item that also has choices: `@shadcn/react` 0.3.1 hits React's update limit and
+crashes in the browser, though not in server-rendered tests. `QuestionnairePanel`
+works around this with a hidden choice beside a normal input.
 
 Agent Computer cards stack their desktop/control actions above secondary power and
 delete controls so narrow editor panels remain usable. Pass the current operator ID

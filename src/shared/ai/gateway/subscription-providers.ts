@@ -1,10 +1,11 @@
 export const SUBSCRIPTION_PROVIDERS = [
   { id: 'codex', label: 'ChatGPT/Codex', description: 'Connect a ChatGPT account to use its discovered Codex models.', enabled: false },
-  { id: 'xai', label: 'Grok Build', description: 'This subscription request adapter is not available yet.', enabled: false },
-  { id: 'meta', label: 'Meta Muse', description: 'This subscription request adapter is not available yet.', enabled: false },
-  { id: 'kimi', label: 'Kimi', description: 'This subscription request adapter is not available yet.', enabled: false },
-  { id: 'kimi-ai', label: 'Kimi AI', description: 'This subscription request adapter is not available yet.', enabled: false },
-  { id: 'devin', label: 'Devin', description: 'This subscription request adapter is not available yet.', enabled: false },
+  { id: 'claude', label: 'Claude', description: 'Connect a Claude account using a one-time authorization callback.', enabled: false },
+  { id: 'xai', label: 'Grok Build', description: 'Connect an xAI account using device authorization.', enabled: false },
+  { id: 'meta', label: 'Meta Muse', description: 'Connect a Meta account using device authorization.', enabled: false },
+  { id: 'kimi', label: 'Kimi', description: 'Connect a Kimi account using device authorization.', enabled: false },
+  { id: 'kimi-ai', label: 'Kimi AI', description: 'Connect a Kimi AI account using device authorization.', enabled: false },
+  { id: 'devin', label: 'Devin', description: 'Connect a Devin account using a one-time authorization callback.', enabled: false },
 ] as const
 
 export type SubscriptionProviderId = (typeof SUBSCRIPTION_PROVIDERS)[number]['id']

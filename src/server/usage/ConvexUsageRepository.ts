@@ -181,6 +181,24 @@ export class ConvexUsageRepository implements UsageRepository {
     return { status: result.status }
   }
 
+  async correctFinalizedCost(args: {
+    actualCostCents: number
+    providerCostUsd: number
+    reservationId: string
+    userId: string
+  }): Promise<{ status: 'corrected' | 'already_corrected' | 'skipped' }> {
+    const result = await convex.mutation<{ status: 'corrected' | 'already_corrected' | 'skipped' }>(
+      'platform/usage:correctFinalizedBudgetReservationCostByServer', {
+        actualCents: args.actualCostCents,
+        providerCostUsd: args.providerCostUsd,
+        reservationId: args.reservationId,
+        serverSecret: this.serverSecret,
+        userId: args.userId,
+      }, { throwOnError: true })
+    if (!result) throw new Error('Failed to correct usage reservation cost')
+    return result
+  }
+
   async markStarted(args: {
     reservationId: string
     userId: string

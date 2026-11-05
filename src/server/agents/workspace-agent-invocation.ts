@@ -10,7 +10,6 @@ import { logger } from '@/server/observability/logger'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
 import { getOverlayRuntimeConfig } from '@/server/config'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
-import { replaceAssistantTextForPersistence } from '@/shared/chat/persist-assistant-turn'
 import { buildAgentTurnContext } from './agent-turn-context'
 import { resolveMentionFirstInvocations, resolveInvocableAgents } from './mention-policy'
 import { connectedAgentPolicyFor } from './ConnectedAgentPolicy'
@@ -46,49 +45,6 @@ const MAX_OUTPUT_TOKENS_AGENT = 16_000
  * run, so an uncapped mass-mention is a cost amplifier.
  */
 const MAX_AGENTS_PER_MESSAGE = 5
-
-const NOTE_WRITE_TOOL_IDS = ['create_note', 'append_to_note', 'replace_note_section', 'edit_note', 'update_note'] as const
-
-const UNVERIFIED_NOTE_ACTION_CLAIM = /\b(?:I|we)\s+(?:have\s+)?(?:saved|created|wrote|written|updated|edited)\s+(?:a|the|your)?\s*note\b[^.!?\n]*[.!?]?/gi
-
-function hasSuccessfulTool(
-  parts: Array<Record<string, unknown>>,
-  toolName: string,
-): boolean {
-  return parts.some((part) => {
-    if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') {
-      return false
-    }
-    const invocation = part.toolInvocation as Record<string, unknown>
-    if (invocation.toolName !== toolName || !invocation.toolOutput || typeof invocation.toolOutput !== 'object') {
-      return false
-    }
-    return (invocation.toolOutput as Record<string, unknown>).success === true
-  })
-}
-
-/**
- * Basic external-action claims need a deterministic check. A prompt is useful
- * guidance, but it is not evidence that a note was actually written.
- */
-export function reconcileUnverifiedAgentActionClaims(
-  persistence: { content: string; parts: Array<Record<string, unknown>> },
-): { content: string; parts: Array<Record<string, unknown>> } {
-  if (
-    !UNVERIFIED_NOTE_ACTION_CLAIM.test(persistence.content)
-    || NOTE_WRITE_TOOL_IDS.some((toolId) => hasSuccessfulTool(persistence.parts, toolId))
-  ) {
-    UNVERIFIED_NOTE_ACTION_CLAIM.lastIndex = 0
-    return persistence
-  }
-  UNVERIFIED_NOTE_ACTION_CLAIM.lastIndex = 0
-  const corrected = persistence.content.replace(
-    UNVERIFIED_NOTE_ACTION_CLAIM,
-    'I could not create or save a note in this turn because the note tool did not complete successfully.',
-  )
-  UNVERIFIED_NOTE_ACTION_CLAIM.lastIndex = 0
-  return replaceAssistantTextForPersistence(persistence, corrected)
-}
 
 export const WORKSPACE_AGENT_INVOCATION_REASON_CODES = [
   'room_access_denied',

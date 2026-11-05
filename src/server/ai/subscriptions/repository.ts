@@ -26,7 +26,7 @@ export interface SubscriptionRepository {
   registerPendingWrite(args: { userId: string; connectionId: string; name: string }): Promise<void>
   clearPendingWrite(args: { userId: string; connectionId: string; name: string }): Promise<void>
   savePendingAuthorization(args: FencedArgs & { pendingStateRef: string; pendingWriteName?: string; expiresAt: number; pollIntervalMs: number }): Promise<{ revision: number; cleanupRefs: string[] }>
-  acquirePoll(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; pendingStateRef: string; expiresAt: number }>
+  acquirePoll(args: { userId: string; connectionId: string; leaseToken: string; callbackMode?: boolean }): Promise<{ generation: number; revision: number; pendingStateRef: string; expiresAt: number; providerId: SubscriptionProviderId; pollIntervalMs?: number }>
   releasePendingPoll(args: FencedArgs & { pollIntervalMs: number }): Promise<void>
   acquireRefresh(args: { userId: string; connectionId: string; leaseToken: string }): Promise<{ generation: number; revision: number; credentialRef: string; providerId: SubscriptionProviderId }>
   releaseRefresh(args: FencedArgs): Promise<void>
@@ -36,7 +36,18 @@ export interface SubscriptionRepository {
   commitActive(args: FencedArgs & { credentialRef: string; discoveredModelsJson: string; discoveredModelIds: string[]; displayName?: string }): Promise<{ revision: number; enabledModelIds: string[]; cleanupRefs: string[] }>
   failClosed(args: FencedArgs & { error: string }): Promise<string[]>
   disconnect(args: { userId: string; connectionId: string }): Promise<string[]>
-  forDispatch(args: { userId: string; connectionId: string; modelId: string }): Promise<{ providerId: SubscriptionProviderId; credentialRef: string; generation: number } | null>
+  forDispatch(args: {
+    actorUserId: string
+    workspaceId?: string
+    connectionId: string
+    modelId: string
+  }): Promise<{
+    providerId: SubscriptionProviderId
+    credentialRef: string
+    ownerUserId: string
+    generation: number
+    revision: number
+  } | null>
   revokeAllByUser(userId: string): Promise<string[]>
   removeCleanupRef(args: { userId: string; connectionId: string; credentialRef: string }): Promise<void>
   retainCleanupRef(args: { userId: string; connectionId: string; credentialRef: string; pendingWriteName?: string }): Promise<void>
@@ -93,12 +104,14 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
     ))
   }
 
-  async acquirePoll(args: { userId: string; connectionId: string; leaseToken: string }) {
+  async acquirePoll(args: { userId: string; connectionId: string; leaseToken: string; callbackMode?: boolean }) {
     const result = requireMutationResult(await convex.mutation<{
       generation?: number
       revision?: number
       pendingStateRef?: string
+      pollIntervalMs?: number
       expiresAt?: number
+      providerId?: SubscriptionProviderId
       error?: string
     }>(
       'providers/subscriptions:acquirePoll',
@@ -107,7 +120,7 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
     ))
     if (result.error) throw new Error(result.error)
     if (result.generation === undefined || result.revision === undefined ||
-        !result.pendingStateRef || result.expiresAt === undefined) {
+        !result.pendingStateRef || result.expiresAt === undefined || !result.providerId) {
       throw new Error('Subscription authorization is unavailable')
     }
     return {
@@ -115,6 +128,8 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
       revision: result.revision,
       pendingStateRef: result.pendingStateRef,
       expiresAt: result.expiresAt,
+      providerId: result.providerId,
+      pollIntervalMs: result.pollIntervalMs,
     }
   }
 
@@ -224,9 +239,20 @@ export class ConvexSubscriptionRepository implements SubscriptionRepository {
     ))
   }
 
-  async forDispatch(args: { userId: string; connectionId: string; modelId: string }) {
-    return await convex.query<{ providerId: SubscriptionProviderId; credentialRef: string; generation: number } | null>(
-      'providers/subscriptions:getForDispatchByServer',
+  async forDispatch(args: {
+    actorUserId: string
+    workspaceId?: string
+    connectionId: string
+    modelId: string
+  }) {
+    return await convex.query<{
+      providerId: SubscriptionProviderId
+      credentialRef: string
+      ownerUserId: string
+      generation: number
+      revision: number
+    } | null>(
+      'providers/subscriptions:getForDispatchForActorByServer',
       { serverSecret: this.secret, ...args },
       { throwOnError: true },
     )

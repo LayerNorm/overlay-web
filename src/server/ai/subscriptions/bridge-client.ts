@@ -3,19 +3,21 @@ import 'server-only'
 export type BridgeCredential = {
   backend: 'cliproxyapi'
   version: 1
-  providerId: 'codex'
+  providerId: 'codex' | 'claude' | 'xai' | 'meta' | 'kimi' | 'kimi-ai' | 'devin'
   metadata: unknown
-  expiresAt: number
+  expiresAt: number | null
+  nonExpiring?: boolean
   displayName?: string
 }
 
 export type BridgePendingState = {
   backend: 'cliproxyapi'
   version: 1
-  providerId: 'codex'
+  providerId: BridgeCredential['providerId']
   metadata: unknown
   expiresAt: number
   interval: number
+  callbackRequired?: boolean
 }
 
 const safeError = 'The subscription service could not complete this request.'
@@ -60,19 +62,38 @@ export class SubscriptionBridgeError extends Error {
 }
 
 export function isBridgeCredential(value: unknown): value is BridgeCredential {
-  return Boolean(value && typeof value === 'object' &&
-    'backend' in value && value.backend === 'cliproxyapi' &&
-    'version' in value && value.version === 1 &&
-    'providerId' in value && value.providerId === 'codex' &&
-    'metadata' in value && isRecord(value.metadata) &&
-    'expiresAt' in value && typeof value.expiresAt === 'number' &&
-    Number.isFinite(value.expiresAt) && value.expiresAt > 0)
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  if (candidate.backend !== 'cliproxyapi' || candidate.version !== 1 ||
+      typeof candidate.providerId !== 'string' ||
+      !['codex', 'claude', 'xai', 'meta', 'kimi', 'kimi-ai', 'devin'].includes(candidate.providerId) ||
+      !isRecord(candidate.metadata) || !('expiresAt' in candidate)) return false
+  const providerId = candidate.providerId
+  const allowsNonExpiring = providerId === 'meta' || providerId === 'devin'
+  if (candidate.expiresAt === null) {
+    return allowsNonExpiring && candidate.nonExpiring === true
+  }
+  return typeof candidate.expiresAt === 'number' &&
+    Number.isFinite(candidate.expiresAt) && candidate.expiresAt > 0 &&
+    (!('nonExpiring' in candidate) || candidate.nonExpiring === false)
 }
 
 export function isBridgePendingState(value: unknown): value is BridgePendingState {
-  return isBridgeCredential(value) && 'interval' in value &&
-    typeof value.interval === 'number' && Number.isFinite(value.interval) &&
-    value.interval >= 1 && value.interval <= 30
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Record<string, unknown>
+  if (candidate.backend !== 'cliproxyapi' || candidate.version !== 1 ||
+      typeof candidate.providerId !== 'string' ||
+      !['codex', 'claude', 'xai', 'meta', 'kimi', 'kimi-ai', 'devin'].includes(candidate.providerId) ||
+      !isRecord(candidate.metadata) ||
+      typeof candidate.expiresAt !== 'number' || !Number.isFinite(candidate.expiresAt) ||
+      candidate.expiresAt <= 0 ||
+      typeof candidate.interval !== 'number' || !Number.isFinite(candidate.interval) ||
+      candidate.interval < 1 || candidate.interval > 1800 ||
+      ('callbackRequired' in candidate && typeof candidate.callbackRequired !== 'boolean')) return false
+  const callbackProvider = candidate.providerId === 'claude' || candidate.providerId === 'devin'
+  return callbackProvider
+    ? candidate.callbackRequired === true
+    : candidate.callbackRequired !== true
 }
 
 export class SubscriptionBridgeClient {
@@ -92,8 +113,8 @@ export class SubscriptionBridgeClient {
     }
   }
 
-  async authorize() {
-    const value = await this.request<unknown>('/internal/v1/authorize', {})
+  async authorize(providerId: BridgeCredential['providerId'] = 'codex') {
+    const value = await this.request<unknown>('/internal/v1/authorize', { providerId })
     if (!isRecord(value) || !isRecord(value.authorization) ||
         typeof value.authorization.url !== 'string' ||
         typeof value.authorization.userCode !== 'string' ||
@@ -102,35 +123,52 @@ export class SubscriptionBridgeClient {
         value.authorization.expiresAt <= Date.now() ||
         typeof value.authorization.interval !== 'number' ||
         !Number.isFinite(value.authorization.interval) ||
-        value.authorization.interval < 1 || value.authorization.interval > 30 ||
+        value.authorization.interval < 1 || value.authorization.interval > 1800 ||
         !isBridgePendingState(value.pendingState) ||
+        value.pendingState.providerId !== providerId ||
         value.pendingState.expiresAt <= Date.now()) throw new Error(safeError)
     return value as {
-      authorization: { url: string; userCode: string; expiresAt: number; interval: number }
+      authorization: { url: string; userCode: string; expiresAt: number; interval: number; callbackRequired?: boolean }
       pendingState: BridgePendingState
     }
+  }
+
+  async complete(pendingState: BridgePendingState, callbackUrl: string) {
+    if (callbackUrl.length === 0 || callbackUrl.length > 8192) {
+      throw new Error(safeError)
+    }
+    const value = await this.request<unknown>('/internal/v1/complete', { pendingState, callbackUrl })
+    if (!isRecord(value) || value.status !== 'connected' || !isBridgeCredential(value.credential) ||
+        value.credential.providerId !== pendingState.providerId) throw new Error(safeError)
+    return value as { status: 'connected'; credential: BridgeCredential }
   }
 
   async poll(pendingState: BridgePendingState) {
     const value = await this.request<unknown>('/internal/v1/poll', { pendingState })
     if (!isRecord(value) || (value.status !== 'pending' && value.status !== 'connected') ||
-        (value.credential !== undefined && !isBridgeCredential(value.credential)) ||
+        (value.pendingState !== undefined && (!isBridgePendingState(value.pendingState) ||
+          value.pendingState.providerId !== pendingState.providerId)) ||
+        (value.credential !== undefined && (!isBridgeCredential(value.credential) ||
+          value.credential.providerId !== pendingState.providerId)) ||
         (value.status === 'connected' && !isBridgeCredential(value.credential))) throw new Error(safeError)
     return value as {
       status: 'pending' | 'connected'
+      pendingState?: BridgePendingState
       credential?: BridgeCredential
     }
   }
 
   async refresh(credential: BridgeCredential) {
-    const value = await this.request<unknown>('/internal/v1/refresh', { credential })
-    if (!isRecord(value) || !isBridgeCredential(value.credential)) throw new Error(safeError)
+    const value = await this.request<unknown>('/internal/v1/refresh', { providerId: credential.providerId, credential })
+    if (!isRecord(value) || !isBridgeCredential(value.credential) ||
+        value.credential.providerId !== credential.providerId) throw new Error(safeError)
     return value as { credential: BridgeCredential }
   }
 
   async models(credential: BridgeCredential) {
-    const value = await this.request<unknown>('/internal/v1/models', { credential })
-    if (!isRecord(value) || value.source !== 'provider_catalog' || !Array.isArray(value.models) ||
+    const value = await this.request<unknown>('/internal/v1/models', { providerId: credential.providerId, credential })
+    if (!isRecord(value) || value.providerId !== credential.providerId ||
+        value.source !== 'provider_catalog' || !Array.isArray(value.models) ||
         !value.models.every((model) => isRecord(model) &&
           typeof model.id === 'string' && typeof model.name === 'string' &&
           (model.reasoningLevels === undefined ||
@@ -144,8 +182,14 @@ export class SubscriptionBridgeClient {
     request: { connectionId: string; credential: BridgeCredential; modelId: string; request: unknown },
     signal?: AbortSignal,
   ): Promise<Response> {
-    const response = await this.send('/internal/v1/infer', request, signal)
+    const response = await this.send('/internal/v1/infer', {
+      ...request,
+      providerId: request.credential.providerId,
+    }, signal)
     if (!response.ok) throw await this.safeFailure(response)
+    if (response.headers.get('x-overlay-provider-id') !== request.credential.providerId) {
+      throw new Error(safeError)
+    }
     return response
   }
 
@@ -165,7 +209,7 @@ export class SubscriptionBridgeClient {
     body: unknown,
     signal: AbortSignal | undefined,
   ): Promise<Response> {
-    if (!this.isConfigured()) throw new Error('Codex subscriptions are unavailable until the private service is configured.')
+    if (!this.isConfigured()) throw new Error('Subscriptions are unavailable until the private service is configured.')
     const url = new URL(path, this.serviceUrl)
     return await this.fetcher(url, {
       method: 'POST',
@@ -198,13 +242,14 @@ export class SubscriptionBridgeClient {
       }
     } catch (_error) { /* use the generic safe error */ }
     if (typeof code === 'string' && ['reconnect_required', 'model_unavailable',
-      'rate_limited', 'provider_unavailable', 'temporary_failure'].includes(code)) {
+      'rate_limited', 'provider_unavailable', 'temporary_failure', 'invalid_callback'].includes(code)) {
       const messages: Record<string, string> = {
-        reconnect_required: 'Reconnect your Codex subscription to continue.',
-        model_unavailable: 'This Codex model is unavailable for the connected account.',
-        rate_limited: 'Codex is rate-limiting requests. Retry later.',
-        provider_unavailable: 'Codex is temporarily unavailable. Retry later.',
+        reconnect_required: 'Reconnect your subscription to continue.',
+        model_unavailable: 'This model is unavailable for the connected account.',
+        rate_limited: 'The provider is rate-limiting requests. Retry later.',
+        provider_unavailable: 'The provider is temporarily unavailable. Retry later.',
         temporary_failure: 'The subscription service is temporarily unavailable. Retry later.',
+        invalid_callback: 'The callback does not match this authorization. Check the URL and retry.',
       }
       return new SubscriptionBridgeError(code, response.status, messages[code]!)
     }

@@ -5,20 +5,20 @@ import { wrapLanguageModel } from 'ai'
 import type { LanguageModel } from '@/server/ai/provider-types'
 import { SubscriptionBridgeClient, SubscriptionBridgeError } from './bridge-client'
 import { createSubscriptionService, type SubscriptionService } from './service'
-import { assertSupportedCodexRequest, codexStatelessRequest } from './request-validation'
+import { assertSupportedCodexRequest, assertSupportedSubscriptionRequest, subscriptionStatelessRequest } from './request-validation'
 
 const SUBSCRIPTION_RESPONSES_ENDPOINT = 'https://overlay-subscription.invalid/responses'
 const maxRequestBytes = 2_000_000
 const maxResponseBytes = 8_000_000
 const maxEventBytes = 1_000_000
-const safeUpstreamError = 'Codex subscription request failed'
-const safeStreamError = 'Codex did not complete the response'
+const safeUpstreamError = 'Subscription request failed'
+const safeStreamError = 'The subscription did not complete the response'
 
 const safeErrors: Record<string, { message: string; status: number }> = {
-  reconnect_required: { message: 'Reconnect your Codex subscription to continue.', status: 401 },
-  rate_limited: { message: 'Codex is rate-limiting requests. Retry later.', status: 429 },
-  model_unavailable: { message: 'This Codex model is unavailable for the connected account.', status: 400 },
-  provider_unavailable: { message: 'Codex is temporarily unavailable. Retry later.', status: 502 },
+  reconnect_required: { message: 'Reconnect your subscription to continue.', status: 401 },
+  rate_limited: { message: 'The provider is rate-limiting requests. Retry later.', status: 429 },
+  model_unavailable: { message: 'This model is unavailable for the connected account.', status: 400 },
+  provider_unavailable: { message: 'The provider is temporarily unavailable. Retry later.', status: 502 },
   temporary_failure: { message: 'The subscription service is temporarily unavailable. Retry later.', status: 502 },
 }
 
@@ -261,16 +261,58 @@ function concatBytes(chunks: Uint8Array[]): Uint8Array {
 }
 
 type DispatchService = Pick<SubscriptionService, 'credentialForDispatch'>
+
+async function validateSubscriptionRequest(
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  providerId: string,
+  modelId: string,
+): Promise<{ body: Record<string, unknown>; requestedStream: boolean } | { response: Response }> {
+  try {
+    const text = await readRequestBody(input, init)
+    const parsed: unknown = JSON.parse(text)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return { response: errorResponse(400, 'Invalid subscription request') }
+    }
+    const body = parsed as Record<string, unknown>
+    if (providerId === 'codex') assertSupportedCodexRequest(body, modelId)
+    else assertSupportedSubscriptionRequest(body, modelId)
+    return { body, requestedStream: body.stream === true }
+  } catch (error) {
+    return {
+      response: errorResponse(400, error instanceof Error ? error.message : 'Invalid subscription request'),
+    }
+  }
+}
+
+async function credentialForProvider(
+  service: DispatchService,
+  actorUserId: string,
+  connectionId: string,
+  modelId: string,
+  providerId: string,
+  workspaceId?: string,
+) {
+  const credential = await service.credentialForDispatch(actorUserId, connectionId, modelId, workspaceId)
+  if (credential.providerId !== providerId) {
+    throw new Error(safeErrors.reconnect_required!.message)
+  }
+  return credential
+}
+
 export function createSubscriptionLanguageModel(args: {
   ownerId: string
   connectionId: string
   providerId: string
   modelId: string
+  workspaceId?: string
   dispatchService?: DispatchService
   bridge?: Pick<SubscriptionBridgeClient, 'infer'>
   fetcher?: typeof fetch
 }): LanguageModel {
-  if (args.providerId !== 'codex') throw new Error('Subscription request adapter is not available')
+  if (!['codex', 'claude', 'xai', 'meta', 'kimi', 'kimi-ai', 'devin'].includes(args.providerId)) {
+    throw new Error('Subscription request adapter is not available')
+  }
   const bridge = args.bridge ?? new SubscriptionBridgeClient(undefined, undefined, args.fetcher ?? fetch)
   const provider = createOpenAI({
     apiKey: 'overlay-subscription-placeholder',
@@ -281,29 +323,23 @@ export function createSubscriptionLanguageModel(args: {
           init?.method?.toUpperCase() !== 'POST') {
         return errorResponse(400, 'Unsupported subscription request')
       }
-      let body: Record<string, unknown>
-      let requestedStream = false
+      const validated = await validateSubscriptionRequest(input, init, args.providerId, args.modelId)
+      if ('response' in validated) return validated.response
+      const { body, requestedStream } = validated
       try {
-        const text = await readRequestBody(input, init)
-        const parsed: unknown = JSON.parse(text)
-        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-          return errorResponse(400, 'Invalid subscription request')
-        }
-        body = parsed as Record<string, unknown>
-        requestedStream = body.stream === true
-        assertSupportedCodexRequest(body, args.modelId)
-      } catch (error) {
-        return errorResponse(400, error instanceof Error ? error.message : 'Invalid subscription request')
-      }
-      try {
-        const credential = await (args.dispatchService ?? createSubscriptionService()).credentialForDispatch(
-          args.ownerId, args.connectionId, args.modelId,
+        const credential = await credentialForProvider(
+          args.dispatchService ?? createSubscriptionService(),
+          args.ownerId,
+          args.connectionId,
+          args.modelId,
+          args.providerId,
+          args.workspaceId,
         )
         const upstream = await bridge.infer({
           connectionId: args.connectionId,
           credential,
           modelId: args.modelId,
-          request: codexStatelessRequest(body),
+          request: subscriptionStatelessRequest(body),
         }, init?.signal ?? undefined)
         if (!upstream.body) return errorResponse(400, safeStreamError)
         const streamResponse = new Response(boundedStream(upstream.body), {
@@ -347,7 +383,7 @@ export function createSubscriptionLanguageModel(args: {
           ? providerOptions as Record<string, unknown>
           : {}
         if (openaiOptions.conversation != null || openaiOptions.previousResponseId != null) {
-          throw new Error('Codex subscriptions do not support server-side conversation state')
+          throw new Error('Subscriptions do not support server-side conversation state')
         }
         return {
           ...params,

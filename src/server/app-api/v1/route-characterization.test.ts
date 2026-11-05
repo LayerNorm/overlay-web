@@ -898,7 +898,8 @@ test('conversations act swallows user-message persistence failure before later f
     if (path === 'platform/uiSettings:getByServer') {
       return { ...DEFAULT_APP_SETTINGS, harnessRevision: 'overlay-harness-v1',
         harnessModelRecoveryRevision: 'settled-retry-v1', nativeThreadCompatibilityRevision: 'tracked-native-v1',
-        harnessArtifactPublicationRevision: 'binary-artifact-v1', harnessTranscriptRevision: 'settled-public-v1' }
+        harnessArtifactPublicationRevision: 'binary-artifact-v1', harnessTranscriptRevision: 'settled-public-v1',
+        harnessFullTranscriptRevision: 'full-public-v1' }
     }
     if (path === 'knowledge/memories:list') return []
     if (path === 'integrations/skills:list') return []
@@ -939,7 +940,8 @@ test('conversations act swallows user-message persistence failure before later f
         gateModelAccess: async () => ({
           appSettings: { ...DEFAULT_APP_SETTINGS, harnessRevision: 'overlay-harness-v1',
             harnessModelRecoveryRevision: 'settled-retry-v1', nativeThreadCompatibilityRevision: 'tracked-native-v1',
-            harnessArtifactPublicationRevision: 'binary-artifact-v1', harnessTranscriptRevision: 'settled-public-v1' },
+            harnessArtifactPublicationRevision: 'binary-artifact-v1', harnessTranscriptRevision: 'settled-public-v1',
+            harnessFullTranscriptRevision: 'full-public-v1' },
           paid: true,
           runtimeEntitlements: {
             tier: 'paid',

@@ -3,6 +3,7 @@ import {
   admitHarnessChild, blockHarness, createHarnessSnapshot, HarnessPlanValidationError, recordHarnessEvidence, replaceHarnessPlan,
   settleHarnessChild, transitionHarnessStep, type HarnessSnapshot,
 } from '@overlay/agent-runtime/harness-state'
+import { decodeRunQuestions } from '@/shared/agents/run-questions'
 import { createHarnessControlTools } from './control-tools'
 import type { HarnessExecutionPorts } from './ports'
 
@@ -31,298 +32,106 @@ function fixture() {
   return { ports, apply, readChild, waitForChildren, child, setParent }
 }
 
-function planningGateState() {
+function noPlanState() {
   return createHarnessSnapshot({
-    runId: 'planning-gate',
+    runId: 'no-plan',
     goal: 'Complete the requested action',
     constraints: [],
     policy: {
-      actorUserId: 'user', allowedToolIds: ['ask_agent'], requiresPlan: true,
+      actorUserId: 'user', allowedToolIds: ['ask_agent'], requiresPlan: false,
       deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2,
     },
   }, Date.now())
 }
 
-test('completed child results become parent observations without certifying independent verification', async () => {
-  const f = fixture()
-  const execute = createHarnessControlTools(f.ports).harness_read_child.execute!
-  const result = await execute({ childRunId: 'child' }, { toolCallId: 'read-child', messages: [] })
-  expect(result).toMatchObject({ status: 'completed', summary: 'Child findings.', evidenceRef: 'child-result:read-child' })
-  const parent = await f.ports.read()
-  expect(parent.evidence).toHaveLength(1)
-  expect(parent.evidence[0]).toMatchObject({ id: 'child-result:read-child', kind: 'tool_result',
-    source: 'harness_read_child:child', verdict: 'observed' })
-  expect(parent.evidence[0].verification).toBeUndefined()
-  expect(JSON.parse(parent.evidence[0].summary)).toEqual({ childRunId: 'child', status: 'completed',
-    summary: 'Child findings.', evidenceRefs: [] })
-  expect(f.apply.mock.calls[0]).toEqual(['settle-child:child:0', { type: 'settle_child', childRunId: 'child' }])
-  expect(f.apply.mock.calls[1][0]).toBe('control:read-child')
-  expect(parent.children[0].status).toBe('completed')
-  await createHarnessControlTools(f.ports).harness_update_step.execute!(
-    { id: 'work', status: 'done', evidenceRefs: ['child-result:read-child'] }, { toolCallId: 'finish-work', messages: [] },
-  )
-  expect((await f.ports.read()).plan[0].status).toBe('done')
-})
-
-test('artifact control reads selected media as typed binary model output', async () => {
-  const readArtifact = vi.fn(async () => ({
-    kind: 'media' as const,
-    data: new Uint8Array([0, 127, 255]),
-    mediaType: 'image/png',
-    metadata: {
-      artifactId: `ha_${'a'.repeat(64)}`, toolName: 'render_document', toolCallId: 'render-1',
-      mediaPartCount: 2, mediaPart: 1, resource: { id: 'file-1', revision: 'rev-7', page: 3 },
-    },
-  }))
-  const artifactTool = createHarnessControlTools({ ...fixture().ports, readArtifact }).harness_read_artifact
-  const input = { artifactId: `ha_${'a'.repeat(64)}`, mediaPart: 0 }
-  const result = await artifactTool.execute!(input, { toolCallId: 'reopen-1', messages: [] })
-  expect(readArtifact).toHaveBeenCalledWith(input)
-  expect(artifactTool.toModelOutput?.({ output: result })).toEqual({
-    type: 'content',
-    value: [
-      { type: 'text', text: `[Incomplete media selection; artifact ha_${'a'.repeat(64)}; render_document call render-1; resource file-1 revision rev-7 page 3; selected part 1 of 2.]` },
-      { type: 'file', data: { type: 'data', data: new Uint8Array([0, 127, 255]) }, mediaType: 'image/png' },
-    ],
-  })
-})
-
-test('plan tools accept answer-only milestones', () => {
-  const planTool = createHarnessControlTools(fixture().ports).harness_set_plan
-  expect(planTool.inputSchema.parse({
-    steps: [{
-      id: 'answer',
-      title: 'Answer from prior knowledge',
-      dependsOn: [],
-      acceptanceCriteria: ['Answer the question.'],
-      requiresVerification: false,
-      answerOnly: true,
-    }],
-  })).toMatchObject({ steps: [{ answerOnly: true }] })
-})
-
-test('plan tools keep omitted verification optional and preserve explicit requests', () => {
-  const planTool = createHarnessControlTools(fixture().ports).harness_set_plan
-  const step = { id: 'work', title: 'Do work', dependsOn: [], acceptanceCriteria: ['Complete the work.'] }
-  expect(planTool.inputSchema.parse({ steps: [step] }).steps[0]?.requiresVerification).toBeUndefined()
-  expect(planTool.inputSchema.parse({ steps: [{ ...step, requiresVerification: true }] }).steps[0]?.requiresVerification).toBe(true)
-})
-
-test('plan execution normalizes raw omitted verification input before applying the operation', async () => {
+test('plan steps need only an id and a title', async () => {
   const f = fixture()
   const apply = vi.fn<HarnessExecutionPorts['apply']>(async () => f.ports.read())
   const planTool = createHarnessControlTools({ ...f.ports, apply }).harness_set_plan
-  await planTool.execute!({
-    steps: [{
-      id: 'work',
-      title: 'Raw model plan',
-      dependsOn: [],
-      acceptanceCriteria: ['Apply normalized input'],
-      answerOnly: false,
-      evidenceTools: ['ask_agent'],
-    }],
-  }, { toolCallId: 'raw-plan', messages: [] })
-
+  await planTool.execute!({ steps: [{ id: 'work', title: 'Do the work' }] }, { toolCallId: 'raw-plan', messages: [] })
   expect(apply).toHaveBeenCalledWith('control:raw-plan', {
     type: 'replace_plan',
-    steps: [{
-      id: 'work',
-      title: 'Raw model plan',
-      dependsOn: [],
-      acceptanceCriteria: ['Apply normalized input'],
-      requiresVerification: false,
-      evidenceTools: ['ask_agent'],
-    }],
+    steps: [{ id: 'work', title: 'Do the work', dependsOn: [], acceptanceCriteria: ['Do the work'], requiresVerification: false }],
   })
 })
 
-test('invalid evidenceTools is repairable and a corrected plan can be applied', async () => {
-  let attempts = 0
+test('an invalid plan is returned to the model to correct', async () => {
   const apply = vi.fn<HarnessExecutionPorts['apply']>(async () => {
-    attempts++
-    if (attempts === 1) throw new HarnessPlanValidationError('Milestone "work" lists unsupported evidence tool "missing_tool".')
-    return replaceHarnessPlan(planningGateState(), [{
-      id: 'work', title: 'Use the available tool', dependsOn: [], acceptanceCriteria: ['Use ask_agent'],
-      requiresVerification: false, evidenceTools: ['ask_agent'],
-    }], Date.now())
+    throw new HarnessPlanValidationError('Unknown dependency.')
   })
   const plan = createHarnessControlTools({ ...fixture().ports, apply }).harness_set_plan
-  const invalid = await plan.execute!({
-    steps: [{ id: 'work', title: 'Use a missing tool', dependsOn: [], acceptanceCriteria: ['Try it'],
-      requiresVerification: false, evidenceTools: ['missing_tool'] }],
-  }, { toolCallId: 'invalid-plan', messages: [] })
-  expect(invalid).toMatchObject({ success: false, code: 'tool_validation_failure' })
-  const corrected = await plan.execute!({
-    steps: [{ id: 'work', title: 'Use the available tool', dependsOn: [], acceptanceCriteria: ['Use ask_agent'],
-      requiresVerification: false, evidenceTools: ['ask_agent'] }],
-  }, { toolCallId: 'corrected-plan', messages: [] })
-  expect(corrected).toMatchObject({ plan: [{ id: 'work' }] })
+  const invalid = await plan.execute!({ steps: [{ id: 'work', title: 'Work', dependsOn: ['missing'] }] }, { toolCallId: 'invalid-plan', messages: [] })
+  expect(invalid).toMatchObject({ success: false, code: 'tool_validation_failure', error: 'Unknown dependency.' })
 })
 
-test('blockers are rejected until a required plan exists', async () => {
+test('questions can be asked without a plan and are stored for the questionnaire', async () => {
   const f = fixture()
-  f.setParent(planningGateState())
-  const blockerTool = createHarnessControlTools(f.ports).harness_report_blocker
-  const result = await blockerTool.execute!(
-    { question: 'Which account should I update?' },
-    { toolCallId: 'deferred-blocker', messages: [] },
+  f.setParent(noPlanState())
+  const questions = [{ prompt: 'Which account should I update?', choices: [{ label: 'Personal' }, { label: 'Team' }] }]
+  const result = await createHarnessControlTools(f.ports).harness_report_blocker.execute!(
+    { questions }, { toolCallId: 'ask', messages: [] },
   )
+  expect(result).toEqual({ status: 'waiting_for_input', questions })
+  const { blocker } = await f.ports.read()
+  expect(blocker?.kind).toBe('input')
+  expect(decodeRunQuestions(blocker!.question)).toEqual(questions)
+})
 
-  expect(result).toEqual({
-    success: false,
-    error: 'Call harness_set_plan first; report blockers after the plan exists.',
-  })
+test.each(['placeholder', 'Question', 'TBD', '???', 'short'])('"%s" is rejected and the run keeps going', async prompt => {
+  const f = fixture()
+  f.setParent(noPlanState())
+  const result = await createHarnessControlTools(f.ports).harness_report_blocker.execute!(
+    { questions: [{ prompt }] }, { toolCallId: 'bad-question', messages: [] },
+  )
+  expect(result).toMatchObject({ success: false, error: expect.stringContaining('not a real question') })
   expect(f.apply).not.toHaveBeenCalled()
   expect((await f.ports.read()).status).toBe('running')
 })
 
-test.each([
-  'I cannot ask_agent because it is unavailable.',
-  'Which account should I update?',
-])('blockers are recorded after a plan exists: %s', async question => {
+test('questions too long to store are returned to the model to shorten', async () => {
   const f = fixture()
-  const planned = replaceHarnessPlan(planningGateState(), [{
-    id: 'work', title: 'Ask the agent', dependsOn: [], acceptanceCriteria: ['Agent consulted'], requiresVerification: false,
-    evidenceTools: ['ask_agent'],
-  }], Date.now())
-  f.setParent(planned)
-  const blockerTool = createHarnessControlTools(f.ports).harness_report_blocker
-  const result = await blockerTool.execute!({ question }, { toolCallId: 'post-plan-blocker', messages: [] })
-
-  expect(result).toEqual({ status: 'waiting_for_input', question })
-  expect(f.apply).toHaveBeenCalledWith('control:post-plan-blocker', {
-    type: 'block', blocker: { kind: 'input', question },
-  })
-  expect((await f.ports.read()).status).toBe('waiting_for_input')
+  f.setParent(noPlanState())
+  const questions = Array.from({ length: 4 }, (_, index) => ({ prompt: `Question ${index} ${'x'.repeat(280)}`, description: 'y'.repeat(300) }))
+  const result = await createHarnessControlTools(f.ports).harness_report_blocker.execute!(
+    { questions }, { toolCallId: 'long-question', messages: [] },
+  )
+  expect(result).toMatchObject({ success: false, error: expect.stringContaining('too long') })
+  expect(f.apply).not.toHaveBeenCalled()
 })
 
-test('verification rejection tells the model to revise an unsatisfiable plan', async () => {
+test('a step is done when the model marks it done, with no evidence', async () => {
   const f = fixture()
-  const policy = { actorUserId: 'user', allowedToolIds: [], requiresPlan: false,
+  const policy = { actorUserId: 'user', allowedToolIds: ['read'], requiresPlan: false,
     deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
-  let parent = createHarnessSnapshot({ runId: 'verification', goal: 'Check work', constraints: [], policy }, Date.now())
-  parent = replaceHarnessPlan(parent, [{ id: 'work', title: 'Check work', dependsOn: [],
-    acceptanceCriteria: ['Check work'], requiresVerification: true }], Date.now())
-  parent = recordHarnessEvidence(parent, {
-    id: 'source:1', kind: 'tool_result', source: 'read', summary: 'Observed source', verdict: 'observed', createdAt: Date.now(),
-  }, Date.now())
-  f.setParent(parent)
+  f.setParent(replaceHarnessPlan(
+    createHarnessSnapshot({ runId: 'plain', goal: 'Do it', constraints: [], policy }, Date.now()),
+    [{ id: 'work', title: 'Do it', dependsOn: [], acceptanceCriteria: ['Do it'], requiresVerification: false }],
+    Date.now(),
+  ))
   const result = await createHarnessControlTools(f.ports).harness_update_step.execute!(
-    { id: 'work', status: 'done', evidenceRefs: ['source:1'] }, { toolCallId: 'finish-work', messages: [] },
+    { id: 'work', status: 'done' }, { toolCallId: 'finish', messages: [] },
   )
-  expect(result).toEqual({
-    success: false,
-    error: 'Independent verification of this milestone in the current plan revision is required.',
-    hint: 'Use harness_revise_step for this milestone if no independent verifier is available. Do not rewrite completed milestones or claim verification that did not occur.',
-  })
-  expect((await f.ports.read()).plan[0].status).toBe('pending')
+  expect(result).toMatchObject({ step: { id: 'work', status: 'done' } })
 })
 
-test('rejected evidence updates return the 12 most recent successful evidence IDs', async () => {
+test('a backend that still requires evidence returns its rejection to the model', async () => {
   const f = fixture()
-  let parent = await f.ports.read()
-  for (let index = 1; index <= 15; index++) {
-    parent = recordHarnessEvidence(parent, {
-      id: `evidence:${index}`,
-      kind: 'tool_result',
-      source: 'read',
-      summary: `Observation ${index}`,
-      verdict: index === 15 ? 'failed' : 'observed',
-      createdAt: index,
-    }, index)
-  }
-  f.setParent(parent)
-
-  const result = await createHarnessControlTools(f.ports).harness_update_step.execute!(
-    { id: 'work', status: 'done', evidenceRefs: ['missing-evidence'] },
-    { toolCallId: 'bad-evidence', messages: [] },
+  const apply = vi.fn<HarnessExecutionPorts['apply']>(async () => { throw new Error('Completion requires evidence.') })
+  const result = await createHarnessControlTools({ ...f.ports, apply }).harness_update_step.execute!(
+    { id: 'work', status: 'done' }, { toolCallId: 'old-backend', messages: [] },
   )
-
-  expect(result).toEqual({
-    success: false,
-    error: 'Evidence must reference successful observations from this run.',
-    availableEvidenceIds: Array.from({ length: 12 }, (_, index) => ({ id: `evidence:${14 - index}`, source: 'read' })),
-  })
-})
-
-test.each([
-  { error: 'Completion requires evidence.', evidenceKind: undefined },
-  { error: 'Completion requires tool-result evidence.', evidenceKind: 'artifact' as const },
-  { error: "Completion requires tool-result evidence from this milestone's evidenceTools.", evidenceKind: 'tool_result' as const },
-])('completion rejection for $error returns evidence and answerOnly guidance', async ({ error, evidenceKind }) => {
-  const f = fixture()
-  const policy = { actorUserId: 'user', allowedToolIds: ['read', 'get_note'], requiresPlan: true,
-    deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
-  let parent = createHarnessSnapshot({ runId: 'completion', goal: 'Complete the milestone', constraints: [], policy }, Date.now())
-  parent = replaceHarnessPlan(parent, [{ id: 'work', title: 'Complete the milestone', dependsOn: [],
-    acceptanceCriteria: ['Complete the work'], requiresVerification: false, evidenceTools: ['read'] }], Date.now())
-  const evidenceRefs = evidenceKind ? ['artifact:1'] : undefined
-  if (evidenceKind) {
-    parent = recordHarnessEvidence(parent, {
-      id: 'artifact:1', kind: evidenceKind, source: evidenceKind === 'tool_result' ? 'get_note' : 'file',
-      summary: 'A supplied artifact', verdict: 'observed', createdAt: Date.now(),
-    }, Date.now())
-  }
-  f.setParent(parent)
-
-  const result = await createHarnessControlTools(f.ports).harness_update_step.execute!(
-    { id: 'work', status: 'done', ...(evidenceRefs ? { evidenceRefs } : {}) },
-    { toolCallId: 'complete-work', messages: [] },
-  )
-
-  expect(result).toEqual({
-    success: false,
-    error,
-    availableEvidenceIds: evidenceRefs
-      ? [{ id: 'artifact:1', source: evidenceKind === 'tool_result' ? 'get_note' : 'file' }]
-      : [],
-    hint: expect.stringContaining('harness_revise_step with its exact id and patch'),
-  })
-  expect((await f.ports.read()).plan[0]?.status).toBe('pending')
-})
-
-test('tool-result evidence already used by another action milestone returns model-visible guidance', async () => {
-  const f = fixture()
-  const now = Date.now()
-  const policy = { actorUserId: 'user', allowedToolIds: ['create_note'], requiresPlan: true,
-    deadlineAt: now + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
-  let parent = createHarnessSnapshot({ runId: 'write-evidence', goal: 'Complete both actions', constraints: [], policy }, now)
-  parent = replaceHarnessPlan(parent, [
-    { id: 'first', title: 'First action', dependsOn: [], acceptanceCriteria: ['First action done'], requiresVerification: false, evidenceTools: ['create_note'] },
-    { id: 'second', title: 'Second action', dependsOn: [], acceptanceCriteria: ['Second action done'], requiresVerification: false, evidenceTools: ['create_note'] },
-  ], now)
-  parent = recordHarnessEvidence(parent, {
-    id: 'tool:create_note', kind: 'tool_result', source: 'create_note', summary: 'Created a note', verdict: 'observed', createdAt: now,
-  }, now)
-  parent = transitionHarnessStep(parent, {
-    id: 'first', status: 'done', evidenceRefs: ['tool:create_note'],
-  }, now)
-  f.setParent(parent)
-
-  const result = await createHarnessControlTools(f.ports).harness_update_step.execute!(
-    { id: 'second', status: 'done', evidenceRefs: ['tool:create_note'] },
-    { toolCallId: 'reuse-write-result', messages: [] },
-  )
-
-  expect(result).toEqual({
-    success: false,
-    error: 'Evidence from a tool result already supports another milestone.',
-    availableEvidenceIds: [],
-    hint: expect.stringContaining('one result cannot prove two actions'),
-  })
-  expect(result).toMatchObject({ hint: expect.stringContaining('do not repeat completed actions') })
-  expect((await f.ports.read()).plan.find(step => step.id === 'second')?.status).toBe('pending')
+  expect(result).toEqual({ success: false, error: 'Completion requires evidence.' })
 })
 
 test('dependency rejection returns unresolved dependency IDs and a completion hint', async () => {
   const f = fixture()
-  const policy = { actorUserId: 'user', allowedToolIds: ['read'], requiresPlan: true,
+  const policy = { actorUserId: 'user', allowedToolIds: ['read'], requiresPlan: false,
     deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2 }
   const parent = replaceHarnessPlan(
     createHarnessSnapshot({ runId: 'dependencies', goal: 'Complete dependent work', constraints: [], policy }, Date.now()),
     [
-      { id: 'first', title: 'First milestone', dependsOn: [], acceptanceCriteria: ['Finish first'], requiresVerification: false, evidenceTools: ['read'] },
-      { id: 'second', title: 'Second milestone', dependsOn: ['first'], acceptanceCriteria: ['Finish second'], requiresVerification: false, evidenceTools: ['read'] },
+      { id: 'first', title: 'First step', dependsOn: [], acceptanceCriteria: ['Finish first'], requiresVerification: false },
+      { id: 'second', title: 'Second step', dependsOn: ['first'], acceptanceCriteria: ['Finish second'], requiresVerification: false },
     ],
     Date.now(),
   )
@@ -335,9 +144,8 @@ test('dependency rejection returns unresolved dependency IDs and a completion hi
   expect(result).toEqual({
     success: false,
     error: 'Dependencies are not complete.',
-    availableEvidenceIds: [],
     pendingDependencyIds: ['first'],
-    hint: 'Complete or skip these milestones first.',
+    hint: 'Complete or skip these steps first.',
   })
   expect((await f.ports.read()).plan.find(step => step.id === 'second')?.status).toBe('pending')
 })
@@ -387,27 +195,6 @@ test('unrelated children cannot supply parent completion evidence', async () => 
     { childRunId: 'child' }, { toolCallId: 'read-child', messages: [] },
   )).rejects.toThrow('Invalid child lineage')
   expect(f.apply).not.toHaveBeenCalled()
-})
-
-test('answer-only plans normalize empty evidence tools without relaxing action proof', async () => {
-  const f = fixture()
-  const initial = planningGateState()
-  const apply: HarnessExecutionPorts['apply'] = async (_id, operation) => {
-    if (operation.type !== 'replace_plan') throw new Error('Unexpected operation')
-    return replaceHarnessPlan(initial, operation.steps, Date.now())
-  }
-  const plan = createHarnessControlTools({ ...f.ports, apply }).harness_set_plan
-  const step = { id: 'answer', title: 'Answer the question', dependsOn: [],
-    acceptanceCriteria: ['Return the requested answer'], answerOnly: true, evidenceTools: [] }
-  const result = await plan.execute!({ steps: [step] }, { toolCallId: 'answer-plan', messages: [] })
-  expect(result).toMatchObject({ plan: [{ id: 'answer', answerOnly: true }] })
-  await expect(plan.execute!({ steps: [{ ...step, answerOnly: false }] }, {
-    toolCallId: 'action-plan', messages: [],
-  })).resolves.toMatchObject({
-    success: false,
-    code: 'tool_validation_failure',
-    error: expect.stringContaining('must declare evidenceTools'),
-  })
 })
 
 test('reopened artifact excerpts become bounded observations for final verification', async () => {

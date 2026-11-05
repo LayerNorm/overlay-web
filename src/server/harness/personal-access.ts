@@ -192,9 +192,14 @@ async function assertModelCatalogAccess(
   }
 }
 
-async function assertCurrentModelPolicy(modelId: string, userId: string, entitlements: PersonalHarnessExecutionContext['entitlements']): Promise<void> {
+async function assertCurrentModelPolicy(
+  modelId: string,
+  userId: string,
+  workspaceId: string,
+  entitlements: PersonalHarnessExecutionContext['entitlements'],
+): Promise<void> {
   if (isByokModelId(modelId)) {
-    await assertUserCanUseByokModel(modelId, userId)
+    await assertUserCanUseByokModel(modelId, userId, workspaceId)
   } else if (!(await resolveAuthorizedModelIds({ entitlements })).chat.has(modelId)) {
     throw new FatalError('The model is no longer allowed by server policy.')
   }
@@ -318,7 +323,12 @@ export async function refreshPersonalHarnessAccess(
       throw new FatalError('Automation agent permissions have been revoked.')
     }
   }
-  await assertCurrentModelPolicy(context.effectiveModelId, access.actorUserId, grants.gate.runtimeEntitlements)
+  await assertCurrentModelPolicy(
+    context.effectiveModelId,
+    access.actorUserId,
+    access.workspaceId,
+    grants.gate.runtimeEntitlements,
+  )
   if (options.renewLease && state.policy.executionPolicyVersion === 2) {
     const current = await repository.get({ actorUserId: access.actorUserId, runId: access.runId })
     if (!current || current.workflowRunId !== access.workflowRunId

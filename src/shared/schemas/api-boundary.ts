@@ -150,7 +150,8 @@ const ProviderConnectionTestRequest = z.object({
 const SubscriptionAuthorizationRequest = z.object({
   providerId: z.string().optional(),
   connectionId: z.string().optional(),
-}).passthrough()
+  scope: z.enum(['personal', 'workspace']).optional(),
+}).strict()
 
 const SubscriptionUpdateRequest = z.object({
   action: z.enum(['poll', 'refresh', 'callback']),
@@ -605,6 +606,13 @@ export const webApiBoundaryDefinitions = [
     path: '/api/v1/conversations/stop',
     schema: { json: StopConversationRequest },
     summary: 'Stop a running conversation turn',
+    tag: 'Conversations',
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/conversations/trace',
+    schema: { query: z.object({ messageId: z.string().trim().min(1).max(256) }) },
+    summary: 'Stream the complete public transcript of an assistant message',
     tag: 'Conversations',
   },
   {

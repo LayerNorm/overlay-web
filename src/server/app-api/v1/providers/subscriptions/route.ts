@@ -30,6 +30,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   if (!isRecord(body) || !isSubscriptionProviderId(body.providerId)) {
     return responseError('Unsupported subscription provider', 400)
   }
+  if (body.workspaceId !== undefined ||
+      (body.scope !== undefined && body.scope !== 'personal' && body.scope !== 'workspace')) {
+    return responseError('Invalid subscription scope', 400)
+  }
   if (body.connectionId !== undefined &&
       (typeof body.connectionId !== 'string' || !CONNECTION_ID.test(body.connectionId))) {
     return responseError('Invalid connectionId', 400)
@@ -38,6 +42,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     context.auth.userId,
     body.providerId,
     body.connectionId as string | undefined,
+    body.scope as 'personal' | 'workspace' | undefined,
+    context.workspace.workspace.id,
   )
 }
 
@@ -50,6 +56,10 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       !CONNECTION_ID.test(body.connectionId) ||
       !['poll', 'refresh', 'callback'].includes(String(body.action))) {
     return responseError('Invalid subscription update', 400)
+  }
+  if (body.action === 'callback' &&
+      (typeof body.callbackUrl !== 'string' || body.callbackUrl.length === 0 || body.callbackUrl.length > 8192)) {
+    return responseError('Invalid authorization callback', 400)
   }
 
   const { connectionId } = body as {

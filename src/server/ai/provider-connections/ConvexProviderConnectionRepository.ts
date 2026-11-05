@@ -16,13 +16,22 @@ type ConvexConnectionRecord = ProviderConnectionRecord & {
 
 export class ConvexProviderConnectionRepository implements ProviderConnectionRepository {
   async count(args: { userId: string }): Promise<number> {
-    return (await this.listPublic(args)).length
-  }
-
-  async listPublic(args: { userId: string }): Promise<ByokConnectionRow[]> {
-    return (await convex.query<ByokConnectionRow[]>(
+    const rows = await convex.query<ByokConnectionRow[]>(
       'providers/connections:listPublicByServer',
       { serverSecret: getInternalApiSecret(), userId: args.userId },
+      { throwOnError: true },
+    )
+    return rows?.length ?? 0
+  }
+
+  async listPublic(args: { userId: string; workspaceId?: string }): Promise<ByokConnectionRow[]> {
+    return (await convex.query<ByokConnectionRow[]>(
+      'providers/connections:listPublicForUseByServer',
+      {
+        serverSecret: getInternalApiSecret(),
+        actorUserId: args.userId,
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+      },
       { throwOnError: true },
     )) ?? []
   }
@@ -37,6 +46,24 @@ export class ConvexProviderConnectionRepository implements ProviderConnectionRep
     return { ...row, credentialRef: row.vaultObjectId }
   }
 
+  async getForUse(args: {
+    connectionId: string
+    actorUserId: string
+    workspaceId?: string
+  }): Promise<ProviderConnectionRecord | null> {
+    const row = await convex.query<ConvexConnectionRecord | null>(
+      'providers/connections:getForUseByServer',
+      {
+        serverSecret: getInternalApiSecret(),
+        connectionId: args.connectionId,
+        actorUserId: args.actorUserId,
+        ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+      },
+      { throwOnError: true },
+    )
+    return row ? { ...row, credentialRef: row.vaultObjectId } : null
+  }
+
   async create(args: CreateProviderConnectionInput): Promise<string> {
     const connectionId = await convex.mutation<string>(
       'providers/connections:createByServer',
@@ -46,6 +73,10 @@ export class ConvexProviderConnectionRepository implements ProviderConnectionRep
         providerId: args.providerId,
         ...(args.authKind ? { authKind: args.authKind } : {}),
         ...(args.subscriptionProvider ? { subscriptionProvider: args.subscriptionProvider } : {}),
+        ...(args.authKind === 'subscription' && args.scope ? { scope: args.scope } : {}),
+        ...(args.authKind === 'subscription' && args.workspaceId
+          ? { workspaceId: args.workspaceId }
+          : {}),
         endpoint: args.endpoint,
         displayName: args.displayName,
         // Retained only for hosted WorkOS-Vault compatibility. The credential

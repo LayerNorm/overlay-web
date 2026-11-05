@@ -6,7 +6,7 @@ const nonTextTypes = new Set([
   'web_search', 'code_interpreter', 'image_generation', 'mcp',
 ])
 
-export function assertSupportedCodexRequest(body: Record<string, unknown>, modelId: string) {
+export function assertSupportedSubscriptionRequest(body: Record<string, unknown>, modelId: string) {
   if (body.model !== modelId) throw new Error('Subscription model mismatch')
   if (body.zero_data_retention === true || body.zeroDataRetention === true || body.zdr === true) {
     throw new Error('This subscription service does not guarantee zero data retention')
@@ -20,11 +20,11 @@ export function assertSupportedCodexRequest(body: Record<string, unknown>, model
     'truncation', 'user', 'previous_response_id', 'prompt_cache_retention',
   ]) {
     if (body[option] !== undefined && body[option] !== null) {
-      throw new Error(`Codex subscription requests do not support ${option}`)
+      throw new Error(`Subscription requests do not support ${option}`)
     }
   }
   if (body.instructions !== undefined && typeof body.instructions !== 'string') {
-    throw new Error('Invalid Codex instructions')
+    throw new Error('Invalid subscription instructions')
   }
 }
 
@@ -62,17 +62,10 @@ function validateTools(body: Record<string, unknown>): void {
           Object.keys(tool).some((key) =>
             !['type', 'name', 'description', 'parameters', 'strict'].includes(key)
           )) {
-        throw new Error('Invalid Codex function tool')
-      }
-    } else if (tool.type === 'custom') {
-      if (!toolName(tool.name) ||
-          Object.keys(tool).some((key) =>
-            !['type', 'name', 'description', 'format'].includes(key)
-          )) {
-        throw new Error('Invalid Codex custom text tool')
+        throw new Error('Invalid subscription function tool')
       }
     } else {
-      throw new Error('Hosted subscription tools are not supported')
+      throw new Error('Only function tools are supported for subscriptions')
     }
   }
   if (typeof body.tool_choice === 'string' &&
@@ -82,7 +75,7 @@ function validateTools(body: Record<string, unknown>): void {
 }
 
 
-export function codexStatelessRequest(body: Record<string, unknown>): Record<string, unknown> {
+export function subscriptionStatelessRequest(body: Record<string, unknown>): Record<string, unknown> {
   const tools = Array.isArray(body.tools)
     ? body.tools.map((tool) => isRecord(tool) && tool.type === 'function' && tool.strict == null
       ? { ...tool, strict: false }
@@ -90,3 +83,26 @@ export function codexStatelessRequest(body: Record<string, unknown>): Record<str
     : undefined
   return { ...body, ...(tools ? { tools } : {}), stream: true, store: false }
 }
+
+export function assertSupportedCodexRequest(body: Record<string, unknown>, modelId: string) {
+  const tools = Array.isArray(body.tools) ? body.tools.map((tool) => {
+    if (!isRecord(tool) || tool.type !== 'custom') return tool
+    const format = tool.format
+    if (!toolName(tool.name) ||
+        (format !== undefined && (!isRecord(format) || format.type !== 'text' ||
+          Object.keys(format).some((key) => key !== 'type'))) ||
+        Object.keys(tool).some((key) =>
+          !['type', 'name', 'description', 'format'].includes(key)
+        ) || (tool.description !== undefined && typeof tool.description !== 'string')) {
+      throw new Error('Invalid Codex custom text tool')
+    }
+    return {
+      type: 'function',
+      name: tool.name,
+      ...(tool.description === undefined ? {} : { description: tool.description }),
+      parameters: { type: 'object' },
+    }
+  }) : undefined
+  assertSupportedSubscriptionRequest({ ...body, ...(tools ? { tools } : {}) }, modelId)
+}
+export const codexStatelessRequest = subscriptionStatelessRequest

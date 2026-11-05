@@ -15,6 +15,7 @@ import {
 
 export type SubscriptionUpdateBody = Record<string, unknown> & {
   action: 'poll' | 'refresh' | 'callback'
+  callbackUrl?: string
 }
 
 function publicConnection(connection: ProviderConnectionRecord): ByokConnectionRow {
@@ -23,6 +24,9 @@ function publicConnection(connection: ProviderConnectionRecord): ByokConnectionR
     providerId: connection.providerId,
     authKind: connection.authKind,
     subscriptionProvider: connection.subscriptionProvider,
+    scope: connection.scope ?? 'personal',
+    ...(connection.scope === 'workspace' ? { workspaceId: connection.workspaceId } : {}),
+    canManage: true,
     endpoint: connection.endpoint,
     displayName: connection.displayName,
     enabledModelIds: connection.enabledModelIds,
@@ -48,6 +52,8 @@ export async function startSubscriptionConnection(
   userId: string,
   providerId: SubscriptionProviderId,
   requestedConnectionId?: string,
+  scope?: 'personal' | 'workspace',
+  workspaceId?: string,
 ) {
   const service = createSubscriptionService()
   if (!service.isEnabled(providerId)) {
@@ -62,7 +68,14 @@ export async function startSubscriptionConnection(
         existing.subscriptionProvider !== providerId) {
       return responseError('Connection not found', 404)
     }
+    if (scope !== undefined && (existing.scope ?? 'personal') !== scope) {
+      return responseError('Subscription scope cannot be changed after creation', 409)
+    }
   } else {
+    const requestedScope = scope ?? 'personal'
+    if (requestedScope === 'workspace' && !workspaceId) {
+      return responseError('An active workspace is required for workspace scope', 400)
+    }
     if (await repository.count({ userId }) >= MAX_CONNECTIONS) {
       return responseError('Provider connection limit reached', 409)
     }
@@ -71,6 +84,8 @@ export async function startSubscriptionConnection(
       providerId: `subscription:${providerId}`,
       authKind: 'subscription',
       subscriptionProvider: providerId,
+      scope: requestedScope,
+      ...(requestedScope === 'workspace' ? { workspaceId } : {}),
       endpoint: '',
       displayName: providerConnectionName(providerId),
       enabledModelIds: [],
@@ -100,7 +115,10 @@ export async function executeSubscriptionUpdate(
   connectionId: string,
   body: SubscriptionUpdateBody,
 ) {
-  if (body.action === 'callback') return responseError('This subscription action is unavailable', 400)
+  if (body.action === 'callback' &&
+      (typeof body.callbackUrl !== 'string' || body.callbackUrl.length === 0 || body.callbackUrl.length > 8192)) {
+    return responseError('Invalid authorization callback', 400)
+  }
   const service = createSubscriptionService()
   const existing = await fetchOwnedConnection(userId, connectionId)
   if (!existing || existing.authKind !== 'subscription') {
@@ -112,6 +130,8 @@ export async function executeSubscriptionUpdate(
     }
     const result = body.action === 'poll'
       ? await service.poll(userId, connectionId)
+      : body.action === 'callback'
+        ? await service.poll(userId, connectionId, body.callbackUrl)
       : await service.refresh(userId, connectionId)
     if (result.status === 'connected') {
       const connection = await fetchOwnedConnection(userId, connectionId)

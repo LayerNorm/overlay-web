@@ -1,5 +1,6 @@
 "use client";
 
+import { RunPlanContext } from './chat/run-plan-context';
 import React, { useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { buildSharePageUrl } from '@/features/share/lib/share-url'
@@ -126,6 +127,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
         onOpenInOverlay={c.openLinkPreview}
       />
       <QuestionnaireComposerProvider value={c.input} readDraft={() => c.inputRef.current} subscribe={c.subscribeToInput} onChange={c.setQuestionnaireDraft} disabled={c.isActiveLoading || c.nativeThreadSafety.readOnly}>
+      <RunPlanContext.Provider value={c.agentRunLifecycle.run}>
       <ChatExperienceView
         {...buildChatExperienceViewProps(
           c,
@@ -141,6 +143,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
           },
         )}
       />
+      </RunPlanContext.Provider>
       </QuestionnaireComposerProvider>
     </>
   );

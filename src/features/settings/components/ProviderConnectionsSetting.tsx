@@ -26,7 +26,14 @@ import {
 // ─── Main Component ───
 
 export function ProviderConnectionsSetting() {
-  const { connections, isLoading, error, refresh, updateConnection } = useByokModels()
+  const {
+    connections: allConnections,
+    isLoading,
+    error,
+    refresh,
+    updateConnection,
+  } = useByokModels()
+  const connections = allConnections.filter((connection) => connection.canManage !== false)
   const { models: gatewayModels, isLoading: gatewayLoading, refresh: refreshGateway } = useGatewayModelCatalog()
   const { settings, isSaving, updateSettings } = useAppSettings()
   const [openedDialog, setDialog] = useState<DialogState>(null)

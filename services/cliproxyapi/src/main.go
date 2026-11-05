@@ -19,7 +19,9 @@ import (
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v8/internal/registry"
 	runtimeexecutor "github.com/router-for-me/CLIProxyAPI/v8/internal/runtime/executor"
+	_ "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/claude/openai/responses"
 	_ "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/codex/openai/responses"
+	_ "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/openai/interactions/responses"
 	_ "github.com/router-for-me/CLIProxyAPI/v8/internal/translator/openai/openai/responses"
 	sdkauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/auth"
 	cliproxyauth "github.com/router-for-me/CLIProxyAPI/v8/sdk/cliproxy/auth"
@@ -39,17 +41,19 @@ type envelope struct {
 	Version     int
 	ProviderID  string
 	Metadata    []byte
-	ExpiresAt   int64
+	ExpiresAt   *int64
+	NonExpiring bool
 	DisplayName string
 }
 
 type pendingEnvelope struct {
-	Backend    string
-	Version    int
-	ProviderID string
-	Metadata   []byte
-	ExpiresAt  int64
-	Interval   int
+	Backend          string
+	Version          int
+	ProviderID       string
+	Metadata         []byte
+	ExpiresAt        int64
+	Interval         int
+	CallbackRequired bool
 }
 
 type bridge struct {
@@ -59,7 +63,7 @@ type bridge struct {
 
 func main() {
 	if err := run(); err != nil {
-		log.Print("private Codex bridge failed to start")
+		log.Print("private subscription bridge failed to start")
 		os.Exit(1)
 	}
 }
@@ -83,7 +87,7 @@ func run() error {
 		Handler:           &bridge{secret: secret},
 		ReadHeaderTimeout: 5 * time.Second,
 	}
-	log.Printf("private Codex bridge listening on port %d", port)
+	log.Printf("private subscription bridge listening on port %d", port)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
@@ -109,6 +113,10 @@ func (b *bridge) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case "/internal/v1/poll":
 		if requireMethod(w, r, http.MethodPost) {
 			b.poll(w, r)
+		}
+	case "/internal/v1/complete":
+		if requireMethod(w, r, http.MethodPost) {
+			b.complete(w, r)
 		}
 	case "/internal/v1/refresh":
 		if requireMethod(w, r, http.MethodPost) {
@@ -171,24 +179,32 @@ func onlyFields(object ojson.Result, allowed ...string) bool {
 }
 
 func decodeEnvelope(doc *ojson.Doc, prefix string) envelope {
+	expiry := doc.Get(prefix + ".expiresAt")
+	var expiresAt *int64
+	if expiry.Exists() && expiry.Raw != "null" {
+		value := expiry.Int()
+		expiresAt = &value
+	}
 	return envelope{
 		Backend:     doc.Get(prefix + ".backend").String(),
 		Version:     int(doc.Get(prefix + ".version").Int()),
 		ProviderID:  doc.Get(prefix + ".providerId").String(),
 		Metadata:    []byte(doc.Get(prefix + ".metadata").Raw),
-		ExpiresAt:   doc.Get(prefix + ".expiresAt").Int(),
+		ExpiresAt:   expiresAt,
+		NonExpiring: doc.Get(prefix + ".nonExpiring").Bool(),
 		DisplayName: doc.Get(prefix + ".displayName").String(),
 	}
 }
 
 func decodePending(doc *ojson.Doc, prefix string) pendingEnvelope {
 	return pendingEnvelope{
-		Backend:    doc.Get(prefix + ".backend").String(),
-		Version:    int(doc.Get(prefix + ".version").Int()),
-		ProviderID: doc.Get(prefix + ".providerId").String(),
-		Metadata:   []byte(doc.Get(prefix + ".metadata").Raw),
-		ExpiresAt:  doc.Get(prefix + ".expiresAt").Int(),
-		Interval:   int(doc.Get(prefix + ".interval").Int()),
+		Backend:          doc.Get(prefix + ".backend").String(),
+		Version:          int(doc.Get(prefix + ".version").Int()),
+		ProviderID:       doc.Get(prefix + ".providerId").String(),
+		Metadata:         []byte(doc.Get(prefix + ".metadata").Raw),
+		ExpiresAt:        doc.Get(prefix + ".expiresAt").Int(),
+		Interval:         int(doc.Get(prefix + ".interval").Int()),
+		CallbackRequired: doc.Get(prefix + ".callbackRequired").Bool(),
 	}
 }
 
@@ -198,7 +214,14 @@ func envelopeValue(value envelope) map[string]any {
 	_ = doc.Set("version", value.Version)
 	_ = doc.Set("providerId", value.ProviderID)
 	_ = doc.SetRawBytes("metadata", value.Metadata)
-	_ = doc.Set("expiresAt", value.ExpiresAt)
+	if value.ExpiresAt == nil {
+		_ = doc.SetRawBytes("expiresAt", []byte("null"))
+	} else {
+		_ = doc.Set("expiresAt", *value.ExpiresAt)
+	}
+	if value.NonExpiring {
+		_ = doc.Set("nonExpiring", true)
+	}
 	if value.DisplayName != "" {
 		_ = doc.Set("displayName", value.DisplayName)
 	}
@@ -213,12 +236,23 @@ func pendingValue(value pendingEnvelope) map[string]any {
 	_ = doc.SetRawBytes("metadata", value.Metadata)
 	_ = doc.Set("expiresAt", value.ExpiresAt)
 	_ = doc.Set("interval", value.Interval)
+	if value.CallbackRequired {
+		_ = doc.Set("callbackRequired", true)
+	}
 	return ojson.ParseBytes(doc.Bytes()).Value().(map[string]any)
 }
 
 func (b *bridge) authorize(w http.ResponseWriter, r *http.Request) {
 	doc, ok := decodeBody(w, r)
-	if !ok || !onlyFields(doc.Get("")) {
+	if !ok || !onlyFields(doc.Get(""), "providerId") {
+		return
+	}
+	providerID := doc.Get("providerId").String()
+	if providerID == "" {
+		providerID = providerName
+	}
+	if providerID != providerName {
+		b.authorizeProvider(w, r, providerID)
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
@@ -250,10 +284,19 @@ func (b *bridge) authorize(w http.ResponseWriter, r *http.Request) {
 
 func (b *bridge) poll(w http.ResponseWriter, r *http.Request) {
 	doc, ok := decodeBody(w, r)
-	if !ok || !onlyFields(doc.Get(""), "pendingState") {
+	if !ok || !onlyFields(doc.Get(""), "pendingState", "providerId") {
 		return
 	}
 	pending := decodePending(doc, "pendingState")
+	requestedProvider := doc.Get("providerId").String()
+	if requestedProvider != "" && requestedProvider != pending.ProviderID {
+		writeError(w, http.StatusBadRequest, "provider_mismatch", "The authorization provider does not match.")
+		return
+	}
+	if pending.ProviderID != providerName {
+		b.pollProvider(w, r, pending)
+		return
+	}
 	if pending.Backend != backendName || pending.Version != 1 || pending.ProviderID != providerName ||
 		pending.ExpiresAt <= time.Now().UnixMilli() || pending.Interval < 1 {
 		writeError(w, http.StatusGone, "reconnect_required", "Codex authorization expired. Reconnect to continue.")
@@ -292,12 +335,51 @@ func (b *bridge) poll(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-func (b *bridge) refresh(w http.ResponseWriter, r *http.Request) {
+func (b *bridge) complete(w http.ResponseWriter, r *http.Request) {
 	doc, ok := decodeBody(w, r)
-	if !ok || !onlyFields(doc.Get(""), "credential") {
+	if !ok || !onlyFields(doc.Get(""), "providerId", "pendingState", "callbackUrl") {
 		return
 	}
-	storage, ok := decodeStorage(decodeEnvelope(doc, "credential"), false)
+	providerID := doc.Get("providerId").String()
+	pending := decodePending(doc, "pendingState")
+	if providerID == "" {
+		providerID = pending.ProviderID
+	}
+	if providerID == "" || providerID != pending.ProviderID {
+		writeError(w, http.StatusBadRequest, "provider_mismatch", "The authorization provider does not match.")
+		return
+	}
+	if providerID == providerName || !supportedProvider(providerID) {
+		writeError(w, http.StatusBadRequest, "invalid_request", "This authorization flow cannot be completed.")
+		return
+	}
+	callbackURL := doc.Get("callbackUrl").String()
+	if len(callbackURL) > 8192 {
+		writeError(w, http.StatusBadRequest, "invalid_request", "The authorization callback is too large.")
+		return
+	}
+	b.completeProvider(w, r, pending, callbackURL)
+}
+
+func (b *bridge) refresh(w http.ResponseWriter, r *http.Request) {
+	doc, ok := decodeBody(w, r)
+	if !ok || !onlyFields(doc.Get(""), "credential", "providerId") {
+		return
+	}
+	credential := decodeEnvelope(doc, "credential")
+	providerID := doc.Get("providerId").String()
+	if providerID == "" {
+		providerID = credential.ProviderID
+	}
+	if providerID != credential.ProviderID {
+		writeError(w, http.StatusBadRequest, "provider_mismatch", "The credential provider does not match.")
+		return
+	}
+	if providerID != providerName {
+		b.refreshProvider(w, r, credential)
+		return
+	}
+	storage, ok := decodeStorage(credential, false)
 	if !ok || storage.RefreshToken == "" {
 		writeError(w, http.StatusBadRequest, "reconnect_required", "Reconnect this Codex subscription to continue.")
 		return
@@ -328,7 +410,7 @@ func (b *bridge) refresh(w http.ResponseWriter, r *http.Request) {
 		storage.PlanType = refreshed.PlanType
 	}
 	storage.LastRefresh = time.Now().UTC().Format(time.RFC3339)
-	credential, err := newCredential(storage)
+	credential, err = newCredential(storage)
 	if err != nil {
 		writeError(w, http.StatusBadGateway, "reconnect_required", "Codex credentials could not be refreshed. Reconnect to continue.")
 		return
@@ -353,10 +435,23 @@ func safeRefreshError(err error) (int, string, string) {
 
 func (b *bridge) models(w http.ResponseWriter, r *http.Request) {
 	doc, ok := decodeBody(w, r)
-	if !ok || !onlyFields(doc.Get(""), "credential") {
+	if !ok || !onlyFields(doc.Get(""), "credential", "providerId") {
 		return
 	}
-	storage, ok := decodeStorage(decodeEnvelope(doc, "credential"), false)
+	credential := decodeEnvelope(doc, "credential")
+	providerID := doc.Get("providerId").String()
+	if providerID == "" {
+		providerID = credential.ProviderID
+	}
+	if providerID != credential.ProviderID {
+		writeError(w, http.StatusBadRequest, "provider_mismatch", "The credential provider does not match.")
+		return
+	}
+	if providerID != providerName {
+		b.modelsProvider(w, r, credential)
+		return
+	}
+	storage, ok := decodeStorage(credential, false)
 	if !ok {
 		writeError(w, http.StatusBadRequest, "reconnect_required", "Reconnect this Codex subscription to continue.")
 		return
@@ -366,21 +461,34 @@ func (b *bridge) models(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnprocessableEntity, "catalog_unavailable", "Codex model catalog is unavailable for this plan.")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"models": models, "source": "provider_catalog"})
+	writeJSON(w, http.StatusOK, map[string]any{"providerId": providerName, "models": models, "source": "provider_catalog"})
 }
 
 func (b *bridge) infer(w http.ResponseWriter, r *http.Request) {
 	doc, ok := decodeBody(w, r)
-	if !ok || !onlyFields(doc.Get(""), "connectionId", "credential", "modelId", "request") {
+	if !ok || !onlyFields(doc.Get(""), "connectionId", "providerId", "credential", "modelId", "request") {
 		return
 	}
 	connectionID, modelID := doc.Get("connectionId").String(), doc.Get("modelId").String()
+	credential := decodeEnvelope(doc, "credential")
+	providerID := doc.Get("providerId").String()
+	if providerID == "" {
+		providerID = credential.ProviderID
+	}
+	if providerID != credential.ProviderID {
+		writeError(w, http.StatusBadRequest, "provider_mismatch", "The credential provider does not match.")
+		return
+	}
 	requestPayload := doc.Get("request")
 	if connectionID == "" || modelID == "" || !requestPayload.IsObject() {
 		writeError(w, http.StatusBadRequest, "invalid_request", "Invalid subscription request.")
 		return
 	}
-	storage, ok := decodeStorage(decodeEnvelope(doc, "credential"), true)
+	if providerID != providerName {
+		b.inferProvider(w, r, doc, credential, providerID, connectionID, modelID, requestPayload)
+		return
+	}
+	storage, ok := decodeStorage(credential, true)
 	if !ok {
 		writeError(w, http.StatusUnauthorized, "reconnect_required", "Reconnect this Codex subscription to continue.")
 		return
@@ -431,6 +539,7 @@ func (b *bridge) infer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache, no-transform")
 	w.Header().Set("X-Accel-Buffering", "no")
+	w.Header().Set("X-Overlay-Provider-Id", providerName)
 	w.WriteHeader(http.StatusOK)
 	flusher, _ := w.(http.Flusher)
 	for {
@@ -614,7 +723,7 @@ func decodeStorage(value envelope, requireUnexpired bool) (*codexauth.CodexToken
 		return nil, false
 	}
 	expiry, err := time.Parse(time.RFC3339, storage.Expire)
-	if err != nil || (requireUnexpired && (value.ExpiresAt <= time.Now().UnixMilli() ||
+	if err != nil || (requireUnexpired && (value.ExpiresAt == nil || *value.ExpiresAt <= time.Now().UnixMilli() ||
 		expiry.UnixMilli() <= time.Now().UnixMilli())) {
 		return nil, false
 	}
@@ -659,8 +768,12 @@ func newCredential(storage *codexauth.CodexTokenStorage) (envelope, error) {
 	}
 	return envelope{
 		Backend: backendName, Version: 1, ProviderID: providerName,
-		Metadata: metadata.Bytes(), ExpiresAt: expiresAt.UnixMilli(), DisplayName: "Codex account",
+		Metadata: metadata.Bytes(), ExpiresAt: int64Pointer(expiresAt.UnixMilli()), DisplayName: "Codex account",
 	}, nil
+}
+
+func int64Pointer(value int64) *int64 {
+	return &value
 }
 
 func safeProviderError(err error) (int, string, string) {

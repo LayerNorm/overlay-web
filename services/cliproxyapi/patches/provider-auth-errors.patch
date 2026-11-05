@@ -1,0 +1,140 @@
+diff --git a/internal/auth/claude/anthropic_auth.go b/internal/auth/claude/anthropic_auth.go
+index 0000000..0000000 100644
+--- a/internal/auth/claude/anthropic_auth.go
++++ b/internal/auth/claude/anthropic_auth.go
+@@ -14,6 +14,7 @@ import (
+ 	"sync"
+ 	"time"
+ 
++	"github.com/MoeForge/moego/ojson"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+ 	log "github.com/sirupsen/logrus"
+ 	"golang.org/x/sync/singleflight"
+ )
+@@ -49,6 +49,11 @@
+ type refreshHTTPError struct {
+ 	status    int
+ 	message   string
+ 	retryable bool
++	oauthError string
+ }
+ 
++func (e *refreshHTTPError) StatusCode() int { return e.status }
++func (e *refreshHTTPError) OAuthError() string { return e.oauthError }
++
+ func (e *refreshHTTPError) Error() string {
+ 	return fmt.Sprintf("token refresh failed with status %d: %s", e.status, e.message)
+ }
+@@ -561,12 +561,15 @@
+ 	if resp.StatusCode != http.StatusOK {
+-		message := string(body)
++		oauthError := ojson.GetBytes(body, "error").String()
++		message := "provider rejected refresh"
+ 		if resp.StatusCode == http.StatusTooManyRequests {
+ 			retryAfter := parseClaudeRetryAfter(resp)
+ 			setClaudeRefreshBlockedUntil(refreshToken, time.Now().Add(retryAfter))
+-			return nil, &refreshHTTPError{status: resp.StatusCode, message: message, retryable: false}
++			return nil, &refreshHTTPError{status: resp.StatusCode, message: message, retryable: false, oauthError: oauthError}
+ 		}
+ 		return nil, &refreshHTTPError{
+ 			status:    resp.StatusCode,
+ 			message:   message,
+-			retryable: resp.StatusCode >= http.StatusInternalServerError,
++			retryable: resp.StatusCode >= http.StatusInternalServerError,
++			oauthError: oauthError,
+ 		}
+ 	}
+diff --git a/internal/auth/kimi/kimi.go b/internal/auth/kimi/kimi.go
+index 0000000..0000000 100644
+--- a/internal/auth/kimi/kimi.go
++++ b/internal/auth/kimi/kimi.go
+@@ -13,7 +13,8 @@ import (
+ 	"runtime"
+ 	"strings"
+ 	"time"
+ 
++	"github.com/MoeForge/moego/ojson"
+ 	"github.com/google/uuid"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/buildinfo"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+@@ -25,0 +26,8 @@
++type providerOAuthError struct {
++	status int
++	reason string
++}
++
++func (e *providerOAuthError) Error() string { return "kimi: provider authorization failed" }
++func (e *providerOAuthError) StatusCode() int { return e.status }
++func (e *providerOAuthError) OAuthError() string { return e.reason }
+@@ -528,5 +537,8 @@
+ 	}
+ 
+ 	if oauthResp.Error != "" {
++		if oauthResp.Error == "expired_token" || oauthResp.Error == "access_denied" {
++			return nil, &providerOAuthError{status: resp.StatusCode, reason: oauthResp.Error}, false
++		}
+ 		switch oauthResp.Error {
+@@ -632,7 +644,11 @@
+ 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+-		return nil, fmt.Errorf("kimi: refresh token rejected (status %d)", resp.StatusCode)
++		return nil, &providerOAuthError{status: resp.StatusCode, reason: ojson.GetBytes(bodyBytes, "error").String()}
+ 	}
+ 
+ 	if resp.StatusCode != http.StatusOK {
+-		return nil, fmt.Errorf("kimi: refresh failed with status %d: %s", resp.StatusCode, string(bodyBytes))
++		return nil, &providerOAuthError{status: resp.StatusCode, reason: ojson.GetBytes(bodyBytes, "error").String()}
+ 	}
+diff --git a/internal/auth/xai/xai.go b/internal/auth/xai/xai.go
+index 0000000..0000000 100644
+--- a/internal/auth/xai/xai.go
++++ b/internal/auth/xai/xai.go
+@@ -7,5 +7,6 @@ import (
+ 	"time"
+ 
+ 	"github.com/MoeForge/moego/base64"
++	"github.com/MoeForge/moego/ojson"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
+@@ -26,1 +26,10 @@
+ var xaiRefreshGroup singleflight.Group
++type providerOAuthError struct {
++	status int
++	reason string
++}
++
++func (e *providerOAuthError) Error() string {
++	switch e.reason {
++	case "access_denied":
++		return "xAI authorization denied"
++	case "expired_token", "invalid_grant":
++		return "xAI authorization expired or rejected"
++	default:
++		return "xAI authorization failed"
++	}
++}
++func (e *providerOAuthError) StatusCode() int { return e.status }
++func (e *providerOAuthError) OAuthError() string { return e.reason }
+@@ -336,17 +345,14 @@
+ 		case "expired_token":
+-			return nil, fmt.Errorf("xai device code expired"), interval, false
++			return nil, &providerOAuthError{status: resp.StatusCode, reason: payload.Error}, interval, false
+ 		case "access_denied":
+-			return nil, fmt.Errorf("xai device authorization denied"), interval, false
++			return nil, &providerOAuthError{status: resp.StatusCode, reason: payload.Error}, interval, false
+ 		default:
+-			desc := strings.TrimSpace(payload.ErrorDescription)
+-			if desc != "" {
+-				return nil, fmt.Errorf("xai device token error: %s: %s", payload.Error, desc), interval, false
+-			}
+-			return nil, fmt.Errorf("xai device token error: %s", payload.Error), interval, false
++			return nil, &providerOAuthError{status: resp.StatusCode, reason: payload.Error}, interval, false
+ 		}
+ 	}
+ 
+ 	if resp.StatusCode != http.StatusOK {
+-		return nil, fmt.Errorf("xai device token request failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body))), interval, false
++		return nil, &providerOAuthError{status: resp.StatusCode}, interval, false
+ 	}
+@@ -426,1 +435,4 @@
+-		return nil, fmt.Errorf("xai token request failed with status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
++		return nil, &providerOAuthError{status: resp.StatusCode, reason: ojson.GetBytes(body, "error").String()}

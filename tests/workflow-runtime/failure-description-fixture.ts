@@ -15,7 +15,7 @@ export async function evidenceValidationFixture() {
     read: async () => ({ plan: [], evidence: [] }),
   } as unknown as HarnessExecutionPorts
   return createHarnessControlTools(ports).harness_update_step.execute!(
-    { id: 'work', status: 'done', evidenceRefs: ['missing'] },
+    { id: 'work', status: 'done' },
     { toolCallId: 'invalid-evidence', messages: [], context: {} },
   )
 }

@@ -11,7 +11,6 @@ import type { HarnessModelReference } from './secure-model'
 import type { HarnessInstructionContext } from './context'
 import type { HarnessToolApprovalGrant } from './tool-approvals'
 import type { AuthenticatedToolDenial, ObservedToolOutcome } from './tool-outcome-persistence'
-import type { HarnessPlanRepairState } from './plan-repair'
 
 export type HarnessModelSettings = Pick<WorkflowAgentOptions, 'maxOutputTokens' | 'temperature' | 'reasoning' | 'providerOptions'>
 
@@ -28,12 +27,6 @@ export type HarnessApprovalRequest = {
   toolCallId: string
   toolName: string
   input: unknown
-}
-
-export type HarnessAnswerVerification = {
-  supported: boolean
-  reason: string
-  evidenceIds: string[]
 }
 
 export type HarnessArtifactRead = {
@@ -56,7 +49,6 @@ export type HarnessRunnerCheckpoint = {
   modelCall: number
   stagnantSegments: number
   finalAnswerRequired: boolean
-  planRepair?: HarnessPlanRepairState
   truncatedResponse: boolean
   segmentStartedAt: number
   publicProgress?: { due: boolean; silentToolBatches: number }
@@ -105,10 +97,6 @@ export interface HarnessExecutionPorts {
   }>
   recordModelStep(step: Parameters<WorkflowAgentOnStepEndCallback<ToolSet>>[0], receiptId: string): Promise<void>
   recoverModelFailure?(receiptId: string): Promise<boolean>
-  verifyFinalAnswer?(input: {
-    state: HarnessSnapshot
-    candidate: string
-  }): Promise<HarnessAnswerVerification>
   recordToolResult(event: WorkflowAgentToolExecutionEndEvent<ToolSet>): Promise<void>
   delegate(input: HarnessDelegation, toolCallId: string): Promise<HarnessChild>
   readChild(childRunId: string): Promise<HarnessSnapshot>

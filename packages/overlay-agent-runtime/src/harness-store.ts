@@ -1,6 +1,5 @@
 export const HARNESS_CONTROL_TOOLS = [
   'harness_set_plan',
-  'harness_revise_step',
   'harness_update_step',
   'harness_read_evidence',
   'harness_read_artifact',
@@ -13,7 +12,7 @@ export const HARNESS_CONTROL_TOOLS = [
 import type {
   HarnessFundingPause,
   HarnessCheckpointPurpose, HarnessChild, HarnessEvidence, HarnessPlanInput, HarnessPolicy, HarnessReceipt,
-  HarnessSnapshot, HarnessStepStatus, HarnessPlanStepPatch,
+  HarnessSnapshot, HarnessStepStatus,
   HarnessCompaction,
 } from './harness-state'
 import type { HarnessDiagnostic } from './harness-diagnostic'
@@ -44,7 +43,6 @@ export type HarnessOperation =
   | { type: 'reserve_model'; id: string; maxCostMicros: number }
   | { type: 'bind_model_dispatch'; id: string; modelId: string; billingReservationId: string | null }
   | { type: 'replace_plan'; steps: HarnessPlanInput[] }
-  | { type: 'revise_step'; id: string; patch: HarnessPlanStepPatch }
   | { type: 'transition_step'; id: string; status: HarnessStepStatus; evidenceRefs?: string[]; skipReason?: string }
   | { type: 'record_evidence'; evidence: HarnessEvidence }
   | { type: 'record_verification'; verification: import('./harness-state').HarnessVerification }

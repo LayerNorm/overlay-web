@@ -1,0 +1,299 @@
+diff --git a/internal/auth/xai/xai.go b/internal/auth/xai/xai.go
+index 0000000..0000000 100644
+--- a/internal/auth/xai/xai.go
++++ b/internal/auth/xai/xai.go
+@@ -262,6 +262,20 @@ func (a *XAIAuth) PollForToken(ctx context.Context, deviceCode *DeviceCodeRespons
+ 	}
+ }
+ 
++// PollDeviceCodeOnce performs one device token exchange and returns the next interval.
++func (a *XAIAuth) PollDeviceCodeOnce(ctx context.Context, tokenEndpoint, deviceCode string, interval time.Duration) (*TokenData, error, time.Duration, bool) {
++	if a == nil {
++		return nil, fmt.Errorf("xai device flow: auth service is nil"), interval, false
++	}
++	if ctx == nil {
++		ctx = context.Background()
++	}
++	endpoint, err := ValidateOAuthEndpoint(tokenEndpoint, "token_endpoint")
++	if err != nil {
++		return nil, err, interval, false
++	}
++	return a.exchangeDeviceCode(ctx, endpoint, deviceCode, interval)
++}
++
+ // exchangeDeviceCode attempts to exchange a device code for tokens.
+ // Returns (token, error, nextInterval, shouldContinue).
+ func (a *XAIAuth) exchangeDeviceCode(ctx context.Context, tokenEndpoint, deviceCode string, interval time.Duration) (*TokenData, error, time.Duration, bool) {
+diff --git a/internal/auth/kimi/kimi.go b/internal/auth/kimi/kimi.go
+index 0000000..0000000 100644
+--- a/internal/auth/kimi/kimi.go
++++ b/internal/auth/kimi/kimi.go
+@@ -228,6 +228,7 @@ type DeviceFlowClient struct {
+ 	deviceID   string
+ 	domain     string
+ 	oauthHost  string
++	lastPollSlowDown bool
+ }
+ 
+ // NewDeviceFlowClient creates a new device flow client.
+@@ -493,6 +494,18 @@ func (c *DeviceFlowClient) PollForToken(ctx context.Context, deviceCode *DeviceCo
+ 				return nil, pollErr
+ 			}
+ 			// Continue polling
++			if c.lastPollSlowDown {
++				interval += 5 * time.Second
++				ticker.Reset(interval)
++				c.lastPollSlowDown = false
++			}
+ 		}
+ 	}
+ }
+ 
++// PollDeviceCodeOnce performs one device token exchange and returns the next interval.
++func (c *DeviceFlowClient) PollDeviceCodeOnce(ctx context.Context, deviceCode string, interval time.Duration) (*KimiTokenData, bool, time.Duration, error) {
++	if c == nil || strings.TrimSpace(deviceCode) == "" {
++		return nil, false, interval, fmt.Errorf("kimi: device code is required")
++	}
++	if ctx == nil {
++		ctx = context.Background()
++	}
++	if interval < defaultPollInterval {
++		interval = defaultPollInterval
++	}
++	token, err, pending := c.exchangeDeviceCode(ctx, deviceCode)
++	nextInterval := interval
++	if c.lastPollSlowDown {
++		nextInterval += 5 * time.Second
++		c.lastPollSlowDown = false
++	}
++	return token, pending, nextInterval, err
++}
++
+ // exchangeDeviceCode attempts to exchange the device code for an access token.
+ // Returns (token, error, shouldContinue).
+ func (c *DeviceFlowClient) exchangeDeviceCode(ctx context.Context, deviceCode string) (*KimiTokenData, error, bool) {
++	c.lastPollSlowDown = false
+ 	data := url.Values{}
+@@ -547,6 +560,7 @@ func (c *DeviceFlowClient) exchangeDeviceCode(ctx context.Context, deviceCode str
+ 		case "authorization_pending":
+ 			return nil, nil, true // Continue polling
+ 		case "slow_down":
++			c.lastPollSlowDown = true
+ 			return nil, nil, true // Continue polling (with increased interval handled by caller)
+ 		case "expired_token":
+ 			return nil, fmt.Errorf("kimi: device code expired"), false
+diff --git a/internal/auth/meta/meta.go b/internal/auth/meta/meta.go
+index 0000000..0000000 100644
+--- a/internal/auth/meta/meta.go
++++ b/internal/auth/meta/meta.go
+@@ -20,6 +20,7 @@ import (
+ 	"strings"
+ 	"time"
+ 
++	"github.com/MoeForge/moego/ojson"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/config"
+ 	"github.com/router-for-me/CLIProxyAPI/v8/internal/util"
+ 	log "github.com/sirupsen/logrus"
+@@ -281,84 +282,104 @@ func (a *MetaAuth) WaitForAuthorization(ctx context.Context, dcr *DeviceCodeRespo
+ 	for {
+ 		select {
+ 		case <-ctx.Done():
+ 			return nil, fmt.Errorf("meta auth: authorization timed out or canceled: %w", ctx.Err())
+ 		case <-ticker.C:
+-			form := url.Values{
+-				"grant_type":  {DeviceCodeGrantType},
+-				"device_code": {dcr.DeviceCode},
+-				"client_id":   {ClientID},
+-			}
+-			req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenEndpoint, strings.NewReader(form.Encode()))
+-			if err != nil {
+-				return nil, fmt.Errorf("meta auth: create token request: %w", err)
+-			}
+-			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+-			req.Header.Set("Accept", "application/json")
+-			req.Header.Set("User-Agent", "muse-code/1.0.2")
+-
+-			resp, err := a.httpClient.Do(req)
+-			if err != nil {
+-				log.Warnf("meta auth: poll request error: %v (retrying)", err)
+-				continue
+-			}
+-
+-			body, errRead := io.ReadAll(resp.Body)
+-			_ = resp.Body.Close()
+-			if errRead != nil {
+-				log.Warnf("meta auth: read token response error: %v (retrying)", errRead)
+-				continue
+-			}
+-
+-			if resp.StatusCode == http.StatusOK {
+-				var tokenData TokenData
+-				if err := json.Unmarshal(body, &tokenData); err != nil {
+-					return nil, fmt.Errorf("meta auth: parse token response: %w", err)
+-				}
+-				if tokenData.AccessToken == "" {
+-					return nil, fmt.Errorf("meta auth: response missing access_token")
+-				}
+-				if tokenData.ExpiresIn > 0 {
+-					tokenData.ExpiresAt = time.Now().Add(time.Duration(tokenData.ExpiresIn) * time.Second).Unix()
+-				}
+-				bundle := &MetaAuthBundle{
+-					TokenData: &tokenData,
+-				}
+-				minted, errMint := a.MintAPIKey(ctx, tokenData.AccessToken)
+-				if errMint != nil {
+-					log.Warnf("meta auth: could not mint api_key from dca_token: %v", errMint)
+-				} else if minted != nil {
+-					bundle.MintedKey = minted
+-					if minted.UserEmail != "" {
+-						bundle.Email = minted.UserEmail
+-					}
+-					if minted.UserFullName != "" {
+-						bundle.Name = minted.UserFullName
+-					}
+-				}
+-				return bundle, nil
+-			}
+-
+-			var errResp TokenData
+-			_ = json.Unmarshal(body, &errResp)
+-			switch errResp.Error {
+-			case "authorization_pending":
+-				continue
+-			case "slow_down":
+-				interval += 5 * time.Second
+-				ticker.Reset(interval)
+-				continue
+-			case "access_denied":
+-				return nil, fmt.Errorf("meta auth: access was denied by user")
+-			case "expired_token":
+-				return nil, fmt.Errorf("meta auth: device code has expired")
+-			default:
+-				if errResp.Error != "" {
+-					return nil, fmt.Errorf("meta auth: error from authorization server: %s: %s", errResp.Error, errResp.ErrorDescription)
+-				}
+-				log.Warnf("meta auth: unexpected response %d: %s", resp.StatusCode, string(body))
+-			}
++			bundle, pending, nextInterval, err := a.PollForAuthorizationOnce(ctx, dcr, interval)
++			if err != nil {
++				if oauthErr, ok := err.(interface{ OAuthError() string }); ok {
++					switch oauthErr.OAuthError() {
++					case "access_denied", "expired_token", "invalid_grant":
++						return nil, err
++					}
++				}
++				log.Warnf("meta auth: poll request error: %v (retrying)", err)
++				continue
++			}
++			if !pending {
++				return bundle, nil
++			}
++			if nextInterval > interval {
++				interval = nextInterval
++				ticker.Reset(interval)
++			}
+ 		}
+ 	}
+ }
++
++// PollForAuthorizationOnce performs one token poll and reuses Meta's API-key minting flow.
++type ProviderOAuthError struct {
++	Status int
++	Reason string
++}
++
++func (e *ProviderOAuthError) Error() string {
++	switch e.Reason {
++	case "access_denied":
++		return "meta authorization denied"
++	case "expired_token", "invalid_grant":
++		return "meta authorization expired or rejected"
++	default:
++		return "meta authorization failed"
++	}
++}
++func (e *ProviderOAuthError) StatusCode() int { return e.Status }
++func (e *ProviderOAuthError) OAuthError() string { return e.Reason }
++
++func (a *MetaAuth) PollForAuthorizationOnce(ctx context.Context, dcr *DeviceCodeResponse, interval time.Duration) (*MetaAuthBundle, bool, time.Duration, error) {
++	if ctx == nil {
++		ctx = context.Background()
++	}
++	if dcr == nil || strings.TrimSpace(dcr.DeviceCode) == "" {
++		return nil, false, interval, fmt.Errorf("meta auth: missing device code response")
++	}
++	tokenEndpoint := strings.TrimSpace(dcr.TokenEndpoint)
++	if tokenEndpoint == "" {
++		tokenEndpoint = TokenEndpoint
++	}
++	if interval <= 0 {
++		interval = DefaultPollInterval
++	}
++	form := url.Values{
++		"grant_type":  {DeviceCodeGrantType},
++		"device_code": {dcr.DeviceCode},
++		"client_id":   {ClientID},
++	}
++	req, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenEndpoint, strings.NewReader(form.Encode()))
++	if err != nil {
++		return nil, false, interval, fmt.Errorf("meta auth: create token request: %w", err)
++	}
++	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
++	req.Header.Set("Accept", "application/json")
++	req.Header.Set("User-Agent", "muse-code/1.0.2")
++	resp, err := a.httpClient.Do(req)
++	if err != nil {
++		return nil, false, interval, err
++	}
++	defer func() { _ = resp.Body.Close() }()
++	body, err := io.ReadAll(resp.Body)
++	if err != nil {
++		return nil, false, interval, err
++	}
++	doc := ojson.ParseBytes(body)
++	if !doc.IsObject() {
++		return nil, false, interval, fmt.Errorf("meta auth: invalid token response")
++	}
++	if resp.StatusCode == http.StatusOK {
++		tokenData := &TokenData{
++			AccessToken: doc.Get("access_token").String(),
++			TokenType:   doc.Get("token_type").String(),
++			ExpiresIn:   int(doc.Get("expires_in").Int()),
++		}
++		if tokenData.AccessToken == "" {
++			return nil, false, interval, fmt.Errorf("meta auth: response missing access_token")
++		}
++		if tokenData.ExpiresIn > 0 {
++			tokenData.ExpiresAt = time.Now().Add(time.Duration(tokenData.ExpiresIn) * time.Second).Unix()
++		}
++		bundle := &MetaAuthBundle{TokenData: tokenData}
++		minted, errMint := a.MintAPIKey(ctx, tokenData.AccessToken)
++		if errMint != nil {
++			log.Warnf("meta auth: could not mint api_key from dca_token")
++		} else if minted != nil {
++			bundle.MintedKey = minted
++			bundle.Email = minted.UserEmail
++			bundle.Name = minted.UserFullName
++		}
++		return bundle, false, interval, nil
++	}
++	switch doc.Get("error").String() {
++	case "authorization_pending":
++		return nil, true, interval, nil
++	case "slow_down":
++		return nil, true, interval + 5*time.Second, nil
++	case "access_denied":
++		status := resp.StatusCode
++		if status < 400 { status = http.StatusBadRequest }
++		return nil, false, interval, &ProviderOAuthError{Status: status, Reason: "access_denied"}
++	case "expired_token":
++		status := resp.StatusCode
++		if status < 400 { status = http.StatusBadRequest }
++		return nil, false, interval, &ProviderOAuthError{Status: status, Reason: "expired_token"}
++	default:
++		if value := strings.TrimSpace(doc.Get("error").String()); value != "" {
++			return nil, false, interval, &ProviderOAuthError{Status: resp.StatusCode, Reason: value}
++		}
++		return nil, false, interval, &ProviderOAuthError{Status: resp.StatusCode}
++	}
++}

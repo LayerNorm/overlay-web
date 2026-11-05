@@ -1,0 +1,414 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Overlay | Response plan preview</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* Values copied from packages/overlay-ui/src/styles.css. */
+    :root {
+      color-scheme: light;
+      --background:#fafafa; --foreground:#0a0a0a; --muted:#71717a; --muted-light:#a1a1aa; --border:#e4e4e7;
+      --elevated:#ffffff; --surface-muted:#f5f5f5; --subtle:#f0f0f0; --success:#10b981;
+      --primary:#dcdce1; --primary-hover:#ccccd3; --primary-text:#27272a; --secondary:#eaeaed; --secondary-hover:#dedee4;
+      --tool-label:#52525b;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --background:#09090b; --foreground:#f5f5f5; --muted:#a1a1aa; --muted-light:#71717a; --border:#27272a;
+        --elevated:#111113; --surface-muted:#151518; --subtle:#1c1c20; --success:#34d399;
+        --primary:#3b3b42; --primary-hover:#484850; --primary-text:#ededf0; --secondary:#252529; --secondary-hover:#303036;
+        --tool-label:#a1a1aa;
+      }
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --background:#09090b; --foreground:#f5f5f5; --muted:#a1a1aa; --muted-light:#71717a; --border:#27272a;
+      --elevated:#111113; --surface-muted:#151518; --subtle:#1c1c20; --success:#34d399;
+      --primary:#3b3b42; --primary-hover:#484850; --primary-text:#ededf0; --secondary:#252529; --secondary-hover:#303036;
+      --tool-label:#a1a1aa;
+    }
+
+    * { box-sizing:border-box; }
+    html, body { height:100%; }
+    body { margin:0; background:var(--background); color:var(--foreground); font:14px/1.6 Geist,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; display:flex; flex-direction:column; }
+    button, input { font:inherit; color:inherit; }
+    button { cursor:pointer; }
+    button:focus-visible, input:focus-visible, label:has(input:focus-visible) { outline:2px solid var(--muted-light); outline-offset:2px; }
+    p { margin:0; }
+    svg.i { width:16px; height:16px; flex-shrink:0; fill:none; stroke:currentColor; stroke-width:1.75; stroke-linecap:round; stroke-linejoin:round; display:block; }
+
+    /* Mockup controls, not part of the product. */
+    .bar { border-bottom:1px solid var(--border); padding:10px 16px; flex-shrink:0; }
+    .bar-row { max-width:720px; margin:auto; display:flex; flex-wrap:wrap; align-items:center; gap:8px 12px; }
+    .segmented { display:flex; flex-wrap:wrap; gap:2px; padding:2px; border:1px solid var(--border); border-radius:8px; }
+    .segmented button { border:0; background:transparent; color:var(--muted); font-size:12px; line-height:18px; padding:3px 10px; border-radius:6px; }
+    .segmented button:hover { color:var(--foreground); }
+    .segmented button[aria-pressed="true"] { background:var(--secondary); color:var(--foreground); }
+    .theme { margin-left:auto; border:0; background:transparent; color:var(--muted); font-size:12px; padding:3px 6px; border-radius:6px; }
+    .theme:hover { color:var(--foreground); }
+    .caption { max-width:720px; margin:6px auto 0; color:var(--muted); font-size:12px; line-height:18px; }
+
+    /* Transcript */
+    .scroller { flex:1; min-height:0; overflow-y:auto; padding:32px 16px 0; }
+    .column { max-width:720px; margin:auto; min-height:100%; display:flex; flex-direction:column; }
+    .user { align-self:flex-end; max-width:85%; padding:9px 15px; border-radius:18px; background:var(--subtle); margin-bottom:28px; }
+    .response { display:flex; flex-direction:column; gap:14px; padding-bottom:24px; flex:1; }
+    .response a { color:inherit; text-underline-offset:3px; }
+    .response ul { margin:0; padding-left:20px; }
+    .response li + li { margin-top:4px; }
+    .tool { display:flex; align-items:center; gap:6px; color:var(--tool-label); font-size:13px; line-height:20px; border:0; background:transparent; padding:0; text-align:left; width:fit-content; }
+    .tool svg.i { width:14px; height:14px; color:var(--muted-light); }
+    .tools { display:flex; flex-direction:column; gap:4px; }
+    .answered { color:var(--tool-label); font-size:13px; line-height:20px; display:flex; gap:6px; align-items:center; }
+    .answered svg.i { width:14px; height:14px; color:var(--muted-light); }
+
+    /* Plan: the shadcn Plan pattern, a Trace with a counted header and status lines. */
+    .dock { display:flex; flex-direction:column; gap:12px; }
+    .dock.live { position:sticky; bottom:0; background:var(--background); padding-top:12px; padding-bottom:12px; margin-bottom:-12px; box-shadow:0 -1px 0 var(--border); z-index:1; }
+    .plan-head { display:flex; align-items:center; gap:8px; width:100%; border:0; background:transparent; padding:2px 0; text-align:left; font-size:13px; line-height:20px; border-radius:6px; }
+    .plan-head .title { font-weight:500; min-width:0; }
+    .plan-head .count { margin-left:auto; color:var(--muted); font-size:12px; white-space:nowrap; font-variant-numeric:tabular-nums; }
+    .plan-head > svg.route { color:var(--muted); }
+    .plan-head .chev { color:var(--muted-light); transition:transform 220ms cubic-bezier(.16,1,.3,1); }
+    .plan-head[aria-expanded="true"] .chev { transform:rotate(180deg); }
+    button.plan-head:hover .title { color:var(--tool-label); }
+    .fold { display:grid; grid-template-rows:0fr; transition:grid-template-rows 300ms cubic-bezier(.16,1,.3,1); }
+    .fold.open { grid-template-rows:1fr; }
+    .fold > div { overflow:hidden; min-height:0; }
+    .lines { list-style:none; margin:0; padding:6px 0 0; }
+    .line { position:relative; display:flex; gap:8px; padding-bottom:6px; font-size:13px; line-height:20px; }
+    .line:last-child { padding-bottom:0; }
+    .line:not(:last-child)::before { content:""; position:absolute; left:7.5px; top:21px; bottom:1px; width:1px; background:var(--border); }
+    .line svg.i { margin-top:2px; }
+    .line[data-s="done"] { color:var(--muted); }
+    .line[data-s="done"] svg.i { color:var(--success); }
+    .line[data-s="running"], .line[data-s="waiting"] { color:var(--foreground); font-weight:500; }
+    .line[data-s="pending"] { color:var(--muted); }
+    .line[data-s="pending"] svg.i, .line[data-s="stopped"] svg.i { color:var(--muted-light); }
+    .line[data-s="stopped"] { color:var(--muted); }
+    .line .note { color:var(--muted); font-weight:400; }
+
+    /* OverlayMark, with the eyes-only look motion. */
+    .mark { width:24px; height:24px; color:var(--foreground); display:block; }
+    .mark g { animation:look 4.4s ease-in-out infinite; }
+    @keyframes look { 0%,38%,100% { transform:translateX(0); } 44%,60% { transform:translateX(-34px); } 66%,82% { transform:translateX(34px); } 88% { transform:translateX(0); } }
+
+    /* Questionnaire: the shadcn Questionnaire anatomy. */
+    .q { border:1px solid var(--border); border-radius:12px; background:var(--elevated); padding:16px; }
+    .q-progress { color:var(--muted); font-size:12px; line-height:18px; margin-bottom:10px; }
+    .q fieldset { border:0; margin:0; padding:0; min-width:0; }
+    .q legend { padding:0; font-weight:500; font-size:15px; line-height:22px; }
+    .q-desc { color:var(--muted); font-size:13px; line-height:20px; margin-top:2px; }
+    .choices { display:flex; flex-direction:column; gap:6px; margin-top:12px; }
+    .choice { display:flex; align-items:center; gap:10px; border:1px solid var(--border); border-radius:8px; padding:8px 8px 8px 12px; cursor:pointer; transition:background 150ms; }
+    .choice:hover { background:var(--surface-muted); }
+    .choice:has(input:checked) { background:var(--subtle); border-color:var(--muted-light); }
+    .choice input { position:absolute; opacity:0; pointer-events:none; }
+    .choice b { display:block; font-weight:500; font-size:13px; line-height:20px; }
+    .choice small { display:block; color:var(--muted); font-size:12px; line-height:18px; }
+    .choice .text { flex:1; min-width:0; }
+    .key { width:20px; height:20px; display:grid; place-items:center; flex-shrink:0; border-radius:4px; background:var(--subtle); color:var(--muted); font-size:11px; line-height:1; }
+    .choice:has(input:checked) .key { background:var(--secondary); color:var(--foreground); }
+    .custom { display:block; margin-top:10px; }
+    .custom span { display:block; font-size:12px; line-height:18px; color:var(--muted); margin-bottom:4px; }
+    .custom input { display:block; width:100%; height:36px; border:1px solid var(--border); border-radius:8px; background:transparent; padding:0 12px; font-size:13px; }
+    .custom input::placeholder { color:var(--muted-light); }
+    .q-actions { display:flex; align-items:center; gap:8px; margin-top:14px; }
+    .btn { height:32px; padding:0 12px; border-radius:6px; border:0; background:transparent; font-size:13px; font-weight:500; color:var(--tool-label); }
+    .btn:hover { background:var(--subtle); }
+    .btn.primary { margin-left:auto; background:var(--primary); color:var(--primary-text); }
+    .btn.primary:hover:not(:disabled) { background:var(--primary-hover); }
+    .btn:disabled { opacity:.5; cursor:default; }
+
+    .actions { display:flex; gap:2px; margin-left:-6px; color:var(--muted); }
+    .actions button { width:28px; height:28px; display:grid; place-items:center; border:0; background:transparent; border-radius:6px; }
+    .actions button:hover { background:var(--subtle); color:var(--foreground); }
+
+    .composer-wrap { flex-shrink:0; padding:8px 16px 16px; }
+    .composer { max-width:720px; margin:auto; border:1px solid var(--border); border-radius:16px; background:var(--surface-muted); padding:12px; }
+    .composer p { color:var(--muted-light); padding:0 4px 12px; }
+    .composer-row { display:flex; justify-content:space-between; align-items:center; color:var(--muted); }
+    .composer-row button { width:30px; height:30px; border-radius:50%; display:grid; place-items:center; border:0; background:transparent; }
+    .composer-row button.send { background:var(--primary); color:var(--primary-text); }
+
+    @media (prefers-reduced-motion: reduce) {
+      .mark g { animation:none; }
+      .fold, .plan-head .chev { transition:none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <div class="bar-row">
+      <div class="segmented" id="states" role="group" aria-label="Response state"></div>
+      <button class="theme" id="theme" type="button">Dark</button>
+    </div>
+    <p class="caption" id="caption" aria-live="polite"></p>
+  </div>
+
+  <div class="scroller" id="scroller">
+    <div class="column">
+      <div class="user">Turn last week's customer calls into a brief I can share with the team on Monday.</div>
+      <div class="response" id="response"></div>
+    </div>
+  </div>
+
+  <div class="composer-wrap">
+    <div class="composer">
+      <p>What do you want to get done?</p>
+      <div class="composer-row">
+        <button type="button" aria-label="Add attachment" id="plus"></button>
+        <button type="button" class="send" id="send"></button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const ICONS = {
+      route: '<circle cx="6" cy="19" r="3"/><path d="M9 19h8.5a3.5 3.5 0 0 0 0-7h-11a3.5 3.5 0 0 1 0-7H15"/><circle cx="18" cy="5" r="3"/>',
+      done: '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+      running: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/>',
+      pending: '<circle cx="12" cy="12" r="10"/>',
+      waiting: '<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>',
+      stopped: '<circle cx="12" cy="12" r="10"/><line x1="9" x2="15" y1="15" y2="9"/>',
+      chevDown: '<path d="m6 9 6 6 6-6"/>',
+      chevRight: '<path d="m9 18 6-6-6-6"/>',
+      copy: '<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>',
+      reply: '<path d="M20 18v-2a4 4 0 0 0-4-4H4"/><path d="m9 17-5-5 5-5"/>',
+      up: '<path d="m5 12 7-7 7 7"/><path d="M12 19V5"/>',
+      plus: '<path d="M5 12h14"/><path d="M12 5v14"/>',
+      square: '<rect width="14" height="14" x="5" y="5" rx="2"/>',
+    }
+    const icon = (name, cls = '') => `<svg class="i ${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`
+    const MARK = `<svg class="mark" viewBox="43 -815 860 860" fill="currentColor" role="img" aria-label="Working"><path d="M473 -780Q561 -780 636.5 -749.5Q712 -719 768.5 -664.5Q825 -610 857.0 -537.0Q889 -464 889 -379Q889 -298 857.0 -227.0Q825 -156 768.0 -103.0Q711 -50 635.5 -20.0Q560 10 473 10Q386 10 310.5 -20.0Q235 -50 178.0 -103.0Q121 -156 89.0 -227.0Q57 -298 57 -379Q57 -464 89.0 -537.0Q121 -610 177.5 -664.5Q234 -719 309.5 -749.5Q385 -780 473 -780ZM473 -45Q561 -45 625.0 -85.5Q689 -126 724.0 -200.5Q759 -275 759 -376Q759 -483 724.0 -561.5Q689 -640 625.0 -682.5Q561 -725 473 -725Q385 -725 321.0 -682.5Q257 -640 222.0 -561.5Q187 -483 187 -376Q187 -275 222.0 -200.5Q257 -126 321.0 -85.5Q385 -45 473 -45Z"/><g><path d="M347.0 -447.0A46.0 46.0 0 0 1 439.0 -447.0L439.0 -363.0A46.0 46.0 0 0 1 347.0 -363.0ZM507.0 -447.0A46.0 46.0 0 0 1 599.0 -447.0L599.0 -363.0A46.0 46.0 0 0 1 507.0 -363.0Z"/></g></svg>`
+
+    const PLAN_TITLE = 'Plan: customer call brief'
+    const STEPS = ['Find last week\'s call notes', 'Group what customers raised', 'Draft the brief', 'Save it to Files', 'Summarize it for you']
+    const QUESTIONS = [
+      { name: 'audience', prompt: 'Who is this brief for?', description: 'This sets how much detail to include.', required: true,
+        choices: [
+          { value: 'Whole team', label: 'Whole team', description: 'Themes, quotes and what each group should do next' },
+          { value: 'Leadership', label: 'Leadership', description: 'One page focused on decisions and risks' },
+        ],
+        input: { label: 'Or describe someone else', placeholder: 'For example, the support leads' } },
+      { name: 'names', prompt: 'Should it name customers?', description: 'You can skip this and I\'ll leave names out.', required: false,
+        choices: [
+          { value: 'Leave names out', label: 'Leave names out', description: 'Safer if the brief gets forwarded' },
+          { value: 'Name customers', label: 'Name customers', description: 'Easier to follow up on each call' },
+        ] },
+    ]
+    const STATES = {
+      working: { label: 'Working', caption: 'While the agent works, the plan stays open and pinned to the bottom of the response. It can\'t be collapsed yet.' },
+      question: { label: 'Question', caption: 'When the agent needs you, the plan shows where it paused and a questionnaire appears below it. Try answering. Your answer plays out the rest of the run.' },
+      finishing: { label: 'Finishing', caption: 'Every step can be done while the answer is still being written, so the plan stays open until the response ends.' },
+      complete: { label: 'Complete', caption: 'Only now does the plan collapse into a dropdown. The working details fold behind "Worked for…", leaving the final answer.' },
+      stopped: { label: 'Stopped', caption: 'If the response ends with steps unfinished, the plan stays open, so you can see exactly what didn\'t happen.' },
+    }
+
+    const app = { state: 'working', done: 1, answers: {}, custom: '', index: 0, expanded: false, timers: [] }
+    const $ = id => document.getElementById(id)
+    const esc = value => value.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+    const clearTimers = () => { app.timers.forEach(clearTimeout); app.timers = [] }
+    const later = (fn, ms) => app.timers.push(setTimeout(fn, ms))
+    const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches
+
+    function answerSummary() {
+      const audience = app.custom.trim() || app.answers.audience || 'Whole team'
+      return `${audience} · ${app.answers.names || 'Leave names out'}`
+    }
+
+    function stepStatus(index) {
+      if (index < app.done) return 'done'
+      if (index > app.done) return 'pending'
+      if (app.state === 'question') return 'waiting'
+      if (app.state === 'stopped') return 'stopped'
+      return 'running'
+    }
+
+    function renderLines() {
+      return `<ol class="lines">${STEPS.map((step, index) => {
+        const status = stepStatus(index)
+        const note = status === 'waiting' ? ' <span class="note">· waiting for your answer</span>' : status === 'stopped' ? ' <span class="note">· stopped</span>' : ''
+        return `<li class="line" data-s="${status}">${icon(status)}<span>${esc(step)}${note}</span></li>`
+      }).join('')}</ol>`
+    }
+
+    function renderPlan() {
+      const count = `${Math.min(app.done, STEPS.length)} of ${STEPS.length} done`
+      if (app.state === 'complete') {
+        return `<div>
+          <button class="plan-head" id="planToggle" type="button" aria-expanded="${app.expanded}" aria-controls="planLines">
+            ${icon('route', 'route')}<span class="title">${PLAN_TITLE}</span><span class="count">${count}</span>${icon('chevDown', 'chev')}
+          </button>
+          <div class="fold ${app.expanded ? 'open' : ''}" id="planLines"><div>${renderLines()}</div></div>
+        </div>`
+      }
+      return `<div>
+        <div class="plan-head">${icon('route', 'route')}<span class="title">${PLAN_TITLE}</span><span class="count">${count}</span></div>
+        <div class="fold open"><div>${renderLines()}</div></div>
+      </div>`
+    }
+
+    function renderQuestionnaire() {
+      const question = QUESTIONS[app.index]
+      const last = app.index === QUESTIONS.length - 1
+      const selected = app.answers[question.name]
+      const hasAnswer = Boolean(selected || (question.input && app.custom.trim()))
+      return `<form class="q" id="q" aria-label="Questions from the agent">
+        <div class="q-progress" role="progressbar" aria-valuemin="1" aria-valuemax="${QUESTIONS.length}" aria-valuenow="${app.index + 1}" aria-label="Question ${app.index + 1} of ${QUESTIONS.length}">Question ${app.index + 1} of ${QUESTIONS.length}</div>
+        <fieldset>
+          <legend>${esc(question.prompt)}</legend>
+          <p class="q-desc">${esc(question.description)}</p>
+          <div class="choices">
+            ${question.choices.map((choice, index) => `<label class="choice">
+              <input type="radio" name="${question.name}" value="${esc(choice.value)}" ${selected === choice.value ? 'checked' : ''}>
+              <span class="text"><b>${esc(choice.label)}</b><small>${esc(choice.description)}</small></span>
+              <span class="key" aria-hidden="true">${'ABCD'[index]}</span>
+            </label>`).join('')}
+          </div>
+          ${question.input ? `<label class="custom"><span>${esc(question.input.label)}</span><input id="custom" type="text" placeholder="${esc(question.input.placeholder)}" value="${esc(app.custom)}"></label>` : ''}
+        </fieldset>
+        <div class="q-actions">
+          ${app.index > 0 ? '<button class="btn" type="button" id="prev">Previous</button>' : ''}
+          ${question.required ? '' : '<button class="btn" type="button" id="skip">Skip</button>'}
+          <button class="btn primary" type="submit" id="next" ${hasAnswer ? '' : 'disabled'}>${last ? 'Send answers' : 'Next'}</button>
+        </div>
+      </form>`
+    }
+
+    const toolRows = () => `<div class="tools">
+      <button class="tool" type="button">Searched notes for "customer call" ${icon('chevRight')}</button>
+      <button class="tool" type="button">Read 6 notes ${icon('chevRight')}</button>
+    </div>`
+    const INTRO = '<p>I\'ll start with last week\'s call notes, then group what customers raised most often.</p>'
+    const FINDINGS = '<p>Six calls are in scope. Three themes keep coming up: setup takes too long, permissions are confusing, and people want a weekly summary.</p>'
+    const final = () => `<p>The brief is ready: <a href="#" onclick="return false">Customer call brief</a>. It covers six calls from last week and comes down to three things:</p>
+      <ul><li><b>Setup is the biggest drag.</b> Four of the six customers needed help on day one.</li><li><b>Permissions confuse admins.</b> Most questions were about who can see what.</li><li><b>Weekly summaries are the top request.</b> It came up without prompting on three calls.</li></ul>
+      <p>${app.answers.names === 'Name customers' ? 'Customers are named, so check who you forward it to.' : 'I left customer names out, so it\'s safe to forward.'}</p>`
+    const answered = () => `<div class="answered">${icon('reply')}<span>You answered: ${esc(answerSummary())}</span></div>`
+
+    function renderBody() {
+      switch (app.state) {
+        case 'working':
+          return INTRO + toolRows()
+        case 'question':
+          return INTRO + toolRows() + FINDINGS + '<p>Before I write it, I need two decisions from you.</p>'
+        case 'finishing':
+          return INTRO + toolRows() + FINDINGS + answered()
+            + (app.done >= 3 ? `<div class="tools"><button class="tool" type="button">Created Customer call brief ${icon('chevRight')}</button></div>` : '')
+            + (app.done >= STEPS.length ? final() : '')
+        case 'complete':
+          return `<button class="tool" type="button">Worked for 3m 12s, called 4 tools ${icon('chevRight')}</button>` + final()
+        case 'stopped':
+          return INTRO + toolRows() + FINDINGS + answered()
+            + `<div class="tools"><button class="tool" type="button">Created Customer call brief ${icon('chevRight')}</button></div>`
+            + '<p>You stopped this response. The draft is saved, but I didn\'t finish the remaining steps.</p>'
+      }
+    }
+
+    const isLive = () => app.state === 'working' || app.state === 'finishing'
+    const hasActions = () => app.state === 'complete' || app.state === 'stopped'
+
+    function render() {
+      $('states').innerHTML = Object.entries(STATES).map(([key, value]) =>
+        `<button type="button" data-state="${key}" aria-pressed="${app.state === key}">${value.label}</button>`).join('')
+      $('caption').textContent = STATES[app.state].caption
+      $('response').innerHTML = renderBody()
+        + `<div class="dock ${isLive() ? 'live' : ''}">
+            ${renderPlan()}
+            ${app.state === 'question' ? renderQuestionnaire() : ''}
+            ${isLive() ? MARK : ''}
+            ${hasActions() ? `<div class="actions"><button type="button" aria-label="Copy">${icon('copy')}</button><button type="button" aria-label="Reply">${icon('reply')}</button></div>` : ''}
+          </div>`
+      $('send').innerHTML = icon(isLive() || app.state === 'question' ? 'square' : 'up')
+      $('send').setAttribute('aria-label', isLive() || app.state === 'question' ? 'Stop' : 'Send')
+      const scroller = $('scroller')
+      scroller.scrollTop = scroller.scrollHeight
+    }
+
+    function go(state) {
+      clearTimers()
+      app.state = state
+      app.expanded = false
+      app.index = 0
+      if (state === 'working') app.done = 1
+      if (state === 'question') app.done = 2
+      if (state === 'finishing' || state === 'complete') app.done = STEPS.length
+      if (state === 'stopped') app.done = 3
+      render()
+    }
+
+    // Answering plays out the rest of the run, ending on the collapse.
+    function playOut() {
+      clearTimers()
+      app.state = 'finishing'
+      app.done = 2
+      app.index = 0
+      render()
+      const hold = reduced() ? 0 : 900
+      for (const count of [3, 4, 5]) later(() => { app.done = count; render() }, hold * (count - 2))
+      later(() => {
+        app.state = 'complete'
+        app.expanded = true
+        render()
+        later(() => { app.expanded = false; $('planLines')?.classList.remove('open'); $('planToggle')?.setAttribute('aria-expanded', 'false') }, 60)
+      }, hold * 5)
+    }
+
+    function advance() {
+      if (app.index < QUESTIONS.length - 1) { app.index++; render(); return }
+      playOut()
+    }
+
+    $('states').addEventListener('click', event => {
+      const key = event.target.closest('[data-state]')?.dataset.state
+      if (key) go(key)
+    })
+    $('response').addEventListener('click', event => {
+      const toggle = event.target.closest('#planToggle')
+      if (toggle) {
+        app.expanded = !app.expanded
+        toggle.setAttribute('aria-expanded', String(app.expanded))
+        $('planLines').classList.toggle('open', app.expanded)
+      }
+      if (event.target.closest('#prev')) { app.index--; render() }
+      if (event.target.closest('#skip')) { delete app.answers[QUESTIONS[app.index].name]; advance() }
+    })
+    $('response').addEventListener('change', event => {
+      if (event.target.type !== 'radio') return
+      app.answers[event.target.name] = event.target.value
+      if (event.target.name === 'audience') { app.custom = ''; const input = $('custom'); if (input) input.value = '' }
+      $('next').disabled = false
+    })
+    $('response').addEventListener('input', event => {
+      if (event.target.id !== 'custom') return
+      app.custom = event.target.value
+      if (app.custom.trim()) {
+        delete app.answers.audience
+        document.querySelectorAll('input[name="audience"]').forEach(radio => { radio.checked = false })
+      }
+      $('next').disabled = !app.custom.trim() && !app.answers.audience
+    })
+    $('response').addEventListener('submit', event => { event.preventDefault(); advance() })
+    document.addEventListener('keydown', event => {
+      if (app.state !== 'question' || event.target.matches('input[type="text"]') || event.metaKey || event.ctrlKey || event.altKey) return
+      const index = 'abcd'.indexOf(event.key.toLowerCase())
+      const radios = document.querySelectorAll('#q input[type="radio"]')
+      if (index >= 0 && radios[index]) { radios[index].checked = true; radios[index].dispatchEvent(new Event('change', { bubbles: true })) }
+    })
+
+    const root = document.documentElement
+    const isDark = () => root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches
+    const syncTheme = () => { $('theme').textContent = isDark() ? 'Light' : 'Dark' }
+    $('theme').addEventListener('click', () => { root.dataset.theme = isDark() ? 'light' : 'dark'; syncTheme() })
+
+    $('plus').innerHTML = icon('plus')
+    syncTheme()
+    render()
+  </script>
+</body>
+</html>

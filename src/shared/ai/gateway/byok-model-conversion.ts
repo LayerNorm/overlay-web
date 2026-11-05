@@ -62,6 +62,9 @@ export interface ByokConnectionRow {
   providerId: string
   authKind?: 'api_key' | 'subscription'
   subscriptionProvider?: string
+  scope?: 'personal' | 'workspace'
+  workspaceId?: string
+  canManage?: boolean
   endpoint: string
   displayName: string
   enabledModelIds: string[]
@@ -142,6 +145,9 @@ export function isByokConnectionRow(value: unknown): value is ByokConnectionRow 
     typeof value.providerId === 'string' &&
     (value.authKind === undefined || value.authKind === 'api_key' || value.authKind === 'subscription') &&
     (value.subscriptionProvider === undefined || isSubscriptionProviderId(value.subscriptionProvider)) &&
+    (value.scope === undefined || value.scope === 'personal' || value.scope === 'workspace') &&
+    (value.workspaceId === undefined || typeof value.workspaceId === 'string') &&
+    (value.canManage === undefined || typeof value.canManage === 'boolean') &&
     typeof value.endpoint === 'string' &&
     typeof value.displayName === 'string' &&
     Array.isArray(value.enabledModelIds) &&
@@ -220,14 +226,15 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
   if (connection.isDefault && connection.providerId === 'vercel-ai-gateway') return []
   const subscription = isSubscriptionConnection(connection)
   const provider = subscription
-    ? ({
+      ? ({
         codex: 'openai',
+        claude: 'anthropic',
         xai: 'xai',
         meta: 'meta-llama',
         kimi: 'moonshotai',
         'kimi-ai': 'moonshotai',
         devin: 'devin',
-      } as const)[connection.subscriptionProvider! as 'codex' | 'xai' | 'meta' | 'kimi' | 'kimi-ai' | 'devin']
+      } as const)[connection.subscriptionProvider! as 'codex' | 'claude' | 'xai' | 'meta' | 'kimi' | 'kimi-ai' | 'devin']
     : connection.displayName
 
   const discovered = parseDiscoveredModels(connection.discoveredModelsJson)
@@ -244,9 +251,11 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
       connectionName: connection.displayName,
       ...(subscription ? { subscription: {
         connectionId: connection._id,
-        scopeLabel: 'Personal',
+        scopeLabel: connection.scope === 'workspace' ? 'Workspace' : 'Personal',
         unavailable: connection.status !== 'active',
-        recoveryHref: `/app/settings?section=providers&reconnect=${encodeURIComponent(connection._id)}`,
+        ...(connection.canManage === false ? {} : {
+          recoveryHref: `/app/settings?section=providers&reconnect=${encodeURIComponent(connection._id)}`,
+        }),
       } } : {}),
       intelligence: 0,
       cost: 1,

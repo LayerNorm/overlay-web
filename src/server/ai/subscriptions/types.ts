@@ -13,6 +13,7 @@ export type SubscriptionState = {
   phase: SubscriptionPhase
   credentialRef?: string
   pendingStateRef?: string
+  pollIntervalMs?: number
   nextPollAt?: number
   expiresAt?: number
   leaseToken?: string
@@ -34,10 +35,11 @@ export type SubscriptionAuthorization = {
   userCode?: string
   expiresAt: number
   interval: number
+  callbackRequired?: boolean
 }
 
 export type SubscriptionResult =
   | { status: 'pending' }
   | { status: 'connected'; models: SubscriptionModel[] }
   | { status: 'expired' }
-  | { status: 'error'; error: string }
+  | { status: 'error'; error: string; retryable?: boolean }

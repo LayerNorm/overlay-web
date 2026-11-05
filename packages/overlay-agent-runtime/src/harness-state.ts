@@ -200,7 +200,6 @@ export type HarnessSnapshot = {
 }
 
 export type HarnessPlanInput = Pick<HarnessPlanStep, 'id' | 'title' | 'dependsOn' | 'acceptanceCriteria' | 'requiresVerification' | 'evidenceTools' | 'answerOnly'>
-export type HarnessPlanStepPatch = Partial<Omit<HarnessPlanInput, 'id'>>
 export type HarnessCheckpointPurpose = 'continuation' | 'compaction'
 
 export class HarnessPlanValidationError extends Error {
@@ -314,42 +313,15 @@ function changed(state: HarnessSnapshot, now: number, progress = true) {
   return state
 }
 
-function validateStepEvidenceTools(state: HarnessSnapshot, step: HarnessPlanInput) {
-  const tools = step.evidenceTools
-  if (state.policy.requiresPlan && !step.answerOnly && !tools?.length) {
-    throw new Error(`Milestone "${step.id}" must declare evidenceTools for its supporting tool results.`)
-  }
-  if (tools === undefined) return
-  if (!tools.length || tools.length > 8 || tools.some(tool => !tool.trim() || tool.length > 256)) {
-    throw new Error(`Milestone "${step.id}" must list between one and eight valid evidenceTools.`)
-  }
-  const unsupported = tools.find(tool => tool !== 'harness_read_child' && tool !== 'harness_read_artifact'
-    && !state.policy.allowedToolIds.includes(tool))
-  if (unsupported) throw new Error(`Milestone "${step.id}" lists unsupported evidence tool "${unsupported}".`)
-}
-
 export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInput[], now: number): HarnessSnapshot {
   assertActive(state)
   if (!steps.length || steps.length > 128) throw new HarnessPlanValidationError('Use between one and 128 meaningful milestones.')
-  const normalizedSteps = steps.map(step => {
-    const previous = state.plan.find(candidate => candidate.id === step.id)
-    if (!previous?.childRunId || (previous.evidenceTools === undefined && step.evidenceTools === undefined)) return step
-    return {
-      ...step,
-      evidenceTools: [...new Set([...(previous.evidenceTools ?? []), ...(step.evidenceTools ?? [])])],
-    }
-  })
+  const normalizedSteps = steps
   const byId = new Map(normalizedSteps.map(step => [step.id, step]))
   if (byId.size !== normalizedSteps.length) throw new HarnessPlanValidationError('Plan IDs must be unique.')
   for (const step of normalizedSteps) {
     if (!step.id.trim() || !step.title.trim() || !step.acceptanceCriteria.length || step.acceptanceCriteria.some(criterion => !criterion.trim())) throw new HarnessPlanValidationError('Each milestone needs an identity, title and acceptance criteria.')
     if (step.dependsOn.some(id => !byId.has(id))) throw new HarnessPlanValidationError('Unknown dependency.')
-    try {
-      validateStepEvidenceTools(state, step)
-    } catch (error) {
-      if (error instanceof Error) throw new HarnessPlanValidationError(error.message)
-      throw error
-    }
     const previous = state.plan.find(candidate => candidate.id === step.id)
     if (step.answerOnly && (step.requiresVerification || ('childRunId' in step && step.childRunId !== undefined) || previous?.childRunId)) {
       throw new HarnessPlanValidationError('Answer-only milestones cannot require verification or delegate work.')
@@ -398,24 +370,6 @@ export function replaceHarnessPlan(state: HarnessSnapshot, steps: HarnessPlanInp
   if (JSON.stringify(next.plan) === JSON.stringify(state.plan)) return state
   next.planRevision++
   return changed(next, now)
-}
-
-export function reviseHarnessPlanStep(state: HarnessSnapshot, id: string, patch: HarnessPlanStepPatch, now: number): HarnessSnapshot {
-  if (!state.plan.some(step => step.id === id)) throw new HarnessPlanValidationError('Unknown milestone ID.')
-  const keys = ['title', 'dependsOn', 'acceptanceCriteria', 'requiresVerification', 'evidenceTools', 'answerOnly'] as const
-  if (!Object.keys(patch).length || Object.keys(patch).some(key => !(keys as readonly string[]).includes(key))) {
-    throw new HarnessPlanValidationError('Revise only milestone definition fields; use a step transition for status and evidence.')
-  }
-  const steps = state.plan.map(step => {
-    const definition: HarnessPlanInput = {
-      id: step.id, title: step.title, dependsOn: step.dependsOn, acceptanceCriteria: step.acceptanceCriteria,
-      requiresVerification: step.requiresVerification,
-      ...(step.evidenceTools !== undefined ? { evidenceTools: step.evidenceTools } : {}),
-      ...(step.answerOnly !== undefined ? { answerOnly: step.answerOnly } : {}),
-    }
-    return step.id === id ? { ...definition, ...patch } : definition
-  })
-  return replaceHarnessPlan(state, steps, now)
 }
 
 export function recordHarnessEvidence(state: HarnessSnapshot, evidence: HarnessEvidence, now: number): HarnessSnapshot {
@@ -556,46 +510,9 @@ export function setHarnessCompaction(
   return changed(next, now, false)
 }
 
-function hasToolResultEvidenceAlreadyUsedByAction(
-  state: HarnessSnapshot,
-  stepId: string,
-  evidence: Array<HarnessEvidence | undefined>,
-): boolean {
-  return evidence.some(item => item?.kind === 'tool_result'
-    && state.plan.some(other => other.id !== stepId && !other.answerOnly && other.status === 'done'
-      && other.evidenceRefs.includes(item.id)))
-}
-
-function evidenceSourceMatchesTool(source: string, toolId: string): boolean {
-  const sourceTool = source.startsWith('tool:') ? source.slice('tool:'.length) : source
-  return source === toolId || sourceTool === toolId
-    || (toolId === 'harness_read_child' && sourceTool.startsWith('harness_read_child:'))
-}
-
-function validateStepCompletion(
-  state: HarnessSnapshot,
-  step: HarnessPlanStep,
-  evidence: Array<HarnessEvidence | undefined>,
-): void {
+function validateStepCompletion(state: HarnessSnapshot, step: HarnessPlanStep): void {
   if (step.dependsOn.some(id => !['done', 'skipped'].includes(state.plan.find(candidate => candidate.id === id)!.status))) {
     throw new Error('Dependencies are not complete.')
-  }
-  if (!step.answerOnly && !evidence.length) throw new Error('Completion requires evidence.')
-  if (state.policy.requiresPlan && !step.answerOnly && !evidence.some(item => item?.kind === 'tool_result')) {
-    throw new Error('Completion requires tool-result evidence.')
-  }
-  if (!step.answerOnly && step.evidenceTools
-    && !evidence.some(item => item?.kind === 'tool_result'
-      && step.evidenceTools!.some(toolId => evidenceSourceMatchesTool(item.source, toolId)))) {
-    throw new Error("Completion requires tool-result evidence from this milestone's evidenceTools.")
-  }
-  if (state.policy.requiresPlan && !step.answerOnly
-    && hasToolResultEvidenceAlreadyUsedByAction(state, step.id, evidence)) {
-    throw new Error('Evidence from a tool result already supports another milestone.')
-  }
-  if (step.requiresVerification && !evidence.some(item => item?.kind === 'verification' && item.verdict === 'passed'
-    && item.verification?.stepId === step.id && item.verification.planRevision === state.planRevision)) {
-    throw new Error('Independent verification of this milestone in the current plan revision is required.')
   }
   if (step.childRunId && !state.children.some(child => child.id === step.childRunId && child.status === 'completed')) {
     throw new Error('The delegated child has not completed.')
@@ -614,9 +531,7 @@ export function transitionHarnessStep(state: HarnessSnapshot, input: {
     throw new Error('Revise the milestone before reopening it.')
   }
   const evidenceRefs = [...new Set(input.evidenceRefs ?? step.evidenceRefs)]
-  const evidence = evidenceRefs.map(id => state.evidence.find(candidate => candidate.id === id))
-  if (evidence.some(item => !item || item.verdict === 'failed')) throw new Error('Evidence must reference successful observations from this run.')
-  if (input.status === 'done') validateStepCompletion(state, step, evidence)
+  if (input.status === 'done') validateStepCompletion(state, step)
   if (input.status === 'skipped' && !input.skipReason?.trim()) throw new Error('Skipping work requires a reason.')
   if (step.status === input.status && JSON.stringify(step.evidenceRefs) === JSON.stringify(evidenceRefs)) return state
   Object.assign(step, { status: input.status, evidenceRefs, ...(input.status === 'skipped' ? { skipReason: input.skipReason } : {}) })
@@ -758,11 +673,6 @@ function validateHarnessChildAdmission(state: HarnessSnapshot, child: HarnessChi
   if (state.children.some(candidate => candidate.id === child.id)) throw new Error('Child identity is already reserved.')
   const step = state.plan.find(candidate => candidate.id === child.stepId)
   if (!step || step.childRunId || ['done', 'skipped'].includes(step.status)) throw new Error('Delegate an unfinished unassigned milestone.')
-  const needsChildEvidenceTool = (state.policy.requiresPlan || step.evidenceTools !== undefined)
-    && !step.evidenceTools?.includes('harness_read_child')
-  if (needsChildEvidenceTool && (step.evidenceTools?.length ?? 0) >= 8) {
-    throw new Error(`Milestone "${step.id}" cannot be delegated because evidenceTools already lists eight tools.`)
-  }
   if (step.dependsOn.some(id => !['done', 'skipped'].includes(state.plan.find(candidate => candidate.id === id)!.status))) throw new Error('Finish dependencies before delegating a milestone.')
   if (state.depth >= state.policy.maxDepth) throw new Error('The child depth budget is exhausted.')
   const active = state.children.filter(candidate => candidate.status === 'running')
@@ -774,12 +684,11 @@ function validateHarnessChildAdmission(state: HarnessSnapshot, child: HarnessChi
     throw new Error('The root spending budget cannot cover this child.')
   }
   if (child.status !== 'running' || child.evidenceRefs.length || child.costMicros !== 0 || child.accountedUsage !== undefined) throw new Error('A new child must be empty and running.')
-  return { step, needsChildEvidenceTool }
 }
 
 export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, now: number): HarnessSnapshot {
   assertHarnessRunnable(state, now)
-  const { step, needsChildEvidenceTool } = validateHarnessChildAdmission(state, child)
+  validateHarnessChildAdmission(state, child)
   const next = mutable(state)
   next.children.push({
     ...child,
@@ -789,9 +698,6 @@ export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, n
   })
   const delegatedStep = next.plan.find(candidate => candidate.id === child.stepId)!
   Object.assign(delegatedStep, { childRunId: child.id, status: 'running' })
-  if (needsChildEvidenceTool) {
-    delegatedStep.evidenceTools = [...(step.evidenceTools ?? []), 'harness_read_child']
-  }
   return changed(next, now)
 }
 
@@ -831,7 +737,6 @@ export function admitHarnessNamedChild(
     dependsOn: [],
     acceptanceCriteria: [...step.acceptanceCriteria],
     requiresVerification: false,
-    evidenceTools: ['harness_read_child'],
     status: 'running',
     evidenceRefs: [],
     childRunId: child.id,
@@ -848,7 +753,6 @@ export function harnessCompletionIssues(state: HarnessSnapshot): string[] {
   return [
     ...(state.status !== 'running' ? ['The run is not running.'] : []),
     ...(state.blocker ? ['A blocker remains unresolved.'] : []),
-    ...(state.policy.requiresPlan && !state.plan.length ? ['A durable plan is required.'] : []),
     ...(state.plan.length && !state.plan.some(step => step.status === 'done' || answerOnlyReady(step)) ? ['No milestone was completed.'] : []),
     ...state.plan.filter(step => !['done', 'skipped'].includes(step.status) && !answerOnlyReady(step)).map(step => `Milestone ${step.id} is unfinished.`),
     ...(state.children.some(child => child.status === 'running') ? ['Child work is still running.'] : []),
@@ -1084,7 +988,6 @@ export function consumeHarnessResourcePause(
 }
 
 export function hasRunnableHarnessMilestones(state: HarnessSnapshot): boolean {
-  if (state.policy.requiresPlan && !state.plan.length) return true
   return state.plan.some(step => !['done', 'skipped'].includes(step.status)
     && step.dependsOn.every(id => state.plan.some(candidate => candidate.id === id && ['done', 'skipped'].includes(candidate.status)))
     && (!step.childRunId || !state.children.some(child => child.id === step.childRunId && child.status === 'running')))

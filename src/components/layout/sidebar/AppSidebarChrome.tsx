@@ -2,7 +2,6 @@
 import { unstyledButton } from '@overlay/ui/control-reset'
 import Image from 'next/image'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { Suspense, useEffect, useSyncExternalStore } from 'react'
 import type { ReactNode } from 'react'
 import {
@@ -59,6 +58,18 @@ function BrandMark({ logoSrc, logoAlt, size, className }: {
     <span className={className} style={{ display: 'inline-flex' }}>
       <OverlayMark size={size} label={logoAlt || 'Overlay'} />
     </span>
+  )
+}
+
+function AccountMenuContent({ accountHeader, accountMenu }: {
+  accountHeader?: ReactNode
+  accountMenu: ReactNode
+}) {
+  return (
+    <>
+      {accountHeader ? <div className="mb-1 border-b border-(--border) px-1 pb-1">{accountHeader}</div> : null}
+      {accountMenu}
+    </>
   )
 }
 
@@ -232,7 +243,9 @@ export function DesktopAccountSlot({
   displayName,
   accountMenuOpen,
   onAccountMenuOpenChange,
+  accountHeader,
   accountMenu,
+  userAvatar,
   onSignIn,
 }: {
   menuRef: { current: HTMLDivElement | null }
@@ -242,7 +255,9 @@ export function DesktopAccountSlot({
   displayName: string
   accountMenuOpen: boolean
   onAccountMenuOpenChange: (open: boolean) => void
+  accountHeader?: ReactNode
   accountMenu: ReactNode
+  userAvatar?: ReactNode
   onSignIn: () => void
 }) {
   return (
@@ -255,7 +270,9 @@ export function DesktopAccountSlot({
           },
           placement: 'footer',
           userLabel: displayName,
+          accountHeader,
           accountMenu,
+          userAvatar,
         })
       ) : (
         <DesktopAccountFallback
@@ -265,7 +282,9 @@ export function DesktopAccountSlot({
           displayName={displayName}
           accountMenuOpen={accountMenuOpen}
           onAccountMenuOpenChange={onAccountMenuOpenChange}
+          accountHeader={accountHeader}
           accountMenu={accountMenu}
+          userAvatar={userAvatar}
           onSignIn={onSignIn}
         />
       )}
@@ -280,7 +299,9 @@ function DesktopAccountFallback({
   displayName,
   accountMenuOpen,
   onAccountMenuOpenChange,
+  accountHeader,
   accountMenu,
+  userAvatar,
   onSignIn,
 }: {
   menuRef: { current: HTMLDivElement | null }
@@ -289,7 +310,9 @@ function DesktopAccountFallback({
   displayName: string
   accountMenuOpen: boolean
   onAccountMenuOpenChange: (open: boolean) => void
+  accountHeader?: ReactNode
   accountMenu: ReactNode
+  userAvatar?: ReactNode
   onSignIn: () => void
 }) {
   const label = railExpanded ? (
@@ -309,7 +332,7 @@ function DesktopAccountFallback({
               aria-expanded={accountMenuOpen}
               title={displayName}
             >
-              <User size={15} className="shrink-0" />
+              {userAvatar ?? <User size={15} className="shrink-0" />}
               {label}
             </SidebarMenuButton>
           }
@@ -319,7 +342,7 @@ function DesktopAccountFallback({
           side="top"
           className="w-64"
         >
-          {accountMenu}
+          <AccountMenuContent accountHeader={accountHeader} accountMenu={accountMenu} />
         </FloatingMenu>
       </>
     )
@@ -349,10 +372,13 @@ export function MobileTopBar({
   displayName,
   mobileAccountOpen,
   onMobileAccountOpenChange,
+  accountHeader,
   accountMenu,
+  userAvatar,
   accountRef,
   onOpenMenu,
   onCloseMenu,
+  onSignIn,
 }: {
   hidden: boolean
   brandLink: ReactNode
@@ -361,10 +387,13 @@ export function MobileTopBar({
   displayName: string
   mobileAccountOpen: boolean
   onMobileAccountOpenChange: (open: boolean) => void
+  accountHeader?: ReactNode
   accountMenu: ReactNode
+  userAvatar?: ReactNode
   accountRef: { current: HTMLDivElement | null }
   onOpenMenu: () => void
   onCloseMenu: () => void
+  onSignIn: () => void
 }) {
   return (
     <div
@@ -389,13 +418,24 @@ export function MobileTopBar({
                 compact: true,
                 placement: 'header',
                 userLabel: displayName,
+                accountHeader,
                 onNavigate: () => {
                   onMobileAccountOpenChange(false)
                   onCloseMenu()
                 },
                 accountMenu,
+                userAvatar,
               })}
             </div>
+          ) : isGuestConfirmed ? (
+            <Button variant="ghost"
+              type="button"
+              aria-label="Sign in"
+              onClick={onSignIn}
+              className={unstyledButton("inline-flex h-9 w-9 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted)")}
+            >
+              <User size={16} />
+            </Button>
           ) : (
             <FloatingMenu
               anchorRef={accountRef}
@@ -406,7 +446,7 @@ export function MobileTopBar({
                   aria-expanded={mobileAccountOpen}
                   className={unstyledButton("inline-flex h-9 w-9 items-center justify-center rounded-full border border-(--border) bg-(--surface-elevated) text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
                 >
-                  <User size={16} />
+                  {userAvatar ?? <User size={16} />}
                 </Button>
               }
               open={mobileAccountOpen}
@@ -415,7 +455,7 @@ export function MobileTopBar({
               aria-label="Account"
               className="w-60 rounded-lg"
             >
-              {accountMenu}
+              <AccountMenuContent accountHeader={accountHeader} accountMenu={accountMenu} />
             </FloatingMenu>
           )}
         </div>
@@ -431,7 +471,9 @@ export function MobileAccountFooter({
   displayName,
   accountMenuOpen,
   onAccountMenuOpenChange,
+  accountHeader,
   accountMenu,
+  userAvatar,
   onNavigate,
   onSignIn,
 }: {
@@ -441,7 +483,9 @@ export function MobileAccountFooter({
   displayName: string
   accountMenuOpen: boolean
   onAccountMenuOpenChange: (open: boolean) => void
+  accountHeader?: ReactNode
   accountMenu: ReactNode
+  userAvatar?: ReactNode
   onNavigate: () => void
   onSignIn: () => void
 }) {
@@ -457,7 +501,9 @@ export function MobileAccountFooter({
             },
             placement: 'footer',
             userLabel: displayName,
+            accountHeader,
             accountMenu,
+            userAvatar,
           })
         ) : !isGuestConfirmed ? (
           <FloatingMenu
@@ -468,7 +514,7 @@ export function MobileAccountFooter({
                 className={unstyledButton("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)")}
                 aria-label="Account menu"
               >
-                <User size={13} />
+                {userAvatar ?? <User size={13} />}
                 <span className="flex-1 truncate text-left">{displayName}</span>
                 <ChevronUp
                   size={11}
@@ -482,7 +528,7 @@ export function MobileAccountFooter({
             aria-label="Account"
             className="w-64 rounded-lg"
           >
-            {accountMenu}
+            <AccountMenuContent accountHeader={accountHeader} accountMenu={accountMenu} />
           </FloatingMenu>
         ) : (
           <Button variant="ghost"
@@ -707,7 +753,9 @@ export function MobileSidebar({
   displayName,
   accountMenuOpen,
   onAccountMenuOpenChange,
+  accountHeader,
   accountMenu,
+  userAvatar,
   onSignIn,
 }: {
   open: boolean
@@ -731,10 +779,11 @@ export function MobileSidebar({
   displayName: string
   accountMenuOpen: boolean
   onAccountMenuOpenChange: (open: boolean) => void
+  accountHeader?: ReactNode
   accountMenu: ReactNode
+  userAvatar?: ReactNode
   onSignIn: () => void
 }) {
-  const router = useRouter()
   return (
     <MobileDrawer open={open} hidden={hidden} onClose={onClose}>
       {view === 'panel' && showPanel ? (
@@ -773,7 +822,9 @@ export function MobileSidebar({
               displayName={displayName}
               accountMenuOpen={accountMenuOpen}
               onAccountMenuOpenChange={onAccountMenuOpenChange}
+              accountHeader={accountHeader}
               accountMenu={accountMenu}
+              userAvatar={userAvatar}
               onNavigate={onClose}
               onSignIn={onSignIn}
             />

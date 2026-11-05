@@ -387,6 +387,7 @@ export class ActContextService {
     targetModelId: string
     summarizerModelId?: string
     userId: string
+    workspaceId?: string
     modelUserId?: string
   }): Promise<UIMessage[]> {
     const messagesForModel = await this.buildMessagesForModel({
@@ -407,6 +408,7 @@ export class ActContextService {
       targetModelId: args.targetModelId,
       summarizerModelId: args.summarizerModelId,
       userId: args.userId,
+      workspaceId: args.workspaceId,
       modelUserId: args.modelUserId,
     })
   }
@@ -424,6 +426,7 @@ export class ActContextService {
     targetModelId: string
     summarizerModelId?: string
     userId: string
+    workspaceId?: string
     modelUserId?: string
   }): Promise<UIMessage[]> {
     let messagesForModel = args.messages
@@ -453,6 +456,7 @@ export class ActContextService {
       messages: messagesForModel,
       targetModelId: args.targetModelId,
       userId: args.modelUserId ?? args.userId,
+      workspaceId: args.workspaceId,
       accessToken: args.accessToken,
       previousSummary: previousContextSummary,
       summarizerModelId: args.summarizerModelId,

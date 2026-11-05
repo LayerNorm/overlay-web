@@ -628,6 +628,7 @@ export async function prepareAutomationAgentTurn(
   messagesForModel = await actContextService.prepareExistingMessagesForModel({
     accessToken: undefined,
     conversationId: cid,
+    workspaceId: billingWorkspaceId,
     generateSummaryText: async ({ prompt, targetSummaryTokens }) => {
       const estimatedInputTokens = Math.ceil(prompt.length / 4) + 64
       const summaryReservation = await actUsageBudgetService.reserveForAttempt({
@@ -653,8 +654,14 @@ export async function prepareAutomationAgentTurn(
           userId,
         })
         providerWorkStarted = true
-        const summaryModel = await getLanguageModel(summaryModelId, undefined, userId)
-        const isSubscription = await isSubscriptionModelForUser(summaryModelId, userId)
+        const summaryModel = await getLanguageModel(summaryModelId, undefined, userId, {
+          workspaceId: billingWorkspaceId,
+        })
+        const isSubscription = await isSubscriptionModelForUser(
+          summaryModelId,
+          userId,
+          billingWorkspaceId,
+        )
         const summaryResult = await generateText({
           model: summaryModel,
           ...summaryGenerationOptions({ prompt, targetSummaryTokens, isSubscription }),

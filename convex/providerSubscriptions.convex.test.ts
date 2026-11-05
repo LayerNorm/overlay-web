@@ -344,7 +344,11 @@ test('discovery activation is atomic and rediscovery preserves an empty model se
       connectionId: pending.connectionId, modelId: 'codex-one',
     }
     expect(await convex.query(query('getForDispatchByServer'), dispatchArgs))
-      .toMatchObject({ credentialRef: 'vault-credential', providerId: 'codex' })
+      .toEqual({
+        credentialRef: 'vault-credential',
+        generation: discovery.generation,
+        providerId: 'codex',
+      })
     expect(await convex.query(query('getForDispatchByServer'), {
       ...dispatchArgs, userId: 'another-owner',
     })).toBeNull()
