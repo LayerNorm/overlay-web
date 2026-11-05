@@ -126,6 +126,17 @@ switch, roles and participant scope. Preserve billing/admission, rate limits,
 idempotency, audit attribution and operator/customer separation. No browser
 function may receive a server secret or trust a supplied actor ID as authority.
 
+### Native personal scope
+
+The native viewer guard checks active workspace membership, personal ownership
+and participant access. It excludes shared, agent, external and automation chats.
+Legacy automation rows can reference a conversation without its `isAutomation`
+flag, so the guard also checks nondeleted automation bindings using the additive
+`automations.by_conversationId_deletedAt` index. Deleted bindings do not exclude
+an otherwise eligible chat. Keep this index through rollout and rollback; no
+document backfill is required. The scope helper is shared with the subsequent
+personal-list migration rather than delaying this authorization rule until it.
+
 ## Local checks
 
 ```bash
