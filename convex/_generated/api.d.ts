@@ -94,6 +94,7 @@ import type * as imports_slackJobs from "../imports/slackJobs.js";
 import type * as imports_slackMappings from "../imports/slackMappings.js";
 import type * as imports_slackRunner from "../imports/slackRunner.js";
 import type * as integrations_mcpServers from "../integrations/mcpServers.js";
+import type * as integrations_nativeSkills from "../integrations/nativeSkills.js";
 import type * as integrations_skills from "../integrations/skills.js";
 import type * as integrations_workspaceConnectors from "../integrations/workspaceConnectors.js";
 import type * as knowledge_knowledge from "../knowledge/knowledge.js";
@@ -265,6 +266,7 @@ declare const fullApi: ApiFromModules<{
   "imports/slackMappings": typeof imports_slackMappings;
   "imports/slackRunner": typeof imports_slackRunner;
   "integrations/mcpServers": typeof integrations_mcpServers;
+  "integrations/nativeSkills": typeof integrations_nativeSkills;
   "integrations/skills": typeof integrations_skills;
   "integrations/workspaceConnectors": typeof integrations_workspaceConnectors;
   "knowledge/knowledge": typeof knowledge_knowledge;

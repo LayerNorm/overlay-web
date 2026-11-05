@@ -918,6 +918,7 @@ export default defineSchema({
 
 
   skills: defineTable({
+    revision: v.optional(v.number()),
     // Personal / Workspace / Archived. Absent `scope` means personal.
     scope: v.optional(v.union(v.literal('personal'), v.literal('workspace'))),
     archivedAt: v.optional(v.number()),
@@ -938,6 +939,14 @@ export default defineSchema({
       searchField: 'name',
       filterFields: ['userId', 'workspaceId'],
     }),
+
+  skillCreationReceipts: defineTable({
+    userId: v.string(),
+    workspaceId: v.string(),
+    requestId: v.string(),
+    payloadHash: v.string(),
+    skillId: v.id('skills'),
+  }).index('by_userId_requestId', ['userId', 'requestId']),
 
   personalChiefIdentities: defineTable({
     userId: v.string(),

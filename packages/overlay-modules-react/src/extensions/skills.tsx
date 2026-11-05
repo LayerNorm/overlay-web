@@ -18,9 +18,10 @@ export interface SkillDialogProps {
   onDelete: (skill: SkillSummary) => Promise<boolean | void>
   /** Move and archive controls for an existing skill, supplied by the host (they depend on who is viewing). */
   scopeActions?: ReactNode
+  readOnly?: boolean
 }
 
-export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: SkillDialogProps) {
+export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions, readOnly = false }: SkillDialogProps) {
   const isEdit = state.mode === 'edit'
   const initial = state.skill
   const [values, setValues] = useState<SkillFormValues>(() => skillToFormValues(initial))
@@ -34,7 +35,7 @@ export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: 
   }
 
   async function handleSave() {
-    if (saving || deleting || saved) return
+    if (readOnly || saving || deleting || saved) return
     setError(null)
     setSaving(true)
     try {
@@ -53,7 +54,7 @@ export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: 
   }
 
   async function handleDelete() {
-    if (!isEdit || !initial || deleting || saving || saved) return
+    if (readOnly || !isEdit || !initial || deleting || saving || saved) return
     setError(null)
     setDeleting(true)
     try {
@@ -77,23 +78,23 @@ export function SkillDialog({ state, onClose, onSave, onDelete, scopeActions }: 
       description="Instructions your agents can use."
       icon={<PenLine size={20} strokeWidth={1.6} />}
       onClose={onClose} busy={busy}
-      enabled={values.enabled} onEnabledChange={enabled => update('enabled', enabled)}
+      enabled={values.enabled} onEnabledChange={enabled => { if (!readOnly) update('enabled', enabled) }}
       activeDescription="Make this skill available to your agents."
       scopeActions={isEdit ? scopeActions : undefined} scopeLabel={scopeLabel}
       footer={<>
-        <div>{isEdit && initial ? <DeleteExtensionButton name={initial.name || 'this skill'} kind="skill" disabled={busy} onConfirm={() => void handleDelete()} /> : null}</div>
+        <div>{isEdit && initial && !readOnly ? <DeleteExtensionButton name={initial.name || 'this skill'} kind="skill" disabled={busy} onConfirm={() => void handleDelete()} /> : null}</div>
         <div className="flex items-center gap-2">
           <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={() => void handleSave()} disabled={busy || !values.name.trim()}>
+          <Button variant="primary" onClick={() => void handleSave()} disabled={readOnly || busy || !values.name.trim()}>
             {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : null}
             {saving ? 'Saving...' : saved ? 'Saved' : isEdit ? 'Save changes' : 'Create skill'}
           </Button>
         </div>
       </>}
     >
-      <Field label="Name"><Input aria-label="Name" value={values.name} onChange={event => update('name', event.target.value)} placeholder="My skill" /></Field>
-      <Field label="Description"><Input aria-label="Description" value={values.description} onChange={event => update('description', event.target.value)} placeholder="What should this skill help with?" /></Field>
-      <Field label="Instructions"><Textarea aria-label="Instructions" value={values.instructions} onChange={event => update('instructions', event.target.value)} placeholder="Describe how your agent should approach this work." className="min-h-50 resize-y rounded-md text-sm leading-relaxed" /></Field>
+      <Field label="Name"><Input aria-label="Name" readOnly={readOnly} value={values.name} onChange={event => update('name', event.target.value)} placeholder="My skill" /></Field>
+      <Field label="Description"><Input aria-label="Description" readOnly={readOnly} value={values.description} onChange={event => update('description', event.target.value)} placeholder="What should this skill help with?" /></Field>
+      <Field label="Instructions"><Textarea aria-label="Instructions" readOnly={readOnly} value={values.instructions} onChange={event => update('instructions', event.target.value)} placeholder="Describe how your agent should approach this work." className="min-h-50 resize-y rounded-md text-sm leading-relaxed" /></Field>
       <p className="text-xs text-(--muted)">Markdown is supported.</p>
       {error ? <p role="alert" className="text-sm text-red-500">{error}</p> : null}
     </ExtensionDialog>

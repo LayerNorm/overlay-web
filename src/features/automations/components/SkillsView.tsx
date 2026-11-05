@@ -28,13 +28,28 @@ import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope, scopeForNewItem } from '@/shared/workspaces/panel-scope'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
+import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { NativeSkillsView, SkillsErrorBoundary } from './NativeSkillsView'
 
 interface DialogState {
   mode: 'create' | 'edit'
   skill?: SkillSummary
 }
 
-export default function SkillsView({ userId: _userId }: { userId: string; selectedSkillId?: string }) {
+export default function SkillsView({ userId }: { userId: string; selectedSkillId?: string }) {
+  const { nativeAuthConfigured, hasConvexClient } = useConvexAuthConfiguration()
+  const { activeWorkspace, switchingWorkspaceId, status } = useWorkspace()
+  const view = usePanelListView()
+  if (switchingWorkspaceId || status !== 'ready') return <p role="status">Loading workspace…</p>
+  if (!nativeAuthConfigured) return <LegacySkillsView key={`${userId}:${activeWorkspace?.id}:${view}`} userId={userId} />
+  if (!hasConvexClient || !activeWorkspace) return <p role="status">Skills are unavailable until workspace authentication is ready.</p>
+  return <SkillsErrorBoundary key={`${userId}:${activeWorkspace.id}:${view}`}>
+    <NativeSkillsView workspaceId={activeWorkspace.id} view={view} />
+  </SkillsErrorBoundary>
+}
+
+function LegacySkillsView({ userId: _userId }: { userId: string }) {
   void _userId
 
   const [skills, setSkills] = useState<SkillSummary[]>([])

@@ -7,7 +7,14 @@ import { scopeMutations } from '../lib/scopeMutations'
 const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
 const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
 
-export const { setScope, archive, restore } = scopeMutations('skills', 'extension')
+export const { setScope, archive, restore } = scopeMutations('skills', 'extension', {
+  afterApply: async (rawCtx, change) => {
+    const ctx = rawCtx as import('../_generated/server').MutationCtx
+    const id = ctx.db.normalizeId('skills', change.id)
+    const row = id ? await ctx.db.get(id) : null
+    if (row) await ctx.db.patch(row._id, { revision: (row.revision ?? 0) + 1, updatedAt: Date.now() })
+  },
+})
 
 async function authorizeUserAccess(params: {
   accessToken?: string
@@ -165,7 +172,7 @@ export const update = mutation({
     if (!skill || (workspaceId !== undefined && skill.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, userId).canEdit(skill))) {
       throw new Error('Unauthorized')
     }
-    const patch: Record<string, unknown> = { updatedAt: Date.now() }
+    const patch: Record<string, unknown> = { updatedAt: Date.now(), revision: (skill.revision ?? 0) + 1 }
     if (updates.name !== undefined) patch.name = updates.name
     if (updates.description !== undefined) patch.description = updates.description
     if (updates.instructions !== undefined) patch.instructions = updates.instructions
