@@ -2,7 +2,13 @@
 title: "API Routes As Source Of Truth"
 description: "Why the web app owns backend route contracts and how other surfaces should consume them."
 ---
-The web app owns backend route contracts for every surface. Desktop, mobile, Chrome, and future surfaces should call the same `/api/v1/*` endpoints through `@overlay/api-client` rather than copying route-specific fetch logic.
+The web app owns HTTP backend route contracts. Desktop, mobile, Chrome, and external consumers use `/api/v1/*` through `@overlay/api-client` rather than copying route-specific fetch logic. Migrated browser application state uses native Convex queries/mutations directly; HTTP remains the contract for retained consumers and genuine server orchestration, not a required database abstraction.
+
+Native browser scope derives the viewer from verified Convex identity and checks
+current workspace membership and resource ownership inside the Convex function.
+The personal-chat pilot uses `convex/lib/nativeViewer.ts`; see
+[Convex workflow](convex-workflow.md#native-browser-scope). Scope checks alone do
+not replace domain write policy, billing admission, audit or idempotency.
 
 Browser chat streaming shares the app client's session-recovery broker and route
 workspace targeting. It retries once only for the BFF's pre-dispatch 401 with a
@@ -470,3 +476,9 @@ callers. Convex stores `createdByAgent` for creations; Harness binary publicatio
 and agent-drive uploads set it directly. These records count as work produced
 without crediting the owner as a human active user. Existing ownership, quota and
 revision checks still apply.
+
+Native personal-chat ownership uses a request-local server readiness probe through
+the existing settings read. Only the backend-owned `nativePersonalChatRevision`
+marker activates the new queries; cached browser preferences cannot select a
+transport. Old or unavailable readiness retains legacy guarded reads and writes
+during web-first upgrades and rollback.

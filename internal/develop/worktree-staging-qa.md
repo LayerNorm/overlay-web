@@ -39,6 +39,13 @@ holds, memberships and plan changes survive rebuilding. Use the trusted Preview
 QA Recovery workflow for an explicit refill rather than creating another deploy
 key. The real provider cap remains independent of synthetic credit.
 
+Workspace navigation QA must include a rejected activation. Source selection and
+content, including an unsent draft, must recover without treating a pending
+entitlement read as a billing
+denial. Unknown access keeps sending blocked and shows verification status, not
+a payment prompt. For independent-session expiry checks, establish separate
+upstream logins; copying storage state isolates browser contexts, not sessions.
+
 Keep Personal free for negative admission checks and use Computer QA for funded
 lifecycle tests. Use the existing restricted Preview Boat credential, allocate
 one disposable machine at a time, and verify stop/delete and metering cleanup.

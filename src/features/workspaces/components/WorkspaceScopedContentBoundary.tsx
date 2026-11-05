@@ -52,7 +52,6 @@ function legacyScopedDestination(args: {
 }
 
 function shouldWaitForWorkspaceContent(args: {
-  switchingWorkspaceId: string | null
   waitingForNavigation: boolean
   routeTarget: ReturnType<typeof readWorkspaceRouteTarget>
   status: ReturnType<typeof useWorkspace>['status']
@@ -60,10 +59,9 @@ function shouldWaitForWorkspaceContent(args: {
   resolvedRouteTargetKey: string | null
   descriptor: ReturnType<typeof readWorkspaceRouteDescriptor>
 }): boolean {
-  const { switchingWorkspaceId, waitingForNavigation, routeTarget, status, currentWorkspace, resolvedRouteTargetKey, descriptor } = args
+  const { waitingForNavigation, routeTarget, status, currentWorkspace, resolvedRouteTargetKey, descriptor } = args
   return Boolean(
-    switchingWorkspaceId
-    || waitingForNavigation
+    waitingForNavigation
     || (routeTarget?.kind === 'handle' && status !== 'ready')
     || (descriptor && routeTarget && status === 'ready' && !currentWorkspace)
     || isWorkspaceRouteTargetPending(routeTarget, resolvedRouteTargetKey)
@@ -174,7 +172,6 @@ export function WorkspaceScopedContentGate({
 
   } = state
   if (shouldWaitForWorkspaceContent({
-    switchingWorkspaceId,
     waitingForNavigation,
     routeTarget,
     status,
@@ -194,15 +191,27 @@ export function WorkspaceScopedContentGate({
     currentScope,
 
   })) return fallback
-  return <Fragment key={scopeKey}>{children}</Fragment>
+  return (
+    <Fragment key={scopeKey}>
+      <div
+        className={switchingWorkspaceId ? 'hidden' : 'contents'}
+        hidden={Boolean(switchingWorkspaceId)}
+        inert={Boolean(switchingWorkspaceId)}
+      >
+        {children}
+      </div>
+      {switchingWorkspaceId ? fallback : null}
+    </Fragment>
+  )
 }
 
 /**
  * Keeps route content isolated from the workspace that produced it.
  *
  * Next keeps client component state when two canonical workspace URLs rewrite
- * to the same app route. During a switch we hide the previous workspace's page,
- * then remount the route subtree once navigation commits to the new workspace.
+ * to the same app route. Pending activation hides but preserves the source page
+ * so rejection cannot discard drafts. Route changes still discard its subtree.
+ * Source effects stay active until then, rather than being suspended mid-request.
  * The sidebar remains mounted and can refresh independently.
  */
 export function WorkspaceScopedContentBoundary({
