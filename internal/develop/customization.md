@@ -10,6 +10,12 @@ failures; notification permissions remain in macOS System Settings.
 
 ## Brand, Theme, And Navigation
 
+The saved `useSecondarySidebar` setting selects the same sidebar component at every
+viewport width. Below 768px, the selected single sidebar or icon-rail/context-panel
+layout opens inside the navigation drawer rather than switching to the legacy
+two-step mobile navigator. Drawer panels fit the available width without changing
+the desktop collapse preference or either sidebar's design.
+
 Account is the workspace-independent `/account` page, linked above Settings in the
 workspace menu. It shows account identity, memberships, sign out and account deletion;
 it must remain usable when workspace loading fails or there are no memberships.

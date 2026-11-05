@@ -28,6 +28,7 @@ import {
   Button,
 } from '@overlay/ui/primitives'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
+import { DoubleSidebar, UnifiedSidebar, type DoubleSidebarProps } from '@overlay/shell-react'
 import { OverlayMark } from '@/components/brand/OverlayMark'
 import { BrandLockup } from '@/components/brand/BrandLockup'
 import { FilesInlinePanel } from '@/components/layout/AppSidebarInlinePanels'
@@ -44,6 +45,10 @@ import type { MobileNavItemVm, SecondaryPanelKind, SidebarNavItem } from './appS
 
 /** Default brand mark path. Custom brand configs keep rendering their image. */
 const DEFAULT_BRAND_LOGO_SRC = '/assets/overlay-logo.png'
+
+export function SelectedSidebar({ useSecondarySidebar = true, ...props }: DoubleSidebarProps & { useSecondarySidebar?: boolean }) {
+  return useSecondarySidebar ? <DoubleSidebar {...props} /> : <UnifiedSidebar {...props} />
+}
 
 function BrandMark({ logoSrc, logoAlt, size, className }: {
   logoSrc: string
@@ -854,11 +859,13 @@ export function MobileDrawer({
   hidden,
   onClose,
   children,
+  className = '',
 }: {
   open: boolean
   hidden: boolean
   onClose: () => void
   children?: ReactNode
+  className?: string
 }) {
   const isDesktop = useSyncExternalStore(subscribeToDesktopSidebarViewport, getDesktopSidebarViewportSnapshot, getServerDesktopSidebarViewport)
   useEffect(() => {
@@ -872,9 +879,10 @@ export function MobileDrawer({
     <Sheet open={open && !hidden} onOpenChange={(nextOpen) => { if (!nextOpen) onClose() }}>
       <SheetContent
         side="left"
+        data-sidebar-drawer
         showCloseButton={false}
         overlayClassName="z-50 bg-black/30 md:hidden"
-        className="z-50 w-[82vw] max-w-[320px] gap-0 border-r border-(--border) bg-(--sidebar-surface) p-0 shadow-[0_20px_80px_rgba(10,10,10,0.18)] md:hidden"
+        className={`z-50 w-[82vw] max-w-[320px] gap-0 border-r border-(--border) bg-(--sidebar-surface) p-0 shadow-[0_20px_80px_rgba(10,10,10,0.18)] md:hidden ${className}`}
         aria-describedby={undefined}
       >
         <SheetTitle className="sr-only">App navigation</SheetTitle>
