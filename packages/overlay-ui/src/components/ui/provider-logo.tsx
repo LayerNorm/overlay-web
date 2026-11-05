@@ -1,9 +1,11 @@
 import { cn } from '../../utils/cn'
 
-// Monochrome provider marks from @lobehub/icons-static-svg (MIT, (c) LobeHub). Inline, currentColor, 24x24.
-type ProviderMark = { label: string; paths: ReadonlyArray<{ d: string; opacity?: number }> }
+// Monochrome provider marks from @lobehub/icons-static-svg (MIT, (c) LobeHub).
+// Devin reuses public/assets/svg/devin.svg with its original viewBox. All marks use currentColor.
+type ProviderMark = { label: string; viewBox?: string; fillRule?: 'evenodd' | 'nonzero'; paths: ReadonlyArray<{ d: string; opacity?: number }> }
 
 const PROVIDER_MARKS: Record<string, ProviderMark> = {
+  devin: { label: 'Devin', viewBox: '0 0 425 425', fillRule: 'nonzero', paths: [{ d: "M70 159.333V91.3471C70 88.3592 71.594 85.5983 74.1816 84.1044L133.043 50.1205C135.631 48.6265 138.819 48.6265 141.407 50.1205L200.269 84.1044C202.856 85.5983 204.45 88.3592 204.45 91.3471V126.068C204.708 137.606 210.806 148.734 221.531 154.926C232.256 161.117 244.942 160.834 255.063 155.289L285.132 137.929C287.719 136.435 290.907 136.435 293.495 137.929L352.357 171.913C354.944 173.406 356.538 176.167 356.538 179.155V247.123C356.538 250.111 354.944 252.872 352.357 254.366L293.495 288.35C290.907 289.844 287.719 289.844 285.132 288.35L255.306 271.13C245.146 265.456 232.344 265.117 221.534 271.358C210.809 277.55 204.711 288.678 204.453 300.215V334.926C204.453 337.914 202.859 340.675 200.271 342.169L141.41 376.153C138.822 377.647 135.634 377.647 133.046 376.153L74.1845 342.169C71.5969 340.675 70.0028 337.914 70.0028 334.926V266.959C70.0029 263.971 71.5969 261.21 74.1845 259.716L133.046 225.732C135.634 224.238 138.822 224.238 141.41 225.732L171.547 243.132C181.656 248.638 194.306 248.906 205.005 242.729C215.815 236.488 221.922 225.231 222.088 213.595C221.83 202.057 215.732 189.737 205.008 183.545C194.283 177.353 181.597 177.636 171.476 183.181L141.269 200.72C138.67 202.229 135.461 202.228 132.864 200.716L74.1576 166.562C71.5835 165.065 70 162.311 70 159.333Z" }] },
   "openai": { label: "OpenAI", paths: [{ d: "M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z" }] },
   "anthropic": { label: "Anthropic", paths: [{ d: "M13.827 3.52h3.603L24 20h-3.603l-6.57-16.48zm-7.258 0h3.767L16.906 20h-3.674l-1.343-3.461H5.017l-1.344 3.46H0L6.57 3.522zm4.132 9.959L8.453 7.687 6.205 13.48H10.7z" }] },
   "google": { label: "Gemini", paths: [{ d: "M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z" }] },
@@ -49,17 +51,21 @@ const PROVIDER_MARKS: Record<string, ProviderMark> = {
   "typesafe-ai": { label: "Typesafe AI", paths: [{ d: "M16.512 2.928L16.512 7.067 20.242 9.487 20.243 18.652 12 24 7.489 21.073 7.489 16.82 3.756 14.399 3.756 5.35 4.111 5.118 12 0ZM9.697 20.65L11.998 22.144 18.032 18.227 15.732 16.735ZM12.779 10.332L12.779 14.4 9.046 16.822 9.046 19.216 14.953 15.383 14.953 8.921ZM16.512 15.384L18.684 16.794 18.684 10.332 16.512 8.922ZM5.966 13.976L8.268 15.47 10.569 13.976 8.268 12.485ZM5.316 6.193L5.316 12.544 7.487 11.134 7.487 7.066 11.221 4.643 11.221 2.36 5.316 6.193ZM9.047 11.132L11.22 12.542 11.22 10.332 9.049 8.921 9.049 11.132ZM9.697 7.487L12 8.981 14.3 7.488 12 5.994ZM12.78 4.643L14.953 6.054 14.953 3.774 12.78 2.359Z" }] },
 }
 
+function canonicalLogoProvider(provider: string): string {
+  return provider === 'meta-llama' ? 'meta' : provider
+}
+
 export function providerLabel(provider: string): string {
   const labels: Record<string, string> = {
     google: 'Google', xai: 'xAI', spacexai: 'xAI', moonshotai: 'Moonshot AI',
     minimax: 'MiniMax', alibaba: 'Alibaba', qwen: 'Alibaba', klingai: 'Kling AI',
   }
-  return labels[provider] ?? PROVIDER_MARKS[provider]?.label
+  return labels[provider] ?? PROVIDER_MARKS[canonicalLogoProvider(provider)]?.label
     ?? provider.replace(/[-_]/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
 }
 
 export function hasProviderLogo(provider: string): boolean {
-  return provider in PROVIDER_MARKS
+  return canonicalLogoProvider(provider) in PROVIDER_MARKS
 }
 
 export function ProviderLogo({
@@ -71,7 +77,7 @@ export function ProviderLogo({
   size?: number
   className?: string
 }) {
-  const mark = PROVIDER_MARKS[provider]
+  const mark = PROVIDER_MARKS[canonicalLogoProvider(provider)]
   if (!mark) {
     const initial = providerLabel(provider).trim().charAt(0).toUpperCase() || '?'
     return (
@@ -92,9 +98,9 @@ export function ProviderLogo({
       data-provider={provider}
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox={mark.viewBox ?? '0 0 24 24'}
       fill="currentColor"
-      fillRule="evenodd"
+      fillRule={mark.fillRule ?? 'evenodd'}
       aria-hidden="true"
       className={cn('shrink-0', className)}
     >

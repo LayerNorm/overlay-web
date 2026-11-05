@@ -2,6 +2,13 @@
 
 ## Current scope
 
+Production and shared Preview enable ChatGPT/Codex, Claude, Grok Build, Meta Muse,
+Kimi and Devin by explicit owner authorization. New connections offer one Kimi
+choice bound to `kimi.com`. The `kimi-ai` ID and `kimi.ai` credential domain are
+retained for existing connections and reconnects, never remapped to another
+provider/domain. Availability marks that row `selectable: false`; new creation
+rejects it while existing-owner reconnect and dispatch remain supported.
+
 The provider implementation supports the exact IDs `codex`, `claude`, `xai`,
 `meta`, `kimi`, `kimi-ai`, and `devin`. Subscription inference and provider-side
 authorization use the pinned CLIProxyAPI source in a private, stateless service
@@ -175,8 +182,10 @@ owner-only management, cross-workspace denial, immutable reconnect scope and
 retryable invalid callbacks. Mobile scope selection and the API-key form are
 checked separately. Active shared dispatch and lease races have synthetic
 Convex/service coverage; live shared-account inference and rotating refresh
-remain acceptance gates, as does real-account QA for other added providers.
-Catalog membership is not account entitlement. Production and shared Preview
-retain the Codex-only allowlist; enable added providers individually after their
-remaining acceptance checks. A successful personal Claude test does not enable
-Claude or other providers in Production.
+remain unverified live-account cases. All six providers successfully start their
+real authorization flows through the private bridge; pinned-executor fixtures
+verify host, credential/model identity, text/function streaming and sanitized
+failures. The owner explicitly authorized enabling all six in Production and
+shared Preview after these checks. Live account completion/inference for every
+provider is not implied by availability or catalog membership. Existing paid
+access, exact-connection routing and no paid fallback remain enforced.

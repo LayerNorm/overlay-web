@@ -11,6 +11,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Bound Harness progress updates separately from work, reject simulated tool calls from progress history and saved transcripts, and hide streamed function-call XML instead of presenting it as execution.
 - Retain observed document-render dimensions and image format in bounded tool evidence without embedding image bytes or claiming visual understanding.
 - Hide milestone bookkeeping that references internal step identifiers or persisted evidence, even when it omits Harness tool and schema names.
+
+- Enable Claude, Grok Build, Meta Muse, Kimi and Devin alongside ChatGPT/Codex in Production and shared Preview. Offer one Kimi choice using kimi.com while preserving existing kimi.ai connections and reconnects, and render the actual Meta and Devin logos instead of letter placeholders.
+
 - Document subscription callback completion and workspace sharing in the API catalog, including active-member use and owner-only management.
 
 - Keep subscription device sign-in polling after retryable provider failures, so a temporary outage does not silently stall authorization.

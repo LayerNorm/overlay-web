@@ -1,6 +1,6 @@
 # Plan: Replace subscription plumbing with CLIProxyAPI
 
-Status: The Codex implementation is merged in #386. The seven-provider implementation and workspace control plane have hosted Claude text/tool and sandbox isolation acceptance. Production remains Codex-only; additional provider activation, live shared inference and rotating-refresh acceptance remain outstanding.
+Status: The Codex implementation is merged in #386. The seven-provider implementation and workspace control plane have hosted Claude text/tool and sandbox isolation acceptance. The owner authorized Production/shared Preview activation of all six selectable providers after real authorization-start and adapter checks. Kimi uses kimi.com for new connections; kimi-ai remains reconnect-only. Live shared inference, rotating refresh and remaining provider-account acceptance are still unverified.
 
 > Progress note: the original Codex slice uses a same-project private bridge.
 > This branch extends its backend and control plane to Claude, xAI, Meta, Kimi,
@@ -38,8 +38,9 @@ Inventory existing connections, credential formats, model selections and consume
 
 ## 6. Deliver provider and picker parity
 
-Expose the exact IDs Codex, Claude, xAI (Grok), Meta, Kimi, Kimi AI and Devin
-through the pinned CLIProxyAPI integration. Codex, xAI, Meta and Kimi use
+Expose Codex, Claude, xAI (Grok), Meta, Kimi and Devin for new connections; retain
+Kimi AI only for existing kimi.ai credentials and reconnects through the pinned
+CLIProxyAPI integration. Codex, xAI, Meta and Kimi use
 device authorization; Claude and Devin use generated PKCE plus locally
 validated callback completion. Persist credentials and pending state only in
 Overlay Vault, keep provider/domain identity exact, and use provider catalogs
@@ -74,13 +75,12 @@ dispatch and is never a workspace fallback.
 Test scope enforcement, discovery changes, tool streaming, refresh races,
 restart recovery, reconnect, disconnect and removed models. Distinguish
 temporary failures, limits and invalid credentials with actionable messages.
-Never silently switch accounts or paid routes. Isolated-preview deployment,
-live callback and real-account acceptance, per-provider refresh, hosted restart
-and end-to-end streaming QA remain unfinished. Local Convex/service fixtures
-are synthetic authorization and lifecycle evidence only, not hosted or live
-provider acceptance. Roll providers out individually
-only after those checks; rollback disables subscription availability without
-reactivating competing credential refreshers.
+Never silently switch accounts or paid routes. Personal Claude text/tool streaming
+and credential durability across deployment have hosted acceptance. All six real
+authorization-start requests and pinned executor contracts pass. The owner approved
+activation of all six after these checks; remaining real-account completion,
+shared inference and rotating-refresh cases stay explicit. Rollback disables
+subscription availability without reactivating competing credential refreshers.
 
 ## Accepted integration checks
 
@@ -88,6 +88,6 @@ A previously connected personal Claude subscription survives a new private-servi
 deployment and completes text and function-tool streaming; saved replies and full
 traces survive reload. Hosted owner/member/outsider fixtures verify scoped listing,
 management denial, immutable scope and invalid-callback recovery. Local bridge
-executor fixtures cover all implemented provider transports. Production and shared
-Preview remain Codex-only. Do not treat this acceptance as live shared-account
-inference, rotating refresh, or activation proof for the remaining providers.
+executor fixtures cover all implemented provider transports. All six real authorization-start requests pass and the owner authorized enabling
+the six selectable providers in Production and shared Preview. Do not treat this acceptance as live shared-account
+inference, rotating refresh, or live inference proof for every provider.
