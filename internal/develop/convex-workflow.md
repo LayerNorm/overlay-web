@@ -42,6 +42,32 @@ workflow or Vercel deployment token requirement. See
 
 ## Development backend
 
+### Native browser scope
+
+`convex/lib/nativeViewer.ts` derives the application user ID exclusively from
+`ctx.auth.getUserIdentity().subject`. Native browser functions accept resource
+and workspace IDs as selectors, never caller-supplied actor IDs, explicit tokens
+or server secrets. `requireNativeWorkspace` reads the active workspace, human
+principal and membership on every query/mutation. These database dependencies
+also invalidate subscribed queries when access is revoked; do not cache them
+across calls or identities.
+
+`requireNativePersonalChat` additionally checks exact workspace, owner, live
+conversation and participant state. Missing participant rows remain compatible
+with older personal chats; archived participant state remains accessible for
+restore. Removed participants, shared scope, rooms, agent threads, external
+bindings and automation chats are outside this pilot. Public share links do not
+grant native private-chat authority. Legacy workspace-less rows stay on their
+existing migration path rather than being silently assigned to the selected
+workspace.
+
+`auth/viewer:workspace` and `auth/viewer:personalChat` expose minimal verified
+scope projections for acceptance checks. They do not grant write, execution,
+billing, provider, operator or workspace-management authority. Domain mutations
+must preserve their own role/policy, audit, idempotency and admission rules;
+run admission and provider execution remain server-owned. Existing explicit-token
+and server APIs are unchanged until each consumer migrates.
+
 For ordinary local web work against the development Convex backend, run Next.js without deploying Convex from a feature worktree:
 
 ```bash
