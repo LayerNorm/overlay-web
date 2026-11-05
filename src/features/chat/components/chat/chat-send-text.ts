@@ -126,7 +126,9 @@ export async function sendTextTurn({
   const retryRuntime = existingChatId ? ensureConversationRuntime(existingChatId) : emptyRuntime
   const attemptKey = submissionKey(snapshot, replyContext, nativeWorkspaceId, existingChatId)
   const previousNativeAttempt = nativeSubmitEnabled
-    ? [...(retryRuntime.nativePendingTurns?.values() ?? [])].find(turn => turn.submissionKey === attemptKey && turn.submitArgs)
+    ? [...(retryRuntime.nativePendingTurns?.values() ?? [])].find(turn =>
+        turn.ownerId === nativeOwnerId && turn.workspaceId === nativeWorkspaceId
+        && turn.submissionKey === attemptKey && turn.submitArgs)
     : undefined
   const textTurnId = previousNativeAttempt?.turnId ?? crypto.randomUUID()
   setTtftClientTurnId(textTurnId)
@@ -240,6 +242,8 @@ export async function sendTextTurn({
       user: previousNativeAttempt?.user ?? user,
       responses: [],
       userAcknowledged: previousNativeAttempt?.userAcknowledged ?? false,
+      ownerId: nativeOwnerId ?? undefined,
+      workspaceId: nativeWorkspaceId ?? undefined,
       submissionKey: attemptKey,
       submitArgs: previousNativeAttempt?.submitArgs,
     }

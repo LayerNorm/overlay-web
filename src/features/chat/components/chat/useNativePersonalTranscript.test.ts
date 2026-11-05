@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { createElement, useEffect, useState } from 'react'
+import { act, create } from 'react-test-renderer'
 import type { HydratedRemoteMessage } from '../../../../../convex/lib/remoteMessageText'
 import type { PersonalPendingTurn } from './personal-transcript'
 import { projectPersonalTranscript } from './personal-transcript'
-import { buildNativeTranscriptView, projectScopedNativeTranscript } from './useNativePersonalTranscript'
+import { nativePendingTurnsForScope } from './native-personal-lifecycle'
+import {
+  buildNativeTranscriptView,
+  projectScopedNativeTranscript,
+  useNativePersonalTranscript,
+} from './useNativePersonalTranscript'
 
 const pending: PersonalPendingTurn = {
   turnId: 'turn', userAcknowledged: false, responses: [],
@@ -39,4 +46,59 @@ test('canonical observer view does not need SDK history and preserves orphan IDs
   assert.deepEqual(view.primaryMessages[1].parts, [{ type: 'text', text: 'Original message unavailable' }])
   assert.equal(view.generationResults.get(0)?.[0].outputId, 'output')
   assert.equal(view.generationResults.get(0)?.[0].status, 'completed')
+})
+
+test('mounted transcript reconciliation updates the authoritative journal and settles', async () => {
+  ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
+  const source = new Map([['turn', {
+    ...pending, ownerId: 'owner', workspaceId: 'workspace',
+  }]])
+  const user = {
+    _id: 'canonical-user', _creationTime: 1, conversationId: 'chat', userId: 'owner',
+    turnId: 'turn', role: 'user', mode: 'act', contentType: 'text',
+    content: 'Pending prompt', createdAt: 1,
+  } as HydratedRemoteMessage
+  let rows = [{ message: user, contextUser: null }]
+  let currentScope = true
+  let renders = 0
+  let reconciliations = 0
+  function Harness() {
+    const [, setVersion] = useState(0)
+    useEffect(() => { renders += 1 })
+    useNativePersonalTranscript({
+      enabled: true,
+      conversationId: 'chat',
+      summaryConversationId: 'chat',
+      transcriptConversationId: 'chat',
+      status: 'ready',
+      rows,
+      journal: nativePendingTurnsForScope(source, 'owner', 'workspace'),
+      sourceJournal: source,
+      sdkMessages: [],
+      runtimeHydrationVersion: renders,
+      onJournalChange: () => {
+        reconciliations += 1
+        setVersion(value => value + 1)
+      },
+      isCurrentScope: () => currentScope,
+    })
+    return null
+  }
+  let renderer: ReturnType<typeof create> | undefined
+  await act(async () => { renderer = create(createElement(Harness)) })
+  assert.equal(source.get('turn')?.userAcknowledged, true)
+  const assistant = {
+    ...user, _id: 'canonical-assistant', role: 'assistant', content: 'Done',
+    status: 'completed', createdAt: 2,
+  } as HydratedRemoteMessage
+  rows = [{ message: user, contextUser: null }, { message: assistant, contextUser: user }]
+  currentScope = false
+  await act(async () => { renderer!.update(createElement(Harness)) })
+  assert.equal(source.has('turn'), true)
+  currentScope = true
+  await act(async () => { renderer!.update(createElement(Harness)) })
+  assert.equal(source.has('turn'), false)
+  assert.equal(reconciliations, 2)
+  assert.ok(renders <= 8)
+  await act(async () => { renderer!.unmount() })
 })

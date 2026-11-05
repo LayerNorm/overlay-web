@@ -1,16 +1,19 @@
 'use client'
 
 import {
-  Component,
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
+  useState,
   type ReactNode,
 } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import { useConvexAuth, useMutation, usePaginatedQuery } from 'convex/react'
 import { usePersonalChatTranscript } from './usePersonalChatTranscript'
+import { useNativePersonalExecution } from './native-personal-execution'
+import type { NativePersonalExecutionState } from './native-personal-execution'
 import { updatePersonalChatList, findPersonalChatSummary, minimalSummary, movePersonalChatRow, personalChatListStatus } from './personal-chat-store'
 import type { FunctionArgs, FunctionReturnType } from 'convex/server'
 import { api } from '../../../convex/_generated/api'
@@ -21,6 +24,7 @@ import {
 } from './personal-chat-optimistic'
 import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { PersonalChatErrorBoundary } from './personal-chat-error-boundary'
 import {
   isWorkspaceRouteTargetPending,
   legacyWorkspaceScopeForRoute,
@@ -54,13 +58,17 @@ type PersonalChatTranscript = {
   loadMore(): void
 }
 
+type PersonalChatExecution = NativePersonalExecutionState
+
 type PersonalChatContextValue = {
   configured: boolean
   available: boolean
   workspaceId: string | null
+  viewerUserId: string | null
   selectedConversationId: string | null
   selectedSummary: PersonalChatSummary | null | undefined
   transcript: PersonalChatTranscript
+  execution: PersonalChatExecution
   active: PersonalChatList
   archived: PersonalChatList
   create(args: NativePersonalCreateArgs): Promise<Id<'conversations'>>
@@ -94,13 +102,17 @@ const emptyTranscript: PersonalChatTranscript = {
   loadMore() {},
 }
 
+const emptyExecution: PersonalChatExecution = { status: 'disabled', value: null }
+
 const PersonalChatContext = createContext<PersonalChatContextValue>({
   configured: false,
   available: false,
   workspaceId: null,
+  viewerUserId: null,
   selectedConversationId: null,
   selectedSummary: undefined,
   transcript: emptyTranscript,
+  execution: emptyExecution,
   active: emptyList,
   archived: emptyList,
   async create() { throw new Error('Native personal chat is unavailable') },
@@ -127,9 +139,11 @@ export function PersonalChatProvider({ children, backendReady = false }: { child
       configured: nativeConfigured,
       available: false,
       workspaceId,
+      viewerUserId: null,
       selectedConversationId: null,
       selectedSummary: undefined,
       transcript: { ...emptyTranscript, status },
+      execution: { ...emptyExecution, status },
       active: { ...emptyList, status },
       archived: { ...emptyList, status },
       async create() { throw new Error('Native personal chat is unavailable') },
@@ -145,15 +159,18 @@ export function PersonalChatProvider({ children, backendReady = false }: { child
 
   return (
     <PersonalChatErrorBoundary
+      context={PersonalChatContext}
       resetKey={`${workspaceId ?? 'no-workspace'}:${pathname ?? ''}:${searchParams.toString()}`}
       fallbackChildren={children}
       fallbackValue={{
         configured: true,
         available: false,
         workspaceId,
+        viewerUserId: null,
         selectedConversationId: null,
         selectedSummary: undefined,
         transcript: { ...emptyTranscript, status: 'unavailable' },
+        execution: { ...emptyExecution, status: 'unavailable' },
         active: { ...emptyList, status: 'unavailable' },
         archived: { ...emptyList, status: 'unavailable' },
         async create() { throw new Error('Native personal chat is unavailable') },
@@ -176,45 +193,6 @@ export function PersonalChatProvider({ children, backendReady = false }: { child
       </NativePersonalChatProvider>
     </PersonalChatErrorBoundary>
   )
-}
-
-type PersonalChatErrorBoundaryProps = {
-  children: ReactNode
-  fallbackChildren: ReactNode
-  fallbackValue: PersonalChatContextValue
-  resetKey: string
-}
-
-class PersonalChatErrorBoundary extends Component<
-  PersonalChatErrorBoundaryProps,
-  { failed: boolean; resetKey: string }
-> {
-  constructor(props: PersonalChatErrorBoundaryProps) {
-    super(props)
-    this.state = { failed: false, resetKey: props.resetKey }
-  }
-
-  static getDerivedStateFromProps(
-    props: PersonalChatErrorBoundaryProps,
-    state: { failed: boolean; resetKey: string },
-  ) {
-    return props.resetKey !== state.resetKey
-      ? { failed: false, resetKey: props.resetKey }
-      : null
-  }
-
-  static getDerivedStateFromError() {
-    return { failed: true }
-  }
-
-  render() {
-    if (!this.state.failed) return this.props.children
-    return (
-      <PersonalChatContext.Provider value={this.props.fallbackValue}>
-        {this.props.fallbackChildren}
-      </PersonalChatContext.Provider>
-    )
-  }
 }
 
 function isChatConsumerPath(pathname: string | null): boolean {
@@ -241,7 +219,8 @@ function personalChatQueryDemand(pathname: string | null, routeParams: URLSearch
   const view = routeParams.get('view')
   const isNativePersonalChatSurface = isChatSurface
     && routeScope !== 'workspace'
-    && !['workspace-chats', 'dms', 'channels'].includes(view ?? '')
+    && !routeParams.get('automationId')
+    && !['all', 'workspace-chats', 'dms', 'channels', 'room', 'rooms'].includes(view ?? '')
   const handleRoute = pathname ? parseWorkspaceHandleRoute(pathname) : null
   const isArchivedRoute = handleRoute?.surface === 'archived'
     || pathname === '/app/archived'
@@ -267,16 +246,35 @@ function NativePersonalChatProvider({
   workspaceReady: boolean
 }) {
   const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
+  const [temporaryActive, setTemporaryActive] = useState(false)
+  useEffect(() => {
+    const updateTemporary = (event: Event) => {
+      setTemporaryActive(Boolean((event as CustomEvent<{ active?: boolean }>).detail?.active))
+    }
+    window.addEventListener('overlay:temporary-chat', updateTemporary)
+    return () => window.removeEventListener('overlay:temporary-chat', updateTemporary)
+  }, [])
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const routeParams = useMemo(() => new URLSearchParams(searchParams.toString()), [searchParams])
   const { needsActiveList, needsArchivedList, canReadSelectedSummary, routeId } = personalChatQueryDemand(pathname, routeParams)
   const canQuery = Boolean(workspaceReady && workspaceId && !authLoading && isAuthenticated)
-  const canQueryActive = canQuery && needsActiveList
+  const canQueryActive = canQuery && needsActiveList && !temporaryActive
   const canQueryArchived = canQuery && needsArchivedList
-  const canQuerySummary = canQuery && canReadSelectedSummary
-  const { selectedConversationId, selectedSummary, transcript, setPendingTranscriptConversation } = usePersonalChatTranscript({
-    workspaceId, canQuery, canRead: canReadSelectedSummary, pathname, routeId,
+  const canReadNativeSummary = canReadSelectedSummary && !temporaryActive
+  const canQuerySummary = canQuery && canReadNativeSummary
+  const { selectedConversationId, selectedSummary, viewerUserId, transcript, setPendingTranscriptConversation } = usePersonalChatTranscript({
+    workspaceId, canQuery, canRead: canReadNativeSummary, pathname, routeId,
+  })
+  const execution = useNativePersonalExecution({
+    enabled: needsActiveList && !temporaryActive,
+    canQuery,
+    workspaceId,
+    viewerUserId,
+    conversationId: transcript.conversationId,
+    summaryConversationId: selectedSummary?._id ?? null,
+    transcriptConversationId: transcript.conversationId,
+    transcriptStatus: transcript.status,
   })
   const activeQuery = usePaginatedQuery(
     api.chat.personal.list,
@@ -405,7 +403,7 @@ function NativePersonalChatProvider({
     await preferencesMutation(args)
   }, [preferencesMutation])
   const baseListStatus = personalChatListStatus({ configured, workspaceReady, authLoading, workspaceId, isAuthenticated })
-  const activeStatus = !needsActiveList
+  const activeStatus = !needsActiveList || temporaryActive
     ? 'disabled'
     : baseListStatus !== 'ready'
       ? baseListStatus
@@ -432,9 +430,11 @@ function NativePersonalChatProvider({
     configured,
     available: true,
     workspaceId,
+    viewerUserId,
     selectedConversationId,
     selectedSummary: visibleSelectedSummary,
     transcript,
+    execution,
     active: {
       rows: visibleActiveRows,
       status: activeStatus,
@@ -459,6 +459,7 @@ function NativePersonalChatProvider({
   }), [
     activeQuery,
     transcript,
+    execution,
     archivedQuery,
     canQueryActive,
     canQueryArchived,
@@ -477,6 +478,7 @@ function NativePersonalChatProvider({
     visibleArchivedRows,
     visibleSelectedSummary,
     workspaceId,
+    viewerUserId,
   ])
 
   return <PersonalChatContext.Provider value={value}>{children}</PersonalChatContext.Provider>

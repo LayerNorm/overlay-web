@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Subscribe native personal chats directly to scoped execution state for lifecycle, safety and exact-turn commands, while retaining existing BFF execution and a fail-closed readiness rollback gate.
+
 - Make native personal-chat transcript pages, preferences and user-turn admission authoritative in the browser while retaining the existing scoped HTTP execution, memory, billing and streaming path.
 
 - Enable native personal history and sending only when the backend advertises compatible transcript support, preserving legacy ownership during web-first upgrades and backend rollback. Keep model preferences in the validated native summary contract.

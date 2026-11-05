@@ -1,22 +1,17 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
 import { usePaginatedQuery, useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
+import { usePersonalChatRouteSelection } from './usePersonalChatRouteSelection'
 
-type PendingTranscript = {
-  conversationId: string
-  ownerId: string
-  workspaceId: string
-  intentKey?: string | null
-}
-
-function pendingTranscriptInvalid(pending: PendingTranscript, workspaceId: string | null,
-  selectedId: string | null, canRead: boolean, viewer: { userId: string } | null | undefined) {
-  return !canRead || pending.workspaceId !== workspaceId || selectedId !== null
-    || (viewer !== undefined && viewer?.userId !== pending.ownerId)
-}
+export {
+  canSetPendingTranscript,
+  pendingIntentMatches,
+  pendingTranscriptInvalid,
+  selectedChatIdFromRouteEvent,
+} from './usePersonalChatRouteSelection'
+export type { PendingTranscript } from './usePersonalChatRouteSelection'
 
 function transcriptStatus(canRead: boolean, canQuery: boolean, id: string | null, summaryReady: boolean,
   summaryInScope: boolean, loading: boolean): 'disabled' | 'loading' | 'ready' | 'unavailable' {
@@ -35,16 +30,9 @@ export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, path
   pathname: string
   routeId: string | null
 }) {
-  const routeKey = JSON.stringify([pathname, routeId])
-  const [selection, setSelection] = useState({ routeKey, conversationId: routeId })
-  if (selection.routeKey !== routeKey) setSelection({ routeKey, conversationId: routeId })
-  const selectedConversationId = selection.routeKey === routeKey ? selection.conversationId : routeId
-  const [pending, setPending] = useState<PendingTranscript | null>(null)
-  const viewer = useQuery(api.auth.viewer.current, canQuery && pending ? {} : 'skip')
-  const pendingInvalid = pending && pendingTranscriptInvalid(pending, workspaceId, selectedConversationId, canRead, viewer)
-  if (pendingInvalid) setPending(null)
-  const pendingId = !pendingInvalid && pending?.ownerId === viewer?.userId ? pending?.conversationId : null
-  const conversationId = selectedConversationId ?? pendingId ?? null
+  const {
+    selectedConversationId, viewerUserId, conversationId, setPendingTranscriptConversation,
+  } = usePersonalChatRouteSelection({ workspaceId, canQuery, canRead, pathname, routeId })
   const selectedSummary = useQuery(api.chat.personal.getSummary,
     canQuery && canRead && conversationId
       ? { workspaceId: workspaceId!, conversationId: conversationId as Id<'conversations'> }
@@ -56,33 +44,10 @@ export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, path
     canReadMessages ? { workspaceId: workspaceId!, conversationId: conversationId as Id<'conversations'> } : 'skip',
     { initialNumItems: 50 })
 
-  useEffect(() => {
-    function syncRoute() {
-      const id = canRead ? new URLSearchParams(window.location.search).get('id') : null
-      setSelection({ routeKey, conversationId: id })
-      setPending(null)
-    }
-    window.addEventListener('overlay:chat-route-selected', syncRoute)
-    window.addEventListener('popstate', syncRoute)
-    return () => {
-      window.removeEventListener('overlay:chat-route-selected', syncRoute)
-      window.removeEventListener('popstate', syncRoute)
-    }
-  }, [canRead, routeKey])
-
-  const setPendingTranscriptConversation = useCallback((
-    id: string | null, ownerId?: string | null, intentKey?: string | null,
-  ) => {
-    if (!id || !ownerId || !workspaceId) {
-      setPending(current => !intentKey || current?.intentKey === intentKey ? null : current)
-      return
-    }
-    setPending({ conversationId: id, ownerId, workspaceId, intentKey })
-  }, [workspaceId])
-
   return {
     selectedConversationId,
     selectedSummary,
+    viewerUserId,
     setPendingTranscriptConversation,
     transcript: {
       conversationId: canReadMessages ? conversationId : null,

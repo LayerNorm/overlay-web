@@ -7,8 +7,17 @@ description: "Reproducible realtime baselines, retained consumers, and migration
 
 This harness measures the existing behavior, not a fix. A remote convergence
 failure must remain a failing sample. Do not change an assertion to make the
-baseline pass. CN-02 through CN-06 migrate auth, authorization, lists, canonical
-history, and streaming respectively; none is implemented by the harness.
+baseline pass. CN-02 through CN-05 migrate auth, authorization, personal lists
+and canonical history. CN-06 adds bounded durable progress checkpoints and a
+scoped execution/lifecycle projection while retaining server-owned execution;
+none is implemented by the harness.
+
+CN-06 browser lifecycle reads use the public, viewer/workspace/conversation-
+scoped `chat/personal:getExecution` projection. The browser does not replace
+agent admission, billing, approval/input authority or streaming with a local
+run cache. Exact server-owned list, transcript and execution readiness markers
+gate native ownership; an unavailable native query stays unavailable rather
+than falling back to HTTP after the gate succeeds.
 
 Use the isolated current-head PR Preview. Follow [Preview QA](./worktree-staging-qa.md)
 to verify the READY deployment SHA and its exact PR-scoped Convex backend before

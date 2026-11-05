@@ -238,6 +238,7 @@ export function useChatSendController({
     [reasoningByModel, reasoningModels],
   )
   const preflightInFlight = useRef(false)
+  const sendIntentGeneration = useRef(0)
   const composerState = useMemo(() => ({ attachedImages, pendingChatDocuments, replyContext, mentions }),
     [attachedImages, pendingChatDocuments, replyContext, mentions])
   const latestComposerStateRef = useRef(composerState)
@@ -433,6 +434,7 @@ export function useChatSendController({
     if (preflightInFlight.current) return
     const originalChatId = activeChatIdRef.current
     const originalTemporary = isTemporaryChatRef.current
+    const sendIntentId = ++sendIntentGeneration.current
     preflightInFlight.current = true
     let writable = false
     try {
@@ -442,8 +444,10 @@ export function useChatSendController({
     } finally {
       preflightInFlight.current = false
     }
+    const isCurrentSendScope = () => isCurrentScope()
+      && (!nativePersonalEnabled || sendIntentGeneration.current === sendIntentId)
     function sendIntentChanged() {
-      return !isCurrentScope()
+      return !isCurrentSendScope()
       || activeChatIdRef.current !== originalChatId
       || isTemporaryChatRef.current !== originalTemporary
       || inputRef.current !== submittedInput
@@ -464,7 +468,7 @@ export function useChatSendController({
     }
 
     function restoreFailedSubmission() {
-      if (!isCurrentScope() || activeChatIdRef.current !== originalChatId) return
+      if (!isCurrentSendScope() || activeChatIdRef.current !== originalChatId) return
       setIsOptimisticLoading(false)
       setComposerNotice('Could not save your message. Retry to send it.')
       const currentComposer = latestComposerStateRef.current
@@ -506,7 +510,7 @@ export function useChatSendController({
           nativeWorkspaceId,
           submitNativePersonalTurn,
           setPendingTranscriptConversation,
-          isCurrentScope,
+          isCurrentScope: isCurrentSendScope,
           isStreamChatActive,
           pendingFirstSendRef,
           completeSessionForStream,
@@ -542,7 +546,7 @@ export function useChatSendController({
         emptyRuntime: emptyRuntimeRef.current,
         ensureConversationRuntime,
         isFirstMessage,
-        isCurrentScope,
+        isCurrentScope: isCurrentSendScope,
         isStreamChatActive,
         loadChats,
         loadSubscription,

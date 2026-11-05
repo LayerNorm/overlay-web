@@ -39,6 +39,8 @@ export type PersonalPendingTurn = {
   user: PersonalTranscriptMessage
   responses: PersonalTranscriptMessage[]
   userAcknowledged: boolean
+  ownerId?: string
+  workspaceId?: string
   submissionKey?: string
   submitArgs?: Record<string, unknown>
   localGenerationResults?: GenerationResult[]

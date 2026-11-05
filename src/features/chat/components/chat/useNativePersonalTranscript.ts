@@ -5,6 +5,14 @@ import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { GenerationResult } from '../chat-interface/types'
 import type { PersonalPendingTurn, PersonalTranscriptMessage, PersonalTranscriptRow } from './personal-transcript'
 import { projectPersonalTranscript } from './personal-transcript'
+import {
+  ACTIVE_AGENT_RUN_STATUSES,
+  isTerminalAgentRunStatus,
+  type AgentRunStatus,
+} from '@/shared/agents/agent-run'
+import { PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
+
+const activeRunStatuses = new Set<string>(ACTIVE_AGENT_RUN_STATUSES)
 
 function sdkResponsesForTurn(messages: readonly UIMessage[], turn: PersonalPendingTurn) {
   const exact = messages.filter((message) => {
@@ -84,9 +92,11 @@ export function useNativePersonalTranscript({
   status,
   rows,
   journal,
+  sourceJournal = journal,
   sdkMessages,
   runtimeHydrationVersion,
   onJournalChange,
+  isCurrentScope,
 }: {
   enabled: boolean
   conversationId: string | null
@@ -96,12 +106,16 @@ export function useNativePersonalTranscript({
   status: 'disabled' | 'loading' | 'ready' | 'unavailable'
   rows: readonly PersonalTranscriptRow[]
   journal: Map<string, PersonalPendingTurn>
+  sourceJournal?: Map<string, PersonalPendingTurn>
   sdkMessages: readonly UIMessage[]
   runtimeHydrationVersion: number
   onJournalChange(): void
+  isCurrentScope?: () => boolean
 }) {
   const { scopeMatches, localOnlyScope, projection } = useMemo(
-    () => projectScopedNativeTranscript({
+    () => {
+      void runtimeHydrationVersion
+      return projectScopedNativeTranscript({
       enabled: enabled && status !== 'unavailable',
       conversationId,
       summaryConversationId,
@@ -110,39 +124,41 @@ export function useNativePersonalTranscript({
       rows,
       pendingTurns: [...journal.values()],
       sdkMessages,
-    }),
+      })
+    },
     [
       conversationId,
       enabled,
       journal,
       rows,
+      runtimeHydrationVersion,
       sdkMessages,
       status,
       summaryConversationId,
       transcriptConversationId,
       pendingFirstConversationId,
-      runtimeHydrationVersion,
     ],
   )
 
   useEffect(() => {
-    if (!scopeMatches) return
+    if (!scopeMatches || (isCurrentScope && !isCurrentScope())) return
     let changed = false
     for (const [turnId, pending] of journal) {
+      if (sourceJournal.get(turnId) !== pending) continue
       if (projection.acknowledgedTurnIds.has(turnId) && !pending.userAcknowledged) {
-        journal.set(turnId, { ...pending, userAcknowledged: true })
+        sourceJournal.set(turnId, { ...pending, userAcknowledged: true })
         changed = true
         continue
       }
       const completedOutput = projection.outputs.some((output) =>
         output.turnId === turnId && output.status !== 'pending')
       if (projection.terminalTurnIds.has(turnId) || completedOutput) {
-        journal.delete(turnId)
+        sourceJournal.delete(turnId)
         changed = true
       }
     }
     if (changed) onJournalChange()
-  }, [journal, onJournalChange, projection, scopeMatches])
+  }, [isCurrentScope, journal, onJournalChange, projection, scopeMatches, sourceJournal])
 
   return { projection, scopeMatches, localOnlyScope }
 }
@@ -217,9 +233,12 @@ export function selectNativePersonalScope({ nativePersonalRoute, isTemporaryChat
   pendingTurns: number; personal: ReturnType<typeof usePersonalChat>; selectedModels: string[]; selectedActModel: string;
 }) {
   const enabled = nativePersonalRoute && !isTemporaryChat && !hasAutomationContext
-  const active = enabled && Boolean(
-    activeChatId ? isNativePersonalChat(activeChatId) : pendingRunConversationId || pendingTurns)
-  const conversationId = active ? activeChatId ?? pendingRunConversationId : null
+  const selectedConversationId = personal.selectedConversationId
+  const pendingFirst = activeChatId === PENDING_FIRST_CHAT_ID || activeChatId === null
+  const active = enabled && Boolean(selectedConversationId
+    ? isNativePersonalChat(selectedConversationId)
+    : pendingFirst && (pendingRunConversationId || pendingTurns))
+  const conversationId = active ? selectedConversationId ?? pendingRunConversationId : null
   const summary = personalSummaryForConversation(personal, conversationId)
   return {
     enabled, active, conversationId, summary, summaryConversationId: summary?._id ?? null,
@@ -237,16 +256,16 @@ export function nativeChatHydrated(enabled: boolean, status: string, pendingTurn
   return enabled ? status === 'ready' || status === 'unavailable' || pendingTurns > 0 : legacy
 }
 
-export function useNativePersonalView({ legacy, transcript, ...args }:
-  Parameters<typeof useNativePersonalTranscript>[0] & {
+export function nativePersonalViewFromState({ legacy, transcript, state, enabled, journal }:
+  Pick<Parameters<typeof useNativePersonalTranscript>[0], 'journal' | 'enabled'> & {
     legacy: Pick<ConversationUiState, 'generationResults' | 'exchangeModes' | 'exchangeModels' | 'exchangeGenTypes'> & {
       getResponseForExchange(index: number): UIMessage | null
     }
     transcript: ReturnType<typeof usePersonalChat>['transcript']
+    state: ReturnType<typeof useNativePersonalTranscript>
   }) {
-  const state = useNativePersonalTranscript(args)
-  const view = buildNativeTranscriptView(state.projection, [...args.journal.values()])
-  if (!args.enabled) return { ...legacy, canonicalView: undefined, getResponsesForExchange: undefined, pagination: undefined }
+  const view = buildNativeTranscriptView(state.projection, [...journal.values()])
+  if (!enabled) return { ...legacy, canonicalView: undefined, getResponsesForExchange: undefined, pagination: undefined }
   return {
     generationResults: view.generationResults, exchangeModes: view.exchangeModes,
     exchangeModels: view.exchangeModels, exchangeGenTypes: view.exchangeGenTypes,
@@ -258,4 +277,43 @@ export function useNativePersonalView({ legacy, transcript, ...args }:
     },
     pagination: state.scopeMatches ? transcript : undefined,
   }
+}
+
+type NativeRunActivity = {
+  turnId: string
+  status: string
+  createdAt: number
+}
+
+export function nativePersonalCurrentTurnId(
+  projection: ReturnType<typeof projectPersonalTranscript>,
+  run: NativeRunActivity | null,
+  pendingTurns: readonly PersonalPendingTurn[] = [],
+) {
+  const pending = [...pendingTurns].reverse().find((turn) =>
+    !turn.responses.some((response) => response.status === 'error')
+    && !turn.localGenerationResults?.some((result) => result.status === 'failed'))
+  if (pending) return pending.turnId
+  if (run && activeRunStatuses.has(run.status)) return run.turnId
+  const latest = projection.exchanges.at(-1)
+  return latest?.turnId ?? run?.turnId ?? null
+}
+
+export function nativePersonalTurnIsActive({
+  projection,
+  pendingTurns,
+  run,
+}: {
+  projection: ReturnType<typeof projectPersonalTranscript>
+  pendingTurns: readonly PersonalPendingTurn[]
+  run: NativeRunActivity | null
+}) {
+  const turnId = nativePersonalCurrentTurnId(projection, run, pendingTurns)
+  if (!turnId) return false
+  if (projection.terminalTurnIds.has(turnId)
+    || (run?.turnId === turnId && isTerminalAgentRunStatus(run.status as AgentRunStatus))) return false
+  if (pendingTurns.some((turn) => turn.turnId === turnId)) return true
+  if (run?.turnId === turnId && activeRunStatuses.has(run.status)) return true
+  return projection.exchanges.find((exchange) => exchange.turnId === turnId)
+    ?.responses.some((response) => response.status === 'generating') ?? false
 }

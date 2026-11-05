@@ -346,11 +346,26 @@ unrelated route IDs never enter Convex conversation-ID validation. Auth or
 capability query failures expose an unavailable personal-chat context while
 preserving the rest of the page. Mixed views may read legacy data only for
 classified non-pilot rows. Unmigrated workspace-scoped chats, DMs, channels,
-agents and other resources remain on their existing paths. Transcript/history loading,
-streaming and permanent deletion are not migrated here. Rollback is web-first:
-disable native web ownership before removing backend support, and keep additive
-fields/indexes and handlers available to older web revisions. No hosted QA is
-claimed by this local implementation.
+agents and other resources remain on their existing paths.
+
+The browser reads personal transcript pages from `chat/personal:getMessages`
+and the public execution/compatibility projection from
+`chat/personal:getExecution`. The execution query is scoped to the verified
+viewer, workspace and exact conversation; the provider subscribes directly and
+does not mirror query data into a second cache. Native personal routes derive
+run activity and thread safety from this projection, disable legacy run polling
+and safety HTTP checks, and keep approval, input and stop mutations on their
+existing BFF commands. Stop targets the durable assistant message ID. A native
+authorization or query failure remains unavailable rather than switching to
+legacy HTTP.
+
+Readiness requires exact list, transcript and execution revision markers from
+the existing server-owned `platform/uiSettings:getByServer` response. An absent
+or older marker retains web-first legacy ownership during backend rollout or
+rollback; do not remove additive fields, indexes or handlers when rolling web
+ownership back. Server execution, billing admission and mutation authorization
+remain authoritative. Hosted preview acceptance is separate and is not claimed
+by this local implementation.
 
 Web and Convex deploy independently. The incoming web must work with the old
 backend, and the incoming backend must work with the old web, including retained

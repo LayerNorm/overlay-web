@@ -112,6 +112,7 @@ export const getByServer = query({
     harnessFullTranscriptRevision: v.literal('full-public-v1'),
     nativePersonalChatRevision: v.literal('native-personal-list-v1'),
     nativePersonalTranscriptRevision: v.literal('native-personal-transcript-v1'),
+    nativePersonalExecutionRevision: v.literal('native-personal-execution-v1'),
   }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
@@ -126,6 +127,7 @@ export const getByServer = query({
       harnessFullTranscriptRevision: 'full-public-v1' as const,
       nativePersonalChatRevision: 'native-personal-list-v1' as const,
       nativePersonalTranscriptRevision: 'native-personal-transcript-v1' as const,
+      nativePersonalExecutionRevision: 'native-personal-execution-v1' as const,
     }
     const settings = {
       theme: existing.theme,
@@ -159,6 +161,7 @@ export const getByServer = query({
       harnessFullTranscriptRevision: 'full-public-v1' as const,
       nativePersonalChatRevision: 'native-personal-list-v1' as const,
       nativePersonalTranscriptRevision: 'native-personal-transcript-v1' as const,
+      nativePersonalExecutionRevision: 'native-personal-execution-v1' as const,
       ...(safeModelId(existing.defaultActModelId) ? { defaultActModelId: safeModelId(existing.defaultActModelId) } : {}),
       ...(safeModelId(existing.defaultImageModelId) ? { defaultImageModelId: safeModelId(existing.defaultImageModelId) } : {}),
       ...(safeModelId(existing.defaultVideoModelId) ? { defaultVideoModelId: safeModelId(existing.defaultVideoModelId) } : {}),

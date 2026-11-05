@@ -7,13 +7,24 @@ vi.mock('@/server/bootstrap', () => ({
 }))
 import { isNativePersonalChatBackendReady, nativePersonalChatBackendReady } from './native-personal-readiness'
 
-const ready = { nativePersonalChatRevision: 'native-personal-list-v1', nativePersonalTranscriptRevision: 'native-personal-transcript-v1' }
+const ready = {
+  nativePersonalChatRevision: 'native-personal-list-v1',
+  nativePersonalTranscriptRevision: 'native-personal-transcript-v1',
+  nativePersonalExecutionRevision: 'native-personal-execution-v1',
+}
 
 describe('native personal transcript readiness', () => {
   it('requires both compatible list and transcript support, not just native authentication', () => {
     expect(isNativePersonalChatBackendReady(ready)).toBe(true)
-    for (const settings of [null, {}, { nativePersonalChatRevision: ready.nativePersonalChatRevision },
-      { ...ready, nativePersonalTranscriptRevision: 'unknown' }, { ...ready, nativePersonalChatRevision: 'unknown' }]) {
+    for (const settings of [
+      null, {},
+      { nativePersonalChatRevision: ready.nativePersonalChatRevision },
+      { ...ready, nativePersonalTranscriptRevision: 'unknown' },
+      { ...ready, nativePersonalChatRevision: 'unknown' },
+      { ...ready, nativePersonalExecutionRevision: 'unknown' },
+      { nativePersonalChatRevision: ready.nativePersonalChatRevision,
+        nativePersonalTranscriptRevision: ready.nativePersonalTranscriptRevision },
+    ]) {
       expect(isNativePersonalChatBackendReady(settings)).toBe(false)
     }
   })

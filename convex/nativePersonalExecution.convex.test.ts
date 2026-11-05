@@ -88,7 +88,17 @@ test('native execution projects public run controls and terminal state behind li
 test('settled native checkpoints preserve rich identities, reject regression and never reopen terminal rows', async () => {
   const { t, run, runId, write, message } = await fixture()
   await t.run(ctx => ctx.db.patch(run.assistantMessageId, {
-    parts: [{ type: 'data-native-agent-resource-request', data: { token: 'pause' } }],
+    parts: [{
+      type: 'data-native-agent-input',
+      data: {
+        runId: run._id,
+        conversationId: run.conversationId,
+        userId: run.userId,
+        token: 'pause',
+        requestedAt: 3,
+        question: 'Continue?',
+      },
+    }],
   }))
   expect((await message()).nativeRunId).toBe(run._id)
   expect(await write(1)).toEqual({ persisted: true })
@@ -103,7 +113,7 @@ test('settled native checkpoints preserve rich identities, reject regression and
   expect(second.content).toBe('Step 0\n\nStep 1\n\nStep 2')
   expect(second.parts.some((part: { id: string }) => part.id === identity)).toBe(true)
   expect(second.parts.filter((part: { type: string }) => part.type === 'tool-invocation')).toHaveLength(3)
-  expect(second.parts.find((part: { type: string }) => part.type === 'data-native-agent-resource-request')).toMatchObject({ data: { token: 'pause' } })
+  expect(second.parts.find((part: { type: string }) => part.type === 'data-native-agent-input')).toMatchObject({ data: { token: 'pause' } })
   expect(await write(2)).toEqual({ persisted: false })
   await t.mutation(mutation('chat/conversations:recordAgentRunProgress'), {
     runId: run._id, userId: 'u', serverSecret: secret, content: 'Flattened legacy progress',

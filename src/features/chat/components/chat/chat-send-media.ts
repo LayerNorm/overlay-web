@@ -133,7 +133,8 @@ export async function sendMediaTurn({
   ])
   const previousNativeAttempt = nativePersonalTurn
     ? [...(initialRuntime.nativePendingTurns?.values() ?? [])].find(turn =>
-        turn.submissionKey === submissionKey && turn.submitArgs)
+        turn.ownerId === nativeOwnerId && turn.workspaceId === nativeWorkspaceId
+        && turn.submissionKey === submissionKey && turn.submitArgs)
     : undefined
   const mediaTurnId = previousNativeAttempt?.turnId ?? crypto.randomUUID()
   const mediaUserMessage = buildMediaUserMessage({
@@ -259,6 +260,8 @@ export async function sendMediaTurn({
       } as PersonalTranscriptMessage),
       responses: [],
       userAcknowledged: previousNativeAttempt?.userAcknowledged ?? false,
+      ownerId: nativeOwnerId ?? undefined,
+      workspaceId: nativeWorkspaceId ?? undefined,
       submissionKey,
       submitArgs: nativeArgs as unknown as Record<string, unknown>,
       localGenerationResults: [{ type: effectiveGenType, status: 'generating' }],

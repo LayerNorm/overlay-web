@@ -20,19 +20,14 @@ import { useConversationUiState } from './useConversationUiState'
 import { useChatListController } from './useChatListController'
 import { useChatModelSelectionController } from './useChatModelSelectionController'
 import { useChatRetryController } from './useChatRetryController'
-import { useNativeThreadSafety } from './useNativeThreadSafety'
 import { saveGeneratedUiChange } from './generated-ui-mutation'
 import { useChatRouteController } from './useChatRouteController'
-import { nativeChatTitleForDisplay } from '@/features/chat/lib/persist-native-chat-title'
 import {
   TEMPORARY_CHAT_ID,
-  PENDING_FIRST_CHAT_ID,
   useChatSendController,
 } from './useChatSendController'
 import { useChatStopController } from './useChatStopController'
 import { useChatTitleController } from './useChatTitleController'
-import { useLiveConversationSync } from './useLiveConversationSync'
-import { useAgentRunLifecycle } from './useAgentRunLifecycle'
 import { resolveAgentRunNotice, type AgentRunNoticePrevious } from './agent-run-notice'
 import { useChatRuntimes } from './useChatRuntimes'
 import { useComposerTextState } from './useComposerTextState'
@@ -56,17 +51,26 @@ import { useGeneratedUiConnectorActions } from './useGeneratedUiConnectorActions
 import { useChatMentions } from '../use-chat-mentions'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
-import { usePersonalChat, type PersonalChatSummary } from '@/components/providers/PersonalChatProvider'
-import type { Id } from '../../../../../convex/_generated/dataModel'
-import { useNativePersonalView, selectNativePersonalScope, nativeChatHydrated, personalSummaryForConversation } from './useNativePersonalTranscript'
+import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
+import {
+  nativePersonalViewFromState,
+  nativeChatHydrated,
+  personalSummaryForConversation,
+} from './useNativePersonalTranscript'
+import {
+  useNativePersonalControllerState,
+  useNativePersonalSafetyScope,
+} from './useNativePersonalControllerState'
+import {
+  selectNativePersonalDisplay,
+  useNativePersonalReadObservation,
+  useNativePersonalRouteState,
+} from './useNativePersonalRouteState'
+import { useChatExperienceLifecycle } from './useChatExperienceLifecycle'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
 import { buildNativeThreadHandoff } from '@/shared/chat/native-thread-handoff'
 import { agentConversationRedirect } from '@/shared/chat/chat-view-navigation'
-import {
-  legacyWorkspaceScopeForRoute,
-  readWorkspacePathScope,
-} from '@/shared/workspaces/routing'
 import { dispatchChatCreated } from '@/shared/chat/chat-title'
 import type { Conversation, ConversationRuntime } from '../chat-interface/types'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
@@ -96,15 +100,6 @@ export type ChatExperienceProps = {
   initialChats?: Conversation[]
   initialChatPageInfo?: ChatListPageInfo
 
-}
-
-function isNativePersonalRoute(pathname: string | null, searchParams: Pick<URLSearchParams, 'get' | 'toString'>) {
-  const routeScope = readWorkspacePathScope(pathname ?? '') ?? legacyWorkspaceScopeForRoute(
-    'chat',
-    new URLSearchParams(searchParams.toString()),
-  )
-  return routeScope !== 'workspace'
-    && !['workspace-chats', 'dms', 'channels'].includes(searchParams.get('view') ?? '')
 }
 
 export function useChatExperienceController({
@@ -172,12 +167,25 @@ export function useChatExperienceController({
   const composerMode: 'chat' | 'automate' = isTemporaryChat ? 'chat' : mode
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
-  const nativePersonalEnabled = nativePersonal.configured
-    && (Boolean(userId) || authLoading)
-    && mode === 'chat'
-  const chatWorkspaceId = nativePersonal.configured ? nativePersonal.workspaceId : activeWorkspaceId
   const viewerUserId = authUser?.id ?? userId
-  const nativePersonalRoute = nativePersonalEnabled && isNativePersonalRoute(pathname, searchParams)
+  const {
+    chatWorkspaceId,
+    getNativePersonalSummary,
+    isNativePersonalChat,
+    markNativePersonalRead,
+    nativePersonalChatIds,
+    nativePersonalEnabled,
+    nativePersonalRoute,
+  } = useNativePersonalRouteState({
+    activeWorkspaceId,
+    authLoading,
+    isTemporaryChatRef,
+    mode,
+    nativePersonal,
+    pathname,
+    searchParams,
+    userId,
+  })
 
   // Clear active viewer + ref when this tab unmounts so any in-flight .then() sees isActive=false
   useEffect(() => {
@@ -200,43 +208,6 @@ export function useChatExperienceController({
     userId,
   })
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
-  const nativePersonalChatIds = useMemo(() => new Set<string>([
-    ...nativePersonal.active.rows.map((chat) => chat._id),
-    ...nativePersonal.archived.rows.map((chat) => chat._id),
-    ...(nativePersonal.selectedSummary ? [nativePersonal.selectedSummary._id] : []),
-  ]), [nativePersonal.active.rows, nativePersonal.archived.rows, nativePersonal.selectedSummary])
-  const isNativePersonalChat = useCallback((chatId: string) => (
-    nativePersonalChatIds.has(chatId)
-    || (
-      nativePersonalRoute
-      && !isTemporaryChatRef.current
-      && !searchParams.get('automationId')
-      && searchParams.get('id') === chatId
-    )
-  ), [
-    nativePersonalChatIds,
-    nativePersonalRoute,
-    searchParams,
-    isTemporaryChatRef,
-  ])
-  const getNativePersonalSummary = useCallback((chatId: string) => (
-    nativePersonal.selectedSummary?._id === chatId
-      ? nativePersonal.selectedSummary
-      : nativePersonal.active.rows.find((chat) => chat._id === chatId)
-        ?? nativePersonal.archived.rows.find((chat) => chat._id === chatId)
-  ), [nativePersonal.active.rows, nativePersonal.archived.rows, nativePersonal.selectedSummary])
-  const setNativePersonalRead = nativePersonal.setRead
-  const markNativePersonalRead = useCallback((
-    summary: PersonalChatSummary,
-    throughMessageId: string,
-  ) => {
-    if (!summary.unread) return
-    void setNativePersonalRead(
-      summary,
-      false,
-      throughMessageId as Id<'conversationMessages'>,
-    ).catch(() => toast.error('Could not mark chat as read.'))
-  }, [setNativePersonalRead])
   const [documentVisible, setDocumentVisible] = useState(true)
   useEffect(() => {
     const updateVisibility = () => setDocumentVisible(document.visibilityState === 'visible')
@@ -309,10 +280,15 @@ export function useChatExperienceController({
   const generatedUiConnectorActions = useGeneratedUiConnectorActions({ enabled: capabilities.integrations })
 
   const [isDragging, setIsDragging] = useState(false)
-  const nativeThreadSafety = useNativeThreadSafety({
-    conversationId: isTemporaryChat || activeChatId === PENDING_FIRST_CHAT_ID ? null : activeChatId,
-    workspaceId: activeWorkspaceId,
+  const nativeSafetyScope = useNativePersonalSafetyScope({
+    activeChatId,
+    chatWorkspaceId,
+    isTemporaryChat,
+    nativePersonal,
+    nativePersonalRoute,
+    pendingRunConversationId,
   })
+  const { nativePendingFirst, nativeScopeSynchronized, nativeThreadSafety } = nativeSafetyScope
   const {
     handleComposerInputChange,
     hasComposerText,
@@ -491,7 +467,10 @@ export function useChatExperienceController({
   } = useConversationUiState({
     activeChatId,
     activeChatIdRef,
-    canonicalChatTitle: personalSummaryForConversation(nativePersonal, nativePersonalRoute ? activeChatId : null),
+    canonicalChatTitle: personalSummaryForConversation(
+      nativePersonal,
+      nativePersonalRoute ? nativePersonal.selectedConversationId : null,
+    ),
     applyDefaultChatModelsToView,
     clearTransientComposerState,
     ensureConversationRuntime,
@@ -511,33 +490,27 @@ export function useChatExperienceController({
     setSourcesPanel,
   })
 
-  const displayedActiveChatTitle = activeChatId
-    ? nativeChatTitleForDisplay(
-      isNativePersonalChat(activeChatId),
-      getNativePersonalSummary(activeChatId)?.title,
-      activeChatTitle,
-    )
-    : activeChatTitle
-
-  useEffect(() => {
-    const summary = nativePersonal.selectedSummary
-    if (!nativePersonalRoute || !summary || summary._id !== activeChatId
-      || nativePersonal.transcript.conversationId !== summary._id
-      || !summary.unread || !summary.lastMessageId || !documentVisible) return
-    const observed = nativePersonal.transcript.rows.some(row =>
-      row.message._id === summary.lastMessageId || row.contextUser?._id === summary.lastMessageId)
-    if (observed) {
-      markNativePersonalRead(summary, summary.lastMessageId)
-    }
-  }, [
+  const {
+    nativePersonalDisplay,
+    displayActiveChatId,
+    displayedActiveChatTitle,
+  } = selectNativePersonalDisplay({
+    activeChatId,
+    activeChatTitle,
+    getNativePersonalSummary,
+    isNativePersonalChat,
+    isTemporaryChat,
+    nativePersonalRoute,
+    pendingRunConversationId,
+    selectedConversationId: nativePersonal.selectedConversationId,
+  })
+  useNativePersonalReadObservation({
     activeChatId,
     documentVisible,
-    markNativePersonalRead,
-    nativePersonal.selectedSummary,
+    markRead: markNativePersonalRead,
+    nativePersonal,
     nativePersonalRoute,
-    nativePersonal.transcript.conversationId,
-    nativePersonal.transcript.rows,
-  ])
+  })
 
   const {
     automationConversationId,
@@ -577,16 +550,40 @@ export function useChatExperienceController({
     setRuntimeHydrationVersion,
     setSourcesPanel,
   })
-  const pendingNativeTurnCount = emptyRuntimeRef.current.nativePendingTurns?.size ?? 0
-  const {
-    enabled: nativePersonalSendEnabled, active: nativePersonalConversationActive, conversationId: nativeConversationId, summary: nativeSelectedSummary,
-    summaryConversationId: nativeSummaryConversationId,
-    selectedModels: nativeSelectedModels, selectedActModel: nativeSelectedActModel,
-  } = selectNativePersonalScope({
-    nativePersonalRoute, isTemporaryChat, hasAutomationContext, activeChatId, isNativePersonalChat,
-    pendingRunConversationId, pendingTurns: pendingNativeTurnCount,
-    personal: nativePersonal, selectedModels, selectedActModel,
+  const nativeControllerState = useNativePersonalControllerState({
+    activeChatId,
+    activeRuntime,
+    chatWorkspaceId,
+    hasAutomationContext,
+    isNativePersonalChat,
+    isTemporaryChat,
+    nativePersonal,
+    nativePersonalRoute,
+    pendingRunConversationId,
+    runtimeHydrationVersion,
+    selectedActModel,
+    selectedModels,
+    setRuntimeHydrationVersion,
+    nativePendingFirst,
+    nativeScopeSynchronized,
+    nativeThreadSafety,
   })
+  const {
+    active: nativePersonalConversationActive,
+    conversationId: nativeConversationId,
+    enabled: nativePersonalSendEnabled,
+    nativeCommandScope,
+    nativeCurrentTurnId,
+    nativeJournal,
+    nativeLifecycle,
+    nativeTranscriptState,
+    nativeTurnActive,
+    pendingNativeTurnCount,
+    runConversationId,
+    selectedActModel: nativeSelectedActModel,
+    selectedModels: nativeSelectedModels,
+    summary: nativeSelectedSummary,
+  } = nativeControllerState
   const persistNativeTextSelection = useCallback((
     askModelIds: string[],
     actModelId: string,
@@ -628,19 +625,12 @@ export function useChatExperienceController({
   const localStreamActive = [...activeAskChats, actChat].some(
     chat => chat.status === 'streaming' || chat.status === 'submitted',
   )
-  const runConversationId = activeChatId ?? pendingRunConversationId
-  const agentRunLifecycle = useAgentRunLifecycle({
-    conversationId: runConversationId,
-    enabled: Boolean(authUser),
-    localStreamActive,
-    convexAccessToken,
-    enableConvexLiveSync: convexLiveSyncEnabled,
-    userId: authUser?.id,
-  })
   const {
+    agentRunLifecycle,
+    isActiveLoading,
     liveQueryBridge,
-  } = useLiveConversationSync({
-    activeChatId: nativePersonalConversationActive ? null : activeChatId,
+  } = useChatExperienceLifecycle({
+    activeChatId,
     activeChatIdRef,
     actChat,
     authUserId: authUser?.id,
@@ -649,15 +639,17 @@ export function useChatExperienceController({
     convexAccessToken,
     enableConvexLiveSync: convexLiveSyncEnabled,
     loadChats,
+    nativePersonalEnabled: nativePersonalSendEnabled,
+    nativeLifecycle,
+    nativeTurnActive,
     onRuntimeMessagesChanged,
     runtimeHydrationVersion,
-    runActive: agentRunLifecycle.active,
     runtimesRef,
+    runConversationId,
+    hasAuthenticatedUser: Boolean(authUser),
+    localStreamActive,
     sessions,
-    shouldSyncMessages: agentRunLifecycle.shouldSyncMessages,
   })
-
-  const isActiveLoading = localStreamActive || agentRunLifecycle.active
 
   useEffect(() => {
     setIsOptimisticLoading(false)
@@ -757,7 +749,7 @@ export function useChatExperienceController({
   }, [actChatRef, chat0Ref, emptyRuntimeRef, forceLiveSyncRender, isTemporaryChatRef, nativeThreadSafety.readOnly, runtimesRef])
 
   /** Hide header rename until `loadChat` has applied messages/meta (`runtime.hydrated`). */
-  const activeChatHydrated = nativeChatHydrated(nativePersonalConversationActive, nativePersonal.transcript.status,
+  const activeChatHydrated = nativeChatHydrated(nativePersonalSendEnabled, nativePersonal.transcript.status,
     pendingNativeTurnCount,
     Boolean(activeChatId && runtimesRef.current.get(activeChatId)?.hydrated))
 
@@ -787,6 +779,7 @@ export function useChatExperienceController({
     activeWorkspaceId,
     authUser,
     nativeThreadSafety,
+    inputRef,
     pathname,
     router,
     searchParams,
@@ -878,12 +871,16 @@ export function useChatExperienceController({
   }, [invalidateLoadChatRequest, loadChat, invalidateLoadChatRequestRef, loadChatRef])
 
   useEffect(() => {
+    if (nativePersonalSendEnabled) {
+      wasStreamingRef.current = false
+      return
+    }
     if (wasStreamingRef.current && !isActiveLoading && chat0.messages.length > 0) {
       loadSubscription()
     }
     wasStreamingRef.current = isActiveLoading
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActiveLoading, chat0.messages.length])
+  }, [isActiveLoading, chat0.messages.length, nativePersonalSendEnabled])
 
   const [prevActiveLoading, setPrevActiveLoading] = useState(isActiveLoading)
   if (prevActiveLoading !== isActiveLoading) {
@@ -913,7 +910,7 @@ export function useChatExperienceController({
     runtimeHydrationVersion,
     isTemporaryChat,
     showAutomationChatTab,
-    canonicalRevision: nativePersonalConversationActive ? nativePersonal.transcript.rows : null,
+    canonicalRevision: nativePersonalSendEnabled ? nativePersonal.transcript.rows : null,
   })
   usePendingTurnScroll({
     messagesScrollRef,
@@ -1022,7 +1019,7 @@ export function useChatExperienceController({
     loadSubscription,
     nativePersonalEnabled,
     nativePersonalRoute: nativePersonalSendEnabled,
-    nativeOwnerId: viewerUserId,
+    nativeOwnerId: nativePersonal.viewerUserId,
     nativeWorkspaceId: nativePersonal.workspaceId,
     submitNativePersonalTurn: nativePersonal.submit,
     setPendingTranscriptConversation: nativePersonal.setPendingTranscriptConversation,
@@ -1107,38 +1104,30 @@ export function useChatExperienceController({
     activeChatTitle: displayedActiveChatTitle,
     setExitingTurnIds,
   })
-  const nativeJournal = useMemo(() => activeRuntime.nativePendingTurns ?? new Map(), [activeRuntime.nativePendingTurns])
   const {
     generationResults: viewGenerationResults, exchangeModes: viewExchangeModes,
     exchangeModels: viewExchangeModels, exchangeGenTypes: viewExchangeGenTypes,
     getResponseForExchange: effectiveGetResponseForExchange, getResponsesForExchange,
     canonicalView, pagination: nativeTranscriptPagination,
-  } = useNativePersonalView({
+  } = nativePersonalViewFromState({
     legacy: { generationResults, exchangeModes, exchangeModels, exchangeGenTypes, getResponseForExchange },
     transcript: nativePersonal.transcript,
-    enabled: nativePersonalConversationActive,
-    conversationId: nativeConversationId,
-    summaryConversationId: nativeSummaryConversationId,
-    transcriptConversationId: nativePersonal.transcript.conversationId,
-    pendingFirstConversationId: pendingRunConversationId,
-    status: nativePersonal.transcript.status,
-    rows: nativePersonal.transcript.rows,
+    state: nativeTranscriptState,
+    enabled: nativePersonalSendEnabled,
     journal: nativeJournal,
-    sdkMessages: activeRuntime.actChat.messages,
-    runtimeHydrationVersion,
-    onJournalChange: useCallback(() => setRuntimeHydrationVersion(version => version + 1), [setRuntimeHydrationVersion]),
   })
   const { workApprovalContent } = useWorkApproval({
     agentRunLifecycle,
     activeChatId: runConversationId,
+    nativeScope: nativeCommandScope,
   })
 
   const derivedChatView = buildChatDerivedView({
     chats,
-    activeChatId,
+    activeChatId: displayActiveChatId,
     activeRuntime,
     generationResults: viewGenerationResults,
-    idParam,
+    idParam: nativePersonalDisplay ? displayActiveChatId : idParam,
     automationConversationId,
     showAutomationChatTab,
     activeChatHydrated,
@@ -1192,7 +1181,7 @@ export function useChatExperienceController({
     handleModeChange,
     setSelectedToolIds,
     autoContinueEnabled: settings.autoContinue,
-    activeChatId,
+    activeChatId: displayActiveChatId,
     primaryMessages,
     isActiveLoading,
     setShowModelPicker,
@@ -1217,6 +1206,11 @@ export function useChatExperienceController({
     runtimesRef,
     setInput,
     setInterruptedExchangeIdx,
+    nativeScope: {
+      ...nativeCommandScope,
+      currentTurnId: nativeCurrentTurnId,
+      run: nativeLifecycle.run,
+    },
   })
 
   const startNewNativeThread = useCallback(async () => {
@@ -1286,7 +1280,7 @@ export function useChatExperienceController({
   return {
     chats,
     favoriteScope: viewerUserId,
-    activeChatId,
+    activeChatId: displayActiveChatId,
     activeChatHydrated,
     idParam,
     automationConversationId,

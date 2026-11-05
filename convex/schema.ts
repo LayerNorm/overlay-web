@@ -1610,6 +1610,7 @@ export default defineSchema({
           }),
           v.object({
             type: v.literal('data-native-agent-approval'),
+            id: v.optional(v.string()),
             data: v.object({
               runId: v.string(),
               conversationId: v.string(),
@@ -1626,6 +1627,7 @@ export default defineSchema({
           }),
           v.object({
             type: v.literal('data-native-agent-input'),
+            id: v.optional(v.string()),
             data: v.object({
               runId: v.string(),
               conversationId: v.string(),
