@@ -150,6 +150,16 @@ workspaces. The archive action and ownership-transfer option remain unavailable
 because the Personal workspace and its creating owner are permanent account
 lifecycle anchors.
 
+The browser workspace directory and route-handle reads are reactive native
+Convex state. Names and sharing policy are read and changed natively with
+revision checks; configured native mode fails closed when those reads are
+unavailable. Creation and activation still use the authenticated workspace
+service for account/session orchestration. Invitation listing, membership and
+invitation management, icon storage/cleanup, and billing retain their existing
+server-owned paths. Handle writes require the shared `workspaceHandles`
+deployment policy, owner access, and a ready handle registry; no handle editor
+is currently exposed in Settings.
+
 ## Account Settings
 
 All ordinary full-page product destinations use the shared app shell. This includes

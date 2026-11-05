@@ -6,7 +6,9 @@ The web app owns HTTP backend route contracts. Desktop, mobile, Chrome, and exte
 
 Native browser scope derives the viewer from verified Convex identity and checks
 current workspace membership and resource ownership inside the Convex function.
-The personal-chat pilot uses `convex/lib/nativeViewer.ts`; see
+The workspace directory and settings plus the personal-chat pilot use
+`convex/lib/nativeViewer.ts`; workspace handle writes additionally require the
+shared `workspaceHandles` deployment policy. See
 [Convex workflow](convex-workflow.md#native-browser-scope). Scope checks alone do
 not replace domain write policy, billing admission, audit or idempotency.
 
@@ -449,7 +451,25 @@ The legacy automation scheduler cron (`automation_scheduler_legacy`) has been re
 
 ## Workspace Handles
 
-The workspace `slug` is the canonical handle; `workspaceId` remains the immutable identity and authorization key. `GET /api/v1/workspace-handles/:handle` is browser-session authenticated and membership-gated, returning `{ workspaceId, canonicalHandle, canonical }` with `Cache-Control: private, no-store`. `PATCH /api/v1/workspaces/:workspaceId/handle` accepts `{ slug }`, is owner-only, and returns `{ workspace }`. Canonical and historical aliases are stored in the indexed `workspaceHandles` registry. Backfill is bounded, resumable, idempotent, and supports a read-only preview; handle writes remain gated until registry readiness and the write activation flag are enabled.
+The workspace `slug` is the canonical handle; `workspaceId` remains the immutable identity and authorization key. Browser route resolution uses native `collaboration/nativeWorkspaces:resolveHandle`, which is membership-gated, denies private registry entries, honors migration readiness and aliases, and returns null for inaccessible or unknown targets. The legacy `GET /api/v1/workspace-handles/:handle` remains for non-native consumers.
+
+Native handle writes use `collaboration/nativeWorkspaces:updateHandle`. They require an active human owner, a matching workspace revision, a ready alias registry, and the shared `workspaceHandles` deployment feature policy; writes are limited to 10 per verified user per 10 minutes and audit attribution uses the Convex identity. Rename and sharing-policy writes share a 300-per-user, 10-minute budget. The authorized `PATCH /api/v1/workspaces/:workspaceId/handle` path remains for legacy consumers. No browser handle editor currently invokes either write path. Canonical and historical aliases are stored in the indexed `workspaceHandles` registry. Backfill remains bounded, resumable, idempotent, and supports a read-only preview.
+
+## Workspace Directory and Settings
+
+`collaboration/nativeWorkspaces:listDirectory` is the browser directory source;
+it pages through the viewer's workspace principals and excludes archived
+principals/workspaces and inactive memberships. Rows carry a monotonic
+`updatedAt` revision and versioned icon URLs. The saved active-workspace
+preference is only an initial hint; a route target or tab-local selection wins.
+`getSharingPolicy` permits active members to read the shared policy, while
+`rename` and `setSharingPolicy` require owner/admin access and use expected
+revisions. The web Settings panel subscribes to policy only while the Sharing
+tab is active. Creation and activation keep the authenticated HTTP service for
+session/cookie orchestration; invitation listing and invitation/membership
+management, icon storage/cleanup, and billing also remain on their existing
+server paths. Configured native mode does not fall back to the HTTP-owned
+directory or settings data.
 
 ## Workspace Billing
 

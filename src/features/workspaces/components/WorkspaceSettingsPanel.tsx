@@ -5,6 +5,8 @@ import { identityInitials } from '@/shared/workspaces/identity-initials'
 import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import React from 'react'
 import { useEffect, useMemo, useState } from 'react'
+import { useConvexAuth, useMutation, useQuery } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import {
   Archive,
   CircleAlert,
@@ -34,11 +36,13 @@ import type {
   WorkspaceManagementResponse,
   WorkspaceMembershipRole,
   WorkspaceOperationalMetrics,
+  WorkspaceSharingPolicyPatch,
   WorkspaceRolloutStage,
   WorkspaceSummary,
 } from '@overlay/workspace-contracts'
 import { describeRolloutStage } from '@/shared/workspaces/collaboration-rollout'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
 import { workspaceManagementClient } from '../lib/workspace-client'
 import { WORKSPACE_SETTINGS_TABS as TABS } from '../lib/workspace-settings-tabs'
 import type {
@@ -678,6 +682,7 @@ export function WorkspaceSettingsPanel({
   client?: WorkspaceManagementClient
   initialTab?: WorkspaceSettingsTab
 }) {
+  const nativeConfiguration = useConvexAuthConfiguration()
   const {
     activeWorkspace,
     status: workspaceStatus,
@@ -698,17 +703,19 @@ export function WorkspaceSettingsPanel({
   const [invitePath, setInvitePath] = useState<string | null>(null)
   const [teamCandidates, setTeamCandidates] = useState<WorkspaceManagementItem[]>([])
   const [teamCandidateBusyId, setTeamCandidateBusyId] = useState<string | null>(null)
+  const activeWorkspaceId = activeWorkspace?.id
+  const nativeSettingsMode = nativeConfiguration.nativeAuthConfigured
 
   useEffect(() => {
-    if (!activeWorkspace || activeTab !== 'sharing') return
+    if (!activeWorkspaceId || activeTab !== 'sharing' || nativeSettingsMode) return
     const controller = new AbortController()
     setPolicyState({ status: 'loading' })
-    void client.sharingPolicy(activeWorkspace.id, controller.signal)
+    void client.sharingPolicy(activeWorkspaceId, controller.signal)
       .then(async (result) => {
         if (controller.signal.aborted) return
         // Metrics are owner/admin only; a member simply sees policy without them.
         const metrics = result.canManage
-          ? await client.operationalMetrics?.(activeWorkspace.id, controller.signal)
+          ? await client.operationalMetrics?.(activeWorkspaceId, controller.signal)
             .catch(() => undefined)
           : undefined
         if (controller.signal.aborted) return
@@ -739,13 +746,13 @@ export function WorkspaceSettingsPanel({
         })
       })
     return () => controller.abort()
-  }, [activeTab, activeWorkspace, client, refreshKey])
+  }, [activeTab, activeWorkspaceId, client, nativeSettingsMode, refreshKey])
 
   useEffect(() => {
-    if (!activeWorkspace || activeTab === 'sharing' || activeTab === 'billing' || activeTab === 'import') return
+    if (!activeWorkspaceId || activeTab === 'sharing' || activeTab === 'billing' || activeTab === 'import') return
     const controller = new AbortController()
     setState({ status: 'loading' })
-    void client.load(activeWorkspace.id, activeTab, controller.signal)
+    void client.load(activeWorkspaceId, activeTab, controller.signal)
       .then((result) => {
         if (!controller.signal.aborted) setState({ status: 'ready', ...result })
       })
@@ -755,17 +762,17 @@ export function WorkspaceSettingsPanel({
           status: 'error',
           message: loadError instanceof Error ? loadError.message : 'Try again in a moment.',
         })
-      })
+    })
     return () => controller.abort()
-  }, [activeTab, activeWorkspace, client, refreshKey])
+  }, [activeTab, activeWorkspaceId, client, refreshKey])
 
   useEffect(() => {
-    if (action?.type !== 'manage-team' || !activeWorkspace) return
+    if (action?.type !== 'manage-team' || !activeWorkspaceId) return
     const controller = new AbortController()
     setActionError(null)
     void Promise.all([
-      client.load(activeWorkspace.id, 'people', controller.signal),
-      client.load(activeWorkspace.id, 'chats-agents', controller.signal),
+      client.load(activeWorkspaceId, 'people', controller.signal),
+      client.load(activeWorkspaceId, 'chats-agents', controller.signal),
     ]).then(([people, agents]) => {
       if (controller.signal.aborted) return
       setTeamCandidates(
@@ -777,7 +784,7 @@ export function WorkspaceSettingsPanel({
       }
     })
     return () => controller.abort()
-  }, [action, activeWorkspace, client])
+  }, [action, activeWorkspaceId, client])
 
   function closeAction() {
     if (actionBusy || teamCandidateBusyId) return
@@ -899,6 +906,9 @@ export function WorkspaceSettingsPanel({
         onPrimaryAction={openPrimaryAction}
         onArchiveWorkspace={openArchiveWorkspace}
         activeTab={activeTab}
+        refreshKey={refreshKey}
+        nativeSettingsMode={nativeSettingsMode}
+        nativeClientAvailable={nativeConfiguration.hasConvexClient}
         onTabChange={handleTabChange}
         actionError={actionError}
         hasAction={action !== null}
@@ -1043,6 +1053,132 @@ function WorkspaceSharingTab({
   )
 }
 
+class NativeWorkspaceSharingQueryErrorBoundary extends React.Component<{
+  children: React.ReactNode
+  onRetry(): void
+}, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <WorkspaceSharingPolicySection
+          state={{ status: 'error', message: this.state.error.message }}
+          onRetry={this.props.onRetry}
+        />
+      )
+    }
+    return this.props.children
+  }
+}
+
+function NativeWorkspaceSharingTab({
+  client,
+  workspaceId,
+  onRefresh,
+}: {
+  client: WorkspaceManagementClient
+  workspaceId: string
+  onRefresh(): void
+}) {
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  const canQuery = !isLoading && isAuthenticated
+  const policyQuery = useQuery(
+    api.collaboration.nativeWorkspaces.getSharingPolicy,
+    canQuery ? { workspaceId } : 'skip',
+  )
+  const [metrics, setMetrics] = useState<WorkspaceOperationalMetrics | undefined>()
+  const [busy, setBusy] = useState(false)
+  const updatePolicy = useMutation(api.collaboration.nativeWorkspaces.setSharingPolicy)
+    .withOptimisticUpdate((store, args) => {
+      const queryArgs = { workspaceId: args.workspaceId }
+      const current = store.getQuery(api.collaboration.nativeWorkspaces.getSharingPolicy, queryArgs)
+      if (!current) return
+      const patch = Object.fromEntries(
+        Object.entries(args.patch).map(([key, value]) => [key, value === null ? undefined : value]),
+      )
+      store.setQuery(api.collaboration.nativeWorkspaces.getSharingPolicy, queryArgs, {
+        ...current,
+        policy: {
+          ...current.policy,
+          ...patch,
+          updatedAt: Math.max(Date.now(), current.policy.updatedAt + 1),
+        },
+      })
+    })
+  const canManage = policyQuery?.canManage ?? false
+
+  useEffect(() => {
+    if (!canManage) {
+      setMetrics(undefined)
+      return
+    }
+    const controller = new AbortController()
+    setMetrics(undefined)
+    void client.operationalMetrics?.(workspaceId, controller.signal)
+      .then(result => {
+        if (!controller.signal.aborted) setMetrics(result)
+      })
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [canManage, client, workspaceId])
+
+  const policyState = useMemo<WorkspaceSharingPolicyState>(() => {
+    if (isLoading) return { status: 'loading' }
+    if (!isAuthenticated) return { status: 'error', message: 'Native workspace authentication is unavailable.' }
+    if (!policyQuery) return { status: 'loading' }
+    return {
+      status: 'ready',
+      canManage: policyQuery.canManage,
+      updatedAt: policyQuery.policy.updatedAt,
+      publicLinksEnabled: policyQuery.policy.publicLinksEnabled,
+      memberCanCreateChannels: policyQuery.policy.memberCanCreateChannels,
+      memberCanCreateAgents: policyQuery.policy.memberCanCreateAgents,
+      memberCanInvite: policyQuery.policy.memberCanInvite,
+      membersCanEditExtensions: policyQuery.policy.workspaceExtensionsEditors !== 'admins',
+      membersCanEditContent: policyQuery.policy.workspaceContentEditors !== 'admins',
+      memberCanMoveScope: policyQuery.policy.memberCanMoveScope,
+      membersCanTopUp: policyQuery.policy.usageTopUpBy === 'members',
+      legalHold: policyQuery.policy.legalHold,
+      rolloutStage: policyQuery.policy.rolloutStage,
+      guestExpirationDays: policyQuery.policy.guestExpirationDays,
+      channelRetentionDays: policyQuery.policy.channelRetentionDays,
+      metrics,
+    }
+  }, [isAuthenticated, isLoading, metrics, policyQuery])
+
+  async function handleToggle(key: PolicyToggleKey, value: boolean) {
+    if (!policyQuery) return
+    setBusy(true)
+    try {
+      await updatePolicy({
+        workspaceId,
+        patch: policyPatchFor(key, value) as WorkspaceSharingPolicyPatch,
+        expectedUpdatedAt: policyQuery.policy.updatedAt,
+      })
+      invalidateWorkspaceScopePolicy(workspaceId)
+      toast.success('Workspace policy updated.')
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not update workspace policy.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <WorkspaceSharingPolicySection
+      state={policyState}
+      busy={busy}
+      onRetry={onRefresh}
+      onToggle={(key, value) => void handleToggle(key, value)}
+    />
+  )
+}
+
 function WorkspacePanelBody({
   activeWorkspace,
   workspaceLabel,
@@ -1051,6 +1187,9 @@ function WorkspacePanelBody({
   onPrimaryAction,
   onArchiveWorkspace,
   activeTab,
+  refreshKey,
+  nativeSettingsMode,
+  nativeClientAvailable,
   onTabChange,
   actionError,
   hasAction,
@@ -1076,6 +1215,9 @@ function WorkspacePanelBody({
   onPrimaryAction(): void
   onArchiveWorkspace(): void
   activeTab: WorkspaceSettingsTab
+  refreshKey: number
+  nativeSettingsMode: boolean
+  nativeClientAvailable: boolean
   onTabChange(tab: WorkspaceSettingsTab): void
   actionError: string | null
   hasAction: boolean
@@ -1099,7 +1241,7 @@ function WorkspacePanelBody({
       <header className="flex items-center gap-3 px-5 py-4">
         <WorkspaceIconControl key={activeWorkspace.id} workspace={activeWorkspace} />
         <div className="min-w-0 flex-1">
-          <WorkspaceNameEditor workspace={activeWorkspace} client={client} />
+        <WorkspaceNameEditor key={activeWorkspace.id} workspace={activeWorkspace} client={client} />
           <p className="mt-0.5 truncate text-xs text-(--muted)">{workspaceLabel}</p>
         </div>
         {showPrimaryAction ? (
@@ -1129,16 +1271,38 @@ function WorkspacePanelBody({
       ) : activeTab === 'import' ? (
         <ImportPanel />
       ) : activeTab === 'sharing' ? (
-        <WorkspaceSharingTab
-          client={client}
-          workspaceId={activeWorkspace.id}
-          policyState={policyState}
-          policyBusy={policyBusy}
-          onRefresh={onRefresh}
-          setPolicyState={setPolicyState}
-          setPolicyBusy={setPolicyBusy}
-          setActionError={setActionError}
-        />
+        nativeSettingsMode
+          ? nativeClientAvailable
+            ? (
+              <NativeWorkspaceSharingQueryErrorBoundary
+                key={`${activeWorkspace.id}-${refreshKey}`}
+                onRetry={onRefresh}
+              >
+                <NativeWorkspaceSharingTab
+                  client={client}
+                  workspaceId={activeWorkspace.id}
+                  onRefresh={onRefresh}
+                />
+              </NativeWorkspaceSharingQueryErrorBoundary>
+            )
+            : (
+              <WorkspaceSharingPolicySection
+                state={{ status: 'error', message: 'Native workspace settings are unavailable.' }}
+                onRetry={onRefresh}
+              />
+            )
+          : (
+            <WorkspaceSharingTab
+              client={client}
+              workspaceId={activeWorkspace.id}
+              policyState={policyState}
+              policyBusy={policyBusy}
+              onRefresh={onRefresh}
+              setPolicyState={setPolicyState}
+              setPolicyBusy={setPolicyBusy}
+              setActionError={setActionError}
+            />
+          )
       ) : (
       <WorkspaceManagementContent
         tab={activeTab}

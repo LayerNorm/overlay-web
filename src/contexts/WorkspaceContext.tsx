@@ -1,6 +1,7 @@
 'use client'
 
 import {
+  Component,
   createContext,
   useCallback,
   useContext,
@@ -9,9 +10,14 @@ import {
   useRef,
   useState,
   type ReactNode,
+  type MutableRefObject,
 } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import { useConvexAuth, usePaginatedQuery, useQuery } from 'convex/react'
+import { api } from '../../convex/_generated/api'
 import type { AccountWorkspaceInvitation } from '@overlay/workspace-contracts'
+import { useAuth } from '@/contexts/AuthContext'
+import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
 import { setActiveChatListWorkspace } from '@/shared/chat/chat-list-cache'
 import { dispatchWorkspaceChanged } from '@/shared/workspaces/events'
 import {
@@ -41,6 +47,7 @@ export type WorkspaceContextValue = {
 }
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null)
+const EMPTY_WORKSPACES: WorkspaceSummary[] = []
 
 function shouldSoftReload(
   options: { force?: boolean } | undefined,
@@ -124,7 +131,7 @@ function routeTargetMatchesCurrentWorkspace(
   return true
 }
 
-export function WorkspaceProvider({
+function LegacyWorkspaceProvider({
   children,
   enabled = true,
   client,
@@ -145,13 +152,32 @@ export function WorkspaceProvider({
   const statusRef = useRef(status)
   const workspacesRef = useRef(workspaces)
   const activeWorkspaceIdRef = useRef(activeWorkspaceId)
+  const routeGenerationRef = useRef({ pathname, generation: 0 })
+  if (routeGenerationRef.current.pathname !== pathname) {
+    routeGenerationRef.current = {
+      pathname,
+      generation: routeGenerationRef.current.generation + 1,
+    }
+  }
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
   useEffect(() => {
     statusRef.current = status
     workspacesRef.current = workspaces
     activeWorkspaceIdRef.current = activeWorkspaceId
   }, [status, workspaces, activeWorkspaceId])
+  useEffect(() => {
+    setSwitchingWorkspaceId(null)
+  }, [pathname])
 
   const load = useCallback(async (signal?: AbortSignal, options?: { force?: boolean }) => {
+    const generation = routeGenerationRef.current.generation
+    const isCurrent = () => mountedRef.current
+      && generation === routeGenerationRef.current.generation
+      && !signal?.aborted
     if (!enabled) {
       setStatus('idle')
       setWorkspaces([])
@@ -186,9 +212,9 @@ export function WorkspaceProvider({
             activeWorkspaceId: activeWorkspaceIdRef.current ?? '',
           }
         : await client.list(signal)
-      if (signal?.aborted) return
+      if (!isCurrent()) return
       const routeResolution = await resolveRouteWorkspace(routeTarget, response.workspaces, client, signal)
-      if (signal?.aborted) return
+      if (!isCurrent()) return
       if (routeResolution.canonicalHandle) {
         const canonicalPath = pathname.replace(/^\/w\/[^/]+/, `/w/${encodeURIComponent(routeResolution.canonicalHandle)}`)
         if (canonicalPath !== pathname) {
@@ -206,7 +232,7 @@ export function WorkspaceProvider({
         signal,
         routeResolution.unavailable,
       )
-      if (signal?.aborted) return
+      if (!isCurrent()) return
       if (locatedWorkspace.unavailable) {
         setWorkspaces([])
         setActiveWorkspaceId(null)
@@ -236,7 +262,7 @@ export function WorkspaceProvider({
         dispatchWorkspaceChanged({ previousWorkspaceId, workspaceId: nextActiveWorkspaceId })
       }
     } catch (loadError) {
-      if (signal?.aborted) return
+      if (!isCurrent()) return
       setError(loadError instanceof Error ? loadError.message : 'Could not load workspaces.')
       setStatus('error')
     }
@@ -261,7 +287,11 @@ export function WorkspaceProvider({
   }, [load])
 
   const createWorkspace = useCallback(async (input: WorkspaceCreateInput, options?: { idempotencyKey: string }) => {
+    const generation = routeGenerationRef.current.generation
     const response = await client.create(input, options)
+    if (!mountedRef.current || generation !== routeGenerationRef.current.generation) {
+      throw new Error('Workspace route changed before creation completed.')
+    }
     setWorkspaces((current) => {
       const withoutCreated = current.filter((workspace) => workspace.id !== response.workspace.id)
       return [...withoutCreated, response.workspace]
@@ -270,6 +300,7 @@ export function WorkspaceProvider({
   }, [client])
 
   const switchWorkspace = useCallback(async (workspaceId: string) => {
+    const generation = routeGenerationRef.current.generation
     if (workspaceId === activeWorkspaceId) {
       const current = workspaces.find((workspace) => workspace.id === workspaceId)
       if (current) return current
@@ -279,6 +310,9 @@ export function WorkspaceProvider({
     setError(null)
     try {
       const response = await client.activate(workspaceId)
+      if (!mountedRef.current || generation !== routeGenerationRef.current.generation) {
+        throw new Error('Workspace route changed before switching completed.')
+      }
       setWorkspaces((current) => current.map((workspace) => (
         workspace.id === response.workspace.id ? response.workspace : workspace
       )))
@@ -289,10 +323,12 @@ export function WorkspaceProvider({
       const message = switchError instanceof Error
         ? switchError.message
         : 'Could not switch workspaces.'
-      setError(message)
+      if (mountedRef.current && generation === routeGenerationRef.current.generation) setError(message)
       throw switchError
     } finally {
-      setSwitchingWorkspaceId(null)
+      if (mountedRef.current && generation === routeGenerationRef.current.generation) {
+        setSwitchingWorkspaceId(null)
+      }
     }
   }, [activeWorkspaceId, client, workspaces])
 
@@ -332,6 +368,436 @@ export function WorkspaceProvider({
       {children}
     </WorkspaceContext.Provider>
   )
+}
+
+type WorkspaceProviderProps = {
+  children: ReactNode
+  enabled?: boolean
+  client: WorkspaceClient
+}
+
+export function WorkspaceProvider(props: WorkspaceProviderProps) {
+  const configuration = useConvexAuthConfiguration()
+  const { user } = useAuth()
+  const identityKey = user?.id ?? 'anonymous'
+
+  if (!configuration.nativeAuthConfigured) {
+    return <LegacyWorkspaceProvider key={identityKey} {...props} />
+  }
+  if (!configuration.hasConvexClient) {
+    return <UnavailableNativeWorkspaceProvider key={identityKey} {...props} />
+  }
+  return <NativeWorkspaceProvider key={identityKey} identityKey={identityKey} {...props} />
+}
+
+type NativeWorkspaceOperations = Pick<WorkspaceContextValue, 'refresh' | 'createWorkspace' | 'switchWorkspace'>
+type WorkspaceRouteScope = { pathname: string; generation: number }
+
+function useWorkspaceRouteScope(pathname: string) {
+  const scopeRef = useRef<WorkspaceRouteScope>({ pathname, generation: 0 })
+  useEffect(() => {
+    if (scopeRef.current.pathname === pathname) return
+    scopeRef.current = { pathname, generation: scopeRef.current.generation + 1 }
+  }, [pathname])
+  return scopeRef
+}
+
+class WorkspaceQueryErrorBoundary extends Component<{
+  children: ReactNode
+  renderError(error: Error, retry: () => void): ReactNode
+  onCaught(error: Error): void
+}, { error: Error | null }> {
+  state: { error: Error | null } = { error: null }
+
+  static getDerivedStateFromError(error: Error) {
+    return { error }
+  }
+
+  componentDidCatch(error: Error) {
+    this.props.onCaught(error)
+  }
+
+  render() {
+    if (this.state.error) {
+      return this.props.renderError(this.state.error, () => this.setState({ error: null }))
+    }
+    return this.props.children
+  }
+}
+
+function NativeWorkspaceProvider({
+  children,
+  enabled = true,
+  client,
+  identityKey,
+}: WorkspaceProviderProps & { identityKey: string }) {
+  const pathname = usePathname() ?? ''
+  const scopeKey = `${identityKey}:${pathname}`
+  const scopeRef = useWorkspaceRouteScope(pathname)
+  const mountedRef = useRef(false)
+  const activeWorkspaceRef = useRef<WorkspaceSummary | null>(null)
+  const [localWorkspaceId, setLocalWorkspaceId] = useState<string | null>(null)
+  const [switching, setSwitching] = useState<{ id: string; scopeKey: string } | null>(null)
+  const [operationError, setOperationError] = useState<{ message: string; scopeKey: string } | null>(null)
+  const [invitations, setInvitations] = useState<AccountWorkspaceInvitation[]>([])
+  const [invitationRefresh, setInvitationRefresh] = useState(0)
+  const [dataSnapshot, setDataSnapshot] = useState<{
+    scopeKey: string
+    value: WorkspaceContextValue
+  } | null>(null)
+  const [queryFailure, setQueryFailure] = useState<{ scopeKey: string; message: string } | null>(null)
+  const queryRetryRef = useRef<{ scopeKey: string; retry: () => void } | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      setActiveChatListWorkspace(null)
+    }
+  }, [])
+
+  useEffect(() => {
+    setSwitching(null)
+    setOperationError(null)
+    setInvitations([])
+  }, [identityKey, pathname])
+
+  const isCurrent = useCallback((generation: number) => (
+    mountedRef.current && generation === scopeRef.current.generation
+  ), [scopeRef])
+
+  const refresh = useCallback(async () => {
+    if (!mountedRef.current) return
+    setDataSnapshot(null)
+    setQueryFailure(null)
+    setInvitationRefresh(current => current + 1)
+    if (queryRetryRef.current?.scopeKey === scopeKey) queryRetryRef.current.retry()
+  }, [scopeKey])
+
+  const createWorkspace = useCallback(async (
+    input: WorkspaceCreateInput,
+    options?: { idempotencyKey: string },
+  ) => {
+    const generation = scopeRef.current.generation
+    const result = await client.create(input, options)
+    if (!isCurrent(generation)) throw new Error('Workspace route changed before creation completed.')
+    return result.workspace
+  }, [client, isCurrent, scopeRef])
+
+  const switchWorkspace = useCallback(async (workspaceId: string) => {
+    const generation = scopeRef.current.generation
+    if (activeWorkspaceRef.current?.id === workspaceId) return activeWorkspaceRef.current
+    setSwitching({ id: workspaceId, scopeKey })
+    setOperationError(null)
+    try {
+      const result = await client.activate(workspaceId)
+      if (!isCurrent(generation)) throw new Error('Workspace route changed before switching completed.')
+      return result.workspace
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : 'Could not switch workspaces.'
+      if (isCurrent(generation)) setOperationError({ message, scopeKey })
+      throw caught
+    } finally {
+      if (isCurrent(generation)) setSwitching(null)
+    }
+  }, [client, isCurrent, scopeKey, scopeRef])
+
+  const operations = useMemo<NativeWorkspaceOperations>(() => ({
+    refresh,
+    createWorkspace,
+    switchWorkspace,
+  }), [createWorkspace, refresh, switchWorkspace])
+
+  const onDataValue = useCallback((value: WorkspaceContextValue) => {
+    activeWorkspaceRef.current = value.activeWorkspace
+    if (value.activeWorkspace) setLocalWorkspaceId(value.activeWorkspace.id)
+    setDataSnapshot({ scopeKey, value })
+  }, [scopeKey])
+  const currentValue = dataSnapshot?.scopeKey === scopeKey ? dataSnapshot.value : null
+  const currentFailure = queryFailure?.scopeKey === scopeKey ? queryFailure.message : null
+  const contextValue = useMemo<WorkspaceContextValue>(() => ({
+    status: !enabled ? 'idle' : currentFailure ? 'error' : currentValue?.status ?? 'loading',
+    workspaces: currentFailure ? [] : currentValue?.workspaces ?? [],
+    invitations: currentFailure ? [] : currentValue?.invitations ?? invitations,
+    activeWorkspace: currentFailure ? null : currentValue?.activeWorkspace ?? null,
+    activeWorkspaceId: currentFailure ? null : currentValue?.activeWorkspaceId ?? null,
+    error: currentFailure ? currentFailure : currentValue?.error ?? null,
+    switchingWorkspaceId: currentFailure ? null : currentValue?.switchingWorkspaceId ?? null,
+    resolvedRouteTargetKey: currentFailure ? null : currentValue?.resolvedRouteTargetKey ?? null,
+    ...operations,
+  }), [currentFailure, currentValue, enabled, invitations, operations])
+
+  return (
+    <>
+      <WorkspaceQueryErrorBoundary
+        key={scopeKey}
+        onCaught={(error) => {
+          setDataSnapshot(null)
+          setQueryFailure({ scopeKey, message: error.message })
+        }}
+        renderError={(_error, retry) => {
+          queryRetryRef.current = { scopeKey, retry }
+          return null
+        }}
+      >
+        <NativeWorkspaceDataProvider
+          enabled={enabled}
+          client={client}
+          scopeKey={scopeKey}
+          scopeRef={scopeRef}
+          mountedRef={mountedRef}
+          localWorkspaceId={localWorkspaceId}
+          switching={switching}
+          operationError={operationError}
+          invitations={invitations}
+          invitationRefresh={invitationRefresh}
+          setInvitations={setInvitations}
+          operations={operations}
+          onValue={onDataValue}
+        />
+      </WorkspaceQueryErrorBoundary>
+      <WorkspaceContext.Provider value={contextValue}>
+        {children}
+      </WorkspaceContext.Provider>
+    </>
+  )
+}
+
+function NativeWorkspaceDataProvider({
+  enabled,
+  client,
+  scopeKey,
+  scopeRef,
+  mountedRef,
+  localWorkspaceId,
+  switching,
+  operationError,
+  invitations,
+  invitationRefresh,
+  setInvitations,
+  operations,
+  onValue,
+}: Omit<WorkspaceProviderProps, 'children'> & {
+  scopeRef: MutableRefObject<WorkspaceRouteScope>
+  scopeKey: string
+  mountedRef: MutableRefObject<boolean>
+  localWorkspaceId: string | null
+  switching: { id: string; scopeKey: string } | null
+  operationError: { message: string; scopeKey: string } | null
+  invitations: AccountWorkspaceInvitation[]
+  invitationRefresh: number
+  setInvitations(value: AccountWorkspaceInvitation[]): void
+  operations: NativeWorkspaceOperations
+  onValue(value: WorkspaceContextValue): void
+}) {
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
+  const pathname = usePathname() ?? ''
+  const router = useRouter()
+  const routeTarget = readWorkspaceRouteTarget(pathname)
+  const canQuery = Boolean(enabled && !authLoading && isAuthenticated)
+  const directory = usePaginatedQuery(
+    api.collaboration.nativeWorkspaces.listDirectory,
+    canQuery ? {} : 'skip',
+    { initialNumItems: 50 },
+  )
+  const initialWorkspaceHint = useQuery(
+    api.collaboration.nativeWorkspaces.getInitialWorkspaceHint,
+    canQuery ? {} : 'skip',
+  )
+  const handleResolution = useQuery(
+    api.collaboration.nativeWorkspaces.resolveHandle,
+    canQuery && routeTarget?.kind === 'handle' ? { handle: routeTarget.value } : 'skip',
+  )
+  const [preferenceSnapshot, setPreferenceSnapshot] = useState<{ captured: boolean; id: string | null }>({
+    captured: false,
+    id: null,
+  })
+  const loadMore = directory.loadMore
+
+  useEffect(() => {
+    if (canQuery && directory.status === 'CanLoadMore') loadMore(50)
+  }, [canQuery, directory.status, loadMore])
+
+  useEffect(() => {
+    if (!canQuery || initialWorkspaceHint === undefined || preferenceSnapshot.captured) return
+    queueMicrotask(() => setPreferenceSnapshot({ captured: true, id: initialWorkspaceHint }))
+  }, [canQuery, initialWorkspaceHint, preferenceSnapshot.captured])
+
+  const workspaces = canQuery ? directory.results : EMPTY_WORKSPACES
+  const directoryDone = directory.status === 'Exhausted'
+  const routeWorkspaceId = routeTarget?.kind === 'id'
+    ? routeTarget.value
+    : routeTarget?.kind === 'handle'
+      ? handleResolution?.workspaceId ?? null
+      : null
+  const routeWorkspace = routeWorkspaceId
+    ? workspaces.find(workspace => workspace.id === routeWorkspaceId) ?? null
+    : null
+  const desiredUnresolved = routeTarget?.kind === 'id'
+    ? !routeWorkspace && !directoryDone
+    : routeTarget?.kind === 'handle'
+      ? handleResolution === undefined
+        || (handleResolution !== null && !routeWorkspace && !directoryDone)
+      : false
+  const routeError = routeTarget?.kind === 'handle' && handleResolution === null
+    ? 'Workspace not found or you no longer have access.'
+    : routeTarget?.kind === 'id' && directoryDone && !routeWorkspace
+      ? 'Workspace not found or you no longer have access.'
+      : routeTarget?.kind === 'handle' && directoryDone && handleResolution && !routeWorkspace
+        ? 'Workspace not found or you no longer have access.'
+        : null
+
+  useEffect(() => {
+    if (routeTarget?.kind !== 'handle' || !handleResolution || handleResolution.canonical) return
+    const canonicalPath = pathname.replace(
+      /^\/w\/[^/]+/,
+      `/w/${encodeURIComponent(handleResolution.canonicalHandle)}`,
+    )
+    if (canonicalPath === pathname) return
+    const locationSuffix = typeof window === 'undefined'
+      ? ''
+      : `${window.location.search}${window.location.hash}`
+    router.replace(`${canonicalPath}${locationSuffix}`, { scroll: false })
+  }, [handleResolution, pathname, routeTarget, router])
+
+  const localWorkspace = localWorkspaceId
+    ? workspaces.find(workspace => workspace.id === localWorkspaceId) ?? null
+    : null
+  const preferredWorkspace = preferenceSnapshot.id
+    ? workspaces.find(workspace => workspace.id === preferenceSnapshot.id) ?? null
+    : null
+  const unresolvedInitialHint = !routeTarget
+    && !localWorkspace
+    && Boolean(preferenceSnapshot.id && !preferredWorkspace && !directoryDone)
+  const activeWorkspace = routeTarget
+    ? routeWorkspace
+    : localWorkspace ?? preferredWorkspace ?? (directoryDone ? workspaces[0] ?? null : null)
+
+  const resolvedRouteTargetKey = routeTarget && routeWorkspace
+    ? workspaceRouteTargetKey(routeTarget)
+    : null
+  const queryLoading = directory.status === 'LoadingFirstPage'
+    || (workspaces.length === 0 && !directoryDone)
+  const status: WorkspaceLifecycleStatus = !enabled
+    ? 'idle'
+    : authLoading
+      ? 'loading'
+      : !isAuthenticated
+        ? 'error'
+        : queryLoading || !preferenceSnapshot.captured || desiredUnresolved || unresolvedInitialHint
+          ? 'loading'
+          : routeError
+            ? 'error'
+            : 'ready'
+  const error = !enabled || status !== 'error'
+    ? null
+    : routeError ?? (!isAuthenticated ? 'Native workspace authentication is unavailable.' : null)
+  const switchingWorkspaceId = switching?.scopeKey === scopeKey ? switching.id : null
+  const currentOperationError = operationError?.scopeKey === scopeKey ? operationError.message : null
+  const value = useMemo<WorkspaceContextValue>(() => ({
+    status,
+    workspaces,
+    invitations,
+    activeWorkspace,
+    activeWorkspaceId: activeWorkspace?.id ?? null,
+    error: error ?? currentOperationError,
+    switchingWorkspaceId,
+    resolvedRouteTargetKey,
+    ...operations,
+  }), [
+    activeWorkspace,
+    currentOperationError,
+    error,
+    invitations,
+    operations,
+    resolvedRouteTargetKey,
+    status,
+    switchingWorkspaceId,
+    workspaces,
+  ])
+
+  useEffect(() => {
+    onValue(value)
+  }, [onValue, value])
+
+  const previousWorkspaceIdRef = useRef<string | null>(null)
+  useEffect(() => {
+    setActiveChatListWorkspace(activeWorkspace?.id ?? null)
+    const previousWorkspaceId = previousWorkspaceIdRef.current
+    if (previousWorkspaceId && activeWorkspace?.id && previousWorkspaceId !== activeWorkspace.id) {
+      dispatchWorkspaceChanged({ previousWorkspaceId, workspaceId: activeWorkspace.id })
+    }
+    previousWorkspaceIdRef.current = activeWorkspace?.id ?? null
+    return () => setActiveChatListWorkspace(null)
+  }, [activeWorkspace?.id])
+
+  useEffect(() => {
+    const shouldLoadInvitations = canQuery
+      && status === 'ready'
+      && (pathname === '/app/workspaces' || workspaces.length === 0)
+    if (!shouldLoadInvitations) return
+    const controller = new AbortController()
+    const currentGeneration = scopeRef.current.generation
+    void client.list(controller.signal).then(result => {
+      if (!controller.signal.aborted && mountedRef.current
+        && currentGeneration === scopeRef.current.generation) {
+        setInvitations(result.invitations ?? [])
+      }
+    }).catch(() => {
+      if (!controller.signal.aborted && mountedRef.current
+        && currentGeneration === scopeRef.current.generation) {
+        setInvitations([])
+      }
+    })
+    return () => controller.abort()
+  }, [canQuery, client, invitationRefresh, mountedRef, pathname, scopeRef, setInvitations, status, workspaces.length])
+
+  return null
+}
+
+function UnavailableNativeWorkspaceProvider({
+  children,
+  enabled = true,
+  client,
+}: WorkspaceProviderProps) {
+  const pathname = usePathname() ?? ''
+  const scopeRef = useWorkspaceRouteScope(pathname)
+  const mountedRef = useRef(false)
+  useEffect(() => {
+    mountedRef.current = true
+    return () => { mountedRef.current = false }
+  }, [])
+  const createWorkspace = useCallback(async (input: WorkspaceCreateInput, options?: { idempotencyKey: string }) => {
+    const generation = scopeRef.current.generation
+    const result = await client.create(input, options)
+    if (!mountedRef.current || generation !== scopeRef.current.generation) {
+      throw new Error('Workspace route changed before creation completed.')
+    }
+    return result.workspace
+  }, [client, scopeRef])
+  const switchWorkspace = useCallback(async (workspaceId: string) => {
+    const generation = scopeRef.current.generation
+    const result = await client.activate(workspaceId)
+    if (!mountedRef.current || generation !== scopeRef.current.generation) {
+      throw new Error('Workspace route changed before switching completed.')
+    }
+    return result.workspace
+  }, [client, scopeRef])
+  const value = useMemo<WorkspaceContextValue>(() => ({
+    status: enabled ? 'error' : 'idle',
+    workspaces: [],
+    invitations: [],
+    activeWorkspace: null,
+    activeWorkspaceId: null,
+    error: enabled ? 'Native workspace directory is unavailable.' : null,
+    switchingWorkspaceId: null,
+    resolvedRouteTargetKey: null,
+    async refresh() {},
+    createWorkspace,
+    switchWorkspace,
+  }), [createWorkspace, enabled, switchWorkspace])
+
+  return <WorkspaceContext.Provider value={value}>{children}</WorkspaceContext.Provider>
 }
 
 export function useWorkspace(): WorkspaceContextValue {

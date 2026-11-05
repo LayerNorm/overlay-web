@@ -52,6 +52,22 @@ principal and membership on every query/mutation. These database dependencies
 also invalidate subscribed queries when access is revoked; do not cache them
 across calls or identities.
 
+`collaboration/nativeWorkspaces` owns the browser workspace directory,
+membership-gated route-handle resolution, rename, sharing-policy settings, and
+the feature-gated handle mutation. Directory queries page at most 50
+principals per request and filter archived principals/workspaces and inactive
+memberships. Active members may read directory and policy state; owner/admin
+roles govern rename and policy writes, while handle writes remain owner-only
+and require `requireNativeDeploymentFeature` for `workspaceHandles` plus a
+ready alias registry. Rename and policy writes share a 300-per-user,
+10-minute budget; handle writes use a separate 10-per-user, 10-minute budget.
+Mutations use expected revisions, monotonic timestamps, and verified-user
+audit events. The web provider uses the saved active-workspace preference
+only as an initial hint; current routes and tab-local selection remain
+authoritative. Creation/activation, invitation and membership management,
+icon storage orchestration, and billing remain on their existing server-owned
+paths.
+
 `requireNativePersonalChat` additionally checks exact workspace, owner, live
 conversation and participant state. Missing participant rows remain compatible
 with older personal chats; archived participant state remains accessible for

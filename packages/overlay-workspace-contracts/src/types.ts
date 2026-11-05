@@ -160,6 +160,8 @@ export type WorkspaceSummary = {
   kind: WorkspaceKind
   status: WorkspaceStatus
   role: WorkspaceMembershipRole
+  /** Monotonic workspace revision used to detect stale native rename drafts. */
+  updatedAt?: number
   /** Active members, agents included. */
   memberCount?: number
   /** Active members who are people (not agents). One means the workspace is just that person. */
