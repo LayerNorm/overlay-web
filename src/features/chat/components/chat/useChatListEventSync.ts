@@ -17,9 +17,14 @@ import {
   upsertCachedChat,
 } from '@/shared/chat/chat-list-cache'
 import type { Conversation, ConversationUiState } from '../chat-interface/types'
+import { isNativePersonalChatCandidate } from '@/shared/chat/native-personal-chat'
 
 export function useChatListEventSync({
   activeChatIdRef,
+  nativePersonalEnabled,
+  nativePersonalIds,
+  nativePersonalRoute,
+  workspaceId,
   resetActiveChatAfterDelete,
   setActiveChatDeleting,
   setActiveChatTitle,
@@ -28,6 +33,10 @@ export function useChatListEventSync({
   updateRuntimeUiState,
 }: {
   activeChatIdRef: { current: string | null }
+  nativePersonalEnabled: boolean
+  nativePersonalIds: ReadonlySet<string>
+  nativePersonalRoute: boolean
+  workspaceId?: string | null
   resetActiveChatAfterDelete: (chatId: string) => void
   setActiveChatDeleting: Dispatch<SetStateAction<boolean>>
   setActiveChatTitle: Dispatch<SetStateAction<string | null>>
@@ -43,6 +52,11 @@ export function useChatListEventSync({
       const { detail } = event as CustomEvent<ChatCreatedDetail | ChatModifiedDetail>
       const nextChat = detail?.chat
       if (!nextChat?._id) return
+      if (nativePersonalEnabled && (
+        nativePersonalIds.has(nextChat._id)
+        || isNativePersonalChatCandidate(nextChat, workspaceId)
+        || (nativePersonalRoute && activeChatIdRef.current === nextChat._id)
+      )) return
       upsertCachedChat(nextChat)
       setChats((prev) => {
         const existingIndex = prev.findIndex((chat) => chat._id === nextChat._id)
@@ -61,6 +75,10 @@ export function useChatListEventSync({
     function handleChatTitleUpdated(event: Event) {
       const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
       if (!detail?.chatId || !detail.title) return
+      if (nativePersonalEnabled && (
+        nativePersonalIds.has(detail.chatId)
+        || (nativePersonalRoute && activeChatIdRef.current === detail.chatId)
+      )) return
       upsertCachedChat({
         _id: detail.chatId,
         title: detail.title,
@@ -111,11 +129,15 @@ export function useChatListEventSync({
     }
   }, [
     activeChatIdRef,
+    nativePersonalEnabled,
+    nativePersonalIds,
+    nativePersonalRoute,
     resetActiveChatAfterDelete,
     setActiveChatDeleting,
     setActiveChatTitle,
     setChats,
     setDeletingChatIds,
     updateRuntimeUiState,
+    workspaceId,
   ])
 }

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Move browser personal-chat list, title, archive/restore and basic unread ownership to native Convex with additive indexes and no backfill. Persisted `conversations.read` / `conversations.edit` capabilities are enforced even when the legacy BFF is in observe mode; native calls accept no caller policy flags or operator bypass. Optimistic writes rebase by row, bounded pages may be empty while filtered results remain, and verified-user writes are capped at 300 per 10 minutes because native calls have no BFF IP context. Legacy HTTP remains for native-off installations and non-pilot workspace chats, DMs, channels and other resources; transcript/history/streaming and deletion retain their existing server boundaries. Roll back web ownership first and leave backend fields/indexes in place.
+
 - Add native Convex viewer and personal-chat scope guards that derive identity from authentication and recheck workspace membership, ownership and participant access on every call.
 
 - Establish native Convex browser authentication with identity-isolated clients and refresh handling, preserving legacy subscriptions and allowing private providers to opt in after their backend upgrade; preflight hosted Preview builds with WorkOS on the exact claimed PR backend.
