@@ -15,7 +15,7 @@ pending state and credentials; the bridge keeps no local auth state and does
 not refresh during inference.
 
 The bridge supports the exact provider IDs `codex`, `claude`, `xai`, `meta`,
-`kimi`, `kimi-ai`, and `devin`. Codex, xAI, Meta, and Kimi providers use
+`kimi`, and `devin`. Codex, xAI, Meta, and Kimi providers use
 device authorization; Claude and Devin use generated PKCE authorization and a
 locally validated callback URL. Devin session tokens and minted Meta API keys
 are represented as non-expiring only when upstream supplies that credential
@@ -34,7 +34,7 @@ the web service with the private binding `OVERLAY_CLIPROXYAPI_URL` and set
 `OVERLAY_CLIPROXYAPI_SECRET` as a service secret. Neither value belongs in
 source control. `OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS` is the explicit
 comma-separated deployment allowlist. The supported value is
-`codex,claude,xai,meta,kimi,kimi-ai,devin`; only enable IDs approved for that
+`codex,claude,xai,meta,kimi,devin`; only enable IDs approved for that
 environment. No Vercel configuration or secrets are defined here.
 
 Workspace-scoped subscription sharing is enforced by the web/Convex control
@@ -45,9 +45,8 @@ entitlement, refresh behavior, hosted restart and streaming behavior still
 require isolated real-account QA. The web scope selector now supports explicit
 workspace sharing; the production provider allowlist is unchanged.
 
-New connections offer six choices; Kimi uses `kimi.com`. The `kimi-ai` backend
-ID remains bound to `kimi.ai` for existing credentials and reconnects only.
-Production/shared Preview enable the six providers by owner authorization; keep
-`kimi-ai` in the allowlist for legacy dispatch without showing a second picker
-choice. Real authorization-start requests pass for all six; live-account inference
-for every provider remains separate from pinned-executor fixture coverage.
+Connections offer six choices; Kimi uses `kimi.com`. The unused `kimi-ai`
+variant is unsupported, including reconnects and inference. Production/shared
+Preview enable the six providers by owner authorization. Real authorization-start
+requests pass for all six; live-account inference for every provider remains
+separate from pinned-executor fixture coverage.

@@ -4,13 +4,12 @@
 
 Production and shared Preview enable ChatGPT/Codex, Claude, Grok Build, Meta Muse,
 Kimi and Devin by explicit owner authorization. New connections offer one Kimi
-choice bound to `kimi.com`. The `kimi-ai` ID and `kimi.ai` credential domain are
-retained for existing connections and reconnects, never remapped to another
-provider/domain. Availability marks that row `selectable: false`; new creation
-rejects it while existing-owner reconnect and dispatch remain supported.
+choice bound to `kimi.com`. The unused `kimi-ai` adapter is removed from the
+bridge, API contracts and Convex validators. Production inventory contained no
+connections or pending authorization states for it before removal.
 
 The provider implementation supports the exact IDs `codex`, `claude`, `xai`,
-`meta`, `kimi`, `kimi-ai`, and `devin`. Subscription inference and provider-side
+`meta`, `kimi`, and `devin`. Subscription inference and provider-side
 authorization use the pinned CLIProxyAPI source in a private, stateless service
 bound to the web service inside the same Vercel project. The service has no
 public rewrite, shared account pool, auth files, background refresh, or
@@ -161,7 +160,7 @@ reasoning defaults are written to global account settings.
 Configure `OVERLAY_CLIPROXYAPI_URL` as the private service binding and
 `OVERLAY_CLIPROXYAPI_SECRET` as a secret of at least 32 characters. Keep
 `OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS` as the explicit comma-separated
-allowlist `codex,claude,xai,meta,kimi,kimi-ai,devin` when all are approved for
+allowlist `codex,claude,xai,meta,kimi,devin` when all are approved for
 that environment. The bearer secret is shared between web and the private
 service within each environment; Preview and Production use separate secrets.
 The URL is supplied by the service binding, not a manually copied deployment

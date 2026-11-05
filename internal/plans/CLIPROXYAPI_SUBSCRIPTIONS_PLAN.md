@@ -1,6 +1,6 @@
 # Plan: Replace subscription plumbing with CLIProxyAPI
 
-Status: The Codex implementation is merged in #386. The seven-provider implementation and workspace control plane have hosted Claude text/tool and sandbox isolation acceptance. The owner authorized Production/shared Preview activation of all six selectable providers after real authorization-start and adapter checks. Kimi uses kimi.com for new connections; kimi-ai remains reconnect-only. Live shared inference, rotating refresh and remaining provider-account acceptance are still unverified.
+Status: The Codex implementation is merged in #386. The provider implementation and workspace control plane have hosted Claude text/tool and sandbox isolation acceptance. The owner authorized Production/shared Preview activation of all six selectable providers after real authorization-start and adapter checks. Kimi uses kimi.com; the unused kimi-ai variant has been removed after a zero-connection production inventory. Live shared inference, rotating refresh and remaining provider-account acceptance are still unverified.
 
 > Progress note: the original Codex slice uses a same-project private bridge.
 > This branch extends its backend and control plane to Claude, xAI, Meta, Kimi,
@@ -38,9 +38,8 @@ Inventory existing connections, credential formats, model selections and consume
 
 ## 6. Deliver provider and picker parity
 
-Expose Codex, Claude, xAI (Grok), Meta, Kimi and Devin for new connections; retain
-Kimi AI only for existing kimi.ai credentials and reconnects through the pinned
-CLIProxyAPI integration. Codex, xAI, Meta and Kimi use
+Expose Codex, Claude, xAI (Grok), Meta, Kimi and Devin through the pinned
+CLIProxyAPI integration. Do not expose or retain the unused kimi.ai variant. Codex, xAI, Meta and Kimi use
 device authorization; Claude and Devin use generated PKCE plus locally
 validated callback completion. Persist credentials and pending state only in
 Overlay Vault, keep provider/domain identity exact, and use provider catalogs

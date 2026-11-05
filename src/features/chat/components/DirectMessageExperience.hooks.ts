@@ -110,26 +110,38 @@ export function useThreadPanel({
   const [threadFollowing, setThreadFollowing] = useState(false)
   const [threadInput, setThreadInputState] = useState('')
   const threadInputRef = useRef(threadInput)
+  const threadInputVersionRef = useRef(0)
   const threadScopeRef = useRef({ conversationId, threadRootId })
   useLayoutEffect(() => {
     threadScopeRef.current = { conversationId, threadRootId }
   }, [conversationId, threadRootId])
   const setThreadInput = useCallback((value: string) => {
+    if (value !== threadInputRef.current) threadInputVersionRef.current += 1
     threadInputRef.current = value
     setThreadInputState(value)
   }, [])
-  const clearSubmittedThreadInput = useCallback((scope: {
-    conversationId: string
+  const submitThreadMessage = useCallback(async ({ sendMessage, threadRootMessageId }: {
+    sendMessage: SendMessage
     threadRootMessageId: string
-    text: string
   }) => {
-    const current = threadScopeRef.current
-    if (
-      current.conversationId === scope.conversationId
-      && current.threadRootId === scope.threadRootMessageId
-      && threadInputRef.current === scope.text
-    ) setThreadInput('')
-  }, [setThreadInput])
+    const scope = threadScopeRef.current
+    if (scope.conversationId !== conversationId || scope.threadRootId !== threadRootMessageId) return
+    const text = threadInputRef.current
+    const version = threadInputVersionRef.current
+    const submitted: { clearedVersion: number | null } = { clearedVersion: null }
+    const clearSubmittedInput = () => {
+      if (submitted.clearedVersion !== null || threadScopeRef.current !== scope
+          || threadInputVersionRef.current !== version || threadInputRef.current !== text) return
+      setThreadInput('')
+      submitted.clearedVersion = threadInputVersionRef.current
+    }
+    const result = await sendMessage(text, {
+      threadRootMessageId, requireCurrentThread: true, onSubmitted: clearSubmittedInput,
+    })
+    if (result.accepted) clearSubmittedInput()
+    else if (submitted.clearedVersion !== null && threadScopeRef.current === scope
+        && threadInputVersionRef.current === submitted.clearedVersion) setThreadInput(text)
+  }, [conversationId, setThreadInput])
 
   useEffect(() => {
     if (!threadRootId) {
@@ -169,7 +181,7 @@ export function useThreadPanel({
     threadFollowing,
     threadInput,
     setThreadInput,
-    clearSubmittedThreadInput,
+    submitThreadMessage,
     toggleThreadFollow,
     openThread,
   }
@@ -1270,14 +1282,7 @@ export function useSendMessage({
 
   async function sendMessage(
     content: string,
-    options?: {
-      existing?: Pick<OptimisticMessage, 'clientNonce' | 'turnId' | 'createdAt' | 'parts'>
-      threadRootMessageId?: string
-      requireCurrentThread?: boolean
-      parts?: RoomMessageRecord['parts']
-      attachmentNames?: string[]
-      reply?: { replyToTurnId?: string; snippet: string } | null
-    },
+    options?: Parameters<SendMessage>[1],
   ): Promise<RoomSendResult> {
     const threadRootMessageId = options?.threadRootMessageId
     const text = content.trim()
@@ -1312,6 +1317,7 @@ export function useSendMessage({
       } satisfies OptimisticMessage,
     ].sort(compareRoomMessageRecords))
     try {
+      options?.onSubmitted?.()
       const mentionedPrincipalIds = resolveMentionTargets(text)
       const renameAgent = soloAgentParticipantRef.current
       const titleAtSend = loadingRef.current ? null : conversationTitleRef.current
@@ -1477,6 +1483,7 @@ export function useRoomComposer({
     hasComposerText,
     input,
     inputRef,
+    inputVersionRef,
     inputRevision,
     setInput,
     subscribeToInput,
@@ -1565,34 +1572,62 @@ export function useRoomComposer({
       : ''
     const replySnippet = replyContext?.snippet
 
-    const submittedInput = inputRef.current ?? input
-    const submittedState = latestDraftStateRef.current
     const submittedScope = draftScopeRef.current
+    const submitted = {
+      state: latestDraftStateRef.current,
+      text: inputRef.current ?? input,
+      version: inputVersionRef.current,
+    }
+    const cleared: { current: typeof submitted | null } = { current: null }
+    function draftMatches(expected: typeof submitted): boolean {
+      const latest = latestDraftStateRef.current
+      return submittedScope !== null && draftScopeRef.current === submittedScope
+        && latest.conversationId === conversationId
+        && latest.activeWorkspaceId === activeWorkspaceId
+        && inputVersionRef.current === expected.version
+        && inputRef.current === expected.text
+        && latest.attachedImages === expected.state.attachedImages
+        && latest.pendingChatDocuments === expected.state.pendingChatDocuments
+        && latest.replyContext === expected.state.replyContext
+        && latest.mentions === expected.state.mentions
+    }
+    function clearSubmittedDraft() {
+      if (cleared.current || !draftMatches(submitted)) return
+      const state: typeof submitted.state = {
+        ...submitted.state, attachedImages: [], pendingChatDocuments: [], replyContext: null, mentions: [],
+      }
+      setInput('')
+      composerRef.current?.clear()
+      setMentions(state.mentions)
+      setAttachedImages(state.attachedImages)
+      setPendingChatDocuments(state.pendingChatDocuments)
+      setAttachmentError(null)
+      setReplyContext(null)
+      latestDraftStateRef.current = state
+      cleared.current = { state, text: '', version: inputVersionRef.current }
+      clearDraft({ workspaceId: activeWorkspaceId, conversationId })
+    }
     const result = await sendMessage(`${text}${documentMarker}`, {
       existing: { turnId, clientNonce: crypto.randomUUID(), createdAt: Date.now(), parts: payload.partsForModel },
       parts: payload.partsForModel,
       attachmentNames: payload.indexedFileNames,
+      onSubmitted: clearSubmittedDraft,
       ...(replyContext ? { reply: { replyToTurnId: replyContext.replyToTurnId, snippet: replySnippet ?? '' } } : {}),
     })
-    if (!result.accepted) return
-    const latest = latestDraftStateRef.current
-    const draftStillMatches = submittedScope !== null && draftScopeRef.current === submittedScope
-      && latest.conversationId === conversationId
-      && latest.activeWorkspaceId === activeWorkspaceId
-      && inputRef.current === submittedInput
-      && latest.attachedImages === submittedState.attachedImages
-      && latest.pendingChatDocuments === submittedState.pendingChatDocuments
-      && latest.replyContext === submittedState.replyContext
-      && latest.mentions === submittedState.mentions
-    if (!draftStillMatches) return
-    setInput('')
-    composerRef.current?.clear()
-    setMentions([])
-    setAttachedImages([])
-    setPendingChatDocuments([])
-    setAttachmentError(null)
-    setReplyContext(null)
-    clearDraft({ workspaceId: activeWorkspaceId, conversationId })
+    if (result.accepted) {
+      // Also supports send implementations that do not emit the optimistic callback.
+      clearSubmittedDraft()
+      return
+    }
+    const empty = cleared.current
+    if (!empty || !draftMatches(empty)) return
+    setInput(submitted.text)
+    composerRef.current?.setPlainText(submitted.text)
+    setAttachedImages(current => current === empty.state.attachedImages ? submitted.state.attachedImages : current)
+    setPendingChatDocuments(current => current === empty.state.pendingChatDocuments ? submitted.state.pendingChatDocuments : current)
+    setReplyContext(current => current === empty.state.replyContext ? submitted.state.replyContext : current)
+    setMentions(current => current === empty.state.mentions ? submitted.state.mentions : current)
+    writeDraft({ workspaceId: activeWorkspaceId, conversationId }, submitted.text)
   }
 
   function onComposerInput(text: string) {
@@ -2193,6 +2228,8 @@ export type SendMessage = (content: string, options?: {
   existing?: Pick<OptimisticMessage, 'clientNonce' | 'turnId' | 'createdAt' | 'parts'>
   threadRootMessageId?: string
   requireCurrentThread?: boolean
+  /** Called with the optimistic bubble, after admission and before the save response. */
+  onSubmitted?: () => void
   parts?: RoomMessageRecord['parts']
   attachmentNames?: string[]
   reply?: { replyToTurnId?: string; snippet: string } | null

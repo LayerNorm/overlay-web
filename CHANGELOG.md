@@ -4,7 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Enable Claude, Grok Build, Meta Muse, Kimi and Devin alongside ChatGPT/Codex in Production and shared Preview. Offer one Kimi choice using kimi.com while preserving existing kimi.ai connections and reconnects, and render the actual Meta and Devin logos instead of letter placeholders.
+- Clear native-agent, room and thread-reply composers as soon as the optimistic user message appears, instead of waiting for the save response. Restore failed submissions without overwriting newer drafts or another conversation.
+- Remove the unused kimi.ai subscription variant from the bridge, API, configuration and database validators after confirming there are no production connections or pending authorizations. Kimi remains available through kimi.com.
+
+- Enable Claude, Grok Build, Meta Muse, Kimi and Devin alongside ChatGPT/Codex in Production and shared Preview. Offer one Kimi choice using kimi.com and render the actual Meta and Devin logos instead of letter placeholders.
 
 - Document subscription callback completion and workspace sharing in the API catalog, including active-member use and owner-only management.
 
@@ -16,7 +19,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Tighten subscription auth error classification, callback retry/fencing and provider identity checks; local fixtures remain distinct from hosted and live-account acceptance.
 
-- Extend the private pinned subscription bridge and fenced control plane to Claude, xAI, Meta, Kimi, Kimi AI, and Devin, including callback/device authorization and provider-bound catalogs/inference. Added providers remain disabled in production until their individual rollout checks pass.
+- Extend the private pinned subscription bridge and fenced control plane to Claude, xAI, Meta, Kimi and Devin, including callback/device authorization and provider-bound catalogs/inference. Added providers remain disabled in production until their individual rollout checks pass.
 - Resume waiting runs when a person skips a single optional questionnaire question, instead of silently leaving the run paused, with regression coverage for skipped optional and blank required replies.
 
 - Keep late model-cost corrections within unreserved credit and payer limits, and prevent old corrections from changing a renewed wallet while retaining the provider's full reported cost.
