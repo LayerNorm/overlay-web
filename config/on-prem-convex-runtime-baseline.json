@@ -225,6 +225,7 @@
     "src/app/api/v1/workspaces/route.ts"
   ],
   "browserRuntimeFiles": [
+    "src/components/layout/sidebar/AgentThreadActivityProvider.tsx",
     "src/components/providers/AppClientProviders.tsx",
     "src/components/providers/ConvexAuthProvider.tsx",
     "src/components/providers/convex-hooks.ts",
@@ -373,6 +374,7 @@
     "src/app/auth/desktop/complete/route.ts",
     "src/app/share/f/[token]/opengraph-image.tsx",
     "src/app/share/f/[token]/page.tsx",
+    "src/components/layout/sidebar/AgentThreadActivityProvider.tsx",
     "src/components/providers/AppClientProviders.tsx",
     "src/components/providers/ConvexAuthProvider.tsx",
     "src/components/providers/convex-hooks.ts",
