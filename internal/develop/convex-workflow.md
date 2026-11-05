@@ -42,6 +42,32 @@ workflow or Vercel deployment token requirement. See
 
 ## Development backend
 
+### Native browser scope
+
+`convex/lib/nativeViewer.ts` derives the application user ID exclusively from
+`ctx.auth.getUserIdentity().subject`. Native browser functions accept resource
+and workspace IDs as selectors, never caller-supplied actor IDs, explicit tokens
+or server secrets. `requireNativeWorkspace` reads the active workspace, human
+principal and membership on every query/mutation. These database dependencies
+also invalidate subscribed queries when access is revoked; do not cache them
+across calls or identities.
+
+`requireNativePersonalChat` additionally checks exact workspace, owner, live
+conversation and participant state. Missing participant rows remain compatible
+with older personal chats; archived participant state remains accessible for
+restore. Removed participants, shared scope, rooms, agent threads, external
+bindings and automation chats are outside this pilot. Public share links do not
+grant native private-chat authority. Legacy workspace-less rows stay on their
+existing migration path rather than being silently assigned to the selected
+workspace.
+
+`auth/viewer:workspace` and `auth/viewer:personalChat` expose minimal verified
+scope projections for acceptance checks. They do not grant write, execution,
+billing, provider, operator or workspace-management authority. Domain mutations
+must preserve their own role/policy, audit, idempotency and admission rules;
+run admission and provider execution remain server-owned. Existing explicit-token
+and server APIs are unchanged until each consumer migrates.
+
 For ordinary local web work against the development Convex backend, run Next.js without deploying Convex from a feature worktree:
 
 ```bash
@@ -168,6 +194,103 @@ Preview and Production variables have separate Vercel targets, and the
 corresponding Convex preview defaults remain separate from customer Production.
 
 ## Expand, migrate, then contract
+
+### Native browser authentication (CN-02)
+
+Browser identity now uses `ConvexProviderWithAuth` and the verified provider JWT
+from `/api/auth/convex-token?native=1`, not the legacy HS256 query-argument token.
+The default endpoint and legacy room subscriptions remain compatible. No server
+secret or refresh token reaches the browser. User IDs remain the provider subject;
+the endpoint rejects a verified token whose subject differs from its session user.
+Changing accounts remounts the client cache and its UI subtree. Refresh uses the
+existing browser session lock; token flights cannot cross identities.
+
+Hosted WorkOS is enabled by default because existing backend revisions already
+trust its issuer/JWKS. Preview login retains real sandbox WorkOS tokens. Set
+`OVERLAY_CONVEX_NATIVE_AUTH_ENABLED=false` on the web to disable native token
+issuance without removing legacy subscriptions during rollback.
+
+For OIDC or Better Auth private installations, native issuance remains disabled
+until explicitly enabled. Deploy the additive `convex/auth.config.ts` update with
+the explicit `OVERLAY_PROVIDER_AUTH` and matching provider
+configuration on the isolated/private backend, then set
+`OVERLAY_CONVEX_NATIVE_AUTH_ENABLED=true` on the web. An upgraded web with an older
+backend continues legacy subscriptions until that opt-in. These are rollout
+controls, not an alternative database implementation.
+
+Convex's auth evaluator throws on any missing environment read, including optional
+fallbacks. Set `OVERLAY_PROVIDER_AUTH` explicitly before the backend upgrade:
+`workos`, `oidc`, `better-auth`, or `none`. WorkOS additionally requires
+`WORKOS_CLIENT_ID`. The hosted Preview build sets both WorkOS values on its claimed
+PR backend before auth evaluation; Production is never touched by this preflight.
+
+OIDC requires `OIDC_ISSUER_URL` and the effective `OIDC_AUDIENCE`, matching the JWT
+exactly. Better Auth uses RS256 and requires explicit `BETTER_AUTH_URL`,
+`BETTER_AUTH_JWT_ISSUER`, `BETTER_AUTH_JWT_AUDIENCE` and `BETTER_AUTH_JWKS_URL`.
+Resolve defaults and aliases from the web configuration before setting these
+backend values. Only selected-provider settings are read. Only the
+selected provider is trusted; do not combine unrelated issuers with overlapping
+subject IDs. Anonymous/no-op mode has no native identity.
+
+Before promotion verify login, forced refresh, expiration, logout/account switch,
+legacy subscriptions and desktop/mobile session handoff on the current-head
+isolated Preview. Native identity is only authentication: each new query/mutation
+must still enforce resource, membership and role authorization (CN-03). CN-02 does
+not migrate list or transcript ownership.
+
+The additive `auth/viewer:current` query accepts no caller identity or token
+arguments and returns only the platform-verified subject, or null anonymously.
+After verifying exact Preview SHA and backend ownership through the trusted
+controller/team API, run `node scripts/qa/native-convex-auth.mjs` with
+`CN02_PREVIEW_ORIGIN`, `CN02_PREVIEW_SHA`, `CN02_CONVEX_URL`,
+`CN02_VERIFIED_BACKEND_TYPE=preview`, `CN02_VERIFIED_PREVIEW_NAME=pr-<number>`
+and a mode-0600 `CN02_STORAGE_STATE` file outside the checkout. This checks the
+real authenticated Next.js `preloadQuery` result against the session user, checks
+an anonymous preload, and confirms no token enters the serialized preload.
+Output contains booleans and revision only. This does not replace the browser
+lifecycle acceptance tests. Do not reuse a preload across users or cache it
+globally; resource preloads need their own authorization.
+
+### Native personal-chat list ownership (CN-04)
+
+The browser's personal-chat list, selected title, archive/restore state and basic
+unread flag are owned by `chat/personal:list`, `getSummary`, `rename`,
+`setArchived` and `setRead`. The additive indexes require no backfill. Queries
+return bounded pages and apply ownership/automation filters after pagination, so
+an empty page can still have a continuation cursor; keep loading while Convex
+reports more pages and never invent a cursor. The selected summary is queried
+independently of loaded pages and contains no transcript content.
+
+Every native operation derives identity from Convex auth, validates workspace
+membership and exact personal-chat ownership, and enforces persisted role
+capabilities: list/read/archive/restore require `conversations.read`, and rename
+requires `conversations.edit`. This enforcement remains active when the legacy
+BFF is in observe mode; native calls accept no caller policy flags and have no
+operator bypass. The app shell already provisions the ordinary member role.
+There is no feature capability-disable mapping for these operations.
+
+`useMutation.withOptimisticUpdate` owns row-level optimistic rename, archive and
+restore changes, including captured minimal summary data for Undo. Convex
+rebases pending operations and rolls back failed mutations without restoring a
+whole stale array. Each archive/restore updater captures only its call's
+minimal fallback summary, prefers current cached summary/list data, and patches
+only `archivedAt`; mark-read optimism clears unread only when the observed
+message is still the summary's latest message. Native writes are budgeted at
+300 per verified user per 10-minute window because they have no BFF IP context.
+
+Native personal data is used only when native auth is configured and its client
+is available and authenticated. Private installations that have not opted in
+retain the legacy path; configured-but-unavailable native auth does not fall back
+to HTTP ownership. Browser queries are limited to chat/archive consumers, so
+unrelated route IDs never enter Convex conversation-ID validation. Auth or
+capability query failures expose an unavailable personal-chat context while
+preserving the rest of the page. Mixed views may read legacy data only for
+classified non-pilot rows. Unmigrated workspace-scoped chats, DMs, channels,
+agents and other resources remain on their existing paths. Transcript/history loading,
+streaming and permanent deletion are not migrated here. Rollback is web-first:
+disable native web ownership before removing backend support, and keep additive
+fields/indexes and handlers available to older web revisions. No hosted QA is
+claimed by this local implementation.
 
 Web and Convex deploy independently. The incoming web must work with the old
 backend, and the incoming backend must work with the old web, including retained

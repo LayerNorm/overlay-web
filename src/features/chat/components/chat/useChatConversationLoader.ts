@@ -19,6 +19,7 @@ import {
 } from './chatTransport'
 import { buildRestoredRuntimeMessages, clearRuntimeMessages, resetRuntimeState } from './conversation-runtime-utils'
 import type { Conversation, ConversationRuntime, ConversationUiState } from '../chat-interface/types'
+import type { PersonalChatSummary } from '@/components/providers/PersonalChatProvider'
 
 export interface UseChatConversationLoaderParams {
   activeChatIdRef: MutableRefObject<string | null>
@@ -28,8 +29,11 @@ export interface UseChatConversationLoaderParams {
   emptyRuntimeRef: MutableRefObject<ConversationRuntime>
   hasAutomationContext: boolean
   isTemporaryChatRef: MutableRefObject<boolean>
+  isNativePersonalChat: (chatId: string) => boolean
+  getNativeSummary: (chatId: string) => PersonalChatSummary | undefined
   loadGeneratedOutputs: boolean
   markRead: (chatId: string) => void
+  markNativeRead: (summary: PersonalChatSummary, throughMessageId: string) => void
   pendingTitleRef: MutableRefObject<{ chatId: string; title: string } | null>
   persistActiveRuntimeUiState: () => void
   resetComposerToolIds: (temporary: boolean) => void
@@ -60,8 +64,11 @@ export function useChatConversationLoader({
   emptyRuntimeRef,
   hasAutomationContext,
   isTemporaryChatRef,
+  isNativePersonalChat,
+  getNativeSummary,
   loadGeneratedOutputs,
   markRead,
+  markNativeRead,
   pendingTitleRef,
   persistActiveRuntimeUiState,
   resetComposerToolIds,
@@ -98,7 +105,9 @@ export function useChatConversationLoader({
     clearTransientComposerState()
     setInterruptedExchangeIdx(null)
     setSourcesPanel(null)
-    markRead(chatId)
+    const nativePersonal = isNativePersonalChat(chatId)
+    const nativeSummary = nativePersonal ? getNativeSummary(chatId) : undefined
+    if (!nativePersonal) markRead(chatId)
     activeChatIdRef.current = chatId
     setActiveViewer(chatId)
     setActiveChatId(chatId)
@@ -132,6 +141,13 @@ export function useChatConversationLoader({
       runtime.askChats[0].messages.some((message) => message.role === 'user') ||
       runtime.ui.generationResults.size > 0
     if (runtime.hydrated && runtimeHasLoadedHistory) {
+      const throughMessageId = nativeSummary?.lastMessageId
+      if (throughMessageId && [
+        ...runtime.askChats[0].messages,
+        ...runtime.actChat.messages,
+      ].some((message) => message.id === throughMessageId)) {
+        markNativeRead(nativeSummary, throughMessageId)
+      }
       shouldScrollRef.current = true
       // A conversation with history is never on its first message, even if a blank surface's UI was saved over it.
       runtime.ui = { ...runtime.ui, isFirstMessage: false }
@@ -173,6 +189,8 @@ export function useChatConversationLoader({
         return
       }
       let rawMessages: RawConversationMessage[] = normalizeReplyMetadata(snapshot.messages)
+      const hasObservedLastMessage = Boolean(nativeSummary?.lastMessageId
+        && rawMessages.some((message) => message.id === nativeSummary.lastMessageId))
       const outputs = snapshot.outputs
       if (requestId !== loadChatRequestRef.current) return
       const outputGroups = groupOutputsIntoExchanges(outputs)
@@ -244,6 +262,9 @@ export function useChatConversationLoader({
       shouldScrollRef.current = true
       applyUiStateToView(runtime.ui)
       setRuntimeHydrationVersion((value) => value + 1)
+      if (hasObservedLastMessage && nativeSummary?.lastMessageId) {
+        markNativeRead(nativeSummary, nativeSummary.lastMessageId)
+      }
     } catch {
       clearRuntimeMessages(runtime)
       runtime.hydrated = false
@@ -257,12 +278,15 @@ export function useChatConversationLoader({
     applyUiStateToView,
     chats,
     clearTransientComposerState,
+    getNativeSummary,
       ensureConversationRuntime,
     emptyRuntimeRef,
     hasAutomationContext,
     isTemporaryChatRef,
+    isNativePersonalChat,
     loadGeneratedOutputs,
     markRead,
+    markNativeRead,
     pendingTitleRef,
     persistActiveRuntimeUiState,
     resetComposerToolIds,

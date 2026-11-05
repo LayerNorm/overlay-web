@@ -1,27 +1,36 @@
 import { NextResponse } from 'next/server'
 import { mintBrowserConvexAccessToken } from '@/server/auth/browser-convex-token'
 import { getOverlaySession } from '@/server/auth/session'
+import { getOverlayServerContext } from '@/server/bootstrap'
+import { getOverlayRuntimeConfigSync } from '@/server/config'
+import { nativeConvexAuthEnabled, resolveNativeConvexToken } from '@/server/auth/native-convex-token'
 
-/**
- * Issue a short-lived HS256 token for browser Convex queries/subscriptions.
- *
- * Convex queries cannot call fetch() to load WorkOS JWKS, so the browser must
- * not send the raw WorkOS access token into reactive queries. The BFF mints a
- * token signed with INTERNAL_API_SECRET (also present on Convex) that
- * requireAccessToken verifies with crypto.subtle only.
- */
+const headers = { 'Cache-Control': 'no-store, max-age=0', Vary: 'Cookie, Authorization' }
+
+// Legacy query-argument tokens and native platform identity tokens are distinct.
 export async function GET(request: Request) {
   const session = await getOverlaySession(request)
   if (!session?.user?.id || !session.accessToken) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers })
   }
   try {
+    if (new URL(request.url).searchParams.get('native') === '1') {
+      const config = getOverlayRuntimeConfigSync()
+      const provider = config.providers.auth?.provider ?? config.auth.provider
+      if (!nativeConvexAuthEnabled(provider, process.env.OVERLAY_CONVEX_NATIVE_AUTH_ENABLED)) {
+        return NextResponse.json({ token: null, userId: session.user.id }, { headers })
+      }
+      const auth = getOverlayServerContext().auth
+      const token = await resolveNativeConvexToken(session, (value) => auth.verifyAccessToken(value))
+      if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers })
+      return NextResponse.json({ token, userId: session.user.id }, { headers })
+    }
     const token = await mintBrowserConvexAccessToken({ userId: session.user.id })
     return NextResponse.json(
-      { token },
-      { headers: { 'Cache-Control': 'no-store' } },
+      { token, userId: session.user.id },
+      { headers },
     )
   } catch (_error) {
-    return NextResponse.json({ error: 'Token mint failed' }, { status: 500 })
+    return NextResponse.json({ error: 'Token unavailable' }, { status: 503, headers })
   }
 }

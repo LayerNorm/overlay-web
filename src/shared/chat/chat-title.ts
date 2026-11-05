@@ -16,6 +16,8 @@ export interface ChatCreatedDetail {
     title: string
     lastModified: number
     conversationType?: 'personal' | 'dm' | 'channel'
+    scope?: 'personal' | 'workspace'
+    workspaceId?: string
     externalPlatform?: string
   }
 }

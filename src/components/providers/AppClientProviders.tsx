@@ -28,10 +28,12 @@ export function AppClientProviders({
   children,
   initialUser,
   requiresConvexClient,
+  nativeAuthConfigured = false,
 }: {
   children: ReactNode
   initialUser: AuthUser | null
   requiresConvexClient?: boolean
+  nativeAuthConfigured?: boolean
 }) {
   return (
     <AuthProvider
@@ -39,7 +41,10 @@ export function AppClientProviders({
       initialSessionResolved={Boolean(initialUser)}
     >
       <AppSettingsProvider>
-        <ConvexAuthProvider requiresConvexClient={requiresConvexClient}>
+        <ConvexAuthProvider
+          requiresConvexClient={requiresConvexClient}
+          nativeAuthConfigured={nativeAuthConfigured}
+        >
           <Suspense fallback={null}>
             <ObservabilityClient />
           </Suspense>
