@@ -83,7 +83,7 @@ function workspaceSummary(
 }
 
 async function resolveHandleForViewer(
-  ctx: Pick<QueryCtx, 'db'>,
+  ctx: QueryCtx,
   userId: string,
   input: string,
 ): Promise<HandleResolution | null> {
@@ -105,12 +105,20 @@ async function resolveHandleForViewer(
     if (legacy?.kind === 'organization') workspace = legacy
   }
   if (!workspace || workspace.status !== 'active' || workspace.archivedAt !== undefined) return null
-  const principal = await ctx.db.query('workspacePrincipals')
-    .withIndex('by_workspaceId_userId', q => q.eq('workspaceId', workspace!.workspaceId).eq('userId', userId)).unique()
-  if (!principal || principal.type !== 'human' || principal.archivedAt !== undefined) return null
-  const membership = await ctx.db.query('workspaceMemberships')
-    .withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', workspace!.workspaceId).eq('principalId', principal.principalId)).unique()
-  if (!membership || membership.status !== 'active') return null
+  const principals = await ctx.db.query('workspacePrincipals')
+    .withIndex('by_workspaceId_userId', q => q.eq('workspaceId', workspace!.workspaceId).eq('userId', userId))
+    .take(PAGE_SIZE)
+  let hasActiveMembership = false
+  for (const principal of principals) {
+    if (principal.type !== 'human' || principal.archivedAt !== undefined) continue
+    const membership = await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', workspace!.workspaceId).eq('principalId', principal.principalId)).unique()
+    if (membership?.status === 'active') {
+      hasActiveMembership = true
+      break
+    }
+  }
+  if (!hasActiveMembership) return null
   return {
     workspaceId: workspace.workspaceId,
     canonicalHandle: workspace.slug,

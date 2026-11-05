@@ -1,14 +1,51 @@
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
-import { expect, test } from 'vitest'
+import { afterEach, expect, test, vi } from 'vitest'
 import { DEFAULT_WORKSPACE_POLICY } from '@overlay/workspace-contracts'
 import type { MutationCtx } from './_generated/server'
 import schema from './schema'
+import { NATIVE_POLICY_LEASE_MS } from '@/shared/authorization/native-deployment-policy'
 
 const modules = import.meta.glob('./**/*.ts')
 const query = (name: string) => makeFunctionReference<'query'>(`collaboration/nativeWorkspaces:${name}`)
 const mutation = (name: string) => makeFunctionReference<'mutation'>(`collaboration/nativeWorkspaces:${name}`)
+const beginPolicyRefresh = makeFunctionReference<'mutation'>('platform/nativePolicy:beginRefresh')
+const publishPolicy = makeFunctionReference<'mutation'>('platform/nativePolicy:publish')
+const policyBackendUrl = 'https://fixture.convex.cloud'
 const now = 1_900_000_000_000
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+  vi.unstubAllGlobals()
+  vi.clearAllTimers()
+  vi.useRealTimers()
+})
+
+function stubNativePolicyEnvironment() {
+  vi.useFakeTimers()
+  vi.setSystemTime(now)
+  vi.stubEnv('OVERLAY_BFF_URL', 'https://app.example.test')
+  vi.stubEnv('CONVEX_CLOUD_URL', policyBackendUrl)
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'test')
+  vi.stubEnv('INTERNAL_API_SECRET', 'fixture-service-secret')
+}
+
+function workspaceHandlePolicy(enabled: boolean) {
+  return {
+    version: 1 as const,
+    backendUrl: policyBackendUrl,
+    revision: 'a'.repeat(64),
+    features: {
+      files: true,
+      skills: true,
+      mcpServers: true,
+      externalAgents: true,
+      connectedAgents: true,
+      workspaceHandles: enabled,
+    },
+    rollout: { stage: 'invited' as const, internalWorkspaceIds: 'internal', invitedWorkspaceIds: 'invited' },
+  }
+}
 
 async function addWorkspace(
   ctx: MutationCtx,
@@ -111,23 +148,18 @@ test('directory is authenticated, paginated, and includes only active human work
   const secondPage = await viewer.query(query('listDirectory'), {
     paginationOpts: { numItems: 50, cursor: result.continueCursor },
   })
-  expect([
-    ...result.page,
-    ...secondPage.page,
-  ].map((workspace: { id: string }) => workspace.id)).toHaveLength(56)
-  expect([...result.page, ...secondPage.page].map((workspace: { id: string }) => workspace.id))
-    .toContain('active-a')
-  expect([...result.page, ...secondPage.page].map((workspace: { id: string }) => workspace.id))
-    .toContain('active-b')
-  expect([...result.page, ...secondPage.page].map((workspace: { id: string }) => workspace.id))
-    .toContain('active-guest')
-  expect(result.page.find((workspace: { id: string }) => workspace.id === 'active-a')).toMatchObject({
+  const rows = [...result.page, ...secondPage.page]
+  expect(rows.map((workspace: { id: string }) => workspace.id)).toHaveLength(56)
+  expect(rows.map((workspace: { id: string }) => workspace.id)).toContain('active-a')
+  expect(rows.map((workspace: { id: string }) => workspace.id)).toContain('active-b')
+  expect(rows.map((workspace: { id: string }) => workspace.id)).toContain('active-guest')
+  expect(rows.find((workspace: { id: string }) => workspace.id === 'active-a')).toMatchObject({
     name: 'active-a',
     routingHandle: 'active-a',
     role: 'owner',
     updatedAt: now,
   })
-  expect(result.page.find((workspace: { id: string }) => workspace.id === 'active-a')?.iconUrl)
+  expect(rows.find((workspace: { id: string }) => workspace.id === 'active-a')?.iconUrl)
     .toContain('/api/v1/workspaces/active-a/icon?v=123e4567-e89b-12d3-a456-426614174000')
   expect(await viewer.query(query('getInitialWorkspaceHint'), {})).toBeNull()
 })
@@ -253,13 +285,20 @@ test('renames and policy updates validate inputs, reject stale revisions, audit 
   expect(renamedAt).toBeGreaterThan(now)
 
   await t.run(async ctx => {
-    await ctx.db.insert('rateLimitWindows', {
-      bucket: 'native-workspaces:write:user',
-      bucketKey: 'native-workspaces:write:user:owner',
-      count: 300,
-      resetAt: Date.now() + 60_000,
-      updatedAt: Date.now(),
-    })
+    const bucketKey = 'native-workspaces:write:user:owner'
+    const window = await ctx.db.query('rateLimitWindows')
+      .withIndex('by_bucketKey', q => q.eq('bucketKey', bucketKey)).first()
+    if (window) {
+      await ctx.db.patch(window._id, { count: 300, resetAt: Date.now() + 60_000, updatedAt: Date.now() })
+    } else {
+      await ctx.db.insert('rateLimitWindows', {
+        bucket: 'native-workspaces:write:user',
+        bucketKey,
+        count: 300,
+        resetAt: Date.now() + 60_000,
+        updatedAt: Date.now(),
+      })
+    }
   })
   await expect(owner.mutation(mutation('rename'), {
     workspaceId: 'workspace', name: 'Rate limited', expectedUpdatedAt: renamedAt,
@@ -304,7 +343,8 @@ test('handle reads preserve aliases, privacy, migration readiness, and membershi
   await expect(viewer.query(query('resolveHandle'), { handle: 'legacy-team' })).resolves.toBeNull()
 })
 
-test('native handle writes are owner-only and fail closed without the shared deployment policy', async () => {
+test('native handle writes require owner access, a ready registry, and an enabled fresh deployment policy', async () => {
+  stubNativePolicyEnvironment()
   const t = convexTest(schema, modules)
   await t.run(async ctx => {
     await addWorkspace(ctx, {
@@ -341,6 +381,17 @@ test('native handle writes are owner-only and fail closed without the shared dep
   })
   const owner = t.withIdentity({ subject: 'owner', issuer: 'https://issuer.example.test' })
   const member = t.withIdentity({ subject: 'member', issuer: 'https://issuer.example.test' })
+  let sequence = 0
+  const publishHandlePolicy = async (enabled: boolean) => {
+    sequence += 1
+    const challenge = `00000000-0000-4000-8000-${String(sequence).padStart(12, '0')}`
+    const refresh = await t.mutation(beginPolicyRefresh, { challenge })
+    await t.mutation(publishPolicy, {
+      sequence: refresh.sequence,
+      challenge,
+      snapshot: workspaceHandlePolicy(enabled),
+    })
+  }
 
   await expect(member.mutation(mutation('updateHandle'), {
     workspaceId: 'handle-write-workspace',
@@ -351,7 +402,49 @@ test('native handle writes are owner-only and fail closed without the shared dep
     workspaceId: 'handle-write-workspace',
     slug: 'handle-after',
     expectedUpdatedAt: now,
-  })).rejects.toThrow()
+  })).rejects.toThrow('DEPLOYMENT_FEATURE_ACCESS_DENIED')
+
+  await publishHandlePolicy(false)
+  await expect(owner.mutation(mutation('updateHandle'), {
+    workspaceId: 'handle-write-workspace',
+    slug: 'handle-after',
+    expectedUpdatedAt: now,
+  })).rejects.toThrow('DEPLOYMENT_FEATURE_ACCESS_DENIED')
+
+  await publishHandlePolicy(true)
+  await t.run(async ctx => {
+    const migration = await ctx.db.query('workspaceHandleMigrationState').first()
+    if (migration) await ctx.db.patch(migration._id, { status: 'pending' })
+  })
+  await expect(owner.mutation(mutation('updateHandle'), {
+    workspaceId: 'handle-write-workspace',
+    slug: 'handle-after',
+    expectedUpdatedAt: now,
+  })).rejects.toThrow('WORKSPACE_HANDLE_REGISTRY_NOT_READY')
+
+  await t.run(async ctx => {
+    const migration = await ctx.db.query('workspaceHandleMigrationState').first()
+    if (migration) await ctx.db.patch(migration._id, { status: 'ready' })
+  })
+  const updated = await owner.mutation(mutation('updateHandle'), {
+    workspaceId: 'handle-write-workspace',
+    slug: 'handle-after',
+    expectedUpdatedAt: now,
+  })
+  expect(updated).toMatchObject({ workspaceId: 'handle-write-workspace', slug: 'handle-after' })
+  expect(updated.updatedAt).toBeGreaterThan(now)
+  await expect(owner.mutation(mutation('updateHandle'), {
+    workspaceId: 'handle-write-workspace',
+    slug: 'stale-handle',
+    expectedUpdatedAt: now,
+  })).rejects.toThrow('WORKSPACE_REVISION_CONFLICT')
+
+  vi.setSystemTime(now + NATIVE_POLICY_LEASE_MS + 1)
+  await expect(owner.mutation(mutation('updateHandle'), {
+    workspaceId: 'handle-write-workspace',
+    slug: 'expired-handle',
+    expectedUpdatedAt: updated.updatedAt,
+  })).rejects.toThrow('DEPLOYMENT_FEATURE_ACCESS_DENIED')
   await expect(t.run(async ctx => {
     const workspace = await ctx.db.query('workspaces')
       .withIndex('by_workspaceId', q => q.eq('workspaceId', 'handle-write-workspace')).unique()
@@ -359,8 +452,58 @@ test('native handle writes are owner-only and fail closed without the shared dep
     const events = await ctx.db.query('auditEvents').collect()
     return { workspace, aliases, events }
   })).resolves.toMatchObject({
-    workspace: { slug: 'handle-before', updatedAt: now },
-    aliases: [],
-    events: [],
+    workspace: { slug: 'handle-after', updatedAt: updated.updatedAt },
+    aliases: expect.arrayContaining([
+      expect.objectContaining({ handle: 'handle-after', kind: 'canonical' }),
+      expect.objectContaining({ handle: 'handle-before', kind: 'alias' }),
+    ]),
+    events: [
+      expect.objectContaining({
+        action: 'workspace.handle.update',
+        actorUserId: 'owner',
+        resourceId: 'handle-write-workspace',
+        metadataJson: JSON.stringify({ previousHandle: 'handle-before', nextHandle: 'handle-after' }),
+      }),
+    ],
   })
+})
+
+test('native handle writes use a separate 10-write per-user budget', async () => {
+  stubNativePolicyEnvironment()
+  const t = convexTest(schema, modules)
+  await t.run(async ctx => {
+    await addWorkspace(ctx, {
+      id: 'rate-limited-handle-workspace',
+      slug: 'rate-limited-before',
+      userId: 'owner',
+      principalId: 'owner-principal',
+      role: 'owner',
+    })
+    await ctx.db.insert('workspaceHandleMigrationState', {
+      key: 'workspace-handles-v1',
+      status: 'ready',
+      updatedAt: now,
+      conflictCount: 0,
+    })
+    await ctx.db.insert('rateLimitWindows', {
+      bucket: 'native-workspaces:handle-write:user',
+      bucketKey: 'native-workspaces:handle-write:user:owner',
+      count: 10,
+      resetAt: now + 60_000,
+      updatedAt: now,
+    })
+  })
+  const challenge = '00000000-0000-4000-8000-000000000010'
+  const refresh = await t.mutation(beginPolicyRefresh, { challenge })
+  await t.mutation(publishPolicy, {
+    sequence: refresh.sequence,
+    challenge,
+    snapshot: workspaceHandlePolicy(true),
+  })
+  const owner = t.withIdentity({ subject: 'owner', issuer: 'https://issuer.example.test' })
+  await expect(owner.mutation(mutation('updateHandle'), {
+    workspaceId: 'rate-limited-handle-workspace',
+    slug: 'rate-limited-after',
+    expectedUpdatedAt: now,
+  })).rejects.toThrow('RATE_LIMITED')
 })
