@@ -5,6 +5,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Add default-off file-native ingestion, bounded original-document reading, resilient hybrid retrieval, and durable partitioned file analysis with evidence-derived coverage.
+- Use the same file-first upload path in Files and chat attachments, preserving folder and workspace scope so extraction failure cannot discard an uploaded original.
 - Transfer large original files to Computers through Boat's signed upload API instead of its 5 MiB inline-write endpoint.
 - Apply document-reader page and mode defaults when durable tool calls omit those optional fields.
 - Preserve short tool observations in Harness checkpoints when they fit the existing byte budget, and direct truncated-observation lookups to persisted evidence instead of treating a preview as missing source data.

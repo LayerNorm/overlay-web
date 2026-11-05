@@ -1,6 +1,7 @@
 // Web file transport stays in the platform adapter; the host composes ports.
 import { getFileType } from '@/shared/files/file-viewer-types'
 import { shouldIngestDocument } from '@/shared/files/file-ingestion'
+import { fetchFileFirstUploadEnabled, uploadFileFirst } from '@/shared/files/file-first-upload'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { normalizeKnowledgeSurfaceNode, type CreateFileResponse, type KnowledgeFileNode } from '@overlay/app-core'
 
@@ -16,16 +17,13 @@ export async function uploadWebFile(
   parentId: string | null,
   scope?: 'workspace',
 ): Promise<{ ok: boolean; error?: string; file?: KnowledgeFileNode }> {
-  const createdResult = async (response: Response, fallback: string) => {
-    if (!response.ok) return { ok: false, error: await responseError(response, fallback) }
-    const body = await response.json() as CreateFileResponse
-    if (!body.id) return { ok: false, error: 'The server did not return the uploaded file.' }
+  const createdFile = (id: string, name = file.name) => {
     const now = Date.now()
     return {
       ok: true,
       file: normalizeKnowledgeSurfaceNode({
-        _id: body.id,
-        name: file.name,
+        _id: id,
+        name,
         type: 'file',
         kind: 'upload',
         parentId,
@@ -38,8 +36,18 @@ export async function uploadWebFile(
       }),
     }
   }
+  const createdResult = async (response: Response, fallback: string) => {
+    if (!response.ok) return { ok: false, error: await responseError(response, fallback) }
+    const body = await response.json() as CreateFileResponse
+    if (!body.id) return { ok: false, error: 'The server did not return the uploaded file.' }
+    return createdFile(body.id)
+  }
   try {
     if (shouldIngestDocument(file.name)) {
+      if (await fetchFileFirstUploadEnabled()) {
+        const result = await uploadFileFirst(file, { parentId, scope })
+        return createdFile(result.fileId, result.fileName)
+      }
       const form = new FormData()
       form.append('file', file)
       if (parentId) form.append('parentId', parentId)

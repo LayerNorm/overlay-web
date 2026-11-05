@@ -17,6 +17,10 @@ behavior but leaves stored originals and derived text intact.
 The source object is immutable and identified by its SHA-256 revision.
 Extraction and indexing are separate statuses; a completed upload means the
 original is available, not that extraction or search indexing has completed.
+Files and chat attachments share the checksum-verified direct-upload and
+retryable-registration path when `files-file-first` is enabled. Files uploads
+preserve their selected folder and personal/workspace scope. Disabled or
+unavailable flag evaluation retains legacy ingestion.
 Failed extraction can be retried through the existing ingestion endpoint
 without creating a second file or charging quota again. Derived text is stored
 separately and capped at 10 MiB; truncated text is labeled as incomplete.

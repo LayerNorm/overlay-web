@@ -71,6 +71,7 @@ export class FilesClient {
 
   registerDocumentResponse(body: {
     r2Key: string; fileName: string; mimeType: string; sizeBytes: number; checksumSha256: string
+    parentId?: string; scope?: 'personal' | 'workspace'
   }, init?: RequestInit) {
     return this.http.request('/api/v1/files/ingest-jobs', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
