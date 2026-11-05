@@ -8,11 +8,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Show each subscription connection's saved Personal or Workspace scope in Settings instead of always labeling it Personal.
 
-- Add immutable personal/workspace subscription scope, active-member authorization, owner-only lifecycle management, and workspace-aware picker caching. The approved scope selector defaults to Personal, supports explicit Workspace sharing, and preserves scope on reconnect; hosted/live acceptance remains pending.
+- Add immutable personal/workspace subscription scope, active-member authorization, owner-only lifecycle management, and workspace-aware picker caching. The approved scope selector defaults to Personal, supports explicit Workspace sharing, and preserves scope on reconnect.
 
 - Tighten subscription auth error classification, callback retry/fencing and provider identity checks; local fixtures remain distinct from hosted and live-account acceptance.
 
-- Extend the private pinned subscription bridge and fenced control plane to Claude, xAI, Meta, Kimi, Kimi AI, and Devin, including callback/device authorization and provider-bound catalogs/inference. Live account acceptance and hosted QA remain outstanding.
+- Extend the private pinned subscription bridge and fenced control plane to Claude, xAI, Meta, Kimi, Kimi AI, and Devin, including callback/device authorization and provider-bound catalogs/inference. Added providers remain disabled in production until their individual rollout checks pass.
 - Resume waiting runs when a person skips a single optional questionnaire question, instead of silently leaving the run paused, with regression coverage for skipped optional and blank required replies.
 
 - Keep late model-cost corrections within unreserved credit and payer limits, and prevent old corrections from changing a renewed wallet while retaining the provider's full reported cost.

@@ -168,8 +168,15 @@ The provider connection dialog stays within the dynamic viewport and scrolls
 when its provider list exceeds the available height, keeping sign-in actions
 reachable on short desktop and mobile screens.
 
-Workspace scope tests use synthetic Convex/service fixtures and do not establish
-hosted authorization behavior. Live provider-account acceptance and hosted
-callback, refresh, restart, and streaming QA remain unfinished. Catalog
-membership is not account entitlement. Scope-selection UI is implemented, and
-the production provider allowlist is unchanged.
+Hosted acceptance verifies a previously connected Claude account after a new
+service deployment: personal text and function-tool streaming, persisted replies
+and full traces. Three real sandbox identities verify workspace-scoped listing,
+owner-only management, cross-workspace denial, immutable reconnect scope and
+retryable invalid callbacks. Mobile scope selection and the API-key form are
+checked separately. Active shared dispatch and lease races have synthetic
+Convex/service coverage; live shared-account inference and rotating refresh
+remain acceptance gates, as does real-account QA for other added providers.
+Catalog membership is not account entitlement. Production and shared Preview
+retain the Codex-only allowlist; enable added providers individually after their
+remaining acceptance checks. A successful personal Claude test does not enable
+Claude or other providers in Production.

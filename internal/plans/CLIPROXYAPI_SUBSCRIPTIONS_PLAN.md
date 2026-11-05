@@ -1,6 +1,6 @@
 # Plan: Replace subscription plumbing with CLIProxyAPI
 
-Status: The Codex implementation is merged in #386. This branch extends the backend and control plane to seven providers and adds workspace-scoped subscription sharing. Live provider-account acceptance and hosted validation remain incomplete.
+Status: The Codex implementation is merged in #386. The seven-provider implementation and workspace control plane have hosted Claude text/tool and sandbox isolation acceptance. Production remains Codex-only; additional provider activation, live shared inference and rotating-refresh acceptance remain outstanding.
 
 > Progress note: the original Codex slice uses a same-project private bridge.
 > This branch extends its backend and control plane to Claude, xAI, Meta, Kimi,
@@ -8,7 +8,9 @@ Status: The Codex implementation is merged in #386. This branch extends the back
 > active-member authorization, workspace-aware dispatch, and picker/cache
 > isolation. The approved scope selector defaults to Personal and offers explicit
 > Workspace sharing, with scope-specific privacy copy and immutable reconnects.
-> Hosted and real-account acceptance remains separate work.
+> Hosted personal Claude inference and sandbox scope/isolation checks pass.
+> Live shared inference, rotating refresh and other-provider account acceptance
+> remain separate rollout gates.
 > Local build and injected-HTTP fixtures establish implementation behavior only;
 > they do not establish hosted deployment or live provider-account acceptance.
 > The plan catalog is not account-entitlement proof. The superseded in-process
@@ -79,3 +81,13 @@ are synthetic authorization and lifecycle evidence only, not hosted or live
 provider acceptance. Roll providers out individually
 only after those checks; rollback disables subscription availability without
 reactivating competing credential refreshers.
+
+## Accepted integration checks
+
+A previously connected personal Claude subscription survives a new private-service
+deployment and completes text and function-tool streaming; saved replies and full
+traces survive reload. Hosted owner/member/outsider fixtures verify scoped listing,
+management denial, immutable scope and invalid-callback recovery. Local bridge
+executor fixtures cover all implemented provider transports. Production and shared
+Preview remain Codex-only. Do not treat this acceptance as live shared-account
+inference, rotating refresh, or activation proof for the remaining providers.
