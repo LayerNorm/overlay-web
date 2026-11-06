@@ -9,6 +9,7 @@ import type { useRoomTranscript } from '../DirectMessageExperience.hooks'
 import { mergeRoomMessages, type RoomMessageRecord } from './room-message-view'
 import { useNativeCollaboration } from './NativeCollaborationProvider'
 import { useNativeRoomTranscript } from './useNativeRoomTranscript'
+import { NativeRoomStateProvider } from './NativeRoomState'
 
 type Session = {
   room: ReturnType<typeof useNativeRoomTranscript>['room']
@@ -100,5 +101,6 @@ function NativeRoomLive({ children, workspaceId, conversationId }: { children: R
     async remove(messageId) { await remove({ workspaceId, conversationId: conversationId as Id<'conversations'>, messageId: messageId as Id<'conversationMessages'> }) },
   }
   if (main.status === 'unavailable' || (threadRootId && thread.status === 'unavailable')) return <RoomStatus loading={false} />
-  return <NativeRoomContext.Provider value={value}>{children}</NativeRoomContext.Provider>
+  return <NativeRoomContext.Provider value={value}><NativeRoomStateProvider workspaceId={workspaceId} conversationId={conversationId}
+    messageIds={canonical.filter(row => row.deletedAt === undefined).map(row => row.id)}>{children}</NativeRoomStateProvider></NativeRoomContext.Provider>
 }

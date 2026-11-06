@@ -27,10 +27,12 @@ vi.mock('convex/react', async () => {
     useConvex: () => ({ query: mocks.query }),
     useConvexAuth: () => ({ isLoading: false, isAuthenticated: true }),
     useMutation: () => mocks.mutation,
+    useQueries: () => ({}),
     useQuery: (fn: Parameters<typeof getFunctionName>[0], args: unknown) => {
       mocks.calls(getFunctionName(fn), args)
       if (args === 'skip') return undefined
-      return getFunctionName(fn).endsWith(':getRoom') ? mocks.room : mocks.anchor
+      const name = getFunctionName(fn)
+      return name.endsWith(':getRoom') ? mocks.room : name.endsWith(':getMessageAnchor') ? mocks.anchor : undefined
     },
     usePaginatedQuery: (fn: Parameters<typeof getFunctionName>[0], args: unknown) => {
       const name = getFunctionName(fn)

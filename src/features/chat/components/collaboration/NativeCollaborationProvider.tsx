@@ -8,6 +8,7 @@ import { PersonalChatErrorBoundary } from '@/components/providers/personal-chat-
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { NativeThreadOverlayProvider } from '@/components/providers/native-agent-threads'
+import { NativeRoomArchiveOverlayProvider, useRoomArchiveOverlays, archiveOverlayRows } from '@/components/providers/native-room-archive-overlays'
 import { NativeCollaborationContext, emptyNativeCollaboration as empty, nativeCollaborationUnavailable as unavailable,
   type NativeCollaborationValue as Value } from '@/components/providers/native-collaboration-context'
 export { useNativeCollaboration } from '@/components/providers/native-collaboration-context'
@@ -26,9 +27,9 @@ export function NativeCollaborationProvider({ children, backendReady = false }: 
   if (!configured || !configuration.hasConvexClient) {
     return <NativeCollaborationContext.Provider value={{ ...fallback, status: owned ? 'unavailable' : 'disabled' }}>{children}</NativeCollaborationContext.Provider>
   }
-  return <PersonalChatErrorBoundary key={scopeKey} resetKey={scopeKey} context={NativeCollaborationContext} fallbackValue={fallback} fallbackChildren={children}>
+  return <NativeRoomArchiveOverlayProvider key={scopeKey}><PersonalChatErrorBoundary resetKey={scopeKey} context={NativeCollaborationContext} fallbackValue={fallback} fallbackChildren={children}>
     <NativeCollaborationLive workspaceId={workspaceId} scopeKey={scopeKey} viewerUserId={user?.id ?? null}>{children}</NativeCollaborationLive>
-  </PersonalChatErrorBoundary>
+  </PersonalChatErrorBoundary></NativeRoomArchiveOverlayProvider>
 }
 
 function useRoomList(workspaceId: string | null, canQuery: boolean, kind: 'direct' | 'channel', archived: boolean) {
@@ -53,12 +54,17 @@ function NativeCollaborationLive({ children, workspaceId, scopeKey, viewerUserId
   const channels = useRoomList(workspaceId, canQuery, 'channel', false)
   const archivedDirect = useRoomList(workspaceId, canQuery, 'direct', true)
   const archivedChannels = useRoomList(workspaceId, canQuery, 'channel', true)
+  const { entries } = useRoomArchiveOverlays()
   const createDirect = useMutation(api.collaboration.nativeRooms.createDirectMessage)
   const createChannel = useMutation(api.collaboration.nativeRooms.createChannel)
   const convex = useConvex()
   const status = auth.isLoading || !workspaceId ? 'loading' : !viewerUserId || !auth.isAuthenticated ? 'unavailable'
     : [direct, channels, archivedDirect, archivedChannels].some(list => list.loading) ? 'loading' : 'ready'
-  const value: Value = { client: convex, isCurrentScope, status, workspaceId, scopeKey, viewerUserId, direct, channels, archivedDirect, archivedChannels,
+  const value: Value = { client: convex, isCurrentScope, status, workspaceId, scopeKey, viewerUserId,
+    direct: { ...direct, rows: archiveOverlayRows(direct.rows, archivedDirect.rows, entries, false) },
+    channels: { ...channels, rows: archiveOverlayRows(channels.rows, archivedChannels.rows, entries, false) },
+    archivedDirect: { ...archivedDirect, rows: archiveOverlayRows(direct.rows, archivedDirect.rows, entries, true) },
+    archivedChannels: { ...archivedChannels, rows: archiveOverlayRows(channels.rows, archivedChannels.rows, entries, true) },
     async createDirectMessage(args) {
       if (status !== 'ready' || args.workspaceId !== workspaceId) return unavailable()
       const result = await createDirect(args)

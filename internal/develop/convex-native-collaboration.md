@@ -1,5 +1,35 @@
 # Native collaboration (CN-07–CN-11)
 
+## Stage D: room state and presence
+
+`collaboration/nativeRoomState` owns bounded participants, viewer state, pins,
+per-viewer follows/saves and message-scoped reactions. Saved-message pagination
+rechecks live room access. Participant removal revokes all native room queries.
+Native writes share reaction/pin/save/follow/participant and everyone-archive
+internals with legacy callers, including notification/event effects. Everyone
+archive/restore still requires the workspace owner.
+
+`NativeRoomStateProvider` is the reactive room-state owner. Action-id overlays
+rebase on canonical data; settling one operation removes only its own entry.
+Archive overlays also reconcile active/archived lists across navigation.
+Participant additions show a pending row until the authorized roster arrives.
+Native enrichment does not issue HTTP loads or local invalidation events.
+
+Native presence keeps 45-second heartbeats and absolute 120-second session and
+6-second typing deadlines. Queries never clock-filter presence; the client
+schedules the next deadline and aggregates live sessions locally. The legacy
+`computePresence`/`watchPresence` clock filter is retained for existing callers:
+without another database write, its result can remain stale. Presence traversals
+fail closed at 200 rows, including historical sessions; no presence cleanup or
+migration is scheduled by this stage.
+
+Legacy ledger: `channels` state handlers and `directMessages` participant/follow/
+archive/presence handlers remain for BFF/external callers. Reports continue
+through the BFF durable moderation-audit intake, unchanged. Read/unread HTTP
+writes remain until CN-11. Physical deletion keeps its existing BFF cleanup path.
+Native Settings room restore bypasses legacy refresh/events; other archived
+resources and personal-chat ownership remain unchanged.
+
 ## Stage A: room backend and admission
 
 Native rooms, agent threads and activity use the existing **`chat`** deployment

@@ -1,3 +1,4 @@
+import { groupReactions, setReactionForActor, setPinnedForActor, setSavedForActor } from './roomStateActions'
 import { v } from 'convex/values'
 import { createChannelForActor } from './roomChannelCreation'
 import { mutation, query } from '../_generated/server'
@@ -54,17 +55,6 @@ async function requireAccess(
   return { actor: principal, conversation, participant }
 }
 
-async function requireMessage(
-  ctx: Ctx,
-  conversationId: Id<'conversations'>,
-  messageId: Id<'conversationMessages'>,
-) {
-  const message = await ctx.db.get(messageId)
-  if (!message || message.conversationId !== conversationId || message.deletedAt) {
-    throw new Error('Message not found')
-  }
-  return message
-}
 
 export const createChannel = mutation({
   args: {
@@ -142,58 +132,8 @@ export const setReaction = mutation({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { actor } = await requireAccess(ctx, args)
-    await requireMessage(ctx, args.conversationId, args.messageId)
-    const emoji = args.emoji.trim()
-    if (!emoji || emoji.length > 32) throw new Error('A valid reaction is required')
-    const existing = await ctx.db.query('conversationMessageReactions')
-      .withIndex('by_messageId_principalId_emoji', (q) => (
-        q.eq('messageId', args.messageId).eq('principalId', actor.principalId).eq('emoji', emoji)
-      )).unique()
-    const reactionChanged = args.enabled ? !existing : Boolean(existing)
-    if (args.enabled && !existing) {
-      await ctx.db.insert('conversationMessageReactions', {
-        conversationId: args.conversationId, messageId: args.messageId, workspaceId: args.workspaceId,
-        principalId: actor.principalId, emoji, createdAt: Date.now(),
-      })
-    } else if (!args.enabled && existing) await ctx.db.delete(existing._id)
-    if (args.enabled && reactionChanged) {
-      const message = await ctx.db.get(args.messageId)
-      if (message?.authorPrincipalId && message.authorPrincipalId !== actor.principalId) {
-        const preferences = await ctx.db.query('workspaceNotificationPreferences')
-          .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', message.authorPrincipalId!))
-          .unique()
-        if (preferences?.reactions !== 'off') {
-          await ctx.db.insert('workspaceNotifications', {
-            notificationId: crypto.randomUUID(),
-            workspaceId: args.workspaceId,
-            recipientPrincipalId: message.authorPrincipalId,
-            type: 'reaction',
-            conversationId: args.conversationId,
-            messageId: args.messageId,
-            actorPrincipalId: actor.principalId,
-            title: `${actor.displayName} reacted ${emoji}`,
-            body: undefined,
-            eventSequence: Date.now(),
-            createdAt: Date.now(),
-          })
-        }
-      }
-    }
-    if (reactionChanged) {
-      await recordConversationEvent(ctx, {
-        conversationId: args.conversationId,
-        workspaceId: args.workspaceId,
-        userId: args.actorUserId,
-        type: 'reaction.changed',
-        messageId: args.messageId,
-        payload: { enabled: args.enabled, emoji },
-      })
-    }
-    const rows = await ctx.db.query('conversationMessageReactions')
-      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
-      .collect()
-    return groupReactions(rows, actor.principalId)
+    const access = await requireAccess(ctx, args)
+    return setReactionForActor(ctx, args, access)
   },
 })
 
@@ -222,40 +162,8 @@ export const setPinned = mutation({
     pinned: v.boolean(), workspaceId: v.string(), serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { actor } = await requireAccess(ctx, args)
-    await requireMessage(ctx, args.conversationId, args.messageId)
-    const existing = await ctx.db.query('conversationPins')
-      .withIndex('by_conversationId_messageId', (q) => (
-        q.eq('conversationId', args.conversationId).eq('messageId', args.messageId)
-      )).unique()
-    if (args.pinned && !existing) {
-      await ctx.db.insert('conversationPins', {
-        conversationId: args.conversationId, messageId: args.messageId, workspaceId: args.workspaceId,
-        pinnedByPrincipalId: actor.principalId, createdAt: Date.now(),
-      })
-      await recordConversationEvent(ctx, {
-        conversationId: args.conversationId,
-        workspaceId: args.workspaceId,
-        userId: args.actorUserId,
-        type: 'pin.changed',
-        messageId: args.messageId,
-        payload: { pinned: true },
-      })
-      return true
-    }
-    if (!args.pinned && existing) {
-      await ctx.db.delete(existing._id)
-      await recordConversationEvent(ctx, {
-        conversationId: args.conversationId,
-        workspaceId: args.workspaceId,
-        userId: args.actorUserId,
-        type: 'pin.changed',
-        messageId: args.messageId,
-        payload: { pinned: false },
-      })
-      return true
-    }
-    return false
+    const access = await requireAccess(ctx, args)
+    return setPinnedForActor(ctx, args, access)
   },
 })
 
@@ -280,24 +188,8 @@ export const setSaved = mutation({
     saved: v.boolean(), workspaceId: v.string(), serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const { actor } = await requireAccess(ctx, args)
-    await requireMessage(ctx, args.conversationId, args.messageId)
-    const existing = await ctx.db.query('conversationSavedMessages')
-      .withIndex('by_messageId_principalId', (q) => (
-        q.eq('messageId', args.messageId).eq('principalId', actor.principalId)
-      )).unique()
-    if (args.saved && !existing) {
-      await ctx.db.insert('conversationSavedMessages', {
-        conversationId: args.conversationId, messageId: args.messageId, workspaceId: args.workspaceId,
-        principalId: actor.principalId, createdAt: Date.now(),
-      })
-      return true
-    }
-    if (!args.saved && existing) {
-      await ctx.db.delete(existing._id)
-      return true
-    }
-    return false
+    const access = await requireAccess(ctx, args)
+    return setSavedForActor(ctx, args, access)
   },
 })
 
@@ -375,36 +267,6 @@ export const searchWorkspaceChats = query({
   },
 })
 
-function groupReactions(
-  rows: Array<{
-    conversationId: Id<'conversations'>
-    messageId: Id<'conversationMessages'>
-    emoji: string
-    principalId: string
-  }>,
-  currentPrincipalId: string,
-) {
-  const grouped = new Map<string, {
-    conversationId: Id<'conversations'>
-    messageId: Id<'conversationMessages'>
-    emoji: string
-    principalIds: string[]
-    count: number
-    reactedByCurrentPrincipal: boolean
-  }>()
-  for (const row of rows) {
-    const key = `${row.messageId}:${row.emoji}`
-    const value = grouped.get(key) ?? {
-      conversationId: row.conversationId, messageId: row.messageId, emoji: row.emoji,
-      principalIds: [], count: 0, reactedByCurrentPrincipal: false,
-    }
-    value.principalIds.push(row.principalId)
-    value.count += 1
-    value.reactedByCurrentPrincipal ||= row.principalId === currentPrincipalId
-    grouped.set(key, value)
-  }
-  return [...grouped.values()]
-}
 
 /**
  * Owner-only: soft-deletes every conversation (channels + DMs) and removes

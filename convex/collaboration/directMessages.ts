@@ -1,3 +1,4 @@
+import { heartbeatForActor, addParticipantForActor, removeParticipantForActor, archiveConversationForEveryoneForActor, setThreadFollowForActor } from './roomStateActions'
 import { hydrateRemoteMessages, hydrateRemoteMessage } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
 import { participantViewById, participantViews } from './roomParticipants'
@@ -1316,66 +1317,7 @@ export const addParticipant = mutation({
   },
   handler: async (ctx, args) => {
     const access = await requireConversationAccess(ctx, args)
-    if (access.participant?.role !== 'moderator') throw new Error('CONVERSATION_MODERATOR_REQUIRED')
-    if (access.conversation?.conversationType === 'dm') {
-      throw new Error('DIRECT_MESSAGE_REQUIRES_NEW_GROUP')
-    }
-    const [principal, membership] = await Promise.all([
-      ctx.db.query('workspacePrincipals')
-      .withIndex('by_principalId', (q) => q.eq('principalId', args.principalId))
-        .unique(),
-      ctx.db.query('workspaceMemberships')
-      .withIndex('by_workspaceId_principalId', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('principalId', args.principalId)
-        )).unique(),
-    ])
-    if (
-      !principal
-      || principal.workspaceId !== args.workspaceId
-      || principal.archivedAt
-      || (principal.type !== 'human' && principal.type !== 'agent')
-      || membership?.status !== 'active'
-    ) throw new Error('Participant is not eligible')
-    const existing = await ctx.db.query('conversationParticipants')
-      .withIndex('by_conversationId_principalId', (q) => (
-        q.eq('conversationId', args.conversationId).eq('principalId', args.principalId)
-      )).unique()
-    const now = Date.now()
-    let participant
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        status: 'active',
-        removedAt: undefined,
-        archivedAt: undefined,
-        updatedAt: now,
-      })
-      participant = { ...existing, status: 'active' as const, removedAt: undefined, archivedAt: undefined, updatedAt: now }
-    } else {
-      const id = await ctx.db.insert('conversationParticipants', {
-        conversationId: args.conversationId,
-        workspaceId: args.workspaceId,
-        principalId: args.principalId,
-        principalType: principal.type,
-        role: 'member',
-        status: 'active',
-        notificationLevel: 'all',
-        joinedAt: now,
-        updatedAt: now,
-      })
-      participant = (await ctx.db.get(id))!
-    }
-    await ctx.db.insert('workspaceNotifications', {
-      notificationId: crypto.randomUUID(),
-      workspaceId: args.workspaceId,
-      recipientPrincipalId: args.principalId,
-      type: 'participant',
-      conversationId: args.conversationId,
-      actorPrincipalId: access.actor.principalId,
-      title: `${access.actor.displayName} added you to a conversation`,
-      eventSequence: now,
-      createdAt: now,
-    })
-    return await participantViewById(ctx, participant)
+    return addParticipantForActor(ctx, args, access)
   },
 })
 
@@ -1389,29 +1331,7 @@ export const removeParticipant = mutation({
   },
   handler: async (ctx, args) => {
     const access = await requireConversationAccess(ctx, args)
-    if (access.actor.principalId !== args.principalId && access.participant?.role !== 'moderator') {
-      throw new Error('CONVERSATION_MODERATOR_REQUIRED')
-    }
-    const active = await ctx.db.query('conversationParticipants')
-      .withIndex('by_conversationId_status', (q) => (
-        q.eq('conversationId', args.conversationId).eq('status', 'active')
-      )).collect()
-    if (active.length <= 1 && access.actor.principalId !== args.principalId) {
-      throw new Error('A conversation must retain one participant')
-    }
-    const participant = await ctx.db.query('conversationParticipants')
-      .withIndex('by_conversationId_principalId', (q) => (
-        q.eq('conversationId', args.conversationId).eq('principalId', args.principalId)
-      )).unique()
-    if (!participant || participant.status !== 'active') return false
-    const now = Date.now()
-    await ctx.db.patch(participant._id, {
-      status: 'removed',
-      removedAt: now,
-      archivedAt: now,
-      updatedAt: now,
-    })
-    return true
+    return removeParticipantForActor(ctx, args, access)
   },
 })
 
@@ -1493,33 +1413,9 @@ export const archiveConversationForEveryone = mutation({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const actor = await requireWorkspaceOwner(ctx, args)
+    await requireWorkspaceOwner(ctx, args)
     const access = await requireConversationAccess(ctx, args)
-    const now = Date.now()
-    const participants = await ctx.db.query('conversationParticipants')
-      .withIndex('by_conversationId_status', (q) => (
-        q.eq('conversationId', args.conversationId).eq('status', 'active')
-      ))
-      .collect()
-    await Promise.all(participants.map((participant) => ctx.db.patch(participant._id, {
-      archivedAt: args.archived ? now : undefined,
-      updatedAt: now,
-    })))
-    await recordConversationEvent(ctx, {
-      conversationId: args.conversationId,
-      workspaceId: args.workspaceId,
-      userId: args.actorUserId,
-      type: 'conversation.updated',
-      payload: { archived: args.archived, scope: 'everyone' },
-    })
-    const current = participants.find((participant) => participant.principalId === actor.principalId)
-      ?? access.participant
-    if (!current) throw new Error('CONVERSATION_ACCESS_DENIED')
-    return await participantViewById(ctx, {
-      ...current,
-      archivedAt: args.archived ? now : undefined,
-      updatedAt: now,
-    })
+    return archiveConversationForEveryoneForActor(ctx, args, access)
   },
 })
 
@@ -1568,29 +1464,7 @@ export const upsertPresence = mutation({
   handler: async (ctx, args) => {
     const actor = await requireActor(ctx, args)
     if (args.conversationId) await requireConversationAccess(ctx, { ...args, conversationId: args.conversationId })
-    const sessionId = args.sessionId?.trim() || 'legacy'
-    const existingRows = await ctx.db.query('workspacePresence')
-      .withIndex('by_workspaceId_principalId', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('principalId', actor.principalId)
-      )).collect()
-    const existing = existingRows.find((row) => (row.sessionId ?? 'legacy') === sessionId)
-    const now = Date.now()
-    const value = {
-      workspaceId: args.workspaceId,
-      principalId: actor.principalId,
-      sessionId,
-      conversationId: args.conversationId,
-      status: args.status,
-      lastSeenAt: now,
-      typingExpiresAt: args.typing && args.conversationId ? now + 6_000 : undefined,
-      updatedAt: now,
-    }
-    if (existing) await ctx.db.patch(existing._id, value)
-    else await ctx.db.insert('workspacePresence', value)
-    return {
-      ...value,
-      typing: Boolean(value.typingExpiresAt && value.typingExpiresAt > now),
-    }
+    return heartbeatForActor(ctx, args, actor.principalId)
   },
 })
 
@@ -2105,28 +1979,7 @@ export const setThreadFollow = mutation({
   },
   handler: async (ctx, args) => {
     const access = await requireConversationAccess(ctx, args)
-    await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
-    const existing = await ctx.db.query('conversationThreadFollows')
-      .withIndex('by_conversationId_threadRootMessageId_principalId', (q) => (
-        q.eq('conversationId', args.conversationId)
-          .eq('threadRootMessageId', args.threadRootMessageId)
-          .eq('principalId', access.actor.principalId)
-      )).unique()
-    if (args.followed && !existing) {
-      await ctx.db.insert('conversationThreadFollows', {
-        workspaceId: args.workspaceId,
-        conversationId: args.conversationId,
-        threadRootMessageId: args.threadRootMessageId,
-        principalId: access.actor.principalId,
-        followedAt: Date.now(),
-      })
-      return true
-    }
-    if (!args.followed && existing) {
-      await ctx.db.delete(existing._id)
-      return true
-    }
-    return false
+    return setThreadFollowForActor(ctx, args, access)
   },
 })
 

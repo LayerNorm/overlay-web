@@ -7,6 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage, Button, DialogFrame, Input } from 
 import type { WorkspaceManagementItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useRoomCreation } from './collaboration/native-room-create'
+import { useRoomParticipantWriter } from './collaboration/room-state-adapters'
 
 const EMPTY_EXCLUDED_PRINCIPAL_IDS: string[] = []
 
@@ -35,6 +36,7 @@ type DialogActionContext = Pick<
   setQuery: (query: string) => void
   setInviteSent: (sent: boolean) => void
   createDirectMessage: ReturnType<typeof useRoomCreation>['direct']
+  addParticipant: ReturnType<typeof useRoomParticipantWriter>
 }
 
 async function loadWorkspaceMembers(workspaceId: string) {
@@ -80,7 +82,7 @@ async function createDirectMessage(ctx: DialogActionContext, selected: string[],
   try {
     if (addToConversationId && addToConversationType === 'channel') {
       await Promise.all(selected.map((principalId) => (
-        overlayAppClient.conversations.addParticipant(addToConversationId, principalId)
+        ctx.addParticipant(addToConversationId, principalId)
       )))
       ctx.onParticipantsAdded?.()
       ctx.onOpenChange(false)
@@ -273,6 +275,7 @@ export function NewDirectMessageDialog({
   onParticipantsAdded,
 }: NewDirectMessageDialogProps) {
   const creation = useRoomCreation()
+  const addParticipant = useRoomParticipantWriter()
   const [items, setItems] = useState<WorkspaceManagementItem[]>([])
   const [currentPrincipalId, setCurrentPrincipalId] = useState('')
   const [query, setQuery] = useState('')
@@ -318,6 +321,7 @@ export function NewDirectMessageDialog({
   const copy = resolveDialogCopy(addToConversationId, addToConversationType, sourceConversationId)
   const actionContext: DialogActionContext = {
     createDirectMessage: creation.direct,
+    addParticipant,
     workspaceId,
     sourceConversationId,
     addToConversationId,

@@ -233,6 +233,7 @@
     "src/components/providers/convex-react-client.ts",
     "src/components/providers/native-agent-threads.tsx",
     "src/components/providers/native-personal-execution.ts",
+    "src/components/providers/native-room-state-client.ts",
     "src/components/providers/personal-chat-store.ts",
     "src/components/providers/usePersonalChatRouteSelection.ts",
     "src/components/providers/usePersonalChatTranscript.ts",
@@ -247,6 +248,8 @@
     "src/features/chat/components/collaboration/NativeArchivedRoomEntry.tsx",
     "src/features/chat/components/collaboration/NativeCollaborationProvider.tsx",
     "src/features/chat/components/collaboration/NativeRoomScope.tsx",
+    "src/features/chat/components/collaboration/NativeRoomState.tsx",
+    "src/features/chat/components/collaboration/useNativePresence.ts",
     "src/features/chat/components/collaboration/useNativeRoomTranscript.ts"
   ],
   "convexCronJobs": [
@@ -404,6 +407,7 @@
     "src/components/providers/convex-react-client.ts",
     "src/components/providers/native-agent-threads.tsx",
     "src/components/providers/native-personal-execution.ts",
+    "src/components/providers/native-room-state-client.ts",
     "src/components/providers/personal-chat-store.ts",
     "src/components/providers/usePersonalChatRouteSelection.ts",
     "src/components/providers/usePersonalChatTranscript.ts",
@@ -418,6 +422,8 @@
     "src/features/chat/components/collaboration/NativeArchivedRoomEntry.tsx",
     "src/features/chat/components/collaboration/NativeCollaborationProvider.tsx",
     "src/features/chat/components/collaboration/NativeRoomScope.tsx",
+    "src/features/chat/components/collaboration/NativeRoomState.tsx",
+    "src/features/chat/components/collaboration/useNativePresence.ts",
     "src/features/chat/components/collaboration/useNativeRoomTranscript.ts",
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAuditRepository.ts",

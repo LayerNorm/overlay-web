@@ -40,7 +40,7 @@ import {
   type ArchivedItem,
   type ArchivedItemKind,
 } from '../lib/archived-items'
-import { deleteArchivedItem, loadArchivedItems, restoreArchivedItem, runBulk } from '../lib/archived-actions'
+import { deleteArchivedItem, loadArchivedItems, restoreArchivedItem, runBulk, runBulkWith } from '../lib/archived-actions'
 
 const KIND_ICONS: Record<ArchivedItemKind, LucideIcon> = {
   chat: MessageSquare,
@@ -202,19 +202,10 @@ export function ArchivedSettings() {
     setBusy(true)
     try {
       if (targets.length === 1) {
-        await restoreArchivedItem(
-          targets[0]!,
-          workspaceId,
-          nativePersonal.configured ? restoreNativePersonal : undefined,
-        )
+        await restoreOne(targets[0]!)
         toast.success(`Restored “${targets[0]!.name}”.`)
       } else {
-        const outcome = await runBulk(
-          targets,
-          'restore',
-          workspaceId,
-          nativePersonal.configured ? restoreNativePersonal : undefined,
-        )
+        const outcome = await runBulkWith(targets, 'restore', restoreOne)
         const summary = summarizeBulk('restored', outcome)
         if (outcome.failed.length === 0) toast.success(summary)
         else toast.error(summary)
@@ -223,8 +214,13 @@ export function ArchivedSettings() {
       toast.error('Could not restore that. You may not have access to it.')
     } finally {
       setBusy(false)
-      await load()
+      if (!targets.every(nativeRooms.isRoom)) await load()
     }
+  }
+
+  async function restoreOne(item: ArchivedItem) {
+    if (nativeRooms.isRoom(item)) return nativeRooms.restore(item)
+    return restoreArchivedItem(item, workspaceId, nativePersonal.configured ? restoreNativePersonal : undefined)
   }
 
   const nativeArchivedRows = nativePersonal.archived.rows

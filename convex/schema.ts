@@ -2627,6 +2627,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_workspaceId_principalId_createdAt', ['workspaceId', 'principalId', 'createdAt'])
+    .index('by_conversationId_principalId_createdAt', ['conversationId', 'principalId', 'createdAt'])
     .index('by_messageId_principalId', ['messageId', 'principalId'])
     .index('by_conversationId', ['conversationId']),
 
@@ -2648,6 +2649,7 @@ export default defineSchema({
     principalId: v.string(),
     followedAt: v.number(),
   })
+    .index('by_conversationId_principalId_followedAt', ['conversationId', 'principalId', 'followedAt'])
     .index('by_conversationId_threadRootMessageId_principalId', ['conversationId', 'threadRootMessageId', 'principalId']),
 
   // ────────────────────────────────────────────────────────────────────────────
