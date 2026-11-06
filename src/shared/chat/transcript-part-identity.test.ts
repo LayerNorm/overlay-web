@@ -25,3 +25,23 @@ test('public snapshots are UTF-8 bounded and preserve retained text identities',
   assert.ok(new TextEncoder().encode(JSON.stringify(snapshot)).byteLength <= 240 * 1024)
   assert.equal(snapshot.parts.find(part => part.id)?.id, JSON.stringify(['run', 'model:0', 0]))
 })
+
+test('recompaction preserves the run-scoped omission identity as byte limits remove more parts', () => {
+  const first = withTranscriptPartIds('run', 'checkpoint', compactTranscriptSnapshot({
+    content: 'Answer',
+    parts: Array.from({ length: 90 }, () => ({ type: 'text', text: 'Answer' })),
+  }))
+  assert.deepEqual(compactTranscriptSnapshot(first), first)
+  const id = first.parts[0].id
+  assert.equal(id, JSON.stringify(['run', 'omitted']))
+  const bounded = compactTranscriptSnapshot({
+    content: 'Answer',
+    parts: [first.parts[0], ...Array.from({ length: 80 }, (_, i) => ({
+      type: 'tool-invocation',
+      toolInvocation: { toolCallId: `call-${i}`, toolName: 'lookup', toolOutput: '界'.repeat(4000) },
+    }))],
+  })
+  assert.ok(new TextEncoder().encode(JSON.stringify(bounded)).byteLength <= 240 * 1024)
+  assert.ok(Number(bounded.parts[0].storageOmittedParts) > Number(first.parts[0].storageOmittedParts))
+  assert.equal(bounded.parts[0].id, id)
+})

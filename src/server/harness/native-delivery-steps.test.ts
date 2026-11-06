@@ -73,7 +73,7 @@ test('native long-turn delivery preserves the final report through repeated pers
   expect(saved.parts[0]).toMatchObject({
     type: 'text', text: '[11 additional assistant parts omitted for storage]', storageOmittedParts: 11,
   })
-  expect(saved.parts.slice(1)).toEqual(nativeDelivery.parts.slice(1))
+  expect(saved.parts).toEqual(nativeDelivery.parts)
   expect(saved.parts).toHaveLength(81)
   expect(mocks.complete).toHaveBeenCalledWith(expect.objectContaining({ content: answer, parts: saved.parts }))
 })

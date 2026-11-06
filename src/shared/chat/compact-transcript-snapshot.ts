@@ -6,6 +6,7 @@ const MAX_SNAPSHOT_BYTES = 240 * 1024
 /** The full public payload lives in file storage; this is only the bounded delivery cache. */
 export function compactTranscriptSnapshot(input: HarnessTranscriptPersistence): HarnessTranscriptPersistence {
   const snapshot = compactAssistantPersistenceForConvex(input)
+  const omissionId = snapshot.parts.find(isAssistantStorageOmission)?.id
   let omitted = snapshot.parts.reduce((sum, part) => sum + (isAssistantStorageOmission(part)
     ? Number(part.storageOmittedParts) || 0 : 0), 0)
   while (new TextEncoder().encode(JSON.stringify(snapshot)).byteLength > MAX_SNAPSHOT_BYTES) {
@@ -28,7 +29,11 @@ export function compactTranscriptSnapshot(input: HarnessTranscriptPersistence): 
       candidates.length = 0
     }
     snapshot.parts = [
-      ...(omitted ? [{ type: 'text', text: `[${omitted} additional assistant parts omitted for storage]`, storageOmittedParts: omitted }] : []),
+      ...(omitted ? [{
+        type: 'text',
+        ...(typeof omissionId === 'string' && omissionId ? { id: omissionId } : {}),
+        text: `[${omitted} additional assistant parts omitted for storage]`, storageOmittedParts: omitted,
+      }] : []),
       ...candidates,
     ]
   }
