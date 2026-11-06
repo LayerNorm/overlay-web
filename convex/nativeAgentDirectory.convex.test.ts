@@ -403,6 +403,9 @@ describe('native agent directory authorization and revisions', () => {
     const archivedDetail = await creator.query(queryFn('get'), {
       workspaceId: 'workspace-revision', agentId: created.id, includeArchived: true,
     } as never) as { revision: string }
+    await expect(creator.mutation(mutationFn('restore'), {
+      workspaceId: 'workspace-revision', agentId: created.id, expectedRevision: refreshed.revision,
+    } as never)).rejects.toThrow('WORKSPACE_AGENT_REVISION_CONFLICT')
     const restored = await creator.mutation(mutationFn('restore'), {
       workspaceId: 'workspace-revision',
       agentId: created.id,

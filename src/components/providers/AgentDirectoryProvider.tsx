@@ -182,6 +182,36 @@ class AgentDirectoryErrorBoundary extends Component<{
   }
 }
 
+function waitForArchivedRevision(convex: ReturnType<typeof useConvex>, workspaceId: string, agentId: string, signal: AbortSignal): Promise<string> {
+  const watch = convex.watchQuery(api.agents.nativeDirectory.get, { workspaceId, agentId, includeArchived: true })
+  return new Promise((resolve, reject) => {
+    let unsubscribe = () => {}
+    const finish = (revision?: string, error?: unknown) => {
+      clearTimeout(timer)
+      unsubscribe()
+      signal.removeEventListener('abort', abort)
+      if (revision) resolve(revision)
+      else reject(error)
+    }
+    const abort = () => finish(undefined, new Error('Native agent directory is unavailable'))
+    const timer = setTimeout(() => finish(undefined, new Error('Agent archive is still syncing. Retry Undo.')), 10_000)
+    const read = () => {
+      try {
+        const agent = watch.localQueryResult()
+        if (agent === null || (agent && (agent.id !== agentId || agent.workspaceId !== workspaceId))) {
+          finish(undefined, new Error('The archived agent is no longer available'))
+        } else if (agent?.archivedAt !== undefined) {
+          finish(agent.revision)
+        }
+      } catch (error) { finish(undefined, error) }
+    }
+    if (signal.aborted) { abort(); return }
+    signal.addEventListener('abort', abort, { once: true })
+    unsubscribe = watch.onUpdate(read)
+    read()
+  })
+}
+
 function AgentDirectoryErrorFallback({ onRetry }: { onRetry(): void }) {
   return (
     <div role="alert" className="space-y-2 p-3 text-sm text-(--muted)">
@@ -221,6 +251,12 @@ function NativeAgentDirectoryScope({
   const convex = useConvex()
   const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
   const canQuery = Boolean(workspaceId && workspaceReady && identityReady && !authLoading && isAuthenticated)
+  const restoreScope = useRef<AbortController | null>(null)
+  useEffect(() => {
+    const controller = new AbortController()
+    restoreScope.current = controller
+    return () => controller.abort()
+  }, [canQuery])
   const settledAuthFailure = !identityPending && (!identityReady || (!authLoading && !isAuthenticated))
   const listQuery = usePaginatedQuery(
     api.agents.nativeDirectory.list,
@@ -375,18 +411,14 @@ function NativeAgentDirectoryScope({
   }, [canQuery, setPendingAgentIds, updateMutation, workspaceId])
 
   const restore = useCallback(async (agentId: string, expectedRevision?: string) => {
-    if (!workspaceId || !canQuery) throw new Error('Native agent directory is unavailable')
-    const latest = expectedRevision
-      ? null
-      : await convex.query(api.agents.nativeDirectory.get, {
-        workspaceId,
-        agentId,
-        includeArchived: true,
-      })
-    const revision = expectedRevision ?? latest?.revision
-    if (!revision) throw new Error('The archived agent is no longer available')
+    const signal = restoreScope.current?.signal
+    if (!workspaceId || !canQuery || !signal || signal.aborted) throw new Error('Native agent directory is unavailable')
     setPendingAgentIds((current) => new Set(current).add(agentId))
     try {
+      // HTTP archive completion can precede the native subscription's archived revision.
+      const revision = expectedRevision ?? await waitForArchivedRevision(convex, workspaceId, agentId, signal)
+      if (signal.aborted) throw new Error('Native agent directory is unavailable')
+      if (!revision) throw new Error('The archived agent is no longer available')
       return await restoreMutation({ workspaceId, agentId, expectedRevision: revision })
     } finally {
       setPendingAgentIds((current) => {

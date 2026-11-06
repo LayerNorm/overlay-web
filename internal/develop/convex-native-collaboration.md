@@ -260,6 +260,11 @@ an archived agent definition/principal, so a live archive cannot throw into the
 directory's error boundary. Restore re-exposes the same authorized thread IDs.
 Mutation access remains strict; unexpected read failures and thread-limit
 exhaustion still throw rather than masquerading as an empty list.
+Agent Undo without an explicit revision subscribes until the authorized archived
+projection arrives, rather than using a cached active profile after HTTP archive.
+The wait expires after ten seconds and cancels on identity/workspace/auth scope
+changes; null access and query errors reject without sending restore. Explicit
+revisions retain their conflict semantics and are never automatically retried.
 Lists paginate the workspace/agent/owner/recency index; main derivation bounds
 related caller threads at 200 and fails closed above that limit. DTOs carry the
 viewer and full scope so stale cached rows cannot authorize a new selection.

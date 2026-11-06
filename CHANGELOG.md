@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Wait for the native archived-agent revision before Undo restores an agent, avoiding conflicts from a cached active profile after server-side archive. Explicit revision conflicts and authorization remain enforced.
+
 - Clear native agent thread lists safely during agent archive or access revocation, so Undo can restore subscribed navigation without leaving the sidebar in a load-error boundary.
 
 - Use the same canonical reply total in native thread headers and root indicators, excluding deleted replies while keeping their tombstones visible and preserving capped counts across pagination.

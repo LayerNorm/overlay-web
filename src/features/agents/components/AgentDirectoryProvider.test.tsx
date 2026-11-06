@@ -21,6 +21,7 @@ const state = vi.hoisted(() => ({
   listByScope: {} as Record<string, NativeAgent[]>,
   detailById: {} as Record<string, NativeAgent | null | undefined>,
   throwContextQuery: false,
+  watchers: new Set<() => void>(),
   optimisticCallbacks: new Map<string, (store: unknown, args: unknown) => void>(),
   mutationCalls: new Map<string, ReturnType<typeof vi.fn>>(),
   agentHttp: {
@@ -38,6 +39,10 @@ vi.mock('convex/react', async () => {
   return {
     useConvex: () => ({
       query: async (_reference: unknown, args: { agentId?: string }) => state.detailById[args.agentId ?? ''],
+      watchQuery: (_reference: unknown, args: { agentId: string }) => ({
+        localQueryResult: () => state.detailById[args.agentId],
+        onUpdate(callback: () => void) { state.watchers.add(callback); return () => { state.watchers.delete(callback) } },
+      }),
     }),
     useConvexAuth: () => state.convexAuth,
     usePaginatedQuery: (_reference: unknown, args: 'skip' | { workspaceId: string }) => {
@@ -148,6 +153,7 @@ function resetState() {
   state.listByScope = { 'user-1:workspace-1': [] }
   state.detailById = {}
   state.throwContextQuery = false
+  state.watchers.clear()
   state.optimisticCallbacks.clear()
   state.mutationCalls.clear()
   for (const method of Object.values(state.agentHttp)) method.mockReset()
@@ -184,6 +190,57 @@ describe('native agent directory provider', () => {
   beforeEach(resetState)
   afterEach(() => {
     vi.clearAllMocks()
+    vi.useRealTimers()
+  })
+
+  it('Undo waits for the archived native projection instead of sending a cached active revision', async () => {
+    let current!: ReturnType<typeof useAgentDirectory>
+    state.detailById['agent-1'] = makeAgent('agent-1')
+    const mounted = mountProbe(value => { current = value })
+    await mounted.start()
+    try {
+      let restoring!: Promise<NativeAgent>
+      await act(async () => { restoring = current.restore('agent-1') })
+      expect(state.mutationCalls.get('restore')).not.toHaveBeenCalled()
+      expect(current.pendingAgentIds.has('agent-1')).toBe(true)
+      expect(state.watchers.size).toBe(1)
+      const archived = { ...makeAgent('agent-1', 'workspace-1', 'archived-revision'), archivedAt: 2 }
+      state.detailById['agent-1'] = archived
+      await act(async () => { [...state.watchers].forEach(callback => callback()); await restoring })
+      expect(state.mutationCalls.get('restore')).toHaveBeenCalledExactlyOnceWith({ workspaceId: 'workspace-1', agentId: 'agent-1', expectedRevision: 'archived-revision' })
+      expect(state.watchers.size).toBe(0)
+      expect(current.pendingAgentIds.has('agent-1')).toBe(false)
+    } finally { await mounted.unmount() }
+  })
+
+  it.each(['timeout', 'null', 'scope'] as const)('never restores when waiting for the archived projection ends with %s', async kind => {
+    vi.useFakeTimers()
+    let current!: ReturnType<typeof useAgentDirectory>
+    state.detailById['agent-1'] = makeAgent('agent-1')
+    const mounted = mountProbe(value => { current = value })
+    await mounted.start()
+    try {
+      const result = current.restore('agent-1').catch(error => error)
+      if (kind === 'timeout') await act(async () => { vi.advanceTimersByTime(10_000) })
+      if (kind === 'null') await act(async () => { state.detailById['agent-1'] = null; [...state.watchers].forEach(callback => callback()) })
+      if (kind === 'scope') { state.auth.user = { id: 'user-2' }; await mounted.update() }
+      expect(await result).toBeInstanceOf(Error)
+      expect(state.mutationCalls.get('restore')).not.toHaveBeenCalled()
+      expect(state.watchers.size).toBe(0)
+    } finally { await mounted.unmount() }
+  })
+
+  it('explicit restore revisions retain conflict semantics without fetching or retrying', async () => {
+    let current!: ReturnType<typeof useAgentDirectory>
+    const mounted = mountProbe(value => { current = value })
+    await mounted.start()
+    try {
+      const mutation = state.mutationCalls.get('restore')!
+      mutation.mockRejectedValue(new Error('WORKSPACE_AGENT_REVISION_CONFLICT'))
+      await act(async () => { await expect(current.restore('agent-1', 'explicit-revision')).rejects.toThrow('WORKSPACE_AGENT_REVISION_CONFLICT') })
+      expect(mutation).toHaveBeenCalledTimes(1)
+      expect(state.watchers.size).toBe(0)
+    } finally { await mounted.unmount() }
   })
 
   it('fails closed for configured unauthenticated access and never invokes agent HTTP actions', async () => {
