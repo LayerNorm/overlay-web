@@ -206,6 +206,13 @@ required in the main ruleset for both PRs and the merge queue, then manually
 dispatch the workflow from main to perform the initial sweep. The code does not
 change live rulesets.
 
+PR events, main pushes, manual dispatches and hourly recovery runs sweep all
+open main PRs, including forks and dependency bots. Unchanged status results are
+reused to avoid exhausting GitHub's per-revision status limit. Merge groups run
+independently for their exact SHA; separate concurrency keys keep a queued merge
+group from being displaced by another PR or merge-group event. No PR code is
+checked out or executed, and no deployment credentials are used by this workflow.
+
 The trusted PR controller also holds the project preview key as
 `CONVEX_PREVIEW_CONTROL_KEY` in the main-only `release-control` environment.
 Six-hour reconciliation validates the project, preview type, PR identifier and

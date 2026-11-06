@@ -15,7 +15,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: backend-freshness
+  group: backend-freshness-${{ github.event_name == 'merge_group' && github.event.merge_group.head_sha || 'sweep' }}
   cancel-in-progress: false
 
 jobs:

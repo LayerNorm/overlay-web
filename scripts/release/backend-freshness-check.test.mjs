@@ -50,6 +50,14 @@ function fixture({ pulls = [], compare, compareError = false, pullReads = {}, ma
       reads.set(number, read + 1)
       return Array.isArray(sequence) ? sequence[Math.min(read, sequence.length - 1)] : sequence
     }
+    const statusMatch = path.match(new RegExp(`^${repoPath}/commits/([a-f0-9]{40})/status$`))
+    if (statusMatch) {
+      const latest = new Map()
+      for (const status of statuses) {
+        if (status.sha === statusMatch[1]) latest.set(status.context, status)
+      }
+      return { statuses: [...latest.values()] }
+    }
     if (path.startsWith(`${repoPath}/statuses/`) && options.method === 'POST') {
       statuses.push({ sha: path.slice(`${repoPath}/statuses/`.length), ...options.body })
       return {}
@@ -65,7 +73,7 @@ function context(eventName, payload, { ref = 'refs/heads/main' } = {}) {
 }
 
 test('sweeps every page of open main PRs with 100-item pagination', async () => {
-  const pulls = Array.from({ length: 101 }, (_, index) => pull(index + 1))
+  const pulls = Array.from({ length: 101 }, (_, index) => pull(index + 1, { headSha: (index + 1).toString(16).padStart(40, '0') }))
   const f = fixture({ pulls })
   const result = await runBackendFreshness({ api: f.api, ...context('push', {}, { ref: 'refs/heads/main' }) })
   assert.equal(result.assessed, 101)
@@ -123,7 +131,7 @@ test('a PR-head race finishes only the originally assessed SHA', async () => {
   assert.equal(f.statuses.some(status => status.sha === sha('z')), false)
 })
 
-test('merge groups assess the exact merge SHA and sweep open PRs', async () => {
+test('merge groups assess only their exact merge SHA, independently of PR sweeps', async () => {
   const groupSha = sha('e')
   const f = fixture({ pulls: [pull(3)] })
   const result = await runBackendFreshness({
@@ -131,10 +139,11 @@ test('merge groups assess the exact merge SHA and sweep open PRs', async () => {
     ...context('merge_group', { merge_group: { base_ref: 'refs/heads/main', head_sha: groupSha } },
       { ref: 'refs/heads/gh-readonly-queue/main' }),
   })
-  assert.equal(result.assessed, 2)
+  assert.equal(result.assessed, 1)
   assert.ok(f.statuses.some(status => status.sha === groupSha && status.context === 'Backend Freshness' && status.state === 'pending'))
   assert.ok(f.statuses.some(status => status.sha === groupSha && status.context === 'Backend Freshness' && status.state === 'success'))
-  assert.ok(f.statuses.some(status => status.sha === sha('a') && status.state === 'success'))
+  assert.equal(f.calls.some(call => call.path === `${repoPath}/pulls`), false)
+  assert.equal(f.statuses.some(status => status.sha === sha('a')), false)
 })
 
 test('fork and Dependabot PRs are assessed; unavailable fork comparisons fail visibly', async () => {
@@ -195,4 +204,27 @@ test('a main move after comparison cannot publish a success status', async () =>
   assert.ok(f.statuses.some(status => status.sha === sha('a') && status.context === 'Backend Freshness' && status.state === 'error'))
   assert.ok(!f.statuses.some(status => status.sha === sha('a') && status.context === 'Backend Freshness' && status.state === 'success'))
   assert.ok(f.statuses.some(status => status.sha === sha('a') && status.context === 'PR Preview' && status.state === 'failure'))
+})
+
+test('repeated sweeps reuse unchanged statuses but still invalidate newly stale backends', async () => {
+  let stale = false
+  const f = fixture({ pulls: [pull(13)], compare: head => ({
+    base_commit: { sha: head },
+    merge_base_commit: { sha: stale ? sha('c') : sha('b') },
+    files: stale ? [{ filename: 'convex/schema.ts' }] : [],
+  }) })
+  const run = () => runBackendFreshness({ api: f.api, ...context('schedule', {}) })
+  await run()
+  const initialWrites = f.statuses.length
+  assert.equal(initialWrites, 2)
+  await run()
+  assert.equal(f.statuses.length, initialWrites)
+  stale = true
+  await run()
+  assert.deepEqual(f.statuses.slice(initialWrites).map(({ context, state }) => ({ context, state })), [
+    { context: 'PR Preview', state: 'failure' },
+    { context: 'Backend Freshness', state: 'failure' },
+  ])
+  await run()
+  assert.equal(f.statuses.length, initialWrites + 2)
 })

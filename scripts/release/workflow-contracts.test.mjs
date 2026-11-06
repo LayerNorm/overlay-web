@@ -60,7 +60,12 @@ test('backend freshness runs trusted main code with scoped status permissions an
   assert.deepEqual(Object.keys(config.on.workflow_dispatch ?? {}), [])
   assert.deepEqual(config.on.schedule, [{ cron: '0 * * * *' }])
   assert.deepEqual(config.permissions, {})
-  assert.deepEqual(config.concurrency, { group: 'backend-freshness', 'cancel-in-progress': false })
+  assert.equal(config.concurrency['cancel-in-progress'], false)
+  const group = (event_name, head_sha) => config.concurrency.group.replace(/\$\{\{ (.+?) \}\}/g,
+    (_match, expression) => vm.runInNewContext(expression, { github: { event_name, event: { merge_group: { head_sha } } } }))
+  assert.equal(group('push'), group('pull_request_target'))
+  assert.notEqual(group('merge_group', 'a'), group('merge_group', 'b'))
+  assert.notEqual(group('merge_group', 'a'), group('push'))
 
   const job = config.jobs.freshness
   assert.match(job.if, /workflow_dispatch.*refs\/heads\/main/)

@@ -28,6 +28,19 @@ const isMainPull = pr => pr?.state === 'open'
   && normalizedSha(pr.head?.sha) !== null
 
 async function publishStatus(api, repoPath, sha, state, context, description) {
+  let previous
+  try {
+    for (let page = 1; ; page++) {
+      const result = await api(`${repoPath}/commits/${sha}/status`, { query: { per_page: 100, page } })
+      if (!Array.isArray(result.statuses)) break
+      previous = result.statuses.find(status => status.context === context)
+      if (previous || result.statuses.length < 100) break
+    }
+  } catch {
+    // A failed status read must not prevent invalidating an old success.
+  }
+  if (previous && (state === 'pending'
+    || (previous.state === state && previous.description === description))) return
   await api(`${repoPath}/statuses/${sha}`, {
     method: 'POST',
     body: { state, context, description },
@@ -138,13 +151,11 @@ async function assessPull(api, repoPath, pr, errors) {
   await finishPull(api, repoPath, pr, result, errors)
 }
 
-async function assessMergeGroup(api, repoPath, headSha, errors, pendingPublished = false) {
-  if (!pendingPublished) {
-    try {
-      await publishStatus(api, repoPath, headSha, 'pending', BACKEND_CONTEXT, 'Checking merge-group backend freshness.')
-    } catch {
-      errors.push('Could not publish pending Backend Freshness for the merge group.')
-    }
+async function assessMergeGroup(api, repoPath, headSha, errors) {
+  try {
+    await publishStatus(api, repoPath, headSha, 'pending', BACKEND_CONTEXT, 'Checking merge-group backend freshness.')
+  } catch {
+    errors.push('Could not publish pending Backend Freshness for the merge group.')
   }
   const result = await assessRevision(api, repoPath, headSha)
   const state = result.state === 'current' ? 'success' : result.state === 'stale' ? 'failure' : 'error'
@@ -189,12 +200,10 @@ export async function runBackendFreshness({ api, eventName, payload, repository,
   let assessed = 0
 
   if (event.mergeHeadSha) {
-    try {
-      await publishStatus(api, REPOSITORY_PATH, event.mergeHeadSha, 'pending', BACKEND_CONTEXT,
-        'Checking merge-group backend freshness.')
-    } catch {
-      errors.push('Could not publish pending Backend Freshness for the merge group.')
-    }
+    await assessMergeGroup(api, REPOSITORY_PATH, event.mergeHeadSha, errors)
+    const summary = { assessed: 1, errors }
+    report(`Backend Freshness assessed 1 merge revision; ${errors.length} issue(s).`)
+    return summary
   }
 
   if (event.pullNumber) {
@@ -227,20 +236,6 @@ export async function runBackendFreshness({ api, eventName, payload, repository,
         } catch {
           errors.push(`Could not publish an error status for PR #${pr.number}.`)
         }
-      }
-    }
-  }
-
-  if (event.mergeHeadSha) {
-    assessed++
-    try {
-      await assessMergeGroup(api, REPOSITORY_PATH, event.mergeHeadSha, errors, true)
-    } catch {
-      errors.push('Unexpected merge-group freshness-check failure.')
-      try {
-        await publishStatus(api, REPOSITORY_PATH, event.mergeHeadSha, 'error', BACKEND_CONTEXT, STATE_DESCRIPTIONS.unknown)
-      } catch {
-        errors.push('Could not publish an error status for the merge group.')
       }
     }
   }
