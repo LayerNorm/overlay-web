@@ -44,7 +44,7 @@ Create requires `conversations.create`; edit/delete require `conversations.edit`
 and the existing human-author policy. Agent rooms additionally require a live,
 same-workspace, non-archived agent definition. Personal-chat ownership is unchanged.
 
-`collaboration/nativeRooms` exposes listRooms/getRoom/listMessages/getMessageAnchor
+`collaboration/nativeRooms` exposes listRooms/getRoom/listMessages/getMessageAnchor/listThreadSummaries
 and createDirectMessage/createChannel/editMessage/deleteMessage. These functions
 never accept actor IDs, access tokens or server secrets. Revoked detail/transcript
 queries return null. Lists omit inaccessible records. Message pagination uses
@@ -52,6 +52,48 @@ queries return null. Lists omit inaccessible records. Message pagination uses
 main stream, and native Convex cursors (including equal timestamps).
 
 Pages clamp to 1–100; related traversals cap at 200 and fail closed above that.
+`listThreadSummaries` is part of the `native-collaboration-v1` function set. It
+authorizes the room once, validates at most 100 deduplicated top-level roots,
+and reads the existing `by_conversationId_threadRootMessageId_createdAt` index
+newest-first. Each root gets `min(65, floor(512 / rootCount))` document reads,
+including tombstones and a lookahead document; all roots together read at most
+512 reply documents, plus at most 100 root documents. Only nondeleted replies
+count. Exhausting a window marks its count capped; a tombstone-heavy window
+with no live reply returns `latestReplyComplete: false`, not an exact zero.
+Up to 100 pending nonces (each at most 256 characters) use the existing
+`by_conversationId_clientNonce` index for acknowledgement, including tombstones,
+so a persisted optimistic send older than the latest reply cannot double count.
+The maximum summary-specific reads are therefore 712 documents, in addition to
+one existing room-authorization traversal. This bounds documents, not database
+bytes: existing unusually large message documents remain subject to Convex's
+transaction byte limit.
+
+Teasers use only stored `row.content` truncated to 140 characters. For remote
+messages this is the canonical first-2048-character prefix maintained by
+`prepareRemoteMessageText`; summaries never hydrate remote chunks or expose
+parts, tool payloads, plans, edit history, email or admission content. Optional
+identity/name/nonce strings are bounded to 240/240/256 characters. Across 100
+teasers, content/principal/name/nonce fields total at most 87,600 UTF-16 code
+units (about 515 KiB with worst-case JSON escaping). Nonce acknowledgements add
+at most 25,600 code units (150 KiB escaped); typed IDs, the envelope and small
+numeric/boolean fields are additional, rather than 100 full message DTOs. Root validation
+and tombstone omission follow the native transcript's room-wide visibility.
+
+`useNativeThreadSummaries` subscribes to all loaded main roots in stable,
+value-keyed batches of 100, independently of the selected panel and its pages.
+Canonical summaries alone own native counts/teasers; loaded reply arrays are
+not added or maximized. A transient sending nonce is added only after the same
+query proves it absent canonically. Failed/acknowledged nonces are not added.
+While nonce arguments warm a new subscription, a scope-fenced last authorized
+summary keeps the canonical indicator visible; a null access result clears it.
+Capped counts display a `+`; a zero lower bound displays “Replies”, not “0”.
+Legacy derivation remains unchanged. `nativeRooms.convex.test.ts` covers older
+history, edited/deleted latest, authorization and budget honesty;
+`native-thread-summaries.test.tsx` covers the real subscribed hook, closed panels,
+remote updates, nonce reconciliation, and more than 100 roots. These extend
+the **E02** audience/thread-placement and **E07** history-pagination acceptance
+map below without requiring writer aggregates or a schema migration.
+
 Room names are bounded to 240 characters in DTOs; message content and serialized
 structured parts/agent plan each cap at 64,000 characters. `partsJson` and
 `agentPlanJson` preserve structured
@@ -325,7 +367,7 @@ retry-recoverable instead of receiving a speculative failure row.
 | Module | Exact public functions |
 | --- | --- |
 | agents/nativeDirectory | context, bootstrapChiefs, list, get, create, update, restore |
-| collaboration/nativeRooms | listRooms, getRoom, getExecution, listMessages, getMessageAnchor, createDirectMessage, createChannel, editMessage, deleteMessage |
+| collaboration/nativeRooms | listRooms, getRoom, getExecution, listMessages, getMessageAnchor, listThreadSummaries, createDirectMessage, createChannel, editMessage, deleteMessage |
 | agents/nativeThreads | listThreads, getThread, resolveMainThread, createThread, setThreadArchived, deleteThread |
 | collaboration/nativeRoomState | getRoomState, listReactions, listSavedMessages, setReaction, setPinned, setSaved, setThreadFollow, setNotificationLevel, setRoomArchived, restore, addParticipant, removeParticipant |
 | collaboration/nativePresence | heartbeat, watchPresence |
@@ -365,11 +407,11 @@ visibility/navigation checks remain necessary beyond these backend and unit seam
 
 | ID / exact acceptance | Functions and regression seams |
 | --- | --- |
-| **E02** Repeat in agent thread, DM, channel, and reply thread — Correct audience and thread placement; no duplicates or unauthorized visibility. | `directMessages.addMessage`, `recordMessageActivity`, `startAgentTurn`; `nativeRooms.listMessages/getMessageAnchor`, `nativeThreads.getThread`. `nativeRooms.convex.test.ts` canonical send replay and access tests; `send-replay.test.ts` canonical route/repository replay and delete-then-replay; `nativeThreads.convex.test.ts` authorization/deduplication. |
+| **E02** Repeat in agent thread, DM, channel, and reply thread — Correct audience and thread placement; no duplicates or unauthorized visibility. | `directMessages.addMessage`, `recordMessageActivity`, `startAgentTurn`; `nativeRooms.listMessages/getMessageAnchor/listThreadSummaries`, `nativeThreads.getThread`. `nativeRooms.convex.test.ts` canonical send replay, summary access/budget and invalid-root tests; `native-thread-summaries.test.tsx` closed-panel subscriptions and optimistic nonce acknowledgement; `send-replay.test.ts` canonical route/repository replay and delete-then-replay; `nativeThreads.convex.test.ts` authorization/deduplication. |
 | **E04** Archive open and closed threads — Local row/selection responds immediately; B's list/detail follows committed state. | `nativeThreads.setThreadArchived/listThreads/getThread`, `nativeRoomState.setRoomArchived/restore`, `nativeRooms.listRooms/getRoom`; `nativeThreads.convex.test.ts`, `nativeRoomState.convex.test.ts`, `native-agent-threads.test.tsx`, `native-room-state.test.tsx`. Immediate Undo belongs to the client integration tests, not a backend guarantee. |
 | **E05** Reject archive; invoke Undo before response; apply conflicting remote edit — Correct rollback/ordering; no stale snapshot overwrites, resurrection, or surprising navigation. | Same archive functions; action-ID overlays and per-target serialization in `native-agent-threads`, `native-intent-overlays` and `room-lifecycle-actions`. `native-agent-threads.test.tsx` and `native-room-state.test.tsx` cover pre-ack Undo, ordered writes and reconciliation/navigation; verify cross-tab conflicting edits on the exact-head preview. |
 | **E06** Navigate to cached, uncached, unauthorized, missing, and archived thread — Immediate destination feedback; correct loading/forbidden/missing state; no redundant membership-list waterfall. | `nativeThreads.getThread`, `nativeRooms.getRoom/getExecution`; `nativeThreads.convex.test.ts`, `nativeRooms.convex.test.ts` getExecution scoped-access tests, `use-agent-thread-scope.test.tsx`, `NativeCollaborationProvider.test.tsx`. Exact queries reject direct guessed IDs without a list preflight. |
-| **E07** Load older history while new messages arrive — No gaps/duplicates; edited/deleted historical rows update; scroll anchor remains stable. | `nativeRooms.listMessages/getMessageAnchor`, `useNativeRoomTranscript`, `NativeRoomScope`; backend pagination tests in `nativeRooms.convex.test.ts`, merge/scope tests in `NativeCollaborationProvider.test.tsx` and `room-message-view.test.ts`. The former includes `selected replies paginate independently and require their own scoped execution`, `thread panel exposes an accessible older-replies control and disables it during pagination`, and `stream growth follows the bottom only while sticky and does not need another message`. Rendered scroll-anchor QA remains required. |
+| **E07** Load older history while new messages arrive — No gaps/duplicates; edited/deleted historical rows update; scroll anchor remains stable. | `nativeRooms.listMessages/getMessageAnchor/listThreadSummaries`, `useNativeRoomTranscript`, `useNativeThreadSummaries`, `NativeRoomScope`; backend pagination and older-than-page/edited/deleted summary tests in `nativeRooms.convex.test.ts`, real-hook remote updates and >100-root batching in `native-thread-summaries.test.tsx`, merge/scope tests in `NativeCollaborationProvider.test.tsx` and `room-message-view.test.ts`. The former includes `selected replies paginate independently and require their own scoped execution`, `thread panel exposes an accessible older-replies control and disables it during pagination`, and `stream growth follows the bottom only while sticky and does not need another message`. Rendered scroll-anchor QA remains required. |
 | **E08** Retry a send; reconnect mid-stream; receive out-of-order chunks — One persisted message/run per logical operation; monotonic rendering; one terminal result. | `directMessages.addMessage/startAgentTurn/recordAgentStartFailure`, Harness claim/apply, reply projection. `send-replay.test.ts`, `nativeRooms.convex.test.ts` canonical/queued-retry and admitted/claimed pre-binding-race tests; `nativeHarnessDelivery.convex.test.ts`, `state-steps.test.ts` foreign-owner claims. Reconnect/out-of-order visual behavior is a client/runtime acceptance seam. |
 | **E10** Mark read in A while B receives new messages — Cursor never regresses; unseen future messages are not accidentally marked read. | `nativeActivity.markRoomRead/markNotificationsRead/markAllNotificationsRead`, legacy `updateParticipantState`; `nativeActivity.convex.test.ts` watermark/monotonic cursor/arrival tests; `native-activity.test.tsx` overlays and `observes only intersecting rendered rows in a visible document and retries failed reads`. |
 | **E18** Revoke membership/role while subscribed; switch workspace/account — Data access is removed; no previous-scope flash, stale query leak, or draft crossover. | `nativeRoomOrNull`, `nativeRooms.getRoom/getExecution/listMessages`, `nativeRoomState.getRoomState`, `nativeActivity.listNotifications/getUnreadCounts`; native room/state/activity access tests and `NativeCollaborationProvider.test.tsx` scope/null clearing. Draft crossover and subscription transitions require client tests/two-client QA. |

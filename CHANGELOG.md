@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep native reply counts and latest-reply teasers subscribed when thread panels are closed, independently of reply-history pagination.
+
 - Fix native activity, room-state and presence subscription render loops when opening workspaces and agent threads.
 
 - Harden native collaboration participant recency, globally bounded presence/unread reads, and deleted-send replay suppression. The approved CN-08 Option A exception retains the authenticated BFF message POST for governance, canonical persistence and server-owned execution; native reads/mutations and removal of redundant HTTP safety preflight remain required.

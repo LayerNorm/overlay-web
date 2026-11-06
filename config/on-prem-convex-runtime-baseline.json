@@ -252,7 +252,8 @@
     "src/features/chat/components/collaboration/NativeRoomState.tsx",
     "src/features/chat/components/collaboration/useNativePresence.ts",
     "src/features/chat/components/collaboration/useNativeRoomSafety.ts",
-    "src/features/chat/components/collaboration/useNativeRoomTranscript.ts"
+    "src/features/chat/components/collaboration/useNativeRoomTranscript.ts",
+    "src/features/chat/components/collaboration/useNativeThreadSummaries.ts"
   ],
   "convexCronJobs": [
     {
@@ -429,6 +430,7 @@
     "src/features/chat/components/collaboration/useNativePresence.ts",
     "src/features/chat/components/collaboration/useNativeRoomSafety.ts",
     "src/features/chat/components/collaboration/useNativeRoomTranscript.ts",
+    "src/features/chat/components/collaboration/useNativeThreadSummaries.ts",
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAuditRepository.ts",
     "src/server/admin/index.ts",

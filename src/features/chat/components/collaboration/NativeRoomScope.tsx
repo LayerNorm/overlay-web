@@ -10,8 +10,10 @@ import { mergeRoomMessages, type RoomMessageRecord } from './room-message-view'
 import { useNativeCollaboration } from './NativeCollaborationProvider'
 import { useNativeRoomTranscript } from './useNativeRoomTranscript'
 import { NativeRoomStateProvider } from './NativeRoomState'
+import { useNativeThreadSummaries } from './useNativeThreadSummaries'
 
 type Session = {
+  threadSummaries: ReturnType<typeof useNativeThreadSummaries>
   room: ReturnType<typeof useNativeRoomTranscript>['room']
   root: [string | null, Dispatch<SetStateAction<string | null>>]
   threadHistory: { hasMore: boolean; loading: boolean; loadMore(): void }
@@ -58,6 +60,7 @@ function NativeRoomLive({ children, workspaceId, conversationId }: { children: R
   const canonical = mergeRoomMessages(main.rows, threadRootId ? thread.rows : [])
   const canonicalRef = useRef(canonical)
   const messages = mergeRoomMessages(canonical, pending)
+  const threadSummaries = useNativeThreadSummaries(workspaceId, conversationId, main.rows, pending)
   const messagesRef = useRef(messages)
   useLayoutEffect(() => {
     rootRef.current = threadRootId
@@ -85,6 +88,7 @@ function NativeRoomLive({ children, workspaceId, conversationId }: { children: R
     })
   }
   const value: Session = {
+    threadSummaries,
     room: main.room,
     root: [threadRootId, setThreadRootId],
     threadHistory: { hasMore: thread.hasMore, loading: thread.status === 'loading' || thread.loadingMore, loadMore: thread.loadMore },

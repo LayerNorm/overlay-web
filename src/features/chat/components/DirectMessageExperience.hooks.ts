@@ -79,7 +79,7 @@ import {
 } from '@/shared/chat/native-thread-safety'
 import { buildTextTurnPayload } from './chat/chat-send-body-builders'
 import { createHandoffConversation } from './chat/chat-send-create'
-import { useRoomTranscriptSource } from './collaboration/NativeRoomScope'
+import { useNativeRoomSession, useRoomTranscriptSource } from './collaboration/NativeRoomScope'
 import { useRoomRosterSource } from './collaboration/native-room-adapters'
 import { useRoomPresenceWriter } from './collaboration/room-state-adapters'
 
@@ -590,6 +590,7 @@ function useRoomMessageDerivations({
   unreadBoundarySequence: number | null
   threadRootId: string | null
 }) {
+  const nativeSummaries = useNativeRoomSession()?.threadSummaries
   const mainMessages = messages.filter((message) => !message.threadRootMessageId)
   const agentCommands = useMemo<RemoteAgentCommand[]>(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
@@ -628,7 +629,9 @@ function useRoomMessageDerivations({
     }
     return latest
   }, [messages])
-  return { mainMessages, agentCommands, threadRoot, threadReplies, unreadBoundaryMessageId, replyCounts, threadTeasers }
+  return { mainMessages, agentCommands, threadRoot, threadReplies, unreadBoundaryMessageId,
+    replyCounts: nativeSummaries?.replyCounts ?? replyCounts, threadTeasers: nativeSummaries?.threadTeasers ?? threadTeasers,
+    replyCountsCapped: nativeSummaries?.replyCountsCapped }
 }
 
 export function useRoomViewModels({
@@ -678,6 +681,7 @@ export function useRoomViewModels({
     threadReplies,
     unreadBoundaryMessageId,
     replyCounts,
+    replyCountsCapped,
     threadTeasers,
   } = useRoomMessageDerivations({ messages, unreadBoundarySequence, threadRootId })
 
@@ -741,6 +745,7 @@ export function useRoomViewModels({
     threadReplies,
     unreadBoundaryMessageId,
     replyCounts,
+    replyCountsCapped,
     threadTeasers,
     participantMentions,
     mentionCategories,
@@ -1684,6 +1689,7 @@ export type RoomMessageContext = {
   threadRootId: string | null
   threadTeasers: ReadonlyMap<string, OptimisticMessage>
   replyCounts: ReadonlyMap<string, number>
+  replyCountsCapped?: ReadonlySet<string>
   editingId: string | null
   editingContent: string
   setEditingContent: Dispatch<SetStateAction<string>>
@@ -1765,6 +1771,7 @@ export function buildRoomMessageContext({
     threadRootId: thread.threadRootId,
     threadTeasers: vm.threadTeasers,
     replyCounts: vm.replyCounts,
+    replyCountsCapped: vm.replyCountsCapped,
     editingId: actions.editingId,
     editingContent: actions.editingContent,
     setEditingContent: actions.setEditingContent,

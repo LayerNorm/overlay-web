@@ -13,10 +13,25 @@ import { createDirectMessageForActor } from './roomDirectMessageCreation'
 import { createChannelForActor } from './roomChannelCreation'
 import { deleteRoomMessage, editRoomMessage } from './roomMessagePolicy'
 import { nativeThreadCompatibility, nativeThreadCompatibilityValidator } from '../lib/nativeThreadCompatibility'
+import { acknowledgedReplies, readThreadSummaries, threadSummaryValidator } from './roomThreadSummaries'
 
 const roomArgs = { workspaceId: v.string(), conversationId: v.id('conversations') }
 const messageArgs = { ...roomArgs, messageId: v.id('conversationMessages') }
 const pageOpts = (opts: { numItems: number; cursor: string | null }) => ({ ...opts, numItems: Math.max(1, Math.min(100, opts.numItems)) })
+
+export const listThreadSummaries = query({
+  args: { ...roomArgs, rootMessageIds: v.array(v.id('conversationMessages')), pendingReplyNonces: v.optional(v.array(v.string())) },
+  returns: v.union(v.null(), v.object({ ...roomArgs, viewerUserId: v.string(), summaries: v.array(threadSummaryValidator), acknowledgedReplyNonces: v.array(v.string()) })),
+  handler: async (ctx, args) => {
+    const access = await nativeRoomOrNull(ctx, args)
+    if (!access) return null
+    const nonces = args.pendingReplyNonces ?? []
+    if (args.rootMessageIds.length > 100 || nonces.length > 100 || nonces.some(nonce => nonce.length > 256)) throw new Error('ROOM_SUMMARY_LIMIT_EXCEEDED')
+    const summaries = await readThreadSummaries(ctx, args.conversationId, args.rootMessageIds)
+    return { workspaceId: args.workspaceId, conversationId: args.conversationId, viewerUserId: access.viewer.userId, summaries,
+      acknowledgedReplyNonces: await acknowledgedReplies(ctx, args.conversationId, summaries.map(row => row.rootMessageId), nonces) }
+  },
+})
 
 export const getExecution = query({
   args: { ...roomArgs, threadRootMessageId: v.optional(v.id('conversationMessages')) },

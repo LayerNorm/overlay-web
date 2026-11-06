@@ -391,6 +391,7 @@ function buildRoomMessageItemProps({
         reactedByCurrentPrincipal: reaction.reactedByCurrentPrincipal,
       })),
     replyCount: inThread ? 0 : ctx.replyCounts.get(message.id) ?? 0,
+    replyCountCapped: !inThread && ctx.replyCountsCapped?.has(message.id),
     threadTeaser: teaserMessage && teaserAuthor ? {
       authorName: teaserAuthor,
       text: teaserMessage.content.trim().slice(0, 120),

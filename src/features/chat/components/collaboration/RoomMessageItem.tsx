@@ -118,6 +118,7 @@ export type RoomMessageItemProps = {
   message: RoomMessageView
   reactions: RoomMessageReaction[]
   replyCount: number
+  replyCountCapped?: boolean
   /** Latest reply preview for Slack-style thread entry under the message. */
   threadTeaser?: RoomThreadTeaser | null
   pinned: boolean
@@ -281,6 +282,7 @@ export function RoomMessageItem({
   message,
   reactions,
   replyCount,
+  replyCountCapped = false,
   threadTeaser = null,
   pinned,
   saved,
@@ -373,6 +375,7 @@ export function RoomMessageItem({
     message,
     reactions,
     replyCount,
+    replyCountCapped,
     threadTeaser,
     editing,
     editingContent,
@@ -442,6 +445,7 @@ type RoomMessageContentProps = {
   message: RoomMessageView
   reactions: RoomMessageReaction[]
   replyCount: number
+  replyCountCapped: boolean
   threadTeaser: RoomThreadTeaser | null
   editing: boolean
   editingContent: string
@@ -652,13 +656,15 @@ function RoomReactionRow({ reactions, alignEnd, onToggleReaction }: {
   )
 }
 
-function RoomThreadEntry({ mine, replyCount, threadTeaser, onOpenThread }: {
+function RoomThreadEntry({ mine, replyCount, replyCountCapped, threadTeaser, onOpenThread }: {
   mine: boolean
   replyCount: number
+  replyCountCapped: boolean
   threadTeaser: RoomThreadTeaser | null
   onOpenThread: () => void
 }) {
-  if (!mine && replyCount > 0) {
+  const label = replyCountCapped ? (replyCount ? `${replyCount}+ replies` : 'Replies') : `${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`
+  if (!mine && (replyCount > 0 || replyCountCapped)) {
     return (
       <Button
         variant="ghost"
@@ -670,7 +676,7 @@ function RoomThreadEntry({ mine, replyCount, threadTeaser, onOpenThread }: {
         <MessageSquareReply size={14} strokeWidth={1.75} className="mt-0.5 shrink-0 text-(--muted)" />
         <span className="min-w-0 flex-1">
           <span className="block text-[12px] font-semibold text-(--foreground)">
-            {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+            {label}
           </span>
           {threadTeaser?.text ? (
             <span className="mt-0.5 block truncate text-[12px] text-(--muted)">
@@ -683,7 +689,7 @@ function RoomThreadEntry({ mine, replyCount, threadTeaser, onOpenThread }: {
       </Button>
     )
   }
-  if (replyCount > 0) {
+  if (replyCount > 0 || replyCountCapped) {
     return (
       <Button
         variant="ghost"
@@ -693,7 +699,7 @@ function RoomThreadEntry({ mine, replyCount, threadTeaser, onOpenThread }: {
         className={`h-auto w-auto gap-1 p-0 text-[11px] font-medium text-(--muted) transition-colors hover:bg-transparent hover:text-(--foreground) ${mine ? 'self-end' : ''}`}
       >
         <MessageSquareReply size={12} strokeWidth={1.75} />
-        {replyCount} {replyCount === 1 ? 'reply' : 'replies'}
+        {label}
       </Button>
     )
   }
@@ -842,7 +848,7 @@ function SentRoomMessage({ rootProps, highlightClass, toolbar, content, onRetryS
           )
         ) : null}
         <RoomReactionRow reactions={content.reactions} alignEnd onToggleReaction={content.onToggleReaction} />
-        <RoomThreadEntry mine replyCount={content.replyCount} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
+        <RoomThreadEntry mine replyCount={content.replyCount} replyCountCapped={content.replyCountCapped} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
         {personalChatStyle && toolbar}
       </div>
     </div>
@@ -892,7 +898,7 @@ function ReceivedRoomMessage({ rootProps, highlightClass, toolbar, content, isAg
           <HumanMessageText message={message} />
         )}
         <RoomReactionRow reactions={content.reactions} alignEnd={message.mine} onToggleReaction={content.onToggleReaction} />
-        <RoomThreadEntry mine={message.mine} replyCount={content.replyCount} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
+        <RoomThreadEntry mine={message.mine} replyCount={content.replyCount} replyCountCapped={content.replyCountCapped} threadTeaser={content.threadTeaser} onOpenThread={content.onOpenThread} />
         {personalChatStyle && toolbar}
       </div>
     </div>

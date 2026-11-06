@@ -16,6 +16,16 @@ import {
 
 const ME = 'principal_me'
 
+test('capped native reply counts show a lower bound and never an exact false zero', () => {
+  const element = messageElement(record())
+  const capped = renderToStaticMarkup(React.cloneElement(element, { replyCount: 4, replyCountCapped: true }))
+  assert.match(capped, /4\+ replies/)
+  const unknown = renderToStaticMarkup(React.cloneElement(element, { replyCount: 0, replyCountCapped: true }))
+  assert.match(unknown, /data-testid="thread-teaser"/)
+  assert.match(unknown, />Replies</)
+  assert.doesNotMatch(unknown, /0 replies/)
+})
+
 function record(overrides: Partial<RoomMessageRecord> = {}): RoomMessageRecord {
   return {
     id: 'message_1',

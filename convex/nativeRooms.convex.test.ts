@@ -47,6 +47,63 @@ async function fixture() {
 }
 
 describe('native room access and bounded projections', () => {
+  test('thread summary quotas count tombstones, honestly cap counts, and bound all roots', async () => {
+    const f = await fixture()
+    const root = await f.message('busy-root')
+    for (let i = 0; i < 70; i++) await f.message(`busy-${i}`, root, 'alice', now + i)
+    const args = { ...f.args, rootMessageIds: [root] }
+    expect((await f.alice.query(api.collaboration.nativeRooms.listThreadSummaries, args))?.summaries[0].replyCount).toEqual({ count: 64, capped: true })
+    await f.t.run(async ctx => {
+      const rows = await ctx.db.query('conversationMessages').withIndex('by_conversationId_threadRootMessageId_createdAt', q => q.eq('conversationId', f.args.conversationId).eq('threadRootMessageId', root)).order('desc').take(65)
+      for (const row of rows) await ctx.db.patch(row._id, { deletedAt: now, content: '' })
+    })
+    expect((await f.alice.query(api.collaboration.nativeRooms.listThreadSummaries, args))?.summaries[0]).toMatchObject({ replyCount: { count: 0, capped: true }, latestReply: null, latestReplyComplete: false })
+    const roots = [root]
+    for (let i = 0; i < 99; i++) {
+      const id = await f.message(`root-${i}`)
+      roots.push(id)
+      for (let j = 0; j < 8; j++) await f.message(`root-${i}-reply-${j}`, id)
+    }
+    const result = await f.alice.query(api.collaboration.nativeRooms.listThreadSummaries, { ...f.args, rootMessageIds: roots })
+    expect(result?.summaries).toHaveLength(100)
+    expect(result?.summaries[0].replyCount).toEqual({ count: 0, capped: true })
+    expect(result?.summaries.slice(1).every(row => row.replyCount.count === 4 && row.replyCount.capped)).toBe(true)
+  })
+  test('thread summaries reject inaccessible rooms and invalid roots without disclosing data', async () => {
+    const f = await fixture()
+    const root = await f.message('root')
+    const reply = await f.message('reply', root)
+    await f.t.run(ctx => ctx.db.patch(reply, { clientNonce: 'receipt', content: 'x'.repeat(10_000) }))
+    const foreign = await f.alice.mutation(api.collaboration.nativeRooms.createDirectMessage, { workspaceId, principalIds: ['eve'] })
+    const foreignRoot = await f.t.run(ctx => ctx.db.insert('conversationMessages', { conversationId: foreign.conversationId, userId: 'alice', role: 'user', mode: 'act', contentType: 'text', turnId: 'foreign', content: 'secret', createdAt: now }))
+    const args = { ...f.args, rootMessageIds: [root, root, reply, foreignRoot], pendingReplyNonces: ['receipt'] }
+    expect((await f.bob.query(api.collaboration.nativeRooms.listThreadSummaries, { ...f.args, rootMessageIds: [] }))?.summaries).toEqual([])
+    await expect(f.bob.query(api.collaboration.nativeRooms.listThreadSummaries, { ...f.args, rootMessageIds: Array(101).fill(root) })).rejects.toThrow('ROOM_SUMMARY_LIMIT_EXCEEDED')
+    await expect(f.bob.query(api.collaboration.nativeRooms.listThreadSummaries, { ...args, pendingReplyNonces: ['x'.repeat(257)] })).rejects.toThrow('ROOM_SUMMARY_LIMIT_EXCEEDED')
+    const result = await f.bob.query(api.collaboration.nativeRooms.listThreadSummaries, args)
+    expect(result?.summaries).toHaveLength(1)
+    expect(result?.acknowledgedReplyNonces).toEqual(['receipt'])
+    expect(result?.summaries[0].latestReply?.content).toHaveLength(140)
+    expect(result?.summaries[0].latestReply).not.toHaveProperty('partsJson')
+    expect(await f.eve.query(api.collaboration.nativeRooms.listThreadSummaries, args)).toBeNull()
+    expect(await f.t.query(api.collaboration.nativeRooms.listThreadSummaries, args)).toBeNull()
+    expect(await f.bob.query(api.collaboration.nativeRooms.listThreadSummaries, { ...args, workspaceId: 'foreign-workspace' })).toBeNull()
+    await f.alice.mutation(api.collaboration.nativeRoomState.removeParticipant, { ...f.args, principalId: 'bob' })
+    expect(await f.bob.query(api.collaboration.nativeRooms.listThreadSummaries, args)).toBeNull()
+  })
+  test('thread summaries count beyond transcript pages and update edited/deleted latest replies', async () => {
+    const f = await fixture()
+    const root = await f.message('summary-root')
+    for (let i = 0; i < 55; i++) await f.message(`reply-${i}`, root, 'alice', now + i)
+    const latest = await f.message('latest original', root, 'alice', now + 60)
+    const args = { ...f.args, rootMessageIds: [root] }
+    const read = () => f.bob.query(api.collaboration.nativeRooms.listThreadSummaries, args)
+    expect((await read())?.summaries[0]).toMatchObject({ replyCount: { count: 56, capped: false }, latestReply: { id: latest, content: 'latest original' } })
+    await f.alice.mutation(api.collaboration.nativeRooms.editMessage, { ...f.args, messageId: latest, content: 'edited prefix' })
+    expect((await read())?.summaries[0].latestReply?.content).toBe('edited prefix')
+    await f.alice.mutation(api.collaboration.nativeRooms.deleteMessage, { ...f.args, messageId: latest })
+    expect((await read())?.summaries[0]).toMatchObject({ replyCount: { count: 55, capped: false }, latestReply: { content: 'reply-54' } })
+  })
   test('viewer archive preserves writable execution and canonical send authority', async () => {
     const f = await fixture()
     await f.alice.mutation(api.collaboration.nativeRoomState.setRoomArchived, { ...f.args, scope: 'self', archived: true })
