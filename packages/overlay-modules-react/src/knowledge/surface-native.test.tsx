@@ -425,10 +425,14 @@ test('a native rename acknowledges its subscribed revision without a false confl
   await act(async () => renderer.unmount())
 })
 
-test('older in-flight content and title saves cannot clear newer same-revision drafts', async () => {
+test('content and title saves serialize newer drafts onto their authoritative acknowledgments', async () => {
   const contentSaves: Array<ReturnType<typeof deferred<boolean | { updatedAt: number }>>> = []
   const renames: Array<ReturnType<typeof deferred<KnowledgeFileNode>>> = []
-  const snapshot: ControlledKnowledgeFileSnapshot = {
+  const contentRevisions: Array<number | undefined> = []
+  const titleRevisions: Array<string | undefined> = []
+  const savedContents: string[] = []
+  const savedTitles: string[] = []
+  let snapshot: ControlledKnowledgeFileSnapshot = {
     nodes: [fileA],
     loading: false,
     error: null,
@@ -442,12 +446,16 @@ test('older in-flight content and title saves cannot clear newer same-revision d
     snapshot,
     routeFile: fileA._id,
     getFile: async () => ({ ...fileA, textContent: 'server content' }),
-    saveContent: async () => {
+    saveContent: async (_id, _content, revision) => {
+      contentRevisions.push(revision)
+      savedContents.push(_content)
       const request = deferred<boolean | { updatedAt: number }>()
       contentSaves.push(request)
       return request.promise
     },
-    rename: async () => {
+    rename: async (input) => {
+      titleRevisions.push(input.expectedRevision)
+      savedTitles.push(input.name)
       const request = deferred<KnowledgeFileNode>()
       renames.push(request)
       return request.promise
@@ -463,12 +471,19 @@ test('older in-flight content and title saves cannot clear newer same-revision d
   await act(async () => new Promise((resolve) => setTimeout(resolve, 850)))
   await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'newer draft' } }))
   await act(async () => new Promise((resolve) => setTimeout(resolve, 850)))
-  assert.equal(contentSaves.length, 2)
+  assert.equal(contentSaves.length, 1)
+  snapshot = { ...snapshot, nodes: [{ ...fileA, updatedAt: 11 }], detail: { ...fileA, updatedAt: 11 } }
+  await act(async () => renderer.update(React.createElement(SharedKnowledgeSurface, makeProps())))
+  assert.equal(renderer.root.findByType('textarea').props.readOnly, false)
+  assert.equal(renderer.root.findAllByProps({ role: 'alert' }).length, 0)
   await act(async () => contentSaves[0]!.resolve({ updatedAt: 11 }))
-  await act(async () => contentSaves[1]!.reject(new Error('revision conflict')))
+  assert.equal(contentSaves.length, 2)
+  assert.deepEqual(contentRevisions, [10, 11])
+  assert.deepEqual(savedContents, ['first draft', 'newer draft'])
+  await act(async () => contentSaves[1]!.resolve({ updatedAt: 12 }))
   assert.equal(renderer.root.findByType('textarea').props.value, 'newer draft')
-  assert.equal(renderer.root.findByType('textarea').props.readOnly, true)
-  assert.match(renderer.root.findByProps({ role: 'alert' }).children.join(''), /draft is still here/)
+  assert.equal(renderer.root.findByType('textarea').props.readOnly, false)
+  assert.equal(renderer.root.findAllByProps({ role: 'alert' }).length, 0)
 
   await act(async () => renderer.root.findByProps({ 'aria-label': 'File title' }).props.onChange({
     target: { value: 'First title' },
@@ -478,13 +493,57 @@ test('older in-flight content and title saves cannot clear newer same-revision d
     target: { value: 'Newer title' },
   }))
   await act(async () => new Promise((resolve) => setTimeout(resolve, 650)))
+  assert.equal(renames.length, 1)
+  await act(async () => renames[0]!.resolve({ ...fileA, name: 'First title', updatedAt: 13 }))
   assert.equal(renames.length, 2)
-  await act(async () => renames[0]!.resolve({ ...fileA, name: 'First title', updatedAt: 12 }))
-  await act(async () => renames[1]!.reject(new Error('revision conflict')))
+  assert.deepEqual(titleRevisions, ['12', '13'])
+  assert.deepEqual(savedTitles, ['First title', 'Newer title'])
+  await act(async () => renames[1]!.resolve({ ...fileA, name: 'Newer title', updatedAt: 14 }))
   assert.equal(renderer.root.findByProps({ 'aria-label': 'File title' }).props.value, 'Newer title')
-  assert.match(renderer.root.findAll((node) => node.children.join('').includes('title draft is still here'))[0]?.children.join('') ?? '', /title draft is still here/)
+  assert.notEqual(renderer.root.findByProps({ 'aria-label': 'File title' }).props.readOnly, true)
+  assert.equal(renderer.root.findAllByProps({ role: 'alert' }).length, 0)
   await act(async () => renderer.unmount())
 })
+
+for (const outcome of ['remote', 'legacy', 'failure'] as const) {
+  test(`a queued newer content draft stays conservative after ${outcome}`, async () => {
+    const save = deferred<boolean | { updatedAt: number }>()
+    let calls = 0
+    let snapshot: ControlledKnowledgeFileSnapshot = {
+      nodes: [fileA], loading: false, error: null, truncated: false,
+      detailFileId: fileA._id, detail: fileA, detailLoading: false, detailError: null,
+    }
+    const makeProps = () => createSurfaceProps({
+      snapshot,
+      routeFile: fileA._id,
+      getFile: async () => ({ ...fileA, textContent: 'server content' }),
+      saveContent: async () => { calls += 1; return save.promise },
+      isEditable: () => true,
+    })
+    let renderer!: ReactTestRenderer
+    await act(async () => { renderer = create(React.createElement(SharedKnowledgeSurface, makeProps())) })
+    await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'first draft' } }))
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 850)))
+    await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'newer draft' } }))
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 850)))
+    assert.equal(calls, 1)
+    if (outcome !== 'failure') {
+      const remote = { ...fileA, updatedAt: outcome === 'remote' ? 99 : 11 }
+      snapshot = { ...snapshot, nodes: [remote], detail: remote }
+      await act(async () => renderer.update(React.createElement(SharedKnowledgeSurface, makeProps())))
+    }
+    await act(async () => {
+      if (outcome === 'failure') save.reject(new Error('Save failed'))
+      else save.resolve(outcome === 'legacy' ? true : { updatedAt: 11 })
+    })
+    assert.equal(calls, 1)
+    if (outcome === 'failure') assert.match(JSON.stringify(renderer.toJSON()), /newer draft/)
+    else assert.equal(renderer.root.findByType('textarea').props.value, 'newer draft')
+    assert.match(renderer.root.findByProps({ role: 'alert' }).children.join(''),
+      outcome === 'failure' ? /Save failed/ : /changed elsewhere/)
+    await act(async () => renderer.unmount())
+  })
+}
 
 test('late native save acknowledgements cannot update a switched or denied file selection', async () => {
   const switchSave = deferred<boolean | { updatedAt: number }>()
@@ -516,6 +575,7 @@ test('late native save acknowledgements cannot update a switched or denied file 
   })
   await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'A draft' } }))
   await act(async () => new Promise((resolve) => setTimeout(resolve, 850)))
+  await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'Pending A draft' } }))
   const snapshotB = { ...snapshot, detailFileId: fileB._id, detail: fileB }
   await act(async () => renderer.update(React.createElement(SharedKnowledgeSurface, makeProps(snapshotB, fileB._id, switchSave))))
   assert.equal(renderer.root.findByType('textarea').props.value, `${fileB._id} content`)
@@ -526,6 +586,7 @@ test('late native save acknowledgements cannot update a switched or denied file 
   await act(async () => renderer.update(React.createElement(SharedKnowledgeSurface, makeProps(snapshotA, fileA._id, deniedSave))))
   await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'Denied draft' } }))
   await act(async () => new Promise((resolve) => setTimeout(resolve, 850)))
+  await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'Pending denied draft' } }))
   const denied: ControlledKnowledgeFileSnapshot = {
     ...snapshotA,
     nodes: [],

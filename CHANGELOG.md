@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Serialize native file content saves and title renames, rebasing queued drafts only onto authoritative server acknowledgments to avoid false self-conflicts.
+
 - Move native web file metadata lists, details, rename, folder moves, scope changes, archive and restore to Convex with revision-checked writes, workspace/resource-grant authorization, bounded subtree updates and per-entity optimistic rebase. Optimistic edits preserve server revisions; selection and draft-generation fences prevent late saves or reads from clearing newer edits. The native sidebar uses canonical file metadata (including Notes) and warns when its bounded list is truncated; the existing Notes editor, authorized HTTP content/download, create/upload/delete and native-off paths remain unchanged.
 
 - Keep personal chat working during web-first releases and backend rollback by enabling native list ownership only when the backend advertises the matching revision. Validate all native personal-chat response shapes explicitly, prevent Undo from reconstructing a record already known to be missing, and preserve concurrent title changes while archive and Undo are both pending.

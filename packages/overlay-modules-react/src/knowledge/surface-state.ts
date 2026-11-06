@@ -444,6 +444,67 @@ type AcknowledgedUpdate = {
   extension?: string
 }
 
+function canSaveDraft({ active, draft, fileId, revision, generation, currentGeneration, epoch, currentEpoch }: {
+  active: FileNode | null
+  draft: { fileId: string; revision: number; generation: number; dirty: boolean } | null
+  fileId: string
+  revision: number
+  generation: number
+  currentGeneration: number
+  epoch: number
+  currentEpoch: number
+}) {
+  return active?._id === fileId && active.updatedAt === revision && epoch === currentEpoch
+    && generation === currentGeneration && draft?.dirty && draft.fileId === fileId
+    && draft.revision === revision && draft.generation === generation
+}
+
+function createDraftSaveQueue(onSettled: () => void) {
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let epoch = 0
+  let inFlight = false
+  let pending: { revision: number; save(revision: number): Promise<number | undefined> } | null = null
+
+  async function flush() {
+    if (inFlight || !pending) return
+    const request = pending
+    const requestEpoch = epoch
+    pending = null
+    timer = null
+    inFlight = true
+    const revision = await request.save(request.revision)
+    if (requestEpoch !== epoch) return
+    inFlight = false
+    onSettled()
+    resume(revision)
+  }
+
+  function resume(revision: number | undefined) {
+    if (revision !== undefined && pending) {
+      pending.revision = revision
+      void flush()
+    } else {
+      pending = null
+    }
+  }
+
+  return {
+    get inFlight() { return inFlight },
+    schedule(revision: number, save: (revision: number) => Promise<number | undefined>, delay: number) {
+      pending = { revision, save }
+      if (timer) clearTimeout(timer)
+      if (!inFlight) timer = setTimeout(() => { void flush() }, delay)
+    },
+    clear() {
+      epoch += 1
+      if (timer) clearTimeout(timer)
+      timer = null
+      pending = null
+      inFlight = false
+    },
+  }
+}
+
 function deriveOpenedFileRoute({
   pendingFileId,
   fileOpenParam,
@@ -562,6 +623,8 @@ function deriveOpenedFileDraftView({
   titleDraft,
   contentState,
   fileContent,
+  contentSaveInFlight,
+  titleSaveInFlight,
 }: {
   selectedFile: FileNode | null
   titleDraft: {
@@ -580,12 +643,14 @@ function deriveOpenedFileDraftView({
     error?: string
   } | null
   fileContent: string
+  contentSaveInFlight: boolean
+  titleSaveInFlight: boolean
 }) {
   const contentConflict = Boolean(selectedFile && contentState?.fileId === selectedFile._id
-    && contentState.dirty && contentState.revision !== selectedFile.updatedAt)
+    && contentState.dirty && contentState.revision !== selectedFile.updatedAt && !contentSaveInFlight)
   const contentStatus = !selectedFile ? 'idle'
     : contentConflict ? 'ready'
-      : contentState?.fileId === selectedFile._id && contentState.revision === selectedFile.updatedAt
+      : contentState?.fileId === selectedFile._id && (contentState.revision === selectedFile.updatedAt || contentSaveInFlight)
         ? contentState.status
         : 'loading'
   const contentError = contentConflict
@@ -598,7 +663,7 @@ function deriveOpenedFileDraftView({
     ? titleDraft?.fileId === selectedFile._id ? titleDraft.value : selectedFile.name
     : ''
   const titleConflict = Boolean(selectedFile && titleDraft?.fileId === selectedFile._id
-    && titleDraft.dirty && titleDraft.revision !== selectedFile.updatedAt)
+    && titleDraft.dirty && titleDraft.revision !== selectedFile.updatedAt && !titleSaveInFlight)
   return { contentStatus, contentError, contentConflict, visibleContent, fileTitle, titleConflict }
 }
 
@@ -641,8 +706,9 @@ export function useOpenedFile({
   } | null>(null)
   const [savingIdentity, setSavingIdentity] = useState<string | null>(null)
   const [acknowledgedUpdate, setAcknowledgedUpdate] = useState<AcknowledgedUpdate | null>(null)
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [, setSaveVersion] = useState(0)
+  const contentSaveQueueRef = useRef(createDraftSaveQueue(() => setSaveVersion((value) => value + 1)))
+  const titleSaveQueueRef = useRef(createDraftSaveQueue(() => setSaveVersion((value) => value + 1)))
   const lastFileTriggerRef = useRef<HTMLElement | null>(null)
   const loadVersionRef = useRef(0)
   const loadControllerRef = useRef<AbortController | null>(null)
@@ -667,6 +733,8 @@ export function useOpenedFile({
 
   const updateSelectionId = useCallback((id: string | null) => {
     if (selectionIdRef.current === id) return
+    contentSaveQueueRef.current.clear()
+    titleSaveQueueRef.current.clear()
     selectionIdRef.current = id
     selectionEpochRef.current += 1
     contentGenerationRef.current += 1
@@ -724,14 +792,6 @@ export function useOpenedFile({
       activeLoadKeyRef.current = null
       activeLoadPromiseRef.current = null
     }
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
-    }
-    if (titleSaveTimerRef.current) {
-      clearTimeout(titleSaveTimerRef.current)
-      titleSaveTimerRef.current = null
-    }
     setSavingIdentity(null)
   }, [selectedFileIdentity])
 
@@ -745,8 +805,8 @@ export function useOpenedFile({
     loadControllerRef.current = null
     activeLoadKeyRef.current = null
     activeLoadPromiseRef.current = null
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+    contentSaveQueueRef.current.clear()
+    titleSaveQueueRef.current.clear()
     setSelectedFile(null)
     setPendingFileId(null)
     setFileContent('')
@@ -772,8 +832,6 @@ export function useOpenedFile({
     }
     const currentSelection = selectedFileRef.current
     if (currentSelection && (currentSelection._id !== fileId || currentSelection.updatedAt !== file?.updatedAt)) {
-      if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-      if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
       setSavingIdentity(null)
     }
     if (file) {
@@ -880,8 +938,8 @@ export function useOpenedFile({
     titleGenerationRef.current += 1
     loadVersionRef.current += 1
     loadControllerRef.current?.abort()
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+    contentSaveQueueRef.current.clear()
+    titleSaveQueueRef.current.clear()
   }, [])
 
   useEffect(() => () => {
@@ -889,8 +947,8 @@ export function useOpenedFile({
     loadControllerRef.current = null
     activeLoadKeyRef.current = null
     activeLoadPromiseRef.current = null
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+    contentSaveQueueRef.current.clear()
+    titleSaveQueueRef.current.clear()
   }, [fileOpenParam])
 
   useEffect(() => {
@@ -909,8 +967,8 @@ export function useOpenedFile({
     loadControllerRef.current = null
     activeLoadKeyRef.current = null
     activeLoadPromiseRef.current = null
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+    contentSaveQueueRef.current.clear()
+    titleSaveQueueRef.current.clear()
     setSelectedFile(null)
     setFileContent('')
     setTitleDraft(null)
@@ -926,7 +984,11 @@ export function useOpenedFile({
     visibleContent,
     fileTitle,
     titleConflict,
-  } = deriveOpenedFileDraftView({ selectedFile, titleDraft, contentState, fileContent })
+  } = deriveOpenedFileDraftView({
+    selectedFile, titleDraft, contentState, fileContent,
+    contentSaveInFlight: contentSaveQueueRef.current.inFlight,
+    titleSaveInFlight: titleSaveQueueRef.current.inFlight,
+  })
   const isSavingFile = Boolean(selectedFile && savingIdentity === `${selectedFile._id}:${selectedFile.updatedAt}`)
 
   function setFileTitle(value: React.SetStateAction<string>) {
@@ -975,21 +1037,20 @@ export function useOpenedFile({
   function handleFileContentChange(val: string) {
     if (!selectedFile || contentStatus !== 'ready' || contentConflict || !contentState) return
     const fileId = selectedFile._id
-    const revision = selectedFile.updatedAt
+    const draftRevision = contentSaveQueueRef.current.inFlight ? contentState.revision : selectedFile.updatedAt
     const selectionEpoch = selectionEpochRef.current
     const generation = ++contentGenerationRef.current
-    const identity = `${fileId}:${revision}`
     setFileContent(val)
-    setContentState({ fileId, revision, status: 'ready', dirty: true, generation })
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(async () => {
+    const nextDraft = { fileId, revision: draftRevision, status: 'ready' as const, dirty: true, generation }
+    contentStateRef.current = nextDraft
+    setContentState(nextDraft)
+    contentSaveQueueRef.current.schedule(draftRevision, async (revision) => {
+      const identity = `${fileId}:${revision}`
       const active = selectedFileRef.current
       const draft = contentStateRef.current
-      if (!active || active._id !== fileId || active.updatedAt !== revision
-        || selectionEpochRef.current !== selectionEpoch
-        || contentGenerationRef.current !== generation
-        || !draft?.dirty || draft.fileId !== fileId || draft.revision !== revision
-        || draft.generation !== generation) return
+      if (!canSaveDraft({ active, draft, fileId, revision, generation,
+        currentGeneration: contentGenerationRef.current, epoch: selectionEpoch,
+        currentEpoch: selectionEpochRef.current })) return
       setSavingIdentity(identity)
       try {
         const saved = await filePort.saveContent(fileId, val, revision)
@@ -1005,34 +1066,36 @@ export function useOpenedFile({
             expectedRevision: revision,
             updatedAt: acknowledgedRevision,
           })
+          selectedFileRef.current = { ...current, updatedAt: acknowledgedRevision }
         } else if (current.updatedAt !== revision) {
           return
         }
         filePort.entityChanged('file', fileId, 'updated')
-        if (contentGenerationRef.current === generation) {
-          setContentState((currentState) => currentState?.fileId === fileId
-            && currentState.revision === revision && currentState.generation === generation
-            ? {
-              ...currentState,
-              revision: acknowledgedRevision ?? revision,
-              dirty: false,
-            }
-            : currentState)
+        const currentDraft = contentStateRef.current
+        if (currentDraft?.fileId === fileId && currentDraft.revision === revision) {
+          const next = {
+            ...currentDraft,
+            revision: acknowledgedRevision ?? revision,
+            dirty: currentDraft.generation !== generation,
+          }
+          contentStateRef.current = next
+          setContentState(next)
         }
         if (acknowledgedRevision !== undefined) {
           setFiles((prev) => prev.map((f) => f._id === fileId
             ? { ...f, updatedAt: acknowledgedRevision }
             : f))
         }
+        return acknowledgedRevision
       } catch (error) {
-        if (selectedFileRef.current?._id !== fileId || selectionEpochRef.current !== selectionEpoch
-          || contentGenerationRef.current !== generation) return
+        if (selectedFileRef.current?._id !== fileId || selectionEpochRef.current !== selectionEpoch) return
         setContentState((current) => current?.fileId === fileId && current.revision === revision
-          && current.generation === generation
           ? { ...current, status: 'error', dirty: true, error: error instanceof Error ? error.message : 'Could not save file.' }
           : current)
       } finally {
-        setSavingIdentity((current) => current === identity ? null : current)
+        if (selectionEpochRef.current === selectionEpoch) {
+          setSavingIdentity((current) => current === identity ? null : current)
+        }
       }
     }, 800)
   }
@@ -1040,20 +1103,21 @@ export function useOpenedFile({
   function handleFileTitleChange(val: string) {
     if (!selectedFile || titleConflict) return
     const fileId = selectedFile._id
-    const revision = selectedFile.updatedAt
+    const draftRevision = titleSaveQueueRef.current.inFlight
+      ? titleDraftRef.current?.revision ?? selectedFile.updatedAt
+      : selectedFile.updatedAt
     const selectionEpoch = selectionEpochRef.current
     const generation = ++titleGenerationRef.current
-    setTitleDraft({ fileId, value: val, revision, dirty: true, generation })
+    const nextDraft = { fileId, value: val, revision: draftRevision, dirty: true, generation }
+    titleDraftRef.current = nextDraft
+    setTitleDraft(nextDraft)
     const nextName = val.trim() || 'Untitled'
-    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
-    titleSaveTimerRef.current = setTimeout(async () => {
+    titleSaveQueueRef.current.schedule(draftRevision, async (revision) => {
       const active = selectedFileRef.current
       const draft = titleDraftRef.current
-      if (!active || active._id !== fileId || active.updatedAt !== revision
-        || selectionEpochRef.current !== selectionEpoch
-        || titleGenerationRef.current !== generation
-        || !draft?.dirty || draft.fileId !== fileId || draft.revision !== revision
-        || draft.generation !== generation) return
+      if (!canSaveDraft({ active, draft, fileId, revision, generation,
+        currentGeneration: titleGenerationRef.current, epoch: selectionEpoch,
+        currentEpoch: selectionEpochRef.current })) return
       const identity = `${fileId}:${revision}`
       setSavingIdentity(identity)
       try {
@@ -1069,23 +1133,27 @@ export function useOpenedFile({
           name: renamed.name,
           extension: renamed.extension,
         })
+        selectedFileRef.current = renamed
         setSelectedFile(renamed)
-        if (titleGenerationRef.current === generation) {
-          setTitleDraft((currentDraft) => currentDraft?.fileId === fileId
-            && currentDraft.generation === generation
-            ? { fileId, value: renamed.name, revision: renamed.updatedAt, dirty: false, generation }
-            : currentDraft)
+        const currentDraft = titleDraftRef.current
+        if (currentDraft?.fileId === fileId && currentDraft.revision === revision) {
+          const dirty = currentDraft.generation !== generation
+          const next = { ...currentDraft, value: dirty ? currentDraft.value : renamed.name, revision: renamed.updatedAt, dirty }
+          titleDraftRef.current = next
+          setTitleDraft(next)
         }
         setFiles((prev) => prev.map((f) => f._id === fileId
           ? { ...f, name: renamed.name, updatedAt: renamed.updatedAt }
           : f))
+        return renamed.updatedAt
       } catch (error) {
-        if (selectedFileRef.current?._id === fileId && selectionEpochRef.current === selectionEpoch
-          && titleGenerationRef.current === generation) {
+        if (selectedFileRef.current?._id === fileId && selectionEpochRef.current === selectionEpoch) {
           toast.error(error instanceof Error ? error.message : 'Could not rename file.')
         }
       } finally {
-        setSavingIdentity((current) => current === identity ? null : current)
+        if (selectionEpochRef.current === selectionEpoch) {
+          setSavingIdentity((current) => current === identity ? null : current)
+        }
       }
     }, 600)
   }

@@ -431,6 +431,7 @@ acknowledge a native save; optimistic metadata never invents `updatedAt`.
 Selection epochs and per-draft generations prevent a late read or acknowledgment
 from overwriting a newer edit or a different file selection. A newer remote
 revision remains a conflict until the file is reopened.
+Content saves and title renames are serialized; newer drafts rebase only onto an authoritative acknowledgment before their queued write is sent.
 
 Rename, folder move, scope move, archive and restore require
 `expectedUpdatedAt`. List, detail and subtree optimistic updates are scoped to
