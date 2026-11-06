@@ -13,6 +13,7 @@ import { HARNESS_CONTROL_TOOLS } from './context'
 import { stripTextualToolCalls } from './textual-tool-calls'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { HarnessAuthorizationError, HarnessPersistenceError } from './harness-diagnostics'
+import { withTranscriptPartIds } from '@/shared/chat/transcript-part-identity'
 
 function transcriptError(error: unknown): Error {
   if (error instanceof HarnessAuthorizationError || error instanceof HarnessPersistenceError) return error
@@ -92,7 +93,8 @@ export async function writeSettledHarnessTranscriptStep(
       workflowRunId: reference.workflowRunId,
       receiptId,
       stepNumber,
-      persistence,
+      persistence: reference.runId.startsWith('personal:')
+        ? withTranscriptPartIds(reference.runId, receiptId, persistence) : persistence,
     })
   } catch (error) {
     throw transcriptError(error)
@@ -109,12 +111,18 @@ export async function readSettledHarnessTranscriptPage(
     const state = await repository.get(reference)
     if (!state) throw new HarnessAuthorizationError()
     if (state.policy.publicProgressVersion !== 1) return { steps: [], cursor: '', isDone: true }
-    return await repository.listTranscriptSteps({
+    const page = await repository.listTranscriptSteps({
       actorUserId: reference.actorUserId,
       runId: reference.runId,
       workflowRunId: reference.workflowRunId,
       cursor,
     })
+    return reference.runId.startsWith('personal:') ? {
+      ...page,
+      steps: page.steps.map(step => ({
+        ...step, persistence: withTranscriptPartIds(reference.runId, step.receiptId, step.persistence),
+      })),
+    } : page
   } catch (error) {
     throw transcriptError(error)
   }

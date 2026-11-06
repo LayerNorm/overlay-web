@@ -4,6 +4,7 @@ import { useRef, useState } from 'react'
 import { QuestionnairePanel, toast, type QuestionnairePanelItem } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { decodeRunQuestions, formatRunAnswers, type RunQuestion } from '@/shared/agents/run-questions'
+import type { NativeRunCommandScope } from './native-personal-lifecycle'
 
 function questionItem(question: RunQuestion, index: number): QuestionnairePanelItem {
   const choices = question.choices?.map(({ label, description }) => ({ value: label, label, description }))
@@ -19,13 +20,18 @@ function questionItem(question: RunQuestion, index: number): QuestionnairePanelI
   }
 }
 
-export function RunInputRequest({ conversationId, runId, token, question, refresh, canRespond = true }: {
+export function RunInputRequest({ conversationId, runId, token, question, refresh, canRespond = true,
+  nativeScope, isCurrentRequest, alreadySubmitted = false, onSubmitted }: {
   conversationId: string
   runId: string
   token: string
   question: string
   refresh?: () => Promise<unknown>
   canRespond?: boolean
+  nativeScope?: NativeRunCommandScope
+  isCurrentRequest?: () => boolean
+  alreadySubmitted?: boolean
+  onSubmitted?: () => void
 }) {
   const [submitting, setSubmitting] = useState(false)
   const [submitted, setSubmitted] = useState(false)
@@ -35,7 +41,10 @@ export function RunInputRequest({ conversationId, runId, token, question, refres
 
   const submit = async (answers: Record<string, string[]>) => {
     const text = formatRunAnswers(questions, items.map(item => answers[item.name])).trim()
-    if (!text || pending.current || submitted) return
+    const currentRequest = () => !nativeScope?.enabled || (
+      nativeScope.isCurrentScope() && (isCurrentRequest?.() ?? true)
+    )
+    if (!text || !canRespond || pending.current || submitted || alreadySubmitted || !currentRequest()) return
     pending.current = true
     setSubmitting(true)
     try {
@@ -44,17 +53,22 @@ export function RunInputRequest({ conversationId, runId, token, question, refres
       })
       if (!result.success) throw new Error('Could not send your reply.')
     } catch (error) {
+      if (!currentRequest()) return
       pending.current = false
       setSubmitting(false)
-      toast.error(error instanceof Error ? error.message : 'Could not send your reply.')
+      toast.error(nativeScope?.enabled
+        ? 'Could not send your reply.'
+        : error instanceof Error ? error.message : 'Could not send your reply.')
       return
     }
+    if (!currentRequest()) return
+    onSubmitted?.()
     setSubmitted(true)
     setSubmitting(false)
     try {
       await refresh?.()
     } catch {
-      toast.error('Your reply was sent, but the run could not be refreshed.')
+      if (currentRequest()) toast.error('Your reply was sent, but the run could not be refreshed.')
     }
   }
 
@@ -66,7 +80,7 @@ export function RunInputRequest({ conversationId, runId, token, question, refres
       </div>
     )
   }
-  if (submitted) return <p className="mb-2 text-xs text-(--muted)" role="status">Answer sent. Continuing…</p>
+  if (submitted || alreadySubmitted) return <p className="mb-2 text-xs text-(--muted)" role="status">Answer sent. Continuing…</p>
   return (
     <div className="mb-2">
       <QuestionnairePanel items={items} onAnswers={(answers) => void submit(answers)} disabled={submitting} />
