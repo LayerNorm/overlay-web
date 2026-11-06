@@ -10,6 +10,16 @@ The personal-chat pilot uses `convex/lib/nativeViewer.ts`; see
 [Convex workflow](convex-workflow.md#native-browser-scope). Scope checks alone do
 not replace domain write policy, billing admission, audit or idempotency.
 
+Personal browser list, summary, transcript and execution state use typed native
+Convex queries when the server advertises exact list-v1, transcript-v1 and
+execution-v1 readiness markers. `chat/personal:getExecution` exposes only the
+current public run and thread-compatibility snapshot for the verified viewer,
+workspace and conversation; its query subscription is not copied into a second
+client cache. Approval, input and stop remain existing BFF commands, and model
+execution, billing and harness admission stay server-owned. Missing readiness
+uses the guarded legacy path for web-first rollout/rollback; a native
+authorization or subscription failure does not fall back to HTTP.
+
 Browser chat streaming shares the app client's session-recovery broker and route
 workspace targeting. It retries once only for the BFF's pre-dispatch 401 with a
 bare `WWW-Authenticate: Bearer` challenge, preserving the original body, turn,

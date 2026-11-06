@@ -6,6 +6,7 @@ import type { GeneratedUiPart } from '@overlay/chat-core/generated-ui'
 import type { AutomationDraftSummary } from '@/features/automations/lib/automation-drafts'
 import type { SkillDraftSummary } from '@/features/automations/lib/skill-drafts'
 import type { Id } from '../../../../../convex/_generated/dataModel'
+import type { PersonalPendingTurn } from '../chat/personal-transcript'
 
 export interface Conversation {
   _id: string
@@ -192,6 +193,7 @@ export interface ConversationRuntime {
   actChat: Chat<UIMessage>
   hydrated: boolean
   ui: ConversationUiState
+  nativePendingTurns?: Map<string, PersonalPendingTurn>
 }
 
 export interface RestoredOutputGroup {

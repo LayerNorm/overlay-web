@@ -42,7 +42,6 @@ Until then, gated domains remain unavailable. Never silently fall back to weaker
 HTTP authorization. Roll back native web consumers before removing policy helpers.
 Conversation CRUD has no mapped deployment feature, so it does not require this
 lease; model execution retains its existing server admission checks.
-
 Treat matching web and Convex revisions as one release unit. Local development
 uses an engineer-owned backend; feature worktrees never deploy shared environments.
 PR previews deploy only their per-PR backend. Preview builds copy the shared
@@ -299,6 +298,17 @@ globally; resource preloads need their own authorization.
 
 ### Native personal-chat list ownership (CN-04)
 
+The native transcript client additionally requires the server-owned
+`nativePersonalTranscriptRevision: "native-personal-transcript-v1"` marker from
+the existing `platform/uiSettings:getByServer` endpoint, alongside
+`nativePersonalChatRevision: "native-personal-list-v1"`. The shell and chat route
+share a request-local readiness probe. An old, unknown or unavailable backend
+keeps both list and history ownership on the guarded legacy path, including
+server-preloaded history. This is an expand/contract release gate, not a runtime
+database abstraction. Backend rollback leaves the additive transcript fields
+and indexes in place. Native summaries validate model preferences as well as
+list metadata so the transcript UI can consume one typed contract.
+
 Canonical title projection updates only the selected runtime's title and title
 display state. It must not hydrate the entire UI snapshot: doing so creates a new
 model-selection array, triggers the legacy metadata autosave, and feeds that write
@@ -344,21 +354,37 @@ unrelated route IDs never enter Convex conversation-ID validation. Auth or
 capability query failures expose an unavailable personal-chat context while
 preserving the rest of the page. Mixed views may read legacy data only for
 classified non-pilot rows. Unmigrated workspace-scoped chats, DMs, channels,
-agents and other resources remain on their existing paths. Transcript/history loading,
-streaming and permanent deletion are not migrated here. Rollback is web-first:
-disable native web ownership before removing backend support, and keep additive
-fields/indexes and handlers available to older web revisions. No hosted QA is
-claimed by this local implementation.
+agents and other resources remain on their existing paths.
+
+The browser reads personal transcript pages from `chat/personal:getMessages`
+and the public execution/compatibility projection from
+`chat/personal:getExecution`. The execution query is scoped to the verified
+viewer, workspace and exact conversation; the provider subscribes directly and
+does not mirror query data into a second cache. Native personal routes derive
+run activity and thread safety from this projection, disable legacy run polling
+and safety HTTP checks, and keep approval, input and stop mutations on their
+existing BFF commands. Stop targets the durable assistant message ID. A native
+authorization or query failure remains unavailable rather than switching to
+legacy HTTP.
+
+Readiness requires exact list, transcript and execution revision markers from
+the existing server-owned `platform/uiSettings:getByServer` response. An absent
+or older marker retains web-first legacy ownership during backend rollout or
+rollback; do not remove additive fields, indexes or handlers when rolling web
+ownership back. Server execution, billing admission and mutation authorization
+remain authoritative. Hosted preview acceptance is separate and is not claimed
+by this local implementation.
 
 The shell and chat route enable native personal ownership only after a fresh,
 request-local server probe of the existing `platform/uiSettings:getByServer`
-endpoint reports `nativePersonalChatRevision: native-personal-list-v1`. Missing,
-unknown or failed readiness keeps the guarded legacy transport through web-first
-upgrades and backend rollback; cached browser preferences cannot enable it. A
-reload after the backend sync activates native ownership. This is separate from
-native authentication readiness; configured-but-failing native operations do not
-fall back after activation. The marker is server-owned and cannot be saved as a
-user preference.
+endpoint reports the exact list (`nativePersonalChatRevision`), transcript
+(`nativePersonalTranscriptRevision`) and execution (`nativePersonalExecutionRevision`)
+markers. Missing, unknown or failed readiness keeps the guarded legacy transport
+through web-first upgrades and backend rollback; cached browser preferences
+cannot enable it. A reload after the backend sync activates native ownership.
+This is separate from native authentication readiness; configured-but-failing
+native operations do not fall back after activation. These markers are
+server-owned and cannot be saved as a user preference.
 
 Web and Convex deploy independently. The incoming web must work with the old
 backend, and the incoming backend must work with the old web, including retained
