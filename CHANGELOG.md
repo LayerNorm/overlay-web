@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Preserve empty native DMs when navigating away, including older draft-marked links, instead of silently removing the creator through legacy draft cleanup.
+
 - Wait for the native archived-agent revision before Undo restores an agent, avoiding conflicts from a cached active profile after server-side archive. Explicit revision conflicts and authorization remain enforced.
 
 - Clear native agent thread lists safely during agent archive or access revocation, so Undo can restore subscribed navigation without leaving the sidebar in a load-error boundary.

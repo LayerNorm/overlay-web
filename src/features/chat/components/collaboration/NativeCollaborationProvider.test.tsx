@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   mainMore: vi.fn(), replyMore: vi.fn(), httpGet: vi.fn(), directoryGet: vi.fn(),
   calls: vi.fn(), loadMore: vi.fn(), mutation: vi.fn(), addMessage: vi.fn(), legacyEdit: vi.fn(),
   query: vi.fn(), legacyCreateDirect: vi.fn(), legacyCreateChannel: vi.fn(),
+  legacyDelete: vi.fn(), legacyParticipantUpdate: vi.fn(),
 }))
 vi.mock('@/components/providers/ConvexAuthProvider', () => ({ useConvexAuthConfiguration: () => mocks.configuration }))
 vi.mock('@/contexts/WorkspaceContext', () => ({ useWorkspace: () => mocks.workspace }))
@@ -22,6 +23,7 @@ vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams()
 vi.mock('../DirectMessageExperience', () => ({ DirectMessageExperience: ({ conversationId }: { conversationId: string }) => <div>{conversationId}</div> }))
 vi.mock('@/shared/app/overlay-app-client', () => ({ overlayAppClient: { conversations: {
   get: mocks.httpGet,
+  deleteResponse: mocks.legacyDelete, updateParticipantState: mocks.legacyParticipantUpdate,
   addMessage: mocks.addMessage, editCollaborativeMessage: mocks.legacyEdit,
   createWorkspaceDirectMessage: mocks.legacyCreateDirect, createWorkspaceChannel: mocks.legacyCreateChannel,
 }, agents: { list: mocks.directoryGet } } }))
@@ -54,7 +56,7 @@ import { useNativeRoomLists } from './native-room-lists'
 import { nativeRoomRouteKey } from './native-room-routing'
 import { useRoomCreation } from './native-room-create'
 import { NativeArchivedRoomEntry } from './NativeArchivedRoomEntry'
-import { useAgentDirectory, useSendMessage, type SendMessage } from '../DirectMessageExperience.hooks'
+import { useAgentDirectory, useDraftConversation, useSendMessage, type SendMessage } from '../DirectMessageExperience.hooks'
 import { useNativeRoomSafety } from './useNativeRoomSafety'
 import { RoomThreadPanel } from './RoomSidePanels'
 import { RoomSidePanel } from '../DirectMessageExperience.parts'
@@ -133,9 +135,42 @@ beforeEach(() => {
   mocks.lists = [{ conversationId: 'room', workspaceId: 'workspace', title: 'Room', kind: 'direct', lastModified: 1 }]
   mocks.anchor = undefined
   mocks.mutation.mockResolvedValue(true)
+  mocks.legacyDelete.mockResolvedValue({ ok: true })
   session = null
 })
 afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; vi.unstubAllGlobals(); vi.restoreAllMocks() })
+
+function DraftProbe() {
+  const messages = React.useRef([])
+  useDraftConversation({ conversationId: 'room', conversationType: 'dm', draft: true,
+    title: 'Shared DM', messages: messages.current, messagesRef: messages })
+  return null
+}
+
+test.each(['ready', 'loading', 'unavailable'] as const)('leaving an empty native DM marked draft never removes its creator while %s', async (state) => {
+  if (state === 'loading') mocks.pageStatus = 'LoadingFirstPage'
+  if (state === 'unavailable') mocks.configuration.hasConvexClient = false
+  await render(<React.StrictMode><NativeCollaborationProvider backendReady><StatusProbe /><DraftProbe /></NativeCollaborationProvider></React.StrictMode>)
+  expect(status).toBe(state)
+  await render(<div>Another conversation</div>)
+  expect(mocks.legacyDelete).not.toHaveBeenCalled()
+  expect(mocks.legacyParticipantUpdate).not.toHaveBeenCalled()
+})
+
+test('losing native readiness never enables legacy draft cleanup', async () => {
+  await render(<NativeCollaborationProvider backendReady><DraftProbe /></NativeCollaborationProvider>)
+  mocks.configuration.hasConvexClient = false
+  await render(<NativeCollaborationProvider backendReady><DraftProbe /></NativeCollaborationProvider>)
+  await render(<div>Another conversation</div>)
+  expect(mocks.legacyDelete).not.toHaveBeenCalled()
+  expect(mocks.legacyParticipantUpdate).not.toHaveBeenCalled()
+})
+
+test('native-off legacy empty DM draft cleanup is retained', async () => {
+  await render(<NativeCollaborationProvider><DraftProbe /></NativeCollaborationProvider>)
+  await render(<div>Another conversation</div>)
+  expect(mocks.legacyDelete).toHaveBeenCalledExactlyOnceWith({ conversationId: 'room', scope: 'self' })
+})
 
 test('native execution is reactive, fail-closed and never performs compatibility GETs', async () => {
   await render()

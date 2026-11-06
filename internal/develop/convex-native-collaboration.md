@@ -230,8 +230,11 @@ discard the personal provider's state. Native collaboration is disabled until
 both native auth and backend readiness are present. Once activated, query errors
 or loss of readiness produce unavailable UI, not an implicit legacy rollback.
 
-Native room sessions remount on account/workspace/room boundaries. Queries and
-overlays additionally reject mismatched room, viewer and thread scopes before
+Native room sessions remount on account/workspace/room boundaries. Native-created
+rooms are durable immediately, including empty human DMs. Legacy
+`draft=1` links must not invoke automatic HTTP delete/leave or archive on unmount
+once native ownership is claimed; transient draft cleanup remains native-off only.
+Queries and overlays additionally reject mismatched room, viewer and thread scopes before
 rendering. A null room removes the transcript and drops pending overlays. The
 main stream and selected thread use independent compound-cursor subscriptions;
 permalink and old root anchors load independently. Convex's pagination hook does
