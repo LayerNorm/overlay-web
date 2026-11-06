@@ -6,8 +6,9 @@ import { useNativeActivity, type NativeNotification, type UnreadCounts } from '@
 import { NativeActivityProvider } from './NativeActivityProvider'
 import { nativeNotificationHref } from './native-notification-navigation'
 import { observedRenderedSequence } from './native-room-read-markers'
+import { useObservedNotificationReads } from './useObservedNotificationReads'
 
-const mocks = vi.hoisted(() => ({ mutation: vi.fn(), query: vi.fn(), http: vi.fn() }))
+const mocks = vi.hoisted(() => ({ mutation: vi.fn(), query: vi.fn(), http: vi.fn(), toastError: vi.fn() }))
 vi.mock('convex/react', () => ({
   useMutation: () => mocks.mutation,
   useQuery: (...args: unknown[]) => { mocks.query(...args); return counts },
@@ -17,7 +18,7 @@ vi.mock('convex/react', () => ({
 vi.mock('./NativeCollaborationProvider', async () => (await import('@/components/providers/native-collaboration-context')))
 vi.mock('./NativeRoomState', () => ({ useNativeRoomMetadata: () => null }))
 vi.mock('./NativeRoomScope', () => ({ useNativeRoomSession: () => null }))
-vi.mock('@overlay/ui/primitives', () => ({ toast: { error() {} } }))
+vi.mock('@overlay/ui/primitives', () => ({ toast: { error: mocks.toastError } }))
 vi.mock('@/shared/app/overlay-app-client', () => ({ overlayAppClient: { conversations: { get: mocks.http } } }))
 
 const room = 'room' as NativeNotification['conversationId']
@@ -42,6 +43,52 @@ beforeEach(() => {
   mocks.mutation.mockResolvedValue(0)
 })
 afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; vi.unstubAllGlobals() })
+
+it('observes only intersecting rendered rows in a visible document and retries failed reads', async () => {
+  const document = Object.assign(new EventTarget(), { visibilityState: 'hidden' })
+  vi.stubGlobal('document', document)
+  const nodes = Array.from({ length: 50 }, (_, i) => ({ dataset: { notificationId: String(i) } }))
+  let intersect!: (entries: unknown[]) => void
+  const observe = vi.fn()
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(callback: typeof intersect) { intersect = callback }
+    observe = observe
+    disconnect() {}
+  })
+  const mark = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined)
+  const native = { ready: true, counts, notifications: Array.from({ length: 100 }, (_, i) => ({ ...items[0], id: String(i), createdAt: i + 1 })), mark } as unknown as NonNullable<typeof value>
+  function Observer() {
+    const ref = useObservedNotificationReads(native, nodes.map(node => node.dataset.notificationId))
+    return <ul ref={ref} />
+  }
+  await act(async () => { renderer = create(<Observer />, { createNodeMock: () => ({ querySelectorAll: () => nodes }) }) })
+  expect(observe).not.toHaveBeenCalled()
+  expect(mark).not.toHaveBeenCalled()
+  document.visibilityState = 'visible'
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')) })
+  expect(observe).toHaveBeenCalledTimes(50)
+  await act(async () => { intersect([
+    { target: nodes[0], isIntersecting: true, intersectionRatio: 1 },
+    { target: nodes[1], isIntersecting: false, intersectionRatio: 0 },
+  ]) })
+  expect(mark).toHaveBeenCalledWith(['0'], 1)
+  expect(mocks.toastError).toHaveBeenCalledTimes(1)
+  await act(async () => { mocks.toastError.mock.calls[0][1].action.onClick() })
+  expect(mark).toHaveBeenCalledTimes(2)
+  document.visibilityState = 'hidden'
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')); intersect([{ target: nodes[2], isIntersecting: true, intersectionRatio: 1 }]) })
+  expect(mark).toHaveBeenCalledTimes(2)
+  expect(mark.mock.calls.every(([ids]) => !ids.includes('99') && !ids.includes('1') && !ids.includes('2'))).toBe(true)
+  native.notifications = [{ ...items[0], id: 'arrival', createdAt: 101 }, ...native.notifications]
+  nodes[0] = { dataset: { notificationId: 'arrival' } }
+  await act(async () => { renderer!.update(<Observer />) })
+  expect(mark).toHaveBeenCalledTimes(2)
+  document.visibilityState = 'visible'
+  await act(async () => { document.dispatchEvent(new Event('visibilitychange')); intersect([{ target: nodes[0], isIntersecting: false, intersectionRatio: 0 }]) })
+  expect(mark).toHaveBeenCalledTimes(2)
+  await act(async () => { intersect([{ target: nodes[0], isIntersecting: true, intersectionRatio: 1 }]) })
+  expect(mark).toHaveBeenLastCalledWith(['arrival'], 101)
+})
 
 it('an earlier failed read only removes its own overlay; a later success and canonical arrival survive', async () => {
   const first = deferred(); const later = deferred()

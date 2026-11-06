@@ -9,18 +9,22 @@ const mocks = vi.hoisted(() => ({
   room: undefined as unknown,
   rows: [] as unknown[], lists: [] as unknown[], anchor: undefined as unknown,
   throwQuery: false,
+  execution: undefined as unknown, pageStatus: 'Exhausted', directory: [] as unknown[], directoryMode: 'native',
+  mainMore: vi.fn(), replyMore: vi.fn(), httpGet: vi.fn(), directoryGet: vi.fn(),
   calls: vi.fn(), loadMore: vi.fn(), mutation: vi.fn(), addMessage: vi.fn(), legacyEdit: vi.fn(),
   query: vi.fn(), legacyCreateDirect: vi.fn(), legacyCreateChannel: vi.fn(),
 }))
 vi.mock('@/components/providers/ConvexAuthProvider', () => ({ useConvexAuthConfiguration: () => mocks.configuration }))
 vi.mock('@/contexts/WorkspaceContext', () => ({ useWorkspace: () => mocks.workspace }))
 vi.mock('@/contexts/AuthContext', () => ({ useAuth: () => ({ user: mocks.user }) }))
+vi.mock('@/components/providers/AgentDirectoryProvider', () => ({ useAgentDirectory: () => ({ mode: mocks.directoryMode, workspaceId: mocks.workspace.activeWorkspaceId, directory: mocks.directory }) }))
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), usePathname: () => '/app/chat' }))
 vi.mock('../DirectMessageExperience', () => ({ DirectMessageExperience: ({ conversationId }: { conversationId: string }) => <div>{conversationId}</div> }))
 vi.mock('@/shared/app/overlay-app-client', () => ({ overlayAppClient: { conversations: {
+  get: mocks.httpGet,
   addMessage: mocks.addMessage, editCollaborativeMessage: mocks.legacyEdit,
   createWorkspaceDirectMessage: mocks.legacyCreateDirect, createWorkspaceChannel: mocks.legacyCreateChannel,
-} } }))
+}, agents: { list: mocks.directoryGet } } }))
 vi.mock('convex/react', async () => {
   const { getFunctionName } = await import('convex/server')
   return {
@@ -32,13 +36,14 @@ vi.mock('convex/react', async () => {
       mocks.calls(getFunctionName(fn), args)
       if (args === 'skip') return undefined
       const name = getFunctionName(fn)
-      return name.endsWith(':getRoom') ? mocks.room : name.endsWith(':getMessageAnchor') ? mocks.anchor : undefined
+      return name.endsWith(':getExecution') ? mocks.execution : name.endsWith(':getRoom') ? mocks.room : name.endsWith(':getMessageAnchor') ? mocks.anchor : undefined
     },
     usePaginatedQuery: (fn: Parameters<typeof getFunctionName>[0], args: unknown) => {
       const name = getFunctionName(fn)
       mocks.calls(name, args)
       if (mocks.throwQuery && args !== 'skip') throw new Error('native query failed')
-      return { results: args === 'skip' ? [] : name.endsWith(':listRooms') ? mocks.lists : mocks.rows, status: 'Exhausted', loadMore: mocks.loadMore }
+      const replies = args !== 'skip' && Boolean((args as { threadRootMessageId?: string }).threadRootMessageId)
+      return { results: args === 'skip' ? [] : name.endsWith(':listRooms') ? mocks.lists : mocks.rows, status: mocks.pageStatus, loadMore: name.endsWith(':listMessages') ? (replies ? mocks.replyMore : mocks.mainMore) : mocks.loadMore }
     },
   }
 })
@@ -49,7 +54,9 @@ import { useNativeRoomLists } from './native-room-lists'
 import { nativeRoomRouteKey } from './native-room-routing'
 import { useRoomCreation } from './native-room-create'
 import { NativeArchivedRoomEntry } from './NativeArchivedRoomEntry'
-import { useSendMessage, type SendMessage } from '../DirectMessageExperience.hooks'
+import { useAgentDirectory, useSendMessage, type SendMessage } from '../DirectMessageExperience.hooks'
+import { useNativeRoomSafety } from './useNativeRoomSafety'
+import { RoomThreadPanel } from './RoomSidePanels'
 
 let renderer: ReactTestRenderer | undefined
 let session: ReturnType<typeof useNativeRoomSession>
@@ -58,6 +65,8 @@ let send: SendMessage
 let writes: ReturnType<typeof useRoomMessageWrites>
 let list: ReturnType<typeof useNativeRoomLists>
 let creation: ReturnType<typeof useRoomCreation>
+let safety: ReturnType<typeof useNativeRoomSafety>
+let directory: ReturnType<typeof useAgentDirectory>
 function StatusProbe() {
   const next = useNativeCollaboration().status
   React.useLayoutEffect(() => { status = next })
@@ -69,6 +78,9 @@ function Probe({ sender = false }: { sender?: boolean }) {
   const nextList = useNativeRoomLists('dms')
   const nextWrites = useRoomMessageWrites('room')
   const nextCreation = useRoomCreation()
+  const nextSafety = useNativeRoomSafety({ conversationId: nextSession?.room?.conversationId ?? null, workspaceId: mocks.workspace.activeWorkspaceId, threadRootMessageId: nextSession?.root[0] ?? undefined })
+  const nextDirectory = useAgentDirectory({ activeWorkspaceId: mocks.workspace.activeWorkspaceId, conversationId: 'room' })
+  React.useLayoutEffect(() => { safety = nextSafety; directory = nextDirectory })
   React.useLayoutEffect(() => { session = nextSession; status = nextStatus; list = nextList; writes = nextWrites; creation = nextCreation })
   return sender ? <Sender /> : null
 }
@@ -113,6 +125,8 @@ beforeEach(() => {
   mocks.configuration.nativeAuthConfigured = true
   mocks.configuration.hasConvexClient = true
   mocks.throwQuery = false
+  mocks.execution = { workspaceId: 'workspace', conversationId: 'room', userId: 'alice', compatibility: { readOnly: false } }
+  mocks.pageStatus = 'Exhausted'; mocks.directory = []; mocks.directoryMode = 'native'
   mocks.room = room()
   mocks.rows = [message('first')]
   mocks.lists = [{ conversationId: 'room', workspaceId: 'workspace', title: 'Room', kind: 'direct', lastModified: 1 }]
@@ -121,6 +135,91 @@ beforeEach(() => {
   session = null
 })
 afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; vi.unstubAllGlobals(); vi.restoreAllMocks() })
+
+test('native execution is reactive, fail-closed and never performs compatibility GETs', async () => {
+  await render()
+  expect(safety.status).toBe('writable')
+  for (const execution of [undefined, null,
+    { ...mocks.execution as object, userId: 'bob' },
+    { ...mocks.execution as object, workspaceId: 'other' },
+    { ...mocks.execution as object, conversationId: 'other' },
+    { workspaceId: 'workspace', conversationId: 'room', userId: 'alice', compatibility: { readOnly: true, code: 'native_runner_retired' } },
+  ]) {
+    mocks.execution = execution
+    await render()
+    expect(safety.readOnly).toBe(true)
+    expect((await safety.checkWritable()).accepted).toBe(false)
+  }
+  expect(mocks.httpGet).not.toHaveBeenCalled()
+})
+
+test('selected replies paginate independently and require their own scoped execution', async () => {
+  mocks.pageStatus = 'CanLoadMore'
+  await render()
+  await act(async () => { session!.root[1]('root') })
+  expect(safety.readOnly).toBe(true)
+  mocks.execution = { workspaceId: 'workspace', conversationId: 'room', userId: 'alice', threadRootMessageId: 'root', compatibility: { readOnly: false } }
+  await render()
+  expect(safety.status).toBe('writable')
+  expect(session!.threadHistory.hasMore).toBe(true)
+  session!.threadHistory.loadMore()
+  expect(mocks.replyMore).toHaveBeenCalledTimes(1)
+  expect(mocks.mainMore).not.toHaveBeenCalled()
+  await session!.transcript.loadOlderMessages()
+  expect(mocks.mainMore).toHaveBeenCalledTimes(1)
+})
+
+test('native agent identity revisions replace room snapshots without a directory HTTP request', async () => {
+  mocks.directory = [{ id: 'agent', principalId: 'principal', name: 'Before', avatarColor: 'blue', avatarShape: 'round', isDefault: false }]
+  await render()
+  expect(directory.get('principal')?.name).toBe('Before')
+  mocks.directory = [{ ...mocks.directory[0] as object, name: 'Remote rename', avatarColor: 'green', isDefault: true }]
+  await render()
+  expect(directory.get('principal')).toMatchObject({ name: 'Remote rename', avatarColor: 'green', isDefault: true })
+  await act(async () => { window.dispatchEvent(new CustomEvent('overlay:agent-draft-preview', { detail: {
+    workspaceId: 'workspace', principalId: 'principal', patch: { name: 'Unsaved', avatarColor: 'pink' },
+  } })) })
+  expect(directory.get('principal')?.name).toBe('Unsaved')
+  mocks.directory = [{ ...mocks.directory[0] as object, name: 'Another remote rename' }]
+  await render()
+  expect(directory.get('principal')?.name).toBe('Unsaved')
+  mocks.user.id = 'bob'; mocks.room = room('room', 'workspace', 'bob')
+  await render()
+  expect(directory.get('principal')?.name).toBe('Another remote rename')
+  mocks.directory = []
+  await render()
+  expect(directory.size).toBe(0)
+  expect(mocks.directoryGet).not.toHaveBeenCalled()
+})
+
+test('stream growth follows the bottom only while sticky and does not need another message', async () => {
+  mocks.rows = [{ ...message('stream'), status: 'generating', content: 'a' }]
+  await render()
+  const node = { scrollTop: 100, scrollHeight: 100, clientHeight: 40 }
+  session!.transcript.listRef.current = node as HTMLDivElement
+  node.scrollHeight = 200
+  mocks.rows = [{ ...mocks.rows[0] as object, content: 'a longer response' }]
+  await render()
+  expect(node.scrollTop).toBe(200)
+  await act(async () => { session!.transcript.setStickToBottom(false) })
+  node.scrollTop = 50; node.scrollHeight = 300
+  mocks.rows = [{ ...mocks.rows[0] as object, content: 'an even longer response' }]
+  await render()
+  expect(node.scrollTop).toBe(50)
+})
+
+test('thread panel exposes an accessible older-replies control and disables it during pagination', async () => {
+  const loadMore = vi.fn()
+  const panel = (loading = false) => <RoomThreadPanel roomLabel="Room" replyCount={2} following={false} onToggleFollow={() => {}}
+    messages={<div>Replies</div>} onClose={() => {}} input="" onInputChange={() => {}} onSubmit={() => {}} history={{ hasMore: true, loading, loadMore }} />
+  await act(async () => { renderer = create(panel()) })
+  const older = renderer!.root.findAllByType('button').find(button => button.props.children === 'Load older replies')!
+  expect(older).toBeDefined()
+  await act(async () => { older.props.onClick() })
+  expect(loadMore).toHaveBeenCalledTimes(1)
+  await act(async () => { renderer!.update(panel(true)) })
+  expect(renderer!.root.findAllByType('button').find(button => button.props.children === 'Loading older replies…')?.props.disabled).toBe(true)
+})
 
 test.each(['workspace', 'room', 'account'] as const)('scope switch %s synchronously rejects previous scope data', async scope => {
   await render()
@@ -185,7 +284,7 @@ test('disabled retains legacy adapters without any native query or mutation', as
   expect(mocks.legacyCreateDirect).toHaveBeenCalledWith('workspace', { principalIds: ['bob'] })
   expect(mocks.legacyCreateChannel).toHaveBeenCalledWith('workspace', { name: 'Legacy', visibility: 'public' })
   expect(mocks.legacyEdit).toHaveBeenCalledWith('room', 'message', 'edited')
-  expect(mocks.calls).not.toHaveBeenCalled()
+  expect(mocks.calls.mock.calls.every(([, args]) => args === 'skip')).toBe(true)
   expect(mocks.mutation).not.toHaveBeenCalled()
   expect(nativeRoomRouteKey('disabled', 'dms', { pathScope: 'workspace', conversationId: 'room' })).not.toBeNull()
 })

@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import type { NativePersonalExecutionState } from '@/components/providers/native-personal-execution'
 import {
   NATIVE_THREAD_SAFETY_CHANGED,
   nativeThreadSafetyErrorStatus,
@@ -10,6 +9,11 @@ import {
   nativeThreadSafetyStatus,
   type NativeThreadSafetyStatus,
 } from '@/shared/chat/native-thread-safety'
+
+export type NativeThreadExecutionState = {
+  status: 'disabled' | 'loading' | 'ready' | 'unavailable'
+  value: { conversationId: string; workspaceId: string; userId: string; threadRootMessageId?: string; compatibility: unknown } | null
+}
 
 export function useNativeThreadSafety({
   conversationId,
@@ -26,7 +30,7 @@ export function useNativeThreadSafety({
   workspaceId?: string | null
   threadRootMessageId?: string
   nativeMode?: boolean
-  nativeExecution?: NativePersonalExecutionState
+  nativeExecution?: NativeThreadExecutionState
   verifiedUserId?: string | null
   scopeSynchronized?: boolean
 }) {
@@ -45,7 +49,8 @@ export function useNativeThreadSafety({
   const nativeIdentityMatches = Boolean(execution
     && execution.conversationId === conversationId
     && execution.workspaceId === workspaceId
-    && execution.userId === verifiedUserId)
+    && execution.userId === verifiedUserId
+    && execution.threadRootMessageId === threadRootMessageId)
   const nativeStatus: NativeThreadSafetyStatus = !scopeSynchronized
     ? 'unavailable'
     : !conversationId

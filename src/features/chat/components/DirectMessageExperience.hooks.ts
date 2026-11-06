@@ -67,7 +67,10 @@ import { useChatPanels } from './chat/useChatPanels'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import { useChatAttachments } from './useChatAttachments'
 import { useComposerTextState } from './chat/useComposerTextState'
-import { useNativeThreadSafety } from './chat/useNativeThreadSafety'
+import { roomExecutionQuery, useNativeRoomSafety } from './collaboration/useNativeRoomSafety'
+import { useNativeCollaboration } from './collaboration/NativeCollaborationProvider'
+import type { Id } from '../../../../convex/_generated/dataModel'
+import { useAgentDirectory as useNativeAgentDirectory } from '@/components/providers/AgentDirectoryProvider'
 import {
   isNativeThreadSafetyError,
   nativeThreadSafetyErrorStatus,
@@ -455,6 +458,10 @@ export function useAgentDirectory({
   conversationId: string
 
 }) {
+  const native = useNativeAgentDirectory()
+  const nativeScope = useNativeCollaboration()
+  const scope = JSON.stringify([nativeScope.scopeKey, activeWorkspaceId, conversationId, native.mode])
+  const [draftScope, setDraftScope] = useState(scope)
   const [agentsByPrincipal, setAgentsByPrincipal] = useState<ReadonlyMap<string, AgentDirectoryEntry>>(new Map())
   // Unsaved editor drafts overlay the fetched directory so the header renames
   // and re-skins while the user types; cleared by a null patch on save/cancel.
@@ -463,10 +470,21 @@ export function useAgentDirectory({
     avatarColor?: string
     avatarShape?: string
   }>>(new Map())
+  if (draftScope !== scope) {
+    setDraftScope(scope)
+    setAgentDrafts(new Map())
+    setAgentsByPrincipal(new Map())
+  }
   const directoryAgentsByPrincipal = useMemo(() => {
-    if (agentDrafts.size === 0) return agentsByPrincipal
-    const merged = new Map(agentsByPrincipal)
+    const canonical = native.mode === 'legacy' ? agentsByPrincipal : new Map(
+      native.workspaceId === activeWorkspaceId ? (native.directory ?? []).map(agent => [agent.principalId, {
+        id: agent.id, name: agent.name, avatarColor: agent.avatarColor, avatarShape: agent.avatarShape, isDefault: agent.isDefault,
+      }]) : [],
+    )
+    if (agentDrafts.size === 0) return canonical
+    const merged = new Map(canonical)
     for (const [principalId, draft] of agentDrafts) {
+      if (native.mode !== 'legacy' && !canonical.has(principalId)) continue
       const existing = merged.get(principalId)
       merged.set(principalId, {
         id: existing?.id,
@@ -477,14 +495,10 @@ export function useAgentDirectory({
       })
     }
     return merged
-  }, [agentsByPrincipal, agentDrafts])
+  }, [activeWorkspaceId, agentsByPrincipal, agentDrafts, native.directory, native.mode, native.workspaceId])
   useEffect(() => {
 
     if (!activeWorkspaceId) {
-      queueMicrotask(() => {
-        setAgentsByPrincipal(new Map())
-        setAgentDrafts(new Map())
-      })
       return
     }
     let cancelled = false
@@ -500,11 +514,11 @@ export function useAgentDirectory({
         }])))
       }).catch(() => undefined)
     }
-    load()
+    if (native.mode === 'legacy') load()
     // Renames and avatar changes save through the editor and dispatch this
     // event; refetching keeps the header and message identity in sync without
     // a reload.
-    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
+    if (native.mode === 'legacy') window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
     const onDraftPreview = (event: Event) => {
       const detail = (event as CustomEvent<AgentDraftPreviewEventDetail>).detail
       if (!detail?.principalId || detail.workspaceId !== activeWorkspaceId) return
@@ -521,7 +535,7 @@ export function useAgentDirectory({
       window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
       window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
     }
-  }, [activeWorkspaceId,  conversationId, ])
+  }, [activeWorkspaceId, conversationId, native.mode])
   return directoryAgentsByPrincipal
 }
 
@@ -1817,10 +1831,11 @@ export function useDirectMessageRoom({
   }))
   const collab = useRoomCollaboration({ conversationId, conversationType,  })
   const thread = useThreadPanel({ conversationId,  setRoomPanel })
-  const nativeThreadSafety = useNativeThreadSafety({ conversationId, workspaceId: activeWorkspaceId })
-  const selectedThreadSafety = useNativeThreadSafety({
+  const nativeCollaboration = useNativeCollaboration()
+  const nativeThreadSafety = useNativeRoomSafety({ conversationId, workspaceId: activeWorkspaceId ?? null })
+  const selectedThreadSafety = useNativeRoomSafety({
     conversationId: thread.threadRootId ? conversationId : null,
-    workspaceId: activeWorkspaceId,
+    workspaceId: activeWorkspaceId ?? null,
     threadRootMessageId: thread.threadRootId ?? undefined,
   })
   const effectiveSelectedThreadSafety = nativeThreadSafety.readOnly
@@ -1839,6 +1854,18 @@ export function useDirectMessageRoom({
       return checkSelectedThreadWritable()
     }
     try {
+      if (nativeCollaboration.status !== 'disabled') {
+        if (nativeCollaboration.status !== 'ready' || !nativeCollaboration.client || !activeWorkspaceId
+          || !nativeCollaboration.isCurrentScope?.()) return { accepted: false, status: 'unavailable' as const }
+        const execution = await nativeCollaboration.client.query(roomExecutionQuery, {
+          workspaceId: activeWorkspaceId, conversationId: conversationId as Id<'conversations'>, threadRootMessageId: root as Id<'conversationMessages'>,
+        })
+        const scoped = nativeCollaboration.isCurrentScope() && nativeThreadSafety.isCurrentScope()
+          && execution?.workspaceId === activeWorkspaceId && execution.conversationId === conversationId
+          && execution.userId === nativeCollaboration.viewerUserId && execution.threadRootMessageId === root
+        const status = scoped ? nativeThreadSafetyStatus(execution.compatibility) : 'unavailable'
+        return { accepted: status === 'writable', status }
+      }
       const result = await overlayAppClient.conversations.get<{
         nativeThreadCompatibility?: unknown
       }>({ conversationId, threadRootMessageId: root })
@@ -1852,6 +1879,9 @@ export function useDirectMessageRoom({
     }
   }, [
     conversationId,
+    activeWorkspaceId,
+    nativeCollaboration,
+    nativeThreadSafety,
     checkMainRoomWritable,
     checkSelectedThreadWritable,
     thread.threadRootId,

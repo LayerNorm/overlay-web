@@ -46,7 +46,6 @@ function viewForConversationType(conversationType?: string): 'personal' | 'dms' 
 
 export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
   const native = useNativeActivity()
-  useObservedNotificationReads(native)
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const buildWorkspaceHref = useWorkspaceHref()
@@ -55,6 +54,7 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
   const items: ActivityNotification[] = notifications.slice(0, 50).map((item) => (
     !native && locallyRead.has(item.id) ? { ...item, readAt: item.readAt ?? locallyRead.get(item.id) } : item
   ))
+  const observedListRef = useObservedNotificationReads(native, items.map(item => item.id))
 
   // Mark all notifications as read when the inline Activity panel opens.
   // This is intentionally a side effect of opening the panel, not a user action.
@@ -130,9 +130,9 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
   }
 
   return (
-    <SidebarMenuSub className="ml-0 border-l-0 pl-0">
+    <SidebarMenuSub ref={observedListRef} className="ml-0 border-l-0 pl-0">
       {items.map((item) => (
-        <SidebarMenuSubItem key={item.id}>
+        <SidebarMenuSubItem key={item.id} data-notification-id={item.id}>
           <SidebarMenuSubButton className="h-8 gap-2.5 text-sm" onClick={() => void openNotification(item)}>
             <Bell aria-hidden />
             <span className="min-w-0 flex-1 truncate">

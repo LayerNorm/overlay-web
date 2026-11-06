@@ -57,7 +57,6 @@ function notificationIcon(type: WorkspaceNotification['type']) {
  */
 export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string }) {
   const native = useNativeActivity()
-  useObservedNotificationReads(native)
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const buildScopedHref = useWorkspaceHref()
@@ -75,6 +74,7 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
     .map((notification) => !native && locallyRead.has(notification.id)
       ? { ...notification, readAt: notification.readAt ?? locallyRead.get(notification.id) }
       : notification), [filter, locallyRead, native, sourceNotifications])
+  const observedListRef = useObservedNotificationReads(native, notifications.map(item => item.id))
   const loading = !notificationsReady
 
   const unreadCount = native ? native.counts?.notifications.count ?? 0 : notifications.filter((notification) => !notification.readAt).length
@@ -213,9 +213,9 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
                 </Button>
               </div>
             ) : null}
-            <ul className="space-y-0.5">
+            <ul ref={observedListRef} className="space-y-0.5">
               {notifications.map((notification) => (
-                <li key={notification.id}>
+                <li key={notification.id} data-notification-id={notification.id}>
                   <Button
                     variant="ghost"
                     type="button"

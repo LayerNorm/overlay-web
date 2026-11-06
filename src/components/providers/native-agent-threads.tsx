@@ -6,10 +6,11 @@ import { useSearchParams } from 'next/navigation'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { useNativeCollaboration } from './native-collaboration-context'
+import { settleIntents } from './native-intent-overlays'
 
-type Overlay = { token: string; archived: boolean }
+type Overlay = { id: string; archived: boolean; settled?: boolean }
 type Overlays = Record<string, Overlay[]>
-type OverlayState = { rows: Overlays; add(id: string, archived: boolean): string; remove(id: string, token: string): void;
+type OverlayState = { rows: Overlays; add(id: string, archived: boolean): string; remove(id: string, token: string, committed?: boolean): void;
   track(token: string): () => void; isPending(token: string): boolean }
 const OverlayContext = createContext<OverlayState>({ rows: {},
   add() { throw new Error('Native threads unavailable') }, remove() {}, track: () => () => {}, isPending: () => false })
@@ -29,11 +30,11 @@ export function NativeThreadOverlayProvider({ children }: { children: ReactNode 
   const isPending = useCallback((token: string) => pending.current.has(token), [])
   const add = useCallback((id: string, archived: boolean) => {
     const token = crypto.randomUUID()
-    setRows(current => ({ ...current, [id]: [...(current[id] ?? []), { token, archived }] }))
+    setRows(current => ({ ...current, [id]: [...(current[id] ?? []), { id: token, archived }] }))
     return token
   }, [])
-  const remove = useCallback((id: string, token: string) => {
-    setRows(current => ({ ...current, [id]: (current[id] ?? []).filter(row => row.token !== token) }))
+  const remove = useCallback((id: string, token: string, committed = false) => {
+    setRows(current => ({ ...current, [id]: settleIntents(current[id] ?? [], token, committed) }))
   }, [])
   return <OverlayContext.Provider value={{ rows, add, remove, track, isPending }}>{children}</OverlayContext.Provider>
 }
@@ -48,6 +49,7 @@ export function useNativeThreadClient() {
       return { client, workspaceId }
     }
     return { enabled: status !== 'disabled', status, workspaceId, scopeKey, track, isPending,
+      isCurrentScope: () => status === 'ready' && Boolean(isCurrentScope?.()),
       async resolve(agentId: string) {
         const ready = assert()
         const result = await ready.client.mutation(api.agents.nativeThreads.resolveMainThread, { workspaceId: ready.workspaceId, agentId })
@@ -63,10 +65,12 @@ export function useNativeThreadClient() {
       async archive(agentId: string, conversationId: string, archived: boolean) {
         const ready = assert()
         const token = add(conversationId, archived)
+        let committed = false
         try {
           await ready.client.mutation(api.agents.nativeThreads.setThreadArchived, { workspaceId: ready.workspaceId, agentId, conversationId: conversationId as Id<'conversations'>, archived })
           assert()
-        } finally { remove(conversationId, token) }
+          committed = true
+        } finally { remove(conversationId, token, committed) }
       },
       async delete(agentId: string, conversationId: string) {
         const ready = assert()

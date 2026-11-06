@@ -14,6 +14,7 @@ import { NativeRoomStateProvider } from './NativeRoomState'
 type Session = {
   room: ReturnType<typeof useNativeRoomTranscript>['room']
   root: [string | null, Dispatch<SetStateAction<string | null>>]
+  threadHistory: { hasMore: boolean; loading: boolean; loadMore(): void }
   transcript: ReturnType<typeof useRoomTranscript>
   edit(messageId: string, content: string): Promise<void>
   remove(messageId: string): Promise<void>
@@ -68,10 +69,12 @@ function NativeRoomLive({ children, workspaceId, conversationId }: { children: R
   const edit = useMutation(api.collaboration.nativeRooms.editMessage)
   const remove = useMutation(api.collaboration.nativeRooms.deleteMessage)
   const loading = main.status === 'loading'
+  const generatingMessages = messages.filter(row => row.status === 'generating')
+  const generatingTextLength = generatingMessages.reduce((total, row) => total + row.content.length, 0)
   useEffect(() => {
     if (loading || !stickToBottom || !listRef.current) return
     listRef.current.scrollTop = listRef.current.scrollHeight
-  }, [loading, messages.length, stickToBottom])
+  }, [generatingTextLength, loading, messages.length, stickToBottom])
   const setMessages: Dispatch<SetStateAction<RoomMessageRecord[]>> = action => {
     if (rootRef.current !== threadRootId) return
     setOverlay(current => {
@@ -84,13 +87,13 @@ function NativeRoomLive({ children, workspaceId, conversationId }: { children: R
   const value: Session = {
     room: main.room,
     root: [threadRootId, setThreadRootId],
+    threadHistory: { hasMore: thread.hasMore, loading: thread.status === 'loading' || thread.loadingMore, loadMore: thread.loadMore },
     transcript: {
       messages, messagesRef, setMessages, loading, setLoading() {},
       hasMoreMessages: main.hasMore, loadingOlderMessages: main.loadingMore,
       conversationTitle: main.room?.title ?? null, setConversationTitle() {}, surfacePlatform: main.room?.externalPlatform ?? null,
       listRef, stickToBottom, setStickToBottom, async loadMessages() {}, async loadOlderMessages() { main.loadMore() },
-      applyLiveRoomMessages() {}, generatingMessages: messages.filter(row => row.status === 'generating'),
-      generatingTextLength: messages.filter(row => row.status === 'generating').reduce((total, row) => total + row.content.length, 0),
+      applyLiveRoomMessages() {}, generatingMessages, generatingTextLength,
       handleTranscriptScroll() {
         const node = listRef.current
         if (!node) return

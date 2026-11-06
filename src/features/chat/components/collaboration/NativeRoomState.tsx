@@ -8,11 +8,12 @@ import type { Id } from '../../../../../convex/_generated/dataModel'
 import { useNativeCollaboration } from './NativeCollaborationProvider'
 import { useNativeRoomStateClient, type RoomAction } from '@/components/providers/native-room-state-client'
 import { useNativePresence } from './useNativePresence'
+import { settleIntents } from '@/components/providers/native-intent-overlays'
 
 export type RoomState = NonNullable<FunctionReturnType<typeof api.collaboration.nativeRoomState.getRoomState>>
 type Reactions = NonNullable<FunctionReturnType<typeof api.collaboration.nativeRoomState.listReactions>>
 export type RoomSnapshot = RoomState & { reactions: Reactions }
-export type RoomOverlay = { id: string; at: number; action: RoomAction }
+export type RoomOverlay = { id: string; at: number; action: RoomAction; settled?: boolean }
 
 export function applyRoomOverlay(state: RoomSnapshot, entry: RoomOverlay): RoomSnapshot {
   const a = entry.action
@@ -72,8 +73,11 @@ function useRoomStateOwner(workspaceId: string, conversationId: string, messageI
   const act = useCallback(async (action: RoomAction) => {
     const id = crypto.randomUUID()
     setEntries(current => [...current, { id, at: Date.now(), action }])
-    try { return await client.act(conversationId, action) }
-    finally { setEntries(current => current.filter(row => row.id !== id)) }
+    let committed = false
+    try { const result = await client.act(conversationId, action); committed = true; return result }
+    finally { setEntries(current => action.kind === 'setRoomArchived'
+      ? [...current.filter(row => row.action.kind !== 'setRoomArchived'), ...settleIntents(current.filter(row => row.action.kind === 'setRoomArchived'), id, committed)]
+      : current.filter(row => row.id !== id)) }
   }, [client, conversationId])
   const heartbeat = useCallback((payload: Parameters<typeof client.heartbeat>[1]) => client.heartbeat(conversationId, payload), [client, conversationId])
   return { snapshot, presence: snapshot ? presence : [], act, heartbeat, revoked: data === null || results.includes(null) }

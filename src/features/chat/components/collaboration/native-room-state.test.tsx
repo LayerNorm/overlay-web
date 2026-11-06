@@ -7,6 +7,7 @@ import { NativeRoomArchiveOverlayProvider, archiveOverlayRows, useRoomArchiveOve
 import { NativeRoomStateProvider, useNativeRoomMetadata, type RoomSnapshot, type RoomState } from './NativeRoomState'
 import { useRoomActions } from './room-lifecycle-actions'
 import { useRoomApi } from './room-state-adapters'
+import { useChatArchive } from '../ChatInlinePanel'
 
 const mocks = vi.hoisted(() => ({ presenceError: false, mutation: vi.fn(), announce: vi.fn(), error: vi.fn(), success: vi.fn(), push: vi.fn(), archived: vi.fn(), modified: vi.fn(), legacyPins: vi.fn(), report: vi.fn() }))
 vi.mock('convex/react', () => ({
@@ -51,6 +52,8 @@ let roomApi: ReturnType<typeof useRoomApi>
 let summary: { conversationId: typeof room; workspaceId: string; title: string; kind: 'direct'; lastModified: number; archivedAt?: number }
 let archivedIds: string[]
 let renderer: ReactTestRenderer | undefined
+let sidebarArchive: ReturnType<typeof useChatArchive>
+const navigateAway = vi.fn()
 
 function Probe() {
   const value = useNativeRoomMetadata()
@@ -62,6 +65,9 @@ function Probe() {
   return null
 }
 function ArchiveProbe() {
+  const sidebar = useChatArchive({ activeChatId: room, getNativeSummary: () => undefined, loadChats: async () => {},
+    navigateAwayFromArchivedChat: navigateAway, setNativeArchived: async () => {}, setEditingChatId() {} })
+  useLayoutEffect(() => { sidebarArchive = sidebar })
   const { entries } = useRoomArchiveOverlays()
   const rows = archiveOverlayRows(summary.archivedAt === undefined ? [summary] : [], summary.archivedAt === undefined ? [] : [summary], entries, true)
   useLayoutEffect(() => { archivedIds = rows.map(row => row.conversationId) })
@@ -96,6 +102,28 @@ beforeEach(() => {
 afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('native room metadata owner', () => {
+  it.each(['dm', 'channel'] as const)('sidebar %s archive and early Undo use native mutations and shared list intent', async conversationType => {
+    const archive = deferred(); const restore = deferred()
+    mocks.mutation.mockReturnValueOnce(archive.promise).mockReturnValueOnce(restore.promise)
+    await act(async () => { renderer = create(tree()) })
+    let operation!: Promise<void>
+    await act(async () => { operation = sidebarArchive.archiveChat({ _id: room, title: 'Room', lastModified: 1, conversationType }, 'self') })
+    expect(archivedIds).toEqual([room])
+    expect(navigateAway).toHaveBeenCalledWith(room)
+    expect(mocks.announce).toHaveBeenCalledTimes(1)
+    let undo!: Promise<void>
+    await act(async () => { undo = mocks.announce.mock.calls[0][0].undo() })
+    expect(archivedIds).toEqual([])
+    await act(async () => { restore.resolve(null); await undo })
+    expect(archivedIds).toEqual([])
+    await act(async () => { archive.resolve(null); await operation })
+    expect(archivedIds).toEqual([])
+    expect(mocks.mutation.mock.calls.map(([fn, args]) => [getFunctionName(fn), args.archived])).toEqual([
+      ['collaboration/nativeRoomState:setRoomArchived', true], ['collaboration/nativeRoomState:setRoomArchived', false],
+    ])
+    expect(mocks.archived).not.toHaveBeenCalled()
+    expect(mocks.modified).not.toHaveBeenCalled()
+  })
   it('historical sessions and presence errors do not make the room unavailable', async () => {
     presence = Array.from({ length: 250 }, (_, i) => ({ workspaceId: 'workspace', conversationId: room, principalId: 'bob', sessionId: `stale-${i}`, status: 'online', lastSeenAt: 1, expiresAt: 2, typingExpiresAt: 2 }))
     presence.push({ ...presence[0], sessionId: 'live', lastSeenAt: 100_000, expiresAt: 220_000, typingExpiresAt: 106_000 })
@@ -169,6 +197,7 @@ describe('native room metadata owner', () => {
     await act(async () => { operation = actions.archiveConversation('self') })
     expect(archivedIds).toEqual([room])
     expect(owner?.snapshot?.viewerState.archivedAt).toBe(100_000)
+    expect(mocks.announce).toHaveBeenCalledTimes(1)
     state = { ...state!, viewerState: { notificationLevel: 'all', archivedAt: 100_000 }, participants: state!.participants.map(row => ({ ...row, archivedAt: 100_000 })) }
     summary = { ...summary, archivedAt: 100_000 }
     await act(async () => { renderer!.update(tree()); archive.resolve(null); await operation })

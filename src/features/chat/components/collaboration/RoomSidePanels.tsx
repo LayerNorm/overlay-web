@@ -75,6 +75,7 @@ export function RoomPeoplePanel({
 }
 
 export function RoomThreadPanel({
+  history,
   readOnlyFooter,
   roomLabel,
   replyCount,
@@ -87,6 +88,7 @@ export function RoomThreadPanel({
   onClose,
   readOnlyNotice,
 }: {
+  history?: { hasMore: boolean; loading: boolean; loadMore(): void }
   readOnlyFooter?: ReactNode
   roomLabel: string
   replyCount: number
@@ -120,6 +122,10 @@ export function RoomThreadPanel({
         </Button>
       </div>
       <div className="overlay-chat-surface min-h-0 flex-1 overflow-y-auto p-4">
+        {history?.hasMore ? <Button variant="ghost" type="button" size="sm" disabled={history.loading} onClick={history.loadMore}>
+          {history.loading ? 'Loading older replies…' : 'Load older replies'}
+        </Button> : null}
+        {history?.loading && !history.hasMore ? <div role="status" className="py-2 text-xs text-(--muted)">Loading replies…</div> : null}
         <div className="flex flex-col gap-5">{messages}</div>
       </div>
       {readOnlyFooter ?? (readOnlyNotice ? (
