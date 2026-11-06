@@ -51,6 +51,20 @@ export interface WebKnowledgeAppClient {
   notes: NotesClientLike
 }
 
+export async function saveWebKnowledgeContent(
+  client: WebKnowledgeAppClient,
+  fileId: string,
+  content: string,
+  expectedUpdatedAt?: number,
+): Promise<boolean | { updatedAt: number }> {
+  const response = await client.files.updateResponse({ fileId, textContent: content, expectedUpdatedAt })
+  if (!response.ok) throw await responseError(response, 'Could not save file')
+  const body = await response.json().catch(() => null) as { updatedAt?: unknown } | null
+  return typeof body?.updatedAt === 'number' && Number.isFinite(body.updatedAt)
+    ? { updatedAt: body.updatedAt }
+    : true
+}
+
 type KnowledgeEventTarget = Pick<Window, 'addEventListener' | 'removeEventListener'>
   & Partial<Pick<Window, 'dispatchEvent'>>
 
@@ -154,11 +168,25 @@ export function createWebKnowledgeRepository(
       return node
     },
     async rename(input: KnowledgeRenameInput) {
-      const response = await client.files.updateResponse({ fileId: input.id, name: input.name })
+      const expectedUpdatedAt = input.expectedRevision === undefined
+        ? undefined
+        : Number(input.expectedRevision)
+      const response = await client.files.updateResponse({
+        fileId: input.id,
+        name: input.name,
+        ...(expectedUpdatedAt !== undefined && Number.isFinite(expectedUpdatedAt) ? { expectedUpdatedAt } : {}),
+      })
       if (!response.ok) throw await responseError(response, 'Could not rename file')
+      const body = await response.json().catch(() => null) as { updatedAt?: unknown } | null
       const current = byId.get(input.id) ?? await repository.get(input.id)
       if (!current) throw new Error(`Knowledge node ${input.id} was not found`)
-      const node = { ...current, name: input.name, updatedAt: Date.now() }
+      const node = {
+        ...current,
+        name: input.name,
+        ...(typeof body?.updatedAt === 'number' && Number.isFinite(body.updatedAt)
+          ? { updatedAt: body.updatedAt }
+          : {}),
+      }
       byId.set(node.id, node)
       emit({ type: 'updated', node })
       publish({ entity: node.kind === 'note' ? 'note' : 'file', id: node.id, operation: 'updated' })

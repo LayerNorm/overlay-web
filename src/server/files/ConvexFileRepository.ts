@@ -141,11 +141,25 @@ export class ConvexFileRepository implements FileRepository {
     }, { throwOnError: true }) ?? []
   }
 
-  async updateFile(args: Record<string, unknown> & { fileId: string; userId: string }): Promise<void> {
-    await convex.mutation('files/files:update', {
+  async updateFile(args: Record<string, unknown> & { fileId: string; userId: string }): Promise<void | { updatedAt: number }> {
+    const updateArgs = {
       ...args,
       serverSecret: this.serverSecret,
-    }, { throwOnError: true })
+    }
+    try {
+      const result = await convex.mutation<{ updatedAt: number } | null>('files/files:update', {
+        ...updateArgs,
+        returnRevision: true,
+      }, { throwOnError: true })
+      return result ?? undefined
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      if (!/returnRevision/i.test(message) || !/ArgumentValidationError|extra field|unexpected|validator/i.test(message)) {
+        throw error
+      }
+      await convex.mutation('files/files:update', updateArgs, { throwOnError: true })
+      return undefined
+    }
   }
 
   async removeFile(args: {

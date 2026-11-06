@@ -32,7 +32,10 @@ import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { ScopeBulkActions } from '@/components/layout/ScopeBulkActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope } from '@/shared/workspaces/panel-scope'
-import { createWebKnowledgeSurfaceAdapters } from '../adapters/webKnowledgeSurfaceAdapters'
+import {
+  createWebKnowledgeSurfaceAdapters,
+  saveWebKnowledgeContent,
+} from '../adapters/webKnowledgeSurfaceAdapters'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 import { responseError, uploadWebFile } from '../adapters/webKnowledgeFilePort'
 import { NativeKnowledgeBoundary } from './native-file-metadata'
@@ -124,9 +127,7 @@ export default function KnowledgeView({
 
   const files = useMemo<SharedKnowledgeFilePort>(() => ({
     async saveContent(fileId, content, expectedUpdatedAt) {
-      const response = await overlayAppClient.files.updateResponse({ fileId, textContent: content, expectedUpdatedAt })
-      if (!response.ok) throw new Error(await responseError(response, 'Could not save file'))
-      return true
+      return saveWebKnowledgeContent(overlayAppClient, fileId, content, expectedUpdatedAt)
     },
     upload: (file, parentId) => uploadWebFile(file, parentId, newItemScope(scope)),
     isEditable: isEditableType,

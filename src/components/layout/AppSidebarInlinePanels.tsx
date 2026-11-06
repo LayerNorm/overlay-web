@@ -45,6 +45,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { optimisticMove } from '@/shared/knowledge/native-file-metadata-optimistic'
+import { projectNativeFileSidebarRows } from '@/shared/knowledge/native-file-sidebar-projection'
 
 import { arrayOrEmpty } from './sidebar-nav'
 import type { InlineNavItem } from '@overlay/shell-react'
@@ -262,8 +263,6 @@ function NativeFilesInlinePanel({
   const searchParams = useSearchParams()
   const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
-  const [legacyNotes, setLegacyNotes] = useState<FileTreeEntry[]>([])
-  const [notesLoading, setNotesLoading] = useState(true)
   const activeFileId = searchParams?.get('file') ?? null
   const activeNoteId = searchParams?.get('id') ?? null
   const activeCanonicalFileId = activeFileId ?? activeNoteId
@@ -280,50 +279,15 @@ function NativeFilesInlinePanel({
     optimisticMove(store, args)
   })
 
-  const loadNotes = useCallback(async (signal?: AbortSignal) => {
-    setNotesLoading(true)
-    try {
-      const rows = await overlayAppClient.notes.get<NoteDoc[]>({ limit: 100, view: listView }, { signal })
-      setLegacyNotes(arrayOrEmpty<NoteDoc>(rows).map(noteDocToKnowledgeFile))
-    } catch {
-      if (!signal?.aborted) setLegacyNotes([])
-    } finally {
-      if (!signal?.aborted) setNotesLoading(false)
-    }
-  }, [listView])
-  const reloadNotes = useCallback(() => { void loadNotes() }, [loadNotes])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    void loadNotes(controller.signal)
-    return () => controller.abort()
-  }, [loadNotes])
-  useWorkspaceChanged(reloadNotes)
-  useEffect(() => {
-    const reloadLegacyNotes = (event?: Event) => {
-      const mutation = event ? (event as CustomEvent<unknown>).detail : null
-      if (!mutation || (isKnowledgeEntityMutation(mutation) && mutation.entity === 'note')) {
-        void loadNotes()
-      }
-    }
-    window.addEventListener(KNOWLEDGE_ENTITY_MUTATION_EVENT, reloadLegacyNotes)
-    window.addEventListener(KNOWLEDGE_RECONCILE_EVENT, reloadLegacyNotes)
-    window.addEventListener('online', reloadLegacyNotes)
-    return () => {
-      window.removeEventListener(KNOWLEDGE_ENTITY_MUTATION_EVENT, reloadLegacyNotes)
-      window.removeEventListener(KNOWLEDGE_RECONCILE_EVENT, reloadLegacyNotes)
-      window.removeEventListener('online', reloadLegacyNotes)
-    }
-  }, [loadNotes])
-
-  const nativeFiles = useMemo(() => fileResult && !(fileResult instanceof Error)
-    ? fileResult.nodes as unknown as FileTreeEntry[]
-    : [], [fileResult])
-  const nativeIds = useMemo(() => new Set(nativeFiles.map((file) => file._id)), [nativeFiles])
-  const files = useMemo(
-    () => [...nativeFiles, ...legacyNotes.filter((note) => !nativeIds.has(note._id))],
-    [legacyNotes, nativeFiles, nativeIds],
-  )
+  const nativeFiles = useMemo(() => projectNativeFileSidebarRows({
+    canQuery,
+    status: fileQuery.status === 'success' ? 'success' : fileQuery.status === 'error' ? 'error' : 'pending',
+    data: fileQuery.status === 'success'
+      ? { nodes: fileQuery.data.nodes as unknown as FileTreeEntry[] }
+      : undefined,
+  }), [canQuery, fileQuery])
+  const files = nativeFiles
+  const truncated = canQuery && fileQuery.status === 'success' && fileQuery.data.truncated
   const queryError = fileResult instanceof Error
     ? fileResult.message
     : workspaceReady && !workspaceId ? 'Workspace is unavailable.'
@@ -353,27 +317,18 @@ function NativeFilesInlinePanel({
   }
 
   async function moveFile(fileId: string, parentId: string | null) {
-    if (!canMoveFileInTree(files, fileId, parentId)) return
+    if (!canMoveFileInTree(nativeFiles, fileId, parentId)) return
     const nativeFile = nativeFiles.find((file) => file._id === fileId)
-    if (nativeFile && workspaceId) {
-      try {
-        await moveMutation({
-          workspaceId,
-          fileId: fileId as Id<'files'>,
-          expectedUpdatedAt: nativeFile.updatedAt,
-          parentId: parentId as Id<'files'> | null,
-        })
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Could not move file.')
-      }
-      return
-    }
-    const response = await overlayAppClient.files.updateResponse({ fileId, parentId })
-    if (response.ok) {
-      setLegacyNotes((current) => current.map((file) => file._id === fileId ? { ...file, parentId } : file))
-      window.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
-        detail: nextSidebarMutation({ entity: 'file', id: fileId, operation: 'moved' }),
-      }))
+    if (!nativeFile || !workspaceId) return
+    try {
+      await moveMutation({
+        workspaceId,
+        fileId: fileId as Id<'files'>,
+        expectedUpdatedAt: nativeFile.updatedAt,
+        parentId: parentId as Id<'files'> | null,
+      })
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not move file.')
     }
   }
 
@@ -383,9 +338,14 @@ function NativeFilesInlinePanel({
   return (
     <SidebarResourceList>
       {queryError ? <p className="px-3 py-2 text-xs text-red-400" role="alert">{queryError}</p> : null}
+      {truncated ? (
+        <p className="px-3 py-2 text-xs text-(--muted-light)" role="status">
+          Only part of this file list is shown.
+        </p>
+      ) : null}
       <FilesInlineTree
         files={filteredFiles}
-        loading={!workspaceReady || authLoading || (canQuery && fileResult === undefined) || notesLoading}
+        loading={!workspaceReady || authLoading || (canQuery && fileResult === undefined)}
         loadingContent={<SidebarListSkeleton rows={7} />}
         emptyLabel={query ? 'No results' : 'No files yet'}
         activeFileId={activeCanonicalFileId}

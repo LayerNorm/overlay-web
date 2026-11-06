@@ -44,6 +44,92 @@ function updateDetail(
   }
 }
 
+function collectCachedNodes(store: OptimisticLocalStore, workspaceId: string) {
+  const allNodes = new Map<string, NativeFile>()
+  for (const query of sameWorkspace(store, workspaceId)) {
+    for (const node of query.value!.nodes) {
+      const previous = allNodes.get(node._id)
+      if (!previous || node.updatedAt >= previous.updatedAt) allNodes.set(node._id, node)
+    }
+  }
+  for (const query of store.getAllQueries(api.files.nativeMetadata.detail)) {
+    if (query.args.workspaceId !== workspaceId || !query.value) continue
+    const node = query.value as NativeFile
+    const previous = allNodes.get(node._id)
+    if (!previous || node.updatedAt >= previous.updatedAt) allNodes.set(node._id, node)
+  }
+  return allNodes
+}
+
+function collectSubtree(allNodes: Map<string, NativeFile>, rootId: string) {
+  const subtree = new Set<string>([rootId])
+  let changed = true
+  while (changed) {
+    changed = false
+    for (const node of allNodes.values()) {
+      if (node.parentId && subtree.has(node.parentId) && !subtree.has(node._id)) {
+        subtree.add(node._id)
+        changed = true
+      }
+    }
+  }
+  return subtree
+}
+
+function scopeUpdatedNode(node: NativeFile, root: NativeFile, action: ScopeAction, to?: PanelScope) {
+  if (action === 'archive') {
+    return { ...node, archivedAt: Date.now(), archivedFromScope: node.scope }
+  }
+  if (action === 'restore') {
+    return {
+      ...node,
+      scope: node.archivedFromScope ?? node.scope,
+      archivedAt: undefined,
+      archivedFromScope: undefined,
+    }
+  }
+  return {
+    ...node,
+    scope: to ?? node.scope,
+    ...(node._id === root._id ? { parentId: null } : {}),
+  }
+}
+
+function applyScopeToLists(
+  store: OptimisticLocalStore,
+  workspaceId: string,
+  root: NativeFile,
+  updatedNodes: Map<string, NativeFile>,
+) {
+  for (const query of sameWorkspace(store, workspaceId)) {
+    const view = query.args.view
+    const nodes = new Map<string, NativeFile>(query.value!.nodes.map((node) => [node._id, node]))
+    for (const [id, node] of updatedNodes) {
+      const inView = view === 'archived'
+        ? node.archivedAt !== undefined
+        : node.archivedAt === undefined && node.scope === view
+          && (view !== 'personal' || node.userId === root.userId)
+      if (inView) nodes.set(id, node)
+      else nodes.delete(id)
+    }
+    store.setQuery(api.files.nativeMetadata.list, query.args, {
+      ...query.value!,
+      nodes: [...nodes.values()],
+    })
+  }
+}
+
+function applyScopeToDetails(
+  store: OptimisticLocalStore,
+  workspaceId: string,
+  allNodes: Map<string, NativeFile>,
+  updatedNodes: Map<string, NativeFile>,
+) {
+  for (const [id, node] of updatedNodes) {
+    updateDetail(store, workspaceId, id, allNodes.get(id)!.updatedAt, () => node)
+  }
+}
+
 export function optimisticRename(
   store: OptimisticLocalStore,
   args: { workspaceId: string; fileId: Id<'files'>; expectedUpdatedAt: number; name: string },
@@ -57,7 +143,6 @@ export function optimisticRename(
       ...node,
       name: args.name.trim(),
       extension: dot > 0 ? args.name.slice(dot + 1).toLowerCase() || undefined : undefined,
-      updatedAt: Math.max(Date.now(), node.updatedAt + 1),
     }
     store.setQuery(api.files.nativeMetadata.list, query.args, {
       ...query.value!,
@@ -70,7 +155,6 @@ export function optimisticRename(
     extension: args.name.lastIndexOf('.') > 0
       ? args.name.slice(args.name.lastIndexOf('.') + 1).toLowerCase() || undefined
       : undefined,
-    updatedAt: Math.max(Date.now(), node.updatedAt + 1),
   }))
 }
 
@@ -88,14 +172,13 @@ export function optimisticMove(
     const current = query.value!.nodes.find((node) => node._id === args.fileId)
     if (!current || current.updatedAt !== args.expectedUpdatedAt) continue
     const nodes = query.value!.nodes.map((node) => node._id === args.fileId
-      ? { ...node, parentId: args.parentId, updatedAt: Math.max(Date.now(), node.updatedAt + 1) }
+      ? { ...node, parentId: args.parentId }
       : node)
     store.setQuery(api.files.nativeMetadata.list, query.args, { ...query.value!, nodes })
   }
   updateDetail(store, args.workspaceId, args.fileId, args.expectedUpdatedAt, (node) => ({
     ...node,
     parentId: args.parentId,
-    updatedAt: Math.max(Date.now(), node.updatedAt + 1),
   }))
 }
 
@@ -109,73 +192,16 @@ export function optimisticScopeChange(
     to?: PanelScope
   },
 ) {
-  const queries = sameWorkspace(store, args.workspaceId)
-  const allNodes = new Map<string, NativeFile>()
-  for (const query of queries) {
-    for (const node of query.value!.nodes) {
-      const previous = allNodes.get(node._id)
-      if (!previous || node.updatedAt >= previous.updatedAt) allNodes.set(node._id, node)
-    }
-  }
-  for (const query of store.getAllQueries(api.files.nativeMetadata.detail)) {
-    if (query.args.workspaceId !== args.workspaceId || !query.value) continue
-    const node = query.value as NativeFile
-    const previous = allNodes.get(node._id)
-    if (!previous || node.updatedAt >= previous.updatedAt) allNodes.set(node._id, node)
-  }
+  const allNodes = collectCachedNodes(store, args.workspaceId)
   const root = allNodes.get(args.fileId)
   if (!root || root.updatedAt !== args.expectedUpdatedAt) return
-  const subtree = new Set<string>([root._id])
-  let changed = true
-  while (changed) {
-    changed = false
-    for (const node of allNodes.values()) {
-      if (node.parentId && subtree.has(node.parentId) && !subtree.has(node._id)) {
-        subtree.add(node._id)
-        changed = true
-      }
-    }
-  }
-  const now = Date.now()
+  const subtree = collectSubtree(allNodes, root._id)
   const updatedNodes = new Map<string, NativeFile>()
   for (const id of subtree) {
     const node = allNodes.get(id)
     if (!node) continue
-    const updated = args.action === 'archive'
-      ? { ...node, archivedAt: now, archivedFromScope: node.scope, updatedAt: Math.max(now, node.updatedAt + 1) }
-      : args.action === 'restore'
-        ? {
-          ...node,
-          scope: node.archivedFromScope ?? node.scope,
-          archivedAt: undefined,
-          archivedFromScope: undefined,
-          updatedAt: Math.max(now, node.updatedAt + 1),
-        }
-        : {
-          ...node,
-          scope: args.to ?? node.scope,
-          ...(node._id === root._id ? { parentId: null } : {}),
-          updatedAt: Math.max(now, node.updatedAt + 1),
-        }
-    updatedNodes.set(id, updated)
+    updatedNodes.set(id, scopeUpdatedNode(node, root, args.action, args.to))
   }
-  for (const query of queries) {
-    const view = query.args.view
-    const nodes = new Map<string, NativeFile>(query.value!.nodes.map((node) => [node._id, node]))
-    for (const [id, node] of updatedNodes) {
-      const inView = view === 'archived'
-        ? node.archivedAt !== undefined
-        : node.archivedAt === undefined && node.scope === view
-          && (view !== 'personal' || node.userId === root.userId)
-      if (inView) nodes.set(id, node)
-      else nodes.delete(id)
-    }
-    store.setQuery(api.files.nativeMetadata.list, query.args, {
-      ...query.value!,
-      nodes: [...nodes.values()],
-    })
-  }
-  for (const id of subtree) {
-    updateDetail(store, args.workspaceId, id, allNodes.get(id)!.updatedAt, () => updatedNodes.get(id) ?? null)
-  }
+  applyScopeToLists(store, args.workspaceId, root, updatedNodes)
+  applyScopeToDetails(store, args.workspaceId, allNodes, updatedNodes)
 }

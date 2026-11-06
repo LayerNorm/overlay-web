@@ -329,6 +329,28 @@ test('FileService moves text between inline and object storage as it grows and s
   assert.deepEqual(storage.deletedKeys, [grownKey])
 })
 
+test('FileService.updateFile forwards only an acknowledged server revision', async () => {
+  const acknowledged = createService(createRepository({
+    async updateFile() {
+      return { updatedAt: 84 }
+    },
+  }))
+  assert.deepEqual(await acknowledged.updateFile({
+    userId: 'user_1',
+    body: { fileId: 'f1', name: 'renamed.txt' },
+  }), { success: true, updatedAt: 84 })
+
+  const legacy = createService(createRepository({
+    async updateFile() {
+      return undefined
+    },
+  }))
+  assert.deepEqual(await legacy.updateFile({
+    userId: 'user_1',
+    body: { fileId: 'f1', name: 'legacy.txt' },
+  }), { success: true })
+})
+
 test('FileService.createUploadUrl returns current upload-url DTO and records intent', async () => {
   const repository = createRepository()
   const service = createService(repository)

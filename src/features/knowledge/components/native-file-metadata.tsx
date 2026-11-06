@@ -233,6 +233,137 @@ export function NativeKnowledgeBoundary({
   )
 }
 
+type NativeMetadataNode = Parameters<typeof normalizeKnowledgeSurfaceNode>[0]
+type NativeListResult = { nodes: readonly NativeMetadataNode[]; truncated: boolean }
+type NativeQueryValue<T> = T | Error | null | undefined
+
+function deriveNativeMetadata({
+  listResult,
+  detailResult,
+  route,
+  workspaceId,
+  workspaceReady,
+  authLoading,
+  isAuthenticated,
+  canQuery,
+  readinessLoading,
+}: {
+  listResult: NativeQueryValue<NativeListResult>
+  detailResult: NativeQueryValue<NativeMetadataNode>
+  route: SharedKnowledgeRouteState
+  workspaceId: string | null
+  workspaceReady: boolean
+  authLoading: boolean
+  isAuthenticated: boolean
+  canQuery: boolean
+  readinessLoading: boolean
+}) {
+  const nativeNodes = listResult && !(listResult instanceof Error)
+    ? listResult.nodes.map((node) => normalizeKnowledgeSurfaceNode(node))
+    : []
+  const listError = listResult instanceof Error
+    ? listResult.message
+    : workspaceReady && !workspaceId ? 'Workspace is unavailable.'
+      : !authLoading && !isAuthenticated ? 'Native file metadata is unavailable.' : null
+  const detailNode = detailResult && !(detailResult instanceof Error)
+    ? normalizeKnowledgeSurfaceNode(detailResult)
+    : null
+  const detailError = detailResult instanceof Error
+    ? detailResult.message
+    : route.file && workspaceReady && !workspaceId ? 'Workspace is unavailable.'
+      : route.file && !authLoading && !isAuthenticated ? 'Native file metadata is unavailable.' : null
+  const snapshot: ControlledKnowledgeFileSnapshot = {
+    nodes: nativeNodes,
+    loading: readinessLoading || (canQuery && listResult === undefined),
+    error: listError,
+    truncated: listResult && !(listResult instanceof Error) ? listResult.truncated : false,
+    detailFileId: route.file,
+    detail: detailNode,
+    detailLoading: Boolean(route.file && (readinessLoading || (canQuery && detailResult === undefined))),
+    detailError,
+  }
+  return { nativeNodes, listError, detailNode, snapshot }
+}
+
+function useNativeKnowledgeSnapshot({
+  route,
+  workspaceId,
+  workspaceReady,
+  listView,
+}: {
+  route: SharedKnowledgeRouteState
+  workspaceId: string | null
+  workspaceReady: boolean
+  listView: PanelScope
+}) {
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
+  const convex = useConvex()
+  const canQuery = Boolean(workspaceReady && workspaceId && !authLoading && isAuthenticated)
+  const readinessLoading = !workspaceReady || authLoading
+  const listArgs = canQuery
+    ? { workspaceId: workspaceId!, view: listView === 'workspace' ? 'workspace' as const : 'personal' as const }
+    : 'skip' as const
+  const detailArgs = canQuery && route.file
+    ? { workspaceId: workspaceId!, fileId: route.file as Id<'files'> }
+    : 'skip' as const
+  const listQuery = useQuery_experimental({ query: api.files.nativeMetadata.list, args: listArgs })
+  const detailQuery = useQuery_experimental({ query: api.files.nativeMetadata.detail, args: detailArgs })
+  const renameMutation = useMutation(api.files.nativeMetadata.rename).withOptimisticUpdate((store, args) => {
+    optimisticRename(store, args)
+  })
+  const moveMutation = useMutation(api.files.nativeMetadata.move).withOptimisticUpdate((store, args) => {
+    optimisticMove(store, args)
+  })
+  const scopeMutation = useMutation(api.files.nativeMetadata.changeScope).withOptimisticUpdate((store, args) => {
+    optimisticScopeChange(store, args)
+  })
+  const metadata = useMemo(() => deriveNativeMetadata({
+    listResult: listQuery.status === 'success'
+      ? listQuery.data
+      : listQuery.status === 'error' ? listQuery.error : undefined,
+    detailResult: detailQuery.status === 'success'
+      ? detailQuery.data
+      : detailQuery.status === 'error' ? detailQuery.error : undefined,
+    route,
+    workspaceId,
+    workspaceReady,
+    authLoading,
+    isAuthenticated,
+    canQuery,
+    readinessLoading,
+  }), [
+    authLoading,
+    canQuery,
+    detailQuery,
+    isAuthenticated,
+    listQuery,
+    readinessLoading,
+    route,
+    workspaceId,
+    workspaceReady,
+  ])
+  const { nativeNodes, listError, detailNode, snapshot } = metadata
+  const nativeNodesRef = useRef(nativeNodes)
+  const detailNodeRef = useRef(detailNode)
+  useEffect(() => {
+    nativeNodesRef.current = nativeNodes
+    detailNodeRef.current = detailNode
+  }, [detailNode, nativeNodes])
+  return {
+    convex,
+    canQuery,
+    nativeNodes,
+    nativeNodesRef,
+    detailNode,
+    detailNodeRef,
+    snapshot,
+    listError,
+    renameMutation,
+    moveMutation,
+    scopeMutation,
+  }
+}
+
 function NativeKnowledgeConnected({
   mode,
   initialMemories,
@@ -264,64 +395,19 @@ function NativeKnowledgeConnected({
   workspaceReady: boolean
   listView: PanelScope
 }) {
-  const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
-  const convex = useConvex()
-  const canQuery = Boolean(workspaceReady && workspaceId && !authLoading && isAuthenticated)
-  const readinessLoading = !workspaceReady || authLoading
-  const listArgs = canQuery
-    ? { workspaceId: workspaceId!, view: listView === 'workspace' ? 'workspace' as const : 'personal' as const }
-    : 'skip' as const
-  const detailArgs = canQuery && route.file
-    ? { workspaceId: workspaceId!, fileId: route.file as Id<'files'> }
-    : 'skip' as const
-  const listQuery = useQuery_experimental({ query: api.files.nativeMetadata.list, args: listArgs })
-  const detailQuery = useQuery_experimental({ query: api.files.nativeMetadata.detail, args: detailArgs })
-  const listResult = listQuery.status === 'success'
-    ? listQuery.data
-    : listQuery.status === 'error' ? listQuery.error : undefined
-  const detailResult = detailQuery.status === 'success'
-    ? detailQuery.data
-    : detailQuery.status === 'error' ? detailQuery.error : undefined
-  const renameMutation = useMutation(api.files.nativeMetadata.rename).withOptimisticUpdate((store, args) => {
-    optimisticRename(store, args)
-  })
-  const moveMutation = useMutation(api.files.nativeMetadata.move).withOptimisticUpdate((store, args) => {
-    optimisticMove(store, args)
-  })
-  const scopeMutation = useMutation(api.files.nativeMetadata.changeScope).withOptimisticUpdate((store, args) => {
-    optimisticScopeChange(store, args)
-  })
-
-  const nativeNodes = useMemo(() => listResult && !(listResult instanceof Error)
-    ? listResult.nodes.map((node) => normalizeKnowledgeSurfaceNode(node))
-    : [], [listResult])
-  const listError = listResult instanceof Error
-    ? listResult.message
-    : workspaceReady && !workspaceId ? 'Workspace is unavailable.'
-      : !authLoading && !isAuthenticated ? 'Native file metadata is unavailable.' : null
-  const detailNode = useMemo(() => detailResult && !(detailResult instanceof Error)
-    ? normalizeKnowledgeSurfaceNode(detailResult)
-    : null, [detailResult])
-  const nativeNodesRef = useRef(nativeNodes)
-  const detailNodeRef = useRef(detailNode)
-  useEffect(() => {
-    nativeNodesRef.current = nativeNodes
-    detailNodeRef.current = detailNode
-  }, [detailNode, nativeNodes])
-  const detailError = detailResult instanceof Error
-    ? detailResult.message
-    : route.file && workspaceReady && !workspaceId ? 'Workspace is unavailable.'
-      : route.file && !authLoading && !isAuthenticated ? 'Native file metadata is unavailable.' : null
-  const snapshot: ControlledKnowledgeFileSnapshot = {
-    nodes: nativeNodes,
-    loading: readinessLoading || (canQuery && listResult === undefined),
-    error: listError,
-    truncated: listResult && !(listResult instanceof Error) ? listResult.truncated : false,
-    detailFileId: route.file,
-    detail: detailNode,
-    detailLoading: Boolean(route.file && (readinessLoading || (canQuery && detailResult === undefined))),
-    detailError,
-  }
+  const {
+    convex,
+    canQuery,
+    nativeNodes,
+    nativeNodesRef,
+    detailNode,
+    detailNodeRef,
+    snapshot,
+    listError,
+    renameMutation,
+    moveMutation,
+    scopeMutation,
+  } = useNativeKnowledgeSnapshot({ route, workspaceId, workspaceReady, listView })
 
   const nativeActions = useMemo<NativeActions>(() => ({
     async run(id, action, to) {
@@ -389,7 +475,7 @@ function NativeKnowledgeConnected({
         return normalizeKnowledgeSurfaceNode(result)
       },
     },
-  }), [adapters, moveMutation, renameMutation, workspaceId])
+  }), [adapters, detailNodeRef, moveMutation, nativeNodesRef, renameMutation, workspaceId])
 
   const nativeFilePort = useMemo<SharedKnowledgeFilePort>(() => ({
     ...filePort,

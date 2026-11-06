@@ -93,7 +93,7 @@ export interface FileRepository {
     userId: string
     workspaceId?: string
   }): Promise<string[]>
-  updateFile(args: Record<string, unknown> & { fileId: string; userId: string }): Promise<void>
+  updateFile(args: Record<string, unknown> & { fileId: string; userId: string }): Promise<void | { updatedAt: number }>
   removeFile(args: {
     fileId: string
     r2CleanupConfirmed?: boolean

@@ -10,6 +10,7 @@ import {
   createWebKnowledgeRepository,
   createWebKnowledgeRouteAdapter,
   createWebKnowledgeSurfaceAdapters,
+  saveWebKnowledgeContent,
   type WebKnowledgeAppClient,
 } from './webKnowledgeSurfaceAdapters'
 
@@ -193,4 +194,18 @@ test('web repositories consume mutation payloads without refetching the list', a
   assert.ok(names.includes('Payload update'))
   assert.equal(fileLists, 2)
   unsubscribe()
+})
+
+test('web content saves return the exact acknowledged server revision and preserve legacy responses', async () => {
+  const client = createClient()
+  const requests: Array<Record<string, unknown>> = []
+  client.files.updateResponse = async (input) => {
+    requests.push(input as Record<string, unknown>)
+    return Response.json({ success: true, updatedAt: 47 })
+  }
+  assert.deepEqual(await saveWebKnowledgeContent(client, 'file-1', 'draft', 42), { updatedAt: 47 })
+  assert.deepEqual(requests, [{ fileId: 'file-1', textContent: 'draft', expectedUpdatedAt: 42 }])
+
+  client.files.updateResponse = async () => Response.json({ success: true })
+  assert.equal(await saveWebKnowledgeContent(client, 'file-1', 'legacy draft', 42), true)
 })

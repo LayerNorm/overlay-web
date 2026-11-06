@@ -410,13 +410,14 @@ export class FileService {
     body: Record<string, unknown>
     userId: string
     workspaceId?: string
-  }): Promise<{ success: true }> {
+  }): Promise<{ success: true; updatedAt?: number }> {
     const updateArgs = buildUpdateFileArgs(args.body, args.userId)
     const placement = typeof updateArgs.content === 'string'
       ? await this.placeUpdatedText(updateArgs as typeof updateArgs & { content: string }, args.userId)
       : null
+    let acknowledgement: void | { updatedAt: number }
     try {
-      await this.deps.repository.updateFile(updateArgs)
+      acknowledgement = await this.deps.repository.updateFile(updateArgs)
     } catch (error) {
       if (placement?.uploadedKey) await this.storage.deleteObject(placement.uploadedKey).catch((_error) => undefined)
       // `expectedUpdatedAt` guards agent writes against a concurrent edit.
@@ -426,7 +427,12 @@ export class FileService {
       throw error
     }
     if (placement?.staleKey) await this.storage.deleteObject(placement.staleKey).catch((_error) => undefined)
-    return { success: true }
+    return {
+      success: true,
+      ...(acknowledgement && Number.isFinite(acknowledgement.updatedAt)
+        ? { updatedAt: acknowledgement.updatedAt }
+        : {}),
+    }
   }
 
   /**

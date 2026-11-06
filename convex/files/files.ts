@@ -1126,11 +1126,12 @@ export const update = mutation({
     outputCompletedAt: v.optional(v.number()),
     expiresAt: v.optional(v.number()),
     expectedUpdatedAt: v.optional(v.number()),
+    returnRevision: v.optional(v.boolean()),
     /** An agent or outside app made the change: counted as an edit, credited to no person. */
     byAgent: v.optional(v.boolean()),
   },
-  returns: v.null(),
-  handler: async (ctx, { userId: callerId, workspaceId, accessToken, serverSecret, fileId, byAgent, ...updates }) => {
+  returns: v.union(v.null(), v.object({ updatedAt: v.number() })),
+  handler: async (ctx, { userId: callerId, workspaceId, accessToken, serverSecret, fileId, byAgent, returnRevision, ...updates }) => {
     await authorizeUserAccess({ userId: callerId, accessToken, serverSecret })
     const existing = await ctx.db.get(fileId)
     if (!existing || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, callerId).canEdit(existing))) throw new Error('Unauthorized')
@@ -1154,7 +1155,8 @@ export const update = mutation({
     if (blobOnly && nextText !== undefined && kind !== 'output') {
       throw new Error('Storage-backed files cannot be edited inline.')
     }
-    const patch: Record<string, unknown> = { updatedAt: Date.now() }
+    const updatedAt = Math.max(Date.now(), existing.updatedAt + 1)
+    const patch: Record<string, unknown> = { updatedAt }
     if (updates.name !== undefined) {
       patch.name = fileName(kind, updates.name)
       patch.extension = extensionOf(updates.name)
@@ -1216,7 +1218,7 @@ export const update = mutation({
         ? updates.contentHash !== existing.contentHash
         : nextText !== existingText
       if (kind !== 'output' && textChanged) {
-        await recordFileEdit(ctx, fileId, byAgent ? undefined : callerId, patch.updatedAt as number)
+        await recordFileEdit(ctx, fileId, byAgent ? undefined : callerId, updatedAt)
       }
       // Legacy rows can still carry textContent, which readers prefer over
       // content. Remove it when writing canonical text so it cannot mask a save.
@@ -1242,7 +1244,7 @@ export const update = mutation({
     if (shouldReindex) {
       await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId })
     }
-    return null
+    return returnRevision ? { updatedAt } : null
   },
 })
 

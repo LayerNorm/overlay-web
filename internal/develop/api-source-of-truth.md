@@ -348,6 +348,16 @@ credentials are never public contract fields.
 
 `GET /api/v1/files?page=true&limit=<n>&cursor=<cursor>` returns the standard `{ data, nextCursor, hasMore }` envelope. `@overlay/api-client` exposes this through `files.getPage()`. Calls without `page=true` retain the historical array response, backed by the same bounded first page, so older web/desktop consumers remain compatible during rollout. Convex serves pages through `files/files:listPage`; the legacy `files/files:list` query is capped and exists only for compatibility and internal adapters that have not adopted cursors yet.
 
+`PATCH /api/v1/files` accepts `expectedUpdatedAt` for stale-write protection and
+returns `{ success: true, updatedAt }` when the backend supplies an authoritative
+revision acknowledgment. An older backend may return the compatible
+`{ success: true }` response without `updatedAt`; clients must not synthesize a
+revision from local time or a later subscription. The native controlled viewer
+clears a draft only when its selection epoch and draft generation still match
+and the current server revision is the original or acknowledged revision.
+Canonical native Notes are file metadata with `kind: "note"` and retain the
+existing Notes editor; this does not migrate the legacy Notes HTTP/sidebar path.
+
 ## Database pagination (Phase B)
 
 Convex list queries for conversations, notes, and automations now accept `limit` and cursor parameters (`beforeLastModified` for conversations, `beforeUpdatedAt` for others). The default page size is 100 (down from unbounded/200/300). Over-fetch is bounded at 3x the page limit to account for in-memory filters. The BFF `paginateArray` helper still handles final client-facing pagination on the merged result.

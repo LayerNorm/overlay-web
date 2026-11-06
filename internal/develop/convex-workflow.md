@@ -425,28 +425,38 @@ existing authorized HTTP content/download paths. Opening content requires a
 successful subscribed detail result; the HTTP response must match both file ID
 and `updatedAt`, and the content URL includes that revision. The viewer selects
 the metadata shell immediately, aborts or ignores obsolete requests, and clears
-content when detail authorization is lost. Dirty drafts remain visible with an
-explicit conflict until reopened; saves and metadata renames carry the revision
-captured at edit time.
+content and title when detail authorization is lost. Saves and metadata renames
+carry the revision captured at edit time. Only a server-returned revision can
+acknowledge a native save; optimistic metadata never invents `updatedAt`.
+Selection epochs and per-draft generations prevent a late read or acknowledgment
+from overwriting a newer edit or a different file selection. A newer remote
+revision remains a conflict until the file is reopened.
 
-Rename, folder move, scope move, archive, restore and share-visibility mutations
-require `expectedUpdatedAt`. List and detail optimistic updates are scoped to
+Rename, folder move, scope move, archive and restore require
+`expectedUpdatedAt`. List, detail and subtree optimistic updates are scoped to
 the matching workspace and use Convex rebase/rollback rather than restoring a
-captured array. Scope/archive updates include the bounded subtree; archive Undo
-fetches fresh detail before sending its revision. Non-owner reads and edits must
-satisfy both workspace resource-scope visibility and active direct, group or
-role grants, as well as the mapped capability and current `files` deployment
-policy lease. There is no operator bypass. Lists check at most 501 rows per
-indexed scope, subtree mutations are capped at 500 rows, and successful writes
-are audited and rate-limited to 300 per verified user per 10 minutes.
+captured array; they preserve the authoritative revision. Scope/archive updates
+include the bounded subtree; archive Undo fetches fresh detail before sending
+its revision. Non-owner reads require workspace resource-scope visibility and
+an applicable direct, group or role grant. Non-owner metadata writes additionally
+require scope-level edit capability; a file grant alone does not grant write
+authority. All operations require the mapped capability and current `files`
+deployment policy lease. There is no operator bypass. Lists check at most 501
+rows per indexed scope, subtree mutations are capped at 500 rows, and
+successful writes are audited and rate-limited to 300 per verified user per
+10 minutes.
 
-The API supports owner-only share-visibility changes subject to the persisted
-workspace `publicLinksEnabled` policy; no share controls are migrated into these
-surfaces. Notes, memory, create/upload/delete cleanup and legacy HTTP consumers
-remain on their existing paths. Native metadata mutations do not publish
-synthetic legacy commit events. Rollback is web-first: disable native web
-ownership before removing handlers or schema support, and retain the authorized
-content/download routes.
+Native Notes are canonical `kind: "note"` files in the native metadata list and
+continue to open in the retained Notes editor. The native sidebar does not merge
+legacy HTTP Notes rows; the legacy sidebar and its Notes path remain unchanged.
+The native sidebar and shared surface display `Only part of this file list is
+shown.` when the bounded result is truncated; this is a warning, not cursor
+pagination. Share-visibility controls are not migrated into these surfaces.
+Notes, memory, create/upload/delete cleanup and legacy HTTP consumers remain on
+their existing paths. Native metadata mutations do not publish synthetic
+legacy commit events. Rollback is web-first: disable native web ownership before
+removing handlers or schema support, and retain the authorized content/download
+routes.
 
 Worked example: rename `files.name` to `displayName` (illustrative; this migration
 does not change the current schema).

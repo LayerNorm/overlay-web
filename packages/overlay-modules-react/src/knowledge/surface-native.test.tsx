@@ -48,6 +48,9 @@ function createSurfaceProps(options: {
   snapshot: ControlledKnowledgeFileSnapshot
   routeFile: string | null
   getFile(id: string, signal?: AbortSignal): Promise<KnowledgeFileNode | null>
+  saveContent?(fileId: string, content: string, expectedUpdatedAt?: number): Promise<boolean | { updatedAt: number }>
+  rename?(input: { id: string; name: string; expectedRevision?: string }): Promise<KnowledgeFileNode>
+  isEditable?: () => boolean
   onList?(): void
   onSubscribe?(): void
 }) {
@@ -65,6 +68,11 @@ function createSurfaceProps(options: {
       async get(id: string, signal?: AbortSignal) {
         const file = await options.getFile(id, signal)
         return file ? normalizeKnowledgeSurfaceNode(file) : null
+      },
+      async rename(input: { id: string; name: string; expectedRevision?: string }) {
+        return options.rename
+          ? normalizeKnowledgeSurfaceNode(await options.rename(input))
+          : fixture.repository.rename(input)
       },
       subscribe(listener: Parameters<typeof fixture.repository.subscribe>[0]) {
         options.onSubscribe?.()
@@ -87,9 +95,9 @@ function createSurfaceProps(options: {
     adapters,
     memories: { list: async () => [], create: async () => ({ ok: true }), delete: async () => true },
     files: {
-      saveContent: async () => true,
+      saveContent: options.saveContent ?? (async () => true),
       upload: async () => ({ ok: true }),
-      isEditable: () => false,
+      isEditable: options.isEditable ?? (() => false),
       contentUrl: () => undefined,
       entityChanged() {},
     },
@@ -105,6 +113,16 @@ function viewer(renderer: ReactTestRenderer) {
     .map((node) => ({ id: node.props['data-viewer-file'], text: node.children.join('') }))
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (error: Error) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
+
 test('controlled native file snapshots bypass legacy list and subscription paths', async () => {
   let listCalls = 0
   let subscribeCalls = 0
@@ -112,7 +130,7 @@ test('controlled native file snapshots bypass legacy list and subscription paths
     nodes: [fileA],
     loading: false,
     error: null,
-    truncated: false,
+    truncated: true,
     detailFileId: null,
     detail: null,
     detailLoading: false,
@@ -130,6 +148,13 @@ test('controlled native file snapshots bypass legacy list and subscription paths
   })
   assert.equal(listCalls, 0)
   assert.equal(subscribeCalls, 0)
+  assert.equal(renderer.root.findAll((node) => node.children.join('') === 'Only part of this file list is shown.').length, 1)
+  await act(async () => renderer.update(React.createElement(SharedKnowledgeSurface, createSurfaceProps({
+    snapshot: { ...snapshot, truncated: false },
+    routeFile: null,
+    getFile: async () => null,
+  }))))
+  assert.equal(renderer.root.findAll((node) => node.children.join('') === 'Only part of this file list is shown.').length, 0)
   await act(async () => renderer.unmount())
 })
 
@@ -317,5 +342,201 @@ test('content saves use the selected metadata revision', async () => {
     await new Promise((resolve) => setTimeout(resolve, 850))
   })
   assert.deepEqual(saved, [{ id: fileA._id, content: 'draft', expectedUpdatedAt: fileA.updatedAt }])
+  await act(async () => renderer.unmount())
+})
+
+test('a native content save acknowledges a subscription revision delivered before its response', async () => {
+  const save = deferred<boolean | { updatedAt: number }>()
+  const snapshot: ControlledKnowledgeFileSnapshot = {
+    nodes: [fileA],
+    loading: false,
+    error: null,
+    truncated: false,
+    detailFileId: fileA._id,
+    detail: fileA,
+    detailLoading: false,
+    detailError: null,
+  }
+  const makeProps = (current: ControlledKnowledgeFileSnapshot) => createSurfaceProps({
+    snapshot: current,
+    routeFile: fileA._id,
+    getFile: async () => ({ ...fileA, textContent: 'server content' }),
+    saveContent: async () => save.promise,
+    isEditable: () => true,
+  })
+  let renderer!: ReactTestRenderer
+  await act(async () => {
+    renderer = create(React.createElement(SharedKnowledgeSurface, makeProps(snapshot)))
+  })
+  await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'saved draft' } }))
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 850)))
+
+  const updated = { ...fileA, updatedAt: 11 }
+  await act(async () => renderer.update(React.createElement(SharedKnowledgeSurface, makeProps({
+    ...snapshot,
+    nodes: [updated],
+    detail: updated,
+  }))))
+  await act(async () => save.resolve({ updatedAt: 11 }))
+
+  assert.equal(renderer.root.findByType('textarea').props.value, 'saved draft')
+  assert.equal(renderer.root.findByType('textarea').props.readOnly, false)
+  assert.equal(renderer.root.findAll((node) => node.children.join('').includes('draft is still here')).length, 0)
+  await act(async () => renderer.unmount())
+})
+
+test('a native rename acknowledges its subscribed revision without a false conflict', async () => {
+  const rename = deferred<KnowledgeFileNode>()
+  const snapshot: ControlledKnowledgeFileSnapshot = {
+    nodes: [fileA],
+    loading: false,
+    error: null,
+    truncated: false,
+    detailFileId: fileA._id,
+    detail: fileA,
+    detailLoading: false,
+    detailError: null,
+  }
+  const makeProps = (current: ControlledKnowledgeFileSnapshot) => createSurfaceProps({
+    snapshot: current,
+    routeFile: fileA._id,
+    getFile: async () => ({ ...fileA, textContent: 'server content' }),
+    rename: async () => rename.promise,
+  })
+  let renderer!: ReactTestRenderer
+  await act(async () => {
+    renderer = create(React.createElement(SharedKnowledgeSurface, makeProps(snapshot)))
+  })
+  await act(async () => renderer.root.findByProps({ 'aria-label': 'File title' }).props.onChange({
+    target: { value: 'Renamed.txt' },
+  }))
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 650)))
+
+  const renamed = { ...fileA, name: 'Renamed.txt', updatedAt: 11 }
+  await act(async () => renderer.update(React.createElement(SharedKnowledgeSurface, makeProps({
+    ...snapshot,
+    nodes: [renamed],
+    detail: renamed,
+  }))))
+  await act(async () => rename.resolve(renamed))
+
+  assert.equal(renderer.root.findByProps({ 'aria-label': 'File title' }).props.value, 'Renamed.txt')
+  assert.equal(renderer.root.findAll((node) => node.children.join('').includes('title draft is still here')).length, 0)
+  await act(async () => renderer.unmount())
+})
+
+test('older in-flight content and title saves cannot clear newer same-revision drafts', async () => {
+  const contentSaves: Array<ReturnType<typeof deferred<boolean | { updatedAt: number }>>> = []
+  const renames: Array<ReturnType<typeof deferred<KnowledgeFileNode>>> = []
+  const snapshot: ControlledKnowledgeFileSnapshot = {
+    nodes: [fileA],
+    loading: false,
+    error: null,
+    truncated: false,
+    detailFileId: fileA._id,
+    detail: fileA,
+    detailLoading: false,
+    detailError: null,
+  }
+  const makeProps = () => createSurfaceProps({
+    snapshot,
+    routeFile: fileA._id,
+    getFile: async () => ({ ...fileA, textContent: 'server content' }),
+    saveContent: async () => {
+      const request = deferred<boolean | { updatedAt: number }>()
+      contentSaves.push(request)
+      return request.promise
+    },
+    rename: async () => {
+      const request = deferred<KnowledgeFileNode>()
+      renames.push(request)
+      return request.promise
+    },
+    isEditable: () => true,
+  })
+  let renderer!: ReactTestRenderer
+  await act(async () => {
+    renderer = create(React.createElement(SharedKnowledgeSurface, makeProps()))
+  })
+
+  await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'first draft' } }))
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 850)))
+  await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'newer draft' } }))
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 850)))
+  assert.equal(contentSaves.length, 2)
+  await act(async () => contentSaves[0]!.resolve({ updatedAt: 11 }))
+  await act(async () => contentSaves[1]!.reject(new Error('revision conflict')))
+  assert.equal(renderer.root.findByType('textarea').props.value, 'newer draft')
+  assert.equal(renderer.root.findByType('textarea').props.readOnly, true)
+  assert.match(renderer.root.findByProps({ role: 'alert' }).children.join(''), /draft is still here/)
+
+  await act(async () => renderer.root.findByProps({ 'aria-label': 'File title' }).props.onChange({
+    target: { value: 'First title' },
+  }))
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 650)))
+  await act(async () => renderer.root.findByProps({ 'aria-label': 'File title' }).props.onChange({
+    target: { value: 'Newer title' },
+  }))
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 650)))
+  assert.equal(renames.length, 2)
+  await act(async () => renames[0]!.resolve({ ...fileA, name: 'First title', updatedAt: 12 }))
+  await act(async () => renames[1]!.reject(new Error('revision conflict')))
+  assert.equal(renderer.root.findByProps({ 'aria-label': 'File title' }).props.value, 'Newer title')
+  assert.match(renderer.root.findAll((node) => node.children.join('').includes('title draft is still here'))[0]?.children.join('') ?? '', /title draft is still here/)
+  await act(async () => renderer.unmount())
+})
+
+test('late native save acknowledgements cannot update a switched or denied file selection', async () => {
+  const switchSave = deferred<boolean | { updatedAt: number }>()
+  const deniedSave = deferred<boolean | { updatedAt: number }>()
+  const snapshot: ControlledKnowledgeFileSnapshot = {
+    nodes: [fileA, fileB],
+    loading: false,
+    error: null,
+    truncated: false,
+    detailFileId: fileA._id,
+    detail: fileA,
+    detailLoading: false,
+    detailError: null,
+  }
+  const makeProps = (
+    current: ControlledKnowledgeFileSnapshot,
+    routeFile: string,
+    save: ReturnType<typeof deferred<boolean | { updatedAt: number }>>,
+  ) => createSurfaceProps({
+    snapshot: current,
+    routeFile,
+    getFile: async (id) => ({ ...(id === fileB._id ? fileB : fileA), textContent: `${id} content` }),
+    saveContent: async () => save.promise,
+    isEditable: () => true,
+  })
+  let renderer!: ReactTestRenderer
+  await act(async () => {
+    renderer = create(React.createElement(SharedKnowledgeSurface, makeProps(snapshot, fileA._id, switchSave)))
+  })
+  await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'A draft' } }))
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 850)))
+  const snapshotB = { ...snapshot, detailFileId: fileB._id, detail: fileB }
+  await act(async () => renderer.update(React.createElement(SharedKnowledgeSurface, makeProps(snapshotB, fileB._id, switchSave))))
+  assert.equal(renderer.root.findByType('textarea').props.value, `${fileB._id} content`)
+  await act(async () => switchSave.resolve({ updatedAt: 11 }))
+  assert.equal(renderer.root.findByType('textarea').props.value, `${fileB._id} content`)
+
+  const snapshotA = { ...snapshot, detailFileId: fileA._id, detail: fileA }
+  await act(async () => renderer.update(React.createElement(SharedKnowledgeSurface, makeProps(snapshotA, fileA._id, deniedSave))))
+  await act(async () => renderer.root.findByType('textarea').props.onChange({ target: { value: 'Denied draft' } }))
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 850)))
+  const denied: ControlledKnowledgeFileSnapshot = {
+    ...snapshotA,
+    nodes: [],
+    detail: null,
+    detailLoading: false,
+    detailError: 'Permission denied.',
+  }
+  await act(async () => renderer.update(React.createElement(SharedKnowledgeSurface, makeProps(denied, fileA._id, deniedSave))))
+  await act(async () => deniedSave.resolve({ updatedAt: 12 }))
+  assert.equal(renderer.root.findAllByProps({ 'aria-label': 'File title' }).length, 0)
+  assert.equal(renderer.root.findAllByType('textarea').length, 0)
+  assert.equal(renderer.root.findByProps({ role: 'alert' }).children.join(''), 'This file is unavailable.')
   await act(async () => renderer.unmount())
 })

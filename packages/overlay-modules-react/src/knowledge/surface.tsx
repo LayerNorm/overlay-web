@@ -53,7 +53,7 @@ export interface SharedKnowledgeMemoryPort {
 }
 
 export interface SharedKnowledgeFilePort {
-  saveContent(fileId: string, content: string, expectedUpdatedAt?: number): Promise<boolean>
+  saveContent(fileId: string, content: string, expectedUpdatedAt?: number): Promise<boolean | { updatedAt: number }>
   upload(file: File, parentId: string | null): Promise<{ ok: boolean; error?: string; file?: FileNode }>
   isEditable(name: string): boolean
   contentUrl(file: FileNode): string | undefined
@@ -215,6 +215,11 @@ function KnowledgeFilesTabNotices({
       {fileList.filesLoadError && (
         <p className="mx-auto mb-3 max-w-3xl text-xs text-red-400" role="alert">
           {fileList.filesLoadError}
+        </p>
+      )}
+      {fileList.filesTruncated && (
+        <p className="mx-auto mb-3 max-w-3xl text-xs text-(--muted-light)" role="status">
+          Only part of this file list is shown.
         </p>
       )}
     </>

@@ -429,8 +429,177 @@ export function useSurfaceFileList({
     filesLoading: controlledSnapshot?.loading ?? filesLoading,
     filesRefreshing: controlledSnapshot ? false : filesRefreshing,
     filesLoadError: controlledSnapshot?.error ?? filesLoadError,
+    filesTruncated: controlledSnapshot?.truncated ?? false,
     loadFiles,
   }
+}
+
+type AcknowledgedUpdate = {
+  fileId: string
+  selectionEpoch: number
+  expectedRevision: number
+  updatedAt: number
+  acceptedRevisions: number[]
+  name?: string
+  extension?: string
+}
+
+function deriveOpenedFileRoute({
+  pendingFileId,
+  fileOpenParam,
+  pendingRoute,
+  controlledSnapshot,
+  files,
+}: {
+  pendingFileId: string | null
+  fileOpenParam: string | null
+  pendingRoute: string | null
+  controlledSnapshot?: ControlledKnowledgeFileSnapshot
+  files: FileNode[]
+}) {
+  const activeFileId = pendingFileId && fileOpenParam === pendingRoute
+    ? pendingFileId
+    : fileOpenParam ?? pendingFileId
+  const listedFile = activeFileId ? files.find((file) => file._id === activeFileId) ?? null : null
+  const detailMatches = Boolean(controlledSnapshot && controlledSnapshot.detailFileId === activeFileId)
+  const detailSettled = Boolean(detailMatches && !controlledSnapshot?.detailLoading)
+  const detailDenied = Boolean(controlledSnapshot && activeFileId && detailMatches && detailSettled
+    && (controlledSnapshot.detailError || !controlledSnapshot.detail))
+  return { activeFileId, listedFile, detailMatches, detailSettled, detailDenied }
+}
+
+function selectOpenedMetadata({
+  activeFileId,
+  listedFile,
+  detailMatches,
+  detailSettled,
+  controlledSnapshot,
+  localSelectedFile,
+}: {
+  activeFileId: string | null
+  listedFile: FileNode | null
+  detailMatches: boolean
+  detailSettled: boolean
+  controlledSnapshot?: ControlledKnowledgeFileSnapshot
+  localSelectedFile: FileNode | null
+}) {
+  if (!controlledSnapshot) {
+    return activeFileId
+      ? (localSelectedFile?._id === activeFileId ? localSelectedFile : listedFile)
+      : null
+  }
+  if (activeFileId && detailMatches && controlledSnapshot.detailError) return null
+  if (activeFileId && detailMatches && detailSettled && !controlledSnapshot.detail) return null
+  if (activeFileId && detailMatches && controlledSnapshot.detail) return controlledSnapshot.detail
+  return activeFileId && !detailSettled
+    ? (localSelectedFile?._id === activeFileId ? localSelectedFile : listedFile)
+    : null
+}
+
+function deriveOpenedFileSelection({
+  pendingFileId,
+  fileOpenParam,
+  pendingRoute,
+  controlledSnapshot,
+  files,
+  localSelectedFile,
+  acknowledgedUpdate,
+  selectionEpoch,
+}: {
+  pendingFileId: string | null
+  fileOpenParam: string | null
+  pendingRoute: string | null
+  controlledSnapshot?: ControlledKnowledgeFileSnapshot
+  files: FileNode[]
+  localSelectedFile: FileNode | null
+  acknowledgedUpdate: AcknowledgedUpdate | null
+  selectionEpoch: number
+}) {
+  const route = deriveOpenedFileRoute({
+    pendingFileId,
+    fileOpenParam,
+    pendingRoute,
+    controlledSnapshot,
+    files,
+  })
+  const { activeFileId, listedFile, detailMatches, detailSettled, detailDenied } = route
+  const selectedMetadata = selectOpenedMetadata({
+    activeFileId,
+    listedFile,
+    detailMatches,
+    detailSettled,
+    controlledSnapshot,
+    localSelectedFile,
+  })
+  const acknowledgedForSelection = acknowledgedUpdate
+    && acknowledgedUpdate.selectionEpoch === selectionEpoch
+    && acknowledgedUpdate.fileId === selectedMetadata?._id
+    && acknowledgedUpdate.acceptedRevisions.includes(selectedMetadata.updatedAt)
+    ? acknowledgedUpdate
+    : null
+  const selectedFile = selectedMetadata && acknowledgedForSelection
+    ? {
+      ...selectedMetadata,
+      updatedAt: acknowledgedForSelection.updatedAt,
+      ...(acknowledgedForSelection.name !== undefined
+        ? { name: acknowledgedForSelection.name, extension: acknowledgedForSelection.extension }
+        : {}),
+    }
+    : selectedMetadata
+  return {
+    activeFileId,
+    detailMatches,
+    detailSettled,
+    detailDenied,
+    selectionId: detailDenied ? null : activeFileId,
+    selectedMetadata,
+    selectedFile,
+  }
+}
+
+function deriveOpenedFileDraftView({
+  selectedFile,
+  titleDraft,
+  contentState,
+  fileContent,
+}: {
+  selectedFile: FileNode | null
+  titleDraft: {
+    fileId: string
+    value: string
+    revision: number
+    dirty: boolean
+    generation: number
+  } | null
+  contentState: {
+    fileId: string
+    revision: number
+    status: 'loading' | 'ready' | 'error'
+    dirty: boolean
+    generation: number
+    error?: string
+  } | null
+  fileContent: string
+}) {
+  const contentConflict = Boolean(selectedFile && contentState?.fileId === selectedFile._id
+    && contentState.dirty && contentState.revision !== selectedFile.updatedAt)
+  const contentStatus = !selectedFile ? 'idle'
+    : contentConflict ? 'ready'
+      : contentState?.fileId === selectedFile._id && contentState.revision === selectedFile.updatedAt
+        ? contentState.status
+        : 'loading'
+  const contentError = contentConflict
+    ? 'This file changed elsewhere. Your draft is still here; reopen the file before saving.'
+    : contentState && contentState.fileId === selectedFile?._id ? contentState.error ?? null : null
+  const visibleContent = selectedFile && contentState?.fileId === selectedFile._id
+    && (contentState.dirty || contentState.revision === selectedFile.updatedAt)
+    ? fileContent : ''
+  const fileTitle = selectedFile
+    ? titleDraft?.fileId === selectedFile._id ? titleDraft.value : selectedFile.name
+    : ''
+  const titleConflict = Boolean(selectedFile && titleDraft?.fileId === selectedFile._id
+    && titleDraft.dirty && titleDraft.revision !== selectedFile.updatedAt)
+  return { contentStatus, contentError, contentConflict, visibleContent, fileTitle, titleConflict }
 }
 
 export function useOpenedFile({
@@ -455,15 +624,23 @@ export function useOpenedFile({
   const [localSelectedFile, setSelectedFile] = useState<FileNode | null>(null)
   const [fileContent, setFileContent] = useState('')
   const [pendingFileId, setPendingFileId] = useState<string | null>(null)
-  const [titleDraft, setTitleDraft] = useState<{ fileId: string; value: string; revision: number; dirty: boolean } | null>(null)
+  const [titleDraft, setTitleDraft] = useState<{
+    fileId: string
+    value: string
+    revision: number
+    dirty: boolean
+    generation: number
+  } | null>(null)
   const [contentState, setContentState] = useState<{
     fileId: string
     revision: number
     status: 'loading' | 'ready' | 'error'
     dirty: boolean
+    generation: number
     error?: string
   } | null>(null)
   const [savingIdentity, setSavingIdentity] = useState<string | null>(null)
+  const [acknowledgedUpdate, setAcknowledgedUpdate] = useState<AcknowledgedUpdate | null>(null)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastFileTriggerRef = useRef<HTMLElement | null>(null)
@@ -475,34 +652,68 @@ export function useOpenedFile({
   const snapshotRef = useRef(controlledSnapshot)
   const localSelectedFileRef = useRef(localSelectedFile)
   const contentStateRef = useRef(contentState)
+  const titleDraftRef = useRef(titleDraft)
+  const acknowledgedUpdateRef = useRef(acknowledgedUpdate)
+  const selectionIdRef = useRef<string | null>(null)
+  const selectionEpochRef = useRef(0)
+  const contentGenerationRef = useRef(0)
+  const titleGenerationRef = useRef(0)
   filesRef.current = files
   snapshotRef.current = controlledSnapshot
   localSelectedFileRef.current = localSelectedFile
   contentStateRef.current = contentState
+  titleDraftRef.current = titleDraft
+  acknowledgedUpdateRef.current = acknowledgedUpdate
+
+  const updateSelectionId = useCallback((id: string | null) => {
+    if (selectionIdRef.current === id) return
+    selectionIdRef.current = id
+    selectionEpochRef.current += 1
+    contentGenerationRef.current += 1
+    titleGenerationRef.current += 1
+  }, [])
 
   const pendingRouteRef = useRef<string | null>(null)
-  const activeFileId = pendingFileId && fileOpenParam === pendingRouteRef.current
-    ? pendingFileId
-    : fileOpenParam ?? pendingFileId
-  const listedFile = activeFileId ? files.find((file) => file._id === activeFileId) ?? null : null
-  const detailMatches = Boolean(controlledSnapshot && controlledSnapshot.detailFileId === activeFileId)
-  const detailSettled = Boolean(detailMatches && !controlledSnapshot?.detailLoading)
-  const selectedFile = controlledSnapshot
-    ? activeFileId && detailMatches && controlledSnapshot.detailError
-      ? null
-      : activeFileId && detailMatches && detailSettled && !controlledSnapshot.detail
-        ? null
-        : activeFileId && detailMatches && controlledSnapshot.detail
-          ? controlledSnapshot.detail
-          : activeFileId && !detailSettled
-            ? (localSelectedFile?._id === activeFileId ? localSelectedFile : listedFile)
-            : null
-    : activeFileId
-      ? (localSelectedFile?._id === activeFileId ? localSelectedFile : listedFile)
-      : null
+  const selection = deriveOpenedFileSelection({
+    pendingFileId,
+    fileOpenParam,
+    pendingRoute: pendingRouteRef.current,
+    controlledSnapshot,
+    files,
+    localSelectedFile,
+    acknowledgedUpdate,
+    selectionEpoch: selectionEpochRef.current,
+  })
+  const { activeFileId, detailMatches, detailSettled, detailDenied, selectedMetadata, selectedFile } = selection
+  updateSelectionId(selection.selectionId)
   const selectedFileRef = useRef<FileNode | null>(selectedFile)
   selectedFileRef.current = selectedFile
   const selectedFileIdentity = selectedFile ? `${selectedFile._id}:${selectedFile.updatedAt}` : null
+
+  function rememberAcknowledgedUpdate(input: Omit<AcknowledgedUpdate, 'expectedRevision' | 'acceptedRevisions'> & {
+    expectedRevision: number
+  }) {
+    const previous = acknowledgedUpdateRef.current
+    const canExtend = previous?.fileId === input.fileId
+      && previous.selectionEpoch === input.selectionEpoch
+      && selectedMetadata
+      && previous.acceptedRevisions.includes(selectedMetadata.updatedAt)
+    const expectedRevision = canExtend ? previous.expectedRevision : input.expectedRevision
+    const acceptedRevisions = canExtend
+      ? [...new Set([...previous.acceptedRevisions, input.updatedAt])]
+      : [...new Set([input.expectedRevision, input.updatedAt])]
+    const next: AcknowledgedUpdate = {
+      ...input,
+      expectedRevision,
+      acceptedRevisions,
+      ...(!('name' in input) && canExtend && previous.name !== undefined ? { name: previous.name } : {}),
+      ...(!('extension' in input) && canExtend && previous.extension !== undefined
+        ? { extension: previous.extension }
+        : {}),
+    }
+    acknowledgedUpdateRef.current = next
+    setAcknowledgedUpdate(next)
+  }
 
   useEffect(() => {
     const key = selectedFileIdentity
@@ -525,6 +736,10 @@ export function useOpenedFile({
   }, [selectedFileIdentity])
 
   const clearOpenedFile = useCallback(() => {
+    selectionIdRef.current = null
+    selectionEpochRef.current += 1
+    contentGenerationRef.current += 1
+    titleGenerationRef.current += 1
     loadVersionRef.current += 1
     loadControllerRef.current?.abort()
     loadControllerRef.current = null
@@ -537,11 +752,14 @@ export function useOpenedFile({
     setFileContent('')
     setTitleDraft(null)
     setContentState(null)
+    setAcknowledgedUpdate(null)
     setSavingIdentity(null)
   }, [])
 
   const { navigation, repository } = adapters
   const loadFile = useCallback((fileId: string, knownFile?: FileNode): Promise<void> => {
+    const selectionEpoch = selectionEpochRef.current
+    const contentGeneration = contentGenerationRef.current
     const file = knownFile
       ?? (snapshotRef.current?.detailFileId === fileId ? snapshotRef.current.detail : null)
       ?? filesRef.current.find((candidate) => candidate._id === fileId)
@@ -563,14 +781,25 @@ export function useOpenedFile({
       setPendingFileId(fileId)
       setTitleDraft((current) => current?.fileId === fileId && current.dirty
         ? current
-        : { fileId, value: file.name, revision: file.updatedAt, dirty: false })
+        : {
+          fileId,
+          value: file.name,
+          revision: file.updatedAt,
+          dirty: false,
+          generation: titleGenerationRef.current,
+        })
       const currentContent = contentStateRef.current
       if (currentContent?.fileId === fileId && currentContent.revision === file.updatedAt
         && currentContent.status === 'ready') return Promise.resolve()
-      if (currentContent?.fileId === fileId && currentContent.dirty
-        && currentContent.revision !== file.updatedAt) return Promise.resolve()
+      if (currentContent?.fileId === fileId && currentContent.dirty) return Promise.resolve()
       setFileContent('')
-      setContentState({ fileId, revision: file.updatedAt, status: 'loading', dirty: false })
+      setContentState({
+        fileId,
+        revision: file.updatedAt,
+        status: 'loading',
+        dirty: false,
+        generation: contentGeneration,
+      })
     }
     loadControllerRef.current?.abort()
     const controller = new AbortController()
@@ -583,27 +812,54 @@ export function useOpenedFile({
     const promise = (async () => {
       try {
         const loaded = await repository.get(fileId, controller.signal)
-        if (controller.signal.aborted || loadVersion !== loadVersionRef.current) return
+        if (controller.signal.aborted || loadVersion !== loadVersionRef.current
+          || selectionEpochRef.current !== selectionEpoch
+          || contentGenerationRef.current !== contentGeneration
+          || contentStateRef.current?.fileId === fileId && contentStateRef.current.dirty) return
         if (!loaded || loaded._id !== fileId) {
-          if (file) setContentState({ fileId, revision: file.updatedAt, status: 'error', dirty: false, error: 'File is unavailable.' })
+          if (file) setContentState({
+            fileId,
+            revision: file.updatedAt,
+            status: 'error',
+            dirty: false,
+            generation: contentGeneration,
+            error: 'File is unavailable.',
+          })
           return
         }
         if (file && loaded.updatedAt !== file.updatedAt) {
-          setContentState({ fileId, revision: file.updatedAt, status: 'error', dirty: false, error: 'The file changed while it was opening. Reopen it to load the latest version.' })
+          setContentState({
+            fileId,
+            revision: file.updatedAt,
+            status: 'error',
+            dirty: false,
+            generation: contentGeneration,
+            error: 'The file changed while it was opening. Reopen it to load the latest version.',
+          })
           return
         }
         if (!snapshotRef.current) {
           setSelectedFile((current) => current?._id === fileId ? { ...current, ...loaded } : current ?? loaded)
         }
         setFileContent(loaded.textContent ?? loaded.content ?? '')
-        setContentState({ fileId, revision: loaded.updatedAt, status: 'ready', dirty: false })
+        setContentState({
+          fileId,
+          revision: loaded.updatedAt,
+          status: 'ready',
+          dirty: false,
+          generation: contentGeneration,
+        })
       } catch (error) {
-        if (controller.signal.aborted || loadVersion !== loadVersionRef.current) return
+        if (controller.signal.aborted || loadVersion !== loadVersionRef.current
+          || selectionEpochRef.current !== selectionEpoch
+          || contentGenerationRef.current !== contentGeneration
+          || contentStateRef.current?.fileId === fileId && contentStateRef.current.dirty) return
         if (file) setContentState({
           fileId,
           revision: file.updatedAt,
           status: 'error',
           dirty: false,
+          generation: contentGeneration,
           error: error instanceof Error ? error.message : 'Could not load file.',
         })
       } finally {
@@ -618,6 +874,10 @@ export function useOpenedFile({
   }, [navigation, repository])
 
   useEffect(() => () => {
+    selectionIdRef.current = null
+    selectionEpochRef.current += 1
+    contentGenerationRef.current += 1
+    titleGenerationRef.current += 1
     loadVersionRef.current += 1
     loadControllerRef.current?.abort()
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
@@ -643,39 +903,35 @@ export function useOpenedFile({
 
   useEffect(() => {
     if (!controlledSnapshot || !activeFileId || !detailMatches || !detailSettled
-      || (!controlledSnapshot.detailError && controlledSnapshot.detail)) return
+      || !detailDenied) return
     loadVersionRef.current += 1
     loadControllerRef.current?.abort()
     loadControllerRef.current = null
     activeLoadKeyRef.current = null
     activeLoadPromiseRef.current = null
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
     setSelectedFile(null)
     setFileContent('')
+    setTitleDraft(null)
     setContentState(null)
-  }, [activeFileId, controlledSnapshot, detailMatches, detailSettled])
+    setAcknowledgedUpdate(null)
+    setSavingIdentity(null)
+  }, [activeFileId, controlledSnapshot, detailDenied, detailMatches, detailSettled])
 
-  const contentConflict = Boolean(selectedFile && contentState?.fileId === selectedFile._id
-    && contentState.dirty && contentState.revision !== selectedFile.updatedAt)
-  const contentStatus = !selectedFile ? 'idle'
-    : contentConflict ? 'ready'
-      : contentState?.fileId === selectedFile._id && contentState.revision === selectedFile.updatedAt
-        ? contentState.status
-        : 'loading'
-  const contentError = contentConflict
-    ? 'This file changed elsewhere. Your draft is still here; reopen the file before saving.'
-    : contentState && contentState.fileId === selectedFile?._id ? contentState.error ?? null : null
-  const visibleContent = selectedFile && contentState?.fileId === selectedFile._id
-    && (contentState.dirty || contentState.revision === selectedFile.updatedAt)
-    ? fileContent : ''
-  const fileTitle = selectedFile
-    ? titleDraft?.fileId === selectedFile._id ? titleDraft.value : selectedFile.name
-    : ''
-  const titleConflict = Boolean(selectedFile && titleDraft?.fileId === selectedFile._id
-    && titleDraft.dirty && titleDraft.revision !== selectedFile.updatedAt)
+  const {
+    contentStatus,
+    contentError,
+    contentConflict,
+    visibleContent,
+    fileTitle,
+    titleConflict,
+  } = deriveOpenedFileDraftView({ selectedFile, titleDraft, contentState, fileContent })
   const isSavingFile = Boolean(selectedFile && savingIdentity === `${selectedFile._id}:${selectedFile.updatedAt}`)
 
   function setFileTitle(value: React.SetStateAction<string>) {
     if (!selectedFile) return
+    const generation = ++titleGenerationRef.current
     setTitleDraft((current) => {
       const currentValue = current?.fileId === selectedFile._id ? current.value : selectedFile.name
       return {
@@ -683,6 +939,7 @@ export function useOpenedFile({
         value: typeof value === 'function' ? value(currentValue) : value,
         revision: selectedFile.updatedAt,
         dirty: false,
+        generation,
       }
     })
   }
@@ -692,6 +949,7 @@ export function useOpenedFile({
       void adapters.navigation.open(node as Parameters<typeof adapters.navigation.open>[0])
       return
     }
+    updateSelectionId(node._id)
     if (controlledSnapshot) {
       pendingRouteRef.current = fileOpenParam
       setSelectedFile(node)
@@ -716,30 +974,61 @@ export function useOpenedFile({
 
   function handleFileContentChange(val: string) {
     if (!selectedFile || contentStatus !== 'ready' || contentConflict || !contentState) return
-    setFileContent(val)
     const fileId = selectedFile._id
     const revision = selectedFile.updatedAt
+    const selectionEpoch = selectionEpochRef.current
+    const generation = ++contentGenerationRef.current
     const identity = `${fileId}:${revision}`
-    setContentState({ fileId, revision, status: 'ready', dirty: true })
+    setFileContent(val)
+    setContentState({ fileId, revision, status: 'ready', dirty: true, generation })
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
       const active = selectedFileRef.current
       const draft = contentStateRef.current
       if (!active || active._id !== fileId || active.updatedAt !== revision
-        || !draft?.dirty || draft.fileId !== fileId || draft.revision !== revision) return
+        || selectionEpochRef.current !== selectionEpoch
+        || contentGenerationRef.current !== generation
+        || !draft?.dirty || draft.fileId !== fileId || draft.revision !== revision
+        || draft.generation !== generation) return
       setSavingIdentity(identity)
       try {
         const saved = await filePort.saveContent(fileId, val, revision)
         if (!saved) throw new Error('Could not save file.')
-        if (selectedFileRef.current?._id !== fileId || selectedFileRef.current.updatedAt !== revision) return
+        const current = selectedFileRef.current
+        if (!current || current._id !== fileId || selectionEpochRef.current !== selectionEpoch) return
+        const acknowledgedRevision = typeof saved === 'object' ? saved.updatedAt : undefined
+        if (acknowledgedRevision !== undefined) {
+          if (current.updatedAt !== revision && current.updatedAt !== acknowledgedRevision) return
+          rememberAcknowledgedUpdate({
+            fileId,
+            selectionEpoch,
+            expectedRevision: revision,
+            updatedAt: acknowledgedRevision,
+          })
+        } else if (current.updatedAt !== revision) {
+          return
+        }
         filePort.entityChanged('file', fileId, 'updated')
-        setContentState((current) => current?.fileId === fileId && current.revision === revision
-          ? { ...current, dirty: false }
-          : current)
-        setFiles((prev) => prev.map((f) => f._id === fileId ? { ...f } : f))
+        if (contentGenerationRef.current === generation) {
+          setContentState((currentState) => currentState?.fileId === fileId
+            && currentState.revision === revision && currentState.generation === generation
+            ? {
+              ...currentState,
+              revision: acknowledgedRevision ?? revision,
+              dirty: false,
+            }
+            : currentState)
+        }
+        if (acknowledgedRevision !== undefined) {
+          setFiles((prev) => prev.map((f) => f._id === fileId
+            ? { ...f, updatedAt: acknowledgedRevision }
+            : f))
+        }
       } catch (error) {
-        if (selectedFileRef.current?._id !== fileId) return
+        if (selectedFileRef.current?._id !== fileId || selectionEpochRef.current !== selectionEpoch
+          || contentGenerationRef.current !== generation) return
         setContentState((current) => current?.fileId === fileId && current.revision === revision
+          && current.generation === generation
           ? { ...current, status: 'error', dirty: true, error: error instanceof Error ? error.message : 'Could not save file.' }
           : current)
       } finally {
@@ -752,24 +1041,47 @@ export function useOpenedFile({
     if (!selectedFile || titleConflict) return
     const fileId = selectedFile._id
     const revision = selectedFile.updatedAt
-    setTitleDraft({ fileId, value: val, revision, dirty: true })
+    const selectionEpoch = selectionEpochRef.current
+    const generation = ++titleGenerationRef.current
+    setTitleDraft({ fileId, value: val, revision, dirty: true, generation })
     const nextName = val.trim() || 'Untitled'
     if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
     titleSaveTimerRef.current = setTimeout(async () => {
       const active = selectedFileRef.current
-      if (!active || active._id !== fileId || active.updatedAt !== revision) return
+      const draft = titleDraftRef.current
+      if (!active || active._id !== fileId || active.updatedAt !== revision
+        || selectionEpochRef.current !== selectionEpoch
+        || titleGenerationRef.current !== generation
+        || !draft?.dirty || draft.fileId !== fileId || draft.revision !== revision
+        || draft.generation !== generation) return
       const identity = `${fileId}:${revision}`
       setSavingIdentity(identity)
       try {
         const renamed = await adapters.repository.rename({ id: fileId, name: nextName, expectedRevision: String(revision) })
-        if (selectedFileRef.current?._id !== fileId || selectedFileRef.current.updatedAt !== revision) return
+        const current = selectedFileRef.current
+        if (!current || current._id !== fileId || selectionEpochRef.current !== selectionEpoch) return
+        if (current.updatedAt !== revision && current.updatedAt !== renamed.updatedAt) return
+        rememberAcknowledgedUpdate({
+          fileId,
+          selectionEpoch,
+          expectedRevision: revision,
+          updatedAt: renamed.updatedAt,
+          name: renamed.name,
+          extension: renamed.extension,
+        })
         setSelectedFile(renamed)
-        setTitleDraft({ fileId, value: renamed.name, revision: renamed.updatedAt, dirty: false })
+        if (titleGenerationRef.current === generation) {
+          setTitleDraft((currentDraft) => currentDraft?.fileId === fileId
+            && currentDraft.generation === generation
+            ? { fileId, value: renamed.name, revision: renamed.updatedAt, dirty: false, generation }
+            : currentDraft)
+        }
         setFiles((prev) => prev.map((f) => f._id === fileId
           ? { ...f, name: renamed.name, updatedAt: renamed.updatedAt }
           : f))
       } catch (error) {
-        if (selectedFileRef.current?._id === fileId) {
+        if (selectedFileRef.current?._id === fileId && selectionEpochRef.current === selectionEpoch
+          && titleGenerationRef.current === generation) {
           toast.error(error instanceof Error ? error.message : 'Could not rename file.')
         }
       } finally {

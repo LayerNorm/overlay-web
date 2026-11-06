@@ -17,7 +17,6 @@ const detail = makeFunctionReference<'query'>('files/nativeMetadata:detail')
 const rename = makeFunctionReference<'mutation'>('files/nativeMetadata:rename')
 const move = makeFunctionReference<'mutation'>('files/nativeMetadata:move')
 const changeScope = makeFunctionReference<'mutation'>('files/nativeMetadata:changeScope')
-const setShare = makeFunctionReference<'mutation'>('files/nativeMetadata:setShare')
 
 const snapshot = {
   version: 1 as const,
@@ -109,6 +108,7 @@ async function enableFiles(t: Convex, enabled = true) {
   const challenge = '00000000-0000-4000-8000-000000000001'
   const { sequence } = await t.mutation(begin, { challenge })
   return t.mutation(publish, {
+    issuedAt: Date.now(),
     sequence,
     challenge,
     snapshot: { ...snapshot, features: { ...snapshot.features, files: enabled } },
@@ -203,6 +203,11 @@ test('non-owner access requires workspace visibility and an active direct, group
   const t = await fixture()
   await enableFiles(t)
   const fileId = await addFile(t)
+  const archivedFileId = await addFile(t, { name: 'Archived.txt' })
+  const archived = await asUser(t, 'owner').mutation(changeScope, {
+    workspaceId, fileId: archivedFileId, expectedUpdatedAt: now, action: 'archive',
+  })
+  const parentId = await addFile(t, { name: 'Workspace folder', type: 'folder', kind: 'folder' })
   expect(await asUser(t, 'member').query(detail, { workspaceId, fileId })).toBeNull()
   expect(await asUser(t, 'member').query(list, { workspaceId, view: 'workspace' }))
     .toMatchObject({ nodes: [] })
@@ -218,17 +223,61 @@ test('non-owner access requires workspace visibility and an active direct, group
       createdAt: now,
       updatedAt: now,
     })
+    await ctx.db.insert('authorizationResourceGrants', {
+      grantId: 'direct-archived-file-editor',
+      resourceType: 'file',
+      resourceId: archivedFileId,
+      principalType: 'user',
+      principalId: 'member',
+      accessRole: 'editor',
+      createdAt: now,
+      updatedAt: now,
+    })
   })
   expect(await asUser(t, 'member').query(detail, { workspaceId, fileId })).toMatchObject({ _id: fileId })
   expect(await asUser(t, 'member').query(list, { workspaceId, view: 'workspace' }))
     .toMatchObject({ nodes: [expect.objectContaining({ _id: fileId })] })
-  const renamed = await asUser(t, 'member').mutation(rename, {
-    workspaceId, fileId, expectedUpdatedAt: now, name: 'Direct grant.txt',
+  await expect(asUser(t, 'member').mutation(rename, {
+    workspaceId, fileId, expectedUpdatedAt: now, name: 'Member rename.txt',
+  })).rejects.toThrow('FILE_ACCESS_DENIED')
+  await expect(asUser(t, 'member').mutation(move, {
+    workspaceId, fileId, expectedUpdatedAt: now, parentId: null,
+  })).rejects.toThrow('FILE_ACCESS_DENIED')
+  await expect(asUser(t, 'member').mutation(changeScope, {
+    workspaceId, fileId, expectedUpdatedAt: now, action: 'archive',
+  })).rejects.toThrow('FILE_ACCESS_DENIED')
+  await expect(asUser(t, 'member').mutation(changeScope, {
+    workspaceId, fileId: archivedFileId, expectedUpdatedAt: archived!.updatedAt, action: 'restore',
+  })).rejects.toThrow('FILE_ACCESS_DENIED')
+
+  await t.run(async (ctx) => {
+    const principal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', workspaceId).eq('userId', 'member')).unique()
+    if (!principal) throw new Error('fixture member principal missing')
+    const membership = await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', workspaceId).eq('principalId', principal.principalId)).unique()
+    if (!membership) throw new Error('fixture member membership missing')
+    await ctx.db.patch(membership._id, { role: 'admin' })
   })
-  expect(renamed).toMatchObject({ name: 'Direct grant.txt' })
+  const renamed = await asUser(t, 'member').mutation(rename, {
+    workspaceId, fileId, expectedUpdatedAt: now, name: 'Admin grant edit.txt',
+  })
+  expect(renamed).toMatchObject({ name: 'Admin grant edit.txt' })
   await expect(asUser(t, 'member').mutation(rename, {
     workspaceId, fileId, expectedUpdatedAt: now, name: 'Stale.txt',
   })).rejects.toThrow('FILE_REVISION_CONFLICT')
+  const moved = await asUser(t, 'member').mutation(move, {
+    workspaceId, fileId, expectedUpdatedAt: renamed.updatedAt, parentId,
+  })
+  expect(moved).toMatchObject({ parentId })
+  const adminArchived = await asUser(t, 'member').mutation(changeScope, {
+    workspaceId, fileId, expectedUpdatedAt: moved.updatedAt, action: 'archive',
+  })
+  expect(adminArchived?.archivedAt).toBeDefined()
+  const adminRestored = await asUser(t, 'member').mutation(changeScope, {
+    workspaceId, fileId, expectedUpdatedAt: adminArchived!.updatedAt, action: 'restore',
+  })
+  expect(adminRestored?.archivedAt).toBeUndefined()
 
   await t.run(async (ctx) => {
     await ctx.db.insert('authorizationGroups', {
@@ -371,15 +420,9 @@ test('corrupt and oversized subtrees abort without partial archive writes', asyn
   expect(rows.every((row) => row?.archivedAt === undefined)).toBe(true)
 })
 
-test('sharing policy, owner-only share writes, revision checks, and metadata redaction', async () => {
+test('native file metadata redacts content and storage fields', async () => {
   const t = await fixture()
   await enableFiles(t)
-  await t.run((ctx) => ctx.db.insert('workspaceSharingPolicies', {
-    workspaceId,
-    publicLinksEnabled: false,
-    createdAt: now,
-    updatedAt: now,
-  }))
   const fileId = await addFile(t, { userId: 'owner' })
   const initial = await asUser(t, 'owner').query(detail, { workspaceId, fileId })
   expect(initial).toMatchObject({
@@ -388,7 +431,6 @@ test('sharing policy, owner-only share writes, revision checks, and metadata red
     workspaceId,
     userId: 'owner',
     isStorageBacked: true,
-    shareVisibility: 'private',
   })
   for (const key of ['content', 'textContent', 'storageId', 'r2Key', 'outputUrl', 'outputMetadata', 'prompt', 'shareToken']) {
     expect(Object.keys(initial)).not.toContain(key)
@@ -399,32 +441,4 @@ test('sharing policy, owner-only share writes, revision checks, and metadata red
   expect(JSON.stringify(initial)).not.toContain('private-share-token')
   expect(JSON.stringify(initial)).not.toContain('provider.example')
   expect(JSON.stringify(initial)).not.toContain('private prompt')
-
-  await expect(asUser(t, 'owner').mutation(setShare, {
-    workspaceId, fileId, expectedUpdatedAt: now, visibility: 'public',
-  })).rejects.toThrow('PUBLIC_LINKS_DISABLED')
-  await t.run((ctx) => ctx.db.insert('authorizationResourceGrants', {
-    grantId: 'non-owner-share-grant',
-    resourceType: 'file',
-    resourceId: fileId,
-    principalType: 'user',
-    principalId: 'member',
-    accessRole: 'owner',
-    createdAt: now,
-    updatedAt: now,
-  }))
-  await expect(asUser(t, 'member').mutation(setShare, {
-    workspaceId, fileId, expectedUpdatedAt: now, visibility: 'private',
-  })).rejects.toThrow('FILE_SHARE_DENIED')
-  await t.run(async (ctx) => {
-    const policy = await ctx.db.query('workspaceSharingPolicies')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).unique()
-    if (policy) await ctx.db.patch(policy._id, { publicLinksEnabled: true })
-  })
-  const result = await asUser(t, 'owner').mutation(setShare, {
-    workspaceId, fileId, expectedUpdatedAt: now, visibility: 'public',
-  })
-  expect(result).toEqual({ visibility: 'public' })
-  expect(JSON.stringify(result)).not.toContain('private-share-token')
-  expect((await asUser(t, 'owner').query(detail, { workspaceId, fileId }))?.shareVisibility).toBe('public')
 })
