@@ -24,18 +24,31 @@ function deployment(patch = {}) {
 function fixture({ current = pull(), existing = true, backendActive = true, changeHead = false, failReadback = false,
   failHttps = false, failRemoved = false, buildState = 'READY', cancelError = false, cancelFinishes = true,
   removeLabelAt = Infinity, wrongCreatedSha = false,
-  wildcardBranch = CONFIG.previewWildcardBranch, wildcardAlias = false, files = [{ filename: 'src/runtime.ts' }] } = {}) {
+  wildcardBranch = CONFIG.previewWildcardBranch, wildcardAlias = false, files = [{ filename: 'src/runtime.ts' }],
+  mainSha = 'd'.repeat(40), mainShas = [mainSha], mergeBaseSha = 'c'.repeat(40), compareError = false } = {}) {
   const calls = []
-  let envs = []; let domain; let alias; let reads = 0; let state = buildState
+  let envs = []; let domain; let alias; let reads = 0; let state = buildState; let mainReads = 0; let compareReads = 0
   const github = async (path, options = {}) => {
     calls.push({ service: 'github', path, ...options })
+    if (path.endsWith('/commits/main')) {
+      return { sha: mainShas[Math.min(mainReads++, mainShas.length - 1)] }
+    }
+    if (path.includes('/compare/')) {
+      if (compareError) throw new Error('Private compare response')
+      const match = path.match(/\/compare\/([a-f0-9]{40})\.\.\.([a-f0-9]{40})$/)
+      if (!match) throw new Error('Unexpected compare request')
+      const compareFiles = typeof files === 'function'
+        ? files({ headSha: match[1], mainSha: match[2], compareNumber: compareReads })
+        : files
+      compareReads++
+      return { base_commit: { sha: match[1] }, merge_base_commit: { sha: mergeBaseSha }, files: compareFiles }
+    }
     if (path.endsWith('/pulls/123')) {
       reads++
       if (reads >= removeLabelAt) current = { ...current, labels: [] }
       return changeHead && reads > 1 ? pull({ head: { ...current.head, sha: 'b'.repeat(40) } }) : current
     }
     if (path.endsWith('/pulls')) return [current]
-    if (path.endsWith('/pulls/123/files')) return files
     if (path.includes('/statuses/')) return {}
     throw new Error('Unexpected GitHub request: ' + path)
   }
@@ -115,6 +128,40 @@ test('needs-preview creates the exact requested revision after provisioning its 
   assert.equal(f.calls.filter(c => c.path === '/v13/deployments' && c.method === 'POST').length, 1)
 })
 
+test('stale or unknown backend freshness blocks requested preview provisioning and build', async t => {
+  for (const result of ['stale', 'unknown']) {
+    await t.test(result, async () => {
+      const f = fixture({
+        existing: false,
+        files: result === 'stale' ? [{ filename: 'convex/schema.ts' }] : [],
+        compareError: result === 'unknown',
+      })
+      assert.equal((await f.controller.run(123)).state, 'blocked')
+      assert.ok(f.calls.some(c => c.body?.state === 'failure'
+        && /sync main and retest/.test(c.body.description)))
+      assert.ok(!f.calls.some(c => c.method === 'POST' && c.service === 'vercel'))
+      assert.ok(!f.calls.some(c => c.path === '/v7/deployments'))
+    })
+  }
+})
+
+test('freshness is rechecked after build and blocks ready if main moves during the build', async () => {
+  const f = fixture({
+    existing: false,
+    mainSha: 'd'.repeat(40),
+    mainShas: ['d'.repeat(40), 'd'.repeat(40), 'e'.repeat(40), 'e'.repeat(40)],
+    files: ({ mainSha }) => [{ filename: mainSha === 'e'.repeat(40)
+      ? 'convex/schema.ts' : 'src/components/Panel.tsx' }],
+  })
+  const result = await f.controller.run(123)
+  assert.equal(result.state, 'blocked')
+  assert.equal(result.reason, 'main-backend-changes')
+  assert.ok(f.calls.some(c => c.path === '/v13/deployments' && c.method === 'POST'))
+  assert.ok(f.calls.some(c => c.path.endsWith('/aliases') && c.method === 'POST'))
+  assert.ok(f.calls.some(c => c.body?.state === 'failure'))
+  assert.ok(!f.calls.some(c => c.body?.state === 'success'))
+})
+
 test('removing needs-preview cleans a previously ready preview', async () => {
   const f = fixture(); await f.controller.run(123)
   f.setCurrent(pull({ labels: [] }))
@@ -164,6 +211,17 @@ test('backend deletion failure cannot publish a successful no-preview status', a
   const f = fixture({ current: pull({ labels: [] }) })
   f.controller.backends.remove = async () => { throw new Error('Backend cleanup failed') }
   await assert.rejects(f.controller.run(123), /Backend cleanup failed/)
+  assert.ok(!f.calls.some(c => c.body?.state === 'success'))
+})
+
+test('unlabeled cleanup completes before freshness blocks not-required success', async () => {
+  const f = fixture({ current: pull({ labels: [] }), files: [{ filename: 'convex/schema.ts' }] })
+  assert.equal((await f.controller.run(123)).state, 'blocked')
+  const cleanup = f.calls.findIndex(c => c.service === 'removed-https')
+  const freshness = f.calls.findIndex(c => c.path?.endsWith('/commits/main'))
+  assert.ok(cleanup >= 0 && cleanup < freshness)
+  assert.ok(f.calls.some(c => c.service === 'backend-delete'))
+  assert.ok(f.calls.some(c => c.body?.state === 'failure'))
   assert.ok(!f.calls.some(c => c.body?.state === 'success'))
 })
 

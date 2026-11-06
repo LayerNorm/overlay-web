@@ -1,0 +1,39 @@
+name: Backend Freshness
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, reopened, synchronize, edited, ready_for_review]
+  push:
+    branches: [main]
+  merge_group:
+    types: [checks_requested]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 * * * *'
+
+permissions: {}
+
+concurrency:
+  group: backend-freshness
+  cancel-in-progress: false
+
+jobs:
+  freshness:
+    if: github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main'
+    runs-on:
+      - namespace-profile-overlay-ci-small;github.run-id=${{ github.run_id }};job.priority=${{ (github.ref == 'refs/heads/main' || github.event_name == 'merge_group') && 2 || github.actor == 'dependabot[bot]' && 6 || 4 }}
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Check backend freshness
+        run: node scripts/release/backend-freshness-check.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}

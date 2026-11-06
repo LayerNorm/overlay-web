@@ -48,6 +48,42 @@ test('preview credentials stay in a main-only controller without privileged PR t
   assert.ok(!JSON.stringify(request).includes('secrets.'))
 })
 
+test('backend freshness runs trusted main code with scoped status permissions and recovery sweeps', () => {
+  const config = workflow('backend-freshness')
+  assert.deepEqual(config.on.pull_request_target.branches, ['main'])
+  assert.deepEqual(config.on.pull_request_target.types,
+    ['opened', 'reopened', 'synchronize', 'edited', 'ready_for_review'])
+  assert.deepEqual(config.on.push.branches, ['main'])
+  assert.equal(config.on.push.paths, undefined)
+  assert.deepEqual(config.on.merge_group.types, ['checks_requested'])
+  assert.ok(Object.hasOwn(config.on, 'workflow_dispatch'))
+  assert.deepEqual(Object.keys(config.on.workflow_dispatch ?? {}), [])
+  assert.deepEqual(config.on.schedule, [{ cron: '0 * * * *' }])
+  assert.deepEqual(config.permissions, {})
+  assert.deepEqual(config.concurrency, { group: 'backend-freshness', 'cancel-in-progress': false })
+
+  const job = config.jobs.freshness
+  assert.match(job.if, /workflow_dispatch.*refs\/heads\/main/)
+  assert.deepEqual(job.permissions, { contents: 'read', 'pull-requests': 'read', statuses: 'write' })
+  assert.equal(job.environment, undefined)
+  const labels = Array.isArray(job['runs-on']) ? job['runs-on'] : [job['runs-on']]
+  assert.equal(labels.length, 1)
+  assert.match(labels[0], /^namespace-profile-overlay-ci-small;/)
+  assert.match(labels[0], /job\.priority=.*github\.actor == 'dependabot\[bot\]'/)
+
+  const checkout = job.steps.find(step => step.uses?.startsWith('actions/checkout@'))
+  assert.match(checkout.uses, /^actions\/checkout@[a-f0-9]{40}$/)
+  assert.equal(checkout.with.ref, 'main')
+  assert.equal(checkout.with['persist-credentials'], false)
+  assert.equal(checkout.uses, workflow('pr-preview').jobs.preview.steps[0].uses)
+  const run = job.steps.find(step => step.name === 'Check backend freshness')
+  assert.equal(run.run, 'node scripts/release/backend-freshness-check.mjs')
+  assert.deepEqual(run.env, { GITHUB_TOKEN: '${{ github.token }}' })
+  assert.ok(!/npm|npx|curl/.test(run.run))
+  assert.ok(!JSON.stringify(config).includes('secrets.'))
+  assert.ok(!JSON.stringify(config).includes('release-control'))
+})
+
 test('preview requests dispatch only main with a validated PR number, never PR source or inputs', async () => {
   const source = workflow('pr-preview-request').jobs.request.steps[0].with.script
   const repository = 'LayerNorm/overlay-web'

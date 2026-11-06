@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add a trusted `Backend Freshness` status and synchronous Preview guard that compare each PR against live `main`, blocking stale or unverifiable backend state before preview provisioning and before ready status. Main-side changes under Convex, server/shared/API code, packages, configuration, release scripts, dependency manifests, root TypeScript config, and the trusted PR Preview workflow count; feature-only backend edits and UI-only main drift do not. The GitHub 300-file cap fails closed, and comparison semantics are net changes since the merge base. To clear a failure, sync the PR branch with `main` and retest. After merge, owner/Integration must require `Backend Freshness` for PRs and merge queue, then dispatch the first sweep; this change does not alter live rulesets.
+
 - Keep personal chat working during web-first releases and backend rollback by enabling native list ownership only when the backend advertises the matching revision. Validate all native personal-chat response shapes explicitly, prevent Undo from reconstructing a record already known to be missing, and preserve concurrent title changes while archive and Undo are both pending.
 
 - Add private, opt-in two-client chat and navigation baselines that distinguish query readiness, local feedback, HTTP acknowledgement, content visibility, and remote convergence without collecting chat or file content. Correlate acknowledgements to the exact mutation and sanitize setup failures.
