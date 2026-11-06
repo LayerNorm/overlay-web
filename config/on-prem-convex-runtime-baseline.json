@@ -226,6 +226,7 @@
     "src/app/api/v1/workspaces/route.ts"
   ],
   "browserRuntimeFiles": [
+    "src/components/layout/AppSidebarInlinePanels.tsx",
     "src/components/providers/AppClientProviders.tsx",
     "src/components/providers/ConvexAuthProvider.tsx",
     "src/components/providers/PersonalChatProvider.tsx",
@@ -237,7 +238,9 @@
     "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
-    "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx"
+    "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
+    "src/features/knowledge/components/KnowledgeView.tsx",
+    "src/features/knowledge/components/native-file-metadata.tsx"
   ],
   "convexCronJobs": [
     {
@@ -382,6 +385,7 @@
     "src/app/auth/desktop/complete/route.ts",
     "src/app/share/f/[token]/opengraph-image.tsx",
     "src/app/share/f/[token]/page.tsx",
+    "src/components/layout/AppSidebarInlinePanels.tsx",
     "src/components/providers/AppClientProviders.tsx",
     "src/components/providers/ConvexAuthProvider.tsx",
     "src/components/providers/PersonalChatProvider.tsx",
@@ -394,6 +398,8 @@
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
+    "src/features/knowledge/components/KnowledgeView.tsx",
+    "src/features/knowledge/components/native-file-metadata.tsx",
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAuditRepository.ts",
     "src/server/admin/index.ts",
@@ -536,7 +542,8 @@
     "src/server/workflows/native-harness.ts",
     "src/server/workflows/personal-harness.ts",
     "src/server/workflows/surface-agent-turn.ts",
-    "src/server/workspaces/ConvexWorkspaceRepository.ts"
+    "src/server/workspaces/ConvexWorkspaceRepository.ts",
+    "src/shared/knowledge/native-file-metadata-optimistic.ts"
   ],
   "convexScheduledCallFiles": [
     "convex/agents/agentDriveUploads.ts",

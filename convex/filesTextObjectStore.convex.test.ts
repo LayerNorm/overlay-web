@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, test } from 'vitest'
+import { beforeAll, describe, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
@@ -13,6 +13,39 @@ const update = makeFunctionReference<'mutation'>('files/files:update')
 const get = makeFunctionReference<'query'>('files/files:get')
 
 describe('text kept in object storage', () => {
+  test('updates preserve legacy null responses and opt into monotonic revision acknowledgments', async () => {
+    const convex = convexTest(schema, modules)
+    const now = 1_700_000_000_000
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(now)
+    try {
+      const fileId = await convex.run(ctx => ctx.db.insert('files', {
+        userId: 'user_1', name: 'Revision.txt', type: 'file', kind: 'note',
+        content: 'Original', createdAt: now, updatedAt: now,
+      }))
+
+      expect(await convex.mutation(update, {
+        userId: 'user_1', serverSecret: secret, fileId,
+        content: 'Legacy update', expectedUpdatedAt: now,
+      })).toBeNull()
+      const afterLegacy = await convex.run(ctx => ctx.db.get(fileId))
+      expect(afterLegacy?.updatedAt).toBe(now + 1)
+
+      const acknowledged = await convex.mutation(update, {
+        userId: 'user_1', serverSecret: secret, fileId,
+        content: 'Acknowledged update', expectedUpdatedAt: now + 1, returnRevision: true,
+      })
+      expect(acknowledged).toEqual({ updatedAt: now + 2 })
+      expect((await convex.run(ctx => ctx.db.get(fileId)))?.updatedAt).toBe(acknowledged?.updatedAt)
+
+      await expect(convex.mutation(update, {
+        userId: 'user_1', serverSecret: secret, fileId,
+        content: 'Stale update', expectedUpdatedAt: now + 1, returnRevision: true,
+      })).rejects.toThrow(/NOTE_REVISION_CONFLICT/)
+    } finally {
+      dateNow.mockRestore()
+    }
+  })
+
   test('canonical updates remove legacy textContent that would mask the saved content', async () => {
     const convex = convexTest(schema, modules)
     for (const kind of ['note', 'upload'] as const) {
