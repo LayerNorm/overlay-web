@@ -7,8 +7,17 @@ description: "Reproducible realtime baselines, retained consumers, and migration
 
 This harness measures the existing behavior, not a fix. A remote convergence
 failure must remain a failing sample. Do not change an assertion to make the
-baseline pass. CN-02 through CN-06 migrate auth, authorization, lists, canonical
-history, and streaming respectively; none is implemented by the harness.
+baseline pass. CN-02 through CN-05 migrate auth, authorization, personal lists
+and canonical history. CN-06 adds bounded durable progress checkpoints and a
+scoped execution/lifecycle projection while retaining server-owned execution;
+none is implemented by the harness.
+
+CN-06 browser lifecycle reads use the public, viewer/workspace/conversation-
+scoped `chat/personal:getExecution` projection. The browser does not replace
+agent admission, billing, approval/input authority or streaming with a local
+run cache. Exact server-owned list, transcript and execution readiness markers
+gate native ownership; an unavailable native query stays unavailable rather
+than falling back to HTTP after the gate succeeds.
 
 Use the isolated current-head PR Preview. Follow [Preview QA](./worktree-staging-qa.md)
 to verify the READY deployment SHA and its exact PR-scoped Convex backend before
@@ -136,6 +145,24 @@ flag, so the guard also checks nondeleted automation bindings using the additive
 an otherwise eligible chat. Keep this index through rollout and rollback; no
 document backfill is required. The scope helper is shared with the subsequent
 personal-list migration rather than delaying this authorization rule until it.
+
+### Native personal transcript
+
+Native Convex owns the browser's personal-chat transcript, preference summary,
+and initial user-turn write. The browser paginates canonical messages directly;
+the existing scoped HTTP execution path remains responsible for provider
+streaming, memory, billing, and server-side assistant persistence. Native submit
+must pass the retired-thread write guard before reusing or inserting a turn.
+
+Transcript pages are capped at 100 rows. Generated outputs are authorized with
+`files.read`, capped at 100 per turn using a 101-row sentinel, and exposed only
+through the existing authorized file-content URL. Missing or stale output
+policy suppresses file metadata without suppressing text history.
+
+`nativeSubmittedAt`, `userMetadata`, `conversationMessages.by_conversationId_turnId_role`,
+and `files.by_userId_conversationId_turnId` are additive. Roll back browser
+ownership before removing any of them; keep the fields and indexes through
+rollout rollback, with no backfill requirement.
 
 ## Local checks
 

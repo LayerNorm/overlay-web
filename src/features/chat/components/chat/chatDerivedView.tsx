@@ -2,6 +2,7 @@
 
 import type React from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
+import type { GenerationResult } from '../chat-interface/types'
 import type { AutomationDetail } from '@overlay/app-core'
 import { UsageExhaustedNotice } from '@overlay/chat-react'
 import { chatGreetingLine } from '@overlay/chat-core'
@@ -31,6 +32,7 @@ export function buildChatDerivedView({
   isBudgetExhaustedPaid,
   isTemporaryChat,
   activeChatTitle,
+  canonicalView,
 }: {
   chats: Conversation[]
   activeChatId: string | null
@@ -51,6 +53,11 @@ export function buildChatDerivedView({
   isBudgetExhaustedPaid: boolean
   isTemporaryChat: boolean
   activeChatTitle: string | null
+  canonicalView?: {
+    primaryMessages: UIMessage[]
+    generationResults: ReadonlyMap<number, readonly GenerationResult[]>
+    hydrated: boolean
+  }
 }) {
   const activeChat = chats.find((c) => c._id === activeChatId)
 
@@ -59,15 +66,20 @@ export function buildChatDerivedView({
   const primaryMessageSource =
     activeRuntime.askChats.find((chat) => chat.messages.some((message) => message.role === 'user')) ??
     (activeRuntime.actChat.messages.some((message) => message.role === 'user') ? activeRuntime.actChat : activeRuntime.askChats[0])
-  const primaryMessages = (primaryMessageSource.messages as UIMessage[] | undefined) ?? EMPTY_UI_MESSAGES
+  const primaryMessages = canonicalView?.primaryMessages
+    ?? (primaryMessageSource.messages as UIMessage[] | undefined)
+    ?? EMPTY_UI_MESSAGES
   const hasRuntimeMessages =
     activeRuntime.actChat.messages.some((message) => message.role === 'user') ||
     activeRuntime.askChats.some((chat) => chat.messages.some((message) => message.role === 'user'))
-  const hasHistory = hasRuntimeMessages || generationResults.size > 0
+  const hasHistory = canonicalView
+    ? primaryMessages.length > 0 || canonicalView.generationResults.size > 0
+    : hasRuntimeMessages || generationResults.size > 0
+  const viewHydrated = canonicalView?.hydrated ?? activeChatHydrated
   const isExistingConversationView = Boolean(idParam || activeChatId || automationConversationId)
-  const showChatLoadingState = showAutomationChatTab && isExistingConversationView && !hasHistory && !activeChatHydrated
+  const showChatLoadingState = showAutomationChatTab && isExistingConversationView && !hasHistory && !viewHydrated
   /** Empty chat (any modality): center composer + suggestions only on the true new-chat surface. */
-  const showCenteredEmptyChat = !hasHistory && (!isExistingConversationView || activeChatHydrated)
+  const showCenteredEmptyChat = !hasHistory && (!isExistingConversationView || viewHydrated)
   const reserveLatestExchangeStartSpace = showAutomationChatTab && hasHistory && (isActiveLoading || isOptimisticLoading)
   const showScrollToBottomControl =
     showAutomationChatTab &&

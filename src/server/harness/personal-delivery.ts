@@ -10,6 +10,7 @@ import { HARNESS_CONTROL_TOOLS } from './context'
 import { stripTextualToolCalls } from './textual-tool-calls'
 import { compactHarnessTranscriptPersistence } from './harness-transcript'
 import type { HarnessTranscriptPersistence, HarnessTranscriptStep } from '@overlay/agent-runtime/harness-store'
+import { withTranscriptPartIds } from '@/shared/chat/transcript-part-identity'
 
 export function buildPersonalHarnessDelivery(
   result: HarnessExecutionResult,
@@ -82,7 +83,7 @@ export function buildPersonalHarnessDelivery(
   if (sourceCitations && Object.keys(sourceCitations).length) {
     transcript = mapAssistantTextForPersistence(transcript, text => linkifySourceCitationsMarkdown(text, sourceCitations))
   }
-  const persisted = compactHarnessTranscriptPersistence(transcript)
+  const persisted = withTranscriptPartIds(result.snapshot.runId, 'final', compactHarnessTranscriptPersistence(transcript))
   return {
     ...persisted,
     diagnostic: result.snapshot.diagnostic,

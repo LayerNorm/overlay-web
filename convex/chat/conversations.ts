@@ -75,6 +75,7 @@ const messagePart = v.union(
     type: v.literal('text'),
     text: v.string(),
     storageOmittedParts: v.number(),
+    id: v.optional(v.string()),
   }),
   v.object({
     type: v.literal('data'),
@@ -112,6 +113,7 @@ const messagePart = v.union(
   }),
   v.object({
     type: v.literal('tool-invocation'),
+    id: v.optional(v.string()),
     toolInvocation: v.object({
       toolCallId: v.optional(v.string()),
       toolName: v.string(),
@@ -123,6 +125,7 @@ const messagePart = v.union(
   v.object({
     type: v.string(),
     text: v.optional(v.string()),
+    id: v.optional(v.string()),
     url: v.optional(v.string()),
     mediaType: v.optional(v.string()),
     fileName: v.optional(v.string()),
@@ -858,7 +861,7 @@ export const addMessage = mutation({
     }
     const existing = await ctx.db
       .query('conversationMessages')
-      .withIndex('by_conversationId', (q) => q.eq('conversationId', args.conversationId))
+      .withIndex('by_conversationId_turnId_role', (q) => q.eq('conversationId', args.conversationId).eq('turnId', args.turnId))
       .collect()
     const match = existing.find(
       (message) => sameMessageVariant(message, {
@@ -898,6 +901,10 @@ export const addMessage = mutation({
       status: 'completed' as const,
       updatedAt: now,
       createdAt: match?.createdAt ?? now,
+      ...(match?.role === 'user' && match.nativeSubmittedAt !== undefined ? {
+        mode: match.mode, content: match.content, contentType: match.contentType, parts: match.parts,
+        modelId: match.modelId, replyToTurnId: match.replyToTurnId, replySnippet: match.replySnippet,
+      } : {}),
     }
     const msgId = match
       ? (await ctx.db.patch(match._id, payload), match._id)
@@ -1034,6 +1041,7 @@ export const startAgentRun = mutation({
       createdAt: now,
       updatedAt: now,
     })
+    if (userMessage.nativeSubmittedAt !== undefined) await ctx.db.patch(assistantMessageId, { nativeRunId: runId })
     await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
     return await ctx.db.get(runId)
   },
@@ -1368,6 +1376,7 @@ export const recordAgentRunProgress = mutation({
     assertSupportedAgentExecution(run)
     const message = await ctx.db.get(run.assistantMessageId)
     if (message?.status !== 'generating') return
+    if (message.nativeRunId === run._id && message.nativeProgressSequence !== undefined) return
     if (message.content === args.content) return
     const existingParts = message.parts ?? []
     await ctx.db.patch(message._id, {
