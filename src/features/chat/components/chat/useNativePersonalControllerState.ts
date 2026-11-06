@@ -35,7 +35,7 @@ export function useNativePersonalSafetyScope({
   const nativeSafetyConversationId = nativePersonalRoute
     ? nativePersonal.selectedConversationId ?? (nativePendingFirst ? pendingRunConversationId : null)
     : isTemporaryChat || nativePendingFirst ? null : activeChatId
-  const nativeSafetyScopeConversationId = nativePersonalRoute && nativePendingFirst
+  const nativeSafetyScopeConversationId = nativePersonalRoute && (nativePendingFirst || activeChatId === null)
     ? PENDING_FIRST_CHAT_ID
     : nativeSafetyConversationId
   const nativeScopeSynchronized = !nativePersonalRoute || (

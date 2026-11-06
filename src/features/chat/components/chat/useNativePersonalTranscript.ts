@@ -285,14 +285,17 @@ type NativeRunActivity = {
   createdAt: number
 }
 
+function nativePendingTurnFailed(turn: PersonalPendingTurn) {
+  return turn.responses.some((response) => response.status === 'error')
+    || turn.localGenerationResults?.some((result) => result.status === 'failed') === true
+}
+
 export function nativePersonalCurrentTurnId(
   projection: ReturnType<typeof projectPersonalTranscript>,
   run: NativeRunActivity | null,
   pendingTurns: readonly PersonalPendingTurn[] = [],
 ) {
-  const pending = [...pendingTurns].reverse().find((turn) =>
-    !turn.responses.some((response) => response.status === 'error')
-    && !turn.localGenerationResults?.some((result) => result.status === 'failed'))
+  const pending = [...pendingTurns].reverse().find((turn) => !nativePendingTurnFailed(turn))
   if (pending) return pending.turnId
   if (run && activeRunStatuses.has(run.status)) return run.turnId
   const latest = projection.exchanges.at(-1)
@@ -312,8 +315,9 @@ export function nativePersonalTurnIsActive({
   if (!turnId) return false
   if (projection.terminalTurnIds.has(turnId)
     || (run?.turnId === turnId && isTerminalAgentRunStatus(run.status as AgentRunStatus))) return false
-  if (pendingTurns.some((turn) => turn.turnId === turnId)) return true
   if (run?.turnId === turnId && activeRunStatuses.has(run.status)) return true
+  const pending = pendingTurns.find((turn) => turn.turnId === turnId)
+  if (pending) return !nativePendingTurnFailed(pending)
   return projection.exchanges.find((exchange) => exchange.turnId === turnId)
     ?.responses.some((response) => response.status === 'generating') ?? false
 }

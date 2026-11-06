@@ -171,12 +171,20 @@ test('terminal canonical turns stop stale activity without hiding a newer pendin
   }), true)
   const failedAdmission = {
     turnId: 'failed-turn',
+    user: {
+      id: 'failed-user', turnId: 'failed-turn', role: 'user', mode: 'act',
+      createdAt: 1000, status: 'completed', parts: [{ type: 'text', text: 'Generate an image' }],
+    },
     localGenerationResults: [{ status: 'failed' }],
     responses: [],
   } as never
   assert.equal(nativePersonalCurrentTurnId(newer, null, [failedAdmission]), 'old-turn')
   assert.equal(nativePersonalTurnIsActive({
     projection: newer, pendingTurns: [failedAdmission], run: null,
+  }), false)
+  const failedProjection = projectPersonalTranscript([], [failedAdmission])
+  assert.equal(nativePersonalTurnIsActive({
+    projection: failedProjection, pendingTurns: [failedAdmission], run: null,
   }), false)
   const activeDurableRun = { turnId: 'active-turn', status: 'running' }
   assert.equal(nativePersonalCurrentTurnId(newer, activeDurableRun, [failedAdmission]), 'active-turn')

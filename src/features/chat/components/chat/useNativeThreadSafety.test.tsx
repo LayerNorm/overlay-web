@@ -9,7 +9,7 @@ import { useNativeThreadSafety } from './useNativeThreadSafety'
 
 test('pending-first native scope survives its own id hydration and expires on route or identity change', async () => {
   ;(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true
-  let activeChatId: string | null = PENDING_FIRST_CHAT_ID
+  let activeChatId: string | null = null
   let pendingRunConversationId: string | null = null
   let userId = 'viewer'
   let selectedConversationId: string | null = null
@@ -34,6 +34,9 @@ test('pending-first native scope survives its own id hydration and expires on ro
   let renderer: ReturnType<typeof create> | undefined
   await act(async () => { renderer = create(createElement(Harness)) })
   const initialScope = current!
+  activeChatId = PENDING_FIRST_CHAT_ID
+  await act(async () => { renderer!.update(createElement(Harness)) })
+  assert.equal(initialScope(), true)
   pendingRunConversationId = 'created-conversation'
   await act(async () => { renderer!.update(createElement(Harness)) })
   assert.equal(initialScope(), true)
