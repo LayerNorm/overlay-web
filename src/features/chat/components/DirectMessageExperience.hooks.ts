@@ -546,7 +546,10 @@ export function useRoomTranscript({
   useEffect(() => {
     if (loading) return
     void markVisibleRead()
-  }, [loading, markVisibleRead, messages.length])
+    const onVisible = () => { void markVisibleRead() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => document.removeEventListener('visibilitychange', onVisible)
+  }, [loading, markVisibleRead, messages.length, generatingMessages.length])
 
   useEffect(() => {
     queueMicrotask(() => {

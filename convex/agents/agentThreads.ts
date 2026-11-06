@@ -2,8 +2,9 @@ import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
-import { requireServerSecret } from '../lib/auth'
+import { requireAccessToken, requireServerSecret } from '../lib/auth'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
+import { resolveThreadActivity } from '../../src/shared/agents/thread-activity'
 
 type Ctx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
 
@@ -22,6 +23,34 @@ const agentAutomationView = v.object({
   enabled: v.boolean(),
   conversationId: v.optional(v.id('conversations')),
   lastRunAt: v.optional(v.number()),
+})
+
+export const watchThreadActivity = query({
+  args: { accessToken: v.string(), userId: v.string(), workspaceId: v.string(), agentId: v.string() },
+  returns: v.array(v.object({
+    conversationId: v.id('conversations'),
+    status: v.union(v.literal('idle'), v.literal('working'), v.literal('needs_input'), v.literal('ready'),
+      v.literal('completed'), v.literal('failed'), v.literal('cancelled')),
+  })),
+  handler: async (ctx, args) => {
+    await requireAccessToken(args.accessToken, args.userId)
+    const actor = await requireActorMembership(ctx, args)
+    const agent = await ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', q => q.eq('agentId', args.agentId)).unique()
+    if (!agent || agent.workspaceId !== args.workspaceId || agent.deletedAt || agent.archivedAt
+      || (agent.visibility === 'creator' && agent.createdByPrincipalId !== actor.principalId)) return []
+    const threads = await listThreadDocs(ctx, args)
+    const activity = await Promise.all(threads.map(async thread => {
+      const participant = await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', q => q.eq('conversationId', thread._id).eq('principalId', actor.principalId))
+        .unique()
+      if (!participant || participant.status !== 'active' || participant.archivedAt) return null
+      const run = await ctx.db.query('conversationAgentRuns')
+        .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', thread._id)).order('desc').first()
+      return { conversationId: thread._id, status: resolveThreadActivity(run, participant) }
+    }))
+    return activity.filter((item): item is NonNullable<typeof item> => item !== null)
+  },
 })
 
 async function requireActorMembership(
