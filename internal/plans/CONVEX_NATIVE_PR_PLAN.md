@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-06. CN-01 to CN-06 and CN-03P are merged to main; this does not by itself establish production activation or pilot acceptance. The remaining cards are not merged, and open PRs are listed below. Merges and deployments follow the repository's release rules, not this document. The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-06. CN-01 to CN-06 and CN-03P are merged to main; this does not by itself establish production activation or pilot acceptance. The personal-chat pilot is being stabilized and its old path contracted before any other domain continues. The other cards have no open PR. Merges and deployments follow the repository's release rules, not this document. The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -10,11 +10,13 @@ Status: in progress as of 2026-11-06. CN-01 to CN-06 and CN-03P are merged to ma
 | CN-04 | #396 | Merged |
 | CN-03P | #397 | Merged |
 | CN-05, CN-06 | #408 | Merged |
-| CN-07 to CN-11 | #403 | Open draft, one combined Phase C PR |
-| CN-12 | #402 | Open |
-| CN-20 | #398 | Open |
-| CN-21 | #401 | Open draft |
-| CN-25 | #400 | Open draft |
+| CN-07 to CN-11 | #403 | Closed unmerged, branch kept as reference |
+| CN-12 | #402 | Closed unmerged, branch kept as reference |
+| CN-20 | #398 | Closed unmerged, branch kept as reference |
+| CN-21 | #401 | Closed unmerged, branch kept as reference |
+| CN-25 | #400 | Closed unmerged, branch kept as reference |
+
+Closed branches are source material, not accepted work. Reuse their Convex authorization code and tests only after reviewing them against current main.
 
 This is the execution companion to the [Convex-native migration architecture plan](./CONVEX_NATIVE_MIGRATION_PLAN.md). It turns that plan's broad phases into **37 focused PR-sized change sets**, each with an explicit outcome, scope, dependencies, acceptance gate, and retirement work.
 
@@ -51,6 +53,17 @@ Existing server-secret functions are not browser APIs. Browser identity is deriv
 Delete superseded **web callers and local ownership** in the domain PR. Retain an endpoint or repository temporarily only when it still has a named consumer or a bounded rollback requirement. Record that reason and the eventual retirement card.
 
 Do not leave all cleanup to the final three PRs. Those remove shared remnants that cannot disappear until the last domain has migrated.
+
+### Every domain finishes by contracting
+
+These rules take precedence over any earlier scheduling or compatibility text in this plan:
+
+- A domain moves through expand, cut over, contract. It is not complete until the contract step has merged. Merged additive code counts as in progress, not done.
+- Delete the old path right after the bounded rollback window, in the domain's own follow-up PR. Do not start the next surface until that PR has merged, unless the old path has a named blocker.
+- Every retained old path names its consumer and the card that removes it. "Rollback" alone is not a permanent reason.
+- A finished domain should remove more production code than it added. Tests and domain authorization moved out of Next.js may be larger than what they replace; report production, test and docs lines separately, and explain any finished domain that stays net-positive in production code.
+- Work on one surface at a time, with one implementer. Do not run parallel domain branches or combine several cards in one PR.
+- Green CI is not acceptance. A surface is accepted only after current-head testing with two independent clients, its failure paths, and the permission cases its card names.
 
 ### Every implementation PR must provide
 
@@ -648,7 +661,7 @@ The diagram above describes acceptance and integration gates, not a global imple
 
 ### Parallel execution as originally planned
 
-Historical snapshot: the owners, pinned revision and stacked PR bases in this subsection and the next describe the plan when the children started. The foundation has since merged, and the open domain PRs now target main. Use the status table at the top for current state; the ownership boundaries, integration rules and landing gates still apply.
+Superseded: the owners, pinned revision and stacked PR bases in this subsection and the next describe the original parallel plan, which has been stopped. The foundation has merged and the child PRs are closed. Use the status table and "Every domain finishes by contracting" for current practice. The security and backend-agnostic UI requirements below still apply.
 
 | Owner | Work now | Boundary |
 |---|---|---|

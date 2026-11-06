@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Require each Convex-native migration domain to delete its old path before the next surface starts, and move the migration to one implementer and one surface at a time, so old and new paths stop accumulating side by side.
+
 - Add the Convex-native migration architecture plan and its phased PR plan under `internal/plans/`, with current card status, so agents and reviewers can reference the same scope, dependencies and acceptance gates from the repository.
 
 - Land CN-05 personal history/sending and CN-06 durable execution/progress together on the main-targeted integration branch.
