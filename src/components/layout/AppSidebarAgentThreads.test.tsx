@@ -94,6 +94,15 @@ test('single-line titles have accessible live status icons without status subtit
   }
 })
 
+test('threads without activity render text without an empty status icon slot', () => {
+  for (const activity of [undefined, [], [{ conversationId: 'c_plan', status: 'idle' as const }]]) {
+    const html = render(bundle, { activity })
+    assert.match(html, /Q4 launch plan/)
+    assert.match(html, /agent-thread-tree/)
+    assert.doesNotMatch(html, /agent-thread-status/)
+  }
+})
+
 test('agent subtitles retain working and ready counts and preserve the chief fallback', () => {
   const activity = (['working', 'working', 'ready', 'needs_input'] as ThreadActivityStatus[])
     .map((status, i) => ({ conversationId: String(i), status }))

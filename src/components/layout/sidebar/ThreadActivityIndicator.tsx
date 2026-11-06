@@ -5,7 +5,7 @@ import { THREAD_ACTIVITY_LABELS, summarizeThreadActivity, type ThreadActivity, t
 const ICONS = { working: LoaderCircle, needs_input: MessageCircleQuestion, ready: Check, completed: Check, failed: CircleAlert, cancelled: Square }
 
 export function ThreadActivityIndicator({ status }: { status?: ThreadActivityStatus }) {
-  if (!status || status === 'idle') return <span className="agent-thread-status" aria-hidden />
+  if (!status || status === 'idle') return null
   const Icon = ICONS[status]
   const label = THREAD_ACTIVITY_LABELS[status]
   return <DelayedTooltip label={label} side="right" className="shrink-0"><span className="agent-thread-status" data-status={status} role="img" aria-label={label}>
