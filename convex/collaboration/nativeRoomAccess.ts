@@ -11,6 +11,11 @@ export async function requireNativeRoom(ctx: Context, args: NativeRoomArgs) {
   const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
   await requireNativeDeploymentFeature(ctx, 'chat', args.workspaceId)
   await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
+  return requireRoomForViewer(ctx, args, viewer)
+}
+
+async function requireRoomForViewer(ctx: Pick<QueryCtx, 'db'>, args: NativeRoomArgs, viewer: Awaited<ReturnType<typeof requireNativeWorkspace>>) {
+  if (viewer.workspaceId !== args.workspaceId) throw new Error('ROOM_ACCESS_DENIED')
   const conversation = await ctx.db.get(args.conversationId)
   if (!conversation || conversation.deletedAt !== undefined || conversation.workspaceId !== args.workspaceId
     || (conversation.conversationType !== 'dm' && conversation.conversationType !== 'channel')) {
@@ -29,6 +34,15 @@ export async function requireNativeRoom(ctx: Context, args: NativeRoomArgs) {
     }
   }
   return { viewer, principal: viewer.principal, membership: viewer.membership, conversation, participant }
+}
+
+export async function roomForAuthorizedViewerOrNull(ctx: Pick<QueryCtx, 'db'>, args: NativeRoomArgs, viewer: Awaited<ReturnType<typeof requireNativeWorkspace>>) {
+  try {
+    return await requireRoomForViewer(ctx, args, viewer)
+  } catch (error) {
+    if (error instanceof Error && error.message === 'ROOM_ACCESS_DENIED') return null
+    throw error
+  }
 }
 
 export async function nativeRoomOrNull(ctx: Context, args: NativeRoomArgs) {

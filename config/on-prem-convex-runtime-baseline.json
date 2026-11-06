@@ -226,6 +226,7 @@
     "src/app/api/v1/workspaces/route.ts"
   ],
   "browserRuntimeFiles": [
+    "src/components/providers/AgentDirectoryProvider.tsx",
     "src/components/providers/AppClientProviders.tsx",
     "src/components/providers/ConvexAuthProvider.tsx",
     "src/components/providers/PersonalChatProvider.tsx",
@@ -237,7 +238,6 @@
     "src/components/providers/personal-chat-store.ts",
     "src/components/providers/usePersonalChatRouteSelection.ts",
     "src/components/providers/usePersonalChatTranscript.ts",
-    "src/features/agents/components/AgentDirectoryProvider.tsx",
     "src/features/chat/components/DirectMessageExperience.parts.tsx",
     "src/features/chat/components/DirectMessageExperience.tsx",
     "src/features/chat/components/chat/useAgentRunLifecycle.ts",
@@ -251,6 +251,7 @@
     "src/features/chat/components/collaboration/NativeRoomScope.tsx",
     "src/features/chat/components/collaboration/NativeRoomState.tsx",
     "src/features/chat/components/collaboration/useNativePresence.ts",
+    "src/features/chat/components/collaboration/useNativeRoomSafety.ts",
     "src/features/chat/components/collaboration/useNativeRoomTranscript.ts"
   ],
   "convexCronJobs": [
@@ -401,6 +402,7 @@
     "src/app/auth/desktop/complete/route.ts",
     "src/app/share/f/[token]/opengraph-image.tsx",
     "src/app/share/f/[token]/page.tsx",
+    "src/components/providers/AgentDirectoryProvider.tsx",
     "src/components/providers/AppClientProviders.tsx",
     "src/components/providers/ConvexAuthProvider.tsx",
     "src/components/providers/PersonalChatProvider.tsx",
@@ -412,7 +414,6 @@
     "src/components/providers/personal-chat-store.ts",
     "src/components/providers/usePersonalChatRouteSelection.ts",
     "src/components/providers/usePersonalChatTranscript.ts",
-    "src/features/agents/components/AgentDirectoryProvider.tsx",
     "src/features/chat/components/DirectMessageExperience.parts.tsx",
     "src/features/chat/components/DirectMessageExperience.tsx",
     "src/features/chat/components/chat/useAgentRunLifecycle.ts",
@@ -426,6 +427,7 @@
     "src/features/chat/components/collaboration/NativeRoomScope.tsx",
     "src/features/chat/components/collaboration/NativeRoomState.tsx",
     "src/features/chat/components/collaboration/useNativePresence.ts",
+    "src/features/chat/components/collaboration/useNativeRoomSafety.ts",
     "src/features/chat/components/collaboration/useNativeRoomTranscript.ts",
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAuditRepository.ts",

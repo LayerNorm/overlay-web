@@ -2,7 +2,7 @@ import { convexTest } from 'convex-test'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { api } from './_generated/api'
 import schema from './schema'
-import { UNREAD_ROOM_SCAN_LIMIT, UNREAD_ROW_READ_LIMIT } from './collaboration/nativeActivity'
+import { getUnreadCounts, UNREAD_ROOM_SCAN_LIMIT, UNREAD_ROW_READ_LIMIT } from './collaboration/nativeActivity'
 
 const modules = import.meta.glob('./**/*.ts')
 const workspaceId = 'native-activity'
@@ -91,6 +91,24 @@ test('revoked rooms consume room and access-check budgets instead of scanning fo
   expect(counts.rooms).toEqual({ count: 0, capped: true })
   expect(Object.values(counts.byKind).every(bucket => bucket.capped)).toBe(true)
   expect(counts.byConversation).toEqual({})
+})
+
+test('unread scans authorize the viewer once rather than multiplying role traversal per room', async () => {
+  const f = await countBudgetFixture(UNREAD_ROOM_SCAN_LIMIT + 10, 1, true)
+  await f.bob.run(async ctx => {
+    const reads: Record<string, number> = {}
+    const db = new Proxy(ctx.db, { get(target, key) {
+      if (key !== 'query') return Reflect.get(target, key)
+      return (table: Parameters<typeof ctx.db.query>[0]) => {
+        reads[table] = (reads[table] ?? 0) + 1
+        return target.query(table)
+      }
+    } })
+    expect((await getUnreadCounts._handler({ ...ctx, db }, { workspaceId })).notifications).toEqual({ count: 0, capped: true })
+    expect(reads.authorizationUserRoles).toBe(1)
+    expect(reads.authorizationGroupMemberships).toBe(1)
+    expect(reads.conversationParticipants).toBe(UNREAD_ROOM_SCAN_LIMIT)
+  })
 })
 
 test('rare kinds beyond the room budget are unknown, never a false exact zero', async () => {

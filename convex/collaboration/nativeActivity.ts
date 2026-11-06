@@ -5,7 +5,7 @@ import type { Doc, Id } from '../_generated/dataModel'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { requireNativeDeploymentFeature } from '../lib/nativeDeploymentPolicy'
 import { requireNativeCapability } from '../lib/nativeCapabilities'
-import { nativeRoomOrNull, requireNativeRoom } from './nativeRoomAccess'
+import { nativeRoomOrNull, requireNativeRoom, roomForAuthorizedViewerOrNull } from './nativeRoomAccess'
 
 const workspace = { workspaceId: v.string() }
 const filter = v.union(v.literal('all'), v.literal('unread'), v.literal('mentions'), v.literal('threads'), v.literal('reactions'))
@@ -78,7 +78,7 @@ export const getUnreadCounts = query({ args: workspace, returns: v.object({ work
     roomScans += 1
     previous = next.conversationId
     accessChecks += 1
-    const access = await nativeRoomOrNull(ctx, { ...args, conversationId: previous })
+    const access = await roomForAuthorizedViewerOrNull(ctx, { ...args, conversationId: previous }, actor)
     if (!access) continue
     if (rowReads === UNREAD_ROW_READ_LIMIT) break
     const unread = await ctx.db.query('workspaceNotifications').withIndex('by_workspace_recipient_read_room_time', q => q.eq('workspaceId', args.workspaceId)
