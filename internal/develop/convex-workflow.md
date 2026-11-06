@@ -118,6 +118,10 @@ memberships and nonarchived human principals. Each directory row owns this
 reactive paginated subscription; the provider derives complete headcounts
 directly from its pages and withholds incomplete totals. Membership revocation
 invalidates these counts without a reload, including revocation of a peer.
+Changes to confirmed total or human headcounts also invalidate the active
+retained HTTP management view, preventing a reactive header from disagreeing
+with a previously loaded People roster. Name-only changes do not reload that
+view. Membership writes remain server-owned on their existing paths.
 The `useQueries` request map retains its identity until workspace rows or cursor
 metadata change; cursor discovery advances after commit rather than during
 render. A real Convex hook seam covers initial loading, pagination and revocation

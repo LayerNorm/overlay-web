@@ -449,6 +449,58 @@ test('refresh preserves direct query ownership and every authentication-transiti
   memberRows = {}
 })
 
+test('native headcount changes invalidate retained management rows without refetching for rename', async () => {
+  nativeAuthConfigured = true
+  hasConvexClient = true
+  isAuthenticated = true
+  authLoading = false
+  identity = 'viewer-a'
+  pathname = '/app/settings'
+  initialHint = a.id
+  directoryStatus = 'Exhausted'
+  directoryResults = [a]
+  memberRows = { [a.id]: [
+    { memberCount: 1, humanMemberCount: 1 },
+    { memberCount: 1, humanMemberCount: 1 },
+  ] }
+  let loads = 0
+  const client = createClient()
+  const managementClient = {
+    async load() {
+      loads += 1
+      return {
+        items: memberRows[a.id]!.map((_, index) => ({
+          id: `member-${index}`, kind: 'member', name: `QA person ${index}`,
+          principalId: `principal-${index}`, principalType: 'human', role: 'member', status: 'active',
+        })),
+        canManage: false, currentPrincipalId: 'principal-0', currentRole: 'member', workspaceKind: 'organization',
+      }
+    },
+  }
+  const tree = () => (
+    <WorkspaceProvider client={client}>
+      <WorkspaceSettingsPanel client={managementClient as never} initialTab="people" />
+    </WorkspaceProvider>
+  )
+  let root!: ReturnType<typeof create>
+  try {
+    await act(async () => { root = create(tree()) })
+    assert.ok(JSON.stringify(root.toJSON()).includes('QA person 1'))
+    const initialLoads = loads
+    directoryResults = [{ ...a, name: 'Remote rename', updatedAt: 2 }]
+    await act(async () => { root.update(tree()) })
+    assert.equal(loads, initialLoads)
+    memberRows = { [a.id]: [{ memberCount: 1, humanMemberCount: 1 }] }
+    await act(async () => { root.update(tree()) })
+    assert.equal(loads, initialLoads + 1)
+    assert.ok(JSON.stringify(root.toJSON()).includes('QA person 0'))
+    assert.ok(!JSON.stringify(root.toJSON()).includes('QA person 1'))
+  } finally {
+    if (root) await act(async () => root.unmount())
+    memberRows = {}
+  }
+})
+
 test('native rename preserves drafts across remote revisions and scopes optimism to the affected row', async () => {
   nativeAuthConfigured = true
   hasConvexClient = true

@@ -704,6 +704,8 @@ export function WorkspaceSettingsPanel({
   const [teamCandidates, setTeamCandidates] = useState<WorkspaceManagementItem[]>([])
   const [teamCandidateBusyId, setTeamCandidateBusyId] = useState<string | null>(null)
   const activeWorkspaceId = activeWorkspace?.id
+  const activeMemberCount = activeWorkspace?.memberCount
+  const activeHumanMemberCount = activeWorkspace?.humanMemberCount
   const nativeSettingsMode = nativeConfiguration.nativeAuthConfigured
 
   useEffect(() => {
@@ -764,7 +766,7 @@ export function WorkspaceSettingsPanel({
         })
     })
     return () => controller.abort()
-  }, [activeTab, activeWorkspaceId, client, refreshKey])
+  }, [activeTab, activeWorkspaceId, activeMemberCount, activeHumanMemberCount, client, refreshKey])
 
   useEffect(() => {
     if (action?.type !== 'manage-team' || !activeWorkspaceId) return
