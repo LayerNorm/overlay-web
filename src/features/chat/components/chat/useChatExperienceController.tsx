@@ -23,6 +23,7 @@ import { useChatRetryController } from './useChatRetryController'
 import { useNativeThreadSafety } from './useNativeThreadSafety'
 import { saveGeneratedUiChange } from './generated-ui-mutation'
 import { useChatRouteController } from './useChatRouteController'
+import { nativeChatTitleForDisplay } from '@/features/chat/lib/persist-native-chat-title'
 import {
   TEMPORARY_CHAT_ID,
   PENDING_FIRST_CHAT_ID,
@@ -97,6 +98,15 @@ export type ChatExperienceProps = {
 
 }
 
+function isNativePersonalRoute(pathname: string | null, searchParams: Pick<URLSearchParams, 'get' | 'toString'>) {
+  const routeScope = readWorkspacePathScope(pathname ?? '') ?? legacyWorkspaceScopeForRoute(
+    'chat',
+    new URLSearchParams(searchParams.toString()),
+  )
+  return routeScope !== 'workspace'
+    && !['workspace-chats', 'dms', 'channels'].includes(searchParams.get('view') ?? '')
+}
+
 export function useChatExperienceController({
   userId,
   firstName,
@@ -162,6 +172,10 @@ export function useChatExperienceController({
   const composerMode: 'chat' | 'automate' = isTemporaryChat ? 'chat' : mode
   // Stores the pending title so loadChats() never overwrites it before the PATCH lands
   const pendingTitleRef = useRef<{ chatId: string; title: string } | null>(null)
+  const nativePersonalEnabled = nativePersonal.configured
+    && (Boolean(userId) || authLoading)
+    && mode === 'chat'
+  const nativePersonalRoute = nativePersonalEnabled && isNativePersonalRoute(pathname, searchParams)
 
   // Clear active viewer + ref when this tab unmounts so any in-flight .then() sees isActive=false
   useEffect(() => {
@@ -177,7 +191,9 @@ export function useChatExperienceController({
     pendingTitleRef,
     nativePersonalChats: nativePersonal.active.rows,
     nativeSelectedSummary: nativePersonal.selectedSummary,
-    nativePersonalEnabled: nativePersonal.configured && Boolean(userId) && mode === 'chat',
+    nativePersonalEnabled,
+    nativePersonalRoute,
+    allowLegacyMixedList: searchParams.get('view') === 'all',
     workspaceId: nativePersonal.configured ? nativePersonal.workspaceId : activeWorkspaceId,
     userId,
   })
@@ -187,24 +203,22 @@ export function useChatExperienceController({
     ...nativePersonal.archived.rows.map((chat) => chat._id),
     ...(nativePersonal.selectedSummary ? [nativePersonal.selectedSummary._id] : []),
   ]), [nativePersonal.active.rows, nativePersonal.archived.rows, nativePersonal.selectedSummary])
-  const routeScope = readWorkspacePathScope(pathname ?? '') ?? legacyWorkspaceScopeForRoute(
-    'chat',
-    new URLSearchParams(searchParams.toString()),
-  )
-  const nativePersonalRoute = nativePersonal.configured
-    && Boolean(userId)
-    && mode === 'chat'
-    && routeScope !== 'workspace'
-    && !['workspace-chats', 'dms', 'channels'].includes(searchParams.get('view') ?? '')
   const isNativePersonalChat = useCallback((chatId: string) => (
     nativePersonalChatIds.has(chatId)
-    || (nativePersonalRoute && nativePersonal.selectedConversationId === chatId)
-    || (nativePersonalRoute && activeChatId === chatId)
+    || (
+      nativePersonalRoute
+      && searchParams.get('id') === chatId
+      && (
+        nativePersonal.selectedConversationId !== chatId
+        || nativePersonal.selectedSummary !== null
+      )
+    )
   ), [
-    activeChatId,
     nativePersonal.selectedConversationId,
+    nativePersonal.selectedSummary,
     nativePersonalChatIds,
     nativePersonalRoute,
+    searchParams,
   ])
   const getNativePersonalSummary = useCallback((chatId: string) => (
     nativePersonal.selectedSummary?._id === chatId
@@ -359,6 +373,7 @@ export function useChatExperienceController({
     setComposerNotice,
   })
   const {
+    billingAccessNotice,
     connectionUnavailable,
     isBudgetExhaustedPaid,
     isModelAccessRestricted,
@@ -470,6 +485,7 @@ export function useChatExperienceController({
   } = useConversationUiState({
     activeChatId,
     activeChatIdRef,
+    canonicalChatTitle: nativePersonalRoute ? nativePersonal.selectedSummary : null,
     applyDefaultChatModelsToView,
     clearTransientComposerState,
     ensureConversationRuntime,
@@ -489,15 +505,13 @@ export function useChatExperienceController({
     setSourcesPanel,
   })
 
-  useEffect(() => {
-    const summary = nativePersonal.selectedSummary
-    if (!nativePersonalRoute || !summary || summary._id !== activeChatId) return
-    setActiveChatTitle(summary.title)
-    updateRuntimeUiState(summary._id, (previous) => ({
-      ...previous,
-      activeChatTitle: summary.title,
-    }))
-  }, [activeChatId, nativePersonal.selectedSummary, nativePersonalRoute, setActiveChatTitle, updateRuntimeUiState])
+  const displayedActiveChatTitle = activeChatId
+    ? nativeChatTitleForDisplay(
+      isNativePersonalChat(activeChatId),
+      getNativePersonalSummary(activeChatId)?.title,
+      activeChatTitle,
+    )
+    : activeChatTitle
 
   useEffect(() => {
     const summary = nativePersonal.selectedSummary
@@ -562,9 +576,10 @@ export function useChatExperienceController({
 
   useChatListEventSync({
     activeChatIdRef,
-    nativePersonalEnabled: nativePersonal.configured && Boolean(userId) && mode === 'chat',
     nativePersonalIds: nativePersonalChatIds,
     nativePersonalRoute,
+    isNativePersonalChat,
+    nativePersonalEnabled,
     workspaceId: nativePersonal.configured ? nativePersonal.workspaceId : activeWorkspaceId,
     resetActiveChatAfterDelete,
     setActiveChatDeleting,
@@ -666,7 +681,7 @@ export function useChatExperienceController({
   } = useChatTitleController({
     activeChatId,
     activeChatIdRef,
-    activeChatTitle,
+    activeChatTitle: displayedActiveChatTitle,
     chats,
     isNativePersonalChat,
     loadChats,
@@ -927,7 +942,7 @@ export function useChatExperienceController({
     isRuntimeCurrent,
     activeChatId,
     activeChatIdRef,
-    activeChatTitle,
+    activeChatTitle: displayedActiveChatTitle,
     automationIdParam,
     completeSession,
     ensureConversationRuntime,
@@ -954,7 +969,7 @@ export function useChatExperienceController({
     isCurrentScope: nativeThreadSafety.isCurrentScope,
     activeChatId,
     activeChatIdRef,
-    activeChatTitle,
+    activeChatTitle: displayedActiveChatTitle,
     applyUiStateToView,
     attachedImages,
     authUser,
@@ -967,6 +982,7 @@ export function useChatExperienceController({
     inputRef,
     invalidateLoadChatRequest,
     isActiveLoading,
+    billingAccessNotice,
     isBudgetExhaustedPaid,
     isFirstMessage,
     isSendBlocked,
@@ -976,6 +992,7 @@ export function useChatExperienceController({
     isTemporaryChatRef,
     loadChats,
     loadSubscription,
+    nativePersonalEnabled,
     onUsageExhaustedError,
     markChatModified,
     memoryEnabled,
@@ -1023,6 +1040,7 @@ export function useChatExperienceController({
     updateRuntimeUiState,
     userId,
     videoSubMode,
+    workspaceId: nativePersonal.configured ? nativePersonal.workspaceId : activeWorkspaceId,
   })
 
   const {
@@ -1052,7 +1070,7 @@ export function useChatExperienceController({
     createNewChat,
     loadChat,
     runtimesRef,
-    activeChatTitle,
+    activeChatTitle: displayedActiveChatTitle,
     setExitingTurnIds,
   })
 
@@ -1093,7 +1111,7 @@ export function useChatExperienceController({
     belowEmptyComposer,
     isBudgetExhaustedPaid,
     isTemporaryChat,
-    activeChatTitle,
+    activeChatTitle: displayedActiveChatTitle,
   })
 
   const {
@@ -1247,7 +1265,7 @@ export function useChatExperienceController({
     exchangeModels,
     exchangeModes,
     generationResults,
-    activeChatTitle,
+    activeChatTitle: displayedActiveChatTitle,
     editingChatId,
     editingChatTitle,
     setEditingChatTitle,
@@ -1320,6 +1338,7 @@ export function useChatExperienceController({
     dragCounterRef,
     isDragging,
     setIsDragging,
+    billingAccessNotice,
     isBudgetExhaustedPaid,
     isSendBlocked,
     connectionUnavailable,

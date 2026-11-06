@@ -2,6 +2,58 @@ export interface PersonalChatRow {
   _id: string
 }
 
+export interface PersonalChatArchiveRow extends PersonalChatRow {
+  archivedAt?: number
+}
+
+export interface PersonalChatUnreadRow extends PersonalChatRow {
+  unread: boolean
+  lastMessageId?: string
+}
+
+export type PersonalChatArchiveArgs = {
+  workspaceId: string
+  conversationId: string
+  archived: boolean
+}
+
+export function createPersonalChatArchiveOptimisticUpdate<Row extends PersonalChatArchiveRow>(
+  fallback: Row,
+  effects: {
+    getCurrent(args: PersonalChatArchiveArgs): Row | null | undefined
+    move(args: PersonalChatArchiveArgs, row: Row | null): void
+    updateSummary(args: PersonalChatArchiveArgs, row: Row | null): void
+  },
+): (args: PersonalChatArchiveArgs) => void {
+  return (args) => {
+    const archivedAt = args.archived ? Date.now() : undefined
+    const current = effects.getCurrent(args)
+    const next = archivePersonalChatRow(current, fallback, archivedAt)
+    effects.move(args, next)
+    effects.updateSummary(args, next)
+  }
+}
+
+export function archivePersonalChatRow<Row extends PersonalChatRow>(
+  current: Row | null | undefined,
+  fallback: Row | undefined,
+  archivedAt: number | undefined,
+): Row | null {
+  // A resolved missing summary is a tombstone, not an unloaded query.
+  if (current === null) return null
+  const row = current ?? fallback
+  return row ? { ...row, archivedAt } : null
+}
+
+export function updatePersonalChatUnread<Row extends PersonalChatUnreadRow>(
+  row: Row,
+  unread: boolean,
+  throughMessageId?: string,
+): Row {
+  if (!unread && (!throughMessageId || throughMessageId !== row.lastMessageId)) return row
+  return { ...row, unread }
+}
+
 export function updatePersonalChatRow<Row extends PersonalChatRow>(
   rows: readonly Row[],
   conversationId: string,

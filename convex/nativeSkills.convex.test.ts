@@ -120,6 +120,7 @@ async function fixture(options: { policy?: 'enabled' | 'missing' | 'disabled' } 
     await t.mutation(policyPublishRef, {
       sequence,
       challenge: policyChallenge,
+      issuedAt: Date.now(),
       snapshot: {
         ...nativePolicySnapshot,
         features: { ...nativePolicySnapshot.features, skills: options.policy !== 'disabled' },
@@ -484,6 +485,32 @@ test('legacy field and scope mutations advance revisions so native stale writes 
   })
   expect((await t.run(ctx => ctx.db.get(ids.scoped)))?.revision).toBe(11)
   await expect(alice.mutation(updateRef, updateArgs(ids.scoped, 8))).rejects.toThrow('SKILL_REVISION_CONFLICT')
+})
+
+test('retained draft, mention and Archived APIs share native rows and revisions', async () => {
+  const { t, actor } = await fixture()
+  const legacy = { userId: 'alice', workspaceId: 'ws', serverSecret: secret }
+  const alice = actor('alice')
+  const skillId = await t.mutation(mutation('integrations/skills:create'), {
+    ...legacy, name: 'Accepted draft', description: 'Legacy draft', instructions: 'Draft instructions',
+  })
+  await expect(alice.query(getRef, { workspaceId: 'ws', skillId }))
+    .resolves.toMatchObject({ name: 'Accepted draft', revision: 0, enabled: true })
+  await alice.mutation(updateRef, updateArgs(skillId, 0, { name: 'Native edited draft' }))
+  const mentions = await t.query(query('integrations/skills:list'), legacy)
+  expect(mentions).toMatchObject([{ _id: skillId, name: 'Native edited draft', revision: 1 }])
+  await alice.mutation(changeScopeRef, { workspaceId: 'ws', skillId, expectedRevision: 1, action: 'archive' })
+  await expect(t.query(query('integrations/skills:list'), legacy)).resolves.toEqual([])
+  await expect(t.query(query('integrations/skills:listDirectory'), legacy)).resolves.toEqual([])
+  await expect(t.query(query('integrations/skills:list'), { ...legacy, view: 'archived' }))
+    .resolves.toMatchObject([{ _id: skillId, archivedFromScope: 'personal', revision: 2 }])
+  await t.mutation(legacyRestoreRef, { ...legacy, id: skillId })
+  await expect(alice.query(availabilityRef, {
+    workspaceId: 'ws', workspaceOnly: false, legacyPersonal: false, paginationOpts: { numItems: 25, cursor: null },
+  })).resolves.toMatchObject({ page: [{ _id: skillId, name: 'Native edited draft', revision: 3 }] })
+  await expect(alice.mutation(updateRef, updateArgs(skillId, 2))).rejects.toThrow('SKILL_REVISION_CONFLICT')
+  await t.mutation(mutation('integrations/skills:remove'), { ...legacy, skillId })
+  await expect(alice.query(getRef, { workspaceId: 'ws', skillId })).resolves.toBeNull()
 })
 
 test('write admission is rate-limited and successful audit records omit instruction payloads', async () => {

@@ -24,15 +24,16 @@ export type PendingFirstSendState = {
   renameSeed: string
   activeChatTitleSnapshot: string | null
   reasoningByModelSnapshot: Readonly<Record<string, ReasoningLevel | undefined>>
+  nativePersonalOwner?: boolean
 }
 
 export function startPendingFirstSendRename(
   pending: PendingFirstSendState | null,
-  startFirstMessageRename: (chatId: string, seedText: string) => void,
+  startFirstMessageRename: (chatId: string, seedText: string, nativePersonalOwner?: boolean) => void,
 ) {
   if (!pending?.realChatId || !pending.wasFirst || pending.renameStarted) return
   pending.renameStarted = true
-  startFirstMessageRename(pending.realChatId, pending.renameSeed)
+  startFirstMessageRename(pending.realChatId, pending.renameSeed, pending.nativePersonalOwner)
 }
 
 export function isStreamChatActive({
@@ -74,7 +75,7 @@ export function activatePendingFirstSend({
   activeChatIdRef: MutableRefObject<string | null>
   applyUiStateToView: (ui: ConversationUiState) => void
   emptyRuntime: ConversationRuntime
-  markChatModified: (chatId: string, titleSnapshot?: string | null) => void
+  markChatModified: (chatId: string, titleSnapshot?: string | null, nativePersonalOwner?: boolean) => void
   pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
   replaceConversationRuntime: (
     chatId: string,
@@ -86,7 +87,7 @@ export function activatePendingFirstSend({
   setActiveViewer: (chatId: string | null) => void
   setPendingRunConversationId: (conversationId: string | null) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
-  startFirstMessageRename: (chatId: string, seedText: string) => void
+  startFirstMessageRename: (chatId: string, seedText: string, nativePersonalOwner?: boolean) => void
   syncStandaloneChatUrl: (chatId: string | null) => void
 }) {
   const pending = pendingFirstSendRef.current
@@ -100,7 +101,7 @@ export function activatePendingFirstSend({
     [[...preview.askChats[0].messages]],
     [...preview.actChat.messages],
   )
-  markChatModified(realId, pending.activeChatTitleSnapshot)
+  markChatModified(realId, pending.activeChatTitleSnapshot, pending.nativePersonalOwner)
   startPendingFirstSendRename(pending, startFirstMessageRename)
   activeChatIdRef.current = realId
   setActiveViewer(realId)

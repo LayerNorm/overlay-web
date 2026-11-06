@@ -28,7 +28,7 @@ const (
 
 func supportedProvider(providerID string) bool {
 	switch providerID {
-	case "codex", "claude", "xai", "meta", "kimi", "kimi-ai", "devin":
+	case "codex", "claude", "xai", "meta", "kimi", "devin":
 		return true
 	default:
 		return false
@@ -47,8 +47,6 @@ func providerLabel(providerID string) string {
 		return "Meta"
 	case "kimi":
 		return "Kimi"
-	case "kimi-ai":
-		return "Kimi.ai"
 	case "devin":
 		return "Devin"
 	default:
@@ -68,7 +66,7 @@ func providerCatalog(providerID, codexPlan string) ([]map[string]any, error) {
 		source = registry.GetXAIModels()
 	case "meta":
 		source = registry.GetMetaModels()
-	case "kimi", "kimi-ai":
+	case "kimi":
 		source = registry.GetKimiModels()
 	case "devin":
 		source = registry.GetDevinModels()
@@ -270,11 +268,10 @@ func decodeXaiCredential(value envelope) (*xaiauth.TokenStorage, bool) {
 	return storage, storage.AccessToken != "" && storage.RefreshToken != ""
 }
 
-func newKimiCredential(providerID string, storage *kimiauth.KimiTokenStorage) (envelope, error) {
+func newKimiCredential(storage *kimiauth.KimiTokenStorage) (envelope, error) {
 	if storage == nil || storage.AccessToken == "" || storage.RefreshToken == "" ||
 		storage.Expired == "" ||
-		(providerID == "kimi" && storage.Domain != kimiauth.KimiDefaultDomain) ||
-		(providerID == "kimi-ai" && storage.Domain != kimiauth.KimiAIDomain) {
+		storage.Domain != kimiauth.KimiDefaultDomain {
 		return envelope{}, errors.New("invalid Kimi token storage")
 	}
 	expiry, err := time.Parse(time.RFC3339, storage.Expired)
@@ -284,24 +281,23 @@ func newKimiCredential(providerID string, storage *kimiauth.KimiTokenStorage) (e
 	raw, err := encodeObject(map[string]any{
 		"access_token": storage.AccessToken, "refresh_token": storage.RefreshToken,
 		"token_type": storage.TokenType, "scope": storage.Scope, "device_id": storage.DeviceID,
-		"expired": storage.Expired, "type": providerID, "domain": storage.Domain,
+		"expired": storage.Expired, "type": "kimi", "domain": storage.Domain,
 		"base_url": storage.BaseURL,
 	})
 	if err != nil {
 		return envelope{}, err
 	}
-	return providerCredential(providerID, raw, expiry, false, storage.DeviceID)
+	return providerCredential("kimi", raw, expiry, false, storage.DeviceID)
 }
 
 func decodeKimiCredential(value envelope) (*kimiauth.KimiTokenStorage, bool) {
 	token, ok := readTokenStorage(value, value.ProviderID)
-	if !ok || (value.ProviderID != "kimi" && value.ProviderID != "kimi-ai") ||
+	if !ok || value.ProviderID != "kimi" ||
 		token.Get("type").String() != value.ProviderID {
 		return nil, false
 	}
 	domain := token.Get("domain").String()
-	if (value.ProviderID == "kimi" && domain != kimiauth.KimiDefaultDomain) ||
-		(value.ProviderID == "kimi-ai" && domain != kimiauth.KimiAIDomain) {
+	if domain != kimiauth.KimiDefaultDomain {
 		return nil, false
 	}
 	storage := &kimiauth.KimiTokenStorage{
@@ -485,8 +481,8 @@ func (b *bridge) authorizeProvider(w http.ResponseWriter, r *http.Request, provi
 			return
 		}
 		pending = providerPending(providerID, now.Add(expires), interval, raw, false)
-	case "kimi", "kimi-ai":
-		domain := kimiDomain(providerID)
+	case "kimi":
+		domain := kimiauth.KimiDefaultDomain
 		deviceID := uuid.NewString()
 		client := kimiauth.NewDeviceFlowClientWithDomainDeviceIDAndProxyURL(&config.Config{}, domain, deviceID, "")
 		device, err := client.RequestDeviceCode(ctx)
@@ -504,9 +500,6 @@ func (b *bridge) authorizeProvider(w http.ResponseWriter, r *http.Request, provi
 			verificationURL = device.VerificationURI
 		}
 		suffix := "kimi.com"
-		if providerID == "kimi-ai" {
-			suffix = "kimi.ai"
-		}
 		if !safeProviderVerificationURL(verificationURL, suffix) {
 			writeProviderError(w, providerID, http.StatusBadGateway, "provider_unavailable")
 			return
@@ -572,13 +565,6 @@ func safeProviderVerificationURL(raw string, allowedSuffixes ...string) bool {
 		}
 	}
 	return false
-}
-
-func kimiDomain(providerID string) string {
-	if providerID == "kimi-ai" {
-		return kimiauth.KimiAIDomain
-	}
-	return kimiauth.KimiDefaultDomain
 }
 
 func writeProviderError(w http.ResponseWriter, providerID string, status int, code string) {

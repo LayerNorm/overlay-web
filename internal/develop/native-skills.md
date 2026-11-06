@@ -56,7 +56,35 @@ ID, never instructions. No model calls, execution, storage-byte transfer, provid
 credentials or billing changes are introduced. Costs are bounded reactive reads,
 mutation/audit writes and one compact creation receipt per native create.
 
-## Integration seams retained for the master
+## Retained consumers and follow-up migration
+
+CN-20 can ship independently of the composer, accepted-draft and Archived
+migrations. Both transports read and write the same `skills` rows. No copy,
+dual-write, endpoint removal or native-auth fallback is introduced. The retained
+BFF continues to derive identity/workspace from its authenticated context and
+enforce its existing policy; native management always uses the stricter native
+guard. Keeping these consumers on HTTP is intentional, not a fallback on native
+denial.
+
+- Composer mentions (`useMentionData.ts` and `mention-search.ts`) still fetch the
+  authorized legacy list, including native-created/edited rows. Archived rows are
+  excluded and disabled rows are filtered as before. Existing HTTP cache lifetime
+  and refresh behavior remain; these consumers do not yet provide live convergence.
+- Accepted drafts (`useDraftReviewActions.ts`) still POST through the skills BFF,
+  which writes the authenticated active workspace. Native reads treat its missing
+  revision as zero and receive subsequent changes reactively.
+- Settings Archived still lists the legacy archived view and uses legacy
+  restore/delete. Native archive writes the same archive/scope fields; legacy
+  restore advances the revision, so a stale native editor cannot overwrite it.
+  Legacy deletion invalidates the native detail rather than leaving a second copy.
+
+The focused Convex interoperability test covers accepted-draft-style legacy
+creation, native editing, legacy mention/directory reads, native archive, legacy
+Archived restore/delete and native stale-revision rejection. It complements, not
+replaces, hosted UI acceptance. No protected personal-chat modules are modified.
+
+The following live-consumer migration is a follow-up, not a prerequisite for this
+compatible management slice:
 
 `useNativeSkillAvailability(workspaceId, workspaceOnly)` is exported from
 `src/features/automations/lib/use-native-skills.ts`. It returns `skills`, `loading`,
@@ -67,7 +95,7 @@ Disabled and archived skills are excluded. Workspace-only consumers never receiv
 personal skills. Otherwise a separate paginated stream preserves the creator's
 pre-workspace skills without exposing other creators' rows.
 
-Master integration must replace the skill-only HTTP/cache branch in
+Follow-up integration can replace the skill-only HTTP/cache branch in
 `src/features/chat/components/chat-interface/useMentionData.ts` and
 `src/components/mentions/mention-search.ts` with this live projection; drain bounded
 pages as needed and map IDs to `MentionItem`. The other resource branches are not
@@ -127,12 +155,13 @@ Targeted ESLint on the changed correction source passed.
 `npx tsc --noEmit -p convex/tsconfig.json` and `npx tsc --noEmit` passed.
 `git diff --check` passed.
 
-Browser acceptance was not performed. Dependent drafts have no standalone
-trusted Preview. Hosted acceptance remains for the master main-targeted
-exact-head isolated Preview: two authorized sessions converge on
+Browser acceptance remains outstanding on this main-targeted PR's current-head
+isolated Preview: two authorized sessions must converge on
 create/edit/archive/restore, dirty edits survive a remote edit, revoked members
-and direct forbidden calls fail, and the composer/archive integration updates
-without refresh. No shared-development or production deploy is authorized.
+and direct forbidden calls fail, and retained composer/Archived paths read the
+same persisted rows using their existing HTTP refresh behavior. Native availability
+is reactive; the retained HTTP consumers are not claimed realtime. No
+shared-development or production deploy is authorized.
 
 Rollback browser ownership first. Retain additive schema, receipts and revision
 increments while older and newer clients coexist; never delete migration data or

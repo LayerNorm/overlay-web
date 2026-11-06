@@ -6,7 +6,7 @@ import { ProviderChoicePanel, SubscriptionFooter, SubscriptionPrivacyNote, Subsc
 import { subscriptionAuthorizationBody, subscriptionRequest } from './subscription-connection-client'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { ProviderConnectionRow } from './ProviderConnectionRow'
-import { SUBSCRIPTION_PROVIDERS, isSelectableSubscriptionProvider } from '@/shared/ai/gateway/subscription-providers'
+import { SUBSCRIPTION_PROVIDERS } from '@/shared/ai/gateway/subscription-providers'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
 
 ;(globalThis as typeof globalThis & { React: typeof React }).React = React
@@ -80,10 +80,10 @@ test('authorization includes explicit new scope, preserves reconnect scope, and 
 })
 
 
-test('new subscription choices show one Kimi and SVG logos, while legacy reconnect retains its domain', () => {
+test('subscription choices show one Kimi and SVG logos', () => {
   const flow: React.ComponentProps<typeof ProviderChoicePanel>['flow'] = {
     availability: { available: true, providers: SUBSCRIPTION_PROVIDERS.map(provider => ({
-      ...provider, enabled: true, selectable: isSelectableSubscriptionProvider(provider.id),
+      ...provider, enabled: true,
     })) },
     login: null, connected: null, error: null, busy: false, stopped: false, selectionLocked: false,
     start: async () => {}, completeCallback: async () => {}, close: async () => {},
@@ -99,9 +99,5 @@ test('new subscription choices show one Kimi and SVG logos, while legacy reconne
     assert.doesNotMatch(html, new RegExp('<span[^>]*data-provider="' + provider + '"'))
   }
   assert.match(html, /viewBox="0 0 425 425"/)
-  const legacy = render({ _id: 'legacy', authKind: 'subscription', subscriptionProvider: 'kimi-ai',
-    providerId: 'subscription:kimi-ai', endpoint: '', displayName: 'Existing Kimi', enabledModelIds: [],
-    status: 'error', isDefault: false, isDeletable: true })
-  assert.match(legacy, /Kimi AI/)
-  assert.doesNotMatch(legacy, /ChatGPT|Meta Muse|Devin/)
+
 })

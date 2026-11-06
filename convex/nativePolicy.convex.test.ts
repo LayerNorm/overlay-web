@@ -43,7 +43,7 @@ test('mapped features fail closed without a fresh policy while unmapped chat rem
   await expect(t.run(ctx => requireNativeCapability(ctx, 'u', 'files.read'))).rejects.toThrow('DEPLOYMENT_FEATURE_ACCESS_DENIED')
   await t.run(ctx => requireNativeCapability(ctx, 'u', 'conversations.read'))
   const { sequence } = await t.mutation(begin, { challenge })
-  await t.mutation(publish, { sequence, challenge, snapshot })
+  await t.mutation(publish, { issuedAt: Date.now(), sequence, challenge, snapshot })
   await t.run(ctx => requireNativeCapability(ctx, 'u', 'files.read'))
   await expect(t.run(ctx => requireNativeCapability(ctx, 'other', 'files.read'))).rejects.toThrow('CAPABILITY_ACCESS_DENIED')
   vi.setSystemTime(Date.now() + NATIVE_POLICY_LEASE_MS + 1)
@@ -54,8 +54,8 @@ test('latest refresh wins, replay cannot extend a lease, and old failure cannot 
   const t = await fixture()
   const first = await t.mutation(begin, { challenge })
   const second = await t.mutation(begin, { challenge: '00000000-0000-4000-8000-000000000002' })
-  expect(await t.mutation(publish, { sequence: first.sequence, challenge, snapshot })).toBe(false)
-  const secondArgs = { sequence: second.sequence, challenge: '00000000-0000-4000-8000-000000000002', snapshot }
+  expect(await t.mutation(publish, { issuedAt: Date.now(), sequence: first.sequence, challenge, snapshot })).toBe(false)
+  const secondArgs = { issuedAt: Date.now(), sequence: second.sequence, challenge: '00000000-0000-4000-8000-000000000002', snapshot }
   expect(await t.mutation(publish, secondArgs)).toBe(true)
   expect(await t.mutation(publish, secondArgs)).toBe(false)
   await t.mutation(invalidate, { sequence: first.sequence })
@@ -67,11 +67,11 @@ test('latest refresh wins, replay cannot extend a lease, and old failure cannot 
 test('old expiry preserves a renewed lease but a hung refresh does not preserve an expired lease', async () => {
   const t = await fixture()
   const first = await t.mutation(begin, { challenge })
-  await t.mutation(publish, { sequence: first.sequence, challenge, snapshot })
+  await t.mutation(publish, { issuedAt: Date.now(), sequence: first.sequence, challenge, snapshot })
   const firstExpiry = Date.now() + NATIVE_POLICY_LEASE_MS
   vi.setSystemTime(Date.now() + 1000)
   const second = await t.mutation(begin, { challenge })
-  await t.mutation(publish, { sequence: second.sequence, challenge, snapshot })
+  await t.mutation(publish, { issuedAt: Date.now(), sequence: second.sequence, challenge, snapshot })
   await t.mutation(expire, { expiresAt: firstExpiry })
   expect(await t.run(ctx => nativeDeploymentFeatureEnabled(ctx, 'files'))).toBe(true)
   await t.mutation(begin, { challenge })
@@ -84,8 +84,8 @@ test('old expiry preserves a renewed lease but a hung refresh does not preserve 
 test('backend/source binding, disabled flags, workspace rollout and redaction remain enforced', async () => {
   const t = await fixture()
   const { sequence } = await t.mutation(begin, { challenge })
-  await expect(t.mutation(publish, { sequence, challenge, snapshot: { ...snapshot, backendUrl: 'https://wrong.convex.cloud' } })).rejects.toThrow('NATIVE_POLICY_SOURCE_MISMATCH')
-  await t.mutation(publish, { sequence, challenge, snapshot: { ...snapshot, features: { ...snapshot.features, skills: false } } })
+  await expect(t.mutation(publish, { issuedAt: Date.now(), sequence, challenge, snapshot: { ...snapshot, backendUrl: 'https://wrong.convex.cloud' } })).rejects.toThrow('NATIVE_POLICY_SOURCE_MISMATCH')
+  await t.mutation(publish, { issuedAt: Date.now(), sequence, challenge, snapshot: { ...snapshot, features: { ...snapshot.features, skills: false } } })
   expect(await t.run(ctx => nativeDeploymentFeatureEnabled(ctx, 'skills'))).toBe(false)
   expect(await t.run(ctx => nativeDeploymentFeatureEnabled(ctx, 'externalAgents', 'invited'))).toBe(true)
   expect(await t.run(ctx => nativeDeploymentFeatureEnabled(ctx, 'externalAgents', 'other'))).toBe(false)
@@ -124,4 +124,16 @@ test('refresh binds service authentication, challenge, backend and freshness; fa
     await t.action(refresh, {})
     expect(await t.run(ctx => nativeDeploymentFeatureEnabled(ctx, 'files'))).toBe(false)
   }
+})
+
+
+test('publication rejects a response that went stale after action validation without renewing the lease', async () => {
+  const t = await fixture()
+  const { sequence } = await t.mutation(begin, { challenge })
+  const issuedAt = Date.now()
+  vi.setSystemTime(issuedAt + 30_001)
+  await expect(t.mutation(publish, { sequence, challenge, issuedAt, snapshot })).rejects.toThrow('NATIVE_POLICY_RESPONSE_STALE')
+  const row = await t.run(ctx => ctx.db.query('nativeDeploymentPolicies').first())
+  expect(row?.expiresAt).toBe(0)
+  expect(row?.snapshot).toBeUndefined()
 })

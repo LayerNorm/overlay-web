@@ -229,7 +229,7 @@ export function useChatRouteController({
     // canonical automationConversationId effect below is allowed to hydrate it.
     if (mode === 'automate' && automationIdParam) return
     if (!idParam || activeChatIdRef.current === idParam) return
-    void loadChatRef.current?.(idParam)
+    void loadChatRef.current?.(idParam, { replaceUrl: false })
   }, [activeChatIdRef, automationIdParam, chatPrefsHydrated, idParam, mode])
 
   useEffect(() => {

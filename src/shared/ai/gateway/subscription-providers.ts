@@ -4,7 +4,6 @@ export const SUBSCRIPTION_PROVIDERS = [
   { id: 'xai', label: 'Grok Build', description: 'Connect an xAI account using device authorization.', enabled: false },
   { id: 'meta', label: 'Meta Muse', description: 'Connect a Meta account using device authorization.', enabled: false },
   { id: 'kimi', label: 'Kimi', description: 'Connect a Kimi account using device authorization.', enabled: false },
-  { id: 'kimi-ai', label: 'Kimi AI', description: 'Connect a Kimi AI account using device authorization.', enabled: false },
   { id: 'devin', label: 'Devin', description: 'Connect a Devin account using a one-time authorization callback.', enabled: false },
 ] as const
 
@@ -13,11 +12,6 @@ export type SubscriptionProviderId = (typeof SUBSCRIPTION_PROVIDERS)[number]['id
 export function isSubscriptionProviderId(value: unknown): value is SubscriptionProviderId {
   return typeof value === 'string' &&
     SUBSCRIPTION_PROVIDERS.some((provider) => provider.id === value)
-}
-
-/** New connections use kimi.com; retain kimi-ai for saved credentials only. */
-export function isSelectableSubscriptionProvider(value: SubscriptionProviderId): boolean {
-  return value !== 'kimi-ai'
 }
 
 export function subscriptionProvider(value: SubscriptionProviderId) {
