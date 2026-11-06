@@ -118,6 +118,10 @@ memberships and nonarchived human principals. Each directory row owns this
 reactive paginated subscription; the provider derives complete headcounts
 directly from its pages and withholds incomplete totals. Membership revocation
 invalidates these counts without a reload, including revocation of a peer.
+The `useQueries` request map retains its identity until workspace rows or cursor
+metadata change; cursor discovery advances after commit rather than during
+render. A real Convex hook seam covers initial loading, pagination and revocation
+so mocked query results cannot hide subscription render loops.
 The provider publishes query-derived context during render, not through a copied
 snapshot. Refresh preserves the live subscription and only refreshes retained
 invitation orchestration; domain query errors render an empty scoped fallback.

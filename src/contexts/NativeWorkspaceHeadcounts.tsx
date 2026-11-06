@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useQueries } from 'convex/react'
 import type { FunctionReturnType } from 'convex/server'
 import { api } from '../../convex/_generated/api'
@@ -25,14 +25,14 @@ export function NativeWorkspaceHeadcounts({
   children(workspaces: readonly WorkspaceSummary[]): ReactNode
 }) {
   const [cursors, setCursors] = useState<Cursors>({})
-  const requests = Object.fromEntries(workspaces.flatMap(workspace =>
+  const requests = useMemo(() => Object.fromEntries(workspaces.flatMap(workspace =>
     (cursors[workspace.id] ?? [null]).map((cursor, index) => [
       `${workspace.id}:${index}`,
       {
         query: memberQuery,
         args: { workspaceId: workspace.id, paginationOpts: { cursor, numItems: 100 } },
       },
-    ])))
+    ]))), [workspaces, cursors])
   const results = useQueries(requests)
   const nextCursors: Cursors = {}
   const counted = workspaces.map(workspace => {
@@ -55,6 +55,13 @@ export function NativeWorkspaceHeadcounts({
     }
     return workspace
   })
-  if (!sameCursors(cursors, nextCursors)) setCursors(nextCursors)
+  useEffect(() => {
+    let active = true
+    queueMicrotask(() => {
+      if (!active) return
+      setCursors(current => sameCursors(current, nextCursors) ? current : nextCursors)
+    })
+    return () => { active = false }
+  })
   return children(counted)
 }
