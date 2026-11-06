@@ -771,9 +771,7 @@ export function useDraftConversation({
   messagesRef: RefObject<OptimisticMessage[]>
 }) {
   const native = useNativeCollaboration()
-  const nativeOwned = useRef(false)
-  if (native.status !== 'disabled') nativeOwned.current = true
-  const draft = !nativeOwned.current && isTransientConversationDraft(conversationType, requestedDraft)
+  const draft = native.status === 'disabled' && isTransientConversationDraft(conversationType, requestedDraft)
   const draftCommittedRef = useRef(!draft)
 
   const commitDraftConversation = useCallback(() => {
@@ -794,7 +792,7 @@ export function useDraftConversation({
   }, [conversationId, conversationType, draft, title])
 
   useEffect(() => () => {
-    if (nativeOwned.current || !draft || draftCommittedRef.current || messagesRef.current.length > 0) return
+    if (!draft || draftCommittedRef.current || messagesRef.current.length > 0) return
     void (async () => {
       const removed = await overlayAppClient.conversations.deleteResponse({
         conversationId,

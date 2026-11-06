@@ -141,9 +141,10 @@ beforeEach(() => {
 afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; vi.unstubAllGlobals(); vi.restoreAllMocks() })
 
 function DraftProbe() {
-  const messages = React.useRef([])
+  const [rows] = React.useState<[]>([])
+  const messages = React.useRef(rows)
   useDraftConversation({ conversationId: 'room', conversationType: 'dm', draft: true,
-    title: 'Shared DM', messages: messages.current, messagesRef: messages })
+    title: 'Shared DM', messages: rows, messagesRef: messages })
   return null
 }
 
