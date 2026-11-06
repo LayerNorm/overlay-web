@@ -54,7 +54,9 @@ export async function deleteRoomMessage(ctx: MutationCtx, args: MessageArgs, acc
   ) return false
   await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
   const now = Date.now()
-  await ctx.db.patch(message._id, { content: '', parts: [], deletedAt: now, updatedAt: now })
+  await ctx.db.patch(message._id, { content: '', parts: [], deletedAt: now, updatedAt: now,
+    ...(message.collaborationAdmission ? { collaborationAdmission: { ...message.collaborationAdmission, content: '' } } : {}),
+  })
   await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
     sourceKind: 'message',
     sourceId: args.messageId,

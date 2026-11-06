@@ -47,6 +47,16 @@ async function fixture() {
 }
 
 describe('native room access and bounded projections', () => {
+  test('viewer archive preserves writable execution and canonical send authority', async () => {
+    const f = await fixture()
+    await f.alice.mutation(api.collaboration.nativeRoomState.setRoomArchived, { ...f.args, scope: 'self', archived: true })
+    expect(await f.alice.query(api.collaboration.nativeRooms.getExecution, f.args)).toEqual({ ...f.args, userId: 'alice', compatibility: { readOnly: false } })
+    const sent = await f.t.mutation(api.collaboration.directMessages.addMessage, {
+      ...f.args, actorUserId: 'alice', serverSecret: secret, content: 'still authorized', turnId: 'archived-send', clientNonce: 'archived-send',
+    })
+    expect(await f.t.run(ctx => ctx.db.get(sent.messageId))).toMatchObject({ content: 'still authorized' })
+  })
+
   test('getExecution returns scoped compatibility only and rejects invalid or inaccessible roots', async () => {
     const f = await fixture()
     expect(await f.alice.query(api.collaboration.nativeRooms.getExecution, f.args)).toEqual({ ...f.args, userId: 'alice', compatibility: { readOnly: false } })
@@ -239,6 +249,20 @@ test('native edit/delete use the legacy human-author policy and preserve file pa
   expect(await f.alice.mutation(api.collaboration.nativeRooms.deleteMessage, args)).toBe(true)
   expect(await f.alice.mutation(api.collaboration.nativeRooms.deleteMessage, args)).toBe(false)
   expect(await f.alice.query(api.collaboration.nativeRooms.getMessageAnchor, args)).toBeNull()
+})
+
+test('deleting an unedited admission clears its stored text while preserving replay metadata', async () => {
+  const f = await fixture()
+  const send = { ...f.args, actorUserId: 'alice', serverSecret: secret, clientNonce: 'delete-nonce', turnId: 'delete-turn', content: 'private unedited text', mentionedPrincipalIds: ['bob'], memoryEnabled: false }
+  const admitted = await f.t.mutation(api.collaboration.directMessages.addMessage, send)
+  const before = await f.t.run(ctx => ctx.db.get(admitted.messageId))
+  expect(before!.collaborationAdmission).toEqual({ content: send.content, mentionedPrincipalIds: ['bob'], memoryEnabled: false })
+  expect(await f.alice.mutation(api.collaboration.nativeRooms.deleteMessage, { ...f.args, messageId: admitted.messageId })).toBe(true)
+  const deleted = await f.t.run(ctx => ctx.db.get(admitted.messageId))
+  expect(deleted).toMatchObject({ content: '', parts: [], deletedAt: expect.any(Number), turnId: send.turnId, clientNonce: send.clientNonce })
+  expect(deleted!.collaborationAdmission).toEqual({ ...before!.collaborationAdmission, content: '' })
+  expect(deleted!.editHistory).toEqual(before!.editHistory)
+  expect(await f.t.mutation(api.collaboration.directMessages.addMessage, { ...send, content: 'changed retry' })).toMatchObject({ messageId: admitted.messageId, replayed: true, deleted: true, content: '', turnId: send.turnId, mentionedPrincipalIds: ['bob'], memoryEnabled: false })
 })
 
 test('canonical send replay has one message and fanout, and retry completes missing activity', async () => {
