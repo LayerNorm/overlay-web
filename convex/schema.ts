@@ -738,6 +738,8 @@ export default defineSchema({
     key: v.string(),
     scope: v.string(),
     completedAt: v.number(),
+    cursor: v.optional(v.string()),
+    scheduledAt: v.optional(v.number()),
   }).index('by_key_scope', ['key', 'scope']),
 
   /** One row per tool invocation (audit / cost-class tracking for chat tools). */

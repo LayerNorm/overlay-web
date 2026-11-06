@@ -114,3 +114,39 @@ Unless explicitly noted, server consumers go through
 No UI surface changes in Stage A. Hosted readiness/client QA belongs to the later
 stages on the exact-head isolated PR preview, after the full marker and recency
 backfill are deployed through the trusted release workflow.
+
+## Stage B — room client and readiness plumbing
+
+`NATIVE_COLLABORATION_FUNCTIONS_READY` is the single rollout flag and remains
+**false** until CN-09..11 are implemented. Even when it becomes true, uiSettings
+advertises `native-collaboration-v1` only after the global recency migration has a
+persisted positive completion timestamp. The minute cron kicks an idempotent
+internal mutation; each 100-row page commits its cursor and schedules its
+successor atomically. A stale scheduling lease lets the cron resume failed work.
+The existing migration marker table stores this migration's cursor and lease;
+`completedAt: 0` denotes incomplete progress for this dedicated key only.
+
+The server probes the existing settings endpoint. Shell plumbing is additive,
+inside the unchanged personal provider so a collaboration failure does not
+discard the personal provider's state. Native collaboration is disabled until
+both native auth and backend readiness are present. Once activated, query errors
+or loss of readiness produce unavailable UI, not an implicit legacy rollback.
+
+Native room sessions remount on account/workspace/room boundaries. Queries and
+overlays additionally reject mismatched room, viewer and thread scopes before
+rendering. A null room removes the transcript and drops pending overlays. The
+main stream and selected thread use independent compound-cursor subscriptions;
+permalink and old root anchors load independently. Convex's pagination hook does
+not support nullable pages: getRoom gates subscription admission, and a raced
+null message page fails closed through the native error boundary.
+
+Native room lists feed ChatInlinePanel (including sidebar uses), mixed lists,
+the archived route and Settings → Archived. Mixed legacy indexes may still read
+personal/shared-personal rows, but their room rows are discarded before merging
+native rows. DM/channel-only panels suppress the legacy list and list-version
+refresh entirely. Native creates and edit/delete use identity-derived mutations.
+Sends still use the BFF with stable nonce/turn retries; only pending sender rows
+live in React and `mergeRoomMessages` reconciles them with canonical rows.
+
+Room metadata actions, presence, notifications and combined list-version
+infrastructure remain for CN-10/11. No legacy endpoint is removed in Stage B.

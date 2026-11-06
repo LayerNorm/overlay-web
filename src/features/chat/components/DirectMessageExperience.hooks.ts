@@ -78,6 +78,8 @@ import {
 } from '@/shared/chat/native-thread-safety'
 import { buildTextTurnPayload } from './chat/chat-send-body-builders'
 import { createHandoffConversation } from './chat/chat-send-create'
+import { useRoomTranscriptSource, useRoomThreadSelection } from './collaboration/NativeRoomScope'
+import { useRoomMessageWrites, useRoomRosterSource, useRoomChannelLookup } from './collaboration/native-room-adapters'
 
 export type OptimisticMessage = RoomMessageRecord
 export type RoomSendResult = {
@@ -106,7 +108,7 @@ export function useThreadPanel({
 
   setRoomPanel: Dispatch<SetStateAction<RoomPanelKind | null>>
 }) {
-  const [threadRootId, setThreadRootId] = useState<string | null>(null)
+  const [threadRootId, setThreadRootId] = useRoomThreadSelection(useState<string | null>(null))
   const [threadFollowing, setThreadFollowing] = useState(false)
   const [threadInput, setThreadInputState] = useState('')
   const threadInputRef = useRef(threadInput)
@@ -173,7 +175,7 @@ export function useThreadPanel({
   const openThread = useCallback((messageId: string) => {
     setThreadRootId(messageId)
     setRoomPanel('thread')
-  }, [setRoomPanel])
+  }, [setRoomPanel, setThreadRootId])
 
   return {
     threadRootId,
@@ -332,13 +334,14 @@ export function useRoomCollaboration({
   const [reactions, setReactions] = useState<MessageReaction[]>([])
   const [pins, setPins] = useState<ConversationPin[]>([])
   const [savedMessages, setSavedMessages] = useState<ConversationSavedMessage[]>([])
+  const channelsForRoom = useRoomChannelLookup(conversationId)
 
   const loadCollaboration = useCallback(async () => {
     const [reactionResult, pinResult, savedResult, channelResult] = await Promise.all([
       overlayAppClient.conversations.reactions(conversationId),
       overlayAppClient.conversations.pins(conversationId),
       overlayAppClient.conversations.savedMessages(),
-      conversationType === 'channel' ? overlayAppClient.conversations.channels() : Promise.resolve({ channels: [] }),
+      conversationType === 'channel' ? channelsForRoom() : Promise.resolve({ channels: [] }),
     ])
     setReactions(requireArray(reactionResult.reactions, 'Conversation reactions'))
     setPins(requireArray(pinResult.pins, 'Conversation pins'))
@@ -347,7 +350,7 @@ export function useRoomCollaboration({
       const channels = requireArray(channelResult.channels, 'Workspace channels')
       setChannel(channels.find((item) => item.conversationId === conversationId) ?? null)
     }
-  }, [conversationId, conversationType])
+  }, [channelsForRoom, conversationId, conversationType])
 
   return {
     channel,
@@ -1820,6 +1823,7 @@ export function useMessageActions({
 }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
+  const writes = useRoomMessageWrites(conversationId)
 
   async function copyMessagePermalink(messageId: string) {
     const url = new URL(window.location.href)
@@ -1883,7 +1887,7 @@ export function useMessageActions({
     if (!content) return
 
     try {
-      await overlayAppClient.conversations.editCollaborativeMessage(conversationId, messageId, content)
+      await writes.edit(messageId, content)
       setEditingId(null)
       await loadMessages()
     } catch (error) {
@@ -1894,7 +1898,7 @@ export function useMessageActions({
   async function deleteMessage(messageId: string) {
     if (isReadOnlyMessage?.(messageId)) return
     try {
-      await overlayAppClient.conversations.deleteCollaborativeMessage(conversationId, messageId)
+      await writes.remove(messageId)
       await loadMessages()
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not delete this message.')
@@ -2340,12 +2344,12 @@ export function useDirectMessageRoom({
   const [mentions, setMentions] = useState<MentionItem[]>([])
 
   const readMarkers = useReadMarkers({ conversationId,  refreshNotifications })
-  const roster = useRoomRoster({
+  const roster = useRoomRosterSource(useRoomRoster({
     conversationId,
 
 
     noteParticipantsLoaded: readMarkers.noteParticipantsLoaded,
-  })
+  }))
   const collab = useRoomCollaboration({ conversationId, conversationType,  })
   const thread = useThreadPanel({ conversationId,  setRoomPanel })
   const nativeThreadSafety = useNativeThreadSafety({ conversationId, workspaceId: activeWorkspaceId })
@@ -2387,7 +2391,7 @@ export function useDirectMessageRoom({
     checkSelectedThreadWritable,
     thread.threadRootId,
   ])
-  const transcript = useRoomTranscript({
+  const transcript = useRoomTranscriptSource(useRoomTranscript({
     conversationId,
     threadRootId: thread.threadRootId,
 
@@ -2395,7 +2399,7 @@ export function useDirectMessageRoom({
     agentResponding,
     markVisibleRead: readMarkers.markVisibleRead,
     setNewMessageCount: readMarkers.setNewMessageCount,
-  })
+  }))
   const sessionIdRef = useRoomLifecycle({
     conversationId,
     convexRoomSubscriptionEnabled,

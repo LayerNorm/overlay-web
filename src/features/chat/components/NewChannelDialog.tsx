@@ -5,6 +5,7 @@ import { Bot, Check, Hash, Lock, Search, UserRound } from 'lucide-react'
 import { Button, DialogFrame, Input } from '@overlay/ui/primitives'
 import type { ChannelVisibility, WorkspaceManagementItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useRoomCreation } from './collaboration/native-room-create'
 
 export function NewChannelDialog({
   open,
@@ -20,6 +21,7 @@ export function NewChannelDialog({
   onCreated(channel: { id: string; title: string }): void
 }) {
   const [name, setName] = useState('')
+  const creation = useRoomCreation()
   const [topic, setTopic] = useState('')
   const [visibility, setVisibility] = useState<ChannelVisibility>('public')
   const [members, setMembers] = useState<WorkspaceManagementItem[]>([])
@@ -58,7 +60,7 @@ export function NewChannelDialog({
     setBusy(true)
     setError(null)
     try {
-      const response = await overlayAppClient.conversations.createWorkspaceChannel(workspaceId, {
+      const response = await creation.channel(workspaceId, {
         name: name.trim(),
         topic: topic.trim() || undefined,
         visibility,

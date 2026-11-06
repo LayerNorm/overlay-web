@@ -13,6 +13,10 @@ import {
 import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
 import { excludeNativePersonalChats, isNativePersonalChatCandidate } from '@/shared/chat/native-personal-chat'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
+import { useNativeRoomLists } from './collaboration/native-room-lists'
+import { NativeArchivedRoomEntry, ArchivedRoomLoadMore } from './collaboration/NativeArchivedRoomEntry'
+import { nativeArchivedLoading, deferArchivedSelection, useArchivedSelectedId } from './collaboration/native-archived-state'
+import { useNativeCollaboration } from './collaboration/NativeCollaborationProvider'
 
 const ChatExperience = dynamic(() => import('./ChatExperience'))
 const DirectMessageExperience = dynamic(
@@ -73,7 +77,16 @@ function archivedLoadingState(
  * index; this page is only ever empty-state or the most recently archived
  * (or explicitly selected) chat.
  */
-export function ChatArchivedView({
+export function ChatArchivedView(props: { userId: string | null; firstName?: string }) {
+  const native = useNativeCollaboration()
+  const searchParams = useSearchParams()
+  const selectedId = useArchivedSelectedId(searchParams?.get('id') ?? null)
+  const personal = <ChatArchivedContent {...props} />
+  return native.status === 'ready' && selectedId
+    ? <NativeArchivedRoomEntry conversationId={selectedId} personalFallback={personal} /> : personal
+}
+
+function ChatArchivedContent({
   userId,
   firstName,
 }: {
@@ -84,6 +97,7 @@ export function ChatArchivedView({
   const searchParams = useSearchParams()
   const searchId = searchParams?.get('id') ?? null
   const nativePersonal = usePersonalChat()
+  const nativeRooms = useNativeRoomLists('all', true)
   const workspace = useOptionalWorkspace()
   const workspaceId = workspace?.activeWorkspaceId ?? null
   const nativePersonalEnabled = nativePersonal.configured && Boolean(userId)
@@ -170,9 +184,9 @@ export function ChatArchivedView({
   void routeVersion
   const selectedId = readSelectedId(searchId)
   const conversations = useMemo(() => {
-    const legacy = state.status === 'ready' && state.workspaceId === workspaceId
+    const legacy = nativeRooms.merge(state.status === 'ready' && state.workspaceId === workspaceId
       ? state.conversations
-      : []
+      : [])
     if (!nativePersonalEnabled) return legacy
     if (!nativePersonal.workspaceId) return []
     const nativeRows = [...nativePersonal.archived.rows]
@@ -191,14 +205,16 @@ export function ChatArchivedView({
     nativePersonal.workspaceId,
     nativePersonalEnabled,
     state,
+    nativeRooms,
     workspaceId,
   ])
-  const { waitingForSelectedSummary, selectedSummaryUnavailable, loading } = archivedLoadingState(
+  const { waitingForSelectedSummary, selectedSummaryUnavailable, loading: legacyLoading } = archivedLoadingState(
     state, workspaceId, selectedId, nativePersonal, nativePersonalEnabled,
   )
+  const loading = nativeArchivedLoading(nativeRooms, nativePersonal, legacyLoading, waitingForSelectedSummary)
 
   useEffect(() => {
-    if (loading || waitingForSelectedSummary || conversations.length === 0) return
+    if (deferArchivedSelection(nativeRooms.enabled, selectedId, loading, waitingForSelectedSummary, conversations.length)) return
     const selected = conversations.find((conversation) => conversation._id === selectedId)
       ?? conversations[0]
     if (!selected || selected._id === selectedId) return
@@ -209,7 +225,7 @@ export function ChatArchivedView({
     window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
       detail: { chatId: selected._id },
     }))
-  }, [conversations, loading, pathname, selectedId, waitingForSelectedSummary])
+  }, [conversations, loading, nativeRooms.enabled, pathname, selectedId, waitingForSelectedSummary])
 
   if (loading) {
     return (
@@ -261,7 +277,7 @@ export function ChatArchivedView({
           description={nativePersonalEnabled && nativePersonal.archived.status === 'unavailable'
             ? 'Native archived conversations could not be loaded.'
             : 'Archived direct messages and channels are kept here. Archive one from its conversation menu.'}
-          action={nativePersonalEnabled && nativePersonal.archived.hasMore ? (
+          action={<>{nativePersonalEnabled && nativePersonal.archived.hasMore ? (
             <Button
               size="sm"
               disabled={nativePersonal.archived.loadingMore}
@@ -269,7 +285,7 @@ export function ChatArchivedView({
             >
               {nativePersonal.archived.loadingMore ? 'Loading…' : 'Load more'}
             </Button>
-          ) : undefined}
+          ) : null}<ArchivedRoomLoadMore /></>}
         />
       </AppScreenShell>
     )

@@ -67,8 +67,9 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { usePersonalChat, type PersonalChatSummary } from '@/components/providers/PersonalChatProvider'
 import { excludeNativePersonalChats, isNativePersonalChatCandidate } from '@/shared/chat/native-personal-chat'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
+import { useNativeRoomLists, roomListSource } from './collaboration/native-room-lists'
 
-type Conversation = {
+export type Conversation = {
   _id: string
   title: string
   lastModified: number
@@ -1072,6 +1073,7 @@ export function ChatInlinePanel({
   const { activeId, buildWorkspaceHref, chatView, pathname, scopedBaseHref } = useChatPanelRoute({
     baseHref, workspaceId, sectionView,
   })
+  const nativeRooms = useNativeRoomLists(chatView)
 
   const openChat = useCallback((chat: Conversation) => {
     const targetView = chat.conversationType === 'channel'
@@ -1123,15 +1125,15 @@ export function ChatInlinePanel({
     loadingMore,
     loadChats,
     loadMoreChats,
-  } = useChatListData({
+  } = roomListSource(useChatListData({
     authLoading,
     chatView,
-    nativePersonalView: nativePersonalOwner && chatView === 'personal',
+    nativePersonalView: nativeRooms.suppressLegacy(nativePersonalOwner && chatView === 'personal'),
     refreshKey,
     user,
     workspaceId,
     conversationListVersion,
-  })
+  }), nativeRooms)
   const nativePersonalView = nativePersonalOwner && chatView === 'personal'
   const nativePersonalRelevant = nativePersonalOwner && (chatView === 'personal' || chatView === 'all')
   const nativeWorkspaceReady = !nativePersonalOwner || Boolean(nativePersonal.workspaceId)
@@ -1197,7 +1199,7 @@ export function ChatInlinePanel({
   const listLoading = !nativeWorkspaceReady || (nativePersonalView
     ? nativePersonal.active.status === 'loading'
     : loading || (nativePersonalRelevant && nativePersonal.active.status === 'loading'))
-  const listUnavailable = nativePersonalRelevant && nativePersonal.active.status === 'unavailable'
+  const listUnavailable = nativeRooms.unavailableOr(nativePersonalRelevant && nativePersonal.active.status === 'unavailable')
   const listHasMore = nativePersonalView
     ? nativePersonal.active.hasMore
     : hasMore || (chatView === 'all' && nativePersonalOwner && nativePersonal.active.hasMore)
@@ -1220,7 +1222,7 @@ export function ChatInlinePanel({
     nativePersonalIds,
     nativePersonalOwner,
     nativePersonalSelected,
-    nativePersonalView,
+    nativePersonalView: nativeRooms.suppressLegacy(nativePersonalView),
     openChat,
     pathname,
     router,

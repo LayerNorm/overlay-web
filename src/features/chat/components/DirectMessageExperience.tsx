@@ -15,6 +15,8 @@ import { ChatDropOverlay } from './ChatDropOverlay'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { isRoomAgentResponding } from './collaboration/room-message-view'
+import { useNativeCollaboration } from './collaboration/NativeCollaborationProvider'
+import { NativeRoomScope } from './collaboration/NativeRoomScope'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import {
   useDirectMessageRoom,
@@ -213,7 +215,11 @@ function GuidedPendingMessage({
   )
 }
 
-export function DirectMessageExperience({
+export function DirectMessageExperience(props: Parameters<typeof DirectMessageExperienceContent>[0]) {
+  return <NativeRoomScope conversationId={props.conversationId}><DirectMessageExperienceContent {...props} /></NativeRoomScope>
+}
+
+function DirectMessageExperienceContent({
   conversationId,
 
   conversationType = "dm",
@@ -246,12 +252,13 @@ export function DirectMessageExperience({
   const { appDataCapabilities, capabilities } = useOverlayCapabilities()
   const { user: authUser } = useAuth()
   const convexAccessToken = useConvexAuthToken()
+  const native = useNativeCollaboration()
   const { refreshNotifications } = useCollaborationRealtime()
   const { settings: appSettings } = useAppSettings()
   const convexLiveSyncEnabled = appDataCapabilities.provider === 'convex'
     && appDataCapabilities.requiresConvexClient
     && appDataCapabilities.supportsRealtime
-  const convexRoomSubscriptionEnabled = convexLiveSyncEnabled
+  const convexRoomSubscriptionEnabled = native.status === 'disabled' && convexLiveSyncEnabled
     && Boolean(authUser?.id && convexAccessToken && activeWorkspaceId)
   const router = useRouter()
   const panels = useRoomPanels({ renderAttachmentViewer: AttachmentViewer })

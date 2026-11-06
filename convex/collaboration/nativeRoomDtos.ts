@@ -10,13 +10,21 @@ export const roomSummaryValidator = v.object({
   lastModified: v.number(), archivedAt: v.optional(v.number()),
 })
 export const roomParticipantValidator = v.object({
+  conversationId: v.id('conversations'), workspaceId: v.string(),
   principalId: v.string(), principalType: v.union(v.literal('human'), v.literal('agent')),
   displayName: v.string(), role: v.union(v.literal('moderator'), v.literal('member')),
+  photoUrl: v.optional(v.string()), email: v.optional(v.string()),
+  status: v.union(v.literal('active'), v.literal('removed')),
+  notificationLevel: v.union(v.literal('all'), v.literal('mentions'), v.literal('muted')),
+  joinedAt: v.number(), updatedAt: v.number(), removedAt: v.optional(v.number()),
+  lastReadAt: v.optional(v.number()), lastReadSequence: v.optional(v.number()),
+  markedUnreadAt: v.optional(v.number()), archivedAt: v.optional(v.number()),
 })
 export const roomDetailValidator = v.object({
   ...roomSummaryValidator.fields, participants: v.array(roomParticipantValidator),
-  viewerPrincipalId: v.string(), externalPlatform: v.optional(v.string()),
+  viewerPrincipalId: v.string(), viewerUserId: v.string(), externalPlatform: v.optional(v.string()),
   topic: v.optional(v.string()), visibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
+  slug: v.optional(v.string()), createdAt: v.number(), updatedAt: v.number(),
 })
 export const roomMessageValidator = v.object({
   id: v.id('conversationMessages'), conversationId: v.id('conversations'), turnId: v.string(),

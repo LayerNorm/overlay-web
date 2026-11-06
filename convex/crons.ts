@@ -3,6 +3,8 @@ import { internal } from './_generated/api'
 
 const crons = cronJobs()
 
+crons.interval('native room recency migration', { minutes: 1 }, internal.collaboration.nativeRoomMaintenance.kickRoomRecencyBackfill, {})
+
 crons.interval('native deployment policy refresh', { minutes: 1 }, internal.platform.nativePolicy.refresh, {})
 
 crons.interval('Harness continuation reconciliation', { minutes: 1 }, internal.harness.continuations.dispatchDue, {})

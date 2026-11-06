@@ -26,6 +26,7 @@ import { Button, Input, ListboxSelect, toast } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
+import { useNativeArchivedRoomItems, NativeArchivedRoomsMore } from '../lib/native-archived-room-items'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { ScopeTag } from '@/components/layout/ScopeTag'
 import {
@@ -85,6 +86,7 @@ export function ArchivedSettings() {
   const workspace = useOptionalWorkspace()
   const workspaceId = workspace?.switchingWorkspaceId ? null : workspace?.activeWorkspaceId ?? null
   const nativePersonal = usePersonalChat()
+  const nativeRooms = useNativeArchivedRoomItems()
   const [legacyState, setLegacyState] = useState<{
     workspaceId: string | null
     items: ArchivedItem[]
@@ -152,17 +154,17 @@ export function ArchivedSettings() {
   const items = useMemo(() => {
     if (legacyItems === null) return null
     const byKey = new Map<string, ArchivedItem>()
-    for (const item of [...legacyItems, ...nativeItems]) byKey.set(item.key, item)
+    for (const item of [...nativeRooms.filterLegacy(legacyItems), ...nativeItems, ...nativeRooms.items]) byKey.set(item.key, item)
     return [...byKey.values()]
-  }, [legacyItems, nativeItems])
+  }, [legacyItems, nativeItems, nativeRooms])
   useEffect(() => {
     if (items) setSelected((current) => pruneSelection(current, items))
   }, [items])
-  const reportedFailedSources = nativePersonal.configured
+  const reportedFailedSources = nativeRooms.reportFailures(nativePersonal.configured
     && nativePersonal.archived.status === 'unavailable'
     && !failedSources.includes('chats')
     ? [...failedSources, 'chats']
-    : failedSources
+    : failedSources)
   const visible = useMemo(() => filterArchivedItems(items ?? [], category, query), [items, category, query])
   const selectedItems = useMemo(() => (items ?? []).filter((item) => selected.has(item.key)), [items, selected])
   const allVisibleSelected = visible.length > 0 && visible.every((item) => selected.has(item.key))
@@ -407,6 +409,7 @@ export function ArchivedSettings() {
           {nativePersonal.archived.loadingMore ? 'Loading archived chats…' : 'Load more archived chats'}
         </Button>
       ) : null}
+      <NativeArchivedRoomsMore />
 
       <ConfirmDialog
         isOpen={pendingDelete !== null}

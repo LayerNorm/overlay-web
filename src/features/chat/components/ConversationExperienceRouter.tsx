@@ -7,6 +7,8 @@ import ChatExperience from './ChatExperience'
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
 import { DirectMessageExperience } from './DirectMessageExperience'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useNativeCollaboration } from './collaboration/NativeCollaborationProvider'
+import { nativeRoomRouteKey } from './collaboration/native-room-routing'
 import { resolveSoftChatRoute, type SoftChatRoute } from '@/shared/chat/chat-view-navigation'
 import {
   legacyWorkspaceScopeForRoute,
@@ -16,7 +18,6 @@ import {
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import {
   ConversationDetailScopeGate,
-  conversationDetailRouteKey,
   isConversationScopeVerified,
   startConversationDetailScopeProbe,
   type ConversationDetailScopeStatus,
@@ -70,6 +71,11 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
     ? resolveSoftChatRoute(browserRoute, searchRoute)
     : searchRoute
   const conversationId = route.conversationId
+  const nativeCollaboration = useNativeCollaboration()
+  const selectedScope = pathScope ?? legacyWorkspaceScopeForRoute(
+    'chat', new URLSearchParams(searchParams?.toString() ?? ''),
+  )
+  const view = selectedScope ? normalizeChatViewForScope(selectedScope, route.view) : route.view
   // Bumped only from browser soft-nav / popstate so we re-read window.location.
   const [browserRouteVersion, setBrowserRouteVersion] = useState(0)
   const [scopeRouteStatus, setScopeRouteStatus] = useState<ConversationDetailScopeStatus | null>(null)
@@ -86,7 +92,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
     }
   }, [])
 
-  const resourceRouteKey = conversationDetailRouteKey({
+  const resourceRouteKey = nativeRoomRouteKey(nativeCollaboration.status, view, {
     pathScope,
     conversationId,
 
@@ -111,11 +117,6 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
   }, [browserRouteVersion, conversationId, searchView, pathScope, resourceRouteKey, buildWorkspaceHref, pathname, router])
 
   void browserRouteVersion
-  const selectedScope = pathScope ?? legacyWorkspaceScopeForRoute(
-    'chat',
-    new URLSearchParams(searchParams?.toString() ?? ''),
-  )
-  const view = selectedScope ? normalizeChatViewForScope(selectedScope, route.view) : route.view
 
   let content: ReactNode
   if (view === 'dms' && conversationId) {

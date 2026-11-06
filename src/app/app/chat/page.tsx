@@ -6,6 +6,7 @@ import { getOverlaySession } from '@/server/auth/session'
 import { getInitialChatHistory } from '@/server/app/route-data'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 import { nativePersonalChatBackendReady } from '@/server/chat/native-personal-readiness'
+import { nativeCollaborationBackendReady } from '@/server/collaboration/native-collaboration-readiness'
 import { nativeConvexAuthEnabled } from '@/server/auth/native-convex-token'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
 async function ChatRouteContent({
@@ -27,7 +28,9 @@ async function ChatRouteContent({
   const nativePersonalRoute = requestedScope !== 'workspace'
     && requestedView !== 'all'
     && !['workspace-chats', 'dms', 'channels'].includes(requestedView ?? '')
-  const initialChatPage = userId && !(nativeAuthConfigured && nativePersonalRoute && await nativePersonalChatBackendReady(userId))
+  const nativeRoomRoute = userId && nativeAuthConfigured && ['dms', 'channels'].includes(requestedView ?? '')
+    && await nativeCollaborationBackendReady(userId)
+  const initialChatPage = userId && !nativeRoomRoute && !(nativeAuthConfigured && nativePersonalRoute && await nativePersonalChatBackendReady(userId))
     ? await getInitialChatHistory(params?.scope !== undefined || params?.view !== undefined)
     : null
   return (

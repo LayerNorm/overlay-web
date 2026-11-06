@@ -26,6 +26,8 @@ import { AppBreadcrumbProvider } from '@/components/layout/AppBreadcrumbProvider
 import { CollaborationRealtimeProvider } from '@/features/chat/components/collaboration/CollaborationRealtimeProvider'
 import { PersonalChatProvider } from '@/components/providers/PersonalChatProvider'
 import { nativePersonalChatBackendReady } from '@/server/chat/native-personal-readiness'
+import { nativeCollaborationBackendReady } from '@/server/collaboration/native-collaboration-readiness'
+import { NativeCollaborationProvider } from '@/features/chat/components/collaboration/NativeCollaborationProvider'
 import { nativeConvexAuthEnabled } from '@/server/auth/native-convex-token'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 
@@ -55,6 +57,7 @@ async function AppShellContent({
   let capabilities: ReturnType<typeof getOverlayCapabilitiesSync>
   let appDataCapabilities: ReturnType<typeof getAppDataCapabilitiesSync>
   let nativePersonalReady = false
+  let nativeCollaborationReady = false
   let nativeAuthConfigured: boolean
   let authorization: AppAuthorizationState | null
   try {
@@ -70,6 +73,7 @@ async function AppShellContent({
       const server = getOverlayServerContext()
       await ensureDefaultUserRole(session.user.id)
       nativePersonalReady = nativeAuthConfigured && await nativePersonalChatBackendReady(session.user.id)
+      nativeCollaborationReady = nativeAuthConfigured && await nativeCollaborationBackendReady(session.user.id)
       authorization = {
         ...(await server.authorizationService.resolveSubject(session.user.id)),
         enforcementMode: getAuthorizationEnforcementMode(),
@@ -91,6 +95,7 @@ async function AppShellContent({
     >
       <DesktopProvider><WorkspaceAppBoundary hasAuthenticatedUser={Boolean(user)}>
         <PersonalChatProvider backendReady={nativePersonalReady}>
+        <NativeCollaborationProvider backendReady={nativeCollaborationReady}>
         <GatewayModelCatalogPrefetch />
         <div data-app-shell className="flex h-screen overflow-hidden bg-background text-foreground">
           <AsyncSessionsProvider>
@@ -119,6 +124,7 @@ async function AppShellContent({
             </NavigationProgressProvider>
           </AsyncSessionsProvider>
         </div>
+        </NativeCollaborationProvider>
         </PersonalChatProvider>
       </WorkspaceAppBoundary></DesktopProvider>
     </AppClientProviders>

@@ -242,7 +242,11 @@
     "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
-    "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx"
+    "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
+    "src/features/chat/components/collaboration/NativeArchivedRoomEntry.tsx",
+    "src/features/chat/components/collaboration/NativeCollaborationProvider.tsx",
+    "src/features/chat/components/collaboration/NativeRoomScope.tsx",
+    "src/features/chat/components/collaboration/useNativeRoomTranscript.ts"
   ],
   "convexCronJobs": [
     {
@@ -319,6 +323,11 @@
       "cadence": "{ minutes: 1 }",
       "name": "native deployment policy refresh",
       "target": "internal.platform.nativePolicy.refresh"
+    },
+    {
+      "cadence": "{ minutes: 1 }",
+      "name": "native room recency migration",
+      "target": "internal.collaboration.nativeRoomMaintenance.kickRoomRecencyBackfill"
     },
     {
       "cadence": "{ minutes: 1 }",
@@ -404,6 +413,10 @@
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
+    "src/features/chat/components/collaboration/NativeArchivedRoomEntry.tsx",
+    "src/features/chat/components/collaboration/NativeCollaborationProvider.tsx",
+    "src/features/chat/components/collaboration/NativeRoomScope.tsx",
+    "src/features/chat/components/collaboration/useNativeRoomTranscript.ts",
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAuditRepository.ts",
     "src/server/admin/index.ts",
@@ -557,6 +570,7 @@
     "convex/chat/conversations.ts",
     "convex/chat/personal.ts",
     "convex/collaboration/directMessages.ts",
+    "convex/collaboration/nativeRoomMaintenance.ts",
     "convex/email/deliveryRunner.ts",
     "convex/files/files.ts",
     "convex/files/ingestion/runner.ts",

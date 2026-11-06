@@ -53,11 +53,12 @@ export const getRoom = query({
     if (!access) return null
     const participants = await participantViews(ctx, args.conversationId, 200)
     return {
-      ...roomSummary(access), viewerPrincipalId: access.principal.principalId,
+      ...roomSummary(access), viewerPrincipalId: access.principal.principalId, viewerUserId: access.viewer.userId,
       externalPlatform: access.conversation.externalPlatform, topic: access.conversation.channelTopic?.slice(0, 240),
       visibility: access.conversation.channelVisibility,
-      participants: participants.map(p => ({ principalId: p.principalId, principalType: p.principalType,
-        displayName: p.displayName.slice(0, 240), role: p.role })),
+      slug: access.conversation.channelSlug, createdAt: access.conversation.createdAt, updatedAt: access.conversation.updatedAt ?? access.conversation.lastModified,
+      participants: participants.map(p => ({ ...p, displayName: p.displayName.slice(0, 240),
+        photoUrl: p.photoUrl?.slice(0, 4_000), email: p.email?.slice(0, 320) })),
     }
   },
 })
@@ -93,7 +94,7 @@ export const getMessageAnchor = query({
 })
 
 export const createDirectMessage = mutation({
-  args: { workspaceId: v.string(), principalIds: v.array(v.string()), title: v.optional(v.string()) },
+  args: { workspaceId: v.string(), principalIds: v.array(v.string()), title: v.optional(v.string()), sourceConversationId: v.optional(v.id('conversations')) },
   returns: v.object({ conversationId: v.id('conversations'), created: v.boolean() }),
   handler: async (ctx, args) => {
     const viewer = await roomCreator(ctx, args.workspaceId)

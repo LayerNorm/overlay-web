@@ -6,6 +6,7 @@ import { AgentCreature } from '@/components/orb/Creature'
 import { Avatar, AvatarFallback, AvatarImage, Button, DialogFrame, Input } from '@overlay/ui/primitives'
 import type { WorkspaceManagementItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useRoomCreation } from './collaboration/native-room-create'
 
 const EMPTY_EXCLUDED_PRINCIPAL_IDS: string[] = []
 
@@ -33,6 +34,7 @@ type DialogActionContext = Pick<
   setSelected: (selected: string[]) => void
   setQuery: (query: string) => void
   setInviteSent: (sent: boolean) => void
+  createDirectMessage: ReturnType<typeof useRoomCreation>['direct']
 }
 
 async function loadWorkspaceMembers(workspaceId: string) {
@@ -86,7 +88,7 @@ async function createDirectMessage(ctx: DialogActionContext, selected: string[],
       ctx.setQuery('')
       return
     }
-    const { directMessage } = await overlayAppClient.conversations.createWorkspaceDirectMessage(workspaceId, {
+    const { directMessage } = await ctx.createDirectMessage(workspaceId, {
       principalIds: addToConversationId
         ? [...excludedPrincipalIds, ...selected]
         : selected,
@@ -270,6 +272,7 @@ export function NewDirectMessageDialog({
   onCreated,
   onParticipantsAdded,
 }: NewDirectMessageDialogProps) {
+  const creation = useRoomCreation()
   const [items, setItems] = useState<WorkspaceManagementItem[]>([])
   const [currentPrincipalId, setCurrentPrincipalId] = useState('')
   const [query, setQuery] = useState('')
@@ -314,6 +317,7 @@ export function NewDirectMessageDialog({
     : null
   const copy = resolveDialogCopy(addToConversationId, addToConversationType, sourceConversationId)
   const actionContext: DialogActionContext = {
+    createDirectMessage: creation.direct,
     workspaceId,
     sourceConversationId,
     addToConversationId,

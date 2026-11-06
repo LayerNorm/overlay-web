@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
+import { nativeCollaborationMetadata } from '../collaboration/nativeCollaborationReadiness'
 
 const themeValidator = v.union(v.literal('light'), v.literal('dark'))
 const chatModeValidator = v.union(v.literal('ask'), v.literal('act'))
@@ -113,11 +114,14 @@ export const getByServer = query({
     nativePersonalChatRevision: v.literal('native-personal-list-v1'),
     nativePersonalTranscriptRevision: v.literal('native-personal-transcript-v1'),
     nativePersonalExecutionRevision: v.literal('native-personal-execution-v1'),
+    nativeCollaborationRevision: v.optional(v.literal('native-collaboration-v1')),
   }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     const existing = await getExistingSettings(ctx, args.userId)
+    const collaborationMetadata = await nativeCollaborationMetadata(ctx)
     if (!existing) return {
+      ...collaborationMetadata,
       ...defaultUiSettings(),
       harnessRevision: 'overlay-harness-v1' as const,
       harnessModelRecoveryRevision: 'settled-retry-v1' as const,
@@ -153,6 +157,7 @@ export const getByServer = query({
     }
     return {
       ...settings,
+      ...collaborationMetadata,
       harnessRevision: 'overlay-harness-v1' as const,
       harnessModelRecoveryRevision: 'settled-retry-v1' as const,
       nativeThreadCompatibilityRevision: 'tracked-native-v1' as const,
