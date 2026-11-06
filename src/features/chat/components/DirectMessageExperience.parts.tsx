@@ -706,19 +706,7 @@ export function RoomSidePanel({
         onInputChange={setThreadInput}
         onSubmit={() => {
           if (readOnlyFooter || readOnlyNotice) return
-          const text = threadInput
-          void sendMessage(text, {
-            threadRootMessageId: threadRoot.id,
-            requireCurrentThread: true,
-          }).then((result) => {
-            if (result.accepted) {
-              thread.clearSubmittedThreadInput({
-                conversationId: ctx.conversationId,
-                threadRootMessageId: threadRoot.id,
-                text,
-              })
-            }
-          })
+          void thread.submitThreadMessage({ sendMessage, threadRootMessageId: threadRoot.id })
         }}
         readOnlyNotice={readOnlyNotice}
         readOnlyFooter={readOnlyFooter}

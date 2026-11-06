@@ -310,7 +310,7 @@ export function createSubscriptionLanguageModel(args: {
   bridge?: Pick<SubscriptionBridgeClient, 'infer'>
   fetcher?: typeof fetch
 }): LanguageModel {
-  if (!['codex', 'claude', 'xai', 'meta', 'kimi', 'kimi-ai', 'devin'].includes(args.providerId)) {
+  if (!['codex', 'claude', 'xai', 'meta', 'kimi', 'devin'].includes(args.providerId)) {
     throw new Error('Subscription request adapter is not available')
   }
   const bridge = args.bridge ?? new SubscriptionBridgeClient(undefined, undefined, args.fetcher ?? fetch)

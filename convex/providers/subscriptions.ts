@@ -10,7 +10,6 @@ const providerValidator = v.union(
   v.literal('xai'),
   v.literal('meta'),
   v.literal('kimi'),
-  v.literal('kimi-ai'),
   v.literal('devin'),
 )
 

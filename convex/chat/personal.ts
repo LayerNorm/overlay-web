@@ -1,4 +1,4 @@
-import { paginationOptsValidator } from 'convex/server'
+import { paginationOptsValidator, paginationResultValidator } from 'convex/server'
 import { v } from 'convex/values'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { nativePersonalChatScope, requireNativePersonalChat, requireNativeWorkspace } from '../lib/nativeViewer'
@@ -8,6 +8,15 @@ import { requireNativeCapability } from '../lib/nativeCapabilities'
 
 const resourceArgs = { workspaceId: v.string(), conversationId: v.id('conversations') }
 type Access = Awaited<ReturnType<typeof requireNativePersonalChat>>
+
+const summaryValidator = v.object({
+  _id: v.id('conversations'), workspaceId: v.string(), title: v.string(),
+  lastModified: v.number(), createdAt: v.number(),
+  conversationType: v.literal('personal'), scope: v.literal('personal'),
+  archivedAt: v.optional(v.number()), lastReadAt: v.optional(v.number()),
+  markedUnreadAt: v.optional(v.number()), lastMessageId: v.optional(v.id('conversationMessages')),
+  lastMessageAt: v.optional(v.number()), unread: v.boolean(),
+})
 
 async function summary(ctx: QueryCtx, access: Access) {
   const { conversation, participant } = access
@@ -33,6 +42,7 @@ async function summary(ctx: QueryCtx, access: Access) {
 
 export const list = query({
   args: { workspaceId: v.string(), archived: v.boolean(), paginationOpts: paginationOptsValidator },
+  returns: paginationResultValidator(summaryValidator),
   handler: async (ctx, args) => {
     const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
     await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
@@ -50,6 +60,7 @@ export const list = query({
 
 export const getSummary = query({
   args: resourceArgs,
+  returns: v.union(v.null(), summaryValidator),
   handler: async (ctx, args) => {
     const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
     await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
@@ -83,40 +94,45 @@ async function participantId(ctx: MutationCtx, access: Access) {
 
 export const rename = mutation({
   args: { ...resourceArgs, title: v.string() },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const access = await requireNativePersonalChat(ctx, args)
     const title = sanitizeChatTitle(args.title, access.conversation.title)
     await requireNativeCapability(ctx, access.userId, 'conversations.edit')
-    if (title === access.conversation.title) return
+    if (title === access.conversation.title) return null
     await admitWrite(ctx, access.userId)
     const now = Date.now()
     await ctx.db.patch(args.conversationId, { title, updatedAt: now, lastModified: now })
     await recordConversationEvent(ctx, { ...args, userId: access.userId, type: 'conversation.updated' })
+    return null
   },
 })
 
 export const setArchived = mutation({
   args: { ...resourceArgs, archived: v.boolean() },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const access = await requireNativePersonalChat(ctx, args)
     await requireNativeCapability(ctx, access.userId, 'conversations.read')
-    if ((access.participant?.archivedAt !== undefined) === args.archived) return
+    if ((access.participant?.archivedAt !== undefined) === args.archived) return null
     await admitWrite(ctx, access.userId)
     const now = Date.now()
     await ctx.db.patch(await participantId(ctx, access), { archivedAt: args.archived ? now : undefined, updatedAt: now })
     await recordConversationEvent(ctx, { ...args, userId: access.userId, type: args.archived ? 'conversation.archived' : 'conversation.restored' })
+    return null
   },
 })
 
 export const setRead = mutation({
   args: { ...resourceArgs, unread: v.boolean(), throughMessageId: v.optional(v.id('conversationMessages')) },
+  returns: v.null(),
   handler: async (ctx, args) => {
     const access = await requireNativePersonalChat(ctx, args)
     const message = args.throughMessageId ? await ctx.db.get(args.throughMessageId) : null
     await requireNativeCapability(ctx, access.userId, 'conversations.read')
     if (args.throughMessageId && (!message || message.conversationId !== args.conversationId)) throw new Error('MESSAGE_ACCESS_DENIED')
-    if (!args.unread && !message) return
-    if (!args.unread && !access.participant?.markedUnreadAt && (access.participant?.lastReadAt ?? -1) >= message!.createdAt) return
+    if (!args.unread && !message) return null
+    if (!args.unread && !access.participant?.markedUnreadAt && (access.participant?.lastReadAt ?? -1) >= message!.createdAt) return null
     await admitWrite(ctx, access.userId)
     const now = Date.now()
     await ctx.db.patch(await participantId(ctx, access), {
@@ -124,5 +140,6 @@ export const setRead = mutation({
       lastReadAt: args.unread ? access.participant?.lastReadAt : Math.max(access.participant?.lastReadAt ?? 0, message!.createdAt),
       updatedAt: now,
     })
+    return null
   },
 })

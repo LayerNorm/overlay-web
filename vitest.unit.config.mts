@@ -19,6 +19,7 @@ export default defineConfig({
       'packages/**/src/**/*.test.ts',
       'scripts/**/*.test.ts',
       'src/server/harness/**/*.test.ts',
+      'src/server/chat/native-personal-readiness.test.ts',
       'src/server/files/computer-publication.test.ts',
       'src/server/files/computer-publication-service.test.ts',
       'src/server/files/ArtifactPublicationAuthority.test.ts',

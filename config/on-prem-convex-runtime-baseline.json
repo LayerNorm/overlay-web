@@ -6,6 +6,7 @@
     "src/app/api/agent-gateway/[provider]/[...path]/route.ts",
     "src/app/api/agent-mcp/route.ts",
     "src/app/api/auth/callback/route.ts",
+    "src/app/api/auth/convex-policy/route.ts",
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
     "src/app/api/auth/forgot-password/route.ts",
@@ -227,6 +228,7 @@
   "browserRuntimeFiles": [
     "src/components/providers/AppClientProviders.tsx",
     "src/components/providers/ConvexAuthProvider.tsx",
+    "src/components/providers/PersonalChatProvider.tsx",
     "src/components/providers/convex-hooks.ts",
     "src/components/providers/convex-react-client.ts",
     "src/features/chat/components/DirectMessageExperience.parts.tsx",
@@ -310,6 +312,11 @@
     },
     {
       "cadence": "{ minutes: 1 }",
+      "name": "native deployment policy refresh",
+      "target": "internal.platform.nativePolicy.refresh"
+    },
+    {
+      "cadence": "{ minutes: 1 }",
       "name": "outbound webhook delivery",
       "target": "internal.webhooks.deliveryRunner.runMinuteTick"
     },
@@ -365,16 +372,19 @@
     }
   ],
   "convexRuntimeImportFiles": [
+    "src/app/_components/AppShellLayout.tsx",
     "src/app/api/auth/callback/route.ts",
     "src/app/api/auth/convex-token/route.ts",
     "src/app/api/auth/desktop-link/route.ts",
     "src/app/api/share/file/[token]/route.ts",
     "src/app/api/v1/harness/continuation/route.ts",
+    "src/app/app/chat/page.tsx",
     "src/app/auth/desktop/complete/route.ts",
     "src/app/share/f/[token]/opengraph-image.tsx",
     "src/app/share/f/[token]/page.tsx",
     "src/components/providers/AppClientProviders.tsx",
     "src/components/providers/ConvexAuthProvider.tsx",
+    "src/components/providers/PersonalChatProvider.tsx",
     "src/components/providers/convex-hooks.ts",
     "src/components/providers/convex-react-client.ts",
     "src/features/chat/components/DirectMessageExperience.parts.tsx",
@@ -437,6 +447,7 @@
     "src/server/authorization/ConvexAuthorizationRepositories.ts",
     "src/server/authorization/ensure-default-user-role.ts",
     "src/server/authorization/index.ts",
+    "src/server/authorization/native-deployment-policy.ts",
     "src/server/automations/ConvexAutomationRepository.ts",
     "src/server/automations/workflow-access.ts",
     "src/server/billing/ConvexBillingProviderEventRepository.ts",
@@ -544,6 +555,7 @@
     "convex/knowledge/memoryExtractorNode.ts",
     "convex/lib/agentDriveFiles.ts",
     "convex/platform/growth.ts",
+    "convex/platform/nativePolicy.ts",
     "convex/platform/usage.ts",
     "convex/webhooks/deliveryRunner.ts"
   ]

@@ -321,9 +321,9 @@ test('connection DELETE uses durable subscription disconnect before removing the
   assert.deepEqual(order, ['disconnect', 'remove'])
 })
 
-test('all adapters can be enabled while the alternate Kimi domain is reconnect-only', async (t) => {
+test('all six adapters are enabled and kimi-ai is rejected for creation and reconnect', async (t) => {
   const previous = process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
-  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex,claude,xai,meta,kimi,kimi-ai,devin'
+  process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = 'codex,claude,xai,meta,kimi,devin'
   t.after(() => {
     if (previous === undefined) delete process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS
     else process.env.OVERLAY_SUBSCRIPTION_ENABLED_PROVIDERS = previous
@@ -332,27 +332,11 @@ test('all adapters can be enabled while the alternate Kimi domain is reconnect-o
   const response = await GET(request('/api/v1/providers/subscriptions', 'GET'), apiContext())
   const { data } = await response.json()
   assert.equal(data.available, true)
-  assert.deepEqual(data.providers.filter((provider: { selectable: boolean }) => provider.selectable)
-    .map((provider: { id: string }) => provider.id), ['codex', 'claude', 'xai', 'meta', 'kimi', 'devin'])
+  assert.deepEqual(data.providers.map((provider: { id: string }) => provider.id),
+    ['codex', 'claude', 'xai', 'meta', 'kimi', 'devin'])
   assert.ok(data.providers.every((provider: { enabled: boolean }) => provider.enabled))
-  const legacy = data.providers.find((provider: { id: string }) => provider.id === 'kimi-ai')
-  assert.equal(legacy.selectable, false)
-  assert.equal(legacy.enabled, true)
-  const denied = await POST(request('/api/v1/providers/subscriptions', 'POST', {
-    providerId: 'kimi-ai',
-  }), apiContext())
-  assert.equal(denied.status, 400)
-  // A saved legacy connection still reaches owner authorization, rather than the new-connection rejection.
-  const { getOverlayServerContext } = await import('@/server/bootstrap')
-  const repository = getOverlayServerContext().appData.repositories.providerConnections
-  const owners: string[] = []
-  t.mock.method(repository, 'get', async ({ userId }: { userId: string }) => {
-    owners.push(userId)
-    return null
-  })
-  const reconnect = await POST(request('/api/v1/providers/subscriptions', 'POST', {
-    providerId: 'kimi-ai', connectionId: 'legacy-connection',
-  }), apiContext())
-  assert.equal(reconnect.status, 404)
-  assert.deepEqual(owners, ['user_1'])
+  for (const body of [{ providerId: 'kimi-ai' }, { providerId: 'kimi-ai', connectionId: 'old-connection' }]) {
+    const denied = await POST(request('/api/v1/providers/subscriptions', 'POST', body), apiContext())
+    assert.equal(denied.status, 400)
+  }
 })

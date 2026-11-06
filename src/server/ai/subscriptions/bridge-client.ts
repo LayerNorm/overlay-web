@@ -3,7 +3,7 @@ import 'server-only'
 export type BridgeCredential = {
   backend: 'cliproxyapi'
   version: 1
-  providerId: 'codex' | 'claude' | 'xai' | 'meta' | 'kimi' | 'kimi-ai' | 'devin'
+  providerId: 'codex' | 'claude' | 'xai' | 'meta' | 'kimi' | 'devin'
   metadata: unknown
   expiresAt: number | null
   nonExpiring?: boolean
@@ -66,7 +66,7 @@ export function isBridgeCredential(value: unknown): value is BridgeCredential {
   const candidate = value as Record<string, unknown>
   if (candidate.backend !== 'cliproxyapi' || candidate.version !== 1 ||
       typeof candidate.providerId !== 'string' ||
-      !['codex', 'claude', 'xai', 'meta', 'kimi', 'kimi-ai', 'devin'].includes(candidate.providerId) ||
+      !['codex', 'claude', 'xai', 'meta', 'kimi', 'devin'].includes(candidate.providerId) ||
       !isRecord(candidate.metadata) || !('expiresAt' in candidate)) return false
   const providerId = candidate.providerId
   const allowsNonExpiring = providerId === 'meta' || providerId === 'devin'
@@ -83,7 +83,7 @@ export function isBridgePendingState(value: unknown): value is BridgePendingStat
   const candidate = value as Record<string, unknown>
   if (candidate.backend !== 'cliproxyapi' || candidate.version !== 1 ||
       typeof candidate.providerId !== 'string' ||
-      !['codex', 'claude', 'xai', 'meta', 'kimi', 'kimi-ai', 'devin'].includes(candidate.providerId) ||
+      !['codex', 'claude', 'xai', 'meta', 'kimi', 'devin'].includes(candidate.providerId) ||
       !isRecord(candidate.metadata) ||
       typeof candidate.expiresAt !== 'number' || !Number.isFinite(candidate.expiresAt) ||
       candidate.expiresAt <= 0 ||
