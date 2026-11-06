@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import type { NativePersonalExecutionState } from '@/components/providers/native-personal-execution'
 import {
   NATIVE_THREAD_SAFETY_CHANGED,
   nativeThreadSafetyErrorStatus,
@@ -12,14 +13,24 @@ import {
 
 export function useNativeThreadSafety({
   conversationId,
+  scopeConversationId = conversationId,
   workspaceId,
   threadRootMessageId,
+  nativeMode = false,
+  nativeExecution,
+  verifiedUserId,
+  scopeSynchronized = true,
 }: {
   conversationId: string | null
+  scopeConversationId?: string | null
   workspaceId?: string | null
   threadRootMessageId?: string
+  nativeMode?: boolean
+  nativeExecution?: NativePersonalExecutionState
+  verifiedUserId?: string | null
+  scopeSynchronized?: boolean
 }) {
-  const scope = JSON.stringify([workspaceId, conversationId, threadRootMessageId])
+  const scope = JSON.stringify([workspaceId, scopeConversationId, threadRootMessageId, verifiedUserId])
   const activeScope = useRef<string | null>(scope)
   useLayoutEffect(() => {
     activeScope.current = scope
@@ -30,10 +41,27 @@ export function useNativeThreadSafety({
   const request = useRef(0)
   const writeCheck = useRef<{ scope: string } | null>(null)
   const [snapshot, setSnapshot] = useState<{ scope: string; status: NativeThreadSafetyStatus; agentId?: string } | null>(null)
-  const status = !conversationId ? 'writable' : snapshot?.scope === scope ? snapshot.status : 'checking'
+  const execution = nativeExecution?.status === 'ready' ? nativeExecution.value : null
+  const nativeIdentityMatches = Boolean(execution
+    && execution.conversationId === conversationId
+    && execution.workspaceId === workspaceId
+    && execution.userId === verifiedUserId)
+  const nativeStatus: NativeThreadSafetyStatus = !scopeSynchronized
+    ? 'unavailable'
+    : !conversationId
+      ? 'writable'
+      : nativeExecution?.status === 'loading'
+        ? 'checking'
+        : nativeIdentityMatches
+          ? nativeThreadSafetyStatus(execution?.compatibility)
+          : 'unavailable'
+  const status = nativeMode
+    ? nativeStatus
+    : !conversationId ? 'writable' : snapshot?.scope === scope ? snapshot.status : 'checking'
 
   const refresh = useCallback(async () => {
     if (activeScope.current !== scope) return 'error'
+    if (nativeMode) return nativeStatus
     if (!conversationId) return 'writable'
     const revision = ++request.current
     let next: NativeThreadSafetyStatus
@@ -53,7 +81,7 @@ export function useNativeThreadSafety({
       return next
     }
     return 'error'
-  }, [conversationId, scope, threadRootMessageId])
+  }, [conversationId, nativeMode, nativeStatus, scope, threadRootMessageId])
 
   const checkWritable = useCallback(async () => {
     if (activeScope.current !== scope || writeCheck.current?.scope === scope) {
@@ -73,6 +101,7 @@ export function useNativeThreadSafety({
   const isCurrentScope = useCallback(() => activeScope.current === scope, [scope])
 
   useEffect(() => {
+    if (nativeMode) return
     const initialRefreshTimer = window.setTimeout(() => { void refresh() }, 0)
     const recheck = () => { void refresh() }
     window.addEventListener('focus', recheck)
@@ -83,13 +112,14 @@ export function useNativeThreadSafety({
       window.removeEventListener('focus', recheck)
       window.removeEventListener(NATIVE_THREAD_SAFETY_CHANGED, recheck)
     }
-  }, [refresh])
+  }, [nativeMode, refresh])
 
   useEffect(() => {
+    if (nativeMode) return
     if (status !== 'unavailable') return
     const timer = window.setTimeout(() => { void refresh() }, 10_000)
     return () => window.clearTimeout(timer)
-  }, [refresh, snapshot, status])
+  }, [nativeMode, refresh, snapshot, status])
 
   return {
     status,
@@ -99,7 +129,9 @@ export function useNativeThreadSafety({
     ensureWritable,
     checkWritable,
     isCurrentScope,
-    agentId: snapshot?.scope === scope ? snapshot.agentId : undefined,
+    agentId: nativeMode
+      ? (execution?.compatibility as { agentId?: string } | undefined)?.agentId
+      : snapshot?.scope === scope ? snapshot.agentId : undefined,
   }
 }
 

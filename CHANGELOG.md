@@ -6,7 +6,17 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Move approved agent-directory and editable-profile reads and writes to authenticated Convex operations with opaque revisions, safe public projections, 100-record pagination, 200-related-record fail-closed limits, and row-scoped optimistic updates. Gate external runtimes and connected bindings on fresh workspace deployment policy; retain archive cleanup and agent orchestration on server-owned paths, with legacy HTTP for unmigrated consumers.
 
+- Land CN-05 personal history/sending and CN-06 durable execution/progress together on the main-targeted integration branch.
+
+- Reconcile a sender's streamed native reply with its canonical row even when the local stream lacks the recorded model, so the sender no longer shows a phantom second response version until reload.
+
 - Keep personal chat working during web-first releases and backend rollback by enabling native list ownership only when the backend advertises the matching revision. Validate all native personal-chat response shapes explicitly, prevent Undo from reconstructing a record already known to be missing, and preserve concurrent title changes while archive and Undo are both pending.
+
+- Subscribe native personal chats directly to scoped execution state for lifecycle, safety and exact-turn commands, while retaining existing BFF execution and a fail-closed readiness rollback gate.
+
+- Make native personal-chat transcript pages, preferences and user-turn admission authoritative in the browser while retaining the existing scoped HTTP execution, memory, billing and streaming path.
+
+- Enable native personal history and sending only when the backend advertises compatible transcript support, preserving legacy ownership during web-first upgrades and backend rollback. Keep model preferences in the validated native summary contract.
 
 - Add private, opt-in two-client chat and navigation baselines that distinguish query readiness, local feedback, HTTP acknowledgement, content visibility, and remote convergence without collecting chat or file content. Correlate acknowledgements to the exact mutation and sanitize setup failures.
 
@@ -19,6 +29,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Keep native personal-chat title synchronization field-scoped so live summary updates cannot reset model selection and repeatedly trigger metadata saves that exhaust the shared API rate limit.
 
 - Add a server-controlled, fail-closed deployment-feature projection for native Convex domains. Policies are backend-bound, refreshed from the actual web configuration, fenced against stale callbacks (including delayed publication) and expired reactively; browser calls cannot publish policy. Existing conversation CRUD remains independent of deployment-feature mappings. Privileged agent Computer/credential cleanup stays server-owned.
+
+- Add a server-controlled, fail-closed deployment-feature projection for native Convex domains. Policies are backend-bound, refreshed from the actual web configuration, fenced against stale callbacks and expired reactively; browser calls cannot publish policy. Existing conversation CRUD remains independent of deployment-feature mappings. Privileged agent Computer/credential cleanup stays server-owned.
 
 - Move browser personal-chat list, title, archive/restore and basic unread ownership to native Convex with additive indexes and no backfill. Persisted `conversations.read` / `conversations.edit` capabilities are enforced even when the legacy BFF is in observe mode; native calls accept no caller policy flags or operator bypass. Optimistic writes rebase by row, bounded pages may be empty while filtered results remain, and verified-user writes are capped at 300 per 10 minutes because native calls have no BFF IP context. Legacy HTTP remains for native-off installations and non-pilot workspace chats, DMs, channels and other resources; transcript/history/streaming and deletion retain their existing server boundaries. Roll back web ownership first and leave backend fields/indexes in place.
 

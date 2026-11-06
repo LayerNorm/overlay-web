@@ -163,7 +163,7 @@ export function buildChatExperienceViewProps(
             ) : null,
             showLoadingState: c.showChatLoadingState,
             reserveLatestExchangeStartSpace: c.reserveLatestExchangeStartSpace,
-            transcriptKey: c.activeChatId ?? (c.isTemporaryChat ? 'temporary-chat' : null),
+            transcriptKey: c.transcriptConversationId ?? c.activeChatId ?? (c.isTemporaryChat ? 'temporary-chat' : null),
             afterMessages: c.usageExhaustedNotice,
             state: {
               primaryMessages: c.primaryMessages,
@@ -181,11 +181,16 @@ export function buildChatExperienceViewProps(
               actChat: c.actChat,
               chatInstances: c.chatInstances,
               isActiveLoading: c.isActiveLoading,
-              isOptimisticLoading: c.isOptimisticLoading,
+              isOptimisticLoading: c.nativePersonalConversationActive
+                ? c.nativePendingTurnCount > 0 && c.isOptimisticLoading
+                : c.isOptimisticLoading,
               interruptedExchangeIdx: c.interruptedExchangeIdx,
               exitingTurnIds: c.exitingTurnIds,
               sourcesPanel: c.sourcesPanel,
               getResponseForExchange: c.getResponseForExchange,
+              getResponsesForExchange: c.getResponsesForExchange,
+              canonicalTranscript: c.nativePersonalConversationActive,
+              transcriptPagination: c.nativeTranscriptPagination,
             },
             actions: {
               onJumpToReply: c.jumpToReplyTarget,

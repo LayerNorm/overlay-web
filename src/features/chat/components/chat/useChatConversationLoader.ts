@@ -119,6 +119,26 @@ export function useChatConversationLoader({
     setActiveChatTitle(chatMeta?.title ?? runtime.ui.activeChatTitle ?? null)
     pendingTitleRef.current = null
 
+    if (nativePersonal) {
+      const selection = normalizeChatModelSelection({
+        askModelIds: nativeSummary?.askModelIds?.slice(0, 4) ?? runtime.ui.selectedModels,
+        actModelId: nativeSummary?.actModelId ?? runtime.ui.selectedActModel,
+      })
+      runtime.ui = createConversationUiState({
+        ...runtime.ui,
+        activeChatTitle: nativeSummary?.title ?? null,
+        selectedActModel: selection.actModelId,
+        selectedModels: selection.askModelIds,
+        isFirstMessage: !nativeSummary?.lastMessageId,
+      })
+      runtime.hydrated = false
+      setActiveChatTitle(nativeSummary?.title ?? null)
+      applyUiStateToView(runtime.ui)
+      setRuntimeHydrationVersion((value) => value + 1)
+      setIsSwitchingChat(false)
+      return
+    }
+
     if (newEmptyChat) {
       const selection = normalizeChatModelSelection({
         askModelIds: newEmptyChat.askModelIds?.slice(0, 1) ?? selectedModels.slice(0, 1),

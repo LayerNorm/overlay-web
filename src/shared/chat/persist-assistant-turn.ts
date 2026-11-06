@@ -256,8 +256,10 @@ export function compactAssistantPersistenceForConvex(input: {
 
   const omittedParts = Math.min(Number.MAX_SAFE_INTEGER, previousOmissions + candidates.length - parts.length)
   if (omittedParts > 0) {
+    const omissionId = input.parts.find(isAssistantStorageOmission)?.id
     parts.unshift({
       type: 'text',
+      ...(typeof omissionId === 'string' && omissionId ? { id: omissionId } : {}),
       text: `[${omittedParts} additional assistant parts omitted for storage]`,
       storageOmittedParts: omittedParts,
     })
