@@ -1,11 +1,12 @@
 import { useLayoutEffect } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
-import { ConvexProvider, type ConvexReactClient } from 'convex/react'
+import { ConvexProvider, usePaginatedQuery, type ConvexReactClient } from 'convex/react'
 import { getFunctionName } from 'convex/server'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { NativeCollaborationContext, emptyNativeCollaboration } from '@/components/providers/native-collaboration-context'
 import { NativeRoomStateProvider, useNativeRoomMetadata, type RoomState } from './NativeRoomState'
 import { useNativePresence } from './useNativePresence'
+import { api } from '../../../../../convex/_generated/api'
 
 const mocks = vi.hoisted(() => ({ query: vi.fn(), maps: vi.fn() }))
 vi.mock('convex/react', async (importOriginal) => {
@@ -94,4 +95,40 @@ it.each([{ enabled: false, rows: [] }, { enabled: true, rows: [] }, { enabled: t
   await act(async () => { renderer!.update(presenceTree(false)) })
   expect(visible).toEqual([])
   expect(renders).toBeLessThan(15)
+})
+
+it('real paginated thread subscriptions clear on agent archive and recover all loaded pages after Undo', async () => {
+  const callbacks = new Set<() => void>()
+  let archived = false
+  const empty = { page: [], isDone: true, continueCursor: '' }
+  const pages = [
+    { page: [{ conversationId: 'first' }], isDone: false, continueCursor: 'next' },
+    { page: [{ conversationId: 'second' }], isDone: true, continueCursor: 'end' },
+  ]
+  const watchPages = vi.fn((_query: unknown, args: { paginationOpts: { cursor: string | null } }) => ({
+    localQueryResult: () => archived ? empty : pages[args.paginationOpts.cursor === null ? 0 : 1],
+    onUpdate(callback: () => void) { callbacks.add(callback); return () => { callbacks.delete(callback) } },
+    journal: () => undefined,
+  }))
+  const pageClient = { watchQuery: watchPages } as unknown as ConvexReactClient
+  let page: ReturnType<typeof usePaginatedQuery<typeof api.agents.nativeThreads.listThreads>>
+  function PageProbe() {
+    const next = usePaginatedQuery(api.agents.nativeThreads.listThreads, { workspaceId: 'workspace', agentId: 'agent', archived: false }, { initialNumItems: 1 })
+    useLayoutEffect(() => { page = next })
+    return null
+  }
+  await act(async () => { renderer = create(<ConvexProvider client={pageClient}><PageProbe /></ConvexProvider>) })
+  await act(async () => { page.loadMore(1) })
+  expect(page!.results.map(row => row.conversationId)).toEqual(['first', 'second'])
+  expect(callbacks.size).toBe(2)
+  archived = true
+  await act(async () => { [...callbacks].forEach(callback => callback()) })
+  expect(page!.results).toEqual([])
+  expect(page!.status).toBe('Exhausted')
+  archived = false
+  await act(async () => { [...callbacks].forEach(callback => callback()) })
+  expect(page!.results.map(row => row.conversationId)).toEqual(['first', 'second'])
+  expect(callbacks.size).toBe(2)
+  expect(new Set(watchPages.mock.calls.map(([, args]) => JSON.stringify(args)))).toHaveLength(2)
+  expect(watchPages.mock.calls.some(([, args]) => args.paginationOpts.cursor === 'next')).toBe(true)
 })

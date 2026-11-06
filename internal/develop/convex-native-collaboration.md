@@ -255,6 +255,11 @@ infrastructure remain for CN-10/11. No legacy endpoint is removed in Stage B.
 capability, live workspace membership, agent visibility, live definition and
 agent principal/membership. Exact access also requires both active room
 participants. Foreign, removed and archived-agent deep links return null.
+List reads return an empty exhausted page for known access denials, including
+an archived agent definition/principal, so a live archive cannot throw into the
+directory's error boundary. Restore re-exposes the same authorized thread IDs.
+Mutation access remains strict; unexpected read failures and thread-limit
+exhaustion still throw rather than masquerading as an empty list.
 Lists paginate the workspace/agent/owner/recency index; main derivation bounds
 related caller threads at 200 and fails closed above that limit. DTOs carry the
 viewer and full scope so stale cached rows cannot authorize a new selection.

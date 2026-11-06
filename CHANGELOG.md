@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Clear native agent thread lists safely during agent archive or access revocation, so Undo can restore subscribed navigation without leaving the sidebar in a load-error boundary.
+
 - Use the same canonical reply total in native thread headers and root indicators, excluding deleted replies while keeping their tombstones visible and preserving capped counts across pagination.
 
 - Keep native reply counts and latest-reply teasers subscribed when thread panels are closed, independently of reply-history pagination.

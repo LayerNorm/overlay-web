@@ -17,6 +17,11 @@ const threadView = v.object({ conversationId: v.id('conversations'), workspaceId
 type Context = Pick<QueryCtx, 'auth' | 'db'>
 type AgentArgs = { workspaceId: string; agentId: string }
 
+function unavailable(error: unknown) {
+  return error instanceof Error && ['UNAUTHENTICATED', 'WORKSPACE_ACCESS_DENIED', 'ROOM_ACCESS_DENIED', 'AGENT_NOT_FOUND', 'AGENT_ARCHIVED',
+    'DEPLOYMENT_FEATURE_ACCESS_DENIED', 'CAPABILITY_ACCESS_DENIED'].includes(error.message)
+}
+
 async function agentAccess(ctx: Context, args: AgentArgs, capability: 'conversations.read' | 'conversations.create' | 'conversations.edit' = 'conversations.read') {
   const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
   await requireNativeDeploymentFeature(ctx, 'chat', args.workspaceId)
@@ -54,8 +59,16 @@ async function threadOrNull(ctx: Context, args: AgentArgs & { conversationId: Id
   try {
     return await threadAccess(ctx, args)
   } catch (error) {
-    if (error instanceof Error && ['UNAUTHENTICATED', 'WORKSPACE_ACCESS_DENIED', 'ROOM_ACCESS_DENIED', 'AGENT_NOT_FOUND', 'AGENT_ARCHIVED',
-      'DEPLOYMENT_FEATURE_ACCESS_DENIED', 'CAPABILITY_ACCESS_DENIED'].includes(error.message)) return null
+    if (unavailable(error)) return null
+    throw error
+  }
+}
+
+async function agentOrNull(ctx: Context, args: AgentArgs) {
+  try {
+    return await agentAccess(ctx, args)
+  } catch (error) {
+    if (unavailable(error)) return null
     throw error
   }
 }
@@ -68,7 +81,9 @@ function view(row: Doc<'conversations'>, viewerUserId: string, archivedAt: numbe
 export const listThreads = query({
   args: { ...agentArgs, archived: v.boolean(), paginationOpts: paginationOptsValidator }, returns: paginationResultValidator(threadView),
   handler: async (ctx, args) => {
-    const { viewer } = await agentAccess(ctx, args)
+    const access = await agentOrNull(ctx, args)
+    if (!access) return { page: [], isDone: true, continueCursor: '' }
+    const { viewer } = access
     const main = await mainThreadId(ctx, args, viewer.userId, viewer.principal.principalId)
     const page = await ctx.db.query('conversations').withIndex('by_workspaceId_agentId_userId_lastModified', q =>
       q.eq('workspaceId', args.workspaceId).eq('agentId', args.agentId).eq('userId', viewer.userId)).order('desc')

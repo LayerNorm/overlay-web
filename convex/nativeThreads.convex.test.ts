@@ -35,6 +35,69 @@ async function fixture() {
 }
 
 describe('identity-authenticated agent threads', () => {
+  test.each(['definition', 'principal', 'membership'] as const)('live thread lists clear and recover when agent %s access changes', async kind => {
+    const f = await fixture()
+    const thread = await f.alice.mutation(api.agents.nativeThreads.resolveMainThread, args)
+    const exact = { ...args, conversationId: thread.conversationId }
+    expect((await f.alice.query(api.agents.nativeThreads.listThreads, pageArgs)).page.map(row => row.conversationId)).toEqual([thread.conversationId])
+    const update = async (denied: boolean) => f.t.run(async ctx => {
+      if (kind === 'definition') {
+        const row = await ctx.db.query('workspaceAgentDefinitions').unique()
+        await ctx.db.patch(row!._id, { archivedAt: denied ? now : undefined })
+      } else if (kind === 'principal') {
+        const row = await ctx.db.query('workspacePrincipals').withIndex('by_principalId', q => q.eq('principalId', 'agent-p')).unique()
+        await ctx.db.patch(row!._id, { archivedAt: denied ? now : undefined })
+      } else {
+        const row = await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', args.workspaceId).eq('principalId', 'agent-p')).unique()
+        await ctx.db.patch(row!._id, { status: denied ? 'suspended' : 'active' })
+      }
+    })
+    await update(true)
+    for (const archived of [false, true]) expect(await f.alice.query(api.agents.nativeThreads.listThreads, { ...pageArgs, archived }))
+      .toEqual({ page: [], isDone: true, continueCursor: '' })
+    expect(await f.alice.query(api.agents.nativeThreads.getThread, exact)).toBeNull()
+    await expect(f.alice.mutation(api.agents.nativeThreads.resolveMainThread, args)).rejects.toThrow(kind === 'membership' ? 'AGENT_NOT_FOUND' : 'AGENT_ARCHIVED')
+    await expect(f.alice.mutation(api.agents.nativeThreads.createThread, { ...args, clientRequestId: 'denied' })).rejects.toThrow()
+    await expect(f.alice.mutation(api.agents.nativeThreads.setThreadArchived, { ...exact, archived: true })).rejects.toThrow()
+    await update(false)
+    expect((await f.alice.query(api.agents.nativeThreads.listThreads, pageArgs)).page.map(row => row.conversationId)).toEqual([thread.conversationId])
+    expect((await f.t.run(ctx => ctx.db.query('conversations').collect()))).toHaveLength(1)
+  })
+
+  test('list access denial returns an empty exhausted page without exposing inaccessible threads', async () => {
+    const f = await fixture()
+    await f.alice.mutation(api.agents.nativeThreads.resolveMainThread, args)
+    const empty = { page: [], isDone: true, continueCursor: '' }
+    expect(await f.t.query(api.agents.nativeThreads.listThreads, pageArgs)).toEqual(empty)
+    expect(await f.alice.query(api.agents.nativeThreads.listThreads, { ...pageArgs, workspaceId: 'foreign' })).toEqual(empty)
+    expect(await f.alice.query(api.agents.nativeThreads.listThreads, { ...pageArgs, agentId: 'missing' })).toEqual(empty)
+    await f.t.run(async ctx => {
+      const row = await ctx.db.query('workspaceAgentDefinitions').unique()
+      await ctx.db.patch(row!._id, { visibility: 'creator' })
+    })
+    expect(await f.bob.query(api.agents.nativeThreads.listThreads, pageArgs)).toEqual(empty)
+  })
+
+  test('pagination cursors obtained before agent archive resume the same rows after restore', async () => {
+    const f = await fixture()
+    await f.alice.mutation(api.agents.nativeThreads.resolveMainThread, args)
+    for (const clientRequestId of ['second', 'third']) await f.alice.mutation(api.agents.nativeThreads.createThread, { ...args, clientRequestId })
+    const first = await f.alice.query(api.agents.nativeThreads.listThreads, pageArgs)
+    expect(first.isDone).toBe(false)
+    const nextArgs = { ...pageArgs, paginationOpts: { numItems: 2, cursor: first.continueCursor } }
+    const second = await f.alice.query(api.agents.nativeThreads.listThreads, nextArgs)
+    expect(second.page).toHaveLength(1)
+    const archive = async (value: boolean) => f.t.run(async ctx => {
+      const agent = await ctx.db.query('workspaceAgentDefinitions').unique()
+      await ctx.db.patch(agent!._id, { archivedAt: value ? now : undefined })
+    })
+    await archive(true)
+    expect(await f.alice.query(api.agents.nativeThreads.listThreads, nextArgs)).toEqual({ page: [], isDone: true, continueCursor: '' })
+    await archive(false)
+    expect(await f.alice.query(api.agents.nativeThreads.listThreads, pageArgs)).toEqual(first)
+    expect(await f.alice.query(api.agents.nativeThreads.listThreads, nextArgs)).toEqual(second)
+  })
+
   test('concurrent main resolution has one stable conversation; create replay preserves its id and title', async () => {
     const f = await fixture()
     expect((await f.alice.query(api.agents.nativeThreads.listThreads, pageArgs)).page).toEqual([])
