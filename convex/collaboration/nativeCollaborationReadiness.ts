@@ -1,6 +1,6 @@
 import type { QueryCtx } from '../_generated/server'
 
-export const NATIVE_COLLABORATION_FUNCTIONS_READY = false
+export const NATIVE_COLLABORATION_FUNCTIONS_READY = true
 export const NATIVE_ROOM_RECENCY_MIGRATION = 'native-room-recency-v1'
 
 export async function nativeCollaborationMetadata(

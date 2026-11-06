@@ -11,7 +11,7 @@ test('readiness needs both complete functions and the persisted completed backfi
   vi.useFakeTimers()
   vi.stubEnv('INTERNAL_API_SECRET', 'readiness-test')
   const t = convexTest(schema, modules)
-  expect(NATIVE_COLLABORATION_FUNCTIONS_READY).toBe(false)
+  expect(NATIVE_COLLABORATION_FUNCTIONS_READY).toBe(true)
   expect(await t.run(ctx => nativeCollaborationMetadata(ctx, true))).toEqual({})
   const settings = () => t.query(api.platform.uiSettings.getByServer, { userId: 'alice', serverSecret: 'readiness-test' })
   expect(await settings()).not.toHaveProperty('nativeCollaborationRevision')
@@ -19,7 +19,8 @@ test('readiness needs both complete functions and the persisted completed backfi
   expect(await t.run(ctx => nativeCollaborationMetadata(ctx, true))).toEqual({})
   await t.finishAllScheduledFunctions(vi.runAllTimers)
   expect(await t.run(ctx => nativeCollaborationMetadata(ctx, true))).toEqual({ nativeCollaborationRevision: 'native-collaboration-v1' })
-  expect(await settings()).not.toHaveProperty('nativeCollaborationRevision')
+  expect(await t.run(ctx => nativeCollaborationMetadata(ctx, false))).toEqual({})
+  expect(await settings()).toHaveProperty('nativeCollaborationRevision', 'native-collaboration-v1')
   await expect(t.query(api.platform.uiSettings.getByServer, { userId: 'alice', serverSecret: 'wrong' })).rejects.toThrow('Unauthorized')
 })
 

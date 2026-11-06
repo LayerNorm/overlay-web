@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useQuery } from 'convex/react'
+import { useQueries } from 'convex/react'
 import type { FunctionReturnType } from 'convex/server'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
@@ -36,6 +36,7 @@ export function usePresenceDeadlines(rows: Rows | null | undefined) {
 }
 
 export function useNativePresence(workspaceId: string, conversationId: string, enabled: boolean) {
-  const rows = useQuery(api.collaboration.nativePresence.watchPresence, enabled ? { workspaceId, conversationId: conversationId as Id<'conversations'> } : 'skip')
-  return usePresenceDeadlines(enabled ? rows : null)
+  const result = useQueries(enabled ? { presence: { query: api.collaboration.nativePresence.watchPresence,
+    args: { workspaceId, conversationId: conversationId as Id<'conversations'> } } } : {}).presence
+  return usePresenceDeadlines(enabled && Array.isArray(result) ? result as Rows : null)
 }

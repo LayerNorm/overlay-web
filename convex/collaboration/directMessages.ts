@@ -1389,7 +1389,7 @@ export const updateParticipantState = mutation({
         .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
         .collect()
       const latestSequence = events.reduce((max, event) => Math.max(max, event._creationTime), 0)
-      readSequence = Math.min(requestedReadSequence ?? Number.MAX_SAFE_INTEGER, latestSequence)
+      readSequence = Math.max(participant.lastReadSequence ?? 0, Math.min(requestedReadSequence ?? Number.MAX_SAFE_INTEGER, latestSequence))
     }
     const patch = {
       ...(args.notificationLevel ? { notificationLevel: args.notificationLevel } : {}),

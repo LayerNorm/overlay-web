@@ -19,14 +19,16 @@ Native presence keeps 45-second heartbeats and absolute 120-second session and
 6-second typing deadlines. Queries never clock-filter presence; the client
 schedules the next deadline and aggregates live sessions locally. The legacy
 `computePresence`/`watchPresence` clock filter is retained for existing callers:
-without another database write, its result can remain stale. Presence traversals
-fail closed at 200 rows, including historical sessions; no presence cleanup or
-migration is scheduled by this stage.
+without another database write, its result can remain stale. Presence reads the
+newest 200 sessions per participant via the updatedAt index, then returns the
+newest 200 room sessions. Historical rows do not exhaust a fail-closed budget.
+Presence errors clear presence only, never room availability. No cleanup job is
+needed to make the presence window safe.
 
 Legacy ledger: `channels` state handlers and `directMessages` participant/follow/
 archive/presence handlers remain for BFF/external callers. Reports continue
 through the BFF durable moderation-audit intake, unchanged. Read/unread HTTP
-writes remain until CN-11. Physical deletion keeps its existing BFF cleanup path.
+writes remained until CN-11 (completed below). Physical deletion keeps its existing BFF cleanup path.
 Native Settings room restore bypasses legacy refresh/events; other archived
 resources and personal-chat ownership remain unchanged.
 
@@ -147,8 +149,8 @@ backfill are deployed through the trusted release workflow.
 
 ## Stage B — room client and readiness plumbing
 
-`NATIVE_COLLABORATION_FUNCTIONS_READY` is the single rollout flag and remains
-**false** until CN-09..11 are implemented. Even when it becomes true, uiSettings
+`NATIVE_COLLABORATION_FUNCTIONS_READY` is the single rollout flag. Stage E sets it
+**true** now that CN-09..11 are implemented. Independently, uiSettings
 advertises `native-collaboration-v1` only after the global recency migration has a
 persisted positive completion timestamp. The minute cron kicks an idempotent
 internal mutation; each 100-row page commits its cursor and schedules its
@@ -211,4 +213,103 @@ temporary destination so browser Back cannot become trapped in a pending shell.
 Legacy thread server-secret functions remain for repository/BFF callers and
 disabled clients. Archived Settings still uses its legacy archived-agent/thread
 ledger until the remaining metadata/archive migration. The readiness flag
-remains false pending CN-10/11; no backend mutation or rollout occurs here.
+remained false at Stage C, pending CN-10/11. Stage E completes that gate below.
+
+## Stage E — activity, read watermarks and rollout
+
+The functions-ready flag is now true. The advertised revision still requires the
+completed, persisted participant-recency backfill. No deployment, backfill run or
+shared-backend mutation is part of this implementation.
+
+Native activity paginates the recipient index and rechecks current room access
+for every returned item. Destinations carry direct/channel/agent-thread, archive,
+message and thread-root metadata; navigation does not resolve types over HTTP.
+Removed participants' notifications disappear from lists and counts immediately.
+Unread counters seek distinct conversation groups in the unread index, not a
+notification page. Every displayed bucket is `{count, capped}` with cap 99.
+`rooms` counts rooms with unread notifications. Kind counters categorize those
+notifications. Loaded room badges subscribe to separate, at-most-100-ID indexed
+count queries, so older rooms are not misreported because a global page omitted
+them. Capped optimistic counters remain conservative until canonical counts land.
+
+Room reads clamp the observed sequence to the latest event and take the maximum
+with the stored cursor. Native rendering measures intersecting message DOM rows;
+loaded but offscreen rows cannot advance the watermark. Notification reads only
+affect owned IDs at or before the observed creation-time watermark. Room reads
+also clear notifications through the observed event sequence, not newer arrivals.
+Room and mark-all actions drain idempotent 100-write batches from the client with
+the same watermark. No scheduler call site is added. Closing the client can leave
+a partially completed read; repeating the action safely finishes the remainder.
+Per-action overlays are removed independently; a failure does not undo later
+successes or canonical writes. Observer attempt bookkeeping is not read truth.
+
+Native activity, desktop badges and room badges use canonical indexed counts,
+not permanently retained local read maps. Activity auto-read observes loaded
+items; older pages remain available through Load older activity. The native path
+does not emit collaboration read/notification invalidation events. External
+delivery, preferences, mentions and moderation retain their existing boundaries.
+
+List-version retirement was checked against all consumers: ChatInlinePanel is
+the only consumer of the combined version (including its AppShell sidebar use).
+Its room adapters own DM/channel lists; PersonalChatProvider owns personal lists;
+the native thread provider owns agent sidebar lists. Archived room and personal
+surfaces have their own subscriptions. Global archived agent/thread settings
+remain an explicitly retained BFF ledger, not a list-version consumer. Workspace
+list-version and legacy notification subscriptions are skipped whenever native
+collaboration owns the scope. The independent personal version remains subscribed
+when personal native ownership is disabled; native-disabled installations retain
+both legacy subscriptions.
+
+Anonymous workspace routes now use the existing sign-in-link convention with a
+return destination. Settled guests cannot complete workspace resolution because
+the workspace provider is disabled; workspace gates previously kept waiting on
+that unresolved target. Both hydration and scoped-content gates check settled
+anonymous auth before waiting. Unscoped personal/account/unknown routes keep their
+existing behavior; pending authenticated workspace switches still preserve drafts.
+
+### Native function inventory
+
+| Module | Exact public functions |
+| --- | --- |
+| agents/nativeDirectory | context, bootstrapChiefs, list, get, create, update, restore |
+| collaboration/nativeRooms | listRooms, getRoom, listMessages, getMessageAnchor, createDirectMessage, createChannel, editMessage, deleteMessage |
+| agents/nativeThreads | listThreads, getThread, resolveMainThread, createThread, setThreadArchived, deleteThread |
+| collaboration/nativeRoomState | getRoomState, listReactions, listSavedMessages, setReaction, setPinned, setSaved, setThreadFollow, setNotificationLevel, setRoomArchived, restore, addParticipant, removeParticipant |
+| collaboration/nativePresence | heartbeat, watchPresence |
+| collaboration/nativeActivity | listNotifications, getUnreadCounts, getRoomUnreadCounts, markRoomRead, markNotificationsRead, markAllNotificationsRead |
+
+### Remaining legacy callers (current ledger)
+
+All functions below remain public compatibility/server boundaries. Native-ready
+room/thread/activity paths do not fall back to them after a failed native call.
+The module prefix in every row is `collaboration/` unless explicitly `agents/`.
+
+| Module | Exact functions | Remaining consumers |
+| --- | --- | --- |
+| directMessages | getAccessibleConversation, listAccessibleConversations, listArchivedConversations, listMessages, accessibleConversationIds, canAccessConversation | ConversationCollaborationRepository/BFF conversation reads, disabled web, external clients, retained global archive/search ledgers |
+| directMessages | watchRoomMessages | ConvexRoomMessageSubscription for native-disabled room transcripts |
+| directMessages | addMessage, addAgentMessage, enqueueMemoryExtraction | Authenticated BFF send, work assignments, agent orchestration/memory; no browser multi-write send |
+| directMessages | startAgentTurn, startAgentMessage, recordAgentStartFailure, appendAgentMessageDelta, finalizeAgentMessage, failAgentMessage, sanitizeAgentMessageTextParts, completeAgentToolInvocation | Server-owned agent workflow/stream/tool lifecycle and repository callers |
+| directMessages | createDirectMessage, listParticipants, addParticipant, removeParticipant, updateParticipantState, archiveConversationForEveryone, deleteConversationForEveryone | BFF/external callers and native-disabled web; physical deletion/moderation cleanup remains server-owned; legacy read cursor is monotonic |
+| directMessages | upsertPresence, listPresence, watchPresence | Legacy BFF heartbeat and native-disabled presence consumers |
+| directMessages | recordMessageActivity | Durable BFF admission fanout keyed by canonical message ID |
+| directMessages | getConversationEventCursor, listConversationEvents | Server event repository and external event consumers |
+| directMessages | watchConversationListVersion | Workspace legacy realtime only when native collaboration is disabled |
+| directMessages | editMessage, deleteMessage | Legacy BFF mutation clients and disabled web |
+| directMessages | listNotifications, watchNotifications, markNotificationsRead | BFF/external notification clients and native-disabled activity |
+| directMessages | setThreadFollow, listThreadFollows, getNotificationPreferences, updateNotificationPreferences | Disabled thread-follow panels; BFF notification preference UI and server delivery preferences |
+| channels | createChannel, listChannels, listReactions, setReaction, listPins, setPinned, listSavedMessages, setSaved | Repository/BFF callers, native-disabled rooms and retained global saved-message consumers |
+| channels | searchWorkspaceChats, deleteAllConversations | BFF search and privileged bulk deletion |
+| agents/agentThreads | createThreadByServer, resolveMainThreadByServer, listThreadsByServer, listArchivedThreadsByServer, setThreadArchivedByServer, deleteThreadByServer | AgentThreadService/BFF compatibility, disabled clients and global archived-thread settings |
+| agents/agentThreads | listAutomationsByServer | Separate agent automation metadata endpoint |
+| chat/conversations | watchPersonalConversationListVersion | Personal legacy list ownership only; retained even when collaboration is native |
+
+### Local/preview acceptance
+
+Run the new native Convex files, full `vitest.unit.config.mts`, changed Node seams,
+TypeScript, web complexity, tenant/on-prem/shared-isomorphic gates, changed-file
+ESLint, `docs:check`, production build and `git diff --check`. On an exact-head
+isolated preview, verify two-client reactions and roster revocation, timer-only
+presence expiry, archive/Undo after navigation, notification destinations and
+watermarked reads. Confirm anonymous scoped URLs show Sign in and personal chat
+still works. No preview/back-end deployment is authorized by a local commit.

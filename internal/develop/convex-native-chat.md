@@ -5,6 +5,10 @@ description: "Reproducible realtime baselines, retained consumers, and migration
 
 ## CN-01 baseline protocol
 
+For Phase C (CN-07–CN-11) agent directory, rooms, threads, presence, activity and
+read state, see [Native collaboration](./convex-native-collaboration.md).
+Its revision/backfill gate is independent of the personal-chat readiness gates.
+
 This harness measures the existing behavior, not a fix. A remote convergence
 failure must remain a failing sample. Do not change an assertion to make the
 baseline pass. CN-02 through CN-05 migrate auth, authorization, personal lists

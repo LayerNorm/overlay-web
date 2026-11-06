@@ -4,6 +4,7 @@ import test from 'node:test'
 import React, { act, useEffect, useState } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { WorkspaceScopedContentGate } from './WorkspaceScopedContentBoundary'
+import { workspaceRouteRequiresSignIn } from './WorkspaceSignInPrompt'
 import {
   readWorkspaceRouteDescriptor,
   readWorkspaceRouteTarget,
@@ -59,6 +60,31 @@ test('account and unknown routes are not held behind scope canonicalization', ()
   const unknown = renderBoundary('/app/unknown-surface', '')
   assert.match(unknown, /Scoped page/)
   assert.doesNotMatch(unknown, /Opening workspace/)
+})
+
+test('settled anonymous workspace routes show sign-in rather than waiting for disabled workspace hydration', () => {
+  for (const [pathname, routeSearch] of [
+    ['/app/agents/native-agent%3Aexample', ''],
+    ['/app/chat', 'view=dms&id=room'],
+    ['/app/w/workspace-1/chat', 'view=channels&id=room'],
+  ]) {
+    const html = renderToStaticMarkup(<WorkspaceScopedContentGate fallback={<span>Opening workspace</span>} state={{
+      auth: { loading: false, hasUser: false }, switchingWorkspaceId: null, waitingForNavigation: false,
+      routeTarget: readWorkspaceRouteTarget(pathname), status: 'idle', currentWorkspace: null, resolvedRouteTargetKey: null,
+      descriptor: readWorkspaceRouteDescriptor(pathname), routeWorkspaceId: null, activeWorkspaceId: null, pathname, routeSearch, currentScope: 'workspace',
+    }}><span>Private page</span></WorkspaceScopedContentGate>)
+    assert.match(html, /Sign in to continue/)
+    assert.match(html, /\/auth\/sign-in\?redirect=/)
+    assert.doesNotMatch(html, /Opening workspace|Private page/)
+  }
+})
+
+test('anonymous unscoped personal, account and unknown surfaces retain their own auth behavior', () => {
+  expectNoWorkspaceSignIn('/app/chat', '')
+  expectNoWorkspaceSignIn('/app/chat', 'view=personal&id=personal')
+  expectNoWorkspaceSignIn('/app/chat', 'section=account')
+  expectNoWorkspaceSignIn('/app/unknown-surface', '')
+  function expectNoWorkspaceSignIn(pathname: string, search: string) { assert.equal(workspaceRouteRequiresSignIn(pathname, search), false) }
 })
 
 test('legacy scoped routes remain gated until a confirmed handle redirect is applied', () => {

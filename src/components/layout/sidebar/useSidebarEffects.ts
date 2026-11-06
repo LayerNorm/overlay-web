@@ -16,6 +16,7 @@ import type { GateReason } from '@/components/providers/GuestGateProvider'
 import type { MentionType } from '@/shared/knowledge/mention-types'
 import type { SidebarEntitlements } from './SidebarUsageMeters'
 import { NAV_HOTKEY_OPTIONS, type SidebarNavItem } from './appSidebarNav'
+import { useNativeActivity } from '@/components/providers/native-activity-context'
 
 export function useTemporaryChatUiHidden({
   pathname,
@@ -63,10 +64,11 @@ export function useCollaborationUnread({
   activeWorkspaceId: string | null
   collaborationNotifications: WorkspaceNotification[]
 }): { dms: number; channels: number; total: number } {
+  const native = useNativeActivity()
   const [collaborationUnread, setCollaborationUnread] = useState({ dms: 0, channels: 0, total: 0 })
 
   useEffect(() => {
-    if (!user || !activeWorkspaceId) {
+    if (native || !user || !activeWorkspaceId) {
       return
     }
     let cancelled = false
@@ -93,9 +95,12 @@ export function useCollaborationUnread({
     return () => {
       cancelled = true
     }
-  }, [activeWorkspaceId, collaborationNotifications,  user])
+  }, [activeWorkspaceId, collaborationNotifications, native, user])
 
-  return collaborationUnread
+  if (!native) return collaborationUnread
+  const counts = native.counts
+  return { dms: Math.min(100, (counts?.byKind.direct.count ?? 0) + (counts?.byKind.agentThread.count ?? 0) + Number(Boolean(counts?.byKind.direct.capped || counts?.byKind.agentThread.capped))),
+    channels: (counts?.byKind.channel.count ?? 0) + Number(Boolean(counts?.byKind.channel.capped)), total: (counts?.notifications.count ?? 0) + Number(Boolean(counts?.notifications.capped)) }
 }
 
 export function useUnreadChatRedirect({

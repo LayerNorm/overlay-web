@@ -10,6 +10,7 @@ import type { RoomAction } from '@/components/providers/native-room-state-client
 import { useNativeRoomStateClient } from '@/components/providers/native-room-state-client'
 import { useNativeRoomSession } from './NativeRoomScope'
 import { nativeRoomChannel } from './native-room-adapters'
+import { useNativeActivity } from '@/components/providers/native-activity-context'
 
 export function useRoomEvents() {
   const native = useNativeRoomMetadata()
@@ -23,6 +24,7 @@ export function useRoomEvents() {
 
 export function useRoomApi(conversationId: string) {
   const native = useNativeRoomMetadata()
+  const activity = useNativeActivity()
   const legacy = overlayAppClient.conversations
   return useMemo(() => {
   if (!native) return legacy
@@ -45,8 +47,11 @@ export function useRoomApi(conversationId: string) {
       if (!participant) throw new Error('Room metadata is loading')
       if (args.notificationLevel) await native.act({ kind: 'setNotificationLevel', notificationLevel: args.notificationLevel })
       if (args.archived !== undefined) await native.act({ kind: 'setRoomArchived', archived: args.archived, scope: args.archiveScope ?? 'self' })
-      if (args.markRead || args.markUnread || args.readSequence !== undefined) return legacy.updateParticipantState(conversationId,
-        { markRead: args.markRead, markUnread: args.markUnread, readSequence: args.readSequence })
+      if (args.markUnread || (args.markRead && args.readSequence === undefined)) throw new Error('Use the observed room read boundary')
+      if (args.readSequence !== undefined) {
+        if (!activity) throw new Error('Native read state is unavailable')
+        await activity.markRoom(conversationId, args.readSequence)
+      }
       return { participant }
     },
   } satisfies Partial<typeof legacy>
@@ -55,7 +60,7 @@ export function useRoomApi(conversationId: string) {
     const value = Reflect.get(target, key, target)
     return typeof value === 'function' ? value.bind(target) : value
   } })
-  }, [conversationId, legacy, native])
+  }, [activity, conversationId, legacy, native])
 }
 
 export function useRoomPresenceWriter(conversationId: string) {

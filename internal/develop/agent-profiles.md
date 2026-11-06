@@ -14,6 +14,10 @@ hosted harness configuration and credential delivery.
 
 ## Workspace agent directory and editable profiles
 
+Phase C room/thread/activity ownership and the retained server-function ledger
+are documented in [Native collaboration](./convex-native-collaboration.md).
+Personal-chat ownership remains separate; see [Convex-native chat](./convex-native-chat.md).
+
 The native directory surface is backed by `workspaceAgentDefinitions` and the
 transactional helpers in `convex/collaboration/agents.ts`. It is separate from
 the imported runtime-profile records and secrets described above: native

@@ -73,6 +73,7 @@ import type * as collaboration_nativeRoomMaintenance from "../collaboration/nati
 import type * as collaboration_nativeRooms from "../collaboration/nativeRooms.js";
 import type * as collaboration_nativeRoomState from "../collaboration/nativeRoomState.js";
 import type * as collaboration_nativePresence from "../collaboration/nativePresence.js";
+import type * as collaboration_nativeActivity from "../collaboration/nativeActivity.js";
 import type * as collaboration_roomChannelCreation from "../collaboration/roomChannelCreation.js";
 import type * as collaboration_roomDirectMessageCreation from "../collaboration/roomDirectMessageCreation.js";
 import type * as collaboration_roomMessagePolicy from "../collaboration/roomMessagePolicy.js";
@@ -258,6 +259,7 @@ declare const fullApi: ApiFromModules<{
   "collaboration/nativeRooms": typeof collaboration_nativeRooms;
   "collaboration/nativeRoomState": typeof collaboration_nativeRoomState;
   "collaboration/nativePresence": typeof collaboration_nativePresence;
+  "collaboration/nativeActivity": typeof collaboration_nativeActivity;
   "collaboration/roomChannelCreation": typeof collaboration_roomChannelCreation;
   "collaboration/roomDirectMessageCreation": typeof collaboration_roomDirectMessageCreation;
   "collaboration/roomMessagePolicy": typeof collaboration_roomMessagePolicy;

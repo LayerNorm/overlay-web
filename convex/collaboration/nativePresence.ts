@@ -4,7 +4,7 @@ import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { requireNativeDeploymentFeature } from '../lib/nativeDeploymentPolicy'
 import { requireNativeCapability } from '../lib/nativeCapabilities'
 import { requireNativeRoom, nativeRoomOrNull } from './nativeRoomAccess'
-import { heartbeatForActor, relatedRows } from './roomStateActions'
+import { heartbeatForActor } from './roomStateActions'
 
 const status = v.union(v.literal('online'), v.literal('away'), v.literal('offline'))
 const row = v.object({ workspaceId: v.string(), conversationId: v.optional(v.id('conversations')), principalId: v.string(), sessionId: v.optional(v.string()),
@@ -23,11 +23,10 @@ export const heartbeat = mutation({ args: { workspaceId: v.string(), conversatio
 
 export const watchPresence = query({ args: { workspaceId: v.string(), conversationId: v.id('conversations') }, returns: v.union(v.array(row), v.null()), handler: async (ctx, args) => {
   if (!await nativeRoomOrNull(ctx, args)) return null
-  const participants = await relatedRows(ctx.db.query('conversationParticipants').withIndex('by_conversationId_status', q => q.eq('conversationId', args.conversationId).eq('status', 'active')), true)
+  const participants = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_status', q => q.eq('conversationId', args.conversationId).eq('status', 'active')).take(200)
   const rows = (await Promise.all(participants.filter(p => p.workspaceId === args.workspaceId && p.removedAt === undefined).map(p =>
-    relatedRows(ctx.db.query('workspacePresence').withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', args.workspaceId).eq('principalId', p.principalId)), true)))).flat()
-  if (rows.length > 200) throw new Error('ROOM_RELATED_LIMIT_EXCEEDED')
-  return rows.map(p => ({ workspaceId: p.workspaceId, conversationId: args.conversationId,
+    ctx.db.query('workspacePresence').withIndex('by_workspaceId_principalId_updatedAt', q => q.eq('workspaceId', args.workspaceId).eq('principalId', p.principalId)).order('desc').take(200)))).flat()
+  return rows.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 200).map(p => ({ workspaceId: p.workspaceId, conversationId: args.conversationId,
     principalId: p.principalId, sessionId: p.sessionId, status: p.status, lastSeenAt: p.lastSeenAt, expiresAt: p.lastSeenAt + 120_000,
     typingExpiresAt: p.conversationId === args.conversationId ? p.typingExpiresAt : undefined }))
 } })

@@ -29,9 +29,10 @@ export function useRoomThreadSelection(legacy: Session['root']): Session['root']
 
 export function NativeRoomScope({ children, conversationId }: { children: ReactNode; conversationId: string }) {
   const native = useNativeCollaboration()
+  const params = useSearchParams()
   if (native.status === 'disabled') return children
   if (native.status !== 'ready' || !native.workspaceId) return <RoomStatus loading={native.status === 'loading'} />
-  return <NativeRoomLive key={`${native.scopeKey}:${conversationId}`} workspaceId={native.workspaceId} conversationId={conversationId}>{children}</NativeRoomLive>
+  return <NativeRoomLive key={`${native.scopeKey}:${conversationId}:${params?.get('thread') ?? ''}`} workspaceId={native.workspaceId} conversationId={conversationId}>{children}</NativeRoomLive>
 }
 
 function RoomStatus({ loading }: { loading: boolean }) {
@@ -41,10 +42,10 @@ function RoomStatus({ loading }: { loading: boolean }) {
 }
 
 function NativeRoomLive({ children, workspaceId, conversationId }: { children: ReactNode; workspaceId: string; conversationId: string }) {
-  const [threadRootId, setThreadRootId] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+  const [threadRootId, setThreadRootId] = useState<string | null>(searchParams?.get('thread') ?? null)
   const rootRef = useRef(threadRootId)
   const [overlay, setOverlay] = useState<{ root: string | null; rows: RoomMessageRecord[] }>({ root: null, rows: [] })
-  const searchParams = useSearchParams()
   const pending = overlay.root === threadRootId ? overlay.rows : []
   const main = useNativeRoomTranscript({ workspaceId, conversationId, anchorMessageId: searchParams?.get('message') ?? undefined })
   const thread = useNativeRoomTranscript({ workspaceId, conversationId, threadRootMessageId: threadRootId ?? undefined,

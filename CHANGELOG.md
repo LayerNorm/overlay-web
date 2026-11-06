@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Move approved agent-directory and editable-profile reads and writes to authenticated Convex operations with opaque revisions, safe public projections, 100-record pagination, 200-related-record fail-closed limits, and row-scoped optimistic updates. Gate external runtimes and connected bindings on fresh workspace deployment policy; retain archive cleanup and agent orchestration on server-owned paths, with legacy HTTP for unmigrated consumers.
+- Complete Phase C (CN-07–CN-11): authenticated native agent directory, rooms, agent threads, room actions, activity and read state, with live access checks, cursor pagination, scoped optimistic reconciliation and client-expiring presence. Enable collaboration only after its backend revision and recency backfill are ready; preserve personal-chat ownership and legacy installations. Retain durable send admission, retry-safe fanout, moderation and external delivery on their server boundaries. Decode native agent editor destinations correctly and show sign-in instead of waiting indefinitely for anonymous workspace hydration.
 
 - Land CN-05 personal history/sending and CN-06 durable execution/progress together on the main-targeted integration branch.
 

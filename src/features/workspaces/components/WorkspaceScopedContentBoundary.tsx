@@ -19,6 +19,8 @@ import {
   SCOPED_WORKSPACE_SURFACES,
 } from '@/shared/workspaces/routing'
 import { validateWorkspaceHandleAddress } from '@/shared/workspaces/handle-policy'
+import { useAuth } from '@/contexts/AuthContext'
+import { WorkspaceSignInPrompt, workspaceRouteRequiresSignIn } from './WorkspaceSignInPrompt'
 
 function canonicalHandleDestination(pathname: string, search: string, hash: string): string | null {
   const parsed = parseWorkspaceHandleRoute(pathname, search)
@@ -132,6 +134,7 @@ function shouldBlockScopedContent(args: {
 }
 
 type WorkspaceScopedContentGateState = {
+  auth?: { loading: boolean; hasUser: boolean }
   switchingWorkspaceId: string | null
   waitingForNavigation: boolean
   routeTarget: ReturnType<typeof readWorkspaceRouteTarget>
@@ -156,6 +159,9 @@ export function WorkspaceScopedContentGate({
   fallback: ReactNode
   state: WorkspaceScopedContentGateState
 }) {
+  if (state.auth && !state.auth.loading && !state.auth.hasUser && workspaceRouteRequiresSignIn(state.pathname, state.routeSearch)) {
+    return <WorkspaceSignInPrompt pathname={state.pathname} search={state.routeSearch} />
+  }
   const {
     switchingWorkspaceId,
     waitingForNavigation,
@@ -222,6 +228,7 @@ export function WorkspaceScopedContentBoundary({
   fallback: ReactNode
 }) {
   const pathname = usePathname() ?? ''
+  const { user, isLoading: authLoading } = useAuth()
   const searchParams = useSearchParams()
   const router = useRouter()
   const currentScope = usePanelScope()
@@ -268,6 +275,7 @@ export function WorkspaceScopedContentBoundary({
     <WorkspaceScopedContentGate
       fallback={fallback}
       state={{
+        auth: { loading: authLoading, hasUser: Boolean(user) },
         switchingWorkspaceId,
         waitingForNavigation,
         routeTarget,

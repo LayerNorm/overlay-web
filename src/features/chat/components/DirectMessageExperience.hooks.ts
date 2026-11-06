@@ -1,4 +1,5 @@
 'use client'
+import { useNativeReadMarkersSource } from './collaboration/native-room-read-markers'
 
 import {
   useCallback,
@@ -103,7 +104,7 @@ const PENDING_AGENT_REPLY_SORT_LEAD_MS = 30_000
 
 
 
-export function useReadMarkers({
+function useLegacyReadMarkers({
   conversationId,
 
   refreshNotifications,
@@ -168,6 +169,10 @@ export function useReadMarkers({
 }
 
 
+
+export function useReadMarkers(args: Parameters<typeof useLegacyReadMarkers>[0]) {
+  return useNativeReadMarkersSource(args.conversationId, useLegacyReadMarkers(args))
+}
 
 export function useRoomTranscript({
   conversationId,

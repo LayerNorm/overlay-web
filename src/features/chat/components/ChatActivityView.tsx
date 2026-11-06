@@ -7,7 +7,7 @@ import type {
   WorkspaceNotification,
   WorkspaceNotificationFilter,
 } from '@overlay/workspace-contracts'
-import { Button, SegmentedControl } from '@overlay/ui/primitives'
+import { Button, SegmentedControl, toast } from '@overlay/ui/primitives'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -21,6 +21,9 @@ import {
   readWorkspaceIdFromPath,
 } from '@/shared/workspaces/routing'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { useNativeActivity } from '@/components/providers/native-activity-context'
+import { nativeNotificationHref } from './collaboration/native-notification-navigation'
+import { useObservedNotificationReads } from './collaboration/useObservedNotificationReads'
 
 const FILTERS: Array<{ value: WorkspaceNotificationFilter; label: string; icon: typeof Bell }> = [
   { value: 'all', label: 'All', icon: Inbox },
@@ -53,6 +56,8 @@ function notificationIcon(type: WorkspaceNotification['type']) {
  * body is only ever the list for the selected filter.
  */
 export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string }) {
+  const native = useNativeActivity()
+  useObservedNotificationReads(native)
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const buildScopedHref = useWorkspaceHref()
@@ -61,22 +66,23 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
   const [locallyRead, setLocallyRead] = useState<Map<string, number>>(() => new Map())
   const notifications = useMemo(() => sourceNotifications
     .filter((notification) => {
-      if (filter === 'unread') return !notification.readAt && !locallyRead.has(notification.id)
+      if (filter === 'unread') return !notification.readAt && (native || !locallyRead.has(notification.id))
       if (filter === 'mentions') return notification.type === 'mention'
       if (filter === 'threads') return notification.type === 'thread'
       if (filter === 'reactions') return notification.type === 'reaction'
       return true
     })
-    .map((notification) => locallyRead.has(notification.id)
+    .map((notification) => !native && locallyRead.has(notification.id)
       ? { ...notification, readAt: notification.readAt ?? locallyRead.get(notification.id) }
-      : notification), [filter, locallyRead, sourceNotifications])
+      : notification), [filter, locallyRead, native, sourceNotifications])
   const loading = !notificationsReady
 
-  const unreadCount = notifications.filter((notification) => !notification.readAt).length
+  const unreadCount = native ? native.counts?.notifications.count ?? 0 : notifications.filter((notification) => !notification.readAt).length
 
   // Mark all notifications as read when the Activity view is opened.
   // This is intentionally a side effect of opening the view, not a user action.
   useEffect(() => {
+    if (native) return
     const unreadIds = sourceNotifications
       .filter((notification) => !notification.readAt)
       .map(({ id }) => id)
@@ -93,9 +99,16 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
       .markNotificationsRead(unreadIds)
       .then(() => dispatchCollaborationNotificationsChanged())
       .catch(() => undefined)
-  }, [sourceNotifications])
+  }, [native, sourceNotifications])
 
   async function openNotification(notification: WorkspaceNotification) {
+    if (native) {
+      const item = native.notifications.find(row => row.id === notification.id)
+      if (!item) return
+      if (item.readAt === undefined) void native.mark([item.id], item.createdAt).catch(() => toast.error('Notification could not be marked read'))
+      router.push(nativeNotificationHref(item))
+      return
+    }
     const conversationPromise = notification.conversationId
       ? overlayAppClient.conversations
           .get<{
@@ -136,6 +149,11 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
   }
 
   async function markAllRead() {
+    if (native) {
+      const through = Math.max(0, ...sourceNotifications.map(item => item.createdAt))
+      await native.markAll(through).catch(() => toast.error('Notifications could not be marked read'))
+      return
+    }
     const unreadIds = notifications
       .filter((notification) => !notification.readAt)
       .map(({ id }) => id)
@@ -158,7 +176,7 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
       header={
         <AppScreenHeader
           title="Activity"
-          subtitle={unreadCount > 0 ? `${unreadCount} unread` : undefined}
+          subtitle={unreadCount > 0 ? `${unreadCount}${native?.counts?.notifications.capped ? '+' : ''} unread` : undefined}
           actions={
             <SegmentedControl
               value={filter}
@@ -171,7 +189,7 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
       }
     >
       <div className="h-full min-h-0 overflow-y-auto">
-        {loading ? (
+        {native?.status === 'unavailable' ? <ChatSurfaceEmptyState icon={Inbox} title="Activity unavailable" description="Activity could not be loaded. Reload to try again." /> : loading ? (
           <div className="mx-auto w-full max-w-3xl px-4 py-4 sm:px-6">
             <SidebarListSkeleton rows={8} />
           </div>
@@ -247,6 +265,7 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
                 </li>
               ))}
             </ul>
+            {native?.hasMore ? <Button variant="ghost" size="sm" disabled={native.loadingMore} onClick={() => native.loadMore()}>{native.loadingMore ? 'Loading…' : 'Load older activity'}</Button> : null}
           </div>
         )}
       </div>

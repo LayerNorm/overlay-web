@@ -11,6 +11,10 @@ import { mergeHrefSearchParams, readWorkspaceIdFromPath } from '@/shared/workspa
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
+import { useNativeActivity } from '@/components/providers/native-activity-context'
+import { nativeNotificationHref } from './collaboration/native-notification-navigation'
+import { useObservedNotificationReads } from './collaboration/useObservedNotificationReads'
+import { toast } from '@overlay/ui/primitives'
 
 /**
  * Sidebar lists for the Chats subviews that are not conversation list.
@@ -41,18 +45,21 @@ function viewForConversationType(conversationType?: string): 'personal' | 'dms' 
 }
 
 export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void }) {
+  const native = useNativeActivity()
+  useObservedNotificationReads(native)
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const buildWorkspaceHref = useWorkspaceHref()
   const { notifications, notificationsReady } = useCollaborationRealtime()
   const [locallyRead, setLocallyRead] = useState<Map<string, number>>(() => new Map())
   const items: ActivityNotification[] = notifications.slice(0, 50).map((item) => (
-    locallyRead.has(item.id) ? { ...item, readAt: item.readAt ?? locallyRead.get(item.id) } : item
+    !native && locallyRead.has(item.id) ? { ...item, readAt: item.readAt ?? locallyRead.get(item.id) } : item
   ))
 
   // Mark all notifications as read when the inline Activity panel opens.
   // This is intentionally a side effect of opening the panel, not a user action.
   useEffect(() => {
+    if (native) return
     const unreadIds = notifications
       .filter((notification) => !notification.readAt)
       .map(({ id }) => id)
@@ -68,9 +75,17 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
     void overlayAppClient.conversations.markNotificationsRead(unreadIds)
       .then(() => dispatchCollaborationNotificationsChanged())
       .catch(() => undefined)
-  }, [notifications])
+  }, [native, notifications])
 
   async function openNotification(item: ActivityNotification) {
+    if (native) {
+      const notification = native.notifications.find(row => row.id === item.id)
+      if (!notification) return
+      if (notification.readAt === undefined) void native.mark([item.id], item.createdAt).catch(() => toast.error('Notification could not be marked read'))
+      onNavigate?.()
+      router.push(nativeNotificationHref(notification))
+      return
+    }
     onNavigate?.()
     if (!item.conversationId) return
     if (item.conversationState === 'archived') {
@@ -106,6 +121,7 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
     router.push(mergeHrefSearchParams(chatBase, query))
   }
 
+  if (native?.status === 'unavailable') return <PanelState icon={<Bell size={16} />} message="Activity unavailable." />
   if (!notificationsReady) {
     return <PanelState icon={<Loader2 size={15} className="animate-spin" />} message="Loading activity…" />
   }

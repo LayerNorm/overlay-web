@@ -1,4 +1,5 @@
 'use client'
+import { useNativeActivity } from '@/components/providers/native-activity-context'
 
 import { useState, useCallback, useEffect, useEffectEvent, useMemo, useRef, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -180,8 +181,10 @@ function useCollaborationUnread({
   user: AuthUser | null
   collaborationNotifications: WorkspaceNotification[]
 }) {
+  const native = useNativeActivity()
   const [collaborationUnread, setCollaborationUnread] = useState<Record<string, number>>({})
   useEffect(() => {
+    if (native) return
     if (!workspaceId || !user) {
       queueMicrotask(() => setCollaborationUnread({}))
       return
@@ -207,8 +210,8 @@ function useCollaborationUnread({
     return () => {
       window.removeEventListener('overlay:collaboration-read', handleCollaborationRead)
     }
-  }, [collaborationNotifications,  user, workspaceId])
-  return collaborationUnread
+  }, [collaborationNotifications, native, user, workspaceId])
+  return native ? Object.fromEntries(Object.entries(native.counts?.byConversation ?? {}).map(([id, value]) => [id, value.count + Number(value.capped)])) : collaborationUnread
 }
 
 function useChatListData({

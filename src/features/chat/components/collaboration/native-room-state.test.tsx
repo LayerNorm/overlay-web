@@ -8,7 +8,7 @@ import { NativeRoomStateProvider, useNativeRoomMetadata, type RoomSnapshot, type
 import { useRoomActions } from './room-lifecycle-actions'
 import { useRoomApi } from './room-state-adapters'
 
-const mocks = vi.hoisted(() => ({ mutation: vi.fn(), announce: vi.fn(), error: vi.fn(), success: vi.fn(), push: vi.fn(), archived: vi.fn(), modified: vi.fn(), legacyPins: vi.fn(), report: vi.fn() }))
+const mocks = vi.hoisted(() => ({ presenceError: false, mutation: vi.fn(), announce: vi.fn(), error: vi.fn(), success: vi.fn(), push: vi.fn(), archived: vi.fn(), modified: vi.fn(), legacyPins: vi.fn(), report: vi.fn() }))
 vi.mock('convex/react', () => ({
   useMutation: () => mocks.mutation,
   usePaginatedQuery: () => ({ results: [], status: 'Exhausted', loadMore() {} }),
@@ -19,7 +19,7 @@ vi.mock('convex/react', () => ({
     if (name.endsWith(':watchPresence')) return presence
     throw new Error(`Unexpected query ${name}`)
   },
-  useQueries: (queries: Record<string, unknown>) => Object.fromEntries(Object.keys(queries).map(key => [key, reactions])),
+  useQueries: (queries: Record<string, unknown>) => Object.fromEntries(Object.keys(queries).map(key => [key, key === 'presence' ? mocks.presenceError ? new Error('Presence unavailable') : presence : reactions])),
 }))
 vi.mock('./NativeCollaborationProvider', async () => {
   const context = await import('@/components/providers/native-collaboration-context')
@@ -83,6 +83,7 @@ function reaction(principalIds: string[]) {
 }
 beforeEach(() => {
   vi.clearAllMocks(); vi.useFakeTimers(); vi.setSystemTime(100_000)
+  mocks.presenceError = false
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
   vi.stubGlobal('window', { location: { pathname: '/app/chat', search: '?id=room' } })
   state = { workspaceId: 'workspace', conversationId: room, viewerUserId: 'alice', viewerPrincipalId: 'alice', viewerState: { notificationLevel: 'all' },
@@ -95,6 +96,17 @@ beforeEach(() => {
 afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; vi.useRealTimers(); vi.unstubAllGlobals() })
 
 describe('native room metadata owner', () => {
+  it('historical sessions and presence errors do not make the room unavailable', async () => {
+    presence = Array.from({ length: 250 }, (_, i) => ({ workspaceId: 'workspace', conversationId: room, principalId: 'bob', sessionId: `stale-${i}`, status: 'online', lastSeenAt: 1, expiresAt: 2, typingExpiresAt: 2 }))
+    presence.push({ ...presence[0], sessionId: 'live', lastSeenAt: 100_000, expiresAt: 220_000, typingExpiresAt: 106_000 })
+    await act(async () => { renderer = create(tree()) })
+    expect(owner?.presence).toHaveLength(1)
+    expect(owner?.presence[0].sessionId).toBe('live')
+    mocks.presenceError = true
+    await act(async () => { renderer!.update(tree()) })
+    expect(owner?.presence).toEqual([])
+    expect(owner?.snapshot?.conversationId).toBe(room)
+  })
   it('preserves prototype-based legacy moderation intake on the native path', async () => {
     await act(async () => { renderer = create(tree()) })
     await roomApi.reportMessage(room, { messageId: message, reason: 'spam' })

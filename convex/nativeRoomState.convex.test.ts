@@ -36,6 +36,17 @@ async function fixture() {
 }
 
 describe('native room metadata and presence', () => {
+  test('historical presence rows never hide a live session or prevent a heartbeat', async () => {
+    const f = await fixture()
+    await f.t.run(async ctx => {
+      for (let i = 0; i < 250; i++) await ctx.db.insert('workspacePresence', { workspaceId, principalId: 'bob', sessionId: `stale-${i}`, status: 'online', lastSeenAt: 1, updatedAt: 1 })
+    })
+    await f.bob.mutation(api.collaboration.nativePresence.heartbeat, { ...f.args, sessionId: 'live', typing: true })
+    const rows = await f.alice.query(api.collaboration.nativePresence.watchPresence, f.args)
+    expect(rows).toHaveLength(200)
+    expect(rows![0]).toMatchObject({ principalId: 'bob', sessionId: 'live', status: 'online' })
+    expect(rows![0].expiresAt).toBeGreaterThan(Date.now())
+  })
   test('exact access fails closed and removal revokes every native room surface', async () => {
     const f = await fixture()
     expect(await f.eve.query(api.collaboration.nativeRoomState.getRoomState, f.args)).toBeNull()

@@ -2545,7 +2545,11 @@ export default defineSchema({
     readAt: v.optional(v.number()),
     createdAt: v.number(),
   })
-    .index('by_workspaceId_recipientPrincipalId_createdAt', ['workspaceId', 'recipientPrincipalId', 'createdAt']),
+    .index('by_workspaceId_recipientPrincipalId_createdAt', ['workspaceId', 'recipientPrincipalId', 'createdAt'])
+    .index('by_workspace_recipient_read_time', ['workspaceId', 'recipientPrincipalId', 'readAt', 'createdAt'])
+    .index('by_workspace_recipient_read_room_time', ['workspaceId', 'recipientPrincipalId', 'readAt', 'conversationId', 'createdAt'])
+    .index('by_workspace_recipient_read_room_sequence_time', ['workspaceId', 'recipientPrincipalId', 'readAt', 'conversationId', 'eventSequence', 'createdAt'])
+    .index('by_workspace_recipient_notification', ['workspaceId', 'recipientPrincipalId', 'notificationId']),
 
   workspaceNotificationPreferences: defineTable({
     workspaceId: v.string(),
@@ -2581,6 +2585,7 @@ export default defineSchema({
     createdAt: v.number(),
   })
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_conversationId', ['conversationId'])
     .index('by_messageId', ['messageId'])
     .index('by_workspaceId', ['workspaceId'])
     .index('by_workspaceId_type', ['workspaceId', 'type'])

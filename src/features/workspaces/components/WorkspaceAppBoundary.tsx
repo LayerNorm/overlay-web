@@ -3,7 +3,7 @@
 import { Button } from '@overlay/ui/primitives'
 
 import { useEffect, useState, type ReactNode } from 'react'
-import { usePathname } from 'next/navigation'
+import { usePathname, useSearchParams } from 'next/navigation'
 import { CircleAlert } from 'lucide-react'
 import type { WorkspaceLifecycleStatus } from '@/shared/workspaces/types'
 import { workspaceClient } from '../lib/workspace-client'
@@ -13,6 +13,7 @@ import { AppBootLoader } from '@/components/layout/AppBootLoader'
 import { bootAppShown } from '@/components/layout/boot-loader-state'
 import { WorkspaceDirectory } from './WorkspaceDirectory'
 import { AcceptWorkspaceInvitation } from './invitations/AcceptWorkspaceInvitation'
+import { WorkspaceSignInPrompt, workspaceRouteRequiresSignIn } from './WorkspaceSignInPrompt'
 
 function isWorkspaceStatusUndecided(
   status: WorkspaceLifecycleStatus,
@@ -94,7 +95,15 @@ export function WorkspaceAppBoundary({
 
   return (
     <WorkspaceProvider enabled={enabled} client={workspaceClient}>
-      <WorkspaceHydrationBoundary>{children}</WorkspaceHydrationBoundary>
+      <WorkspaceAuthenticationBoundary><WorkspaceHydrationBoundary>{children}</WorkspaceHydrationBoundary></WorkspaceAuthenticationBoundary>
     </WorkspaceProvider>
   )
+}
+
+function WorkspaceAuthenticationBoundary({ children }: { children: ReactNode }) {
+  const { user, isLoading } = useAuth()
+  const pathname = usePathname() ?? ''
+  const search = useSearchParams()?.toString() ?? ''
+  return !isLoading && !user && workspaceRouteRequiresSignIn(pathname, search)
+    ? <WorkspaceSignInPrompt pathname={pathname} search={search} /> : children
 }

@@ -322,7 +322,9 @@ export async function heartbeatForActor(ctx: MutationCtx, args: Omit<Args, 'conv
       .withIndex('by_workspaceId_principalId', (q) => (
         q.eq('workspaceId', args.workspaceId).eq('principalId', principalId)
       ))
-    const existingRows = await relatedRows(existingQuery, native)
+    const existingRows = native ? await ctx.db.query('workspacePresence')
+      .withIndex('by_workspaceId_principalId_updatedAt', q => q.eq('workspaceId', args.workspaceId).eq('principalId', principalId)).order('desc').take(200)
+      : await existingQuery.collect()
     const existing = existingRows.find((row) => (row.sessionId ?? 'legacy') === sessionId)
     const now = Date.now()
     const value = {
