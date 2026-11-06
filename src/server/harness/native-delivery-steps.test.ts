@@ -64,11 +64,16 @@ test('native long-turn delivery preserves the final report through repeated pers
     snapshot: { ...state, resultSummary: answer, evidence: [], usage: { inputTokens: 0, outputTokens: 0, costMicros: 0 } },
     messages: [], steps: [...toolSteps, { text: answer, content: [{ type: 'text', text: answer }], toolCalls: [], toolResults: [] }],
   } as never)
-  expect(nativeDelivery.parts.at(-1)).toEqual({ type: 'text', text: answer })
+  expect(nativeDelivery.parts.at(-1)).toEqual({
+    id: JSON.stringify([access.runId, 'final', 80]), type: 'text', text: answer,
+  })
   await finishNativeHarnessDelivery(access, nativeDelivery, { memoryEnabled: false }, new Set(['get_note']))
   const saved = mocks.finalize.mock.calls[0][0]
   expect(saved.content).toBe(answer)
-  expect(saved.parts).toEqual(nativeDelivery.parts)
+  expect(saved.parts[0]).toMatchObject({
+    type: 'text', text: '[11 additional assistant parts omitted for storage]', storageOmittedParts: 11,
+  })
+  expect(saved.parts.slice(1)).toEqual(nativeDelivery.parts.slice(1))
   expect(saved.parts).toHaveLength(81)
   expect(mocks.complete).toHaveBeenCalledWith(expect.objectContaining({ content: answer, parts: saved.parts }))
 })
@@ -115,7 +120,10 @@ test('native terminal persistence keeps the earlier answer when the last step is
   await finishNativeHarnessDelivery(access, nativeDelivery, { memoryEnabled: false })
   expect(mocks.finalize).toHaveBeenCalledWith(expect.objectContaining({
     content: 'The capital of France is Paris.',
-    parts: [{ type: 'text', text: 'The capital of France is Paris.' }],
+    parts: [{
+      id: JSON.stringify([access.runId, 'final', 0]),
+      type: 'text', text: 'The capital of France is Paris.',
+    }],
   }))
 })
 
