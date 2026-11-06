@@ -1,6 +1,8 @@
-import { hydrateRemoteMessages, hydrateRemoteMessage, prepareRemoteMessageText } from '../lib/remoteMessageText'
+import { hydrateRemoteMessages, hydrateRemoteMessage } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
-import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
+import { participantViewById, participantViews } from './roomParticipants'
+import { createDirectMessageForActor } from './roomDirectMessageCreation'
+import { editRoomMessage, deleteRoomMessage } from './roomMessagePolicy'
 import { mutation, query } from '../_generated/server'
 import { internal } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
@@ -13,7 +15,7 @@ import { assertNativeHarnessRun, assertSupportedAgentExecution, nativeRunRetired
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
-import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
+import { resolveIdentityDisplayName } from '../../src/shared/workspaces/identity-resolution'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
 
 type CollaborationCtx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
@@ -165,123 +167,6 @@ async function getMessageForThread(
   }
   return hydrateRemoteMessage(ctx, message)
 }
-
-function participantView(
-  participant: Doc<'conversationParticipants'>,
-  principal: Doc<'workspacePrincipals'>,
-  account?: Doc<'subscriptions'> | null,
-) {
-  const providerName = [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim()
-    || account?.name
-  const photoUrl = principal.type === 'human'
-    ? principal.photoObjectKey
-      ? versionedIdentityUrl(
-          `/api/v1/workspaces/${encodeURIComponent(participant.workspaceId)}/profile/photo?principalId=${encodeURIComponent(principal.principalId)}`,
-          principal.photoObjectKey,
-        )
-      : account?.photoObjectKey
-        ? versionedIdentityUrl(
-            `/api/v1/account/profile/photo?userId=${encodeURIComponent(principal.userId ?? '')}`,
-            account.photoObjectKey,
-          )
-        : account?.profilePictureUrl
-    : undefined
-  return {
-    conversationId: participant.conversationId,
-    workspaceId: participant.workspaceId,
-    principalId: participant.principalId,
-    principalType: participant.principalType,
-    displayName: principal.type === 'human'
-      ? resolveIdentityDisplayName({
-          workspaceOverride: principal.displayNameOverride,
-          accountOverride: account?.displayNameOverride,
-          providerName,
-          legacyDisplayName: principal.displayName,
-          email: account?.email ?? principal.email,
-        })
-      : principal.displayName,
-    ...(photoUrl ? { photoUrl } : {}),
-    email: principal.email,
-    role: participant.role,
-    status: participant.status,
-    notificationLevel: participant.notificationLevel,
-    joinedAt: participant.joinedAt,
-    updatedAt: participant.updatedAt,
-    removedAt: participant.removedAt,
-    lastReadAt: participant.lastReadAt,
-    lastReadSequence: participant.lastReadSequence,
-    markedUnreadAt: participant.markedUnreadAt,
-    archivedAt: participant.archivedAt,
-  }
-}
-
-async function participantViewById(
-  ctx: CollaborationCtx,
-  participant: Doc<'conversationParticipants'>,
-) {
-  const principal = await ctx.db.query('workspacePrincipals')
-    .withIndex('by_principalId', (q) => q.eq('principalId', participant.principalId))
-    .unique()
-  if (!principal) throw new Error('Participant principal is missing')
-  const account = principal.type === 'human' && principal.userId
-    ? await ctx.db.query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', principal.userId!))
-      .first()
-    : null
-  return participantView(participant, principal, account)
-}
-
-async function resolvedPrincipalName(
-  ctx: CollaborationCtx,
-  principal: Doc<'workspacePrincipals'>,
-): Promise<string> {
-  if (principal.type !== 'human' || !principal.userId) return principal.displayName
-  const account = await ctx.db.query('subscriptions')
-    .withIndex('by_userId', (q) => q.eq('userId', principal.userId!))
-    .first()
-  const providerName = [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim()
-    || account?.name
-  return resolveIdentityDisplayName({
-    workspaceOverride: principal.displayNameOverride,
-    accountOverride: account?.displayNameOverride,
-    providerName,
-    legacyDisplayName: principal.displayName,
-    email: account?.email ?? principal.email,
-  })
-}
-
-async function participantViews(
-  ctx: CollaborationCtx,
-  conversationId: Id<'conversations'>,
-) {
-  const rows = await ctx.db.query('conversationParticipants')
-    .withIndex('by_conversationId_status', (q) => (
-      q.eq('conversationId', conversationId).eq('status', 'active')
-    ))
-    .collect()
-  const sorted = rows.sort((a, b) => a.joinedAt - b.joinedAt)
-  const principals = await Promise.all(sorted.map((row) => ctx.db.query('workspacePrincipals')
-    .withIndex('by_principalId', (q) => q.eq('principalId', row.principalId))
-    .unique()))
-  if (principals.some((principal) => !principal)) throw new Error('Participant principal is missing')
-  const userIds = Array.from(new Set(principals.flatMap((principal) =>
-    principal?.type === 'human' && principal.userId ? [principal.userId] : [])))
-  const accounts = await Promise.all(userIds.map((userId) => ctx.db.query('subscriptions')
-    .withIndex('by_userId', (q) => q.eq('userId', userId))
-    .first()))
-  const accountByUserId = new Map(accounts.filter(Boolean).map((account) => [account!.userId, account!]))
-  return sorted.map((row, index) => {
-    const principal = principals[index]!
-    return participantView(
-      row,
-      principal,
-      principal.type === 'human' && principal.userId
-        ? accountByUserId.get(principal.userId)
-        : undefined,
-    )
-  })
-}
-
 async function otherParticipantTypes(
   ctx: CollaborationCtx,
   conversationId: Id<'conversations'>,
@@ -559,6 +444,8 @@ export const addMessage = mutation({
   args: {
     actorUserId: v.string(),
     clientNonce: v.optional(v.string()),
+    mentionedPrincipalIds: v.optional(v.array(v.string())),
+    memoryEnabled: v.optional(v.boolean()),
     content: v.string(),
     conversationId: v.id('conversations'),
     parts: v.optional(v.array(v.any())),
@@ -579,6 +466,8 @@ export async function insertCollaborationMessage(
   args: {
     actorUserId: string
     clientNonce?: string
+    mentionedPrincipalIds?: string[]
+    memoryEnabled?: boolean
     content: string
     conversationId: Id<'conversations'>
     parts?: Doc<'conversationMessages'>['parts']
@@ -608,9 +497,19 @@ export async function insertCollaborationMessage(
       .first()
     if (match) {
       await assertNativeThreadWritable(ctx, access.conversation, match.threadRootMessageId ?? match._id)
-      return match._id
+      if (match.authorPrincipalId !== access.actor.principalId) throw new Error('MESSAGE_REPLAY_ACCESS_DENIED')
+      return collaborationAdmission(match, true)
     }
   }
+  const turnMatch = await ctx.db.query('conversationMessages')
+    .withIndex('by_conversationId_turnId_role', q => q.eq('conversationId', args.conversationId)
+      .eq('turnId', args.turnId).eq('role', 'user')).first()
+  if (turnMatch) {
+    await assertNativeThreadWritable(ctx, access.conversation, turnMatch.threadRootMessageId ?? turnMatch._id)
+    if (turnMatch.authorPrincipalId !== access.actor.principalId) throw new Error('MESSAGE_REPLAY_ACCESS_DENIED')
+    return collaborationAdmission(turnMatch, true)
+  }
+  if ((args.mentionedPrincipalIds?.length ?? 0) > 200) throw new Error('ROOM_RELATED_LIMIT_EXCEEDED')
   const now = Date.now()
   const messageId = await ctx.db.insert('conversationMessages', {
     conversationId: args.conversationId,
@@ -626,6 +525,7 @@ export async function insertCollaborationMessage(
     replyToTurnId: args.replyToTurnId,
     replySnippet: args.replySnippet,
     clientNonce: args.clientNonce,
+    collaborationAdmission: { mentionedPrincipalIds: [...new Set(args.mentionedPrincipalIds ?? [])], memoryEnabled: args.memoryEnabled !== false },
     threadRootMessageId: args.threadRootMessageId,
     status: 'completed',
     createdAt: now,
@@ -642,7 +542,14 @@ export async function insertCollaborationMessage(
   await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
     messageId,
   })
-  return messageId
+  return collaborationAdmission((await ctx.db.get(messageId))!, false)
+}
+
+function collaborationAdmission(message: Doc<'conversationMessages'>, replayed: boolean) {
+  return { messageId: message._id, replayed, turnId: message.turnId, content: message.content,
+    threadRootMessageId: message.threadRootMessageId,
+    mentionedPrincipalIds: message.collaborationAdmission?.mentionedPrincipalIds ?? [],
+    memoryEnabled: message.collaborationAdmission?.memoryEnabled !== false }
 }
 
 /** Persists a streamed workspace-agent reply after validating both the human
@@ -956,6 +863,18 @@ export async function startAgentTurnInTransaction(
     await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
     await assertNativeThreadWritable(ctx, access.conversation, args.threadRootMessageId)
   }
+  const sourceRun = await ctx.db.query('conversationAgentRuns')
+    .withIndex('by_conversationId_userMessageId_agentPrincipalId', q => q.eq('conversationId', args.conversationId)
+      .eq('userMessageId', args.userMessageId).eq('agentPrincipalId', args.authorPrincipalId)).unique()
+  if (sourceRun) {
+    assertNativeHarnessRun(sourceRun)
+    if (sourceRun.status === 'queued' && !sourceRun.workflowRunId) {
+      const reply = await ctx.db.get(sourceRun.assistantMessageId)
+      if (reply?.status === 'error') await ctx.db.patch(reply._id, { content: '', parts: [], status: 'generating', updatedAt: Date.now() })
+    }
+    return { messageId: sourceRun.assistantMessageId, resumed: true, runId: sourceRun._id,
+      dispatchNeeded: sourceRun.status === 'queued' && !sourceRun.workflowRunId }
+  }
   const existingMessage = await ctx.db.query('conversationMessages')
     .withIndex('by_conversationId_clientNonce', q => q
       .eq('conversationId', args.conversationId).eq('clientNonce', args.clientNonce))
@@ -973,7 +892,8 @@ export async function startAgentTurnInTransaction(
   ])
   if (existingRun) {
     assertNativeHarnessRun(existingRun)
-    return { messageId, resumed: true, runId: existingRun._id }
+    return { messageId, resumed: true, runId: existingRun._id,
+      dispatchNeeded: existingRun.status === 'queued' && !existingRun.workflowRunId }
   }
 
   const now = Date.now()
@@ -996,7 +916,7 @@ export async function startAgentTurnInTransaction(
   if (args.harnessRunIdPrefix) {
     await ctx.db.patch(runId, { harnessRunId: `${args.harnessRunIdPrefix}${runId}` })
   }
-  return { messageId, resumed, runId }
+  return { messageId, resumed, runId, dispatchNeeded: true }
 }
 
 /**
@@ -1074,6 +994,7 @@ export const recordAgentStartFailure = mutation({
     const run = await ctx.db.query('conversationAgentRuns')
       .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', messageId)).unique()
     if (run) assertSupportedAgentExecution(run)
+    if (run && (run.status !== 'queued' || run.workflowRunId)) return messageId
     await ctx.db.patch(messageId, {
       content: args.content,
       parts: [{ type: 'text', text: args.content }],
@@ -1327,160 +1248,7 @@ export const createDirectMessage = mutation({
   },
   handler: async (ctx, args) => {
     const actor = await requireActor(ctx, args)
-    const principalIds = [...new Set([actor.principalId, ...args.principalIds.map((id) => id.trim()).filter(Boolean)])]
-      .sort()
-    if (principalIds.length < 2) throw new Error('A direct message requires at least two participants')
-    const resolved = await Promise.all(principalIds.map(async (principalId) => {
-      const [principal, membership] = await Promise.all([
-        ctx.db.query('workspacePrincipals')
-          .withIndex('by_principalId', (q) => q.eq('principalId', principalId))
-          .unique(),
-        ctx.db.query('workspaceMemberships')
-          .withIndex('by_workspaceId_principalId', (q) => (
-            q.eq('workspaceId', args.workspaceId).eq('principalId', principalId)
-          ))
-          .unique(),
-      ])
-      if (
-        !principal
-        || principal.workspaceId !== args.workspaceId
-        || principal.archivedAt
-        || (principal.type !== 'human' && principal.type !== 'agent')
-        || membership?.status !== 'active'
-      ) throw new Error('Every participant must be an active human or agent in this workspace')
-      return principal
-    }))
-    const principals = resolved
-
-    // A one-to-one DM whose counterpart is an agent principal is that
-    // agent's main thread: it binds the conversation to the agent so it
-    // nests under the agent in the sidebar instead of appearing in Chats.
-    // Group DMs that merely include an agent stay ordinary conversations —
-    // threads are per-user and must not hide the chat from other humans.
-    const agentPrincipal = principals.find((principal) => principal.type === 'agent')
-    const dmAgentId = principalIds.length === 2 ? agentPrincipal?.agentId : undefined
-
-    const dmIdentityKey = principalIds.join(':')
-    const existing = await ctx.db.query('conversations')
-      .withIndex('by_workspaceId_dmIdentityKey', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('dmIdentityKey', dmIdentityKey)
-      ))
-      .filter((q) => q.eq(q.field('deletedAt'), undefined))
-      .first()
-    if (existing) {
-      if (dmAgentId && !existing.agentId && !existing.isAutomation) {
-        await ctx.db.patch(existing._id, { agentId: dmAgentId, updatedAt: Date.now() })
-      }
-      const actorParticipant = await ctx.db.query('conversationParticipants')
-        .withIndex('by_conversationId_principalId', (q) => (
-          q.eq('conversationId', existing._id).eq('principalId', actor.principalId)
-        ))
-        .unique()
-      if (actorParticipant?.archivedAt) {
-        const now = Date.now()
-        await ctx.db.patch(actorParticipant._id, { archivedAt: undefined, updatedAt: now })
-        await recordConversationEvent(ctx, {
-          conversationId: existing._id,
-          workspaceId: args.workspaceId,
-          userId: args.actorUserId,
-          type: 'conversation.updated',
-          payload: { conversationType: 'dm', unarchived: true },
-        })
-      }
-      return {
-        conversationId: existing._id,
-        workspaceId: args.workspaceId,
-        title: existing.title,
-        participants: await participantViews(ctx, existing._id),
-        created: false,
-        agentId: existing.agentId ?? dmAgentId,
-      }
-    }
-
-    if (args.sourceConversationId) {
-      const source = await ctx.db.get(args.sourceConversationId)
-      if (
-        !source
-        || source.workspaceId !== args.workspaceId
-        || source.userId !== args.actorUserId
-        || (source.conversationType ?? 'personal') !== 'personal'
-        || source.deletedAt
-      ) throw new Error('The source Personal chat is unavailable')
-    }
-
-    const now = Date.now()
-    const otherNames = await Promise.all(principals
-      .filter((principal) => principal.principalId !== actor.principalId)
-      .map((principal) => resolvedPrincipalName(ctx, principal)))
-    const title = args.title?.trim().replace(/\s+/g, ' ').slice(0, 120)
-      || otherNames.join(', ').slice(0, 120)
-      || 'Direct message'
-    const conversationId = await ctx.db.insert('conversations', {
-      userId: args.actorUserId,
-      workspaceId: args.workspaceId,
-      conversationType: 'dm',
-      createdByPrincipalId: actor.principalId,
-      title,
-      lastModified: now,
-      updatedAt: now,
-      createdAt: now,
-      lastMode: 'act',
-      askModelIds: [DEFAULT_MODEL_ID],
-      actModelId: DEFAULT_MODEL_ID,
-      dmIdentityKey,
-      agentId: dmAgentId,
-    })
-    await Promise.all(principals.flatMap((principal) => {
-      const writes = [ctx.db.insert('conversationParticipants', {
-        conversationId,
-        workspaceId: args.workspaceId,
-        principalId: principal.principalId,
-        principalType: principal.type as 'human' | 'agent',
-        role: principal.principalId === actor.principalId ? 'moderator' : 'member',
-        status: 'active',
-        notificationLevel: 'all',
-        joinedAt: now,
-        updatedAt: now,
-        lastReadAt: principal.principalId === actor.principalId ? now : undefined,
-      })] as Promise<unknown>[]
-      if (principal.principalId !== actor.principalId) {
-        writes.push(ctx.db.insert('workspaceNotifications', {
-          notificationId: crypto.randomUUID(),
-          workspaceId: args.workspaceId,
-          recipientPrincipalId: principal.principalId,
-          type: 'participant',
-          conversationId,
-          actorPrincipalId: actor.principalId,
-          title: `${actor.displayName} started a conversation`,
-          body: title,
-          eventSequence: now,
-          createdAt: now,
-        }))
-      }
-      return writes
-    }))
-    await ctx.db.insert('workspaceResourceScopes', {
-      workspaceId: args.workspaceId,
-      resourceType: 'conversation',
-      resourceId: conversationId,
-      createdAt: now,
-      updatedAt: now,
-    })
-    await recordConversationEvent(ctx, {
-      conversationId,
-      workspaceId: args.workspaceId,
-      userId: args.actorUserId,
-      type: 'conversation.created',
-      payload: { conversationType: 'dm' },
-    })
-    return {
-      conversationId,
-      workspaceId: args.workspaceId,
-      title,
-      participants: await participantViews(ctx, conversationId),
-      created: true,
-      agentId: dmAgentId,
-    }
+    return createDirectMessageForActor(ctx, args, actor)
   },
 })
 
@@ -1943,11 +1711,19 @@ export const recordMessageActivity = mutation({
   },
   handler: async (ctx, args) => {
     const access = await requireConversationAccess(ctx, args)
+    const message = await ctx.db.get(args.messageId)
+    if (!message || message.conversationId !== args.conversationId || message.deletedAt !== undefined
+      || message.authorPrincipalId !== access.actor.principalId) throw new Error('MESSAGE_NOT_FOUND')
+    if (message.collaborationActivityRecordedAt !== undefined) return
     await fanOutMessageNotifications(ctx, {
       ...args,
+      body: message.content,
+      mentionedPrincipalIds: message.collaborationAdmission?.mentionedPrincipalIds ?? args.mentionedPrincipalIds,
+      threadRootMessageId: message.threadRootMessageId,
       actorDisplayName: access.actor.displayName,
       actorPrincipalId: access.actor.principalId,
     })
+    await ctx.db.patch(message._id, { collaborationActivityRecordedAt: Date.now() })
   },
 })
 
@@ -2203,38 +1979,7 @@ export const editMessage = mutation({
   returns: v.boolean(),
   handler: async (ctx, args) => {
     const access = await requireConversationAccess(ctx, args)
-    const message = await ctx.db.get(args.messageId)
-    const content = args.content.trim()
-    if (!content) throw new Error('Message content is required')
-    if (
-      !message
-      || message.conversationId !== args.conversationId
-      || message.authorKind !== 'human'
-      || message.authorPrincipalId !== access.actor.principalId
-      || message.deletedAt
-    ) return false
-    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
-    const hydrated = await hydrateRemoteMessage(ctx, message)
-    const parts: NonNullable<Doc<'conversationMessages'>['parts']> = [
-      { type: 'text', text: content },
-      ...(hydrated.parts ?? []).filter((part) => part.type !== 'text' && part.type !== 'output-text'),
-    ]
-    const textPatch = message.remoteTextStored
-      ? await prepareRemoteMessageText(ctx, message, { content, parts })
-      : { content, parts }
-    const now = Date.now()
-    await ctx.db.patch(message._id, {
-      content: textPatch.content,
-      parts: textPatch.parts,
-      ...('remoteTextStored' in textPatch ? { remoteTextStored: textPatch.remoteTextStored } : {}),
-      editedAt: now,
-      editHistory: [
-        ...(message.editHistory ?? []),
-        { content: message.content, editedAt: now },
-      ],
-      updatedAt: now,
-    })
-    return true
+    return editRoomMessage(ctx, args, access)
   },
 })
 
@@ -2248,22 +1993,7 @@ export const deleteMessage = mutation({
   },
   handler: async (ctx, args) => {
     const access = await requireConversationAccess(ctx, args)
-    const message = await ctx.db.get(args.messageId)
-    if (
-      !message
-      || message.conversationId !== args.conversationId
-      || message.authorKind !== 'human'
-      || message.authorPrincipalId !== access.actor.principalId
-      || message.deletedAt
-    ) return false
-    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
-    const now = Date.now()
-    await ctx.db.patch(message._id, { content: '', parts: [], deletedAt: now, updatedAt: now })
-    await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
-      sourceKind: 'message',
-      sourceId: args.messageId,
-    })
-    return true
+    return deleteRoomMessage(ctx, args, access)
   },
 })
 

@@ -1493,6 +1493,7 @@ export default defineSchema({
     .index('by_externalRunId', ['externalRunId'])
     .index('by_runner_status_leaseExpiresAt', ['runner', 'status', 'leaseExpiresAt'])
     .index('by_assistantMessageId', ['assistantMessageId'])
+    .index('by_conversationId_userMessageId_agentPrincipalId', ['conversationId', 'userMessageId', 'agentPrincipalId'])
     .index('by_turn_variant', ['conversationId', 'turnId', 'variantIndex']),
 
   conversationMessages: defineTable({
@@ -1685,6 +1686,10 @@ export default defineSchema({
     )),
     updatedAt: v.optional(v.number()),
     clientNonce: v.optional(v.string()),
+    collaborationAdmission: v.optional(v.object({
+      mentionedPrincipalIds: v.array(v.string()), memoryEnabled: v.boolean(),
+    })),
+    collaborationActivityRecordedAt: v.optional(v.number()),
     editedAt: v.optional(v.number()),
     editHistory: v.optional(v.array(v.object({
       content: v.string(),
@@ -1698,6 +1703,7 @@ export default defineSchema({
     .index('by_conversationId_turnId_role', ['conversationId', 'turnId', 'role'])
     .index('by_userId', ['userId'])
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_conversationId_threadRootMessageId_createdAt', ['conversationId', 'threadRootMessageId', 'createdAt'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
     .index('by_status_updatedAt', ['status', 'updatedAt']),
 
@@ -2584,6 +2590,7 @@ export default defineSchema({
     role: v.union(v.literal('moderator'), v.literal('member')),
     status: v.union(v.literal('active'), v.literal('removed')),
     notificationLevel: v.union(v.literal('all'), v.literal('mentions'), v.literal('muted')),
+    roomLastModified: v.optional(v.number()),
     joinedAt: v.number(),
     updatedAt: v.number(),
     lastReadAt: v.optional(v.number()),
@@ -2594,7 +2601,8 @@ export default defineSchema({
   })
     .index('by_conversationId_principalId', ['conversationId', 'principalId'])
     .index('by_conversationId_status', ['conversationId', 'status'])
-    .index('by_workspaceId_principalId_status', ['workspaceId', 'principalId', 'status']),
+    .index('by_workspaceId_principalId_status', ['workspaceId', 'principalId', 'status'])
+    .index('by_workspaceId_principalId_status_roomLastModified', ['workspaceId', 'principalId', 'status', 'roomLastModified']),
 
   conversationPins: defineTable({
     conversationId: v.id('conversations'),

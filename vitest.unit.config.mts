@@ -29,6 +29,7 @@ export default defineConfig({
       'src/server/app-api/v1/conversations/act/personal-harness-turn.test.ts',
       'src/server/app-api/v1/conversations/stop/route.test.ts',
       'src/server/app-api/v1/conversations/route.test.ts',
+      'src/server/app-api/v1/conversations/message/send-replay.test.ts',
       'src/features/agents/components/AgentDirectoryProvider.test.tsx',
       'src/features/agents/components/ConnectedAgentSettings.test.tsx',
       'src/features/work/components/OrganizationAgentDetails.test.tsx',

@@ -81,7 +81,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
     const isCollaborationConversation = (conversation.conversationType ?? 'personal') !== 'personal'
-    const messageId = isCollaborationConversation
+    const admission = isCollaborationConversation
       ? await server.appData.repositories.conversationCollaboration.addMessage({
           actorUserId: auth.userId,
           conversationId: body.conversationId,
@@ -90,11 +90,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           content: normalizedContent,
           parts: normalizedParts,
           clientNonce: body.clientNonce?.trim() || undefined,
+          mentionedPrincipalIds: Array.isArray(body.mentionedPrincipalIds)
+            ? body.mentionedPrincipalIds.filter((value): value is string => typeof value === 'string') : [],
+          memoryEnabled: body.memoryEnabled !== false,
           threadRootMessageId: body.threadRootMessageId?.trim() || undefined,
           ...(body.replyToTurnId?.trim()
             ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
             : {}),
         })
+      : null
+    const messageId = admission?.messageId ?? (isCollaborationConversation ? null
       : await server.appData.repositories.conversations.addMessage({
           conversationId: asConversationId(body.conversationId),
           userId: auth.userId,
@@ -110,15 +115,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           ...(body.replyToTurnId?.trim()
             ? { replyToTurnId: body.replyToTurnId.trim(), replySnippet: body.replySnippet?.trim() }
             : {}),
-        })
+        }))
 
     if (!messageId) throw new Error('Failed to save message')
 
     // Record message activity and publish workspace.mention lifecycle events for
     // human @-mentions in workspace conversations (DMs and channels).
-    const mentionedPrincipalIds = Array.isArray(body.mentionedPrincipalIds)
-      ? body.mentionedPrincipalIds.filter((value): value is string => typeof value === 'string')
-      : []
+    const mentionedPrincipalIds = admission?.mentionedPrincipalIds ?? []
     if (isCollaborationConversation && messageId) {
       const workspaceName = context.workspace.workspace.name
       const actorPrincipalId = context.workspace.principal.id
@@ -131,9 +134,9 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           workspaceId,
           conversationId,
           messageId: String(messageId),
-          body: normalizedContent,
+          body: admission?.content ?? normalizedContent,
           mentionedPrincipalIds,
-          ...(body.threadRootMessageId?.trim() ? { threadRootMessageId: body.threadRootMessageId.trim() } : {}),
+          threadRootMessageId: admission?.threadRootMessageId,
         })
       } catch (error) {
         logger.warn('[conversations/message POST] recordMessageActivity failed', { error })
@@ -172,10 +175,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         initiatorPrincipalId: context.workspace.principal.id,
         mentionedPrincipalIds,
         messageId: String(messageId),
-        prompt: normalizedContent,
-        memoryEnabled: body.memoryEnabled !== false,
-        turnId,
-        ...(body.threadRootMessageId?.trim() ? { threadRootMessageId: body.threadRootMessageId.trim() } : {}),
+        prompt: admission?.content ?? normalizedContent,
+        memoryEnabled: admission?.memoryEnabled ?? body.memoryEnabled !== false,
+        turnId: admission?.turnId ?? turnId,
+        threadRootMessageId: admission?.threadRootMessageId,
         workspaceId,
       }).catch((error) => {
         const retirement = nativeRunRetirementErrorResponse(error)
@@ -186,7 +189,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       })
     }
 
-    return NextResponse.json({ success: true, conversationId: body.conversationId, turnId, messageId })
+    return NextResponse.json({ success: true, conversationId: body.conversationId,
+      turnId: admission?.turnId ?? turnId, messageId, replayed: admission?.replayed ?? false })
   } catch (e) {
     const retirement = nativeRunRetirementErrorResponse(e)
     if (retirement) return retirement

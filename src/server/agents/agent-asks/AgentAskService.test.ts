@@ -31,7 +31,7 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
     directory: async () => agents,
     collaboration: {
       createDirectMessage: async () => ({ conversationId: 'room-1', workspaceId: 'ws', title: '', participants: [], created: true } as never),
-      addMessage: async (args: Record<string, unknown>) => { personMessages.push(args); return 'pm1' },
+      addMessage: async (args: Record<string, unknown>) => { personMessages.push(args); return { messageId: 'pm1', replayed: false } },
       listParticipants: async () => (options.roomParticipants ?? ['p-scout', 'p-planner', 'human-1']).map((principalId) => ({ principalId })) as never,
       addAgentMessage: async (args: Record<string, unknown>) => { posted.push(args); return 'q1' },
       getAccessibleConversation: async (args: { conversationId: string }) => (args.conversationId === 'missing' ? null : { _id: args.conversationId, conversationType: args.conversationId === 'personal-1' ? 'personal' : 'channel' }) as never,

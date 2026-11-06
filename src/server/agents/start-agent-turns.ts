@@ -119,10 +119,7 @@ export async function startWorkspaceAgentTurns(
         userMessageId: args.messageId,
         workspaceId: args.workspaceId,
       })
-      // A turn already exists for this (message, agent): a duplicate trigger,
-      // or a retried send. Starting a second workflow against the same reply
-      // row would bill the turn twice.
-      if (turn.resumed) return
+      if (!(turn.dispatchNeeded ?? !turn.resumed)) return
       await (dependencies.requireExecution ?? requireWorkspaceExecution)({
         userId: args.actorUserId,
         workspaceId: args.workspaceId,

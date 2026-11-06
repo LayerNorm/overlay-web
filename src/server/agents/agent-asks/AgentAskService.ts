@@ -375,7 +375,7 @@ export class AgentAskService {
       })
       const content = `Asked from an outside app: ${args.message}`
       const turnId = `outside_${createHash('sha256').update(`${args.actorUserId}:${args.target.id}:${args.message}:${Math.floor(nowMs / 60_000)}`).digest('hex').slice(0, 24)}`
-      const messageId = await this.dependencies.collaboration.addMessage({
+      const { messageId } = await this.dependencies.collaboration.addMessage({
         actorUserId: args.actorUserId, clientNonce: turnId, content, conversationId: room.conversationId, turnId, workspaceId: args.workspaceId,
       })
       const turns = await this.dependencies.startTurns({

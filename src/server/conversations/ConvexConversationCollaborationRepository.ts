@@ -1,4 +1,5 @@
 import 'server-only'
+import type { CollaborationMessageAdmission } from './ConversationCollaborationRepository'
 
 import type {
   ChannelSummary,
@@ -79,6 +80,8 @@ implements ConversationCollaborationRepository {
   async addMessage(args: {
     actorUserId: string
     clientNonce?: string
+    mentionedPrincipalIds?: string[]
+    memoryEnabled?: boolean
     content: string
     conversationId: string
     parts?: Array<Record<string, unknown>>
@@ -89,14 +92,14 @@ implements ConversationCollaborationRepository {
     workspaceId: string
   }) {
     await requireNativeThreadCompatibilityBackend(args.actorUserId)
-    const id = await convex.mutation<string>('collaboration/directMessages:addMessage', {
+    const admission = await convex.mutation<CollaborationMessageAdmission>('collaboration/directMessages:addMessage', {
       ...args,
       conversationId: args.conversationId as Id<'conversations'>,
       threadRootMessageId: args.threadRootMessageId as Id<'conversationMessages'> | undefined,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
-    if (!id) throw new Error('Failed to save collaboration message')
-    return id
+    if (!admission?.messageId) throw new Error('Failed to save collaboration message')
+    return admission
   }
 
   async addAgentMessage(args: {
@@ -178,7 +181,7 @@ implements ConversationCollaborationRepository {
     workspaceId: string
   }) {
     await requireNativeThreadCompatibilityBackend(args.actorUserId)
-    const result = await convex.mutation<{ messageId: string; resumed: boolean; runId: string }>(
+    const result = await convex.mutation<{ messageId: string; resumed: boolean; runId: string; dispatchNeeded?: boolean }>(
       'collaboration/directMessages:startAgentTurn',
       {
         ...args,

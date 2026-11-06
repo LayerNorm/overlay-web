@@ -718,7 +718,7 @@ export const prepareAssignment = mutation({
       agentPrincipal,
     )
     const clientNonce = `work-assignment:${row._id}:${args.generation}`
-    const messageId = await insertCollaborationMessage(ctx, {
+    const { messageId } = await insertCollaborationMessage(ctx, {
       actorUserId: args.userId,
       clientNonce,
       content: args.content,

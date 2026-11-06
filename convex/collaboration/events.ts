@@ -13,6 +13,14 @@ export async function recordConversationEvent(
     payload?: Record<string, unknown>
   },
 ): Promise<void> {
+  const conversation = await ctx.db.get(args.conversationId)
+  if (['message.created', 'conversation.created', 'participant.added'].includes(args.type)
+    && conversation && conversation.conversationType && conversation.conversationType !== 'personal') {
+    const participants = await ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_status', q => q.eq('conversationId', args.conversationId).eq('status', 'active')).collect()
+    await Promise.all(participants.filter(p => p.roomLastModified !== conversation.lastModified)
+      .map(p => ctx.db.patch(p._id, { roomLastModified: conversation.lastModified })))
+  }
   await ctx.db.insert('conversationEvents', {
     conversationId: args.conversationId,
     workspaceId: args.workspaceId,

@@ -85,7 +85,7 @@ test('Convex agent replies stream into a durable transcript row', {
       principalId: agentPrincipalId,
       workspaceId,
     })
-    const humanMessageId = await collaboration.addMessage({
+    const { messageId: humanMessageId } = await collaboration.addMessage({
       actorUserId: ownerUserId,
       conversationId: channel.conversationId,
       content: '@Scout what do we know?',

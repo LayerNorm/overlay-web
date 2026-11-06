@@ -24,6 +24,16 @@ import type {
   ConversationMessageRow,
 } from './ActConversationRepository'
 
+export type CollaborationMessageAdmission = {
+  messageId: string
+  replayed: boolean
+  turnId: string
+  content: string
+  mentionedPrincipalIds: string[]
+  threadRootMessageId?: string
+  memoryEnabled: boolean
+}
+
 export interface ConversationCollaborationRepository {
   getAccessibleConversation(args: {
     actorUserId: string
@@ -52,6 +62,8 @@ export interface ConversationCollaborationRepository {
   addMessage(args: {
     actorUserId: string
     clientNonce?: string
+    mentionedPrincipalIds?: string[]
+    memoryEnabled?: boolean
     content: string
     conversationId: string
     parts?: Array<Record<string, unknown>>
@@ -60,7 +72,7 @@ export interface ConversationCollaborationRepository {
     threadRootMessageId?: string
     turnId: string
     workspaceId: string
-  }): Promise<string>
+  }): Promise<CollaborationMessageAdmission>
   addAgentMessage(args: {
     messagePurpose: 'greeting' | 'prepared_onboarding' | 'agent_request'
     actorUserId: string
@@ -116,7 +128,7 @@ export interface ConversationCollaborationRepository {
     turnId: string
     userMessageId: string
     workspaceId: string
-  }): Promise<{ messageId: string; resumed: boolean; runId: string }>
+  }): Promise<{ messageId: string; resumed: boolean; runId: string; dispatchNeeded?: boolean }>
   appendAgentMessageDelta(args: {
     actorUserId: string
     contentDelta: string
