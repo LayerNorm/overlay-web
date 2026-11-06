@@ -7,6 +7,7 @@ import { getReadableRow } from '../lib/resourceScope'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { uniqueWorkspaceAccount } from '../billing/accountModel'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
+import { isSharedRoom } from '../../src/shared/agents/room-access'
 import {
   admitHarnessChild,
   admitHarnessNamedChild,
@@ -1701,6 +1702,7 @@ export const admit = mutation({
       runId: snapshot.runId,
       actorUserId: admission.policy.actorUserId,
       rootRunId: snapshot.rootRunId,
+      sharedRoomRestriction: await sourceRoomIsShared(ctx, source),
       ...(delivery ? { deliveryAgentRunId: delivery._id } : {}),
       activeDescendantCount: 0,
       sourceJson: stableJson(source),
@@ -1729,6 +1731,55 @@ export const get = query({
     if (!run) return null
     const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
     return await currentSnapshot(ctx, run, lineage)
+  },
+})
+
+async function sourceRoomIsShared(ctx: MutationCtx | QueryCtx, source: HarnessSource): Promise<boolean> {
+  if (!('conversationId' in source)) return false
+  const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
+  const conversation = conversationId ? await ctx.db.get(conversationId) : null
+  if (!conversation) throw new Error('CONVERSATION_ACCESS_DENIED')
+  const participants = await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversation._id))
+    .collect()
+  return isSharedRoom({
+    conversationType: conversation.conversationType ?? 'personal',
+    channelVisibility: conversation.channelVisibility,
+    humanParticipants: participants.filter(participant => participant.status === 'active'
+      && participant.principalType === 'human').length,
+  })
+}
+
+async function inheritedRoomRestriction(
+  ctx: MutationCtx | QueryCtx,
+  lineage: LineageEntry[],
+  source: HarnessSource,
+): Promise<boolean> {
+  const restrictions = await Promise.all([
+    ...lineage.map(async entry => entry.run.sharedRoomRestriction === undefined
+      || entry.run.sharedRoomRestriction
+      || await sourceRoomIsShared(ctx, parseJson<HarnessSource>(entry.run.sourceJson))),
+    sourceRoomIsShared(ctx, source),
+  ])
+  return restrictions.some(Boolean)
+}
+
+export const refreshRoomContextRestrictions = mutation({
+  args: { actorUserId: v.string(), runId: v.string(), serverSecret: v.string() },
+  returns: v.object({ inheritedSharedRoom: v.boolean() }),
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const run = await findRun(ctx, args.runId)
+    if (!run) throw new Error('HARNESS_RUN_NOT_FOUND')
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    for (const entry of lineage) {
+      const sourceShared = await sourceRoomIsShared(ctx, parseJson<HarnessSource>(entry.run.sourceJson))
+      if ((entry.run.sharedRoomRestriction === undefined || sourceShared)
+        && entry.run.sharedRoomRestriction !== true) {
+        await ctx.db.patch(entry.run._id, { sharedRoomRestriction: true })
+      }
+    }
+    return { inheritedSharedRoom: await inheritedRoomRestriction(ctx, lineage, parseJson<HarnessSource>(run.sourceJson)) }
   },
 })
 
@@ -2126,6 +2177,7 @@ export const apply = mutation({
         runId: snapshot.runId,
         actorUserId: snapshot.policy.actorUserId,
         rootRunId: snapshot.rootRunId,
+        sharedRoomRestriction: await inheritedRoomRestriction(ctx, lineage, source),
         parentRunId: snapshot.parentRunId,
         ...(delivery ? { deliveryAgentRunId: delivery._id } : {}),
         activeDescendantCount: 0,

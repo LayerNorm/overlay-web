@@ -133,6 +133,13 @@ export class ConvexHarnessRepository implements HarnessRepository {
     }, { throwOnError: true })
   }
 
+  async refreshRoomContextRestrictions(input: { actorUserId: string; runId: string }) {
+    return await convex.mutation(api.harness.runs.refreshRoomContextRestrictions, {
+      ...input,
+      serverSecret: this.serverSecret,
+    })
+  }
+
   async writeTranscriptStep(input: {
     actorUserId: string
     runId: string

@@ -4,6 +4,8 @@ import { FatalError } from 'workflow'
 import { reservedHarnessCostMicros, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
 import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
+import { nativeAgentAssignmentContext } from '@/server/agents/agent-asks/native-assignment-context'
+import { parseByoModelId } from '@/shared/agents/agent-model'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildNativeHarnessWorkflowInput } from './native-workflow-input-builder'
@@ -245,6 +247,7 @@ export async function dispatchNativeHarnessAgentRequest(
           workspaceId: args.workspaceId,
           conversationId: args.conversationId,
           runId: turn.runId,
+          parentRunId: parent.runId,
           memoryEnabled: false,
           surfaceRootRunId: parent.rootRunId,
           expectedSurfaceWorkflowRunId,
@@ -324,8 +327,45 @@ export async function dispatchNativeHarnessAgentRequest(
     if (typeof values.agent !== 'string' || typeof values.message !== 'string') throw new FatalError('Invalid ask_agent input.')
     const target = values.agent
     const message = values.message
+    const directory = await server.workspaceAgentService.list({
+      actorUserId: access.actorUserId,
+      workspaceId: access.workspaceId,
+    })
+    const normalizedTarget = target.trim().toLocaleLowerCase()
+    const targetAgent = directory.agents.find(agent => agent.id === target.trim()
+      || agent.name.trim().toLocaleLowerCase() === normalizedTarget)
+    if (targetAgent) {
+      const [remoteTarget, bindings] = await Promise.all([
+        server.appData.repositories.connectedAgents.findInvocationTarget({
+          workspaceId: access.workspaceId,
+          agentId: targetAgent.id,
+          now: Date.now(),
+          onlineWithinMs: 45_000,
+        }),
+        server.appData.repositories.connectedAgents.listBindings({
+          workspaceId: access.workspaceId,
+          agentId: targetAgent.id,
+        }),
+      ])
+      if (targetAgent.harness !== 'overlay' || parseByoModelId(targetAgent.modelId) !== null
+        || remoteTarget || bindings.length > 0) {
+        throw new FatalError("External agents can't be asked from this run yet.")
+      }
+    }
+    const parent = await loadNativeParentRun(repository, access)
     return executeWithNativeHarnessToolProgress(progressCall, async () => ({
-      ...await server.agentAsks.ask({ ...actor, target, message, wait: false }),
+      ...await server.agentAsks.ask({
+        ...actor,
+        target,
+        message,
+        wait: false,
+        nativeAssignment: nativeAgentAssignmentContext({
+          parentConversationId: access.conversationId,
+          parentRunId: access.runId,
+          rootRunId: parent.rootRunId,
+          toolCallId,
+        }),
+      }),
       childRunIds,
     }))
   }

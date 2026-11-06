@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   prepare: vi.fn(),
   prompt: vi.fn(),
   surface: vi.fn(),
+  inherited: vi.fn(),
   assertSurface: vi.fn(),
   server: {
     appData: { repositories: { conversations: { getLatestAgentRun: vi.fn() } } },
@@ -19,6 +20,7 @@ vi.mock('@/server/agents/workspace-agent-preparation', () => ({ prepareWorkspace
 vi.mock('@/server/agents/workspace-agent-invocation', () => ({ buildAgentSystemPrompt: mocks.prompt }))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class {
   getSurfaceExecutionByHarnessRunId = mocks.surface
+  refreshRoomContextRestrictions = mocks.inherited
 } }))
 vi.mock('./surface-access', () => ({ assertPersistedSurfaceSource: mocks.assertSurface }))
 
@@ -32,6 +34,7 @@ const run = {
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.surface.mockResolvedValue(null)
+  mocks.inherited.mockResolvedValue({ inheritedSharedRoom: false })
   mocks.assertSurface.mockResolvedValue({})
   mocks.server.appData.repositories.conversations.getLatestAgentRun.mockResolvedValue(run)
   mocks.prepare.mockResolvedValue({
@@ -64,6 +67,7 @@ test('builds native input from the persisted delivery identity without reservati
   expect(mocks.prepare).toHaveBeenCalledWith({
     actorUserId: 'user', agentId: 'agent', conversationId: 'room', messageId: 'question',
     memoryEnabled: true, workspaceId: 'workspace', includeAutoRetrieval: false,
+    inheritedSharedRoom: false,
   })
   expect(input.access).toEqual({
     actorUserId: 'user', runId: 'workspace:run', workspaceId: 'workspace', principalId: 'human-principal',
@@ -76,6 +80,38 @@ test('builds native input from the persisted delivery identity without reservati
   expect(input.instructions).toBe('Complete system prompt')
   expect(input.definitions[0]).not.toHaveProperty('execute')
   expect(mocks.server.chatUsagePolicy.reserveForAttempt).not.toHaveBeenCalled()
+})
+
+test('a shared persisted parent keeps a one-human assignment child on shared-only context', async () => {
+  mocks.inherited.mockResolvedValue({ inheritedSharedRoom: true })
+  mocks.server.appData.repositories.conversations.getLatestAgentRun.mockResolvedValue({
+    ...run, id: 'child-run', conversationId: 'child-room', initiatorPrincipalId: 'caller-principal',
+    harnessRunId: 'workspace:child-run',
+  })
+  mocks.prepare.mockResolvedValueOnce({
+    room: {
+      conversation: { workspaceId: 'workspace', title: 'Assignment' },
+      conversationType: 'dm',
+      participants: [
+        { principalId: 'human-principal', principalType: 'human' },
+        { principalId: 'agent-principal', principalType: 'agent' },
+        { principalId: 'caller-principal', principalType: 'agent' },
+      ],
+      history: [{ _id: 'question', authorKind: 'agent', authorPrincipalId: 'caller-principal', content: 'Task' }],
+    },
+    agent: { id: 'agent', name: 'Scout', principalId: 'agent-principal', instructions: '', harness: 'overlay' },
+    modelId: 'model-selected', requestFingerprint: 'fingerprint', turnId: 'turn',
+    turnContext: { contextBlock: '', messages: [] }, toolDefinitions: [],
+  })
+  const input = await buildNativeHarnessWorkflowInput({
+    actorUserId: 'user', workspaceId: 'workspace', conversationId: 'child-room',
+    runId: 'child-run', parentRunId: 'workspace:parent-run', memoryEnabled: true,
+  })
+  expect(mocks.inherited).toHaveBeenCalledWith({
+    actorUserId: 'user', runId: 'workspace:parent-run',
+  })
+  expect(mocks.prepare).toHaveBeenCalledWith(expect.objectContaining({ inheritedSharedRoom: true }))
+  expect(input.context.sharedRoom).toBe(true)
 })
 
 test('rejects a stored triggering message with a different human principal', async () => {

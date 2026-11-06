@@ -1494,6 +1494,25 @@ export default defineSchema({
     .index('by_assistantMessageId', ['assistantMessageId'])
     .index('by_turn_variant', ['conversationId', 'turnId', 'variantIndex']),
 
+  agentAssignments: defineTable({
+    workspaceId: v.string(),
+    assignmentId: v.string(),
+    idempotencyKey: v.string(),
+    parentConversationId: v.id('conversations'),
+    parentRunId: v.string(),
+    rootRunId: v.string(),
+    callerAgentId: v.string(),
+    assignedAgentId: v.string(),
+    requesterUserId: v.string(),
+    conversationId: v.id('conversations'),
+    brief: v.string(),
+    questionTurnId: v.string(),
+    createdAt: v.number(),
+  })
+    .index('by_workspaceId_idempotencyKey', ['workspaceId', 'idempotencyKey'])
+    .index('by_parentConversationId', ['parentConversationId'])
+    .index('by_conversationId', ['conversationId']),
+
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
     userId: v.string(),
@@ -2973,6 +2992,7 @@ export default defineSchema({
     runId: v.string(),
     actorUserId: v.string(),
     rootRunId: v.string(),
+    sharedRoomRestriction: v.optional(v.boolean()),
     deliveryAgentRunId: v.optional(v.string()),
     parentRunId: v.optional(v.string()),
     activeDescendantCount: v.number(),

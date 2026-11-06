@@ -5,12 +5,14 @@ import { refreshNativeHarnessAccess, type NativeHarnessAccess, type NativeHarnes
 const mocks = vi.hoisted(() => ({
   state: vi.fn(), room: vi.fn(), workspace: vi.fn(), run: vi.fn(), gate: vi.fn(), subject: vi.fn(),
   surfaceExecution: vi.fn(), bindings: vi.fn(), conversation: vi.fn(),
+  roomRestrictions: vi.fn(),
   capability: vi.fn(), catalog: vi.fn(), models: vi.fn(), byok: vi.fn(),
 }))
 vi.mock('server-only', () => ({}))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class {
   get = mocks.state
   getSurfaceExecutionByHarnessRunId = mocks.surfaceExecution
+  refreshRoomContextRestrictions = mocks.roomRestrictions
 } }))
 vi.mock('@/server/agents/workspace-agent-invocation', () => ({
   loadRoomTurnContext: mocks.room, agentModelAttempts: (modelId: string) => [modelId],
@@ -144,6 +146,7 @@ beforeEach(() => {
   mocks.catalog.mockResolvedValue({ allowed: true })
   mocks.models.mockResolvedValue({ chat: new Set(['fixture/model', 'openrouter/free']) })
   mocks.surfaceExecution.mockResolvedValue(null)
+  mocks.roomRestrictions.mockResolvedValue({ inheritedSharedRoom: false })
   mocks.bindings.mockResolvedValue([])
   mocks.conversation.mockResolvedValue(null)
 })
@@ -259,6 +262,13 @@ test('refuses revoked agents, participants, workspace identity and newly shared 
   mocks.room.mockResolvedValue(shared)
   await expect(refreshNativeHarnessAccess(access, context)).rejects.toThrow(/private context/)
   await expect(refreshNativeHarnessAccess(access, { ...context, sharedRoom: true })).resolves.toMatchObject({ paid: true })
+})
+
+test('rederives shared-parent restrictions on child refresh', async () => {
+  mocks.roomRestrictions.mockResolvedValue({ inheritedSharedRoom: true })
+  await expect(refreshNativeHarnessAccess(access, context)).rejects.toThrow(/private context/)
+  await expect(refreshNativeHarnessAccess(access, { ...context, sharedRoom: true }))
+    .resolves.toMatchObject({ paid: true })
 })
 
 test('refuses stale execution, capabilities and model access before provider admission', async () => {

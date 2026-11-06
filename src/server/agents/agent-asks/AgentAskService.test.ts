@@ -3,6 +3,7 @@ import test from 'node:test'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { agentLineagePart, MAX_AGENT_ASKS_PER_ROOT } from '@/shared/agents/agent-lineage'
 import { AgentAskError, AgentAskService } from './AgentAskService'
+import { nativeAgentAssignmentContext } from './native-assignment-context'
 
 const agent = (id: string, name: string, extra: Partial<WorkspaceAgentDirectoryItem> = {}): WorkspaceAgentDirectoryItem => ({
   id, name, principalId: `p-${id}`, workspaceId: 'ws', instructions: '', harness: 'overlay', modelId: 'm', allowedToolIds: [],
@@ -23,6 +24,9 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
   const releases: Array<Record<string, unknown>> = []
   const recordedReplies: Array<Record<string, unknown>> = []
   const personMessages: Array<Record<string, unknown>> = []
+  const assignmentCalls: Array<Record<string, unknown>> = []
+  const assignments = new Map<string, { assignmentId: string; conversationId: string; title: string }>()
+  const assignmentMessages = new Map<string, string>()
   const callerLookups: Array<Record<string, unknown>> = []
   let polls = 0
   let clock = 0
@@ -31,9 +35,34 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
     directory: async () => agents,
     collaboration: {
       createDirectMessage: async () => ({ conversationId: 'room-1', workspaceId: 'ws', title: '', participants: [], created: true } as never),
+      createAgentAssignment: async (args: Record<string, unknown>) => {
+        assignmentCalls.push(args)
+        const key = String(args.idempotencyKey)
+        const existing = assignments.get(key)
+        if (existing) {
+          if (existing.assignmentId !== args.assignmentId || args.brief !== assignmentCalls.find(row => row.idempotencyKey === key)?.brief) {
+            throw new Error('ASSIGNMENT_IDEMPOTENCY_CONFLICT')
+          }
+          return existing
+        }
+        const assignment = {
+          assignmentId: String(args.assignmentId),
+          conversationId: `assignment-room-${assignments.size + 1}`,
+          title: 'Assignment',
+        }
+        assignments.set(key, assignment)
+        return assignment
+      },
       addMessage: async (args: Record<string, unknown>) => { personMessages.push(args); return 'pm1' },
       listParticipants: async () => (options.roomParticipants ?? ['p-scout', 'p-planner', 'human-1']).map((principalId) => ({ principalId })) as never,
-      addAgentMessage: async (args: Record<string, unknown>) => { posted.push(args); return 'q1' },
+      addAgentMessage: async (args: Record<string, unknown>) => {
+        posted.push(args)
+        const nonce = String(args.clientNonce)
+        const existing = assignmentMessages.get(nonce)
+        if (existing) return existing
+        assignmentMessages.set(nonce, `q${assignmentMessages.size + 1}`)
+        return assignmentMessages.get(nonce)!
+      },
       getAccessibleConversation: async (args: { conversationId: string }) => (args.conversationId === 'missing' ? null : { _id: args.conversationId, conversationType: args.conversationId === 'personal-1' ? 'personal' : 'channel' }) as never,
       listMessages: async (args: { messageId?: string }) => {
         if (args.messageId) return trigger ? [trigger] as never : []
@@ -62,8 +91,54 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
     caller: { agentId: 'scout', conversationId: 'c1', turnId: 'agent_m1_scout' },
     conversationId: 'channel-1', text: 'Update for the room', mentions: [], ...overrides,
   } as never)
-  return { service, ask, post, posted, started, claims, releases, recordedReplies, personMessages, callerLookups }
+  return {
+    service, ask, post, posted, started, claims, releases, recordedReplies, personMessages, callerLookups,
+    assignmentCalls, assignments, assignmentMessages,
+  }
 }
+
+test('native assignments isolate dispatches and replay the same assignment message', async () => {
+  const state = setup()
+  const firstDispatch = nativeAgentAssignmentContext({
+    parentConversationId: 'c1', parentRunId: 'run-parent', rootRunId: 'root-run', toolCallId: 'tool-1',
+  })
+  const replay = await state.ask({ nativeAssignment: firstDispatch, wait: false })
+  const repeated = await state.ask({ nativeAssignment: firstDispatch, wait: false })
+  assert.equal(replay.assignmentId, repeated.assignmentId)
+  assert.equal(replay.conversationId, repeated.conversationId)
+  assert.equal(state.assignments.size, 1)
+  assert.equal(state.assignmentMessages.size, 1)
+  assert.equal(state.assignmentCalls[0]!.idempotencyKey, 'harness-run:run-parent:tool:tool-1')
+  await assert.rejects(
+    state.ask({ nativeAssignment: firstDispatch, message: 'Changed brief', wait: false }),
+    /ASSIGNMENT_IDEMPOTENCY_CONFLICT/,
+  )
+
+  const second = await state.ask({
+    nativeAssignment: nativeAgentAssignmentContext({
+      parentConversationId: 'c1', parentRunId: 'run-parent', rootRunId: 'root-run', toolCallId: 'tool-2',
+    }),
+    wait: false,
+  })
+  assert.notEqual(replay.assignmentId, second.assignmentId)
+  assert.notEqual(replay.conversationId, second.conversationId)
+  assert.equal(state.assignments.size, 2)
+})
+
+test('native assignments reject external targets before creating a thread', async () => {
+  const external = agent('remote', 'Remote', { harness: 'claude-code' })
+  const state = setup({ agents: [agent('scout', 'Scout'), external] })
+  await assert.rejects(
+    state.ask({
+      target: 'Remote',
+      nativeAssignment: nativeAgentAssignmentContext({
+        parentConversationId: 'c1', parentRunId: 'run-parent', rootRunId: 'root-run', toolCallId: 'tool-1',
+      }),
+    }),
+    (error: AgentAskError) => error.code === 'native_external_agent_unsupported',
+  )
+  assert.equal(state.assignmentCalls.length, 0)
+})
 
 test('an agent asks another by name; the question is posted by the asking agent with its lineage and the answer comes back', async () => {
   const { ask, posted, started } = setup()

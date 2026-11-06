@@ -218,6 +218,7 @@ function assertRoomIdentity(
   context: NativeHarnessContext,
   room: NativeRoomTurnContext,
   humanPrincipalId: string,
+  inheritedSharedRoom: boolean,
 ) {
   const agent = room.directory.agents.find(candidate => candidate.id === access.agentId)
   if (!agent || agent.archivedAt || agent.harness !== 'overlay' || agent.principalId !== access.agentPrincipalId
@@ -228,7 +229,7 @@ function assertRoomIdentity(
   const human = room.participants.some(participant => participant.principalId === humanPrincipalId && participant.principalType === 'human')
   const author = room.participants.some(participant => participant.principalId === access.agentPrincipalId && participant.principalType === 'agent')
   if (!human || !author) throw new FatalError('Native room participation was revoked.')
-  const shared = isSharedRoom({
+  const shared = inheritedSharedRoom || isSharedRoom({
     conversationType: room.conversationType,
     channelVisibility: (room.conversation as { channelVisibility?: string | null }).channelVisibility,
     humanParticipants: room.participants.filter(participant => participant.principalType === 'human').length,
@@ -284,17 +285,18 @@ export async function refreshNativeHarnessAccess(
     }
     await assertPersistedSurfaceSource(surfaceExecution, root.workflowRunId)
   }
-  const [room, workspace, run] = await Promise.all([
+  const [room, workspace, run, roomRestrictions] = await Promise.all([
     loadRoomTurnContext({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
       conversationId: access.conversationId, messageId: access.userMessageId }),
     server.workspaceService.resolveActiveWorkspace(access.actorUserId, access.workspaceId),
     server.appData.repositories.conversations.getLatestAgentRun({
       conversationId: asConversationId(access.conversationId), userId: access.actorUserId, agentRunId: access.agentRunId,
     }),
+    new ConvexHarnessRepository().refreshRoomContextRestrictions({ actorUserId: access.actorUserId, runId: access.runId }),
   ])
   const humanPrincipalId = await resolveHumanPrincipalId(access, state, workspace, room)
   assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress, options.renewalMode === true)
-  const agent = assertRoomIdentity(access, context, room, humanPrincipalId)
+  const agent = assertRoomIdentity(access, context, room, humanPrincipalId, roomRestrictions.inheritedSharedRoom)
   await assertNativeCapabilities(access, context, toolName)
   const billingProgrammaticSubjectId = surfaceExecution
     ? `surface:slack:${surfaceExecution.bindingId}`

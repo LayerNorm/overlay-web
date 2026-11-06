@@ -340,6 +340,31 @@ implements ConversationCollaborationRepository {
     }, { throwOnError: true }) as DirectMessageSummary
   }
 
+  async createAgentAssignment(args: {
+    workspaceId: string
+    requesterUserId: string
+    assignmentId: string
+    idempotencyKey: string
+    toolCallId: string
+    parentConversationId: string
+    parentRunId: string
+    rootRunId: string
+    callerAgentId: string
+    assignedAgentId: string
+    brief: string
+    questionTurnId: string
+  }) {
+    return await convex.mutation<{ assignmentId: string; conversationId: string; title: string }>(
+      'collaboration/agentAssignments:createAgentAssignment',
+      {
+        ...args,
+        parentConversationId: args.parentConversationId as Id<'conversations'>,
+        serverSecret: this.serverSecret,
+      },
+      { throwOnError: true },
+    )
+  }
+
   async listAccessibleConversationIds(args: { actorUserId: string; workspaceId: string }) {
     return await convex.query<string[]>('collaboration/directMessages:accessibleConversationIds', {
       ...args,

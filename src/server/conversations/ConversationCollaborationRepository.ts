@@ -193,6 +193,20 @@ export interface ConversationCollaborationRepository {
     actorUserId: string
     workspaceId: string
   }): Promise<DirectMessageSummary>
+  createAgentAssignment(args: {
+    workspaceId: string
+    requesterUserId: string
+    assignmentId: string
+    idempotencyKey: string
+    toolCallId: string
+    parentConversationId: string
+    parentRunId: string
+    rootRunId: string
+    callerAgentId: string
+    assignedAgentId: string
+    brief: string
+    questionTurnId: string
+  }): Promise<{ assignmentId: string; conversationId: string; title: string }>
   listAccessibleConversationIds(args: {
     actorUserId: string
     workspaceId: string

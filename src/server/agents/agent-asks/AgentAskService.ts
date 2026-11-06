@@ -20,6 +20,8 @@ import {
 import type { ConversationMessageRow } from '@/server/conversations/ActConversationRepository'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import type { AgentRun } from '@/shared/agents/agent-run'
+import { parseByoModelId } from '@/shared/agents/agent-model'
+import type { NativeAgentAssignmentContext } from './native-assignment-context'
 import {
   HARNESS_DISPATCH_REQUIRED_CODE,
   HARNESS_DISPATCH_REQUIRED_MESSAGE,
@@ -39,7 +41,7 @@ export class AgentAskError extends Error {
 }
 
 type Collaboration = Pick<ConversationCollaborationRepository,
-  'createDirectMessage' | 'addAgentMessage' | 'addMessage' | 'listMessages' | 'listParticipants' | 'getAccessibleConversation'>
+  'createDirectMessage' | 'createAgentAssignment' | 'addAgentMessage' | 'addMessage' | 'listMessages' | 'listParticipants' | 'getAccessibleConversation'>
 
 export type AgentAskStatus = 'completed' | 'working' | 'failed'
 export type AgentAskResult = {
@@ -48,6 +50,7 @@ export type AgentAskResult = {
   /** Where the asked agent answers, to read it later with `read`. */
   conversationId: string
   turnId: string
+  assignmentId?: string
   reply?: string
   error?: string
 }
@@ -108,6 +111,7 @@ export class AgentAskService {
   async ask(args: Person & {
     /** The asking agent and the turn it is in; absent for an outside app asking for the person. */
     caller?: Caller
+    nativeAssignment?: NativeAgentAssignmentContext
     target: string
     message: string
     wait: boolean
@@ -118,6 +122,10 @@ export class AgentAskService {
     const visible = await this.visibleAgents(args)
     const target = this.findAgent(visible, args.target)
     if (!target) throw new AgentAskError(`No agent called "${args.target.trim()}" that you can ask. Use list_agents to see who is available.`, 404, 'agent_not_found')
+    if (args.nativeAssignment && (target.harness !== 'overlay' || parseByoModelId(target.modelId) !== null)) {
+      throw new AgentAskError("External agents can't be asked from this run yet.", 409, 'native_external_agent_unsupported')
+    }
+    if (args.nativeAssignment && !args.caller) throw new AgentAskError('Native assignment identity is missing.', 400, 'invalid_assignment')
     if (!args.caller) return await this.askAsPerson({ ...args, message, target })
 
     const { caller, lineage } = await this.callerLineage(args, visible, args.caller)
@@ -131,21 +139,44 @@ export class AgentAskService {
     const claim = await this.dependencies.claimBudget({ ...keys, maxRoot: MAX_AGENT_ASKS_PER_ROOT, maxTurn: MAX_AGENT_ASKS_PER_TURN })
     if (!claim.ok) throw new AgentAskError(ASK_REFUSAL_MESSAGE[claim.reason], 429, `ask_${claim.reason}`)
     try {
-      const room = await this.dependencies.collaboration.createDirectMessage({
-        actorUserId: args.actorUserId,
-        workspaceId: args.workspaceId,
-        principalIds: [args.actorPrincipalId, caller.principalId, target.principalId],
-        title: `${caller.name} & ${target.name}`,
-      })
       const content = `Asked by ${caller.name}: ${message}`
-      const questionTurnId = `ask_${createHash('sha256').update(`${args.caller.turnId}:${target.id}:${message}`).digest('hex').slice(0, 24)}`
+      const assignmentId = args.nativeAssignment
+        ? `assignment_${createHash('sha256').update(`${args.nativeAssignment.parentRunId}\0${args.nativeAssignment.toolCallId}\0${target.id}`).digest('hex')}`
+        : undefined
+      const questionTurnId = assignmentId
+        ? `ask_${createHash('sha256').update(assignmentId).digest('hex').slice(0, 24)}`
+        : `ask_${createHash('sha256').update(`${args.caller.turnId}:${target.id}:${message}`).digest('hex').slice(0, 24)}`
+      const room = args.nativeAssignment && assignmentId
+        ? await this.dependencies.collaboration.createAgentAssignment({
+            workspaceId: args.workspaceId,
+            requesterUserId: args.actorUserId,
+            assignmentId,
+            idempotencyKey: args.nativeAssignment.idempotencyKey,
+            toolCallId: args.nativeAssignment.toolCallId,
+            parentConversationId: args.nativeAssignment.parentConversationId,
+            parentRunId: args.nativeAssignment.parentRunId,
+            rootRunId: args.nativeAssignment.rootRunId,
+            callerAgentId: caller.id,
+            assignedAgentId: target.id,
+            brief: message,
+            questionTurnId,
+          })
+        : await this.dependencies.collaboration.createDirectMessage({
+            actorUserId: args.actorUserId,
+            workspaceId: args.workspaceId,
+            principalIds: [args.actorPrincipalId, caller.principalId, target.principalId],
+            title: `${caller.name} & ${target.name}`,
+          })
       const posted = await this.postAsAgent({
         person: args, caller, conversationId: room.conversationId, content, turnId: questionTurnId, lineage: next.lineage,
         mentions: [target], rootKey: keys.rootKey, startTurns: args.startTurns,
       })
       const turn = posted.turns.find((candidate) => candidate.agentId === target.id)
       if (!turn) throw new AgentAskError(`${target.name} could not be reached.`, 502, 'agent_unreachable')
-      return await this.finishAsk({ person: args, agent: target.name, conversationId: room.conversationId, turnId: turn.turnId, wait: args.wait })
+      const result = await this.finishAsk({
+        person: args, agent: target.name, conversationId: room.conversationId, turnId: turn.turnId, wait: args.wait,
+      })
+      return assignmentId ? { ...result, assignmentId } : result
     } catch (error) {
       // Nothing reached the other agent, so the question is not spent.
       await this.dependencies.releaseBudget(keys).catch((_releaseError) => undefined)
