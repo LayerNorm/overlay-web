@@ -103,6 +103,17 @@ function responseKey(message: PersonalTranscriptMessage) {
   return JSON.stringify([message.turnId, message.variantIndex ?? 0, message.model ?? ''])
 }
 
+// Local stream responses may not carry the model recorded on their canonical row.
+function pendingResponseKey(responses: ReadonlyMap<string, PersonalTranscriptMessage>, response: PersonalTranscriptMessage) {
+  const key = responseKey(response)
+  if (responses.has(key) || response.persistedId) return key
+  for (const [canonicalKey, canonical] of responses) {
+    if (canonical.persistedId && canonical.turnId === response.turnId
+      && (canonical.variantIndex ?? 0) === (response.variantIndex ?? 0)) return canonicalKey
+  }
+  return key
+}
+
 function applyPendingTurn(exchanges: Map<string, PersonalTranscriptExchange>, pending: PersonalPendingTurn) {
   const existing = exchanges.get(pending.turnId)
   // An acknowledged row disappearing is not a reason to resurrect a local draft.
@@ -111,13 +122,13 @@ function applyPendingTurn(exchanges: Map<string, PersonalTranscriptExchange>, pe
   if (!exchange.user) exchange.user = pending.user
   const responses = new Map(exchange.responses.map(response => [responseKey(response), response]))
   for (const response of pending.responses) {
-    const key = responseKey(response)
+    const key = pendingResponseKey(responses, response)
     const canonical = responses.get(key)
     if (canonical?.status === 'completed' || canonical?.status === 'error') continue
     if (canonical?.nativeProgressSequence !== undefined) continue
     if (canonical?.status === 'generating' && response.status === 'error') continue
     responses.set(key, canonical ? {
-      ...canonical, ...response, id: canonical.id, persistedId: canonical.persistedId,
+      ...canonical, ...response, id: canonical.id, persistedId: canonical.persistedId, model: canonical.model ?? response.model,
       nativeRunId: canonical.nativeRunId, nativeProgressSequence: canonical.nativeProgressSequence,
       metadata: {
         ...(canonical.metadata as Record<string, unknown> | undefined),

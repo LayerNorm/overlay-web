@@ -72,6 +72,23 @@ test('explicit local overlays reconcile once and cannot overwrite terminal data 
   assert.equal(projectPersonalTranscript([], [{ ...pending, userAcknowledged: true }]).messages.length, 0)
 })
 
+test('a local stream response reconciles with its canonical row when the routed model differs', () => {
+  const user = message('user-db', 'turn', 'user')
+  const pending: PersonalPendingTurn = { turnId: 'turn', user: personalMessageToUi(user), userAcknowledged: true,
+    responses: [{ ...personalMessageToUi(message('sdk-response', 'turn', 'assistant', { status: 'generating', content: 'Partial' })),
+      persistedId: undefined, model: 'selected-model' }] }
+  const project = (status: 'generating' | 'completed') => projectPersonalTranscript([
+    { message: user, contextUser: null },
+    { message: message('response-db', 'turn', 'assistant', { modelId: 'routed-model', status, content: 'Canonical' }), contextUser: user },
+  ], [pending])
+  const active = project('generating').exchanges[0].responses
+  assert.deepEqual(active.map(response => [response.persistedId, response.model]), [['response-db', 'routed-model']])
+  const settled = project('completed')
+  assert.deepEqual(settled.exchanges[0].responses.map(response => response.persistedId), ['response-db'])
+  assert.deepEqual(settled.exchanges[0].responses[0].parts, [{ type: 'text', text: 'Canonical' }])
+  assert.ok(settled.terminalTurnIds.has('turn'))
+})
+
 test('the native adapter retains file, tool and generated UI parts without lossy serialization', () => {
   const parts = [
     { type: 'file', url: '/file', fileName: 'document.pdf', mediaType: 'application/pdf' },

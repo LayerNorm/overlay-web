@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Land CN-05 personal history/sending and CN-06 durable execution/progress together on the main-targeted integration branch.
 
+- Reconcile a sender's streamed native reply with its canonical row even when the local stream lacks the recorded model, so the sender no longer shows a phantom second response version until reload.
+
 - Keep personal chat working during web-first releases and backend rollback by enabling native list ownership only when the backend advertises the matching revision. Validate all native personal-chat response shapes explicitly, prevent Undo from reconstructing a record already known to be missing, and preserve concurrent title changes while archive and Undo are both pending.
 
 - Subscribe native personal chats directly to scoped execution state for lifecycle, safety and exact-turn commands, while retaining existing BFF execution and a fail-closed readiness rollback gate.
