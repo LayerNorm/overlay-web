@@ -1702,7 +1702,7 @@ export const admit = mutation({
       runId: snapshot.runId,
       actorUserId: admission.policy.actorUserId,
       rootRunId: snapshot.rootRunId,
-      sharedRoomRestriction: await restrictionForSource(ctx, admission.policy.workspaceId ?? '', admission.policy.actorUserId, source, serverSecret),
+      sharedRoomRestriction: await restrictionForSource(ctx, admission.policy.workspaceId, admission.policy.actorUserId, source, serverSecret),
       ...(delivery ? { deliveryAgentRunId: delivery._id } : {}),
       activeDescendantCount: 0,
       sourceJson: stableJson(source),
@@ -1758,6 +1758,10 @@ function conversationIdFromSource(source: HarnessSource): string | null {
     : null
 }
 
+function normalizedWorkspaceId(workspaceId: string | undefined): string | null {
+  return workspaceId || null
+}
+
 async function sourceRoomIsShared(ctx: MutationCtx | QueryCtx, source: HarnessSource): Promise<boolean> {
   const conversationId = conversationIdFromSource(source)
   return conversationId ? await conversationAudienceIsShared(ctx, conversationId) : false
@@ -1771,7 +1775,7 @@ function newRoomRestrictionTrail(): RoomRestrictionTrail {
 
 async function restrictionForSource(
   ctx: MutationCtx | QueryCtx,
-  workspaceId: string,
+  workspaceId: string | undefined,
   actorUserId: string,
   source: HarnessSource,
   serverSecret: string,
@@ -1785,7 +1789,8 @@ async function restrictionForSource(
   }
   const id = ctx.db.normalizeId('conversations', conversationId)
   const conversation = id ? await ctx.db.get(id) : null
-  if (!conversation || conversation.workspaceId !== workspaceId || conversation.deletedAt !== undefined) {
+  if (!conversation || normalizedWorkspaceId(conversation.workspaceId) !== normalizedWorkspaceId(workspaceId)
+    || conversation.deletedAt !== undefined) {
     throw new Error('CONVERSATION_ACCESS_DENIED')
   }
   const shared = await conversationAudienceIsShared(ctx, conversationId)
@@ -1805,7 +1810,7 @@ async function restrictionForSource(
 
 async function restrictionForRun(
   ctx: MutationCtx | QueryCtx,
-  workspaceId: string,
+  workspaceId: string | undefined,
   actorUserId: string,
   runId: string,
   serverSecret: string,
@@ -1822,7 +1827,7 @@ async function restrictionForRun(
   if (lineage.length > MAX_ROOM_RESTRICTION_DEPTH) throw new Error('Invalid harness parent lineage.')
   const lineageRunIds = new Set(lineage.map(entry => entry.run.runId))
   for (const entry of lineage) {
-    if (entry.metadata.policy.workspaceId !== workspaceId
+    if (normalizedWorkspaceId(entry.metadata.policy.workspaceId) !== normalizedWorkspaceId(workspaceId)
       || entry.run.sharedRoomRestriction === undefined || entry.run.sharedRoomRestriction === true) return true
     const source = parseJson<HarnessSource>(entry.run.sourceJson)
     if (await sourceRoomIsShared(ctx, source)) return true
@@ -1845,7 +1850,7 @@ async function inheritedRoomRestriction(
   source: HarnessSource,
   serverSecret: string,
 ): Promise<boolean> {
-  const workspaceId = lineage[0]?.metadata.policy.workspaceId ?? ''
+  const workspaceId = lineage[0]?.metadata.policy.workspaceId
   const actorUserId = lineage[0]?.metadata.policy.actorUserId ?? ''
   if (lineage.some(entry => entry.run.sharedRoomRestriction === undefined || entry.run.sharedRoomRestriction)) return true
   if (await restrictionForSource(ctx, workspaceId, actorUserId, source, serverSecret, newRoomRestrictionTrail())) return true
@@ -1893,7 +1898,7 @@ export const refreshRoomContextRestrictions = mutation({
     if (!run) throw new Error('HARNESS_RUN_NOT_FOUND')
     const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
     const inheritedSharedRoom = await restrictionForRun(
-      ctx, lineage[0]!.metadata.policy.workspaceId ?? '', args.actorUserId, args.runId, args.serverSecret,
+      ctx, lineage[0]!.metadata.policy.workspaceId, args.actorUserId, args.runId, args.serverSecret,
     )
     if (inheritedSharedRoom) {
       for (const entry of lineage) {
