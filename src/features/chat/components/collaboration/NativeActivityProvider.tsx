@@ -9,6 +9,7 @@ import { useNativeCollaboration } from './NativeCollaborationProvider'
 import { overlayReadItems, overlayUnreadCounts } from './native-activity-overlays'
 
 type Intent = Omit<Extract<ReadAction, { kind: 'ids' }>, 'id' | 'at'> | Omit<Extract<ReadAction, { kind: 'all' }>, 'id' | 'at'> | Omit<Extract<ReadAction, { kind: 'room' }>, 'id' | 'at'>
+const EMPTY_QUERIES = {}
 
 function NativeActivityOwner({ children }: { children: ReactNode }) {
   const native = useNativeCollaboration()
@@ -16,13 +17,15 @@ function NativeActivityOwner({ children }: { children: ReactNode }) {
   const args = native.status === 'ready' ? { workspaceId } : 'skip'
   const page = usePaginatedQuery(api.collaboration.nativeActivity.listNotifications, args === 'skip' ? args : { ...args, filter: 'all' }, { initialNumItems: 100 })
   const rawCounts = useQuery(api.collaboration.nativeActivity.getUnreadCounts, args)
+  const roomIdsKey = JSON.stringify([...new Set([...native.direct.rows, ...native.channels.rows].map(row => row.conversationId))])
   const roomQueries = useMemo(() => {
     const queries: Record<string, { query: typeof api.collaboration.nativeActivity.getRoomUnreadCounts; args: { workspaceId: string; conversationIds: Id<'conversations'>[] } }> = {}
-    if (native.status !== 'ready') return queries
-    const ids = [...new Set([...native.direct.rows, ...native.channels.rows].map(row => row.conversationId))]
+    if (native.status !== 'ready') return EMPTY_QUERIES
+    const ids = JSON.parse(roomIdsKey) as Id<'conversations'>[]
+    if (!ids.length) return EMPTY_QUERIES
     for (let i = 0; i < ids.length; i += 100) queries[String(i)] = { query: api.collaboration.nativeActivity.getRoomUnreadCounts, args: { workspaceId, conversationIds: ids.slice(i, i + 100) } }
     return queries
-  }, [native.channels.rows, native.direct.rows, native.status, workspaceId])
+  }, [roomIdsKey, native.status, workspaceId])
   const roomCounts = useQueries(roomQueries)
   const mark = useMutation(api.collaboration.nativeActivity.markNotificationsRead)
   const markAll = useMutation(api.collaboration.nativeActivity.markAllNotificationsRead)

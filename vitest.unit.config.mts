@@ -24,6 +24,7 @@ export default defineConfig({
       'src/features/chat/components/collaboration/NativeCollaborationProvider.test.tsx',
       'src/features/agents/lib/native-agent-threads.test.tsx',
       'src/features/chat/components/collaboration/native-room-state.test.tsx',
+      'src/features/chat/components/collaboration/native-room-subscriptions.test.tsx',
       'src/features/chat/components/collaboration/native-activity.test.tsx',
       'src/server/files/computer-publication.test.ts',
       'src/server/files/computer-publication-service.test.ts',

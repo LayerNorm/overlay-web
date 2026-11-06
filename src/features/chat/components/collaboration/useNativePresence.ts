@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQueries } from 'convex/react'
 import type { FunctionReturnType } from 'convex/server'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
 type Rows = NonNullable<FunctionReturnType<typeof api.collaboration.nativePresence.watchPresence>>
+const EMPTY_QUERIES = {}
 export function visiblePresence(rows: Rows, now: number) {
   const groups = new Map<string, Rows>()
   for (const row of rows) {
@@ -36,7 +37,8 @@ export function usePresenceDeadlines(rows: Rows | null | undefined) {
 }
 
 export function useNativePresence(workspaceId: string, conversationId: string, enabled: boolean) {
-  const result = useQueries(enabled ? { presence: { query: api.collaboration.nativePresence.watchPresence,
-    args: { workspaceId, conversationId: conversationId as Id<'conversations'> } } } : {}).presence
+  const queries = useMemo(() => enabled ? { presence: { query: api.collaboration.nativePresence.watchPresence,
+    args: { workspaceId, conversationId: conversationId as Id<'conversations'> } } } : EMPTY_QUERIES, [enabled, workspaceId, conversationId])
+  const result = useQueries(queries).presence
   return usePresenceDeadlines(enabled && Array.isArray(result) ? result as Rows : null)
 }

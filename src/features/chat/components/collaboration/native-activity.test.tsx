@@ -9,7 +9,7 @@ import { nativeNotificationHref } from './native-notification-navigation'
 import { observedRenderedSequence } from './native-room-read-markers'
 import { useObservedNotificationReads } from './useObservedNotificationReads'
 
-const mocks = vi.hoisted(() => ({ mutation: vi.fn(), query: vi.fn(), http: vi.fn(), toastError: vi.fn(), realQueries: false }))
+const mocks = vi.hoisted(() => ({ mutation: vi.fn(), query: vi.fn(), queryMaps: vi.fn(), http: vi.fn(), toastError: vi.fn(), realQueries: false }))
 vi.mock('convex/react', async (importOriginal) => {
   const actual = await importOriginal<typeof import('convex/react')>()
   return {
@@ -17,7 +17,7 @@ vi.mock('convex/react', async (importOriginal) => {
     useMutation: () => mocks.mutation,
     useQuery: (...args: unknown[]) => { mocks.query(...args); return counts },
     usePaginatedQuery: () => ({ results: items, status: 'Exhausted', loadMore() {} }),
-    useQueries: (queries: Parameters<typeof actual.useQueries>[0]) => mocks.realQueries ? actual.useQueries(queries) : { rooms: counts },
+    useQueries: (queries: Parameters<typeof actual.useQueries>[0]) => { mocks.queryMaps(queries); return mocks.realQueries ? actual.useQueries(queries) : { rooms: counts } },
   }
 })
 vi.mock('./NativeCollaborationProvider', async () => (await import('@/components/providers/native-collaboration-context')))
@@ -68,6 +68,9 @@ it('updates real Convex room subscriptions when the native scope and room list c
   await act(async () => { renderer = create(<ConvexProvider client={client}>{tree(native)}</ConvexProvider>) })
   expect(value.counts?.byConversation[room]).toEqual(bucket(2))
   expect(watchQuery).toHaveBeenLastCalledWith(expect.anything(), { workspaceId: 'workspace', conversationIds: [room] }, {})
+  const queryMap = mocks.queryMaps.mock.lastCall![0]
+  await act(async () => { renderer!.update(<ConvexProvider client={client}>{tree({ ...native, direct: { ...native.direct, rows: [...rows] } })}</ConvexProvider>) })
+  expect(mocks.queryMaps.mock.lastCall![0]).toBe(queryMap)
   const other = 'other-room' as typeof room
   await act(async () => { renderer!.update(<ConvexProvider client={client}>{tree({ ...native, workspaceId: 'other-workspace', direct: { ...native.direct, rows: [{ conversationId: other }] as typeof rows } })}</ConvexProvider>) })
   expect(watchQuery).toHaveBeenLastCalledWith(expect.anything(), { workspaceId: 'other-workspace', conversationIds: [other] }, {})

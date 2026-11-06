@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 import { useQueries, useQuery } from 'convex/react'
 import type { FunctionReturnType } from 'convex/server'
 import { api } from '../../../../../convex/_generated/api'
@@ -44,9 +44,11 @@ export function applyRoomOverlay(state: RoomSnapshot, entry: RoomOverlay): RoomS
   }
 }
 
+const EMPTY_QUERIES = {}
+
 function reactionQueries(workspaceId: string, conversationId: string, messageIds: string[], enabled: boolean) {
   const groups: Record<string, { query: typeof api.collaboration.nativeRoomState.listReactions; args: { workspaceId: string; conversationId: Id<'conversations'>; messageIds: Id<'conversationMessages'>[] } }> = {}
-  if (!enabled) return groups
+  if (!enabled || !messageIds.length) return EMPTY_QUERIES
   const unique = [...new Set(messageIds)]
   for (let i = 0; i < unique.length; i += 100) groups[`batch${i}`] = { query: api.collaboration.nativeRoomState.listReactions,
     args: { workspaceId, conversationId: conversationId as Id<'conversations'>, messageIds: unique.slice(i, i + 100) as Id<'conversationMessages'>[] } }
@@ -61,7 +63,9 @@ function useRoomStateOwner(workspaceId: string, conversationId: string, messageI
   const client = useNativeRoomStateClient()
   const data = useQuery(api.collaboration.nativeRoomState.getRoomState, { workspaceId, conversationId: conversationId as Id<'conversations'> })
   const allowed = Boolean(data && data.workspaceId === workspaceId && data.conversationId === conversationId && data.viewerUserId === native.viewerUserId)
-  const results = Object.values(useQueries(reactionQueries(workspaceId, conversationId, messageIds, allowed))) as Array<Reactions | null | undefined | Error>
+  const messageIdsKey = JSON.stringify(messageIds)
+  const queries = useMemo(() => reactionQueries(workspaceId, conversationId, JSON.parse(messageIdsKey) as string[], allowed), [workspaceId, conversationId, messageIdsKey, allowed])
+  const results = Object.values(useQueries(queries)) as Array<Reactions | null | undefined | Error>
   const error = results.find(row => row instanceof Error)
   if (error instanceof Error) throw error
   const reactions = results.flatMap(row => Array.isArray(row) ? row : []).filter(row => row.conversationId === conversationId && messageIds.includes(row.messageId))
