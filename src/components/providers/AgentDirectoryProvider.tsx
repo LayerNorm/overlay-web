@@ -12,7 +12,6 @@ import {
   type ReactNode,
 } from 'react'
 import { useConvex, useMutation, usePaginatedQuery, useQuery, useConvexAuth } from 'convex/react'
-import type { OptimisticLocalStore } from 'convex/browser'
 import { api } from '../../../convex/_generated/api'
 import { Button } from '@overlay/ui/primitives'
 import type {
@@ -24,13 +23,14 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { waitForArchivedRevision } from './native-agent-restore'
+import { updateDirectoryLists, updateAgentCaches, restoreAgentCaches } from './native-agent-directory-cache'
 
 export type NativeAgent = Omit<WorkspaceAgentDirectoryItem, 'canEdit'> & {
   canEdit: boolean
   revision: string
 }
 type NativeList = NativeAgent[]
-type NativeAgentPage = { page: NativeList; continueCursor: string; isDone: boolean }
 type NativeHarness = Extract<WorkspaceAgentUpdateInput['harness'], 'overlay' | 'claude-code' | 'codex'>
 type NativeUpdatePatch = Omit<WorkspaceAgentUpdateInput, 'isDefault' | 'harness'> & { harness?: NativeHarness }
 type AgentMutationPatch = Omit<WorkspaceAgentUpdateInput, 'isDefault'>
@@ -180,36 +180,6 @@ class AgentDirectoryErrorBoundary extends Component<{
   render() {
     return this.state.failed ? this.props.fallback : this.props.children
   }
-}
-
-function waitForArchivedRevision(convex: ReturnType<typeof useConvex>, workspaceId: string, agentId: string, signal: AbortSignal): Promise<string> {
-  const watch = convex.watchQuery(api.agents.nativeDirectory.get, { workspaceId, agentId, includeArchived: true })
-  return new Promise((resolve, reject) => {
-    let unsubscribe = () => {}
-    const finish = (revision?: string, error?: unknown) => {
-      clearTimeout(timer)
-      unsubscribe()
-      signal.removeEventListener('abort', abort)
-      if (revision) resolve(revision)
-      else reject(error)
-    }
-    const abort = () => finish(undefined, new Error('Native agent directory is unavailable'))
-    const timer = setTimeout(() => finish(undefined, new Error('Agent archive is still syncing. Retry Undo.')), 10_000)
-    const read = () => {
-      try {
-        const agent = watch.localQueryResult()
-        if (agent === null || (agent && (agent.id !== agentId || agent.workspaceId !== workspaceId))) {
-          finish(undefined, new Error('The archived agent is no longer available'))
-        } else if (agent?.archivedAt !== undefined) {
-          finish(agent.revision)
-        }
-      } catch (error) { finish(undefined, error) }
-    }
-    if (signal.aborted) { abort(); return }
-    signal.addEventListener('abort', abort, { once: true })
-    unsubscribe = watch.onUpdate(read)
-    read()
-  })
 }
 
 function AgentDirectoryErrorFallback({ onRetry }: { onRetry(): void }) {
@@ -485,64 +455,6 @@ function NativeAgentDirectoryScope({
   ])
 
   return <AgentDirectoryContext.Provider value={value}>{children}</AgentDirectoryContext.Provider>
-}
-
-function updateDirectoryLists(
-  store: OptimisticLocalStore,
-  workspaceId: string,
-  update: (query: { args: { includeArchived?: boolean; paginationOpts: { cursor: string | null } } }, value: NativeAgentPage) => NativeAgentPage,
-) {
-  for (const query of store.getAllQueries(api.agents.nativeDirectory.list)) {
-    if (query.value === undefined || query.args.workspaceId !== workspaceId) continue
-    store.setQuery(api.agents.nativeDirectory.list, query.args, update(query, query.value))
-  }
-}
-
-function updateAgentCaches(
-  store: OptimisticLocalStore,
-  workspaceId: string,
-  agentId: string,
-  update: (agent: NativeAgent) => NativeAgent,
-) {
-  updateDirectoryLists(store, workspaceId, (query, value) => ({
-    ...value,
-    page: query.args.includeArchived
-      ? value.page
-      : value.page.map((agent) => agent.id === agentId ? update(agent) : agent),
-  }))
-  for (const query of store.getAllQueries(api.agents.nativeDirectory.get)) {
-    if (query.value == null || query.args.workspaceId !== workspaceId || query.args.agentId !== agentId) continue
-    store.setQuery(api.agents.nativeDirectory.get, query.args, update(query.value))
-  }
-}
-
-function restoreAgentCaches(store: OptimisticLocalStore, workspaceId: string, agentId: string) {
-  let restoredAgent: NativeAgent | null = null
-  for (const query of store.getAllQueries(api.agents.nativeDirectory.list)) {
-    if (query.args.workspaceId !== workspaceId || !query.args.includeArchived || query.value === undefined) continue
-    restoredAgent = query.value.page.find((agent) => agent.id === agentId) ?? restoredAgent
-  }
-  for (const query of store.getAllQueries(api.agents.nativeDirectory.get)) {
-    if (query.args.workspaceId !== workspaceId || query.args.agentId !== agentId || !query.value) continue
-    restoredAgent = query.value
-  }
-  if (!restoredAgent) return
-  const restored = { ...restoredAgent }
-  delete restored.archivedAt
-  updateDirectoryLists(store, workspaceId, (query, value) => {
-    if (query.args.includeArchived) {
-      return { ...value, page: value.page.filter((agent) => agent.id !== agentId) }
-    }
-    if (query.args.paginationOpts.cursor !== null) return value
-    return {
-      ...value,
-      page: [restored, ...value.page.filter((agent) => agent.id !== agentId)],
-    }
-  })
-  for (const query of store.getAllQueries(api.agents.nativeDirectory.get)) {
-    if (query.value === undefined || query.args.workspaceId !== workspaceId || query.args.agentId !== agentId) continue
-    store.setQuery(api.agents.nativeDirectory.get, query.args, restored)
-  }
 }
 
 export function useAgentDirectory() {
