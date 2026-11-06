@@ -16,9 +16,13 @@ function NativeActivityOwner({ children }: { children: ReactNode }) {
   const args = native.status === 'ready' ? { workspaceId } : 'skip'
   const page = usePaginatedQuery(api.collaboration.nativeActivity.listNotifications, args === 'skip' ? args : { ...args, filter: 'all' }, { initialNumItems: 100 })
   const rawCounts = useQuery(api.collaboration.nativeActivity.getUnreadCounts, args)
-  const ids = [...new Set([...native.direct.rows, ...native.channels.rows].map(row => row.conversationId))]
-  const roomQueries: Record<string, { query: typeof api.collaboration.nativeActivity.getRoomUnreadCounts; args: { workspaceId: string; conversationIds: Id<'conversations'>[] } }> = {}
-  if (args !== 'skip') for (let i = 0; i < ids.length; i += 100) roomQueries[String(i)] = { query: api.collaboration.nativeActivity.getRoomUnreadCounts, args: { workspaceId, conversationIds: ids.slice(i, i + 100) } }
+  const roomQueries = useMemo(() => {
+    const queries: Record<string, { query: typeof api.collaboration.nativeActivity.getRoomUnreadCounts; args: { workspaceId: string; conversationIds: Id<'conversations'>[] } }> = {}
+    if (native.status !== 'ready') return queries
+    const ids = [...new Set([...native.direct.rows, ...native.channels.rows].map(row => row.conversationId))]
+    for (let i = 0; i < ids.length; i += 100) queries[String(i)] = { query: api.collaboration.nativeActivity.getRoomUnreadCounts, args: { workspaceId, conversationIds: ids.slice(i, i + 100) } }
+    return queries
+  }, [native.channels.rows, native.direct.rows, native.status, workspaceId])
   const roomCounts = useQueries(roomQueries)
   const mark = useMutation(api.collaboration.nativeActivity.markNotificationsRead)
   const markAll = useMutation(api.collaboration.nativeActivity.markAllNotificationsRead)

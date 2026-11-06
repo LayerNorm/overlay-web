@@ -1,5 +1,6 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { useLayoutEffect } from 'react'
+import { ConvexProvider, type ConvexReactClient } from 'convex/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { NativeCollaborationContext, emptyNativeCollaboration } from '@/components/providers/native-collaboration-context'
 import { useNativeActivity, type NativeNotification, type UnreadCounts } from '@/components/providers/native-activity-context'
@@ -8,13 +9,17 @@ import { nativeNotificationHref } from './native-notification-navigation'
 import { observedRenderedSequence } from './native-room-read-markers'
 import { useObservedNotificationReads } from './useObservedNotificationReads'
 
-const mocks = vi.hoisted(() => ({ mutation: vi.fn(), query: vi.fn(), http: vi.fn(), toastError: vi.fn() }))
-vi.mock('convex/react', () => ({
-  useMutation: () => mocks.mutation,
-  useQuery: (...args: unknown[]) => { mocks.query(...args); return counts },
-  usePaginatedQuery: () => ({ results: items, status: 'Exhausted', loadMore() {} }),
-  useQueries: () => ({ rooms: counts }),
-}))
+const mocks = vi.hoisted(() => ({ mutation: vi.fn(), query: vi.fn(), http: vi.fn(), toastError: vi.fn(), realQueries: false }))
+vi.mock('convex/react', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('convex/react')>()
+  return {
+    ConvexProvider: actual.ConvexProvider,
+    useMutation: () => mocks.mutation,
+    useQuery: (...args: unknown[]) => { mocks.query(...args); return counts },
+    usePaginatedQuery: () => ({ results: items, status: 'Exhausted', loadMore() {} }),
+    useQueries: (queries: Parameters<typeof actual.useQueries>[0]) => mocks.realQueries ? actual.useQueries(queries) : { rooms: counts },
+  }
+})
 vi.mock('./NativeCollaborationProvider', async () => (await import('@/components/providers/native-collaboration-context')))
 vi.mock('./NativeRoomState', () => ({ useNativeRoomMetadata: () => null }))
 vi.mock('./NativeRoomScope', () => ({ useNativeRoomSession: () => null }))
@@ -37,12 +42,46 @@ function deferred() {
 }
 beforeEach(() => {
   vi.clearAllMocks(); vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true)
+  mocks.realQueries = false
   items = ['one', 'two'].map((id, i) => ({ id, workspaceId: 'workspace', viewerUserId: 'alice', recipientPrincipalId: 'alice', type: 'message', actorPrincipalId: 'bob', conversationId: room, title: id, createdAt: i + 1,
     destination: { conversationId: room, kind: 'direct', archived: false } }))
   counts = { workspaceId: 'workspace', viewerUserId: 'alice', notifications: bucket(2), rooms: bucket(1), byConversation: { [room]: bucket(2) }, byKind: { direct: bucket(2), channel: bucket(0), agentThread: bucket(0) }, observedThrough: 2 }
   mocks.mutation.mockResolvedValue(0)
 })
 afterEach(async () => { if (renderer) await act(async () => renderer!.unmount()); renderer = undefined; vi.unstubAllGlobals() })
+
+it.each(['ready', 'loading', 'unavailable'] as const)('settles native activity with the real Convex subscription when %s', async (status) => {
+  mocks.realQueries = true
+  const client = {} as ConvexReactClient
+  await act(async () => { renderer = create(<ConvexProvider client={client}>{tree({ ...ready, status })}</ConvexProvider>) })
+  expect(value.status).toBe(status)
+  expect(value.ready).toBe(status === 'ready')
+  expect(mocks.query.mock.calls.length).toBeLessThan(10)
+})
+
+it('updates real Convex room subscriptions when the native scope and room list change', async () => {
+  mocks.realQueries = true
+  const watchQuery = vi.fn(() => ({ localQueryResult: () => counts, onUpdate: () => () => {}, journal: () => undefined }))
+  const client = { watchQuery } as unknown as ConvexReactClient
+  const rows = [{ conversationId: room }] as typeof ready.direct.rows
+  const native = { ...ready, direct: { ...ready.direct, rows } }
+  await act(async () => { renderer = create(<ConvexProvider client={client}>{tree(native)}</ConvexProvider>) })
+  expect(value.counts?.byConversation[room]).toEqual(bucket(2))
+  expect(watchQuery).toHaveBeenLastCalledWith(expect.anything(), { workspaceId: 'workspace', conversationIds: [room] }, {})
+  const other = 'other-room' as typeof room
+  await act(async () => { renderer!.update(<ConvexProvider client={client}>{tree({ ...native, workspaceId: 'other-workspace', direct: { ...native.direct, rows: [{ conversationId: other }] as typeof rows } })}</ConvexProvider>) })
+  expect(watchQuery).toHaveBeenLastCalledWith(expect.anything(), { workspaceId: 'other-workspace', conversationIds: [other] }, {})
+  expect(value.counts).toBeNull()
+  expect(mocks.query.mock.calls.length).toBeLessThan(10)
+})
+
+it('propagates real Convex room query errors without a render loop', async () => {
+  mocks.realQueries = true
+  const client = { watchQuery: () => ({ localQueryResult() { throw new Error('room query failed') }, onUpdate: () => () => {}, journal: () => undefined }) } as unknown as ConvexReactClient
+  const native = { ...ready, direct: { ...ready.direct, rows: [{ conversationId: room }] as typeof ready.direct.rows } }
+  await expect(act(async () => { renderer = create(<ConvexProvider client={client}>{tree(native)}</ConvexProvider>) })).rejects.toThrow('room query failed')
+  expect(mocks.query.mock.calls.length).toBeLessThan(10)
+})
 
 it('observes only intersecting rendered rows in a visible document and retries failed reads', async () => {
   const document = Object.assign(new EventTarget(), { visibilityState: 'hidden' })
