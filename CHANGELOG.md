@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add the Convex-native migration architecture plan and its phased PR plan under `internal/plans/`, with current card status, so agents and reviewers can reference the same scope, dependencies and acceptance gates from the repository.
+
 - Land CN-05 personal history/sending and CN-06 durable execution/progress together on the main-targeted integration branch.
 
 - Reconcile a sender's streamed native reply with its canonical row even when the local stream lacks the recorded model, so the sender no longer shows a phantom second response version until reload.
