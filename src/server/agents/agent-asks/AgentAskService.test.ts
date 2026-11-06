@@ -13,7 +13,7 @@ const agent = (id: string, name: string, extra: Partial<WorkspaceAgentDirectoryI
 
 type Row = Record<string, unknown> & { _id: string; turnId: string }
 
-function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown> } = {}) {
+function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown>; initialAskClaims?: number } = {}) {
   const agents = options.agents ?? [agent('scout', 'Scout'), agent('planner', 'Planner'), agent('writer', 'Writer')]
   const trigger: Row | null = options.trigger === undefined
     ? { _id: 'm1', turnId: 'human-turn-1', authorKind: 'human', content: 'hi', role: 'user', mode: 'act', contentType: 'text', createdAt: 0 } as Row
@@ -27,6 +27,8 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
   const assignmentCalls: Array<Record<string, unknown>> = []
   const assignments = new Map<string, { assignmentId: string; conversationId: string; title: string }>()
   const assignmentMessages = new Map<string, string>()
+  const nativeDispatchClaims = new Set<string>()
+  let askClaims = options.initialAskClaims ?? 0
   const callerLookups: Array<Record<string, unknown>> = []
   let polls = 0
   let clock = 0
@@ -72,7 +74,18 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
         return [{ _id: 'r1', turnId: 'agent_q1_planner', authorKind: 'agent', status: options.replyStatus ?? 'completed', content: 'the plan', tokens: { input: options.replyTokens ?? 0, output: 0 } }] as never
       },
     },
-    claimBudget: async (args) => { claims.push(args); if (options.claimDenied) return { ok: false, reason: options.claimDenied }; return claims.length > MAX_AGENT_ASKS_PER_ROOT ? { ok: false, reason: 'budget' } : { ok: true } },
+    claimBudget: async (args) => {
+      claims.push(args)
+      if (options.claimDenied) return { ok: false, reason: options.claimDenied }
+      if (args.dispatchId) {
+        if (nativeDispatchClaims.has(args.dispatchId)) return { ok: true, alreadyClaimed: true }
+        if (askClaims >= MAX_AGENT_ASKS_PER_ROOT) return { ok: false, reason: 'budget' }
+        nativeDispatchClaims.add(args.dispatchId)
+        askClaims += 1
+        return { ok: true, alreadyClaimed: false }
+      }
+      return claims.length > MAX_AGENT_ASKS_PER_ROOT ? { ok: false, reason: 'budget' } : { ok: true }
+    },
     recordReply: async (args) => { recordedReplies.push(args) },
     listReplies: async () => options.recorded ?? [],
     releaseBudget: async (args) => { releases.push(args) },
@@ -123,6 +136,18 @@ test('native assignments isolate dispatches and replay the same assignment messa
   assert.notEqual(replay.assignmentId, second.assignmentId)
   assert.notEqual(replay.conversationId, second.conversationId)
   assert.equal(state.assignments.size, 2)
+})
+
+test('native replay at the ask-budget boundary reuses its persisted dispatch claim', async () => {
+  const state = setup({ initialAskClaims: MAX_AGENT_ASKS_PER_ROOT - 1 })
+  const nativeAssignment = nativeAgentAssignmentContext({
+    parentConversationId: 'c1', parentRunId: 'run-parent', rootRunId: 'root-run', toolCallId: 'at-limit',
+  })
+  await state.ask({ nativeAssignment, wait: false })
+  await state.ask({ nativeAssignment, wait: false })
+  assert.equal(state.claims.filter(claim => claim.dispatchId === nativeAssignment.idempotencyKey).length, 2)
+  assert.equal(state.assignments.size, 1)
+  assert.equal(state.releases.length, 0)
 })
 
 test('native assignments reject external targets before creating a thread', async () => {

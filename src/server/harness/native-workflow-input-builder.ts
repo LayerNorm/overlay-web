@@ -158,12 +158,18 @@ export async function buildNativeHarnessWorkflowInput(args: NativeInputArgs): Pr
     userId: args.actorUserId,
   })
   assertNativeRunIdentity(run, args)
+  const repository = new ConvexHarnessRepository()
+  const restrictionLookup = args.parentRunId || run.harnessRunId
+    ? repository.refreshRoomContextRestrictions({
+      actorUserId: args.actorUserId,
+      runId: args.parentRunId ?? run.harnessRunId!,
+    })
+    : repository.resolveConversationRoomRestrictions({
+      actorUserId: args.actorUserId, workspaceId: args.workspaceId, conversationId: args.conversationId,
+    })
   const [surfaceExecution, roomRestrictions] = await Promise.all([
     loadSurfaceExecution(args, run),
-    new ConvexHarnessRepository().refreshRoomContextRestrictions({
-      actorUserId: args.actorUserId,
-      runId: args.parentRunId ?? run.harnessRunId ?? `workspace:${run.id}`,
-    }),
+    restrictionLookup,
   ])
   const inheritedSharedRoom = roomRestrictions.inheritedSharedRoom
   const prepared = await prepareNativeRoomInputs(args, run, surfaceExecution, inheritedSharedRoom)

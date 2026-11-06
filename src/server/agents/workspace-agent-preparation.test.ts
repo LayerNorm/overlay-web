@@ -81,6 +81,19 @@ test('shared preparation uses the selected model and grants without reserving us
   expect(mocks.server.chatUsagePolicy.reserveForAttempt).not.toHaveBeenCalled()
 })
 
+test('inherited native room restrictions reach tool construction as well as turn context', async () => {
+  await prepareWorkspaceAgentInputs({
+    actorUserId: 'user', agentId: 'agent', conversationId: 'assignment-room', messageId: 'question',
+    memoryEnabled: true, workspaceId: 'workspace', inheritedSharedRoom: true,
+  })
+  expect(mocks.buildTooling).toHaveBeenCalledWith(expect.objectContaining({
+    inheritedSharedRoom: true,
+  }))
+  expect(mocks.buildContext).toHaveBeenCalledWith(expect.objectContaining({
+    inheritedSharedRoom: true,
+  }))
+})
+
 test('agent preparation admits only its configured model', async () => {
   mocks.gate.mockResolvedValue({ runtimeEntitlements: { tools: ['files'] }, paid: true })
   const prepared = await prepareWorkspaceAgentInputs({

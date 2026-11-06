@@ -286,6 +286,11 @@ export default defineSchema({
     replies: v.optional(v.array(v.object({ conversationId: v.string(), turnId: v.string() }))),
   }).index('by_workspaceId_key', ['workspaceId', 'key']),
 
+  agentAskDispatchClaims: defineTable({
+    workspaceId: v.string(), dispatchId: v.string(), rootKey: v.string(), turnKey: v.string(),
+    state: v.union(v.literal('claimed'), v.literal('released')), updatedAt: v.number(),
+  }).index('by_workspaceId_dispatchId', ['workspaceId', 'dispatchId']),
+
   agentProfiles: defineTable({
     workspaceId: v.string(),
     agentId: v.string(),

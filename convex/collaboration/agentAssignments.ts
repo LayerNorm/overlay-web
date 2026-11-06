@@ -5,6 +5,7 @@ import { requireConversationAccess } from './directMessages'
 import { requireServerSecret } from '../lib/auth'
 import { requireNativeCapability } from '../lib/nativeCapabilities'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
+import { parseByoModelId } from '../../src/shared/agents/agent-model'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 
 type DbContext = MutationCtx | QueryCtx
@@ -24,10 +25,14 @@ type AssignmentArgs = {
 }
 
 async function requireRequester(ctx: DbContext, args: { workspaceId: string; requesterUserId: string }) {
-  const principal = await ctx.db.query('workspacePrincipals')
+  const [workspace, principal] = await Promise.all([
+    ctx.db.query('workspaces').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).unique(),
+    ctx.db.query('workspacePrincipals')
     .withIndex('by_workspaceId_userId', q => q.eq('workspaceId', args.workspaceId).eq('userId', args.requesterUserId))
-    .unique()
-  if (!principal || principal.type !== 'human' || principal.archivedAt !== undefined) {
+    .unique(),
+  ])
+  if (!workspace || workspace.status !== 'active' || workspace.archivedAt !== undefined
+    || !principal || principal.type !== 'human' || principal.archivedAt !== undefined) {
     throw new Error('WORKSPACE_ACCESS_DENIED')
   }
   const membership = await ctx.db.query('workspaceMemberships')
@@ -153,7 +158,7 @@ async function accessibleConversation(
     .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversationId)
       .eq('principalId', viewer.principal.principalId))
     .unique()
-  return participant?.status === 'active' ? conversation : null
+  return participant?.status === 'active' && participant.workspaceId === workspaceId ? conversation : null
 }
 
 async function visibleAgentForViewer(
@@ -165,10 +170,14 @@ async function visibleAgentForViewer(
   const agent = await ctx.db.query('workspaceAgentDefinitions')
     .withIndex('by_agentId', q => q.eq('agentId', agentId))
     .unique()
-  if (!agent || agent.workspaceId !== workspaceId
+  if (!agent || agent.workspaceId !== workspaceId || agent.archivedAt !== undefined
     || (agent.visibility === 'creator' && agent.createdByPrincipalId !== viewer.principal.principalId)
     || (agent.agentRole === 'personal_chief' && agent.chiefOwnerUserId !== viewer.userId)) return null
   return agent
+}
+
+function agentScope(agent: Doc<'workspaceAgentDefinitions'>): 'workspace' | 'personal' {
+  return agent.agentRole === 'personal_chief' || agent.visibility === 'creator' ? 'personal' : 'workspace'
 }
 
 async function projectedStatus(ctx: DbContext, assignment: Doc<'agentAssignments'>) {
@@ -233,6 +242,9 @@ export const createAgentAssignment = mutation({
       requireActiveAgent(ctx, args.workspaceId, args.callerAgentId),
       requireActiveAgent(ctx, args.workspaceId, args.assignedAgentId),
     ])
+    if (target.agent.harness !== 'overlay' || parseByoModelId(target.agent.modelId) !== null) {
+      throw new Error('NATIVE_HARNESS_TARGET_REQUIRED')
+    }
     visibleToRequester(caller.agent, requester.principalId, args.requesterUserId)
     visibleToRequester(target.agent, requester.principalId, args.requesterUserId)
     await assertCallerRun(ctx, args, caller.principal.principalId)
@@ -350,7 +362,7 @@ export const forConversation = query({
           conversationId: parentConversation._id,
           title: parentConversation.title,
           agentId: childAssignment.callerAgentId,
-          scope: caller.agentRole === 'personal_chief' ? 'personal' : 'workspace',
+          scope: agentScope(caller),
         }
       }
     }
@@ -372,7 +384,7 @@ export const forConversation = query({
         agentName: agent.name,
         title: child.title,
         status: await projectedStatus(ctx, assignment),
-        scope: agent.agentRole === 'personal_chief' ? 'personal' as const : 'workspace' as const,
+        scope: agentScope(agent),
       })
     }
     return { parent, assignments }

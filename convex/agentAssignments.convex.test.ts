@@ -10,6 +10,7 @@ const query = (path: string) => makeFunctionReference<'query'>(path)
 const createAssignment = mutation('collaboration/agentAssignments:createAgentAssignment')
 const forConversation = query('collaboration/agentAssignments:forConversation')
 const inheritedRestrictions = mutation('harness/runs:refreshRoomContextRestrictions')
+const preAdmissionRestrictions = mutation('harness/runs:resolveConversationRoomRestrictions')
 
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
@@ -94,7 +95,7 @@ async function fixture() {
     },
     serverSecret: secret,
   })
-  expect(await convex.query(inheritedRestrictions, {
+  expect(await convex.mutation(inheritedRestrictions, {
     actorUserId: 'alice', runId: parentRunId, serverSecret: secret,
   })).toEqual({ inheritedSharedRoom: true })
   return { convex, ...seeded, parentRunId }
@@ -175,13 +176,10 @@ test('read model returns only authorized child and parent navigation', async () 
     workspaceId: 'workspace', conversationId: assignment.conversationId,
   })).parent).toMatchObject({ scope: 'workspace', conversationId: data.parentConversationId })
   await data.convex.run(async ctx => {
-    const participant = await ctx.db.query('conversationParticipants')
-      .withIndex('by_conversationId_principalId', q => q.eq('conversationId', assignment.conversationId)
-        .eq('principalId', 'alice')).unique()
     const parentParticipant = await ctx.db.query('conversationParticipants')
       .withIndex('by_conversationId_principalId', q => q.eq('conversationId', data.parentConversationId)
         .eq('principalId', 'alice')).unique()
-    await ctx.db.patch(parentParticipant!._id, { status: 'revoked' })
+    await ctx.db.patch(parentParticipant!._id, { status: 'removed' })
   })
   expect((await alice.query(forConversation, {
     workspaceId: 'workspace', conversationId: assignment.conversationId,
@@ -194,9 +192,77 @@ test('read model returns only authorized child and parent navigation', async () 
       .withIndex('by_conversationId_principalId', q => q.eq('conversationId', data.parentConversationId)
         .eq('principalId', 'alice')).unique()
     await ctx.db.patch(parentParticipant!._id, { status: 'active' })
-    await ctx.db.patch(childParticipant!._id, { status: 'revoked' })
+    await ctx.db.patch(childParticipant!._id, { status: 'removed' })
   })
   expect((await alice.query(forConversation, {
     workspaceId: 'workspace', conversationId: data.parentConversationId,
   })).assignments).toEqual([])
+  await data.convex.run(async ctx => {
+    const childParticipant = await ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_principalId', q => q.eq('conversationId', assignment.conversationId)
+        .eq('principalId', 'alice')).unique()
+    const parentParticipant = await ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_principalId', q => q.eq('conversationId', data.parentConversationId)
+        .eq('principalId', 'alice')).unique()
+    await ctx.db.patch(parentParticipant!._id, { status: 'active', workspaceId: 'other-workspace' })
+    await ctx.db.patch(childParticipant!._id, { status: 'active' })
+  })
+  expect((await alice.query(forConversation, {
+    workspaceId: 'workspace', conversationId: assignment.conversationId,
+  })).parent).toBeNull()
+})
+
+test('root followups in assignment conversations inherit persisted parent restrictions', async () => {
+  const data = await fixture()
+  const assignment = await data.convex.mutation(createAssignment, args(data))
+  expect(await data.convex.mutation(preAdmissionRestrictions, {
+    actorUserId: 'alice', workspaceId: 'workspace', conversationId: assignment.conversationId, serverSecret: secret,
+  })).toEqual({ inheritedSharedRoom: true })
+})
+
+test('external surface identity is shared even when only one human remains', async () => {
+  const data = await fixture()
+  await data.convex.run(async ctx => {
+    const participants = await ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_principalId', q => q.eq('conversationId', data.parentConversationId)).collect()
+    const bob = participants.find(row => row.principalId === 'bob')
+    await ctx.db.patch(data.parentConversationId, { externalPlatform: 'slack', surfaceBindingId: 'binding' })
+    if (bob) await ctx.db.patch(bob._id, { status: 'removed' })
+  })
+  expect(await data.convex.mutation(preAdmissionRestrictions, {
+    actorUserId: 'alice', workspaceId: 'workspace', conversationId: data.parentConversationId, serverSecret: secret,
+  })).toEqual({ inheritedSharedRoom: true })
+})
+
+
+test('assignment writes reject archived workspaces and unsupported harness targets', async () => {
+  const archived = await fixture()
+  await archived.convex.run(async ctx => {
+    const workspace = await ctx.db.query('workspaces')
+      .withIndex('by_workspaceId', q => q.eq('workspaceId', 'workspace')).unique()
+    await ctx.db.patch(workspace!._id, { status: 'archived', archivedAt: Date.now() })
+  })
+  await expect(archived.convex.mutation(createAssignment, args(archived))).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+
+  const unsupported = await fixture()
+  await unsupported.convex.run(async ctx => {
+    const target = await ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', q => q.eq('agentId', 'target')).unique()
+    await ctx.db.patch(target!._id, { harness: 'claude-code' })
+  })
+  await expect(unsupported.convex.mutation(createAssignment, args(unsupported))).rejects.toThrow('NATIVE_HARNESS_TARGET_REQUIRED')
+})
+
+test('creator-only ordinary agents use personal navigation scope', async () => {
+  const data = await fixture()
+  await data.convex.run(async ctx => {
+    const target = await ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', q => q.eq('agentId', 'target')).unique()
+    await ctx.db.patch(target!._id, { visibility: 'creator' })
+  })
+  await data.convex.mutation(createAssignment, args(data))
+  const alice = data.convex.withIdentity({ subject: 'alice', issuer: 'https://issuer.example.test' })
+  expect((await alice.query(forConversation, {
+    workspaceId: 'workspace', conversationId: data.parentConversationId,
+  })).assignments[0]?.scope).toBe('personal')
 })

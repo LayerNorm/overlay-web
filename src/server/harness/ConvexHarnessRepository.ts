@@ -133,11 +133,22 @@ export class ConvexHarnessRepository implements HarnessRepository {
     }, { throwOnError: true })
   }
 
-  async refreshRoomContextRestrictions(input: { actorUserId: string; runId: string }) {
-    return await convex.mutation(api.harness.runs.refreshRoomContextRestrictions, {
+  async refreshRoomContextRestrictions(input: { actorUserId: string; runId: string }): Promise<{ inheritedSharedRoom: boolean }> {
+    const restrictions = await convex.mutation<{ inheritedSharedRoom: boolean }>('harness/runs:refreshRoomContextRestrictions', {
       ...input,
       serverSecret: this.serverSecret,
     })
+    if (!restrictions) throw new Error('Harness room restrictions are unavailable.')
+    return restrictions
+  }
+
+  async resolveConversationRoomRestrictions(input: { actorUserId: string; workspaceId: string; conversationId: string }): Promise<{ inheritedSharedRoom: boolean }> {
+    const restrictions = await convex.mutation<{ inheritedSharedRoom: boolean }>('harness/runs:resolveConversationRoomRestrictions', {
+      ...input,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!restrictions) throw new Error('Conversation room restrictions are unavailable.')
+    return restrictions
   }
 
   async writeTranscriptStep(input: {

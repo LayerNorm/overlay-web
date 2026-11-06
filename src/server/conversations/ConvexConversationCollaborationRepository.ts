@@ -353,8 +353,8 @@ implements ConversationCollaborationRepository {
     assignedAgentId: string
     brief: string
     questionTurnId: string
-  }) {
-    return await convex.mutation<{ assignmentId: string; conversationId: string; title: string }>(
+  }): Promise<{ assignmentId: string; conversationId: string; title: string }> {
+    const assignment = await convex.mutation<{ assignmentId: string; conversationId: string; title: string }>(
       'collaboration/agentAssignments:createAgentAssignment',
       {
         ...args,
@@ -363,6 +363,8 @@ implements ConversationCollaborationRepository {
       },
       { throwOnError: true },
     )
+    if (!assignment) throw new Error('Agent assignment creation returned no assignment.')
+    return assignment
   }
 
   async listAccessibleConversationIds(args: { actorUserId: string; workspaceId: string }) {

@@ -58,6 +58,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     agentPrincipalId: agent.principalId,
     conversationId: input.conversationId,
     effectiveModelId: modelId,
+    inheritedSharedRoom: input.inheritedSharedRoom,
     entitlements: gate.runtimeEntitlements,
     grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.harness === 'overlay' && agent.permissionMode === 'auto' ? 'auto' : 'ask',

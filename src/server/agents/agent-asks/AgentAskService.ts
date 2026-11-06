@@ -61,7 +61,7 @@ type StartTurns = (args: {
   initiatorPrincipalId: string; prompt: string; turnId: string; workspaceId: string
 }) => Promise<Array<{ agentId: string; turnId: string }>>
 
-type BudgetClaim = { ok: true } | { ok: false; reason: 'budget' | 'turn_limit' }
+type BudgetClaim = { ok: true; alreadyClaimed?: boolean } | { ok: false; reason: 'budget' | 'turn_limit' }
 type Caller = { agentId: string; conversationId: string; turnId: string }
 type Person = { actorUserId: string; actorPrincipalId: string; workspaceId: string }
 
@@ -83,9 +83,9 @@ export class AgentAskService {
     /** The agents the person can see, which is also who they can ask. */
     directory: (actorUserId: string, workspaceId: string) => Promise<WorkspaceAgentDirectoryItem[]>
     /** Takes one question from the request's and the turn's budgets. */
-    claimBudget: (args: { workspaceId: string; rootKey: string; turnKey: string; maxRoot: number; maxTurn: number }) => Promise<BudgetClaim>
+    claimBudget: (args: { workspaceId: string; rootKey: string; turnKey: string; maxRoot: number; maxTurn: number; dispatchId?: string }) => Promise<BudgetClaim>
     /** Gives back a question taken by `claimBudget` when it could not be asked. */
-    releaseBudget: (args: { workspaceId: string; rootKey: string; turnKey: string }) => Promise<void>
+    releaseBudget: (args: { workspaceId: string; rootKey: string; turnKey: string; dispatchId?: string }) => Promise<void>
     /** Remembers a reply a request's question started, and lists them, to add up what a chain has used. */
     recordReply: (args: { workspaceId: string; rootKey: string; conversationId: string; turnId: string }) => Promise<void>
     listReplies: (args: { workspaceId: string; rootKey: string }) => Promise<Array<{ conversationId: string; turnId: string }>>
@@ -136,8 +136,13 @@ export class AgentAskService {
     if (!next.ok) throw new AgentAskError(ASK_REFUSAL_MESSAGE[next.refusal], 409, `ask_${next.refusal}`)
     await this.refuseIfChainSpentTooMuch(args, lineage)
     const keys = { workspaceId: args.workspaceId, rootKey: `root:${lineage.rootTurnId}`, turnKey: `turn:${args.caller.turnId}` }
-    const claim = await this.dependencies.claimBudget({ ...keys, maxRoot: MAX_AGENT_ASKS_PER_ROOT, maxTurn: MAX_AGENT_ASKS_PER_TURN })
+    const dispatchId = args.nativeAssignment?.idempotencyKey
+    const claim = await this.dependencies.claimBudget({
+      ...keys, ...(dispatchId ? { dispatchId } : {}),
+      maxRoot: MAX_AGENT_ASKS_PER_ROOT, maxTurn: MAX_AGENT_ASKS_PER_TURN,
+    })
     if (!claim.ok) throw new AgentAskError(ASK_REFUSAL_MESSAGE[claim.reason], 429, `ask_${claim.reason}`)
+    let assignmentCreated = false
     try {
       const content = `Asked by ${caller.name}: ${message}`
       const assignmentId = args.nativeAssignment
@@ -167,6 +172,7 @@ export class AgentAskService {
             principalIds: [args.actorPrincipalId, caller.principalId, target.principalId],
             title: `${caller.name} & ${target.name}`,
           })
+      assignmentCreated = Boolean(args.nativeAssignment)
       const posted = await this.postAsAgent({
         person: args, caller, conversationId: room.conversationId, content, turnId: questionTurnId, lineage: next.lineage,
         mentions: [target], rootKey: keys.rootKey, startTurns: args.startTurns,
@@ -179,7 +185,10 @@ export class AgentAskService {
       return assignmentId ? { ...result, assignmentId } : result
     } catch (error) {
       // Nothing reached the other agent, so the question is not spent.
-      await this.dependencies.releaseBudget(keys).catch((_releaseError) => undefined)
+      if (!dispatchId || (claim.alreadyClaimed !== true && !assignmentCreated)) {
+        await this.dependencies.releaseBudget({ ...keys, ...(dispatchId ? { dispatchId } : {}) })
+          .catch((_releaseError) => undefined)
+      }
       throw error
     }
   }

@@ -10,9 +10,16 @@ async function counter(ctx: MutationCtx | QueryCtx, workspaceId: string, key: st
 
 /** Gives a question back when it could not be asked (nothing was posted), so a failure does not use up the limit. */
 export const releaseAgentAskByServer = mutation({
-  args: { serverSecret: v.string(), workspaceId: v.string(), rootKey: v.string(), turnKey: v.string(), now: v.number() },
+  args: { serverSecret: v.string(), workspaceId: v.string(), rootKey: v.string(), turnKey: v.string(), dispatchId: v.optional(v.string()), now: v.number() },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
+    if (args.dispatchId) {
+      const claim = await ctx.db.query('agentAskDispatchClaims')
+        .withIndex('by_workspaceId_dispatchId', q => q.eq('workspaceId', args.workspaceId).eq('dispatchId', args.dispatchId!))
+        .unique()
+      if (!claim || claim.state !== 'claimed') return
+      await ctx.db.patch(claim._id, { state: 'released', updatedAt: args.now })
+    }
     for (const key of [args.rootKey, args.turnKey]) {
       const row = await counter(ctx, args.workspaceId, key)
       if (row && row.count > 0) await ctx.db.patch(row._id, { count: row.count - 1, updatedAt: args.now })
@@ -27,10 +34,14 @@ export const releaseAgentAskByServer = mutation({
 export const claimAgentAskByServer = mutation({
   args: {
     serverSecret: v.string(), workspaceId: v.string(), rootKey: v.string(), turnKey: v.string(),
-    maxRoot: v.number(), maxTurn: v.number(), now: v.number(),
+    maxRoot: v.number(), maxTurn: v.number(), dispatchId: v.optional(v.string()), now: v.number(),
   },
-  handler: async (ctx, args): Promise<{ ok: true } | { ok: false; reason: 'budget' | 'turn_limit' }> => {
+  handler: async (ctx, args): Promise<{ ok: true; alreadyClaimed?: boolean } | { ok: false; reason: 'budget' | 'turn_limit' }> => {
     requireServerSecret(args.serverSecret)
+    const existingDispatch = args.dispatchId ? await ctx.db.query('agentAskDispatchClaims')
+      .withIndex('by_workspaceId_dispatchId', q => q.eq('workspaceId', args.workspaceId).eq('dispatchId', args.dispatchId!))
+      .unique() : null
+    if (existingDispatch?.state === 'claimed') return { ok: true, alreadyClaimed: true }
     const [root, turn] = await Promise.all([counter(ctx, args.workspaceId, args.rootKey), counter(ctx, args.workspaceId, args.turnKey)])
     if ((root?.count ?? 0) >= args.maxRoot) return { ok: false, reason: 'budget' }
     if ((turn?.count ?? 0) >= args.maxTurn) return { ok: false, reason: 'turn_limit' }
@@ -38,7 +49,16 @@ export const claimAgentAskByServer = mutation({
       if (row) await ctx.db.patch(row._id, { count: row.count + 1, updatedAt: args.now })
       else await ctx.db.insert('agentAskCounters', { workspaceId: args.workspaceId, key, count: 1, updatedAt: args.now })
     }
-    return { ok: true }
+    if (args.dispatchId) {
+      if (existingDispatch) await ctx.db.patch(existingDispatch._id, {
+        rootKey: args.rootKey, turnKey: args.turnKey, state: 'claimed', updatedAt: args.now,
+      })
+      else await ctx.db.insert('agentAskDispatchClaims', {
+        workspaceId: args.workspaceId, dispatchId: args.dispatchId, rootKey: args.rootKey,
+        turnKey: args.turnKey, state: 'claimed', updatedAt: args.now,
+      })
+    }
+    return args.dispatchId ? { ok: true, alreadyClaimed: false } : { ok: true }
   },
 })
 

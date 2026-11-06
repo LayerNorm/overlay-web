@@ -2,7 +2,8 @@ import { beforeEach, expect, test, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   refresh: vi.fn(), resolve: vi.fn(), build: vi.fn(), get: vi.fn(), apply: vi.fn(), launch: vi.fn(),
-  startTurn: vi.fn(), failMessage: vi.fn(), ask: vi.fn(),
+  startTurn: vi.fn(), failMessage: vi.fn(), ask: vi.fn(), directory: vi.fn(),
+  remoteTarget: vi.fn(), bindings: vi.fn(),
 }))
 
 vi.mock('server-only', () => ({}))
@@ -21,7 +22,10 @@ vi.mock('@/server/bootstrap', () => ({
     appData: { repositories: { conversationCollaboration: {
       startAgentTurn: mocks.startTurn,
       failAgentMessage: mocks.failMessage,
+    }, connectedAgents: {
+      findInvocationTarget: mocks.remoteTarget, listBindings: mocks.bindings,
     } } },
+    workspaceAgentService: { list: mocks.directory },
     agentAsks: { ask: mocks.ask, post: vi.fn() },
   }),
 }))
@@ -48,6 +52,9 @@ const invocation = {
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.refresh.mockResolvedValue({})
+  mocks.directory.mockResolvedValue({ agents: [{ ...invocation, id: 'target', name: 'Target' }] })
+  mocks.remoteTarget.mockResolvedValue(null)
+  mocks.bindings.mockResolvedValue([])
   mocks.resolve.mockResolvedValue([invocation])
   mocks.build.mockResolvedValue({
     access: { ...access, principalId: 'parent-principal', agentId: 'target', agentPrincipalId: 'target-principal',
@@ -78,6 +85,8 @@ beforeEach(() => {
 test('native ask uses trusted caller, forces async delivery, intersects tools, and replays the named admission key', async () => {
   const first = await dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
     agent: 'Target', message: 'inspect this', wait: true,
+    nativeAssignment: { parentRunId: 'forged', rootRunId: 'forged', toolCallId: 'forged' },
+    actorUserId: 'forged', actorPrincipalId: 'forged', principalId: 'forged', runId: 'forged',
   })
   const second = await dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
     agent: 'Target', message: 'inspect this', wait: true,
@@ -86,6 +95,10 @@ test('native ask uses trusted caller, forces async delivery, intersects tools, a
   expect(second).toMatchObject({ childRunIds: ['workspace:target-run'] })
   expect(mocks.ask).toHaveBeenNthCalledWith(1, expect.objectContaining({
     caller: { agentId: 'parent', conversationId: 'parent-room', turnId: 'parent-turn' },
+    actorUserId: 'human', actorPrincipalId: 'parent-principal',
+    nativeAssignment: expect.objectContaining({
+      parentConversationId: 'parent-room', parentRunId: access.runId, rootRunId: parent.rootRunId, toolCallId: 'tool-call',
+    }),
     wait: false,
   }))
   expect(mocks.startTurn).toHaveBeenCalledWith(expect.objectContaining({
@@ -144,11 +157,22 @@ test('a descendant dispatch uses the original root workflow for surface preparat
   }))
 })
 
-test('native asks refuse external targets before creating a delivery', async () => {
-  mocks.resolve.mockResolvedValueOnce([{ ...invocation, externalAgent: true, harness: 'claude-code' }])
+test('native asks reject external directory targets before asking or creating a delivery', async () => {
+  mocks.directory.mockResolvedValue({ agents: [{ ...invocation, id: 'external', name: 'External', harness: 'claude-code' }] })
   await expect(dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
     agent: 'External', message: 'inspect this',
   })).rejects.toThrow("External agents can't be asked from this run yet.")
+  expect(mocks.ask).not.toHaveBeenCalled()
+  expect(mocks.startTurn).not.toHaveBeenCalled()
+  expect(mocks.apply).not.toHaveBeenCalled()
+})
+
+test('native asks reject remote bindings before asking or creating an assignment', async () => {
+  mocks.bindings.mockResolvedValue([{ bindingId: 'remote-binding' }])
+  await expect(dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
+    agent: 'Target', message: 'inspect this',
+  })).rejects.toThrow("External agents can't be asked from this run yet.")
+  expect(mocks.ask).not.toHaveBeenCalled()
   expect(mocks.startTurn).not.toHaveBeenCalled()
   expect(mocks.apply).not.toHaveBeenCalled()
 })

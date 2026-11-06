@@ -152,6 +152,7 @@ export async function buildWorkspaceAgentTooling(args: {
   agentPrincipalId: string
   conversationId: string
   effectiveModelId: string
+  inheritedSharedRoom?: boolean
   entitlements: Entitlements
   grant: WorkspaceAgentToolGrant
   /** Stable per-turn key so a retried turn does not repeat side effects. */
@@ -165,11 +166,12 @@ export async function buildWorkspaceAgentTooling(args: {
 }): Promise<WorkspaceAgentToolingResult> {
   const { capabilities, overlayToolIds } = resolveAgentGrant(args.grant)
   // The room rule: in a room others can read, the summoner's private reach is withheld (see `prepareActTooling`).
-  const sharedRoom = await resolveSharedRoom({
+  const localSharedRoom = await resolveSharedRoom({
     actorUserId: args.actorUserId,
     conversationId: args.conversationId,
     workspaceId: args.workspaceId,
   })
+  const sharedRoom = Boolean(args.inheritedSharedRoom || localSharedRoom)
   const tooling = await prepareActTooling({
     accessToken: args.accessToken,
     // The agent's overlay grant enters as account policy, which the pipeline

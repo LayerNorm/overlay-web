@@ -62,6 +62,7 @@ async function freshTooling(call: NativeToolCall) {
   const tooling = await buildWorkspaceAgentTooling({
     actorUserId: call.access.actorUserId, agentPrincipalId: call.access.agentPrincipalId,
     conversationId: call.access.conversationId, effectiveModelId: call.context.modelId,
+    inheritedSharedRoom: call.context.sharedRoom,
     entitlements: authority.entitlements, paid: authority.paid,
     grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask', computerApprovalContext: 'work',

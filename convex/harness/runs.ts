@@ -1702,7 +1702,7 @@ export const admit = mutation({
       runId: snapshot.runId,
       actorUserId: admission.policy.actorUserId,
       rootRunId: snapshot.rootRunId,
-      sharedRoomRestriction: await sourceRoomIsShared(ctx, source),
+      sharedRoomRestriction: await restrictionForSource(ctx, admission.policy.workspaceId ?? '', admission.policy.actorUserId, source, serverSecret),
       ...(delivery ? { deliveryAgentRunId: delivery._id } : {}),
       activeDescendantCount: 0,
       sourceJson: stableJson(source),
@@ -1734,11 +1734,13 @@ export const get = query({
   },
 })
 
-async function sourceRoomIsShared(ctx: MutationCtx | QueryCtx, source: HarnessSource): Promise<boolean> {
-  if (!('conversationId' in source)) return false
-  const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
-  const conversation = conversationId ? await ctx.db.get(conversationId) : null
-  if (!conversation) throw new Error('CONVERSATION_ACCESS_DENIED')
+const MAX_ROOM_RESTRICTION_DEPTH = 32
+
+async function conversationAudienceIsShared(ctx: MutationCtx | QueryCtx, conversationId: string): Promise<boolean> {
+  const id = ctx.db.normalizeId('conversations', conversationId)
+  const conversation = id ? await ctx.db.get(id) : null
+  if (!conversation || conversation.deletedAt !== undefined) throw new Error('CONVERSATION_ACCESS_DENIED')
+  if (conversation.externalPlatform !== undefined || conversation.surfaceBindingId !== undefined) return true
   const participants = await ctx.db.query('conversationParticipants')
     .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversation._id))
     .collect()
@@ -1750,19 +1752,137 @@ async function sourceRoomIsShared(ctx: MutationCtx | QueryCtx, source: HarnessSo
   })
 }
 
+function conversationIdFromSource(source: HarnessSource): string | null {
+  return typeof source.conversationId === 'string' && source.conversationId.trim()
+    ? source.conversationId
+    : null
+}
+
+async function sourceRoomIsShared(ctx: MutationCtx | QueryCtx, source: HarnessSource): Promise<boolean> {
+  const conversationId = conversationIdFromSource(source)
+  return conversationId ? await conversationAudienceIsShared(ctx, conversationId) : false
+}
+
+type RoomRestrictionTrail = { conversations: Set<string>; runs: Set<string> }
+
+function newRoomRestrictionTrail(): RoomRestrictionTrail {
+  return { conversations: new Set(), runs: new Set() }
+}
+
+async function restrictionForSource(
+  ctx: MutationCtx | QueryCtx,
+  workspaceId: string,
+  actorUserId: string,
+  source: HarnessSource,
+  serverSecret: string,
+  trail = newRoomRestrictionTrail(),
+  depth = 0,
+): Promise<boolean> {
+  const conversationId = conversationIdFromSource(source)
+  if (!conversationId) return false
+  if (depth > MAX_ROOM_RESTRICTION_DEPTH || trail.conversations.has(conversationId)) {
+    throw new Error('Invalid assignment room restriction ancestry.')
+  }
+  const id = ctx.db.normalizeId('conversations', conversationId)
+  const conversation = id ? await ctx.db.get(id) : null
+  if (!conversation || conversation.workspaceId !== workspaceId || conversation.deletedAt !== undefined) {
+    throw new Error('CONVERSATION_ACCESS_DENIED')
+  }
+  const shared = await conversationAudienceIsShared(ctx, conversationId)
+  const assignment = await ctx.db.query('agentAssignments')
+    .withIndex('by_conversationId', q => q.eq('conversationId', conversation._id))
+    .unique()
+  if (!assignment) return shared
+  if (assignment.workspaceId !== workspaceId || assignment.requesterUserId !== actorUserId
+    || assignment.conversationId !== conversation._id) {
+    throw new Error('Invalid assignment room restriction ancestry.')
+  }
+  trail.conversations.add(conversationId)
+  return shared || await restrictionForRun(
+    ctx, workspaceId, actorUserId, assignment.parentRunId, serverSecret, trail, depth + 1,
+  )
+}
+
+async function restrictionForRun(
+  ctx: MutationCtx | QueryCtx,
+  workspaceId: string,
+  actorUserId: string,
+  runId: string,
+  serverSecret: string,
+  trail = newRoomRestrictionTrail(),
+  depth = 0,
+): Promise<boolean> {
+  if (depth > MAX_ROOM_RESTRICTION_DEPTH || trail.runs.has(runId)) {
+    throw new Error('Invalid assignment run restriction ancestry.')
+  }
+  const run = await findRun(ctx, runId)
+  if (!run || run.actorUserId !== actorUserId) throw new Error('HARNESS_ACCESS_DENIED')
+  trail.runs.add(runId)
+  const lineage = await loadLineage(ctx, run, actorUserId, serverSecret)
+  if (lineage.length > MAX_ROOM_RESTRICTION_DEPTH) throw new Error('Invalid harness parent lineage.')
+  const lineageRunIds = new Set(lineage.map(entry => entry.run.runId))
+  for (const entry of lineage) {
+    if (entry.metadata.policy.workspaceId !== workspaceId
+      || entry.run.sharedRoomRestriction === undefined || entry.run.sharedRoomRestriction === true) return true
+    const source = parseJson<HarnessSource>(entry.run.sourceJson)
+    if (await sourceRoomIsShared(ctx, source)) return true
+    const sourceConversationId = conversationIdFromSource(source)
+    if (sourceConversationId) {
+      const conversationId = ctx.db.normalizeId('conversations', sourceConversationId)
+      const assignment = conversationId
+        ? await ctx.db.query('agentAssignments').withIndex('by_conversationId', q => q.eq('conversationId', conversationId)).unique()
+        : null
+      if (assignment && !lineageRunIds.has(assignment.parentRunId)
+        && await restrictionForRun(ctx, workspaceId, actorUserId, assignment.parentRunId, serverSecret, trail, depth + 1)) return true
+    }
+  }
+  return false
+}
+
 async function inheritedRoomRestriction(
   ctx: MutationCtx | QueryCtx,
   lineage: LineageEntry[],
   source: HarnessSource,
+  serverSecret: string,
 ): Promise<boolean> {
-  const restrictions = await Promise.all([
-    ...lineage.map(async entry => entry.run.sharedRoomRestriction === undefined
-      || entry.run.sharedRoomRestriction
-      || await sourceRoomIsShared(ctx, parseJson<HarnessSource>(entry.run.sourceJson))),
-    sourceRoomIsShared(ctx, source),
-  ])
-  return restrictions.some(Boolean)
+  const workspaceId = lineage[0]?.metadata.policy.workspaceId ?? ''
+  const actorUserId = lineage[0]?.metadata.policy.actorUserId ?? ''
+  if (lineage.some(entry => entry.run.sharedRoomRestriction === undefined || entry.run.sharedRoomRestriction)) return true
+  if (await restrictionForSource(ctx, workspaceId, actorUserId, source, serverSecret, newRoomRestrictionTrail())) return true
+  for (const entry of lineage) {
+    if (await restrictionForSource(ctx, workspaceId, actorUserId, parseJson<HarnessSource>(entry.run.sourceJson),
+      serverSecret, newRoomRestrictionTrail())) return true
+  }
+  return false
 }
+
+export const resolveConversationRoomRestrictions = mutation({
+  args: { actorUserId: v.string(), workspaceId: v.string(), conversationId: v.id('conversations'), serverSecret: v.string() },
+  returns: v.object({ inheritedSharedRoom: v.boolean() }),
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const [workspace, principal] = await Promise.all([
+      ctx.db.query('workspaces').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).unique(),
+      ctx.db.query('workspacePrincipals').withIndex('by_workspaceId_userId', q =>
+        q.eq('workspaceId', args.workspaceId).eq('userId', args.actorUserId)).unique(),
+    ])
+    const membership = principal ? await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', args.workspaceId)
+        .eq('principalId', principal.principalId)).unique() : null
+    if (!workspace || workspace.status !== 'active' || workspace.archivedAt !== undefined
+      || !principal || principal.type !== 'human' || principal.archivedAt !== undefined
+      || !membership || membership.status !== 'active' || membership.role === 'guest') {
+      throw new Error('WORKSPACE_ACCESS_DENIED')
+    }
+    await requireConversationAccess(ctx, {
+      actorUserId: args.actorUserId, conversationId: args.conversationId,
+      workspaceId: args.workspaceId, serverSecret: args.serverSecret,
+    })
+    return { inheritedSharedRoom: await restrictionForSource(
+      ctx, args.workspaceId, args.actorUserId, { conversationId: args.conversationId }, args.serverSecret,
+    ) }
+  },
+})
 
 export const refreshRoomContextRestrictions = mutation({
   args: { actorUserId: v.string(), runId: v.string(), serverSecret: v.string() },
@@ -1772,14 +1892,17 @@ export const refreshRoomContextRestrictions = mutation({
     const run = await findRun(ctx, args.runId)
     if (!run) throw new Error('HARNESS_RUN_NOT_FOUND')
     const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
-    for (const entry of lineage) {
-      const sourceShared = await sourceRoomIsShared(ctx, parseJson<HarnessSource>(entry.run.sourceJson))
-      if ((entry.run.sharedRoomRestriction === undefined || sourceShared)
-        && entry.run.sharedRoomRestriction !== true) {
-        await ctx.db.patch(entry.run._id, { sharedRoomRestriction: true })
+    const inheritedSharedRoom = await restrictionForRun(
+      ctx, lineage[0]!.metadata.policy.workspaceId ?? '', args.actorUserId, args.runId, args.serverSecret,
+    )
+    if (inheritedSharedRoom) {
+      for (const entry of lineage) {
+        if (entry.run.sharedRoomRestriction !== true) {
+          await ctx.db.patch(entry.run._id, { sharedRoomRestriction: true })
+        }
       }
     }
-    return { inheritedSharedRoom: await inheritedRoomRestriction(ctx, lineage, parseJson<HarnessSource>(run.sourceJson)) }
+    return { inheritedSharedRoom }
   },
 })
 
@@ -2177,7 +2300,7 @@ export const apply = mutation({
         runId: snapshot.runId,
         actorUserId: snapshot.policy.actorUserId,
         rootRunId: snapshot.rootRunId,
-        sharedRoomRestriction: await inheritedRoomRestriction(ctx, lineage, source),
+        sharedRoomRestriction: await inheritedRoomRestriction(ctx, lineage, source, args.serverSecret),
         parentRunId: snapshot.parentRunId,
         ...(delivery ? { deliveryAgentRunId: delivery._id } : {}),
         activeDescendantCount: 0,
