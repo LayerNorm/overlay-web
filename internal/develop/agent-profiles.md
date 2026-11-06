@@ -44,10 +44,6 @@ through a deliberate feature-scoped hook/seam, not by broadening the provider
 or removing the legacy directory API.
 
 Run the native endpoint tests with
-`npx vitest run --config vitest.config.mts convex/nativeAgentDirectory.convex.test.ts`
-and the wired provider/organization editor tests with
-`npx vitest run --config vitest.agent-directory.config.mts`.
-The integration owner must add those two frontend test paths to
-`vitest.unit.config.mts` when consolidating the slices so the repository-wide
-test orchestrator includes them; this slice leaves shared runner configuration
-unchanged.
+`npx vitest run --config vitest.config.mts convex/nativeAgentDirectory.convex.test.ts`.
+The provider, connected-agent settings and organization editor seams are part
+of `vitest.unit.config.mts`, so the repository-wide test orchestrator runs them.

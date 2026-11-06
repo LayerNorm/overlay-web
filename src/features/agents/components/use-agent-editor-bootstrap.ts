@@ -7,6 +7,42 @@ import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvi
 import type { getInitialEditorState } from '../lib/agent-editor-state'
 import { useAgentDirectory } from './AgentDirectoryProvider'
 
+type NativeDirectoryState = Pick<ReturnType<typeof useAgentDirectory>, 'mode' | 'detail' | 'directory' | 'loading' | 'canCreate'>
+
+/** Chooses which source owns the editor state: native subscriptions, a closed native path, or legacy HTTP. */
+export function resolveAgentEditorLoad({
+  mode,
+  agentId,
+  native,
+  legacy,
+}: {
+  mode: 'new' | 'edit'
+  agentId: string | undefined
+  native: NativeDirectoryState
+  legacy: { agent: WorkspaceAgentDirectoryItem | null; loading: boolean; loadFailed: boolean; canCreate: boolean }
+}) {
+  if (native.mode === 'legacy') return legacy
+  if (native.mode === 'unavailable') {
+    return { agent: null, loading: native.loading, loadFailed: !native.loading, canCreate: false }
+  }
+  const editingAgentId = mode === 'edit' ? agentId : undefined
+  const directoryAgent = editingAgentId ? findNativeAgent(native, editingAgentId) : null
+  const detailPending = Boolean(editingAgentId && native.detail === undefined && !directoryAgent)
+  const detailMissing = Boolean(editingAgentId && !native.loading && native.detail === null && !directoryAgent)
+  return {
+    agent: directoryAgent,
+    loading: native.loading || detailPending,
+    loadFailed: detailMissing,
+    canCreate: native.canCreate,
+  }
+}
+
+function findNativeAgent(native: NativeDirectoryState, agentId: string) {
+  if (native.detail === null) return null
+  if (native.detail?.id === agentId) return native.detail
+  return native.directory?.find((item) => item.id === agentId) ?? null
+}
+
 export function useAgentEditorBootstrap({
 
   mode,
@@ -90,47 +126,19 @@ export function useAgentEditorBootstrap({
     return () => { cancelled = true }
   }, [activeWorkspaceId, capabilities.externalAgents, ])
 
-  const directoryAgent = mode === 'edit' && agentId
-    ? native.detail === null
-      ? null
-      : native.detail?.id === agentId
-        ? native.detail
-        : native.directory?.find((item) => item.id === agentId) ?? null
-    : null
-  const resolvedAgent = native.mode === 'native'
-    ? mode === 'edit' && agentId
-      ? directoryAgent
-      : null
-    : native.mode === 'unavailable'
-      ? null
-      : agent
-  const resolvedLoading = native.mode === 'native'
-    ? native.loading || Boolean(
-      mode === 'edit' && agentId && native.detail === undefined && !directoryAgent,
-    )
-    : native.mode === 'unavailable'
-      ? native.loading
-      : loading
-  const resolvedLoadFailed = native.mode === 'native'
-    ? Boolean(
-      mode === 'edit' && agentId && !native.loading && native.detail === null
-      && !directoryAgent,
-    )
-    : native.mode === 'unavailable'
-      ? !native.loading
-      : loadFailed
-  const resolvedCanCreate = native.mode === 'native'
-    ? native.canCreate
-    : native.mode === 'unavailable'
-      ? false
-      : canCreate
+  const resolved = resolveAgentEditorLoad({
+    mode,
+    agentId,
+    native,
+    legacy: { agent, loading, loadFailed, canCreate },
+  })
 
   return {
-    agent: resolvedAgent,
+    agent: resolved.agent,
     setAgent,
-    loading: resolvedLoading,
-    loadFailed: resolvedLoadFailed,
-    canCreate: resolvedCanCreate,
+    loading: resolved.loading,
+    loadFailed: resolved.loadFailed,
+    canCreate: resolved.canCreate,
     connectedAgentsEnabled,
     connectedAgentsChecked,
   }

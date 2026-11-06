@@ -52,6 +52,7 @@ async function publishNativePolicy(
   return await convex.mutation(policyPublish, {
     sequence: currentSequence.sequence,
     challenge,
+    issuedAt: Date.now(),
     snapshot: {
       version: 1,
       backendUrl: policyBackendUrl,
