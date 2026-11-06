@@ -57,6 +57,7 @@ import { NativeArchivedRoomEntry } from './NativeArchivedRoomEntry'
 import { useAgentDirectory, useSendMessage, type SendMessage } from '../DirectMessageExperience.hooks'
 import { useNativeRoomSafety } from './useNativeRoomSafety'
 import { RoomThreadPanel } from './RoomSidePanels'
+import { RoomSidePanel } from '../DirectMessageExperience.parts'
 
 let renderer: ReactTestRenderer | undefined
 let session: ReturnType<typeof useNativeRoomSession>
@@ -219,6 +220,39 @@ test('thread panel exposes an accessible older-replies control and disables it d
   expect(loadMore).toHaveBeenCalledTimes(1)
   await act(async () => { renderer!.update(panel(true)) })
   expect(renderer!.root.findAllByType('button').find(button => button.props.children === 'Loading older replies…')?.props.disabled).toBe(true)
+})
+
+test('native thread header uses canonical totals rather than loaded replies or tombstones', async () => {
+  type Props = Parameters<typeof RoomSidePanel>[0]
+  let panel: React.ReactElement<Parameters<typeof RoomThreadPanel>[0]>
+  let count: number | undefined = 1
+  let capped = false
+  function HeaderProbe() {
+    const vm = { threadRoot: message('root'), threadReplies: [message('live', 'room', 'root'),
+      { ...message('deleted', 'room', 'root'), deletedAt: 2 }], pinnedSummaries: [],
+      replyCounts: new Map(count === undefined ? [] : [['root', count]]), replyCountsCapped: new Set(capped ? ['root'] : []) }
+    panel = RoomSidePanel({ roomPanel: 'thread', conversationType: 'dm', title: 'Room', vm,
+      thread: {}, navigation: {}, actions: {}, ctx: {}, onClosePanel() {} } as Props) as typeof panel
+    return null
+  }
+  const headerTree = () => <NativeCollaborationProvider backendReady><NativeRoomScope conversationId="room"><HeaderProbe /></NativeRoomScope></NativeCollaborationProvider>
+  await render(headerTree())
+  expect(panel!.props.replyCount).toBe(1)
+  expect(panel!.props.messages).toHaveLength(3)
+  count = 64; capped = true
+  await render(headerTree())
+  expect(panel!.props.replyCount).toBe(64)
+  expect(panel!.props.replyCountCapped).toBe(true)
+  count = undefined
+  await render(headerTree())
+  expect(panel!.props.replyCount).toBeUndefined()
+})
+
+test.each([[1, false, '1 reply'], [64, true, '64+ replies'], [0, true, 'Replies'],
+  [0, false, '0 replies'], [undefined, false, 'Replies']] as const)('thread panel presents count %s capped %s honestly', async (replyCount, replyCountCapped, label) => {
+  await act(async () => { renderer = create(<RoomThreadPanel roomLabel="Room" replyCount={replyCount} replyCountCapped={replyCountCapped}
+    following={false} onToggleFollow={() => {}} messages={null} onClose={() => {}} input="" onInputChange={() => {}} onSubmit={() => {}} />) })
+  expect(JSON.stringify(renderer!.toJSON())).toContain(`Room · ${label}`)
 })
 
 test.each(['workspace', 'room', 'account'] as const)('scope switch %s synchronously rejects previous scope data', async scope => {

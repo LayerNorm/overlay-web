@@ -87,6 +87,9 @@ query proves it absent canonically. Failed/acknowledged nonces are not added.
 While nonce arguments warm a new subscription, a scope-fenced last authorized
 summary keeps the canonical indicator visible; a null access result clears it.
 Capped counts display a `+`; a zero lower bound displays “Replies”, not “0”.
+The open native Thread header uses this same summary, not the loaded reply-row
+length: tombstones remain visible but do not inflate totals, and fetching older
+replies cannot change the total. A pending summary displays “Replies”, not zero.
 Legacy derivation remains unchanged. `nativeRooms.convex.test.ts` covers older
 history, edited/deleted latest, authorization and budget honesty;
 `native-thread-summaries.test.tsx` covers the real subscribed hook, closed panels,

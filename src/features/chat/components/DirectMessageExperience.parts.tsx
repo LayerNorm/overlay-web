@@ -703,7 +703,8 @@ export function RoomSidePanel({
       <RoomThreadPanel
         history={nativeSession?.threadHistory}
         roomLabel={conversationType === 'channel' ? `#${title}` : title}
-        replyCount={threadReplies.length}
+        replyCount={nativeSession ? vm.replyCounts.get(threadRoot.id) : threadReplies.length}
+        replyCountCapped={vm.replyCountsCapped?.has(threadRoot.id)}
         following={threadFollowing}
         onToggleFollow={toggleThreadFollow}
         input={threadInput}

@@ -79,6 +79,7 @@ export function RoomThreadPanel({
   readOnlyFooter,
   roomLabel,
   replyCount,
+  replyCountCapped = false,
   messages,
   input,
   following,
@@ -91,7 +92,8 @@ export function RoomThreadPanel({
   history?: { hasMore: boolean; loading: boolean; loadMore(): void }
   readOnlyFooter?: ReactNode
   roomLabel: string
-  replyCount: number
+  replyCount: number | undefined
+  replyCountCapped?: boolean
   messages: ReactNode
   input: string
   following: boolean
@@ -102,10 +104,13 @@ export function RoomThreadPanel({
   /** Replaces the reply form — used for mirrored surface threads. */
   readOnlyNotice?: string
 }) {
+  const replyLabel = replyCount === undefined || (replyCountCapped && !replyCount)
+    ? 'Replies'
+    : `${replyCount}${replyCountCapped ? '+' : ''} ${replyCount === 1 && !replyCountCapped ? 'reply' : 'replies'}`
   return (
     <AppScreenSidePanel
       title="Thread"
-      description={`${roomLabel} · ${replyCount} ${replyCount === 1 ? 'reply' : 'replies'}`}
+      description={`${roomLabel} · ${replyLabel}`}
       onClose={onClose}
       bodyClassName="flex flex-col"
     >
