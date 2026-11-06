@@ -6,6 +6,10 @@ export function isNativePersonalChatBackendReady(settings: unknown): boolean {
   return typeof settings === 'object' && settings !== null
     && 'nativePersonalChatRevision' in settings
     && settings.nativePersonalChatRevision === 'native-personal-list-v1'
+    && 'nativePersonalTranscriptRevision' in settings
+    && settings.nativePersonalTranscriptRevision === 'native-personal-transcript-v1'
+    && 'nativePersonalExecutionRevision' in settings
+    && settings.nativePersonalExecutionRevision === 'native-personal-execution-v1'
 }
 
 // Read an existing server endpoint, not a new native function that old backends lack.

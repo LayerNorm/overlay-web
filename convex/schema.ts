@@ -7,6 +7,7 @@ import { nativeAgentErrorPart } from './lib/nativeAgentErrorPart'
 import { harnessDiagnosticValidator } from './lib/harnessDiagnosticValidator'
 import { agentRunResourceRequestValidator } from './harness/resourceValidators'
 import { defineSchema, defineTable } from 'convex/server'
+import { userMessageMetadata } from './lib/userMessageMetadata'
 import { v } from 'convex/values'
 import { nativePolicySnapshotValidator } from './lib/nativePolicySchema'
 
@@ -1521,6 +1522,10 @@ export default defineSchema({
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
     userId: v.string(),
+    nativeSubmittedAt: v.optional(v.number()),
+    nativeRunId: v.optional(v.id('conversationAgentRuns')),
+    nativeProgressSequence: v.optional(v.number()),
+    userMetadata: v.optional(userMessageMetadata),
     // Kept apart from `parts`, which streaming and finalization replace.
     agentPlan: v.optional(v.array(runPlanStepValidator)),
     // Compatibility-only fields retained for rows written during the reverted
@@ -1629,6 +1634,7 @@ export default defineSchema({
           }),
           v.object({
             type: v.literal('data-native-agent-approval'),
+            id: v.optional(v.string()),
             data: v.object({
               runId: v.string(),
               conversationId: v.string(),
@@ -1645,6 +1651,7 @@ export default defineSchema({
           }),
           v.object({
             type: v.literal('data-native-agent-input'),
+            id: v.optional(v.string()),
             data: v.object({
               runId: v.string(),
               conversationId: v.string(),
@@ -1659,9 +1666,11 @@ export default defineSchema({
             type: v.literal('text'),
             text: v.string(),
             storageOmittedParts: v.number(),
+            id: v.optional(v.string()),
           }),
           v.object({
             type: v.literal('tool-invocation'),
+            id: v.optional(v.string()),
             toolInvocation: v.object({
               toolCallId: v.optional(v.string()),
               toolName: v.string(),
@@ -1673,6 +1682,7 @@ export default defineSchema({
           v.object({
             type: v.string(),
             text: v.optional(v.string()),
+            id: v.optional(v.string()),
             url: v.optional(v.string()),
             mediaType: v.optional(v.string()),
             /** Optional display name for file parts */
@@ -1709,6 +1719,7 @@ export default defineSchema({
     createdAt: v.number(),
   }).index('by_conversationId', ['conversationId'])
     .index('by_conversationId_clientNonce', ['conversationId', 'clientNonce'])
+    .index('by_conversationId_turnId_role', ['conversationId', 'turnId', 'role'])
     .index('by_userId', ['userId'])
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
@@ -2034,6 +2045,7 @@ export default defineSchema({
     .index('by_workspaceId_userId_updatedAt', ['workspaceId', 'userId', 'updatedAt'])
     .index('by_workspaceId_userId_parentId_updatedAt', ['workspaceId', 'userId', 'parentId', 'updatedAt'])
     .index('by_workspaceId_userId_conversationId_updatedAt', ['workspaceId', 'userId', 'conversationId', 'updatedAt'])
+    .index('by_userId_conversationId_turnId', ['userId', 'conversationId', 'turnId'])
     .index('by_workspaceId_userId_outputType_updatedAt', ['workspaceId', 'userId', 'outputType', 'updatedAt'])
     .index('by_userId_clientId', ['userId', 'clientId'])
     .index('by_userId_contentHash', ['userId', 'contentHash'])

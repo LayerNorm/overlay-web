@@ -68,6 +68,7 @@ function createConversationRuntime(
     }),
     hydrated: false,
     ui: createConversationUiState(uiOverrides),
+    nativePendingTurns: new Map(),
   }
 }
 
@@ -99,10 +100,12 @@ export function useChatRuntimes(activeChatId: string | null) {
     uiSnapshot: ConversationUiState,
     askMessages: UIMessage[][],
     actMessages: UIMessage[],
+    nativePendingTurns?: ConversationRuntime['nativePendingTurns'],
   ) => {
     const runtime = createConversationRuntime(chatId, uiSnapshot)
     runtime.askChats[0].messages = (askMessages[0] ?? []) as never
     runtime.actChat.messages = actMessages as never
+    runtime.nativePendingTurns = new Map(nativePendingTurns ?? [])
     runtimesRef.current.delete(chatId)
     runtimesRef.current.set(chatId, runtime)
     return runtime
