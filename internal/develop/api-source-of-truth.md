@@ -6,9 +6,7 @@ The web app owns HTTP backend route contracts. Desktop, mobile, Chrome, and exte
 
 Native browser scope derives the viewer from verified Convex identity and checks
 current workspace membership and resource ownership inside the Convex function.
-The workspace directory and settings plus the personal-chat pilot use
-`convex/lib/nativeViewer.ts`; workspace handle writes additionally require the
-shared `workspaceHandles` deployment policy. See
+The personal-chat pilot uses `convex/lib/nativeViewer.ts`; see
 [Convex workflow](convex-workflow.md#native-browser-scope). Scope checks alone do
 not replace domain write policy, billing admission, audit or idempotency.
 

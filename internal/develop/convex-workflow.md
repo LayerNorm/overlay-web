@@ -26,7 +26,9 @@ A one-minute configuration heartbeat renews a three-minute lease. Disabled or
 unavailable policy denies native access; failed refresh invalidates the latest
 lease immediately, and a fenced scheduled expiry invalidates subscriptions if
 refresh stops. Sequence/nonce fencing prevents delayed callbacks or a replay from
-restoring superseded policy. Configuration changes propagate on the next refresh,
+restoring superseded policy. Freshness is checked again inside publication so an
+action delayed after receiving a response cannot start a new lease from stale
+configuration. Configuration changes propagate on the next refresh,
 not instantly when an environment variable is edited. For urgent revocation,
 Integration must run the internal refresh on the explicitly verified backend and
 check the browser-safe status before considering the configuration change complete.
@@ -47,6 +49,13 @@ PR previews deploy only their per-PR backend. Preview builds copy the shared
 `OVERLAY_USAGE_MARKUP_BPS` value from Vercel to that backend. Before production
 billing code is deployed, set and read back the same rate on its matching Next
 and Convex environments; see [Workspace billing](workspace-billing.md#usage-markup-configuration).
+
+Component-aware `convex codegen`, including `--dry-run`, can contact the selected
+backend's `start_push` endpoint and upload packages before auth validation fails.
+It is not an offline type-generation command, and a failure does not prove that
+remote state is unchanged. Never run codegen, dev or deploy against ambient shared
+development or customer backends from a feature worktree. Regenerate combined API
+bindings only through explicitly authorized isolated Preview infrastructure.
 
 Vercel’s native Git integration deploys main to production. Integration verifies
 the exact live web SHA, synchronizes customer Convex only for backend changes from
@@ -114,7 +123,8 @@ existing migration path rather than being silently assigned to the selected
 workspace.
 
 `auth/viewer:workspace` and `auth/viewer:personalChat` expose minimal verified
-scope projections for acceptance checks. They do not grant write, execution,
+scope projections with explicit return validators for acceptance checks; workspace
+roles are restricted to the canonical owner/admin/member/guest values. They do not grant write, execution,
 billing, provider, operator or workspace-management authority. Domain mutations
 must preserve their own role/policy, audit, idempotency and admission rules;
 run admission and provider execution remain server-owned. Existing explicit-token
@@ -305,9 +315,17 @@ globally; resource preloads need their own authorization.
 
 ### Native personal-chat list ownership (CN-04)
 
+Canonical title projection updates only the selected runtime's title and title
+display state. It must not hydrate the entire UI snapshot: doing so creates a new
+model-selection array, triggers the legacy metadata autosave, and feeds that write
+back into the subscribed summary. Metadata-only refreshes and remote renames must
+preserve model, transcript and generation state without another metadata write.
+
 The browser's personal-chat list, selected title, archive/restore state and basic
 unread flag are owned by `chat/personal:list`, `getSummary`, `rename`,
-`setArchived` and `setRead`. The additive indexes require no backfill. Queries
+`setArchived` and `setRead`. Every public native function has explicit argument
+and return validators, including bounded pagination and minimal summary fields.
+The additive indexes require no backfill. Queries
 return bounded pages and apply ownership/automation filters after pagination, so
 an empty page can still have a continuation cursor; keep loading while Convex
 reports more pages and never invent a cursor. The selected summary is queried
@@ -324,18 +342,39 @@ There is no feature capability-disable mapping for these operations.
 `useMutation.withOptimisticUpdate` owns row-level optimistic rename, archive and
 restore changes, including captured minimal summary data for Undo. Convex
 rebases pending operations and rolls back failed mutations without restoring a
-whole stale array. Native writes are budgeted at 300 per verified user per
-10-minute window because they have no BFF IP context.
+whole stale array. Each archive/restore updater captures only its call's
+minimal fallback summary, preserves an explicit null summary as a tombstone
+(instead of reconstructing a deleted record), prefers current cached summary/list data, and patches
+only `archivedAt`. The updater also publishes the resulting full summary in the
+local query store, including when that summary has no mounted consumer. This
+keeps a queued Undo on the same fresh metadata after archive removes the row
+from the only loaded list. Mark-read optimism clears unread only when the observed
+message is still the summary's latest message. Native writes are budgeted at
+300 per verified user per 10-minute window because they have no BFF IP context.
 
 Native personal data is used only when native auth is configured and its client
 is available and authenticated. Private installations that have not opted in
 retain the legacy path; configured-but-unavailable native auth does not fall back
-to HTTP ownership. Unmigrated workspace-scoped chats, DMs, channels, agents and
-other resources remain on their existing paths. Transcript/history loading,
+to HTTP ownership. Browser queries are limited to chat/archive consumers, so
+unrelated route IDs never enter Convex conversation-ID validation. Auth or
+capability query failures expose an unavailable personal-chat context while
+preserving the rest of the page. Mixed views may read legacy data only for
+classified non-pilot rows. Unmigrated workspace-scoped chats, DMs, channels,
+agents and other resources remain on their existing paths. Transcript/history loading,
 streaming and permanent deletion are not migrated here. Rollback is web-first:
 disable native web ownership before removing backend support, and keep additive
 fields/indexes and handlers available to older web revisions. No hosted QA is
 claimed by this local implementation.
+
+The shell and chat route enable native personal ownership only after a fresh,
+request-local server probe of the existing `platform/uiSettings:getByServer`
+endpoint reports `nativePersonalChatRevision: native-personal-list-v1`. Missing,
+unknown or failed readiness keeps the guarded legacy transport through web-first
+upgrades and backend rollback; cached browser preferences cannot enable it. A
+reload after the backend sync activates native ownership. This is separate from
+native authentication readiness; configured-but-failing native operations do not
+fall back after activation. The marker is server-owned and cannot be saved as a
+user preference.
 
 Web and Convex deploy independently. The incoming web must work with the old
 backend, and the incoming backend must work with the old web, including retained

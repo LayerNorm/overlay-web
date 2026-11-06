@@ -658,5 +658,15 @@ for the displayed message body.
 Subscription rows use the shared `ProviderLogo` SVG renderer. Resolve `meta-llama`
 to the canonical Meta mark and render the bundled Devin mark in its original
 425-unit viewBox with `currentColor`, so both themes retain the real logo. New
-connections hide nonselectable legacy provider variants; reconnect shows only the
-connection's exact saved provider without changing its credential domain.
+connections offer six providers with one Kimi choice using `kimi.com`; reconnect
+shows only the connection's exact saved provider.
+
+## Composer submission timing
+
+Native-agent and room composers, including thread replies, clear text and submitted
+attachments when the optimistic user bubble is inserted, before the save request
+finishes. Admission rejection leaves the draft intact. A failed save restores the
+submitted draft only if the same conversation/thread scope still has the untouched
+empty draft. An editor value-sync that refreshes an empty mentions list is not
+a user edit; typing, adding attachments or leaving/reopening the scope protects
+the newer draft. Late acknowledgements never clear edits made after submission.

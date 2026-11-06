@@ -35,7 +35,6 @@ func TestPinnedProviderExecutorsStreamResponsesThroughBridge(t *testing.T) {
 		{providerID: "xai", host: "cli-chat-proxy.grok.com", path: "/v1/responses", token: "xai-access"},
 		{providerID: "meta", host: "api.meta.ai", path: "/v1/responses", token: "meta-key"},
 		{providerID: "kimi", host: "api.kimi.com", path: "/coding/v1/responses", token: "kimi-access"},
-		{providerID: "kimi-ai", host: "api.kimi.ai", path: "/coding/v1/responses", token: "kimi-ai-access"},
 	}
 
 	for _, testCase := range tests {
@@ -168,13 +167,10 @@ func providerContractCredential(t *testing.T, providerID, accessToken string) en
 			t.Fatal(err)
 		}
 		return credential
-	case "kimi", "kimi-ai":
+	case "kimi":
 		domain := kimiauth.KimiDefaultDomain
 		baseURL := kimiauth.KimiAPIBaseURL
-		if providerID == "kimi-ai" {
-			domain, baseURL = kimiauth.KimiAIDomain, kimiauth.KimiAIAPIBaseURL
-		}
-		credential, err := newKimiCredential(providerID, &kimiauth.KimiTokenStorage{
+		credential, err := newKimiCredential(&kimiauth.KimiTokenStorage{
 			Type: providerID, Domain: domain, BaseURL: baseURL, DeviceID: "fixture-device",
 			AccessToken: accessToken, RefreshToken: "refresh", Expired: expiry,
 		})

@@ -97,3 +97,15 @@ test('legacy personal chats need no participant but removed participants cannot 
   await t.run(ctx => ctx.db.patch(participantId, { status: 'removed', removedAt: 3 }))
   await expect(user.query(personalChat, args)).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
 })
+
+test('native personal scope excludes legacy automation bindings without conversation flags', async () => {
+  const { t, user, args } = await fixture()
+  expect(await user.query(personalChat, args)).toEqual(args)
+  const automationId = await t.run(ctx => ctx.db.insert('automations', {
+    workspaceId: args.workspaceId, userId: 'user-a', conversationId: args.conversationId,
+    createdAt: 1, updatedAt: 1,
+  }))
+  await expect(user.query(personalChat, args)).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+  await t.run(ctx => ctx.db.patch(automationId, { deletedAt: 0 }))
+  expect(await user.query(personalChat, args)).toEqual(args)
+})

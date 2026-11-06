@@ -44,6 +44,7 @@ export function sendTextTurn({
   isStreamChatActive,
   loadChats,
   loadSubscription,
+  nativePersonalEnabled = false,
   onUsageExhaustedError,
   markChatModified,
   pendingFirstSendRef,
@@ -71,6 +72,7 @@ export function sendTextTurn({
   isStreamChatActive: (chatId: string, temporaryChatSnapshot: boolean) => boolean
   loadChats: () => Promise<void>
   loadSubscription: () => Promise<unknown>
+  nativePersonalEnabled?: boolean
   onUsageExhaustedError: (message: string) => boolean
   markChatModified: (chatId: string, titleSnapshot?: string | null) => void
   pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
@@ -161,6 +163,7 @@ export function sendTextTurn({
       renameSeed: snapshot.text || payload.indexedFileNames[0] || 'Documents',
       activeChatTitleSnapshot: snapshot.activeChatTitleSnapshot,
       reasoningByModelSnapshot,
+      nativePersonalOwner: nativePersonalEnabled && !workspaceChatsViewActive(),
     }
     chatId = PENDING_FIRST_CHAT_ID
     targetRuntime = previewRuntime

@@ -68,9 +68,9 @@ func (b *bridge) pollProvider(w http.ResponseWriter, r *http.Request, pending pe
 				return
 			}
 		}
-	case "kimi", "kimi-ai":
+	case "kimi":
 		domain, deviceID := metadata.Get("domain").String(), metadata.Get("deviceId").String()
-		if domain != kimiDomain(pending.ProviderID) || deviceID == "" {
+		if domain != kimiauth.KimiDefaultDomain || deviceID == "" {
 			writeError(w, http.StatusBadRequest, "invalid_request", "The authorization state is unavailable.")
 			return
 		}
@@ -87,7 +87,7 @@ func (b *bridge) pollProvider(w http.ResponseWriter, r *http.Request, pending pe
 				TokenData: tokens, DeviceID: deviceID,
 			})
 			var errCredential error
-			credential, errCredential = newKimiCredential(pending.ProviderID, storage)
+			credential, errCredential = newKimiCredential(storage)
 			if errCredential != nil {
 				writeProviderError(w, pending.ProviderID, http.StatusBadGateway, "reconnect_required")
 				return

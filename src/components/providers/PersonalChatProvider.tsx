@@ -1,28 +1,37 @@
 'use client'
 
 import {
+  Component,
   createContext,
   useCallback,
   useContext,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type ReactNode,
 } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
-import { useConvexAuth, useMutation, usePaginatedQuery, useQuery } from 'convex/react'
+import { useConvex, useConvexAuth, useMutation, usePaginatedQuery, useQuery } from 'convex/react'
 import type { OptimisticLocalStore } from 'convex/browser'
 import type { FunctionReturnType } from 'convex/server'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import {
+  createPersonalChatArchiveOptimisticUpdate,
   insertPersonalChatRow,
   removePersonalChatRow,
   updatePersonalChatRow,
+  updatePersonalChatUnread,
 } from './personal-chat-optimistic'
 import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import {
+  isWorkspaceRouteTargetPending,
+  legacyWorkspaceScopeForRoute,
+  parseWorkspaceHandleRoute,
+  readWorkspacePathScope,
+  readWorkspaceRouteTarget,
+} from '@/shared/workspaces/routing'
 
 export type PersonalChatSummary = NonNullable<FunctionReturnType<typeof api.chat.personal.getSummary>>
 type ListStatus = 'disabled' | 'loading' | 'ready' | 'unavailable'
@@ -69,17 +78,13 @@ const PersonalChatContext = createContext<PersonalChatContextValue>({
   async setRead() {},
 })
 
-function readConversationId(): string | null {
-  return typeof window === 'undefined'
-    ? null
-    : new URLSearchParams(window.location.search).get('id')
-}
-
-export function PersonalChatProvider({ children }: { children: ReactNode }) {
+export function PersonalChatProvider({ children, backendReady = false }: { children: ReactNode; backendReady?: boolean }) {
   const authConfiguration = useConvexAuthConfiguration()
   const workspace = useWorkspace()
-  const workspaceId = workspace.switchingWorkspaceId ? null : workspace.activeWorkspaceId
-  const nativeConfigured = authConfiguration.nativeAuthConfigured
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  const workspaceId = workspace.activeWorkspaceId
+  const nativeConfigured = authConfiguration.nativeAuthConfigured && backendReady
   const available = nativeConfigured && authConfiguration.hasConvexClient
 
   if (!available) {
@@ -88,7 +93,7 @@ export function PersonalChatProvider({ children }: { children: ReactNode }) {
       configured: nativeConfigured,
       available: false,
       workspaceId,
-      selectedConversationId: readConversationId(),
+      selectedConversationId: null,
       selectedSummary: undefined,
       active: { ...emptyList, status },
       archived: { ...emptyList, status },
@@ -100,14 +105,110 @@ export function PersonalChatProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <NativePersonalChatProvider
-      configured
-      workspaceId={workspaceId}
-      workspaceReady={workspace.status === 'ready' && !workspace.switchingWorkspaceId}
+    <PersonalChatErrorBoundary
+      resetKey={`${workspaceId ?? 'no-workspace'}:${pathname ?? ''}:${searchParams.toString()}`}
+      fallbackChildren={children}
+      fallbackValue={{
+        configured: true,
+        available: false,
+        workspaceId,
+        selectedConversationId: null,
+        selectedSummary: undefined,
+        active: { ...emptyList, status: 'unavailable' },
+        archived: { ...emptyList, status: 'unavailable' },
+        async rename() { throw new Error('Native personal chat is unavailable') },
+        async setArchived() { throw new Error('Native personal chat is unavailable') },
+        async setRead() { throw new Error('Native personal chat is unavailable') },
+      }}
     >
-      {children}
-    </NativePersonalChatProvider>
+      <NativePersonalChatProvider
+        configured
+        workspaceId={workspaceId}
+        workspaceReady={workspace.status === 'ready' && !isWorkspaceRouteTargetPending(
+          readWorkspaceRouteTarget(pathname ?? ''), workspace.resolvedRouteTargetKey,
+        )}
+      >
+        {children}
+      </NativePersonalChatProvider>
+    </PersonalChatErrorBoundary>
   )
+}
+
+type PersonalChatErrorBoundaryProps = {
+  children: ReactNode
+  fallbackChildren: ReactNode
+  fallbackValue: PersonalChatContextValue
+  resetKey: string
+}
+
+class PersonalChatErrorBoundary extends Component<
+  PersonalChatErrorBoundaryProps,
+  { failed: boolean; resetKey: string }
+> {
+  constructor(props: PersonalChatErrorBoundaryProps) {
+    super(props)
+    this.state = { failed: false, resetKey: props.resetKey }
+  }
+
+  static getDerivedStateFromProps(
+    props: PersonalChatErrorBoundaryProps,
+    state: { failed: boolean; resetKey: string },
+  ) {
+    return props.resetKey !== state.resetKey
+      ? { failed: false, resetKey: props.resetKey }
+      : null
+  }
+
+  static getDerivedStateFromError() {
+    return { failed: true }
+  }
+
+  render() {
+    if (!this.state.failed) return this.props.children
+    return (
+      <PersonalChatContext.Provider value={this.props.fallbackValue}>
+        {this.props.fallbackChildren}
+      </PersonalChatContext.Provider>
+    )
+  }
+}
+
+function isChatConsumerPath(pathname: string | null): boolean {
+  if (!pathname) return false
+  const handleRoute = parseWorkspaceHandleRoute(pathname)
+  if (handleRoute) return handleRoute.surface === 'chat'
+  const segments = pathname.split('/').filter(Boolean)
+  if (segments[0] !== 'app') return false
+  if (segments[1] === 'w') {
+    if (segments[3] === 'chat') return true
+    return (segments[3] === 'personal' || segments[3] === 'workspace')
+      && segments[4] === 'chat'
+  }
+  if (segments[1] === 'personal' || segments[1] === 'workspace') {
+    return segments[2] === 'chat'
+  }
+  return segments[1] === 'chat'
+}
+
+function personalChatQueryDemand(pathname: string | null, routeParams: URLSearchParams) {
+  const isChatSurface = isChatConsumerPath(pathname)
+  const routeScope = readWorkspacePathScope(pathname ?? '')
+    ?? legacyWorkspaceScopeForRoute('chat', routeParams)
+  const view = routeParams.get('view')
+  const isNativePersonalChatSurface = isChatSurface
+    && routeScope !== 'workspace'
+    && !['workspace-chats', 'dms', 'channels'].includes(view ?? '')
+  const handleRoute = pathname ? parseWorkspaceHandleRoute(pathname) : null
+  const isArchivedRoute = handleRoute?.surface === 'archived'
+    || pathname === '/app/archived'
+    || pathname?.startsWith('/app/archived/') === true
+    || (pathname?.startsWith('/app/w/') === true && pathname.endsWith('/archived'))
+  const isArchivedSettings = pathname?.endsWith('/settings') === true && routeParams.get('section') === 'archived'
+  const needsActiveList = isNativePersonalChatSurface
+  const needsArchivedList = isArchivedRoute || isArchivedSettings
+  const canReadSelectedSummary = isNativePersonalChatSurface || isArchivedRoute
+  const routeId = canReadSelectedSummary ? routeParams.get('id') : null
+  return { needsActiveList, needsArchivedList, canReadSelectedSummary, routeId }
 }
 
 function NativePersonalChatProvider({
@@ -122,36 +223,43 @@ function NativePersonalChatProvider({
   workspaceReady: boolean
 }) {
   const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
+  const client = useConvex()
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const [routeConversationId, setRouteConversationId] = useRefState(readConversationId)
+  const routeParams = useMemo(() => new URLSearchParams(searchParams.toString()), [searchParams])
+  const { needsActiveList, needsArchivedList, canReadSelectedSummary, routeId } = personalChatQueryDemand(pathname, routeParams)
+  const [routeConversationId, setRouteConversationId] = useState<string | null>(null)
   const selectedConversationId = routeConversationId
   const canQuery = Boolean(workspaceReady && workspaceId && !authLoading && isAuthenticated)
+  const canQueryActive = canQuery && needsActiveList
+  const canQueryArchived = canQuery && needsArchivedList
+  const canQuerySummary = canQuery && canReadSelectedSummary
   const activeQuery = usePaginatedQuery(
     api.chat.personal.list,
-    canQuery ? { workspaceId: workspaceId!, archived: false } : 'skip',
+    canQueryActive ? { workspaceId: workspaceId!, archived: false } : 'skip',
     { initialNumItems: 30 },
   )
   const archivedQuery = usePaginatedQuery(
     api.chat.personal.list,
-    canQuery ? { workspaceId: workspaceId!, archived: true } : 'skip',
+    canQueryArchived ? { workspaceId: workspaceId!, archived: true } : 'skip',
     { initialNumItems: 30 },
   )
   const selectedSummary = useQuery(
     api.chat.personal.getSummary,
-    canQuery && selectedConversationId
+    canQuerySummary && selectedConversationId
       ? { workspaceId: workspaceId!, conversationId: selectedConversationId as Id<'conversations'> }
       : 'skip',
   )
-  const capturedSummaries = useRef(new Map<string, PersonalChatSummary>())
 
   useEffect(() => {
-    setRouteConversationId(readConversationId())
-  }, [pathname, searchParams, setRouteConversationId])
+    setRouteConversationId(routeId)
+  }, [routeId])
 
   useEffect(() => {
     function syncRoute() {
-      setRouteConversationId(readConversationId())
+      setRouteConversationId(canReadSelectedSummary
+        ? new URLSearchParams(window.location.search).get('id')
+        : null)
     }
     window.addEventListener('overlay:chat-route-selected', syncRoute)
     window.addEventListener('popstate', syncRoute)
@@ -159,7 +267,7 @@ function NativePersonalChatProvider({
       window.removeEventListener('overlay:chat-route-selected', syncRoute)
       window.removeEventListener('popstate', syncRoute)
     }
-  }, [setRouteConversationId])
+  }, [canReadSelectedSummary])
 
   const renameMutation = useMutation(api.chat.personal.rename).withOptimisticUpdate((store, args) => {
     const update = (row: PersonalChatSummary) => ({
@@ -175,29 +283,14 @@ function NativePersonalChatProvider({
     if (summary) store.setQuery(api.chat.personal.getSummary, queryArgs, update(summary))
   })
 
-  const archiveMutation = useMutation(api.chat.personal.setArchived).withOptimisticUpdate((store, args) => {
-    const summary = capturedSummaries.current.get(args.conversationId)
-      ?? findPersonalChatSummary(store, args.workspaceId, args.conversationId)
-      ?? store.getQuery(api.chat.personal.getSummary, {
-        workspaceId: args.workspaceId,
-        conversationId: args.conversationId,
-      })
-    const next = summary
-      ? { ...summary, archivedAt: args.archived ? Date.now() : undefined }
-      : null
-    movePersonalChatRow(store, args.workspaceId, args.conversationId, args.archived, next)
-    const queryArgs = { workspaceId: args.workspaceId, conversationId: args.conversationId }
-    const selected = store.getQuery(api.chat.personal.getSummary, queryArgs)
-    if (selected) {
-      store.setQuery(api.chat.personal.getSummary, queryArgs, {
-        ...selected,
-        archivedAt: args.archived ? Date.now() : undefined,
-      })
-    }
-  })
+  const archiveMutation = useMutation(api.chat.personal.setArchived)
 
   const readMutation = useMutation(api.chat.personal.setRead).withOptimisticUpdate((store, args) => {
-    const update = (row: PersonalChatSummary) => ({ ...row, unread: args.unread })
+    const update = (row: PersonalChatSummary) => updatePersonalChatUnread(
+      row,
+      args.unread,
+      args.throughMessageId ? String(args.throughMessageId) : undefined,
+    )
     for (const archived of [false, true]) {
       updatePersonalChatList(store, args.workspaceId, archived, args.conversationId, update)
     }
@@ -216,19 +309,49 @@ function NativePersonalChatProvider({
   }, [renameMutation, workspaceId])
 
   const setArchived = useCallback(async (summary: PersonalChatSummary, archived: boolean) => {
-    capturedSummaries.current.set(summary._id, summary)
-    try {
-      await archiveMutation({
-        workspaceId: summary.workspaceId,
-        conversationId: summary._id,
-        archived,
+    const current = client.watchQuery(api.chat.personal.getSummary, {
+      workspaceId: summary.workspaceId,
+      conversationId: summary._id,
+    }).localQueryResult()
+    if (current === null) throw new Error('Conversation is no longer available')
+    // Undo may be invoked from a toast that captured an older row. Preserve
+    // the latest optimistic summary even after the earlier mutation settles.
+    const fallbackSummary = minimalSummary(current ?? summary)
+    const mutateWithOptimism = archiveMutation.withOptimisticUpdate((store, args) => {
+      const applyArchiveUpdate = createPersonalChatArchiveOptimisticUpdate(fallbackSummary, {
+        getCurrent: (mutationArgs) => {
+          const selected = store.getQuery(api.chat.personal.getSummary, {
+            workspaceId: mutationArgs.workspaceId,
+            conversationId: mutationArgs.conversationId as Id<'conversations'>,
+          })
+          return selected === null ? null
+            : selected ?? findPersonalChatSummary(store, mutationArgs.workspaceId, mutationArgs.conversationId)
+        },
+        move: (mutationArgs, next) => movePersonalChatRow(
+          store,
+          mutationArgs.workspaceId,
+          mutationArgs.conversationId,
+          mutationArgs.archived,
+          next,
+        ),
+        updateSummary: (mutationArgs, next) => {
+          const queryArgs = {
+            workspaceId: mutationArgs.workspaceId,
+            conversationId: mutationArgs.conversationId as Id<'conversations'>,
+          }
+          // Keep pending operations on one summary even if its list row moves
+          // out of the only loaded page. Convex rebases this from server data.
+          store.setQuery(api.chat.personal.getSummary, queryArgs, next)
+        },
       })
-    } finally {
-      if (capturedSummaries.current.get(summary._id) === summary) {
-        capturedSummaries.current.delete(summary._id)
-      }
-    }
-  }, [archiveMutation])
+      applyArchiveUpdate(args)
+    })
+    await mutateWithOptimism({
+      workspaceId: summary.workspaceId,
+      conversationId: summary._id,
+      archived,
+    })
+  }, [archiveMutation, client])
 
   const setRead = useCallback(async (
     summary: PersonalChatSummary,
@@ -243,22 +366,38 @@ function NativePersonalChatProvider({
     })
   }, [readMutation])
 
-  const listStatus: ListStatus = !configured
+  const baseListStatus: ListStatus = !configured
     ? 'disabled'
     : !workspaceReady || authLoading
       ? 'loading'
+      : !workspaceId
+        ? 'unavailable'
       : isAuthenticated
         ? 'ready'
         : 'unavailable'
+  const activeStatus = !needsActiveList
+    ? 'disabled'
+    : baseListStatus !== 'ready'
+      ? baseListStatus
+      : activeQuery.status === 'LoadingFirstPage'
+      ? 'loading'
+      : baseListStatus
+  const archivedStatus = !needsArchivedList
+    ? 'disabled'
+    : baseListStatus !== 'ready'
+      ? baseListStatus
+      : archivedQuery.status === 'LoadingFirstPage'
+      ? 'loading'
+      : baseListStatus
   const visibleActiveRows = useMemo(
-    () => canQuery ? activeQuery.results : [],
-    [activeQuery.results, canQuery],
+    () => canQueryActive ? activeQuery.results : [],
+    [activeQuery.results, canQueryActive],
   )
   const visibleArchivedRows = useMemo(
-    () => canQuery ? archivedQuery.results : [],
-    [archivedQuery.results, canQuery],
+    () => canQueryArchived ? archivedQuery.results : [],
+    [archivedQuery.results, canQueryArchived],
   )
-  const visibleSelectedSummary = canQuery ? selectedSummary : undefined
+  const visibleSelectedSummary = canQuerySummary ? selectedSummary : undefined
   const value = useMemo<PersonalChatContextValue>(() => ({
     configured,
     available: true,
@@ -267,17 +406,17 @@ function NativePersonalChatProvider({
     selectedSummary: visibleSelectedSummary,
     active: {
       rows: visibleActiveRows,
-      status: listStatus,
-      hasMore: canQuery && (activeQuery.status === 'CanLoadMore' || activeQuery.status === 'LoadingMore'),
-      loadingMore: canQuery && activeQuery.status === 'LoadingMore',
-      loadMore: () => { if (canQuery) activeQuery.loadMore(30) },
+      status: activeStatus,
+      hasMore: canQueryActive && (activeQuery.status === 'CanLoadMore' || activeQuery.status === 'LoadingMore'),
+      loadingMore: canQueryActive && activeQuery.status === 'LoadingMore',
+      loadMore: () => { if (canQueryActive) activeQuery.loadMore(30) },
     },
     archived: {
       rows: visibleArchivedRows,
-      status: listStatus,
-      hasMore: canQuery && (archivedQuery.status === 'CanLoadMore' || archivedQuery.status === 'LoadingMore'),
-      loadingMore: canQuery && archivedQuery.status === 'LoadingMore',
-      loadMore: () => { if (canQuery) archivedQuery.loadMore(30) },
+      status: archivedStatus,
+      hasMore: canQueryArchived && (archivedQuery.status === 'CanLoadMore' || archivedQuery.status === 'LoadingMore'),
+      loadingMore: canQueryArchived && archivedQuery.status === 'LoadingMore',
+      loadMore: () => { if (canQueryArchived) archivedQuery.loadMore(30) },
     },
     rename,
     setArchived,
@@ -285,9 +424,11 @@ function NativePersonalChatProvider({
   }), [
     activeQuery,
     archivedQuery,
-    canQuery,
+    canQueryActive,
+    canQueryArchived,
     configured,
-    listStatus,
+    activeStatus,
+    archivedStatus,
     rename,
     selectedConversationId,
     setArchived,
@@ -299,10 +440,6 @@ function NativePersonalChatProvider({
   ])
 
   return <PersonalChatContext.Provider value={value}>{children}</PersonalChatContext.Provider>
-}
-
-function useRefState<T>(getInitialValue: () => T): [T, (value: T) => void] {
-  return useState(getInitialValue)
 }
 
 function updatePersonalChatList(
@@ -332,6 +469,24 @@ function findPersonalChatSummary(
     if (summary) return summary
   }
   return undefined
+}
+
+function minimalSummary(summary: PersonalChatSummary): PersonalChatSummary {
+  return {
+    _id: summary._id,
+    workspaceId: summary.workspaceId,
+    createdAt: summary.createdAt,
+    scope: summary.scope,
+    conversationType: summary.conversationType,
+    title: summary.title,
+    lastModified: summary.lastModified,
+    archivedAt: summary.archivedAt,
+    lastMessageId: summary.lastMessageId,
+    lastMessageAt: summary.lastMessageAt,
+    unread: summary.unread,
+    lastReadAt: summary.lastReadAt,
+    markedUnreadAt: summary.markedUnreadAt,
+  }
 }
 
 function movePersonalChatRow(

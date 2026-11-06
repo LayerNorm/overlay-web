@@ -102,7 +102,10 @@ func TestCatalogReasoningLevelsUseOnlyPinnedCanonicalThinkingLevels(t *testing.T
 }
 
 func TestProviderCredentialIdentityAndKimiDomainAreBound(t *testing.T) {
-	for _, providerID := range []string{"codex", "claude", "xai", "meta", "kimi", "kimi-ai", "devin"} {
+	if supportedProvider("kimi-ai") {
+		t.Fatal("removed Kimi.ai provider is still supported")
+	}
+	for _, providerID := range []string{"codex", "claude", "xai", "meta", "kimi", "devin"} {
 		if !supportedProvider(providerID) {
 			t.Fatalf("provider %q is not supported", providerID)
 		}
@@ -119,23 +122,25 @@ func TestProviderCredentialIdentityAndKimiDomainAreBound(t *testing.T) {
 	}
 
 	storage := &kimiauth.KimiTokenStorage{
-		AccessToken: "access", RefreshToken: "refresh", Type: "kimi-ai",
-		Domain: kimiauth.KimiAIDomain, DeviceID: "connection-device",
+		AccessToken: "access", RefreshToken: "refresh", Type: "kimi",
+		Domain: kimiauth.KimiDefaultDomain, DeviceID: "connection-device",
 		Expired: time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
 	}
-	kimiCredential, err := newKimiCredential("kimi-ai", storage)
+	kimiCredential, err := newKimiCredential(storage)
 	if err != nil {
 		t.Fatal(err)
 	}
 	decoded, ok := decodeKimiCredential(kimiCredential)
-	if !ok || decoded.Domain != kimiauth.KimiAIDomain || decoded.DeviceID != "connection-device" {
-		t.Fatalf("Kimi.ai identity was not preserved: %#v", decoded)
+	if !ok || decoded.Domain != kimiauth.KimiDefaultDomain || decoded.DeviceID != "connection-device" {
+		t.Fatalf("Kimi identity was not preserved: %#v", decoded)
 	}
-	if _, err := newKimiCredential("kimi", storage); err == nil {
+	storage.Domain = kimiauth.KimiAIDomain
+	if _, err := newKimiCredential(storage); err == nil {
 		t.Fatal("Kimi.ai credential was accepted for the kimi domain")
 	}
+	storage.Domain = kimiauth.KimiDefaultDomain
 	storage.Expired = ""
-	if _, err := newKimiCredential("kimi-ai", storage); err == nil {
+	if _, err := newKimiCredential(storage); err == nil {
 		t.Fatal("Kimi credential without an upstream expiry was treated as non-expiring")
 	}
 }

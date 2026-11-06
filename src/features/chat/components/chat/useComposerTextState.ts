@@ -19,6 +19,7 @@ export function useComposerTextState(suspended = false) {
   const [inputRevision, setInputRevision] = useState(0)
   const [hasComposerText, setHasComposerText] = useState(false)
   const inputRef = useRef(input)
+  const inputVersionRef = useRef(0)
   const inputListeners = useRef(new Set<() => void>())
   const subscribeToInput = useCallback((listener: () => void) => {
     inputListeners.current.add(listener)
@@ -27,6 +28,7 @@ export function useComposerTextState(suspended = false) {
 
   const setInput = useCallback((next: string | ((previous: string) => string)) => {
     const resolved = typeof next === 'function' ? next(inputRef.current) : next
+    if (resolved !== inputRef.current) inputVersionRef.current += 1
     inputRef.current = resolved
     inputListeners.current.forEach((listener) => listener())
     setInputState(resolved)
@@ -42,6 +44,7 @@ export function useComposerTextState(suspended = false) {
 
   const handleComposerInputChange = useCallback((text: string) => {
     const previous = inputRef.current
+    if (text !== previous) inputVersionRef.current += 1
     inputRef.current = text
     inputListeners.current.forEach((listener) => listener())
     const hasText = text.trim().length > 0
@@ -57,6 +60,7 @@ export function useComposerTextState(suspended = false) {
     hasComposerText,
     input,
     inputRef,
+    inputVersionRef,
     inputRevision,
     setInput,
     subscribeToInput,

@@ -15,6 +15,7 @@ export type CachedConversation = {
   actModelId?: string
   workspaceId?: string
   conversationType?: 'personal' | 'dm' | 'channel'
+  scope?: 'personal' | 'workspace'
   otherParticipantTypes?: Array<'human' | 'agent'>
   createdByPrincipalId?: string
   externalPlatform?: string

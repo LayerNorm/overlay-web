@@ -85,21 +85,36 @@ export function ArchivedSettings() {
   const workspace = useOptionalWorkspace()
   const workspaceId = workspace?.switchingWorkspaceId ? null : workspace?.activeWorkspaceId ?? null
   const nativePersonal = usePersonalChat()
-  const [legacyItems, setLegacyItems] = useState<ArchivedItem[] | null>(null)
-  const [failedSources, setFailedSources] = useState<string[]>([])
+  const [legacyState, setLegacyState] = useState<{
+    workspaceId: string | null
+    items: ArchivedItem[]
+    failedSources: string[]
+  } | null>(null)
+  const legacyItems = legacyState?.workspaceId === workspaceId ? legacyState.items : null
+  const failedSources = legacyState?.workspaceId === workspaceId ? legacyState.failedSources : []
   const [category, setCategory] = useState<ArchivedCategoryFilter>('all')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [pendingDelete, setPendingDelete] = useState<ArchivedItem[] | null>(null)
   const [busy, setBusy] = useState(false)
   const lastToggled = useRef<string | null>(null)
+  const requestEpoch = useRef(0)
+  const workspaceIdRef = useRef(workspaceId)
+  workspaceIdRef.current = workspaceId
 
   const load = useCallback(async () => {
+    const requestWorkspaceId = workspaceId
+    if (requestWorkspaceId !== workspaceIdRef.current) return
+    const requestId = ++requestEpoch.current
     const result = await loadArchivedItems(workspaceId, {
       nativePersonalConfigured: nativePersonal.configured,
     })
-    setLegacyItems(result.items)
-    setFailedSources(result.failed.map((source) => ARCHIVED_CATEGORY_LABELS[source].toLowerCase()))
+    if (requestId !== requestEpoch.current || requestWorkspaceId !== workspaceIdRef.current) return
+    setLegacyState({
+      workspaceId: requestWorkspaceId,
+      items: result.items,
+      failedSources: result.failed.map((source) => ARCHIVED_CATEGORY_LABELS[source].toLowerCase()),
+    })
   }, [nativePersonal.configured, workspaceId])
 
   useEffect(() => {

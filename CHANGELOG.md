@@ -4,16 +4,33 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add a server-controlled, fail-closed deployment-feature projection for native Convex domains. Policies are backend-bound, refreshed from the actual web configuration, fenced against stale callbacks and expired reactively; browser calls cannot publish policy. Existing conversation CRUD remains independent of deployment-feature mappings. Privileged agent Computer/credential cleanup stays server-owned.
-
 - **CN-25:** Move the browser workspace directory, route-handle resolution, rename, sharing-policy settings, and handle writes to identity-scoped native Convex queries and mutations. Directory reads are reactive, paginated, and filter inactive access; settings writes enforce role, revision, audit, validation, and verified-user rate limits, with optimistic UI updates where an editor exists. Handle writes additionally require the shared `workspaceHandles` deployment policy, owner access, and a ready alias registry. Workspace creation and activation, invitation listing/acceptance and membership management, workspace icon storage orchestration, and billing remain on their existing HTTP/server paths; configured native mode fails closed rather than using HTTP workspace data.
+
+- Keep personal chat working during web-first releases and backend rollback by enabling native list ownership only when the backend advertises the matching revision. Validate all native personal-chat response shapes explicitly, prevent Undo from reconstructing a record already known to be missing, and preserve concurrent title changes while archive and Undo are both pending.
+
+- Add private, opt-in two-client chat and navigation baselines that distinguish query readiness, local feedback, HTTP acknowledgement, content visibility, and remote convergence without collecting chat or file content. Correlate acknowledgements to the exact mutation and sanitize setup failures.
+
+- Preserve unsent drafts and source-page state during pending workspace activation, while keeping that page hidden and discarding it when the route or scope changes.
+
+- Keep the chat composer visible while workspace access is being verified after navigation or rollback, without mistaking pending or failed entitlement reads for a billing denial; sending and the model picker remain blocked until access is confirmed.
+
+- Keep URL-driven chat hydration read-only so remounting the previous chat cannot replace a pending workspace navigation with its old URL.
+
+- Keep native personal-chat title synchronization field-scoped so live summary updates cannot reset model selection and repeatedly trigger metadata saves that exhaust the shared API rate limit.
+
+- Add a server-controlled, fail-closed deployment-feature projection for native Convex domains. Policies are backend-bound, refreshed from the actual web configuration, fenced against stale callbacks (including delayed publication) and expired reactively; browser calls cannot publish policy. Existing conversation CRUD remains independent of deployment-feature mappings. Privileged agent Computer/credential cleanup stays server-owned.
+
 - Move browser personal-chat list, title, archive/restore and basic unread ownership to native Convex with additive indexes and no backfill. Persisted `conversations.read` / `conversations.edit` capabilities are enforced even when the legacy BFF is in observe mode; native calls accept no caller policy flags or operator bypass. Optimistic writes rebase by row, bounded pages may be empty while filtered results remain, and verified-user writes are capped at 300 per 10 minutes because native calls have no BFF IP context. Legacy HTTP remains for native-off installations and non-pilot workspace chats, DMs, channels and other resources; transcript/history/streaming and deletion retain their existing server boundaries. Roll back web ownership first and leave backend fields/indexes in place.
 
-- Add native Convex viewer and personal-chat scope guards that derive identity from authentication and recheck workspace membership, ownership and participant access on every call.
+- Add native Convex viewer and personal-chat scope guards that derive identity from authentication and recheck workspace membership, ownership and participant access on every call, excluding legacy automation-linked conversations even without their old flag and validating the minimal scope projections returned to callers.
+
+- Clear native-agent, room and thread-reply composers as soon as the optimistic user message appears, instead of waiting for the save response. Restore failed submissions even after the rich editor resynchronizes, without overwriting newer drafts or another conversation.
+
+- Remove the unused kimi.ai subscription variant from the bridge, API, configuration and database validators after confirming there are no production connections or pending authorizations. Kimi remains available through kimi.com, and the living adapter documentation lists only the supported providers.
+
+- Enable Claude, Grok Build, Meta Muse, Kimi and Devin alongside ChatGPT/Codex in Production and shared Preview. Offer one Kimi choice using kimi.com and render the actual Meta and Devin logos instead of letter placeholders.
 
 - Establish native Convex browser authentication with identity-isolated clients and refresh handling, preserving legacy subscriptions and allowing private providers to opt in after their backend upgrade; preflight hosted Preview builds with WorkOS on the exact claimed PR backend.
-
-- Enable Claude, Grok Build, Meta Muse, Kimi and Devin alongside ChatGPT/Codex in Production and shared Preview. Offer one Kimi choice using kimi.com while preserving existing kimi.ai connections and reconnects, and render the actual Meta and Devin logos instead of letter placeholders.
 
 - Document subscription callback completion and workspace sharing in the API catalog, including active-member use and owner-only management.
 
@@ -25,7 +42,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Tighten subscription auth error classification, callback retry/fencing and provider identity checks; local fixtures remain distinct from hosted and live-account acceptance.
 
-- Extend the private pinned subscription bridge and fenced control plane to Claude, xAI, Meta, Kimi, Kimi AI, and Devin, including callback/device authorization and provider-bound catalogs/inference. Added providers remain disabled in production until their individual rollout checks pass.
+- Extend the private pinned subscription bridge and fenced control plane to Claude, xAI, Meta, Kimi and Devin, including callback/device authorization and provider-bound catalogs/inference. Added providers remain disabled in production until their individual rollout checks pass.
 - Resume waiting runs when a person skips a single optional questionnaire question, instead of silently leaving the run paused, with regression coverage for skipped optional and blank required replies.
 
 - Keep late model-cost corrections within unreserved credit and payer limits, and prevent old corrections from changing a renewed wallet while retaining the provider's full reported cost.
