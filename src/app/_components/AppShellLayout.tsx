@@ -25,6 +25,7 @@ import { WorkspaceScopedContentBoundary } from '@/features/workspaces/components
 import { AppBreadcrumbProvider } from '@/components/layout/AppBreadcrumbProvider'
 import { CollaborationRealtimeProvider } from '@/features/chat/components/collaboration/CollaborationRealtimeProvider'
 import { PersonalChatProvider } from '@/components/providers/PersonalChatProvider'
+import { nativePersonalChatBackendReady } from '@/server/chat/native-personal-readiness'
 import { nativeConvexAuthEnabled } from '@/server/auth/native-convex-token'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 
@@ -53,6 +54,7 @@ async function AppShellContent({
   let session: Awaited<ReturnType<typeof getOverlaySession>>
   let capabilities: ReturnType<typeof getOverlayCapabilitiesSync>
   let appDataCapabilities: ReturnType<typeof getAppDataCapabilitiesSync>
+  let nativePersonalReady = false
   let nativeAuthConfigured: boolean
   let authorization: AppAuthorizationState | null
   try {
@@ -67,6 +69,7 @@ async function AppShellContent({
     if (session?.user) {
       const server = getOverlayServerContext()
       await ensureDefaultUserRole(session.user.id)
+      nativePersonalReady = nativeAuthConfigured && await nativePersonalChatBackendReady(session.user.id)
       authorization = {
         ...(await server.authorizationService.resolveSubject(session.user.id)),
         enforcementMode: getAuthorizationEnforcementMode(),
@@ -87,7 +90,7 @@ async function AppShellContent({
       nativeAuthConfigured={nativeAuthConfigured}
     >
       <DesktopProvider><WorkspaceAppBoundary hasAuthenticatedUser={Boolean(user)}>
-        <PersonalChatProvider>
+        <PersonalChatProvider backendReady={nativePersonalReady}>
         <GatewayModelCatalogPrefetch />
         <div data-app-shell className="flex h-screen overflow-hidden bg-background text-foreground">
           <AsyncSessionsProvider>
