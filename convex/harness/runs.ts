@@ -5,6 +5,7 @@ import { requireConversationAccess } from '../collaboration/directMessages'
 import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
+import { projectNativePersonalProgress } from '../lib/nativePersonalProgress'
 import { uniqueWorkspaceAccount } from '../billing/accountModel'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
 import {
@@ -1861,6 +1862,7 @@ export const writeTranscriptStep = mutation({
       } : {}),
       createdAt: receipt.createdAt,
     })
+    await projectNativePersonalProgress(ctx, run, lineage[0]!.metadata, Number(sequenceMatch[1]))
     return { persisted: true }
   },
 })

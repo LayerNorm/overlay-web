@@ -134,7 +134,9 @@ test('final result summary survives an empty or compacted journal window', () =>
     persistence: { content: '', parts: [] }, steps: [], newestSequence: null,
   })
   expect(delivery.content).toContain('The final result is preserved.')
-  expect(delivery.parts.at(-1)).toEqual({ type: 'text', text: 'The final result is preserved.' })
+  expect(delivery.parts.at(-1)).toEqual({
+    type: 'text', text: 'The final result is preserved.', id: JSON.stringify(['root', 'final', 1]),
+  })
 })
 
 test('final result summary survives a full newest transcript content and part window', () => {
@@ -158,7 +160,9 @@ test('final result summary survives a full newest transcript content and part wi
   })
   expect(delivery.content).toContain(summary)
   expect(delivery.parts).toHaveLength(81)
-  expect(delivery.parts.at(-1)).toEqual({ type: 'text', text: summary })
+  expect(delivery.parts.at(-1)).toEqual({
+    type: 'text', text: summary, id: JSON.stringify(['root', 'final', 80]),
+  })
 })
 
 test('settled transcript reads keep the newest 500 steps and preserve final answer', async () => {
