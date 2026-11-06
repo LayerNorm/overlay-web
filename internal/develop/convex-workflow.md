@@ -113,6 +113,17 @@ authoritative. Creation/activation, invitation and membership management,
 icon storage orchestration, and billing remain on their existing server-owned
 paths.
 
+`listMemberKinds` separately pages at most 100 memberships, counting active
+memberships and nonarchived human principals. Each directory row owns this
+reactive paginated subscription; the provider derives complete headcounts
+directly from its pages and withholds incomplete totals. Membership revocation
+invalidates these counts without a reload, including revocation of a peer.
+The provider publishes query-derived context during render, not through a copied
+snapshot. Refresh preserves the live subscription and only refreshes retained
+invitation orchestration; domain query errors render an empty scoped fallback.
+Optimistic name/policy patches preserve the last confirmed revision until the
+server supplies its monotonic revision.
+
 `requireNativePersonalChat` additionally checks exact workspace, owner, live
 conversation and participant state. Missing participant rows remain compatible
 with older personal chats; archived participant state remains accessible for

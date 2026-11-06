@@ -321,6 +321,27 @@ export const resolveHandle = query({
   },
 })
 
+export const listMemberKinds = query({
+  args: { workspaceId: v.string(), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { workspaceId, paginationOpts }) => {
+    await requireNativeWorkspace(ctx, workspaceId)
+    const page = await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId))
+      .paginate({ ...paginationOpts, numItems: Math.max(1, Math.min(100, paginationOpts.numItems)) })
+    const counts = await Promise.all(page.page.map(async membership => {
+      if (membership.status !== 'active') return { memberCount: 0, humanMemberCount: 0 }
+      const principal = await ctx.db.query('workspacePrincipals')
+        .withIndex('by_principalId', q => q.eq('principalId', membership.principalId)).unique()
+      return {
+        memberCount: 1,
+        humanMemberCount: principal?.workspaceId === workspaceId
+          && principal.type === 'human' && principal.archivedAt === undefined ? 1 : 0,
+      }
+    }))
+    return { ...page, page: counts }
+  },
+})
+
 export const updateHandle = mutation({
   args: { workspaceId: v.string(), slug: v.string(), expectedUpdatedAt: v.number() },
   returns: v.object({ workspaceId: v.string(), slug: v.string(), updatedAt: v.number() }),

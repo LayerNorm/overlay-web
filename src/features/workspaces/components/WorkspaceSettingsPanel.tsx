@@ -1106,7 +1106,6 @@ function NativeWorkspaceSharingTab({
         policy: {
           ...current.policy,
           ...patch,
-          updatedAt: Math.max(Date.now(), current.policy.updatedAt + 1),
         },
       })
     })

@@ -9,6 +9,8 @@ let identity = 'viewer-a'
 let nativeAuthConfigured = false
 let hasConvexClient = false
 let isAuthenticated = true
+let authLoading = false
+let memberRows: Record<string, Array<{ memberCount: number; humanMemberCount: number }>> = {}
 let directoryQueryError: Error | null = null
 let directoryResults: Array<Record<string, unknown>> = []
 let directoryStatus: 'CanLoadMore' | 'Exhausted' = 'Exhausted'
@@ -39,8 +41,19 @@ const moduleMocks = new Map<string, Record<string, unknown>>([
     notFound: () => undefined,
   }],
   ['convex/react', {
-    useConvexAuth: () => ({ isAuthenticated, isLoading: false }),
-    usePaginatedQuery: () => {
+    useQueries: (requests: Record<string, {
+      args: { workspaceId: string; paginationOpts: { cursor: string | null; numItems: number } }
+    }>) => Object.fromEntries(Object.entries(requests).map(([key, request]) => {
+      const rows = memberRows[request.args.workspaceId] ?? []
+      const start = Number(request.args.paginationOpts.cursor ?? 0)
+      const end = start + request.args.paginationOpts.numItems
+      return [key, { page: rows.slice(start, end), isDone: end >= rows.length, continueCursor: String(end) }]
+    })),
+    useConvexAuth: () => ({ isAuthenticated, isLoading: authLoading }),
+    usePaginatedQuery: (_query: unknown, args: { workspaceId?: string }) => {
+      if (args?.workspaceId) {
+        return { results: memberRows[args.workspaceId] ?? [], status: 'Exhausted', loadMore }
+      }
       if (directoryQueryError) throw directoryQueryError
       return {
         results: directoryResults,
@@ -377,6 +390,65 @@ test('native directory updates reactively, route selection beats the saved hint,
   await act(async () => root.unmount())
 })
 
+test('refresh preserves direct query ownership and every authentication-transition render hides prior scope', async () => {
+  nativeAuthConfigured = true
+  hasConvexClient = true
+  isAuthenticated = true
+  authLoading = false
+  identity = 'viewer-a'
+  pathname = '/app/settings'
+  initialHint = a.id
+  directoryStatus = 'Exhausted'
+  directoryResults = [a]
+  memberRows = { [a.id]: Array.from({ length: 101 }, () => ({ memberCount: 1, humanMemberCount: 1 })) }
+  const client = createClient()
+  let current!: ReturnType<typeof useWorkspace>
+  const renders: ReturnType<typeof useWorkspace>[] = []
+  function Probe() {
+    const value = useWorkspace()
+    React.useLayoutEffect(() => {
+      current = value
+      renders.push(value)
+    })
+    return null
+  }
+  const tree = () => <WorkspaceProvider client={client}><Probe /></WorkspaceProvider>
+  let root!: ReturnType<typeof create>
+  await act(async () => { root = create(tree()) })
+  assert.equal(current.status, 'ready')
+  assert.equal(current.activeWorkspace?.humanMemberCount, 101)
+  assert.ok(renders.every(value => value.activeWorkspace?.humanMemberCount === undefined
+    || value.activeWorkspace.humanMemberCount === 101))
+  await act(async () => { await current.refresh() })
+  assert.equal(current.status, 'ready')
+  assert.equal(current.activeWorkspaceId, a.id)
+  assert.equal(client.listCalls, 0)
+
+  // A revoked peer changes counts without a directory-name update or refresh.
+  memberRows = { [a.id]: [{ memberCount: 1, humanMemberCount: 1 }, { memberCount: 0, humanMemberCount: 0 }] }
+  await act(async () => { root.update(tree()) })
+  assert.equal(current.activeWorkspace?.humanMemberCount, 1)
+  assert.equal(current.activeWorkspace?.memberCount, 1)
+
+  directoryResults = [{ ...a, name: 'Remote name', updatedAt: 4 }]
+  renders.length = 0
+  await act(async () => { root.update(tree()) })
+  assert.ok(renders.length > 0)
+  assert.ok(renders.every(value => value.activeWorkspace?.name === 'Remote name'))
+  for (const loading of [true, false]) {
+    authLoading = loading
+    isAuthenticated = false
+    renders.length = 0
+    await act(async () => { root.update(tree()) })
+    assert.ok(renders.length > 0)
+    assert.ok(renders.every(value => value.activeWorkspace === null && value.workspaces.length === 0))
+  }
+  authLoading = false
+  isAuthenticated = true
+  await act(async () => root.unmount())
+  memberRows = {}
+})
+
 test('native rename preserves drafts across remote revisions and scopes optimism to the affected row', async () => {
   nativeAuthConfigured = true
   hasConvexClient = true
@@ -442,6 +514,7 @@ test('native rename preserves drafts across remote revisions and scopes optimism
     },
   }, { workspaceId: a.id, name: 'Optimistic name', expectedUpdatedAt: 1 })
   assert.equal(cachedPage.page[0]?.name, 'Optimistic name')
+  assert.equal(cachedPage.page[0]?.updatedAt, affected.updatedAt)
   assert.equal(cachedPage.page[1], unrelated)
   await act(async () => root.unmount())
 })
@@ -569,7 +642,7 @@ test('native Sharing settings render reactive policy and write through Convex on
     expectedUpdatedAt: 7,
   })
   assert.equal((optimisticResult.policy as Record<string, unknown>).publicLinksEnabled, false)
-  assert.ok(Number((optimisticResult.policy as Record<string, unknown>).updatedAt) > 7)
+  assert.equal((optimisticResult.policy as Record<string, unknown>).updatedAt, 7)
 
   const newerServerPolicy = {
     ...optimisticPolicy,
@@ -593,7 +666,7 @@ test('native Sharing settings render reactive policy and write through Convex on
   })
   assert.equal((rebasedPolicy.policy as Record<string, unknown>).publicLinksEnabled, false)
   assert.equal((rebasedPolicy.policy as Record<string, unknown>).memberCanInvite, true)
-  assert.ok(Number((rebasedPolicy.policy as Record<string, unknown>).updatedAt) > 9)
+  assert.equal((rebasedPolicy.policy as Record<string, unknown>).updatedAt, 9)
 
   await act(async () => {
     root.update(

@@ -23,7 +23,6 @@ function updateDirectoryName(
       ? {
           ...workspace,
           name: args.name,
-          updatedAt: Math.max(Date.now(), (workspace.updatedAt ?? args.expectedUpdatedAt) + 1),
         }
       : workspace)
     if (page.some((workspace, index) => workspace !== query.value!.page[index])) {

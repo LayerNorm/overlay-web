@@ -389,6 +389,7 @@ test('native handle writes require owner access, a ready registry, and an enable
     await t.mutation(publishPolicy, {
       sequence: refresh.sequence,
       challenge,
+      issuedAt: Date.now(),
       snapshot: workspaceHandlePolicy(enabled),
     })
   }
@@ -468,6 +469,57 @@ test('native handle writes require owner access, a ready registry, and an enable
   })
 })
 
+test('member counts page active memberships, react to revocation, and enforce current scope', async () => {
+  const t = convexTest(schema, modules)
+  await t.run(async ctx => {
+    await addWorkspace(ctx, { id: 'counted', slug: 'counted', userId: 'owner', principalId: 'owner-counted', role: 'owner' })
+    await ctx.db.insert('workspacePrincipals', {
+      principalId: 'peer-counted', workspaceId: 'counted', type: 'human', userId: 'peer',
+      displayName: 'Peer', createdAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('workspaceMemberships', {
+      membershipId: 'peer-counted', workspaceId: 'counted', principalId: 'peer-counted',
+      role: 'member', status: 'active', joinedAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('workspacePrincipals', {
+      principalId: 'agent-counted', workspaceId: 'counted', type: 'agent',
+      displayName: 'Agent', createdAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('workspaceMemberships', {
+      membershipId: 'agent-counted', workspaceId: 'counted', principalId: 'agent-counted',
+      role: 'member', status: 'active', joinedAt: now, updatedAt: now,
+    })
+  })
+  const owner = t.withIdentity({ subject: 'owner', issuer: 'https://issuer.example.test' })
+  const args = { workspaceId: 'counted', paginationOpts: { numItems: 2, cursor: null as string | null } }
+  await expect(t.query(query('listMemberKinds'), args)).rejects.toThrow()
+  await expect(t.withIdentity({ subject: 'outsider' }).query(query('listMemberKinds'), args)).rejects.toThrow()
+  const first = await owner.query(query('listMemberKinds'), args)
+  expect(first.page).toHaveLength(2)
+  expect(first.isDone).toBe(false)
+  const second = await owner.query(query('listMemberKinds'), {
+    ...args, paginationOpts: { ...args.paginationOpts, cursor: first.continueCursor },
+  })
+  expect([...first.page, ...second.page].reduce((sum, row) => sum + row.memberCount, 0)).toBe(3)
+  expect([...first.page, ...second.page].reduce((sum, row) => sum + row.humanMemberCount, 0)).toBe(2)
+  await t.run(async ctx => {
+    const peer = await ctx.db.query('workspaceMemberships')
+      .withIndex('by_membershipId', q => q.eq('membershipId', 'peer-counted')).unique()
+    await ctx.db.patch(peer!._id, { status: 'suspended', updatedAt: now + 1 })
+  })
+  const updated = await owner.query(query('listMemberKinds'), {
+    ...args, paginationOpts: { numItems: 100, cursor: null },
+  })
+  expect(updated.page.reduce((sum, row) => sum + row.humanMemberCount, 0)).toBe(1)
+  expect(updated.page.reduce((sum, row) => sum + row.memberCount, 0)).toBe(2)
+  await t.run(async ctx => {
+    const membership = await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', 'counted').eq('principalId', 'owner-counted')).unique()
+    await ctx.db.patch(membership!._id, { status: 'suspended', updatedAt: now + 2 })
+  })
+  await expect(owner.query(query('listMemberKinds'), args)).rejects.toThrow()
+})
+
 test('native handle writes use a separate 10-write per-user budget', async () => {
   stubNativePolicyEnvironment()
   const t = convexTest(schema, modules)
@@ -498,6 +550,7 @@ test('native handle writes use a separate 10-write per-user budget', async () =>
   await t.mutation(publishPolicy, {
     sequence: refresh.sequence,
     challenge,
+    issuedAt: Date.now(),
     snapshot: workspaceHandlePolicy(true),
   })
   const owner = t.withIdentity({ subject: 'owner', issuer: 'https://issuer.example.test' })

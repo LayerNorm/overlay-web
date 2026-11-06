@@ -160,6 +160,12 @@ server-owned paths. Handle writes require the shared `workspaceHandles`
 deployment policy, owner access, and a ready handle registry; no handle editor
 is currently exposed in Settings.
 
+Workspace member labels and solo-workspace scope use complete, reactive
+membership-page headcounts, including peer revocation without reload. During
+authentication transitions the provider clears workspace scope synchronously;
+refresh does not discard already subscribed directory data. Optimistic edits
+change displayed fields without inventing server revisions.
+
 ## Account Settings
 
 All ordinary full-page product destinations use the shared app shell. This includes

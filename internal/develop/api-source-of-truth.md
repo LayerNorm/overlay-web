@@ -460,7 +460,11 @@ it pages through the viewer's workspace principals and excludes archived
 principals/workspaces and inactive memberships. Rows carry a monotonic
 `updatedAt` revision and versioned icon URLs. The saved active-workspace
 preference is only an initial hint; a route target or tab-local selection wins.
-`getSharingPolicy` permits active members to read the shared policy, while
+`getSharingPolicy` permits active members to read the shared policy.
+`listMemberKinds` supplies bounded reactive membership pages for exact member
+and human-member totals, derived directly in the provider only after pagination
+completes. Directory refresh retains subscribed state; auth transitions and query
+failures expose no prior workspace rows.
 `rename` and `setSharingPolicy` require owner/admin access and use expected
 revisions. The web Settings panel subscribes to policy only while the Sharing
 tab is active. Creation and activation keep the authenticated HTTP service for
