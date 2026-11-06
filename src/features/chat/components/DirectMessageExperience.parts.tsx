@@ -50,6 +50,7 @@ import {
   RoomThreadPanel,
   type RoomPanelKind,
 } from './collaboration/RoomSidePanels'
+import { useNativeRoomSession } from './collaboration/NativeRoomScope'
 import type {
   OptimisticMessage,
   RoomMessageContext,
@@ -664,6 +665,7 @@ export function RoomSidePanel({
   /** Replaces the thread composer for surface-mirrored rooms. */
   readOnlyNotice?: string
 }) {
+  const nativeSession = useNativeRoomSession()
   const { threadRoot, threadReplies, pinnedSummaries } = vm
   const {
     threadFollowing,
@@ -698,6 +700,7 @@ export function RoomSidePanel({
   if (roomPanel === 'thread' && threadRoot) {
     return (
       <RoomThreadPanel
+        history={nativeSession?.threadHistory}
         roomLabel={conversationType === 'channel' ? `#${title}` : title}
         replyCount={threadReplies.length}
         following={threadFollowing}

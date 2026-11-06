@@ -1,5 +1,6 @@
 'use client'
 import { useNativeActivity } from '@/components/providers/native-activity-context'
+import { useNativeRoomStateClient } from '@/components/providers/native-room-state-client'
 
 import { useState, useCallback, useEffect, useEffectEvent, useMemo, useRef, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
@@ -654,7 +655,7 @@ function useChatRename({
   }
 }
 
-function useChatArchive({
+export function useChatArchive({
   activeChatId,
   getNativeSummary,
   loadChats,
@@ -669,6 +670,7 @@ function useChatArchive({
   setNativeArchived: (summary: PersonalChatSummary, archived: boolean) => Promise<void>
   setEditingChatId: Dispatch<SetStateAction<string | null>>
 }) {
+  const nativeRooms = useNativeRoomStateClient()
   const [pendingArchiveChat, setPendingArchiveChat] = useState<Conversation | null>(null)
   const [archiveBusy, setArchiveBusy] = useState(false)
   const [archiveError, setArchiveError] = useState<string | null>(null)
@@ -690,6 +692,27 @@ function useChatArchive({
   async function archiveChat(chat: Conversation, scope: 'self' | 'everyone') {
     setArchiveBusy(true)
     setArchiveError(null)
+    if (nativeRooms.enabled && (chat.conversationType === 'dm' || chat.conversationType === 'channel')) {
+      const origin = window.location.pathname + window.location.search
+      const archive = nativeRooms.act(chat._id, { kind: 'setRoomArchived', archived: true, scope })
+      if (activeChatId === chat._id) navigateAwayFromArchivedChat(chat._id)
+      const destination = window.location.pathname + window.location.search
+      let undone = false
+      announceArchived({ name: chat.title?.trim() || 'Conversation', undo: async () => {
+        undone = true
+        await nativeRooms.act(chat._id, { kind: 'setRoomArchived', archived: false, scope })
+      } })
+      setPendingArchiveChat(null)
+      try { await archive } catch (error) {
+        setArchiveError(error instanceof Error ? error.message : 'Conversation could not be archived')
+        toast.error('Conversation could not be archived.')
+        if (!undone && activeChatId === chat._id && nativeRooms.isCurrentScope() && window.location.pathname + window.location.search === destination) {
+          window.history.replaceState(null, '', origin)
+          window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', { detail: { chatId: chat._id } }))
+        }
+      } finally { setArchiveBusy(false) }
+      return
+    }
     const nativeSummary = scope === 'self' ? getNativeSummary(chat._id) : undefined
     if (nativeSummary) {
       if (activeChatId === chat._id) navigateAwayFromArchivedChat(chat._id)

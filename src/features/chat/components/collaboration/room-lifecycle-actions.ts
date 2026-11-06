@@ -117,6 +117,7 @@ export function useRoomActions({
 }) {
   const api = useRoomApi(conversationId)
   const events = useRoomEvents()
+  const native = useNativeRoomMetadata()
   const buildWorkspaceHref = useWorkspaceHref()
   const [pendingArchiveScope, setPendingArchiveScope] = useState(false)
   const [scopeDialogBusy, setScopeDialogBusy] = useState(false)
@@ -145,10 +146,20 @@ export function useRoomActions({
     setScopeDialogBusy(true)
     setScopeDialogError(null)
     try {
-      await api.updateParticipantState(conversationId, {
+      const operation = api.updateParticipantState(conversationId, {
         archived: true,
         archiveScope: scope,
       })
+      if (native) {
+        setMenuOpen(false)
+        announceArchived({ name: title || 'Conversation', undo: async () => {
+          await api.updateParticipantState(conversationId, { archived: false, archiveScope: scope })
+        } })
+        setPendingArchiveScope(false)
+        await operation
+        return
+      }
+      await operation
       events.archived({
         chat: {
           _id: conversationId,

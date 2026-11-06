@@ -17,6 +17,7 @@ import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeP
 import { isRoomAgentResponding } from './collaboration/room-message-view'
 import { useNativeCollaboration } from './collaboration/NativeCollaborationProvider'
 import { NativeRoomScope } from './collaboration/NativeRoomScope'
+import { AgentDirectoryProvider } from '@/components/providers/AgentDirectoryProvider'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import {
   useDirectMessageRoom,
@@ -216,7 +217,7 @@ function GuidedPendingMessage({
 }
 
 export function DirectMessageExperience(props: Parameters<typeof DirectMessageExperienceContent>[0]) {
-  return <NativeRoomScope conversationId={props.conversationId}><DirectMessageExperienceContent {...props} /></NativeRoomScope>
+  return <AgentDirectoryProvider><NativeRoomScope conversationId={props.conversationId}><DirectMessageExperienceContent {...props} /></NativeRoomScope></AgentDirectoryProvider>
 }
 
 function DirectMessageExperienceContent({

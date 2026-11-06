@@ -48,15 +48,25 @@ async function archiveNativeThread(ctx: ActionContext, agent: Agent, conversatio
   const pending = pendingAgentHref(destination(ctx, agent), token)
   const selected = ctx.args.activeConversationId === conversationId
   const finish = ctx.client.track(token)
+  let undoRequested = false
+  let pendingArchive = true
   try {
     if (selected && archived) ctx.router.replace(pending)
-    await ctx.client.archive(agent.id, conversationId, archived)
-    if (archived) announceArchived({ name: 'Thread', undo: () => ctx.client.archive(agent.id, conversationId, false) })
-    if (selected && archived && ownsThreadNavigation(locationKey(), origin, pending)) ctx.router.replace(destination(ctx, agent))
+    const operation = ctx.client.archive(agent.id, conversationId, archived)
+    if (archived) announceArchived({ name: 'Thread', undo: () => {
+      undoRequested = true
+      const restoring = ctx.client.archive(agent.id, conversationId, false)
+      if (pendingArchive && selected && ctx.client.isCurrentScope() && ownsThreadNavigation(locationKey(), origin, pending)) {
+        ctx.router.replace(agentThreadHref(ctx.args.baseHref, agent.id, conversationId, ctx.args.view))
+      }
+      return restoring
+    } })
+    await operation
+    if (!undoRequested && selected && archived && ctx.client.isCurrentScope() && ownsThreadNavigation(locationKey(), origin, pending)) ctx.router.replace(destination(ctx, agent))
   } catch (error) {
-    if (selected && ownsThreadNavigation(locationKey(), origin, pending)) ctx.router.replace(agentThreadHref(ctx.args.baseHref, agent.id, conversationId, ctx.args.view))
+    if (!undoRequested && selected && ctx.client.isCurrentScope() && ownsThreadNavigation(locationKey(), origin, pending)) ctx.router.replace(agentThreadHref(ctx.args.baseHref, agent.id, conversationId, ctx.args.view))
     throw error
-  } finally { finish() }
+  } finally { pendingArchive = false; finish() }
 }
 
 async function deleteNativeThread(ctx: ActionContext, agent: Agent, conversationId: string) {

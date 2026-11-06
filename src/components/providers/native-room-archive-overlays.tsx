@@ -2,10 +2,11 @@
 
 import { createContext, useCallback, useContext, useState, type ReactNode } from 'react'
 import type { NativeRoomSummary } from './native-collaboration-context'
+import { settleIntents } from './native-intent-overlays'
 
-type Entry = { id: string; archived: boolean; at: number }
+type Entry = { id: string; archived: boolean; at: number; settled?: boolean }
 type Entries = Record<string, Entry[]>
-const Context = createContext<{ entries: Entries; add(room: string, archived: boolean): string; remove(room: string, id: string): void }>({ entries: {}, add: () => '', remove() {} })
+const Context = createContext<{ entries: Entries; add(room: string, archived: boolean): string; remove(room: string, id: string, committed?: boolean): void }>({ entries: {}, add: () => '', remove() {} })
 export const useRoomArchiveOverlays = () => useContext(Context)
 
 export function NativeRoomArchiveOverlayProvider({ children }: { children: ReactNode }) {
@@ -16,9 +17,9 @@ export function NativeRoomArchiveOverlayProvider({ children }: { children: React
     setEntries(current => ({ ...current, [room]: [...(current[room] ?? []), entry] }))
     return id
   }, [])
-  const remove = useCallback((room: string, id: string) => setEntries(current => {
+  const remove = useCallback((room: string, id: string, committed = false) => setEntries(current => {
     const next = { ...current }
-    const rows = (next[room] ?? []).filter(row => row.id !== id)
+    const rows = settleIntents(next[room] ?? [], id, committed)
     if (rows.length) next[room] = rows; else delete next[room]
     return next
   }), [])

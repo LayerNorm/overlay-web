@@ -178,4 +178,20 @@ describe('native agent thread ownership', () => {
     await act(async () => { finish(null); await second })
     expect(list.rows).toHaveLength(1)
   })
+
+  it('publishes Undo before archive resolves and a faster restore does not reveal the stale archive intent', async () => {
+    let finishArchive!: (value: null) => void
+    mocks.mutation.mockImplementationOnce(() => new Promise(resolve => { finishArchive = resolve })).mockResolvedValueOnce(null)
+    await act(async () => { renderer = create(tree()) })
+    let archive!: Promise<void>
+    await act(async () => { archive = actions.archiveThread(agent, 'thread', true) })
+    expect(list.rows).toHaveLength(0)
+    expect(mocks.announce).toHaveBeenCalledTimes(1)
+    await act(async () => { await mocks.announce.mock.calls[0][0].undo() })
+    expect(list.rows).toHaveLength(1)
+    const location = window.location.search
+    await act(async () => { finishArchive(null); await archive })
+    expect(list.rows).toHaveLength(1)
+    expect(window.location.search).toBe(location)
+  })
 })
