@@ -7,7 +7,7 @@ export function subscriptionAuthorizationBody(providerId: string, scope: Subscri
   return connectionId ? { providerId, connectionId } : { providerId, scope }
 }
 
-export type SubscriptionProvider = { id: string; label: string; description: string; enabled: boolean; selectable?: boolean }
+export type SubscriptionProvider = { id: string; label: string; description: string; enabled: boolean }
 export type SubscriptionAvailability = { available: boolean; providers: SubscriptionProvider[]; reason?: string }
 export type SubscriptionAuthorization = {
   connectionId: string
@@ -22,7 +22,7 @@ export type SubscriptionProgress = {
 
 export function subscriptionLogo(providerId: string): string {
   const id = providerId.replace(/^subscription:/, '')
-  return ({ codex: 'openai', claude: 'anthropic', kimi: 'moonshotai', 'kimi-ai': 'moonshotai', meta: 'meta-llama' } as Record<string, string>)[id] ?? id
+  return ({ codex: 'openai', claude: 'anthropic', kimi: 'moonshotai', meta: 'meta-llama' } as Record<string, string>)[id] ?? id
 }
 
 export async function subscriptionRequest<T>(body?: Record<string, unknown>, options: { method?: string; signal?: AbortSignal; idempotencyKey?: string; workspaceId?: string } = {}): Promise<T> {

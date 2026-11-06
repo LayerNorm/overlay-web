@@ -17,6 +17,7 @@ import {
 
 export const beginRefresh = internalMutation({
   args: { challenge: v.string() },
+  returns: v.object({ sequence: v.number(), sourceOrigin: v.string() }),
   handler: async (ctx, { challenge }) => {
     const sourceOrigin = nativePolicySourceOrigin()
     const row = await ctx.db.query('nativeDeploymentPolicies').withIndex('by_key', q => q.eq('key', 'web')).unique()
@@ -29,10 +30,16 @@ export const beginRefresh = internalMutation({
 })
 
 export const publish = internalMutation({
-  args: { sequence: v.number(), challenge: v.string(), snapshot: nativePolicySnapshotValidator },
+  args: { sequence: v.number(), challenge: v.string(), issuedAt: v.number(), snapshot: nativePolicySnapshotValidator },
+  returns: v.boolean(),
   handler: async (ctx, args) => {
     const row = await ctx.db.query('nativeDeploymentPolicies').withIndex('by_key', q => q.eq('key', 'web')).unique()
     if (!row || row.sequence !== args.sequence || row.challenge !== args.challenge) return false
+    // Recheck at the commit boundary: an action can be delayed after receiving
+    // and validating a response but before this mutation starts its lease.
+    if (!Number.isFinite(args.issuedAt) || Math.abs(Date.now() - args.issuedAt) > NATIVE_POLICY_RESPONSE_MAX_AGE_MS) {
+      throw new Error('NATIVE_POLICY_RESPONSE_STALE')
+    }
     if (row.sourceOrigin !== nativePolicySourceOrigin() || args.snapshot.backendUrl !== process.env.CONVEX_CLOUD_URL) {
       throw new Error('NATIVE_POLICY_SOURCE_MISMATCH')
     }
@@ -46,25 +53,30 @@ export const publish = internalMutation({
 
 export const invalidate = internalMutation({
   args: { sequence: v.number() },
+  returns: v.null(),
   handler: async (ctx, { sequence }) => {
     const row = await ctx.db.query('nativeDeploymentPolicies').withIndex('by_key', q => q.eq('key', 'web')).unique()
     if (row?.sequence === sequence) await ctx.db.patch(row._id, { expiresAt: 0, snapshot: undefined })
+    return null
   },
 })
 
 export const expire = internalMutation({
   args: { expiresAt: v.number() },
+  returns: v.null(),
   handler: async (ctx, { expiresAt }) => {
     const row = await ctx.db.query('nativeDeploymentPolicies').withIndex('by_key', q => q.eq('key', 'web')).unique()
     // A refresh in progress must not prevent the preceding lease from expiring.
     if (row?.expiresAt === expiresAt && expiresAt <= Date.now()) {
       await ctx.db.patch(row._id, { expiresAt: 0, snapshot: undefined })
     }
+    return null
   },
 })
 
 export const refresh = internalAction({
   args: {},
+  returns: v.null(),
   handler: async (ctx): Promise<null> => {
     const challenge = crypto.randomUUID()
     let sequence: number | undefined
@@ -99,7 +111,9 @@ export const refresh = internalAction({
       if (result.challenge !== challenge || Math.abs(Date.now() - result.issuedAt) > NATIVE_POLICY_RESPONSE_MAX_AGE_MS) {
         throw new Error('NATIVE_POLICY_RESPONSE_STALE')
       }
-      await ctx.runMutation(internal.platform.nativePolicy.publish, { sequence: started.sequence, challenge, snapshot: result.snapshot })
+      await ctx.runMutation(internal.platform.nativePolicy.publish, {
+        sequence: started.sequence, challenge, issuedAt: result.issuedAt, snapshot: result.snapshot,
+      })
     } catch {
       if (sequence !== undefined) await ctx.runMutation(internal.platform.nativePolicy.invalidate, { sequence })
       console.warn('[native-policy] refresh unavailable; native deployment-gated features fail closed')
@@ -110,6 +124,7 @@ export const refresh = internalAction({
 
 export const status = query({
   args: { workspaceId: v.optional(v.string()) },
+  returns: v.object({ ready: v.boolean(), features: v.record(v.string(), v.boolean()) }),
   handler: async (ctx, { workspaceId }) => {
     if (!await nativeViewer(ctx)) throw new Error('UNAUTHENTICATED')
     if (workspaceId) await requireNativeWorkspace(ctx, workspaceId)

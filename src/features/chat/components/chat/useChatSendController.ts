@@ -72,6 +72,7 @@ export function useChatSendController({
   inputRef,
   invalidateLoadChatRequest,
   isActiveLoading,
+  billingAccessNotice,
   isBudgetExhaustedPaid,
   connectionUnavailable,
   isFirstMessage,
@@ -81,6 +82,7 @@ export function useChatSendController({
   isTemporaryChatRef,
   loadChats,
   loadSubscription,
+  nativePersonalEnabled = false,
   onUsageExhaustedError,
   markChatModified,
   memoryEnabled,
@@ -128,6 +130,7 @@ export function useChatSendController({
   updateRuntimeUiState,
   userId,
   videoSubMode,
+  workspaceId,
 }: {
   ensureWritable: () => Promise<boolean>
   isCurrentScope: () => boolean
@@ -150,6 +153,7 @@ export function useChatSendController({
   inputRef: MutableRefObject<string>
   invalidateLoadChatRequest: () => void
   isActiveLoading: boolean
+  billingAccessNotice: string | null
   isBudgetExhaustedPaid: boolean
   connectionUnavailable: boolean
   isFirstMessage: boolean
@@ -159,8 +163,9 @@ export function useChatSendController({
   isTemporaryChatRef: MutableRefObject<boolean>
   loadChats: () => Promise<void>
   loadSubscription: () => Promise<unknown>
+  nativePersonalEnabled?: boolean
   onUsageExhaustedError: (message: string) => boolean
-  markChatModified: (chatId: string, titleSnapshot?: string | null) => void
+  markChatModified: (chatId: string, titleSnapshot?: string | null, nativePersonalOwner?: boolean) => void
   memoryEnabled: boolean
   mentions: MentionItem[]
   mode: 'chat' | 'automate'
@@ -204,7 +209,7 @@ export function useChatSendController({
   setReplyContext: (context: ReplyContext) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   prefetchFirstMessageTitle: (seedText: string) => void
-  startFirstMessageRename: (chatId: string, seedText: string) => void
+  startFirstMessageRename: (chatId: string, seedText: string, nativePersonalOwner?: boolean) => void
   startSession: StartSession
   syncStandaloneChatUrl: (chatId: string | null) => void
   textareaRef: RefObject<MentionInputHandle | null>
@@ -214,6 +219,7 @@ export function useChatSendController({
   ) => void
   userId: string | null
   videoSubMode: VideoSubMode
+  workspaceId?: string | null
 }) {
   const effectiveReasoningByModel = useMemo(
     () => getEffectiveReasoningByModel(reasoningModels, reasoningByModel),
@@ -276,10 +282,11 @@ export function useChatSendController({
       activeChatIdRef,
       applyUiStateToView,
       clearTransientComposerState,
-          emptyRuntime: emptyRuntimeRef.current,
+      emptyRuntime: emptyRuntimeRef.current,
       ensureConversationRuntime,
       invalidateLoadChatRequest,
       mode,
+      nativePersonalEnabled,
       options,
       pendingFirstSendRef,
       pendingScrollChatIdRef,
@@ -298,15 +305,17 @@ export function useChatSendController({
       syncStandaloneChatUrl,
       startFirstMessageRename,
       tryActivatePendingFirstSend,
+      workspaceId,
     })
   }, [
     activeChatIdRef,
     applyUiStateToView,
     clearTransientComposerState,
-      emptyRuntimeRef,
+    emptyRuntimeRef,
     ensureConversationRuntime,
     invalidateLoadChatRequest,
     mode,
+    nativePersonalEnabled,
     pendingFirstSendRef,
     pendingScrollChatIdRef,
     pendingScrollTurnIdRef,
@@ -324,6 +333,7 @@ export function useChatSendController({
     syncStandaloneChatUrl,
     startFirstMessageRename,
     tryActivatePendingFirstSend,
+    workspaceId,
   ])
 
   const completeSessionForStream = useCallback((chatId: string, active: boolean) => {
@@ -393,6 +403,7 @@ export function useChatSendController({
     }
     if (sendValidationError === 'empty') return
     if (isSendBlocked) {
+      if (billingAccessNotice) return
       setComposerNotice(getBlockedSendNotice({
         connectionUnavailable,
         isBudgetExhaustedPaid,
@@ -451,6 +462,7 @@ export function useChatSendController({
         isTemporaryChatRef,
         loadChats,
         loadSubscription,
+        nativePersonalEnabled,
         markChatModified,
         pendingScrollChatIdRef,
         pendingScrollTurnIdRef,
@@ -476,12 +488,13 @@ export function useChatSendController({
       automationIdParam,
       completeSessionForStream,
       createNewChat,
-          emptyRuntime: emptyRuntimeRef.current,
+      emptyRuntime: emptyRuntimeRef.current,
       ensureConversationRuntime,
       isFirstMessage,
       isStreamChatActive,
       loadChats,
       loadSubscription,
+      nativePersonalEnabled,
       onUsageExhaustedError,
       markChatModified,
       pendingFirstSendRef,
@@ -514,10 +527,11 @@ export function useChatSendController({
     completeSessionForStream,
     createNewChat,
     effectiveGenType,
-      emptyRuntimeRef,
+    emptyRuntimeRef,
     ensureConversationRuntime,
     inputRef,
     isActiveLoading,
+    billingAccessNotice,
     isBudgetExhaustedPaid,
     connectionUnavailable,
     isFirstMessage,
@@ -528,6 +542,7 @@ export function useChatSendController({
     isTemporaryChatRef,
     loadChats,
     loadSubscription,
+    nativePersonalEnabled,
     onUsageExhaustedError,
     markChatModified,
     memoryEnabled,

@@ -111,3 +111,12 @@ test('native operations enforce current direct and group capabilities independen
   await expect(user.query(list, page)).rejects.toThrow('CAPABILITY_ACCESS_DENIED')
   await expect(user.mutation(archive, { ...args, archived: true })).rejects.toThrow('CAPABILITY_ACCESS_DENIED')
 })
+
+test('stale restore cannot resurrect a deleted conversation or create participant state', async () => {
+  const { t, user, args, page } = await fixture()
+  await t.run(ctx => ctx.db.patch(args.conversationId, { deletedAt: 2 }))
+  await expect(user.mutation(archive, { ...args, archived: false })).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+  expect(await user.query(getSummary, args)).toBeNull()
+  expect((await user.query(list, page)).page).toEqual([])
+  expect(await t.run(ctx => ctx.db.query('conversationParticipants').collect())).toEqual([])
+})

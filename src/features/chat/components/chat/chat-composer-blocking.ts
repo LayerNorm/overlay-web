@@ -7,6 +7,21 @@ export const CONNECTION_UNAVAILABLE_NOTICE =
 const BUDGET_EXHAUSTED_NOTICE =
   'Budget exhausted. Add credit to continue model execution.'
 
+export function getBillingAccessNotice({
+  billingEnabled,
+  hasEntitlements,
+  loading,
+}: {
+  billingEnabled: boolean
+  hasEntitlements: boolean
+  loading: boolean
+}): string | null {
+  if (!billingEnabled || hasEntitlements) return null
+  return loading
+    ? 'Checking workspace access...'
+    : 'Workspace access could not be verified. Reload to try again.'
+}
+
 export function hasUnavailableByokModel({
   chatPrefsHydrated,
   modelCatalogReady,
@@ -26,13 +41,15 @@ export function hasUnavailableByokModel({
 }
 
 export function shouldShowPaidModelReplacement({
+  billingAccessNotice,
   isBudgetExhaustedPaid,
   premiumModelBlocked,
 }: {
+  billingAccessNotice: string | null
   isBudgetExhaustedPaid: boolean
   premiumModelBlocked: boolean
 }) {
-  return premiumModelBlocked && !isBudgetExhaustedPaid
+  return billingAccessNotice === null && premiumModelBlocked && !isBudgetExhaustedPaid
 }
 
 export function getBlockedSendNotice({

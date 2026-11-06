@@ -166,6 +166,7 @@ export interface ChatExperienceHeaderProps {
   onToggleTextModel: (modelId: string) => void
   isTextModelLocked?: (modelId: string) => boolean
   onLockedTextModelSelect?: (model: ChatModel) => void
+  modelAccessPending?: boolean
   hasAutomationContext: boolean
   reasoningByModel?: ModelReasoningProps['reasoningByModel']
   onModelReasoningChange?: ModelReasoningProps['onModelReasoningChange']
@@ -683,6 +684,7 @@ export function ChatModelPickerDropdown({
 }
 
 export type ChatModelPickerProps = ModelReasoningProps & {
+  modelAccessPending?: boolean
   placement?: 'header' | 'composer' | 'field'
   modelPickerRef?: RefObject<HTMLDivElement | null>
   modelPickerLabel: string
@@ -832,6 +834,7 @@ export function ChatModelPicker({
   modelRecommendations,
   placement = 'header',
   lockedGenerationMode,
+  modelAccessPending = false,
 }: ChatModelPickerProps) {
   const internalPickerRef = useRef<HTMLDivElement>(null)
   const internalListRef = useRef<HTMLDivElement>(null)
@@ -841,7 +844,7 @@ export function ChatModelPicker({
   const [internalQualitiesPos, setInternalQualitiesPos] = useState<ModelQualitiesPosition | null>(null)
   const pickerRef = modelPickerRef ?? internalPickerRef
   const listRef = modelPickerListScrollRef ?? internalListRef
-  const open = showModelPicker ?? internalOpen
+  const open = !modelAccessPending && (showModelPicker ?? internalOpen)
   const activeGenerationMode = lockedGenerationMode ?? generationMode ?? 'text'
   const activeImageModels = imageModels ?? EMPTY_IMAGE_MODELS
   const activeVideoModels = videoModels ?? EMPTY_VIDEO_MODELS
@@ -852,6 +855,7 @@ export function ChatModelPicker({
   const placementConfig = modelPickerPlacement(placement)
   const selectedTextModel = (pickerTextModels ?? selectableTextModels).find((model) => model.id === selectedActModel)
   const handleOpenChange = (value: boolean) => {
+    if (value && modelAccessPending) return
     if (showModelPicker === undefined) setInternalOpen(value)
     onSetShowModelPicker?.(value)
   }
@@ -875,6 +879,7 @@ export function ChatModelPicker({
           <PopoverTrigger asChild>
             <Button variant={placementConfig.triggerVariant}
               type="button"
+              disabled={modelAccessPending}
               className={placementConfig.triggerClass}
             >
               <SelectedModelTriggerLogo

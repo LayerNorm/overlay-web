@@ -565,3 +565,11 @@ XMLHttpRequest.prototype.send = function(b){ /* inspect b (FormData.entries()) *
   dumping FormData or request bodies.
 - The user's tabs are live and signed in; don't navigate their existing tabs
   away — use `tab-new` inside the Playwright group.
+
+## Convex-native baseline runners
+
+For repeatable two-client chat and navigation timing, use the purpose-built
+Playwright runners documented in [Convex-native chat](./convex-native-chat.md).
+They require the current-head isolated Preview, private authenticated storage
+state, synthetic fixtures and explicit opt-in timing marks. Keep baseline
+failures distinct from regressions; these runners measure existing behavior.

@@ -103,6 +103,7 @@ export function buildChatExperienceViewProps(
       renderExportMenu,
       ...c.headerModelProps,
       pickerTextModels: c.pickerTextModels,
+      modelAccessPending: c.billingAccessNotice !== null,
       isTextModelLocked: c.isTextModelLocked,
       onLockedTextModelSelect: c.setUpgradeModel,
       automationHeaderModelId: c.automationHeaderModelId,
@@ -227,7 +228,7 @@ export function buildChatExperienceViewProps(
               onOpenFilePreview: c.openFilePreview,
             },
             runtime: {
-              composerNotice: c.composerNotice,
+              composerNotice: c.billingAccessNotice ?? c.composerNotice,
               beforeComposerContent: c.personalMentionConfirmationOpen && c.activeWorkspaceId ? (
                 <PersonalMentionConversionPrompt
                   draft={c.inputRef.current ?? c.input}
@@ -242,6 +243,7 @@ export function buildChatExperienceViewProps(
               isActiveLoading: c.isActiveLoading,
               isTemporaryChat: c.isTemporaryChat,
               blockedComposerContent: shouldShowPaidModelReplacement({
+                billingAccessNotice: c.billingAccessNotice,
                 isBudgetExhaustedPaid: c.isBudgetExhaustedPaid,
                 premiumModelBlocked: c.premiumModelBlocked,
               }) ? (

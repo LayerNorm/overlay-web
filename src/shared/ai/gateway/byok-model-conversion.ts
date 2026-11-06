@@ -232,9 +232,8 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
         xai: 'xai',
         meta: 'meta-llama',
         kimi: 'moonshotai',
-        'kimi-ai': 'moonshotai',
         devin: 'devin',
-      } as const)[connection.subscriptionProvider! as 'codex' | 'claude' | 'xai' | 'meta' | 'kimi' | 'kimi-ai' | 'devin']
+      } as const)[connection.subscriptionProvider! as 'codex' | 'claude' | 'xai' | 'meta' | 'kimi' | 'devin']
     : connection.displayName
 
   const discovered = parseDiscoveredModels(connection.discoveredModelsJson)
