@@ -26,14 +26,19 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const body = await request.json()
     const record = body as Record<string, unknown>
 
+    const useStoredConfig = record.useStoredConfig === true
+    const useStoredEndpoint = record.useStoredEndpoint === true
+    mcpServerId = typeof record.mcpServerId === 'string' && record.mcpServerId.length > 0
+      ? record.mcpServerId
+      : undefined
+    if ((useStoredConfig || useStoredEndpoint) && !mcpServerId) {
+      return NextResponse.json({ error: 'mcpServerId is required for stored MCP settings' }, { status: 400 })
+    }
+
     const requestedUrl = record.url
     if (!requestedUrl || typeof requestedUrl !== 'string') {
       return NextResponse.json({ error: 'url is required' }, { status: 400 })
     }
-
-    mcpServerId = typeof record.mcpServerId === 'string' && record.mcpServerId.length > 0
-      ? record.mcpServerId
-      : undefined
 
     const saved = mcpServerId
       ? await getOverlayServerContext().appData.repositories.mcpServers.get({
@@ -45,18 +50,17 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (mcpServerId && !saved) {
       return NextResponse.json({ error: 'MCP server not found' }, { status: 404 })
     }
-    const useStoredConfig = record.useStoredConfig === true
     const transport = useStoredConfig
-      ? saved!.transport
+      ? saved?.transport ?? parseTransport(record.transport)
       : record.transport === undefined && saved
         ? saved.transport
         : parseTransport(record.transport)
     const authType = useStoredConfig
-      ? saved!.authType
+      ? saved?.authType ?? parseAuthType(record.authType)
       : record.authType === undefined && saved
         ? saved.authType
         : parseAuthType(record.authType)
-    const url = useStoredConfig ? saved!.url : requestedUrl
+    const url = useStoredConfig || useStoredEndpoint ? saved?.url ?? requestedUrl : requestedUrl
     const sameStoredConnection = Boolean(saved
       && url === saved.url
       && transport === saved.transport
@@ -72,14 +76,14 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       url,
       enabled: true,
       authType,
-      authConfig: freshAuthConfig ?? ((useStoredConfig || sameStoredConnection) ? saved?.authConfig : undefined),
+      authConfig: freshAuthConfig ?? (sameStoredConnection ? saved?.authConfig : undefined),
       timeoutMs: useStoredConfig
         ? saved?.timeoutMs
         : typeof record.timeoutMs === 'number' ? record.timeoutMs : saved?.timeoutMs,
       defaultToolPolicy: saved?.defaultToolPolicy ?? 'allow',
       toolPolicies: saved?.toolPolicies ?? {},
       // OAuth credentials only ever come from storage — a client cannot supply tokens here.
-      ...((useStoredConfig || sameStoredConnection) && saved?.authType === 'oauth'
+      ...(sameStoredConnection && saved?.authType === 'oauth'
         ? {
           oauthClient: saved.oauthClient,
           oauthScope: saved.oauthScope,

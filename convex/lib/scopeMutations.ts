@@ -10,7 +10,7 @@ import {
 } from './resourceScope'
 import type { ResourceKind, ScopedRow } from '../../src/shared/workspaces/resource-scope'
 
-type ScopedDoc = ScopedRow & { workspaceId?: string }
+type ScopedDoc = ScopedRow & { workspaceId?: string; updatedAt?: number }
 type ScopeMutationArgs = { id: string; userId: string; workspaceId?: string; accessToken?: string; serverSecret?: string; actingAgentPrincipalId?: string }
 type LooseDb = {
   get(id: unknown): Promise<ScopedDoc | null>
@@ -42,6 +42,8 @@ export function scopeMutations(
   options?: {
     /** Keep resources whose policy lives in web routes behind the same server boundary. */
     requireServerAuthentication?: boolean
+    /** Advance metadata revisions for scoped-resource writes when the table has `updatedAt`. */
+    advanceUpdatedAt?: boolean
     onArchive?: Record<string, unknown>
     /** Ids of the rows that belong under this one (a folder's contents), moved, archived, and restored with it. */
     descendants?: (db: unknown, id: string) => Promise<string[]>
@@ -73,12 +75,15 @@ export function scopeMutations(
     const { db, id, row } = await readableRow(ctx, args)
     const plan = await planMove(ctx, { kind, row, to: args.to, userId: args.userId })
     if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
-    await db.patch(id, plan.patch)
+    await db.patch(id, { ...plan.patch, ...revisionPatch(row, options?.advanceUpdatedAt) })
     const moved = [id]
     // A folder's contents go with it: only the creator's own, not-archived rows.
     for (const childId of (await options?.descendants?.(db, id)) ?? []) {
       const child = await db.get(childId)
-      if (child && !child.archivedAt && child.userId === row?.userId) { await db.patch(childId, plan.patch); moved.push(childId) }
+      if (child && !child.archivedAt && child.userId === row?.userId) {
+        await db.patch(childId, { ...plan.patch, ...revisionPatch(child, options?.advanceUpdatedAt) })
+        moved.push(childId)
+      }
     }
     if (row) await options?.afterApply?.(ctx, { action: 'scope', id, row, userId: args.userId, actingAgentPrincipalId: args.actingAgentPrincipalId, to: args.to, affectedIds: moved })
     return { ok: true }
@@ -95,12 +100,18 @@ export function scopeMutations(
       const { db, id, row } = await readableRow(ctx, args)
       const plan = await planArchive(ctx, { row, userId: args.userId, now: Date.now() })
       if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
-      await db.patch(id, { ...plan.patch, ...(options?.onArchive ?? {}) })
+      await db.patch(id, { ...plan.patch, ...(options?.onArchive ?? {}), ...revisionPatch(row, options?.advanceUpdatedAt) })
       const affectedIds = [id]
       for (const childId of (await options?.descendants?.(db, id)) ?? []) {
         const child = await db.get(childId)
         if (child && !child.archivedAt && child.userId === row?.userId) {
-          await db.patch(childId, { archivedAt: plan.patch.archivedAt, archivedBy: plan.patch.archivedBy, archivedFromScope: rowScopeOf(child), ...(options?.onArchive ?? {}) })
+          await db.patch(childId, {
+            archivedAt: plan.patch.archivedAt,
+            archivedBy: plan.patch.archivedBy,
+            archivedFromScope: rowScopeOf(child),
+            ...(options?.onArchive ?? {}),
+            ...revisionPatch(child, options?.advanceUpdatedAt),
+          })
           affectedIds.push(childId)
         }
       }
@@ -117,13 +128,25 @@ export function scopeMutations(
       const plan = await planRestore(ctx, { row, userId: args.userId })
       if (!plan.ok || !id) return { ok: false, reason: plan.ok ? 'not_found' : plan.reason }
       const archivedAt = row?.archivedAt
-      await db.patch(id, { scope: plan.scope, archivedAt: undefined, archivedBy: undefined, archivedFromScope: undefined })
+      await db.patch(id, {
+        scope: plan.scope,
+        archivedAt: undefined,
+        archivedBy: undefined,
+        archivedFromScope: undefined,
+        ...revisionPatch(row, options?.advanceUpdatedAt),
+      })
       const affectedIds = [id]
       // Only the contents that were archived together with it come back.
       for (const childId of (await options?.descendants?.(db, id)) ?? []) {
         const child = await db.get(childId)
         if (child && child.archivedAt !== undefined && child.archivedAt === archivedAt) {
-          await db.patch(childId, { scope: child.archivedFromScope ?? child.scope ?? 'personal', archivedAt: undefined, archivedBy: undefined, archivedFromScope: undefined })
+          await db.patch(childId, {
+            scope: child.archivedFromScope ?? child.scope ?? 'personal',
+            archivedAt: undefined,
+            archivedBy: undefined,
+            archivedFromScope: undefined,
+            ...revisionPatch(child, options?.advanceUpdatedAt),
+          })
           affectedIds.push(childId)
         }
       }
@@ -133,4 +156,9 @@ export function scopeMutations(
   })
 
   return { setScope, archive, restore, applyScope }
+}
+
+function revisionPatch(row: ScopedDoc | null | undefined, advance: boolean | undefined): Record<string, number> {
+  if (!advance || typeof row?.updatedAt !== 'number') return {}
+  return { updatedAt: Math.max(Date.now(), row.updatedAt + 1) }
 }

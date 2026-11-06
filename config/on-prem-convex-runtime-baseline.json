@@ -237,7 +237,12 @@
     "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
-    "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx"
+    "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
+    "src/features/integrations/components/McpServersView.tsx",
+    "src/features/integrations/components/NativeMcpServersView.tsx",
+    "src/features/integrations/hooks/use-native-mcp-servers.ts",
+    "src/features/settings/components/ConnectedAppsSettings.tsx",
+    "src/features/settings/components/NativeConnectedAppsSettings.tsx"
   ],
   "convexCronJobs": [
     {
@@ -394,6 +399,11 @@
     "src/features/chat/components/chat/useLiveConversationSync.ts",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
+    "src/features/integrations/components/McpServersView.tsx",
+    "src/features/integrations/components/NativeMcpServersView.tsx",
+    "src/features/integrations/hooks/use-native-mcp-servers.ts",
+    "src/features/settings/components/ConnectedAppsSettings.tsx",
+    "src/features/settings/components/NativeConnectedAppsSettings.tsx",
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAuditRepository.ts",
     "src/server/admin/index.ts",
@@ -464,6 +474,7 @@
     "src/server/email/index.ts",
     "src/server/extensions/ConvexMcpServerRepository.ts",
     "src/server/extensions/ConvexSkillRepository.ts",
+    "src/server/extensions/McpCommandState.ts",
     "src/server/extensions/index.ts",
     "src/server/files/ConvexFileIngestionJobRepository.ts",
     "src/server/files/ConvexFileRepository.ts",
@@ -536,7 +547,8 @@
     "src/server/workflows/native-harness.ts",
     "src/server/workflows/personal-harness.ts",
     "src/server/workflows/surface-agent-turn.ts",
-    "src/server/workspaces/ConvexWorkspaceRepository.ts"
+    "src/server/workspaces/ConvexWorkspaceRepository.ts",
+    "src/shared/mcp/native-connected-apps-optimistic.ts"
   ],
   "convexScheduledCallFiles": [
     "convex/agents/agentDriveUploads.ts",
@@ -550,6 +562,7 @@
     "convex/files/files.ts",
     "convex/files/ingestion/runner.ts",
     "convex/imports/slackRunner.ts",
+    "convex/integrations/mcpCommands.ts",
     "convex/knowledge/knowledge.ts",
     "convex/knowledge/memories.ts",
     "convex/knowledge/memoryExtractorNode.ts",

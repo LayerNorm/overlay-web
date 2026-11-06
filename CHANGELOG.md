@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- CN-21: move MCP settings metadata, scope, and Connected Apps grant ownership to native Convex. Native lists expose safe summaries with endpoint origins only; metadata and scope writes use revision compare-and-set, while credential/endpoint changes, creation, OAuth, external tests, and deletion remain authenticated server operations. Preserve the legacy HTTP APIs and UI for installs without native auth and for other consumers.
+- CN-21: move MCP settings metadata, scope, and Connected Apps grant ownership to native Convex. Native lists expose safe summaries with endpoint origins only, and selected settings dialogs subscribe directly by server ID while retaining their draft and captured revision through create/OAuth transitions. Metadata, scope, OAuth, and catalog writes advance revisions; stale edits fail closed. Stored-endpoint tests resolve secret-bearing URLs only from owned server records, independently from fresh auth drafts. Creation, credentials, OAuth, external tests, and deletion remain authenticated server operations. Preserve legacy HTTP APIs for installs without native auth and other consumers. Focused local regression coverage is added; hosted browser, visual, and live-provider QA remains pending.
 
 - Keep personal chat working during web-first releases and backend rollback by enabling native list ownership only when the backend advertises the matching revision. Validate all native personal-chat response shapes explicitly, prevent Undo from reconstructing a record already known to be missing, and preserve concurrent title changes while archive and Undo are both pending.
 

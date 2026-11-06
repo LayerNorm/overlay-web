@@ -1,6 +1,6 @@
 'use client'
 
-import { useMutation, usePaginatedQuery, useConvexAuth } from 'convex/react'
+import { useMutation, usePaginatedQuery, useConvexAuth, useQuery } from 'convex/react'
 import { makeFunctionReference } from 'convex/server'
 import type { OptimisticLocalStore } from 'convex/browser'
 import type { McpServerSummary } from '@overlay/app-core'
@@ -30,6 +30,15 @@ type NativeListPage = {
 }
 
 export type NativeMcpAvailability = 'disabled' | 'loading' | 'available' | 'unavailable'
+
+export function useNativeMcpServer(workspaceId: string | null, mcpServerId: string | undefined, enabled: boolean) {
+  return useQuery(
+    getRef,
+    enabled && workspaceId && mcpServerId
+      ? { workspaceId, mcpServerId }
+      : 'skip',
+  ) as NativeMcpSummary | null | undefined
+}
 
 export function patchNativeMcpEnabled(store: OptimisticLocalStore, args: {
   workspaceId: string

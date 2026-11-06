@@ -100,6 +100,29 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   }
 }
 
+function parseMcpPatchFields(body: Record<string, unknown>) {
+  const defaultToolPolicy = body.defaultToolPolicy === undefined
+    ? undefined
+    : parsePolicy(body.defaultToolPolicy)
+  const toolPolicies = body.toolPolicies === undefined
+    ? undefined
+    : parseToolPolicies(body.toolPolicies)
+  if (defaultToolPolicy === null || toolPolicies === null) return null
+  return {
+    ...(typeof body.expectedUpdatedAt === 'number' ? { expectedUpdatedAt: body.expectedUpdatedAt } : {}),
+    ...(body.name !== undefined ? { name: stringValue(body.name) } : {}),
+    ...(body.description !== undefined ? { description: stringValue(body.description) } : {}),
+    ...(body.transport !== undefined ? { transport: parseTransport(body.transport) ?? undefined } : {}),
+    ...(body.url !== undefined ? { url: stringValue(body.url) } : {}),
+    ...(typeof body.enabled === 'boolean' ? { enabled: body.enabled } : {}),
+    ...(body.authType !== undefined ? { authType: parseAuthType(body.authType) } : {}),
+    ...(body.authConfig !== undefined ? { authConfig: parseAuthConfig(body.authConfig) } : {}),
+    ...(body.timeoutMs !== undefined ? { timeoutMs: parseTimeout(body.timeoutMs) } : {}),
+    ...(defaultToolPolicy !== undefined ? { defaultToolPolicy } : {}),
+    ...(toolPolicies !== undefined ? { toolPolicies } : {}),
+  }
+}
+
 export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
   try {
     const body = Object.keys(context.parsedJson).length > 0 ? context.parsedJson : await request.json()
@@ -113,30 +136,13 @@ export async function PATCH(request: NextRequest, context: AppApiRouteContext) {
       const urlError = await validateMcpUrl(body.url)
       if (urlError) return NextResponse.json({ error: urlError }, { status: 400 })
     }
-    const defaultToolPolicy = body.defaultToolPolicy === undefined
-      ? undefined
-      : parsePolicy(body.defaultToolPolicy)
-    const toolPolicies = body.toolPolicies === undefined
-      ? undefined
-      : parseToolPolicies(body.toolPolicies)
-    if (defaultToolPolicy === null || toolPolicies === null) {
-      return NextResponse.json({ error: 'Invalid MCP tool policy' }, { status: 400 })
-    }
+    const fields = parseMcpPatchFields(body)
+    if (!fields) return NextResponse.json({ error: 'Invalid MCP tool policy' }, { status: 400 })
     await repository().update({
       mcpServerId,
       userId: context.auth.userId,
       workspaceId: context.workspace.workspace.id,
-      ...(typeof body.expectedUpdatedAt === 'number' ? { expectedUpdatedAt: body.expectedUpdatedAt } : {}),
-      ...(body.name !== undefined ? { name: stringValue(body.name) } : {}),
-      ...(body.description !== undefined ? { description: stringValue(body.description) } : {}),
-      ...(body.transport !== undefined ? { transport: parseTransport(body.transport) ?? undefined } : {}),
-      ...(body.url !== undefined ? { url: stringValue(body.url) } : {}),
-      ...(typeof body.enabled === 'boolean' ? { enabled: body.enabled } : {}),
-      ...(body.authType !== undefined ? { authType: parseAuthType(body.authType) } : {}),
-      ...(body.authConfig !== undefined ? { authConfig: parseAuthConfig(body.authConfig) } : {}),
-      ...(body.timeoutMs !== undefined ? { timeoutMs: parseTimeout(body.timeoutMs) } : {}),
-      ...(defaultToolPolicy !== undefined ? { defaultToolPolicy } : {}),
-      ...(toolPolicies !== undefined ? { toolPolicies } : {}),
+      ...fields,
     })
     if (body.enabled !== false) {
       void refreshMcpServerToolCatalog({ mcpServerId, userId: context.auth.userId })

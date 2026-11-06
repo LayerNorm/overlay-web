@@ -140,6 +140,40 @@ test('a changed transport never receives the stored OAuth token', async (t) => {
   assert.equal(connect.mock.callCount(), 1)
 })
 
+test('a changed transport never receives the stored bearer credential', async (t) => {
+  const savedBearer = {
+    ...saved,
+    authType: 'bearer' as const,
+    authConfig: { bearerToken: 'stored-bearer-secret' },
+    oauthClient: undefined,
+    oauthTokens: undefined,
+    oauthStatus: undefined,
+  } as McpServerRecord
+  t.mock.method(ConvexMcpServerRepository.prototype, 'get', async () => savedBearer)
+  t.mock.method(ConvexMcpServerRepository.prototype, 'updateToolCatalog', async () => {})
+  t.mock.method(convex, 'mutation', async (path: string, args: Record<string, unknown>) =>
+    path.endsWith(':begin') ? args.commandId : null)
+  const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
+  const connect = t.mock.method(Client.prototype, 'connect', async (transport: unknown) => {
+    const requestInit = (transport as { _requestInit?: RequestInit })._requestInit
+    assert.equal(new Headers(requestInit?.headers).get('Authorization'), null)
+  })
+  t.mock.method(Client.prototype, 'listTools', async () => ({ tools: [] }))
+  t.mock.method(Client.prototype, 'close', async () => {})
+  const { POST } = await import('./route')
+  const response = await POST(new NextRequest('https://overlay.test/api/v1/mcps/test', {
+    method: 'POST',
+    body: JSON.stringify({
+      mcpServerId: saved._id,
+      url: saved.url,
+      transport: 'sse',
+      authType: 'bearer',
+    }),
+  }), context)
+  assert.equal(response.status, 200)
+  assert.equal(connect.mock.callCount(), 1)
+})
+
 test('a changed bearer endpoint never receives the stored credential', async (t) => {
   const savedBearer = {
     ...saved,
@@ -171,6 +205,61 @@ test('a changed bearer endpoint never receives the stored credential', async (t)
   }), context)
   assert.equal(response.status, 200)
   assert.equal(connect.mock.callCount(), 1)
+})
+
+test('stored endpoint tests use the saved secret-bearing URL with fresh credentials', async (t) => {
+  const savedBearer = {
+    ...saved,
+    url: 'https://localhost/mcp/private-path?token=stored-url-secret',
+    authType: 'bearer' as const,
+    authConfig: { bearerToken: 'stored-bearer-secret' },
+    oauthClient: undefined,
+    oauthTokens: undefined,
+    oauthStatus: undefined,
+  } as McpServerRecord
+  t.mock.method(ConvexMcpServerRepository.prototype, 'get', async () => savedBearer)
+  t.mock.method(ConvexMcpServerRepository.prototype, 'updateToolCatalog', async () => {})
+  t.mock.method(convex, 'mutation', async (path: string, args: Record<string, unknown>) =>
+    path.endsWith(':begin') ? args.commandId : null)
+  const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
+  const connect = t.mock.method(Client.prototype, 'connect', async (transport: unknown) => {
+    const requestInit = (transport as { _requestInit?: RequestInit })._requestInit
+    assert.equal(new Headers(requestInit?.headers).get('Authorization'), 'Bearer fresh-test-token')
+    assert.equal(String((transport as { _url?: URL })._url), savedBearer.url)
+  })
+  t.mock.method(Client.prototype, 'listTools', async () => ({ tools: [] }))
+  t.mock.method(Client.prototype, 'close', async () => {})
+  const { POST } = await import('./route')
+  const response = await POST(new NextRequest('https://overlay.test/api/v1/mcps/test', {
+    method: 'POST',
+    body: JSON.stringify({
+      mcpServerId: saved._id,
+      url: 'https://safe.example.test',
+      transport: 'streamable-http',
+      authType: 'bearer',
+      authConfig: { bearerToken: 'fresh-test-token' },
+      useStoredEndpoint: true,
+    }),
+  }), context)
+  assert.equal(response.status, 200)
+  assert.equal(connect.mock.callCount(), 1)
+})
+
+test('stored MCP test flags require a saved server ID', async (t) => {
+  const get = t.mock.method(ConvexMcpServerRepository.prototype, 'get', async () => saved)
+  const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
+  const connect = t.mock.method(Client.prototype, 'connect', async () => {})
+  const { POST } = await import('./route')
+  for (const flag of ['useStoredConfig', 'useStoredEndpoint'] as const) {
+    const response = await POST(new NextRequest('https://overlay.test/api/v1/mcps/test', {
+      method: 'POST',
+      body: JSON.stringify({ url: saved.url, [flag]: true }),
+    }), context)
+    assert.equal(response.status, 400)
+    assert.deepEqual(await response.json(), { error: 'mcpServerId is required for stored MCP settings' })
+  }
+  assert.equal(get.mock.callCount(), 0)
+  assert.equal(connect.mock.callCount(), 0)
 })
 
 test('external test failures finish as failed and expose only a generic error', async (t) => {

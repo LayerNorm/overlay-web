@@ -1,14 +1,13 @@
 'use client'
 
-import { Component, useCallback, useMemo, useState, type ReactNode } from 'react'
+import { Component, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
-import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
+import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, McpServerDialog } from '@overlay/modules-react/extensions'
 import { Button, toast } from '@overlay/ui/primitives'
-import { Badge, Toggle } from '@overlay/ui'
-import { Archive, Loader2, Plus, RotateCcw, Server, User, Users, Wrench } from 'lucide-react'
+import { Archive, Plus, RotateCcw, User, Users } from 'lucide-react'
 import {
   EXTENSIONS_CHANGED_EVENT,
   MCPS_CHANGED_EVENT,
@@ -28,12 +27,18 @@ import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { newItemScope, scopeForNewItem } from '@/shared/workspaces/panel-scope'
 import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
-import { useNativeMcpServers, type NativeMcpSummary } from '../hooks/use-native-mcp-servers'
+import { useNativeMcpServer, useNativeMcpServers, type NativeMcpSummary } from '../hooks/use-native-mcp-servers'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 import { scopeItemOptions } from '@/shared/workspaces/resource-scope'
-
-type DialogState = { mode: 'create' | 'edit'; server?: NativeMcpSummary }
+import {
+  captureNativeMcpSnapshot,
+  nativeMcpDialogProblem,
+  nativeMcpDialogServerId,
+  retainCreatedNativeMcpServer,
+  type NativeMcpDialogState,
+} from './native-mcp-dialog-state'
+import { NativeMcpServerList } from './NativeMcpServerList'
 
 function omitMcpUrl<T extends object>(request: T): Omit<T, 'url'> {
   return Object.fromEntries(Object.entries(request).filter(([key]) => key !== 'url')) as Omit<T, 'url'>
@@ -97,20 +102,32 @@ export default function NativeMcpServersView() {
     workspaceReady,
     view: listView,
   })
-  const [dialog, setDialog] = useState<DialogState | null>(null)
+  const [dialog, setDialog] = useState<NativeMcpDialogState | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const servers = native.servers as NativeMcpSummary[]
   const filteredServers = useMemo(() => filterMcpServers(servers, searchQuery), [servers, searchQuery])
-  const dialogLiveServer = dialog?.mode === 'edit'
-    ? servers.find((server) => server._id === dialog.server?._id)
-    : undefined
+  const dialogId = nativeMcpDialogServerId(dialog)
+  const dialogLiveServer = useNativeMcpServer(workspaceId, dialogId, native.availability === 'available')
+  const dialogProblem = nativeMcpDialogProblem(dialog, dialogLiveServer)
+  const dialogSnapshot = dialog?.snapshot
+
+  useEffect(() => {
+    if (!dialogId || dialogLiveServer === undefined) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- capture the first direct-query revision for guarded writes.
+    setDialog((current) => {
+      if (!current || nativeMcpDialogServerId(current) !== dialogId) return current
+      if (current.snapshot && dialogLiveServer) return current
+      return captureNativeMcpSnapshot(current, dialogLiveServer)
+    })
+  }, [dialogId, dialogLiveServer])
 
   const handleSaveServer = useCallback(async (values: McpServerFormValues): Promise<McpMutationResult> => {
+    if (dialogProblem) return { ok: false, error: dialogProblem }
     if (!workspaceId) return { ok: false, error: 'Choose an active workspace before saving.' }
-    if (dialog?.mode === 'edit' && dialog.server) {
-      const captured = dialog.server
+    if (dialog?.mode === 'edit' && dialog.persistedId && dialog.snapshot) {
+      const captured = dialog.snapshot
       const hasFreshCredential = Boolean(values.bearerToken || values.headerName || values.headerValue)
-      const connectionChanged = values.url.trim() !== captured.url
+      const connectionChanged = values.url.trim() !== (dialog.createEndpoint ?? captured.url)
         || values.transport !== captured.transport
         || values.authType !== captured.authType
         || hasFreshCredential
@@ -135,7 +152,7 @@ export default function NativeMcpServersView() {
 
       const update = createMcpUpdateRequest(captured._id, values)
       const request = {
-        ...(captured.endpointRedacted && values.url.trim() === captured.url ? omitMcpUrl(update) : update),
+        ...(captured.endpointRedacted && values.url.trim() === (dialog.createEndpoint ?? captured.url) ? omitMcpUrl(update) : update),
         expectedUpdatedAt: captured.updatedAt,
       }
       const response = await overlayAppClient.mcpServers.updateResponse(request)
@@ -151,26 +168,33 @@ export default function NativeMcpServersView() {
     if (!response.ok) return failure(response, 'Could not add this MCP server.')
     dispatchChanged()
     return { ok: true }
-  }, [dialog, native, scope, workspaceId])
+  }, [dialog, dialogProblem, native, scope, workspaceId])
 
   const handleDeleteServer = useCallback(async (server: McpServerSummary): Promise<McpMutationResult> => {
+    if (dialogProblem) return { ok: false, error: dialogProblem }
     const response = await overlayAppClient.mcpServers.deleteResponse({ mcpServerId: server._id })
     if (!response.ok) return failure(response, 'Could not delete this MCP server.')
     dispatchChanged()
     return { ok: true }
-  }, [])
+  }, [dialogProblem])
 
   const handleTestServer = useCallback(async (values: McpServerFormValues): Promise<McpTestResultState> => {
+    if (dialogProblem) return { ok: false, message: dialogProblem }
     try {
-      const server = dialog?.mode === 'edit' ? dialog.server : undefined
-      const unchangedStoredConnection = Boolean(server
-        && values.url.trim() === server.url
-        && values.transport === server.transport
-        && values.authType === server.authType
-        && !values.bearerToken && !values.headerName && !values.headerValue)
-      const testRequest = unchangedStoredConnection
-        ? { mcpServerId: server!._id, url: values.url.trim(), useStoredConfig: true }
-        : createMcpTestRequest(values, server ? { mcpServerId: server._id } : undefined)
+      const server = dialog?.mode === 'edit' ? dialog.snapshot : undefined
+      const hasFreshCredential = Boolean(values.bearerToken || values.headerName || values.headerValue)
+      const endpointUnchanged = Boolean(server && values.url.trim() === (dialog?.createEndpoint ?? server.url))
+      const transportUnchanged = Boolean(server && values.transport === server.transport)
+      const authUnchanged = Boolean(server && values.authType === server.authType)
+      const timeoutUnchanged = Boolean(server && values.timeoutMs === (server.timeoutMs ?? ''))
+      const unchangedStoredConfig = endpointUnchanged && transportUnchanged && authUnchanged
+        && timeoutUnchanged && !hasFreshCredential
+      const testRequest = {
+        ...createMcpTestRequest(values, server ? { mcpServerId: server._id } : undefined),
+        ...(endpointUnchanged
+          ? unchangedStoredConfig ? { useStoredConfig: true } : { useStoredEndpoint: true }
+          : {}),
+      }
       const response = await overlayAppClient.mcpServers.testResponse(testRequest)
       const data = await response.json().catch(() => ({ error: 'Invalid response' })) as TestMcpServerResponse
       if (response.ok) dispatchChanged()
@@ -178,17 +202,18 @@ export default function NativeMcpServersView() {
     } catch {
       return { ok: false, message: 'Connection failed' }
     }
-  }, [dialog])
+  }, [dialog, dialogProblem])
 
   const handleConnectOAuth = useCallback(async (values: McpServerFormValues): Promise<McpMutationResult> => {
+    if (dialogProblem) return { ok: false, error: dialogProblem }
     const oauthTab = window.open('about:blank', '_blank')
     try {
-      let mcpServerId = dialog?.mode === 'edit' ? dialog.server?._id : undefined
-      if (mcpServerId && dialog?.server && workspaceId) {
+      let mcpServerId = dialog?.mode === 'edit' ? dialog.persistedId : undefined
+      if (mcpServerId && dialog?.snapshot && workspaceId) {
         const saved = createMcpUpdateRequest(mcpServerId, values)
         const update = {
-          ...(dialog.server.endpointRedacted && values.url.trim() === dialog.server.url ? omitMcpUrl(saved) : saved),
-          expectedUpdatedAt: dialog.server.updatedAt,
+          ...(dialog.snapshot.endpointRedacted && values.url.trim() === (dialog.createEndpoint ?? dialog.snapshot.url) ? omitMcpUrl(saved) : saved),
+          expectedUpdatedAt: dialog.snapshot.updatedAt,
         }
         const response = await overlayAppClient.mcpServers.updateResponse(update)
         if (!response.ok) {
@@ -207,6 +232,7 @@ export default function NativeMcpServersView() {
         }
         const result = await created.json() as { id: string }
         mcpServerId = result.id
+        setDialog((current) => retainCreatedNativeMcpServer(current, result.id, values.url.trim()))
         dispatchChanged()
       }
       if (!mcpServerId) {
@@ -239,14 +265,15 @@ export default function NativeMcpServersView() {
       oauthTab?.close()
       return { ok: false, error: 'Could not start the OAuth flow.' }
     }
-  }, [dialog, scope, workspaceId])
+  }, [dialog, dialogProblem, scope, workspaceId])
 
   const handleDisconnectOAuth = useCallback(async (server: McpServerSummary): Promise<McpMutationResult> => {
+    if (dialogProblem) return { ok: false, error: dialogProblem }
     const response = await overlayAppClient.mcpServers.disconnectOAuthResponse({ mcpServerId: server._id })
     if (!response.ok) return failure(response, 'Could not disconnect this server.')
     dispatchChanged()
     return { ok: true }
-  }, [])
+  }, [dialogProblem])
 
   const handleQuickToggle = useCallback(async (server: NativeMcpSummary) => {
     if (!workspaceId) return
@@ -272,15 +299,23 @@ export default function NativeMcpServersView() {
     )
   }
 
-  const activeDialogState: DialogState | null = dialog && dialog.mode === 'edit'
-    ? { ...dialog, server: { ...dialog.server!, oauthStatus: dialogLiveServer?.oauthStatus, oauthError: dialogLiveServer?.oauthError } }
-    : dialog
+  const dialogDisplayServer = dialogSnapshot && dialogLiveServer
+    ? {
+      ...dialogSnapshot,
+      oauthStatus: dialogLiveServer.oauthStatus,
+      oauthError: dialogLiveServer.oauthError,
+      commandState: dialogLiveServer.commandState,
+    }
+    : dialogSnapshot
+  const activeDialogState = dialog?.mode === 'create'
+    ? { mode: 'create' as const }
+    : dialog?.mode === 'edit' && dialogDisplayServer && dialogLiveServer !== null
+      ? { mode: 'edit' as const, server: dialogDisplayServer }
+      : null
+  const dialogMissing = Boolean(dialogId && (dialog?.missing || dialogLiveServer === null))
+  const dialogLoading = Boolean(dialog?.mode === 'edit' && !dialogSnapshot && !dialogMissing)
   const liveCommand = dialogLiveServer?.commandState
-  const commandMessage = liveCommand?.status === 'pending'
-    ? liveCommand.kind === 'connect' ? 'Opening authorization…' : liveCommand.kind === 'disconnect' ? 'Disconnecting…' : 'Testing connection…'
-    : liveCommand?.status === 'succeeded'
-      ? liveCommand.kind === 'connect' ? 'Authorization opened.' : liveCommand.kind === 'disconnect' ? 'Disconnected.' : 'Connection checked.'
-      : liveCommand?.status === 'failed' ? 'The last operation did not complete.' : null
+  const commandMessage = nativeMcpCommandMessage(liveCommand)
 
   return (
     <AppScreenShell
@@ -296,75 +331,21 @@ export default function NativeMcpServersView() {
         />
       }
     >
-      <AppScreenBody padding="none" maxWidth="none" className="h-full">
-        {native.loading ? (
-          <div className="flex h-full items-center justify-center"><Loader2 size={20} className="animate-spin text-(--muted)" /></div>
-        ) : servers.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-            <Server size={40} strokeWidth={1} className="text-(--muted-light)" />
-            <div className="space-y-1">
-              <p className="text-sm font-medium text-(--foreground)">No MCP servers configured</p>
-              <p className="text-xs text-(--muted-light)">Add remote MCP servers to extend the AI agent with custom tools.</p>
-            </div>
-            {canAdd ? <Button variant="secondary" size="md" type="button" onClick={() => setDialog({ mode: 'create' })}><Plus size={14} />Add Server</Button> : null}
-          </div>
-        ) : filteredServers.length === 0 ? (
-          <div className="p-6 text-sm text-(--muted)">No MCP servers match this search.</div>
-        ) : (
-          <div className="mx-auto grid max-w-6xl grid-cols-1 gap-5 px-6 py-6 md:grid-cols-2 xl:grid-cols-3">
-            {filteredServers.map((item) => {
-              const server = item as NativeMcpSummary
-              const connected = server.authType === 'oauth' && server.oauthStatus === 'connected'
-              const error = Boolean(server.oauthError || server.toolCatalogError) || server.oauthStatus === 'needs_reauth'
-              const status = server.archivedAt !== undefined ? 'Archived' : !server.enabled ? 'Inactive' : error ? 'Connection error' : connected ? 'Connected' : server.authType === 'oauth' ? 'Not connected' : 'Active'
-              const statusVariant = error ? 'danger' : connected ? 'success' : 'muted'
-              const role = workspace.activeWorkspace?.role
-              const canEdit = server.userId === user?.id || role === 'owner' || role === 'admin'
-              let host = server.url
-              try { host = new URL(server.url).hostname } catch { /* The redacted endpoint is safe to display. */ }
-              return (
-                <article key={server._id} className="flex flex-col gap-4 overflow-hidden rounded-xl border border-(--border) bg-(--surface-elevated) p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-3">
-                      <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-(--surface-subtle) text-(--foreground)"><Server size={20} strokeWidth={1.6} /></span>
-                      <div className="min-w-0">
-                        <h3 className="truncate text-sm font-semibold text-(--foreground)">{server.name || 'Untitled'}</h3>
-                        <p className="mt-1 truncate text-xs text-(--muted)">{server.description || server.url}</p>
-                      </div>
-                    </div>
-                    <Toggle
-                      checked={server.enabled}
-                      disabled={!canEdit || server.archivedAt !== undefined}
-                      aria-label={`${server.enabled ? 'Disable' : 'Enable'} ${server.name}`}
-                      onCheckedChange={() => void handleQuickToggle(server)}
-                    />
-                  </div>
-                  <div className="flex flex-wrap items-center gap-1.5 text-xs text-(--muted)">
-                    <Badge variant={statusVariant}>{status}</Badge>
-                    <span className="inline-flex items-center gap-1.5"><Wrench size={13} />{server.toolCatalogCount === undefined ? 'Tools not discovered' : `${server.toolCatalogCount} tools`}</span>
-                    <Badge variant="muted">{server.transport === 'sse' ? 'SSE' : 'HTTP'}</Badge>
-                    {server.authType !== 'none' ? <Badge variant="muted">{server.authType === 'oauth' ? 'OAuth' : 'Authenticated'}</Badge> : null}
-                  </div>
-                  {server.toolCatalogError ? <p className="line-clamp-2 text-xs text-red-500">Tools unavailable: {server.toolCatalogError}</p> : null}
-                  <div className="mt-auto flex items-center justify-between gap-2 border-t border-(--border) pt-3">
-                    <span className="truncate text-xs text-(--muted)" title={host}>{host}</span>
-                    <Button variant="ghost" size="sm" className="text-(--foreground)" aria-label={`Manage ${server.name}`} onClick={() => setDialog({ mode: 'edit', server })}>
-                      Manage
-                    </Button>
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-        )}
-        {native.hasMore ? (
-          <div className="mt-4 flex justify-center">
-            <Button variant="secondary" size="sm" disabled={native.loadingMore} onClick={native.loadMore}>
-              {native.loadingMore ? 'Loading…' : 'Load more'}
-            </Button>
-          </div>
-        ) : null}
-      </AppScreenBody>
+      <NativeMcpServerList
+        native={native}
+        servers={servers}
+        filteredServers={filteredServers as NativeMcpSummary[]}
+        dialogLoading={dialogLoading}
+        dialogMissing={dialogMissing}
+        dialogProblem={dialogProblem}
+        canAdd={canAdd}
+        userId={user?.id}
+        role={workspace.activeWorkspace?.role}
+        onAdd={() => setDialog({ mode: 'create' })}
+        onCloseProblem={() => setDialog(null)}
+        onManage={(server) => setDialog({ mode: 'edit', persistedId: server._id })}
+        onToggle={handleQuickToggle}
+      />
       {activeDialogState ? (
         <McpServerDialog
           state={activeDialogState}
@@ -374,13 +355,15 @@ export default function NativeMcpServersView() {
           onTest={handleTestServer}
           onConnectOAuth={handleConnectOAuth}
           onDisconnectOAuth={handleDisconnectOAuth}
-          scopeActions={dialog?.mode === 'edit' && dialog.server ? (
+          statusMessage={dialogProblem ?? undefined}
+          scopeActions={dialog?.mode === 'edit' && dialogSnapshot ? (
             <div className="space-y-2">
               {commandMessage ? <p role="status" className="text-xs text-(--muted)">{commandMessage}</p> : null}
               <NativeMcpScopeActions
-                server={dialogLiveServer ?? dialog.server}
+                server={dialogSnapshot}
                 workspaceId={workspaceId!}
                 changeScope={native.changeScope}
+                disabled={Boolean(dialogProblem)}
                 onChanged={() => {
                   setDialog(null)
                   dispatchChanged()
@@ -394,10 +377,27 @@ export default function NativeMcpServersView() {
   )
 }
 
+function nativeMcpCommandMessage(command: NativeMcpSummary['commandState']) {
+  if (!command) return null
+  if (command.status === 'failed') return 'The last operation did not complete.'
+  if (command.status === 'pending') {
+    if (command.kind === 'connect') return 'Opening authorization…'
+    if (command.kind === 'disconnect') return 'Disconnecting…'
+    return 'Testing connection…'
+  }
+  if (command.status === 'succeeded') {
+    if (command.kind === 'connect') return 'Authorization opened.'
+    if (command.kind === 'disconnect') return 'Disconnected.'
+    return 'Connection checked.'
+  }
+  return null
+}
+
 function NativeMcpScopeActions({
   server,
   workspaceId,
   changeScope,
+  disabled,
   onChanged,
 }: {
   server: NativeMcpSummary
@@ -408,6 +408,7 @@ function NativeMcpScopeActions({
     expectedUpdatedAt: number
     action: 'personal' | 'workspace' | 'archive' | 'restore'
   }) => Promise<unknown>
+  disabled: boolean
   onChanged: () => void
 }) {
   const { user } = useAuth()
@@ -449,7 +450,7 @@ function NativeMcpScopeActions({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {items.map(({ action, label, icon: Icon }) => (
-        <Button variant="ghost" key={action} type="button" disabled={busy} onClick={() => void run(action)}>
+        <Button variant="ghost" key={action} type="button" disabled={busy || disabled} onClick={() => void run(action)}>
           <Icon size={13} />{label}
         </Button>
       ))}

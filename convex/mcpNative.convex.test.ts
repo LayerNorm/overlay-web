@@ -44,6 +44,7 @@ async function publishMcpPolicy(convex: Convex, enabled: boolean, challenge = po
   return convex.mutation(publishPolicy, {
     sequence,
     challenge,
+    issuedAt: now,
     snapshot: {
       ...policySnapshot,
       features: { ...policySnapshot.features, mcpServers: enabled },
@@ -232,6 +233,86 @@ describe('native MCP server settings', () => {
     })).rejects.toThrow(/MCP_REVISION_CONFLICT/)
     const after = await alice.query(query('integrations/nativeMcpServers:get'), { workspaceId, mcpServerId: id }) as { updatedAt: number; name: string }
     expect(after).toMatchObject({ updatedAt: fresh.updatedAt, name: 'Shared server' })
+  })
+
+  test('OAuth and tool-catalog writes advance metadata revisions and reject stale native and BFF writes', async () => {
+    const convex = await makeConvex()
+    await seedWorkspace(convex)
+    const id = await insertServer(convex)
+    const oauth = mutation('integrations/mcpServers:updateOAuthState')
+    const catalog = mutation('integrations/mcpServers:updateToolCatalog')
+    const nativeUpdate = mutation('integrations/nativeMcpServers:updateMetadata')
+    const bffUpdate = mutation('integrations/mcpServers:update')
+
+    await convex.mutation(oauth, {
+      mcpServerId: id, userId: 'alice', serverSecret: secret,
+      encryptedOAuthTokens: 'encrypted-token', oauthStatus: 'connected',
+    })
+    const afterOAuth = await convex.run((ctx) => ctx.db.get(id))
+    expect(afterOAuth?.updatedAt).toBe(now + 1)
+    expect(afterOAuth?.oauthConnectedAt).toBe(now)
+    await expect(convex.withIdentity({ subject: 'admin' }).mutation(nativeUpdate, {
+      workspaceId, mcpServerId: id, expectedUpdatedAt: now, name: 'Stale native edit',
+    })).rejects.toThrow(/MCP_REVISION_CONFLICT/)
+    await expect(convex.mutation(bffUpdate, {
+      mcpServerId: id, userId: 'admin', workspaceId, serverSecret: secret,
+      expectedUpdatedAt: now, name: 'Stale BFF edit',
+    })).rejects.toThrow(/MCP_REVISION_CONFLICT/)
+
+    await convex.mutation(catalog, {
+      mcpServerId: id, userId: 'alice', serverSecret: secret,
+      tools: [{ name: 'fresh_tool' }],
+    })
+    const afterCatalog = await convex.run((ctx) => ctx.db.get(id))
+    expect(afterCatalog?.updatedAt).toBe(now + 2)
+    expect(afterCatalog?.toolCatalogUpdatedAt).toBe(now)
+    await expect(convex.withIdentity({ subject: 'admin' }).mutation(nativeUpdate, {
+      workspaceId, mcpServerId: id, expectedUpdatedAt: now + 1, name: 'Stale native edit',
+    })).rejects.toThrow(/MCP_REVISION_CONFLICT/)
+    await expect(convex.mutation(bffUpdate, {
+      mcpServerId: id, userId: 'admin', workspaceId, serverSecret: secret,
+      expectedUpdatedAt: now + 1, name: 'Stale BFF edit',
+    })).rejects.toThrow(/MCP_REVISION_CONFLICT/)
+  })
+
+  test('OAuth and tool-catalog revisions stay monotonic when the stored revision is ahead of wall time', async () => {
+    const convex = await makeConvex()
+    await seedWorkspace(convex)
+    const ahead = now + 60_000
+    const id = await insertServer(convex, { updatedAt: ahead })
+
+    await convex.mutation(mutation('integrations/mcpServers:updateOAuthState'), {
+      mcpServerId: id, userId: 'alice', serverSecret: secret,
+      encryptedOAuthTokens: 'encrypted-token', oauthStatus: 'connected',
+    })
+    const afterOAuth = await convex.run((ctx) => ctx.db.get(id))
+    expect(afterOAuth?.updatedAt).toBe(ahead + 1)
+    expect(afterOAuth?.oauthConnectedAt).toBe(now)
+
+    await convex.mutation(mutation('integrations/mcpServers:updateToolCatalog'), {
+      mcpServerId: id, userId: 'alice', serverSecret: secret,
+      tools: [{ name: 'fresh_tool' }],
+    })
+    const afterCatalog = await convex.run((ctx) => ctx.db.get(id))
+    expect(afterCatalog?.updatedAt).toBe(ahead + 2)
+    expect(afterCatalog?.toolCatalogUpdatedAt).toBe(now)
+  })
+
+  test('generic MCP scope writes advance the metadata revision', async () => {
+    const convex = await makeConvex()
+    await seedWorkspace(convex)
+    const id = await insertServer(convex, { scope: 'personal' })
+
+    const result = await convex.mutation(mutation('integrations/mcpServers:archive'), {
+      id, userId: 'alice', workspaceId, serverSecret: secret,
+    })
+    expect(result).toEqual({ ok: true })
+    const archived = await convex.run((ctx) => ctx.db.get(id))
+    expect(archived?.updatedAt).toBe(now + 1)
+    await expect(convex.withIdentity({ subject: 'alice' }).mutation(
+      mutation('integrations/nativeMcpServers:updateMetadata'),
+      { workspaceId, mcpServerId: id, expectedUpdatedAt: now, name: 'Stale edit' },
+    )).rejects.toThrow(/MCP_REVISION_CONFLICT/)
   })
 })
 

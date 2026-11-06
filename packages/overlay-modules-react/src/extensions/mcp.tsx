@@ -41,6 +41,7 @@ export interface McpServerDialogProps {
   onDisconnectOAuth?: (server: McpServerSummary) => Promise<McpMutationResult>
   /** Move and archive controls for an existing server, supplied by the host (they depend on who is viewing). */
   scopeActions?: ReactNode
+  statusMessage?: string
 }
 
 type FormValuesUpdate = <Key extends keyof McpServerFormValues>(key: Key, value: McpServerFormValues[Key]) => void
@@ -384,6 +385,7 @@ export function McpServerDialog({
   onConnectOAuth,
   onDisconnectOAuth,
   scopeActions,
+  statusMessage,
 }: McpServerDialogProps) {
   const isEdit = state.mode === 'edit'
   const initial = state.server
@@ -425,6 +427,11 @@ export function McpServerDialog({
         onClose={onClose} onSave={() => void handleSave()} onDelete={() => void handleDelete()}
       />}
     >
+      {statusMessage ? (
+        <p role="status" className="mb-4 rounded-lg border border-(--border) bg-(--surface-subtle) px-3 py-2 text-xs text-(--muted)">
+          {statusMessage}
+        </p>
+      ) : null}
       <Tabs defaultValue="configuration">
         <TabsList className="mb-5 self-start"><TabsTrigger value="configuration">Configuration</TabsTrigger><TabsTrigger value="tools">Tools</TabsTrigger></TabsList>
         <TabsContent value="configuration" className="space-y-5">

@@ -8,7 +8,10 @@ const scopeArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'
 const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
 
 // Archiving stops a server being offered to agents.
-export const { setScope, archive, restore } = scopeMutations('mcpServers', 'extension', { onArchive: { enabled: false } })
+export const { setScope, archive, restore } = scopeMutations('mcpServers', 'extension', {
+  onArchive: { enabled: false },
+  advanceUpdatedAt: true,
+})
 
 /** Basic URL format validation at creation time. Full SSRF validation
  *  (DNS resolution, private IP blocking) runs at connection time in mcp-tools.ts. */
@@ -416,11 +419,12 @@ export const updateOAuthState = mutation({
       return false
     }
 
-    const patch: Record<string, unknown> = { updatedAt: Date.now() }
+    const now = Date.now()
+    const patch: Record<string, unknown> = { updatedAt: Math.max(now, server.updatedAt + 1) }
     if (args.encryptedOAuthTokens !== undefined) {
       patch.encryptedOAuthTokens = args.encryptedOAuthTokens ?? undefined
       patch.oauthTokenVersion = currentVersion + 1
-      if (args.encryptedOAuthTokens) patch.oauthConnectedAt = Date.now()
+      if (args.encryptedOAuthTokens) patch.oauthConnectedAt = now
     }
     if (args.encryptedOAuthClient !== undefined) {
       patch.encryptedOAuthClient = args.encryptedOAuthClient ?? undefined
@@ -535,11 +539,12 @@ export const updateToolCatalog = mutation({
     if (!server || server.userId !== args.userId) {
       throw new Error('Unauthorized')
     }
+    const now = Date.now()
     await ctx.db.patch(args.mcpServerId, {
       toolCatalog: args.tools,
-      toolCatalogUpdatedAt: Date.now(),
+      toolCatalogUpdatedAt: now,
       toolCatalogError: args.catalogError,
-      updatedAt: Date.now(),
+      updatedAt: Math.max(now, server.updatedAt + 1),
     })
     return null
   },

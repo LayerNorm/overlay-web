@@ -66,6 +66,8 @@ export interface TestMcpServerRequest {
   authType?: McpAuthType
   authConfig?: McpAuthConfig
   mcpServerId?: string
+  useStoredConfig?: boolean
+  useStoredEndpoint?: boolean
   timeoutMs?: number
   accessToken?: string
   userId?: string

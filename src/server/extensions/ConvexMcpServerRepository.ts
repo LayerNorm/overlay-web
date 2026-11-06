@@ -18,6 +18,11 @@ import type {
   UpdateMcpServerInput,
 } from './McpServerRepository'
 
+function definedFields<T extends object, K extends keyof T>(source: T, keys: readonly K[]): Partial<Pick<T, K>> {
+  const entries = keys.filter((key) => source[key] !== undefined).map((key) => [key, source[key]])
+  return Object.fromEntries(entries) as Partial<Pick<T, K>>
+}
+
 type ConvexMcpRecord =
   & Omit<
     McpServerRecord,
@@ -100,17 +105,8 @@ export class ConvexMcpServerRepository implements McpServerRepository {
   async update(args: UpdateMcpServerInput): Promise<void> {
     const current = await this.get(args)
     if (!current) throw new Error('Unauthorized')
-    const authType = args.authType ?? current.authType
-    const connectionChanged = (args.url !== undefined && args.url !== current.url)
-      || (args.transport !== undefined && args.transport !== current.transport)
-    const shouldReplaceCredentials = args.authConfig !== undefined ||
-      authType === 'none' ||
-      (args.authType !== undefined && args.authType !== current.authType) ||
-      connectionChanged
-    const clearOAuthState = connectionChanged || (current.authType === 'oauth' && authType !== 'oauth')
-    const encryptedAuthConfig = shouldReplaceCredentials
-      ? this.cipher.encrypt(authType === 'none' ? undefined : args.authConfig)
-      : undefined
+    const { shouldReplaceCredentials, clearOAuthState, encryptedAuthConfig } =
+      this.resolveUpdateCredentials(args, current)
     // Forward only what the Convex validator declares; spreading the whole update input
     // would fail the same way the `get` query did.
     await convex.mutation('integrations/mcpServers:update', {
@@ -120,18 +116,28 @@ export class ConvexMcpServerRepository implements McpServerRepository {
       mcpServerId: args.mcpServerId as Id<'mcpServers'>,
       serverSecret: this.serverSecret,
       userId: args.userId,
-      ...(args.workspaceId !== undefined ? { workspaceId: args.workspaceId } : {}),
-      ...(args.expectedUpdatedAt !== undefined ? { expectedUpdatedAt: args.expectedUpdatedAt } : {}),
-      ...(args.name !== undefined ? { name: args.name } : {}),
-      ...(args.description !== undefined ? { description: args.description } : {}),
-      ...(args.transport !== undefined ? { transport: args.transport } : {}),
-      ...(args.url !== undefined ? { url: args.url } : {}),
-      ...(args.enabled !== undefined ? { enabled: args.enabled } : {}),
-      ...(args.authType !== undefined ? { authType: args.authType } : {}),
-      ...(args.timeoutMs !== undefined ? { timeoutMs: args.timeoutMs } : {}),
-      ...(args.defaultToolPolicy !== undefined ? { defaultToolPolicy: args.defaultToolPolicy } : {}),
-      ...(args.toolPolicies !== undefined ? { toolPolicies: args.toolPolicies } : {}),
+      ...definedFields(args, [
+        'workspaceId', 'expectedUpdatedAt', 'name', 'description', 'transport',
+        'url', 'enabled', 'authType', 'timeoutMs', 'defaultToolPolicy', 'toolPolicies',
+      ]),
     }, { throwOnError: true })
+  }
+
+  private resolveUpdateCredentials(args: UpdateMcpServerInput, current: McpServerRecord) {
+    const authType = args.authType ?? current.authType
+    const connectionChanged = (args.url !== undefined && args.url !== current.url)
+      || (args.transport !== undefined && args.transport !== current.transport)
+    const shouldReplaceCredentials = args.authConfig !== undefined
+      || authType === 'none'
+      || (args.authType !== undefined && args.authType !== current.authType)
+      || connectionChanged
+    return {
+      shouldReplaceCredentials,
+      clearOAuthState: connectionChanged || (current.authType === 'oauth' && authType !== 'oauth'),
+      encryptedAuthConfig: shouldReplaceCredentials
+        ? this.cipher.encrypt(authType === 'none' ? undefined : args.authConfig)
+        : undefined,
+    }
   }
 
   async remove(args: { mcpServerId: string; userId: string }): Promise<void> {

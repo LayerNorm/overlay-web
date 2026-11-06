@@ -2,8 +2,6 @@
 
 import { Component, useEffect, useState, type ReactNode } from 'react'
 import { useConvexAuth, useMutation, usePaginatedQuery } from 'convex/react'
-import { makeFunctionReference } from 'convex/server'
-import type { OptimisticLocalStore } from 'convex/browser'
 import { EXTENSIONS_CHANGED_EVENT, MCPS_CHANGED_EVENT } from '@overlay/app-core'
 import type { WorkspaceSummary } from '@overlay/workspace-contracts'
 import { Button, toast } from '@overlay/ui/primitives'
@@ -14,6 +12,11 @@ import { MCP_ACCESS_LABEL } from '@/shared/mcp/access'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { ConnectAppGuide } from './ConnectAppGuide'
 import { McpTokenDialog } from './McpTokenDialog'
+import {
+  nativeGrantListRef,
+  nativeGrantRevokeRef,
+  removeNativeGrantOptimistically,
+} from '@/shared/mcp/native-connected-apps-optimistic'
 
 type NativeGrant = {
   id: string
@@ -26,24 +29,9 @@ type NativeGrant = {
   expiresAt: number | null
 }
 
-type GrantPage = { page: NativeGrant[]; isDone: boolean; continueCursor: string }
-const listRef = makeFunctionReference<'query'>('mcp/grants:listNative')
-const revokeRef = makeFunctionReference<'mutation'>('mcp/grants:revokeNative')
-
 function dispatchChanged() {
   window.dispatchEvent(new CustomEvent(MCPS_CHANGED_EVENT))
   window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
-}
-
-function removeOptimistically(store: OptimisticLocalStore, grantId: string) {
-  for (const query of store.getAllQueries(listRef)) {
-    if (!query.value) continue
-    const result = query.value as GrantPage
-    store.setQuery(listRef, query.args, {
-      ...result,
-      page: result.page.filter((grant) => grant.id !== grantId),
-    })
-  }
 }
 
 function formatWhen(timestamp: number | null, fallback: string): string {
@@ -75,12 +63,12 @@ export default function NativeConnectedAppsSettings({ workspaces }: { workspaces
   const workspace = useWorkspace()
   const workspaceReady = workspace.status === 'ready' && !workspace.switchingWorkspaceId
   const query = usePaginatedQuery(
-    listRef,
+    nativeGrantListRef,
     workspaceReady && !authLoading && isAuthenticated ? {} : 'skip',
     { initialNumItems: 30 },
   )
-  const revoke = useMutation(revokeRef).withOptimisticUpdate((store, args) => {
-    removeOptimistically(store, args.grantId)
+  const revoke = useMutation(nativeGrantRevokeRef).withOptimisticUpdate((store, args) => {
+    removeNativeGrantOptimistically(store, args.grantId)
   })
   const [endpoint, setEndpoint] = useState('')
   const [tokenOpen, setTokenOpen] = useState(false)
