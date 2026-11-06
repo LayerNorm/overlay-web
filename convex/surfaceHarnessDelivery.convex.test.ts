@@ -77,12 +77,17 @@ test('surface admission claims an authentic native room delivery and projects/re
   })
   expect(duplicate.owner).toBe('foreign')
   expect((await convex.mutation(mutation('surfaces/surfaceExecutions:beginSurfaceTurn'), begin)).owner).toBe('same')
+  const unownedSourceMessageId = await convex.run(ctx => ctx.db.insert('conversationMessages', {
+    conversationId: fixture.conversationId, userId: 'user', turnId: 'unowned-question', role: 'user', mode: 'act',
+    content: 'An independent question.', contentType: 'text', createdAt: Date.now(),
+  }))
   const unowned = await convex.mutation(mutation('collaboration/directMessages:startAgentTurn'), {
     actorUserId: 'user', agentId: 'agent', authorPrincipalId: 'agent-principal',
     initiatorPrincipalId: 'human', clientNonce: 'unowned-assistant',
     conversationId: fixture.conversationId, modelId: 'openrouter/free', executionEngine: 'overlay_harness',
-    turnId: 'unowned-turn', userMessageId: execution.userMessageId, workspaceId: 'ws', serverSecret: secret,
+    turnId: 'unowned-turn', userMessageId: unownedSourceMessageId, workspaceId: 'ws', serverSecret: secret,
   })
+  expect(unowned.runId).not.toBe(execution.agentRunId)
   await convex.run(async ctx => {
     await ctx.db.patch(unowned.runId as never, { harnessRunId: `workspace:${unowned.runId}` })
   })

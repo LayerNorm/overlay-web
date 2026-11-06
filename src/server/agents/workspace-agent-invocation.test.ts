@@ -128,7 +128,8 @@ test('room agent turns use native Harness admission and delivery', async () => {
     'the client-held agent-reply route should be gone',
   )
 
-  assert.match(messageRoute, /if \(turn\.resumed\) (?:continue|return)/)
+  assert.match(messageRoute, /if \(!\(turn\.dispatchNeeded \?\? !turn\.resumed\)\) return/)
+  assert.doesNotMatch(messageRoute, /if \(turn\.resumed\) (?:continue|return)/)
   assert.match(nativeStart, /prepareNativeHarnessTurn/)
   assert.match(nativeStart, /repository\)\.admit/)
   assert.match(nativeStart, /nativeHarnessWorkflow, \[prepared\.workflowInput\]/)

@@ -59,6 +59,14 @@ async function open(
   })
 }
 
+async function independentSource(convex: Convex, fixture: Awaited<ReturnType<typeof seed>>, userId: string, turnId: string) {
+  const userMessageId = await convex.run(ctx => ctx.db.insert('conversationMessages', {
+    conversationId: fixture.conversationId, userId, turnId, role: 'user', mode: 'act',
+    content: 'Read another synthetic record.', contentType: 'text', createdAt: Date.now(),
+  }))
+  return { ...fixture, userMessageId }
+}
+
 function admission(conversationId: string, deliveryAgentRunId: string): HarnessAdmission {
   return { runId: `workspace:${deliveryAgentRunId}`, deliveryAgentRunId, source: { conversationId }, goal: 'Read the record.',
     constraints: [], policy: { actorUserId: 'alice', workspaceId: 'workspace', allowedToolIds: [], requiresPlan: false,
@@ -142,7 +150,8 @@ test('legacy lease sweep preserves durable Harness waits and still expires legac
   const convex = convexTest(schema, modules)
   const fixture = await seed(convex)
   const harness = await open(convex, fixture, 'alice', true, 'durable')
-  const legacy = await open(convex, fixture, 'alice', true, 'legacy')
+  const legacy = await open(convex, await independentSource(convex, fixture, 'alice', 'legacy-question'), 'alice', true, 'legacy')
+  expect(legacy.runId).not.toBe(harness.runId)
   await convex.run(async ctx => {
     await ctx.db.patch(legacy.runId, { executionEngine: undefined })
     const durableRun = await ctx.db.get(harness.runId)
@@ -553,10 +562,10 @@ test('parent Stop cancels its same-conversation named subtree deepest-first', as
     targetPrincipalId: 'grandchild-principal',
     key: 'named-grandchild',
   })
-  const unrelatedTurn = await open(convex, fixture.fixture, 'alice', true, 'unrelated-tree')
+  const unrelatedTurn = await open(convex, await independentSource(convex, fixture.fixture, 'alice', 'unrelated-question'), 'alice', true, 'unrelated-tree')
   const unrelatedHarness = admission(fixture.fixture.conversationId, unrelatedTurn.runId)
   await convex.mutation(mutation('harness/runs:admit'), { ...unrelatedHarness, serverSecret: secret })
-  const anotherUserTurn = await open(convex, fixture.fixture, 'bob', true, 'another-user')
+  const anotherUserTurn = await open(convex, await independentSource(convex, fixture.fixture, 'bob', 'another-user-question'), 'bob', true, 'another-user')
   await claimAndAttachWorkflow(convex, fixture.parent.runId, fixture.parentTurn.runId, 'parent-workflow')
   await claimAndAttachWorkflow(convex, fixture.childRunId, fixture.targetTurn.runId, 'child-workflow')
   await claimAndAttachWorkflow(convex, grandchild.runId, grandchild.turn.runId, 'grandchild-workflow')
@@ -747,7 +756,8 @@ test('room Stop fences the invoker root and child even after agent revocation, w
   const convex = convexTest(schema, modules)
   const fixture = await seed(convex)
   const turn = await open(convex, fixture)
-  const other = await open(convex, fixture, 'bob')
+  const other = await open(convex, await independentSource(convex, fixture, 'bob', 'bob-question'), 'bob')
+  expect(other.runId).not.toBe(turn.runId)
   const input = admission(fixture.conversationId, turn.runId)
   await convex.mutation(mutation('harness/runs:admit'), { ...input, serverSecret: secret })
   await apply(convex, input.runId, { type: 'claim_execution', workflowRunId: 'root-workflow' })
