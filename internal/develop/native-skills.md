@@ -149,6 +149,10 @@ captured `expectedRevision` cases remain covered. The optimistic helper uses a
 fake store; Convex's actual optimistic layer is not exercised.
 `react-test-renderer` reports its deprecation warning.
 
+Native skill saves validate shared field limits before mutation and map failures to
+accurate validation, conflict, rate-limit or access feedback without exposing
+internal error text.
+
 Targeted ESLint on the changed correction source passed.
 `npm run check:shared-isomorphic` passed (215 modules);
 `npm run check:tenant-boundaries` passed (142 tables, 50 user-owned);

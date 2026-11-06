@@ -427,6 +427,8 @@ test('create receipts are idempotent across retries and remain after skill delet
   const { actor, t } = await fixture()
   const alice = actor('alice')
   const payload = createArgs('create-retry')
+  await expect(alice.mutation(createRef, createArgs('invalid-name', { name: 'n'.repeat(501) })))
+    .rejects.toThrow('INVALID_SKILL')
   const skillId = await alice.mutation(createRef, payload)
   await expect(alice.mutation(createRef, payload)).resolves.toBe(skillId)
   await expect(alice.mutation(createRef, { ...payload, name: 'Different payload' })).rejects.toThrow('IDEMPOTENCY_CONFLICT')

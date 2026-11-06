@@ -215,6 +215,41 @@ test('native saves send the revision captured in the unchanged draft baseline', 
   }])
 })
 
+test('native invalid draft values never call the update controller', async t => {
+  const previousAct = Object.getOwnPropertyDescriptor(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
+  const cleanups: Array<() => void | Promise<void>> = []
+  Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { configurable: true, value: true })
+  t.after(async () => {
+    for (const cleanup of cleanups.reverse()) await cleanup()
+    if (previousAct) Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', previousAct)
+    else Reflect.deleteProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
+  })
+  const initial = nativeSkill(8, 'Baseline name')
+  const updateCalls: unknown[] = []
+  const controller = {
+    update: async (args: unknown) => { updateCalls.push(args) },
+  } as unknown as SkillDraftProps['controller']
+  const props = { workspaceId: 'workspace-a', current: initial, controller, onClose: () => undefined }
+  let saveHandler!: SaveSkill
+  let renderer!: Renderer
+  await act(async () => {
+    renderer = create(<NativeSkillDraftFields {...props} captureOnSave={handler => { saveHandler = handler }} />)
+  })
+  cleanups.push(async () => { await act(async () => renderer.unmount()) })
+
+  let result: boolean | void
+  await act(async () => {
+    result = await saveHandler({
+      name: 'n'.repeat(501),
+      description: 'Original description',
+      instructions: 'Original instructions',
+      enabled: true,
+    })
+  })
+  assert.equal(result, false)
+  assert.deepEqual(updateCalls, [])
+})
+
 test('configured native auth without a client never mounts legacy HTTP skills access, including workspace switches', async t => {
   const addCleanup = installBrowser(t)
   const user = { id: 'test-user', email: 'test@example.test' }

@@ -12,6 +12,8 @@ import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useNativeSkills } from '../lib/use-native-skills'
+import { nativeSkillErrorMessage, SKILL_INVALID_MESSAGE } from '../lib/native-skill-errors'
+import { normalizeSkillFields } from '@/shared/integrations/native-skill-fields'
 
 type Detail = NonNullable<FunctionReturnType<typeof api.integrations.nativeSkills.get>>
 type Controller = ReturnType<typeof useNativeSkills>
@@ -44,10 +46,11 @@ export function NativeSkillsView({ workspaceId, view }: { workspaceId: string; v
       onCreate={canAdd ? openCreate : undefined} onEdit={skill => setDialog({ mode: 'edit', skillId: skill._id as Id<'skills'> })} />}
     {dialog?.mode === 'create' ? <SkillDialog key={dialog.requestId} state={{ mode: 'create' }} onClose={close} onDelete={async () => false}
       onSave={async values => {
+        if (!normalizeSkillFields(values)) { toast.error(SKILL_INVALID_MESSAGE); return false }
         try {
           await controller.create({ workspaceId, requestId: dialog.requestId, scope: view === 'workspace' ? 'workspace' : 'personal', ...values })
           return true
-        } catch { toast.error('Could not create this skill. Your draft is unchanged.'); return false }
+        } catch (error) { toast.error(nativeSkillErrorMessage(error, 'create')); return false }
       }} /> : null}
     {dialog?.mode === 'edit' ? <NativeSkillEditor key={dialog.skillId} workspaceId={workspaceId} skillId={dialog.skillId}
       controller={controller} onClose={close} /> : null}
@@ -89,13 +92,16 @@ export function SkillDraft({ workspaceId, current, controller, onClose }: {
     if (conflict) { toast.error('This skill changed elsewhere. Your draft is preserved. Close and reopen to load the latest version.'); return false }
     setBusy(true)
     try { await action(); if (close) onClose(); return true }
-    catch { toast.error('Could not update this skill. It may have changed or your access may have been revoked. Your draft is preserved.'); return false }
+    catch (error) { toast.error(nativeSkillErrorMessage(error, 'update')); return false }
     finally { setBusy(false) }
   }
   const options = current?.options ?? baseline.options
   const moveTo = options.moveTo
   return <SkillDialog state={{ mode: 'edit', skill: baseline }} readOnly={!current?.editable}
-    onClose={onClose} onSave={(values: SkillFormValues) => perform(() => controller.update({ ...args, ...values }))}
+    onClose={onClose} onSave={(values: SkillFormValues) => {
+      if (!normalizeSkillFields(values)) { toast.error(SKILL_INVALID_MESSAGE); return Promise.resolve(false) }
+      return perform(() => controller.update({ ...args, ...values }))
+    }}
     onDelete={() => perform(() => controller.remove(args))}
     scopeActions={<div className="flex min-w-0 flex-col items-end gap-2">
       {conflict ? <p role="alert" className="text-sm text-(--muted)">This skill changed elsewhere or is no longer available. Your draft has not been replaced. Close and reopen to load the latest version.</p> : null}

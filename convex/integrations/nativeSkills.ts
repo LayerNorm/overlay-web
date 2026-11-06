@@ -9,6 +9,7 @@ import {
   archivePatch, canCreateInScope, canEditResource, canReadResource, checkMoveResource,
   rowInView, scopeItemOptions,
 } from '../../src/shared/workspaces/resource-scope'
+import { normalizeSkillFields } from '../../src/shared/integrations/native-skill-fields'
 
 const scope = v.union(v.literal('personal'), v.literal('workspace'))
 const fields = { name: v.string(), description: v.string(), instructions: v.string(), enabled: v.boolean() }
@@ -110,9 +111,8 @@ async function audit(ctx: MutationCtx, userId: string, workspaceId: string, skil
 }
 
 function clean(values: { name: string; description: string; instructions: string; enabled: boolean }) {
-  const result = { name: values.name.trim(), description: values.description.trim(), instructions: values.instructions.trim(), enabled: values.enabled }
-  if (!result.name || !result.description || !result.instructions || result.name.length > 500
-    || result.description.length > 10_000 || result.instructions.length > 200_000) throw new Error('INVALID_SKILL')
+  const result = normalizeSkillFields(values)
+  if (!result) throw new Error('INVALID_SKILL')
   return result
 }
 

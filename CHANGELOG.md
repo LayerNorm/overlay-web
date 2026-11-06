@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- CN-20: Add authenticated native Convex skill management and bounded, instruction-free availability projections. Preserve personal/workspace sharing, enforce revision-aware edits and idempotent creation, and rebase optimistic entity updates. Retain compatible legacy routes for composer mentions, accepted skill drafts, Archived settings and private installs; no skill execution or billing changes.
+- CN-20: Add authenticated native Convex skill management and bounded, instruction-free availability projections. Preserve personal/workspace sharing, enforce revision-aware edits and idempotent creation, and rebase optimistic entity updates. Retain compatible legacy routes for composer mentions, accepted skill drafts, Archived settings and private installs; no skill execution or billing changes. Native saves now validate field limits before mutation and show accurate validation, conflict, rate-limit and access messages.
 
 - Keep personal chat working during web-first releases and backend rollback by enabling native list ownership only when the backend advertises the matching revision. Validate all native personal-chat response shapes explicitly, prevent Undo from reconstructing a record already known to be missing, and preserve concurrent title changes while archive and Undo are both pending.
 
