@@ -7,7 +7,9 @@ import {
   MessageScrollerViewport,
 } from '@overlay/ui/ai'
 import type { ReactNode, RefObject } from 'react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
+import { Button } from '@overlay/ui/primitives'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { WebSourceItem } from '@/shared/web/web-sources'
@@ -53,6 +55,13 @@ export type ChatMessageListRuntime = {
   exitingTurnIds: string[]
   sourcesPanel: { turnId: string; sources: WebSourceItem[] } | null
   getResponseForExchange: (exchangeIndex: number) => UIMessage | null
+  getResponsesForExchange?: (exchangeIndex: number) => readonly UIMessage[]
+  canonicalTranscript?: boolean
+  transcriptPagination?: {
+    hasMore: boolean
+    loadingMore: boolean
+    loadMore(): void
+  }
 }
 
 export type ChatMessageListActions = {
@@ -101,11 +110,64 @@ export function ChatMessageList({
   actions,
 }: ChatMessageListProps) {
   const conversationId = transcriptKey ?? null
+  const paginationAnchorRef = useRef<{ conversationId: string | null; turnId: string; top: number } | null>(null)
+  const loadingMoreRef = useRef(false)
+  const wasLoadingMoreRef = useRef(false)
   const firstUserMessage = state.primaryMessages.find((message) => message.role === 'user')
   const firstTurnId = firstUserMessage ? getUserTurnId(firstUserMessage) ?? firstUserMessage.id : null
   const [identity, setIdentity] = useState({ conversationId, firstTurnId, key: 0 })
   const nextIdentity = reconcileTranscriptIdentity(identity, conversationId, firstTurnId)
   if (nextIdentity !== identity) setIdentity(nextIdentity)
+  useLayoutEffect(() => {
+    const anchor = paginationAnchorRef.current
+    if (!runtime.transcriptPagination?.loadingMore) loadingMoreRef.current = false
+    if (!anchor) return
+    if (anchor.conversationId !== conversationId) {
+      paginationAnchorRef.current = null
+      wasLoadingMoreRef.current = false
+      return
+    }
+    if (runtime.transcriptPagination?.loadingMore) {
+      wasLoadingMoreRef.current = true
+      return
+    }
+    if (!wasLoadingMoreRef.current) return
+    const viewport = messagesScrollRef.current
+    const element = viewport
+      ? Array.from(viewport.querySelectorAll<HTMLElement>('[data-exchange-turn]'))
+        .find((candidate) => candidate.dataset.exchangeTurn === anchor.turnId)
+      : undefined
+    if (viewport && element) {
+      const delta = element.getBoundingClientRect().top - anchor.top
+      viewport.scrollTop += delta
+    }
+    paginationAnchorRef.current = null
+    wasLoadingMoreRef.current = false
+  }, [conversationId, messagesScrollRef, runtime.transcriptPagination?.loadingMore, state.primaryMessages])
+
+  const loadEarlier = () => {
+    const pagination = runtime.transcriptPagination
+    if (!pagination?.hasMore || pagination.loadingMore || loadingMoreRef.current) return
+    const viewport = messagesScrollRef.current
+    const firstVisible = viewport
+      ? Array.from(viewport.querySelectorAll<HTMLElement>('[data-exchange-turn]'))
+        .find((element) => {
+          const rect = element.getBoundingClientRect()
+          const viewportRect = viewport.getBoundingClientRect()
+          return rect.bottom > viewportRect.top && rect.top < viewportRect.bottom
+        })
+      : undefined
+    if (firstVisible) {
+      paginationAnchorRef.current = {
+        conversationId,
+        turnId: firstVisible.dataset.exchangeTurn ?? '',
+        top: firstVisible.getBoundingClientRect().top,
+      }
+    }
+    loadingMoreRef.current = true
+    wasLoadingMoreRef.current = true
+    pagination.loadMore()
+  }
 
   return (
     <MessageScrollerProvider key={nextIdentity.key} defaultScrollPosition="end" autoScroll>
@@ -116,6 +178,20 @@ export function ChatMessageList({
           className="overflow-x-hidden px-3 py-3 sm:px-4 sm:py-4"
         >
           <MessageScrollerContent data-chat-transcript className="mx-auto w-full min-w-0 max-w-4xl gap-5 sm:gap-6">
+            {runtime.transcriptPagination?.hasMore ? (
+              <div className="flex justify-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  type="button"
+                  disabled={runtime.transcriptPagination.loadingMore}
+                  onClick={loadEarlier}
+                  aria-label={runtime.transcriptPagination.loadingMore ? 'Loading earlier messages' : 'Load earlier messages'}
+                >
+                  {runtime.transcriptPagination.loadingMore ? 'Loading earlier messages…' : 'Load earlier messages'}
+                </Button>
+              </div>
+            ) : null}
             {showLoadingState ? (
               <ChatMessageListSkeleton />
             ) : (
@@ -149,6 +225,7 @@ function ChatMessages({
     () => state.primaryMessages.filter((message) => message.role === 'user'),
     [state.primaryMessages],
   )
+  const [selectedResponseIds, setSelectedResponseIds] = useState<Record<string, string>>({})
   const transcriptView = useMemo(
     () => toChatTranscriptView({
       primaryMessages: state.primaryMessages,
@@ -162,9 +239,11 @@ function ChatMessages({
       isOptimisticLoading: runtime.isOptimisticLoading,
       interruptedExchangeIdx: runtime.interruptedExchangeIdx,
       getResponseForExchange: runtime.getResponseForExchange,
+      getResponsesForExchange: runtime.getResponsesForExchange,
     }),
     [
       runtime.getResponseForExchange,
+      runtime.getResponsesForExchange,
       runtime.interruptedExchangeIdx,
       runtime.isActiveLoading,
       runtime.isOptimisticLoading,
@@ -185,64 +264,129 @@ function ChatMessages({
     const message = userMessages[exchange.index]
     if (!message) return null
     const generationType = exchange.generationMode
+    const isOrphan = runtime.canonicalTranscript
+      && (message.metadata as { nativeOrphan?: boolean } | undefined)?.nativeOrphan === true
+    const isDeleted = runtime.canonicalTranscript
+      && Boolean((message.metadata as { deletedAt?: unknown } | undefined)?.deletedAt)
+    const readOnly = runtime.readOnly || isOrphan || isDeleted
+      || (runtime.canonicalTranscript && !('persistedId' in message))
+    const { canonicalResponses, selectedResponse, selectedResponseIdentity, selectedResponseIndex, selectedExchangeModels } =
+      selectTranscriptResponse(exchange, runtime, state, selectedResponseIds)
 
     if (generationType === 'image' || generationType === 'video') {
       return (
-        <ChatMessage
-          kind={generationType}
-          message={message}
-          exchangeIndex={exchange.index}
-          generationResults={state.generationResults.get(exchange.index)}
-          exchangeModels={state.exchangeModels[exchange.index] ?? []}
-          selectedImageModels={state.selectedImageModels}
-          selectedVideoModels={state.selectedVideoModels}
-          exitingTurnIds={runtime.exitingTurnIds}
-          onJumpToReply={actions.onJumpToReply}
-          onDeleteTurn={actions.onDeleteTurn}
-          onReplyToMediaPrompt={actions.onReplyToMediaPrompt}
-          onOpenAttachmentPreview={actions.onOpenAttachmentPreview}
-          presentation={presentation}
-        />
+        <div data-exchange-turn={exchange.turnId}>
+          <ChatMessage
+            kind={generationType}
+            message={message}
+            exchangeIndex={exchange.index}
+            generationResults={state.generationResults.get(exchange.index)}
+            exchangeModels={state.exchangeModels[exchange.index] ?? []}
+            selectedImageModels={state.selectedImageModels}
+            selectedVideoModels={state.selectedVideoModels}
+            exitingTurnIds={runtime.exitingTurnIds}
+            onJumpToReply={actions.onJumpToReply}
+            onDeleteTurn={readOnly ? () => {} : actions.onDeleteTurn}
+            onReplyToMediaPrompt={readOnly ? () => {} : actions.onReplyToMediaPrompt}
+            onOpenAttachmentPreview={actions.onOpenAttachmentPreview}
+            presentation={presentation}
+          />
+        </div>
       )
     }
 
     return (
-      <ChatMessage
-        kind="text"
-        readOnly={runtime.readOnly}
-        message={message}
-        exchangeIndex={exchange.index}
-        primaryMessages={state.primaryMessages}
-        latestExchangeIndex={state.latestExchangeIndex}
-        actChat={runtime.actChat}
-        chatInstances={runtime.chatInstances}
-        exchangeModes={state.exchangeModes}
-        exchangeModels={state.exchangeModels}
-        selectedModels={state.selectedModels}
-        isActiveLoading={runtime.isActiveLoading}
-        isOptimisticLoading={runtime.isOptimisticLoading}
-        interruptedExchangeIdx={runtime.interruptedExchangeIdx}
-        exitingTurnIds={runtime.exitingTurnIds}
-        sourcesPanel={runtime.sourcesPanel}
-        getResponseForExchange={runtime.getResponseForExchange}
-        onJumpToReply={actions.onJumpToReply}
-        onDeleteTurn={actions.onDeleteTurn}
-        onReplyToAssistantText={actions.onReplyToAssistantText}
-        onBranch={actions.onBranch}
-        onOpenDraft={actions.onOpenDraft}
-        onCreateAutomationDraft={actions.onCreateAutomationDraft}
-        onOpenSources={(turnId: string, sources: WebSourceItem[]) => actions.onOpenSources(turnId, sources)}
-        onRetry={actions.onRetry}
-        onOpenFilePreview={actions.onOpenFilePreview}
-        onOpenAttachmentPreview={actions.onOpenAttachmentPreview}
-        onContinue={actions.onContinue}
-        onGeneratedUiChange={actions.onGeneratedUiChange}
-        generatedUiConnectorActions={actions.generatedUiConnectorActions}
-        presentation={presentation}
-        status={exchange.status}
-      />
+      <div data-exchange-turn={exchange.turnId} className="space-y-2">
+        {canonicalResponses.length > 1 ? (
+          <div className="flex items-center justify-end gap-1" aria-label="Assistant response versions">
+            <Button
+              variant="ghost"
+              size="icon"
+              type="button"
+              aria-label="Previous response"
+              disabled={selectedResponseIndex <= 0}
+              onClick={() => {
+                const previous = canonicalResponses[selectedResponseIndex - 1] as { persistedId?: string; id?: string } | undefined
+                if (previous) {
+                  setSelectedResponseIds((current) => ({
+                    ...current,
+                    [exchange.turnId]: previous.persistedId ?? previous.id ?? '',
+                  }))
+                }
+              }}
+              className="h-7 w-7"
+            >
+              <ChevronLeft size={15} />
+            </Button>
+            <span className="min-w-12 text-center text-xs text-(--muted)" aria-live="polite">
+              {selectedResponseIndex + 1} of {canonicalResponses.length}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              type="button"
+              aria-label="Next response"
+              disabled={selectedResponseIndex < 0 || selectedResponseIndex >= canonicalResponses.length - 1}
+              onClick={() => {
+                const next = canonicalResponses[selectedResponseIndex + 1] as { persistedId?: string; id?: string } | undefined
+                if (next) {
+                  setSelectedResponseIds((current) => ({
+                    ...current,
+                    [exchange.turnId]: next.persistedId ?? next.id ?? '',
+                  }))
+                }
+              }}
+              className="h-7 w-7"
+            >
+              <ChevronRight size={15} />
+            </Button>
+          </div>
+        ) : null}
+        {isOrphan ? (
+          <p className="text-xs text-(--muted)">Original message unavailable</p>
+        ) : null}
+        <ChatMessage
+          kind="text"
+          readOnly={readOnly}
+          canonicalTranscript={runtime.canonicalTranscript}
+          canonicalResponses={canonicalResponses}
+          canonicalResponse={selectedResponse}
+          hasCanonicalResponse={runtime.canonicalTranscript === true}
+          responseIdentity={selectedResponseIdentity}
+          message={message}
+          exchangeIndex={exchange.index}
+          primaryMessages={state.primaryMessages}
+          latestExchangeIndex={state.latestExchangeIndex}
+          actChat={runtime.actChat}
+          chatInstances={runtime.chatInstances}
+          exchangeModes={state.exchangeModes}
+          exchangeModels={selectedExchangeModels}
+          selectedModels={state.selectedModels}
+          isActiveLoading={runtime.isActiveLoading}
+          isOptimisticLoading={runtime.isOptimisticLoading}
+          interruptedExchangeIdx={runtime.interruptedExchangeIdx}
+          exitingTurnIds={runtime.exitingTurnIds}
+          sourcesPanel={runtime.sourcesPanel}
+          getResponseForExchange={runtime.getResponseForExchange}
+          onJumpToReply={actions.onJumpToReply}
+          onDeleteTurn={actions.onDeleteTurn}
+          onReplyToAssistantText={actions.onReplyToAssistantText}
+          onBranch={readOnly ? () => {} : actions.onBranch}
+          onOpenDraft={actions.onOpenDraft}
+          onCreateAutomationDraft={actions.onCreateAutomationDraft}
+          onOpenSources={(turnId: string, sources: WebSourceItem[]) => actions.onOpenSources(turnId, sources)}
+          onRetry={readOnly ? () => {} : actions.onRetry}
+          onOpenFilePreview={actions.onOpenFilePreview}
+          onOpenAttachmentPreview={actions.onOpenAttachmentPreview}
+          onContinue={actions.onContinue}
+          onGeneratedUiChange={actions.onGeneratedUiChange}
+          generatedUiConnectorActions={actions.generatedUiConnectorActions}
+          presentation={presentation}
+          status={exchange.status}
+        />
+      </div>
     )
-  }, [actions, runtime, state, userMessages])
+  }, [actions, runtime, selectedResponseIds, state, userMessages])
   const transcriptActions = useMemo(() => ({ renderExchange }), [renderExchange])
 
   return (
@@ -267,4 +411,32 @@ function ChatMessageListSkeleton() {
       </div>
     </div>
   )
+}
+
+function selectTranscriptResponse(exchange: ChatTranscriptExchangeView, runtime: ChatMessageListRuntime,
+  state: ChatMessageListState, selectedResponseIds: Record<string, string>) {
+  const canonicalResponses = runtime.canonicalTranscript
+    ? runtime.getResponsesForExchange?.(exchange.index) ?? []
+    : []
+  const selectedIdentity = selectedResponseIds[exchange.turnId]
+  const selectedResponse = canonicalResponses.find((response) => {
+    const value = response as { persistedId?: string; id?: string }
+    return (value.persistedId ?? value.id) === selectedIdentity
+  }) ?? canonicalResponses.at(-1) ?? null
+  const selectedResponseIdentity = selectedResponse
+    ? ((selectedResponse as { persistedId?: string; id?: string }).persistedId
+      ?? (selectedResponse as { id?: string }).id
+      ?? '')
+    : ''
+  const selectedResponseIndex = selectedResponse
+    ? canonicalResponses.indexOf(selectedResponse)
+    : -1
+  const selectedModel = (selectedResponse as { model?: string } | null)?.model
+  const selectedExchangeModels = selectedModel
+    ? state.exchangeModels.map((models, index) => (
+      index === exchange.index ? [selectedModel] : models
+    ))
+    : state.exchangeModels
+
+  return { canonicalResponses, selectedResponse, selectedResponseIdentity, selectedResponseIndex, selectedExchangeModels }
 }

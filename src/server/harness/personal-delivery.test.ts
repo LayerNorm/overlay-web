@@ -26,6 +26,7 @@ test('personal delivery preserves the actual answer instead of replacing it with
   const answer = 'The render has started.'
   const result = {
     snapshot: {
+      runId: 'run-1',
       workingSummary: 'Internal continuity: render job is pending.',
       usage: { inputTokens: 0, outputTokens: 0, costMicros: 0 },
     },
@@ -34,7 +35,9 @@ test('personal delivery preserves the actual answer instead of replacing it with
   } as never
   const delivery = buildPersonalHarnessDelivery(result)
   expect(delivery.content).toBe(answer)
-  expect(delivery.parts).toEqual([{ type: 'text', text: answer }])
+  expect(delivery.parts).toEqual([{
+    type: 'text', text: answer, id: JSON.stringify(['run-1', 'final', 0]),
+  }])
 })
 
 test('personal transcript keeps the latest answer when the final step is a textual tool call', () => {
@@ -76,6 +79,7 @@ test('personal persistence removes nested tool-call arrays from per-step text pa
   const call = '[[{"name":"get_note","parameters":{"noteId":"n1"}}]]'
   const result = {
     snapshot: {
+      runId: 'run-1',
       resultSummary: 'Read complete.',
       usage: { inputTokens: 0, outputTokens: 0, costMicros: 0 },
     },
@@ -88,6 +92,8 @@ test('personal persistence removes nested tool-call arrays from per-step text pa
     }],
   } as never
   const delivery = buildPersonalHarnessDelivery(result, undefined, new Set(['get_note']))
-  expect(delivery.parts).toEqual([{ type: 'text', text: 'Read complete.' }])
+  expect(delivery.parts).toEqual([{
+    type: 'text', text: 'Read complete.', id: JSON.stringify(['run-1', 'final', 0]),
+  }])
   expect(delivery.content).toBe('Read complete.')
 })
