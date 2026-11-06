@@ -1,3 +1,4 @@
+import { insertRoomParticipant, activateRoomParticipant } from './participantRecency'
 import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { recordConversationEvent } from './events'
@@ -194,7 +195,7 @@ export async function addParticipantForActor(ctx: MutationCtx, args: Args & { pr
     const now = Date.now()
     let participant
     if (existing) {
-      await ctx.db.patch(existing._id, {
+      await activateRoomParticipant(ctx, existing._id, {
         status: 'active',
         removedAt: undefined,
         archivedAt: undefined,
@@ -203,7 +204,7 @@ export async function addParticipantForActor(ctx: MutationCtx, args: Args & { pr
       })
       participant = { ...existing, status: 'active' as const, removedAt: undefined, archivedAt: undefined, updatedAt: now }
     } else {
-      const id = await ctx.db.insert('conversationParticipants', {
+      const id = await insertRoomParticipant(ctx, {
         conversationId: args.conversationId,
         workspaceId: args.workspaceId,
         principalId: args.principalId,

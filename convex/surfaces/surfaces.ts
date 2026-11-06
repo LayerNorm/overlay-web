@@ -1,3 +1,4 @@
+import { insertRoomParticipant } from '../collaboration/participantRecency'
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
@@ -329,7 +330,7 @@ export const ensureSurfaceConversation = mutation({
           .withIndex('by_principalId', (q) => q.eq('principalId', candidate.principalId as string))
           .unique()
         if (!principal || principal.workspaceId !== args.workspaceId || principal.archivedAt) continue
-        await ctx.db.insert('conversationParticipants', {
+        await insertRoomParticipant(ctx, {
           conversationId,
           workspaceId: args.workspaceId,
           principalId: candidate.principalId,

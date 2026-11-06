@@ -1,3 +1,4 @@
+import { insertRoomParticipant, activateRoomParticipant } from './participantRecency'
 import { v } from 'convex/values'
 import type { Doc } from '../_generated/dataModel'
 import { mutation, query } from '../_generated/server'
@@ -180,7 +181,7 @@ export async function createWorkspaceAgentRecord(
     }
     await Promise.all(channels
       .filter((channel) => !channel.deletedAt && channel.channelVisibility === 'public')
-      .map((channel) => ctx.db.insert('conversationParticipants', {
+      .map((channel) => insertRoomParticipant(ctx, {
         conversationId: channel._id, workspaceId: args.workspaceId, principalId: args.principalId,
         principalType: 'agent', role: 'member', status: 'active', notificationLevel: 'mentions',
         joinedAt: args.now, updatedAt: args.now,
@@ -760,7 +761,7 @@ export async function restoreWorkspaceAgentRecord(
         q.eq('conversationId', thread._id).eq('principalId', row.principalId)).unique()))
   await Promise.all(threadParticipants
     .filter((participant) => participant && participant.status !== 'active')
-    .map((participant) => ctx.db.patch(participant!._id, {
+    .map((participant) => activateRoomParticipant(ctx, participant!._id, {
       status: 'active', removedAt: undefined, updatedAt: now,
     })))
 }
@@ -1193,7 +1194,7 @@ async function insertChief(
       throw new Error('AGENT_DIRECTORY_CAPACITY_EXCEEDED')
     }
     await Promise.all(channels.filter((channel) => !channel.deletedAt && channel.channelVisibility === 'public')
-      .map((channel) => ctx.db.insert('conversationParticipants', {
+      .map((channel) => insertRoomParticipant(ctx, {
         conversationId: channel._id,
         workspaceId: args.workspace.workspaceId,
         principalId: args.principalId,

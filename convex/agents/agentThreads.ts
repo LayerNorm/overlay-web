@@ -1,3 +1,4 @@
+import { insertRoomParticipant } from '../collaboration/participantRecency'
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
@@ -134,7 +135,7 @@ export async function insertThread(
     { principal: actor, role: 'moderator' as const },
     { principal: agentPrincipal, role: 'member' as const },
   ]
-  await Promise.all(participants.map(({ principal, role }) => ctx.db.insert('conversationParticipants', {
+  await Promise.all(participants.map(({ principal, role }) => insertRoomParticipant(ctx, {
     conversationId,
     workspaceId: args.workspaceId,
     principalId: principal.principalId,

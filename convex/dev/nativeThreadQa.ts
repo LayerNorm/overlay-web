@@ -1,3 +1,4 @@
+import { insertRoomParticipant } from '../collaboration/participantRecency'
 import { v } from 'convex/values'
 import { internalMutation, type MutationCtx } from '../_generated/server'
 import { requirePreviewDeployment } from '../lib/preview'
@@ -66,7 +67,7 @@ async function seedRetiredConversation(
       { principalId: agentPrincipalId, principalType: 'agent' as const, role: 'member' as const },
       ...(kind === 'room' ? [{ principalId: `${workspaceId}-member`, principalType: 'human' as const, role: 'member' as const }] : []),
     ]) {
-      await ctx.db.insert('conversationParticipants', {
+      await insertRoomParticipant(ctx, {
         ...participant, conversationId, workspaceId, status: 'active', notificationLevel: 'all',
         joinedAt: now, updatedAt: now,
       })

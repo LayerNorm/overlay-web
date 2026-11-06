@@ -1,3 +1,4 @@
+import { insertRoomParticipant } from './participantRecency'
 import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx } from '../_generated/server'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -112,7 +113,7 @@ export async function createDirectMessageForActor(ctx: MutationCtx, args: {
     agentId: dmAgentId,
   })
   await Promise.all(principals.flatMap((principal) => {
-    const writes = [ctx.db.insert('conversationParticipants', {
+    const writes = [insertRoomParticipant(ctx, {
       conversationId,
       workspaceId: args.workspaceId,
       principalId: principal.principalId,

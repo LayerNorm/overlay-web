@@ -1,3 +1,4 @@
+import { insertRoomParticipant, activateRoomParticipant } from '../collaboration/participantRecency'
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { mutation, query } from '../_generated/server'
@@ -130,7 +131,7 @@ export const createSlackChannel = mutation({
           ))
           .first()
         if (!participant) {
-          await ctx.db.insert('conversationParticipants', {
+          await insertRoomParticipant(ctx, {
             conversationId: existing._id,
             workspaceId: args.workspaceId,
             principalId: actor.principalId,
@@ -144,7 +145,7 @@ export const createSlackChannel = mutation({
         } else {
           // Clear any archive/removed state so re-imported conversations are
           // visible again rather than stuck in the Archived tab.
-          await ctx.db.patch(participant._id, {
+          await activateRoomParticipant(ctx, participant._id, {
             status: 'active',
             archivedAt: undefined,
             removedAt: undefined,
@@ -177,7 +178,7 @@ export const createSlackChannel = mutation({
     })
 
     // Add importer as moderator
-    await ctx.db.insert('conversationParticipants', {
+    await insertRoomParticipant(ctx, {
       conversationId,
       workspaceId: args.workspaceId,
       principalId: actor.principalId,
@@ -247,7 +248,7 @@ export const createSlackDirectMessage = mutation({
         ))
         .first()
       if (!participant) {
-        await ctx.db.insert('conversationParticipants', {
+        await insertRoomParticipant(ctx, {
           conversationId: existing._id,
           workspaceId: args.workspaceId,
           principalId: actor.principalId,
@@ -259,7 +260,7 @@ export const createSlackDirectMessage = mutation({
           updatedAt: now,
         })
       } else {
-        await ctx.db.patch(participant._id, {
+        await activateRoomParticipant(ctx, participant._id, {
           status: 'active',
           archivedAt: undefined,
           removedAt: undefined,
@@ -286,7 +287,7 @@ export const createSlackDirectMessage = mutation({
       isAutomation: false,
     })
 
-    await ctx.db.insert('conversationParticipants', {
+    await insertRoomParticipant(ctx, {
       conversationId,
       workspaceId: args.workspaceId,
       principalId: actor.principalId,
@@ -515,7 +516,7 @@ export const addSlackChannelParticipants = mutation({
         .unique()
       if (existing) continue
 
-      await ctx.db.insert('conversationParticipants', {
+      await insertRoomParticipant(ctx, {
         conversationId: args.conversationId,
         workspaceId: args.workspaceId,
         principalId,

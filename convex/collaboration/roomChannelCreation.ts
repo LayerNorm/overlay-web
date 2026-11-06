@@ -1,3 +1,4 @@
+import { insertRoomParticipant } from './participantRecency'
 import type { Doc } from '../_generated/dataModel'
 import type { MutationCtx } from '../_generated/server'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -65,7 +66,7 @@ export async function createChannelForActor(ctx: MutationCtx, args: {
     channelTopic: args.topic?.trim().replace(/\s+/g, ' ').slice(0, 240) || undefined,
   })
   await Promise.all(eligible.map(({ principal, membership }) =>
-    ctx.db.insert('conversationParticipants', {
+    insertRoomParticipant(ctx, {
       conversationId,
       workspaceId: args.workspaceId,
       principalId: principal.principalId,

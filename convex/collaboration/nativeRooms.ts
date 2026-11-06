@@ -12,10 +12,26 @@ import { participantViews, resolvedPrincipalName } from './roomParticipants'
 import { createDirectMessageForActor } from './roomDirectMessageCreation'
 import { createChannelForActor } from './roomChannelCreation'
 import { deleteRoomMessage, editRoomMessage } from './roomMessagePolicy'
+import { nativeThreadCompatibility, nativeThreadCompatibilityValidator } from '../lib/nativeThreadCompatibility'
 
 const roomArgs = { workspaceId: v.string(), conversationId: v.id('conversations') }
 const messageArgs = { ...roomArgs, messageId: v.id('conversationMessages') }
 const pageOpts = (opts: { numItems: number; cursor: string | null }) => ({ ...opts, numItems: Math.max(1, Math.min(100, opts.numItems)) })
+
+export const getExecution = query({
+  args: { ...roomArgs, threadRootMessageId: v.optional(v.id('conversationMessages')) },
+  returns: v.union(v.null(), v.object({ ...roomArgs, userId: v.string(), threadRootMessageId: v.optional(v.id('conversationMessages')), compatibility: nativeThreadCompatibilityValidator })),
+  handler: async (ctx, args) => {
+    const access = await nativeRoomOrNull(ctx, args)
+    if (!access) return null
+    if (args.threadRootMessageId) {
+      const root = await ctx.db.get(args.threadRootMessageId)
+      if (!root || root.conversationId !== args.conversationId || root.threadRootMessageId || root.deletedAt !== undefined) return null
+    }
+    return { ...args, userId: access.viewer.userId,
+      compatibility: await nativeThreadCompatibility(ctx, access.conversation, args.threadRootMessageId, { runs: 100, roots: 200 }) }
+  },
+})
 
 async function roomCreator(ctx: Pick<QueryCtx, 'auth' | 'db'>, workspaceId: string) {
   const viewer = await requireNativeWorkspace(ctx, workspaceId)

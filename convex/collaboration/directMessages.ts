@@ -1,3 +1,4 @@
+import { insertRoomParticipant } from './participantRecency'
 import { heartbeatForActor, addParticipantForActor, removeParticipantForActor, archiveConversationForEveryoneForActor, setThreadFollowForActor } from './roomStateActions'
 import { hydrateRemoteMessages, hydrateRemoteMessage } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
@@ -526,7 +527,7 @@ export async function insertCollaborationMessage(
     replyToTurnId: args.replyToTurnId,
     replySnippet: args.replySnippet,
     clientNonce: args.clientNonce,
-    collaborationAdmission: { mentionedPrincipalIds: [...new Set(args.mentionedPrincipalIds ?? [])], memoryEnabled: args.memoryEnabled !== false },
+    collaborationAdmission: { mentionedPrincipalIds: [...new Set(args.mentionedPrincipalIds ?? [])], memoryEnabled: args.memoryEnabled !== false, content: args.content },
     threadRootMessageId: args.threadRootMessageId,
     status: 'completed',
     createdAt: now,
@@ -547,7 +548,8 @@ export async function insertCollaborationMessage(
 }
 
 function collaborationAdmission(message: Doc<'conversationMessages'>, replayed: boolean) {
-  return { messageId: message._id, replayed, turnId: message.turnId, content: message.content,
+  // Replay the immutable admission, never a later edit or the retry payload.
+  return { messageId: message._id, replayed, deleted: message.deletedAt !== undefined, turnId: message.turnId, content: message.collaborationAdmission?.content ?? message.editHistory?.[0]?.content ?? message.content,
     threadRootMessageId: message.threadRootMessageId,
     mentionedPrincipalIds: message.collaborationAdmission?.mentionedPrincipalIds ?? [],
     memoryEnabled: message.collaborationAdmission?.memoryEnabled !== false }
@@ -996,6 +998,9 @@ export const recordAgentStartFailure = mutation({
       .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', messageId)).unique()
     if (run) assertSupportedAgentExecution(run)
     if (run && (run.status !== 'queued' || run.workflowRunId)) return messageId
+    const harness = run && await ctx.db.query('harnessRuns')
+      .withIndex('by_runId', q => q.eq('runId', run.harnessRunId ?? `workspace:${run._id}`)).unique()
+    if (harness) return messageId
     await ctx.db.patch(messageId, {
       content: args.content,
       parts: [{ type: 'text', text: args.content }],
@@ -1364,7 +1369,7 @@ export const updateParticipantState = mutation({
       if (existing) {
         participant = existing
       } else {
-        const id = await ctx.db.insert('conversationParticipants', {
+        const id = await insertRoomParticipant(ctx, {
           conversationId: args.conversationId,
           workspaceId: args.workspaceId,
           principalId: access.actor.principalId,
@@ -1591,7 +1596,7 @@ export const recordMessageActivity = mutation({
     if (message.collaborationActivityRecordedAt !== undefined) return
     await fanOutMessageNotifications(ctx, {
       ...args,
-      body: message.content,
+      body: message.collaborationAdmission?.content ?? message.editHistory?.[0]?.content ?? message.content,
       mentionedPrincipalIds: message.collaborationAdmission?.mentionedPrincipalIds ?? args.mentionedPrincipalIds,
       threadRootMessageId: message.threadRootMessageId,
       actorDisplayName: access.actor.displayName,

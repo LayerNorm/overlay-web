@@ -3,10 +3,12 @@ import { v } from 'convex/values'
 import { internalMutation } from '../_generated/server'
 import { internal } from '../_generated/api'
 import { NATIVE_ROOM_RECENCY_MIGRATION } from './nativeCollaborationReadiness'
+import { drainRoomRecencyFanout } from './roomRecencyFanout'
 
 export const kickRoomRecencyBackfill = internalMutation({
   args: {}, returns: v.null(),
   handler: async ctx => {
+    await drainRoomRecencyFanout(ctx)
     const state = await ctx.db.query('migrationMarkers')
       .withIndex('by_key_scope', q => q.eq('key', NATIVE_ROOM_RECENCY_MIGRATION).eq('scope', 'global')).unique()
     if (state && (state.completedAt > 0 || (state.scheduledAt !== undefined && state.scheduledAt > Date.now() - 120_000))) return null

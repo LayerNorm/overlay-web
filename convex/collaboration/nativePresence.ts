@@ -1,5 +1,6 @@
 import { v } from 'convex/values'
-import { mutation, query } from '../_generated/server'
+import { mutation, query, type QueryCtx } from '../_generated/server'
+import type { Id } from '../_generated/dataModel'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { requireNativeDeploymentFeature } from '../lib/nativeDeploymentPolicy'
 import { requireNativeCapability } from '../lib/nativeCapabilities'
@@ -23,10 +24,15 @@ export const heartbeat = mutation({ args: { workspaceId: v.string(), conversatio
 
 export const watchPresence = query({ args: { workspaceId: v.string(), conversationId: v.id('conversations') }, returns: v.union(v.array(row), v.null()), handler: async (ctx, args) => {
   if (!await nativeRoomOrNull(ctx, args)) return null
-  const participants = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_status', q => q.eq('conversationId', args.conversationId).eq('status', 'active')).take(200)
-  const rows = (await Promise.all(participants.filter(p => p.workspaceId === args.workspaceId && p.removedAt === undefined).map(p =>
-    ctx.db.query('workspacePresence').withIndex('by_workspaceId_principalId_updatedAt', q => q.eq('workspaceId', args.workspaceId).eq('principalId', p.principalId)).order('desc').take(200)))).flat()
-  return rows.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 200).map(p => ({ workspaceId: p.workspaceId, conversationId: args.conversationId,
+  return loadRoomPresence(ctx, args)
+} })
+
+export async function loadRoomPresence(ctx: Pick<QueryCtx, 'db'>, args: { workspaceId: string; conversationId: Id<'conversations'> }) {
+  const participants = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_status', q => q.eq('conversationId', args.conversationId).eq('status', 'active')).take(201)
+  if (participants.length > 200) return []
+  const allowed = new Set(participants.filter(p => p.workspaceId === args.workspaceId && p.removedAt === undefined).map(p => p.principalId))
+  const rows = await ctx.db.query('workspacePresence').withIndex('by_workspaceId_updatedAt', q => q.eq('workspaceId', args.workspaceId)).order('desc').take(200)
+  return rows.filter(p => allowed.has(p.principalId)).map(p => ({ workspaceId: p.workspaceId, conversationId: args.conversationId,
     principalId: p.principalId, sessionId: p.sessionId, status: p.status, lastSeenAt: p.lastSeenAt, expiresAt: p.lastSeenAt + 120_000,
     typingExpiresAt: p.conversationId === args.conversationId ? p.typingExpiresAt : undefined }))
-} })
+}

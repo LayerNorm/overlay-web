@@ -2,6 +2,7 @@ import { convexTest } from 'convex-test'
 import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { api } from './_generated/api'
 import schema from './schema'
+import { UNREAD_ROOM_SCAN_LIMIT, UNREAD_ROW_READ_LIMIT } from './collaboration/nativeActivity'
 
 const modules = import.meta.glob('./**/*.ts')
 const workspaceId = 'native-activity'
@@ -60,6 +61,47 @@ test('unread counts use the unread index, not the first notification page', asyn
   expect((await f.list()).page.every(row => row.readAt !== undefined)).toBe(true)
   expect((await f.counts()).notifications).toEqual({ count: 99, capped: true })
   expect((await f.bob.query(api.collaboration.nativeActivity.getRoomUnreadCounts, { workspaceId, conversationIds: [f.conversationId] })).byConversation[f.conversationId]).toEqual({ count: 99, capped: true })
+})
+
+async function countBudgetFixture(roomCount: number, rowsPerRoom: number, revoked = false) {
+  const f = await fixture()
+  await f.t.run(async ctx => {
+    for (let r = 0; r < roomCount; r++) {
+      const conversationId = await ctx.db.insert('conversations', { workspaceId, userId: 'alice', title: `Room ${r}`, conversationType: 'dm', lastMode: 'act', askModelIds: [], actModelId: 'test', lastModified: 1, createdAt: 1 })
+      await ctx.db.insert('conversationParticipants', { workspaceId, conversationId, principalId: 'bob', principalType: 'human', role: 'member', status: revoked ? 'removed' : 'active', removedAt: revoked ? 1 : undefined, roomLastModified: 1, notificationLevel: 'all', joinedAt: 1, updatedAt: 1 })
+      for (let i = 0; i < rowsPerRoom; i++) await ctx.db.insert('workspaceNotifications', { notificationId: `budget-${r}-${i}`, workspaceId, recipientPrincipalId: 'bob', conversationId, actorPrincipalId: 'alice', type: 'message', title: 'Unread', createdAt: i })
+    }
+  })
+  return f
+}
+
+test('row budget exhaustion caps every uncertain kind and room count', async () => {
+  const f = await countBudgetFixture(Math.ceil(UNREAD_ROW_READ_LIMIT / 100) + 1, 100)
+  const counts = await f.counts()
+  expect(counts.notifications).toEqual({ count: 99, capped: true })
+  expect(counts.rooms.capped).toBe(true)
+  expect(counts.byKind.channel).toEqual({ count: 0, capped: true })
+  expect(counts.byKind.agentThread).toEqual({ count: 0, capped: true })
+})
+
+test('revoked rooms consume room and access-check budgets instead of scanning for free', async () => {
+  const f = await countBudgetFixture(UNREAD_ROOM_SCAN_LIMIT + 10, 1, true)
+  const counts = await f.counts()
+  expect(counts.notifications).toEqual({ count: 0, capped: true })
+  expect(counts.rooms).toEqual({ count: 0, capped: true })
+  expect(Object.values(counts.byKind).every(bucket => bucket.capped)).toBe(true)
+  expect(counts.byConversation).toEqual({})
+})
+
+test('rare kinds beyond the room budget are unknown, never a false exact zero', async () => {
+  const f = await countBudgetFixture(UNREAD_ROOM_SCAN_LIMIT + 10, 1)
+  await f.t.run(async ctx => {
+    const ordered = await ctx.db.query('workspaceNotifications').withIndex('by_workspace_recipient_read_room_time', q => q.eq('workspaceId', workspaceId).eq('recipientPrincipalId', 'bob').eq('readAt', undefined)).collect()
+    await ctx.db.patch(ordered.at(-1)!.conversationId, { conversationType: 'channel', channelSlug: 'rare', channelVisibility: 'public' })
+  })
+  const counts = await f.counts()
+  expect(counts.byKind.channel).toEqual({ count: 0, capped: true })
+  expect(counts.rooms).toEqual({ count: UNREAD_ROOM_SCAN_LIMIT, capped: true })
 })
 
 test('owned-id reads ignore other recipients, newer arrivals and overlarge requests', async () => {

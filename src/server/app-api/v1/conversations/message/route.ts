@@ -119,6 +119,11 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
     if (!messageId) throw new Error('Failed to save message')
 
+    const response = NextResponse.json({ success: true, conversationId: body.conversationId,
+      turnId: admission?.turnId ?? turnId, messageId, replayed: admission?.replayed ?? false })
+    // Tombstones acknowledge the original admission without replaying effects.
+    if (admission?.deleted) return response
+
     // Record message activity and publish workspace.mention lifecycle events for
     // human @-mentions in workspace conversations (DMs and channels).
     const mentionedPrincipalIds = admission?.mentionedPrincipalIds ?? []
@@ -189,8 +194,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       })
     }
 
-    return NextResponse.json({ success: true, conversationId: body.conversationId,
-      turnId: admission?.turnId ?? turnId, messageId, replayed: admission?.replayed ?? false })
+    return response
   } catch (e) {
     const retirement = nativeRunRetirementErrorResponse(e)
     if (retirement) return retirement

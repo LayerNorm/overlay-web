@@ -27,6 +27,7 @@ import type {
 export type CollaborationMessageAdmission = {
   messageId: string
   replayed: boolean
+  deleted?: boolean
   turnId: string
   content: string
   mentionedPrincipalIds: string[]

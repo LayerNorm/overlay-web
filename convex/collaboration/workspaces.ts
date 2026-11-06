@@ -1,3 +1,4 @@
+import { insertRoomParticipant, activateRoomParticipant } from './participantRecency'
 import { deleteRemoteMessageText } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
@@ -375,7 +376,7 @@ export const createOrganizationByServer = mutation({
       channelTopic: 'Company-wide announcements and conversation',
         }),
       ])
-    await ctx.db.insert('conversationParticipants', {
+    await insertRoomParticipant(ctx, {
       conversationId: generalChannelId,
       workspaceId: args.workspaceId,
       principalId: args.principalId,
@@ -1169,14 +1170,14 @@ export const acceptInvitationByServer = mutation({
     await Promise.all(publicChannels.map((channel, i) => {
       const existingParticipant = existingParticipants[i]
       return existingParticipant
-        ? ctx.db.patch(existingParticipant._id, {
+        ? activateRoomParticipant(ctx, existingParticipant._id, {
           role,
           status: 'active',
           removedAt: undefined,
           archivedAt: undefined,
           updatedAt: now,
         })
-        : ctx.db.insert('conversationParticipants', {
+        : insertRoomParticipant(ctx, {
           conversationId: channel._id,
           workspaceId: workspace.workspaceId,
           principalId: principal.principalId,

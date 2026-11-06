@@ -20,8 +20,10 @@ Native presence keeps 45-second heartbeats and absolute 120-second session and
 schedules the next deadline and aggregates live sessions locally. The legacy
 `computePresence`/`watchPresence` clock filter is retained for existing callers:
 without another database write, its result can remain stale. Presence reads the
-newest 200 sessions per participant via the updatedAt index, then returns the
-newest 200 room sessions. Historical rows do not exhaust a fail-closed budget.
+newest 200 workspace sessions in one indexed window, then filters to the room's
+active participants. This is a globally bounded, best-effort presence window,
+not 200 rows per participant. A busy workspace can omit older live sessions.
+Historical rows do not exhaust a fail-closed budget.
 Presence errors clear presence only, never room availability. No cleanup job is
 needed to make the presence window safe.
 
@@ -60,16 +62,20 @@ Message hydration remains server-side and after authorization.
 
 Room recency is denormalized into participant `roomLastModified`, indexed by
 workspace/principal/status/recency, and synchronized by collaboration event writes.
-Before enabling native room lists on an existing backend, page the internal
-`collaboration/nativeRoomMaintenance:backfillRoomRecency` mutation separately for
-each workspace until `isDone`. It is idempotent and reads current conversation
-recency transactionally. Lists fail closed with `ROOM_RECENCY_NOT_READY` when a
-matching historical participant lacks the recency projection. This migration has
-**not** been run on any backend during implementation.
+The minute cron `native room recency migration` automatically kicks the global
+`collaboration/nativeRoomMaintenance:runRoomRecencyBackfill`. Its 100-row pages
+self-reschedule, persist their cursor/lease in `migrationMarkers`, and resume
+after an abandoned lease. The workspace-scoped `backfillRoomRecency` remains an
+internal repair tool, not a required manual rollout step. Lists fail closed with
+`ROOM_RECENCY_NOT_READY` for historical rows missing the projection.
 
-The `nativeCollaborationRevision` readiness marker is deliberately **absent**.
-The readiness helper/provider and all client migrations remain later stages;
-legacy consumers remain authoritative until the complete backend is advertised.
+`nativeCollaborationRevision='native-collaboration-v1'` requires both the exported
+`NATIVE_COLLABORATION_FUNCTIONS_READY` flag (now true) and a completed global
+persisted backfill. Every production participant insert/reactivation uses
+`participantRecency` to initialize current recency even after migration completion,
+including workspace #general, invitations, surfaces, Slack import, personal chats,
+agent threads and legacy room creation. This implementation performs no deployment
+or shared-backend mutation.
 
 ## Send replay and partial failure
 
@@ -80,6 +86,21 @@ place. Convex `addMessage` now returns admission metadata including `messageId` 
 Nonce OR human turn ID deduplicates insertion transactionally. Reusing another
 author's nonce/turn is denied. Replays use original admission metadata, not mutable
 retry payloads, for all downstream effects.
+
+**Approved Option A / CN-08 scope exception:** `POST /api/v1/conversations/message`
+is an explicitly retained authenticated server command for governance/sanitization,
+canonical Convex persistence and server-owned agent execution. This does not permit
+HTTP transcript/list ownership or redundant HTTP safety bootstrap/preflight in
+native-ready mode; all other retirement requirements remain unchanged.
+
+New admissions persist the original content alongside immutable mentions/memory
+preferences. Later message edits and changed retry bodies do not alter that
+admission. Historical rows without the content snapshot use their first edit-history
+entry when available, otherwise the stored content; an original body erased before
+this snapshot existed cannot be reconstructed. Turn/thread identity remains canonical.
+Deleted/tombstoned admissions return the same admission identity with `deleted=true`;
+the BFF acknowledges them without activity, mention publication, agent launch or
+agent reply/failure creation. Ordinary nondeleted replay still repairs missing effects.
 
 Chosen strategy: **retry the idempotent effects on replay**, not skip them based
 only on insertion success. The canonical message and activity receipt commit in
@@ -269,10 +290,39 @@ existing behavior; pending authenticated workspace switches still preserve draft
 
 ### Native function inventory
 
+`collaboration/nativeRooms:getExecution({workspaceId, conversationId,
+threadRootMessageId?})` returns null without live room access, or for a missing,
+foreign, deleted or non-root thread message. Otherwise it returns only scope,
+auth-derived `userId` and `compatibility` (no run fields). Its compatibility walk
+has a shared 100-run/200-message-read budget; exhaustion is conservatively read-only.
+Legacy/personal compatibility callers retain their existing unbudgeted behavior.
+
+Unread aggregation stops at 64 room scans, 64 access checks or 512 notification
+row reads, including candidate rows and inaccessible rooms. Until end-of-index
+proves completeness, all uncertain aggregate buckets are capped, even a zero for
+a rare kind. A capped zero means unknown, not an exact absence.
+
+Recency event writes read at most 201 active participants and patch at most 200.
+Larger legacy rooms enqueue a resumable `migrationMarkers` fanout entry. The
+**existing** minute `kickRoomRecencyBackfill` cron drains one 100-participant page
+per invocation, including after the global migration completes. No new scheduler
+or cron call site is introduced. Large-room recency is temporarily eventual; sends
+are not rejected. New events preserve an in-progress cursor, then require another
+pass if the target changed. Queue ordering rotates processed jobs; deleted rooms
+discard their jobs. Native rooms within the supported 200-participant bound retain
+synchronous recency projection updates.
+
+Duplicate workflow launches already lose their claim before the workflow failure
+catch (`native-harness.ts` / `state-steps.ts`). The distinct pre-binding race is
+guarded in `recordAgentStartFailure`: a persisted canonical harness admission owns
+its reply, even while the delivery remains queued/unbound. Command-launch failure
+must not overwrite that owner's transcript; an admitted but unlaunched run remains
+retry-recoverable instead of receiving a speculative failure row.
+
 | Module | Exact public functions |
 | --- | --- |
 | agents/nativeDirectory | context, bootstrapChiefs, list, get, create, update, restore |
-| collaboration/nativeRooms | listRooms, getRoom, listMessages, getMessageAnchor, createDirectMessage, createChannel, editMessage, deleteMessage |
+| collaboration/nativeRooms | listRooms, getRoom, getExecution, listMessages, getMessageAnchor, createDirectMessage, createChannel, editMessage, deleteMessage |
 | agents/nativeThreads | listThreads, getThread, resolveMainThread, createThread, setThreadArchived, deleteThread |
 | collaboration/nativeRoomState | getRoomState, listReactions, listSavedMessages, setReaction, setPinned, setSaved, setThreadFollow, setNotificationLevel, setRoomArchived, restore, addParticipant, removeParticipant |
 | collaboration/nativePresence | heartbeat, watchPresence |
@@ -301,6 +351,24 @@ The module prefix in every row is `collaboration/` unless explicitly `agents/`.
 | channels | createChannel, listChannels, listReactions, setReaction, listPins, setPinned, listSavedMessages, setSaved | Repository/BFF callers, native-disabled rooms and retained global saved-message consumers |
 | channels | searchWorkspaceChats, deleteAllConversations | BFF search and privileged bulk deletion |
 | agents/agentThreads | createThreadByServer, resolveMainThreadByServer, listThreadsByServer, listArchivedThreadsByServer, setThreadArchivedByServer, deleteThreadByServer | AgentThreadService/BFF compatibility, disabled clients and global archived-thread settings |
+
+### Acceptance map (backend coverage and client integration checks)
+
+These IDs are acceptance scenarios, not claims of hosted/two-client execution.
+Client corrections are owned separately; their combined regressions and hosted
+scroll/visibility/navigation checks remain necessary beyond the backend seams.
+
+| ID / exact acceptance | Functions and regression seams |
+| --- | --- |
+| **E02** Repeat in agent thread, DM, channel, and reply thread — Correct audience and thread placement; no duplicates or unauthorized visibility. | `directMessages.addMessage`, `recordMessageActivity`, `startAgentTurn`; `nativeRooms.listMessages/getMessageAnchor`, `nativeThreads.getThread`. `nativeRooms.convex.test.ts` canonical send replay and access tests; `send-replay.test.ts` canonical route/repository replay and delete-then-replay; `nativeThreads.convex.test.ts` authorization/deduplication. |
+| **E04** Archive open and closed threads — Local row/selection responds immediately; B's list/detail follows committed state. | `nativeThreads.setThreadArchived/listThreads/getThread`, `nativeRoomState.setRoomArchived/restore`, `nativeRooms.listRooms/getRoom`; `nativeThreads.convex.test.ts`, `nativeRoomState.convex.test.ts`, `native-agent-threads.test.tsx`, `native-room-state.test.tsx`. Immediate Undo belongs to the client integration tests, not a backend guarantee. |
+| **E05** Reject archive; invoke Undo before response; apply conflicting remote edit — Correct rollback/ordering; no stale snapshot overwrites, resurrection, or surprising navigation. | Same archive functions; action-ID overlays in `native-agent-threads` and `native-room-state`; their unit suites cover reconciliation/navigation. Pre-ack Undo, serialization and conflicting-edit coverage must include the frontend review corrections. |
+| **E06** Navigate to cached, uncached, unauthorized, missing, and archived thread — Immediate destination feedback; correct loading/forbidden/missing state; no redundant membership-list waterfall. | `nativeThreads.getThread`, `nativeRooms.getRoom/getExecution`; `nativeThreads.convex.test.ts`, `nativeRooms.convex.test.ts` getExecution scoped-access tests, `use-agent-thread-scope.test.tsx`, `NativeCollaborationProvider.test.tsx`. Exact queries reject direct guessed IDs without a list preflight. |
+| **E07** Load older history while new messages arrive — No gaps/duplicates; edited/deleted historical rows update; scroll anchor remains stable. | `nativeRooms.listMessages/getMessageAnchor`, `useNativeRoomTranscript`, `NativeRoomScope`; backend pagination tests in `nativeRooms.convex.test.ts`, merge/scope tests in `NativeCollaborationProvider.test.tsx` and `room-message-view.test.ts`. Older-reply pagination/scroll-anchor behavior requires the frontend review regressions and rendered QA. |
+| **E08** Retry a send; reconnect mid-stream; receive out-of-order chunks — One persisted message/run per logical operation; monotonic rendering; one terminal result. | `directMessages.addMessage/startAgentTurn/recordAgentStartFailure`, Harness claim/apply, reply projection. `send-replay.test.ts`, `nativeRooms.convex.test.ts` canonical/queued-retry and admitted/claimed pre-binding-race tests; `nativeHarnessDelivery.convex.test.ts`, `state-steps.test.ts` foreign-owner claims. Reconnect/out-of-order visual behavior is a client/runtime acceptance seam. |
+| **E10** Mark read in A while B receives new messages — Cursor never regresses; unseen future messages are not accidentally marked read. | `nativeActivity.markRoomRead/markNotificationsRead/markAllNotificationsRead`, legacy `updateParticipantState`; `nativeActivity.convex.test.ts` watermark/monotonic cursor/arrival tests; `native-activity.test.tsx` overlays. Rendered/intersecting-row and hidden-document observation belong to the frontend review tests. |
+| **E18** Revoke membership/role while subscribed; switch workspace/account — Data access is removed; no previous-scope flash, stale query leak, or draft crossover. | `nativeRoomOrNull`, `nativeRooms.getRoom/getExecution/listMessages`, `nativeRoomState.getRoomState`, `nativeActivity.listNotifications/getUnreadCounts`; native room/state/activity access tests and `NativeCollaborationProvider.test.tsx` scope/null clearing. Draft crossover and subscription transitions require client tests/two-client QA. |
+| **E19** Guess another user's/workspace's IDs and call functions directly — Server rejects consistently; no metadata/count/secret leakage; UI hiding is not the protection. | Identity-derived native authorization on every public function; `nativeRooms.convex.test.ts`, `nativeRoomState.convex.test.ts`, `nativeActivity.convex.test.ts`, `nativeAgentDirectory.convex.test.ts`, `nativeThreads.convex.test.ts`. Anonymous, foreign-room/root, non-participant and revoked tests call server functions directly. No native API accepts actor IDs, tokens or server secrets. |
 | agents/agentThreads | listAutomationsByServer | Separate agent automation metadata endpoint |
 | chat/conversations | watchPersonalConversationListVersion | Personal legacy list ownership only; retained even when collaboration is native |
 

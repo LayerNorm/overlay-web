@@ -740,7 +740,9 @@ export default defineSchema({
     completedAt: v.number(),
     cursor: v.optional(v.string()),
     scheduledAt: v.optional(v.number()),
-  }).index('by_key_scope', ['key', 'scope']),
+    targetLastModified: v.optional(v.number()),
+  }).index('by_key_scope', ['key', 'scope'])
+    .index('by_key_scheduledAt', ['key', 'scheduledAt']),
 
   /** One row per tool invocation (audit / cost-class tracking for chat tools). */
   toolInvocations: defineTable({
@@ -1692,7 +1694,7 @@ export default defineSchema({
     updatedAt: v.optional(v.number()),
     clientNonce: v.optional(v.string()),
     collaborationAdmission: v.optional(v.object({
-      mentionedPrincipalIds: v.array(v.string()), memoryEnabled: v.boolean(),
+      mentionedPrincipalIds: v.array(v.string()), memoryEnabled: v.boolean(), content: v.optional(v.string()),
     })),
     collaborationActivityRecordedAt: v.optional(v.number()),
     editedAt: v.optional(v.number()),
@@ -2527,6 +2529,7 @@ export default defineSchema({
     updatedAt: v.number(),
   })
     .index('by_workspaceId_principalId', ['workspaceId', 'principalId'])
+    .index('by_workspaceId_updatedAt', ['workspaceId', 'updatedAt'])
     .index('by_workspaceId_principalId_updatedAt', ['workspaceId', 'principalId', 'updatedAt']),
 
   workspaceNotifications: defineTable({

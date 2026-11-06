@@ -1,3 +1,4 @@
+import { insertRoomParticipant } from '../collaboration/participantRecency'
 import { paginationOptsValidator, paginationResultValidator } from 'convex/server'
 import { convexToJson, v } from 'convex/values'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
@@ -298,7 +299,7 @@ async function admitWrite(ctx: MutationCtx, userId: string) {
 async function participantId(ctx: MutationCtx, access: Access) {
   if (access.participant) return access.participant._id
   const now = Date.now()
-  return ctx.db.insert('conversationParticipants', {
+  return insertRoomParticipant(ctx, {
     conversationId: access.conversation._id, workspaceId: access.workspaceId,
     principalId: access.principal.principalId, principalType: 'human', role: 'moderator',
     status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now,

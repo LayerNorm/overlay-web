@@ -2,6 +2,7 @@ import { convexTest } from 'convex-test'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
 import { api } from './_generated/api'
 import schema from './schema'
+import { loadRoomPresence } from './collaboration/nativePresence'
 
 const modules = import.meta.glob('./**/*.ts')
 const workspaceId = 'room-state'
@@ -36,6 +37,38 @@ async function fixture() {
 }
 
 describe('native room metadata and presence', () => {
+  test('presence uses one global 200-row read budget rather than multiplying by participants', async () => {
+    const f = await fixture()
+    await f.t.run(async ctx => {
+      for (let p = 0; p < 5; p++) {
+        const principalId = `session-owner-${p}`
+        await ctx.db.insert('conversationParticipants', { ...f.args, principalId, principalType: 'human', role: 'member', status: 'active', notificationLevel: 'all', joinedAt: 1, updatedAt: 1 })
+        for (let s = 0; s < 200; s++) await ctx.db.insert('workspacePresence', { workspaceId, principalId, sessionId: `session-${s}`, status: 'online', lastSeenAt: 1, updatedAt: 1 })
+      }
+    })
+    await f.bob.mutation(api.collaboration.nativePresence.heartbeat, { ...f.args, sessionId: 'live', typing: true })
+    await f.t.run(async ctx => {
+      let presenceRowsRead = 0
+      function measured<T extends object>(query: T): T {
+        return new Proxy(query, { get(target, key) {
+          const method = Reflect.get(target, key)
+          if (typeof method !== 'function') return method
+          return (...args: unknown[]) => {
+            const result = Reflect.apply(method, target, args)
+            if (key === 'take') return result.then((rows: unknown[]) => { presenceRowsRead += rows.length; return rows })
+            return measured(result)
+          }
+        } })
+      }
+      const db = new Proxy(ctx.db, { get(target, key) {
+        if (key !== 'query') return Reflect.get(target, key)
+        return (table: Parameters<typeof ctx.db.query>[0]) => table === 'workspacePresence' ? measured(target.query(table)) : target.query(table)
+      } })
+      const rows = await loadRoomPresence({ db }, f.args)
+      expect(rows.some(row => row.sessionId === 'live')).toBe(true)
+      expect(presenceRowsRead).toBe(200)
+    })
+  })
   test('historical presence rows never hide a live session or prevent a heartbeat', async () => {
     const f = await fixture()
     await f.t.run(async ctx => {

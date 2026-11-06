@@ -1,13 +1,16 @@
 import type { Doc, Id } from '../_generated/dataModel'
 import type { QueryCtx } from '../_generated/server'
+import { v } from 'convex/values'
 import {
   NATIVE_RUN_RETIRED_CODE,
   NATIVE_RUN_RETIRED_MESSAGE,
   nativeRunRetiredError,
-  type NativeThreadCompatibility,
 } from '../../src/shared/agents/native-run-retirement'
 
 type ReadContext = Pick<QueryCtx, 'db'>
+type Budget = { runs: number; roots: number }
+export const nativeThreadCompatibilityValidator = v.union(v.object({ readOnly: v.literal(false) }),
+  v.object({ readOnly: v.literal(true), code: v.literal(NATIVE_RUN_RETIRED_CODE), message: v.literal(NATIVE_RUN_RETIRED_MESSAGE) }))
 
 function isConversationThread(conversation: Doc<'conversations'>): boolean {
   return (conversation.conversationType ?? 'personal') === 'personal'
@@ -20,10 +23,12 @@ async function findThreadRoot(
   ctx: ReadContext,
   conversationId: Id<'conversations'>,
   messageId: Id<'conversationMessages'>,
-): Promise<Id<'conversationMessages'>> {
+  budget?: Budget,
+): Promise<Id<'conversationMessages'> | undefined> {
   const visited = new Set<string>()
   let current = messageId
   while (true) {
+    if (budget && budget.roots-- <= 0) return undefined
     if (visited.has(current)) throw new Error('INVALID_THREAD_ROOT')
     visited.add(current)
     const message = await ctx.db.get(current)
@@ -37,12 +42,14 @@ export async function isNativeThreadReadOnly(
   ctx: ReadContext,
   conversation: Doc<'conversations'>,
   threadRootMessageId?: Id<'conversationMessages'>,
+  budget?: Budget,
 ): Promise<boolean> {
   const wholeConversation = isConversationThread(conversation)
   // A new top-level message in a shared room starts a new task, not an old thread.
   if (!wholeConversation && !threadRootMessageId) return false
   const threadRoot = !wholeConversation && threadRootMessageId
-    ? await findThreadRoot(ctx, conversation._id, threadRootMessageId) : undefined
+    ? await findThreadRoot(ctx, conversation._id, threadRootMessageId, budget) : undefined
+  if (!wholeConversation && threadRootMessageId && !threadRoot) return true
   const queries = [
     ctx.db.query('conversationAgentRuns')
       .withIndex('by_conversationId_runner_executionEngine', q => q
@@ -52,11 +59,15 @@ export async function isNativeThreadReadOnly(
         .eq('conversationId', conversation._id).eq('runner', 'workflow').eq('executionEngine', undefined)),
   ]
   for (const query of queries) {
-    for await (const run of query) {
+    const runs = budget ? await query.take(Math.max(0, budget.runs) + 1) : query
+    for await (const run of runs) {
+      if (budget && budget.runs-- <= 0) return true
       if (wholeConversation || run.userMessageId === threadRoot || run.assistantMessageId === threadRoot) return true
+      if (budget && budget.roots-- <= 0) return true
       const trigger = await ctx.db.get(run.userMessageId)
       if (trigger?.conversationId !== conversation._id || !trigger.threadRootMessageId) continue
-      if (await findThreadRoot(ctx, conversation._id, trigger._id) === threadRoot) return true
+      const root = await findThreadRoot(ctx, conversation._id, trigger._id, budget)
+      if (!root || root === threadRoot) return true
     }
   }
   return false
@@ -74,8 +85,9 @@ export async function nativeThreadCompatibility(
   ctx: ReadContext,
   conversation: Doc<'conversations'>,
   threadRootMessageId?: Id<'conversationMessages'>,
-): Promise<NativeThreadCompatibility> {
-  return await isNativeThreadReadOnly(ctx, conversation, threadRootMessageId)
-    ? { readOnly: true as const, code: NATIVE_RUN_RETIRED_CODE, message: NATIVE_RUN_RETIRED_MESSAGE }
+  budget?: Budget,
+) {
+  return await isNativeThreadReadOnly(ctx, conversation, threadRootMessageId, budget ? { ...budget } : undefined)
+    ? { readOnly: true, code: NATIVE_RUN_RETIRED_CODE, message: NATIVE_RUN_RETIRED_MESSAGE } as const
     : { readOnly: false as const }
 }

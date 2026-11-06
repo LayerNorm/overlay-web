@@ -94,6 +94,30 @@ test('route and real repository replay: one canonical message, fanout, lifecycle
   expect(mocks.governance).toHaveBeenCalledTimes(2)
 })
 
+test('delete then replay of an admitted human message creates no downstream effects', async () => {
+  const f = await setup()
+  mocks.activity.mockRejectedValueOnce(new Error('retry before activity'))
+  mocks.publish.mockRejectedValueOnce(new Error('retry before mention'))
+  mocks.resolve.mockRejectedValueOnce(new Error('retry before agent dispatch'))
+  expect((await f.send()).status).toBe(200)
+  const admitted = (await f.rows()).messages.find(row => row.authorKind === 'human')!
+  await f.t.run(ctx => ctx.db.patch(admitted._id, { deletedAt: Date.now(), content: '[deleted]' }))
+  const before = await f.rows()
+  mocks.activity.mockClear(); mocks.publish.mockClear(); mocks.start.mockClear(); mocks.resolve.mockClear()
+  const replay = await f.send({ content: 'changed retry', mentionedPrincipalIds: ['eve'] })
+  expect(replay.status).toBe(200)
+  expect(await replay.json()).toMatchObject({ messageId: admitted._id, turnId: 'turn', replayed: true })
+  expect(await f.rows()).toEqual(before)
+  expect(before.activity).toEqual([])
+  expect(before.runs).toEqual([])
+  expect(before.messages).toHaveLength(1)
+  expect(f.lifecycle.size).toBe(0)
+  expect(mocks.activity).not.toHaveBeenCalled()
+  expect(mocks.publish).not.toHaveBeenCalled()
+  expect(mocks.resolve).not.toHaveBeenCalled()
+  expect(mocks.start).not.toHaveBeenCalled()
+})
+
 test('replay retries activity, lifecycle and queued turn dispatch after the first attempt failed', async () => {
   const f = await setup()
   mocks.activity.mockRejectedValueOnce(new Error('activity unavailable'))

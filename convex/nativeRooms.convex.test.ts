@@ -47,6 +47,52 @@ async function fixture() {
 }
 
 describe('native room access and bounded projections', () => {
+  test('getExecution returns scoped compatibility only and rejects invalid or inaccessible roots', async () => {
+    const f = await fixture()
+    expect(await f.alice.query(api.collaboration.nativeRooms.getExecution, f.args)).toEqual({ ...f.args, userId: 'alice', compatibility: { readOnly: false } })
+    const root = await f.message('root')
+    expect(await f.bob.query(api.collaboration.nativeRooms.getExecution, { ...f.args, threadRootMessageId: root })).toMatchObject({ userId: 'bob', threadRootMessageId: root, compatibility: { readOnly: false } })
+    const reply = await f.message('reply', root)
+    expect(await f.alice.query(api.collaboration.nativeRooms.getExecution, { ...f.args, threadRootMessageId: reply })).toBeNull()
+    const other = await f.alice.mutation(api.collaboration.nativeRooms.createDirectMessage, { workspaceId, principalIds: ['eve'] })
+    expect(await f.alice.query(api.collaboration.nativeRooms.getExecution, { conversationId: other.conversationId, workspaceId, threadRootMessageId: root })).toBeNull()
+    expect(await f.eve.query(api.collaboration.nativeRooms.getExecution, f.args)).toBeNull()
+    expect(await f.t.query(api.collaboration.nativeRooms.getExecution, f.args)).toBeNull()
+    expect(await f.alice.query(api.collaboration.nativeRooms.getExecution, { ...f.args, workspaceId: 'foreign' })).toBeNull()
+    await f.t.run(ctx => ctx.db.patch(root, { deletedAt: now }))
+    expect(await f.alice.query(api.collaboration.nativeRooms.getExecution, { ...f.args, threadRootMessageId: root })).toBeNull()
+    await f.t.run(ctx => ctx.db.delete(root))
+    expect(await f.alice.query(api.collaboration.nativeRooms.getExecution, { ...f.args, threadRootMessageId: root })).toBeNull()
+    await f.bob.mutation(api.collaboration.nativeRoomState.removeParticipant, { ...f.args, principalId: 'bob' })
+    expect(await f.bob.query(api.collaboration.nativeRooms.getExecution, f.args)).toBeNull()
+  })
+
+  test('getExecution conservatively reports retired threads and run-budget exhaustion read-only', async () => {
+    const f = await fixture()
+    const root = await f.message('root')
+    const unrelated = await f.message('unrelated')
+    await f.t.run(ctx => ctx.db.patch(f.args.conversationId, { conversationType: 'channel' }))
+    const run = { conversationId: f.args.conversationId, userId: 'alice', userMessageId: unrelated, assistantMessageId: unrelated, turnId: 'old', mode: 'room' as const, runner: 'tool_loop' as const, status: 'completed' as const, createdAt: now, updatedAt: now }
+    await f.t.run(ctx => ctx.db.insert('conversationAgentRuns', { ...run, userMessageId: root }))
+    const args = { ...f.args, threadRootMessageId: root }
+    expect((await f.alice.query(api.collaboration.nativeRooms.getExecution, args))?.compatibility).toMatchObject({ readOnly: true })
+    await f.t.run(async ctx => {
+      for (const row of await ctx.db.query('conversationAgentRuns').collect()) await ctx.db.delete(row._id)
+      for (let i = 0; i < 101; i++) await ctx.db.insert('conversationAgentRuns', { ...run, turnId: `unrelated-${i}` })
+    })
+    expect((await f.alice.query(api.collaboration.nativeRooms.getExecution, args))?.compatibility).toMatchObject({ readOnly: true })
+    expect((await f.alice.query(api.collaboration.nativeRooms.getExecution, f.args))?.compatibility).toEqual({ readOnly: false })
+  })
+
+  test('getExecution bounds ancestry traversal even for a malformed legacy reply chain', async () => {
+    const f = await fixture()
+    const root = await f.message('root')
+    await f.t.run(ctx => ctx.db.patch(f.args.conversationId, { conversationType: 'channel' }))
+    let ancestor = await f.message('unrelated-root')
+    for (let i = 0; i < 201; i++) ancestor = await f.message(`nested-${i}`, ancestor)
+    await f.t.run(ctx => ctx.db.insert('conversationAgentRuns', { conversationId: f.args.conversationId, userId: 'alice', userMessageId: ancestor, assistantMessageId: ancestor, turnId: 'old', mode: 'room', runner: 'tool_loop', status: 'completed', createdAt: now, updatedAt: now }))
+    expect((await f.alice.query(api.collaboration.nativeRooms.getExecution, { ...f.args, threadRootMessageId: root }))?.compatibility).toMatchObject({ readOnly: true })
+  })
   test('derives identity only; anonymous, outsider, foreign workspace and removed participant cannot read', async () => {
     const f = await fixture()
     expect(await f.alice.query(api.collaboration.nativeRooms.getRoom, f.args)).toMatchObject({ viewerPrincipalId: 'alice', participants: [{ principalId: 'alice' }, { principalId: 'bob' }] })
@@ -200,6 +246,7 @@ test('canonical send replay has one message and fanout, and retry completes miss
   const send = { ...f.args, actorUserId: 'alice', serverSecret: secret, clientNonce: 'nonce', turnId: 'turn', content: '@bob hi', mentionedPrincipalIds: ['bob'] }
   const first = await f.t.mutation(api.collaboration.directMessages.addMessage, send)
   expect(first.replayed).toBe(false)
+  await f.t.run(ctx => ctx.db.patch(first.messageId, { content: 'later edit' }))
   const replay = await f.t.mutation(api.collaboration.directMessages.addMessage, { ...send, content: 'changed', turnId: 'different', mentionedPrincipalIds: ['eve'] })
   expect(replay).toMatchObject({ messageId: first.messageId, replayed: true, content: send.content, turnId: 'turn', mentionedPrincipalIds: ['bob'] })
   const activity = { ...f.args, actorUserId: 'alice', serverSecret: secret, messageId: replay.messageId, mentionedPrincipalIds: ['eve'] }
@@ -210,6 +257,7 @@ test('canonical send replay has one message and fanout, and retry completes miss
   const activityRows = rows.activity.filter(row => row.messageId === first.messageId)
   expect(activityRows).toHaveLength(1)
   expect(activityRows[0].recipientPrincipalId).toBe('bob')
+  expect(activityRows[0].body).toBe(send.content)
   expect((await f.t.mutation(api.collaboration.directMessages.addMessage, { ...send, clientNonce: 'different-nonce' })).messageId).toBe(first.messageId)
 })
 
@@ -232,4 +280,26 @@ test('agent starts dedupe by canonical source and agent; queued dispatch is reco
   await f.t.run(ctx => ctx.db.patch(first.runId, { status: 'completed' }))
   expect(await f.t.mutation(api.collaboration.directMessages.startAgentTurn, args)).toMatchObject({ dispatchNeeded: false, runId: first.runId })
   expect(await f.t.run(ctx => ctx.db.query('conversationAgentRuns').collect())).toHaveLength(1)
+})
+
+test.each([false, true])('losing launch failure cannot corrupt an admitted harness before delivery binding (claimed=%s)', async claimed => {
+  const f = await fixture()
+  await f.t.run(async ctx => {
+    await ctx.db.insert('workspacePrincipals', { workspaceId, principalId: 'agent-p', type: 'agent', agentId: 'agent', displayName: 'Agent', createdAt: now, updatedAt: now })
+    await ctx.db.insert('conversationParticipants', { ...f.args, principalId: 'agent-p', principalType: 'agent', role: 'member', status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now })
+  })
+  const userMessageId = await f.message('source')
+  const args = { ...f.args, actorUserId: 'alice', serverSecret: secret, agentId: 'agent', authorPrincipalId: 'agent-p', userMessageId, executionEngine: 'overlay_harness' as const, clientNonce: 'launch', turnId: 'launch', modelId: 'test' }
+  const turn = await f.t.mutation(api.collaboration.directMessages.startAgentTurn, args)
+  expect(await f.t.mutation(api.collaboration.directMessages.startAgentTurn, args)).toMatchObject({ runId: turn.runId, dispatchNeeded: true })
+  const runId = `workspace:${turn.runId}`
+  await f.t.run(ctx => ctx.db.insert('workspaceAgentDefinitions', { agentId: 'agent', workspaceId, principalId: 'agent-p', name: 'Agent', instructions: '', harness: 'overlay', modelId: 'test', allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: 'alice', createdAt: now, updatedAt: now }))
+  const admitted = await f.t.mutation(api.harness.runs.admit, { runId, source: { conversationId: String(f.args.conversationId) }, goal: 'Help', constraints: [], policy: { actorUserId: 'alice', workspaceId, allowedToolIds: [], requiresPlan: false, deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxDepth: 2, maxParallelChildren: 2 }, deliveryAgentRunId: String(turn.runId), serverSecret: secret })
+  if (claimed) await f.t.mutation(api.harness.runs.apply, { actorUserId: 'alice', runId, operationId: 'winner-claim', expectedRevision: admitted.revision, operation: { type: 'claim_execution', workflowRunId: 'winner' }, serverSecret: secret })
+  const queued = await f.t.run(ctx => ctx.db.get(turn.runId))
+  expect(queued).toMatchObject({ status: 'queued', harnessRunId: runId })
+  expect(queued?.workflowRunId).toBeUndefined()
+  await f.t.mutation(api.collaboration.directMessages.recordAgentStartFailure, { ...f.args, actorUserId: 'alice', serverSecret: secret, authorPrincipalId: 'agent-p', clientNonce: args.clientNonce, turnId: args.turnId, modelId: 'test', content: 'loser failed' })
+  expect(await f.t.run(ctx => ctx.db.get(turn.messageId))).toMatchObject({ status: 'generating', content: '' })
+  expect((await f.t.run(ctx => ctx.db.query('conversationEvents').collect())).filter(row => row.type === 'message.failed')).toEqual([])
 })

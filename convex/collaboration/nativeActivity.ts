@@ -16,6 +16,9 @@ const item = v.object({ id: v.string(), workspaceId: v.string(), recipientPrinci
   conversationId: v.id('conversations'), messageId: v.optional(v.id('conversationMessages')), actorPrincipalId: v.string(), eventSequence: v.optional(v.number()),
   title: v.string(), body: v.optional(v.string()), readAt: v.optional(v.number()), createdAt: v.number(), conversationState: v.optional(v.literal('archived')), destination })
 const bounded = (count: number) => ({ count: Math.min(99, count), capped: count > 99 })
+export const UNREAD_ROOM_SCAN_LIMIT = 64
+export const UNREAD_ROW_READ_LIMIT = 512
+export const UNREAD_ACCESS_CHECK_LIMIT = 64
 
 async function markObservedRoomNotifications(ctx: MutationCtx, workspaceId: string, principalId: string, conversationId: Id<'conversations'>, observed: number) {
   const sequenced = await ctx.db.query('workspaceNotifications').withIndex('by_workspace_recipient_read_room_sequence_time', q => q.eq('workspaceId', workspaceId)
@@ -62,25 +65,32 @@ export const getUnreadCounts = query({ args: workspace, returns: v.object({ work
   const principalId = actor.principal.principalId
   let previous: Id<'conversations'> | undefined
   let notifications = 0; let rooms = 0; let observedThrough = 0
+  let roomScans = 0; let rowReads = 0; let accessChecks = 0; let complete = false
   const kinds = { direct: 0, channel: 0, agentThread: 0 }
   const byConversation: Record<string, { count: number; capped: boolean }> = {}
-  while (rooms <= 99 || Object.values(kinds).some(count => count <= 99)) {
+  while (roomScans < UNREAD_ROOM_SCAN_LIMIT && rowReads < UNREAD_ROW_READ_LIMIT && accessChecks < UNREAD_ACCESS_CHECK_LIMIT) {
     const next = await ctx.db.query('workspaceNotifications').withIndex('by_workspace_recipient_read_room_time', q => {
       const prefix = q.eq('workspaceId', args.workspaceId).eq('recipientPrincipalId', principalId).eq('readAt', undefined)
       return previous ? prefix.gt('conversationId', previous) : prefix
     }).first()
-    if (!next) break
+    if (!next) { complete = true; break }
+    rowReads += 1
+    roomScans += 1
     previous = next.conversationId
+    accessChecks += 1
     const access = await nativeRoomOrNull(ctx, { ...args, conversationId: previous })
     if (!access) continue
+    if (rowReads === UNREAD_ROW_READ_LIMIT) break
     const unread = await ctx.db.query('workspaceNotifications').withIndex('by_workspace_recipient_read_room_time', q => q.eq('workspaceId', args.workspaceId)
-      .eq('recipientPrincipalId', principalId).eq('readAt', undefined).eq('conversationId', next.conversationId)).order('desc').take(100)
+      .eq('recipientPrincipalId', principalId).eq('readAt', undefined).eq('conversationId', next.conversationId)).order('desc').take(Math.min(100, UNREAD_ROW_READ_LIMIT - rowReads))
+    rowReads += unread.length
     notifications += unread.length; rooms += 1
     const kind = access.conversation.agentId ? 'agentThread' : access.conversation.conversationType === 'channel' ? 'channel' : 'direct'
     kinds[kind] += unread.length
     observedThrough = Math.max(observedThrough, unread[0]?.createdAt ?? 0)
   }
-  return { workspaceId: args.workspaceId, viewerUserId: actor.userId, notifications: bounded(notifications), rooms: bounded(rooms), byKind: { direct: bounded(kinds.direct), channel: bounded(kinds.channel), agentThread: bounded(kinds.agentThread) }, byConversation, observedThrough }
+  const result = (count: number) => ({ count: Math.min(99, count), capped: !complete || count > 99 })
+  return { workspaceId: args.workspaceId, viewerUserId: actor.userId, notifications: result(notifications), rooms: result(rooms), byKind: { direct: result(kinds.direct), channel: result(kinds.channel), agentThread: result(kinds.agentThread) }, byConversation, observedThrough }
 } })
 
 export const getRoomUnreadCounts = query({ args: { ...workspace, conversationIds: v.array(v.id('conversations')) }, returns: v.object({ workspaceId: v.string(), viewerUserId: v.string(), byConversation: v.record(v.string(), bucket) }), handler: async (ctx, args) => {
