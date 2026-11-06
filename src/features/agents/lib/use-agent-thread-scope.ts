@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useNativeThreadScope } from '@/components/providers/native-agent-threads'
 
 export function useAgentThreadScope({ workspaceId, agentId, conversationId, directory, retryCount }: {
   workspaceId: string | null
@@ -11,12 +12,13 @@ export function useAgentThreadScope({ workspaceId, agentId, conversationId, dire
   directory: WorkspaceAgentDirectoryItem[] | null
   retryCount: number
 }) {
+  const native = useNativeThreadScope({ workspaceId, agentId, conversationId })
   const allowedAgent = Boolean(agentId && directory?.some((agent) => agent.id === agentId))
   const key = JSON.stringify([workspaceId, agentId, conversationId, retryCount])
   const [result, setResult] = useState<{ key: string; allowed: boolean; error: string | null } | null>(null)
 
   useEffect(() => {
-    if (!workspaceId || !agentId || !conversationId || !allowedAgent) return
+    if (native.enabled || !workspaceId || !agentId || !conversationId || !allowedAgent) return
     let cancelled = false
     overlayAppClient.agents.listThreads(workspaceId, agentId).then(({ threads }) => {
       if (cancelled) return
@@ -26,7 +28,9 @@ export function useAgentThreadScope({ workspaceId, agentId, conversationId, dire
       if (!cancelled) setResult({ key, allowed: false, error: 'Could not verify this agent thread. Retry to continue.' })
     })
     return () => { cancelled = true }
-  }, [workspaceId, agentId, conversationId, allowedAgent, key])
+  }, [workspaceId, agentId, conversationId, allowedAgent, key, native.enabled])
+
+  if (native.enabled) return native
 
   if (!conversationId) return { allowed: false, pending: false, error: null }
   if (!agentId || (directory !== null && !allowedAgent)) {

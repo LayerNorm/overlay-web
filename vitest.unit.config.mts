@@ -22,6 +22,7 @@ export default defineConfig({
       'src/server/chat/native-personal-readiness.test.ts',
       'src/server/collaboration/native-collaboration-readiness.test.ts',
       'src/features/chat/components/collaboration/NativeCollaborationProvider.test.tsx',
+      'src/features/agents/lib/native-agent-threads.test.tsx',
       'src/server/files/computer-publication.test.ts',
       'src/server/files/computer-publication-service.test.ts',
       'src/server/files/ArtifactPublicationAuthority.test.ts',

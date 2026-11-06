@@ -95,7 +95,7 @@ function manager(viewer: Viewer) {
   return viewer.membership.role === 'owner' || viewer.membership.role === 'admin'
 }
 
-function visible(row: Doc<'workspaceAgentDefinitions'>, viewer: Viewer) {
+export function visible(row: Doc<'workspaceAgentDefinitions'>, viewer: Viewer) {
   if (row.deletedAt !== undefined || row.workspaceId !== viewer.workspaceId) return false
   if (row.visibility === 'creator' && row.createdByPrincipalId !== viewer.principal.principalId) return false
   if (row.agentRole === 'personal_chief') {

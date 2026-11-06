@@ -1332,6 +1332,7 @@ export default defineSchema({
     // chats and on automation-owned threads.
     agentId: v.optional(v.string()),
     dmIdentityKey: v.optional(v.string()),
+    threadClientRequestId: v.optional(v.string()),
     channelSlug: v.optional(v.string()),
     channelVisibility: v.optional(v.union(v.literal('public'), v.literal('private'))),
     channelTopic: v.optional(v.string()),
@@ -1352,6 +1353,8 @@ export default defineSchema({
     .index('by_workspaceId_conversationType_lastModified', ['workspaceId', 'conversationType', 'lastModified'])
     .index('by_workspaceId_agentId', ['workspaceId', 'agentId'])
     .index('by_workspaceId_channelSlug', ['workspaceId', 'channelSlug'])
+    .index('by_workspaceId_agentId_userId_lastModified', ['workspaceId', 'agentId', 'userId', 'lastModified'])
+    .index('by_workspaceId_agentId_userId_threadClientRequestId', ['workspaceId', 'agentId', 'userId', 'threadClientRequestId'])
     .index('by_workspaceId_dmIdentityKey', ['workspaceId', 'dmIdentityKey'])
     .index('by_surfaceBindingId_externalThreadId', ['surfaceBindingId', 'externalThreadId'])
     .searchIndex('search_title', {

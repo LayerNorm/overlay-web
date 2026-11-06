@@ -2,12 +2,15 @@
 
 import { createContext, useContext } from 'react'
 import type { FunctionArgs, FunctionReturnType } from 'convex/server'
+import type { ConvexReactClient } from 'convex/react'
 import type { api } from '../../../convex/_generated/api'
 
 export type NativeCollaborationStatus = 'disabled' | 'loading' | 'ready' | 'unavailable'
 export type NativeRoomSummary = FunctionReturnType<typeof api.collaboration.nativeRooms.listRooms>['page'][number]
 export type NativeRoomList = { rows: NativeRoomSummary[]; hasMore: boolean; loadingMore: boolean; loadMore(): void }
 export type NativeCollaborationValue = {
+  client?: ConvexReactClient
+  isCurrentScope?: () => boolean
   status: NativeCollaborationStatus
   workspaceId: string | null
   scopeKey: string

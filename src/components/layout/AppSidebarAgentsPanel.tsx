@@ -43,7 +43,9 @@ import {
   agentThreadHref,
   type AgentsPanelView,
 } from './sidebar-nav'
-import { AgentThreadRows } from './AppSidebarAgentThreads'
+import { AgentThreadRowsSource as AgentThreadRows } from './sidebar/NativeAgentThreadRows'
+import { useAgentActionsSource } from './sidebar/nativeAgentActions'
+import { useAgentBundleLoader } from './sidebar/nativeAgentBundles'
 import { isChief, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identity'
 import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-workspace'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
@@ -61,6 +63,7 @@ function bundleThreadTitle(bundle: AgentBundleMap[string] | undefined, conversat
 }
 
 function useAgentBundles(workspaceId: string | null) {
+  const fetchBundle = useAgentBundleLoader(workspaceId)
   const [bundles, setBundles] = useState<AgentBundleMap>({})
   const bundleRequests = useRef(new Map<string, symbol>())
   const threadTitleOverrides = useRef(new Map<string, string>())
@@ -76,7 +79,7 @@ function useAgentBundles(workspaceId: string | null) {
         : { ...current, [agentId]: 'loading' }
     })
     try {
-      const bundle = await overlayAppClient.agents.bundle(workspaceId, agentId)
+      const bundle = await fetchBundle(agentId)
       if (bundleRequests.current.get(agentId) !== request) return
       setBundles((current) => {
         const previous = current[agentId]
@@ -103,7 +106,7 @@ function useAgentBundles(workspaceId: string | null) {
       if (bundleRequests.current.get(agentId) !== request) return
       setBundles((current) => ({ ...current, [agentId]: 'error' }))
     }
-  }, [workspaceId])
+  }, [fetchBundle, workspaceId])
 
   // A first-message rename applies the generated title to the thread row it
   // belongs to without refetching the whole bundle.
@@ -258,7 +261,7 @@ function useAgentDirectory(
   return { agents, viewerPrincipalId, draftPreviews, loading, pendingAgentIds: new Set(), pendingArchiveIds: new Set() }
 }
 
-function useAgentActions({
+export function useAgentActions({
   workspaceId,
   baseHref,
   buildWorkspaceHref,
@@ -664,6 +667,10 @@ function AgentsInlinePanelScope({
     [tabAgents, workspaceId, viewerPrincipalId],
   )
 
+  const actionArgs = {
+    workspaceId, baseHref: scopedBaseHref, buildWorkspaceHref, view, onNavigate, bundles, setBundles, loadBundle,
+    activeAgentId, activeConversationId, sortedAgents,
+  }
   const {
     openingAgentId,
     openError,
@@ -675,19 +682,7 @@ function AgentsInlinePanelScope({
     archiveThread,
     deleteThread,
     retryOpen,
-  } = useAgentActions({
-    workspaceId,
-    baseHref: scopedBaseHref,
-    buildWorkspaceHref,
-    view,
-    onNavigate,
-    bundles,
-    setBundles,
-    loadBundle,
-    activeAgentId,
-    activeConversationId,
-    sortedAgents,
-  })
+  } = useAgentActionsSource(actionArgs, useAgentActions(actionArgs))
 
   // Remember agents opened through direct links or refreshes so recency
   // ordering covers every entry path. Initial conversation selection lives

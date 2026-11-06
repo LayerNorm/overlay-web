@@ -1,12 +1,13 @@
 'use client'
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { useConvex, useConvexAuth, useMutation, usePaginatedQuery } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
 import { PersonalChatErrorBoundary } from '@/components/providers/personal-chat-error-boundary'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { NativeThreadOverlayProvider } from '@/components/providers/native-agent-threads'
 import { NativeCollaborationContext, emptyNativeCollaboration as empty, nativeCollaborationUnavailable as unavailable,
   type NativeCollaborationValue as Value } from '@/components/providers/native-collaboration-context'
 export { useNativeCollaboration } from '@/components/providers/native-collaboration-context'
@@ -44,7 +45,8 @@ function NativeCollaborationLive({ children, workspaceId, scopeKey, viewerUserId
   children: ReactNode; workspaceId: string | null; scopeKey: string; viewerUserId: string | null
 }) {
   const current = useRef(true)
-  useEffect(() => { current.current = true; return () => { current.current = false } }, [])
+  useLayoutEffect(() => { current.current = true; return () => { current.current = false } }, [])
+  const isCurrentScope = useCallback(() => current.current, [])
   const auth = useConvexAuth()
   const canQuery = Boolean(viewerUserId) && auth.isAuthenticated && !auth.isLoading && Boolean(workspaceId)
   const direct = useRoomList(workspaceId, canQuery, 'direct', false)
@@ -56,7 +58,7 @@ function NativeCollaborationLive({ children, workspaceId, scopeKey, viewerUserId
   const convex = useConvex()
   const status = auth.isLoading || !workspaceId ? 'loading' : !viewerUserId || !auth.isAuthenticated ? 'unavailable'
     : [direct, channels, archivedDirect, archivedChannels].some(list => list.loading) ? 'loading' : 'ready'
-  const value: Value = { status, workspaceId, scopeKey, viewerUserId, direct, channels, archivedDirect, archivedChannels,
+  const value: Value = { client: convex, isCurrentScope, status, workspaceId, scopeKey, viewerUserId, direct, channels, archivedDirect, archivedChannels,
     async createDirectMessage(args) {
       if (status !== 'ready' || args.workspaceId !== workspaceId) return unavailable()
       const result = await createDirect(args)
@@ -71,5 +73,5 @@ function NativeCollaborationLive({ children, workspaceId, scopeKey, viewerUserId
       return { conversationId: result.conversationId, name: args.name }
     },
   }
-  return <NativeCollaborationContext.Provider value={value}>{children}</NativeCollaborationContext.Provider>
+  return <NativeCollaborationContext.Provider value={value}><NativeThreadOverlayProvider>{children}</NativeThreadOverlayProvider></NativeCollaborationContext.Provider>
 }

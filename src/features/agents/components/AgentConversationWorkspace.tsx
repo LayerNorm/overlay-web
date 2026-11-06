@@ -2,7 +2,7 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { Bot, Settings } from 'lucide-react'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
@@ -13,10 +13,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { RightSidebarToggle } from '@overlay/modules-react/shell'
 import {
   agentBelongsToCreatorScope,
-  agentsForCreatorScope,
   clearAgentOpened,
-  pickAgentToOpen,
-  rememberAgentOpened,
 } from '@/shared/agents/last-agent-by-workspace'
 import {
   getAgentEditorPanelMode,
@@ -30,7 +27,7 @@ import {
 import { NEW_AGENT_EVENT } from '@/shared/workspace/sidebar-events'
 import { AgentRightSidebar } from './AgentRightSidebar'
 import { AgentComputerControlOverlay } from './AgentComputerTab.parts'
-import { sendAgentGreeting, startAgentChat } from '../lib/agent-chat'
+import { sendAgentGreeting, useStartAgentChat } from '../lib/agent-chat'
 import { NewAgentDialog } from './NewAgentDialog'
 import { useAgentConversationComputer } from './use-agent-conversation-computer'
 import { useAgentThreadScope } from '../lib/use-agent-thread-scope'
@@ -41,6 +38,9 @@ import { AgentDirectoryScreen, AgentEditorPanel } from './AgentConversationWorks
 import { subscribeAgentDirectory, type AgentDirectoryState } from '../lib/agent-directory'
 import { AgentDirectoryProvider, useAgentDirectory as useNativeAgentDirectory } from './AgentDirectoryProvider'
 import { openAgentComputerControl } from '../lib/agent-computer-control'
+import { useNativeThreadPending } from '@/components/providers/native-agent-threads'
+import { useNativeCollaboration } from '@/components/providers/native-collaboration-context'
+import { useAgentAutoOpen } from './use-agent-auto-open'
 
 type EditorMode = 'new' | 'edit' | null
 
@@ -75,6 +75,7 @@ function useAgentWorkspaceActions(args: {
   onRetry(): void
 }) {
   const { activeWorkspaceId, buildHref, agentId, router, onEditorModeChange, onError, onRetry } = args
+  const startAgentChat = useStartAgentChat()
 
   const openCreatedAgent = useCallback(
     (agent: WorkspaceAgentDirectoryItem) => {
@@ -91,6 +92,7 @@ function useAgentWorkspaceActions(args: {
             scope: 'personal',
             buildHref,
             push: (href) => router.push(href),
+            replace: (href) => router.replace(href),
           })
           if (conversationId && activeWorkspaceId && !agent.instructions.trim()) {
             await sendAgentGreeting({ workspaceId: activeWorkspaceId, conversationId, agentId: agent.id })
@@ -100,7 +102,7 @@ function useAgentWorkspaceActions(args: {
         }
       })()
     },
-    [activeWorkspaceId, buildHref, router, onEditorModeChange, onError],
+    [activeWorkspaceId, buildHref, router, onEditorModeChange, onError, startAgentChat],
   )
 
   const handleArchived = useCallback(() => {
@@ -158,60 +160,15 @@ function useAgentDirectory(
   return { directory: state.agents, viewerPrincipalId: state.viewerPrincipalId, loadError: state.error, refreshing: state.refreshing }
 }
 
-/** Opens the picked agent's conversation. Own budget, kept out of the component. */
-function useAgentAutoOpen(args: {
-  conversationId: string | null
-  activeWorkspaceId: string | null
-  agentId: string | null
-  directory: WorkspaceAgentDirectoryItem[] | null
-  viewerPrincipalId: string | null
-  scope: PanelScope
-  buildHref: ReturnType<typeof useWorkspaceHref>
-  retryCount: number
-  router: { replace(href: string): void }
-  onResolvingChange(next: boolean): void
-  onError(message: string | null): void
-}) {
-  const {
-    conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, router,
-    onResolvingChange, onError,
-  } = args
-  const attemptedAgentRef = useRef<string | null>(null)
+function agentWorkspacePending(detail: string, threadPending: boolean, nativePending: string | null | undefined) {
+  return detail === 'pending' || threadPending || Boolean(nativePending)
+}
 
-  useEffect(() => {
-    attemptedAgentRef.current = null
-  }, [activeWorkspaceId, conversationId, scope, retryCount])
-
-  useEffect(() => {
-    if (conversationId || !activeWorkspaceId || !directory || directory.length === 0) return
-    const scopedDirectory = agentsForCreatorScope(directory, viewerPrincipalId, scope)
-    if (agentId && !scopedDirectory.some((agent) => agent.id === agentId)) return
-    const target = pickAgentToOpen(scopedDirectory, activeWorkspaceId, agentId)
-    if (!target || attemptedAgentRef.current === target.id) return
-    attemptedAgentRef.current = target.id
-    rememberAgentOpened(activeWorkspaceId, target.id)
-    onResolvingChange(true)
-    onError(null)
-    let cancelled = false
-    void (async () => {
-      try {
-        await startAgentChat({
-          workspaceId: activeWorkspaceId,
-          agentId: target.id,
-          agentPrincipalId: target.principalId,
-          surface: 'agents',
-          scope,
-          buildHref,
-          push: (href) => { if (!cancelled) router.replace(href) },
-        })
-      } catch (chatError) {
-        if (!cancelled) onError(chatError instanceof Error ? chatError.message : 'Could not open the agent conversation.')
-      } finally {
-        if (!cancelled) onResolvingChange(false)
-      }
-    })()
-    return () => { cancelled = true; attemptedAgentRef.current = null; onResolvingChange(false) }
-  }, [conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, router, onResolvingChange, onError])
+function AgentConversationPending({ state }: { state: string | null | undefined }) {
+  const native = useNativeCollaboration()
+  if (native.status === 'disabled') return null
+  return <ChatSurfaceEmptyState icon={Bot} title={state === 'failed' ? 'Agent unavailable' : 'Opening agent conversation…'}
+    description={state === 'failed' ? 'Could not open this conversation. Select the agent to retry.' : 'Loading the selected thread.'} />
 }
 
 function requestedAgentScope(
@@ -367,6 +324,7 @@ function AgentConversationWorkspaceContent() {
   const threadScope = useAgentThreadScope({
     workspaceId: activeWorkspaceId, agentId, conversationId, directory, retryCount,
   })
+  const nativePending = useNativeThreadPending()
   const scope = usePanelScope()
   const requestedAgent = directory?.find((agent) => agent.id === agentId) ?? null
   const requestedScope = requestedAgentScope(requestedAgent, viewerPrincipalId)
@@ -455,7 +413,7 @@ function AgentConversationWorkspaceContent() {
       />
     )
   }
-  if (detailState === 'pending' || threadScope.pending) return null
+  if (agentWorkspacePending(detailState, threadScope.pending, nativePending)) return <AgentConversationPending state={nativePending} />
 
   if (conversationId && threadScope.allowed) {
     const agentSidebar = agentId && sidebarPreferences.open ? (

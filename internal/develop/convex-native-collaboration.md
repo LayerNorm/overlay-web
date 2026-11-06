@@ -150,3 +150,35 @@ live in React and `mergeRoomMessages` reconciles them with canonical rows.
 
 Room metadata actions, presence, notifications and combined list-version
 infrastructure remain for CN-10/11. No legacy endpoint is removed in Stage B.
+
+## Stage C — agent threads
+
+`agents/nativeThreads` derives actors from identity and checks the chat policy,
+capability, live workspace membership, agent visibility, live definition and
+agent principal/membership. Exact access also requires both active room
+participants. Foreign, removed and archived-agent deep links return null.
+Lists paginate the workspace/agent/owner/recency index; main derivation bounds
+related caller threads at 200 and fails closed above that limit. DTOs carry the
+viewer and full scope so stale cached rows cannot authorize a new selection.
+
+Native and legacy resolvers share the transaction that adopts the compatible
+DM identity, skips caller-archived mains and creates a fresh main when needed.
+Creation uses a caller-scoped request-id index. Archive remains caller-scoped;
+delete retains the legacy global soft tombstone and last-active-thread guard.
+No message history is physically removed by thread deletion, matching legacy.
+
+The sidebar reads paginated native threads, not HTTP bundles. Its separate
+`GET /agents/:id/automations` request retains automation metadata (the server
+still delegates to the legacy bundle service). Pending destinations render a
+shell while authorization/resolution finishes. Archive overlays remove only
+their own settled operation; Undo restores the row without changing selection.
+Native creation retries preserve request ids. Ready-path failures never use
+the legacy resolver or legacy creation as fallback.
+Pending destinations distinguish live operations from reload recovery; a
+reloaded create replays its original request id. Completion replaces the
+temporary destination so browser Back cannot become trapped in a pending shell.
+
+Legacy thread server-secret functions remain for repository/BFF callers and
+disabled clients. Archived Settings still uses its legacy archived-agent/thread
+ledger until the remaining metadata/archive migration. The readiness flag
+remains false pending CN-10/11; no backend mutation or rollout occurs here.

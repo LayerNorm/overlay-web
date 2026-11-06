@@ -12,7 +12,7 @@ import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { announceArchived } from '@/shared/app/archive-toast'
 import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
-import { startAgentChat } from '../lib/agent-chat'
+import { useStartAgentChat } from '../lib/agent-chat'
 import {
   confirmComputerToolRemoval,
   isAgentRevisionConflict,
@@ -71,6 +71,7 @@ export function useAgentEditorActions({
 }) {
   const buildWorkspaceHref = useWorkspaceHref()
   const nativeDirectory = useAgentDirectory()
+  const startAgentChat = useStartAgentChat()
   const createRequestId = useRef<string | null>(null)
   const { agentType, cloudAgent } = runtime
   const { environmentId, adapterId, workingDirectory } = byo
@@ -272,9 +273,11 @@ export function useAgentEditorActions({
     void startAgentChat({
       workspaceId: activeWorkspaceId,
       agentPrincipalId: agent.principalId,
+      nativeAgentId: agent.id,
 
       buildHref: buildWorkspaceHref,
       push: (href) => router.push(href),
+      replace: (href) => router.replace(href),
     }).catch((chatError) => {
       toast.error(chatError instanceof Error ? chatError.message : 'Could not start an agent chat.')
     })
