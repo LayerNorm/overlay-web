@@ -1,6 +1,5 @@
 import { ConvexError, v } from 'convex/values'
 import { accessRoleAllows, type ResourceAction } from '@overlay/authz-contracts'
-import { DEFAULT_WORKSPACE_POLICY } from '@overlay/workspace-contracts'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
@@ -99,12 +98,13 @@ export const detail = query({
   },
 })
 
-async function writable(ctx: MutationCtx, args: { workspaceId: string; fileId: Id<'files'>; expectedUpdatedAt: number }, capability: 'files.edit' | 'files.share') {
+async function writable(ctx: MutationCtx, args: { workspaceId: string; fileId: Id<'files'>; expectedUpdatedAt: number }, capability: 'files.edit') {
   const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
   await requireNativeDeploymentFeature(ctx, 'files', args.workspaceId)
   await requireNativeCapability(ctx, viewer.userId, capability)
   const row = await readable(ctx, viewer, await ctx.db.get(args.fileId))
-  if (!row || !(await granted(ctx, viewer.userId, row, capability === 'files.share' ? 'share' : 'edit'))) throw new Error('FILE_ACCESS_DENIED')
+  if (!row || !(await scopeContextLoader(ctx, viewer.userId).canEdit(row))
+    || !(await granted(ctx, viewer.userId, row, 'edit'))) throw new Error('FILE_ACCESS_DENIED')
   if (row.updatedAt !== args.expectedUpdatedAt) throw new ConvexError('FILE_REVISION_CONFLICT')
   const bucket = 'native-files:write:user'
   const bucketKey = `${bucket}:${viewer.userId}`
@@ -218,20 +218,5 @@ export const changeScope = mutation({
     await audit(ctx, viewer, row._id, `resource.${args.action}`)
     const updated = await ctx.db.get(row._id)
     return updated ? metadata(updated) : null
-  },
-})
-
-export const setShare = mutation({
-  args: { ...revisionArgs, visibility: v.union(v.literal('private'), v.literal('public')) },
-  handler: async (ctx, args) => {
-    const { viewer, row, now } = await writable(ctx, args, 'files.share')
-    if (row.userId !== viewer.userId || row.type === 'folder') throw new Error('FILE_SHARE_DENIED')
-    const policy = await ctx.db.query('workspaceSharingPolicies').withIndex('by_workspaceId', q => q.eq('workspaceId', args.workspaceId)).unique()
-    if (args.visibility === 'public' && !(policy?.publicLinksEnabled ?? DEFAULT_WORKSPACE_POLICY.publicLinksEnabled)) throw new Error('PUBLIC_LINKS_DISABLED')
-    const token = args.visibility === 'public' && row.shareToken ? row.shareToken : crypto.randomUUID().replaceAll('-', '')
-    await ctx.db.patch(row._id, { shareVisibility: args.visibility, shareToken: token, updatedAt: now,
-      ...(args.visibility === 'public' ? { sharedAt: now } : {}) })
-    await audit(ctx, viewer, row._id, 'file.share')
-    return { visibility: args.visibility }
   },
 })
