@@ -42,6 +42,7 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
     + '\nThe goal in the working state is the current request and the only task for this run. Use earlier conversation only to interpret it; never resume, repeat or plan an earlier request unless the goal asks for it.'
     + (readyToAnswer
       ? '\nEvery plan step is finished. Give your final answer now, respecting any requested output format. If you already wrote it, end your turn without repeating it.'
+        + (state.children.length ? ' If a delegated answer is missing from the summaries, retrieve it before consolidating: harness_read_child joins an admitted child; read_agent_reply reads the actual reply using the conversationId and turnId returned by ask_agent. A child summary is not its complete reply.' : '')
       : context.continuation
         ? state.plan.length
           ? '\nInternal continuation: finish the remaining plan steps. This is not a new user request.'

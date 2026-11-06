@@ -13,7 +13,7 @@ const agent = (id: string, name: string, extra: Partial<WorkspaceAgentDirectoryI
 
 type Row = Record<string, unknown> & { _id: string; turnId: string }
 
-function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown>; initialAskClaims?: number } = {}) {
+function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown>; initialAskClaims?: number; replies?: Map<string, Row[]> } = {}) {
   const agents = options.agents ?? [agent('scout', 'Scout'), agent('planner', 'Planner'), agent('writer', 'Writer')]
   const trigger: Row | null = options.trigger === undefined
     ? { _id: 'm1', turnId: 'human-turn-1', authorKind: 'human', content: 'hi', role: 'user', mode: 'act', contentType: 'text', createdAt: 0 } as Row
@@ -66,8 +66,9 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
         return assignmentMessages.get(nonce)!
       },
       getAccessibleConversation: async (args: { conversationId: string }) => (args.conversationId === 'missing' ? null : { _id: args.conversationId, conversationType: args.conversationId === 'personal-1' ? 'personal' : 'channel' }) as never,
-      listMessages: async (args: { messageId?: string }) => {
+      listMessages: async (args: { messageId?: string; conversationId: string }) => {
         if (args.messageId) return trigger ? [trigger] as never : []
+        if (options.replies) return (options.replies.get(args.conversationId) ?? []) as never
         polls += 1
         const after = options.replyAfterPolls ?? 0
         if (polls <= after) return []
@@ -89,7 +90,7 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
     recordReply: async (args) => { recordedReplies.push(args) },
     listReplies: async () => options.recorded ?? [],
     releaseBudget: async (args) => { releases.push(args) },
-    startTurns: async (args) => { if (options.startFails) throw new Error('boom'); started.push(args); return [{ agentId: 'planner', turnId: 'agent_q1_planner' }] },
+    startTurns: async (args) => { if (options.startFails) throw new Error('boom'); started.push(args); return [{ agentId: 'planner', turnId: options.replies ? `agent_${args.messageId}_planner` : 'agent_q1_planner' }] },
     sleep: async (ms) => { clock += ms },
     now: () => clock,
     waitMs: 6_000,
@@ -208,6 +209,32 @@ test('a failed reply is reported as failed, not as an answer', async () => {
   const result = await ask()
   assert.equal(result.status, 'failed')
   assert.equal(result.reply, undefined)
+})
+
+test('successive runs in one parent conversation read their own assignment replies without replaying an old handle', async () => {
+  const replies = new Map<string, Row[]>()
+  const state = setup({ replies })
+  const handles = []
+  for (const runId of ['first-run', 'second-run']) {
+    const handle = await state.ask({ wait: false, nativeAssignment: nativeAgentAssignmentContext({
+      parentConversationId: 'c1', parentRunId: runId, rootRunId: runId, toolCallId: 'same-tool-id',
+    }) })
+    const read = () => state.service.read({ actorUserId: 'u1', workspaceId: 'ws',
+      conversationId: handle.conversationId, turnId: handle.turnId })
+    assert.equal((await read()).status, 'working')
+    const content = `${runId} / 42\nThe calculation has been completed successfully.`
+    replies.set(handle.conversationId, [{ _id: `reply-${runId}`, turnId: handle.turnId,
+      authorKind: 'agent', status: 'completed', content }])
+    assert.equal((await read()).reply, content)
+    handles.push(handle)
+  }
+  assert.notEqual(handles[0]!.assignmentId, handles[1]!.assignmentId)
+  assert.notEqual(handles[0]!.conversationId, handles[1]!.conversationId)
+  assert.notEqual(handles[0]!.turnId, handles[1]!.turnId)
+  assert.equal((await state.service.read({ actorUserId: 'u1', workspaceId: 'ws',
+    conversationId: handles[1]!.conversationId, turnId: handles[0]!.turnId })).status, 'working')
+  await assert.rejects(state.service.read({ actorUserId: 'u1', workspaceId: 'ws',
+    conversationId: 'missing', turnId: handles[1]!.turnId }), /not found/)
 })
 
 test('an agent cannot ask itself, an agent already in the chain, or someone the person cannot see', async () => {

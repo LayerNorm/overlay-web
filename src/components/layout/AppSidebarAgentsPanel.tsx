@@ -51,6 +51,7 @@ import { useAgentExpansion } from './sidebar/useAgentExpansion'
 import { resolveAgentEntryThread } from './sidebar/resolveAgentEntryThread'
 import { AgentThreadActivityProvider, useAgentThreadActivity } from './sidebar/AgentThreadActivityProvider'
 import { AgentActivitySummary } from './sidebar/ThreadActivityIndicator'
+import { useLiveAgentBundle } from './sidebar/useLiveAgentBundle'
 
 type AgentBundleMap = Record<string, WorkspaceAgentBundle | 'loading' | 'error'>
 
@@ -477,6 +478,7 @@ function AgentListRow({
   onCreateThread,
   onArchiveThread,
   onDeleteThread,
+  onRefreshBundle,
 }: {
   agent: WorkspaceAgentDirectoryItem
   pinned: boolean
@@ -495,8 +497,10 @@ function AgentListRow({
   onCreateThread: (agent: WorkspaceAgentDirectoryItem) => void
   onArchiveThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean) => void
   onDeleteThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
+  onRefreshBundle: (agentId: string) => Promise<void>
 }) {
   const activity = useAgentThreadActivity(agent.id)
+  useLiveAgentBundle({ agentId: agent.id, expanded: isExpanded, bundle, activity, refresh: onRefreshBundle })
   return (
     <SidebarMenuItem>
       <div className="group/agent-row relative">
@@ -701,6 +705,7 @@ export function AgentsInlinePanel({
               anyOpening={Boolean(openingAgentId)}
               isOpening={openingAgentId === agent.id}
               bundle={bundles[agent.id] ?? 'loading'}
+              onRefreshBundle={loadBundle}
               activeConversationId={activeConversationId}
               creatingThread={creatingThreadFor === agent.id}
               onToggleExpanded={toggleExpanded}

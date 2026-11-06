@@ -130,7 +130,9 @@ function activeModelTools(
 ): string[] {
   const allowed = new Set(preparedActiveToolNames)
   return Object.keys(tools).filter(name => complete
-    ? hasPendingHarnessAnswer(current) && controls.has(name)
+    ? (hasPendingHarnessAnswer(current) && controls.has(name))
+      || (current.children.length > 0 && (name === 'harness_read_child'
+        || (name === 'read_agent_reply' && current.policy.allowedToolIds.includes(name) && allowed.has(name))))
     : controls.has(name) || (current.policy.allowedToolIds.includes(name) && allowed.has(name)))
 }
 

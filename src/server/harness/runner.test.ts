@@ -45,9 +45,9 @@ function model(program: (index: number) => ProgramOutput, finishReasons: Languag
   return provider
 }
 
-function fixture(requiresPlan = true, extraAllowedToolIds: string[] = [], options: { executionPolicyVersion?: 1 | 2; publicProgressVersion?: 1 } = {}) {
+function fixture(requiresPlan = true, extraAllowedToolIds: string[] = [], options: { executionPolicyVersion?: 1 | 2; publicProgressVersion?: 1; runId?: string } = {}) {
   let owner = 'workflow'
-  let current = state.createHarnessSnapshot({ runId: 'run', goal: 'Read the requested records', constraints: [], policy: {
+  let current = state.createHarnessSnapshot({ runId: options.runId ?? 'run', goal: 'Read the requested records', constraints: [], policy: {
     ...(options.publicProgressVersion ? { publicProgressVersion: options.publicProgressVersion } : {}),
     actorUserId: 'user', allowedToolIds: ['read', 'write', ...extraAllowedToolIds], requiresPlan,
     deadlineAt: Date.now() + (options.executionPolicyVersion === 2 ? 3 * 60 * 60_000 : 60_000),
@@ -84,6 +84,8 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = [], option
           current = state.terminateHarness(current, operation.status, operation.reason, now, operation.diagnostic)
           break
         case 'wait_for_children': current = state.waitForHarnessChildren(current, now); break
+        case 'settle_child': current = state.settleHarnessChild(current, await ports.readChild(operation.childRunId), now); break
+        case 'record_evidence': current = state.recordHarnessEvidence(current, operation.evidence, now); break
         default: throw new Error(`Unexpected fixture operation: ${operation.type}`)
       }
       return current
@@ -118,6 +120,7 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = [], option
   }
   return {
     ports,
+    setSnapshot: (snapshot: state.HarnessSnapshot) => { current = snapshot },
     receipts,
     sdkSteps,
     reservePaidVerificationHold: (id = 'verification:paid-hold') => {
@@ -528,6 +531,80 @@ test('runner requests a real answer after a protocol-only final segment', async 
   expect(provider.doStreamCalls).toHaveLength(2)
   expect(JSON.stringify(provider.doStreamCalls[1]?.prompt))
     .toContain('Reply to the person now in plain text')
+})
+
+test('a second delegation in the same conversation can read the actual reply after its child completes the plan', async () => {
+  const conversationId = 'parent-room'
+  const assignments = new Map<string, string>()
+  for (const runId of ['first-run', 'second-run']) {
+    const f = fixture(false, ['ask_agent', 'read_agent_reply'], { runId })
+    const childRunId = `workspace:${runId}-child`
+    const handle = { conversationId: `${runId}-assignment`, turnId: `${runId}-turn` }
+    const reply = `${runId} / 42`
+    const parent = await f.ports.read()
+    const child = { ...state.createHarnessSnapshot({ runId: childRunId, parentRunId: runId,
+      rootRunId: runId, depth: 1, goal: 'Calculate the answer', constraints: [],
+      policy: { ...parent.policy, allowedToolIds: [], maxCostMicros: 0 } }, Date.now()),
+      status: 'completed' as const, resultSummary: 'The calculation has been completed successfully.' }
+    f.ports.readChild = vi.fn(async () => child)
+    f.ports.waitForChildren = async () => {
+      f.setSnapshot(state.settleHarnessChild(await f.ports.read(), child, Date.now()))
+    }
+    const readReply = vi.fn(async (input: typeof handle) => {
+      expect(input).toEqual(handle)
+      return { ...handle, status: 'completed', reply: assignments.get(input.conversationId) }
+    })
+    const provider = model(index => {
+      if (index === 0) return [call('ask_agent', `ask-${runId}`, { conversationId })]
+      if (index === 1) return [call('harness_read_child', `join-${runId}`, { childRunId })]
+      if (index === 2) return [call('read_agent_reply', `read-${runId}`, handle)]
+      return reply
+    })
+    const result = await runOverlayHarness({ ...input, tools: {
+      ask_agent: tool({ inputSchema: z.object({ conversationId: z.string() }), execute: async args => {
+        expect(args.conversationId).toBe(conversationId)
+        assignments.set(handle.conversationId, reply)
+        f.setSnapshot(state.admitHarnessNamedChild(await f.ports.read(), {
+          id: childRunId, stepId: `ask:${runId}`, status: 'running', maxCostMicros: 0, costMicros: 0,
+          allowedToolIds: [], evidenceRefs: [],
+        }, { title: 'Ask the specialist', acceptanceCriteria: ['The specialist responds.'] }, Date.now()))
+        return { ...handle, status: 'working', childRunIds: [childRunId] }
+      } }),
+      read_agent_reply: tool({ inputSchema: z.object({ conversationId: z.string(), turnId: z.string() }), execute: readReply }),
+      write: tool({ inputSchema: z.object({}), execute: async () => 'Must not run' }),
+    } }, f.ports)
+    expect(result.snapshot.status).toBe('completed')
+    expect(result.snapshot.resultSummary).toBe(reply)
+    expect(readReply).toHaveBeenCalledOnce()
+    const consolidationTools = provider.doStreamCalls[1]!.tools?.map(tool => tool.name)
+    expect(consolidationTools).toEqual(expect.arrayContaining(['harness_read_child', 'read_agent_reply']))
+    expect(consolidationTools).not.toContain('ask_agent')
+    expect(consolidationTools).not.toContain('write')
+    expect(JSON.stringify(provider.doStreamCalls[3]!.prompt)).toContain(reply)
+  }
+  expect(assignments.size).toBe(2)
+})
+
+test.each(['revoked', 'filtered', 'no-children'])('completed plans do not expose %s reply reads', async restriction => {
+  const f = fixture(false, restriction === 'revoked' ? [] : ['read_agent_reply'])
+  const current = await f.ports.read()
+  let completed = state.replaceHarnessPlan(current, plan.map(step => ({ ...step,
+    acceptanceCriteria: ['Records read'], requiresVerification: false })), Date.now())
+  completed = state.transitionHarnessStep(completed, { id: 'work', status: 'done' }, Date.now())
+  if (restriction !== 'no-children') completed.children.push({ id: 'child', stepId: 'work', status: 'completed',
+    maxCostMicros: 0, costMicros: 0, allowedToolIds: [], evidenceRefs: [] })
+  f.setSnapshot(completed)
+  if (restriction === 'filtered') {
+    const prepare = f.ports.prepareModel
+    f.ports.prepareModel = async request => ({ ...await prepare(request), activeToolNames: [] })
+  }
+  const read = vi.fn()
+  const provider = model(() => 'The answer is complete.')
+  await runOverlayHarness({ ...input, tools: {
+    read_agent_reply: tool({ inputSchema: z.object({}), execute: read }),
+  } }, f.ports)
+  expect(provider.doStreamCalls[0]!.tools?.map(tool => tool.name) ?? []).not.toContain('read_agent_reply')
+  expect(read).not.toHaveBeenCalled()
 })
 
 test('runner recovers with a trusted instruction before pausing after six unchanged segments', async () => {
