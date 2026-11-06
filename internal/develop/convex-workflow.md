@@ -26,7 +26,9 @@ A one-minute configuration heartbeat renews a three-minute lease. Disabled or
 unavailable policy denies native access; failed refresh invalidates the latest
 lease immediately, and a fenced scheduled expiry invalidates subscriptions if
 refresh stops. Sequence/nonce fencing prevents delayed callbacks or a replay from
-restoring superseded policy. Configuration changes propagate on the next refresh,
+restoring superseded policy. Freshness is checked again inside publication so an
+action delayed after receiving a response cannot start a new lease from stale
+configuration. Configuration changes propagate on the next refresh,
 not instantly when an environment variable is edited. For urgent revocation,
 Integration must run the internal refresh on the explicitly verified backend and
 check the browser-safe status before considering the configuration change complete.
