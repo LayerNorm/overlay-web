@@ -65,6 +65,11 @@ type TextChatMessageProps = CommonMessageProps & {
   interruptedExchangeIdx: number | null
   sourcesPanel: { turnId: string } | null
   getResponseForExchange: (exchangeIndex: number) => UIMessage | null
+  canonicalTranscript?: boolean
+  canonicalResponses?: readonly UIMessage[]
+  canonicalResponse?: UIMessage | null
+  hasCanonicalResponse?: boolean
+  responseIdentity?: string
   onReplyToAssistantText: (assistantText: string, turnId: string | null) => void
   onBranch: (turnId: string | null) => void | Promise<void>
   onOpenDraft: (state: DraftModalState) => void
@@ -121,6 +126,11 @@ export function areTextChatMessagePropsEqual(prev: TextChatMessageProps, next: T
   if (prev.latestExchangeIndex !== next.latestExchangeIndex) return false
   if (prev.isActiveLoading !== next.isActiveLoading) return false
   if (prev.readOnly !== next.readOnly) return false
+  if (prev.canonicalTranscript !== next.canonicalTranscript) return false
+  if (prev.hasCanonicalResponse !== next.hasCanonicalResponse) return false
+  if (prev.canonicalResponse !== next.canonicalResponse) return false
+  if (prev.responseIdentity !== next.responseIdentity) return false
+  if (prev.canonicalResponses !== next.canonicalResponses) return false
 
   const exchangeIndex = next.exchangeIndex
   if (exchangeIndex === next.latestExchangeIndex) return false
@@ -162,11 +172,15 @@ type StreamSelection = ReturnType<typeof resolveStreamSelection>
 function resolveExchangeResponse(props: TextChatMessageProps, selection: StreamSelection) {
   const { message, exchangeIndex, latestExchangeIndex, primaryMessages, actChat } = props
   const isLatest = exchangeIndex === latestExchangeIndex
-  const initialResponseMsg = props.getResponseForExchange(exchangeIndex)
-  const actResponseMsg = selection.isActExchange
+  const initialResponseMsg = props.canonicalTranscript
+    ? (props.hasCanonicalResponse ? props.canonicalResponse ?? null : null)
+    : props.getResponseForExchange(exchangeIndex)
+  const actResponseMsg = !props.canonicalTranscript && selection.isActExchange
     ? resolveActAssistant(primaryMessages, actChat.messages, message.id)
     : null
-  const responseMsg = (selection.isActExchange
+  const responseMsg = props.canonicalTranscript
+    ? initialResponseMsg
+    : (selection.isActExchange
     ? (isLatest ? (actResponseMsg ?? initialResponseMsg) : (initialResponseMsg ?? actResponseMsg))
     : initialResponseMsg) as UIMessage | null
   const responseText = responseMsg ? getMessageText(responseMsg) : ''
@@ -193,6 +207,21 @@ function resolveStreamLoadState(props: TextChatMessageProps, selection: StreamSe
   const { actChat, isActiveLoading, isOptimisticLoading } = props
   const { isActExchange, slotInstance } = selection
   const { isLatest, persistedStatus, responseText } = response
+  if (props.canonicalTranscript) {
+    const activeHttpLoading = isLatest && (
+      persistedStatus === 'generating'
+      || (!response.responseMsg && isOptimisticLoading)
+    )
+    const persistedErrorText = persistedStatus === 'error'
+      ? persistedGenerationErrorMessage(responseText)
+      : 'Generation failed'
+    const persistedError = persistedStatus === 'error' ? readNativeAgentError(response.responseParts) : undefined
+    return {
+      instLoading: activeHttpLoading,
+      instError: persistedStatus === 'error' ? new Error(persistedErrorText) : null,
+      persistedError,
+    }
+  }
   const activeHttpLoading = persistedStatus !== 'error' && isLatest && (
     (isActExchange
       ? (actChat.status === 'streaming' || actChat.status === 'submitted')

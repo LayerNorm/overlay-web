@@ -5,12 +5,56 @@ description: "How to update Convex safely for Overlay Web changes."
 
 Convex owns durable app state, domain mutations, scheduled work, and some webhook processing. The web app depends on Convex for conversations, files, memory, billing state, and related data.
 
+## Native deployment-feature policy
+
+Native domain functions enforce the same capability-to-feature map as the BFF,
+in addition to identity, workspace/resource scope and persisted roles. The global
+`nativeDeploymentPolicies` singleton is server-owned configuration, not customer
+data. It is written only by internal Convex functions. The browser-safe status
+query returns feature booleans, never source URLs or workspace rollout allowlists.
+
+The internal policy refresh calls `/api/auth/convex-policy` at the explicitly
+configured `OVERLAY_BFF_URL` (or `NEXT_PUBLIC_APP_URL`). There is no production-host
+fallback. The web and Convex environments need matching `INTERNAL_API_SECRET`;
+the returned backend must match Convex's own `CONVEX_CLOUD_URL`. Use HTTPS except
+for explicitly identified development environments. Preview already provisions
+its canonical origin and scoped hosting bypass through the trusted controller.
+Never point an isolated backend at production or put the shared secret in a client.
+
+The source resolves defaults, file, remote configuration and environment afresh.
+A one-minute configuration heartbeat renews a three-minute lease. Disabled or
+unavailable policy denies native access; failed refresh invalidates the latest
+lease immediately, and a fenced scheduled expiry invalidates subscriptions if
+refresh stops. Sequence/nonce fencing prevents delayed callbacks or a replay from
+restoring superseded policy. Freshness is checked again inside publication so an
+action delayed after receiving a response cannot start a new lease from stale
+configuration. Configuration changes propagate on the next refresh,
+not instantly when an environment variable is edited. For urgent revocation,
+Integration must run the internal refresh on the explicitly verified backend and
+check the browser-safe status before considering the configuration change complete.
+This is not browser application-data polling. Lease updates cause bounded native
+query revalidation; include that cost in later subscription measurements.
+
+After the exact web revision is live and its matching backend is deployed under
+the existing safety rules, verify `platform/nativePolicy:refresh` succeeds and
+`platform/nativePolicy:status` reports readiness for an authenticated test viewer.
+Until then, gated domains remain unavailable. Never silently fall back to weaker
+HTTP authorization. Roll back native web consumers before removing policy helpers.
+Conversation CRUD has no mapped deployment feature, so it does not require this
+lease; model execution retains its existing server admission checks.
 Treat matching web and Convex revisions as one release unit. Local development
 uses an engineer-owned backend; feature worktrees never deploy shared environments.
 PR previews deploy only their per-PR backend. Preview builds copy the shared
 `OVERLAY_USAGE_MARKUP_BPS` value from Vercel to that backend. Before production
 billing code is deployed, set and read back the same rate on its matching Next
 and Convex environments; see [Workspace billing](workspace-billing.md#usage-markup-configuration).
+
+Component-aware `convex codegen`, including `--dry-run`, can contact the selected
+backend's `start_push` endpoint and upload packages before auth validation fails.
+It is not an offline type-generation command, and a failure does not prove that
+remote state is unchanged. Never run codegen, dev or deploy against ambient shared
+development or customer backends from a feature worktree. Regenerate combined API
+bindings only through explicitly authorized isolated Preview infrastructure.
 
 Vercel’s native Git integration deploys main to production. Integration verifies
 the exact live web SHA, synchronizes customer Convex only for backend changes from
@@ -254,6 +298,17 @@ globally; resource preloads need their own authorization.
 
 ### Native personal-chat list ownership (CN-04)
 
+The native transcript client additionally requires the server-owned
+`nativePersonalTranscriptRevision: "native-personal-transcript-v1"` marker from
+the existing `platform/uiSettings:getByServer` endpoint, alongside
+`nativePersonalChatRevision: "native-personal-list-v1"`. The shell and chat route
+share a request-local readiness probe. An old, unknown or unavailable backend
+keeps both list and history ownership on the guarded legacy path, including
+server-preloaded history. This is an expand/contract release gate, not a runtime
+database abstraction. Backend rollback leaves the additive transcript fields
+and indexes in place. Native summaries validate model preferences as well as
+list metadata so the transcript UI can consume one typed contract.
+
 Canonical title projection updates only the selected runtime's title and title
 display state. It must not hydrate the entire UI snapshot: doing so creates a new
 model-selection array, triggers the legacy metadata autosave, and feeds that write
@@ -299,21 +354,37 @@ unrelated route IDs never enter Convex conversation-ID validation. Auth or
 capability query failures expose an unavailable personal-chat context while
 preserving the rest of the page. Mixed views may read legacy data only for
 classified non-pilot rows. Unmigrated workspace-scoped chats, DMs, channels,
-agents and other resources remain on their existing paths. Transcript/history loading,
-streaming and permanent deletion are not migrated here. Rollback is web-first:
-disable native web ownership before removing backend support, and keep additive
-fields/indexes and handlers available to older web revisions. No hosted QA is
-claimed by this local implementation.
+agents and other resources remain on their existing paths.
+
+The browser reads personal transcript pages from `chat/personal:getMessages`
+and the public execution/compatibility projection from
+`chat/personal:getExecution`. The execution query is scoped to the verified
+viewer, workspace and exact conversation; the provider subscribes directly and
+does not mirror query data into a second cache. Native personal routes derive
+run activity and thread safety from this projection, disable legacy run polling
+and safety HTTP checks, and keep approval, input and stop mutations on their
+existing BFF commands. Stop targets the durable assistant message ID. A native
+authorization or query failure remains unavailable rather than switching to
+legacy HTTP.
+
+Readiness requires exact list, transcript and execution revision markers from
+the existing server-owned `platform/uiSettings:getByServer` response. An absent
+or older marker retains web-first legacy ownership during backend rollout or
+rollback; do not remove additive fields, indexes or handlers when rolling web
+ownership back. Server execution, billing admission and mutation authorization
+remain authoritative. Hosted preview acceptance is separate and is not claimed
+by this local implementation.
 
 The shell and chat route enable native personal ownership only after a fresh,
 request-local server probe of the existing `platform/uiSettings:getByServer`
-endpoint reports `nativePersonalChatRevision: native-personal-list-v1`. Missing,
-unknown or failed readiness keeps the guarded legacy transport through web-first
-upgrades and backend rollback; cached browser preferences cannot enable it. A
-reload after the backend sync activates native ownership. This is separate from
-native authentication readiness; configured-but-failing native operations do not
-fall back after activation. The marker is server-owned and cannot be saved as a
-user preference.
+endpoint reports the exact list (`nativePersonalChatRevision`), transcript
+(`nativePersonalTranscriptRevision`) and execution (`nativePersonalExecutionRevision`)
+markers. Missing, unknown or failed readiness keeps the guarded legacy transport
+through web-first upgrades and backend rollback; cached browser preferences
+cannot enable it. A reload after the backend sync activates native ownership.
+This is separate from native authentication readiness; configured-but-failing
+native operations do not fall back after activation. These markers are
+server-owned and cannot be saved as a user preference.
 
 Web and Convex deploy independently. The incoming web must work with the old
 backend, and the incoming backend must work with the old web, including retained

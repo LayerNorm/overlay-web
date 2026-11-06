@@ -23,6 +23,8 @@ const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/agent-drive': ['POST'],
   '/api/auth/callback': ['GET'],
   '/api/auth/convex-token': ['GET'],
+  // Server-authenticated deployment policy projection, never session authority.
+  '/api/auth/convex-policy': ['GET'],
   '/api/auth/desktop-link': ['GET', 'POST'],
   '/api/auth/forgot-password': ['POST'],
   '/api/auth/native/authorize': ['POST'],
