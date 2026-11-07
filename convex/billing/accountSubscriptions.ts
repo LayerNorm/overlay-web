@@ -41,7 +41,7 @@ const subscriptionRecord = v.object({
 })
 
 /** Automatic top-ups charged or being charged (pending or succeeded) since `since`, and whether one is pending. */
-async function autoTopUpsSince(ctx: QueryCtx, billingAccountId: string, since: number | undefined) {
+async function autoTopUpsSince(ctx: Pick<QueryCtx, 'db'>, billingAccountId: string, since: number | undefined) {
   const start = since ?? Date.now() - 31 * 24 * 60 * 60 * 1000
   const rows = (await ctx.db.query('budgetTopUps')
     .withIndex('by_billingAccountId_createdAt', (q) => q.eq('billingAccountId', billingAccountId).gte('createdAt', start))
@@ -105,33 +105,38 @@ export const getByServer = query({
   returns: v.union(subscriptionRecord, v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const row = await ctx.db.query('billingAccountSubscriptions')
-      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId.trim()))
-      .unique()
-    if (!row) return null
-    return {
-      billingAccountId: row.billingAccountId,
-      ...(row.providerCustomerId ? { stripeCustomerId: row.providerCustomerId } : {}),
-      ...(row.providerSubscriptionId ? { stripeSubscriptionId: row.providerSubscriptionId } : {}),
-      tier: row.planKind === 'paid' ? 'pro' as const : 'free' as const,
-      planKind: row.planKind,
-      planAmountCents: row.planAmountCents,
-      status: row.status,
-      autoTopUpEnabled: row.autoTopUpEnabled,
-      autoTopUpAmountCents: row.autoTopUpAmountCents,
-      ...(row.autoTopUpMonthlyLimitCents === undefined ? {} : { autoTopUpMonthlyLimitCents: row.autoTopUpMonthlyLimitCents }),
-      ...(await autoTopUpsSince(ctx, row.billingAccountId, row.currentPeriodStart).then((auto) => ({
-        autoTopUpSpentThisPeriodCents: auto.spentCents,
-        autoTopUpPending: auto.pending,
-      }))),
-      ...(row.offSessionConsentAt === undefined ? {} : { offSessionConsentAt: row.offSessionConsentAt }),
-      ...(row.currentPeriodStart === undefined ? {} : { currentPeriodStart: row.currentPeriodStart }),
-      ...(row.currentPeriodEnd === undefined ? {} : { currentPeriodEnd: row.currentPeriodEnd }),
-      ...(row.paidPeriodStart === undefined ? {} : { paidPeriodStart: row.paidPeriodStart }),
-      ...(row.paidPeriodEnd === undefined ? {} : { paidPeriodEnd: row.paidPeriodEnd }),
-    }
+    return await accountPlanFor(ctx, args)
   },
 })
+
+/** An account's plan with this period's automatic top-ups (provider IDs included: server use only). */
+export async function accountPlanFor(ctx: Pick<QueryCtx, 'db'>, args: { billingAccountId: string }) {
+  const row = await ctx.db.query('billingAccountSubscriptions')
+    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId.trim()))
+    .unique()
+  if (!row) return null
+  return {
+    billingAccountId: row.billingAccountId,
+    ...(row.providerCustomerId ? { stripeCustomerId: row.providerCustomerId } : {}),
+    ...(row.providerSubscriptionId ? { stripeSubscriptionId: row.providerSubscriptionId } : {}),
+    tier: row.planKind === 'paid' ? 'pro' as const : 'free' as const,
+    planKind: row.planKind,
+    planAmountCents: row.planAmountCents,
+    status: row.status,
+    autoTopUpEnabled: row.autoTopUpEnabled,
+    autoTopUpAmountCents: row.autoTopUpAmountCents,
+    ...(row.autoTopUpMonthlyLimitCents === undefined ? {} : { autoTopUpMonthlyLimitCents: row.autoTopUpMonthlyLimitCents }),
+    ...(await autoTopUpsSince(ctx, row.billingAccountId, row.currentPeriodStart).then((auto) => ({
+      autoTopUpSpentThisPeriodCents: auto.spentCents,
+      autoTopUpPending: auto.pending,
+    }))),
+    ...(row.offSessionConsentAt === undefined ? {} : { offSessionConsentAt: row.offSessionConsentAt }),
+    ...(row.currentPeriodStart === undefined ? {} : { currentPeriodStart: row.currentPeriodStart }),
+    ...(row.currentPeriodEnd === undefined ? {} : { currentPeriodEnd: row.currentPeriodEnd }),
+    ...(row.paidPeriodStart === undefined ? {} : { paidPeriodStart: row.paidPeriodStart }),
+    ...(row.paidPeriodEnd === undefined ? {} : { paidPeriodEnd: row.paidPeriodEnd }),
+  }
+}
 
 export const getEntitlementsByServer = query({
   args: { billingAccountId: v.string(), serverSecret: v.string() },
@@ -159,50 +164,55 @@ export const getEntitlementsByServer = query({
   }), v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const account = await ctx.db.query('billingAccounts')
-      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId.trim()))
-      .unique()
-    if (!account || account.status !== 'active') return null
-    const [balance, subscription] = await Promise.all([
-      ctx.db.query('billingAccountBalances')
-        .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', account.billingAccountId))
-        .unique(),
-      ctx.db.query('billingAccountSubscriptions')
-        .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', account.billingAccountId))
-        .unique(),
-    ])
-    if (!balance) return null
-    const included = (balance.includedMicros + balance.institutionalGrantMicros) / 10_000
-    const topUp = balance.topUpBalanceMicros / 10_000
-    const used = balance.usedMicros / 10_000
-    const reserved = balance.reservedMicros / 10_000
-    const allowanceUsed = balance.allowanceUsedMicros / 10_000
-    return {
-      billingAccountId: account.billingAccountId,
-      tier: subscription?.planKind === 'paid' ? 'pro' as const : 'free' as const,
-      planKind: subscription?.planKind ?? 'free',
-      planAmountCents: subscription?.planAmountCents ?? 0,
-      status: subscription?.status ?? 'active',
-      ...(subscription?.paidPeriodStart === undefined ? {} : { paidPeriodStart: subscription.paidPeriodStart }),
-      ...(subscription?.paidPeriodEnd === undefined ? {} : { paidPeriodEnd: subscription.paidPeriodEnd }),
-      budgetUsedCents: used,
-      budgetTotalCents: included + topUp,
-      budgetRemainingCents: Math.max(0, included + topUp - used - reserved),
-      allowanceTotalCents: included,
-      allowanceUsedCents: allowanceUsed,
-      allowancePercentUsed: included > 0 ? Math.min(100, allowanceUsed / included * 100) : 0,
-      topUpBalanceCents: topUp,
-      autoTopUpEnabled: subscription?.autoTopUpEnabled ?? false,
-      autoTopUpAmountCents: subscription?.autoTopUpAmountCents ?? 0,
-      autoTopUpConsentGranted: subscription?.offSessionConsentAt !== undefined,
-      creditsUsed: used,
-      creditsTotal: included + topUp,
-      ...(subscription?.currentPeriodEnd === undefined
-        ? {}
-        : { billingPeriodEnd: new Date(subscription.currentPeriodEnd).toISOString() }),
-    }
+    return await accountEntitlementsFor(ctx, args)
   },
 })
+
+/** An active account's balance and plan as entitlements in cents; null when inactive or without a balance. */
+export async function accountEntitlementsFor(ctx: Pick<QueryCtx, 'db'>, args: { billingAccountId: string }) {
+  const account = await ctx.db.query('billingAccounts')
+    .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', args.billingAccountId.trim()))
+    .unique()
+  if (!account || account.status !== 'active') return null
+  const [balance, subscription] = await Promise.all([
+    ctx.db.query('billingAccountBalances')
+      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', account.billingAccountId))
+      .unique(),
+    ctx.db.query('billingAccountSubscriptions')
+      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', account.billingAccountId))
+      .unique(),
+  ])
+  if (!balance) return null
+  const included = (balance.includedMicros + balance.institutionalGrantMicros) / 10_000
+  const topUp = balance.topUpBalanceMicros / 10_000
+  const used = balance.usedMicros / 10_000
+  const reserved = balance.reservedMicros / 10_000
+  const allowanceUsed = balance.allowanceUsedMicros / 10_000
+  return {
+    billingAccountId: account.billingAccountId,
+    tier: subscription?.planKind === 'paid' ? 'pro' as const : 'free' as const,
+    planKind: subscription?.planKind ?? 'free',
+    planAmountCents: subscription?.planAmountCents ?? 0,
+    status: subscription?.status ?? 'active',
+    ...(subscription?.paidPeriodStart === undefined ? {} : { paidPeriodStart: subscription.paidPeriodStart }),
+    ...(subscription?.paidPeriodEnd === undefined ? {} : { paidPeriodEnd: subscription.paidPeriodEnd }),
+    budgetUsedCents: used,
+    budgetTotalCents: included + topUp,
+    budgetRemainingCents: Math.max(0, included + topUp - used - reserved),
+    allowanceTotalCents: included,
+    allowanceUsedCents: allowanceUsed,
+    allowancePercentUsed: included > 0 ? Math.min(100, allowanceUsed / included * 100) : 0,
+    topUpBalanceCents: topUp,
+    autoTopUpEnabled: subscription?.autoTopUpEnabled ?? false,
+    autoTopUpAmountCents: subscription?.autoTopUpAmountCents ?? 0,
+    autoTopUpConsentGranted: subscription?.offSessionConsentAt !== undefined,
+    creditsUsed: used,
+    creditsTotal: included + topUp,
+    ...(subscription?.currentPeriodEnd === undefined
+      ? {}
+      : { billingPeriodEnd: new Date(subscription.currentPeriodEnd).toISOString() }),
+  }
+}
 
 export const upsertByServer = mutation({
   args: {

@@ -15,7 +15,7 @@ const EXPIRY_OPTIONS = [
 
 /** Create a token for a local agent that cannot sign in with OAuth. The token is shown once. */
 export function McpTokenDialog({ workspaces, onClose }: {
-  workspaces: WorkspaceSummary[]
+  workspaces: readonly WorkspaceSummary[]
   onClose(): void
 }) {
   const [name, setName] = useState('')

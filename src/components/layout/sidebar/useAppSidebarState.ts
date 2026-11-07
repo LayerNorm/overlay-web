@@ -441,8 +441,6 @@ function useSidebarDerivedPanels(args: {
   authLoading: boolean
   authUserId: string | null
   activeWorkspaceId: string | null
-  accountMenuOpen: boolean
-  mobileAccountOpen: boolean
   collaborationNotifications: NonNullable<AppSidebarProps['collaborationNotifications']>
   totalUnread: number
   brandConfig: ReturnType<typeof resolveOverlayAppShellConfig>['brand']
@@ -480,8 +478,6 @@ function useSidebarDerivedPanels(args: {
     authLoading,
     authUserId,
     activeWorkspaceId,
-    accountMenuOpen,
-    mobileAccountOpen,
     collaborationNotifications,
     totalUnread,
     brandConfig,
@@ -549,9 +545,6 @@ function useSidebarDerivedPanels(args: {
     authLoading,
     authUserId,
     activeWorkspaceId,
-    accountMenuOpen,
-    mobileAccountOpen,
-    filesSectionOpen: routeState.filesSectionOpen,
   })
   const {
     createChat,
@@ -814,8 +807,6 @@ export function useAppSidebarState({
     authLoading,
     authUserId,
     activeWorkspaceId,
-    accountMenuOpen,
-    mobileAccountOpen,
     collaborationNotifications,
     totalUnread,
     brandConfig,

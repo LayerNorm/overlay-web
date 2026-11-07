@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { query } from '../_generated/server'
+import { query, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { totalUsage } from '../../src/shared/billing/usage-resources'
 
@@ -24,32 +24,37 @@ export const usageTotalsByServer = query({
   returns: v.object({ totals: v.array(totalValidator), truncated: v.boolean() }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const rows = await ctx.db.query('budgetReservations')
-      .withIndex('by_billingAccountId_status_createdAt', (q) => q
-        .eq('billingAccountId', args.billingAccountId)
-        .eq('status', 'finalized')
-        .gte('createdAt', args.periodStart))
-      .take(MAX_CHARGES + 1)
-    // Charges that skip reservations (the machine-time meter, batch-recorded usage) carry their amount on the
-    // usage operation instead.
-    const operations = await ctx.db.query('usageOperations')
-      .withIndex('by_billingAccountId_createdAt', (q) => q
-        .eq('billingAccountId', args.billingAccountId)
-        .gte('createdAt', args.periodStart))
-      .take(MAX_CHARGES + 1)
-    const charges = [
-      ...rows.slice(0, MAX_CHARGES).map((row) => ({
-        kind: row.kind,
-        operationId: row.operationId,
-        modelId: row.modelId,
-        cents: row.finalizedCents ?? 0,
-        tokens: row.usageTokens,
-        seconds: row.usageSeconds,
-      })),
-      ...operations.slice(0, MAX_CHARGES).flatMap((row) => (row.cents && row.kind
-        ? [{ kind: row.kind, operationId: row.operationId, modelId: row.modelId, cents: row.cents, tokens: row.usageTokens, seconds: row.usageSeconds }]
-        : [])),
-    ]
-    return { totals: totalUsage(charges), truncated: rows.length > MAX_CHARGES || operations.length > MAX_CHARGES }
+    return await usageTotalsFor(ctx, args)
   },
 })
+
+/** Per-resource totals of everything charged to the account since `periodStart`. */
+export async function usageTotalsFor(ctx: Pick<QueryCtx, 'db'>, args: { billingAccountId: string; periodStart: number }) {
+  const rows = await ctx.db.query('budgetReservations')
+    .withIndex('by_billingAccountId_status_createdAt', (q) => q
+      .eq('billingAccountId', args.billingAccountId)
+      .eq('status', 'finalized')
+      .gte('createdAt', args.periodStart))
+    .take(MAX_CHARGES + 1)
+  // Charges that skip reservations (the machine-time meter, batch-recorded usage) carry their amount on the
+  // usage operation instead.
+  const operations = await ctx.db.query('usageOperations')
+    .withIndex('by_billingAccountId_createdAt', (q) => q
+      .eq('billingAccountId', args.billingAccountId)
+      .gte('createdAt', args.periodStart))
+    .take(MAX_CHARGES + 1)
+  const charges = [
+    ...rows.slice(0, MAX_CHARGES).map((row) => ({
+      kind: row.kind,
+      operationId: row.operationId,
+      modelId: row.modelId,
+      cents: row.finalizedCents ?? 0,
+      tokens: row.usageTokens,
+      seconds: row.usageSeconds,
+    })),
+    ...operations.slice(0, MAX_CHARGES).flatMap((row) => (row.cents && row.kind
+      ? [{ kind: row.kind, operationId: row.operationId, modelId: row.modelId, cents: row.cents, tokens: row.usageTokens, seconds: row.usageSeconds }]
+      : [])),
+  ]
+  return { totals: totalUsage(charges), truncated: rows.length > MAX_CHARGES || operations.length > MAX_CHARGES }
+}

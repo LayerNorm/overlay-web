@@ -68,7 +68,6 @@ export type WorkspaceSettingsTab =
   WorkspaceManagementView | 'billing'
 
 export interface WorkspaceManagementClient {
-  billing(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceBillingSummaryResponse>
   initializeBilling(workspaceId: string): Promise<WorkspaceBillingSummaryResponse>
   createBillingCheckout(workspaceId: string, input: WorkspaceBillingCheckoutInput): Promise<{ url: string | null }>
   createBillingTopUp(workspaceId: string, input: WorkspaceBillingTopUpInput): Promise<{ url: string | null }>

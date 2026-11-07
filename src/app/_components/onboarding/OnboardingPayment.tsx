@@ -5,6 +5,7 @@ import { ArrowRight, Play } from 'lucide-react'
 import { Button, Checkbox } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useLiveWorkspaceBilling } from '@/hooks/use-billing'
 import { currentLegalAcceptancePayload, LEGAL_DOCUMENTS } from '@/shared/legal/legal-documents'
 import { EXECUTION_ACCESS_MESSAGES } from '@/shared/billing/execution-access'
 import { navigateToOnboardingCheckout } from './checkout-navigation'
@@ -57,7 +58,6 @@ function BillingActions({ workspaceId, ready, pending, needsRecovery, canManage,
         : needsRecovery ? canManage ? <Button variant="primary" size="sm" disabled={locked} onClick={() => window.location.assign(`/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing`)}>Open billing</Button> : null
           : <Button variant="primary" size="sm" disabled={locked || !accepted || !canManage} onClick={onSubscribe}>Subscribe<ArrowRight size={14} /></Button>}
     <Button variant="ghost" size="sm" disabled={locked} onClick={onEdit}>Edit task</Button>
-    {!canManage || needsRecovery ? <Button variant="ghost" size="sm" disabled={locked} onClick={onRefresh}>Check billing</Button> : null}
   </div>
 }
 
@@ -69,49 +69,43 @@ export function OnboardingPayment({ workspaceId, title, disabled, onPrepare, onS
   onStart(): Promise<void>
   onEdit(): void
 }) {
-  const [summary, setSummary] = useState<WorkspaceBillingSummaryResponse | null>(null)
+  // Live: the payment confirmed by the Stripe webhook unlocks the step on its own, without polling.
+  const summary = useLiveWorkspaceBilling(workspaceId) ?? null
   const [busy, setBusy] = useState(false)
   const [accepted, setAccepted] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [checkoutReturn, setCheckoutReturn] = useState<string | null>(null)
+  const [verificationError, setVerificationError] = useState<string | null>(null)
 
-  const refresh = useCallback(async (signal?: AbortSignal) => {
+  // Returning from checkout: confirm the session (again on "Check payment"); the live summary then shows the result.
+  const verifyCheckout = useCallback(async (signal?: AbortSignal) => {
     const params = new URLSearchParams(window.location.search)
     const sessionId = params.get('onboarding_session_id')
-    setCheckoutReturn(params.get('onboarding_billing'))
-    let verificationError: string | null = null
-    if (sessionId && params.get('onboarding_billing') === 'success') {
-      try { await overlayAppClient.workspaces.verifyBillingCheckout(workspaceId, { kind: 'paid_plan', sessionId }, { signal }) }
-      catch (failure) { verificationError = failure instanceof Error ? failure.message : 'Payment is not confirmed yet.' }
+    if (!sessionId || params.get('onboarding_billing') !== 'success') return
+    try {
+      await overlayAppClient.workspaces.verifyBillingCheckout(workspaceId, { kind: 'paid_plan', sessionId }, { signal })
+      setVerificationError(null)
+    } catch (failure) {
+      if (!signal?.aborted) setVerificationError(failure instanceof Error ? failure.message : 'Payment is not confirmed yet.')
     }
-    const next = await overlayAppClient.workspaces.billing(workspaceId, { signal, cache: 'no-store' })
-    if (signal?.aborted) return
-    setSummary(next)
-    setError(next.executionAccess?.canExecute ? null : verificationError)
-    if (next.executionAccess?.canExecute && sessionId) {
-      params.delete('onboarding_session_id'); params.delete('onboarding_billing')
-      window.history.replaceState(null, '', `${window.location.pathname}${params.size ? `?${params}` : ''}${window.location.hash}`)
-      setCheckoutReturn(null)
-    }
-    return next
   }, [workspaceId])
-
   useEffect(() => {
     const controller = new AbortController()
-    let timer: ReturnType<typeof setTimeout> | undefined
-    let attempts = 0
-    const check = async () => {
-      try {
-        const next = await refresh(controller.signal)
-        const returning = new URLSearchParams(window.location.search).get('onboarding_billing') === 'success'
-        if (!controller.signal.aborted && returning && !next?.executionAccess?.canExecute && ++attempts < 20) timer = setTimeout(() => { void check() }, 3000)
-      } catch (failure) {
-        if (!controller.signal.aborted) setError(failure instanceof Error ? failure.message : 'Could not check workspace billing. Please retry.')
-      }
-    }
-    void check()
-    return () => { controller.abort(); clearTimeout(timer) }
-  }, [refresh])
+    const params = new URLSearchParams(window.location.search)
+    queueMicrotask(() => setCheckoutReturn(params.get('onboarding_billing')))
+    void verifyCheckout(controller.signal)
+    return () => controller.abort()
+  }, [verifyCheckout])
+
+  const canExecute = summary?.executionAccess?.canExecute === true
+  useEffect(() => {
+    if (!canExecute) return
+    const params = new URLSearchParams(window.location.search)
+    if (!params.has('onboarding_session_id')) return
+    params.delete('onboarding_session_id'); params.delete('onboarding_billing')
+    window.history.replaceState(null, '', `${window.location.pathname}${params.size ? `?${params}` : ''}${window.location.hash}`)
+  }, [canExecute])
+  const shownError = error ?? (canExecute ? null : verificationError)
 
   const run = async (operation: () => Promise<void>) => {
     if (busy || disabled) return
@@ -149,8 +143,8 @@ export function OnboardingPayment({ workspaceId, title, disabled, onPrepare, onS
     <BillingActions workspaceId={workspaceId} ready={ready} pending={pending} needsRecovery={needsRecovery}
       canManage={summary?.canManage === true} locked={locked} accepted={accepted}
       onStart={() => void run(onStart)} onSubscribe={() => void subscribe()}
-      onRefresh={() => void run(async () => { await refresh() })} onEdit={onEdit} />
+      onRefresh={() => void run(() => verifyCheckout())} onEdit={onEdit} />
     <p className="text-xs text-muted-foreground">{ready ? 'Usage is charged to your workspace budget.' : 'No trial. Payment won’t start your task automatically.'}</p>
-    {error ? <p role="alert" className="text-xs text-destructive">{error}</p> : null}
+    {shownError ? <p role="alert" className="text-xs text-destructive">{shownError}</p> : null}
   </div>
 }

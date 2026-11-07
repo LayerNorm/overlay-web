@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { createRequire } from 'node:module'
 import test from 'node:test'
 import React, { act } from 'react'
+import { ConvexProviderWithAuth, ConvexReactClient } from 'convex/react'
+import { getFunctionName } from 'convex/server'
 import { Button, Checkbox } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { OnboardingPayment } from './OnboardingPayment'
@@ -21,12 +23,13 @@ const { create } = createRequire(import.meta.url)('react-test-renderer') as {
     toJSON(): unknown
   }
 }
+const fetchAccessToken = async () => 'fixture-token'
+const useAuth = () => ({ isLoading: false, isAuthenticated: true, fetchAccessToken })
 
 test('checkout consent survives task preparation, errors, retry and redirect', async (t) => {
   const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
   const originalAct = Object.getOwnPropertyDescriptor(globalThis, 'IS_REACT_ACT_ENVIRONMENT')
   const workspaces = overlayAppClient.workspaces
-  const originalBilling = workspaces.billing
   const originalCheckout = workspaces.createBillingCheckout
   const destinations: string[] = []
   Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { configurable: true, value: true })
@@ -35,14 +38,26 @@ test('checkout consent survives task preparation, errors, retry and redirect', a
     addEventListener: () => {},
     removeEventListener: () => {},
   } })
-  workspaces.billing = async () => ({ initialized: true, canManage: true }) as Awaited<ReturnType<typeof originalBilling>>
+  const client = new ConvexReactClient('https://fixture.convex.cloud')
+  t.mock.method(client, 'setAuth', (_fetch, onChange) => onChange(true))
+  t.mock.method(client, 'clearAuth', () => {})
+  t.mock.method(client, 'watchQuery', (query, args) => {
+    assert.equal(getFunctionName(query), 'billing/browse:workspaceSummary')
+    assert.deepEqual(args, { workspaceId: 'team-a' })
+    return {
+      localQueryResult: () => ({ initialized: true, canManage: true }),
+      localQueryLogs: () => undefined,
+      journal: () => undefined,
+      onUpdate: () => () => {},
+    } as ReturnType<ConvexReactClient['watchQuery']>
+  })
   let checkoutAttempts = 0
   workspaces.createBillingCheckout = async () => {
     if (++checkoutAttempts === 1) throw new Error('Checkout unavailable')
     return { url: 'https://checkout.stripe.com/test' } as Awaited<ReturnType<typeof originalCheckout>>
   }
-  t.after(() => {
-    workspaces.billing = originalBilling
+  t.after(async () => {
+    await client.close()
     workspaces.createBillingCheckout = originalCheckout
     if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow)
     else Reflect.deleteProperty(globalThis, 'window')
@@ -51,11 +66,11 @@ test('checkout consent survives task preparation, errors, retry and redirect', a
   })
   let renderer!: ReturnType<typeof create>
   let title = 'First task'
-  const render = () => <OnboardingPayment workspaceId="team-a" title={title} disabled={false}
+  const render = () => <ConvexProviderWithAuth client={client} useAuth={useAuth}><OnboardingPayment workspaceId="team-a" title={title} disabled={false}
     onPrepare={async () => {
       title = 'Saved first task'
       renderer.update(render())
-    }} onStart={async () => {}} onEdit={() => {}} />
+    }} onStart={async () => {}} onEdit={() => {}} /></ConvexProviderWithAuth>
   await act(async () => { renderer = create(render()) })
   const checkbox = () => renderer.root.findByType(Checkbox)
   const subscribe = () => renderer.root.findAllByType(Button).find((button) =>

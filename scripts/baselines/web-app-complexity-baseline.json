@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T12:46:59.070Z",
+  "generatedAt": "2026-11-07T14:12:48.286Z",
   "budgets": {
     "maxProductionFileLoc": 500,
     "maxFunctionComplexity": 25,
@@ -175,7 +175,7 @@
     },
     {
       "file": "src/components/layout/sidebar/useAppSidebarState.ts",
-      "loc": 832,
+      "loc": 823,
       "complexity": 42,
       "recordedAt": "2026-09-27T13:09:07.924Z"
     },
@@ -259,8 +259,8 @@
     },
     {
       "file": "src/features/workspaces/components/SlackImportPanel.tsx",
-      "loc": 1285,
-      "complexity": 202,
+      "loc": 1215,
+      "complexity": 188,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -482,12 +482,6 @@
       "file": "src/server/app-api/v1/generate-video/route.ts",
       "loc": 383,
       "complexity": 73,
-      "recordedAt": "2026-09-11T05:17:27.991Z"
-    },
-    {
-      "file": "src/server/app-api/v1/imports/slack/route.ts",
-      "loc": 301,
-      "complexity": 53,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -3051,12 +3045,12 @@
     }
   ],
   "totals": {
-    "files": 3034,
-    "code": 320946,
-    "total": 360363,
-    "productionFiles": 2274,
-    "productionCode": 240374,
+    "files": 3037,
+    "code": 320852,
+    "total": 360286,
+    "productionFiles": 2277,
+    "productionCode": 240223,
     "testFiles": 760,
-    "testCode": 80572
+    "testCode": 80629
   }
 }
