@@ -67,7 +67,6 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/bootstrap`
 - `GET /api/v1/discovery`
 - `GET /api/v1/model-catalog`
-- `GET /api/v1/mention-search`
 - `POST /api/v1/knowledge/search`
 - `DELETE, GET, PATCH, POST /api/v1/webhooks`
 - `GET, PATCH /api/v1/settings`

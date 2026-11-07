@@ -5,7 +5,7 @@ import test from 'node:test'
 import { archivedItemKey, type ArchivedItem } from './archived-items'
 import type { WorkItem } from '@overlay/app-core'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { deleteArchivedItem, loadArchivedWork, restoreArchivedItem, runBulkWith } from './archived-actions'
+import { archivedFiles, archivedWork, deleteArchivedItem, restoreArchivedItem, runBulkWith } from './archived-actions'
 
 function row(kind: ArchivedItem['kind'], id: string, agentId?: string): ArchivedItem {
   return {
@@ -58,24 +58,27 @@ function task(overrides: Partial<WorkItem> & { id: string }): WorkItem {
   }
 }
 
-test('archived tasks are listed once: a subtask archived with its parent shows only under the parent', async (t) => {
-  t.mock.method(overlayAppClient.work, 'list', async (query?: { view?: string }) => {
-    assert.equal(query?.view, 'archived')
-    return {
-      items: [
-        task({ id: 'objective', title: 'Launch', archivedAt: 10 }),
-        task({ id: 'child', title: 'Post', parentId: 'objective', archivedAt: 10 }),
-        // Archived on its own earlier, so it keeps its own row.
-        task({ id: 'earlier', title: 'Earlier child', parentId: 'objective', archivedAt: 4, archivedFromScope: 'personal' }),
-        task({ id: 'orphan', title: 'Orphan', parentId: 'gone', archivedAt: 7 }),
-      ],
-    }
-  })
-  const items = await loadArchivedWork()
+test('archived tasks are listed once: a subtask archived with its parent shows only under the parent', () => {
+  const items = archivedWork([
+    task({ id: 'objective', title: 'Launch', archivedAt: 10 }),
+    task({ id: 'child', title: 'Post', parentId: 'objective', archivedAt: 10 }),
+    // Archived on its own earlier, so it keeps its own row.
+    task({ id: 'earlier', title: 'Earlier child', parentId: 'objective', archivedAt: 4, archivedFromScope: 'personal' }),
+    task({ id: 'orphan', title: 'Orphan', parentId: 'gone', archivedAt: 7 }),
+  ])
   assert.deepEqual(items.map((entry) => entry.id), ['objective', 'earlier', 'orphan'])
   assert.deepEqual(items.map((entry) => [entry.kind, entry.category]), [['work-item', 'work'], ['work-item', 'work'], ['work-item', 'work']])
   assert.equal(items[1]!.scope, 'personal')
   assert.equal(items[0]!.archivedAt, 10)
+})
+
+test('archived files show only the top of each archived folder, typed as folder, note or file', () => {
+  const items = archivedFiles([
+    { _id: 'folder', name: 'Plans', type: 'folder', archivedAt: 9, scope: 'workspace' },
+    { _id: 'inside', name: 'Inside.md', type: 'file', parentId: 'folder', archivedAt: 9, scope: 'workspace' },
+    { _id: 'note', name: 'Note', type: 'file', kind: 'note', archivedAt: 3, archivedFromScope: 'personal' },
+  ] as never)
+  assert.deepEqual(items.map((entry) => [entry.id, entry.kind, entry.scope]), [['folder', 'folder', 'workspace'], ['note', 'note', 'personal']])
 })
 
 test('restoring a task puts it back through the scope route and deleting removes it for good; the live Work lists need no event', async (t) => {
