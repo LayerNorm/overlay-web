@@ -6,7 +6,9 @@ import { Check, FileText, Link as LinkIcon, MessageSquare, NotebookText, Plus, X
 import { FloatingMenu, MenuItem, Button, Input, Textarea } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import type { WorkContextRef, WorkContextType, WorkDoneWhen, WorkEvent, WorkItem } from '@overlay/app-core'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useConvex, type ConvexReactClient } from 'convex/react'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { api } from '../../../../convex/_generated/api'
 import { actorName, commentBody, describeEvent, formatAgo, indexPeople } from '@/shared/work/activity'
 import { hrefForContext, labelForLink, safeLinkUrl } from '@/shared/work/context-links'
 import { checkBlockedBy } from '@/shared/work/graph'
@@ -83,18 +85,15 @@ const CONTEXT_ICONS: Record<WorkContextType, typeof FileText> = { file: FileText
 
 type SearchHit = WorkContextRef
 
-async function searchContext(query: string, signal: AbortSignal): Promise<SearchHit[]> {
-  const response = await overlayAppClient.request(`/api/v1/mention-search?q=${encodeURIComponent(query)}`, { signal })
-  if (!response.ok) return []
-  const body = await response.json() as {
-    conversations?: Array<{ _id: string; title?: string }>
-    files?: Array<{ _id: string; name: string }>
-    notes?: Array<{ _id: string; title?: string }>
-  }
+/** Files, notes and chats matching the text, from the native workspace search (notes are typed as notes). */
+async function searchContext(convex: Pick<ConvexReactClient, 'query'>, workspaceId: string, query: string): Promise<SearchHit[]> {
+  const result = await convex.query(api.search.browse.mentions, { workspaceId, query })
+  if (!result) return []
   return [
-    ...(body.files ?? []).map((file): SearchHit => ({ type: 'file', id: file._id, label: file.name })),
-    ...(body.notes ?? []).map((note): SearchHit => ({ type: 'note', id: note._id, label: note.title || 'Untitled' })),
-    ...(body.conversations ?? []).map((chat): SearchHit => ({ type: 'chat', id: chat._id, label: chat.title || 'Untitled chat' })),
+    ...result.files.map((file): SearchHit => (file.kind === 'note'
+      ? { type: 'note', id: file.id, label: file.name || 'Untitled' }
+      : { type: 'file', id: file.id, label: file.name })),
+    ...result.chats.map((chat): SearchHit => ({ type: 'chat', id: chat.id, label: chat.title || 'Untitled chat' })),
   ].slice(0, 12)
 }
 
@@ -104,20 +103,22 @@ function AddContext({ onAdd }: { onAdd: (ref: WorkContextRef) => void }) {
   const [query, setQuery] = useState('')
   // Results are kept with the text they answer, so a slow answer to an old query is never shown for a new one.
   const [searched, setSearched] = useState<{ query: string; hits: SearchHit[] }>({ query: '', hits: [] })
+  const convex = useConvex()
+  const { activeWorkspaceId } = useWorkspace()
   const link = safeLinkUrl(query)
   const text = query.trim()
   const hits = !link && text.length >= 2 && searched.query === text ? searched.hits : []
 
   useEffect(() => {
-    if (!open || text.length < 2 || link) return
-    const controller = new AbortController()
+    if (!open || text.length < 2 || link || !activeWorkspaceId) return
+    let cancelled = false
     const timer = window.setTimeout(() => {
-      searchContext(text, controller.signal)
-        .then((found) => setSearched({ query: text, hits: found }))
-        .catch(() => setSearched({ query: text, hits: [] }))
+      searchContext(convex, activeWorkspaceId, text)
+        .then((found) => { if (!cancelled) setSearched({ query: text, hits: found }) })
+        .catch(() => { if (!cancelled) setSearched({ query: text, hits: [] }) })
     }, 200)
-    return () => { window.clearTimeout(timer); controller.abort() }
-  }, [link, open, text])
+    return () => { window.clearTimeout(timer); cancelled = true }
+  }, [activeWorkspaceId, convex, link, open, text])
 
   function pick(ref: WorkContextRef) {
     onAdd(ref)
