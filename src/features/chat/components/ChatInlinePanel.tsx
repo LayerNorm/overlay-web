@@ -183,6 +183,7 @@ function useCollaborationUnread({
 
 const ROOM_KIND = { dms: 'dm', channels: 'channel', all: 'all' } as const
 const ROOM_PAGE = 50
+const NO_ROOMS: Conversation[] = []
 
 /**
  * The channel and DM list for the sidebar, live from `collaboration/roomList:list`: new messages, renames, new rooms,
@@ -203,7 +204,8 @@ function useRoomListPage({ enabled, workspaceId, kind }: {
     { rooms: Conversation[]; hasMore: boolean } | null | undefined
   // While a bigger page loads, the rows already on screen for this workspace and view stay.
   const [lastPage, setLastPage] = useState<{ key: string; rooms: Conversation[]; hasMore: boolean } | null>(null)
-  const current = enabled && result !== undefined ? { key: pageKey, rooms: result?.rooms ?? [], hasMore: Boolean(result?.hasMore) } : null
+  // A denied read (null) shows no rooms; the shared empty array keeps this from re-syncing on every render.
+  const current = enabled && result !== undefined ? { key: pageKey, rooms: result?.rooms ?? NO_ROOMS, hasMore: Boolean(result?.hasMore) } : null
   if (current && (lastPage?.key !== pageKey || lastPage.rooms !== current.rooms)) setLastPage(current)
   const visible = current ?? (enabled && lastPage?.key === pageKey ? lastPage : null)
   const loadingMore = enabled && result === undefined && visible !== null
