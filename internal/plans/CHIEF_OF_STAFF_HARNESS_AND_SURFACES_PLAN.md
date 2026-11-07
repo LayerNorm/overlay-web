@@ -1,6 +1,6 @@
 # Chief of Staff Harness and Surface Implementation Plan
 
-Status: In progress in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409). Phase 1 and Phase 2 contracts are implemented with local gate tests. Phase 3 now includes Work execution rows and origin labels; current-head checks and hosted acceptance are pending. Phases 4 to 6 have not started. See [Progress](#progress). The revised web/Slack mockup is the visual reference.
+Status: In progress in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409). Phases 1 to 3 are implemented with local contract tests and partial hosted acceptance. Delegation, explicit acceptance, same-thread revision, Work and navigation regressions passed on isolated preview revision `bc53485e076c0fa713a74252732dd169fc8b30ee`. Hosted recovery and remaining authorization/blocked-state scenarios are not yet accepted. Phases 4 to 6 have not started. See [Progress](#progress). The revised web/Slack mockup is the visual reference.
 
 ## Progress
 
@@ -8,14 +8,16 @@ Legend: `[x]` done in PR #409, `[~]` partially done, `[ ]` not started.
 
 | Phase | State | Summary |
 |---|---|---|
-| 1. Assignment and authorization contracts | Implemented locally | Isolated assignments, same-thread attempts/revisions, publication-aware persisted results, unified authorized reply/artifact reads, canonical surface links and the Slack requester specification are in. |
-| 2. Native Chief orchestration | Implemented locally | Revisions, explicit acceptance/exclusion/cancellation, launch recovery, requester-preserving turn queues and structural completion are implemented. Hosted failure/recovery acceptance remains outstanding. |
-| 3. Web experience | Implemented, acceptance pending | Assignment panels, parent backlinks, live sidebar activity, paginated Work execution rows and authorized origin labels are implemented. Linked Slack composition remains intentionally disabled until Phase 4. Navigation-warning investigation and current-head browser acceptance remain outstanding. |
+| 1. Assignment and authorization contracts | Implemented; contract gates tested | Local replay, authorization, result and surface-link tests pass. Hosted same-agent isolation and same-thread revisions pass; restricted-viewer and Slack-origin browser fixtures remain unavailable. |
+| 2. Native Chief orchestration | Implemented; partial hosted acceptance | Concurrent isolated assignments, actual result reads, explicit acceptance, sequential revision and one consolidated answer passed. A completed optional branch was cancelled/excluded with a reason. Native blocked-child handling, active-child cancellation and interrupted-worker recovery still need hosted acceptance. |
+| 3. Web experience | Implemented; partial hosted acceptance | Work projections, parent/backlinks, live insertion, archive/Undo, reload/cross-tab, themes, narrow layouts and keyboard passed. Empty-composer warning is fixed; genuine unsaved notes still warn. Restricted-viewer, Slack-origin and pagination interactions remain untested in the browser. Linked Slack composition stays disabled until Phase 4. |
 | 4. Chief-only Slack | Not started | A Sign in with Slack identity helper exists locally but is uncommitted and unwired. |
 | 5. Personal-Chief contributions | Not started | Cross-owner personal-Chief delegation is refused until grants exist. |
 | 6. Connected agents and transports | Not started | External and connected agents are rejected before any assignment is written. |
 
-Verified on an earlier isolated PR preview: two-agent delegation with one consolidated answer, repeated delegations in the same Chief thread, distinct assignment threads, live statuses, parent and child navigation, live sidebar insertion, light/dark and narrow layouts, archive/restore, and no assignment panel in ordinary DMs. Slice 1 adds local contract tests; its CI and hosted acceptance are not included in that earlier verification.
+Hosted evidence: canonical `https://pr-409.preview.getoverlay.io`, deployment `dpl_PPesEr2yquDAAPxdJBDzRc7C2V2v`, revision `bc53485e076c0fa713a74252732dd169fc8b30ee`, isolated backend `content-bobcat-927`. Fresh Chief conversation `sn7bq8bcdawxcn7dsh11h9bm318hsra9` produced two simultaneously Working assignments to the same specialist, accepted their actual results and revised one in its existing thread. Work showed executions separately from zero editable tasks. The optional missing-code branch completed with truthful text, then was explicitly excluded; this is not evidence of native Needs you or cancellation of an executing child. Chief prose called it blocked, while persisted execution correctly remained Completed/Excluded.
+
+The first acceptance request was queued behind a historical waiting-for-input run. Read-only inspection confirmed no model admission. Message-specific Stop cancelled only the new queued request; the old blocker remained visible and untouched. Acceptance then used the fresh conversation above, not a bypass of serialization. These results do not establish full Phase 2 or Phase 3 exit gates. A subsequent merge requires fresh exact-head preview confirmation and proportionate regression checks.
 
 Also done beyond the checklist: shared-room and Slack-origin privacy restrictions carry through every delegated assignment, follow-up and tool call; exact retries reuse the same assignment and are not charged twice.
 
@@ -324,7 +326,8 @@ Each phase should be a reviewable change set. The boundaries below are implement
 - [x] Surface the same execution in Work without duplicate task records. Read-only execution rows subscribe to the assignment records and require Work capability, active membership and both conversation ACLs. Archive state removes the viewer's row without cancelling execution.
 - [x] Add origin/destination labels and artifact permissions. Origin is projected only through authorized ancestry and a non-revoked connection; result/artifact access uses the same assignment boundary.
 - [x] Keep linked-thread composition disabled until the shared admission and delivery path is ready. The notice explicitly says the web mirror is read-only; bidirectional composition belongs to Phase 4.
-- [~] Validate desktop/mobile, themes, keyboard use and restricted viewers. Restricted viewers are covered by Convex tests; responsive, theme, keyboard and hosted browser acceptance remain pending.
+- [~] Validate desktop/mobile, themes, keyboard use and restricted viewers. Desktop/400px, light/dark, keyboard, reload/cross-tab and archive/Undo passed on the isolated preview above. Restricted viewers are covered by Convex tests but not yet a separate browser session. Slack-origin and pagination interactions remain untested in the browser.
+- [x] Investigate and fix empty-composer navigation warnings without removing safeguards. Memoized room args and optimistic read-marker callbacks stop repeated writes on unrelated renders. The regression fails against the old implementation; hosted navigation is clean and genuinely unsaved notes still warn.
 
 **Exit gate:** the approved mockup's Working, Needs you and Completed flows are backed by persisted state; reload and cross-tab updates remain correct.
 
