@@ -1,8 +1,49 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { resolveSidebarRouteState, SETTINGS_SECTION_ICONS, signOutToLanding } from './appSidebarNav'
+import { resolveNavItemDestination, resolveSidebarRouteState, selectMobileNavItem, selectSidebarNavItem, SETTINGS_SECTION_ICONS, signOutToLanding, type SidebarNavItem } from './appSidebarNav'
 import { agentHref, agentThreadHref } from '@/components/layout/sidebar-nav'
 import { resolveWorkspaceSurface } from '@/shared/workspaces/routing'
+import { MessageSquare } from 'lucide-react'
+
+test('Chats destinations always select a personal draft, including without a workspace', () => {
+  for (const activeWorkspaceId of [null, 'team-a']) {
+    const href = resolveNavItemDestination('/app/chat', {
+      activeWorkspaceId,
+      buildWorkspaceHref: (id, path) => `/app/w/${id}${path.slice(4)}`,
+    })
+    const url = new URL(href, 'https://overlay.invalid')
+    assert.equal(url.searchParams.get('view'), 'personal')
+    assert.equal(url.searchParams.get('scope'), 'personal')
+    assert.equal(url.searchParams.has('id'), false)
+  }
+})
+
+test('desktop and mobile Chats navigate directly without resolving saved conversations', () => {
+  const item: SidebarNavItem = { id: 'chat', label: 'Chats', href: '/app/chat', icon: MessageSquare }
+  for (const isActive of [false, true]) {
+    for (const select of [selectSidebarNavItem, selectMobileNavItem]) {
+      const destinations: string[] = []
+      select(item, {
+        isGuestConfirmed: false,
+        requireAuth: () => assert.fail('unexpected auth gate'),
+        primaryNavActionByItemId: new Map(),
+        runSidebarAction: async () => false,
+        isActive: () => isActive,
+        destination: (href) => resolveNavItemDestination(href, { activeWorkspaceId: null, buildWorkspaceHref: (_, path) => path }),
+        pathname: '/app/work',
+        router: { push: (href) => destinations.push(href) },
+        setPendingNav: () => {},
+        panelKind: 'chat',
+        sidebarCollapsed: false,
+        setSidebarCollapsed: () => {},
+        automationsEnabled: false,
+        openPanel: () => {},
+        closeDrawer: () => {},
+      })
+      assert.deepEqual(destinations, ['/app/chat?view=personal&scope=personal'])
+    }
+  }
+})
 
 test('sidebar sign-out stops native work before clearing the session and navigating', async () => {
   const events: string[] = []

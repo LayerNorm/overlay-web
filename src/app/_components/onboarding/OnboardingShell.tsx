@@ -19,7 +19,6 @@ import {
   OnboardingDots,
 } from "./OnboardingConversation";
 import { OnboardingIntro } from "./OnboardingIntro";
-import { OnboardingTour } from "./OnboardingTour";
 import { requestOnboarding, skipOnboarding } from "./onboarding-client";
 import styles from "./onboarding.module.css";
 
@@ -80,7 +79,6 @@ function AuthenticatedOnboardingShell({
   const [intro, setIntro] = useState(false);
   const [active, setActive] = useState(false);
   const [showWork, setShowWork] = useState(false);
-  const [tour, setTour] = useState(false);
   const conversation = useRef<HTMLDivElement>(null);
   const dismissIntro = useCallback(() => setIntro(false), []);
   const skip = useCallback(() => {
@@ -88,7 +86,6 @@ function AuthenticatedOnboardingShell({
     void skipOnboarding(workspaceId).then(
       () => {
         setActive(false);
-        setTour(false);
       },
       () => setBypass(true),
     );
@@ -118,20 +115,21 @@ function AuthenticatedOnboardingShell({
     });
     return () => abort.abort();
   }, [workspaceId, retry]);
-  const taskId = result?.session?.taskId;
-  const openWork = useCallback(() => {
+  const openWork = useCallback((taskId = result?.session?.taskId) => {
     if (!taskId) return;
     setShowWork(true);
-    setTour(true);
     router.push(
       `${buildWorkspaceHref(workspaceId, "/app/work")}?task=${encodeURIComponent(taskId)}&scope=personal`,
     );
-  }, [taskId, router, workspaceId]);
-  useEffect(() => {
-    if (!active || !result?.completed || showWork) return;
-    const timer = window.setTimeout(openWork, 1400);
-    return () => window.clearTimeout(timer);
-  }, [active, result?.completed, showWork, openWork]);
+  }, [result?.session?.taskId, router, workspaceId]);
+  const updateResult = (next: OnboardingSessionResponse) => {
+    if (next.completed && next.session?.taskId) {
+      openWork(next.session.taskId);
+      setResult({ ...next, session: result?.session ?? next.session });
+    } else {
+      setResult(next);
+    }
+  };
   const billingRecovery = pathname?.endsWith('/settings') && result?.session?.step === 'task';
   const locked = !bypass && !billingRecovery && (!result || (active && !result.completed));
   const atWork = pathname?.endsWith("/work");
@@ -185,8 +183,8 @@ function AuthenticatedOnboardingShell({
           >
             <OnboardingConversation
               session={result.session}
-              onChange={setResult}
-              onShowWork={openWork}
+              onChange={updateResult}
+              onShowWork={() => openWork()}
               onSkip={skip}
             />
           </div>
@@ -194,16 +192,6 @@ function AuthenticatedOnboardingShell({
           children
         )}
         {intro && !billingRecovery ? <OnboardingIntro onDone={dismissIntro} /> : null}
-        {tour && atWork && result?.session?.taskId ? (
-          <OnboardingTour
-            workspaceId={workspaceId}
-            taskId={result.session.taskId}
-            onClose={() => {
-              setTour(false);
-              setActive(false);
-            }}
-          />
-        ) : null}
       </main>
     </>
   );

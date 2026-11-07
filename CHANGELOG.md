@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Open Chats as a fresh personal draft without creating an empty saved conversation. Keep onboarding consent checked while opening checkout, and move straight into Work after setup without a delayed navigation tour or disappearing composer.
+
 - Make agent surfaces live: an agent's Slack connection, its channel bindings and whether you may bind it now come from a Convex subscription, so a channel added or removed in another tab, or a Slack install degrading, shows without reloading. Listing channels, binding and Slack OAuth stay on the server, which talks to Slack. The extension host needed no change: it renders on the server and has no browser data loads.
 
 - Make Computers and connected-agent environments live: Settings → Computers, the agent panel and sidebar, Settings → Environments, agent options and machine enrollment read from Convex subscriptions instead of five separate polls (every 2.5 to 15 seconds). Provisioning, start, stop, control, enrollment, approval and heartbeats now show as they happen in every view, and an environment whose heartbeat goes stale turns offline on a local clock without any request. Provider references, public keys and credential hashes are never sent to the browser. Starting, stopping and provisioning stay on the server, which calls the provider and checks billing.
