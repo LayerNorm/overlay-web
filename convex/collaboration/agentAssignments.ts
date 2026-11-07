@@ -41,6 +41,9 @@ async function createAttempt(ctx: MutationCtx, args: AssignmentArgs, conversatio
     parentRunId: args.parentRunId, rootRunId: args.rootRunId, requesterUserId: args.requesterUserId,
     brief: args.brief, questionTurnId: args.questionTurnId, createdAt: Date.now(),
   })
+  const now = Date.now()
+  await ctx.db.insert('agentAssignmentLaunchIntents', { attemptId, parentRunId: args.parentRunId, generation: 0,
+    state: 'pending', attempts: 0, nextAttemptAt: now, createdAt: now, updatedAt: now })
   return attemptId
 }
 

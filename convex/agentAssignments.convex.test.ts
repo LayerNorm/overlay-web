@@ -2,6 +2,8 @@ import { beforeAll, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
+import { gzipSync } from 'node:zlib'
+import { assignmentCompletionIssues } from './collaboration/assignmentObligations'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'agent-assignment-test-secret'
@@ -14,7 +16,7 @@ const preAdmissionRestrictions = mutation('harness/runs:resolveConversationRoomR
 
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
-async function fixture() {
+async function fixture(v2 = false) {
   const convex = convexTest(schema, modules)
   const seeded = await convex.run(async ctx => {
     const now = Date.now()
@@ -91,6 +93,7 @@ async function fixture() {
     goal: 'Delegate this task', constraints: [],
     policy: {
       actorUserId: 'alice', workspaceId: 'workspace', allowedToolIds: [], requiresPlan: false,
+      ...(v2 ? { executionPolicyVersion: 2, spendingMode: 'none' } : {}),
       deadlineAt: Date.now() + 60_000, maxCostMicros: 0, maxDepth: 2, maxParallelChildren: 2,
     },
     serverSecret: secret,
@@ -135,14 +138,15 @@ async function dispatched(data: Awaited<ReturnType<typeof fixture>>, input = arg
     clientNonce: turnId, turnId, userMessageId: messageId, modelId: 'openrouter/free', executionEngine: 'overlay_harness',
   })
   const childRunId = `workspace:${turn.runId}`
-  const revision = await data.convex.run(async ctx => {
+  const parentState = await data.convex.run(async ctx => {
     const run = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', data.parentRunId)).unique()
-    return JSON.parse(run!.metadataJson).revision
+    return JSON.parse(run!.metadataJson)
   })
   await data.convex.mutation(mutation('harness/runs:apply'), {
-    actorUserId: 'alice', runId: data.parentRunId, serverSecret: secret, expectedRevision: revision,
+    actorUserId: 'alice', runId: data.parentRunId, serverSecret: secret, expectedRevision: parentState.revision,
+    ...(parentState.policy.executionPolicyVersion === 2 ? { workflowRunId: parentState.workflowRunId, executionGeneration: parentState.executionGeneration ?? 0 } : {}),
     operationId: `dispatch:${input.toolCallId}`, operation: {
-      type: 'admit_named_child', child: { id: childRunId, stepId: `step:${input.toolCallId}`, allowedToolIds: [],
+      type: 'admit_named_child', child: { id: childRunId, stepId: `ask:${input.toolCallId}`, allowedToolIds: [],
         maxCostMicros: 0, costMicros: 0, status: 'running', evidenceRefs: [] },
       step: { title: 'Review', acceptanceCriteria: ['Reply to the request'] }, goal: input.brief, constraints: [],
       target: { deliveryAgentRunId: turn.runId, conversationId: assignment.conversationId },
@@ -168,6 +172,185 @@ async function childState(data: Awaited<ReturnType<typeof fixture>>, child: Awai
 const readResult = query('collaboration/assignmentResults:read')
 const readArtifact = query('collaboration/assignmentResults:settledArtifact')
 const resultActor = { serverSecret: secret, actorUserId: 'alice', workspaceId: 'workspace' }
+
+async function applyOperation(data: Awaited<ReturnType<typeof fixture>>, runId: string, operationId: string, operation: Record<string, unknown>) {
+  const state = await data.convex.run(async ctx => {
+    const row = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', runId)).unique()
+    return JSON.parse(row!.metadataJson)
+  })
+  return await data.convex.mutation(mutation('harness/runs:apply'), { serverSecret: secret, actorUserId: 'alice', runId,
+    expectedRevision: state.revision, operationId, operation,
+    ...(state.workflowRunId || state.policy.executionPolicyVersion === 2 ? { workflowRunId: state.workflowRunId ?? operation.workflowRunId, executionGeneration: state.executionGeneration ?? 0 } : {}) })
+}
+
+async function resolution(data: Awaited<ReturnType<typeof fixture>>, child: { assignmentId: string; attemptId: string }, action: 'accept' | 'exclude' | 'cancel', reason?: string) {
+  return await data.convex.mutation(mutation('collaboration/assignmentCoordination:resolve'), { ...resultActor,
+    parentRunId: data.parentRunId, workflowRunId: 'coordinator', executionGeneration: 0, assignmentId: child.assignmentId,
+    attemptId: child.attemptId, action, reason })
+}
+
+test('Phase 2: independent specialist conversations claim concurrently, and a duplicate workflow cannot win', async () => {
+  const data = await fixture()
+  const first = await dispatched(data)
+  const second = await dispatched(data, args(data, { toolCallId: 'parallel' }))
+  const acquire = mutation('collaboration/nativeTurnQueue:acquire')
+  expect(await Promise.all([first, second].map(child => data.convex.mutation(acquire,
+    { serverSecret: secret, actorUserId: 'alice', deliveryAgentRunId: child.turn.runId })))).toEqual([true, true])
+  await applyOperation(data, first.childRunId, 'claim-first', { type: 'claim_execution', workflowRunId: 'winner' })
+  await applyOperation(data, second.childRunId, 'claim-second', { type: 'claim_execution', workflowRunId: 'independent' })
+  await expect(applyOperation(data, first.childRunId, 'claim-duplicate', { type: 'claim_execution', workflowRunId: 'loser' })).rejects.toThrow()
+  await data.convex.run(async ctx => {
+    const intents = await ctx.db.query('agentAssignmentLaunchIntents').collect()
+    expect(intents.map(intent => intent.state)).toEqual(['launched', 'launched'])
+    expect(intents.map(intent => intent.winnerWorkflowRunId).sort()).toEqual(['independent', 'winner'])
+  })
+})
+
+test('Phase 2: persisted unlaunched work blocks finish and can be excluded without inventing success', async () => {
+  const data = await fixture()
+  await applyOperation(data, data.parentRunId, 'owner', { type: 'claim_execution', workflowRunId: 'coordinator' })
+  const assignment = await data.convex.mutation(createAssignment, args(data))
+  await expect(applyOperation(data, data.parentRunId, 'premature-finish', { type: 'finish', resultSummary: 'Done' })).rejects.toThrow('ASSIGNMENTS_UNRESOLVED')
+  await expect(resolution(data, assignment, 'accept')).rejects.toThrow('ASSIGNMENT_RESULT_NOT_ACCEPTABLE')
+  await expect(resolution(data, assignment, 'exclude', '   ')).rejects.toThrow('ASSIGNMENT_REASON_REQUIRED')
+  expect(await resolution(data, assignment, 'exclude', 'Not needed for this outcome')).toMatchObject({ disposition: 'excluded' })
+  expect(await applyOperation(data, data.parentRunId, 'one-finish', { type: 'finish', resultSummary: 'No specialist result was used.' })).toMatchObject({ applied: true, snapshot: { status: 'completed' } })
+  await data.convex.run(async ctx => {
+    const intent = (await ctx.db.query('agentAssignmentLaunchIntents').collect())[0]!
+    expect(intent.state).toBe('cancelled')
+    expect(await ctx.db.query('agentAssignmentResults').collect()).toHaveLength(0)
+    expect((await ctx.db.query('harnessOperations').collect()).filter(row => JSON.parse(row.operationJson).type === 'finish')).toHaveLength(1)
+  })
+})
+
+test('Phase 2: success requires publication and acceptance, failure requires reasoned exclusion', async () => {
+  const data = await fixture()
+  await applyOperation(data, data.parentRunId, 'owner', { type: 'claim_execution', workflowRunId: 'coordinator' })
+  const success = await dispatched(data)
+  const failed = await dispatched(data, args(data, { toolCallId: 'failure' }))
+  await childState(data, success, 'completed', false)
+  await childState(data, failed, 'failed', true, 'Partial text is not success')
+  await expect(resolution(data, success, 'accept')).rejects.toThrow('ASSIGNMENT_RESULT_NOT_ACCEPTABLE')
+  await expect(resolution(data, failed, 'accept')).rejects.toThrow('ASSIGNMENT_RESULT_NOT_ACCEPTABLE')
+  await childState(data, success, 'completed', true, 'The complete specialist answer')
+  await resolution(data, success, 'accept')
+  await expect(applyOperation(data, data.parentRunId, 'still-unresolved', { type: 'finish' })).rejects.toThrow('ASSIGNMENTS_UNRESOLVED')
+  await resolution(data, failed, 'exclude', 'Proceed without the failed specialist')
+  expect(await applyOperation(data, data.parentRunId, 'finish', { type: 'finish', resultSummary: 'One result accepted, one failed result excluded.' })).toMatchObject({ snapshot: { status: 'completed' } })
+  expect(await data.convex.query(readResult, { ...resultActor, childRunId: failed.childRunId })).toMatchObject({ runStatus: 'failed', reply: 'Partial text is not success' })
+})
+
+test('Phase 2: cancellation uses the subtree machinery and invalidates pending parent launches', async () => {
+  const data = await fixture()
+  await applyOperation(data, data.parentRunId, 'owner', { type: 'claim_execution', workflowRunId: 'coordinator' })
+  const child = await dispatched(data)
+  const pending = await data.convex.mutation(createAssignment, args(data, { toolCallId: 'not-launched' }))
+  await resolution(data, child, 'cancel', 'Stop this specialist')
+  expect(await data.convex.query(readResult, { ...resultActor, childRunId: child.childRunId })).toMatchObject({ runStatus: 'cancelled', terminal: true })
+  const outstanding = await dispatched(data, args(data, { toolCallId: 'outstanding' }))
+  await applyOperation(data, data.parentRunId, 'parent-cancel', { type: 'terminate', status: 'cancelled', reason: 'Requester stopped the parent' })
+  expect(await data.convex.query(readResult, { ...resultActor, childRunId: outstanding.childRunId })).toMatchObject({ runStatus: 'cancelled', terminal: true })
+  await data.convex.run(async ctx => {
+    const intent = await ctx.db.query('agentAssignmentLaunchIntents').withIndex('by_attemptId', q => q.eq('attemptId', pending.attemptId)).unique()
+    expect(intent?.state).toBe('cancelled')
+    expect(intent?.generation).toBeGreaterThan(0)
+  })
+})
+
+test('Phase 2: recovery reconstructs persisted dispatch identity and ignores stale generations', async () => {
+  const data = await fixture()
+  await applyOperation(data, data.parentRunId, 'owner', { type: 'claim_execution', workflowRunId: 'coordinator' })
+  const child = await data.convex.mutation(createAssignment, args(data))
+  const intent = await data.convex.run(async ctx => (await ctx.db.query('agentAssignmentLaunchIntents').collect())[0]!)
+  const work = mutation('collaboration/assignmentRecovery:work')
+  expect(await data.convex.mutation(work, { serverSecret: secret, kind: 'assignment', id: intent._id, generation: 0 })).toMatchObject({
+    kind: 'assignment', actorUserId: 'alice', parentRunId: data.parentRunId, toolCallId: 'call-1', agentId: 'target', brief: 'Review this feature' })
+  expect(await data.convex.mutation(work, { serverSecret: secret, kind: 'assignment', id: intent._id, generation: 1 })).toBeNull()
+  await resolution(data, child, 'exclude', 'No longer needed')
+  expect(await data.convex.mutation(work, { serverSecret: secret, kind: 'assignment', id: intent._id, generation: 0 })).toBeNull()
+})
+
+test('Phase 2: queued assignment follow-ups retain each requester and resume only after publication', async () => {
+  const data = await fixture()
+  const first = await dispatched(data)
+  const second = await data.convex.run(async ctx => {
+    await ctx.db.insert('conversationParticipants', { conversationId: first.conversationId, workspaceId: 'workspace',
+      principalId: 'bob', principalType: 'human', role: 'member', status: 'active', notificationLevel: 'all', joinedAt: Date.now(), updatedAt: Date.now() })
+    return await ctx.db.insert('conversationMessages', { conversationId: first.conversationId, userId: 'bob', turnId: 'follow-up',
+      role: 'user', authorKind: 'human', authorPrincipalId: 'bob', mode: 'act', content: 'Another request', contentType: 'text', createdAt: Date.now() })
+  })
+  const turn = await data.convex.mutation(mutation('collaboration/directMessages:startAgentTurn'), { serverSecret: secret,
+    actorUserId: 'bob', workspaceId: 'workspace', conversationId: first.conversationId, agentId: 'target',
+    authorPrincipalId: 'target-principal', initiatorPrincipalId: 'bob', userMessageId: second,
+    turnId: 'follow-up-target', clientNonce: 'follow-up-target', modelId: 'openrouter/free', executionEngine: 'overlay_harness' })
+  const acquire = mutation('collaboration/nativeTurnQueue:acquire')
+  expect(await data.convex.mutation(acquire, { serverSecret: secret, actorUserId: 'alice', deliveryAgentRunId: first.turn.runId })).toBe(true)
+  expect(await data.convex.mutation(acquire, { serverSecret: secret, actorUserId: 'bob', deliveryAgentRunId: turn.runId })).toBe(false)
+  await childState(data, first, 'completed', false)
+  expect(await data.convex.mutation(acquire, { serverSecret: secret, actorUserId: 'bob', deliveryAgentRunId: turn.runId })).toBe(false)
+  await childState(data, first, 'completed', true)
+  expect(await data.convex.mutation(acquire, { serverSecret: secret, actorUserId: 'bob', deliveryAgentRunId: turn.runId })).toBe(true)
+  await data.convex.run(async ctx => {
+    expect((await ctx.db.get(first.turn.runId))?.userId).toBe('alice')
+    expect((await ctx.db.get(turn.runId))?.userId).toBe('bob')
+    const rows = await ctx.db.query('agentConversationTurnQueue').collect()
+    expect(rows.map(row => [row.requesterUserId, row.state])).toEqual([['alice', 'settled'], ['bob', 'claimed']])
+  })
+})
+
+test('Phase 2: an interrupted assignment transfers its winner through the existing continuation outbox', async () => {
+  const data = await fixture(true)
+  await applyOperation(data, data.parentRunId, 'parent-owner', { type: 'claim_execution', workflowRunId: 'coordinator' })
+  const child = await dispatched(data)
+  await applyOperation(data, child.childRunId, 'child-owner', { type: 'claim_execution', workflowRunId: 'original-child' })
+  await data.convex.run(ctx => ctx.db.patch(child.turn.runId, { workflowRunId: 'original-child' }))
+  const blocked = await applyOperation(data, child.childRunId, 'child-blocked', { type: 'block', blocker: { kind: 'input', question: 'Need a decision' } })
+  expect(await data.convex.query(readResult, { ...resultActor, childRunId: child.childRunId })).toMatchObject({ state: 'working', runStatus: 'waiting_for_input', blocker: { question: 'Need a decision' } })
+  const storageId = await data.convex.run(ctx => ctx.storage.store(new Blob([new Uint8Array(gzipSync(Buffer.from(JSON.stringify({
+    checkpoint: { version: 1, messages: [], invocation: 1, modelCall: 0, stagnantSegments: 0, finalAnswerRequired: false, truncatedResponse: false, segmentStartedAt: Date.now() },
+    launchInput: { access: { actorUserId: 'alice', workspaceId: 'workspace', runId: child.childRunId, executionGeneration: 1 } },
+  }))))], { type: 'application/gzip' })))
+  await data.convex.mutation(mutation('harness/continuations:handoff'), { serverSecret: secret, actorUserId: 'alice', runId: child.childRunId,
+    workflowRunId: 'original-child', executionGeneration: 0, expectedRevision: blocked.snapshot.revision, workflowKind: 'native', checkpointStorageId: storageId })
+  await applyOperation(data, child.childRunId, 'resumed-owner', { type: 'claim_execution', workflowRunId: 'resumed-child' })
+  await applyOperation(data, child.childRunId, 'resume', { type: 'resume' })
+  await expect(data.convex.mutation(mutation('harness/runs:apply'), { serverSecret: secret, actorUserId: 'alice', runId: child.childRunId,
+    workflowRunId: 'original-child', executionGeneration: 0, expectedRevision: blocked.snapshot.revision, operationId: 'stale-resume', operation: { type: 'resume' } })).rejects.toThrow('HARNESS_EXECUTION_NOT_OWNED')
+  await data.convex.run(async ctx => {
+    const intent = await ctx.db.query('agentAssignmentLaunchIntents').withIndex('by_attemptId', q => q.eq('attemptId', child.attemptId)).unique()
+    expect(intent).toMatchObject({ generation: 1, winnerWorkflowRunId: 'resumed-child', state: 'launched' })
+    expect(await ctx.db.query('agentAssignmentAttempts').collect()).toHaveLength(1)
+    expect((await ctx.db.get(child.turn.runId))?.workflowRunId).toBe('resumed-child')
+  })
+  await applyOperation(data, child.childRunId, 'child-finish', { type: 'finish', resultSummary: 'Resumed result' })
+  await childState(data, child, 'completed', true, 'Full resumed result')
+  await resolution(data, child, 'accept')
+  expect(await applyOperation(data, data.parentRunId, 'parent-finish', { type: 'finish', resultSummary: 'Consolidated resumed result' })).toMatchObject({ snapshot: { status: 'completed' } })
+})
+
+test('Phase 2: completion ignores unrelated historical runs and the queue excludes ordinary native collaboration', async () => {
+  const data = await fixture()
+  await data.convex.mutation(createAssignment, args(data))
+  expect(await data.convex.run(ctx => assignmentCompletionIssues(ctx, 'unrelated-future-run'))).toEqual([])
+  expect(await data.convex.run(ctx => assignmentCompletionIssues(ctx, data.parentRunId))).toHaveLength(1)
+  const run = await data.convex.run(async ctx => (await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', data.parentRunId)).unique())!)
+  expect(await data.convex.mutation(mutation('collaboration/nativeTurnQueue:acquire'), { serverSecret: secret, actorUserId: 'alice', deliveryAgentRunId: run.deliveryAgentRunId })).toBe(true)
+  expect(await data.convex.run(ctx => ctx.db.query('agentConversationTurnQueue').collect())).toEqual([])
+})
+
+test('Phase 2: recovery does not publish a generating successful reply from partial text', async () => {
+  const data = await fixture()
+  await applyOperation(data, data.parentRunId, 'owner', { type: 'claim_execution', workflowRunId: 'coordinator' })
+  const child = await dispatched(data)
+  await applyOperation(data, child.childRunId, 'child-owner', { type: 'claim_execution', workflowRunId: 'child-workflow' })
+  await childState(data, child, 'completed', false)
+  await data.convex.run(ctx => ctx.db.patch(child.turn.runId, { status: 'completed', workflowRunId: 'child-workflow' }))
+  const intent = await data.convex.run(async ctx => (await ctx.db.query('agentAssignmentLaunchIntents').collect())[0]!)
+  expect(await data.convex.mutation(mutation('collaboration/assignmentRecovery:work'), { serverSecret: secret, kind: 'assignment', id: intent._id, generation: 0 }))
+    .toMatchObject({ kind: 'publication', runId: child.childRunId, workflowRunId: 'child-workflow' })
+  expect(await data.convex.run(async ctx => (await ctx.db.get(child.turn.messageId))?.status)).toBe('generating')
+  await expect(resolution(data, child, 'accept')).rejects.toThrow('ASSIGNMENT_RESULT_NOT_ACCEPTABLE')
+})
 
 test('attempt replay has one brief and delivery; revisions preserve the conversation and immutable provenance', async () => {
   const data = await fixture()

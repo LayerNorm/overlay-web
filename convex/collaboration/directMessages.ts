@@ -15,6 +15,7 @@ import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
+import { enqueueNativeTurn } from './nativeTurnQueue'
 
 type CollaborationCtx = (Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>) & { auth?: QueryCtx['auth'] }
 
@@ -956,6 +957,7 @@ export async function startAgentTurnInTransaction(
   if (args.harnessRunIdPrefix) {
     await ctx.db.patch(runId, { harnessRunId: `${args.harnessRunIdPrefix}${runId}` })
   }
+  await enqueueNativeTurn(ctx, (await ctx.db.get(runId))!)
   return { messageId, resumed, runId }
 }
 

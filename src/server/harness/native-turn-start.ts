@@ -32,6 +32,7 @@ export type NativeTurnStartDependencies = {
   getAgentRun?: (args: { actorUserId: string; conversationId: string; runId: string }) => Promise<AgentRun | null>
   getPaid?: (run: AgentRun, workflowInput: NativeHarnessWorkflowInput) => Promise<boolean>
   repository?: Pick<ConvexHarnessRepository, 'admit'>
+  acquireTurn?: ConvexHarnessRepository['acquireNativeTurn']
   getSurfaceExecution?: (rootRunId: string) => ReturnType<ConvexHarnessRepository['getSurfaceExecutionByHarnessRunId']>
   startWorkflow?: (workflow: typeof nativeHarnessWorkflow, args: [NativeHarnessWorkflowInput]) => Promise<unknown>
 }
@@ -145,6 +146,7 @@ export async function prepareNativeHarnessTurn(
   })
   const server = getOverlayServerContext()
   const run = await loadNativeDelivery(input, workflowInput, dependencies, server)
+  if (!await (dependencies.acquireTurn ?? repository.acquireNativeTurn.bind(repository))({ actorUserId: input.actorUserId, deliveryAgentRunId: input.runId, memoryEnabled: input.memoryEnabled })) return
   const paid = await isNativeDeliveryPaid(run, workflowInput, surfaceExecution, dependencies, server)
   const admitted = await (dependencies.repository ?? repository).admit({
     runId: workflowInput.access.runId,

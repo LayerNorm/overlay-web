@@ -70,6 +70,7 @@ import type * as chat_personal from "../chat/personal.js";
 import type * as collaboration_activity from "../collaboration/activity.js";
 import type * as collaboration_agents from "../collaboration/agents.js";
 import type * as collaboration_agentAssignments from "../collaboration/agentAssignments.js";
+import type * as collaboration_assignmentRecovery from "../collaboration/assignmentRecovery.js";
 import type * as collaboration_channels from "../collaboration/channels.js";
 import type * as collaboration_conversationMigration from "../collaboration/conversationMigration.js";
 import type * as collaboration_directMessages from "../collaboration/directMessages.js";
@@ -277,6 +278,7 @@ declare const fullApi: ApiFromModules<{
   "collaboration/activity": typeof collaboration_activity;
   "collaboration/agents": typeof collaboration_agents;
   "collaboration/agentAssignments": typeof collaboration_agentAssignments;
+  "collaboration/assignmentRecovery": typeof collaboration_assignmentRecovery;
   "collaboration/channels": typeof collaboration_channels;
   "collaboration/conversationMigration": typeof collaboration_conversationMigration;
   "collaboration/directMessages": typeof collaboration_directMessages;

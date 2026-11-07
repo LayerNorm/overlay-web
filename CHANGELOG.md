@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Coordinate Chief assignments with explicit acceptance or reasoned exclusion/cancellation, parent cancellation propagation, durable native-turn queues and duplicate-safe launch recovery. Current-run finalization waits for published, resolved assignment results without adding a verifier or compulsory plan.
+
 - Keep Chief assignment revisions in one isolated thread with immutable per-attempt run handles, persisted publication-aware results and full authorized reply reads. Canonical Slack thread links survive agent rebinding and expose origin only to authorized viewers. Slack requester linking and revocation remain specified for Phase 4, not enabled here.
 
 - Keep delegated reply reads available while the Chief consolidates completed assignments, and refresh expanded agent thread lists when live thread membership changes.

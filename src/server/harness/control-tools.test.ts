@@ -44,6 +44,18 @@ function noPlanState() {
   }, Date.now())
 }
 
+test('a blocked assignment returns its truthful blocker without joining indefinitely or recording success', async () => {
+  const f = fixture()
+  f.readChild.mockResolvedValue({ ...f.child, status: 'waiting_for_input' })
+  f.ports.readAssignmentResult = async () => ({ assignmentId: 'assignment', attemptId: 'attempt', conversationId: 'room',
+    turnId: 'reply', superseded: false, terminal: false, state: 'working', runStatus: 'waiting_for_input', summary: '',
+    blocker: { kind: 'input', question: 'Need a decision' }, artifactRefs: [] })
+  expect(await createHarnessControlTools(f.ports).harness_read_child.execute!({ childRunId: 'child' }, { toolCallId: 'blocked', messages: [] }))
+    .toMatchObject({ status: 'waiting_for_input', blocker: { question: 'Need a decision' } })
+  expect(f.waitForChildren).not.toHaveBeenCalled()
+  expect(f.apply).not.toHaveBeenCalled()
+})
+
 test('assignment child reads return the canonical full reply and never settle publication-pending results', async () => {
   const f = fixture()
   const reply = 'Full final reply. '.repeat(2500)

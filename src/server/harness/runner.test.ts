@@ -224,6 +224,20 @@ test('V2 input rollover checkpoints the invocation and resumes through the succe
 
 const input = { instructions: 'Use the tools to perform the requested work.', messages: [{ role: 'user' as const, content: 'Read the records.' }], model: { modelId: 'fixture/model', credentialOwnerId: 'user' } }
 
+test('assignment obligations keep resolution tools available and permit only one resolved parent finish without a plan', async () => {
+  const f = fixture(false, ['resolve_assignment'])
+  let unresolved = true
+  f.ports.readAssignmentIssues = async () => unresolved ? ['assignment: failed, needs exclusion with a reason'] : []
+  const finish = vi.spyOn(f.ports, 'apply')
+  const resolve = tool({ inputSchema: z.object({}), execute: async () => { unresolved = false; return { disposition: 'excluded', reason: 'Failed specialist is not needed' } } })
+  model(index => index === 0 ? 'Progress, not a completed outcome.' : index === 1 ? [call('resolve_assignment', 'resolution')] : 'Consolidated result: failed work was excluded.')
+  const result = await runOverlayHarness({ ...input, tools: { resolve_assignment: resolve } }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.plan).toEqual([])
+  expect(result.snapshot.resultSummary).toBe('Consolidated result: failed work was excluded.')
+  expect(finish.mock.calls.filter(([, operation]) => operation.type === 'finish')).toHaveLength(1)
+})
+
 test('the first model call acknowledges and works in one step, with no separate progress call', async () => {
   const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
   const read = vi.fn(async () => ({ record: 'found' }))

@@ -200,11 +200,12 @@ async function finishOrCheckpointInvocation(
   truncatedResponse: boolean,
   stagnantSegments: number,
 ): Promise<InvocationContinuation> {
-  if (onlyChildrenRemain(state)) {
+  const assignmentIssues = await ports.readAssignmentIssues?.() ?? []
+  if (onlyChildrenRemain(state) && !assignmentIssues.length) {
     await ports.apply(`wait-children:${segment}`, { type: 'wait_for_children' })
     return { kind: 'continue', stagnantSegments, finalAnswerRequired: false }
   }
-  const completionIssues = harnessCompletionIssues(state)
+  const completionIssues = [...harnessCompletionIssues(state), ...assignmentIssues]
   const resultSummary = latestFinalAnswerText(runSteps, toolNames)
   const finalAnswerRequired = !truncatedResponse && !completionIssues.length && !resultSummary
   if (!truncatedResponse && !completionIssues.length && resultSummary) {
@@ -428,12 +429,14 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         recoverySteps = [...settledSteps]
         // Authority and the lease are renewed once, just before the call is reserved.
         let current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`, 0, false)
+        const assignmentIssues = await ports.readAssignmentIssues?.() ?? []
         const instructionContext = {
           instructions,
           publicProgress: commentaryInvocation,
           continuation: segment > 0,
           truncatedResponse,
-          finalAnswerRequired: finalAnswerRequired || (current.plan.length > 0 && harnessCompletionIssues(current).length === 0),
+          assignmentIssues,
+          finalAnswerRequired: !assignmentIssues.length && (finalAnswerRequired || (current.plan.length > 0 && harnessCompletionIssues(current).length === 0)),
           ...(stagnantSegments >= STAGNATION_RECOVERY_START
             ? { stagnationRecoveryAttempt: stagnantSegments - STAGNATION_RECOVERY_START + 1 } : {}),
         }
@@ -443,7 +446,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           toolNames: Object.keys(tools), toolDefinitions, settings: input.settings ?? {} })
         assertPreparedModelAuthority(prepared, input.model.credentialOwnerId)
         current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`, prepared.estimatedCostMicros)
-        const complete = harnessCompletionIssues(current).length === 0 && current.plan.length > 0
+        const complete = !assignmentIssues.length && harnessCompletionIssues(current).length === 0 && current.plan.length > 0
         current = await ports.apply(`reserve:${receiptId}`, { type: 'reserve_model', id: receiptId, maxCostMicros: prepared.estimatedCostMicros })
         observedState = current
         const activeTools = activeModelTools(current, prepared.activeToolNames, tools, controls, complete)

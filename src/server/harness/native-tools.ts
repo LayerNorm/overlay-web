@@ -12,7 +12,7 @@ export type NativeHarnessToolsInput = {
 
 export function createNativeHarnessTools(input: NativeHarnessToolsInput): ToolSet {
   const context = { access: input.access, context: input.context }
-  const agentRequestTools = new Set(['ask_agent', 'post_message'])
+  const agentRequestTools = new Set(['ask_agent', 'post_message', 'resolve_assignment'])
   return createHarnessTools(input.definitions, {
     needsApproval: call => agentRequestTools.has(call.toolName)
       ? Promise.resolve(false)

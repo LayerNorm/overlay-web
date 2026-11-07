@@ -1,6 +1,6 @@
 # Chief of Staff Harness and Surface Implementation Plan
 
-Status: In progress in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409). Phase 1 contracts are implemented with local gate tests. Phases 2 and 3 are partial; hosted acceptance of Slice 1 has not been rerun. Phases 4 to 6 have not started. See [Progress](#progress). The revised web/Slack mockup is the visual reference.
+Status: In progress in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409). Phase 1 and Phase 2 contracts are implemented with local gate tests. Phase 3 is partial; the Slice 2 orchestration gates have not been rerun as hosted acceptance. Phases 4 to 6 have not started. See [Progress](#progress). The revised web/Slack mockup is the visual reference.
 
 ## Progress
 
@@ -309,11 +309,11 @@ Each phase should be a reviewable change set. The boundaries below are implement
 ### Phase 2: Native Chief orchestration
 
 - [x] Wire named delegation to assignments and existing Harness child admission.
-- [~] Unify persisted result handles and durable child waits. Both reply tools read the same persisted per-attempt envelope and full final reply. A terminal child with an unpublished reply stays publication-pending; structural completion enforcement remains Slice 2.
+- [x] Unify persisted result handles and durable child waits. Both reply tools read the same persisted per-attempt envelope and full final reply. A terminal child with an unpublished reply stays publication-pending; current-run Convex finish checks enforce resolution before completion.
 - [x] Add Chief instructions for discovery, briefing, follow-through and synthesis.
-- [~] Implement revisions, failure dispositions, cancellation and queued follow-ups. Same-thread revisions are in; disposition tools, cancellation and the scoped turn queue remain Slice 2.
-- [ ] Recover persisted-but-unlaunched children and duplicate settlement events.
-- [ ] Keep structural completion checks without restoring answer verification.
+- [x] Implement revisions, failure dispositions, cancellation and queued follow-ups. `ask_agent` uses assignment/expected-attempt CAS for revisions; `resolve_assignment` accepts successful published results or excludes/cancels with a reason. Cancellation reuses Harness subtree and workflow cancellation. Native Chief and assignment queues retain each requester's identity and fresh authorization.
+- [x] Recover persisted-but-unlaunched children and duplicate settlement events. Assignment launch intents share the continuation dispatcher and authenticated callback; generation winner claims fence billable execution. Recovery replays the original dispatch identity and repairs terminal publication from persisted transcript state without restarting tools.
+- [x] Keep structural completion checks without restoring answer verification. Only current attempts belonging to the finishing coordinating run count. Reasoned exclusion completes the coordination milestone without changing failed/cancelled child execution status or bypassing usage reconciliation.
 
 **Exit gate:** a native web request dispatches independent specialists, survives an interrupted worker, handles one blocked child and yields one parent result without duplicate execution.
 

@@ -580,6 +580,18 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     })
   }
 
+  if (shouldExposeTool('resolve_assignment')) {
+    tools.resolve_assignment = tool({
+      description: 'Resolve the current assignment attempt: accept a completed published result, or exclude/cancel with a reason. Excluding also stops outstanding work. A revision uses ask_agent with assignmentId and expectedAttemptId. Execution status never changes to success because of a disposition.',
+      inputSchema: z.object({ assignmentId: z.string().min(1), attemptId: z.string().min(1),
+        action: z.enum(['accept', 'exclude', 'cancel']), reason: z.string().min(1).max(8000).optional() }),
+      execute: async (): Promise<unknown> => {
+        assertToolAllowed('resolve_assignment')
+        throw new Error('Assignment resolution requires an authorized native Harness run.')
+      },
+    })
+  }
+
   if (shouldExposeTool('post_message')) {
     tools.post_message = tool({
       description:

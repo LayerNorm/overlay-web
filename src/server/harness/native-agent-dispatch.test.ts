@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => ({
   refresh: vi.fn(), resolve: vi.fn(), build: vi.fn(), get: vi.fn(), apply: vi.fn(), launch: vi.fn(),
   startTurn: vi.fn(), failMessage: vi.fn(), ask: vi.fn(), directory: vi.fn(),
   remoteTarget: vi.fn(), bindings: vi.fn(),
+  resolveAssignment: vi.fn(), cancel: vi.fn(), cancelSubtree: vi.fn(),
 }))
 
 vi.mock('server-only', () => ({}))
@@ -12,7 +13,10 @@ vi.mock('./native-workflow-input-builder', () => ({ buildNativeHarnessWorkflowIn
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class {
   get = mocks.get
   apply = mocks.apply
+  resolveAssignment = mocks.resolveAssignment
 } }))
+vi.mock('./workflow-cancellation', () => ({ cancelHarnessWorkflow: mocks.cancel }))
+vi.mock('./personal-cancellation', () => ({ cancelPersonalHarnessWorkflows: mocks.cancelSubtree }))
 vi.mock('./native-named-child-launch', () => ({ startNativeHarnessNamedChild: mocks.launch }))
 vi.mock('@/server/agents/workspace-agent-invocation', () => ({ resolveWorkspaceAgentInvocations: mocks.resolve }))
 vi.mock('@/server/agents/agent-tooling', () => ({ buildWorkspaceAgentTooling: vi.fn() }))
@@ -175,4 +179,23 @@ test('native asks reject remote bindings before asking or creating an assignment
   expect(mocks.ask).not.toHaveBeenCalled()
   expect(mocks.startTurn).not.toHaveBeenCalled()
   expect(mocks.apply).not.toHaveBeenCalled()
+})
+
+test('assignment resolution uses trusted execution identity and the existing cancellation machinery', async () => {
+  const cancellationRoot = { actorUserId: access.actorUserId, agentRunId: 'child-delivery', rootRunId: 'workspace:child-delivery' }
+  mocks.resolveAssignment.mockResolvedValue({ assignmentId: 'assignment', attemptId: 'attempt', disposition: 'excluded',
+    reason: 'Not needed', workflows: ['child-workflow'], cancellationRoot })
+  expect(await dispatchNativeHarnessAgentRequest(access, context, 'resolve', 'resolve_assignment', { assignmentId: 'assignment', attemptId: 'attempt',
+    action: 'cancel', reason: 'Not needed', actorUserId: 'forged', parentRunId: 'forged', workflowRunId: 'forged' })).toMatchObject({ disposition: 'excluded' })
+  expect(mocks.resolveAssignment).toHaveBeenCalledWith({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
+    parentRunId: access.runId, workflowRunId: access.workflowRunId, executionGeneration: 0,
+    assignmentId: 'assignment', attemptId: 'attempt', action: 'cancel', reason: 'Not needed' })
+  expect(mocks.cancel).toHaveBeenCalledWith('child-workflow')
+  expect(mocks.cancelSubtree).toHaveBeenCalledWith(cancellationRoot)
+  expect(mocks.ask).not.toHaveBeenCalled()
+})
+
+test.each([{}, { assignmentId: 'assignment', attemptId: 'attempt', action: 'grade' }])('invalid resolutions cannot invoke the repository: %j', async input => {
+  await expect(dispatchNativeHarnessAgentRequest(access, context, 'resolve', 'resolve_assignment', input)).rejects.toThrow('Invalid assignment resolution')
+  expect(mocks.resolveAssignment).not.toHaveBeenCalled()
 })

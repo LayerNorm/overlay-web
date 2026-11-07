@@ -11,6 +11,8 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildNativeHarnessWorkflowInput } from './native-workflow-input-builder'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { startNativeHarnessNamedChild } from './native-named-child-launch'
+import { cancelHarnessWorkflow } from './workflow-cancellation'
+import { cancelPersonalHarnessWorkflows } from './personal-cancellation'
 import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
 import { refreshNativeHarnessAccess, type NativeHarnessAccess } from './native-access'
 import { logger } from '@/server/observability/logger'
@@ -192,6 +194,24 @@ export async function executeNativeHarnessTool(call: NativeToolCall, approved: b
 
 executeNativeHarnessTool.maxRetries = 0
 
+async function resolveNativeAssignment(access: NativeHarnessAccess, values: Record<string, unknown>, repository: ConvexHarnessRepository) {
+  if (typeof values.assignmentId !== 'string' || typeof values.attemptId !== 'string'
+    || !['accept', 'exclude', 'cancel'].includes(String(values.action))
+    || (values.reason !== undefined && typeof values.reason !== 'string')) throw new FatalError('Invalid assignment resolution.')
+  const resolution = await repository.resolveAssignment({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
+    parentRunId: access.runId, workflowRunId: access.workflowRunId, executionGeneration: access.executionGeneration ?? 0,
+    assignmentId: values.assignmentId, attemptId: values.attemptId, action: values.action as 'accept' | 'exclude' | 'cancel', reason: values.reason as string | undefined })
+  for (const workflowRunId of resolution.workflows) await cancelHarnessWorkflow(workflowRunId)
+  if (resolution.cancellationRoot) await cancelPersonalHarnessWorkflows(resolution.cancellationRoot)
+  return { assignmentId: resolution.assignmentId, attemptId: resolution.attemptId, disposition: resolution.disposition, reason: resolution.reason }
+}
+
+function assertNativeAgentRequest(toolCallId: string, toolName: string) {
+  if (!toolCallId || toolCallId.length > 256 || !['ask_agent', 'post_message', 'resolve_assignment'].includes(toolName)) {
+    throw new FatalError('Invalid native agent request.')
+  }
+}
+
 export async function dispatchNativeHarnessAgentRequest(
   access: NativeHarnessToolsInput['access'],
   context: NativeHarnessToolsInput['context'],
@@ -200,14 +220,15 @@ export async function dispatchNativeHarnessAgentRequest(
   input: unknown,
 ): Promise<unknown> {
   'use step'
-  if (!toolCallId || toolCallId.length > 256 || !['ask_agent', 'post_message'].includes(toolName)) {
-    throw new FatalError('Invalid native agent request.')
-  }
+  assertNativeAgentRequest(toolCallId, toolName)
   await refreshNativeHarnessAccess(access, context, toolName)
   const values = input && typeof input === 'object' && !Array.isArray(input)
     ? input as Record<string, unknown> : {}
   const server = getOverlayServerContext()
   const repository = new ConvexHarnessRepository()
+  if (toolName === 'resolve_assignment') {
+    return await resolveNativeAssignment(access, values, repository)
+  }
   const childRunIds: string[] = []
   const startTurns = async (args: {
     actorUserId: string

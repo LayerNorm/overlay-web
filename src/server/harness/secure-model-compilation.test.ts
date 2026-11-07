@@ -14,6 +14,8 @@ test.each([
   ['native-tool-steps.ts', ['nativeHarnessToolNeedsApproval', 'executeNativeHarnessTool', 'dispatchNativeHarnessAgentRequest']],
   ['native-named-child-launch.ts', ['startNativeHarnessNamedChild']],
   ['native-child-steps.ts', ['admitNativeHarnessChild']],
+  ['native-assignment-steps.ts', ['readNativeAssignmentIssues']],
+  ['native-recovery-steps.ts', ['readNativeRecoveryWork', 'executeNativeRecoveryWork', 'acknowledgeNativeRecoveryWork']],
   ['native-delivery-steps.ts', ['attachNativeHarnessDelivery',
     'projectNativeHarnessWait', 'finishNativeHarnessDelivery', 'readNativeAssignmentResult', 'settleNativeAssignmentResult']],
   ['resource-wait-steps.ts', ['createHarnessResourceToken', 'publishHarnessResourceWait', 'consumeHarnessResourceWait']],

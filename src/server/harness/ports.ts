@@ -100,6 +100,7 @@ export interface HarnessExecutionPorts {
   delegate(input: HarnessDelegation, toolCallId: string): Promise<HarnessChild>
   readChild(childRunId: string): Promise<HarnessSnapshot>
   readAssignmentResult?(childRunId: string): Promise<AssignmentResultView | null>
+  readAssignmentIssues?(): Promise<string[]>
   waitForChildren(childRunIds: string[]): Promise<void>
   waitForInput(state: HarnessSnapshot): Promise<ModelMessage[] | null>
   waitForApproval(requests: HarnessApprovalRequest[]): Promise<Array<{

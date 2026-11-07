@@ -1539,6 +1539,7 @@ export default defineSchema({
     dispositionReason: v.optional(v.string()), disposedByRunId: v.optional(v.string()), disposedAt: v.optional(v.number()),
     createdAt: v.number(),
   }).index('by_attemptId', ['attemptId'])
+    .index('by_parentRunId', ['parentRunId'])
     .index('by_workspaceId_dispatchKey', ['workspaceId', 'dispatchKey'])
     .index('by_assignmentId_ordinal', ['assignmentId', 'ordinal'])
     .index('by_childRunId', ['childRunId'])
@@ -1561,6 +1562,26 @@ export default defineSchema({
     channelName: v.optional(v.string()), originalBindingId: v.string(), createdAt: v.number(), updatedAt: v.number(),
   }).index('by_external_thread', ['platform', 'connectionId', 'externalTeamId', 'channelId', 'threadId'])
     .index('by_conversationId', ['conversationId']),
+
+  agentAssignmentLaunchIntents: defineTable({
+    attemptId: v.string(), parentRunId: v.string(), generation: v.number(),
+    state: v.union(v.literal('pending'), v.literal('launched'), v.literal('settled'), v.literal('cancelled')),
+    winnerWorkflowRunId: v.optional(v.string()), attempts: v.number(), nextAttemptAt: v.number(),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_attemptId', ['attemptId']).index('by_parentRunId', ['parentRunId'])
+    .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt']),
+
+  agentConversationTurnQueue: defineTable({
+    conversationId: v.id('conversations'), deliveryAgentRunId: v.id('conversationAgentRuns'),
+    requesterUserId: v.string(), workspaceId: v.string(), attemptId: v.optional(v.string()),
+    authorityPolicyVersion: v.number(), agentId: v.string(), initiatorPrincipalId: v.string(),
+    memoryEnabled: v.optional(v.boolean()),
+    state: v.union(v.literal('pending'), v.literal('claimed'), v.literal('settled'), v.literal('cancelled')),
+    generation: v.number(), winnerWorkflowRunId: v.optional(v.string()), attempts: v.number(), nextAttemptAt: v.number(),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_deliveryAgentRunId', ['deliveryAgentRunId'])
+    .index('by_conversationId_state', ['conversationId', 'state', 'createdAt'])
+    .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt']),
 
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),

@@ -106,6 +106,10 @@ export async function settleAssignmentAttempt(ctx: MutationCtx, childRunId: stri
     const resultId = await ctx.db.insert('agentAssignmentResults', { ...envelope, createdAt: now })
     await ctx.db.patch(attempt._id, { resultId })
   }
+  if (envelope.terminal && !envelope.publicationPending) {
+    const intent = await ctx.db.query('agentAssignmentLaunchIntents').withIndex('by_attemptId', q => q.eq('attemptId', attempt.attemptId)).unique()
+    if (intent && intent.state !== 'cancelled') await ctx.db.patch(intent._id, { state: 'settled', updatedAt: now })
+  }
 }
 
 export const settle = mutation({

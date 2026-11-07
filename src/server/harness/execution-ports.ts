@@ -9,7 +9,7 @@ import { readHarnessArtifactMedia, readHarnessArtifactText } from './artifact-co
 
 export type HarnessSurfacePorts = Pick<HarnessExecutionPorts,
   'recordToolResult' | 'delegate' | 'readChild' | 'waitForChildren' | 'waitForInput' | 'waitForApproval' | 'waitForFunding' | 'checkFunding'>
-  & Partial<Pick<HarnessExecutionPorts, 'continueExecution' | 'readAssignmentResult'>>
+  & Partial<Pick<HarnessExecutionPorts, 'continueExecution' | 'readAssignmentResult' | 'readAssignmentIssues'>>
 
 export function createHarnessExecutionPorts(input: {
   reference: HarnessExecutionReference

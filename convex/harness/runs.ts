@@ -3,6 +3,9 @@ import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/
 import type { Doc, Id } from '../_generated/dataModel'
 import { requireConversationAccess } from '../collaboration/directMessages'
 import { bindAssignmentAttempt, settleAssignmentAttempt } from '../collaboration/assignmentResults'
+import { assignmentCompletionIssues, cancelPendingAssignmentLaunches } from '../collaboration/assignmentObligations'
+import { claimNativeLaunch } from '../collaboration/assignmentLaunchOwnership'
+import { cancelOutstandingAssignments } from '../collaboration/assignmentCoordination'
 import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
@@ -1255,6 +1258,7 @@ async function persistMetadata(ctx: MutationCtx, run: RunRow, snapshot: HarnessS
     updatedAt: snapshot.updatedAt,
   })
   await settleAssignmentAttempt(ctx, run.runId)
+  if (snapshot.status === 'cancelled' || snapshot.status === 'failed') await cancelPendingAssignmentLaunches(ctx, run.runId)
   if (isTerminalStatus(snapshot.status)) {
     const expiresAt = snapshot.updatedAt + 30 * 24 * 60 * 60_000
     const artifacts = await ctx.db.query('harnessContextArtifacts')
@@ -1264,6 +1268,26 @@ async function persistMetadata(ctx: MutationCtx, run: RunRow, snapshot: HarnessS
     await Promise.all(artifacts.filter(artifact => artifact.expiresAt !== expiresAt)
       .map(artifact => ctx.db.patch(artifact._id, { expiresAt })))
   }
+}
+
+export async function settleResolvedAssignmentChild(ctx: MutationCtx, parent: RunRow, child: RunRow, excluded: boolean) {
+  const latestParent = await findRun(ctx, parent.runId)
+  const latestChild = await findRun(ctx, child.runId)
+  if (!latestParent || !latestChild) throw new Error('HARNESS_RUN_NOT_FOUND')
+  const current = await hydrateSnapshot(ctx, latestParent)
+  const actualChild = await hydrateSnapshot(ctx, latestChild)
+  if (isTerminalStatus(current.status) || !isTerminalStatus(actualChild.status) || actualChild.modelReservation
+    || actualChild.children.some(row => row.status === 'running' || row.status === 'cancelled')) return
+  const now = Date.now()
+  let next = settleHarnessChild(current, actualChild, now)
+  const milestone = next.plan.find(step => step.childRunId === child.runId && step.id.startsWith('ask:'))
+  if (excluded && milestone && milestone.status !== 'done') {
+    next = { ...next, plan: next.plan.map(step => step.id === milestone.id ? { ...step, status: 'done', skipReason: undefined } : step),
+      revision: next.revision + 1, planRevision: next.planRevision + 1, updatedAt: now }
+  }
+  await persistMetadata(ctx, latestParent, next)
+  await persistPlan(ctx, parent.runId, current.planRevision, current.plan, next, now)
+  await persistChildren(ctx, parent.runId, current.children, next.children)
 }
 
 export async function failUnclaimedNativeHarnessInTransaction(ctx: MutationCtx, input: {
@@ -1634,8 +1658,11 @@ async function applyReducer(
       }
       return { snapshot }
     }
-    case 'finish':
+    case 'finish': {
+      const issues = await assignmentCompletionIssues(ctx, run.runId)
+      if (issues.length) throw new Error(`ASSIGNMENTS_UNRESOLVED: ${issues.join('; ')}`)
       return { snapshot: finishHarness(current, now, operation.resultSummary) }
+    }
     case 'terminate':
       return { snapshot: terminateHarness(current, operation.status, operation.reason, now, operation.diagnostic) }
   }
@@ -2250,6 +2277,7 @@ export const apply = mutation({
       if (stableJson(current.plan) !== stableJson(next.plan)) await projectPlanToDelivery(ctx, run, next.plan, now)
       await persistChildren(ctx, run.runId, current.children, next.children)
     }
+    if (operation.type === 'terminate' && next.status === 'cancelled') await cancelOutstandingAssignments(ctx, run.runId, args.serverSecret)
     if (run.deliveryAgentRunId && (operation.type === 'pause_for_funding' || operation.type === 'resume_funding'
       || operation.type === 'pause_for_authorization')) {
       const delivery = await ctx.db.get(run.deliveryAgentRunId as Id<'conversationAgentRuns'>)
@@ -2262,6 +2290,7 @@ export const apply = mutation({
       }
     }
     if (operation.type === 'claim_execution') {
+      await claimNativeLaunch(ctx, run, workflowRunId!, executionGeneration, args.serverSecret)
       const outbox = await ctx.db.query('harnessContinuationOutbox')
         .withIndex('by_runId_generation', q => q.eq('runId', run.runId).eq('generation', executionGeneration))
         .unique()
