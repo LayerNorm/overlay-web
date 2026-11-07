@@ -1,6 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useConvexAuth, useQuery } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
 import { useAuth } from '@/contexts/AuthContext'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { registerByokModels } from '@/shared/ai/gateway/model-data'
@@ -166,19 +168,22 @@ export function useByokModels({ enabled = true }: { enabled?: boolean } = {}) {
     }
   }, [enabled, scopeKey, setConnections, userId, workspaceId])
 
+  // Live: a connection added, tested, enabled or removed in any tab updates settings and model pickers at once.
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
+  const live = useQuery(
+    api.providers.browse.connections,
+    enabled && scopeKey && workspaceId && isAuthenticated && !authLoading ? { workspaceId } : 'skip',
+  ) as ByokConnectionRow[] | null | undefined
+  const seeded = useRef<string | null>(null)
   useEffect(() => {
-    if (!enabled || !userId || !scopeKey) return
-    const revalidate = () => {
-      if (document.visibilityState !== 'visible') return
+    if (!live || !scopeKey || !registryOwnership.isActive(scopeKey)) return
+    setCachedConnections(scopeKey, live)
+    // The default gateway is created from the server's model catalog the first time connections are read there.
+    if (!live.some((connection) => connection.isDefault) && seeded.current !== scopeKey) {
+      seeded.current = scopeKey
       void loadConnections(workspaceId, scopeKey, true).catch(() => {})
     }
-    window.addEventListener('focus', revalidate)
-    const timer = window.setInterval(revalidate, 60_000)
-    return () => {
-      window.removeEventListener('focus', revalidate)
-      window.clearInterval(timer)
-    }
-  }, [enabled, scopeKey, userId, workspaceId])
+  }, [live, scopeKey, workspaceId])
 
   // Client-side data load on mount — no server data layer in this app.
   // react-doctor-disable-next-line react-doctor/no-fetch-in-effect

@@ -1,3 +1,4 @@
+import { effectiveAgentEnvironmentStatus as sharedEffectiveStatus } from '@/shared/agents/environment-status'
 import 'server-only'
 
 import {
@@ -62,7 +63,7 @@ const INTERACTIVE_QUEUE_TTL_MS = 2 * 60_000
 const ARTIFACT_UPLOAD_TTL_MS = 5 * 60_000
 const ARTIFACT_RETENTION_MS = 30 * 24 * 60 * 60_000
 const MAX_ARTIFACT_BYTES = 25 * 1024 * 1024
-export const AGENT_ENVIRONMENT_ONLINE_WINDOW_MS = 45_000
+export { AGENT_ENVIRONMENT_ONLINE_WINDOW_MS } from '@/shared/agents/environment-status'
 
 const PHRASE_WORDS = [
   'amber', 'birch', 'cedar', 'coral', 'dawn', 'ember', 'fern', 'harbor',
@@ -1121,10 +1122,7 @@ export function effectiveAgentEnvironmentStatus(
   environment: Pick<AgentEnvironment, 'status' | 'lastSeenAt'>,
   now: number,
 ): AgentEnvironment['status'] {
-  if (environment.status !== 'online') return environment.status
-  return (environment.lastSeenAt ?? 0) >= now - AGENT_ENVIRONMENT_ONLINE_WINDOW_MS
-    ? 'online'
-    : 'offline'
+  return sharedEffectiveStatus(environment, now)
 }
 
 function translatePolicyError(error: unknown) {

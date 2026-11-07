@@ -57,7 +57,7 @@ const connectionRowValidator = v.object({
  * before returning it to the client. discoveredModelsJson is NOT a secret —
  * it's model metadata needed by the client to render model names.
  */
-function stripSecrets(row: Doc<'userProviderConnections'>, canManage = true) {
+export function stripSecrets(row: Doc<'userProviderConnections'>, canManage = true) {
   return {
     _id: row._id,
     providerId: row.providerId,
