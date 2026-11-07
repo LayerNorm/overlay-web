@@ -23,28 +23,6 @@ interface SlackChannelResponse {
   num_members?: number
 }
 
-interface SlackImportJobResponse {
-  _id: string
-  status: string
-  selectedChannelIds: string[]
-  totalChannels?: number
-  processedChannels?: number
-  totalMessages?: number
-  coverage?: {
-    publicChannels: number
-    privateChannels: number
-    dms: number
-    mpims: number
-    messagesImported: number
-    filesDownloaded: number
-    threadsImported: number
-  }
-  error?: string
-  createdAt: number
-  updatedAt: number
-  completedAt?: number
-}
-
 /**
  * Resolve the Composio connected_account_id for Slack in the active workspace.
  * Returns null if Slack is not connected.
@@ -64,8 +42,6 @@ async function resolveSlackConnectedAccount(
  * Query params:
  *   - action=channels&connectedAccountId=...  → list Slack channels
  *   - action=users&connectedAccountId=...     → list Slack users
- *   - action=jobs                             → list import jobs for workspace
- *   - action=job&jobId=...                    → get a single job
  */
 export async function GET(
   request: NextRequest,
@@ -73,7 +49,7 @@ export async function GET(
 ) {
   try {
     const { searchParams } = request.nextUrl
-    const action = searchParams.get('action') ?? 'jobs'
+    const action = searchParams.get('action')
     const workspaceId = context.workspace.workspace.id
     const userId = context.auth.userId
 
@@ -156,49 +132,8 @@ export async function GET(
       })
     }
 
-    if (action === 'job') {
-      const jobId = searchParams.get('jobId')
-      if (!jobId) {
-        return NextResponse.json({ error: 'jobId required' }, { status: 400 })
-      }
-      const job = await convex.query<SlackImportJobResponse | null>(
-        'imports/slackJobs:getJob',
-        {
-          jobId: jobId as Id<'slackImportJobs'>,
-          userId,
-          accessToken: context.auth.accessToken,
-          serverSecret: getInternalApiSecret(),
-        },
-      )
-      if (!job) {
-        return NextResponse.json({ error: 'Job not found' }, { status: 404 })
-      }
-      return NextResponse.json(job)
-    }
-
-    // Default: action=jobs — list import jobs for the workspace
-    // Also checks Slack connection status so the client can use this
-    // as a lightweight connection check without calling the integrations catalog.
-    const connectedAccountId = await resolveSlackConnectedAccount(workspaceId, userId)
-    if (!connectedAccountId) {
-      return NextResponse.json(
-        { error: 'Slack is not connected. Connect Slack via the integrations page first.' },
-        { status: 400 },
-      )
-    }
-
-    const jobs = await convex.query<SlackImportJobResponse[]>(
-      'imports/slackJobs:listJobs',
-      {
-        workspaceId,
-        userId,
-        accessToken: context.auth.accessToken,
-        serverSecret: getInternalApiSecret(),
-        limit: 20,
-      },
-    ) ?? []
-
-    return NextResponse.json({ jobs, connected: true })
+    // Import jobs and connection status are read live from `imports/slackBrowse:status`.
+    return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
   } catch (error) {
     logger.error('[SlackImport] GET failed:', error)
     const errMsg = error instanceof Error
