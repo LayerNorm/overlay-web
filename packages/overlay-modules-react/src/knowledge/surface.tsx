@@ -58,6 +58,12 @@ export interface SharedKnowledgeFilePort {
   contentUrl(file: FileNode): string | undefined
 }
 
+const NO_MEMORIES: SharedKnowledgeMemoryPort = {
+  list: async () => [],
+  create: async () => ({ ok: false, error: 'Memories are not available here.' }),
+  delete: async () => false,
+}
+
 export interface SharedKnowledgeSurfaceProps {
   mode?: 'knowledge' | 'files'
   initialFiles?: FileNode[]
@@ -70,7 +76,8 @@ export interface SharedKnowledgeSurfaceProps {
   adapters: KnowledgeSurfaceAdapters
   /** Category tabs supplied by the app shell, shown in the header. */
   headerTabs?: ReactNode
-  memories: SharedKnowledgeMemoryPort
+  /** Hosts that show the memories tab (knowledge mode) supply this; the web Files page does not. */
+  memories?: SharedKnowledgeMemoryPort
   files: SharedKnowledgeFilePort
   renderFileViewer(props: { file: FileNode; name: string; content: string; url?: string }): ReactNode
   openFilesInHost?: boolean
@@ -307,7 +314,7 @@ export function SharedKnowledgeSurface({
   onUpdateQuery,
   adapters,
   headerTabs,
-  memories: memoryPort,
+  memories: memoryPort = NO_MEMORIES,
   files: filePort,
   renderFileViewer,
   openFilesInHost = false,
