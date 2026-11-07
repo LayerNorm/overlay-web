@@ -86,3 +86,24 @@ test('a linked archived room can be included by id, and only by the member who a
   // The DM is archived for Bob only; Alice cannot pull it in by id.
   expect((await as('alice').query(rooms, { workspaceId: 'ws', include: ids.dm }) as Row[]).map(row => row._id)).toEqual([ids.general])
 })
+
+test('an archived room older than the newest 500 is listed only when included by id', async () => {
+  const { t, as, ids } = await fixture()
+  await t.run(async ctx => {
+    for (let i = 0; i < 501; i++) {
+      const room = await ctx.db.insert('conversations', {
+        workspaceId: 'ws', userId: 'alice', title: `newer-${i}`, conversationType: 'channel', scope: 'workspace',
+        createdAt: 1, updatedAt: 1, lastModified: 1, lastMode: 'act', askModelIds: [], actModelId: 'm',
+      } as never)
+      await ctx.db.insert('conversationParticipants', {
+        conversationId: room, workspaceId: 'ws', principalId: 'p-alice', principalType: 'human', role: 'member', status: 'active',
+        notificationLevel: 'all', joinedAt: 1, updatedAt: 1, archivedAt: 100 + i,
+      } as never)
+    }
+  })
+  type Row = { _id: string }
+  const plain = await as('alice').query(rooms, { workspaceId: 'ws' }) as Row[]
+  expect(plain.some(row => row._id === ids.general)).toBe(false)
+  const included = await as('alice').query(rooms, { workspaceId: 'ws', include: ids.general }) as Row[]
+  expect(included.some(row => row._id === ids.general)).toBe(true)
+})
