@@ -68,6 +68,14 @@ type BudgetClaim = { ok: true; alreadyClaimed?: boolean } | { ok: false; reason:
 type Caller = { agentId: string; conversationId: string; turnId: string }
 type Person = { actorUserId: string; actorPrincipalId: string; workspaceId: string }
 
+function assertAssignmentContext(args: { nativeAssignment?: NativeAgentAssignmentContext; caller?: Caller; assignmentId?: string }, target: WorkspaceAgentDirectoryItem) {
+  if (args.nativeAssignment && (target.harness !== 'overlay' || parseByoModelId(target.modelId) !== null)) {
+    throw new AgentAskError("External agents can't be asked from this run yet.", 409, 'native_external_agent_unsupported')
+  }
+  if (args.nativeAssignment && !args.caller) throw new AgentAskError('Native assignment identity is missing.', 400, 'invalid_assignment')
+  if (args.assignmentId && !args.nativeAssignment) throw new AgentAskError('Revisions require a native assignment context.', 409, 'native_assignment_required')
+}
+
 /**
  * Agents asking agents. The question is posted as a message by the asking agent into a conversation of the person,
  * the asking agent, and the asked agent, and the asked agent answers it through the same turn machinery as any
@@ -127,11 +135,7 @@ export class AgentAskService {
     const visible = await this.visibleAgents(args)
     const target = this.findAgent(visible, args.target)
     if (!target) throw new AgentAskError(`No agent called "${args.target.trim()}" that you can ask. Use list_agents to see who is available.`, 404, 'agent_not_found')
-    if (args.nativeAssignment && (target.harness !== 'overlay' || parseByoModelId(target.modelId) !== null)) {
-      throw new AgentAskError("External agents can't be asked from this run yet.", 409, 'native_external_agent_unsupported')
-    }
-    if (args.nativeAssignment && !args.caller) throw new AgentAskError('Native assignment identity is missing.', 400, 'invalid_assignment')
-    if (args.assignmentId && !args.nativeAssignment) throw new AgentAskError('Revisions require a native assignment context.', 409, 'native_assignment_required')
+    assertAssignmentContext(args, target)
     if (!args.caller) return await this.askAsPerson({ ...args, message, target })
 
     const { caller, lineage } = await this.callerLineage(args, visible, args.caller)

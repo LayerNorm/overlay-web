@@ -15,7 +15,7 @@ test.each([
   ['native-named-child-launch.ts', ['startNativeHarnessNamedChild']],
   ['native-child-steps.ts', ['admitNativeHarnessChild']],
   ['native-delivery-steps.ts', ['attachNativeHarnessDelivery',
-    'projectNativeHarnessWait', 'finishNativeHarnessDelivery']],
+    'projectNativeHarnessWait', 'finishNativeHarnessDelivery', 'readNativeAssignmentResult', 'settleNativeAssignmentResult']],
   ['resource-wait-steps.ts', ['createHarnessResourceToken', 'publishHarnessResourceWait', 'consumeHarnessResourceWait']],
 ] as const)('compiled %s exposes only durable server steps', async (filename, exports) => {
   const path = fileURLToPath(new URL(`./${filename}`, import.meta.url))
