@@ -20,10 +20,6 @@ export async function identityRequest<T>(url: string, init?: RequestInit): Promi
   return body as T
 }
 
-export function notifyIdentityUpdated(workspaceId?: string) {
-  window.dispatchEvent(new CustomEvent('overlay:identity-updated', { detail: { workspaceId } }))
-}
-
 export function useIdentityProfile(endpoint: string) {
   const [profile, setProfile] = useState<IdentityProfile | null>(null)
   const [error, setError] = useState<string | null>(null)

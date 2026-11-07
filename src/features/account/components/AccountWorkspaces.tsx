@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
+import { useConvexAuth, useQuery } from 'convex/react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronRight, Plus } from 'lucide-react'
@@ -11,23 +12,18 @@ import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { workspaceMemberLabel } from '@/shared/workspaces/solo-workspace'
 import { identityRequest } from '@/hooks/useIdentityProfile'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { api } from '../../../../convex/_generated/api'
 
 export function AccountWorkspaces() {
   const router = useRouter()
-  const [directory, setDirectory] = useState<AccountWorkspaceDirectoryResponse | null>(null)
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  // Live: a workspace created, renamed or left anywhere, and new invitations, appear here without reloading.
+  const directory = useQuery(api.collaboration.directory.workspaces, isAuthenticated && !isLoading ? {} : 'skip') as
+    AccountWorkspaceDirectoryResponse | null | undefined
   const [error, setError] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [busy, setBusy] = useState<string | null>(null)
-  const generation = useRef(0)
   const opening = useRef(false)
-  const load = useCallback(async () => {
-    const current = ++generation.current
-    try {
-      const next = await identityRequest<AccountWorkspaceDirectoryResponse>('/api/v1/account/workspaces')
-      if (current === generation.current) { setDirectory(next); setError(null) }
-    } catch (caught) { if (current === generation.current) setError(caught instanceof Error ? caught.message : 'Could not load workspaces.') }
-  }, [])
-  useEffect(() => { void load(); return () => { generation.current += 1 } }, [load])
 
   async function openWorkspace(workspaceId: string) {
     if (opening.current) return
@@ -57,8 +53,8 @@ export function AccountWorkspaces() {
 
   return <section className="mt-4">
     <div className="mb-6 flex items-center justify-between gap-3"><h2 className="text-sm font-semibold">Workspaces</h2><Button variant="ghost" size="sm" onClick={() => setCreating(true)}><Plus className="size-4" />Create workspace</Button></div>
-    {error ? <div role="alert" className="text-sm text-destructive"><p>{error}</p><Button variant="ghost" onClick={() => void load()}>Try again</Button></div> : null}
-    {!directory && !error ? <p className="text-sm text-muted-foreground" role="status">Loading workspaces...</p> : null}
+    {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
+    {directory === undefined ? <p className="text-sm text-muted-foreground" role="status">Loading workspaces...</p> : null}
     {directory?.workspaces.length === 0 ? <p className="py-4 text-sm text-muted-foreground">You have no workspaces yet.</p> : null}
     <div className="space-y-3">{directory?.workspaces.map((workspace) => <Link key={workspace.id} href={buildWorkspaceHref(workspace.id, '/app/work')} aria-busy={busy === workspace.id} onNavigate={(event) => { event.preventDefault(); void openWorkspace(workspace.id) }} className="-mx-3 flex items-center gap-3 rounded-lg px-3 py-3 transition-colors hover:bg-(--surface-subtle) focus-visible:outline-ring">
       <WorkspaceAvatar workspace={workspace} />

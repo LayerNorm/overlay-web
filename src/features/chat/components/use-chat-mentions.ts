@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useLiveWorkspacePrincipals } from '@/hooks/use-workspace-members'
 import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-types'
 
 export function useChatMentions({
@@ -13,7 +13,6 @@ export function useChatMentions({
 }) {
   const [mentions, setMentions] = useState<MentionItem[]>([])
   const [personalMentionConfirmationOpen, setPersonalMentionConfirmationOpen] = useState(false)
-  const [mentionCategories, setMentionCategories] = useState<MentionCategory[]>([])
   // MentionInput emits a fresh mentions array on every keystroke. Bail out when the
   // value is unchanged so plain typing does not push new state / re-render the whole
   // chat experience on each character.
@@ -28,57 +27,26 @@ export function useChatMentions({
     })
   }, [])
 
-  useEffect(() => {
-    if (!activeWorkspaceId) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMentionCategories([])
-      return
-    }
-    let cancelled = false
-    void Promise.allSettled([
-      overlayAppClient.workspaces.management(activeWorkspaceId, 'people'),
-      overlayAppClient.workspaces.management(activeWorkspaceId, 'chats-agents'),
-    ]).then(([peopleResult, agentsResult]) => {
-      if (cancelled) return
-      const people = peopleResult.status === 'fulfilled'
-        ? peopleResult.value
-        : { items: [], currentPrincipalId: undefined }
-      const agents = agentsResult.status === 'fulfilled' ? agentsResult.value : { items: [] }
-      const principals = new Map<string, MentionItem>()
-      for (const item of [...people.items, ...agents.items]) {
-        if (
-          item.kind !== 'member' ||
-          !item.principalId ||
-          item.principalId === people.currentPrincipalId ||
-          item.status !== 'active'
-        ) continue
-        principals.set(item.principalId, {
-          type: 'person',
-          id: item.principalId,
-          name: item.name,
-          description: item.principalType === 'agent' ? 'Agent' : 'Workspace member',
-          principalType: item.principalType,
-          avatarColor: item.avatarColor,
-          avatarShape: item.avatarShape,
-          isDefault: item.isDefault,
-          ...(item.principalType === 'human' && item.photoUrl ? { photoUrl: item.photoUrl } : {}),
-          icon: 'UsersRound',
-        })
-      }
-      const items = [...principals.values()].sort((left, right) => left.name.localeCompare(right.name))
-      setMentionCategories([
-        ...(items.length ? [{
-          type: 'person' as const,
-          label: 'Members',
-          icon: 'UsersRound',
-          items,
-        }] : []),
-      ])
-    }).catch(() => {
-      if (!cancelled) setMentionCategories([])
-    })
-    return () => { cancelled = true }
-  }, [activeWorkspaceId, ])
+  // Live: people and agents joining, leaving or renamed update the mention list without reopening the chat.
+  const principals = useLiveWorkspacePrincipals(activeWorkspaceId)
+  const mentionCategories = useMemo<MentionCategory[]>(() => {
+    const items = (principals?.items ?? [])
+      .filter((item) => item.principalId !== principals?.currentPrincipalId)
+      .map((item): MentionItem => ({
+        type: 'person',
+        id: item.principalId!,
+        name: item.name,
+        description: item.principalType === 'agent' ? 'Agent' : 'Workspace member',
+        principalType: item.principalType,
+        avatarColor: item.avatarColor,
+        avatarShape: item.avatarShape,
+        isDefault: item.isDefault,
+        ...(item.principalType === 'human' && item.photoUrl ? { photoUrl: item.photoUrl } : {}),
+        icon: 'UsersRound',
+      }))
+      .sort((left, right) => left.name.localeCompare(right.name))
+    return items.length ? [{ type: 'person' as const, label: 'Members', icon: 'UsersRound', items }] : []
+  }, [principals])
 
   const personMentions = useMemo(
     () => mentions.filter((mention) => mention.type === 'person'),

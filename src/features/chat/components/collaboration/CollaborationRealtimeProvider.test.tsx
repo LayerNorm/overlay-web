@@ -84,8 +84,8 @@ test('live onboarding room acknowledgements settle without restarting sidebar di
   })
   const directory = t.mock.method(overlayAppClient.conversations, 'getPage', async () => ({ data: [], hasMore: false }))
   const workspace: WorkspaceSummary = { id: 'workspace', name: 'Personal', slug: 'personal', kind: 'personal', status: 'active', role: 'owner' }
+  values.set('collaboration/directory:workspaces', { workspaces: [workspace], activeWorkspaceId: workspace.id, invitations: [] })
   const workspaceClient: WorkspaceClient = {
-    list: async () => ({ workspaces: [workspace], activeWorkspaceId: workspace.id }),
     create: async () => { throw new Error('Not used') },
     activate: async () => { throw new Error('Not used') },
   }
@@ -111,11 +111,11 @@ test('live onboarding room acknowledgements settle without restarting sidebar di
   const router = { back: noop, forward: noop, refresh: noop, push: noop, replace: noop, prefetch: noop, bfcacheId: 'fixture' }
   const tree = (conversationId: string) => <AppRouterContext.Provider value={router}>
     <PathnameContext.Provider value="/app/work">
-      <WorkspaceProvider client={workspaceClient}>
-        <ConvexProviderWithAuth client={client} useAuth={useAuth}>
+      <ConvexProviderWithAuth client={client} useAuth={useAuth}>
+        <WorkspaceProvider client={workspaceClient}>
           <CollaborationRealtimeProvider><Probe conversationId={conversationId} /></CollaborationRealtimeProvider>
-        </ConvexProviderWithAuth>
-      </WorkspaceProvider>
+        </WorkspaceProvider>
+      </ConvexProviderWithAuth>
     </PathnameContext.Provider>
   </AppRouterContext.Provider>
   await act(async () => { renderer = create(tree('onboarding-room')) })

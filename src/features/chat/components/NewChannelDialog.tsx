@@ -1,6 +1,7 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useLiveWorkspacePrincipals } from '@/hooks/use-workspace-members'
 import { Bot, Check, Hash, Lock, Search, UserRound } from 'lucide-react'
 import { Button, DialogFrame, Input } from '@overlay/ui/primitives'
 import type { ChannelVisibility, WorkspaceManagementItem } from '@overlay/workspace-contracts'
@@ -22,30 +23,16 @@ export function NewChannelDialog({
   const [name, setName] = useState('')
   const [topic, setTopic] = useState('')
   const [visibility, setVisibility] = useState<ChannelVisibility>('public')
-  const [members, setMembers] = useState<WorkspaceManagementItem[]>([])
+  // Live: the private-channel picker follows people joining, leaving or being renamed.
+  const principals = useLiveWorkspacePrincipals(open && visibility === 'private' ? workspaceId : null)
+  const members = useMemo<WorkspaceManagementItem[]>(
+    () => (principals?.items ?? []).filter((item) => item.principalId !== principals?.currentPrincipalId),
+    [principals],
+  )
   const [selected, setSelected] = useState<string[]>([])
   const [query, setQuery] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!open || visibility !== 'private') return
-    let cancelled = false
-    void Promise.all([
-      overlayAppClient.workspaces.management(workspaceId, 'people'),
-      overlayAppClient.workspaces.management(workspaceId, 'chats-agents'),
-    ]).then(([people, agents]) => {
-      if (cancelled) return
-      const byPrincipal = new Map<string, WorkspaceManagementItem>()
-      for (const item of [...people.items, ...agents.items]) {
-        if (item.kind === 'member' && item.principalId && item.status === 'active') {
-          byPrincipal.set(item.principalId, item)
-        }
-      }
-      setMembers([...byPrincipal.values()].filter((item) => item.principalId !== people.currentPrincipalId))
-    }).catch(() => setError('Could not load workspace members.'))
-    return () => { cancelled = true }
-  }, [open,  visibility, workspaceId])
 
   const candidates = useMemo(() => {
     const needle = query.trim().toLowerCase()

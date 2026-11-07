@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-07T12:18:34.642Z",
+  "generatedAt": "2026-11-07T12:46:59.070Z",
   "budgets": {
     "maxProductionFileLoc": 500,
     "maxFunctionComplexity": 25,
@@ -241,7 +241,7 @@
     },
     {
       "file": "src/features/knowledge/components/MemoriesView.tsx",
-      "loc": 787,
+      "loc": 767,
       "complexity": 81,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
@@ -259,14 +259,14 @@
     },
     {
       "file": "src/features/workspaces/components/SlackImportPanel.tsx",
-      "loc": 1283,
-      "complexity": 198,
+      "loc": 1285,
+      "complexity": 202,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/features/workspaces/components/WorkspaceSettingsPanel.tsx",
-      "loc": 1334,
-      "complexity": 146,
+      "loc": 1271,
+      "complexity": 141,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
@@ -373,13 +373,13 @@
     },
     {
       "file": "src/server/workspaces/ConvexWorkspaceRepository.ts",
-      "loc": 642,
-      "complexity": 108,
+      "loc": 636,
+      "complexity": 107,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
       "file": "src/server/workspaces/WorkspaceService.ts",
-      "loc": 1164,
+      "loc": 1157,
       "complexity": 180,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
@@ -391,7 +391,7 @@
     },
     {
       "file": "src/shared/schemas/api-boundary.ts",
-      "loc": 1266,
+      "loc": 1259,
       "complexity": 16,
       "recordedAt": "2026-09-11T05:17:27.991Z"
     }
@@ -973,7 +973,7 @@
     {
       "file": "src/app/api/v1/account/profile/route.ts",
       "layer": "src/app/api/v1 wrappers",
-      "loc": 9,
+      "loc": 6,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
@@ -3051,12 +3051,12 @@
     }
   ],
   "totals": {
-    "files": 3033,
-    "code": 321179,
-    "total": 360562,
-    "productionFiles": 2273,
-    "productionCode": 240688,
+    "files": 3034,
+    "code": 320946,
+    "total": 360363,
+    "productionFiles": 2274,
+    "productionCode": 240374,
     "testFiles": 760,
-    "testCode": 80491
+    "testCode": 80572
   }
 }

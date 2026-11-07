@@ -3,32 +3,33 @@
 import { identityInitials } from '@/shared/workspaces/identity-initials'
 
 import { useState } from 'react'
+import { useConvexAuth, useQuery } from 'convex/react'
 import { Pencil } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage, Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, toast } from '@overlay/ui/primitives'
 import { IdentityImageEditor, type IdentityImageChoice } from '@/components/identity/IdentityImageEditor'
-import { identityRequest, notifyIdentityUpdated, useIdentityProfile, type IdentityProfile } from '@/hooks/useIdentityProfile'
+import { identityRequest, type IdentityProfile } from '@/hooks/useIdentityProfile'
+import { api } from '../../../../convex/_generated/api'
 
 export function AccountIdentity() {
   const endpoint = '/api/v1/account/profile'
-  const { profile, error, loading, reload, setProfile } = useIdentityProfile(endpoint)
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  // Live: a name or photo saved in another tab or on another device shows here at once.
+  const profile = useQuery(api.auth.accountBrowse.identity, isAuthenticated && !isLoading ? {} : 'skip') as IdentityProfile | null | undefined
   const [editingPhoto, setEditingPhoto] = useState(false)
   const [editingName, setEditingName] = useState(false)
 
   async function savePhoto(choice: IdentityImageChoice) {
-    let next: IdentityProfile
     if ('file' in choice) {
       const body = new FormData()
       body.append('file', choice.file)
-      next = await identityRequest(`${endpoint}/photo`, { method: 'POST', body })
+      await identityRequest(`${endpoint}/photo`, { method: 'POST', body })
     } else {
-      next = await identityRequest(endpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resetPhoto: true }) })
+      await identityRequest(endpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ resetPhoto: true }) })
     }
-    setProfile(next)
-    notifyIdentityUpdated()
     toast.success('Account photo saved.')
   }
 
-  if (!profile) return <div className="py-8 text-sm text-muted-foreground" role="status">{loading ? 'Loading your profile...' : <><p role="alert">{error}</p><Button variant="ghost" onClick={() => void reload()}>Try again</Button></>}</div>
+  if (!profile) return <div className="py-8 text-sm text-muted-foreground" role="status">{profile === undefined ? 'Loading your profile...' : 'Your profile is not available yet.'}</div>
   return <>
     <div className="flex items-center gap-3 py-8">
       <Button variant="ghost" className="relative size-15 shrink-0 rounded-full p-0" onClick={() => setEditingPhoto(true)} aria-label="Change account photo">
@@ -40,9 +41,7 @@ export function AccountIdentity() {
     </div>
     <IdentityImageEditor open={editingPhoto} onOpenChange={setEditingPhoto} title="Account photo" photoUrl={profile.photoUrl} fallback={identityInitials(profile.displayName)} resetLabel="Use sign-in photo" onSave={savePhoto} />
     <Dialog open={editingName} onOpenChange={setEditingName}>{editingName ? <AccountNameEditor profile={profile} onCancel={() => setEditingName(false)} onSave={async (displayName) => {
-      const next = await identityRequest<IdentityProfile>(endpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName }) })
-      setProfile(next)
-      notifyIdentityUpdated()
+      await identityRequest<IdentityProfile>(endpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ displayName }) })
       setEditingName(false)
       toast.success('Account name saved.')
     }} /> : null}</Dialog>

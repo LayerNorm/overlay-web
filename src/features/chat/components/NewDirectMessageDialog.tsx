@@ -1,12 +1,14 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
+import { useLiveWorkspacePrincipals } from '@/hooks/use-workspace-members'
 import { Check, Search, UserRound, UserPlus } from 'lucide-react'
 import { AgentCreature } from '@/components/orb/Creature'
 import { Avatar, AvatarFallback, AvatarImage, Button, DialogFrame, Input } from '@overlay/ui/primitives'
 import type { WorkspaceManagementItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 
+const NO_ITEMS: WorkspaceManagementItem[] = []
 const EMPTY_EXCLUDED_PRINCIPAL_IDS: string[] = []
 
 type NewDirectMessageDialogProps = {
@@ -33,18 +35,6 @@ type DialogActionContext = Pick<
   setSelected: (selected: string[]) => void
   setQuery: (query: string) => void
   setInviteSent: (sent: boolean) => void
-}
-
-async function loadWorkspaceMembers(workspaceId: string) {
-  const [people, agents] = await Promise.all([
-    overlayAppClient.workspaces.management(workspaceId, 'people'),
-    overlayAppClient.workspaces.management(workspaceId, 'chats-agents'),
-  ])
-  const byId = new Map<string, WorkspaceManagementItem>()
-  for (const item of [...people.items, ...agents.items]) {
-    if (item.kind === 'member' && item.principalId) byId.set(item.principalId, item)
-  }
-  return { currentPrincipalId: people.currentPrincipalId, items: [...byId.values()] }
 }
 
 function filterCandidates(
@@ -270,11 +260,13 @@ export function NewDirectMessageDialog({
   onCreated,
   onParticipantsAdded,
 }: NewDirectMessageDialogProps) {
-  const [items, setItems] = useState<WorkspaceManagementItem[]>([])
-  const [currentPrincipalId, setCurrentPrincipalId] = useState('')
+  // Live: someone joining, leaving or being renamed shows in the picker while it is open.
+  const principals = useLiveWorkspacePrincipals(open ? workspaceId : null)
+  const items = principals?.items ?? NO_ITEMS
+  const currentPrincipalId = principals?.currentPrincipalId ?? ''
+  const loading = open && principals === undefined
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [inviteSent, setInviteSent] = useState(false)
@@ -284,26 +276,10 @@ export function NewDirectMessageDialog({
   if (membersKey !== loadedKey) {
     setLoadedKey(membersKey)
     if (membersKey !== null) {
-      setLoading(true)
       setError(null)
       setInviteSent(false)
     }
   }
-
-  useEffect(() => {
-    if (!open) return
-    let cancelled = false
-    void loadWorkspaceMembers(workspaceId).then((result) => {
-      if (cancelled) return
-      setCurrentPrincipalId(result.currentPrincipalId)
-      setItems(result.items)
-    }).catch(() => {
-      if (!cancelled) setError('Could not load workspace members.')
-    }).finally(() => {
-      if (!cancelled) setLoading(false)
-    })
-    return () => { cancelled = true }
-  }, [open, workspaceId])
 
   const candidates = useMemo(
     () => filterCandidates(items, currentPrincipalId, excludedPrincipalIds, query),
