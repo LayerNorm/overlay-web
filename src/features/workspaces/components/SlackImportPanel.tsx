@@ -298,6 +298,8 @@ function useSlackImportPanel() {
   // ─── OAuth connect + poll for connection ──────────────────────────────────
   const handleConnect = useCallback(async () => {
     consumeOAuthCompletionRef.current = createOAuthCompletionGuard()
+    // The deadline is set before waiting starts, so the wait never ends while the connect request is in flight.
+    oauthDeadlineRef.current = Date.now() + 5 * 60_000
     setOauthPolling(true)
     const oauthTab = window.open('about:blank', '_blank')
     try {
@@ -314,8 +316,7 @@ function useSlackImportPanel() {
         if (oauthTab) oauthTab.location.href = data.redirectUrl
         else window.open(data.redirectUrl, '_blank', 'noopener,noreferrer')
 
-        // The live connection status ends the wait (below); give up after five minutes.
-        oauthDeadlineRef.current = Date.now() + 5 * 60_000
+        // The live connection status ends the wait (below); it gives up five minutes after Connect was pressed.
       } else {
         oauthTab?.close()
         toast.error('No connection URL was returned')
