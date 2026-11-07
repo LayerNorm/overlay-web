@@ -5,7 +5,7 @@ import { useConvexAuth, useQuery } from 'convex/react'
 import type { McpServerSummary } from '@overlay/app-core'
 import type { AgentEnvironmentResource, McpConnectionResource } from '@overlay/api-client'
 import { effectiveAgentEnvironmentStatus } from '@/shared/agents/environment-status'
-import type { AgentBinding, Computer } from '@overlay/workspace-contracts'
+import type { AgentBinding, Computer, SurfaceBinding, SurfaceConnection } from '@overlay/workspace-contracts'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { api } from '../../convex/_generated/api'
@@ -67,4 +67,12 @@ export function useLiveAgentBindings(agentId?: string): AgentBinding[] | null | 
   const workspaceId = useConnectionWorkspace()
   return useQuery(api.agents.environmentsBrowse.bindings, workspaceId ? { workspaceId, ...(agentId ? { agentId } : {}) } : 'skip') as
     AgentBinding[] | null | undefined
+}
+
+/** An agent's Slack (and later other) surface connections and bindings, live. Null when the agent is not visible. */
+export function useLiveAgentSurfaces(agentId: string | null):
+  { connections: SurfaceConnection[]; bindings: SurfaceBinding[]; canBind: boolean } | null | undefined {
+  const workspaceId = useConnectionWorkspace()
+  return useQuery(api.surfaces.browse.forAgent, workspaceId && agentId ? { workspaceId, agentId } : 'skip') as
+    { connections: SurfaceConnection[]; bindings: SurfaceBinding[]; canBind: boolean } | null | undefined
 }

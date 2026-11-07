@@ -153,3 +153,29 @@ test('environments never carry public keys, pending ones show their phrase, and 
   expect((await as('alice').query(bindings, { workspaceId: 'ws', agentId: 'a' }) as Array<{ id: string }>).map(b => b.id)).toEqual(['b'])
   expect(await as('stranger').query(environments, { workspaceId: 'ws' })).toBeNull()
 })
+
+test('agent surfaces follow agent visibility, workspace scoping and bind rights', async () => {
+  const { t, as } = await connectionFixture()
+  const forAgent = makeFunctionReference<'query'>('surfaces/browse:forAgent')
+  await t.run(async ctx => {
+    await ctx.db.patch((await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', 'ws').eq('principalId', 'p-carol')).unique())!._id, { role: 'guest' })
+    const agent = (agentId: string, visibility: string) => ctx.db.insert('workspaceAgentDefinitions', {
+      agentId, workspaceId: 'ws', principalId: `ap-${agentId}`, name: agentId, instructions: 'x', harness: 'overlay', modelId: 'm',
+      allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: 'p-alice', visibility, createdAt: 1, updatedAt: 1,
+    } as never)
+    await agent('team', 'workspace')
+    await agent('mine', 'creator')
+    await ctx.db.insert('surfaceConnections', { id: 'conn', workspaceId: 'ws', platform: 'slack', externalTeamId: 'T1', status: 'active', installedByUserId: 'alice', createdAt: 1, updatedAt: 1 } as never)
+    await ctx.db.insert('surfaceConnections', { id: 'other', workspaceId: 'elsewhere', platform: 'slack', externalTeamId: 'T2', status: 'active', installedByUserId: 'x', createdAt: 1, updatedAt: 1 } as never)
+    await ctx.db.insert('surfaceBindings', { id: 'b1', connectionId: 'conn', agentId: 'team', channelId: 'C1', status: 'active', createdByUserId: 'alice', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('surfaceBindings', { id: 'b2', connectionId: 'other', agentId: 'team', channelId: 'C2', status: 'active', createdByUserId: 'x', createdAt: 1, updatedAt: 1 })
+  })
+  const bob = await as('bob').query(forAgent, { workspaceId: 'ws', agentId: 'team' }) as { connections: Array<{ id: string }>; bindings: Array<{ id: string }>; canBind: boolean }
+  expect(bob.connections.map(c => c.id)).toEqual(['conn'])
+  expect(bob.bindings.map(b => b.id)).toEqual(['b1'])
+  expect(bob.canBind).toBe(true)
+  expect(await as('bob').query(forAgent, { workspaceId: 'ws', agentId: 'mine' })).toBeNull()
+  expect((await as('alice').query(forAgent, { workspaceId: 'ws', agentId: 'mine' }) as { canBind: boolean }).canBind).toBe(true)
+  expect((await as('carol').query(forAgent, { workspaceId: 'ws', agentId: 'team' }) as { canBind: boolean }).canBind).toBe(false)
+  expect(await as('stranger').query(forAgent, { workspaceId: 'ws', agentId: 'team' })).toBeNull()
+})

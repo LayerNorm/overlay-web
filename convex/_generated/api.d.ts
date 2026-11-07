@@ -192,6 +192,7 @@ import type * as providers_subscriptions from "../providers/subscriptions.js";
 import type * as search_mentions from "../search/mentions.js";
 import type * as surfaces_chatState from "../surfaces/chatState.js";
 import type * as surfaces_surfaceExecutions from "../surfaces/surfaceExecutions.js";
+import type * as surfaces_browse from "../surfaces/browse.js";
 import type * as surfaces_surfaces from "../surfaces/surfaces.js";
 import type * as webhooks_deliveries from "../webhooks/deliveries.js";
 import type * as webhooks_deliveryRunner from "../webhooks/deliveryRunner.js";
@@ -391,6 +392,7 @@ declare const fullApi: ApiFromModules<{
   "search/mentions": typeof search_mentions;
   "surfaces/chatState": typeof surfaces_chatState;
   "surfaces/surfaceExecutions": typeof surfaces_surfaceExecutions;
+  "surfaces/browse": typeof surfaces_browse;
   "surfaces/surfaces": typeof surfaces_surfaces;
   "webhooks/deliveries": typeof webhooks_deliveries;
   "webhooks/deliveryRunner": typeof webhooks_deliveryRunner;

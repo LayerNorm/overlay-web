@@ -11,6 +11,7 @@ import type {
 } from '@overlay/workspace-contracts'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useLiveAgentSurfaces } from '@/hooks/use-connections'
 import type { AgentType } from './AgentEditorForm'
 
 export type SurfaceChannelPicker = {
@@ -39,6 +40,9 @@ const SURFACE_ERROR_LABELS: Record<string, string> = {
  * presentational. Only Overlay-type agents can bind (BYO surfaces are
  * deferred), so the hook no-ops for them.
  */
+const NO_CONNECTIONS: SurfaceConnection[] = []
+const NO_BINDINGS: SurfaceBinding[] = []
+
 export function useAgentSurfaces(args: {
   activeWorkspaceId: string | null
 
@@ -48,43 +52,20 @@ export function useAgentSurfaces(args: {
   const { activeWorkspaceId,  agent, agentType } = args
   const searchParams = useSearchParams()
   const handledOAuthNoticeRef = useRef<string | null>(null)
-  const [connections, setConnections] = useState<SurfaceConnection[]>([])
-  const [bindings, setBindings] = useState<SurfaceBinding[]>([])
-  const [canBind, setCanBind] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [channelPicker, setChannelPicker] = useState<SurfaceChannelPicker | null>(null)
   const [busyBindingId, setBusyBindingId] = useState<string | null>(null)
 
   const enabled = Boolean(
     activeWorkspaceId && agent && !agent.archivedAt && agentType === 'overlay',
   )
-  // Which agent's connections have been read once (derived, so the first render already knows it is loading).
-  const [loadedFor, setLoadedFor] = useState<string | null>(null)
-  const initialLoading = enabled && loadedFor !== agent?.id
-
-  const refresh = useCallback(async () => {
-    if (!activeWorkspaceId || !agent) return
-    const [connectionsResult, bindingsResult] = await Promise.all([
-      overlayAppClient.surfaces.listConnections(activeWorkspaceId),
-      overlayAppClient.surfaces.listBindings(activeWorkspaceId, agent.id),
-    ])
-    setConnections(connectionsResult.connections)
-    setBindings(bindingsResult.bindings)
-    setCanBind(bindingsResult.canBind)
-    setError(null)
-  }, [activeWorkspaceId, agent])
-
-  useEffect(() => {
-    if (!enabled) return
-    let cancelled = false
-    setLoading(true)
-    setError(null)
-    void refresh()
-      .catch(() => { if (!cancelled) setError('Could not load surface connections.') })
-      .finally(() => { if (!cancelled) { setLoading(false); setLoadedFor(agent?.id ?? null) } })
-    return () => { cancelled = true }
-  }, [enabled, refresh, agent?.id])
+  // Live: a Slack install, a channel bound or removed in any tab, or a connection degrading, updates at once.
+  const live = useLiveAgentSurfaces(enabled && agent ? agent.id : null)
+  const connections: SurfaceConnection[] = live?.connections ?? NO_CONNECTIONS
+  const bindings: SurfaceBinding[] = live?.bindings ?? NO_BINDINGS
+  const canBind = live?.canBind ?? false
+  const loading = enabled && live === undefined
+  const initialLoading = loading
+  const error = enabled && live === null ? 'Could not load surface connections.' : null
 
   const connectSlack = useCallback(() => {
     if (!agent) return
@@ -132,12 +113,7 @@ export function useAgentSurfaces(args: {
     }
     setChannelPicker(null)
     toast.success('Channel added.')
-    try {
-      await refresh()
-    } catch {
-      setError('Could not load surface connections.')
-    }
-  }, [activeWorkspaceId, agent, refresh])
+  }, [activeWorkspaceId, agent])
 
   const removeBinding = useCallback(async (bindingId: string) => {
     if (!activeWorkspaceId) return
@@ -151,12 +127,7 @@ export function useAgentSurfaces(args: {
       setBusyBindingId(null)
     }
     toast.success('Channel removed.')
-    try {
-      await refresh()
-    } catch {
-      setError('Could not load surface connections.')
-    }
-  }, [activeWorkspaceId, refresh])
+  }, [activeWorkspaceId])
 
   // Consume OAuth callback results once so rerenders do not replay a notice.
   useEffect(() => {

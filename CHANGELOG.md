@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make agent surfaces live: an agent's Slack connection, its channel bindings and whether you may bind it now come from a Convex subscription, so a channel added or removed in another tab, or a Slack install degrading, shows without reloading. Listing channels, binding and Slack OAuth stay on the server, which talks to Slack. The extension host needed no change: it renders on the server and has no browser data loads.
+
 - Make Computers and connected-agent environments live: Settings → Computers, the agent panel and sidebar, Settings → Environments, agent options and machine enrollment read from Convex subscriptions instead of five separate polls (every 2.5 to 15 seconds). Provisioning, start, stop, control, enrollment, approval and heartbeats now show as they happen in every view, and an environment whose heartbeat goes stale turns offline on a local clock without any request. Provider references, public keys and credential hashes are never sent to the browser. Starting, stopping and provisioning stay on the server, which calls the provider and checks billing.
 
 - Make model-provider connections live: Settings → Providers and every model picker read your connections from a Convex subscription, so adding, testing, enabling or removing a provider in another tab, or a teammate sharing a subscription with the workspace, updates model availability at once. This replaces a request every 60 seconds and on every window focus. API-key vault references are never sent to the browser. App integrations still read their connected status from the integration provider, which is the source of truth for it.
