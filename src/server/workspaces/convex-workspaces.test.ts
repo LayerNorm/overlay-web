@@ -297,42 +297,8 @@ test('Convex workspace repository matches the Phase 1 lifecycle contract', {
         body: 'Hello from Convex',
         mentionedPrincipalIds: [ownerPrincipalId],
       })
-      assert.equal((await collaboration.listNotifications({
-        actorUserId: ownerUserId,
-        workspaceId: orgWorkspaceId,
-        unreadOnly: true,
-      })).some((notification) => notification.messageId === String(messageId)), true)
-      assert.ok(await collaboration.markNotificationsRead({
-        actorUserId: ownerUserId,
-        workspaceId: orgWorkspaceId,
-        conversationId: directMessage.conversationId,
-      }) > 0)
-      await collaboration.upsertPresence({
-        actorUserId: invitedUserId,
-        workspaceId: orgWorkspaceId,
-        conversationId: directMessage.conversationId,
-        status: 'online',
-        typing: true,
-      })
-      assert.equal((await collaboration.listPresence({
-        actorUserId: ownerUserId,
-        workspaceId: orgWorkspaceId,
-        conversationId: directMessage.conversationId,
-      })).find((row) => row.principalId === invitedPrincipalId)?.typing, true)
-      assert.equal(await collaboration.editMessage({
-        actorUserId: invitedUserId,
-        workspaceId: orgWorkspaceId,
-        conversationId: directMessage.conversationId,
-        messageId: String(messageId),
-        content: 'Edited',
-      }), true)
-      const edited = (await collaboration.listMessages({
-        actorUserId: ownerUserId,
-        workspaceId: orgWorkspaceId,
-        conversationId: directMessage.conversationId,
-        limit: 100,
-      })).find((message) => message._id === String(messageId))
-      assert.equal(edited?.editHistory?.[0]?.content, 'Hello from Convex')
+      // Activity, read state, presence and edits are browser-native now; see nativeActivity, nativeRoomState and
+      // collaborativeMessageEdit Convex tests.
       assert.equal(await collaboration.deleteMessage({
         actorUserId: invitedUserId,
         workspaceId: orgWorkspaceId,

@@ -62,7 +62,6 @@ type PersonalChatTranscript = {
 type PersonalChatExecution = NativePersonalExecutionState
 
 type PersonalChatContextValue = {
-  configured: boolean
   available: boolean
   workspaceId: string | null
   viewerUserId: string | null
@@ -127,7 +126,6 @@ const unavailableActions = {
 }
 
 const PersonalChatContext = createContext<PersonalChatContextValue>({
-  configured: false,
   available: false,
   workspaceId: null,
   viewerUserId: null,
@@ -150,7 +148,6 @@ export function PersonalChatProvider({ children }: { children: ReactNode }) {
   if (!hasConvexClient) {
     const status: ListStatus = 'disabled'
     const value: PersonalChatContextValue = {
-      configured: false,
       available: false,
       workspaceId,
       viewerUserId: null,
@@ -171,7 +168,6 @@ export function PersonalChatProvider({ children }: { children: ReactNode }) {
       resetKey={`${workspaceId ?? 'no-workspace'}:${pathname ?? ''}:${searchParams.toString()}`}
       fallbackChildren={children}
       fallbackValue={{
-        configured: true,
         available: false,
         workspaceId,
         viewerUserId: null,
@@ -185,7 +181,6 @@ export function PersonalChatProvider({ children }: { children: ReactNode }) {
       }}
     >
       <NativePersonalChatProvider
-        configured
         workspaceId={workspaceId}
         workspaceReady={workspace.status === 'ready' && !isWorkspaceRouteTargetPending(
           readWorkspaceRouteTarget(pathname ?? ''), workspace.resolvedRouteTargetKey,
@@ -246,12 +241,10 @@ function personalChatQueryDemand(pathname: string | null, routeParams: URLSearch
 
 function NativePersonalChatProvider({
   children,
-  configured,
   workspaceId,
   workspaceReady,
 }: {
   children: ReactNode
-  configured: boolean
   workspaceId: string | null
   workspaceReady: boolean
 }) {
@@ -423,7 +416,7 @@ function NativePersonalChatProvider({
     await preferencesMutation(args)
   }, [preferencesMutation])
   const { deleteTurn, branch, setGeneratedUi, addAssistantNote, findRecentChat } = usePersonalChatCommands(workspaceId)
-  const baseListStatus = personalChatListStatus({ configured, workspaceReady, authLoading, workspaceId, isAuthenticated })
+  const baseListStatus = personalChatListStatus({ workspaceReady, authLoading, workspaceId, isAuthenticated })
   const activeStatus = !needsActiveList || temporaryActive
     ? 'disabled'
     : baseListStatus !== 'ready'
@@ -448,7 +441,6 @@ function NativePersonalChatProvider({
   )
   const visibleSelectedSummary = canQuerySummary ? selectedSummary : undefined
   const value = useMemo<PersonalChatContextValue>(() => ({
-    configured,
     available: true,
     workspaceId,
     viewerUserId,
@@ -489,7 +481,6 @@ function NativePersonalChatProvider({
     archivedQuery,
     canQueryActive,
     canQueryArchived,
-    configured,
     activeStatus,
     archivedStatus,
     rename,

@@ -1155,30 +1155,20 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/surfaces/bindings/[bindingId]', reason: 'Agent surface binding removal; boundary definition pending. Protected by workspace authorization.' },
   // Automation action routes pending full boundary definitions.
   { routePath: '/api/v1/automations/[id]/approve', reason: 'Automation approval action; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/automations/[id]/cancel-scheduler', reason: 'Automation scheduler control; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/[id]/events', reason: 'Automation event stream; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/[id]/run', reason: 'Automation run trigger; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/[id]/start-scheduler', reason: 'Automation scheduler control; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/[id]/stream', reason: 'Automation run stream; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/execute', reason: 'Automation execution; boundary definition pending. Protected by workspace authorization.' },
   // Conversation collaboration routes pending full boundary definitions.
-  { routePath: '/api/v1/conversations/[conversationId]/messages/[messageId]', reason: 'Conversation message management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/conversations/[conversationId]/participants', reason: 'Conversation participant management; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/conversations/[conversationId]/pins', reason: 'Conversation pin management; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/conversations/[conversationId]/presence', reason: 'Conversation presence; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/conversations/[conversationId]/reactions', reason: 'Conversation reaction management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/conversations/[conversationId]/reports', reason: 'Conversation report submission; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/conversations/[conversationId]/state', reason: 'Conversation state management; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/conversations/[conversationId]/threads/[threadRootMessageId]/follow', reason: 'Thread follow management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/conversations/channels', reason: 'Channel management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/conversations/direct-messages', reason: 'Direct message management; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/conversations/notification-preferences', reason: 'Notification preference management; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/conversations/notifications', reason: 'Notification listing; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/conversations/run/remote', reason: 'Remote agent run management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/conversations/run/remote/artifacts/[artifactId]', reason: 'Remote agent run artifact; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/conversations/run/remote/request', reason: 'Remote agent run request; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/conversations/saved-messages', reason: 'Saved message management; boundary definition pending. Protected by workspace authorization.' },
-  { routePath: '/api/v1/conversations/search', reason: 'Conversation search; boundary definition pending. Protected by workspace authorization.' },
   // File ingestion routes pending full boundary definitions.
   { routePath: '/api/v1/files/ingest-jobs', reason: 'File ingestion job management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/automations/project-events', reason: 'Deployment-secret authenticated Workflow SDK projection callback, not a member BFF route.' },
@@ -1188,7 +1178,6 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/imports/slack/process', reason: 'Internal Slack import job processor; not part of the public web API reference.' },
   // Mention search and link preview pending full boundary definitions.
   // Search and share routes pending full boundary definitions.
-  { routePath: '/api/v1/search', reason: 'Workspace search; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/shares', reason: 'Resource sharing management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/shares/impact', reason: 'Share impact analysis; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/shares/shared-with-me', reason: 'Shared-with-me listing; boundary definition pending. Protected by workspace authorization.' },
