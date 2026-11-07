@@ -321,6 +321,40 @@ test('BYOK ownership is checked again for the selected agent model', async () =>
   await expect(refreshNativeHarnessAccess(access, { ...context, modelId })).rejects.toThrow(/revoked/)
 })
 
+test.each(['waiting_for_children', 'waiting_for_input', 'waiting_for_approval'])(
+  'renews an in-tool child join projected as %s without authorizing model dispatch', async status => {
+    const state = snapshot()
+    state.children = [{ id: 'child', stepId: 'ask', allowedToolIds: [], maxCostMicros: 0,
+      costMicros: 0, status: 'running', evidenceRefs: [] }]
+    mocks.state.mockResolvedValue(state)
+    mocks.run.mockResolvedValue({ ...delivery(), status })
+
+    await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true }))
+      .resolves.toMatchObject({ runStatus: 'running', paid: true })
+    await expect(refreshNativeHarnessAccess(access, context)).rejects.toThrow('Native delivery execution changed.')
+
+    state.children[0].status = 'completed'
+    await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true }))
+      .rejects.toThrow('Native delivery execution changed.')
+  },
+)
+
+test('child-join renewal still rejects stale ownership, revoked participation and unrelated delivery states', async () => {
+  const state = snapshot()
+  state.children = [{ id: 'child', stepId: 'ask', allowedToolIds: [], maxCostMicros: 0,
+    costMicros: 0, status: 'running', evidenceRefs: [] }]
+  mocks.state.mockResolvedValue(state)
+  mocks.run.mockResolvedValue({ ...delivery(), status: 'waiting_for_children' })
+  for (const patch of [{ workflowRunId: 'other' }, { status: 'cancelled' }, { status: 'waiting_for_resources' }]) {
+    mocks.run.mockResolvedValueOnce({ ...delivery(), status: 'waiting_for_children', ...patch })
+    await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true }))
+      .rejects.toThrow('Native delivery execution changed.')
+  }
+  mocks.room.mockResolvedValue({ ...room(), participants: [room().participants[1]] })
+  await expect(refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true }))
+    .rejects.toThrow('Native room participation was revoked.')
+})
+
 test('restored native dispatch revalidates the persisted root Slack source and bills its canonical subject', async () => {
   const surfaceAccess = { ...access, turnId: surfaceExecution.turnId }
   mocks.surfaceExecution.mockResolvedValue(surfaceExecution)

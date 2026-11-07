@@ -95,6 +95,15 @@ function assertNativeDeliveryIdentity(access: NativeHarnessAccess, run: AgentRun
   }
 }
 
+function nativeDeliveryWaitAllowsRenewal(state: HarnessSnapshot, run: AgentRun): boolean {
+  if (['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status)) {
+    return run.status === state.status
+  }
+  // A blocking child-read tool projects a wait while its parent remains running.
+  return state.status === 'running' && state.children.some(child => child.status === 'running')
+    && ['waiting_for_children', 'waiting_for_input', 'waiting_for_approval'].includes(run.status)
+}
+
 function nativeDeliveryIsCurrent(
   access: NativeHarnessAccess,
   state: HarnessSnapshot,
@@ -109,9 +118,7 @@ function nativeDeliveryIsCurrent(
     && Boolean(deliveryOwner) && run.harnessRunId === delivery.runId && run.workflowRunId === deliveryOwner
     && (run.status === 'running' || (state.runId !== delivery.runId
       && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children', 'waiting_for_resources'].includes(run.status))
-      || (renewalMode && state.runId === delivery.runId
-        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status)
-        && run.status === state.status)
+      || (renewalMode && state.runId === delivery.runId && nativeDeliveryWaitAllowsRenewal(state, run))
       || (cancelledToolProgress && run.status === 'cancelled'))
 }
 

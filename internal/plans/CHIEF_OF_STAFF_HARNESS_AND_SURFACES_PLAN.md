@@ -19,6 +19,8 @@ Hosted evidence: canonical `https://pr-409.preview.getoverlay.io`, deployment `d
 
 The first acceptance request was queued behind a historical waiting-for-input run. Read-only inspection confirmed no model admission. Message-specific Stop cancelled only the new queued request; the old blocker remained visible and untouched. Acceptance then used the fresh conversation above, not a bypass of serialization. These results do not establish full Phase 2 or Phase 3 exit gates. A subsequent merge requires fresh exact-head preview confirmation and proportionate regression checks.
 
+Post-merge regression at `82ee24ceb107bc1d09f616f497621dd3b38d32b9` verified native sidebar authentication and live insertion, but the Chief failed during a blocking child join. Server logs showed `Native delivery execution changed` in wait renewal: the child-read tool leaves the Harness running while projecting a waiting delivery, which the renewal guard incorrectly rejected. A focused fix permits renewal only with a running child, preserving workflow/identity checks and the stricter model-dispatch guard. Hosted revalidation of that fix is pending; the failed run is not counted as accepted.
+
 Also done beyond the checklist: shared-room and Slack-origin privacy restrictions carry through every delegated assignment, follow-up and tool call; exact retries reuse the same assignment and are not charged twice.
 
 
