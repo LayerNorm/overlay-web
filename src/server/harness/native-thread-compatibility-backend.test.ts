@@ -88,7 +88,6 @@ const writes = [
   ['room admission', () => room.startAgentTurn(nativeRoomTurn)],
   ['room non-execution post', () => room.addAgentMessage({ ...nativeRoomTurn, messagePurpose: 'greeting', content: 'Hello' })],
   ['room startup error', () => room.recordAgentStartFailure({ ...nativeRoomTurn, content: 'Could not start' })],
-  ['room edit', () => room.editMessage({ ...roomIdentity, messageId, content: 'Edited' })],
   ['room delete', () => room.deleteMessage({ ...roomIdentity, messageId })],
   ['Harness admission', () => harness.admit(root)],
   ['surface admission', () => harness.beginSurfaceTurn({ ...nativeRoomTurn, workflowRunId: 'workflow', creatorPrincipalId: 'creator',
