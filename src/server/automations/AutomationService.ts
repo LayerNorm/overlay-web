@@ -102,7 +102,10 @@ type UpdateAutomationBody = {
   graph?: AutomationSummary['graph']
   sourceConversationId?: string
   concurrencyPolicy?: 'skip' | 'queue'
+  expectedUpdatedAt?: number
 }
+
+const AUTOMATION_CONFLICT_MESSAGE = 'This automation changed elsewhere. Reload it before saving your edits.'
 
 function serviceError(payload: Record<string, unknown>, statusCode: number): never {
   throw new AutomationServiceError(payload, statusCode)
@@ -371,6 +374,10 @@ export class AutomationService {
     const automationId = body.automationId
     const idArgs = { automationId, userId: args.userId, workspaceId: args.workspaceId }
     const existingAutomation = await this.deps.repository.getAutomation(idArgs)
+    // A form loaded from an older version must not overwrite a newer one; refuse before any side effect.
+    if (typeof body.expectedUpdatedAt === 'number' && existingAutomation && existingAutomation.updatedAt !== body.expectedUpdatedAt) {
+      serviceError({ error: AUTOMATION_CONFLICT_MESSAGE, conflict: true }, 409)
+    }
     if (body.action === 'pause') {
       // Cancel any active scheduler workflow before pausing
       await this.cancelSchedulerWorkflow(idArgs)
@@ -383,20 +390,28 @@ export class AutomationService {
       if (body.enabled === false && before?.schedulerWorkflowRunId) {
         await this.cancelSchedulerWorkflow(idArgs)
       }
-      await this.deps.repository.updateAutomation({
-        ...idArgs,
-        name: body.name,
-        description: body.description,
-        instructions: body.instructions,
-        enabled: body.enabled,
-        schedule,
-        timezone: body.timezone,
-        modelId: body.modelId,
-        graphSource: body.graphSource,
-        graph: body.graph,
-        sourceConversationId: body.sourceConversationId,
-        concurrencyPolicy: body.concurrencyPolicy,
-      })
+      try {
+        await this.deps.repository.updateAutomation({
+          ...idArgs,
+          ...(typeof body.expectedUpdatedAt === 'number' ? { expectedUpdatedAt: body.expectedUpdatedAt } : {}),
+          name: body.name,
+          description: body.description,
+          instructions: body.instructions,
+          enabled: body.enabled,
+          schedule,
+          timezone: body.timezone,
+          modelId: body.modelId,
+          graphSource: body.graphSource,
+          graph: body.graph,
+          sourceConversationId: body.sourceConversationId,
+          concurrencyPolicy: body.concurrencyPolicy,
+        })
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('AUTOMATION_CONFLICT')) {
+          serviceError({ error: AUTOMATION_CONFLICT_MESSAGE, conflict: true }, 409)
+        }
+        throw error
+      }
       if (before) {
         await this.appendUpdateNoteBestEffort(before, {
           name: body.name,

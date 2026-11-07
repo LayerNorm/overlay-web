@@ -70,3 +70,15 @@ test('reads need automations.use, an active membership and the deployment featur
   const off = await fixture({ feature: false })
   expect(await off.as('alice').query(list, { workspaceId: 'ws' })).toBeNull()
 })
+
+test('a save from an older version of the form is refused instead of overwriting a newer one', async () => {
+  vi.stubEnv('INTERNAL_API_SECRET', 'qa-secret')
+  const { t, ids } = await fixture()
+  const update = makeFunctionReference<'mutation'>('automations/automations:update')
+  const base = { serverSecret: 'qa-secret', userId: 'alice', workspaceId: 'ws', automationId: ids.mine }
+  await t.run(ctx => ctx.db.patch(ids.mine, { enabled: false }))
+  const before = await t.run(ctx => ctx.db.get(ids.mine)) as { updatedAt: number }
+  await t.mutation(update, { ...base, name: 'Renamed elsewhere', expectedUpdatedAt: before.updatedAt })
+  await expect(t.mutation(update, { ...base, description: 'Stale form', expectedUpdatedAt: before.updatedAt })).rejects.toThrow('AUTOMATION_CONFLICT')
+  expect(await t.run(ctx => ctx.db.get(ids.mine))).toMatchObject({ name: 'Renamed elsewhere' })
+})

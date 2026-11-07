@@ -1,7 +1,7 @@
 'use client'
 
 import { lazy, Suspense, useMemo, useState } from 'react'
-import { Button } from '@overlay/ui/primitives'
+import { Button, toast } from '@overlay/ui/primitives'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
@@ -79,11 +79,20 @@ export function AutomationEditorPanel({
 
   // A different automation starts fresh. A new version of this one replaces the form only while it has no unsaved
   // edits, so a change made elsewhere never overwrites what is being typed.
+  // `base` is the version the form was filled from; a save is refused if the automation has moved past it.
   const [prevAutomation, setPrevAutomation] = useState(current)
+  const [base, setBase] = useState(current)
   if (prevAutomation !== current) {
     setPrevAutomation(current)
-    const clean = sameDraft(draft, automationEditorDraftFromDetail(prevAutomation, DEFAULT_MODEL_ID))
-    if (prevAutomation._id !== current._id || clean) setDraft(automationEditorDraftFromDetail(current, DEFAULT_MODEL_ID))
+    const next = automationEditorDraftFromDetail(current, DEFAULT_MODEL_ID)
+    // Clean (unchanged since its base), or already equal to the new version (this editor's own save came back).
+    const adopt = prevAutomation._id !== current._id
+      || sameDraft(draft, automationEditorDraftFromDetail(base, DEFAULT_MODEL_ID))
+      || sameDraft(draft, next)
+    if (adopt) {
+      setDraft(next)
+      setBase(current)
+    }
     if (prevAutomation._id !== current._id) {
       setSaveState('idle')
       setTestState('idle')
@@ -100,8 +109,12 @@ export function AutomationEditorPanel({
     if (!draft.name.trim() || !draft.instructions.trim()) return
     setSaveState('saving')
     try {
-      const request = buildAutomationUpdateRequest({ automation: current, draft })
+      const request = { ...buildAutomationUpdateRequest({ automation: current, draft }), expectedUpdatedAt: base.updatedAt }
       const res = await overlayAppClient.automations.updateResponse(request)
+      if (res.status === 409) {
+        toast.error('This automation changed elsewhere. Copy your edits, then reopen it to see the newest version.')
+        throw new Error('Automation changed elsewhere')
+      }
       if (!res.ok) throw new Error('Failed to save automation')
       // Scheduling is owned by the minute cron claiming due runs: enabling sets nextRunAt and the next tick picks it
       // up. The live query brings the saved version (and its next run) back by itself.

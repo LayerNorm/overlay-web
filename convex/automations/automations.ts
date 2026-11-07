@@ -327,14 +327,17 @@ export const update = mutation({
     graph: v.optional(v.any()),
     sourceConversationId: v.optional(v.id('conversations')),
     concurrencyPolicy: v.optional(v.union(v.literal('skip'), v.literal('queue'))),
+    /** Refuse the update when the automation changed since the editor loaded this version. */
+    expectedUpdatedAt: v.optional(v.number()),
   },
   returns: v.null(),
-  handler: async (ctx, { automationId, userId, workspaceId, accessToken, serverSecret, ...updates }) => {
+  handler: async (ctx, { automationId, userId, workspaceId, accessToken, serverSecret, expectedUpdatedAt, ...updates }) => {
     await authorizeUserAccess({ userId, accessToken, serverSecret })
     const automation = await ctx.db.get(automationId)
     if (!automation || automation.deletedAt || (workspaceId !== undefined && automation.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, userId).canEdit(automation))) {
       throw new Error('Unauthorized')
     }
+    if (expectedUpdatedAt !== undefined && automation.updatedAt !== expectedUpdatedAt) throw new Error('AUTOMATION_CONFLICT')
     if (updates.sourceConversationId) {
       const conversation = await ctx.db.get(updates.sourceConversationId)
       if (!conversation || conversation.userId !== userId || conversation.deletedAt) {

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Fix two problems found by testing with a second workspace member: a skill someone else owns now opens view-only for members who cannot edit it, instead of offering Save and Delete that the server then refused; and saving an automation whose form was opened before someone else changed it is now refused with a message, instead of silently undoing their change.
+
 - Make skills live and native: the Skills page reads from a Convex subscription, and creating, editing, enabling or deleting a skill applies at once in every open tab. Editing a skill that changed elsewhere since the form opened is refused instead of overwriting the newer version. Removes the skills, MCP and extensions change events and the archive-restore refresh hook, which nothing listened to, and two unused file and note event constants.
 - Fix the committed Convex API types, which had drifted from the generated ones.
 

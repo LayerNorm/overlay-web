@@ -83,6 +83,8 @@ export interface UpdateAutomationRequest {
   graphSource?: string
   graph?: AutomationGraph
   concurrencyPolicy?: 'skip' | 'queue'
+  /** Refuse the save when the automation changed since the form loaded this version. */
+  expectedUpdatedAt?: number
 }
 
 export interface DeleteAutomationResponse {
