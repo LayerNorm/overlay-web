@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-07. Phases A to E and the first Phase F PR are complete and live in production: chats, agents, rooms, Activity, files, notes, memories, Work, automations, skills and connections (MCP, providers, computers, environments, surfaces) run on the native path. The production Convex backend was last deployed from main `0589eb36b` after the matching web release. Phase F ships in three PRs; the second (CN-25 to CN-27: workspace directory and policy, members and invitations, account settings and identity) is implemented on the Phase F workspace PR and awaits preview acceptance. Stop, approval, input response, room send, agent assignment, automation writes, connection writes, workspace and membership writes, invitations (which send email), settings writes and onboarding stay on the server by design because they run workflows, agent turns, billing checks, credential encryption, OAuth, email, validation or provider calls. Second-member cases are tested on previews with a seeded collaborator acting through the Convex CLI. The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-07. Phases A to E and the first Phase F PR are complete and live in production: chats, agents, rooms, Activity, files, notes, memories, Work, automations, skills and connections (MCP, providers, computers, environments, surfaces) run on the native path. The production Convex backend was last deployed from main `0589eb36b` after the matching web release. Phase F ships in three PRs; the second (CN-25 to CN-27: workspace directory and policy, members and invitations, account settings and identity, #418) passed preview acceptance and awaits merge. Stop, approval, input response, room send, agent assignment, automation writes, connection writes, workspace and membership writes, invitations (which send email), settings writes and onboarding stay on the server by design because they run workflows, agent turns, billing checks, credential encryption, OAuth, email, validation or provider calls. Second-member cases are tested on previews with a seeded collaborator acting through the Convex CLI. The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -16,7 +16,7 @@ Status: in progress as of 2026-11-07. Phases A to E and the first Phase F PR are
 | CN-12 to CN-15 | #414 | Merged and deployed: web and Convex production at `8c57d1c52`, production smoke passed |
 | CN-16 to CN-20 | #415 | Merged and deployed: web and Convex production at `228e9bedc`, production smoke passed |
 | CN-21 to CN-24 | #416 | Merged and deployed: web and Convex production at `0589eb36b`, production smoke passed |
-| CN-25 to CN-27 | Phase F workspace PR | Implemented; preview acceptance pending |
+| CN-25 to CN-27 | #418 | Preview accepted with a second member; merge pending |
 | CN-07 to CN-11 (old attempt) | #403 | Closed unmerged, superseded by the Phase C PR |
 | CN-12 (old attempt) | #402 | Closed unmerged, superseded by the Phase D PR |
 | CN-20 (old attempt) | #398 | Closed unmerged, superseded by the Phase E PR |
@@ -610,6 +610,16 @@ Not covered: real Slack OAuth, a real MCP OAuth round trip and a real Boat machi
 **Retirement/non-goals:** remove persisted-preference HTTP snapshots and unsupported repository placeholders once proven unused. Do not migrate a placeholder as though it were a working store. No sign-in UX redesign.
 
 **Implemented (Phase F workspace PR):** `platform/uiSettings:mine` and `auth/accountBrowse:identity` reach the settings and auth providers through `LiveAccountSync`; pending local changes stay on top until saved, and the identity overlay is keyed to its account. The account-profile GET, the identity-updated event and the onboarding and settings repository placeholders are deleted. `/api/v1/settings` GET stays for API clients. Onboarding stays on the server: reading it can flush pending onboarding messages and finish the session.
+
+### Phase F workspace preview acceptance (#418, 2026-11-07)
+
+Tested in Chrome on the PR's isolated backend with a freshly signed-in Google account, added to **Preview QA Team** as an admin; the seeded collaborator acted through the Convex CLI as a member, and server-only writes used the preview's internal secret (never printed).
+
+- **CN-25:** with no workspaces, the directory showed the workspace live when the membership was added, then an invitation to the account's email, with no HTTP calls. A server rename reached Settings and the account page live. A policy change on the server reached the Sharing tab within a second; a toggle in the UI made one PATCH and came back live, and the member's policy query showed it. A second tab switching workspaces left the first tab untouched. Suspending the membership showed the unavailable screen in the open tab within two seconds, and **Try again** recovered after it was restored. A new workspace opened at its `/w/handle-qa/...` address, and a cold load of that address made no handle or directory requests.
+- **CN-26:** a role change, a new invitation and a cancellation (one DELETE from the UI) all reached Settings → People live. The member saw members but no invitations and `canManage: false`. The new-DM picker loaded with no HTTP calls and showed a renamed collaborator live.
+- **CN-27:** a theme change on the server applied live and updated the local mirror; a theme toggle in the app changed once, saved with one PATCH and did not flicker back. A display-name override set on the server reached the account page and the account menu live.
+
+Not covered: the memories owner filter and Slack import use the same hook as the pickers and were not opened. The chat greeting reads the server session's first name, so it ignores the account name override, as it did before. The signed-out "Workspace access could not be verified" notice comes from the billing entitlement check (CN-28).
 
 ### CN-28. Subscribe billing, usage, and entitlement projections
 
