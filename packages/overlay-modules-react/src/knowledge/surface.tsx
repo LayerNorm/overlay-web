@@ -1,7 +1,6 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useEffect } from 'react'
 import {
   IMPORT_MEMORY_PROMPT,
   type KnowledgeFileNode as FileNode,
@@ -57,12 +56,13 @@ export interface SharedKnowledgeFilePort {
   upload(file: File, parentId: string | null): Promise<{ ok: boolean; error?: string; file?: FileNode }>
   isEditable(name: string): boolean
   contentUrl(file: FileNode): string | undefined
-  entityChanged(entity: 'file' | 'note', id: string, operation: 'created' | 'updated' | 'moved' | 'deleted'): void
 }
 
 export interface SharedKnowledgeSurfaceProps {
   mode?: 'knowledge' | 'files'
   initialFiles?: FileNode[]
+  /** The host's live file list: undefined while loading, null when the scope cannot be read. */
+  liveFiles: readonly FileNode[] | null | undefined
   initialMemories?: MemoryListItem[]
   route: SharedKnowledgeRouteState
   queryPending?: boolean
@@ -244,13 +244,13 @@ function KnowledgeSurfaceBody({
       maxWidth="none"
       scroll={activeTab === 'outputs' ? 'hidden' : 'auto'}
       className={`px-6 py-4 ${activeTab === 'outputs' ? 'flex flex-col' : ''}`}
-      aria-busy={fileList.filesLoading || fileList.filesRefreshing || undefined}
+      aria-busy={fileList.filesLoading || undefined}
     >
       {activeTab === 'files' && opened.selectedFile && (
         <KnowledgeFileDetailPanel
           fileName={opened.selectedFile.name}
           // Only a prefix of text kept in object storage is loaded here; saving it would truncate the file.
-          isEditable={filePort.isEditable(opened.selectedFile.name) && !opened.selectedFile.textInObjectStore}
+          isEditable={filePort.isEditable(opened.selectedFile.name) && !opened.selectedFile.textInObjectStore && !opened.fileContentLoading}
           fileContent={opened.fileContent}
           onContentChange={opened.handleFileContentChange}
           renderViewer={() =>
@@ -272,9 +272,6 @@ function KnowledgeSurfaceBody({
         <KnowledgeFilesTabNotices
           fileList={fileList}
         />
-      )}
-      {activeTab === 'files' && fileList.filesRefreshing && (
-        <span className="sr-only" role="status">Refreshing files</span>
       )}
 
       {activeTab === 'files' && !opened.selectedFile && (
@@ -303,6 +300,7 @@ function KnowledgeSurfaceBody({
 export function SharedKnowledgeSurface({
   mode = 'knowledge',
   initialFiles,
+  liveFiles,
   initialMemories,
   route,
   queryPending = false,
@@ -358,18 +356,18 @@ export function SharedKnowledgeSurface({
     updateQuery,
   })
 
-  const fileList = useSurfaceFileList({ initialFiles, adapters, activeTab })
-  const { files, setFiles, filesLoading } = fileList
+  const fileList = useSurfaceFileList({ initialFiles, liveFiles })
+  const { files, filesLoading } = fileList
 
   const opened = useOpenedFile({
     adapters,
     filePort,
-    setFiles,
+    files,
+    filesLoading,
     openFilesInHost,
     fileOpenParam,
     updateQuery,
   })
-  const { loadFile } = opened
 
   const folderBrowser = useFolderBrowser({
     files,
@@ -384,12 +382,6 @@ export function SharedKnowledgeSurface({
     adapters,
     activeFolder,
     files,
-    setFiles,
-    selectedFile: opened.selectedFile,
-    setSelectedFile: opened.setSelectedFile,
-    setFileContent: opened.setFileContent,
-    setFileTitle: opened.setFileTitle,
-    updateQuery,
     navigateToFolder,
   })
 
@@ -400,12 +392,7 @@ export function SharedKnowledgeSurface({
     loadMemories: memories.loadMemories,
     selectedMemory: memories.selectedMemory,
     setSelectedMemory: memories.setSelectedMemory,
-    selectedFile: opened.selectedFile,
-    setSelectedFile: opened.setSelectedFile,
-    setFileContent: opened.setFileContent,
-    setFileTitle: opened.setFileTitle,
     files,
-    setFiles,
     activeFolder,
     navigateToFolder,
     updateQuery,
@@ -420,23 +407,12 @@ export function SharedKnowledgeSurface({
     adapters,
     filePort,
     activeFolder,
-    setFiles,
   })
 
   const folderUpload = useFolderUpload({
     adapters,
     filePort,
-    setFiles,
   })
-
-  useEffect(() => {
-    if (!fileOpenParam || filesLoading || files.length === 0) return
-    const node = files.find((f) => f._id === fileOpenParam && f.type === 'file')
-    if (!node) return
-    // Deep-link file open — intentional state write from the param effect.
-    // react-doctor-disable-next-line react-doctor/no-pass-live-state-to-parent
-    void loadFile(node._id)
-  }, [fileOpenParam, files, filesLoading, loadFile])
 
   return (
     <>
@@ -496,7 +472,6 @@ export function SharedKnowledgeSurface({
             onSetFileSearchQuery={folderBrowser.setFileSearchQuery}
             onImportMemory={() => memories.setShowImportMemory(true)}
             onNewMemory={() => memories.setShowAddMemory(true)}
-            onRefreshOutputs={() => select.setOutputsRefreshKey((k) => k + 1)}
             onSetMemorySearchOpen={memories.setMemorySearchOpen}
             onSetMemorySearchQuery={memories.setMemorySearchQuery}
             onSetSelectMode={select.setSelectMode}

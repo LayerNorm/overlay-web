@@ -109,3 +109,37 @@ test('a 100-edit burst produces one bounded save', async () => {
   await wait(20)
   assert.deepEqual(requests, ['edit 100'])
 })
+
+test('a clean editor adopts newer remote versions and ignores its own or older ones', () => {
+  const controller = new NotebookEditorController({ save: async () => ({}) })
+  controller.select(note('a', 'mine'))
+  assert.equal(controller.receiveRemote({ id: 'a', title: 'Remote', content: 'theirs', revision: '1' }), false)
+  assert.equal(controller.receiveRemote({ id: 'b', title: 'Other', content: 'other', revision: '9' }), false)
+  assert.equal(controller.receiveRemote({ id: 'a', title: 'Remote', content: 'theirs', revision: '2' }), true)
+  assert.equal(controller.snapshot().content, 'theirs')
+  assert.equal(controller.snapshot().revision, '2')
+  assert.equal(controller.snapshot().dirty, false)
+})
+
+test('a dirty editor keeps its draft, and its delayed save is refused against the newer revision', async () => {
+  const bases: Array<string | undefined> = []
+  const controller = new NotebookEditorController({
+    debounceMs: 5,
+    save: async (request) => {
+      bases.push(request.baseRevision)
+      // The server holds revision 2 now, so a save based on revision 1 conflicts.
+      return request.baseRevision === '2'
+        ? { document: { ...request, revision: '3' } }
+        : { conflict: { localRevision: request.baseRevision, remoteRevision: '2', message: 'This note changed in another session.' } }
+    },
+  })
+  controller.select(note('a', 'base'))
+  controller.edit({ content: 'my draft' })
+  assert.equal(controller.receiveRemote({ id: 'a', title: 'Remote', content: 'theirs', revision: '2' }), false)
+  assert.equal(controller.snapshot().content, 'my draft')
+  await wait(20)
+  assert.deepEqual(bases, ['1'])
+  assert.equal(controller.snapshot().content, 'my draft')
+  assert.equal(controller.snapshot().dirty, true)
+  assert.ok(controller.snapshot().conflict)
+})

@@ -115,6 +115,26 @@ export class NotebookEditorController {
     return token
   }
 
+  /**
+   * Adopts a newer server version of the selected note while this editor has nothing unsaved or in flight. Returns
+   * whether it did; a dirty editor keeps its draft, and its next save is refused against the newer revision.
+   */
+  receiveRemote(document: NotebookEditorDocument): boolean {
+    const state = this.state
+    if (document.id !== state.selectedId || state.dirty || state.saving || state.hydrating) return false
+    if (state.revision !== undefined && Number(document.revision) <= Number(state.revision)) return false
+    this.state = {
+      ...state,
+      title: document.title,
+      content: document.content,
+      revision: document.revision,
+      conflict: undefined,
+      error: undefined,
+    }
+    this.emit()
+    return true
+  }
+
   clearSelection(): void {
     void this.flush()
     this.selectionVersion += 1
