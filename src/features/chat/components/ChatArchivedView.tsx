@@ -1,18 +1,15 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, type ReactNode } from 'react'
 import { usePathname, useSearchParams } from 'next/navigation'
 import dynamic from 'next/dynamic'
+import { useConvexAuth, useQuery } from 'convex/react'
 import { Archive, Loader2 } from 'lucide-react'
 import { Button, EmptyState } from '@overlay/ui/primitives'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import {
-  CHAT_ARCHIVED_EVENT,
-  type ChatArchivedDetail,
-} from '@/shared/chat/chat-title'
 import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
-import { excludeNativePersonalChats, isNativePersonalChatCandidate } from '@/shared/chat/native-personal-chat'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
+import { api } from '../../../../convex/_generated/api'
 
 const ChatExperience = dynamic(() => import('./ChatExperience'))
 const DirectMessageExperience = dynamic(
@@ -23,23 +20,7 @@ type ArchivedConversation = {
   _id: string
   title?: string | null
   conversationType?: string
-  scope?: 'personal' | 'workspace'
-  workspaceId?: string
-  lastModified?: number
   archivedAt?: number
-}
-
-type ViewState =
-  | { status: 'loading'; workspaceId: string | null }
-  | { status: 'error'; workspaceId: string | null; message: string }
-  | { status: 'ready'; workspaceId: string | null; conversations: ArchivedConversation[] }
-
-function unwrapList<T>(body: unknown): T[] {
-  if (Array.isArray(body)) return body as T[]
-  if (body && typeof body === 'object' && Array.isArray((body as { data?: unknown }).data)) {
-    return (body as { data: T[] }).data
-  }
-  return []
 }
 
 function readSelectedId(searchId: string | null): string | null {
@@ -47,31 +28,78 @@ function readSelectedId(searchId: string | null): string | null {
   return new URLSearchParams(window.location.search).get('id') ?? searchId
 }
 
-function archivedLoadingState(
-  state: ViewState,
-  workspaceId: string | null,
-  selectedId: string | null,
-  nativePersonal: ReturnType<typeof usePersonalChat>,
-  nativePersonalEnabled: boolean,
-) {
-  const waitingForSelectedSummary = Boolean(nativePersonalEnabled && selectedId
-    && (
-      nativePersonal.selectedConversationId !== selectedId
-      || nativePersonal.selectedSummary === undefined
-    ))
-  const selectedSummaryUnavailable = waitingForSelectedSummary
-    && nativePersonal.archived.status === 'unavailable'
-  const loading = state.status === 'loading'
-    || state.workspaceId !== workspaceId
-    || (waitingForSelectedSummary && !selectedSummaryUnavailable)
-    || (nativePersonalEnabled && nativePersonal.archived.status === 'loading')
-  return { waitingForSelectedSummary, selectedSummaryUnavailable, loading }
+/** Archived personal chats (live chat list) and channels and DMs (live archived-rooms query), newest first. */
+function useArchivedConversations(userId: string | null, selectedId: string | null) {
+  const nativePersonal = usePersonalChat()
+  const workspaceId = useOptionalWorkspace()?.activeWorkspaceId ?? null
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
+  const rooms = useQuery(api.collaboration.archive.rooms,
+    workspaceId && userId && isAuthenticated && !authLoading ? { workspaceId } : 'skip')
+  const { archived, selectedSummary } = nativePersonal
+
+  const conversations = useMemo(() => {
+    if (!workspaceId || nativePersonal.workspaceId !== workspaceId) return []
+    const rows: ArchivedConversation[] = [...(rooms ?? []), ...archived.rows]
+    if (selectedSummary?.archivedAt && selectedSummary.workspaceId === workspaceId) rows.push(selectedSummary)
+    const byId = new Map<string, ArchivedConversation>()
+    for (const row of rows) byId.set(row._id, row)
+    return [...byId.values()].sort((left, right) => (right.archivedAt ?? 0) - (left.archivedAt ?? 0))
+  }, [archived.rows, nativePersonal.workspaceId, rooms, selectedSummary, workspaceId])
+
+  const waitingForSelected = Boolean(selectedId && (
+    nativePersonal.selectedConversationId !== selectedId || selectedSummary === undefined
+  ))
+  const selectedUnavailable = waitingForSelected && archived.status === 'unavailable'
+  const loading = Boolean(userId && (rooms === undefined || authLoading))
+    || (waitingForSelected && !selectedUnavailable)
+    || archived.status === 'loading'
+  return {
+    archived,
+    conversations,
+    loading,
+    waitingForSelected,
+    selectedUnavailable,
+    unavailable: rooms === null || archived.status === 'unavailable',
+  }
+}
+
+/** Points the URL at the selected archived chat, or the newest one when none (or a missing one) is selected. */
+function useSelectArchivedChat(conversations: ArchivedConversation[], selectedId: string | null, ready: boolean) {
+  const pathname = usePathname() ?? ''
+  useEffect(() => {
+    if (!ready || conversations.length === 0) return
+    const selected = conversations.find((conversation) => conversation._id === selectedId) ?? conversations[0]
+    if (!selected || selected._id === selectedId) return
+    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
+    params.set('id', selected._id)
+    window.history.replaceState(null, '', `${pathname}?${params.toString()}`)
+    window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', { detail: { chatId: selected._id } }))
+  }, [conversations, pathname, ready, selectedId])
+}
+
+function ArchivedNotice({ children }: { children: ReactNode }) {
+  return (
+    <AppScreenShell className="h-full" header={<AppScreenHeader title="Archived" />}>
+      {children}
+    </AppScreenShell>
+  )
+}
+
+function ArchivedSpinner({ label }: { label: string }) {
+  return (
+    <ArchivedNotice>
+      <div className="flex h-full min-h-72 items-center justify-center text-sm text-(--muted)">
+        <Loader2 size={16} className="mr-2 animate-spin" />
+        {label}
+      </div>
+    </ArchivedNotice>
+  )
 }
 
 /**
- * Archived chats open as the conversation itself. The sidebar list is the
- * index; this page is only ever empty-state or the most recently archived
- * (or explicitly selected) chat.
+ * Archived chats open as the conversation itself. Settings → Archived is the index; this page shows the selected
+ * archived chat (or the most recent one). Personal AI chats come from the live chat list and channels and DMs from
+ * the live archived-rooms query, so an archive or restore anywhere shows at once.
  */
 export function ChatArchivedView({
   userId,
@@ -80,234 +108,54 @@ export function ChatArchivedView({
   userId: string | null
   firstName?: string
 }) {
-  const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
-  const searchId = searchParams?.get('id') ?? null
-  const nativePersonal = usePersonalChat()
-  const workspace = useOptionalWorkspace()
-  const workspaceId = workspace?.activeWorkspaceId ?? null
-  const nativePersonalEnabled = nativePersonal.configured && Boolean(userId)
-  const [state, setState] = useState<ViewState>({ status: 'loading', workspaceId: null })
-  const [routeVersion, setRouteVersion] = useState(0)
-  const requestEpoch = useRef(0)
-  const workspaceIdRef = useRef(workspaceId)
-  workspaceIdRef.current = workspaceId
-  const archivedHeader = <AppScreenHeader title="Archived" />
+  const selectedId = readSelectedId(searchParams?.get('id') ?? null)
+  const { archived, conversations, loading, waitingForSelected, selectedUnavailable, unavailable } =
+    useArchivedConversations(userId, selectedId)
+  useSelectArchivedChat(conversations, selectedId, !loading && !waitingForSelected)
 
-  const load = useCallback(async () => {
-    const requestWorkspaceId = workspaceId
-    if (requestWorkspaceId !== workspaceIdRef.current) return
-    const requestId = ++requestEpoch.current
-    setState({ status: 'loading', workspaceId: requestWorkspaceId })
-    try {
-      const response = await fetch('/api/v1/conversations?archived=true', {
-        cache: 'no-store',
-        credentials: 'same-origin',
-      })
-      if (!response.ok) throw new Error('Could not load archived conversations.')
-      const rows = unwrapList<ArchivedConversation>(await response.json())
-      if (requestId !== requestEpoch.current || requestWorkspaceId !== workspaceIdRef.current) return
-      const retainedRows = nativePersonalEnabled
-        ? nativePersonal.workspaceId
-          ? excludeNativePersonalChats(rows, nativePersonal.workspaceId)
-          : []
-        : rows
-      setState({ status: 'ready', workspaceId: requestWorkspaceId, conversations: retainedRows })
-    } catch (error) {
-      if (requestId !== requestEpoch.current || requestWorkspaceId !== workspaceIdRef.current) return
-      setState({
-        status: 'error',
-        workspaceId: requestWorkspaceId,
-        message: error instanceof Error ? error.message : 'Could not load archived conversations.',
-      })
-    }
-  }, [nativePersonalEnabled, nativePersonal.workspaceId, workspaceId])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-
-  useEffect(() => {
-    function bumpRoute() {
-      setRouteVersion((value) => value + 1)
-    }
-    function handleChatArchived(event: Event) {
-      const archived = (event as CustomEvent<ChatArchivedDetail>).detail?.chat
-      if (!archived?._id) return
-      if (nativePersonalEnabled && (
-        nativePersonal.archived.rows.some((row) => row._id === archived._id)
-        || isNativePersonalChatCandidate(archived, nativePersonal.workspaceId)
-      )) return
-      setState((current) => {
-        if (current.status !== 'ready' || current.workspaceId !== workspaceId) return current
-        if (current.conversations.some((conversation) => conversation._id === archived._id)) return current
-        return {
-          status: 'ready',
-          workspaceId,
-          conversations: [{
-            _id: archived._id,
-            title: archived.title,
-            conversationType: archived.conversationType,
-            scope: archived.scope,
-            workspaceId: archived.workspaceId,
-            lastModified: archived.lastModified,
-            archivedAt: archived.archivedAt,
-          }, ...current.conversations],
-        }
-      })
-      bumpRoute()
-    }
-    window.addEventListener('overlay:chat-route-selected', bumpRoute)
-    window.addEventListener(CHAT_ARCHIVED_EVENT, handleChatArchived)
-    window.addEventListener('popstate', bumpRoute)
-    return () => {
-      window.removeEventListener('overlay:chat-route-selected', bumpRoute)
-      window.removeEventListener(CHAT_ARCHIVED_EVENT, handleChatArchived)
-      window.removeEventListener('popstate', bumpRoute)
-    }
-  }, [nativePersonal.archived.rows, nativePersonalEnabled, nativePersonal.workspaceId, workspaceId])
-
-  void routeVersion
-  const selectedId = readSelectedId(searchId)
-  const conversations = useMemo(() => {
-    const legacy = state.status === 'ready' && state.workspaceId === workspaceId
-      ? state.conversations
-      : []
-    if (!nativePersonalEnabled) return legacy
-    if (!nativePersonal.workspaceId) return []
-    const nativeRows = [...nativePersonal.archived.rows]
-    const selectedSummary = nativePersonal.selectedSummary
-    if (selectedSummary?.archivedAt
-      && selectedSummary.workspaceId === nativePersonal.workspaceId
-      && !nativeRows.some((row) => row._id === selectedSummary._id)) {
-      nativeRows.push(selectedSummary)
-    }
-    const byId = new Map<string, ArchivedConversation>()
-    for (const row of [...legacy, ...nativeRows]) byId.set(row._id, row)
-    return [...byId.values()].sort((left, right) => (right.archivedAt ?? 0) - (left.archivedAt ?? 0))
-  }, [
-    nativePersonal.archived.rows,
-    nativePersonal.selectedSummary,
-    nativePersonal.workspaceId,
-    nativePersonalEnabled,
-    state,
-    workspaceId,
-  ])
-  const { waitingForSelectedSummary, selectedSummaryUnavailable, loading } = archivedLoadingState(
-    state, workspaceId, selectedId, nativePersonal, nativePersonalEnabled,
-  )
-
-  useEffect(() => {
-    if (loading || waitingForSelectedSummary || conversations.length === 0) return
-    const selected = conversations.find((conversation) => conversation._id === selectedId)
-      ?? conversations[0]
-    if (!selected || selected._id === selectedId) return
-    const params = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '')
-    params.set('id', selected._id)
-    const next = `${pathname}?${params.toString()}`
-    window.history.replaceState(null, '', next)
-    window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
-      detail: { chatId: selected._id },
-    }))
-  }, [conversations, loading, pathname, selectedId, waitingForSelectedSummary])
-
-  if (loading) {
+  if (loading) return <ArchivedSpinner label="Loading archived chat…" />
+  const selected = conversations.find((conversation) => conversation._id === selectedId)
+  if (selectedUnavailable && !selected) {
     return (
-      <AppScreenShell className="h-full" header={archivedHeader}>
-        <div className="flex h-full min-h-72 items-center justify-center text-sm text-(--muted)">
-          <Loader2 size={16} className="mr-2 animate-spin" />
-          Loading archived chat…
-        </div>
-      </AppScreenShell>
-    )
-  }
-
-  if (state.status === 'error' && state.workspaceId === workspaceId && conversations.length === 0) {
-    return (
-      <AppScreenShell className="h-full" header={archivedHeader}>
-        <EmptyState
-          className="h-full min-h-72 px-6 py-12"
-          icon={<Archive size={28} />}
-          title="Archived chats are unavailable"
-          description={state.message}
-          action={<Button size="sm" onClick={() => void load()}>Try again</Button>}
-        />
-      </AppScreenShell>
-    )
-  }
-
-  if (selectedSummaryUnavailable && !conversations.some((conversation) => conversation._id === selectedId)) {
-    return (
-      <AppScreenShell className="h-full" header={archivedHeader}>
+      <ArchivedNotice>
         <EmptyState
           className="h-full min-h-72 px-6 py-12"
           icon={<Archive size={28} />}
           title="Archived chats are unavailable"
           description="The selected conversation could not be checked."
         />
-      </AppScreenShell>
+      </ArchivedNotice>
     )
   }
-
   if (conversations.length === 0) {
     return (
-      <AppScreenShell className="h-full" header={archivedHeader}>
+      <ArchivedNotice>
         <EmptyState
           className="h-full min-h-72 px-6 py-12"
           icon={<Archive size={28} />}
-          title={nativePersonalEnabled && nativePersonal.archived.status === 'unavailable'
-            ? 'Archived chats are unavailable'
-            : 'Nothing archived'}
-          description={nativePersonalEnabled && nativePersonal.archived.status === 'unavailable'
-            ? 'Native archived conversations could not be loaded.'
+          title={unavailable ? 'Archived chats are unavailable' : 'Nothing archived'}
+          description={unavailable
+            ? 'Archived conversations could not be loaded.'
             : 'Archived direct messages and channels are kept here. Archive one from its conversation menu.'}
-          action={nativePersonalEnabled && nativePersonal.archived.hasMore ? (
-            <Button
-              size="sm"
-              disabled={nativePersonal.archived.loadingMore}
-              onClick={() => nativePersonal.archived.loadMore()}
-            >
-              {nativePersonal.archived.loadingMore ? 'Loading…' : 'Load more'}
+          action={archived.hasMore ? (
+            <Button size="sm" disabled={archived.loadingMore} onClick={() => archived.loadMore()}>
+              {archived.loadingMore ? 'Loading…' : 'Load more'}
             </Button>
           ) : undefined}
         />
-      </AppScreenShell>
+      </ArchivedNotice>
     )
   }
-
-  const selected = conversations.find((conversation) => conversation._id === selectedId)
-  if (!selected) {
-    return (
-      <AppScreenShell className="h-full" header={archivedHeader}>
-        <div className="flex h-full min-h-72 items-center justify-center text-sm text-(--muted)">
-          <Loader2 size={16} className="mr-2 animate-spin" />
-          Opening archived chat…
-        </div>
-      </AppScreenShell>
-    )
-  }
-  if (selected.conversationType === 'channel') {
+  if (!selected) return <ArchivedSpinner label="Opening archived chat…" />
+  if (selected.conversationType === 'channel' || selected.conversationType === 'dm') {
     return (
       <DirectMessageExperience
-        key={`archived-channel:${selected._id}`}
+        key={`archived-${selected.conversationType}:${selected._id}`}
         conversationId={selected._id}
-        conversationType="channel"
+        {...(selected.conversationType === 'channel' ? { conversationType: 'channel' as const } : {})}
       />
     )
   }
-  if (selected.conversationType === 'dm') {
-    return (
-      <DirectMessageExperience
-        key={`archived-dm:${selected._id}`}
-        conversationId={selected._id}
-      />
-    )
-  }
-  return (
-    <ChatExperience
-      userId={userId}
-      firstName={firstName}
-      hideSidebar
-    />
-  )
+  return <ChatExperience userId={userId} firstName={firstName} hideSidebar />
 }

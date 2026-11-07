@@ -39,7 +39,6 @@ import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCa
 import { shouldLoadGatewayModelCatalog } from '@/shared/ai/gateway/catalog-access'
 import { useByokModels } from '@/components/providers/useByokModels'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { useGeneratedUiConnectorActions } from './useGeneratedUiConnectorActions'
@@ -163,7 +162,6 @@ export function useChatExperienceController({
     nativePersonalEnabled,
     nativePersonalRoute,
   } = useNativePersonalRouteState({
-    activeWorkspaceId,
     authLoading,
     isTemporaryChatRef,
     nativePersonal,

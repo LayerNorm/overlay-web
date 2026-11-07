@@ -79,12 +79,10 @@ export function movePersonalChatRow(
   }
 }
 
-export function personalChatListStatus({ configured, workspaceReady, authLoading, workspaceId, isAuthenticated }: {
-  configured: boolean; workspaceReady: boolean; authLoading: boolean; workspaceId: string | null; isAuthenticated: boolean
-}): 'disabled' | 'loading' | 'ready' | 'unavailable' {
-  return !configured
-    ? 'disabled'
-    : !workspaceReady || authLoading
+export function personalChatListStatus({ workspaceReady, authLoading, workspaceId, isAuthenticated }: {
+  workspaceReady: boolean; authLoading: boolean; workspaceId: string | null; isAuthenticated: boolean
+}): 'loading' | 'ready' | 'unavailable' {
+  return !workspaceReady || authLoading
       ? 'loading'
       : !workspaceId
         ? 'unavailable'
