@@ -5,12 +5,28 @@ import type { QueryCtx } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
 import { hydrateRemoteMessage, hydrateRemoteMessages } from '../lib/remoteMessageText'
 import {
+  addParticipantFor,
   deleteRoomMessage,
   editRoomMessage,
+  listParticipantsFor,
+  listPresenceFor,
+  listThreadFollowsFor,
   nativeRoomActor,
+  removeParticipantFor,
   requireConversationAccess,
   roomMessageView,
+  setThreadFollowFor,
+  updateParticipantStateFor,
+  upsertPresenceFor,
 } from './directMessages'
+import {
+  listPinsFor,
+  listReactionsFor,
+  listSavedMessagesFor,
+  setPinnedFor,
+  setReactionFor,
+  setSavedFor,
+} from './channels'
 
 const roomArgs = { workspaceId: v.string(), conversationId: v.id('conversations') }
 const DENIED = new Set(['Unauthorized', 'WORKSPACE_ACCESS_DENIED', 'CONVERSATION_ACCESS_DENIED'])
@@ -79,4 +95,111 @@ export const editMessage = mutation({
 export const deleteMessage = mutation({
   args: { ...roomArgs, messageId: v.id('conversationMessages') },
   handler: async (ctx, args) => await deleteRoomMessage(ctx, { ...args, ...await nativeRoomActor(ctx, args.workspaceId) }),
+})
+
+/**
+ * Everything collaborative about one room, live: participants, reactions, pins, the member's saved
+ * messages and followed threads in it, and presence. Null when the member cannot read the room, so a
+ * removed participant loses the room in every open client.
+ */
+export const state = query({
+  args: roomArgs,
+  handler: async (ctx, args) => {
+    const room = await readableRoom(ctx, args)
+    if (!room) return null
+    const proof = { ...args, ...await nativeRoomActor(ctx, args.workspaceId) }
+    const [participants, reactions, pins, saved, follows, presence] = await Promise.all([
+      listParticipantsFor(ctx, proof),
+      listReactionsFor(ctx, proof),
+      listPinsFor(ctx, proof),
+      listSavedMessagesFor(ctx, { actorUserId: proof.actorUserId, workspaceId: proof.workspaceId, native: true }),
+      listThreadFollowsFor(ctx, proof),
+      listPresenceFor(ctx, proof),
+    ])
+    const conversation = room.conversation
+    return {
+      currentPrincipalId: room.actor.principalId,
+      channel: conversation.conversationType === 'channel'
+        ? {
+            conversationId: conversation._id,
+            workspaceId: args.workspaceId,
+            name: conversation.title,
+            slug: conversation.channelSlug ?? '',
+            topic: conversation.channelTopic,
+            visibility: conversation.channelVisibility ?? 'public',
+            participantCount: participants.length,
+            createdAt: conversation.createdAt,
+            updatedAt: conversation.updatedAt ?? conversation.lastModified,
+          }
+        : null,
+      participants,
+      reactions,
+      pins,
+      saved: saved.filter(row => row.conversationId === args.conversationId),
+      follows,
+      presence,
+    }
+  },
+})
+
+const messageArgs = { ...roomArgs, messageId: v.id('conversationMessages') }
+
+export const setReaction = mutation({
+  args: { ...messageArgs, emoji: v.string(), enabled: v.boolean() },
+  handler: async (ctx, args) => {
+    await setReactionFor(ctx, { ...args, ...await nativeRoomActor(ctx, args.workspaceId) })
+    return null
+  },
+})
+
+export const setPinned = mutation({
+  args: { ...messageArgs, pinned: v.boolean() },
+  handler: async (ctx, args) => await setPinnedFor(ctx, { ...args, ...await nativeRoomActor(ctx, args.workspaceId) }),
+})
+
+export const setSaved = mutation({
+  args: { ...messageArgs, saved: v.boolean() },
+  handler: async (ctx, args) => await setSavedFor(ctx, { ...args, ...await nativeRoomActor(ctx, args.workspaceId) }),
+})
+
+export const setThreadFollow = mutation({
+  args: { ...roomArgs, threadRootMessageId: v.id('conversationMessages'), followed: v.boolean() },
+  handler: async (ctx, args) => await setThreadFollowFor(ctx, { ...args, ...await nativeRoomActor(ctx, args.workspaceId) }),
+})
+
+/** The member's own room state: archive, mute level and read position. */
+export const updateMyState = mutation({
+  args: {
+    ...roomArgs,
+    archived: v.optional(v.boolean()),
+    markRead: v.optional(v.boolean()),
+    markUnread: v.optional(v.boolean()),
+    readSequence: v.optional(v.number()),
+    notificationLevel: v.optional(v.union(v.literal('all'), v.literal('mentions'), v.literal('muted'))),
+  },
+  handler: async (ctx, args) => await updateParticipantStateFor(ctx, { ...args, ...await nativeRoomActor(ctx, args.workspaceId) }),
+})
+
+export const addParticipant = mutation({
+  args: { ...roomArgs, principalId: v.string() },
+  handler: async (ctx, args) => await addParticipantFor(ctx, { ...args, ...await nativeRoomActor(ctx, args.workspaceId) }),
+})
+
+export const removeParticipant = mutation({
+  args: { ...roomArgs, principalId: v.string() },
+  handler: async (ctx, args) => await removeParticipantFor(ctx, { ...args, ...await nativeRoomActor(ctx, args.workspaceId) }),
+})
+
+/** Presence heartbeat. Rows expire by `lastSeenAt`; the room state query drops stale ones. */
+export const heartbeat = mutation({
+  args: {
+    ...roomArgs,
+    sessionId: v.string(),
+    status: v.union(v.literal('online'), v.literal('away'), v.literal('offline')),
+    typing: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    await upsertPresenceFor(ctx, { ...args, ...await nativeRoomActor(ctx, args.workspaceId) })
+    return null
+  },
 })

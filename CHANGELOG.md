@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make room details live: participants, reactions, pins, saved messages, thread follows, mute and presence now come from one native Convex query per room, so they match in every open client without refetching. Reactions, pins, saves and follows update instantly and roll back by themselves if the server refuses them, and removing someone from a room closes it for them at once. Presence and typing now use native heartbeats instead of a polling fallback.
+
 - Make agent threads live and immediate: the sidebar's thread lists update in every open client, opening an agent you have already expanded goes straight to its thread with no request, and creating, archiving, restoring or deleting a thread updates everywhere at once. Opening a thread no longer re-downloads the agent's thread list to check access, and a link to someone else's thread is still refused.
 
 - Load DM and channel messages natively: rooms open from a live Convex query instead of waiting on an HTTP load, older messages and reply threads page in from an index (fixing threads and roots older than the newest 500 messages that could not load at all), and edits and deletes appear in every open client at once without a reload.

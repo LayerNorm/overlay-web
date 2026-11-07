@@ -9,8 +9,6 @@ import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { LinkOpenInterceptor } from './LinkOpenInterceptor'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
-import { useAuth } from '@/contexts/AuthContext'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
@@ -243,16 +241,9 @@ export function DirectMessageExperience({
   guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode; pendingMessage?: { text: string; clientNonce: string } | null };
 }) {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
-  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
-  const { user: authUser } = useAuth()
-  const convexAccessToken = useConvexAuthToken()
+  const { capabilities } = useOverlayCapabilities()
   const { refreshNotifications } = useCollaborationRealtime()
   const { settings: appSettings } = useAppSettings()
-  const convexLiveSyncEnabled = appDataCapabilities.provider === 'convex'
-    && appDataCapabilities.requiresConvexClient
-    && appDataCapabilities.supportsRealtime
-  const convexRoomSubscriptionEnabled = convexLiveSyncEnabled
-    && Boolean(authUser?.id && convexAccessToken && activeWorkspaceId)
   const router = useRouter()
   const panels = useRoomPanels({ renderAttachmentViewer: AttachmentViewer })
   const room = useDirectMessageRoom({
@@ -263,7 +254,6 @@ export function DirectMessageExperience({
     draftTitle,
     router,
     activeWorkspaceId,
-    convexRoomSubscriptionEnabled,
     refreshNotifications,
     onOpenAttachmentPreview: panels.openAttachmentPreview,
   })
@@ -320,16 +310,12 @@ export function DirectMessageExperience({
         onOpenInOverlay={panels.openLinkPreview}
       />
       <RoomRealtimeSubscriptions
-        enabled={convexRoomSubscriptionEnabled}
-        accessToken={convexAccessToken}
-        actorUserId={authUser?.id}
         conversationId={conversationId}
         threadRootId={thread.threadRootId}
         workspaceId={activeWorkspaceId}
         onMessages={transcript.applyLiveRoomMessages}
         onRoom={transcript.applyRoomSummary}
         onPaging={transcript.setPaging}
-        onPresence={roster.applyConvexPresence}
       />
       <AppScreenShell
         contentClassName="flex min-h-0"
@@ -429,10 +415,7 @@ export function DirectMessageExperience({
         currentParticipant={vm.currentParticipant}
         participants={roster.participants}
         router={router}
-        onParticipantsAdded={() => {
-          room.setAddPeopleOpen(false)
-          void roster.loadParticipants()
-        }}
+        onParticipantsAdded={() => room.setAddPeopleOpen(false)}
       />
     </QuestionnaireComposerProvider>
   );

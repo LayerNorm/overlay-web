@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import type { ObjectType } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { mutation, query } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
@@ -6,13 +7,17 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
 
-type Ctx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
+type Ctx = (Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>) & { auth?: QueryCtx['auth'] }
 
+/** Server secret, or native identity set only by `collaboration/rooms` wrappers (never client arguments). */
 async function requireActor(
   ctx: Ctx,
-  args: { actorUserId: string; workspaceId: string; serverSecret?: string },
+  args: { actorUserId: string; workspaceId: string; serverSecret?: string; native?: true },
 ) {
-  if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
+  if (args.native) {
+    const identity = await ctx.auth?.getUserIdentity()
+    if (!identity?.subject || identity.subject !== args.actorUserId) throw new Error('Unauthorized')
+  } else if (!validateServerSecret(args.serverSecret)) throw new Error('Unauthorized')
   const principal = await ctx.db.query('workspacePrincipals')
     .withIndex('by_workspaceId_userId', (q) => (
       q.eq('workspaceId', args.workspaceId).eq('userId', args.actorUserId)
@@ -35,6 +40,7 @@ async function requireAccess(
     conversationId: Id<'conversations'>
     workspaceId: string
     serverSecret?: string
+    native?: true
   },
 ) {
   const { principal } = await requireActor(ctx, args)
@@ -216,184 +222,208 @@ export const listChannels = query({
   },
 })
 
-export const listReactions = query({
-  args: {
+const listReactionsArgs = {
     actorUserId: v.string(), conversationId: v.id('conversations'), workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const { actor } = await requireAccess(ctx, args)
-    const rows = await ctx.db.query('conversationMessageReactions')
-      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
-      .collect()
-    return groupReactions(rows, actor.principalId)
-  },
+  }
+
+export async function listReactionsFor(ctx: QueryCtx, args: ObjectType<typeof listReactionsArgs> & { native?: true }) {
+  const { actor } = await requireAccess(ctx, args)
+  const rows = await ctx.db.query('conversationMessageReactions')
+    .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
+    .collect()
+  return groupReactions(rows, actor.principalId)
+}
+
+export const listReactions = query({
+  args: listReactionsArgs,
+  handler: async (ctx, args) => await listReactionsFor(ctx, args),
 })
 
-export const setReaction = mutation({
-  args: {
+const setReactionArgs = {
     actorUserId: v.string(), conversationId: v.id('conversations'), emoji: v.string(),
     enabled: v.boolean(), messageId: v.id('conversationMessages'), workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const { actor } = await requireAccess(ctx, args)
-    await requireMessage(ctx, args.conversationId, args.messageId)
-    const emoji = args.emoji.trim()
-    if (!emoji || emoji.length > 32) throw new Error('A valid reaction is required')
-    const existing = await ctx.db.query('conversationMessageReactions')
-      .withIndex('by_messageId_principalId_emoji', (q) => (
-        q.eq('messageId', args.messageId).eq('principalId', actor.principalId).eq('emoji', emoji)
-      )).unique()
-    const reactionChanged = args.enabled ? !existing : Boolean(existing)
-    if (args.enabled && !existing) {
-      await ctx.db.insert('conversationMessageReactions', {
-        conversationId: args.conversationId, messageId: args.messageId, workspaceId: args.workspaceId,
-        principalId: actor.principalId, emoji, createdAt: Date.now(),
-      })
-    } else if (!args.enabled && existing) await ctx.db.delete(existing._id)
-    if (args.enabled && reactionChanged) {
-      const message = await ctx.db.get(args.messageId)
-      if (message?.authorPrincipalId && message.authorPrincipalId !== actor.principalId) {
-        const preferences = await ctx.db.query('workspaceNotificationPreferences')
-          .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', message.authorPrincipalId!))
-          .unique()
-        if (preferences?.reactions !== 'off') {
-          await ctx.db.insert('workspaceNotifications', {
-            notificationId: crypto.randomUUID(),
-            workspaceId: args.workspaceId,
-            recipientPrincipalId: message.authorPrincipalId,
-            type: 'reaction',
-            conversationId: args.conversationId,
-            messageId: args.messageId,
-            actorPrincipalId: actor.principalId,
-            title: `${actor.displayName} reacted ${emoji}`,
-            body: undefined,
-            eventSequence: Date.now(),
-            createdAt: Date.now(),
-          })
-        }
+  }
+
+export async function setReactionFor(ctx: MutationCtx, args: ObjectType<typeof setReactionArgs> & { native?: true }) {
+  const { actor } = await requireAccess(ctx, args)
+  await requireMessage(ctx, args.conversationId, args.messageId)
+  const emoji = args.emoji.trim()
+  if (!emoji || emoji.length > 32) throw new Error('A valid reaction is required')
+  const existing = await ctx.db.query('conversationMessageReactions')
+    .withIndex('by_messageId_principalId_emoji', (q) => (
+      q.eq('messageId', args.messageId).eq('principalId', actor.principalId).eq('emoji', emoji)
+    )).unique()
+  const reactionChanged = args.enabled ? !existing : Boolean(existing)
+  if (args.enabled && !existing) {
+    await ctx.db.insert('conversationMessageReactions', {
+      conversationId: args.conversationId, messageId: args.messageId, workspaceId: args.workspaceId,
+      principalId: actor.principalId, emoji, createdAt: Date.now(),
+    })
+  } else if (!args.enabled && existing) await ctx.db.delete(existing._id)
+  if (args.enabled && reactionChanged) {
+    const message = await ctx.db.get(args.messageId)
+    if (message?.authorPrincipalId && message.authorPrincipalId !== actor.principalId) {
+      const preferences = await ctx.db.query('workspaceNotificationPreferences')
+        .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', message.authorPrincipalId!))
+        .unique()
+      if (preferences?.reactions !== 'off') {
+        await ctx.db.insert('workspaceNotifications', {
+          notificationId: crypto.randomUUID(),
+          workspaceId: args.workspaceId,
+          recipientPrincipalId: message.authorPrincipalId,
+          type: 'reaction',
+          conversationId: args.conversationId,
+          messageId: args.messageId,
+          actorPrincipalId: actor.principalId,
+          title: `${actor.displayName} reacted ${emoji}`,
+          body: undefined,
+          eventSequence: Date.now(),
+          createdAt: Date.now(),
+        })
       }
     }
-    if (reactionChanged) {
-      await recordConversationEvent(ctx, {
-        conversationId: args.conversationId,
-        workspaceId: args.workspaceId,
-        userId: args.actorUserId,
-        type: 'reaction.changed',
-        messageId: args.messageId,
-        payload: { enabled: args.enabled, emoji },
-      })
-    }
-    const rows = await ctx.db.query('conversationMessageReactions')
-      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
-      .collect()
-    return groupReactions(rows, actor.principalId)
-  },
+  }
+  if (reactionChanged) {
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'reaction.changed',
+      messageId: args.messageId,
+      payload: { enabled: args.enabled, emoji },
+    })
+  }
+  const rows = await ctx.db.query('conversationMessageReactions')
+    .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
+    .collect()
+  return groupReactions(rows, actor.principalId)
+}
+
+export const setReaction = mutation({
+  args: setReactionArgs,
+  handler: async (ctx, args) => await setReactionFor(ctx, args),
 })
 
-export const listPins = query({
-  args: {
+const listPinsArgs = {
     actorUserId: v.string(), conversationId: v.id('conversations'), workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    await requireAccess(ctx, args)
-    const rows = await ctx.db.query('conversationPins')
-      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
-      .collect()
-    return rows.sort((a, b) => b.createdAt - a.createdAt).map((row) => ({
-      conversationId: row.conversationId,
-      messageId: row.messageId,
-      pinnedByPrincipalId: row.pinnedByPrincipalId,
-      createdAt: row.createdAt,
-    }))
-  },
+  }
+
+export async function listPinsFor(ctx: QueryCtx, args: ObjectType<typeof listPinsArgs> & { native?: true }) {
+  await requireAccess(ctx, args)
+  const rows = await ctx.db.query('conversationPins')
+    .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
+    .collect()
+  return rows.sort((a, b) => b.createdAt - a.createdAt).map((row) => ({
+    conversationId: row.conversationId,
+    messageId: row.messageId,
+    pinnedByPrincipalId: row.pinnedByPrincipalId,
+    createdAt: row.createdAt,
+  }))
+}
+
+export const listPins = query({
+  args: listPinsArgs,
+  handler: async (ctx, args) => await listPinsFor(ctx, args),
 })
 
-export const setPinned = mutation({
-  args: {
+const setPinnedArgs = {
     actorUserId: v.string(), conversationId: v.id('conversations'), messageId: v.id('conversationMessages'),
     pinned: v.boolean(), workspaceId: v.string(), serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const { actor } = await requireAccess(ctx, args)
-    await requireMessage(ctx, args.conversationId, args.messageId)
-    const existing = await ctx.db.query('conversationPins')
-      .withIndex('by_conversationId_messageId', (q) => (
-        q.eq('conversationId', args.conversationId).eq('messageId', args.messageId)
-      )).unique()
-    if (args.pinned && !existing) {
-      await ctx.db.insert('conversationPins', {
-        conversationId: args.conversationId, messageId: args.messageId, workspaceId: args.workspaceId,
-        pinnedByPrincipalId: actor.principalId, createdAt: Date.now(),
-      })
-      await recordConversationEvent(ctx, {
-        conversationId: args.conversationId,
-        workspaceId: args.workspaceId,
-        userId: args.actorUserId,
-        type: 'pin.changed',
-        messageId: args.messageId,
-        payload: { pinned: true },
-      })
-      return true
-    }
-    if (!args.pinned && existing) {
-      await ctx.db.delete(existing._id)
-      await recordConversationEvent(ctx, {
-        conversationId: args.conversationId,
-        workspaceId: args.workspaceId,
-        userId: args.actorUserId,
-        type: 'pin.changed',
-        messageId: args.messageId,
-        payload: { pinned: false },
-      })
-      return true
-    }
-    return false
-  },
+  }
+
+export async function setPinnedFor(ctx: MutationCtx, args: ObjectType<typeof setPinnedArgs> & { native?: true }) {
+  const { actor } = await requireAccess(ctx, args)
+  await requireMessage(ctx, args.conversationId, args.messageId)
+  const existing = await ctx.db.query('conversationPins')
+    .withIndex('by_conversationId_messageId', (q) => (
+      q.eq('conversationId', args.conversationId).eq('messageId', args.messageId)
+    )).unique()
+  if (args.pinned && !existing) {
+    await ctx.db.insert('conversationPins', {
+      conversationId: args.conversationId, messageId: args.messageId, workspaceId: args.workspaceId,
+      pinnedByPrincipalId: actor.principalId, createdAt: Date.now(),
+    })
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'pin.changed',
+      messageId: args.messageId,
+      payload: { pinned: true },
+    })
+    return true
+  }
+  if (!args.pinned && existing) {
+    await ctx.db.delete(existing._id)
+    await recordConversationEvent(ctx, {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      userId: args.actorUserId,
+      type: 'pin.changed',
+      messageId: args.messageId,
+      payload: { pinned: false },
+    })
+    return true
+  }
+  return false
+}
+
+export const setPinned = mutation({
+  args: setPinnedArgs,
+  handler: async (ctx, args) => await setPinnedFor(ctx, args),
 })
+
+const listSavedMessagesArgs = { actorUserId: v.string(), workspaceId: v.string(), serverSecret: v.optional(v.string()) }
+
+export async function listSavedMessagesFor(ctx: QueryCtx, args: ObjectType<typeof listSavedMessagesArgs> & { native?: true }) {
+  const { principal } = await requireActor(ctx, args)
+  const rows = await ctx.db.query('conversationSavedMessages')
+    .withIndex('by_workspaceId_principalId_createdAt', (q) => (
+      q.eq('workspaceId', args.workspaceId).eq('principalId', principal.principalId)
+    )).collect()
+  return rows.sort((a, b) => b.createdAt - a.createdAt).map((row) => ({
+    conversationId: row.conversationId, messageId: row.messageId,
+    principalId: row.principalId, createdAt: row.createdAt,
+  }))
+}
 
 export const listSavedMessages = query({
-  args: { actorUserId: v.string(), workspaceId: v.string(), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const { principal } = await requireActor(ctx, args)
-    const rows = await ctx.db.query('conversationSavedMessages')
-      .withIndex('by_workspaceId_principalId_createdAt', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('principalId', principal.principalId)
-      )).collect()
-    return rows.sort((a, b) => b.createdAt - a.createdAt).map((row) => ({
-      conversationId: row.conversationId, messageId: row.messageId,
-      principalId: row.principalId, createdAt: row.createdAt,
-    }))
-  },
+  args: listSavedMessagesArgs,
+  handler: async (ctx, args) => await listSavedMessagesFor(ctx, args),
 })
 
-export const setSaved = mutation({
-  args: {
+const setSavedArgs = {
     actorUserId: v.string(), conversationId: v.id('conversations'), messageId: v.id('conversationMessages'),
     saved: v.boolean(), workspaceId: v.string(), serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const { actor } = await requireAccess(ctx, args)
-    await requireMessage(ctx, args.conversationId, args.messageId)
-    const existing = await ctx.db.query('conversationSavedMessages')
-      .withIndex('by_messageId_principalId', (q) => (
-        q.eq('messageId', args.messageId).eq('principalId', actor.principalId)
-      )).unique()
-    if (args.saved && !existing) {
-      await ctx.db.insert('conversationSavedMessages', {
-        conversationId: args.conversationId, messageId: args.messageId, workspaceId: args.workspaceId,
-        principalId: actor.principalId, createdAt: Date.now(),
-      })
-      return true
-    }
-    if (!args.saved && existing) {
-      await ctx.db.delete(existing._id)
-      return true
-    }
-    return false
-  },
+  }
+
+export async function setSavedFor(ctx: MutationCtx, args: ObjectType<typeof setSavedArgs> & { native?: true }) {
+  const { actor } = await requireAccess(ctx, args)
+  await requireMessage(ctx, args.conversationId, args.messageId)
+  const existing = await ctx.db.query('conversationSavedMessages')
+    .withIndex('by_messageId_principalId', (q) => (
+      q.eq('messageId', args.messageId).eq('principalId', actor.principalId)
+    )).unique()
+  if (args.saved && !existing) {
+    await ctx.db.insert('conversationSavedMessages', {
+      conversationId: args.conversationId, messageId: args.messageId, workspaceId: args.workspaceId,
+      principalId: actor.principalId, createdAt: Date.now(),
+    })
+    return true
+  }
+  if (!args.saved && existing) {
+    await ctx.db.delete(existing._id)
+    return true
+  }
+  return false
+}
+
+export const setSaved = mutation({
+  args: setSavedArgs,
+  handler: async (ctx, args) => await setSavedFor(ctx, args),
 })
 
 export const searchWorkspaceChats = query({

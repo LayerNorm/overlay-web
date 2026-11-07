@@ -307,7 +307,7 @@ New owner sessions use `flowVersion: 2` and revision-checked name, about, team, 
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Convex appends the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
 - Convex-backed browsers use native `watchConversationListVersion` and `watchNotifications` subscriptions. `/api/v1/conversations/events` remains a long-poll fallback for non-realtime clients and must not be mounted as a browser subscription path.
-- Remaining token-based reactive handlers (presence, notifications, list version) receive the short-lived BFF HMAC token as an explicit
+- Remaining token-based reactive handlers (notifications and list version, until CN-11) receive the short-lived BFF HMAC token as an explicit
   `accessToken` argument. This token does not configure Convex platform `setAuth`;
   the handler verifies it and binds it to the requested account.
 - Room transcripts are native. Browsers read DM and channel history through
@@ -318,7 +318,16 @@ New owner sessions use `flowVersion: 2` and revision-checked name, about, team, 
   `POST /api/v1/conversations/message` because it starts agent runs and mention email; its optimistic
   rows reconcile against the live query. `GET /api/v1/conversations?messages=true` and the message
   PATCH/DELETE routes remain for desktop and API clients, and the pre-send thread writability probe
-  stays on HTTP with send. Presence, participants and room metadata are CN-10.
+  stays on HTTP with send.
+- Room metadata is native too. `collaboration/rooms:state` returns the room's participants, channel
+  facts, reactions, pins, the member's saves and followed threads in it, and presence, or null once
+  the member is removed, which closes the room in every open client. Actions are native mutations
+  (`setReaction`, `setPinned`, `setSaved`, `setThreadFollow`, `updateMyState` for mute and read,
+  `addParticipant`, `removeParticipant`, `heartbeat`) with optimistic updates applied to that query,
+  so a rejected action rolls back and concurrent changes converge. Presence rows older than two
+  minutes read as offline; every open client's 45-second heartbeat re-runs the query so stale
+  sessions expire. Room archive and delete (self or everyone) stay on HTTP because they also update
+  the conversation lists, which CN-11 moves.
 - Personal chat creation is deferred until the first send. Newly created DMs and
   channels are client-side drafts until their first message succeeds: they are not
   inserted into the sidebar list, and navigating away removes the current member

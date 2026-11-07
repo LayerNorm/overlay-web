@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import type { RoomStateApi } from '../collaboration/useRoomState'
 import test, { type TestContext } from 'node:test'
 import { createRequire } from 'node:module'
 import React, { act, type ReactElement, useEffect, useState } from 'react'
@@ -188,18 +189,20 @@ function roomArgs(): Parameters<typeof useSendMessage>[0] {
   }
 }
 
+/** A room with no live state yet, enough for hooks that only read it. */
+const idleRoom = { args: null, state: undefined, setThreadFollow: async () => false } as unknown as RoomStateApi
+
 test('mounted room admission preserves draft, prevents duplicate saves and retains newer attachments', async (t) => {
   browser(t)
   const saved = deferred<unknown>()
   const post = t.mock.method(overlayAppClient.conversations, 'addMessage', () => saved.promise)
   const args = roomArgs()
-  const sessionIdRef = { current: crypto.randomUUID() }
   let allowed = false
   args.ensureCanSendToThread = async () => ({ accepted: allowed, status: allowed ? 'writable' : 'unavailable' })
   const hook = await mount(t, (input: typeof args) => {
     const sendMessage = useSendMessage(input)
     return useRoomComposer({
-      activeWorkspaceId: 'workspace', conversationId: input.conversationId, sessionIdRef,
+      activeWorkspaceId: 'workspace', conversationId: input.conversationId, reportTyping: noop,
       sendMessage, mentions: input.mentions, setMentions: noop,
     })
   }, args)
@@ -222,7 +225,6 @@ test('mounted room admission preserves draft, prevents duplicate saves and retai
 
 test('room sends clear typed text, attachments and stored draft before the acknowledgement', async (t) => {
   browser(t)
-  t.mock.method(overlayAppClient.conversations, 'updatePresence', async () => ({}))
   const saved = deferred<unknown>()
   const post = t.mock.method(overlayAppClient.conversations, 'addMessage', () => saved.promise)
   const args = roomArgs()
@@ -230,7 +232,7 @@ test('room sends clear typed text, attachments and stored draft before the ackno
     const sendMessage = useSendMessage(input)
     return useRoomComposer({
       activeWorkspaceId: 'workspace', conversationId: input.conversationId,
-      sessionIdRef: { current: 'presence-session-not-the-conversation' },
+      reportTyping: noop,
       sendMessage, mentions: input.mentions, setMentions: noop,
     })
   }, args)
@@ -260,7 +262,7 @@ test('a room send acknowledgement cannot clear a newer draft or a reopened scope
   browser(t)
   const saved = deferred<{ accepted: boolean }>()
   const args: Parameters<typeof useRoomComposer>[0] = {
-    activeWorkspaceId: 'workspace', conversationId: 'room', sessionIdRef: { current: 'presence' },
+    activeWorkspaceId: 'workspace', conversationId: 'room', reportTyping: noop,
     sendMessage: () => saved.promise, mentions: [], setMentions: noop,
   }
   const hook = await mount(t, useRoomComposer, args)
@@ -285,7 +287,7 @@ test('a room send acknowledgement cannot clear a newer draft or a reopened scope
 test('nested replies clear immediately and restore only an unchanged failed draft', async (t) => {
   browser(t)
   t.mock.method(overlayAppClient.conversations, 'threadFollow', async () => ({ following: false }))
-  const hook = await mount(t, useThreadPanel, { conversationId: 'room', setRoomPanel: noop })
+  const hook = await mount(t, useThreadPanel, { conversationId: 'room', room: idleRoom, setRoomPanel: noop })
   await act(async () => { hook.value.setThreadRootId('a'); hook.value.setThreadInput('original') })
   const saved = deferred<RoomSendResult>()
   const sendMessage: SendMessage = async (_text, options) => {
@@ -309,7 +311,7 @@ test('nested replies clear immediately and restore only an unchanged failed draf
 test('late nested acknowledgements and failures preserve newer or reopened thread drafts', async (t) => {
   browser(t)
   t.mock.method(overlayAppClient.conversations, 'threadFollow', async () => ({ following: false }))
-  const hook = await mount(t, useThreadPanel, { conversationId: 'room', setRoomPanel: noop })
+  const hook = await mount(t, useThreadPanel, { conversationId: 'room', room: idleRoom, setRoomPanel: noop })
   await act(async () => { hook.value.setThreadRootId('a'); hook.value.setThreadInput('original') })
   for (const accepted of [true, false]) {
     const saved = deferred<RoomSendResult>()
@@ -325,10 +327,9 @@ test('late nested acknowledgements and failures preserve newer or reopened threa
 
 test('mounted room restores normally typed text after safety unmounts the composer', async (t) => {
   browser(t)
-  t.mock.method(overlayAppClient.conversations, 'updatePresence', async () => ({}))
   let sends = 0
   const args: Parameters<typeof useRoomComposer>[0] = {
-    activeWorkspaceId: 'workspace', conversationId: 'room', sessionIdRef: { current: 'session' },
+    activeWorkspaceId: 'workspace', conversationId: 'room', reportTyping: noop,
     sendMessage: async () => { sends++; return { accepted: true } },
     mentions: [], setMentions: noop, readOnly: false,
   }
@@ -393,14 +394,13 @@ test('mounted delete waits for authority and leaves history and animation unchan
 
 async function roomComposerWithPendingSave(t: TestContext) {
   browser(t)
-  t.mock.method(overlayAppClient.conversations, 'updatePresence', async () => ({}))
   const saved = deferred<unknown>()
   t.mock.method(overlayAppClient.conversations, 'addMessage', () => saved.promise)
   const args = roomArgs()
   const hook = await mount(t, (input: typeof args) => {
     const [mentions, setMentions] = useState(input.mentions)
     const composer = useRoomComposer({ activeWorkspaceId: 'workspace', conversationId: input.conversationId,
-      sessionIdRef: { current: 'presence' }, sendMessage: useSendMessage(input), mentions, setMentions })
+      reportTyping: noop, sendMessage: useSendMessage(input), mentions, setMentions })
     return { ...composer, syncEmptyEditorMentions: () => setMentions([]) }
   }, args)
   return { hook, saved, args }
