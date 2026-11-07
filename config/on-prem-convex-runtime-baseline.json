@@ -252,8 +252,10 @@
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
     "src/features/chat/components/collaboration/useRoomCompatibility.ts",
     "src/features/chat/components/collaboration/useRoomState.ts",
+    "src/features/settings/components/WebhookSettings.tsx",
     "src/features/work/components/WorkDataProvider.tsx",
-    "src/features/work/lib/use-live-work.ts"
+    "src/features/work/lib/use-live-work.ts",
+    "src/features/workspaces/components/SlackImportPanel.tsx"
   ],
   "convexCronJobs": [
     {
@@ -423,9 +425,12 @@
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
     "src/features/chat/components/collaboration/useRoomCompatibility.ts",
     "src/features/chat/components/collaboration/useRoomState.ts",
+    "src/features/settings/components/WebhookSettings.tsx",
     "src/features/work/components/WorkDataProvider.tsx",
     "src/features/work/lib/use-live-work.ts",
+    "src/features/workspaces/components/SlackImportPanel.tsx",
     "src/hooks/use-agent-directory.ts",
+    "src/hooks/use-billing.ts",
     "src/hooks/use-connections.ts",
     "src/hooks/use-file-tree.ts",
     "src/hooks/use-live-automations.ts",

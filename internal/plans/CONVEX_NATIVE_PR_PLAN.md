@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-07. Phases A to E and the first Phase F PR are complete and live in production: chats, agents, rooms, Activity, files, notes, memories, Work, automations, skills and connections (MCP, providers, computers, environments, surfaces) run on the native path. The production Convex backend was last deployed from main `0589eb36b` after the matching web release. Phase F ships in three PRs; the second (CN-25 to CN-27: workspace directory and policy, members and invitations, account settings and identity, #418) passed preview acceptance and awaits merge. Stop, approval, input response, room send, agent assignment, automation writes, connection writes, workspace and membership writes, invitations (which send email), settings writes and onboarding stay on the server by design because they run workflows, agent turns, billing checks, credential encryption, OAuth, email, validation or provider calls. Second-member cases are tested on previews with a seeded collaborator acting through the Convex CLI. The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-07. Phases A to E and the first two Phase F PRs are complete and live in production: chats, agents, rooms, Activity, files, notes, memories, Work, automations, skills, connections, the workspace directory and policy, members and invitations, and account settings run on the native path. The production Convex backend was last deployed from main `aed08ebdd` after the matching web release. The third Phase F PR (CN-28 to CN-31: billing, connected-app names, webhooks, Slack import progress) is implemented and awaits preview acceptance; Phase G (CN-32, CN-33) follows. Stop, approval, input response, room send, agent assignment, automation writes, connection writes, workspace and membership writes, invitations, settings writes, onboarding, Stripe checkout and top-ups, token issuing, webhook configuration and Slack listing stay on the server by design because they run workflows, agent turns, billing checks, credential encryption, OAuth, email, validation, SSRF checks or provider calls. Second-member cases are tested on previews with a seeded collaborator acting through the Convex CLI. The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -16,7 +16,8 @@ Status: in progress as of 2026-11-07. Phases A to E and the first Phase F PR are
 | CN-12 to CN-15 | #414 | Merged and deployed: web and Convex production at `8c57d1c52`, production smoke passed |
 | CN-16 to CN-20 | #415 | Merged and deployed: web and Convex production at `228e9bedc`, production smoke passed |
 | CN-21 to CN-24 | #416 | Merged and deployed: web and Convex production at `0589eb36b`, production smoke passed |
-| CN-25 to CN-27 | #418 | Preview accepted with a second member; merge pending |
+| CN-25 to CN-27 | #418 | Merged and deployed: web and Convex production at `aed08ebdd`, production smoke passed |
+| CN-28 to CN-31 | Phase F billing PR | Implemented; preview acceptance pending |
 | CN-07 to CN-11 (old attempt) | #403 | Closed unmerged, superseded by the Phase C PR |
 | CN-12 (old attempt) | #402 | Closed unmerged, superseded by the Phase D PR |
 | CN-20 (old attempt) | #398 | Closed unmerged, superseded by the Phase E PR |
@@ -635,6 +636,8 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 
 **Retirement/non-goals:** remove billing-read polling and duplicate UI calculations. Preserve ledger/settlement/admission rules, Stripe checkout/portal, and the existing Convex `/stripe/webhook`. No billing-engine rewrite.
 
+**Implemented (Phase F billing PR):** `billing/browse:workspaceSummary|entitlements` feed Workspace → Billing, onboarding payment, chat gates, model pickers, agent editors and sidebar meters live. Both are built by shared builders (`src/shared/billing/workspace-billing-summary.ts`, `app-subscription.ts`) that the routes also use. Removed: the sidebar's 60-second poll, the subscription refetch after every turn and the post-checkout poll. Provider IDs stay in Convex; Stripe writes stay on the server.
+
 ### CN-29. Make programmatic credential management reactive
 
 **Outcome:** API-key/MCP-token metadata and revocation are current without exposing reusable secrets.
@@ -648,6 +651,8 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 **Acceptance:** revoked access is rejected by the actual programmatic path; second client sees revocation; secrets appear only in the intended one-time response, never list/history queries (`E22`).
 
 **Retirement/non-goals:** remove metadata reload loops. Keep existing public auth/agent/service protocols and their security requirements.
+
+**Implemented (Phase F billing PR):** Connected apps was already live after CN-21; its remaining HTTP workspace-list read now uses the native directory. There is no API-key browser UI to migrate. Token issuing and revocation stay on the server because they seal tokens and write the audit trail.
 
 ### CN-30. Make webhook management and delivery history reactive
 
@@ -663,6 +668,8 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 
 **Retirement/non-goals:** remove webhook settings/status refresh loops. No replacement delivery engine or public webhook protocol.
 
+**Implemented (Phase F billing PR):** `webhooks/browse:subscriptions|deliveries` feed Settings → Webhooks live with `webhooks.manage`, which `CAPABILITY_FEATURE` now ties to the `webhooks` feature. Secrets and payloads are never returned. Create and update (SSRF checks), rotate, delete and redrive stay on the server.
+
 ### CN-31. Subscribe imports and long-running ingestion progress
 
 **Outcome:** import progress can be followed across clients and page reloads.
@@ -676,6 +683,8 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 **Acceptance:** refresh/reconnect retains actual progress; expired auth/provider timeout shows failure; repeated command does not duplicate an import (`E16`).
 
 **Retirement/non-goals:** remove stored-job polling. Keep server-side provider polling where unavoidable and local popup-close detection where genuinely local.
+
+**Implemented (Phase F billing PR):** `imports/slackBrowse:status` gives the Slack panel its connection state and the workspace's jobs live, replacing the 3-second job poll and the OAuth poll. It also removes the public `listJobs`, which had no membership check, plus three unused job queries, and makes the runner's listing queries internal. Channel and user listing (Composio) and start/cancel stay on the server. The browser never polled file ingestion, so nothing changed there.
 
 ## 9. Phase G: close cross-surface gaps
 

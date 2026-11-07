@@ -9,12 +9,12 @@ import {
   type UsageResourceKey,
   type UsageTotal,
 } from '@/shared/billing/usage-resources'
-import type { BillingSubscriptionRecord } from './BillingRepository'
+import type { WorkspaceBillingPlan } from './workspace-billing-summary'
 
 /** Turns the period's per-resource totals into the lines Workspace → Billing shows (cents, with labels). */
 export function workspaceUsageSummary(
   usage: { totals: UsageTotal[]; truncated: boolean },
-  plan: BillingSubscriptionRecord,
+  plan: WorkspaceBillingPlan,
   periodStart: number,
   /** What the balance says was used this period; the lines are reconciled to it. */
   usedCents?: number,

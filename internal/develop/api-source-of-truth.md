@@ -453,6 +453,10 @@ These read natively behind the same checks as their routes: an active membership
 
 There are no Work, automation, skill, MCP or extension change events.
 
+## Webhooks in the browser
+
+Settings → Webhooks reads `webhooks/browse:subscriptions` and `webhooks/browse:deliveries` live for the active workspace. Both need an active membership and `webhooks.manage`, and `CAPABILITY_FEATURE` now maps that capability to the `webhooks` deployment feature for the server and native paths alike. Neither query returns the signing secret or `payloadJson`. Create and update stay on `/api/v1/webhooks` because they resolve the endpoint address for SSRF checks. Rotate, delete and redrive also stay on the server, and the HTTP list remains for API clients.
+
 ## Connections in the browser (MCP, providers, Computers, environments, surfaces)
 
 Browsers read connection state natively; every write stays on its route because it encrypts credentials, checks
