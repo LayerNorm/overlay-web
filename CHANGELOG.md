@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Fix automation builder chat, which had failed every send since Act stopped accepting the retired `automationMode` flag, and fix failed first turns in any chat, which spun forever with no error instead of ending and showing what went wrong.
+
 - Move workspace and automation chats onto the same live Convex path as personal chats. Their lists, messages, run state, renames, archives, turn deletion, branching and draft edits now update across clients, while reducing chat code by about 1,900 lines and removing the old HTTP history loader, message patching, polling fallback and duplicate chat lists. Branching is now one atomic operation, so a failure cannot leave a half-copied chat.
 
 - Require agents to update a plan's status and progress whenever they implement one of its phases, and add a route-by-route checklist to the Convex-native plan, so progress and remaining work can be verified from the repository.

@@ -36,10 +36,11 @@ function failTextTurn(
   error: unknown,
   fallbackMessage: string,
 ) {
-  params.completeSession(params.chatId, params.isChatActive(params.chatId))
-  if (params.isChatActive(params.chatId)) {
-    params.onError(error, fallbackMessage)
-  }
+  // Completing a first turn activates its real chat, so the pending id stops being active.
+  // Record the failure first, or the turn never ends and the error is never shown.
+  const active = params.isChatActive(params.chatId)
+  if (active) params.onError(error, fallbackMessage)
+  params.completeSession(params.chatId, active)
 }
 
 export function startActTextStream(params: StartActTextStreamParams) {
