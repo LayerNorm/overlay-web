@@ -69,11 +69,14 @@ export function useAgentEditorForm({
     })
   }
 
-  // Reset the form whenever a different agent loads.
+  // Load a different agent, or follow live changes to this one while the form has no
+  // unsaved edits. Unsaved edits are never overwritten by someone else's change.
   const [loadedAgent, setLoadedAgent] = useState(agent)
+  const [formLoads, setFormLoads] = useState(0)
   if (agent !== loadedAgent) {
     setLoadedAgent(agent)
-    if (agent) {
+    if (agent && (agent.id !== loadedAgent?.id || !dirty)) {
+      setFormLoads((count) => count + 1)
       setName(agent.name)
       setDescription(agent.description ?? '')
       setInstructions(agent.instructions)
@@ -94,9 +97,8 @@ export function useAgentEditorForm({
     }
   }
   useLayoutEffect(() => {
-    if (!agent) return
     versionRef.current = 0
-  }, [agent])
+  }, [formLoads])
 
   // Stream unsaved identity drafts so the sidebar roster and the conversation
   // header update while typing; a clean form or an unmounted editor clears the

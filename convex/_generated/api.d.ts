@@ -21,6 +21,7 @@ import type * as agents_agentDriveUploads from "../agents/agentDriveUploads.js";
 import type * as agents_agentThreads from "../agents/agentThreads.js";
 import type * as agents_artifactCleanup from "../agents/artifactCleanup.js";
 import type * as agents_connectedAgents from "../agents/connectedAgents.js";
+import type * as agents_directory from "../agents/directory.js";
 import type * as agents_environmentControlPlane from "../agents/environmentControlPlane.js";
 import type * as agents_idleStop from "../agents/idleStop.js";
 import type * as agents_mcpCalls from "../agents/mcpCalls.js";
@@ -193,6 +194,7 @@ declare const fullApi: ApiFromModules<{
   "agents/agentThreads": typeof agents_agentThreads;
   "agents/artifactCleanup": typeof agents_artifactCleanup;
   "agents/connectedAgents": typeof agents_connectedAgents;
+  "agents/directory": typeof agents_directory;
   "agents/environmentControlPlane": typeof agents_environmentControlPlane;
   "agents/idleStop": typeof agents_idleStop;
   "agents/mcpCalls": typeof agents_mcpCalls;

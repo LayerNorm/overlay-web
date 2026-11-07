@@ -21,10 +21,7 @@ import { usePanelListView } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { AgentCreature } from '@/components/orb/Creature'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
-import {
-  AGENT_DIRECTORY_CHANGED_EVENT,
-  type AgentDirectoryChangedEventDetail,
-} from '@/shared/workspace/sidebar-events'
+import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 
 const INITIAL_SIDEBAR_LIST_LIMIT = 24
@@ -38,7 +35,11 @@ export function AutomationsInlinePanel({
   const searchParams = useSearchParams()
   const { activeWorkspaceId } = useWorkspace()
   const [automations, setAutomations] = useState<AutomationSummary[]>([])
-  const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
+  const directory = useAgentDirectory()
+  const agents = useMemo<WorkspaceAgentDirectoryItem[]>(
+    () => directory.workspaceId === activeWorkspaceId ? directory.agents ?? [] : [],
+    [activeWorkspaceId, directory.agents, directory.workspaceId],
+  )
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const nextCursorRef = useRef<string | undefined>(undefined)
@@ -52,33 +53,6 @@ export function AutomationsInlinePanel({
   const activeAutomationId = searchParams?.get('automationId') ?? null
   const listView = usePanelListView()
   const agentsById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents])
-
-  useEffect(() => {
-    if (!activeWorkspaceId) {
-      setAgents([])
-      return
-    }
-    let request = 0
-    let disposed = false
-    const loadAgents = () => {
-      const currentRequest = ++request
-      void overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
-        if (!disposed && currentRequest === request) setAgents(response.agents)
-      }).catch(() => {
-        if (!disposed && currentRequest === request) setAgents([])
-      })
-    }
-    const refresh = (event: Event) => {
-      const detail = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail
-      if (detail?.workspaceId === activeWorkspaceId) loadAgents()
-    }
-    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refresh)
-    loadAgents()
-    return () => {
-      disposed = true
-      window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refresh)
-    }
-  }, [activeWorkspaceId])
 
   const loadAutomations = useCallback(async () => {
     try {

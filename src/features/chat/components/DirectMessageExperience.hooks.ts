@@ -1,5 +1,6 @@
 'use client'
 
+import { useAgentDirectory as useLiveAgentDirectory } from '@/hooks/use-agent-directory'
 import {
   useCallback,
   useEffect,
@@ -44,7 +45,6 @@ import {
 } from '@/shared/chat/chat-title'
 import { announceArchived } from '@/shared/app/archive-toast'
 import {
-  AGENT_DIRECTORY_CHANGED_EVENT,
   AGENT_DRAFT_PREVIEW_EVENT,
   type AgentDraftPreviewEventDetail,
 } from '@/shared/workspace/sidebar-events'
@@ -703,25 +703,31 @@ type AgentDirectoryEntry = {
 
 export function useAgentDirectory({
   activeWorkspaceId,
-
-  conversationId,
-
 }: {
   activeWorkspaceId: string | null | undefined
-
   conversationId: string
-
 }) {
-  const [agentsByPrincipal, setAgentsByPrincipal] = useState<ReadonlyMap<string, AgentDirectoryEntry>>(new Map())
-  // Unsaved editor drafts overlay the fetched directory so the header renames
+  const live = useLiveAgentDirectory()
+  const agentsByPrincipal = useMemo(() => new Map<string, AgentDirectoryEntry>(
+    live.workspaceId === activeWorkspaceId
+      ? (live.agents ?? []).map((agent) => [agent.principalId, {
+          id: agent.id,
+          name: agent.name,
+          avatarColor: agent.avatarColor,
+          avatarShape: agent.avatarShape,
+          isDefault: agent.isDefault,
+        }])
+      : [],
+  ), [activeWorkspaceId, live.agents, live.workspaceId])
+  // Unsaved editor drafts overlay the live directory so the header renames
   // and re-skins while the user types; cleared by a null patch on save/cancel.
-  const [agentDrafts, setAgentDrafts] = useState<ReadonlyMap<string, {
-    name: string
-    avatarColor?: string
-    avatarShape?: string
-  }>>(new Map())
+  const [drafts, setDrafts] = useState<{
+    workspaceId: string | null | undefined
+    byPrincipal: ReadonlyMap<string, { name: string; avatarColor?: string; avatarShape?: string }>
+  }>({ workspaceId: activeWorkspaceId, byPrincipal: new Map() })
+  const agentDrafts = drafts.workspaceId === activeWorkspaceId ? drafts.byPrincipal : null
   const directoryAgentsByPrincipal = useMemo(() => {
-    if (agentDrafts.size === 0) return agentsByPrincipal
+    if (!agentDrafts?.size) return agentsByPrincipal
     const merged = new Map(agentsByPrincipal)
     for (const [principalId, draft] of agentDrafts) {
       const existing = merged.get(principalId)
@@ -736,49 +742,20 @@ export function useAgentDirectory({
     return merged
   }, [agentsByPrincipal, agentDrafts])
   useEffect(() => {
-
-    if (!activeWorkspaceId) {
-      queueMicrotask(() => {
-        setAgentsByPrincipal(new Map())
-        setAgentDrafts(new Map())
-      })
-      return
-    }
-    let cancelled = false
-    const load = () => {
-      overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
-        if (cancelled) return
-        setAgentsByPrincipal(new Map(response.agents.map((agent) => [agent.principalId, {
-          id: agent.id,
-          name: agent.name,
-          avatarColor: agent.avatarColor,
-          avatarShape: agent.avatarShape,
-          isDefault: agent.isDefault,
-        }])))
-      }).catch(() => undefined)
-    }
-    load()
-    // Renames and avatar changes save through the editor and dispatch this
-    // event; refetching keeps the header and message identity in sync without
-    // a reload.
-    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
+    if (!activeWorkspaceId) return
     const onDraftPreview = (event: Event) => {
       const detail = (event as CustomEvent<AgentDraftPreviewEventDetail>).detail
       if (!detail?.principalId || detail.workspaceId !== activeWorkspaceId) return
-      setAgentDrafts((current) => {
-        const next = new Map(current)
+      setDrafts((current) => {
+        const next = new Map(current.workspaceId === activeWorkspaceId ? current.byPrincipal : [])
         if (detail.patch) next.set(detail.principalId!, detail.patch)
         else next.delete(detail.principalId!)
-        return next
+        return { workspaceId: activeWorkspaceId, byPrincipal: next }
       })
     }
     window.addEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
-    return () => {
-      cancelled = true
-      window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
-      window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
-    }
-  }, [activeWorkspaceId,  conversationId, ])
+    return () => window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
+  }, [activeWorkspaceId])
   return directoryAgentsByPrincipal
 }
 

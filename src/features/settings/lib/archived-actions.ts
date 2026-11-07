@@ -17,7 +17,6 @@ import {
 } from '@overlay/app-core'
 import type { WorkspaceAgentDirectoryItem, WorkspaceArchivedAgentThread } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { dispatchChatDeleted, dispatchChatModified } from '@/shared/chat/chat-title'
 import { excludeNativePersonalChats } from '@/shared/chat/native-personal-chat'
 import {
@@ -295,13 +294,11 @@ export async function restoreArchivedItem(
     case 'agent':
       if (!workspaceId) throw new Error('No workspace')
       await overlayAppClient.agents.restore(workspaceId, item.id)
-      dispatchAgentDirectoryChanged(workspaceId)
       return
     case 'agent-thread':
       // Only the thread: the agent's own state is not touched.
       if (!workspaceId || !item.agentId) throw new Error('No workspace')
       await overlayAppClient.agents.setThreadArchived(workspaceId, item.agentId, item.id, false)
-      dispatchAgentDirectoryChanged(workspaceId)
       return
   }
 }
@@ -349,14 +346,12 @@ export async function deleteArchivedItem(item: ArchivedItem, workspaceId: string
       // Deletes the archived agent and its threads. A live agent has no row here, and the server refuses it.
       if (!workspaceId) throw new Error('No workspace')
       await overlayAppClient.agents.deleteArchived(workspaceId, item.id)
-      dispatchAgentDirectoryChanged(workspaceId)
       return
     case 'agent-thread':
       // Only this thread. The agent keeps running, and starts a fresh thread the next time it is opened.
       if (!workspaceId || !item.agentId) throw new Error('No workspace')
       await overlayAppClient.agents.deleteThread(workspaceId, item.agentId, item.id)
       dispatchChatDeleted({ chatId: item.id })
-      dispatchAgentDirectoryChanged(workspaceId)
       return
   }
 }

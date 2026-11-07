@@ -17,9 +17,7 @@ import { announceArchived } from '@/shared/app/archive-toast'
 import { AgentCreature } from '@/components/orb/Creature'
 import { automationHref } from '@overlay/app-core/automations'
 import {
-  AGENT_DIRECTORY_CHANGED_EVENT,
   AGENT_DRAFT_PREVIEW_EVENT,
-  type AgentDirectoryChangedEventDetail,
   type AgentDraftPreviewEventDetail,
   type AgentDraftPreviewPatch,
 } from '@/shared/workspace/sidebar-events'
@@ -38,7 +36,6 @@ import {
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
 import {
-  arrayOrEmpty,
   agentHref,
   agentThreadHref,
   type AgentsPanelView,
@@ -48,6 +45,7 @@ import { isChief, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identit
 import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-workspace'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { useAgentExpansion } from './sidebar/useAgentExpansion'
+import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { resolveAgentEntryThread } from './sidebar/resolveAgentEntryThread'
 
 type AgentBundleMap = Record<string, WorkspaceAgentBundle | 'loading' | 'error'>
@@ -163,66 +161,26 @@ function useExpandedAgents({
   return { expanded, toggleExpanded }
 }
 
-function useAgentDirectory(
-  workspaceId: string | null,
-  expanded: Set<string>,
-  loadBundle: (agentId: string) => Promise<void>,
-  setBundles: Dispatch<SetStateAction<AgentBundleMap>>,
-) {
-  const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
-  const [viewerPrincipalId, setViewerPrincipalId] = useState<string | null>(null)
-  const [draftPreviews, setDraftPreviews] = useState<Record<string, AgentDraftPreviewPatch>>({})
-  const [loading, setLoading] = useState(true)
-
-  const loadAgents = useCallback(async (showLoading = true) => {
-    if (!workspaceId) {
-      setAgents([])
-      setViewerPrincipalId(null)
-      setLoading(false)
-      return
-    }
-    if (showLoading) setLoading(true)
-    try {
-      const response = await overlayAppClient.agents.list(workspaceId)
-      setAgents(arrayOrEmpty<WorkspaceAgentDirectoryItem>(response.agents))
-      setViewerPrincipalId(response.viewerPrincipalId ?? null)
-    } catch {
-      setAgents([])
-    } finally {
-      if (showLoading) setLoading(false)
-    }
-  }, [workspaceId])
-
-  useEffect(() => { void loadAgents() }, [loadAgents])
+function useSidebarAgentDirectory(workspaceId: string | null) {
+  const live = useAgentDirectory()
+  const agents = live.agents ?? []
+  const viewerPrincipalId = live.viewerPrincipalId
+  const loading = live.status === 'loading'
+  // Unsaved editor drafts, keyed by workspace so switching workspaces drops them.
+  const [drafts, setDrafts] = useState<{ workspaceId: string | null; previews: Record<string, AgentDraftPreviewPatch> }>(
+    { workspaceId, previews: {} },
+  )
+  const draftPreviews = drafts.workspaceId === workspaceId ? drafts.previews : {}
 
   useEffect(() => {
-    const refreshAgents = (event: Event) => {
-      const changedWorkspaceId = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail?.workspaceId
-      if (changedWorkspaceId && changedWorkspaceId !== workspaceId) return
-      void loadAgents(false)
-      // Agent lifecycle events (rename/archive/restore) can change what the
-      // expanded bundles contain — refetch them rather than diffing.
-      setBundles((current) => {
-        for (const agentId of Object.keys(current)) {
-          if (expanded.has(agentId)) void loadBundle(agentId)
-        }
-        return current
-      })
-    }
-    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
-    return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
-  }, [expanded, loadAgents, loadBundle, setBundles, workspaceId])
-
-  useEffect(() => {
-    setDraftPreviews({})
     const onDraftPreview = (event: Event) => {
       const detail = (event as CustomEvent<AgentDraftPreviewEventDetail>).detail
       if (!detail || detail.workspaceId !== workspaceId) return
-      setDraftPreviews((current) => {
-        const next = { ...current }
+      setDrafts((current) => {
+        const next = { ...(current.workspaceId === workspaceId ? current.previews : {}) }
         if (detail.patch) next[detail.agentId] = detail.patch
         else delete next[detail.agentId]
-        return next
+        return { workspaceId, previews: next }
       })
     }
     window.addEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
@@ -586,7 +544,7 @@ export function AgentsInlinePanel({
     viewerPrincipalId,
     draftPreviews,
     loading,
-  } = useAgentDirectory(workspaceId, expanded, loadBundle, setBundles)
+  } = useSidebarAgentDirectory(workspaceId)
 
   // Unsaved editor drafts overlay the fetched directory so the row renames and
   // re-skins while the user types; the override clears on save/cancel/close.

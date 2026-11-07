@@ -103,6 +103,23 @@ activity only and never replaces the human caller's permissions.
 Work scope, archive and restore mutations also require server authentication; a browser token cannot bypass
 the web capability/runtime checks or supply an agent activity actor directly to Convex.
 
+## Agent directory
+
+Browsers read agents through the live Convex queries `agents/directory:list` and
+`agents/directory:get` (`src/hooks/use-agent-directory.ts`). They authenticate with native
+Convex identity and port the service's rules: creator-only agents are visible only to their
+creator, `canEdit` follows the creator or a workspace owner/admin (personal chiefs: their owner),
+guests cannot create, and non-members read `null`. `agents/directory:ensureChiefs` provisions a
+member's chief agents once per workspace load, which the list and get BFF routes used to do as a
+read side effect. Every consumer shares one subscription, so there is no directory refresh event.
+
+Writes (create, update, archive, restore, delete) stay on `/api/v1/agents*` because they run
+server-side policy and side effects: harness and external-agent policy, model support, teams,
+connected-agent bindings, computer provisioning and config-profile cleanup. Desktop, mobile and
+agent tools also call these routes. The live queries reflect each write in every client. The
+Memories owner filter still lists agents over HTTP until the memories card in Phase D, and
+Settings → Archived does until CN-09 moves archived threads.
+
 ## Connected-agent drive
 
 The bearer-only `/api/agent-drive` transport is separate from app-session APIs and defaults off.

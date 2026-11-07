@@ -9,7 +9,6 @@ import { AgentCreature } from '@/components/orb/Creature'
 import { AgentAvatarPicker } from '@/features/agents/components/AgentAvatarPicker'
 import { chiefRoleLabel } from '@/shared/agents/chief-identity'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 
@@ -37,7 +36,6 @@ export function OrganizationAgentDetails({ agent, owner, onClose }: {
         try {
           await overlayAppClient.agents.update(agent.workspaceId, agent.id, { name: name.trim(), description, avatarColor: color, avatarShape: shape })
           setStatus('saved')
-          dispatchAgentDirectoryChanged(agent.workspaceId)
         } catch { setStatus('error') }
       }}>
         <p className="text-xs leading-5 text-(--muted)">Your name and avatar follow you across scopes. Owner, role, and permissions stay unchanged.</p>

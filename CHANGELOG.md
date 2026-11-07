@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make the agent directory live: the sidebar, agent picker, organization chart, automations, search, computer settings and room identities now read agents from one Convex subscription, so creating, renaming or archiving an agent shows up everywhere at once without a reload or refresh event. The agent editor follows changes made elsewhere while it has no unsaved edits, and never overwrites edits in progress.
+
 - Fix automation builder chat, which had failed every send since Act stopped accepting the retired `automationMode` flag, and fix failed first turns in any chat, which spun forever with no error instead of ending and showing what went wrong.
 
 - Move workspace and automation chats onto the same live Convex path as personal chats. Their lists, messages, run state, renames, archives, turn deletion, branching and draft edits now update across clients, while reducing chat code by about 1,900 lines and removing the old HTTP history loader, message patching, polling fallback and duplicate chat lists. Branching is now one atomic operation, so a failure cannot leave a half-copied chat.

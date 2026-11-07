@@ -235,6 +235,15 @@ export const ensureChiefsByServer = mutation({
   returns: v.array(agentValidator),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
+    return await ensureWorkspaceChiefs(ctx, args)
+  },
+})
+
+/** Idempotently provisions a workspace's chief agents for an active, non-guest human member. */
+export async function ensureWorkspaceChiefs(
+  ctx: MutationCtx,
+  args: { workspaceId: string; actorUserId: string; actorPrincipalId: string; now: number },
+) {
     const workspace = await requireActiveWorkspace(ctx, args.workspaceId)
     const actor = await requireActiveHumanMembership(ctx, args.workspaceId, args.actorUserId, args.actorPrincipalId)
     if (actor.membership.role === 'guest') throw new Error('WORKSPACE_AGENT_EDIT_FORBIDDEN')
@@ -313,8 +322,7 @@ export const ensureChiefsByServer = mutation({
       ensured.push(privateBinding, workspaceBinding)
     }
     return await Promise.all(ensured.map((row) => directoryValue(ctx, row)))
-  },
-})
+}
 
 export const updateChiefIdentityByServer = mutation({
   args: {
@@ -745,7 +753,7 @@ export const purgeOrphanedByServer = mutation({
   },
 })
 
-async function directoryValue(
+export async function directoryValue(
   ctx: QueryCtx | MutationCtx,
   row: Doc<'workspaceAgentDefinitions'>,
 ) {
@@ -1138,7 +1146,7 @@ function cleanOptional(value?: string) {
   return value?.trim() || undefined
 }
 
-async function isActiveNonGuestHumanOwner(
+export async function isActiveNonGuestHumanOwner(
   ctx: QueryCtx | MutationCtx,
   workspaceId: string,
   userId: string,
