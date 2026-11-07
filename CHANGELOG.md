@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Make new personal chats reload-safe: the URL, title and selected sidebar row now appear as soon as the chat is saved instead of after the whole reply finishes. A chat interrupted during its first turn now gets its generated title when reopened, opening a personal chat no longer blanks and remounts the chat surface while an unneeded HTTP scope check runs, and the composer and a false "thread safety unavailable" notice no longer flicker when switching chats. The server's existing `TTFT_DEBUG` timing now actually logs its phases so slow replies can be diagnosed.
+- Make new personal chats reload-safe: the URL, title and selected sidebar row now appear as soon as the chat is saved instead of after the whole reply finishes. A chat interrupted during its first turn now gets its generated title when reopened, opening a personal chat no longer blanks and remounts the chat surface while an unneeded HTTP scope check runs, and the composer and a false "thread safety unavailable" notice no longer flicker when switching chats.
 
 - Require each Convex-native migration domain to delete its old path before the next surface starts, and move the migration to one implementer and one surface at a time, so old and new paths stop accumulating side by side.
 
