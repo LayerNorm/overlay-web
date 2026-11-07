@@ -19,7 +19,7 @@ import {
   getConnectedConnectorRows,
   integrationRegistryToConnectorCatalog,
   mergeConnectorCatalogEntries,
-  type AppBootstrapResponse,
+  resolveOverlayAppShellConfig,
   type ConnectedIntegrationsResponse,
   type ConnectorCatalogItem,
   type IntegrationSearchResponse,
@@ -35,25 +35,28 @@ import { safeHttpUrl } from '@/shared/security/safe-url'
 import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
+import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import overlayAppConfig from '@/overlay.config'
 
 const LIST_PAGE_SIZE = 8
 
 type IntegrationsInitialData = {
-  bootstrap?: AppBootstrapResponse | null
   connected?: ConnectedIntegrationsResponse | null
   catalog?: IntegrationSearchResponse | null
 }
 
-function buildInitialIntegrationState(initialData?: IntegrationsInitialData) {
-  const connected = new Set(initialData?.connected?.connected || [])
-  let catalogItems: ConnectorCatalogItem[] = []
+/** The deployment's configured integrations: static app config, filtered by what this deployment can do. */
+function useIntegrationRegistry() {
+  const { capabilities } = useOverlayCapabilities()
+  return useMemo(
+    () => integrationRegistryToConnectorCatalog([...resolveOverlayAppShellConfig(overlayAppConfig, { capabilities }).integrations]),
+    [capabilities],
+  )
+}
 
-  if (initialData?.bootstrap?.integrationRegistry) {
-    catalogItems = mergeConnectorCatalogEntries(
-      catalogItems,
-      integrationRegistryToConnectorCatalog(initialData.bootstrap.integrationRegistry),
-    )
-  }
+function buildInitialIntegrationState(registry: ConnectorCatalogItem[], initialData?: IntegrationsInitialData) {
+  const connected = new Set(initialData?.connected?.connected || [])
+  let catalogItems: ConnectorCatalogItem[] = registry
 
   const connectedItems = (Array.isArray(initialData?.connected?.items) ? initialData.connected.items : []).map((item) =>
     connectorFromIntegrationSummary({ ...item, isConnected: true }),
@@ -82,8 +85,9 @@ export default function IntegrationsView({
   initialData?: IntegrationsInitialData
 }) {
   void _userId
-  const hasInitialData = Boolean(initialData?.bootstrap || initialData?.connected || initialData?.catalog)
-  const initialState = useMemo(() => buildInitialIntegrationState(initialData), [initialData])
+  const hasInitialData = Boolean(initialData?.connected || initialData?.catalog)
+  const registry = useIntegrationRegistry()
+  const initialState = useMemo(() => buildInitialIntegrationState(registry, initialData), [registry, initialData])
   const [connected, setConnected] = useState<Set<string>>(() => initialState.connected)
   const [catalogItems, setCatalogItems] = useState<ConnectorCatalogItem[]>(() => initialState.catalogItems)
   const [logos, setLogos] = useState<Record<string, string | null>>(() => initialState.logos)
@@ -117,19 +121,6 @@ export default function IntegrationsView({
       setIntegrationLogoUrl(item.providerKey, item.logoUrl ?? null)
     }
   }, [initialState.catalogItems])
-
-  const loadRegistry = useCallback(async () => {
-    try {
-      const res = await overlayAppClient.bootstrap.getResponse()
-      if (!res.ok) return
-      const data = (await res.json()) as AppBootstrapResponse
-      const items = integrationRegistryToConnectorCatalog(data.integrationRegistry ?? [])
-      setCatalogItems((prev) => mergeConnectorCatalogEntries(prev, items))
-      rememberLogos(items)
-    } catch {
-      // optional registry metadata
-    }
-  }, [rememberLogos])
 
   const loadConnected = useCallback(async () => {
     try {
@@ -165,10 +156,9 @@ export default function IntegrationsView({
     // present.  The three BFF requests would duplicate what the server
     // already fetched.  We still listen for mutation events below.
     if (hasInitialData) return
-    void loadRegistry()
     void loadConnected()
     void loadCatalog()
-  }, [hasInitialData, loadCatalog, loadConnected, loadRegistry])
+  }, [hasInitialData, loadCatalog, loadConnected])
 
   useWorkspaceChanged(useCallback(() => {
     loadConnected()

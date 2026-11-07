@@ -936,6 +936,10 @@ export default defineSchema({
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId'],
+    })
+    .searchIndex('search_description', {
+      searchField: 'description',
+      filterFields: ['userId', 'workspaceId'],
     }),
 
   personalChiefIdentities: defineTable({
@@ -1097,6 +1101,10 @@ export default defineSchema({
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId', 'deletedAt'],
+    })
+    .searchIndex('search_description', {
+      searchField: 'description',
+      filterFields: ['userId', 'workspaceId', 'deletedAt'],
     }),
 
   automationRuns: defineTable({
@@ -1250,6 +1258,10 @@ export default defineSchema({
     .index('by_userId_enabled', ['userId', 'enabled'])
     .searchIndex('search_name', {
       searchField: 'name',
+      filterFields: ['userId', 'workspaceId'],
+    })
+    .searchIndex('search_description', {
+      searchField: 'description',
       filterFields: ['userId', 'workspaceId'],
     }),
 
