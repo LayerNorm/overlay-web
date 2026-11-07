@@ -46,8 +46,9 @@ export function useNativeThreadSafety({
     && execution.conversationId === conversationId
     && execution.workspaceId === workspaceId
     && execution.userId === verifiedUserId)
+  // The route updates just before the active chat, so a mismatch means still loading.
   const nativeStatus: NativeThreadSafetyStatus = !scopeSynchronized
-    ? 'unavailable'
+    ? 'checking'
     : !conversationId
       ? 'writable'
       : nativeExecution?.status === 'loading'

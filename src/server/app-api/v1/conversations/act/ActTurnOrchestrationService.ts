@@ -499,7 +499,16 @@ export async function executeActTurn(
     if (!agentRun) {
       throw new Error('Failed to establish AgentRun before generation')
     }
-    if (_ttftDebug) _tTools = performance.now()
+    if (_ttftDebug) {
+      _tTools = performance.now()
+      logger.info('[conversations/act] ttft timing', {
+        requestId,
+        authMs: Math.round(_tAuth - _t0),
+        ensureConversationMs: Math.round(_tEnsureConversationMs),
+        prepMs: Math.round(_tPrep - _tAuth),
+        toolsMs: Math.round(_tTools - _tPrep),
+      })
+    }
     logActTooling(actTooling)
     const tools = actTooling.tools
     const actInstructions = buildActAgentInstructions({

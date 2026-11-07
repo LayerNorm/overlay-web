@@ -93,6 +93,15 @@ async function mount<P, V>(t: TestContext, useValue: (props: P) => V, props: P) 
   }
 }
 
+test('a native route mismatch reads as checking and stays read-only', async (t) => {
+  browser(t)
+  const hook = await mount(t, useNativeThreadSafety, {
+    conversationId: 'chat', workspaceId: 'workspace', nativeMode: true, scopeSynchronized: false,
+  })
+  assert.equal(hook.value.status, 'checking')
+  assert.equal(hook.value.readOnly, true)
+})
+
 test('mounted safety rejects stale root admissions and invalidates unmounted callbacks', async (t) => {
   browser(t)
   const a = deferred<unknown>()
