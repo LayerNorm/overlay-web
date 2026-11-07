@@ -14,10 +14,9 @@ const EXPIRY_OPTIONS = [
 ] as const
 
 /** Create a token for a local agent that cannot sign in with OAuth. The token is shown once. */
-export function McpTokenDialog({ workspaces, onClose, onCreated }: {
+export function McpTokenDialog({ workspaces, onClose }: {
   workspaces: WorkspaceSummary[]
   onClose(): void
-  onCreated(): void
 }) {
   const [name, setName] = useState('')
   const [workspaceId, setWorkspaceId] = useState(workspaces[0]?.id ?? '')
@@ -39,7 +38,6 @@ export function McpTokenDialog({ workspaces, onClose, onCreated }: {
       })
       setCreated({ token: result.token, endpoint: result.endpoint })
       toast.success('MCP token created.')
-      onCreated()
     } catch (createError) {
       toast.error(createError instanceof Error ? createError.message : 'Could not create the token.')
     } finally {
