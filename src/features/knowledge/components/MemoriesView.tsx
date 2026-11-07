@@ -10,6 +10,7 @@ import { Dialog, DialogContent } from '@overlay/ui'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { useMemories } from '@/hooks/use-memories'
+import { useLiveWorkspaceManagement } from '@/hooks/use-workspace-members'
 import { MemoriesLoadingState } from './MemoriesLoadingState'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 
@@ -133,7 +134,18 @@ function useMemoryMembers({
 }: {
   activeWorkspaceId: string | null | undefined
 }) {
-  const [people, setPeople] = useState<MemoryMemberOption[]>([])
+  // Live: members and guests joining, leaving or renamed update the owner filter.
+  const livePeople = useLiveWorkspaceManagement(activeWorkspaceId, 'people')
+  const liveGuests = useLiveWorkspaceManagement(activeWorkspaceId, 'guests')
+  const people = useMemo<MemoryMemberOption[]>(() => {
+    const byPrincipalId = new Map<string, MemoryMemberOption>()
+    for (const item of [...(livePeople?.items ?? []), ...(liveGuests?.items ?? [])]) {
+      if (item.kind === 'member' && item.principalId && item.status === 'active') {
+        byPrincipalId.set(item.principalId, { name: item.name, principalId: item.principalId })
+      }
+    }
+    return [...byPrincipalId.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [liveGuests, livePeople])
   const { agents: directoryAgents } = useAgentDirectory()
   const [selectedMemberPrincipalId, setSelectedMemberPrincipalId] = useState('all')
   const [selectionMode, setSelectionMode] = useState(false)
@@ -141,7 +153,6 @@ function useMemoryMembers({
 
   useEffect(() => {
     if (!activeWorkspaceId) return;
-    let cancelled = false;
     // `?owner=<principalId>` deep-links from an agent profile's memories section.
     const requestedOwner = typeof window === 'undefined'
       ? null
@@ -150,38 +161,8 @@ function useMemoryMembers({
       setSelectedIds(new Set())
       setSelectionMode(false)
     })
-    void Promise.all([
-      overlayAppClient.workspaces.management(activeWorkspaceId, "people"),
-      overlayAppClient.workspaces.management(activeWorkspaceId, "guests"),
-    ])
-      .then(([people, guests]) => {
-        if (cancelled) return;
-        const byPrincipalId = new Map<
-          string,
-          { name: string; principalId: string; isAgent?: boolean }
-        >();
-        for (const item of [...people.items, ...guests.items]) {
-          if (
-            item.kind === "member" &&
-            item.principalId &&
-            item.status === "active"
-          ) {
-            byPrincipalId.set(item.principalId, {
-              name: item.name,
-              principalId: item.principalId,
-            });
-          }
-        }
-        setPeople([...byPrincipalId.values()].sort((a, b) => a.name.localeCompare(b.name)));
-      })
-      .catch(() => {
-        if (!cancelled) setPeople([]);
-      });
     // The list filters by this principal server-side, so a link to an agent's or member's memories works at once.
     if (requestedOwner) queueMicrotask(() => setSelectedMemberPrincipalId(requestedOwner));
-    return () => {
-      cancelled = true;
-    };
   }, [activeWorkspaceId]);
 
   // Agents appear after humans: they own memories in their own right.

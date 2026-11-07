@@ -2951,7 +2951,7 @@ function principalValue(row: Doc<'workspacePrincipals'>) {
   }
 }
 
-async function resolvedPrincipalValues(
+export async function resolvedPrincipalValues(
   ctx: { db: DatabaseReader },
   principals: Doc<'workspacePrincipals'>[],
 ) {
@@ -3034,7 +3034,7 @@ function invitationValue(row: Doc<'workspaceInvitations'>) {
   }
 }
 
-function invitationValueWithExpiry(row: Doc<'workspaceInvitations'>) {
+export function invitationValueWithExpiry(row: Doc<'workspaceInvitations'>) {
   const value = invitationValue(row)
   return value.status === 'pending' && value.expiresAt <= Date.now()
     ? { ...value, status: 'expired' as const }
@@ -3092,7 +3092,7 @@ function resourceScopeValue(row: Doc<'workspaceResourceScopes'>) {
   }
 }
 
-function resourceGuestValueWithExpiry(row: Doc<'workspaceResourceGuests'>) {
+export function resourceGuestValueWithExpiry(row: Doc<'workspaceResourceGuests'>) {
   const value = resourceGuestValue(row)
   return value.status !== 'revoked'
     && value.expiresAt !== undefined

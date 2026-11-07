@@ -58,10 +58,14 @@ import {
 import { WorkspaceBillingSection } from './WorkspaceBillingSection'
 import { ImportPanel } from './ImportPanel'
 import { useLiveWorkspacePolicy } from '@/hooks/use-workspace-create-access'
+import { useLiveWorkspaceManagement, useLiveWorkspacePrincipals, type WorkspaceManagementTab } from '@/hooks/use-workspace-members'
 import { AgentCreature } from '@/components/orb/Creature'
 import { IdentityImageEditor, type IdentityImageChoice } from '@/components/identity/IdentityImageEditor'
 import { identityRequest, notifyIdentityUpdated } from '@/hooks/useIdentityProfile'
 import { workspaceIconUrl } from '@/shared/workspaces/icon-presets'
+
+const MANAGEMENT_TABS: readonly WorkspaceManagementTab[] = ['people', 'guests', 'teams', 'roles', 'chats-agents']
+const NO_MANAGEMENT_ITEMS: WorkspaceManagementItem[] = []
 
 export type WorkspaceManagementState =
   | { status: 'loading' }
@@ -714,7 +718,6 @@ export function WorkspaceSettingsPanel({
   const [activeTab, setActiveTab] = useState<WorkspaceSettingsTab>(
     initialTab === 'teams' ? 'people' : initialTab,
   )
-  const [state, setState] = useState<WorkspaceManagementState>({ status: 'loading' })
   const [policyBusy, setPolicyBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [action, setAction] = useState<WorkspacePanelAction>(null)
@@ -722,7 +725,16 @@ export function WorkspaceSettingsPanel({
   const [busyItemId, setBusyItemId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [invitePath, setInvitePath] = useState<string | null>(null)
-  const [teamCandidates, setTeamCandidates] = useState<WorkspaceManagementItem[]>([])
+  // Live: role changes, removals, invitations and acceptances by anyone show in the open tab at once.
+  const managementTab = MANAGEMENT_TABS.find((tab) => tab === activeTab) ?? null
+  const liveTab = useLiveWorkspaceManagement(managementTab ? activeWorkspace?.id : null, managementTab ?? 'people')
+  const state = useMemo<WorkspaceManagementState>(() => (
+    liveTab === undefined ? { status: 'loading' }
+      : liveTab === null ? { status: 'error', message: 'You no longer have access to this workspace.' }
+        : { status: 'ready', ...liveTab }
+  ), [liveTab])
+  const teamPrincipals = useLiveWorkspacePrincipals(action?.type === 'manage-team' ? activeWorkspace?.id : null)
+  const teamCandidates = teamPrincipals?.items ?? NO_MANAGEMENT_ITEMS
   const [teamCandidateBusyId, setTeamCandidateBusyId] = useState<string | null>(null)
 
   // Live: an owner's policy change in another tab or by another admin shows here at once.
@@ -744,50 +756,11 @@ export function WorkspaceSettingsPanel({
     [activeWorkspace?.id, livePolicy, metrics],
   )
 
-  useEffect(() => {
-    if (!activeWorkspace || activeTab === 'sharing' || activeTab === 'billing' || activeTab === 'import') return
-    const controller = new AbortController()
-    setState({ status: 'loading' })
-    void client.load(activeWorkspace.id, activeTab, controller.signal)
-      .then((result) => {
-        if (!controller.signal.aborted) setState({ status: 'ready', ...result })
-      })
-      .catch((loadError) => {
-        if (controller.signal.aborted) return
-        setState({
-          status: 'error',
-          message: loadError instanceof Error ? loadError.message : 'Try again in a moment.',
-        })
-      })
-    return () => controller.abort()
-  }, [activeTab, activeWorkspace, client, refreshKey])
-
-  useEffect(() => {
-    if (action?.type !== 'manage-team' || !activeWorkspace) return
-    const controller = new AbortController()
-    setActionError(null)
-    void Promise.all([
-      client.load(activeWorkspace.id, 'people', controller.signal),
-      client.load(activeWorkspace.id, 'chats-agents', controller.signal),
-    ]).then(([people, agents]) => {
-      if (controller.signal.aborted) return
-      setTeamCandidates(
-        [...people.items, ...agents.items].filter((item) => item.kind === 'member'),
-      )
-    }).catch((error) => {
-      if (!controller.signal.aborted) {
-        setActionError(error instanceof Error ? error.message : 'Could not load team members.')
-      }
-    })
-    return () => controller.abort()
-  }, [action, activeWorkspace, client])
-
   function closeAction() {
     if (actionBusy || teamCandidateBusyId) return
     setAction(null)
     setActionError(null)
     setInvitePath(null)
-    setTeamCandidates([])
   }
 
   async function runItemAction(itemId: string, operation: () => Promise<void>) {
@@ -832,7 +805,6 @@ export function WorkspaceSettingsPanel({
 
   function openManageTeam(item: WorkspaceManagementItem) {
     setActionError(null)
-    setTeamCandidates([])
     setAction({ type: 'manage-team', team: item })
   }
 

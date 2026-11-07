@@ -426,6 +426,7 @@
     "src/hooks/use-memories.ts",
     "src/hooks/use-skills.ts",
     "src/hooks/use-workspace-create-access.ts",
+    "src/hooks/use-workspace-members.ts",
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAuditRepository.ts",
     "src/server/admin/index.ts",

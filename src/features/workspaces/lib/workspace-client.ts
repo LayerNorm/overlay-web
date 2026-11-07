@@ -7,7 +7,6 @@ import type {
   WorkspaceHandleUpdateInput,
   WorkspaceHandleUpdateResponse,
   WorkspaceManagementClient,
-  WorkspaceManagementLoader,
 } from '@/shared/workspaces/types'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { fetchWithSessionRecovery } from '@/shared/auth/session-fetch'
@@ -59,22 +58,6 @@ export const workspaceClient: WorkspaceClient = {
   },
 }
 
-export const workspaceManagementLoader: WorkspaceManagementLoader = {
-  async load(workspaceId, tab, signal) {
-    if (tab === 'billing') throw new Error('Billing uses the dedicated workspace billing endpoint')
-    const query = new URLSearchParams({ view: tab })
-    return await readJson(await fetchWithSessionRecovery(
-      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/management?${query.toString()}`,
-      {
-        cache: 'no-store',
-        credentials: 'same-origin',
-        headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId },
-        signal,
-      },
-    ))
-  },
-}
-
 async function workspaceMutation<T>(
   workspaceId: string,
   path: string,
@@ -93,8 +76,6 @@ async function workspaceMutation<T>(
 }
 
 export const workspaceManagementClient: WorkspaceManagementClient = {
-  ...workspaceManagementLoader,
-
   async billing(workspaceId, signal) {
     return await readJson(await fetchWithSessionRecovery(
       `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing`,

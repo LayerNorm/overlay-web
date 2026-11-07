@@ -72,6 +72,7 @@ import type * as collaboration_conversationMigration from "../collaboration/conv
 import type * as collaboration_directory from "../collaboration/directory.js";
 import type * as collaboration_directMessages from "../collaboration/directMessages.js";
 import type * as collaboration_events from "../collaboration/events.js";
+import type * as collaboration_management from "../collaboration/management.js";
 import type * as collaboration_rooms from "../collaboration/rooms.js";
 import type * as collaboration_sharing from "../collaboration/sharing.js";
 import type * as collaboration_workspaces from "../collaboration/workspaces.js";
@@ -273,6 +274,7 @@ declare const fullApi: ApiFromModules<{
   "collaboration/directory": typeof collaboration_directory;
   "collaboration/directMessages": typeof collaboration_directMessages;
   "collaboration/events": typeof collaboration_events;
+  "collaboration/management": typeof collaboration_management;
   "collaboration/rooms": typeof collaboration_rooms;
   "collaboration/sharing": typeof collaboration_sharing;
   "collaboration/workspaces": typeof collaboration_workspaces;

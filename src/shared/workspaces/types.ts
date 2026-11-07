@@ -32,7 +32,6 @@ import type {
   WorkspaceCreateResponse,
   WorkspaceInviteInput,
   WorkspaceInviteResponse,
-  WorkspaceManagementResponse,
   WorkspaceManagementView,
   WorkspaceBillingCheckoutInput,
   WorkspaceBillingSummaryResponse,
@@ -68,15 +67,7 @@ export type WorkspaceLifecycleStatus = 'idle' | 'loading' | 'ready' | 'error'
 export type WorkspaceSettingsTab =
   WorkspaceManagementView | 'billing'
 
-export interface WorkspaceManagementLoader {
-  load(
-    workspaceId: string,
-    tab: WorkspaceSettingsTab,
-    signal?: AbortSignal,
-  ): Promise<WorkspaceManagementResponse>
-}
-
-export interface WorkspaceManagementClient extends WorkspaceManagementLoader {
+export interface WorkspaceManagementClient {
   billing(workspaceId: string, signal?: AbortSignal): Promise<WorkspaceBillingSummaryResponse>
   initializeBilling(workspaceId: string): Promise<WorkspaceBillingSummaryResponse>
   createBillingCheckout(workspaceId: string, input: WorkspaceBillingCheckoutInput): Promise<{ url: string | null }>

@@ -20,6 +20,7 @@ import { Button, EmptyState, Toggle, toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useLiveWorkspaceManagement } from '@/hooks/use-workspace-members'
 import { createOAuthCompletionGuard } from './oauth-completion-guard'
 
 interface SlackChannel {
@@ -116,6 +117,8 @@ function useSlackImportPanel() {
   const { activeWorkspace } = useWorkspace()
   const { user } = useAuth()
   const workspaceId = activeWorkspace?.id
+  // Live workspace people, to show which Slack users are already here.
+  const workspacePeople = useLiveWorkspaceManagement(workspaceId, 'people')
   const currentUserEmail = user?.email?.trim().toLowerCase() || null
 
   const [connectionState, setConnectionState] = useState<ConnectionState>('loading')
@@ -245,12 +248,7 @@ function useSlackImportPanel() {
         throw new Error(String(usersData.error ?? 'Failed to load Slack users'))
       }
 
-      let mgmtData: { items: unknown[] } = { items: [] }
-      try {
-        mgmtData = await overlayAppClient.workspaces.management(activeWorkspace.id, 'people') as { items: unknown[] }
-      } catch (err) {
-        console.warn('[SlackImport] Failed to load workspace people:', err)
-      }
+      const mgmtData = { items: workspacePeople?.items ?? [] }
 
       const slackUsers = (usersData.users ?? []) as Array<{
         id: string
@@ -305,7 +303,7 @@ function useSlackImportPanel() {
     } finally {
       if (mountedRef.current) setUsersLoading(false)
     }
-  }, [workspaceId, connectionState, usersLoaded, activeWorkspace?.id, currentUserEmail])
+  }, [workspaceId, connectionState, usersLoaded, currentUserEmail, workspacePeople])
 
   useEffect(() => {
     if (view === 'people' && connectionState === 'connected' && !usersLoaded && !usersLoading) {
