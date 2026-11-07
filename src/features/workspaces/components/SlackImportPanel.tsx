@@ -119,6 +119,10 @@ function useSlackImportPanel() {
   const workspaceId = activeWorkspace?.id
   // Live workspace people, to show which Slack users are already here.
   const workspacePeople = useLiveWorkspaceManagement(workspaceId, 'people')
+  // The newest people snapshot, read after the Slack request returns so members who arrived meanwhile count.
+  const workspacePeopleRef = useRef(workspacePeople)
+  useEffect(() => { workspacePeopleRef.current = workspacePeople }, [workspacePeople])
+  const workspacePeopleReady = workspacePeople !== undefined
   const currentUserEmail = user?.email?.trim().toLowerCase() || null
 
   const [connectionState, setConnectionState] = useState<ConnectionState>('loading')
@@ -239,6 +243,8 @@ function useSlackImportPanel() {
   const loadUsers = useCallback(async (force = false) => {
     if (!workspaceId || connectionState !== 'connected') return
     if (usersLoaded && !force) return
+    // Classify only against a loaded member list, or existing colleagues would show as new and be preselected.
+    if (!workspacePeopleReady) return
     setUsersLoading(true)
     setUsersError(null)
     try {
@@ -248,7 +254,7 @@ function useSlackImportPanel() {
         throw new Error(String(usersData.error ?? 'Failed to load Slack users'))
       }
 
-      const mgmtData = { items: workspacePeople?.items ?? [] }
+      const mgmtData = { items: workspacePeopleRef.current?.items ?? [] }
 
       const slackUsers = (usersData.users ?? []) as Array<{
         id: string
@@ -303,7 +309,7 @@ function useSlackImportPanel() {
     } finally {
       if (mountedRef.current) setUsersLoading(false)
     }
-  }, [workspaceId, connectionState, usersLoaded, currentUserEmail, workspacePeople])
+  }, [workspaceId, connectionState, usersLoaded, currentUserEmail, workspacePeopleReady])
 
   useEffect(() => {
     if (view === 'people' && connectionState === 'connected' && !usersLoaded && !usersLoading) {

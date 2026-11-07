@@ -121,14 +121,16 @@ export function WorkspaceProvider({
   const [resolvedRouteTargetKey, setResolvedRouteTargetKey] = useState<string | null>(null)
   const statusRef = useRef(status)
   const activeWorkspaceIdRef = useRef(activeWorkspaceId)
+  const workspacesRef = useRef(workspaces)
   const liveRef = useRef(live)
   const createdRef = useRef(new Map<string, WorkspaceSummary>())
   const liveReady = Boolean(live)
   useEffect(() => {
     statusRef.current = status
     activeWorkspaceIdRef.current = activeWorkspaceId
+    workspacesRef.current = workspaces
     liveRef.current = live
-  }, [status, activeWorkspaceId, live])
+  }, [status, activeWorkspaceId, live, workspaces])
 
   const resolveHandle = useCallback<HandleResolver>(
     (handle) => convex.query(api.collaboration.directory.resolveHandle, { handle }),
@@ -211,10 +213,25 @@ export function WorkspaceProvider({
     return () => { cancelled = true }
   }, [load, liveReady])
 
+  // The directory effect below runs only when the directory changes, not on every navigation.
+  const loadRef = useRef(load)
+  const pathnameRef = useRef(pathname)
+  useEffect(() => {
+    loadRef.current = load
+    pathnameRef.current = pathname
+  }, [load, pathname])
+
   // Later directory changes apply in place. Losing access to the open workspace shows the unavailable screen;
   // another tab choosing a different workspace changes nothing here, because the route decides this tab's workspace.
   useEffect(() => {
-    if (!live || statusRef.current !== 'ready') return
+    if (!live) return
+    // A membership that arrives after the route was judged unavailable (an invitation accepted over HTTP before the
+    // subscription caught up) opens the workspace instead of leaving the unavailable screen up.
+    if (statusRef.current === 'error') {
+      void loadRef.current({ force: true })
+      return
+    }
+    if (statusRef.current !== 'ready') return
     for (const id of createdRef.current.keys()) {
       if (live.workspaces.some((workspace) => workspace.id === id)) createdRef.current.delete(id)
     }
@@ -228,8 +245,13 @@ export function WorkspaceProvider({
       setStatus('error')
       return
     }
+    const handleChanged = Boolean(activeId) && readWorkspaceRouteTarget(pathnameRef.current)?.kind === 'handle'
+      && listed.find((workspace) => workspace.id === activeId)?.slug
+        !== workspacesRef.current.find((workspace) => workspace.id === activeId)?.slug
     setWorkspaces(listed)
     setInvitations(live.invitations)
+    // The open workspace's handle changed elsewhere: resolve this address again, which moves it to the new handle.
+    if (handleChanged) void loadRef.current()
   }, [live])
 
   const refresh = useCallback(async () => {

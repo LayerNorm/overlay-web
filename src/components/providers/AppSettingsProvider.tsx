@@ -204,10 +204,13 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   // Changes not yet confirmed by the server. They stay on top of live snapshots so a slower save is not undone
   // by a snapshot taken before it, and leave once the server answers.
   const pendingRef = useRef<Partial<AppSettings>>({})
+  // The newest saved settings from the server, so a refused or superseded change can give way to them.
+  const savedRef = useRef<Partial<AppSettings> | null>(null)
   const isLoading = authLoading || (authUserId !== null && remoteUserId !== authUserId)
 
   const applyRemote = useCallback((remote: Partial<AppSettings> | null) => {
     if (!remote || !authUserId) return
+    savedRef.current = remote
     const next = normalizeSettingsPayload({ ...remote, ...pendingRef.current })
     setSettings(next)
     persistSettings(next)
@@ -257,8 +260,10 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
         console.warn('Failed to save settings to server; the saved settings will show again')
         return optimistic
       }
-      // The live settings subscription brings the saved row to this and every other tab.
-      return normalizeSettingsPayload(await res.json() as Partial<AppSettings>)
+      // The live settings subscription brings the saved row to every other tab; here the answer is the saved value.
+      const saved = normalizeSettingsPayload(await res.json() as Partial<AppSettings>)
+      savedRef.current = saved
+      return saved
     } catch (error) {
       console.warn('Failed to save settings to server; the saved settings will show again', error)
       return optimistic
@@ -269,6 +274,13 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
         if (pending[key] === value) delete pending[key]
       }
       pendingRef.current = pending as Partial<AppSettings>
+      // Show the saved settings again with only the changes still in flight on top: a refused change disappears,
+      // and a snapshot that arrived while this one was pending is no longer hidden.
+      if (savedRef.current) {
+        const next = normalizeSettingsPayload({ ...savedRef.current, ...pendingRef.current })
+        setSettings(next)
+        persistSettings(next)
+      }
       setIsSaving(false)
     }
   }, [authUserId, settings])
