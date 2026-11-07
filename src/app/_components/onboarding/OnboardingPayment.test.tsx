@@ -32,6 +32,8 @@ test('checkout consent survives task preparation, errors, retry and redirect', a
   Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { configurable: true, value: true })
   Object.defineProperty(globalThis, 'window', { configurable: true, value: {
     location: { search: '', assign: (href: string) => destinations.push(href) },
+    addEventListener: () => {},
+    removeEventListener: () => {},
   } })
   workspaces.billing = async () => ({ initialized: true, canManage: true }) as Awaited<ReturnType<typeof originalBilling>>
   let checkoutAttempts = 0

@@ -4,6 +4,7 @@ import { resolveNavItemDestination, resolveSidebarRouteState, selectMobileNavIte
 import { agentHref, agentThreadHref } from '@/components/layout/sidebar-nav'
 import { resolveWorkspaceSurface } from '@/shared/workspaces/routing'
 import { MessageSquare } from 'lucide-react'
+import { selectDoubleSidebarItem } from '../../../../packages/overlay-shell-react/src/sidebar/DoubleSidebar'
 
 test('Chats destinations always select a personal draft, including without a workspace', () => {
   for (const activeWorkspaceId of [null, 'team-a']) {
@@ -23,14 +24,14 @@ test('desktop and mobile Chats navigate directly without resolving saved convers
   for (const isActive of [false, true]) {
     for (const select of [selectSidebarNavItem, selectMobileNavItem]) {
       const destinations: string[] = []
-      select(item, {
+      const navigate = () => select(item, {
         isGuestConfirmed: false,
         requireAuth: () => assert.fail('unexpected auth gate'),
         primaryNavActionByItemId: new Map(),
         runSidebarAction: async () => false,
         isActive: () => isActive,
         destination: (href) => resolveNavItemDestination(href, { activeWorkspaceId: null, buildWorkspaceHref: (_, path) => path }),
-        pathname: '/app/work',
+        pathname: '/app/chat?id=saved-conversation',
         router: { push: (href) => destinations.push(href) },
         setPendingNav: () => {},
         panelKind: 'chat',
@@ -40,6 +41,11 @@ test('desktop and mobile Chats navigate directly without resolving saved convers
         openPanel: () => {},
         closeDrawer: () => {},
       })
+      if (select === selectSidebarNavItem) {
+        const collapsed: boolean[] = []
+        selectDoubleSidebarItem({ ...item, active: isActive, onSelect: navigate }, false, (value) => collapsed.push(value))
+        assert.deepEqual(collapsed, [false])
+      } else navigate()
       assert.deepEqual(destinations, ['/app/chat?view=personal&scope=personal'])
     }
   }

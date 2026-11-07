@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Open Chats as a fresh personal draft without creating an empty saved conversation. Keep onboarding consent checked while opening checkout, and move straight into Work after setup without a delayed navigation tour or disappearing composer.
+- Open Chats as a fresh personal draft, including desktop rail re-clicks, without creating an empty saved conversation or collapsing its sidebar. Keep onboarding consent checked and suppress the leave-site warning for the saved checkout redirect. After setup, retain the onboarding composer until Work and its selected first task render, without a delayed navigation tour or onboarding returning over later pages.
 
 - Make agent surfaces live: an agent's Slack connection, its channel bindings and whether you may bind it now come from a Convex subscription, so a channel added or removed in another tab, or a Slack install degrading, shows without reloading. Listing channels, binding and Slack OAuth stay on the server, which talks to Slack. The extension host needed no change: it renders on the server and has no browser data loads.
 

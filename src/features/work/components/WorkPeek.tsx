@@ -10,6 +10,7 @@ import { type UpdateWorkItemRequest, type WorkItem, type WorkPerson } from '@ove
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { validateWorkDates, validateWorkTitle } from '@/shared/work/status'
 import { useEscapeToClose, useScopeFollowsTask, useWorkTask } from '../lib/use-work-task'
+import { useOnboardingWorkReady } from '@/components/providers/OnboardingWorkHandoff'
 import { eligibleParents } from '../lib/work-state'
 import { ContextSection, DoneWhenSection, ObjectiveSection, ActivitySection, Section, WaitingOnSection } from './WorkPeekSections'
 import { useWorkData } from './WorkDataProvider'
@@ -177,6 +178,7 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
   const { item, missing } = useWorkTask(taskId)
   const { viewer, canWork, updateTask, moveTask } = useWorkData()
   const scopeMatches = useScopeFollowsTask(item)
+  useOnboardingWorkReady(taskId, scopeMatches && (Boolean(item) || missing))
   useEscapeToClose(onClose)
 
   if (missing) {
