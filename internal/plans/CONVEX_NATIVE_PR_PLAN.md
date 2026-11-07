@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-07. Phases A to E are complete and live in production: chats, agents, rooms, Activity, files, notes, memories, Work, automations and skills run on the native path. The production Convex backend was last deployed from main `228e9bedc` after the matching web release. Phase F ships in three PRs; the first (CN-21 to CN-24, connections) is implemented on the Phase F connections PR. Stop, approval, input response, room send, agent assignment, automation writes and connection writes stay on the server by design because they run workflows, agent turns, billing checks, credential encryption, OAuth or provider calls. Second-member cases are tested on previews with a seeded collaborator acting through the Convex CLI. The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-07. Phases A to E are complete and live in production: chats, agents, rooms, Activity, files, notes, memories, Work, automations and skills run on the native path. The production Convex backend was last deployed from main `228e9bedc` after the matching web release. Phase F ships in three PRs; the first (CN-21 to CN-24, connections, #416) passed preview acceptance and awaits merge. Stop, approval, input response, room send, agent assignment, automation writes and connection writes stay on the server by design because they run workflows, agent turns, billing checks, credential encryption, OAuth or provider calls. Second-member cases are tested on previews with a seeded collaborator acting through the Convex CLI. The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -15,7 +15,7 @@ Status: in progress as of 2026-11-07. Phases A to E are complete and live in pro
 | CN-07 to CN-11 | #413 | Merged and deployed: web and Convex production at `2fcade1e1`, production smoke passed |
 | CN-12 to CN-15 | #414 | Merged and deployed: web and Convex production at `8c57d1c52`, production smoke passed |
 | CN-16 to CN-20 | #415 | Merged and deployed: web and Convex production at `228e9bedc`, production smoke passed |
-| CN-21 to CN-24 | Phase F connections PR | Implemented; preview acceptance pending |
+| CN-21 to CN-24 | #416 | Preview accepted with a second member; merge pending |
 | CN-07 to CN-11 (old attempt) | #403 | Closed unmerged, superseded by the Phase C PR |
 | CN-12 (old attempt) | #402 | Closed unmerged, superseded by the Phase D PR |
 | CN-20 (old attempt) | #398 | Closed unmerged, superseded by the Phase E PR |
@@ -550,6 +550,17 @@ Tested in Chrome as a real member (Google sign-in) of the paid **Preview QA Team
 **Retirement/non-goals:** remove host metadata refetch loops. Keep external-channel events, extension APIs, and runtime protocols.
 
 **Implemented (Phase F connections PR):** `surfaces/browse:forAgent` makes an agent's Slack connections, bindings and bind right live. The `/app/x` extension host renders on the server with no browser loads, so it needed nothing.
+
+### Phase F connections preview acceptance (#416, 2026-11-07)
+
+Same setup as Phase E: the browser account in Chrome as a member of **Preview QA Team** on the PR's isolated backend, a second member acting through the Convex CLI, and rows for providers, computers, environments and Slack surfaces appended to that preview backend only.
+
+- **CN-21:** an MCP server the other member shared appeared live with a bearer token and a key in its URL; neither the token nor the key reached the page or the raw query result, and `canEdit` was false. Their disable showed Inactive live and their removal disappeared live, with no HTTP calls. A grant created on the server appeared in Settings → Connected apps and its revoke removed it live. QA found the dialog for a server the viewer cannot change looked editable with Delete; it now opens view-only (fixed on this PR).
+- **CN-22:** Settings → Providers made one HTTP call on load (the gateway seed). A connection added on the backend appeared live without vault data and with no further calls.
+- **CN-23:** a computer moved from Provisioning to Ready live with no polling; the other member's private machine and every provider reference stayed hidden. An environment with a fresh heartbeat showed Online and turned Offline 43 s later on the local clock, with no HTTP calls; a pending environment showed its verification phrase and no public key or code hash.
+- **CN-24:** a Slack connection and a channel binding added on the backend appeared in the agent editor's "Reachable on" live with no HTTP calls; removing the channel made one server call and the row cleared from the live query. The other member got nothing for the browser account's creator-only agent.
+
+Not covered: real Slack OAuth, a real MCP OAuth round trip and a real Boat machine (all server-side and unchanged by this PR). The agent editor still loads agent bindings once over HTTP for its launch setting; members get 403 there, as before.
 
 ### CN-25. Make workspace directory and app-owned settings reactive
 
