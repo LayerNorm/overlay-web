@@ -12,6 +12,7 @@ import { useWorkRoute } from '../lib/use-work-route'
 import { useLiveWork } from '../lib/use-live-work'
 import { WORK_TASK_PARAM } from '../lib/use-work-url-state'
 import { StatusIcon } from './work-ui'
+import { WorkAssignmentExecutions } from './WorkAssignmentExecutions'
 
 interface SidebarWork {
   items: WorkItem[]
@@ -58,15 +59,6 @@ export function WorkSidebarSection({ filter, onNavigate }: { filter: string; onN
       </SidebarMenuSub>
     )
   }
-  if (items.length === 0) {
-    return (
-      <SidebarMenuSub className={listClassName}>
-        <SidebarMenuSubItem>
-          <p className="px-2 py-1.5 text-xs text-(--muted-light)">{EMPTY_LABEL[resolved]}</p>
-        </SidebarMenuSubItem>
-      </SidebarMenuSub>
-    )
-  }
   const open = (id: string) => {
     const next = new URLSearchParams(params?.toString() ?? '')
     next.set(WORK_TASK_PARAM, id)
@@ -75,7 +67,9 @@ export function WorkSidebarSection({ filter, onNavigate }: { filter: string; onN
     onNavigate?.()
   }
   return (
+    <>
     <SidebarMenuSub className={listClassName} data-testid={`work-sidebar-${resolved}`}>
+      {!items.length ? <SidebarMenuSubItem><p className="px-2 py-1.5 text-xs text-(--muted-light)">{EMPTY_LABEL[resolved]}</p></SidebarMenuSubItem> : null}
       {items.map((item) => {
         const active = item.id === activeId
         return (
@@ -93,5 +87,7 @@ export function WorkSidebarSection({ filter, onNavigate }: { filter: string; onN
         )
       })}
     </SidebarMenuSub>
+    {resolved === 'all' ? <WorkAssignmentExecutions compact onNavigate={onNavigate} /> : null}
+    </>
   )
 }

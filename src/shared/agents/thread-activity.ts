@@ -13,6 +13,7 @@ export function resolveThreadActivity(
     case 'waiting_for_resources':
     case 'waiting_for_authorization': return 'needs_input'
     case 'queued':
+    case 'publication_pending':
     case 'running':
     case 'waiting_for_children': return 'working'
     case 'completed': return participant?.markedUnreadAt

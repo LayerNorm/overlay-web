@@ -1522,6 +1522,7 @@ export default defineSchema({
     updatedAt: v.optional(v.number()),
     createdAt: v.number(),
   })
+    .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
     .index('by_workspaceId_idempotencyKey', ['workspaceId', 'idempotencyKey'])
     .index('by_assignmentId', ['assignmentId'])
     .index('by_parentConversationId', ['parentConversationId'])

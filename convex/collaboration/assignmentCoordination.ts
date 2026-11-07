@@ -106,6 +106,12 @@ export const resolve = mutation({
     }
     const child = attempt.childRunId ? await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', attempt.childRunId!)).unique() : null
     if (child?.parentRunId === run.runId) await settleResolvedAssignmentChild(ctx, run, child, args.action !== 'accept')
+    const previousAttempts = await ctx.db.query('agentAssignmentAttempts').withIndex('by_assignmentId_ordinal', q => q.eq('assignmentId', assignment.assignmentId)).collect()
+    for (const previous of previousAttempts) {
+      if (previous.disposition !== 'revision_requested' || previous.parentRunId !== run.runId || !previous.childRunId) continue
+      const previousChild = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', previous.childRunId!)).unique()
+      if (previousChild?.parentRunId === run.runId) await settleResolvedAssignmentChild(ctx, run, previousChild, false)
+    }
     return { assignmentId: assignment.assignmentId, attemptId: attempt.attemptId, disposition, reason,
       workflows: [...new Set(workflows)], cancellationRoot: child ? await assignmentCancellationRoot(ctx, child) : undefined }
   },

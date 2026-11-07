@@ -1,6 +1,6 @@
 # Chief of Staff Harness and Surface Implementation Plan
 
-Status: In progress in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409). Phase 1 and Phase 2 contracts are implemented with local gate tests. Phase 3 is partial; the Slice 2 orchestration gates have not been rerun as hosted acceptance. Phases 4 to 6 have not started. See [Progress](#progress). The revised web/Slack mockup is the visual reference.
+Status: In progress in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409). Phase 1 and Phase 2 contracts are implemented with local gate tests. Phase 3 now includes Work execution rows and origin labels; current-head checks and hosted acceptance are pending. Phases 4 to 6 have not started. See [Progress](#progress). The revised web/Slack mockup is the visual reference.
 
 ## Progress
 
@@ -9,8 +9,8 @@ Legend: `[x]` done in PR #409, `[~]` partially done, `[ ]` not started.
 | Phase | State | Summary |
 |---|---|---|
 | 1. Assignment and authorization contracts | Implemented locally | Isolated assignments, same-thread attempts/revisions, publication-aware persisted results, unified authorized reply/artifact reads, canonical surface links and the Slack requester specification are in. |
-| 2. Native Chief orchestration | Partial | Named delegation and revision dispatch use assignment attempts. Unified readers preserve failed execution and publication-pending state. Disposition tools, cancellation, launch recovery, turn queues and structural completion remain Slice 2. |
-| 3. Web experience | Partial | Assignments panel, `Assigned from` backlinks and the PR 405 sidebar with live thread insertion are in. Work view, origin labels and linked-thread composition are not. |
+| 2. Native Chief orchestration | Implemented locally | Revisions, explicit acceptance/exclusion/cancellation, launch recovery, requester-preserving turn queues and structural completion are implemented. Hosted failure/recovery acceptance remains outstanding. |
+| 3. Web experience | Implemented, acceptance pending | Assignment panels, parent backlinks, live sidebar activity, paginated Work execution rows and authorized origin labels are implemented. Linked Slack composition remains intentionally disabled until Phase 4. Navigation-warning investigation and current-head browser acceptance remain outstanding. |
 | 4. Chief-only Slack | Not started | A Sign in with Slack identity helper exists locally but is uncommitted and unwired. |
 | 5. Personal-Chief contributions | Not started | Cross-owner personal-Chief delegation is refused until grants exist. |
 | 6. Connected agents and transports | Not started | External and connected agents are rejected before any assignment is written. |
@@ -321,10 +321,10 @@ Each phase should be a reviewable change set. The boundaries below are implement
 
 - [x] Implement parent assignment list and dedicated specialist threads.
 - [x] Apply PR 405's sidebar treatment and per-user read status.
-- [ ] Surface the same execution in Work without duplicate task records.
-- [ ] Add origin/destination labels and artifact permissions.
-- [ ] Enable linked-thread composition only when the shared admission and delivery path is ready.
-- [~] Validate desktop/mobile, themes, keyboard use and restricted viewers. Desktop, narrow and both themes are verified in the browser; restricted viewers are covered by Convex tests only; keyboard use is not tested.
+- [x] Surface the same execution in Work without duplicate task records. Read-only execution rows subscribe to the assignment records and require Work capability, active membership and both conversation ACLs. Archive state removes the viewer's row without cancelling execution.
+- [x] Add origin/destination labels and artifact permissions. Origin is projected only through authorized ancestry and a non-revoked connection; result/artifact access uses the same assignment boundary.
+- [x] Keep linked-thread composition disabled until the shared admission and delivery path is ready. The notice explicitly says the web mirror is read-only; bidirectional composition belongs to Phase 4.
+- [~] Validate desktop/mobile, themes, keyboard use and restricted viewers. Restricted viewers are covered by Convex tests; responsive, theme, keyboard and hosted browser acceptance remain pending.
 
 **Exit gate:** the approved mockup's Working, Needs you and Completed flows are backed by persisted state; reload and cross-tab updates remain correct.
 

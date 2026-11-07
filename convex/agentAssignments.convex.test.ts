@@ -365,7 +365,7 @@ test('personal no-workspace native turns bypass the queue only for their owner',
   })
 })
 
-test('Phase 2: a failed superseded child can settle after revision before parent completion', async () => {
+test('Phase 2: accepting a revision settles the superseded failed child without fabricating success', async () => {
   const data = await fixture()
   await applyOperation(data, data.parentRunId, 'owner', { type: 'claim_execution', workflowRunId: 'coordinator' })
   const failed = await dispatched(data)
@@ -381,12 +381,6 @@ test('Phase 2: a failed superseded child can settle after revision before parent
     type: 'settle_child', childRunId: revised.childRunId,
   })
   await resolution(data, revised, 'accept')
-  await expect(applyOperation(data, data.parentRunId, 'premature-finish', {
-    type: 'finish', resultSummary: 'The revised attempt succeeded.',
-  })).rejects.toThrow('Milestone ask:call-1 is unfinished')
-  await applyOperation(data, data.parentRunId, 'settle-superseded-failed-child', {
-    type: 'settle_child', childRunId: failed.childRunId,
-  })
   const parent = await data.convex.query(query('harness/runs:get'), {
     actorUserId: 'alice', runId: data.parentRunId, serverSecret: secret,
   })
@@ -397,6 +391,43 @@ test('Phase 2: a failed superseded child can settle after revision before parent
   expect(await applyOperation(data, data.parentRunId, 'finish-after-revision', {
     type: 'finish', resultSummary: 'The revised attempt succeeded.',
   })).toMatchObject({ snapshot: { status: 'completed' } })
+})
+
+test('accepting a revision leaves superseded unresolved model usage held', async () => {
+  const data = await fixture()
+  await applyOperation(data, data.parentRunId, 'owner', { type: 'claim_execution', workflowRunId: 'coordinator' })
+  const failed = await dispatched(data)
+  await childState(data, failed, 'failed', true, 'The first attempt failed.')
+  const hold = {
+    id: 'unsettled-model-call',
+    maxCostMicros: 500,
+    dispatch: { modelId: 'fixture/model', billingReservationId: 'unreconciled-reservation' },
+  }
+  await data.convex.run(async ctx => {
+    const childRun = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', failed.childRunId)).unique()
+    const state = JSON.parse(childRun!.metadataJson)
+    await ctx.db.patch(childRun!._id, { metadataJson: JSON.stringify({ ...state, modelReservation: hold }) })
+  })
+  const revised = await dispatched(data, args(data, {
+    assignmentId: failed.assignmentId,
+    revisionOfAssignmentId: failed.assignmentId,
+    expectedAttemptId: failed.attemptId,
+    toolCallId: 'revision-with-hold',
+  }))
+  await childState(data, revised, 'completed', true, 'The revised attempt succeeded.')
+  await applyOperation(data, data.parentRunId, 'settle-revised-child', {
+    type: 'settle_child', childRunId: revised.childRunId,
+  })
+  await resolution(data, revised, 'accept')
+  const oldChild = await data.convex.query(query('harness/runs:get'), {
+    actorUserId: 'alice', runId: failed.childRunId, serverSecret: secret,
+  })
+  expect(oldChild?.modelReservation).toEqual(hold)
+  expect(oldChild?.status).toBe('failed')
+  const parent = await data.convex.query(query('harness/runs:get'), {
+    actorUserId: 'alice', runId: data.parentRunId, serverSecret: secret,
+  })
+  expect(parent?.children.find(child => child.id === failed.childRunId)?.status).toBe('running')
 })
 
 test('Phase 2: an interrupted assignment transfers its winner through the existing continuation outbox', async () => {

@@ -31,3 +31,16 @@ test('assignment threads link to their authorized parent without inventing sibli
   assert.match(html, /href="\/agents\?id=parent"/)
   assert.doesNotMatch(html, /aria-expanded|completed/)
 })
+
+test('origin-only threads show provenance and excluded failures stay failed', () => {
+  const origin = { platform: 'slack' as const, channelId: 'C1', channelName: 'launch', threadLinkId: 'link' }
+  assert.match(renderToStaticMarkup(<AgentAssignments parent={null} assignments={[]} origin={origin} />), /Origin: Slack · #launch/)
+  const html = renderToStaticMarkup(<AgentAssignments parent={null} assignments={[
+    { assignmentId: 'failed', title: 'Pipeline', agentName: 'Sales', status: 'failed', disposition: 'excluded', dispositionReason: 'Source unavailable', href: '/app/agents?id=failed' },
+    { assignmentId: 'publishing', title: 'Readiness', agentName: 'Product', status: 'publication_pending', href: '/app/agents?id=publishing' },
+  ]} />)
+  assert.match(html, /Sales · Failed/)
+  assert.match(html, /Excluded: Source unavailable/)
+  assert.match(html, /Product · Working/)
+  assert.match(html, /0\/2 completed/)
+})

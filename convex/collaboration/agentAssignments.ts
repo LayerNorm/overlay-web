@@ -7,6 +7,7 @@ import { requireNativeCapability } from '../lib/nativeCapabilities'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { parseByoModelId } from '../../src/shared/agents/agent-model'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
+import type { AssignmentExecution } from '../../src/shared/work/assignment-execution'
 
 type DbContext = MutationCtx | QueryCtx
 type AssignmentArgs = {
@@ -258,7 +259,40 @@ const assignmentView = v.object({
   status: v.string(),
   scope: navigationScope,
   currentAttemptId: v.optional(v.string()),
+  disposition: v.optional(v.union(v.literal('accepted'), v.literal('revision_requested'), v.literal('excluded'))),
+  dispositionReason: v.optional(v.string()),
 })
+
+export async function assignmentExecutionForViewer(ctx: QueryCtx, viewer: Awaited<ReturnType<typeof requireNativeWorkspace>>, assignment: Doc<'agentAssignments'>): Promise<AssignmentExecution | null> {
+  const workspaceId = assignment.workspaceId
+  const [child, parent, agent, caller] = await Promise.all([
+    accessibleConversation(ctx, viewer, workspaceId, assignment.conversationId),
+    accessibleConversation(ctx, viewer, workspaceId, assignment.parentConversationId),
+    visibleAgentForViewer(ctx, workspaceId, assignment.assignedAgentId, viewer),
+    visibleAgentForViewer(ctx, workspaceId, assignment.callerAgentId, viewer),
+  ])
+  if (!child || !parent || !agent || !caller) return null
+  const visited = new Set<string>([assignment.conversationId])
+  let ancestorId = assignment.parentConversationId
+  while (!visited.has(ancestorId)) {
+    visited.add(ancestorId)
+    if (!await accessibleConversation(ctx, viewer, workspaceId, ancestorId)) return null
+    const ancestor = await ctx.db.query('agentAssignments').withIndex('by_conversationId', q => q.eq('conversationId', ancestorId)).unique()
+    if (!ancestor) break
+    if (ancestor.workspaceId !== workspaceId || visited.has(ancestor.parentConversationId)) return null
+    ancestorId = ancestor.parentConversationId
+  }
+  const attempt = assignment.currentAttemptId ? await ctx.db.query('agentAssignmentAttempts')
+    .withIndex('by_attemptId', q => q.eq('attemptId', assignment.currentAttemptId!)).unique() : null
+  return {
+    kind: 'agent_assignment', assignmentId: assignment.assignmentId, attemptId: assignment.currentAttemptId,
+    conversationId: child._id, agentId: agent.agentId, agentName: agent.name, title: child.title,
+    scope: agentScope(agent), status: await projectedStatus(ctx, assignment),
+    disposition: attempt?.disposition, dispositionReason: attempt?.dispositionReason,
+    parent: { conversationId: parent._id, agentId: caller.agentId, title: parent.title, scope: agentScope(caller) },
+    origin: await authorizedOrigin(ctx, viewer, workspaceId, child._id),
+  }
+}
 
 export const createAgentAssignment = mutation({
   args: {
@@ -468,20 +502,19 @@ export const forConversation = query({
       .collect()
     const assignments = []
     for (const assignment of rows) {
-      const [child, agent] = await Promise.all([
-        accessibleConversation(ctx, viewer, args.workspaceId, assignment.conversationId),
-        visibleAgentForViewer(ctx, args.workspaceId, assignment.assignedAgentId, viewer),
-      ])
-      if (!child || !agent) continue
+      const execution = await assignmentExecutionForViewer(ctx, viewer, assignment)
+      if (!execution) continue
       assignments.push({
         assignmentId: assignment.assignmentId,
-        conversationId: child._id,
+        conversationId: assignment.conversationId,
         agentId: assignment.assignedAgentId,
-        agentName: agent.name,
-        title: child.title,
-        status: await projectedStatus(ctx, assignment),
-        scope: agentScope(agent),
+        agentName: execution.agentName,
+        title: execution.title,
+        status: execution.status,
+        scope: execution.scope,
         currentAttemptId: assignment.currentAttemptId,
+        disposition: execution.disposition,
+        dispositionReason: execution.dispositionReason,
       })
     }
     const origin = await authorizedOrigin(ctx, viewer, args.workspaceId, conversationId)

@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowUpRight, ChevronDown, ChevronRight, GitBranch } from 'l
 import { Button } from '@overlay/ui/primitives'
 import { ThreadActivityIndicator } from '@/components/layout/sidebar/ThreadActivityIndicator'
 import { THREAD_ACTIVITY_LABELS, resolveThreadActivity } from '@/shared/agents/thread-activity'
+import type { AssignmentOrigin } from '@/shared/work/assignment-execution'
 
 export type AssignmentNavigation = {
   assignmentId: string
@@ -16,18 +17,22 @@ export type AssignmentNavigation = {
 export type AssignmentNavigationItem = AssignmentNavigation & {
   agentName: string
   status: string
+  disposition?: string
+  dispositionReason?: string
 }
 
-export function AgentAssignments({ parent, assignments }: {
+export function AgentAssignments({ parent, assignments, origin }: {
   parent: AssignmentNavigation | null
   assignments: AssignmentNavigationItem[]
+  origin?: AssignmentOrigin
 }) {
   const [expanded, setExpanded] = useState(true)
   const listId = useId()
-  if (!parent && assignments.length === 0) return null
+  if (!parent && assignments.length === 0 && !origin) return null
   const completed = assignments.filter(item => item.status === 'completed').length
   return (
     <section aria-label="Delegated work" className="my-3 min-w-0 space-y-3">
+      {origin ? <p className="px-2 text-xs text-(--muted)">Origin: Slack · {origin.channelName ? `#${origin.channelName.replace(/^#/, '')}` : origin.channelId}</p> : null}
       {parent ? (
         <Button asChild variant="ghost" className="h-auto max-w-full justify-start gap-2 px-2 py-2 text-left font-normal">
           <Link href={parent.href} title={`Back to ${parent.title}`}>
@@ -59,6 +64,7 @@ export function AgentAssignments({ parent, assignments }: {
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm" title={item.title}>{item.title}</span>
                         <span className="block truncate text-xs text-(--muted)">{item.agentName} · {THREAD_ACTIVITY_LABELS[status]}</span>
+                        {item.disposition === 'excluded' ? <span className="block text-xs text-(--muted)">Excluded: {item.dispositionReason}</span> : null}
                       </span>
                       <ArrowUpRight size={14} aria-hidden className="shrink-0 text-(--muted)" />
                     </Link>
