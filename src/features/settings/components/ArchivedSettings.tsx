@@ -99,7 +99,7 @@ export function ArchivedSettings() {
   const [busy, setBusy] = useState(false)
   const lastToggled = useRef<string | null>(null)
   const nativeItems = useMemo<ArchivedItem[]>(() => {
-    if (!nativePersonal.configured || !workspaceId) return []
+    if (!workspaceId) return []
     const summaries = [...nativePersonal.archived.rows]
     const selectedSummary = nativePersonal.selectedSummary
     if (selectedSummary?.archivedAt
@@ -121,7 +121,6 @@ export function ArchivedSettings() {
     }))
   }, [
     nativePersonal.archived.rows,
-    nativePersonal.configured,
     nativePersonal.selectedSummary,
     workspaceId,
   ])
@@ -134,8 +133,7 @@ export function ArchivedSettings() {
   useEffect(() => {
     if (items) setSelected((current) => pruneSelection(current, items))
   }, [items])
-  const reportedFailedSources = nativePersonal.configured
-    && nativePersonal.archived.status === 'unavailable'
+  const reportedFailedSources = nativePersonal.archived.status === 'unavailable'
     && !failedSources.includes('chats')
     ? [...failedSources, 'chats']
     : failedSources
@@ -179,7 +177,7 @@ export function ArchivedSettings() {
         await restoreArchivedItem(
           targets[0]!,
           workspaceId,
-          nativePersonal.configured ? restoreNativePersonal : undefined,
+          restoreNativePersonal,
         )
         toast.success(`Restored “${targets[0]!.name}”.`)
       } else {
@@ -187,7 +185,7 @@ export function ArchivedSettings() {
           targets,
           'restore',
           workspaceId,
-          nativePersonal.configured ? restoreNativePersonal : undefined,
+          restoreNativePersonal,
         )
         const summary = summarizeBulk('restored', outcome)
         if (outcome.failed.length === 0) toast.success(summary)
@@ -232,7 +230,7 @@ export function ArchivedSettings() {
     }
   }
 
-  if (items === null || (nativePersonal.configured && nativePersonal.archived.status === 'loading')) {
+  if (items === null || nativePersonal.archived.status === 'loading') {
     return (
       <div className="flex min-h-48 items-center justify-center text-(--muted)">
         <Loader2 size={18} className="animate-spin" aria-label="Loading archived items" />
@@ -372,7 +370,7 @@ export function ArchivedSettings() {
         </div>
       )}
 
-      {nativePersonal.configured && nativePersonal.archived.hasMore ? (
+      {nativePersonal.archived.hasMore ? (
         <Button
           variant="ghost"
           disabled={nativePersonal.archived.loadingMore}
