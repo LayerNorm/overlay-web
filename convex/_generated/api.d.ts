@@ -194,7 +194,7 @@ import type * as providers_browse from "../providers/browse.js";
 import type * as providers_cloudAgentProvisions from "../providers/cloudAgentProvisions.js";
 import type * as providers_connections from "../providers/connections.js";
 import type * as providers_subscriptions from "../providers/subscriptions.js";
-import type * as search_mentions from "../search/mentions.js";
+import type * as search_browse from "../search/browse.js";
 import type * as surfaces_browse from "../surfaces/browse.js";
 import type * as surfaces_chatState from "../surfaces/chatState.js";
 import type * as surfaces_surfaceExecutions from "../surfaces/surfaceExecutions.js";
@@ -400,7 +400,7 @@ declare const fullApi: ApiFromModules<{
   "providers/cloudAgentProvisions": typeof providers_cloudAgentProvisions;
   "providers/connections": typeof providers_connections;
   "providers/subscriptions": typeof providers_subscriptions;
-  "search/mentions": typeof search_mentions;
+  "search/browse": typeof search_browse;
   "surfaces/browse": typeof surfaces_browse;
   "surfaces/chatState": typeof surfaces_chatState;
   "surfaces/surfaceExecutions": typeof surfaces_surfaceExecutions;

@@ -45,6 +45,37 @@ export const list = query({
   },
 })
 
+/** Rows read per source when listing one folder's children. */
+const CHILDREN_SCAN_LIMIT = 500
+
+/**
+ * One folder's readable children in a view (the root when `parentId` is null), for resolving relative links in a
+ * markdown file: metadata only, at most 500 per source, the same read rules as the tree.
+ */
+export const children = query({
+  args: { workspaceId: v.string(), parentId: v.union(v.string(), v.null()), view: v.union(v.literal('personal'), v.literal('workspace')) },
+  handler: async (ctx, { workspaceId, parentId, view }) => {
+    const viewer = await viewerOrNull(ctx, workspaceId)
+    if (!viewer) return null
+    const rows = await listScopedRows(ctx, {
+      userId: viewer.userId,
+      workspaceId,
+      view,
+      fetchMine: async () => await ctx.db.query('files')
+        .withIndex('by_workspaceId_userId_parentId_updatedAt', (q) =>
+          q.eq('workspaceId', workspaceId).eq('userId', viewer.userId).eq('parentId', parentId ?? undefined))
+        .take(CHILDREN_SCAN_LIMIT),
+      fetchShared: async (ws) => parentId
+        ? (await ctx.db.query('files').withIndex('by_parentId', (q) => q.eq('parentId', parentId)).take(CHILDREN_SCAN_LIMIT))
+          .filter((row) => row.workspaceId === ws && row.scope === 'workspace')
+        : (await ctx.db.query('files')
+          .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace').eq('archivedAt', undefined))
+          .take(CHILDREN_SCAN_LIMIT)).filter((row) => row.parentId === undefined),
+    })
+    return rows.filter((row) => !row.deletedAt).map(browserFileSummary)
+  },
+})
+
 /** One readable file with its inline text, or null when it is gone or the member lost access. */
 export const get = query({
   args: { workspaceId: v.string(), fileId: v.id('files') },

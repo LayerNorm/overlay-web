@@ -10,7 +10,6 @@
 import type { SuggestionOptions, SuggestionProps } from '@tiptap/suggestion'
 import { ReactRenderer } from '@tiptap/react'
 import { MentionPopup } from '@/components/mentions/MentionPopup'
-import { searchMentions } from '@/components/mentions/mention-search'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 
 interface PopupState {
@@ -45,10 +44,12 @@ function MentionSuggestionPopup({ state, setState }: PopupRendererProps) {
 }
 
 /**
- * Builds a TipTap Suggestion config. The provided `command` callback inserts the
- * overlayMention node into the editor at the trigger.
+ * Builds a TipTap Suggestion config around a mention search (the native workspace search). The provided `command`
+ * callback inserts the overlayMention node into the editor at the trigger.
  */
-export const overlayMentionSuggestion: Omit<SuggestionOptions, 'editor'> = {
+export const createOverlayMentionSuggestion = (
+  searchMentions: (query: string) => Promise<MentionCategory[]>,
+): Omit<SuggestionOptions, 'editor'> => ({
   char: '@',
   allowSpaces: false,
   startOfLine: false,
@@ -74,14 +75,17 @@ export const overlayMentionSuggestion: Omit<SuggestionOptions, 'editor'> = {
       component?.updateProps({ state, setState })
     }
 
+    // Only the answer for the newest query is shown; a slower answer to an earlier keystroke is dropped.
+    let latest = 0
     async function refreshSearch(query: string) {
+      const request = ++latest
       try {
         setState({ ...state, loading: true })
         const cats = await searchMentions(query)
-        if (!active) return
+        if (!active || request !== latest) return
         setState({ ...state, query, categories: cats, loading: false })
       } catch {
-        if (!active) return
+        if (!active || request !== latest) return
         setState({ ...state, query, loading: false })
       }
     }
@@ -168,4 +172,4 @@ export const overlayMentionSuggestion: Omit<SuggestionOptions, 'editor'> = {
       },
     }
   },
-}
+})

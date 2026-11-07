@@ -525,7 +525,17 @@ Convex search indexes have been added to:
 - `skills.search_name` (searchField: `name`, filterFields: `userId`, `workspaceId`)
 - `mcpServers.search_name` (searchField: `name`, filterFields: `userId`, `workspaceId`)
 
-`search/mentions:searchMentions` (in `convex/search/mentions.ts`) uses these indexes to return bounded top-10 results per category. `GET /api/v1/mention-search?q=<query>` is the BFF route that calls this query. The client `searchMentions` function tries the indexed endpoint first and falls back to scan-and-filter if unavailable. Knowledge bases and connectors remain client-side filtered (not in Convex search indexes).
+`search/browse:mentions({ workspaceId, query })` (in `convex/search/browse.ts`) uses these indexes for chats, files and notes, automations, skills and MCP servers, returning at most ten per category. An empty query returns the newest items. It is used natively by the chat composer's @-menu, the notebook editor, Cmd-K and the Work context picker.
+
+**Rules it applies:**
+- Each category needs its capability: `conversations.read`, `files.read`, `automations.use`, `skills.use`, `mcp.use`.
+- Other members' items appear only when shared with the workspace and readable.
+- Archived and deleted items, folders, disabled skills, and automation or archived chats never appear.
+- MCP results carry names and descriptions only.
+
+**What stays on HTTP:** connectors come from the integration provider (`/api/v1/integrations`), and the query's `connectorsAllowed` flag says whether to show them. The old `/api/v1/mention-search` route and `search/mentions:searchMentions` are removed.
+
+Relative links in markdown files resolve through `files/browse:children`, which lists one folder at a time under the tree's read rules.
 
 PostgreSQL route classification is explicit for release safety: connected-agent environments and
 bindings are supported. The provider-neutral workspace, agent, room, and conversation APIs are also
