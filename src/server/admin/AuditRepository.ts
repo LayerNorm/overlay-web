@@ -30,6 +30,15 @@ export interface AuditRepository {
     limit?: number
     resourceType?: string
   }): Promise<AuditEventRecord[]>
+  /**
+   * Newest events recorded for one workspace (`metadata.workspaceId`). Callers
+   * must authorize the workspace first; this never reads other workspaces.
+   */
+  listForWorkspace(args: {
+    workspaceId: string
+    fromRecordedAt?: number
+    limit?: number
+  }): Promise<AuditEventRecord[]>
 }
 
 export function sanitizeAuditMetadata(value: Record<string, unknown>): Record<string, unknown> {

@@ -8,6 +8,8 @@ import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 const WORKSPACE = 'workspace_acme'
 const OWNER = 'user_owner'
 const MEMBER = 'user_member'
+const ADMIN = 'user_admin'
+const ADMIN_PRINCIPAL = 'principal_admin'
 const OWNER_PRINCIPAL = 'principal_owner'
 const MEMBER_PRINCIPAL = 'principal_member'
 
@@ -33,6 +35,7 @@ function createService(options: {
   const mappings = new Map<string, Record<string, unknown>>()
   const suspended: string[] = []
   const limitChecks: string[] = []
+  const workspaceReads: Array<{ workspaceId: string; limit?: number }> = []
   const service = new WorkspaceGovernanceService({
     audit: {
       async append(row: Omit<AuditRow, 'id' | 'createdAt'>) {
@@ -40,8 +43,21 @@ function createService(options: {
         audit.push(record)
         return record
       },
+      // The customer web has no operator-wide audit read; production throws.
       async list() {
+        throw new Error('Operator audit reads require the standalone admin console')
+      },
+      async listForWorkspace({ workspaceId, fromRecordedAt, limit }: {
+        workspaceId: string
+        fromRecordedAt?: number
+        limit?: number
+      }) {
+        workspaceReads.push({ workspaceId, limit })
         return audit
+          .filter((row) => row.metadata.workspaceId === workspaceId)
+          .filter((row) => fromRecordedAt === undefined || row.createdAt >= fromRecordedAt)
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, limit)
       },
     } as never,
     rateLimiter: {
@@ -118,6 +134,13 @@ function createService(options: {
             membership: { role: 'owner', status: 'active' },
           }
         }
+        if (actorUserId === ADMIN) {
+          return {
+            workspace: { id: WORKSPACE },
+            principal: { id: ADMIN_PRINCIPAL },
+            membership: { role: 'admin', status: 'active' },
+          }
+        }
         if (actorUserId === MEMBER) {
           return {
             workspace: { id: WORKSPACE },
@@ -151,7 +174,7 @@ function createService(options: {
     id: () => 'export_1',
     now: () => 9_000,
   })
-  return { service, audit, exports, mappings, suspended, limitChecks }
+  return { service, audit, exports, mappings, suspended, limitChecks, workspaceReads }
 }
 
 function auditRow(overrides: Partial<AuditRow> = {}): AuditRow {
@@ -350,6 +373,25 @@ test('metrics report denials, invitation failures, and provider parity', async (
   assert.equal(metrics.invitationFailures, 1)
   assert.deepEqual(metrics.providerParity, { provider: 'convex', requiresConvexClient: true })
   assert.equal(metrics.workspaceId, WORKSPACE)
+})
+
+test('metrics read only this workspace through the scoped audit query for owners and admins', async () => {
+  // Regression: metrics used the operator-wide `audit.list`, which the customer
+  // web rejects, so every owner got a 500 from the governance route.
+  for (const actorUserId of [OWNER, ADMIN]) {
+    const { service, workspaceReads } = createService({
+      audit: [
+        auditRow({ id: 'd1', outcome: 'denied' }),
+        auditRow({ id: 'd2', outcome: 'denied', action: 'workspace.grant' }),
+        auditRow({ id: 'i1', action: 'workspace.invitation.accept', outcome: 'failure' }),
+        auditRow({ id: 'rival', outcome: 'denied', metadata: { workspaceId: 'workspace_rival' } }),
+      ],
+    })
+    const metrics = await service.collectMetrics({ actorUserId, workspaceId: WORKSPACE })
+    assert.equal(metrics.authorizationDenials, 2)
+    assert.equal(metrics.invitationFailures, 1)
+    assert.deepEqual(workspaceReads, [{ workspaceId: WORKSPACE, limit: 500 }])
+  }
 })
 
 test('platform actor resolution maps a linked chat identity to its principal', async () => {
