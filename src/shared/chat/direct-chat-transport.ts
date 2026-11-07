@@ -10,7 +10,6 @@ import {
   wrapUiMessageStreamForTtft,
 } from '@/shared/chat/ttft-client-debug'
 import { fetchWithSessionRecovery } from '@/shared/auth/session-fetch'
-import { notifyNativeThreadSafetyChanged } from './native-thread-safety'
 
 type ChatBody = object | undefined
 type ChatFetch = NonNullable<HttpChatTransportInitOptions<UIMessage>['fetch']>
@@ -104,7 +103,6 @@ export function createChatDiagnosticFetch(fetchImpl?: ChatFetch): ChatFetch {
 
       const text = await response.clone().text().catch(() => '')
       const payload = parseErrorPayload(text)
-      notifyNativeThreadSafetyChanged(payload.code)
       const responseRequestId = response.headers.get('x-request-id')
       const resolvedRequestId =
         (typeof payload.requestId === 'string' ? payload.requestId : null)

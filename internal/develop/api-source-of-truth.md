@@ -103,6 +103,32 @@ activity only and never replaces the human caller's permissions.
 Work scope, archive and restore mutations also require server authentication; a browser token cannot bypass
 the web capability/runtime checks or supply an agent activity actor directly to Convex.
 
+## Agent directory
+
+Browsers read agents through the live Convex queries `agents/directory:list` and
+`agents/directory:get` (`src/hooks/use-agent-directory.ts`). They authenticate with native
+Convex identity and port the service's rules: creator-only agents are visible only to their
+creator, `canEdit` follows the creator or a workspace owner/admin (personal chiefs: their owner),
+guests cannot create, and non-members read `null`. `agents/directory:ensureChiefs` provisions a
+member's chief agents once per workspace load, which the list and get BFF routes used to do as a
+read side effect. Every consumer shares one subscription, so there is no directory refresh event.
+
+Writes (create, update, archive, restore, delete) stay on `/api/v1/agents*` because they run
+server-side policy and side effects: harness and external-agent policy, model support, teams,
+connected-agent bindings, computer provisioning and config-profile cleanup. Desktop, mobile and
+agent tools also call these routes. The live queries reflect each write in every client. The
+Memories owner filter still lists agents over HTTP until the memories card in Phase D, and
+Settings → Archived lists archived agents and threads over HTTP until the settings phase (Phase F)
+makes that whole page live.
+
+Agent threads are native too (`agents/threads`): `bundle` (the member's threads and automations
+for one visible agent, live), `archived`, `resolveMain` (adopts or creates the main thread once;
+concurrent opens resolve the same thread), `create`, `setArchived` and `remove`. Each applies the
+directory's visibility rule before the shared thread logic in `agentThreads.ts`. The sidebar opens a
+live thread list without a request, and the conversation verifies a deep link against that same
+list. The `/api/v1/agents/[agentId]/threads|bundle|main-thread` routes remain for server and API
+callers such as onboarding.
+
 ## Connected-agent drive
 
 The bearer-only `/api/agent-drive` transport is separate from app-session APIs and defaults off.
@@ -280,10 +306,34 @@ New owner sessions use `flowVersion: 2` and revision-checked name, about, team, 
 - Convex room transcript append, finalize, failure, and sanitization writes require a linked supported native Harness or connected remote AgentRun. The unowned `startAgentMessage` mutation and unmarked buffered agent posts are retired; native streaming uses the assistant message admitted by `startAgentTurn`, and startup failures are persisted directly as terminal errors. This does not grant tool-effect authority or reconcile uncertain receipts; late tool receipts may still be retained on a completed message without reopening execution.
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Convex appends the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
-- Convex-backed browsers use native `watchConversationListVersion` and `watchNotifications` subscriptions. `/api/v1/conversations/events` remains a long-poll fallback for non-realtime clients and must not be mounted as a browser subscription path.
-- Reactive handlers receive the short-lived BFF HMAC token as an explicit
-  `accessToken` argument. This token does not configure Convex platform `setAuth`;
-  the handler verifies it and binds it to the requested account.
+- Browsers read Activity through `collaboration/activity:notifications` and the DM/channel list
+  version through `collaboration/activity:listVersion`, both with native identity. Each notification
+  carries `conversationType`, so opening one routes without looking the room up. Read state goes
+  through `collaboration/activity:markRead`, which takes the notification ids the member has seen or
+  one open room's id; a notification that arrives meanwhile stays unread, and an already-read row keeps
+  its first read time. The browser applies it optimistically to the live list, and room unread badges
+  are derived from that list, so there is no local read map or read event. `/api/v1/conversations/events`
+  remains a long-poll fallback for non-realtime clients and must not be mounted as a browser subscription path.
+- Room transcripts are native. Browsers read DM and channel history through
+  `collaboration/rooms:access`, `:messages` (paginated, main timeline or one thread, indexed by
+  thread root) and `:message` (permalinks and thread roots), and edit or delete through
+  `:editMessage` and `:deleteMessage`, all with native Convex identity. `requireActor` accepts that
+  identity only through `nativeRoomActor`, never from client arguments. Send stays on
+  `POST /api/v1/conversations/message` because it starts agent runs and mention email; its optimistic
+  rows reconcile against the live query. `GET /api/v1/conversations?messages=true` and the message
+  PATCH/DELETE routes remain for desktop and API clients. Room and thread writability is the live
+  `collaboration/rooms:compatibility` query (read through `useRoomCompatibility`), so opening a room
+  or focusing the window fetches nothing; send still enforces it on the server. The former
+  thread-safety-changed event and response observer are removed.
+- Room metadata is native too. `collaboration/rooms:state` returns the room's participants, channel
+  facts, reactions, pins, the member's saves and followed threads in it, and presence, or null once
+  the member is removed, which closes the room in every open client. Actions are native mutations
+  (`setReaction`, `setPinned`, `setSaved`, `setThreadFollow`, `updateMyState` for mute and read,
+  `addParticipant`, `removeParticipant`, `heartbeat`) with optimistic updates applied to that query,
+  so a rejected action rolls back and concurrent changes converge. Presence rows older than two
+  minutes read as offline; every open client's 45-second heartbeat re-runs the query so stale
+  sessions expire. Room archive and delete (self or everyone) stay on HTTP because they also update
+  the conversation lists, which CN-11 moves.
 - Personal chat creation is deferred until the first send. Newly created DMs and
   channels are client-side drafts until their first message succeeds: they are not
   inserted into the sidebar list, and navigating away removes the current member
@@ -376,15 +426,18 @@ The rate limit provider is selected at bootstrap. Redis is preferred when config
 
 ### Versioned conversation list reconciliation
 
-Personal conversation mutations (`create`, `update`, `remove` in `convex/chat/conversations.ts`) now emit `conversationEvents` rows, just like collaboration conversations. The `conversationEvents` table has a new `by_userId_createdAt` index for user-scoped version queries.
-
-`watchPersonalConversationListVersion` (in `convex/chat/conversations.ts`) returns the latest event `_creationTime` for a user. `watchConversationListVersion` (in `convex/collaboration/directMessages.ts`) returns the latest event for a workspace. The `CollaborationRealtimeProvider` subscribes to both and merges them via `Math.max` — any personal or collaboration change triggers a single version bump.
+Personal and workspace AI chat lists are native live queries (`chat/personal:list`), so they need no
+version signal. The DM and channel lists still load over HTTP: `collaboration/activity:listVersion`
+returns the latest semantic `conversationEvents` time for the workspace (text deltas never bump it).
 
 When the version changes, the client fetches only the delta via `GET /api/v1/conversations?updatedSince=<version-1000>` and upserts individual rows into the chat list cache (`upsertCachedChat` / `removeCachedChat`). This replaces the previous full-list reload on every version change.
 
 ### Presence subscription
 
-`watchPresence` (in `convex/collaboration/directMessages.ts`) provides a Convex subscription for conversation presence and typing state. When Convex realtime is available, `DirectMessageExperience` skips the 15-second HTTP presence polling fallback. The heartbeat (45s) remains to keep the user's own presence row alive. The query catches `Unauthorized`, `WORKSPACE_ACCESS_DENIED`, and `CONVERSATION_ACCESS_DENIED` errors gracefully (returning `{ok: false, presence: []}`) so that self-scoped conversation deletion/archive does not crash the React error boundary when the subscription is still active.
+Presence and typing are part of `collaboration/rooms:state` and are written by the native
+`collaboration/rooms:heartbeat` mutation every 45 seconds and on typing. There is no polling fallback.
+The state query returns null for a member who lost access, so archive or removal never throws into a
+React error boundary.
 
 ### Indexed mention and workspace search
 

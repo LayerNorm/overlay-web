@@ -1,5 +1,7 @@
 'use client'
 
+import { useMutation } from 'convex/react'
+import { api } from '../../../../../convex/_generated/api'
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import { toast } from '@overlay/ui/primitives'
@@ -107,6 +109,7 @@ export function useChatExperienceController({
   hideHeader = false,
   belowEmptyComposer,
 }: ChatExperienceProps) {
+  const createAgentThread = useMutation(api.agents.threads.create)
   recordRender('ChatExperience')
   const router = useRouter()
   const onUsageExhaustedError = useCallback((message: string) => {
@@ -1153,7 +1156,7 @@ export function useChatExperienceController({
     })
     const agentId = nativeThreadSafety.agentId
     if (agentId && activeWorkspaceId) {
-      const { thread: next } = await overlayAppClient.agents.createThread(activeWorkspaceId, agentId, {})
+      const next = await createAgentThread({ workspaceId: activeWorkspaceId, agentId })
       if (!nativeThreadSafety.isCurrentScope()) return
       writeDraft({ workspaceId: activeWorkspaceId, conversationId: next.conversationId }, handoff)
       dispatchChatCreated({ chat: {

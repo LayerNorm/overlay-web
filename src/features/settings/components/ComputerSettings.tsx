@@ -1,9 +1,10 @@
 'use client'
 
+import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button, toast } from '@overlay/ui/primitives'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Monitor, Plus, RefreshCw, Square, Play, Trash2 } from 'lucide-react'
 import type { Computer } from '@overlay/workspace-contracts'
 import { useAuth } from '@/contexts/AuthContext'
@@ -14,7 +15,11 @@ export function ComputerSettings() {
   const { activeWorkspaceId } = useWorkspace()
   const { user } = useAuth()
   const [computers, setComputers] = useState<Computer[]>([])
-  const [agentNames, setAgentNames] = useState<Record<string, string>>({})
+  const directory = useAgentDirectory()
+  const agentNames = useMemo<Record<string, string>>(
+    () => Object.fromEntries((directory.agents ?? []).map((agent) => [agent.id, agent.name])),
+    [directory.agents],
+  )
   const [busy, setBusy] = useState<string | null>(null)
   const [controlBusyId, setControlBusyId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
@@ -23,15 +28,8 @@ export function ComputerSettings() {
   const refresh = useCallback(async () => {
     if (!activeWorkspaceId) return
     try {
-      const [computerData, agentData] = await Promise.all([
-        overlayAppClient.computers.list(activeWorkspaceId, { cache: 'no-store' }),
-        overlayAppClient.agents.list(activeWorkspaceId, { cache: 'no-store' }),
-      ])
+      const computerData = await overlayAppClient.computers.list(activeWorkspaceId, { cache: 'no-store' })
       setComputers(computerData.computers)
-      const names = Object.fromEntries(
-        agentData.agents.map((agent) => [agent.id, agent.name]),
-      )
-      setAgentNames(names)
       setLoadError(null)
     } catch (value) {
       setLoadError(value instanceof Error ? value.message : 'Failed to load computers')

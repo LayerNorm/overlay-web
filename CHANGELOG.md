@@ -10,6 +10,16 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Show live thread status icons beside single-line sidebar titles, preserve the curved thread indentation on desktop and mobile, and summarize working, ready-to-review, and needs-you threads beneath each agent.
 
+- Make Activity and read state native: notifications and unread badges come from one live Convex query, marking read updates every open client at once, and a notification that arrives while you are marking others read stays unread. Opening a notification goes straight to its room without an extra lookup. Removes the local read maps, two unused refresh events and the obsolete personal list-version subscription.
+
+- Make room details live: participants, reactions, pins, saved messages, thread follows, mute and presence now come from one native Convex query per room, so they match in every open client without refetching. Reactions, pins, saves and follows update instantly and roll back by themselves if the server refuses them, and removing someone from a room closes it for them at once. Presence and typing now use native heartbeats instead of a polling fallback.
+
+- Make agent threads live and immediate: the sidebar's thread lists update in every open client, opening an agent you have already expanded goes straight to its thread with no request, and creating, archiving, restoring or deleting a thread updates everywhere at once. Opening a thread no longer re-downloads the agent's thread list to check access, and a link to someone else's thread is still refused.
+
+- Load DM and channel messages natively: rooms open from a live Convex query instead of waiting on an HTTP load, older messages and reply threads page in from an index (fixing threads and roots older than the newest 500 messages that could not load at all), and edits and deletes appear in every open client at once without a reload. Whether a room or thread accepts new messages is also read live, so opening a room or switching windows no longer makes a request that heavy tab switching could rate-limit.
+
+- Make the agent directory live: the sidebar, agent picker, organization chart, automations, search, computer settings and room identities now read agents from one Convex subscription, so creating, renaming or archiving an agent shows up everywhere at once without a reload or refresh event. The agent editor follows changes made elsewhere while it has no unsaved edits, and never overwrites edits in progress.
+
 - Fix automation builder chat, which had failed every send since Act stopped accepting the retired `automationMode` flag, and fix failed first turns in any chat, which spun forever with no error instead of ending and showing what went wrong.
 
 - Move workspace and automation chats onto the same live Convex path as personal chats. Their lists, messages, run state, renames, archives, turn deletion, branching and draft edits now update across clients, while reducing chat code by about 1,900 lines and removing the old HTTP history loader, message patching, polling fallback and duplicate chat lists. Branching is now one atomic operation, so a failure cannot leave a half-copied chat.
