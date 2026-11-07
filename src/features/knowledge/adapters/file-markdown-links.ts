@@ -10,7 +10,9 @@ export async function readFileLinkChildren({ convex, workspaceId, parentId, scop
   parentId: string | null
   scope: ResourceScope
 }): Promise<FileLinkNode[]> {
-  const rows = await convex.query(api.files.browse.children, { workspaceId, parentId, view: scope === 'workspace' ? 'workspace' : 'personal' })
-  if (!rows) throw new Error('File listing is unavailable')
-  return rows.map((row) => ({ ...row, parentId: row.parentId ?? null })) as FileLinkNode[]
+  const listing = await convex.query(api.files.browse.children, { workspaceId, parentId, view: scope === 'workspace' ? 'workspace' : 'personal' })
+  if (!listing) throw new Error('File listing is unavailable')
+  // A partial listing could hide the target or a same-named sibling, so links in it are not resolved.
+  if (!listing.complete) throw new Error('File listing is too large to resolve links')
+  return listing.files.map((row) => ({ ...row, parentId: row.parentId ?? null })) as FileLinkNode[]
 }

@@ -124,7 +124,7 @@ test('live onboarding room acknowledgements settle without restarting sidebar di
   const initialArgs = current.args
   const initialMarkRead = context.markConversationRead
   const initialRequests = directory.mock.callCount()
-  assert.ok(initialRequests > 0 && initialRequests <= 2)
+  assert.equal(initialRequests, 0)
   for (let index = 0; index < 5; index++) {
     await act(async () => {
       publish(roomPath, { participants: [] })
@@ -144,7 +144,7 @@ test('live onboarding room acknowledgements settle without restarting sidebar di
   directory.mock.mockImplementation(async () => { throw new Error('Directory temporarily unavailable') })
   await act(async () => publish(notificationsPath, [{ id: 'notification', conversationId: 'another-room' }]))
   assert.deepEqual(counts, { dms: 0, channels: 0, total: 1 })
-  assert.equal(directory.mock.callCount(), initialRequests + 1)
-  assert.equal(mutations.length, 4, 'failed directory requests do not restart read acknowledgements')
+  assert.equal(directory.mock.callCount(), 0, 'live notifications do not request the directory')
+  assert.equal(mutations.length, 4, 'notification updates do not restart read acknowledgements')
   assert.deepEqual(failures, [])
 })

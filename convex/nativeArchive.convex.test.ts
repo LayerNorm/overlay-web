@@ -21,6 +21,11 @@ async function fixture() {
     } as never)
     const general = await room('general', 'channel')
     const dm = await room('alice, bob', 'dm')
+    // An archived agent thread is listed with its agent, never as a DM.
+    const thread = await ctx.db.insert('conversations', {
+      workspaceId: 'ws', userId: 'alice', title: 'agent thread', conversationType: 'dm', agentId: 'agent-1', scope: 'workspace',
+      createdAt: 1, updatedAt: 1, lastModified: 1, lastMode: 'act', askModelIds: [], actModelId: 'm',
+    } as never)
     const join = (conversationId: typeof general, principalId: string, archivedAt?: number) => ctx.db.insert('conversationParticipants', {
       conversationId, workspaceId: 'ws', principalId, principalType: 'human', role: 'member', status: 'active', notificationLevel: 'all', joinedAt: 1, updatedAt: 1, ...(archivedAt ? { archivedAt } : {}),
     } as never)
@@ -29,6 +34,7 @@ async function fixture() {
     await join(general, 'p-bob')
     await join(dm, 'p-alice')
     await join(dm, 'p-bob', 7)
+    await join(thread, 'p-alice', 6)
     const file = (fields: Record<string, unknown>) => ctx.db.insert('files', {
       workspaceId: 'ws', userId: 'alice', type: 'file', kind: 'upload', createdAt: 1, updatedAt: 1, ...fields,
     } as never)
