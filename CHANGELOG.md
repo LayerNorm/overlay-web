@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep unsaved note text when the note is deleted or archived elsewhere: the editor now stays open with a notice so the text can be copied, and returns to Files by itself only when nothing is unsaved. Opening an automation from a chat now reads it natively instead of over HTTP, and the Files page drops a memories data loader it never used.
+
 - Fix two problems found by testing with a second workspace member: a skill someone else owns now opens view-only for members who cannot edit it, instead of offering Save and Delete that the server then refused; and saving an automation whose form was opened before someone else changed it is now refused with a message, instead of silently undoing their change.
 
 - Make skills live and native: the Skills page reads from a Convex subscription, and creating, editing, enabling or deleting a skill applies at once in every open tab. Editing a skill that changed elsewhere since the form opened is refused instead of overwriting the newer version. Removes the skills, MCP and extensions change events and the archive-restore refresh hook, which nothing listened to, and two unused file and note event constants.
