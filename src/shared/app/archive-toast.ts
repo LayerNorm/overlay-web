@@ -1,10 +1,3 @@
-import {
-  EXTENSIONS_CHANGED_EVENT,
-  MCPS_CHANGED_EVENT,
-  SKILLS_CHANGED_EVENT,
-  type ScopedResourceKind,
-} from '@overlay/app-core'
-
 export const ARCHIVE_TOAST_EVENT = 'overlay:archive-toast'
 
 export const ARCHIVED_SETTINGS_HREF = '/app/settings?section=archived'
@@ -24,17 +17,4 @@ export interface ArchiveToastDetail {
 export function announceArchived(detail: ArchiveToastDetail): void {
   if (typeof window === 'undefined') return
   window.dispatchEvent(new CustomEvent<ArchiveToastDetail>(ARCHIVE_TOAST_EVENT, { detail }))
-}
-
-/** Lists showing this kind of resource reload, so a restored item reappears where it belongs. */
-export function refreshAfterRestore(resource: ScopedResourceKind): void {
-  if (typeof window === 'undefined') return
-  // Files, Work and automations are live Convex lists and need no reload.
-  if (resource === 'skills') {
-    window.dispatchEvent(new CustomEvent(SKILLS_CHANGED_EVENT))
-    window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
-  } else if (resource === 'mcp-servers') {
-    window.dispatchEvent(new CustomEvent(MCPS_CHANGED_EVENT))
-    window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
-  }
 }

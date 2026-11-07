@@ -1,7 +1,4 @@
 import {
-  EXTENSIONS_CHANGED_EVENT,
-  MCPS_CHANGED_EVENT,
-  SKILLS_CHANGED_EVENT,
   automationHref,
   fileTreeRouteView,
   getAutomationDisplayName,
@@ -271,13 +268,9 @@ export async function restoreArchivedItem(
       return
     case 'skill':
       await overlayAppClient.scope.restore('skills', item.id)
-      window.dispatchEvent(new CustomEvent(SKILLS_CHANGED_EVENT))
-      window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
       return
     case 'mcp-server':
       await overlayAppClient.scope.restore('mcp-servers', item.id)
-      window.dispatchEvent(new CustomEvent(MCPS_CHANGED_EVENT))
-      window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
       return
     case 'automation':
       await overlayAppClient.scope.restore('automations', item.id)
@@ -313,13 +306,9 @@ export async function deleteArchivedItem(item: ArchivedItem, workspaceId: string
       return
     case 'skill':
       await requireOk(await overlayAppClient.skills.deleteResponse({ skillId: item.id }), 'Skill was not deleted')
-      window.dispatchEvent(new CustomEvent(SKILLS_CHANGED_EVENT))
-      window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
       return
     case 'mcp-server':
       await requireOk(await overlayAppClient.mcpServers.deleteResponse({ mcpServerId: item.id }), 'MCP server was not deleted')
-      window.dispatchEvent(new CustomEvent(MCPS_CHANGED_EVENT))
-      window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
       return
     case 'automation': {
       const response = await overlayAppClient.automations.deleteResponse({ automationId: item.id })

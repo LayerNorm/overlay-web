@@ -4,6 +4,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make skills live and native: the Skills page reads from a Convex subscription, and creating, editing, enabling or deleting a skill applies at once in every open tab. Editing a skill that changed elsewhere since the form opened is refused instead of overwriting the newer version. Removes the skills, MCP and extensions change events and the archive-restore refresh hook, which nothing listened to, and two unused file and note event constants.
+- Fix the committed Convex API types, which had drifted from the generated ones.
+
 - Make automations live: the sidebar list, the automation editor and its run history read from Convex subscriptions, so a schedule, name or enabled change made in another tab or by an agent appears at once, and runs move through queued, running, retried and finished without pressing Refresh. The editor follows remote changes only while it has no unsaved edits. Saving no longer reloads the automation, and opening one from the sidebar no longer fetches it first. Removes the automations refresh event, the sidebar's paged HTTP list and the runs Refresh button. Saving, enabling, running, cancelling and retrying stay on the server, which checks billing and manages the scheduler workflow.
 
 - Make Work board moves native: dragging a task, moving it with the keyboard or approving and sending back a review applies at once in every open view and reaches other tabs live. The server still ranks the task between its new neighbours, so two people moving tasks at the same time end with one agreed order, and a refused move rolls back only that task instead of reloading the board.
