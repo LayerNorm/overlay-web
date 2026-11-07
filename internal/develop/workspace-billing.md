@@ -26,6 +26,27 @@ When billing is disabled, pair `billing.provider="none"` with `capabilities.bill
 
 Payment ownership is modeled by a billing account with an explicit `markup_25_v1` pricing version. Every workspace that adds a plan gets a workspace billing account (its Stripe subscription, balance and history). Each person also has a personal billing account, which never holds credit: an account is never free or paid, so it only records free usage and storage. Account-plan endpoints (`/api/checkout`, `/api/checkout/verify`, `/api/topups/checkout`, `/api/topups/verify`, `/api/portal`, and `POST /api/subscription/settings`) answer `410 account_plans_retired`.
 
+## Billing in the browser
+
+The browser reads billing live from Convex, never over HTTP:
+
+- `billing/browse:workspaceSummary({ workspaceId })` feeds Workspace → Billing and the onboarding payment step. Any active member can read it.
+- `billing/browse:entitlements({ workspaceId })` feeds the chat composer gates, model pickers, agent editors and sidebar meters.
+
+Both are built by the same shared code the routes use: `src/shared/billing/workspace-billing-summary.ts` and `src/shared/billing/app-subscription.ts`. The live views and `GET /api/v1/workspaces/[id]/billing` and `/api/v1/subscription` therefore cannot disagree.
+
+**Rules the queries enforce:**
+- Owners and admins manage. Members may top up only when `usageTopUpBy` is `members`.
+- Provider customer, subscription and payment IDs never leave Convex.
+- `entitlements` is null when billing is off on the deployment; the app then uses the entitlements it booted with.
+
+**What this replaced:**
+- The sidebar's 60-second poll.
+- The refetch after every chat turn. `loadSubscription` now returns the live snapshot and makes no request.
+- The onboarding step's 3-second poll after checkout. It now verifies the session once (again on **Check payment**), and the webhook-confirmed payment arrives live.
+
+Checkout, top-ups, the portal, verification and automatic top-ups still run on the server, because they call Stripe. The summary's itemized usage reads up to the charge cap per refresh. Only the Billing tab and onboarding subscribe to it; the frequent consumers use the light `entitlements` query.
+
 ## Workspace reservation foundation
 
 Hosted execution requires a workspace wallet with an active account, a paid subscription in its current verified period, and available funds. A missing wallet or unpaid account never falls back to a member's personal payer or free inference. Workspace setup, manual drafts, history, and export remain available before payment. Billing-disabled self-hosted deployments explicitly bypass paid admission and may retain personal bookkeeping. A workspace whose paid wallet is suspended or mismatched fails closed. Every hosted-cost entry point supplies its resource workspace. Shared human actions use a `member` subject, while agents, automations, knowledge indexing, and API keys use a stable `programmatic` subject.

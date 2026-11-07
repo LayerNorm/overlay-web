@@ -150,7 +150,6 @@ export default function AppSidebar({
       agentsView={s.routeState.agentsView}
       activeWorkspaceId={s.activeWorkspaceId}
       buildWorkspaceHref={s.buildWorkspaceHref}
-      chatPanelRefreshKey={s.chatPanelRefreshKey}
       renderChatPanel={renderChatPanel}
       renderAutomationsPanel={renderAutomationsPanel}
       renderFilesPanel={renderFilesPanel}
@@ -167,7 +166,6 @@ export default function AppSidebar({
         agentsView={s.routeState.agentsView}
         activeWorkspaceId={s.activeWorkspaceId}
         buildWorkspaceHref={s.buildWorkspaceHref}
-        chatPanelRefreshKey={s.chatPanelRefreshKey}
         renderChatPanel={renderChatPanel}
         onNavigate={s.closeMobileDrawer}
       />

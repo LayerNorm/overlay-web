@@ -2,10 +2,9 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Plug, Plus, Trash2 } from 'lucide-react'
 import type { McpConnectionResource } from '@overlay/api-client'
-import type { WorkspaceSummary } from '@overlay/workspace-contracts'
 import { Button, toast } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
@@ -13,6 +12,7 @@ import { MCP_ACCESS_LABEL } from '@/shared/mcp/access'
 import { ConnectAppGuide } from './ConnectAppGuide'
 import { McpTokenDialog } from './McpTokenDialog'
 import { useLiveMcpConnections } from '@/hooks/use-connections'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 
 function formatWhen(timestamp: number | null, fallback: string): string {
   if (!timestamp) return fallback
@@ -30,17 +30,12 @@ export function ConnectedAppsSettings() {
   const connections = live === undefined ? null : live ?? []
   // Overlay's MCP server is served from this same origin.
   const endpoint = typeof window === 'undefined' ? '' : `${window.location.origin}/api/mcp`
-  const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
+  // The live workspace list names each connection's workspace, including renames.
+  const { workspaces } = useWorkspace()
   const loadError = live === null ? 'Could not load your connections.' : null
   const [tokenOpen, setTokenOpen] = useState(false)
   const [removing, setRemoving] = useState<McpConnectionResource | null>(null)
   const [busy, setBusy] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    void overlayAppClient.workspaces.list().then((list) => { if (!cancelled) setWorkspaces(list.workspaces) }, () => undefined)
-    return () => { cancelled = true }
-  }, [])
 
   const remove = async () => {
     if (!removing) return

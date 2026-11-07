@@ -14,7 +14,7 @@ import { AuthorizationProvider } from '@/components/providers/AuthorizationProvi
 import { AuthorizationRouteGuard } from '@/components/providers/AuthorizationRouteGuard'
 import { AppClientProviders, GatewayModelCatalogPrefetch } from '@/components/providers/AppClientProviders'
 import type { AppAuthorizationState } from '@overlay/app-core'
-import { getAppDataCapabilitiesSync, getOverlayCapabilitiesSync } from '@/server/capabilities'
+import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getAuthorizationEnforcementMode } from '@/server/authorization'
 import { AppConfigurationErrorState } from '@/app/app/_components/AppConfigurationErrorState'
@@ -50,12 +50,10 @@ async function AppShellContent({
 }) {
   let session: Awaited<ReturnType<typeof getOverlaySession>>
   let capabilities: ReturnType<typeof getOverlayCapabilitiesSync>
-  let appDataCapabilities: ReturnType<typeof getAppDataCapabilitiesSync>
   let authorization: AppAuthorizationState | null
   try {
     session = await getOverlaySession()
     capabilities = getOverlayCapabilitiesSync()
-    appDataCapabilities = getAppDataCapabilitiesSync()
     if (session?.user) {
       const server = getOverlayServerContext()
       await ensureDefaultUserRole(session.user.id)
@@ -73,10 +71,7 @@ async function AppShellContent({
   const user = session?.user ?? null
 
   return (
-    <AppClientProviders
-      initialUser={user}
-      requiresConvexClient={appDataCapabilities.requiresConvexClient}
-    >
+    <AppClientProviders initialUser={user}>
       <DesktopProvider><WorkspaceAppBoundary hasAuthenticatedUser={Boolean(user)}>
         <PersonalChatProvider>
         <GatewayModelCatalogPrefetch />
@@ -85,7 +80,6 @@ async function AppShellContent({
             <NavigationProgressProvider>
               <NavigationProgressBar />
               <CapabilitiesProvider
-                initialAppDataCapabilities={appDataCapabilities}
                 initialCapabilities={capabilities}
                 initialIntegrationProvider={getSelectedIntegrationProviderId()}
               >

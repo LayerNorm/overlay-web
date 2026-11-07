@@ -25,11 +25,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
   const serverContext = getOverlayServerContext()
 
-  // Only use Convex ingestion jobs when the provider supports it.
-  if (serverContext.appDataCapabilities.provider !== 'convex') {
-    return NextResponse.json({ error: 'Durable ingestion jobs require Convex provider' }, { status: 501 })
-  }
-
   const result = await serverContext.appData.repositories.fileIngestionJobs.createJob({
     userId: context.auth.userId,
     r2Key: body.r2Key,
@@ -54,10 +49,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
   }
 
   const serverContext = getOverlayServerContext()
-  if (serverContext.appDataCapabilities.provider !== 'convex') {
-    return NextResponse.json({ error: 'Durable ingestion jobs require Convex provider' }, { status: 501 })
-  }
-
   const result = await serverContext.appData.repositories.fileIngestionJobs.getJob({
     jobId,
     userId: context.auth.userId,

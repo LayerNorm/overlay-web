@@ -308,7 +308,7 @@ New owner sessions use `flowVersion: 2` and revision-checked name, about, team, 
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Convex appends the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
 - Browsers read Activity through `collaboration/activity:notifications` and the DM/channel list
-  version through `collaboration/activity:listVersion`, both with native identity. Each notification
+  through `collaboration/roomList:list`, both with native identity. Each notification
   carries `conversationType`, so opening one routes without looking the room up. Read state goes
   through `collaboration/activity:markRead`, which takes the notification ids the member has seen or
   one open room's id; a notification that arrives meanwhile stays unread, and an already-read row keeps
@@ -453,6 +453,28 @@ These read natively behind the same checks as their routes: an active membership
 
 There are no Work, automation, skill, MCP or extension change events.
 
+## Archived items in the browser
+
+Settings → Archived combines each resource's own native query, so every kind keeps its own access rules:
+
+| Kind | Query |
+| --- | --- |
+| Rooms (archiving is per person) | `collaboration/archive:rooms` |
+| Files, folders and notes | `files/browse:list` with `view: 'archived'` |
+| Skills | `integrations/skillsBrowse:list` |
+| MCP servers | `integrations/mcpBrowse:servers` |
+| Automations | `automations/browse:list` |
+| Tasks | `work/browse:list` |
+| Agents | `agents/directory:list` with `includeArchived` |
+| Agent threads | `agents/threads:archived` |
+| Personal AI chats | the native chat list |
+
+A source the person cannot read returns null and is reported as unavailable; the rest still show. Archives, restores and deletes made anywhere appear at once, so the page has no reload after actions and no workspace-change refetch. Restore and delete stay on their server routes, which write the audit log, delete stored objects, cancel automation workflows and handle cascades.
+
+## Webhooks in the browser
+
+Settings → Webhooks reads `webhooks/browse:subscriptions` and `webhooks/browse:deliveries` live for the active workspace. Both need an active membership and `webhooks.manage`, and `CAPABILITY_FEATURE` now maps that capability to the `webhooks` deployment feature for the server and native paths alike. Neither query returns the signing secret or `payloadJson`. Create and update stay on `/api/v1/webhooks` because they resolve the endpoint address for SSRF checks. Rotate, delete and redrive also stay on the server, and the HTTP list remains for API clients.
+
 ## Connections in the browser (MCP, providers, Computers, environments, surfaces)
 
 Browsers read connection state natively; every write stays on its route because it encrypts credentials, checks
@@ -496,13 +518,13 @@ The rate limit provider is selected at bootstrap. Redis is preferred when config
 
 ## Realtime and shared resource state (Phase C)
 
-### Versioned conversation list reconciliation
+### Conversation lists
 
-Personal and workspace AI chat lists are native live queries (`chat/personal:list`), so they need no
-version signal. The DM and channel lists still load over HTTP: `collaboration/activity:listVersion`
-returns the latest semantic `conversationEvents` time for the workspace (text deltas never bump it).
-
-When the version changes, the client fetches only the delta via `GET /api/v1/conversations?updatedSince=<version-1000>` and upserts individual rows into the chat list cache (`upsertCachedChat` / `removeCachedChat`). This replaces the previous full-list reload on every version change.
+Personal and workspace AI chat lists are native live queries (`chat/personal:list`). The DM and channel
+sidebar list is `collaboration/roomList:list`: the viewer's active, unarchived rooms, newest activity
+first, without agent threads or automation chats, a page at a time (`limit`, with `hasMore`) after every membership is sorted. A new message, rename, join, leave or archive updates
+every open sidebar; there is no browser list cache, version signal or delta refetch. Archived rooms come
+from `collaboration/archive:rooms`. `GET /api/v1/conversations` remains for API clients.
 
 ### Presence subscription
 
@@ -521,7 +543,17 @@ Convex search indexes have been added to:
 - `skills.search_name` (searchField: `name`, filterFields: `userId`, `workspaceId`)
 - `mcpServers.search_name` (searchField: `name`, filterFields: `userId`, `workspaceId`)
 
-`search/mentions:searchMentions` (in `convex/search/mentions.ts`) uses these indexes to return bounded top-10 results per category. `GET /api/v1/mention-search?q=<query>` is the BFF route that calls this query. The client `searchMentions` function tries the indexed endpoint first and falls back to scan-and-filter if unavailable. Knowledge bases and connectors remain client-side filtered (not in Convex search indexes).
+`search/browse:mentions({ workspaceId, query })` (in `convex/search/browse.ts`) uses these indexes for chats, files and notes, automations, skills and MCP servers, returning at most ten per category. An empty query returns the newest items. It is used natively by the chat composer's @-menu, the notebook editor, Cmd-K and the Work context picker.
+
+**Rules it applies:**
+- Each category needs its capability: `conversations.read`, `files.read`, `automations.use`, `skills.use`, `mcp.use`.
+- Other members' items appear only when shared with the workspace and readable.
+- Archived and deleted items, folders, disabled skills, and automation or archived chats never appear.
+- MCP results carry names and descriptions only.
+
+**What stays on HTTP:** connectors come from the integration provider (`/api/v1/integrations`), and the query's `connectorsAllowed` flag says whether to show them. The old `/api/v1/mention-search` route and `search/mentions:searchMentions` are removed.
+
+Relative links in markdown files resolve through `files/browse:children`, which lists one folder at a time under the tree's read rules.
 
 PostgreSQL route classification is explicit for release safety: connected-agent environments and
 bindings are supported. The provider-neutral workspace, agent, room, and conversation APIs are also

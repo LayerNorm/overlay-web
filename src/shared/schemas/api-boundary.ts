@@ -1187,7 +1187,6 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/imports/slack', reason: 'Slack import job management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/imports/slack/process', reason: 'Internal Slack import job processor; not part of the public web API reference.' },
   // Mention search and link preview pending full boundary definitions.
-  { routePath: '/api/v1/mention-search', reason: 'Mention search endpoint; boundary definition pending. Protected by workspace authorization.' },
   // Search and share routes pending full boundary definitions.
   { routePath: '/api/v1/search', reason: 'Workspace search; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/shares', reason: 'Resource sharing management; boundary definition pending. Protected by workspace authorization.' },

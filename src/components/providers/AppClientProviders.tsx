@@ -28,11 +28,9 @@ export function GatewayModelCatalogPrefetch() {
 export function AppClientProviders({
   children,
   initialUser,
-  requiresConvexClient,
 }: {
   children: ReactNode
   initialUser: AuthUser | null
-  requiresConvexClient?: boolean
 }) {
   return (
     <AuthProvider
@@ -40,7 +38,7 @@ export function AppClientProviders({
       initialSessionResolved={Boolean(initialUser)}
     >
       <AppSettingsProvider>
-        <ConvexAuthProvider requiresConvexClient={requiresConvexClient}>
+        <ConvexAuthProvider>
           <Suspense fallback={null}>
             <ObservabilityClient />
           </Suspense>

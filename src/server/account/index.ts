@@ -1,6 +1,5 @@
 export {
   type AccountDataDeletionCounts,
-  type AccountDataDeletionRepository,
   type AccountDataDeletionResult,
   type AccountDataDeletionVerification,
 } from './AccountDataDeletionRepository'

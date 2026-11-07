@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { getTopUpPreferenceSnapshot } from '@/server/billing/billing-runtime'
+import { appSubscriptionResponse, getTopUpPreferenceSnapshot, normalizeUsageBuckets, unfundedAppSubscription } from '@/shared/billing/app-subscription'
 import { getDynamicTopUpConfig } from '@/server/billing/stripe-billing'
 import { TOP_UP_MIN_AMOUNT_CENTS } from '@/shared/billing/billing-pricing'
 import type { BillingEntitlementsRecord, BillingRepository } from './BillingRepository'
@@ -33,39 +33,6 @@ function normalizeLimitValue(value: number | string | undefined): number {
   }
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
-}
-
-function normalizeUsageBuckets(entitlements: BillingEntitlementsRecord) {
-  const budgetUsedCents = entitlements.budgetUsedCents ?? entitlements.creditsUsed
-  const budgetTotalCents = entitlements.budgetTotalCents ?? entitlements.creditsTotal * 100
-  const budgetRemainingCents = entitlements.budgetRemainingCents ?? Math.max(0, budgetTotalCents - budgetUsedCents)
-  const allowanceTotalCents = entitlements.allowanceTotalCents ?? entitlements.planAmountCents ?? budgetTotalCents
-  const allowanceUsedCents = entitlements.allowanceUsedCents ?? Math.min(budgetUsedCents, allowanceTotalCents)
-  const allowancePercentUsed = entitlements.allowancePercentUsed ?? (
-    allowanceTotalCents > 0 ? Math.min(100, Math.max(0, allowanceUsedCents / allowanceTotalCents * 100)) : 0
-  )
-  const allowanceRemainingCents = Math.max(0, allowanceTotalCents - allowanceUsedCents)
-  return {
-    budgetUsedCents,
-    budgetTotalCents,
-    budgetRemainingCents,
-    allowanceTotalCents,
-    allowanceUsedCents,
-    allowancePercentUsed,
-    topUpBalanceCents: entitlements.topUpBalanceCents ?? Math.max(0, budgetRemainingCents - allowanceRemainingCents),
-  }
-}
-
-function appSubscriptionResponse(entitlements: BillingEntitlementsRecord) {
-  const usageBuckets = normalizeUsageBuckets(entitlements)
-  return {
-    ...entitlements,
-    dailyUsage: entitlements.dailyUsage ?? { ask: 0, write: 0, agent: 0 },
-    ...getTopUpPreferenceSnapshot(entitlements),
-    ...usageBuckets,
-    creditsUsed: usageBuckets.budgetUsedCents,
-    creditsTotal: usageBuckets.budgetTotalCents / 100,
-  }
 }
 
 export class BillingCustomerService {
@@ -101,17 +68,7 @@ export class BillingCustomerService {
     userId: string
   }) {
     if (args.unfundedWorkspace) {
-      const storage = await this.deps.repository.getEntitlementsByServer({ userId: args.userId })
-      return appSubscriptionResponse({
-        tier: 'free', planKind: 'free', planAmountCents: 0, status: 'active',
-        budgetUsedCents: 0, budgetTotalCents: 0, budgetRemainingCents: 0,
-        creditsUsed: 0, creditsTotal: 0,
-        autoTopUpEnabled: false, autoTopUpAmountCents: 0, autoTopUpConsentGranted: false,
-        dailyLimits: { ask: 0, write: 0, agent: 0 },
-        transcriptionSecondsUsed: 0, transcriptionSecondsLimit: 0,
-        overlayStorageBytesUsed: storage?.overlayStorageBytesUsed ?? 0,
-        overlayStorageBytesLimit: storage?.overlayStorageBytesLimit ?? 0,
-      })
+      return unfundedAppSubscription(await this.deps.repository.getEntitlementsByServer({ userId: args.userId }))
     }
     const [entitlements, userEntitlements] = args.billingAccountId
       ? await Promise.all([

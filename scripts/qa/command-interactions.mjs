@@ -39,7 +39,7 @@ const output = await build({
         b.onResolve(
           {
             filter:
-              /^(next\/navigation|@\/shared\/app\/overlay-app-client|@\/components\/mentions\/mention-search|@\/components\/providers\/(CapabilitiesProvider|AuthorizationProvider))$/,
+              /^(next\/navigation|convex\/react|.*convex\/_generated\/api|@\/hooks\/use-mention-search|@\/components\/providers\/(CapabilitiesProvider|AuthorizationProvider))$/,
           },
           (args) => ({ path: args.path, namespace: 'fixture' }),
         )
@@ -48,13 +48,15 @@ const output = await build({
           contents:
             args.path === 'next/navigation'
               ? `export const useRouter=()=>({push:path=>window.destinations.push(path)});`
-              : args.path.includes('overlay-app-client')
-                ? `export const overlayAppClient={agents:{list:async()=>({agents:[{id:'agent',name:'Fixture Agent',description:'description-match'}]})},work:{list:async()=>({items:[{id:'task',title:'Fixture Task description-match',status:'todo'}]})}};`
+              : args.path === 'convex/react'
+                ? `export const useConvexAuth=()=>({isAuthenticated:true,isLoading:false});export const useQuery=(_fn,args)=>args==='skip'?undefined:[{id:'task',title:'Fixture Task description-match',status:'todo'}];`
+                : args.path.endsWith('_generated/api')
+                  ? `export const api={work:{browse:{list:'work/browse:list'}}};`
                 : args.path.endsWith('CapabilitiesProvider')
                   ? `export const useOverlayCapabilities=()=>({capabilities:{work:true}});`
                   : args.path.endsWith('AuthorizationProvider')
                     ? `export const useAuthorization=()=>({allows:()=>true});`
-                    : `export function invalidateMentionCache(){};export async function searchMentions(query){await new Promise(r=>setTimeout(r,query==='slow'?300:20));if(query==='missing'||query==='slow')return [];const types=['chat','file','automation','skill','mcp','connector'];return types.map(type=>({type,label:type,icon:'FileText',items:[{type,id:type,name:'Recent '+type,description:type==='file'?'note':type}]}));}`,
+                    : `async function searchMentions(query){await new Promise(r=>setTimeout(r,query==='slow'?300:20));if(query==='missing'||query==='slow')return [];const types=['chat','file','automation','skill','mcp','connector'];return types.map(type=>({type,label:type,icon:'FileText',items:[{type,id:type,name:'Recent '+type,description:type==='file'?'note':type}]}));};export const useMentionSearch=()=>searchMentions;`,
         }))
       },
     },

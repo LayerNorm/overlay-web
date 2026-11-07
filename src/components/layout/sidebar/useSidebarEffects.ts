@@ -1,15 +1,12 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useLiveWorkspaceEntitlements } from '@/hooks/use-billing'
+import { useEffect, useMemo, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useRouter } from 'next/navigation'
 import { useHotkeys } from 'react-hotkeys-hook'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { coalesceRequest } from '@/shared/observability/request-coalescer'
 import { categorizeCollaborationUnreadNotifications } from '@/shared/chat/notification-badges'
-import type { CachedConversation } from '@/shared/chat/chat-list-cache'
 import { TEMPORARY_CHAT_UI_EVENT, type TemporaryChatUiEventDetail } from '@/shared/chat/temporary-chat-ui'
-import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
 import type { GateReason } from '@/components/providers/GuestGateProvider'
@@ -53,49 +50,20 @@ export function useTemporaryChatUiHidden({
 }
 
 export function useCollaborationUnread({
-
   user,
   activeWorkspaceId,
   collaborationNotifications,
 }: {
-
   user: object | null
   activeWorkspaceId: string | null
   collaborationNotifications: WorkspaceNotification[]
 }): { dms: number; channels: number; total: number } {
-  const [collaborationUnread, setCollaborationUnread] = useState({ dms: 0, channels: 0, total: 0 })
-
-  useEffect(() => {
-    if (!user || !activeWorkspaceId) {
-      return
-    }
-    let cancelled = false
-    const categorizeUnread = async () => {
-      try {
-        const unreadNotifications = collaborationNotifications.filter((notification) => !notification.readAt)
-        let conversations: CachedConversation[] = []
-        if (unreadNotifications.length > 0) {
-          try {
-            const page = await overlayAppClient.conversations.getPage<CachedConversation>({ view: 'all', limit: 100 })
-            conversations = page.data
-          } catch {
-            // Activity remains complete even when the conversation directory is briefly unavailable.
-          }
-        }
-        if (!cancelled) {
-          setCollaborationUnread(categorizeCollaborationUnreadNotifications(unreadNotifications, conversations))
-        }
-      } catch {
-        // The primary chat navigation stays usable while conversation categorization retries.
-      }
-    }
-    void categorizeUnread()
-    return () => {
-      cancelled = true
-    }
-  }, [activeWorkspaceId, collaborationNotifications,  user])
-
-  return collaborationUnread
+  // Each live notification carries its room type, so the counts need no conversation lookup.
+  return useMemo(() => (
+    user && activeWorkspaceId
+      ? categorizeCollaborationUnreadNotifications(collaborationNotifications.filter((notification) => !notification.readAt))
+      : { dms: 0, channels: 0, total: 0 }
+  ), [activeWorkspaceId, collaborationNotifications, user])
 }
 
 export function useUnreadChatRedirect({
@@ -121,69 +89,18 @@ export function useSidebarEntitlements({
   authLoading,
   authUserId,
   activeWorkspaceId,
-  accountMenuOpen,
-  mobileAccountOpen,
-  filesSectionOpen,
 }: {
   billingEnabled: boolean
   authLoading: boolean
   authUserId: string | null
   activeWorkspaceId: string | null
-  accountMenuOpen: boolean
-  mobileAccountOpen: boolean
-  filesSectionOpen: boolean
 }): SidebarEntitlements | null {
-  const [entitlements, setEntitlements] = useState<SidebarEntitlements | null>(null)
-
-  const loadEntitlements = useCallback(async () => {
-    if (!billingEnabled || authLoading || !authUserId) {
-      setEntitlements(null)
-      return
-    }
-    const cacheKey = `billing:${activeWorkspaceId ?? 'personal'}`
-    try {
-      const data = await coalesceRequest(cacheKey, async () => {
-        const res = await overlayAppClient.subscription.getResponse({
-          cache: 'no-store',
-          ...(activeWorkspaceId
-            ? { headers: { [ACTIVE_WORKSPACE_HEADER]: activeWorkspaceId } }
-            : {}),
-        })
-        if (!res.ok) return null
-        return await res.json()
-      })
-      if (data) setEntitlements(data)
-    } catch {
-      // ignore
-    }
-  }, [activeWorkspaceId, authLoading, authUserId, billingEnabled, setEntitlements])
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      void loadEntitlements()
-    }, 0)
-    return () => {
-      window.clearTimeout(timeoutId)
-    }
-  }, [loadEntitlements])
-
-  useEffect(() => {
-    if (!accountMenuOpen && !mobileAccountOpen && !filesSectionOpen) return
-    const intervalId = window.setInterval(() => { void loadEntitlements() }, 60_000)
-    return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [accountMenuOpen, mobileAccountOpen, filesSectionOpen, loadEntitlements])
-
-  useEffect(() => {
-    function onSubscriptionRefresh() {
-      void loadEntitlements()
-    }
-    window.addEventListener('overlay:subscription-refresh', onSubscriptionRefresh)
-    return () => window.removeEventListener('overlay:subscription-refresh', onSubscriptionRefresh)
-  }, [loadEntitlements])
-
-  return entitlements
+  // Live: usage meters follow each charge, top-up and payment without polling while the menu is open.
+  const live = useLiveWorkspaceEntitlements<SidebarEntitlements>(
+    activeWorkspaceId,
+    billingEnabled && !authLoading && Boolean(authUserId),
+  )
+  return live ?? null
 }
 
 export function useSidebarNavHotkeys({

@@ -5,6 +5,8 @@ import type { KnowledgeFileNode } from '@overlay/app-core'
 import { getFileType } from '@overlay/app-core/file-viewer'
 import { fileMarkdownHref, resolveFileMarkdownLinks, type FileLinkNode } from '@overlay/app-core/file-markdown-links'
 import { readFileLinkChildren } from '@/features/knowledge/adapters/file-markdown-links'
+import { useConvex } from 'convex/react'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import KnowledgeView from '@/features/knowledge/components/KnowledgeView'
 import { FileViewer, OutputViewer, type FileViewerAsset } from '@overlay/modules-react/knowledge'
 import { safeHttpUrl } from '@/shared/security/safe-url'
@@ -33,14 +35,16 @@ const browserViewerOperations = {
 function LinkedFileViewer({ file, name, content, url }: { file: KnowledgeFileNode; name: string; content: string; url?: string }) {
   const [targets, setTargets] = useState<ReadonlyMap<string, FileLinkNode>>(() => new Map())
   const scope = file.scope ?? 'personal'
+  const convex = useConvex()
+  const { activeWorkspaceId } = useWorkspace()
   useEffect(() => {
-    if (getFileType(name) !== 'markdown') return
-    const controller = new AbortController()
+    if (getFileType(name) !== 'markdown' || !activeWorkspaceId) return
+    let cancelled = false
     void resolveFileMarkdownLinks({ content, file,
-      listChildren: parentId => readFileLinkChildren({ parentId, scope, signal: controller.signal }),
-    }).then(next => { if (!controller.signal.aborted) setTargets(next) }).catch(() => undefined)
-    return () => controller.abort()
-  }, [content, file, name, scope])
+      listChildren: parentId => readFileLinkChildren({ convex, workspaceId: activeWorkspaceId, parentId, scope }),
+    }).then(next => { if (!cancelled) setTargets(next) }).catch(() => undefined)
+    return () => { cancelled = true }
+  }, [activeWorkspaceId, content, convex, file, name, scope])
   const resolveFileHref = (href: string) => fileMarkdownHref(href, targets)
   return file.kind === 'output' ? (
     <OutputViewer name={name} content={content} url={url} mimeType={file.mimeType}

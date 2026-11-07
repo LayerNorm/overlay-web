@@ -1,12 +1,11 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import type { ChatModel } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { byokConnectionsToChatModels } from '@/shared/ai/gateway/byok-model-conversion'
 import { useByokModels } from './useByokModels'
-import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useLiveWorkspaceEntitlements } from '@/hooks/use-billing'
 
 export type WorkspaceModelEntitlements = {
   tier: 'free' | 'pro' | 'max'
@@ -106,9 +105,16 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
   onEntitlementsFetched?: (data: T) => void
 }) {
   const { connections, isLoading: connectionsLoading } = useByokModels()
-  const [entitlements, setEntitlements] = useState<T | null>(null)
-  const [loading, setLoading] = useState(true)
-  const bootstrapEntitlementsKeyRef = useRef<string | null>(null)
+  // Live: every charge, top-up and payment updates the gates and meters without refetching. With billing off the
+  // query carries the member's own entitlements, which is what the server enforces then.
+  const live = useLiveWorkspaceEntitlements<T>(activeWorkspaceId)
+  const entitlements = live ?? null
+  const loading = live === undefined
+  const liveRef = useRef(live)
+  useEffect(() => { liveRef.current = live }, [live])
+  useEffect(() => {
+    if (live) onEntitlementsFetched?.(live)
+  }, [live, onEntitlementsFetched])
   const derived = resolveEntitlementDerived(entitlements, billingEnabled, onlyAllowZdrModels)
   const selectableTextModels = useMemo(() => {
     void connections
@@ -140,53 +146,8 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
     modelCatalogVersion,
   ])
 
-  // Billing routes are off, but bootstrap still reports the entitlements the server enforces.
-  const loadBootstrapEntitlements = useCallback(async () => {
-    const key = activeWorkspaceId ?? ''
-    if (bootstrapEntitlementsKeyRef.current === key) return null
-    setLoading(true)
-    try {
-      const response = await overlayAppClient.bootstrap.getResponse({
-        cache: 'no-store',
-        ...(activeWorkspaceId
-          ? { headers: { [ACTIVE_WORKSPACE_HEADER]: activeWorkspaceId } }
-          : {}),
-      })
-      if (!response.ok) return null
-      const data = await response.json() as { entitlements?: T | null }
-      bootstrapEntitlementsKeyRef.current = key
-      setEntitlements(data.entitlements ?? null)
-      return data.entitlements ?? null
-    } catch {
-      return null
-    } finally {
-      setLoading(false)
-    }
-  }, [activeWorkspaceId])
-
-  const loadSubscription = useCallback(async () => {
-    if (!billingEnabled) {
-      return await loadBootstrapEntitlements()
-    }
-    setLoading(true)
-    try {
-      const response = await overlayAppClient.subscription.getResponse({
-        cache: 'no-store',
-        ...(activeWorkspaceId
-          ? { headers: { [ACTIVE_WORKSPACE_HEADER]: activeWorkspaceId } }
-          : {}),
-      })
-      if (!response.ok) return null
-      const data = await response.json() as T
-      setEntitlements(data)
-      onEntitlementsFetched?.(data)
-      return data
-    } catch {
-      return null
-    } finally {
-      setLoading(false)
-    }
-  }, [activeWorkspaceId, billingEnabled, loadBootstrapEntitlements, onEntitlementsFetched])
+  /** The current entitlements: live, so this never fetches; callers that refreshed after each turn get the newest. */
+  const loadSubscription = useCallback(async () => liveRef.current ?? null, [])
 
   return {
     ...derived,
