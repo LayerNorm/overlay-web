@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-06. Phase A and the chat phase (CN-04 to CN-06W) are complete and live in production: personal, workspace and automation chats run on the native path, and the production Convex backend was deployed from main `1799597ac` after the matching web release. Phase C (CN-07 to CN-11) is implemented on one PR with one commit per card, with preview acceptance pending. Stop, approval, input response and room send stay on the server by design because they run workflows, agent turns or email. Cases that need a second member have Convex test coverage only, because no second sandbox account exists yet. The next phase after C is D (files and knowledge). The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-06. Phase A and the chat phase (CN-04 to CN-06W) are complete and live in production: personal, workspace and automation chats run on the native path, and the production Convex backend was deployed from main `1799597ac` after the matching web release. Phase C (CN-07 to CN-11) is implemented on #413 with one commit per card and accepted on its preview (results under section 5); cases that need a second member or a paid agent reply have Convex test coverage only. Stop, approval, input response and room send stay on the server by design because they run workflows, agent turns or email. Cases that need a second member have Convex test coverage only, because no second sandbox account exists yet. The next phase after C is D (files and knowledge). The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -12,7 +12,7 @@ Status: in progress as of 2026-11-06. Phase A and the chat phase (CN-04 to CN-06
 | CN-05, CN-06 | #408 | Merged |
 | CN-04 to CN-06 stabilization | #411 | Merged, deployed. No Convex deploy was needed; its unused readiness markers remain on the production backend until the next deploy |
 | CN-06W | #412 | Merged and deployed: web and Convex production at `1799597ac`, production smoke passed |
-| CN-07 to CN-11 | Phase C PR | Implemented, one commit per card; preview acceptance pending |
+| CN-07 to CN-11 | #413 | Accepted on preview; merging |
 | CN-07 to CN-11 (old attempt) | #403 | Closed unmerged, superseded by the Phase C PR |
 | CN-12 | #402 | Closed unmerged, branch kept as reference |
 | CN-20 | #398 | Closed unmerged, branch kept as reference |
@@ -298,6 +298,18 @@ Known and not fixed here: the scope-mismatch redirect takes 4 to 9 s and the Wor
 **Retirement/non-goals:** remove local read maps used as permanent truth, notification invalidation events, and obsolete combined list-version refresh. Preserve external notification delivery.
 
 **Implemented (Phase C PR):** `collaboration/activity:notifications|listVersion|markRead`; notifications carry their room type; mark-read takes seen ids or one room and is applied optimistically; room badges derive from the live list. Removes local read maps, two dead events, the token watch queries and the personal list version. The DM/channel list itself still reloads over HTTP on a version change.
+
+### Phase C preview acceptance (#413, head `36a17956b`, 2026-11-06)
+
+Tested in Chrome with two tabs of the same account; cases that need a second member or a paid agent reply are covered by the Convex tests (`agentDirectory`, `agentThreadsNative`, `nativeRooms`, `nativeRoomState`, `nativeActivity`).
+
+- **CN-07:** a new agent reached the other tab's sidebar in 444 ms and a rename in 602 ms, including the room's message author name. An unsaved description in one tab survived a rename from the other, then saved. An archive made through the agent API removed the agent from the other tab at once. Chiefs were provisioned natively on first load.
+- **CN-08:** a channel message reached the other tab in 1.3 s with one copy; an edit in 232 ms with the "edited" marker and no HTTP calls; a thread reply in 665 ms; a delete at once. Reload kept edits, pins and saves. QA found that the room's HTTP writability probe, run on every open and window focus, could exhaust the per-user rate limit and replace the composer with an error; it is now a live query.
+- **CN-09:** warm agent opens took 19 to 23 ms with no request (cold 309 ms). Archive and Undo reached the other tab (Undo in 211 ms), and a restore from Settings → Archived reached the sidebar in 657 ms. QA found that archiving the open thread left the view on it; it now moves to the next active thread.
+- **CN-10:** pin and save applied optimistically in under 50 ms and reached the other tab in 65 ms; a reaction reached it in 124 ms and its removal came back in 193 ms; follow state and mute synced live.
+- **CN-11:** opening a notification routed to its room and view from the notification's room type. A second unread notification could not be produced without another member or a paid agent reply, so cross-tab mark-read is covered by tests only.
+
+Known and not fixed here: a cold preview takes about 11 s to boot the workspace before any room renders (app bootstrap, not Phase C). Reply counts and teasers still come only from loaded thread messages. Agent archive uses a native browser confirm dialog.
 
 ## 6. Phase D: files and knowledge
 
