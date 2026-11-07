@@ -35,6 +35,7 @@ import type {
   WorkspaceMembershipRole,
   WorkspaceOperationalMetrics,
   WorkspaceRolloutStage,
+  WorkspaceSharingPolicy,
   WorkspaceSummary,
 } from '@overlay/workspace-contracts'
 import { describeRolloutStage } from '@/shared/workspaces/collaboration-rollout'
@@ -56,7 +57,7 @@ import {
 } from './WorkspaceManagementDialogs'
 import { WorkspaceBillingSection } from './WorkspaceBillingSection'
 import { ImportPanel } from './ImportPanel'
-import { invalidateWorkspaceScopePolicy } from '@/hooks/use-workspace-create-access'
+import { useLiveWorkspacePolicy } from '@/hooks/use-workspace-create-access'
 import { AgentCreature } from '@/components/orb/Creature'
 import { IdentityImageEditor, type IdentityImageChoice } from '@/components/identity/IdentityImageEditor'
 import { identityRequest, notifyIdentityUpdated } from '@/hooks/useIdentityProfile'
@@ -69,7 +70,6 @@ export type WorkspaceManagementState =
 
 function WorkspaceIconControl({ workspace }: { workspace: WorkspaceSummary }) {
   const [open, setOpen] = useState(false)
-  const { refresh } = useWorkspace()
   const canEdit = workspace.role === 'owner' || workspace.role === 'admin'
 
   async function save(choice: IdentityImageChoice) {
@@ -81,7 +81,6 @@ function WorkspaceIconControl({ workspace }: { workspace: WorkspaceSummary }) {
     } else {
       await identityRequest(endpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ preset: 'preset' in choice ? choice.preset : null }) })
     }
-    await refresh()
     notifyIdentityUpdated(workspace.id)
     toast.success('Workspace icon saved.')
   }
@@ -281,6 +280,34 @@ export type WorkspaceSharingPolicyState =
     channelRetentionDays?: number
     metrics?: WorkspaceOperationalMetrics
   }
+
+/** The Sharing tab's view of the live policy: loading, no longer readable, or its values. */
+function policyStateFrom(
+  live: { policy: WorkspaceSharingPolicy; canManage: boolean } | null | undefined,
+  metrics: WorkspaceOperationalMetrics | undefined,
+): WorkspaceSharingPolicyState {
+  if (live === undefined) return { status: 'loading' }
+  if (live === null) return { status: 'error', message: 'You no longer have access to this workspace.' }
+  const { policy } = live
+  return {
+    status: 'ready',
+    canManage: live.canManage,
+    updatedAt: policy.updatedAt,
+    publicLinksEnabled: policy.publicLinksEnabled,
+    memberCanCreateChannels: policy.memberCanCreateChannels,
+    memberCanCreateAgents: policy.memberCanCreateAgents,
+    memberCanInvite: policy.memberCanInvite,
+    membersCanEditExtensions: policy.workspaceExtensionsEditors !== 'admins',
+    membersCanEditContent: policy.workspaceContentEditors !== 'admins',
+    memberCanMoveScope: policy.memberCanMoveScope !== false,
+    membersCanTopUp: policy.usageTopUpBy === 'members',
+    legalHold: policy.legalHold,
+    rolloutStage: policy.rolloutStage,
+    guestExpirationDays: policy.guestExpirationDays,
+    channelRetentionDays: policy.channelRetentionDays,
+    metrics,
+  }
+}
 
 type PolicyToggleKey =
   | 'publicLinksEnabled'
@@ -688,7 +715,6 @@ export function WorkspaceSettingsPanel({
     initialTab === 'teams' ? 'people' : initialTab,
   )
   const [state, setState] = useState<WorkspaceManagementState>({ status: 'loading' })
-  const [policyState, setPolicyState] = useState<WorkspaceSharingPolicyState>({ status: 'loading' })
   const [policyBusy, setPolicyBusy] = useState(false)
   const [refreshKey, setRefreshKey] = useState(0)
   const [action, setAction] = useState<WorkspacePanelAction>(null)
@@ -699,47 +725,24 @@ export function WorkspaceSettingsPanel({
   const [teamCandidates, setTeamCandidates] = useState<WorkspaceManagementItem[]>([])
   const [teamCandidateBusyId, setTeamCandidateBusyId] = useState<string | null>(null)
 
+  // Live: an owner's policy change in another tab or by another admin shows here at once.
+  const livePolicy = useLiveWorkspacePolicy(activeWorkspace?.id ?? null)
+  const canManagePolicy = livePolicy?.canManage === true
+  const [metrics, setMetrics] = useState<{ workspaceId: string; value: WorkspaceOperationalMetrics } | null>(null)
   useEffect(() => {
-    if (!activeWorkspace || activeTab !== 'sharing') return
+    // Metrics are owner/admin only and computed on the server; a member simply sees policy without them.
+    if (!activeWorkspace || activeTab !== 'sharing' || !canManagePolicy || !client.operationalMetrics) return
     const controller = new AbortController()
-    setPolicyState({ status: 'loading' })
-    void client.sharingPolicy(activeWorkspace.id, controller.signal)
-      .then(async (result) => {
-        if (controller.signal.aborted) return
-        // Metrics are owner/admin only; a member simply sees policy without them.
-        const metrics = result.canManage
-          ? await client.operationalMetrics?.(activeWorkspace.id, controller.signal)
-            .catch(() => undefined)
-          : undefined
-        if (controller.signal.aborted) return
-        setPolicyState({
-          status: 'ready',
-          canManage: result.canManage,
-          updatedAt: result.policy.updatedAt,
-          publicLinksEnabled: result.policy.publicLinksEnabled,
-          memberCanCreateChannels: result.policy.memberCanCreateChannels,
-          memberCanCreateAgents: result.policy.memberCanCreateAgents,
-          memberCanInvite: result.policy.memberCanInvite,
-          membersCanEditExtensions: result.policy.workspaceExtensionsEditors !== 'admins',
-          membersCanEditContent: result.policy.workspaceContentEditors !== 'admins',
-          memberCanMoveScope: result.policy.memberCanMoveScope !== false,
-          membersCanTopUp: result.policy.usageTopUpBy === 'members',
-          legalHold: result.policy.legalHold,
-          rolloutStage: result.policy.rolloutStage,
-          guestExpirationDays: result.policy.guestExpirationDays,
-          channelRetentionDays: result.policy.channelRetentionDays,
-          metrics,
-        })
-      })
-      .catch((loadError) => {
-        if (controller.signal.aborted) return
-        setPolicyState({
-          status: 'error',
-          message: loadError instanceof Error ? loadError.message : 'Try again in a moment.',
-        })
-      })
+    const workspaceId = activeWorkspace.id
+    void client.operationalMetrics(workspaceId, controller.signal)
+      .then((value) => { if (!controller.signal.aborted) setMetrics({ workspaceId, value }) })
+      .catch(() => undefined)
     return () => controller.abort()
-  }, [activeTab, activeWorkspace, client, refreshKey])
+  }, [activeTab, activeWorkspace, canManagePolicy, client, refreshKey])
+  const policyState = useMemo(
+    () => policyStateFrom(livePolicy, metrics?.workspaceId === activeWorkspace?.id ? metrics?.value : undefined),
+    [activeWorkspace?.id, livePolicy, metrics],
+  )
 
   useEffect(() => {
     if (!activeWorkspace || activeTab === 'sharing' || activeTab === 'billing' || activeTab === 'import') return
@@ -905,7 +908,6 @@ export function WorkspaceSettingsPanel({
         client={client}
         policyState={policyState}
         policyBusy={policyBusy}
-        setPolicyState={setPolicyState}
         setPolicyBusy={setPolicyBusy}
         setActionError={setActionError}
         onRefresh={refresh}
@@ -926,7 +928,6 @@ export function WorkspaceSettingsPanel({
         teamCandidateBusyId={teamCandidateBusyId}
         workspaceId={activeWorkspace.id}
         client={client}
-        refreshWorkspaces={refreshWorkspaces}
         onRefresh={refresh}
         onCloseAction={closeAction}
         setAction={setAction}
@@ -985,7 +986,6 @@ function WorkspaceSharingTab({
   policyState,
   policyBusy,
   onRefresh,
-  setPolicyState,
   setPolicyBusy,
   setActionError,
 }: {
@@ -994,38 +994,14 @@ function WorkspaceSharingTab({
   policyState: WorkspaceSharingPolicyState
   policyBusy: boolean
   onRefresh(): void
-  setPolicyState: React.Dispatch<React.SetStateAction<WorkspaceSharingPolicyState>>
   setPolicyBusy(busy: boolean): void
   setActionError(error: string | null): void
 }) {
   function handleToggle(key: PolicyToggleKey, value: boolean) {
     setPolicyBusy(true)
     setActionError(null)
+    // The live policy brings the saved values to this panel and to every member's New buttons.
     void client.setSharingPolicy(workspaceId, policyPatchFor(key, value))
-      .then((result) => {
-        // The sidebar's New buttons follow these settings.
-        invalidateWorkspaceScopePolicy(workspaceId)
-        return result
-      })
-      .then((result) => setPolicyState((current) => ({
-        ...(current.status === 'ready' ? current : {}),
-        status: 'ready',
-        canManage: result.canManage,
-        updatedAt: result.policy.updatedAt,
-        publicLinksEnabled: result.policy.publicLinksEnabled,
-        memberCanCreateChannels: result.policy.memberCanCreateChannels,
-        memberCanCreateAgents: result.policy.memberCanCreateAgents,
-        memberCanInvite: result.policy.memberCanInvite,
-        membersCanEditExtensions: result.policy.workspaceExtensionsEditors !== 'admins',
-        membersCanEditContent: result.policy.workspaceContentEditors !== 'admins',
-        memberCanMoveScope: result.policy.memberCanMoveScope !== false,
-        membersCanTopUp: result.policy.usageTopUpBy === 'members',
-        legalHold: result.policy.legalHold,
-        rolloutStage: result.policy.rolloutStage,
-        guestExpirationDays: result.policy.guestExpirationDays,
-        channelRetentionDays: result.policy.channelRetentionDays,
-        metrics: current.status === 'ready' ? current.metrics : undefined,
-      })))
       .then(() => toast.success('Workspace policy updated.'))
       .catch((error) => toast.error(
         error instanceof Error ? error.message : 'Could not update workspace policy.',
@@ -1057,7 +1033,6 @@ function WorkspacePanelBody({
   client,
   policyState,
   policyBusy,
-  setPolicyState,
   setPolicyBusy,
   setActionError,
   onRefresh,
@@ -1082,7 +1057,6 @@ function WorkspacePanelBody({
   client: WorkspaceManagementClient
   policyState: WorkspaceSharingPolicyState
   policyBusy: boolean
-  setPolicyState: React.Dispatch<React.SetStateAction<WorkspaceSharingPolicyState>>
   setPolicyBusy(busy: boolean): void
   setActionError(error: string | null): void
   onRefresh(): void
@@ -1135,7 +1109,6 @@ function WorkspacePanelBody({
           policyState={policyState}
           policyBusy={policyBusy}
           onRefresh={onRefresh}
-          setPolicyState={setPolicyState}
           setPolicyBusy={setPolicyBusy}
           setActionError={setActionError}
         />
@@ -1172,7 +1145,6 @@ function WorkspaceActionDialogs({
   teamCandidateBusyId,
   workspaceId,
   client,
-  refreshWorkspaces,
   onRefresh,
   onCloseAction,
   setAction,
@@ -1189,7 +1161,6 @@ function WorkspaceActionDialogs({
   teamCandidateBusyId: string | null
   workspaceId: string
   client: WorkspaceManagementClient
-  refreshWorkspaces(): Promise<void>
   onRefresh(): void
   onCloseAction(): void
   setAction: React.Dispatch<React.SetStateAction<WorkspacePanelAction>>
@@ -1278,7 +1249,6 @@ function WorkspaceActionDialogs({
         principalId,
       })
       setAction(null)
-      await refreshWorkspaces()
       onRefresh()
     }, 'Could not transfer ownership.')
   }
@@ -1299,7 +1269,6 @@ function WorkspaceActionDialogs({
     try {
       await client.archiveWorkspace(workspaceId)
       setAction(null)
-      await refreshWorkspaces()
       window.location.assign('/app/chat')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not archive workspace.')

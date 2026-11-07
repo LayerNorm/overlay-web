@@ -6,7 +6,7 @@ export type WorkspaceHandleVisibility = 'public' | 'private'
 
 type WorkspaceHandleContext = MutationCtx | QueryCtx
 
-export async function getWorkspaceHandle(ctx: WorkspaceHandleContext, handle: string) {
+export async function getWorkspaceHandle(ctx: Pick<WorkspaceHandleContext, 'db'>, handle: string) {
   return await ctx.db.query('workspaceHandles')
     .withIndex('by_handle', (q) => q.eq('handle', handle))
     .unique()

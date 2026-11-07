@@ -112,14 +112,6 @@ const invitationValidator = v.object({
   updatedAt: v.number(),
 })
 
-const receivedInvitationValidator = v.object({
-  id: v.string(),
-  workspaceId: v.string(),
-  workspaceName: v.string(),
-  role: invitationRole,
-  expiresAt: v.number(),
-})
-
 const teamValidator = v.object({
   teamId: v.string(),
   workspaceId: v.string(),
@@ -686,34 +678,42 @@ export const resolveWorkspaceHandleByServer = query({
   returns: v.union(workspaceHandleResolutionValidator, v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const address = validateWorkspaceHandleAddress(args.handle)
-    if (!address.ok) return null
-    const handle = address.handle
-    const registered = await getWorkspaceHandle(ctx, handle)
-    let workspace = registered
-      ? await getWorkspace(ctx, registered.workspaceId)
-      : null
-    if (registered?.visibility === 'private') return null
-    if (!workspace && !registered) {
-      const state = await ctx.db.query('workspaceHandleMigrationState')
-        .withIndex('by_key', (q) => q.eq('key', 'workspace-handles-v1'))
-        .unique()
-      if (state?.status === 'ready') return null
-      const legacy = await ctx.db.query('workspaces')
-        .withIndex('by_slug', (q) => q.eq('slug', handle))
-        .first()
-      if (legacy?.kind === 'organization') workspace = legacy
-    }
-    if (!workspace || workspace.status !== 'active') return null
-    const access = await findHumanAccess(ctx, workspace, args.userId, false)
-    if (!access || access.membership.status !== 'active') return null
-    return {
-      workspaceId: workspace.workspaceId,
-      canonicalHandle: workspace.slug,
-      canonical: workspace.slug === handle,
-    }
+    return await resolveWorkspaceHandleFor(ctx, args.handle, args.userId)
   },
 })
+
+/**
+ * The workspace a `/w/<handle>` address opens for this person: null when the handle is unknown, private, archived or
+ * belongs to a workspace they are not an active member of. `canonical` is false for an old alias.
+ */
+export async function resolveWorkspaceHandleFor(ctx: { db: DatabaseReader }, rawHandle: string, userId: string) {
+  const address = validateWorkspaceHandleAddress(rawHandle)
+  if (!address.ok) return null
+  const handle = address.handle
+  const registered = await getWorkspaceHandle(ctx, handle)
+  let workspace = registered
+    ? await getWorkspace(ctx, registered.workspaceId)
+    : null
+  if (registered?.visibility === 'private') return null
+  if (!workspace && !registered) {
+    const state = await ctx.db.query('workspaceHandleMigrationState')
+      .withIndex('by_key', (q) => q.eq('key', 'workspace-handles-v1'))
+      .unique()
+    if (state?.status === 'ready') return null
+    const legacy = await ctx.db.query('workspaces')
+      .withIndex('by_slug', (q) => q.eq('slug', handle))
+      .first()
+    if (legacy?.kind === 'organization') workspace = legacy
+  }
+  if (!workspace || workspace.status !== 'active') return null
+  const access = await findHumanAccess(ctx, workspace, userId, false)
+  if (!access || access.membership.status !== 'active') return null
+  return {
+    workspaceId: workspace.workspaceId,
+    canonicalHandle: workspace.slug,
+    canonical: workspace.slug === handle,
+  }
+}
 
 export const workspaceHandleRegistryReadyByServer = query({
   args: { serverSecret: v.string() },
@@ -1304,36 +1304,6 @@ export const listInvitationsByServer = query({
     return invitations
       .map((row) => invitationValueWithExpiry(row))
       .filter((row) => !args.status || row.status === args.status)
-  },
-})
-
-export const listReceivedInvitationsByServer = query({
-  args: {
-    serverSecret: v.string(),
-    email: v.string(),
-    now: v.number(),
-  },
-  returns: v.array(receivedInvitationValidator),
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    const email = requiredEmail(args.email)
-    const invitations = await ctx.db
-      .query('workspaceInvitations')
-      .withIndex('by_email_status', (q) =>
-        q.eq('email', email).eq('status', 'pending').gt('expiresAt', args.now))
-      .take(MAX_DIRECTORY_ROWS)
-    const summaries = await Promise.all(invitations.map(async (invitation) => {
-        const workspace = await getWorkspace(ctx, invitation.workspaceId)
-        if (!workspace || workspace.status !== 'active') return null
-        return {
-          id: invitation.invitationId,
-          workspaceId: workspace.workspaceId,
-          workspaceName: workspace.name,
-          role: invitation.role,
-          expiresAt: invitation.expiresAt,
-        }
-      }))
-    return summaries.filter((summary): summary is NonNullable<typeof summary> => summary !== null)
   },
 })
 
@@ -2257,7 +2227,7 @@ const auditExportValidator = v.object({
 })
 
 /** Older rows predate the Phase 8 columns; defaults keep both providers equal. */
-function sharingPolicyValue(row: {
+export function sharingPolicyValue(row: {
   workspaceId: string
   publicLinksEnabled: boolean
   memberCanCreateChannels?: boolean
@@ -2938,7 +2908,7 @@ async function insertAndRead<
   return row
 }
 
-function workspaceValue(row: Doc<'workspaces'>) {
+export function workspaceValue(row: Doc<'workspaces'>) {
   return {
     workspaceId: row.workspaceId,
     kind: row.kind,

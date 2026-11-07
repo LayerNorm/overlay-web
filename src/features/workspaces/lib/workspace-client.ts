@@ -1,13 +1,9 @@
 import type {
-  AccountWorkspaceDirectoryResponse,
-} from '@overlay/workspace-contracts'
-import type {
   WorkspaceOperationalMetrics,
   WorkspaceActivateResponse,
   WorkspaceClient,
   WorkspaceCreateInput,
   WorkspaceCreateResponse,
-  WorkspaceHandleResolutionResponse,
   WorkspaceHandleUpdateInput,
   WorkspaceHandleUpdateResponse,
   WorkspaceManagementClient,
@@ -35,14 +31,6 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 export const workspaceClient: WorkspaceClient = {
-  async list(signal) {
-    return await readJson<AccountWorkspaceDirectoryResponse>(await fetchWithSessionRecovery('/api/v1/account/workspaces', {
-      cache: 'no-store',
-      credentials: 'same-origin',
-      signal,
-    }))
-  },
-
   async create(input: WorkspaceCreateInput, options?: { idempotencyKey: string }) {
     return await readJson<WorkspaceCreateResponse>(await fetchWithSessionRecovery('/api/v1/account/workspaces', {
       method: 'POST',
@@ -50,13 +38,6 @@ export const workspaceClient: WorkspaceClient = {
       headers: { 'content-type': 'application/json', 'idempotency-key': options?.idempotencyKey ?? crypto.randomUUID() },
       body: JSON.stringify(input),
     }))
-  },
-
-  async resolveHandle(handle: string, signal?: AbortSignal) {
-    return await readJson<WorkspaceHandleResolutionResponse>(await fetchWithSessionRecovery(
-      `/api/v1/workspace-handles/${encodeURIComponent(handle)}`,
-      { cache: 'no-store', credentials: 'same-origin', signal },
-    ))
   },
 
   async updateHandle(workspaceId: string, input: WorkspaceHandleUpdateInput) {
@@ -176,18 +157,6 @@ export const workspaceManagementClient: WorkspaceManagementClient = {
       'POST',
       input,
     )
-  },
-
-  async sharingPolicy(workspaceId, signal) {
-    return await readJson(await fetchWithSessionRecovery(
-      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/policies`,
-      {
-        cache: 'no-store',
-        credentials: 'same-origin',
-        headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId },
-        signal,
-      },
-    ))
   },
 
   async setSharingPolicy(workspaceId, input) {

@@ -247,7 +247,7 @@ For a description of what each route does and its associated implementation file
 - `GET, PATCH /api/v1/workspaces/[workspaceId]/profile`
 - `GET, POST /api/v1/workspaces/[workspaceId]/profile/photo`
 
-- `GET, POST /api/v1/account/workspaces`
+- `POST /api/v1/account/workspaces`
 - `GET /api/v1/workspace-handles/[handle]`
 - `PATCH /api/v1/workspaces/[workspaceId]/handle`
 - `POST /api/v1/workspace-invitations/[invitationId]/accept`

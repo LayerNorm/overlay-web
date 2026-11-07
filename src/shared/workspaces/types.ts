@@ -27,11 +27,9 @@ export type {
 } from '@overlay/workspace-contracts'
 
 import type {
-  AccountWorkspaceInvitation,
   WorkspaceActivateResponse,
   WorkspaceCreateInput,
   WorkspaceCreateResponse,
-  WorkspaceListResponse,
   WorkspaceInviteInput,
   WorkspaceInviteResponse,
   WorkspaceManagementResponse,
@@ -52,16 +50,13 @@ import type {
 } from '@overlay/workspace-contracts'
 
 import type {
-  WorkspaceHandleResolutionResponse,
   WorkspaceHandleUpdateInput,
   WorkspaceHandleUpdateResponse,
 } from '@overlay/workspace-contracts'
 
 export interface WorkspaceClient {
-  list(signal?: AbortSignal): Promise<WorkspaceListResponse & { invitations?: AccountWorkspaceInvitation[] }>
   create(input: WorkspaceCreateInput, options?: { idempotencyKey: string }): Promise<WorkspaceCreateResponse>
   activate(workspaceId: string): Promise<WorkspaceActivateResponse>
-  resolveHandle?(handle: string, signal?: AbortSignal): Promise<WorkspaceHandleResolutionResponse>
   updateHandle?(
     workspaceId: string,
     input: WorkspaceHandleUpdateInput,
@@ -92,10 +87,6 @@ export interface WorkspaceManagementClient extends WorkspaceManagementLoader {
     workspaceId: string,
     input: WorkspaceBillingVerificationInput,
   ): Promise<WorkspaceBillingVerificationResponse>
-  sharingPolicy(
-    workspaceId: string,
-    signal?: AbortSignal,
-  ): Promise<WorkspaceSharingPolicyResponse>
   setSharingPolicy(
     workspaceId: string,
     input: WorkspaceSharingPolicyPatch,
