@@ -451,6 +451,29 @@ These read natively behind the same checks as their routes: an active membership
 
 There are no Work, automation, skill, MCP or extension change events.
 
+## Connections in the browser (MCP, providers, Computers, environments, surfaces)
+
+Browsers read connection state natively; every write stays on its route because it encrypts credentials, checks
+network addresses, runs OAuth or device flows, calls a provider, or checks billing.
+
+- `integrations/mcpBrowse:servers` (membership, `mcp.use`, `mcpServers` feature) uses the credential-free
+  `mcpServerSummary`; members who cannot edit a shared server get its URL without userinfo or query.
+  `:connections` lists the viewer's active MCP grants for Settings → Connected apps; the endpoint is the page origin
+  plus `/api/mcp`.
+- `providers/browse:connections` (membership, `modelRouting`) returns personal connections plus workspace-shared
+  subscription connections via `stripSecrets`. `useByokModels` feeds its cache and the model registry from it and
+  calls `GET /api/v1/providers/connections` only to seed a missing default gateway (catalog data is server-side).
+  Integration connected state stays on `/api/v1/integrations`, because the integration provider owns it.
+- `computers/browse:list` (membership, `computers`) mirrors `ComputerService` visibility and drops provider
+  references; `agents/environmentsBrowse:list` (members) drops public keys and adds the verification phrase for
+  pending environments; `:bindings` is for owners and admins. The online window lives in
+  `src/shared/agents/environment-status.ts` and is applied in the browser on a local clock, because a stale
+  heartbeat writes nothing to re-run a query.
+- `surfaces/browse:forAgent` returns an agent's workspace surface connections, bindings and `canBind` with the
+  `SurfaceService` rules. Channel listing, binding and Slack OAuth stay on `/api/v1/surfaces`.
+
+There is no connection polling in the browser.
+
 ## File listing
 
 `GET /api/v1/files?page=true&limit=<n>&cursor=<cursor>` returns the standard `{ data, nextCursor, hasMore }` envelope. `@overlay/api-client` exposes this through `files.getPage()`. Calls without `page=true` retain the historical array response, backed by the same bounded first page, so older web/desktop consumers remain compatible during rollout. Convex serves pages through `files/files:listPage`; the legacy `files/files:list` query is capped and exists only for compatibility and internal adapters that have not adopted cursors yet.

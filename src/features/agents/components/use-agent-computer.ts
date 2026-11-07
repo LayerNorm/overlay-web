@@ -5,6 +5,7 @@ import type { Dispatch, SetStateAction } from 'react'
 import type { Computer, ComputerSize, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { useAuth } from '@/contexts/AuthContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useLiveComputers } from '@/hooks/use-connections'
 import { COMPUTER_TOOL_IDS, enabledAgentToolGroupIds } from '@/shared/agents/tool-groups'
 import { toast } from '@overlay/ui/primitives'
 import { changeAgentComputerControl } from '../lib/agent-computer-control'
@@ -60,40 +61,32 @@ export function useAgentComputer({
     return () => coordinator.invalidate()
   }, [coordinator, scopeKey])
 
-  // Load this agent's computer (edit mode, Overlay agents, capability on).
-  // A bound machine implies the Computer tool group: force it on so the merged
-  // toggle never shows "off" above a live machine.
+  // This agent's computer, live (edit mode, Overlay agents, capability on): lifecycle and control changes from any
+  // tab, the sidebar or the provider arrive without polling. A bound machine implies the Computer tool group: on the
+  // first read it is forced on so the merged toggle never shows "off" above a live machine.
+  const liveComputers = useLiveComputers()
+  const active = Boolean(computersAvailable && activeWorkspaceId && agent && agentType === 'overlay')
   useEffect(() => {
-    if (!computersAvailable || !activeWorkspaceId || !agent || agentType !== 'overlay') return
-    const request = coordinator.beginRefresh()
-    if (!request) return
-    let cancelled = false
-    setComputerLoadError(null)
-    void overlayAppClient.computers.list(activeWorkspaceId).then(
-      (result) => {
-        if (cancelled || !coordinator.isCurrent(request)) return
-        setLoadedFor(scopeKey)
-        setComputerLoadError(null)
-        const existing = result.computers.find(
-          (computer) => computer.ownerType === 'agent' && computer.ownerId === agent.id,
-        ) ?? null
-        setAgentComputerState(existing)
-        if (existing) {
-          setComputerSize(existing.size)
-          if (!enabledAgentToolGroupIds(agent.allowedToolIds).has('computer')) {
-            setEnabledToolGroups((current) => new Set(current).add('computer'))
-            markDirty()
-          }
+    if (!active || !agent || liveComputers === undefined || !coordinator.acceptSnapshot(scopeKey)) return
+    const firstRead = loadedFor !== scopeKey
+    queueMicrotask(() => {
+      setLoadedFor(scopeKey)
+      if (liveComputers === null) {
+        setComputerLoadError('Could not load the computer.')
+        return
+      }
+      setComputerLoadError(null)
+      const existing = liveComputers.find((computer) => computer.ownerType === 'agent' && computer.ownerId === agent.id) ?? null
+      setAgentComputerState(existing)
+      if (existing && firstRead) {
+        setComputerSize(existing.size)
+        if (!enabledAgentToolGroupIds(agent.allowedToolIds).has('computer')) {
+          setEnabledToolGroups((current) => new Set(current).add('computer'))
+          markDirty()
         }
-      },
-      (error: unknown) => {
-        if (cancelled || !coordinator.isCurrent(request)) return
-        setComputerLoadError(error instanceof Error ? error.message : 'Could not load the computer.')
-        setLoadedFor(scopeKey)
-      },
-    )
-    return () => { cancelled = true }
-  }, [ computersAvailable, activeWorkspaceId, agent, agentType, coordinator, refreshRevision, scopeKey, markDirty, setEnabledToolGroups])
+      }
+    })
+  }, [active, agent, coordinator, liveComputers, loadedFor, markDirty, refreshRevision, scopeKey, setEnabledToolGroups])
 
   const setAgentComputer = useCallback((next: Computer | null) => {
     if (next && (next.workspaceId !== activeWorkspaceId || next.ownerType !== 'agent' || next.ownerId !== agent?.id)) return

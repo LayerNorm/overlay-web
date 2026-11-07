@@ -2,7 +2,7 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plug, Plus, Trash2 } from 'lucide-react'
 import type { McpConnectionResource } from '@overlay/api-client'
 import type { WorkspaceSummary } from '@overlay/workspace-contracts'
@@ -12,6 +12,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { MCP_ACCESS_LABEL } from '@/shared/mcp/access'
 import { ConnectAppGuide } from './ConnectAppGuide'
 import { McpTokenDialog } from './McpTokenDialog'
+import { useLiveMcpConnections } from '@/hooks/use-connections'
 
 function formatWhen(timestamp: number | null, fallback: string): string {
   if (!timestamp) return fallback
@@ -24,34 +25,22 @@ function formatWhen(timestamp: number | null, fallback: string): string {
  * agents) over MCP. Each connection is something you granted and can end here.
  */
 export function ConnectedAppsSettings() {
-  const [endpoint, setEndpoint] = useState('')
-  const [connections, setConnections] = useState<McpConnectionResource[] | null>(null)
+  // Live: apps connected or revoked anywhere (another tab, an OAuth consent) appear without reloading.
+  const live = useLiveMcpConnections()
+  const connections = live === undefined ? null : live ?? []
+  // Overlay's MCP server is served from this same origin.
+  const endpoint = typeof window === 'undefined' ? '' : `${window.location.origin}/api/mcp`
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
-  const [loadError, setLoadError] = useState<string | null>(null)
+  const loadError = live === null ? 'Could not load your connections.' : null
   const [tokenOpen, setTokenOpen] = useState(false)
   const [removing, setRemoving] = useState<McpConnectionResource | null>(null)
   const [busy, setBusy] = useState(false)
-  const [version, setVersion] = useState(0)
 
   useEffect(() => {
     let cancelled = false
-    void Promise.all([overlayAppClient.mcpAccess.connections(), overlayAppClient.workspaces.list().catch(() => null)]).then(
-      ([result, list]) => {
-        if (cancelled) return
-        setEndpoint(result.endpoint)
-        setConnections(result.data)
-        if (list) setWorkspaces(list.workspaces)
-        setLoadError(null)
-      },
-      (loadError: unknown) => {
-        if (cancelled) return
-        setLoadError(loadError instanceof Error ? loadError.message : 'Could not load your connections.')
-        setConnections((current) => current ?? [])
-      },
-    )
+    void overlayAppClient.workspaces.list().then((list) => { if (!cancelled) setWorkspaces(list.workspaces) }, () => undefined)
     return () => { cancelled = true }
-  }, [version])
-  const refresh = useCallback(() => setVersion((current) => current + 1), [])
+  }, [])
 
   const remove = async () => {
     if (!removing) return
@@ -60,7 +49,6 @@ export function ConnectedAppsSettings() {
       await overlayAppClient.mcpAccess.revoke(removing.id)
       setRemoving(null)
       toast.success('App disconnected.')
-      refresh()
     } catch (removeError) {
       toast.error(removeError instanceof Error ? removeError.message : 'Could not disconnect.')
     } finally {
@@ -116,7 +104,7 @@ export function ConnectedAppsSettings() {
         ))}
       </div>
 
-      {tokenOpen ? <McpTokenDialog workspaces={workspaces} onClose={() => setTokenOpen(false)} onCreated={refresh} /> : null}
+      {tokenOpen ? <McpTokenDialog workspaces={workspaces} onClose={() => setTokenOpen(false)} /> : null}
 
       <ConfirmDialog
         isOpen={removing !== null}

@@ -4,17 +4,17 @@ import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { Button, toast } from '@overlay/ui/primitives'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Monitor, Plus, RefreshCw, Square, Play, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Monitor, Plus, Square, Play, Trash2 } from 'lucide-react'
 import type { Computer } from '@overlay/workspace-contracts'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useLiveComputers } from '@/hooks/use-connections'
 
 export function ComputerSettings() {
   const { activeWorkspaceId } = useWorkspace()
   const { user } = useAuth()
-  const [computers, setComputers] = useState<Computer[]>([])
   const directory = useAgentDirectory()
   const agentNames = useMemo<Record<string, string>>(
     () => Object.fromEntries((directory.agents ?? []).map((agent) => [agent.id, agent.name])),
@@ -23,28 +23,11 @@ export function ComputerSettings() {
   const [busy, setBusy] = useState<string | null>(null)
   const [controlBusyId, setControlBusyId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
-  const [loadError, setLoadError] = useState<string | null>(null)
 
-  const refresh = useCallback(async () => {
-    if (!activeWorkspaceId) return
-    try {
-      const computerData = await overlayAppClient.computers.list(activeWorkspaceId, { cache: 'no-store' })
-      setComputers(computerData.computers)
-      setLoadError(null)
-    } catch (value) {
-      setLoadError(value instanceof Error ? value.message : 'Failed to load computers')
-    }
-  }, [activeWorkspaceId])
-
-  useEffect(() => { void refresh() }, [refresh])
-  useEffect(() => {
-    if (computers.length === 0) return
-    const refreshInterval = computers.some((computer) => computer.status === 'provisioning')
-      ? 3_000
-      : 15_000
-    const timer = window.setInterval(() => void refresh(), refreshInterval)
-    return () => window.clearInterval(timer)
-  }, [computers, refresh])
+  // Live: provisioning, start, stop and control changes arrive as they happen, with no polling.
+  const live = useLiveComputers()
+  const computers = useMemo<Computer[]>(() => live ?? [], [live])
+  const loadError = live === null ? 'Failed to load computers' : null
 
   async function provision() {
     if (!activeWorkspaceId || !user) return
@@ -54,7 +37,6 @@ export function ComputerSettings() {
         ownerType: 'user',
         ownerId: user.id,
       })
-      await refresh()
       toast.success('Computer creation started.')
     } catch (value) {
       toast.error(value instanceof Error ? value.message : 'Could not create the computer')
@@ -69,7 +51,6 @@ export function ComputerSettings() {
     try {
       const ticket = await overlayAppClient.computers.openDesktop(activeWorkspaceId, computerId)
       window.open(ticket.url, '_blank', 'noopener,noreferrer')
-      await refresh()
     } catch (value) {
       toast.error(value instanceof Error ? value.message : 'Could not open the desktop')
     } finally {
@@ -84,7 +65,6 @@ export function ComputerSettings() {
     setControlBusyId(computer.id)
     try {
       await overlayAppClient.computers.control(activeWorkspaceId, computer.id, action)
-      await refresh()
       toast.success(action === 'take' ? 'You have control of the computer.' : 'Control handed back to the agent.')
     } catch (value) {
       toast.error(value instanceof Error ? value.message : 'Could not change computer control.')
@@ -103,7 +83,6 @@ export function ComputerSettings() {
       } else {
         await overlayAppClient.computers.stop(activeWorkspaceId, computer.id)
       }
-      await refresh()
       toast.success(running ? 'Computer started.' : 'Computer stopped.')
     } catch (value) {
       toast.error(value instanceof Error ? value.message : running ? 'Could not start the computer' : 'Could not stop the computer')
@@ -118,7 +97,6 @@ export function ComputerSettings() {
     setBusy(computer.id)
     try {
       await overlayAppClient.computers.destroy(activeWorkspaceId, computer.id)
-      await refresh()
       toast.success('Computer deleted.')
     } catch (value) {
       toast.error(value instanceof Error ? value.message : 'Could not delete the computer')
@@ -153,7 +131,6 @@ export function ComputerSettings() {
                 <Plus size={13} /> New computer
               </Button>
             ) : null}
-            <Button variant="ghost" type="button" aria-label="Refresh computers" onClick={() => void refresh()} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}><RefreshCw size={15} /></Button>
           </div>
         </div>
         {computers.length === 0 ? <p className="rounded-xl border border-dashed border-(--border) p-8 text-center text-sm text-(--muted)">No computers yet. Create one to give yourself a persistent cloud desktop.</p> : null}

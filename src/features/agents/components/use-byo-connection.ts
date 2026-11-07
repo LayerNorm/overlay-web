@@ -2,10 +2,11 @@
 
 import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useLiveAgentEnvironments } from '@/hooks/use-connections'
 import {
   availableByoHarnesses,
   defaultWorkingDirectory,
@@ -37,7 +38,10 @@ export function useByoConnection(args: {
 }) {
   const { activeWorkspaceId,  agent, agentType, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding, onCloudBinding } = args
   const [environmentChoice, setEnvironmentChoice] = useState<EnvironmentChoice>('existing')
-  const [environments, setEnvironments] = useState<AgentEnvironmentResource[]>([])
+  const [loadedEnvironments, setEnvironments] = useState<AgentEnvironmentResource[]>([])
+  // Live: a new machine enrolling, its approval and heartbeats arrive without polling.
+  const liveEnvironments = useLiveAgentEnvironments()
+  const environments = liveEnvironments ?? loadedEnvironments
   const [environmentsLoading, setEnvironmentsLoading] = useState(false)
   const [environmentId, setEnvironmentId] = useState('')
   const [adapterId, setAdapterId] = useState(() => resolveByoAdapterId(agent?.modelId, agent ? undefined : args.initialAdapterId))
@@ -57,12 +61,6 @@ export function useByoConnection(args: {
     activeWorkspaceId && connectedAgentsEnabled && (agent || agentType === 'byo') && loadedFor !== loadKey,
   )
 
-  const refreshEnvironments = useCallback(async () => {
-    if (!activeWorkspaceId) return []
-    const result = await overlayAppClient.agentEnvironments.list(activeWorkspaceId, { cache: 'no-store' })
-    setEnvironments(result.environments)
-    return result.environments
-  }, [activeWorkspaceId, ])
 
   useEffect(() => {
     if (!activeWorkspaceId || !connectedAgentsEnabled || (!agent && agentType !== 'byo')) return
@@ -104,16 +102,6 @@ export function useByoConnection(args: {
     // `onLegacyHostedBinding` must be a stable useCallback from the page — a new
     // function identity every render would refetch environments in a loop.
   }, [activeWorkspaceId, agent, agentType, args.initialAdapterId, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding, onCloudBinding, ])
-
-  useEffect(() => {
-    if (!command || setupEnvironmentId) return
-    const timer = window.setInterval(() => {
-      void refreshEnvironments().catch((value) => {
-        setEnvironmentError(value instanceof Error ? value.message : 'Could not refresh environments.')
-      })
-    }, 2_500)
-    return () => window.clearInterval(timer)
-  }, [command, refreshEnvironments, setupEnvironmentId])
 
   useEffect(() => {
     if (!command || setupEnvironmentId) return
@@ -194,7 +182,6 @@ export function useByoConnection(args: {
       await overlayAppClient.agentEnvironments.approve(activeWorkspaceId, setupEnvironmentId, {
         mode: 'selected_roots', roots,
       })
-      await refreshEnvironments()
       setEnvironmentId(setupEnvironmentId)
       setWorkingDirectory(roots[0]!)
       setEnvironmentChoice('existing')
