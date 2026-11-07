@@ -14,6 +14,7 @@ import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { Doc } from '../../../convex/_generated/dataModel'
 import type { WorkRepository } from './WorkRepository'
+import { workEventView, workItemView } from '@/shared/work/projection'
 
 type WorkItemDoc = Doc<'workItems'>
 type WorkEventDoc = Doc<'workItemEvents'>
@@ -34,51 +35,8 @@ type ContextResult = {
   }>
 }
 
-export function mapWorkItemDoc(doc: WorkItemDoc): WorkItem {
-  return {
-    id: doc._id,
-    workspaceId: doc.workspaceId,
-    scope: doc.archivedAt !== undefined ? (doc.archivedFromScope ?? doc.scope) : doc.scope,
-    createdBy: doc.userId,
-    title: doc.title,
-    description: doc.description ?? null,
-    status: doc.status,
-    blocked: doc.blocked,
-    priority: doc.priority === 1 || doc.priority === 3 ? doc.priority : 2,
-    rank: doc.rank,
-    assigneePrincipalId: doc.assigneePrincipalId ?? null,
-    reviewerUserId: doc.reviewerUserId ?? null,
-    startDate: doc.startDate ?? null,
-    dueDate: doc.dueDate ?? null,
-    parentId: doc.parentId ?? null,
-    blockedBy: doc.blockedBy ?? [],
-    doneWhen: doc.doneWhen ?? [],
-    context: doc.context ?? [],
-    archivedAt: doc.archivedAt ?? null,
-    archivedFromScope: doc.archivedFromScope ?? null,
-    createdAt: doc.createdAt,
-    updatedAt: doc.updatedAt,
-    ...(doc.assignmentExecution ? {
-      assignmentExecution: {
-        ...doc.assignmentExecution,
-        ...(doc.assignmentExecution.conversationId ? { conversationId: String(doc.assignmentExecution.conversationId) } : {}),
-        ...(doc.assignmentExecution.messageId ? { messageId: String(doc.assignmentExecution.messageId) } : {}),
-      } as WorkAssignmentExecution,
-    } : {}),
-  }
-}
-
-export function mapWorkEventDoc(doc: WorkEventDoc): WorkEvent {
-  const data = doc.data && typeof doc.data === 'object' && !Array.isArray(doc.data) ? (doc.data as Record<string, unknown>) : null
-  return {
-    id: doc._id,
-    workItemId: doc.workItemId,
-    actorPrincipalId: doc.actorPrincipalId,
-    kind: doc.kind,
-    data,
-    createdAt: doc.createdAt,
-  }
-}
+export const mapWorkItemDoc = (doc: WorkItemDoc): WorkItem => workItemView(doc)
+export const mapWorkEventDoc = (doc: WorkEventDoc): WorkEvent => workEventView(doc)
 
 export class ConvexWorkRepository implements WorkRepository {
   private get serverSecret(): string {

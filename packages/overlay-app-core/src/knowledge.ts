@@ -11,7 +11,6 @@ export interface KnowledgeFileNode extends KnowledgeFile {
 export const IMPORT_MEMORY_PROMPT =
   "Export all of my stored memories and any context you've learned about me from past conversations. Preserve my words verbatim where possible, especially for instructions and preferences."
 
-export const FILES_CHANGED_EVENT = 'overlay:files-changed'
 
 export const OUTPUT_FILTER_LABELS: Record<KnowledgeOutputFilter, string> = {
   all: 'All',

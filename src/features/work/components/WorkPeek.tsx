@@ -6,7 +6,7 @@ import { AlertTriangle, CalendarDays, CircleDot, CornerDownRight, Flag, Undo2, U
 import { AppScreenSidePanel } from '@overlay/modules-react/shell'
 import { Button, Toggle, Input, Textarea } from '@overlay/ui/primitives'
 import { useAutosizeTextarea } from '@overlay/ui/hooks'
-import { WORK_UPDATED_EVENT, type UpdateWorkItemRequest, type WorkItem, type WorkPerson } from '@overlay/app-core'
+import { type UpdateWorkItemRequest, type WorkItem, type WorkPerson } from '@overlay/app-core'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { validateWorkDates, validateWorkTitle } from '@/shared/work/status'
 import { useEscapeToClose, useScopeFollowsTask, useWorkTask } from '../lib/use-work-task'
@@ -175,7 +175,7 @@ function PanelMessage({ title, onClose, children }: { title: string; onClose: ()
  */
 export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => void }) {
   const { item, missing } = useWorkTask(taskId)
-  const { viewer, canWork, updateTask, moveTask, refreshTask, dropLocal } = useWorkData()
+  const { viewer, canWork, updateTask, moveTask } = useWorkData()
   const scopeMatches = useScopeFollowsTask(item)
   useEscapeToClose(onClose)
 
@@ -223,10 +223,8 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
           item={scopedItem}
           label={item.title}
           onChanged={(change) => {
-            // Archiving also archives what sits inside the task, so the list is reloaded rather than patched.
-            if (change.action === 'archive') { dropLocal(item.id); onClose() }
-            else void refreshTask(item.id)
-            window.dispatchEvent(new Event(WORK_UPDATED_EVENT))
+            // The live lists drop an archived task and its subtasks by themselves.
+            if (change.action === 'archive') onClose()
           }}
         />
       )}
@@ -249,7 +247,7 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
         <WaitingOnSection item={item} editable={editable} onChange={(blockedBy) => save({ blockedBy })} />
         <ContextSection items={item.context} editable={editable} onChange={(context) => save({ context })} />
         <DoneWhenSection items={item.doneWhen} editable={editable} onChange={(doneWhen) => save({ doneWhen })} />
-        <ActivitySection taskId={item.id} version={item.updatedAt} canComment={!archived && canWork(item)} />
+        <ActivitySection taskId={item.id} canComment={!archived && canWork(item)} />
       </div>
     </AppScreenSidePanel>
   )

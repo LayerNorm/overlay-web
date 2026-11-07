@@ -7,7 +7,7 @@ import { Archive, RotateCcw, User, Users } from 'lucide-react'
 import type { ScopedResourceKind } from '@overlay/app-core'
 import { useScopeItemActions, type ScopedItem } from '@/hooks/use-scope-item-actions'
 import type { ResourceKind, ResourceScope } from '@/shared/workspaces/resource-scope'
-import { announceArchived, refreshAfterRestore } from '@/shared/app/archive-toast'
+import { announceArchived } from '@/shared/app/archive-toast'
 
 const BUTTON =
   'inline-flex h-8 min-h-8 items-center gap-1.5 rounded-md border border-(--border) bg-(--surface-muted) px-2.5 py-0 text-xs leading-none text-(--foreground) transition-colors hover:bg-(--surface-subtle) disabled:cursor-not-allowed disabled:opacity-40'
@@ -61,7 +61,6 @@ export function ScopeBulkActions({
         name: changedIds.length === 1 ? (items.find((item) => item._id === changedIds[0]) as { name?: string; title?: string } | undefined)?.name ?? '1 item' : `${changedIds.length} items`,
         ...(changedIds.length > 1 ? { summary: `Archived ${changedIds.length} items` } : {}),
         undo: async () => { await Promise.all(changedIds.map((id) => actions.restore(id))) },
-        onUndone: () => refreshAfterRestore(resource),
       })
     } else if (failures === 0 && changedIds.length > 0 && successMessage) {
       toast.success(successMessage)

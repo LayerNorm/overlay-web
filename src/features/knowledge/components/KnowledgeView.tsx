@@ -5,9 +5,7 @@
 import { isEditableType } from '@/shared/files/file-viewer-types'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
-  createManualMemoryRequest,
   type KnowledgeFileNode,
-  type MemoryRow,
 } from '@overlay/app-core'
 import {
   KnowledgeBulkActionsContext,
@@ -15,7 +13,6 @@ import {
   KnowledgeRowActionsContext,
   SharedKnowledgeSurface,
   type SharedKnowledgeFilePort,
-  type SharedKnowledgeMemoryPort,
   type KnowledgeBulkSelection,
   type SharedKnowledgeRouteState,
 } from '@overlay/modules-react/knowledge'
@@ -30,19 +27,17 @@ import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope } from '@/shared/workspaces/panel-scope'
 import { createWebKnowledgeSurfaceAdapters } from '../adapters/webKnowledgeSurfaceAdapters'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
-import { responseError, uploadWebFile } from '../adapters/webKnowledgeFilePort'
+import { uploadWebFile } from '../adapters/webKnowledgeFilePort'
 
 export default function KnowledgeView({
   userId: _userId,
   mode = 'knowledge',
   initialFiles,
-  initialMemories,
   renderFileViewer,
 }: {
   userId: string
   mode?: 'knowledge' | 'files'
   initialFiles?: KnowledgeFileNode[]
-  initialMemories?: MemoryRow[]
   renderFileViewer(props: { file: KnowledgeFileNode; name: string; content: string; url?: string }): ReactNode
 }) {
   void _userId
@@ -89,19 +84,6 @@ export default function KnowledgeView({
     getScope: () => scope,
   }), [commands, router, scope])
 
-  const memories = useMemo<SharedKnowledgeMemoryPort>(() => ({
-    list: () => overlayAppClient.memory.get<MemoryRow[]>({ limit: 100 }),
-    async create(content) {
-      const response = await overlayAppClient.memory.createResponse(createManualMemoryRequest(content))
-      return response.ok
-        ? { ok: true }
-        : { ok: false, error: await responseError(response, 'Could not save memory') }
-    },
-    async delete(memoryId) {
-      return (await overlayAppClient.memory.deleteResponse({ memoryId })).ok
-    },
-  }), [])
-
   const files = useMemo<SharedKnowledgeFilePort>(() => ({
     async saveContent(fileId, content) {
       return (await overlayAppClient.files.updateResponse({ fileId, textContent: content })).ok
@@ -143,13 +125,11 @@ export default function KnowledgeView({
         // The server renders the Personal list, so it only seeds that scope.
         initialFiles={scope === 'personal' ? initialFiles : undefined}
         liveFiles={liveFiles as KnowledgeFileNode[] | null | undefined}
-        initialMemories={initialMemories}
         route={route}
         queryPending={queryPending}
         onUpdateQuery={updateQuery}
         headerTabs={mode === 'files' ? <PageSubviewTabs /> : undefined}
         adapters={adapters}
-        memories={memories}
         files={files}
         renderFileViewer={renderFileViewer}
       />

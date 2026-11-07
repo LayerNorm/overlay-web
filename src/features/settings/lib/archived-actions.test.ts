@@ -78,12 +78,7 @@ test('archived tasks are listed once: a subtask archived with its parent shows o
   assert.equal(items[0]!.archivedAt, 10)
 })
 
-test('restoring a task puts it back through the scope route; deleting removes it for good; both refresh the Work views', async (t) => {
-  const events: string[] = []
-  const target = new EventTarget()
-  ;(globalThis as { window?: unknown }).window = target
-  t.after(() => { delete (globalThis as { window?: unknown }).window })
-  target.addEventListener('overlay:work-updated', () => events.push('work-updated'))
+test('restoring a task puts it back through the scope route and deleting removes it for good; the live Work lists need no event', async (t) => {
   const calls: string[] = []
   t.mock.method(overlayAppClient.scope, 'restore', async (resource: string, id: string) => { calls.push(`restore ${resource} ${id}`); return { success: true } })
   t.mock.method(overlayAppClient.work, 'remove', async (id: string) => { calls.push(`remove ${id}`); return { success: true } })
@@ -91,5 +86,4 @@ test('restoring a task puts it back through the scope route; deleting removes it
   await restoreArchivedItem(entry, 'ws')
   await deleteArchivedItem(entry, 'ws')
   assert.deepEqual(calls, ['restore work w1', 'remove w1'])
-  assert.deepEqual(events, ['work-updated', 'work-updated'])
 })
