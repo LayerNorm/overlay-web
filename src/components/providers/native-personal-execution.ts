@@ -46,7 +46,9 @@ export function scopedNativePersonalExecution({
 }): NativePersonalExecutionState {
   if (!scope.enabled) return { status: 'disabled', value: null }
   if (!scope.conversationId) {
-    return { status: scope.transcriptStatus === 'unavailable' ? 'unavailable' : 'disabled', value: null }
+    // The transcript exposes no conversation until its summary loads; that is not a disabled chat.
+    if (scope.transcriptStatus === 'unavailable') return { status: 'unavailable', value: null }
+    return { status: scope.transcriptStatus === 'loading' ? 'loading' : 'disabled', value: null }
   }
   if (!scope.canQuery || !scope.viewerUserId) return { status: 'loading', value: null }
   if (scope.transcriptStatus === 'unavailable') return { status: 'unavailable', value: null }

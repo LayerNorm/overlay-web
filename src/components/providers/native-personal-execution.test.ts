@@ -29,6 +29,19 @@ test('execution subscription args require the exact personal route and resolved 
   assert.equal(nativePersonalExecutionArgs({ ...scope, transcriptConversationId: 'other' }), 'skip')
 })
 
+test('a chat whose summary is still loading reads as loading, not disabled', () => {
+  const withoutConversation = { ...scope, conversationId: null, value: undefined }
+  assert.deepEqual(scopedNativePersonalExecution({ ...withoutConversation, transcriptStatus: 'loading' }), {
+    status: 'loading', value: null,
+  })
+  assert.deepEqual(scopedNativePersonalExecution({ ...withoutConversation, transcriptStatus: 'ready' }), {
+    status: 'disabled', value: null,
+  })
+  assert.deepEqual(scopedNativePersonalExecution({ ...withoutConversation, transcriptStatus: 'unavailable' }), {
+    status: 'unavailable', value: null,
+  })
+})
+
 test('execution results are exposed only for the verified viewer, workspace and conversation', () => {
   assert.deepEqual(scopedNativePersonalExecution({ ...scope, value }), { status: 'ready', value })
   assert.deepEqual(scopedNativePersonalExecution({ ...scope, viewerUserId: 'other', value }), {
