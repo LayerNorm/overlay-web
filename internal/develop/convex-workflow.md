@@ -242,9 +242,9 @@ corresponding Convex preview defaults remain separate from customer Production.
 
 ### Native browser authentication (CN-02)
 
-Browser identity now uses `ConvexProviderWithAuth` and the verified provider JWT
-from `/api/auth/convex-token?native=1`, not the legacy HS256 query-argument token.
-The default endpoint and legacy room subscriptions remain compatible. No server
+Browser identity uses `ConvexProviderWithAuth` and the verified provider JWT
+from `/api/auth/convex-token`. The legacy HS256 query-argument token was removed
+in CN-35; Convex rejects HS256 tokens even when signed correctly. No server
 secret or refresh token reaches the browser. User IDs remain the provider subject;
 the endpoint rejects a verified token whose subject differs from its session user.
 Changing accounts remounts the client cache and its UI subtree. Refresh uses the
@@ -837,27 +837,22 @@ additive and do not deploy a feature-worktree schema to shared or customer backe
 
 ## Browser auth for reactive queries
 
-Convex **queries and mutations cannot call `fetch()`**. WorkOS / Better Auth JWKS verification therefore cannot run inside `watchRoomMessages` or other browser `useQuery` handlers.
-
-Browser→Convex subscriptions must use short-lived **HS256** tokens:
-
-1. Next BFF `GET /api/auth/convex-token` mints a token with `INTERNAL_API_SECRET` (`mintBrowserConvexAccessToken`).
-2. `ConvexAuthProvider` refreshes the token; consumers pass it explicitly as the
-   `accessToken` query argument. Keep the ordinary `ConvexProvider` transport.
-3. Convex `requireAccessToken` verifies HS256 with `crypto.subtle` only (`verifyBrowserConvexAccessToken`).
-
-`INTERNAL_API_SECRET` must match between the Next app env and the Convex deployment. Do not send the raw WorkOS access token into reactive queries.
+Browser queries and mutations authenticate natively: `ConvexProviderWithAuth`
+fetches the session's verified provider JWT from `GET /api/auth/convex-token`
+and Convex verifies it through `convex/auth.config.ts`, outside the handler, so
+no handler needs `fetch()` for JWKS. Browser-facing functions read identity from
+`ctx.auth` (`requireNativeWorkspace` and friends) and never take a token or user
+ID argument. Server-called functions keep their `serverSecret` or
+`accessToken` arguments; `accessToken` there means a server-verified RS256
+provider token, never a browser token.
 
 The standalone admin console (`apps/admin`) uses a separate secret, `ADMIN_API_SECRET`, plus `convex/auth.config.ts` WorkOS `customJwt` providers: `admin/console:*` functions call `requireAdminSecret` (constant-time compare, fails closed when unset) then `requireOperator` (native `ctx.auth` identity + active `administrativePrincipals` role). Set it per deployment with `npx convex env set ADMIN_API_SECRET <value>`; preview provisioning does not set it. Break-glass grants run via `npx convex run admin/breakGlass:grantFirstAdmin`. See `internal/develop/admin-console.md`.
 
-Do not call the client's native `setAuth` with these handler tokens. Convex's
-platform verifier expects a configured native identity provider; it rejects the
-internal HMAC token and interrupts subscriptions. Handler authorization still
-verifies signature, expiry and the requested user's identity. Release smoke must
-read a real subscription for the signed-in synthetic user, deny a different user
-with the same token, and fail on browser runtime or authentication errors.
+Release smoke subscribes to `auth/viewer:current` with the signed-in synthetic
+user's native token and with no token: the first must return that user, the
+second `null`. It also fails on browser runtime or authentication errors.
 
-Collaboration realtime is native Convex when `appDataCapabilities.provider === 'convex'`:
+Collaboration realtime is native Convex:
 
 - `collaboration/rooms:messages` and `:state` own room transcripts, metadata and presence.
 - `collaboration/roomList:list` is the live DM and channel sidebar list (the viewer's active, unarchived rooms).

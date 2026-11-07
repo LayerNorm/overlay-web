@@ -116,7 +116,7 @@ timings. This complements, rather than replaces, the query-ready measurement.
 
 | Current path | Consumers / responsibility | Migration constraint |
 | --- | --- | --- |
-| `ConvexAuthProvider`, `convex-token-broker`, `/api/auth/convex-token` | Personal chat controller, DirectMessageExperience, CollaborationRealtimeProvider | Explicit HS256 query token is not a native Convex identity token. Preserve legacy consumers while introducing native auth. |
+| `ConvexAuthProvider`, `native-convex-token-broker`, `/api/auth/convex-token` | Every browser query and mutation | Native identity only. The HS256 query-argument token was removed in CN-35. |
 | `convex/auth.config.ts` | WorkOS custom JWT verification | Native provider config currently covers WorkOS, not every supported Overlay auth mode. |
 | `src/server/auth/providers` and `bootstrap.ts` | WorkOS, OIDC, Better Auth; NoOp is unauthenticated | Preserve application user IDs and supported private deployments. Preview's sandbox login and native session handoff must be tested, not assumed to yield a WorkOS JWT. |
 | `ChatInlinePanel.tsx` | HTTP list, title PATCH, participant archive/restore, local invalidation | Move ordinary personal browser ownership to typed Convex queries/mutations. Keep collaboration behavior until its own migration. |
