@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make Memories live: Settings → Memories and an agent's memory section now read from one Convex query, so memories you add or delete, and memories extracted from chats and agent turns, appear without a reload in every open tab. Owner-only memories stay visible only to their author, and a memory written by an agent you cannot see is shown without that agent's name. The member filter now takes its agent list from the live agent directory instead of an HTTP request, and filtering by a member or agent no longer reloads the page's data.
+
 - Keep open notes current: a note open in one tab now updates when it is saved in another tab, by an agent or by an outside app, as long as you have no unsaved edits. With unsaved edits your draft stays, and its save is refused with a conflict notice instead of overwriting the newer version. A note deleted or archived elsewhere closes and returns you to Files. The editor also stops downloading the whole notes list each time it opens, since the web app never shows that list. Saves still go through the server, which canonicalizes and sanitizes note Markdown.
 
 - Make an agent thread's Library tab live: files an agent publishes or a person attaches in the thread now appear while the panel is open, instead of only after reopening it. Removes the outputs tab's Refresh button and its unused refresh state, since outputs are part of the live file list.

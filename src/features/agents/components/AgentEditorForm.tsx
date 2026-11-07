@@ -2,7 +2,7 @@
 
 import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 
-import { Fragment, useEffect, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
+import { Fragment, useMemo, useState, type ComponentProps, type ReactNode } from 'react'
 import Link from 'next/link'
 import { Bot, Check, ChevronDown, Copy, Hash, Laptop, Loader2, Lock, Monitor, Plus, Server, ShieldCheck, Sparkles, Terminal, Trash2, Users } from 'lucide-react'
 import { Button, Input, ListboxSelect, SegmentedControl, Textarea, Toggle } from '@overlay/ui/primitives'
@@ -15,7 +15,7 @@ import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { MODEL_RECOMMENDATIONS } from '@/shared/ai/gateway/model-data'
 import { generatedAgentSetupPrompt } from '../lib/byo-agent-setup'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { unwrapPaginatedData } from '@/shared/api/pagination'
+import { useMemories } from '@/hooks/use-memories'
 import { AgentAvatarPicker } from './AgentAvatarPicker'
 import { AgentComputerRecoveryNotice } from './AgentComputerRecoveryNotice'
 import { FieldLabel } from './InfoTip'
@@ -156,30 +156,16 @@ export function AgentMemoriesSection({
   agentPrincipalId: string
   sidebarCompact?: boolean
 }) {
-  const [rows, setRows] = useState<AgentMemoryRow[] | null>(null)
+  const live = useMemories(agentPrincipalId)
+  const rows = live === undefined ? null : (live ?? []) as AgentMemoryRow[]
   const [deletingId, setDeletingId] = useState<string | null>(null)
   useEditorLoad(rows === null)
-
-  // cancelled flag makes the fetch safe against overlapping re-runs.
-  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
-  useEffect(() => {
-    let cancelled = false
-    void overlayAppClient.memory
-      .getResponse({ memberPrincipalId: agentPrincipalId })
-      .then(async (res) => {
-        if (cancelled) return
-        setRows(res.ok ? unwrapPaginatedData<AgentMemoryRow>(await res.json()) : [])
-      })
-      .catch(() => { if (!cancelled) setRows([]) })
-    return () => { cancelled = true }
-  }, [agentPrincipalId])
 
   const remove = async (memoryId: string) => {
     if (deletingId) return
     setDeletingId(memoryId)
     try {
-      const res = await overlayAppClient.memory.deleteResponse({ memoryId })
-      if (res.ok) setRows((current) => current?.filter((row) => row.memoryId !== memoryId) ?? [])
+      await overlayAppClient.memory.deleteResponse({ memoryId })
     } finally {
       setDeletingId(null)
     }

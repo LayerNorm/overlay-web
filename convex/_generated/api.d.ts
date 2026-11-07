@@ -103,6 +103,7 @@ import type * as integrations_mcpServers from "../integrations/mcpServers.js";
 import type * as integrations_skills from "../integrations/skills.js";
 import type * as integrations_workspaceConnectors from "../integrations/workspaceConnectors.js";
 import type * as knowledge_knowledge from "../knowledge/knowledge.js";
+import type * as knowledge_memoryBrowse from "../knowledge/memoryBrowse.js";
 import type * as knowledge_memories from "../knowledge/memories.js";
 import type * as knowledge_memoryExtractor from "../knowledge/memoryExtractor.js";
 import type * as knowledge_memoryExtractorNode from "../knowledge/memoryExtractorNode.js";
@@ -280,6 +281,7 @@ declare const fullApi: ApiFromModules<{
   "integrations/skills": typeof integrations_skills;
   "integrations/workspaceConnectors": typeof integrations_workspaceConnectors;
   "knowledge/knowledge": typeof knowledge_knowledge;
+  "knowledge/memoryBrowse": typeof knowledge_memoryBrowse;
   "knowledge/memories": typeof knowledge_memories;
   "knowledge/memoryExtractor": typeof knowledge_memoryExtractor;
   "knowledge/memoryExtractorNode": typeof knowledge_memoryExtractorNode;
