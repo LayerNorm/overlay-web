@@ -219,6 +219,7 @@ For a description of what each route does and its associated implementation file
 - `DELETE, GET, PATCH, POST /api/v1/skills`
 - `POST /api/v1/scope`
 - `GET, POST /api/v1/work`
+- `POST /api/v1/work/resume-assignment`
 - `GET /api/v1/work/context`
 - `DELETE, GET, PATCH /api/v1/work/[id]`
 - `GET, POST /api/v1/work/[id]/events`

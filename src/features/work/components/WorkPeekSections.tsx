@@ -83,7 +83,7 @@ const CONTEXT_ICONS: Record<WorkContextType, typeof FileText> = { file: FileText
 
 type SearchHit = WorkContextRef
 
-async function searchContext(query: string, signal: AbortSignal): Promise<SearchHit[]> {
+export async function searchContext(query: string, signal: AbortSignal): Promise<SearchHit[]> {
   const response = await overlayAppClient.request(`/api/v1/mention-search?q=${encodeURIComponent(query)}`, { signal })
   if (!response.ok) return []
   const body = await response.json() as {
