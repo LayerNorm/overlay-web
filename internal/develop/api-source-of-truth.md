@@ -118,7 +118,16 @@ server-side policy and side effects: harness and external-agent policy, model su
 connected-agent bindings, computer provisioning and config-profile cleanup. Desktop, mobile and
 agent tools also call these routes. The live queries reflect each write in every client. The
 Memories owner filter still lists agents over HTTP until the memories card in Phase D, and
-Settings → Archived does until CN-09 moves archived threads.
+Settings → Archived lists archived agents and threads over HTTP until the settings phase (Phase F)
+makes that whole page live.
+
+Agent threads are native too (`agents/threads`): `bundle` (the member's threads and automations
+for one visible agent, live), `archived`, `resolveMain` (adopts or creates the main thread once;
+concurrent opens resolve the same thread), `create`, `setArchived` and `remove`. Each applies the
+directory's visibility rule before the shared thread logic in `agentThreads.ts`. The sidebar opens a
+live thread list without a request, and the conversation verifies a deep link against that same
+list. The `/api/v1/agents/[agentId]/threads|bundle|main-thread` routes remain for server and API
+callers such as onboarding.
 
 ## Connected-agent drive
 

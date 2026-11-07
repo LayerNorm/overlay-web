@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make agent threads live and immediate: the sidebar's thread lists update in every open client, opening an agent you have already expanded goes straight to its thread with no request, and creating, archiving, restoring or deleting a thread updates everywhere at once. Opening a thread no longer re-downloads the agent's thread list to check access, and a link to someone else's thread is still refused.
+
 - Load DM and channel messages natively: rooms open from a live Convex query instead of waiting on an HTTP load, older messages and reply threads page in from an index (fixing threads and roots older than the newest 500 messages that could not load at all), and edits and deletes appear in every open client at once without a reload.
 
 - Make the agent directory live: the sidebar, agent picker, organization chart, automations, search, computer settings and room identities now read agents from one Convex subscription, so creating, renaming or archiving an agent shows up everywhere at once without a reload or refresh event. The agent editor follows changes made elsewhere while it has no unsaved edits, and never overwrites edits in progress.

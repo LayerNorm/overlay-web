@@ -24,7 +24,7 @@ async function viewerOrNull(ctx: QueryCtx, workspaceId: string): Promise<Viewer 
 }
 
 /** Creator-only agents are invisible to everyone else, so their existence never leaks. */
-function canSee(row: Row, viewer: Viewer) {
+export function canSee(row: Row, viewer: Viewer) {
   return (row.visibility ?? 'workspace') !== 'creator' || row.createdByPrincipalId === viewer.principal.principalId
 }
 
@@ -52,7 +52,7 @@ async function project(ctx: QueryCtx, row: Row, viewer: Viewer) {
   }
 }
 
-async function visibleRow(ctx: QueryCtx, row: Row | null, viewer: Viewer) {
+export async function visibleRow(ctx: QueryCtx, row: Row | null, viewer: Viewer) {
   if (!row || row.workspaceId !== viewer.workspaceId || row.deletedAt || !canSee(row, viewer)) return null
   if (row.agentRole === 'personal_chief' && row.chiefOwnerUserId
     && !await isActiveNonGuestHumanOwner(ctx, row.workspaceId, row.chiefOwnerUserId)) return null

@@ -39,6 +39,8 @@ import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { AgentDirectoryScreen, AgentEditorPanel } from './AgentConversationWorkspace.parts'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
+import { useMutation } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import { openAgentComputerControl } from '../lib/agent-computer-control'
 
 type EditorMode = 'new' | 'edit' | null
@@ -74,6 +76,7 @@ function useAgentWorkspaceActions(args: {
   onRetry(): void
 }) {
   const { activeWorkspaceId, buildHref, agentId, router, onEditorModeChange, onError, onRetry } = args
+  const resolveMainThread = useMutation(api.agents.threads.resolveMain)
 
   const openCreatedAgent = useCallback(
     (agent: WorkspaceAgentDirectoryItem) => {
@@ -89,6 +92,7 @@ function useAgentWorkspaceActions(args: {
             surface: 'agents',
             scope: 'personal',
             buildHref,
+            resolveMainThread,
             push: (href) => router.push(href),
           })
           if (conversationId && activeWorkspaceId && !agent.instructions.trim()) {
@@ -150,6 +154,7 @@ function useAgentAutoOpen(args: {
     onResolvingChange, onError,
   } = args
   const attemptedAgentRef = useRef<string | null>(null)
+  const resolveMainThread = useMutation(api.agents.threads.resolveMain)
 
   useEffect(() => {
     attemptedAgentRef.current = null
@@ -175,6 +180,7 @@ function useAgentAutoOpen(args: {
           surface: 'agents',
           scope,
           buildHref,
+          resolveMainThread,
           push: (href) => { if (!cancelled) router.replace(href) },
         })
       } catch (chatError) {
@@ -184,7 +190,7 @@ function useAgentAutoOpen(args: {
       }
     })()
     return () => { cancelled = true; attemptedAgentRef.current = null; onResolvingChange(false) }
-  }, [conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, router, onResolvingChange, onError])
+  }, [conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, resolveMainThread, router, onResolvingChange, onError])
 }
 
 function requestedAgentScope(
@@ -334,7 +340,7 @@ function AgentConversationWorkspaceContent() {
   // one DM creation runs per landing.
   const { directory, viewerPrincipalId, loadError, refreshing: directoryRefreshing } = useWorkspaceAgentDirectory(activeWorkspaceId)
   const threadScope = useAgentThreadScope({
-    workspaceId: activeWorkspaceId, agentId, conversationId, directory, retryCount,
+    workspaceId: activeWorkspaceId, agentId, conversationId, directory,
   })
   const scope = usePanelScope()
   const requestedAgent = directory?.find((agent) => agent.id === agentId) ?? null

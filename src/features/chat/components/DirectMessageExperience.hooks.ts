@@ -2204,6 +2204,7 @@ export function useDirectMessageRoom({
   refreshNotifications: () => void
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
 }) {
+  const createAgentThread = useMutation(api.agents.threads.create)
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
@@ -2425,7 +2426,7 @@ export function useDirectMessageRoom({
     }
     const agentId = nativeThreadSafety.agentId
     if (agentId && activeWorkspaceId) {
-      const { thread: next } = await overlayAppClient.agents.createThread(activeWorkspaceId, agentId, {})
+      const next = await createAgentThread({ workspaceId: activeWorkspaceId, agentId })
       if (!safety.isCurrentScope()) return
       writeDraft({ workspaceId: activeWorkspaceId, conversationId: next.conversationId }, handoff)
       dispatchChatCreated({ chat: {
