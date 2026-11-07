@@ -76,3 +76,13 @@ test('older archived files stay listed behind many newer active ones', async () 
   const rows = await as('alice').query(files, { workspaceId: 'ws', view: 'archived' }) as Array<{ name: string }>
   expect(rows.map(row => row.name).sort()).toEqual(['Old private.md', 'Old shared.md'])
 })
+
+test('a linked archived room can be included by id, and only by the member who archived it', async () => {
+  const { as, ids } = await fixture()
+  type Row = { _id: string }
+  // Alice archived #general; Bob did not, so including it changes nothing for him.
+  expect((await as('alice').query(rooms, { workspaceId: 'ws', include: ids.general }) as Row[]).map(row => row._id)).toEqual([ids.general])
+  expect((await as('bob').query(rooms, { workspaceId: 'ws', include: ids.general }) as Row[]).map(row => row._id)).toEqual([ids.dm])
+  // The DM is archived for Bob only; Alice cannot pull it in by id.
+  expect((await as('alice').query(rooms, { workspaceId: 'ws', include: ids.dm }) as Row[]).map(row => row._id)).toEqual([ids.general])
+})

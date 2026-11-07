@@ -10,6 +10,8 @@ import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
+import { isConvexIdShape } from '@/components/providers/usePersonalChatTranscript'
 
 const ChatExperience = dynamic(() => import('./ChatExperience'))
 const DirectMessageExperience = dynamic(
@@ -33,8 +35,10 @@ function useArchivedConversations(userId: string | null, selectedId: string | nu
   const nativePersonal = usePersonalChat()
   const workspaceId = useOptionalWorkspace()?.activeWorkspaceId ?? null
   const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
+  const canQueryRooms = Boolean(workspaceId && userId && isAuthenticated && !authLoading)
+  const include = selectedId && isConvexIdShape(selectedId) ? selectedId as Id<'conversations'> : undefined
   const rooms = useQuery(api.collaboration.archive.rooms,
-    workspaceId && userId && isAuthenticated && !authLoading ? { workspaceId } : 'skip')
+    canQueryRooms ? { workspaceId: workspaceId!, ...(include ? { include } : {}) } : 'skip')
   const { archived, selectedSummary } = nativePersonal
 
   const conversations = useMemo(() => {
@@ -50,7 +54,9 @@ function useArchivedConversations(userId: string | null, selectedId: string | nu
     nativePersonal.selectedConversationId !== selectedId || selectedSummary === undefined
   ))
   const selectedUnavailable = waitingForSelected && archived.status === 'unavailable'
-  const loading = Boolean(userId && (rooms === undefined || authLoading))
+  // Signed out of Convex once auth settles means the rooms cannot load: show unavailable, not a spinner forever.
+  const roomsUnavailable = rooms === null || Boolean(userId && !authLoading && !isAuthenticated)
+  const loading = Boolean(userId && (authLoading || (canQueryRooms && rooms === undefined)))
     || (waitingForSelected && !selectedUnavailable)
     || archived.status === 'loading'
   return {
@@ -59,7 +65,7 @@ function useArchivedConversations(userId: string | null, selectedId: string | nu
     loading,
     waitingForSelected,
     selectedUnavailable,
-    unavailable: rooms === null || archived.status === 'unavailable',
+    unavailable: roomsUnavailable || archived.status === 'unavailable',
   }
 }
 
