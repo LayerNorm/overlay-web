@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make Work board moves native: dragging a task, moving it with the keyboard or approving and sending back a review applies at once in every open view and reaches other tabs live. The server still ranks the task between its new neighbours, so two people moving tasks at the same time end with one agreed order, and a refused move rolls back only that task instead of reloading the board.
+
 - Make Work live: the Work page, its sidebar sections, the task panel and task links read tasks, people and activity from Convex subscriptions, so tasks and comments added or changed in another tab, by a teammate or by an agent appear everywhere without a reload. Edits, new tasks and comments are native and show at once; a refused edit rolls back by itself without undoing later ones. A task opened by link outside the list stays live too. Giving a task to an agent and moving it between scopes still go through the server, which checks the budget and starts the agent. Removes the provider's load, pending and refresh bookkeeping, the sidebar's separate load and publish channel, the Work refresh event, and the reload error notice.
 
 - Make Memories live: Settings → Memories and an agent's memory section now read from one Convex query, so memories you add or delete, and memories extracted from chats and agent turns, appear without a reload in every open tab. Owner-only memories stay visible only to their author, and a memory written by an agent you cannot see is shown without that agent's name. The member filter now takes its agent list from the live agent directory instead of an HTTP request, and filtering by a member or agent no longer reloads the page's data.

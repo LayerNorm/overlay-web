@@ -84,7 +84,7 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
 
   // Tasks opened by link that the list does not hold, each its own live query.
   const [adopted, setAdopted] = useState<{ workspaceId: string | null; ids: readonly string[] }>({ workspaceId: null, ids: [] })
-  const adoptedIds = adopted.workspaceId === activeWorkspaceId ? adopted.ids : []
+  const adoptedIds = useMemo(() => (adopted.workspaceId === activeWorkspaceId ? adopted.ids : []), [activeWorkspaceId, adopted])
   const adoptedResults = useQueries(useMemo(() => Object.fromEntries(adoptedIds.map(id => [id, {
     query: api.work.browse.get,
     args: activeWorkspaceId ? { workspaceId: activeWorkspaceId, id } : 'skip',
@@ -118,13 +118,15 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
     return reported(() => commands.update({ id, ...fields }), 'Could not save that change.')
   }, [commands])
 
+  // Ranks are computed on the server from the neighbours' live ranks, so simultaneous moves converge on one order.
   const moveTask = useCallback<WorkData['moveTask']>((id, input) => (
-    reported(async () => (await overlayAppClient.work.move(id, input)).item, 'Could not move the task.')
-  ), [])
+    reported(() => commands.move({ id, ...input }), 'Could not move the task.')
+  ), [commands])
 
+  const userId = user?.id
   const viewer = useMemo<WorkViewer | null>(
-    () => (user?.id && context ? { userId: user.id, principalId: context.principalId } : null),
-    [context, user?.id],
+    () => (userId && context ? { userId, principalId: context.principalId } : null),
+    [context, userId],
   )
   const people = useMemo(() => context?.people ?? [], [context])
   const personByPrincipal = useMemo(() => new Map(people.map((person) => [person.principalId, person])), [people])
