@@ -15,9 +15,8 @@ none is implemented by the harness.
 CN-06 browser lifecycle reads use the public, viewer/workspace/conversation-
 scoped `chat/personal:getExecution` projection. The browser does not replace
 agent admission, billing, approval/input authority or streaming with a local
-run cache. Exact server-owned list, transcript and execution readiness markers
-gate native ownership; an unavailable native query stays unavailable rather
-than falling back to HTTP after the gate succeeds.
+run cache. Native ownership is unconditional; an unavailable native query stays
+unavailable rather than falling back to HTTP.
 
 Use the isolated current-head PR Preview. Follow [Preview QA](./worktree-staging-qa.md)
 to verify the READY deployment SHA and its exact PR-scoped Convex backend before

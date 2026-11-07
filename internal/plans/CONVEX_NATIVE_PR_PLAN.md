@@ -56,11 +56,12 @@ Do not leave all cleanup to the final three PRs. Those remove shared remnants th
 
 ### Every domain finishes by contracting
 
-These rules take precedence over any earlier scheduling or compatibility text in this plan:
+These rules take precedence over any earlier scheduling or compatibility text in this plan, including its compatibility windows, rollout flags and readiness gates:
 
-- A domain moves through expand, cut over, contract. It is not complete until the contract step has merged. Merged additive code counts as in progress, not done.
-- Delete the old path right after the bounded rollback window, in the domain's own follow-up PR. Do not start the next surface until that PR has merged, unless the old path has a named blocker.
-- Every retained old path names its consumer and the card that removes it. "Rollback" alone is not a permanent reason.
+- The product has effectively no users, and Convex is the only supported backend for cloud and self-hosted deployments. Optimize for performance and reduced complexity, not backward compatibility.
+- A surface's change replaces its old path in the same PR. Do not add flags, readiness gates, rollback windows or fallbacks for setups nobody runs. A regression that can be fixed forward is acceptable; a security, tenant-isolation or billing failure is not.
+- Do not start the next surface until the old path is deleted, unless it has a named blocker.
+- Every retained old path names a current consumer and the card that removes it. "Rollback" is not a reason.
 - A finished domain should remove more production code than it added. Tests and domain authorization moved out of Next.js may be larger than what they replace; report production, test and docs lines separately, and explain any finished domain that stays net-positive in production code.
 - Work on one surface at a time, with one implementer. Do not run parallel domain branches or combine several cards in one PR.
 - Green CI is not acceptance. A surface is accepted only after current-head testing with two independent clients, its failure paths, and the permission cases its card names.
