@@ -281,9 +281,15 @@ test('Phase 2: queued assignment follow-ups retain each requester and resume onl
   })
   const turn = await data.convex.mutation(mutation('collaboration/directMessages:startAgentTurn'), { serverSecret: secret,
     actorUserId: 'bob', workspaceId: 'workspace', conversationId: first.conversationId, agentId: 'target',
-    authorPrincipalId: 'target-principal', initiatorPrincipalId: 'bob', userMessageId: second,
+    authorPrincipalId: 'target-principal', userMessageId: second,
     turnId: 'follow-up-target', clientNonce: 'follow-up-target', modelId: 'openrouter/free', executionEngine: 'overlay_harness' })
   const acquire = mutation('collaboration/nativeTurnQueue:acquire')
+  await data.convex.run(async ctx => {
+    const queued = await ctx.db.query('agentConversationTurnQueue')
+      .withIndex('by_deliveryAgentRunId', q => q.eq('deliveryAgentRunId', turn.runId)).unique()
+    expect(queued?.initiatorPrincipalId).toBe('bob')
+    expect((await ctx.db.get(turn.runId))?.initiatorPrincipalId).toBeUndefined()
+  })
   expect(await data.convex.mutation(acquire, { serverSecret: secret, actorUserId: 'alice', deliveryAgentRunId: first.turn.runId })).toBe(true)
   expect(await data.convex.mutation(acquire, { serverSecret: secret, actorUserId: 'bob', deliveryAgentRunId: turn.runId })).toBe(false)
   await childState(data, first, 'completed', false)
@@ -296,6 +302,101 @@ test('Phase 2: queued assignment follow-ups retain each requester and resume onl
     const rows = await ctx.db.query('agentConversationTurnQueue').collect()
     expect(rows.map(row => [row.requesterUserId, row.state])).toEqual([['alice', 'settled'], ['bob', 'claimed']])
   })
+})
+
+test('Phase 2: supplied queue principals remain bound to the delivery identity', async () => {
+  const data = await fixture()
+  const first = await dispatched(data)
+  const messageId = await data.convex.run(async ctx => {
+    await ctx.db.insert('conversationParticipants', { conversationId: first.conversationId, workspaceId: 'workspace',
+      principalId: 'bob', principalType: 'human', role: 'member', status: 'active', notificationLevel: 'all', joinedAt: Date.now(), updatedAt: Date.now() })
+    return await ctx.db.insert('conversationMessages', { conversationId: first.conversationId, userId: 'bob', turnId: 'principal-mismatch',
+      role: 'user', authorKind: 'human', authorPrincipalId: 'bob', mode: 'act', content: 'Another request', contentType: 'text', createdAt: Date.now() })
+  })
+  const turn = await data.convex.mutation(mutation('collaboration/directMessages:startAgentTurn'), { serverSecret: secret,
+    actorUserId: 'bob', workspaceId: 'workspace', conversationId: first.conversationId, agentId: 'target',
+    authorPrincipalId: 'target-principal', initiatorPrincipalId: 'supplied-principal', userMessageId: messageId,
+    turnId: 'principal-mismatch-target', clientNonce: 'principal-mismatch-target', modelId: 'openrouter/free', executionEngine: 'overlay_harness' })
+  await data.convex.run(async ctx => {
+    const queued = await ctx.db.query('agentConversationTurnQueue')
+      .withIndex('by_deliveryAgentRunId', q => q.eq('deliveryAgentRunId', turn.runId)).unique()
+    expect(queued?.initiatorPrincipalId).toBe('supplied-principal')
+    await ctx.db.patch(turn.runId, { initiatorPrincipalId: 'different-principal' })
+  })
+  await expect(data.convex.mutation(mutation('collaboration/nativeTurnQueue:acquire'), {
+    serverSecret: secret, actorUserId: 'bob', deliveryAgentRunId: turn.runId,
+  })).rejects.toThrow('NATIVE_TURN_IDENTITY_CHANGED')
+})
+
+test('personal no-workspace native turns bypass the queue only for their owner', async () => {
+  const convex = convexTest(schema, modules)
+  const deliveries = await convex.run(async ctx => {
+    const now = Date.now()
+    const conversationId = await ctx.db.insert('conversations', {
+      userId: 'alice', conversationType: 'personal', title: 'Personal chat', lastModified: now,
+      createdAt: now, lastMode: 'act', askModelIds: [], actModelId: 'openrouter/free',
+    })
+    const addDelivery = async (userId: string) => {
+      const turnId = `personal-${userId}`
+      const userMessageId = await ctx.db.insert('conversationMessages', {
+        conversationId, userId, turnId, role: 'user', mode: 'act', content: 'Continue', contentType: 'text', createdAt: now,
+      })
+      const assistantMessageId = await ctx.db.insert('conversationMessages', {
+        conversationId, userId, turnId, role: 'assistant', mode: 'act', content: '', contentType: 'text', createdAt: now,
+      })
+      return await ctx.db.insert('conversationAgentRuns', {
+        conversationId, turnId, userId, userMessageId, assistantMessageId,
+        mode: 'chat', runner: 'workflow', executionEngine: 'overlay_harness', agentId: 'personal',
+        status: 'queued', createdAt: now, updatedAt: now,
+      })
+    }
+    return { conversationId, ownerDeliveryId: await addDelivery('alice'), otherDeliveryId: await addDelivery('bob') }
+  })
+  const acquire = mutation('collaboration/nativeTurnQueue:acquire')
+  expect(await convex.mutation(acquire, {
+    serverSecret: secret, actorUserId: 'alice', deliveryAgentRunId: deliveries.ownerDeliveryId,
+  })).toBe(true)
+  await expect(convex.mutation(acquire, {
+    serverSecret: secret, actorUserId: 'bob', deliveryAgentRunId: deliveries.otherDeliveryId,
+  })).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+  await convex.run(async ctx => {
+    const queue = await ctx.db.query('agentConversationTurnQueue').collect()
+    expect(queue.filter(row => row.conversationId === deliveries.conversationId)).toEqual([])
+  })
+})
+
+test('Phase 2: a failed superseded child can settle after revision before parent completion', async () => {
+  const data = await fixture()
+  await applyOperation(data, data.parentRunId, 'owner', { type: 'claim_execution', workflowRunId: 'coordinator' })
+  const failed = await dispatched(data)
+  await childState(data, failed, 'failed', true, 'The first attempt failed.')
+  const revised = await dispatched(data, args(data, {
+    assignmentId: failed.assignmentId,
+    revisionOfAssignmentId: failed.assignmentId,
+    expectedAttemptId: failed.attemptId,
+    toolCallId: 'revision',
+  }))
+  await childState(data, revised, 'completed', true, 'The revised attempt succeeded.')
+  await applyOperation(data, data.parentRunId, 'settle-revised-child', {
+    type: 'settle_child', childRunId: revised.childRunId,
+  })
+  await resolution(data, revised, 'accept')
+  await expect(applyOperation(data, data.parentRunId, 'premature-finish', {
+    type: 'finish', resultSummary: 'The revised attempt succeeded.',
+  })).rejects.toThrow('Milestone ask:call-1 is unfinished')
+  await applyOperation(data, data.parentRunId, 'settle-superseded-failed-child', {
+    type: 'settle_child', childRunId: failed.childRunId,
+  })
+  const parent = await data.convex.query(query('harness/runs:get'), {
+    actorUserId: 'alice', runId: data.parentRunId, serverSecret: secret,
+  })
+  expect(parent?.children.find(child => child.id === failed.childRunId)?.status).toBe('failed')
+  expect(parent?.plan.find(step => step.id === 'ask:call-1')?.status).toBe('skipped')
+  expect(await data.convex.query(readResult, { ...resultActor, childRunId: failed.childRunId }))
+    .toMatchObject({ runStatus: 'failed', terminal: true })
+  expect(await applyOperation(data, data.parentRunId, 'finish-after-revision', {
+    type: 'finish', resultSummary: 'The revised attempt succeeded.',
+  })).toMatchObject({ snapshot: { status: 'completed' } })
 })
 
 test('Phase 2: an interrupted assignment transfers its winner through the existing continuation outbox', async () => {

@@ -38,7 +38,10 @@ async function isPublished(ctx: Pick<MutationCtx, 'db'>, row: Doc<'agentConversa
 export async function acquireNativeTurn(ctx: Pick<MutationCtx, 'db'>, delivery: Doc<'conversationAgentRuns'>, serverSecret: string, memoryEnabled?: boolean) {
   const item = await enqueueNativeTurn(ctx, delivery)
   if (!item) return true
-  if (item.requesterUserId !== delivery.userId || item.agentId !== delivery.agentId || item.initiatorPrincipalId !== delivery.initiatorPrincipalId) throw new Error('NATIVE_TURN_IDENTITY_CHANGED')
+  if (item.requesterUserId !== delivery.userId || item.agentId !== delivery.agentId
+    || item.initiatorPrincipalId !== (delivery.initiatorPrincipalId ?? delivery.userId)) {
+    throw new Error('NATIVE_TURN_IDENTITY_CHANGED')
+  }
   if (terminal(delivery.status) || item.state === 'settled' || item.state === 'cancelled') return false
   if (item.memoryEnabled === undefined && memoryEnabled !== undefined) await ctx.db.patch(item._id, { memoryEnabled })
   const owners = await ctx.db.query('agentConversationTurnQueue').withIndex('by_conversationId_state', q =>
@@ -84,7 +87,15 @@ export const acquire = mutation({
     const delivery = await ctx.db.get(args.deliveryAgentRunId)
     if (!delivery || delivery.userId !== args.actorUserId) throw new Error('CONVERSATION_ACCESS_DENIED')
     const conversation = await ctx.db.get(delivery.conversationId)
-    if (!conversation?.workspaceId) throw new Error('CONVERSATION_ACCESS_DENIED')
+    if (!conversation || conversation.deletedAt !== undefined) throw new Error('CONVERSATION_ACCESS_DENIED')
+    if (conversation.workspaceId === undefined) {
+      if ((conversation.conversationType ?? 'personal') !== 'personal' || delivery.mode === 'room'
+        || conversation.userId !== args.actorUserId) {
+        throw new Error('CONVERSATION_ACCESS_DENIED')
+      }
+      return true
+    }
+    if (!conversation.workspaceId) throw new Error('CONVERSATION_ACCESS_DENIED')
     await requireConversationAccess(ctx, { ...args, conversationId: delivery.conversationId, workspaceId: conversation.workspaceId })
     return await acquireNativeTurn(ctx, delivery, args.serverSecret, args.memoryEnabled)
   },
