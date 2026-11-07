@@ -4,7 +4,7 @@ import { appendDictatedText } from '@/components/desktop/composer-dictation'
 
 import { RemoteRunLiveness } from './collaboration/RemoteRunLiveness'
 import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react'
-import type { useRouter } from 'next/navigation'
+import { useSearchParams, type useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import {
   Archive,
@@ -23,18 +23,12 @@ import { agentThreadHref } from '@/components/layout/sidebar-nav'
 import { AgentCreature } from '@/components/orb/Creature'
 import { AttachmentPreviewDialog } from '@overlay/chat-react'
 import type { AttachmentPreview } from '@overlay/chat-react'
-import type {
-  ConversationParticipant,
-  ConversationPresence,
-} from '@overlay/workspace-contracts'
+import type { ConversationParticipant } from '@overlay/workspace-contracts'
 import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-types'
 import type { CapabilityCheck } from '@overlay/app-core'
-import { useQuery } from '@/components/providers/convex-hooks'
-import { api } from '../../../../convex/_generated/api'
-import type { Id } from '../../../../convex/_generated/dataModel'
 import { ChatComposer } from './ChatComposer'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
-import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
+import { ConvexRoomMessageSubscription, type RoomPaging, type RoomSummary } from './collaboration/ConvexRoomMessageSubscription'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
@@ -104,72 +98,33 @@ export function AttachmentViewer({
   )
 }
 
-export function ConvexPresenceSubscription({
-  accessToken,
-  actorUserId,
-  conversationId,
-  onPresence,
-  workspaceId,
-}: {
-  accessToken: string
-  actorUserId: string
-  conversationId: string
-  onPresence: (presence: ConversationPresence[]) => void
-  workspaceId: string
-}) {
-  const result = useQuery(
-    api.collaboration.directMessages.watchPresence,
-    {
-      accessToken,
-      actorUserId,
-      conversationId: conversationId as Id<'conversations'>,
-      workspaceId,
-    },
-  ) as { ok: boolean; presence: ConversationPresence[] } | undefined
-
-  useEffect(() => {
-    if (result?.ok && Array.isArray(result.presence)) onPresence(result.presence)
-  }, [onPresence, result])
-
-  return null
-}
-
 export function RoomRealtimeSubscriptions({
-  enabled,
-  accessToken,
-  actorUserId,
   conversationId,
   threadRootId,
   workspaceId,
   onMessages,
-  onPresence,
+  onRoom,
+  onPaging,
 }: {
-  enabled: boolean
-  accessToken: string | null | undefined
-  actorUserId: string | undefined
   conversationId: string
   threadRootId: string | null
   workspaceId: string | null | undefined
   onMessages: (messages: RoomMessageRecord[]) => void
-  onPresence: (presence: ConversationPresence[]) => void
+  onRoom: (room: RoomSummary | null | undefined) => void
+  onPaging: (paging: RoomPaging) => void
 }) {
-  if (!enabled || !actorUserId || !accessToken || !workspaceId) return null
+  const permalinkMessageId = useSearchParams()?.get('message')?.trim() || null
+  if (!workspaceId) return null
   return (
     <>
       <ConvexRoomMessageSubscription
-        accessToken={accessToken}
-        actorUserId={actorUserId}
         conversationId={conversationId}
         threadRootMessageId={threadRootId}
+        permalinkMessageId={permalinkMessageId}
         workspaceId={workspaceId}
         onMessages={onMessages}
-      />
-      <ConvexPresenceSubscription
-        accessToken={accessToken}
-        actorUserId={actorUserId}
-        conversationId={conversationId}
-        onPresence={onPresence}
-        workspaceId={workspaceId}
+        onRoom={onRoom}
+        onPaging={onPaging}
       />
     </>
   )

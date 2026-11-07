@@ -1,11 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import { Bell, Loader2 } from 'lucide-react'
 import { SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from '@overlay/ui/primitives'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
 import { conversationActivityLabel } from '@/shared/chat/conversation-activity-state'
 import { mergeHrefSearchParams, readWorkspaceIdFromPath } from '@/shared/workspaces/routing'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
@@ -31,7 +29,7 @@ function PanelState({ icon, message }: { icon: React.ReactNode; message: string 
 
 type ActivityNotification = Pick<
   WorkspaceNotification,
-  'id' | 'title' | 'body' | 'createdAt' | 'readAt' | 'conversationId' | 'messageId' | 'conversationState'
+  'id' | 'title' | 'body' | 'createdAt' | 'readAt' | 'conversationId' | 'messageId' | 'conversationType' | 'conversationState'
 >
 
 function viewForConversationType(conversationType?: string): 'personal' | 'dms' | 'channels' {
@@ -44,33 +42,16 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
   const router = useRouter()
   const pathname = usePathname() ?? ''
   const buildWorkspaceHref = useWorkspaceHref()
-  const { notifications, notificationsReady } = useCollaborationRealtime()
-  const [locallyRead, setLocallyRead] = useState<Map<string, number>>(() => new Map())
-  const items: ActivityNotification[] = notifications.slice(0, 50).map((item) => (
-    locallyRead.has(item.id) ? { ...item, readAt: item.readAt ?? locallyRead.get(item.id) } : item
-  ))
+  const { notifications, notificationsReady, markNotificationsRead } = useCollaborationRealtime()
+  const items: ActivityNotification[] = useMemo(() => notifications.slice(0, 50), [notifications])
 
-  // Mark all notifications as read when the inline Activity panel opens.
-  // This is intentionally a side effect of opening the panel, not a user action.
+  // Opening the panel marks what it shows as read; later arrivals stay unread until seen.
+  const shownUnreadIds = useMemo(() => items.filter((item) => !item.readAt).map(({ id }) => id), [items])
   useEffect(() => {
-    const unreadIds = notifications
-      .filter((notification) => !notification.readAt)
-      .map(({ id }) => id)
-    if (unreadIds.length === 0) return
-    // Optimistically mark read in the local state so the badge drops immediately.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLocallyRead((current) => {
-      const next = new Map(current)
-      const readAt = Date.now()
-      for (const id of unreadIds) next.set(id, readAt)
-      return next
-    })
-    void overlayAppClient.conversations.markNotificationsRead(unreadIds)
-      .then(() => dispatchCollaborationNotificationsChanged())
-      .catch(() => undefined)
-  }, [notifications])
+    markNotificationsRead(shownUnreadIds)
+  }, [markNotificationsRead, shownUnreadIds])
 
-  async function openNotification(item: ActivityNotification) {
+  function openNotification(item: ActivityNotification) {
     onNavigate?.()
     if (!item.conversationId) return
     if (item.conversationState === 'archived') {
@@ -81,21 +62,8 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
       router.push(`${archivedBase}?id=${encodeURIComponent(item.conversationId)}`)
       return
     }
-    if (!item.readAt) {
-      void overlayAppClient.conversations.markNotificationsRead([item.id])
-        .then(() => dispatchCollaborationNotificationsChanged())
-        .catch(() => undefined)
-      setLocallyRead((current) => new Map(current).set(item.id, Date.now()))
-    }
-    let view: 'personal' | 'dms' | 'channels' = 'personal'
-    try {
-      const conversation = await overlayAppClient.conversations.get<{
-        conversationType?: 'personal' | 'dm' | 'channel'
-      }>({ conversationId: item.conversationId }).catch(() => null)
-      view = viewForConversationType(conversation?.conversationType)
-    } catch {
-      // Fall back to personal so we still route somewhere usable.
-    }
+    if (!item.readAt) markNotificationsRead([item.id])
+    const view = viewForConversationType(item.conversationType)
     const query = new URLSearchParams({ view, id: item.conversationId })
     if (item.messageId) query.set('message', item.messageId)
     const chatBase = buildWorkspaceHref(
@@ -117,7 +85,7 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
     <SidebarMenuSub className="ml-0 border-l-0 pl-0">
       {items.map((item) => (
         <SidebarMenuSubItem key={item.id}>
-          <SidebarMenuSubButton className="h-8 gap-2.5 text-sm" onClick={() => void openNotification(item)}>
+          <SidebarMenuSubButton className="h-8 gap-2.5 text-sm" onClick={() => openNotification(item)}>
             <Bell aria-hidden />
             <span className="min-w-0 flex-1 truncate">
               {item.title?.trim() || 'Notification'}

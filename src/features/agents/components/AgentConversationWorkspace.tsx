@@ -38,7 +38,9 @@ import { usePanelScope } from '@/hooks/use-panel-scope'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { AgentDirectoryScreen, AgentEditorPanel } from './AgentConversationWorkspace.parts'
-import { subscribeAgentDirectory, type AgentDirectoryState } from '../lib/agent-directory'
+import { useAgentDirectory } from '@/hooks/use-agent-directory'
+import { useMutation } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import { openAgentComputerControl } from '../lib/agent-computer-control'
 
 type EditorMode = 'new' | 'edit' | null
@@ -74,6 +76,7 @@ function useAgentWorkspaceActions(args: {
   onRetry(): void
 }) {
   const { activeWorkspaceId, buildHref, agentId, router, onEditorModeChange, onError, onRetry } = args
+  const resolveMainThread = useMutation(api.agents.threads.resolveMain)
 
   const openCreatedAgent = useCallback(
     (agent: WorkspaceAgentDirectoryItem) => {
@@ -89,6 +92,7 @@ function useAgentWorkspaceActions(args: {
             surface: 'agents',
             scope: 'personal',
             buildHref,
+            resolveMainThread,
             push: (href) => router.push(href),
           })
           if (conversationId && activeWorkspaceId && !agent.instructions.trim()) {
@@ -99,7 +103,7 @@ function useAgentWorkspaceActions(args: {
         }
       })()
     },
-    [activeWorkspaceId, buildHref, router, onEditorModeChange, onError],
+    [activeWorkspaceId, buildHref, resolveMainThread, router, onEditorModeChange, onError],
   )
 
   const handleArchived = useCallback(() => {
@@ -116,28 +120,19 @@ function useAgentWorkspaceActions(args: {
   return { openCreatedAgent, handleArchived, retryOpen }
 }
 
-function useAgentDirectory(
+function useWorkspaceAgentDirectory(
   activeWorkspaceId: string | null,
 ): { directory: WorkspaceAgentDirectoryItem[] | null; viewerPrincipalId: string | null; loadError: string | null; refreshing: boolean } {
-  const [state, setState] = useState<AgentDirectoryState & { refreshing: boolean }>({
-    workspaceId: null,
-    agents: null,
-    viewerPrincipalId: null,
-    error: null,
-    refreshing: false,
-  })
-  useEffect(() => {
-    if (!activeWorkspaceId) return
-    return subscribeAgentDirectory(activeWorkspaceId, (next) => {
-      setState((current) => next.agents === null && current.workspaceId === next.workspaceId
-        ? { ...current, error: null, refreshing: true }
-        : { ...next, refreshing: next.agents === null })
-    }, window)
-  }, [activeWorkspaceId])
-  if (state.workspaceId !== activeWorkspaceId) {
+  const live = useAgentDirectory()
+  if (live.workspaceId !== activeWorkspaceId || live.status === 'loading') {
     return { directory: null, viewerPrincipalId: null, loadError: null, refreshing: true }
   }
-  return { directory: state.agents, viewerPrincipalId: state.viewerPrincipalId, loadError: state.error, refreshing: state.refreshing }
+  return {
+    directory: live.agents,
+    viewerPrincipalId: live.viewerPrincipalId,
+    loadError: live.status === 'unavailable' ? 'Could not load your agents. Check your connection and retry.' : null,
+    refreshing: false,
+  }
 }
 
 /** Opens the picked agent's conversation. Own budget, kept out of the component. */
@@ -159,6 +154,7 @@ function useAgentAutoOpen(args: {
     onResolvingChange, onError,
   } = args
   const attemptedAgentRef = useRef<string | null>(null)
+  const resolveMainThread = useMutation(api.agents.threads.resolveMain)
 
   useEffect(() => {
     attemptedAgentRef.current = null
@@ -184,6 +180,7 @@ function useAgentAutoOpen(args: {
           surface: 'agents',
           scope,
           buildHref,
+          resolveMainThread,
           push: (href) => { if (!cancelled) router.replace(href) },
         })
       } catch (chatError) {
@@ -193,7 +190,7 @@ function useAgentAutoOpen(args: {
       }
     })()
     return () => { cancelled = true; attemptedAgentRef.current = null; onResolvingChange(false) }
-  }, [conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, router, onResolvingChange, onError])
+  }, [conversationId, activeWorkspaceId, agentId, directory, viewerPrincipalId, scope, buildHref, retryCount, resolveMainThread, router, onResolvingChange, onError])
 }
 
 function requestedAgentScope(
@@ -341,9 +338,9 @@ function AgentConversationWorkspaceContent() {
   // agent directly. The blank page only ever appears when the workspace
   // genuinely has no agents. The sidebar no longer auto-opens, so exactly
   // one DM creation runs per landing.
-  const { directory, viewerPrincipalId, loadError, refreshing: directoryRefreshing } = useAgentDirectory(activeWorkspaceId)
+  const { directory, viewerPrincipalId, loadError, refreshing: directoryRefreshing } = useWorkspaceAgentDirectory(activeWorkspaceId)
   const threadScope = useAgentThreadScope({
-    workspaceId: activeWorkspaceId, agentId, conversationId, directory, retryCount,
+    workspaceId: activeWorkspaceId, agentId, conversationId, directory,
   })
   const scope = usePanelScope()
   const requestedAgent = directory?.find((agent) => agent.id === agentId) ?? null

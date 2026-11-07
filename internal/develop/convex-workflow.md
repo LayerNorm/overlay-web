@@ -902,9 +902,11 @@ with the same token, and fail on browser runtime or authentication errors.
 
 Collaboration realtime is native Convex when `appDataCapabilities.provider === 'convex'`:
 
-- `watchRoomMessages` owns room transcript updates.
-- `watchConversationListVersion` provides a metadata-free invalidation signal for the sidebar.
-- `watchNotifications` is the single app-level notification subscription.
+- `collaboration/rooms:messages` and `:state` own room transcripts, metadata and presence.
+- `collaboration/activity:listVersion` provides a metadata-free invalidation signal for the DM and channel lists.
+- `collaboration/activity:notifications` is the single app-level notification subscription.
+
+All of these use native Convex identity, not a browser-held access token.
 
 Do not run `/api/v1/conversations/events` long-polls alongside those subscriptions. That endpoint is a non-realtime fallback; polling it against the Convex repository multiplies one browser connection into repeated Convex queries and authorization calls.
 

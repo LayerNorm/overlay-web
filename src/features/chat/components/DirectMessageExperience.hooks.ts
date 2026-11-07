@@ -1,5 +1,13 @@
 'use client'
 
+import { useAgentDirectory as useLiveAgentDirectory } from '@/hooks/use-agent-directory'
+import { useConvex, useMutation } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import type { RoomPaging, RoomSummary } from './collaboration/ConvexRoomMessageSubscription'
+import { useRoomState, type RoomStateApi } from './collaboration/useRoomState'
+import { useRoomCompatibility } from './collaboration/useRoomCompatibility'
 import {
   useCallback,
   useEffect,
@@ -44,7 +52,6 @@ import {
 } from '@/shared/chat/chat-title'
 import { announceArchived } from '@/shared/app/archive-toast'
 import {
-  AGENT_DIRECTORY_CHANGED_EVENT,
   AGENT_DRAFT_PREVIEW_EVENT,
   type AgentDraftPreviewEventDetail,
 } from '@/shared/workspace/sidebar-events'
@@ -92,22 +99,17 @@ export type RoomSendResult = {
 const PENDING_AGENT_REPLY_PREFIX = 'optimistic_pending_reply_'
 const PENDING_AGENT_REPLY_SORT_LEAD_MS = 30_000
 
-function requireArray<T>(value: T[] | undefined, label: string): T[] {
-  if (!Array.isArray(value)) throw new Error(`${label} returned an invalid response`)
-  return value
-}
-
 export function useThreadPanel({
+  room,
   conversationId,
 
   setRoomPanel,
 }: {
   conversationId: string
-
+  room: RoomStateApi
   setRoomPanel: Dispatch<SetStateAction<RoomPanelKind | null>>
 }) {
   const [threadRootId, setThreadRootId] = useState<string | null>(null)
-  const [threadFollowing, setThreadFollowing] = useState(false)
   const [threadInput, setThreadInputState] = useState('')
   const threadInputRef = useRef(threadInput)
   const threadInputVersionRef = useRef(0)
@@ -143,32 +145,14 @@ export function useThreadPanel({
         && threadInputVersionRef.current === submitted.clearedVersion) setThreadInput(text)
   }, [conversationId, setThreadInput])
 
-  useEffect(() => {
-    if (!threadRootId) {
-      queueMicrotask(() => setThreadFollowing(false))
-      return
-    }
-    let cancelled = false
-    void overlayAppClient.conversations.threadFollow(conversationId, threadRootId)
-      .then((result) => {
-        if (!cancelled) setThreadFollowing(result.following)
-      })
-      .catch(() => {
-        if (!cancelled) setThreadFollowing(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [conversationId,  threadRootId])
-
+  const threadFollowing = Boolean(threadRootId
+    && room.state?.follows.some((follow) => follow.threadRootMessageId === threadRootId))
+  const { args: roomArgs, setThreadFollow } = room
   const toggleThreadFollow = useCallback(() => {
-    if (!threadRootId) return
-    const next = !threadFollowing
-    setThreadFollowing(next)
-    void overlayAppClient.conversations.setThreadFollow(conversationId, threadRootId, next)
-      .then((result) => setThreadFollowing(result.followed))
-      .catch(() => setThreadFollowing(!next))
-  }, [conversationId,  threadFollowing, threadRootId])
+    if (!threadRootId || !roomArgs) return
+    void setThreadFollow({ ...roomArgs, threadRootMessageId: threadRootId as Id<'conversationMessages'>, followed: !threadFollowing })
+      .catch(() => toast.error('Could not update thread notifications.'))
+  }, [roomArgs, setThreadFollow, threadFollowing, threadRootId])
 
   const openThread = useCallback((messageId: string) => {
     setThreadRootId(messageId)
@@ -189,30 +173,22 @@ export function useThreadPanel({
 
 export function useReadMarkers({
   conversationId,
-
-  refreshNotifications,
+  room,
+  markConversationRead,
 }: {
   conversationId: string
-
-  refreshNotifications: () => void
+  room: RoomStateApi
+  markConversationRead: (conversationId: string) => void
 }) {
+  const { args: roomArgs, updateMyState } = room
   const [unreadBoundarySequence, setUnreadBoundarySequence] = useState<number | null>(null)
   const [newMessageCount, setNewMessageCount] = useState(0)
   const unreadBoundaryInitializedRef = useRef(false)
   const readMarkInFlightRef = useRef(false)
 
-  const clearCollaborationNotifications = useCallback(async () => {
-
-    try {
-      await overlayAppClient.conversations.markConversationNotificationsRead(conversationId)
-      refreshNotifications()
-    } catch {
-      // Badge clear is best-effort; the room transcript still works.
-    }
-    window.dispatchEvent(new CustomEvent('overlay:collaboration-read', {
-      detail: { conversationId },
-    }))
-  }, [conversationId, refreshNotifications, ])
+  const clearCollaborationNotifications = useCallback(() => {
+    markConversationRead(conversationId)
+  }, [conversationId, markConversationRead])
 
   const markVisibleRead = useCallback(async () => {
     if (document.visibilityState !== 'visible') return
@@ -222,14 +198,15 @@ export function useReadMarkers({
       // Opening a room should clear unread immediately (Slack-style). Do not
       // wait for the transcript to settle at the bottom — that race left
       // badges stuck after the user switched into a DM or channel.
-      await overlayAppClient.conversations.updateParticipantState(conversationId, { markRead: true })
+      if (!roomArgs) return
+      await updateMyState({ ...roomArgs, markRead: true })
       setUnreadBoundarySequence(null)
       setNewMessageCount(0)
-      await clearCollaborationNotifications()
+      clearCollaborationNotifications()
     } finally {
       readMarkInFlightRef.current = false
     }
-  }, [clearCollaborationNotifications, conversationId, ])
+  }, [clearCollaborationNotifications, roomArgs, updateMyState])
 
   const noteParticipantsLoaded = useCallback((
     nextParticipants: ConversationParticipant[],
@@ -251,119 +228,45 @@ export function useReadMarkers({
   }
 }
 
+const NO_PARTICIPANTS: ConversationParticipant[] = []
+const NO_PRESENCE: ConversationPresence[] = []
+
+/** The live roster. A removed participant reads null state, which closes the room for them. */
 export function useRoomRoster({
-  conversationId,
-
-
+  room,
   noteParticipantsLoaded,
 }: {
-  conversationId: string
-
-
+  room: RoomStateApi
   noteParticipantsLoaded: (participants: ConversationParticipant[], principalId: string) => void
 }) {
-  const [participants, setParticipants] = useState<ConversationParticipant[]>(
-    [],
-  )
-  const [currentPrincipalId, setCurrentPrincipalId] = useState(
-    '',
-  )
-  const [presence, setPresence] = useState<ConversationPresence[]>(
-    [],
-  )
-  const participantsRequest = useRef(0)
-  const applyConvexPresence = useCallback((next: ConversationPresence[]) => {
-    setPresence(next)
-  }, [])
-
-  const loadParticipants = useCallback(async () => {
-    const requestId = ++participantsRequest.current
-    const result = await overlayAppClient.conversations.participants(conversationId)
-    if (requestId !== participantsRequest.current) return
-    const nextParticipants = requireArray(result.participants, 'Conversation participants')
-    if (typeof result.currentPrincipalId !== 'string' || !result.currentPrincipalId) {
-      throw new Error('Conversation participants returned an invalid principal')
-    }
-    setParticipants(nextParticipants)
-    setCurrentPrincipalId(result.currentPrincipalId)
-    noteParticipantsLoaded(nextParticipants, result.currentPrincipalId)
-  }, [conversationId, noteParticipantsLoaded])
-
+  const state = room.state
+  const participants = (state?.participants as ConversationParticipant[] | undefined) ?? NO_PARTICIPANTS
+  const currentPrincipalId = state?.currentPrincipalId ?? ''
+  const presence = (state?.presence as ConversationPresence[] | undefined) ?? NO_PRESENCE
   useEffect(() => {
-    const invalidate = () => { participantsRequest.current += 1 }
-    const reloadIdentity = (event: Event) => {
-      const workspaceId = (event as CustomEvent<{ workspaceId?: string }>).detail?.workspaceId
-      if (!workspaceId || participants.some((participant) => participant.workspaceId === workspaceId)) {
-        void loadParticipants()
-      }
-    }
-    window.addEventListener('overlay:identity-updated', reloadIdentity)
-    return () => {
-      window.removeEventListener('overlay:identity-updated', reloadIdentity)
-      invalidate()
-    }
-  }, [loadParticipants, participants])
-
-  const loadPresence = useCallback(async () => {
-    const result = await overlayAppClient.conversations.presence(conversationId)
-    setPresence(requireArray(result.presence, 'Conversation presence'))
-  }, [conversationId])
-
-  return {
-    participants,
-    currentPrincipalId,
-    presence,
-    applyConvexPresence,
-    loadParticipants,
-    loadPresence,
-  }
+    if (state) noteParticipantsLoaded(state.participants as ConversationParticipant[], state.currentPrincipalId)
+  }, [noteParticipantsLoaded, state])
+  return { participants, currentPrincipalId, presence, ready: state !== undefined }
 }
 
-export function useRoomCollaboration({
-  conversationId,
-  conversationType,
+const NO_REACTIONS: MessageReaction[] = []
+const NO_PINS: ConversationPin[] = []
+const NO_SAVED: ConversationSavedMessage[] = []
 
-}: {
-  conversationId: string
-  conversationType: 'dm' | 'channel'
-
-}) {
-  const [channel, setChannel] = useState<ChannelSummary | null>(null)
-  const [reactions, setReactions] = useState<MessageReaction[]>([])
-  const [pins, setPins] = useState<ConversationPin[]>([])
-  const [savedMessages, setSavedMessages] = useState<ConversationSavedMessage[]>([])
-
-  const loadCollaboration = useCallback(async () => {
-    const [reactionResult, pinResult, savedResult, channelResult] = await Promise.all([
-      overlayAppClient.conversations.reactions(conversationId),
-      overlayAppClient.conversations.pins(conversationId),
-      overlayAppClient.conversations.savedMessages(),
-      conversationType === 'channel' ? overlayAppClient.conversations.channels() : Promise.resolve({ channels: [] }),
-    ])
-    setReactions(requireArray(reactionResult.reactions, 'Conversation reactions'))
-    setPins(requireArray(pinResult.pins, 'Conversation pins'))
-    setSavedMessages(requireArray(savedResult.savedMessages, 'Saved messages'))
-    if (conversationType === 'channel') {
-      const channels = requireArray(channelResult.channels, 'Workspace channels')
-      setChannel(channels.find((item) => item.conversationId === conversationId) ?? null)
-    }
-  }, [conversationId, conversationType])
-
+/** Live channel facts, reactions, pins and saves for the room. */
+export function useRoomCollaboration({ room }: { room: RoomStateApi }) {
+  const state = room.state
   return {
-    channel,
-    reactions,
-    setReactions,
-    pins,
-    setPins,
-    savedMessages,
-    setSavedMessages,
-    loadCollaboration,
+    channel: (state?.channel as ChannelSummary | null | undefined) ?? null,
+    reactions: (state?.reactions as MessageReaction[] | undefined) ?? NO_REACTIONS,
+    pins: (state?.pins as ConversationPin[] | undefined) ?? NO_PINS,
+    savedMessages: (state?.saved as ConversationSavedMessage[] | undefined) ?? NO_SAVED,
   }
 }
 
 export function useRoomTranscript({
   conversationId,
-  threadRootId,
+  rosterReady,
 
 
   agentResponding,
@@ -371,7 +274,7 @@ export function useRoomTranscript({
   setNewMessageCount,
 }: {
   conversationId: string
-  threadRootId: string | null
+  rosterReady: boolean
 
 
   agentResponding: string | null
@@ -381,9 +284,15 @@ export function useRoomTranscript({
   const [messages, setMessages] = useState<OptimisticMessage[]>(
     [],
   )
-  const [loading, setLoading] = useState(true)
-  const [hasMoreMessages, setHasMoreMessages] = useState(false)
-  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
+  const [paging, setPaging] = useState<RoomPaging>({ hasMore: false, loadingMore: false, loadMore: () => undefined })
+  const hasMoreMessages = paging.hasMore
+  const loadingOlderMessages = paging.loadingMore
+  // undefined while the room is resolving, null when this member cannot read it.
+  const [room, setRoom] = useState<{ conversationId: string; summary: RoomSummary | null | undefined; transcriptReady: boolean }>(
+    { conversationId, summary: undefined, transcriptReady: false },
+  )
+  const currentRoom = room.conversationId === conversationId ? room : { summary: undefined, transcriptReady: false }
+  const loading = !rosterReady || (currentRoom.summary !== null && !currentRoom.transcriptReady)
   const [conversationTitle, setConversationTitle] = useState<string | null>(null)
   /** Platform a mirrored surface thread came from (Slack): the room is read-only. */
   const [surfacePlatform, setSurfacePlatform] = useState<string | null>(null)
@@ -401,8 +310,6 @@ export function useRoomTranscript({
   const generatingTextLength = generatingMessages
     .reduce((length, message) => length + message.content.length, 0)
 
-  const activeConversationRef = useRef(conversationId)
-  activeConversationRef.current = conversationId
   useEffect(() => {
     const handleTitleUpdated = (event: Event) => {
       const detail = (event as CustomEvent<ChatTitleUpdatedDetail>).detail
@@ -411,133 +318,33 @@ export function useRoomTranscript({
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleTitleUpdated)
     return () => window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleTitleUpdated)
   }, [conversationId])
-  const loadMessages = useCallback(async () => {
-    const permalinkMessageId = typeof window === 'undefined'
-      ? undefined
-      : new URLSearchParams(window.location.search).get('message')?.trim() || undefined
-    const result = await overlayAppClient.conversations.get<{
-      title?: string
-      conversationType?: 'personal' | 'dm' | 'channel'
-      externalPlatform?: string
-      messages: Array<{
-        id: string
-        authorKind: RoomMessageRecord['authorKind']
-        authorPrincipalId?: string
-        importedAuthorName?: string
-        importedAuthorEmail?: string
-        importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
-        content?: string
-        parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string; data?: Record<string, unknown> }>
-        createdAt: number
-        updatedAt?: number
-        eventSequence?: number
-        editedAt?: number
-        deletedAt?: number
-        clientNonce?: string
-        threadRootMessageId?: string
-        status?: 'generating' | 'completed' | 'error'
-      }>
-      hasMore?: boolean
-    }>({
-      conversationId,
-      messages: true,
-      limit: 100,
-      ...(permalinkMessageId ? { messageId: permalinkMessageId } : { mainOnly: true }),
-    })
-    const threadResult = threadRootId
-      ? await overlayAppClient.conversations.get<{
-          messages: Array<{
-            id: string
-            authorKind: RoomMessageRecord['authorKind']
-            authorPrincipalId?: string
-            importedAuthorName?: string
-            importedAuthorEmail?: string
-            importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
-            content?: string
-            parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string; data?: Record<string, unknown> }>
-            createdAt: number
-            updatedAt?: number
-            eventSequence?: number
-            editedAt?: number
-            deletedAt?: number
-            clientNonce?: string
-            threadRootMessageId?: string
-            status?: 'generating' | 'completed' | 'error'
-          }>
-        }>({ conversationId, messages: true, limit: 100, threadRootMessageId: threadRootId })
-      : null
-    if (activeConversationRef.current !== conversationId) return
-    const loadedTitle = result.title?.trim()
-    if (loadedTitle) {
-      setConversationTitle((current) => mergeChatTitle(current ?? 'New thread', loadedTitle))
-    }
-    setSurfacePlatform(result.externalPlatform ?? null)
-    setHasMoreMessages(result.hasMore === true)
-    const persisted = [...(result.messages ?? []), ...(threadResult?.messages ?? [])].map((message) => ({
-      ...message,
-      content: message.content
-        ?? message.parts?.find((part) => part.type === 'text')?.text
-        ?? '',
-      turnId: message.id,
-    }))
-    setMessages((current) => mergeRoomMessages(persisted, current))
-  }, [conversationId, threadRootId])
-
-  const loadOlderMessages = useCallback(async () => {
-    if (loadingOlderMessages || !hasMoreMessages) return
-    const earliest = messagesRef.current
-      .filter((message) => !message.threadRootMessageId)
-      .reduce<number | undefined>((value, message) => value === undefined ? message.createdAt : Math.min(value, message.createdAt), undefined)
-    if (earliest === undefined) return
+  const loadOlderMessages = useCallback(() => {
+    if (paging.loadingMore || !paging.hasMore) return
     const node = listRef.current
     if (node) {
       prependScrollRef.current = { height: node.scrollHeight, top: node.scrollTop }
       skipNextMessageGrowthRef.current = true
     }
-    setLoadingOlderMessages(true)
-    try {
-      const result = await overlayAppClient.conversations.get<{
-        messages: Array<{
-          id: string
-          authorKind: RoomMessageRecord['authorKind']
-          authorPrincipalId?: string
-          importedAuthorName?: string
-          importedAuthorEmail?: string
-          importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
-          content?: string
-          parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
-          createdAt: number
-          updatedAt?: number
-          eventSequence?: number
-          editedAt?: number
-          deletedAt?: number
-          clientNonce?: string
-          threadRootMessageId?: string
-          status?: 'generating' | 'completed' | 'error'
-        }>
-        hasMore?: boolean
-      }>({ conversationId, messages: true, limit: 100, beforeCreatedAt: earliest, mainOnly: true })
-      setHasMoreMessages(result.hasMore === true)
-      const older = (result.messages ?? []).map((message) => ({
-        ...message,
-        content: message.content
-          ?? message.parts?.find((part) => part.type === 'text')?.text
-          ?? '',
-        turnId: message.id,
-      }))
-      setMessages((current) => mergeRoomMessages(older, current))
-    } catch {
-      toast.error('Older messages could not be loaded.')
-      prependScrollRef.current = null
-      skipNextMessageGrowthRef.current = false
-    } finally {
-      setLoadingOlderMessages(false)
-    }
-  }, [conversationId, hasMoreMessages, loadingOlderMessages, ])
+    paging.loadMore()
+  }, [paging])
 
   const applyLiveRoomMessages = useCallback((liveMessages: RoomMessageRecord[]) => {
     setMessages((current) => mergeRoomMessages(liveMessages, current))
-  }, [])
+    setRoom((current) => current.conversationId === conversationId && current.transcriptReady
+      ? current
+      : { conversationId, summary: current.conversationId === conversationId ? current.summary : undefined, transcriptReady: true })
+  }, [conversationId])
+
+  const applyRoomSummary = useCallback((summary: RoomSummary | null | undefined) => {
+    setRoom((current) => ({
+      conversationId,
+      summary,
+      transcriptReady: current.conversationId === conversationId && current.transcriptReady,
+    }))
+    const loadedTitle = summary?.title?.trim()
+    if (loadedTitle) setConversationTitle((current) => mergeChatTitle(current ?? 'New thread', loadedTitle))
+    if (summary !== undefined) setSurfacePlatform(summary?.externalPlatform ?? null)
+  }, [conversationId])
 
   useEffect(() => {
     queueMicrotask(() => setConversationTitle(null))
@@ -603,7 +410,6 @@ export function useRoomTranscript({
     messages,
     setMessages,
     loading,
-    setLoading,
     hasMoreMessages,
     loadingOlderMessages,
     conversationTitle,
@@ -613,84 +419,45 @@ export function useRoomTranscript({
     messagesRef,
     stickToBottom,
     setStickToBottom,
-    loadMessages,
     loadOlderMessages,
     applyLiveRoomMessages,
+    applyRoomSummary,
+    setPaging,
     generatingMessages,
     generatingTextLength,
     handleTranscriptScroll,
   }
 }
 
-export function useRoomLifecycle({
-  conversationId,
-  convexRoomSubscriptionEnabled,
-
-  loadParticipants,
-  loadMessages,
-  loadCollaboration,
-  loadPresence,
-  setLoading,
-}: {
-  conversationId: string
-  convexRoomSubscriptionEnabled: boolean
-
-  loadParticipants: () => Promise<void>
-  loadMessages: () => Promise<void>
-  loadCollaboration: () => Promise<void>
-  loadPresence: () => Promise<void>
-  setLoading: Dispatch<SetStateAction<boolean>>
-}) {
+/** Native presence for this session: online while the room is open, typing on demand, offline on leave. */
+export function useRoomLifecycle({ room }: { room: RoomStateApi }) {
   const sessionIdRef = useRef<string | null>(null)
+  const { args, heartbeat } = room
+  const workspaceId = args?.workspaceId ?? null
+  const conversationId = args?.conversationId ?? null
 
   useEffect(() => {
-
-    let cancelled = false
-    // When Convex realtime presence subscription is active, skip the initial
-    // HTTP presence load — the subscription will deliver presence state.
-    const skipPresencePolling = convexRoomSubscriptionEnabled
-    const initialLoadTimer = window.setTimeout(() => {
-      // Presence, reactions, pins, and saved state enrich a room, but must not
-      // decide whether its critical transcript can open.
-      void Promise.allSettled([
-        skipPresencePolling ? Promise.resolve() : loadPresence(),
-        loadCollaboration(),
-      ])
-      void Promise.all([loadParticipants(), loadMessages()])
-        // A room can receive its transcript through the realtime transport
-        // while one of these initial BFF reads is transiently unavailable.
-        // Do not turn that recoverable race into a false access failure.
-        .catch(() => undefined)
-        .finally(() => {
-          if (!cancelled) setLoading(false)
-        })
-    }, 0)
+    if (!workspaceId || !conversationId) return
     const sessionId = sessionIdRef.current ?? crypto.randomUUID()
     sessionIdRef.current = sessionId
-    void overlayAppClient.conversations
-      .updatePresence(conversationId, { status: 'online', sessionId })
-      .catch(() => undefined)
-    // Only poll presence via HTTP when Convex subscription is unavailable.
-    const presenceTimer = skipPresencePolling
-      ? undefined
-      : window.setInterval(() => void loadPresence().catch(() => undefined), 15_000)
-    const heartbeatTimer = window.setInterval(() => {
-      void overlayAppClient.conversations
-        .updatePresence(conversationId, { status: 'online', sessionId })
-        .catch(() => undefined)
-    }, 45_000)
-    return () => {
-      cancelled = true
-      window.clearTimeout(initialLoadTimer)
-      if (presenceTimer !== undefined) window.clearInterval(presenceTimer)
-      window.clearInterval(heartbeatTimer)
-      void overlayAppClient.conversations
-        .updatePresence(conversationId, { status: 'offline', sessionId })
-        .catch(() => undefined)
+    const beat = (status: 'online' | 'offline') => {
+      void heartbeat({ workspaceId, conversationId, sessionId, status }).catch(() => undefined)
     }
-  }, [conversationId, convexRoomSubscriptionEnabled, loadCollaboration, loadMessages, loadParticipants, loadPresence, setLoading, ])
+    beat('online')
+    const heartbeatTimer = window.setInterval(() => beat('online'), 45_000)
+    return () => {
+      window.clearInterval(heartbeatTimer)
+      beat('offline')
+    }
+  }, [conversationId, heartbeat, workspaceId])
 
-  return sessionIdRef
+  const reportTyping = useCallback((typing: boolean) => {
+    const sessionId = sessionIdRef.current
+    if (!workspaceId || !conversationId || !sessionId) return
+    void heartbeat({ workspaceId, conversationId, sessionId, status: 'online', typing }).catch(() => undefined)
+  }, [conversationId, heartbeat, workspaceId])
+
+  return { reportTyping }
 }
 
 type AgentDirectoryEntry = {
@@ -703,25 +470,31 @@ type AgentDirectoryEntry = {
 
 export function useAgentDirectory({
   activeWorkspaceId,
-
-  conversationId,
-
 }: {
   activeWorkspaceId: string | null | undefined
-
   conversationId: string
-
 }) {
-  const [agentsByPrincipal, setAgentsByPrincipal] = useState<ReadonlyMap<string, AgentDirectoryEntry>>(new Map())
-  // Unsaved editor drafts overlay the fetched directory so the header renames
+  const live = useLiveAgentDirectory()
+  const agentsByPrincipal = useMemo(() => new Map<string, AgentDirectoryEntry>(
+    live.workspaceId === activeWorkspaceId
+      ? (live.agents ?? []).map((agent) => [agent.principalId, {
+          id: agent.id,
+          name: agent.name,
+          avatarColor: agent.avatarColor,
+          avatarShape: agent.avatarShape,
+          isDefault: agent.isDefault,
+        }])
+      : [],
+  ), [activeWorkspaceId, live.agents, live.workspaceId])
+  // Unsaved editor drafts overlay the live directory so the header renames
   // and re-skins while the user types; cleared by a null patch on save/cancel.
-  const [agentDrafts, setAgentDrafts] = useState<ReadonlyMap<string, {
-    name: string
-    avatarColor?: string
-    avatarShape?: string
-  }>>(new Map())
+  const [drafts, setDrafts] = useState<{
+    workspaceId: string | null | undefined
+    byPrincipal: ReadonlyMap<string, { name: string; avatarColor?: string; avatarShape?: string }>
+  }>({ workspaceId: activeWorkspaceId, byPrincipal: new Map() })
+  const agentDrafts = drafts.workspaceId === activeWorkspaceId ? drafts.byPrincipal : null
   const directoryAgentsByPrincipal = useMemo(() => {
-    if (agentDrafts.size === 0) return agentsByPrincipal
+    if (!agentDrafts?.size) return agentsByPrincipal
     const merged = new Map(agentsByPrincipal)
     for (const [principalId, draft] of agentDrafts) {
       const existing = merged.get(principalId)
@@ -736,49 +509,20 @@ export function useAgentDirectory({
     return merged
   }, [agentsByPrincipal, agentDrafts])
   useEffect(() => {
-
-    if (!activeWorkspaceId) {
-      queueMicrotask(() => {
-        setAgentsByPrincipal(new Map())
-        setAgentDrafts(new Map())
-      })
-      return
-    }
-    let cancelled = false
-    const load = () => {
-      overlayAppClient.agents.list(activeWorkspaceId).then((response) => {
-        if (cancelled) return
-        setAgentsByPrincipal(new Map(response.agents.map((agent) => [agent.principalId, {
-          id: agent.id,
-          name: agent.name,
-          avatarColor: agent.avatarColor,
-          avatarShape: agent.avatarShape,
-          isDefault: agent.isDefault,
-        }])))
-      }).catch(() => undefined)
-    }
-    load()
-    // Renames and avatar changes save through the editor and dispatch this
-    // event; refetching keeps the header and message identity in sync without
-    // a reload.
-    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
+    if (!activeWorkspaceId) return
     const onDraftPreview = (event: Event) => {
       const detail = (event as CustomEvent<AgentDraftPreviewEventDetail>).detail
       if (!detail?.principalId || detail.workspaceId !== activeWorkspaceId) return
-      setAgentDrafts((current) => {
-        const next = new Map(current)
+      setDrafts((current) => {
+        const next = new Map(current.workspaceId === activeWorkspaceId ? current.byPrincipal : [])
         if (detail.patch) next.set(detail.principalId!, detail.patch)
         else next.delete(detail.principalId!)
-        return next
+        return { workspaceId: activeWorkspaceId, byPrincipal: next }
       })
     }
     window.addEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
-    return () => {
-      cancelled = true
-      window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, load)
-      window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
-    }
-  }, [activeWorkspaceId,  conversationId, ])
+    return () => window.removeEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
+  }, [activeWorkspaceId])
   return directoryAgentsByPrincipal
 }
 
@@ -1071,8 +815,6 @@ export function useSendMessage({
   soloAgentParticipant,
   messagesRef,
   memoryEnabled,
-  convexRoomSubscriptionEnabled,
-  loadMessages,
   commitDraftConversation,
   setAgentResponding,
   messages,
@@ -1099,8 +841,6 @@ export function useSendMessage({
   soloAgentParticipant: ConversationParticipant | null
   messagesRef: RefObject<OptimisticMessage[]>
   memoryEnabled: boolean
-  convexRoomSubscriptionEnabled: boolean
-  loadMessages: () => Promise<void>
   commitDraftConversation: () => void
   setAgentResponding: Dispatch<SetStateAction<string | null>>
   messages: OptimisticMessage[]
@@ -1363,7 +1103,6 @@ export function useSendMessage({
       // from here. The reply arrives in the transcript on its own, so there is
       // nothing for this client to hold open and nothing to wait for.
       scheduleAgentThreadRename(renameAgentThread, renameAgent, titlePromise, titleAtSend)
-      if (!convexRoomSubscriptionEnabled) await loadMessages().catch(() => undefined)
       commitDraftConversation()
       void saved
       return { accepted: true }
@@ -1446,7 +1185,7 @@ export function useRoomComposer({
 
   activeWorkspaceId,
   conversationId,
-  sessionIdRef,
+  reportTyping,
   sendMessage,
   mentions,
   setMentions,
@@ -1455,7 +1194,7 @@ export function useRoomComposer({
 
   activeWorkspaceId: string | null | undefined
   conversationId: string
-  sessionIdRef: RefObject<string | null>
+  reportTyping: (typing: boolean) => void
   sendMessage: SendMessage
   mentions: MentionItem[]
   setMentions: Dispatch<SetStateAction<MentionItem[]>>
@@ -1639,11 +1378,7 @@ export function useRoomComposer({
     const now = Date.now()
     if (now - lastTypingSentAt.current > 2_500) {
       lastTypingSentAt.current = now
-      void overlayAppClient.conversations.updatePresence(conversationId, {
-        status: 'online',
-        typing: Boolean(text.trim()),
-        sessionId: sessionIdRef.current ?? undefined,
-      }).catch(() => undefined)
+      reportTyping(Boolean(text.trim()))
     }
   }
 
@@ -1728,14 +1463,12 @@ export function useRoomComposer({
 export function useRemoteAgentControls({
   activeWorkspaceId,
   conversationId,
-  loadMessages,
   setMessages,
   setAttachmentError,
 }: {
   activeWorkspaceId: string | null | undefined
   conversationId: string
   setMessages: Dispatch<SetStateAction<OptimisticMessage[]>>
-  loadMessages: () => Promise<void>
   setAttachmentError: Dispatch<SetStateAction<string | null>>
 }) {
   const pendingControls = useRef(new Set<string>())
@@ -1755,10 +1488,8 @@ export function useRemoteAgentControls({
         action,
         controlRequestId: crypto.randomUUID(),
       })
-      await loadMessages()
     } catch (value) {
       setAttachmentError(value instanceof Error ? value.message : 'Could not update the connected agent run.')
-      await loadMessages().catch(() => undefined)
     } finally {
       pendingControls.current.delete(controlKey)
     }
@@ -1773,7 +1504,6 @@ export function useRemoteAgentControls({
     try {
       await overlayAppClient.conversations.resolveRemoteRequest({ workspaceId: activeWorkspaceId,
         conversationId, runId: request.runId, requestKey: request.requestKey, decision, response })
-      await loadMessages()
     } catch (value) {
       setAttachmentError(value instanceof Error ? value.message : 'Could not resolve the connected agent request.')
     }
@@ -1783,9 +1513,8 @@ export function useRemoteAgentControls({
     try {
       await overlayAppClient.conversations.stopResponse({ conversationId, messageId })
     } catch {
-      // The run may have already finished; the live row refresh settles either way.
+      // The run may have already finished; the live transcript settles either way.
     }
-    await loadMessages().catch(() => undefined)
   }
 
   return { controlRemoteQueue, resolveRemoteRequest, stopAgentResponse }
@@ -1794,30 +1523,21 @@ export function useRemoteAgentControls({
 export function useMessageActions({
   isReadOnlyMessage,
   conversationId,
-  currentPrincipalId,
-
+  room,
   reactions,
-  setReactions,
   pins,
-  setPins,
   savedMessages,
-  setSavedMessages,
-  setMessages,
-  loadMessages,
 }: {
   isReadOnlyMessage?: (messageId: string) => boolean
   conversationId: string
-  currentPrincipalId: string
-
+  room: RoomStateApi
   reactions: MessageReaction[]
-  setReactions: Dispatch<SetStateAction<MessageReaction[]>>
   pins: ConversationPin[]
-  setPins: Dispatch<SetStateAction<ConversationPin[]>>
   savedMessages: ConversationSavedMessage[]
-  setSavedMessages: Dispatch<SetStateAction<ConversationSavedMessage[]>>
-  setMessages: Dispatch<SetStateAction<OptimisticMessage[]>>
-  loadMessages: () => Promise<void>
 }) {
+  const { activeWorkspaceId } = useWorkspace()
+  const editRoomMessage = useMutation(api.collaboration.rooms.editMessage)
+  const deleteRoomMessage = useMutation(api.collaboration.rooms.deleteMessage)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
 
@@ -1835,20 +1555,17 @@ export function useMessageActions({
   async function toggleReaction(messageId: string, emoji: string) {
     const current = reactions.find((reaction) => reaction.messageId === messageId && reaction.emoji === emoji)
 
-    const result = await overlayAppClient.conversations.setReaction(conversationId, {
-      messageId,
-      emoji,
-      enabled: !current?.reactedByCurrentPrincipal,
-    })
-    setReactions(requireArray(result.reactions, 'Conversation reactions'))
+    if (!room.args) return
+    await room.setReaction({ ...room.args, messageId: messageId as Id<'conversationMessages'>, emoji, enabled: !current?.reactedByCurrentPrincipal })
+      .catch(() => toast.error('Could not update the reaction.'))
   }
 
   async function togglePinned(messageId: string) {
     const pinned = pins.some((pin) => pin.messageId === messageId)
 
-    await overlayAppClient.conversations.setPinned(conversationId, { messageId, pinned: !pinned })
-    const result = await overlayAppClient.conversations.pins(conversationId)
-    setPins(requireArray(result.pins, 'Conversation pins'))
+    if (!room.args) return
+    await room.setPinned({ ...room.args, messageId: messageId as Id<'conversationMessages'>, pinned: !pinned })
+      .catch(() => toast.error('Could not update the pin.'))
   }
 
   /**
@@ -1872,9 +1589,9 @@ export function useMessageActions({
   async function toggleSaved(messageId: string) {
     const saved = savedMessages.some((row) => row.conversationId === conversationId && row.messageId === messageId)
 
-    await overlayAppClient.conversations.setSaved({ conversationId, messageId, saved: !saved })
-    const result = await overlayAppClient.conversations.savedMessages()
-    setSavedMessages(requireArray(result.savedMessages, 'Saved messages'))
+    if (!room.args) return
+    await room.setSaved({ ...room.args, messageId: messageId as Id<'conversationMessages'>, saved: !saved })
+      .catch(() => toast.error('Could not save the message.'))
   }
 
   async function saveEdit(messageId: string) {
@@ -1883,9 +1600,11 @@ export function useMessageActions({
     if (!content) return
 
     try {
-      await overlayAppClient.conversations.editCollaborativeMessage(conversationId, messageId, content)
+      if (!activeWorkspaceId) throw new Error('No workspace')
       setEditingId(null)
-      await loadMessages()
+      const edited = await editRoomMessage({ workspaceId: activeWorkspaceId, conversationId: conversationId as Id<'conversations'>,
+        messageId: messageId as Id<'conversationMessages'>, content })
+      if (!edited) throw new Error('This message can no longer be edited.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not edit this message.')
     }
@@ -1894,8 +1613,10 @@ export function useMessageActions({
   async function deleteMessage(messageId: string) {
     if (isReadOnlyMessage?.(messageId)) return
     try {
-      await overlayAppClient.conversations.deleteCollaborativeMessage(conversationId, messageId)
-      await loadMessages()
+      if (!activeWorkspaceId) throw new Error('No workspace')
+      const deleted = await deleteRoomMessage({ workspaceId: activeWorkspaceId, conversationId: conversationId as Id<'conversations'>,
+        messageId: messageId as Id<'conversationMessages'> })
+      if (!deleted) throw new Error('This message can no longer be deleted.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not delete this message.')
     }
@@ -2000,7 +1721,7 @@ export function useRoomActions({
   router,
   otherParticipantsCount,
   currentParticipantArchived,
-  loadParticipants,
+  room,
   setMenuOpen,
 }: {
   conversationId: string
@@ -2011,7 +1732,7 @@ export function useRoomActions({
   router: ReturnType<typeof useRouter>
   otherParticipantsCount: number
   currentParticipantArchived: boolean
-  loadParticipants: () => Promise<void>
+  room: RoomStateApi
   setMenuOpen: Dispatch<SetStateAction<boolean>>
 }) {
   const buildWorkspaceHref = useWorkspaceHref()
@@ -2021,19 +1742,18 @@ export function useRoomActions({
   const [pendingDeleteScope, setPendingDeleteScope] = useState(false)
 
   async function updateState(
-    state: Parameters<typeof overlayAppClient.conversations.updateParticipantState>[1],
+    state: { notificationLevel?: 'all' | 'mentions' | 'muted'; markUnread?: boolean; archived?: boolean },
     confirmation: string,
   ) {
-
     try {
-      await overlayAppClient.conversations.updateParticipantState(conversationId, state)
+      if (!room.args) throw new Error('This conversation is unavailable.')
+      await room.updateMyState({ ...room.args, ...state })
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not update the conversation.')
       return false
     }
     toast.success(confirmation)
     setMenuOpen(false)
-    await loadParticipants()
     return true
   }
 
@@ -2312,8 +2032,7 @@ export function useDirectMessageRoom({
   draftTitle,
   router,
   activeWorkspaceId,
-  convexRoomSubscriptionEnabled,
-  refreshNotifications,
+  markConversationRead,
   onOpenAttachmentPreview,
 }: {
   conversationId: string
@@ -2323,10 +2042,11 @@ export function useDirectMessageRoom({
   draftTitle: string | undefined
   router: ReturnType<typeof useRouter>
   activeWorkspaceId: string | null | undefined
-  convexRoomSubscriptionEnabled: boolean
-  refreshNotifications: () => void
+  markConversationRead: (conversationId: string) => void
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
 }) {
+  const createAgentThread = useMutation(api.agents.threads.create)
+  const convex = useConvex()
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
@@ -2339,20 +2059,25 @@ export function useDirectMessageRoom({
   )
   const [mentions, setMentions] = useState<MentionItem[]>([])
 
-  const readMarkers = useReadMarkers({ conversationId,  refreshNotifications })
-  const roster = useRoomRoster({
-    conversationId,
-
-
-    noteParticipantsLoaded: readMarkers.noteParticipantsLoaded,
+  const room = useRoomState(activeWorkspaceId, conversationId)
+  const readMarkers = useReadMarkers({ conversationId, room, markConversationRead })
+  const roster = useRoomRoster({ room, noteParticipantsLoaded: readMarkers.noteParticipantsLoaded })
+  const collab = useRoomCollaboration({ room })
+  const thread = useThreadPanel({ conversationId, room, setRoomPanel })
+  const roomCompatibility = useRoomCompatibility({ workspaceId: activeWorkspaceId, conversationId })
+  const selectedCompatibility = useRoomCompatibility({
+    workspaceId: activeWorkspaceId,
+    conversationId: thread.threadRootId ? conversationId : null,
+    threadRootMessageId: thread.threadRootId,
   })
-  const collab = useRoomCollaboration({ conversationId, conversationType,  })
-  const thread = useThreadPanel({ conversationId,  setRoomPanel })
-  const nativeThreadSafety = useNativeThreadSafety({ conversationId, workspaceId: activeWorkspaceId })
+  const nativeThreadSafety = useNativeThreadSafety({
+    conversationId, workspaceId: activeWorkspaceId, liveCompatibility: roomCompatibility,
+  })
   const selectedThreadSafety = useNativeThreadSafety({
     conversationId: thread.threadRootId ? conversationId : null,
     workspaceId: activeWorkspaceId,
     threadRootMessageId: thread.threadRootId ?? undefined,
+    liveCompatibility: selectedCompatibility,
   })
   const effectiveSelectedThreadSafety = nativeThreadSafety.readOnly
     ? nativeThreadSafety
@@ -2370,10 +2095,13 @@ export function useDirectMessageRoom({
       return checkSelectedThreadWritable()
     }
     try {
-      const result = await overlayAppClient.conversations.get<{
-        nativeThreadCompatibility?: unknown
-      }>({ conversationId, threadRootMessageId: root })
-      const status = nativeThreadSafetyStatus(result.nativeThreadCompatibility)
+      if (!activeWorkspaceId) return { accepted: false, status: 'error' as const }
+      const result = await convex.query(api.collaboration.rooms.compatibility, {
+        workspaceId: activeWorkspaceId,
+        conversationId: conversationId as Id<'conversations'>,
+        threadRootMessageId: root as Id<'conversationMessages'>,
+      })
+      const status = result ? nativeThreadSafetyStatus(result.compatibility) : 'error'
       return {
         accepted: status === 'writable',
         status,
@@ -2382,6 +2110,8 @@ export function useDirectMessageRoom({
       return { accepted: false, status: nativeThreadSafetyErrorStatus(error), error }
     }
   }, [
+    activeWorkspaceId,
+    convex,
     conversationId,
     checkMainRoomWritable,
     checkSelectedThreadWritable,
@@ -2389,23 +2119,14 @@ export function useDirectMessageRoom({
   ])
   const transcript = useRoomTranscript({
     conversationId,
-    threadRootId: thread.threadRootId,
+    rosterReady: roster.ready,
 
 
     agentResponding,
     markVisibleRead: readMarkers.markVisibleRead,
     setNewMessageCount: readMarkers.setNewMessageCount,
   })
-  const sessionIdRef = useRoomLifecycle({
-    conversationId,
-    convexRoomSubscriptionEnabled,
-
-    loadParticipants: roster.loadParticipants,
-    loadMessages: transcript.loadMessages,
-    loadCollaboration: collab.loadCollaboration,
-    loadPresence: roster.loadPresence,
-    setLoading: transcript.setLoading,
-  })
+  const { reportTyping } = useRoomLifecycle({ room })
   const directoryAgentsByPrincipal = useAgentDirectory({
     activeWorkspaceId,
 
@@ -2453,9 +2174,7 @@ export function useDirectMessageRoom({
     soloAgentParticipant: vm.soloAgentParticipant,
     messagesRef: transcript.messagesRef,
     memoryEnabled,
-    convexRoomSubscriptionEnabled,
-    loadMessages: transcript.loadMessages,
-    commitDraftConversation,
+      commitDraftConversation,
     setAgentResponding,
     messages: transcript.messages,
     mentions,
@@ -2464,7 +2183,7 @@ export function useDirectMessageRoom({
 
     activeWorkspaceId,
     conversationId,
-    sessionIdRef,
+    reportTyping,
     sendMessage,
     mentions,
     setMentions,
@@ -2473,7 +2192,6 @@ export function useDirectMessageRoom({
   const remoteControls = useRemoteAgentControls({
     activeWorkspaceId,
     conversationId,
-    loadMessages: transcript.loadMessages,
     setMessages: transcript.setMessages,
     setAttachmentError: composer.setAttachmentError,
   })
@@ -2484,16 +2202,11 @@ export function useDirectMessageRoom({
   const actions = useMessageActions({
     isReadOnlyMessage,
     conversationId,
-    currentPrincipalId: roster.currentPrincipalId,
 
+    room,
     reactions: collab.reactions,
-    setReactions: collab.setReactions,
     pins: collab.pins,
-    setPins: collab.setPins,
     savedMessages: collab.savedMessages,
-    setSavedMessages: collab.setSavedMessages,
-    setMessages: transcript.setMessages,
-    loadMessages: transcript.loadMessages,
   })
   const navigation = useMessageNavigation({
     listRef: transcript.listRef,
@@ -2553,7 +2266,7 @@ export function useDirectMessageRoom({
     }
     const agentId = nativeThreadSafety.agentId
     if (agentId && activeWorkspaceId) {
-      const { thread: next } = await overlayAppClient.agents.createThread(activeWorkspaceId, agentId, {})
+      const next = await createAgentThread({ workspaceId: activeWorkspaceId, agentId })
       if (!safety.isCurrentScope()) return
       writeDraft({ workspaceId: activeWorkspaceId, conversationId: next.conversationId }, handoff)
       dispatchChatCreated({ chat: {
@@ -2600,7 +2313,7 @@ export function useDirectMessageRoom({
     router,
     otherParticipantsCount: vm.otherParticipants.length,
     currentParticipantArchived: Boolean(vm.currentParticipant?.archivedAt),
-    loadParticipants: roster.loadParticipants,
+    room,
     setMenuOpen,
   })
   const messageCtx = buildRoomMessageContext({

@@ -1,19 +1,7 @@
 import type { WorkspaceAgentCreatureShape } from '@overlay/workspace-contracts'
 
 export const NEW_AGENT_EVENT = 'overlay:sidebar-new-agent'
-export const AGENT_DIRECTORY_CHANGED_EVENT = 'overlay:agent-directory-changed'
 export const AGENT_DRAFT_PREVIEW_EVENT = 'overlay:agent-draft-preview'
-
-export type AgentDirectoryChangedEventDetail = {
-  workspaceId: string
-}
-
-export function dispatchAgentDirectoryChanged(workspaceId: string): void {
-  if (typeof window === 'undefined') return
-  window.dispatchEvent(new CustomEvent<AgentDirectoryChangedEventDetail>(AGENT_DIRECTORY_CHANGED_EVENT, {
-    detail: { workspaceId },
-  }))
-}
 
 export type AgentDraftPreviewPatch = {
   name: string
@@ -35,7 +23,7 @@ export type AgentDraftPreviewEventDetail = {
  * Streams the agent editor's unsaved identity draft so the sidebar roster and
  * conversation header reflect typing in real time. `patch: null` clears the
  * override — cancel, close, and save all clear it (the saved values land via
- * the directory-changed refetch).
+ * the live directory query).
  */
 export function dispatchAgentDraftPreview(detail: AgentDraftPreviewEventDetail): void {
   if (typeof window === 'undefined' || !detail.agentId) return

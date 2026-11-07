@@ -226,6 +226,7 @@
     "src/app/api/v1/workspaces/route.ts"
   ],
   "browserRuntimeFiles": [
+    "src/components/layout/AppSidebarAgentsPanel.tsx",
     "src/components/providers/AppClientProviders.tsx",
     "src/components/providers/ConvexAuthProvider.tsx",
     "src/components/providers/PersonalChatProvider.tsx",
@@ -236,10 +237,15 @@
     "src/components/providers/usePersonalChatCommands.ts",
     "src/components/providers/usePersonalChatRouteSelection.ts",
     "src/components/providers/usePersonalChatTranscript.ts",
+    "src/features/agents/components/AgentConversationWorkspace.tsx",
+    "src/features/agents/lib/use-agent-thread-scope.ts",
+    "src/features/chat/components/DirectMessageExperience.hooks.ts",
     "src/features/chat/components/DirectMessageExperience.parts.tsx",
-    "src/features/chat/components/DirectMessageExperience.tsx",
+    "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
-    "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx"
+    "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
+    "src/features/chat/components/collaboration/useRoomCompatibility.ts",
+    "src/features/chat/components/collaboration/useRoomState.ts"
   ],
   "convexCronJobs": [
     {
@@ -382,6 +388,7 @@
     "src/app/auth/desktop/complete/route.ts",
     "src/app/share/f/[token]/opengraph-image.tsx",
     "src/app/share/f/[token]/page.tsx",
+    "src/components/layout/AppSidebarAgentsPanel.tsx",
     "src/components/providers/AppClientProviders.tsx",
     "src/components/providers/ConvexAuthProvider.tsx",
     "src/components/providers/PersonalChatProvider.tsx",
@@ -392,10 +399,16 @@
     "src/components/providers/usePersonalChatCommands.ts",
     "src/components/providers/usePersonalChatRouteSelection.ts",
     "src/components/providers/usePersonalChatTranscript.ts",
+    "src/features/agents/components/AgentConversationWorkspace.tsx",
+    "src/features/agents/lib/use-agent-thread-scope.ts",
+    "src/features/chat/components/DirectMessageExperience.hooks.ts",
     "src/features/chat/components/DirectMessageExperience.parts.tsx",
-    "src/features/chat/components/DirectMessageExperience.tsx",
+    "src/features/chat/components/chat/useChatExperienceController.tsx",
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
+    "src/features/chat/components/collaboration/useRoomCompatibility.ts",
+    "src/features/chat/components/collaboration/useRoomState.ts",
+    "src/hooks/use-agent-directory.ts",
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAuditRepository.ts",
     "src/server/admin/index.ts",

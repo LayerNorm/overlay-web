@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { LockKeyhole, Pin } from 'lucide-react'
-import type { WorkspaceAgentDirectoryItem, WorkspaceAgentListResponse } from '@overlay/workspace-contracts'
+import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { Button } from '@overlay/ui/primitives'
 import { AgentCreature } from '@/components/orb/Creature'
@@ -10,10 +10,9 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { agentsForCreatorScope } from '@/shared/agents/last-agent-by-workspace'
 import { chiefRoleLabel, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identity'
-import { AGENT_DIRECTORY_CHANGED_EVENT } from '@/shared/workspace/sidebar-events'
+import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { OrganizationAgentDetails } from './OrganizationAgentDetails'
 
 type Agent = WorkspaceAgentDirectoryItem
@@ -41,24 +40,11 @@ export function OrganizationPage() {
   const href = useWorkspaceHref()
   const { capabilities, isLoading } = useOverlayCapabilities()
   const key = `${activeWorkspaceId}:${scope}`
-  const [state, setState] = useState<{ key: string; data?: WorkspaceAgentListResponse; error?: boolean }>({ key: '' })
-  const [revision, setRevision] = useState(0)
+  const directory = useAgentDirectory({ enabled: capabilities.work })
   const [selection, setSelection] = useState<{ key: string; id: string } | null>(null)
-  useEffect(() => {
-    if (!activeWorkspaceId || !capabilities.work) return
-    let live = true
-    void overlayAppClient.agents.list(activeWorkspaceId).then(
-      data => { if (live) setState({ key, data }) },
-      () => { if (live) setState({ key, error: true }) },
-    )
-    return () => { live = false }
-  }, [activeWorkspaceId, capabilities.work, key, revision])
-  useEffect(() => {
-    const refresh = () => setRevision(n => n + 1)
-    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refresh)
-    return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refresh)
-  }, [])
-  const data = state.key === key ? state.data : undefined
+  const data = directory.workspaceId === activeWorkspaceId && directory.agents
+    ? { agents: directory.agents, viewerPrincipalId: directory.viewerPrincipalId ?? undefined }
+    : undefined
   const agents = pinChiefs(agentsForCreatorScope((data?.agents ?? []).filter(a => !a.archivedAt), data?.viewerPrincipalId, scope), data?.viewerPrincipalId)
   const root = agents.find(a => scope === 'workspace' ? a.agentRole === 'workspace_chief' : a.agentRole === 'personal_chief')
   const children = agents.filter(a => a.id !== root?.id)
@@ -76,8 +62,8 @@ export function OrganizationPage() {
           <h1 className="text-lg font-medium">{scope === 'workspace' ? activeWorkspace?.name || 'Workspace' : 'Your organization'}</h1>
           <p className="mt-2 text-center text-sm text-(--muted)">{scope === 'workspace' ? 'Workspace agents and member chiefs of staff.' : 'Your chief of staff and personal agents.'}</p>
           {!isLoading && !capabilities.work ? <p className="mt-12 text-sm text-(--muted)">Work is unavailable for this deployment.</p>
-            : isLoading || (!data && !(state.key === key && state.error)) ? <p role="status" className="mt-12 text-sm text-(--muted)">Loading organization...</p>
-              : state.key === key && state.error ? <div role="alert" className="mt-12 space-y-3 text-center"><p className="text-sm">Could not load organization.</p><Button variant="secondary" onClick={() => setRevision(n => n + 1)}>Try again</Button></div>
+            : isLoading || directory.status === 'loading' ? <p role="status" className="mt-12 text-sm text-(--muted)">Loading organization...</p>
+              : !data ? <div role="alert" className="mt-12 space-y-3 text-center"><p className="text-sm">Could not load organization.</p></div>
                 : !root ? <p className="mt-12 text-sm text-(--muted)">No chief of staff is available in this scope.</p> : (
                   <section aria-label="Agent organization" className="mt-10 flex w-full flex-col items-center">
                     {node(root)}

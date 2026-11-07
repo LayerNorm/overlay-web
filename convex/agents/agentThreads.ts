@@ -171,17 +171,7 @@ export const createThreadByServer = mutation({
   returns: v.object({ conversationId: v.id('conversations'), title: v.string() }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const actor = await requireActorMembership(ctx, args)
-    const { agent, agentPrincipal } = await requireLiveAgent(ctx, args)
-    const title = args.title?.trim().slice(0, 120) || 'New thread'
-    const conversationId = await insertThread(
-      ctx,
-      { workspaceId: args.workspaceId, userId: args.userId, title },
-      actor,
-      agent,
-      agentPrincipal,
-    )
-    return { conversationId, title }
+    return await createAgentThread(ctx, args)
   },
 })
 
@@ -201,66 +191,7 @@ export const resolveMainThreadByServer = mutation({
   returns: v.object({ conversationId: v.id('conversations'), title: v.string() }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const [actor, agent] = await Promise.all([
-      requireActorMembership(ctx, args),
-      requireAgentDefinition(ctx, args),
-    ])
-
-    // Archived agents still resolve their existing main thread so history
-    // stays viewable from Settings → Archived; they just cannot adopt or create.
-    // A thread the caller archived is never the one an agent opens into: archiving
-    // a thread must not leave the agent opening onto it, nor make the agent look archived.
-    // requireLiveAgent is skipped when a main thread resolves — ordering required.
-    // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
-    const threads = await listThreadDocs(ctx, { ...args })
-    const archivedFlags = await Promise.all(
-      threads.map(async (thread) => Boolean(await callerArchivedAt(ctx, thread._id, actor.principalId))),
-    )
-    const main = threads
-      .filter((_, i) => !archivedFlags[i])
-      .sort((a, b) => a.createdAt - b.createdAt || String(a._id).localeCompare(String(b._id)))[0]
-    if (main) return { conversationId: main._id, title: main.title }
-    const { agentPrincipal } = await requireLiveAgent(ctx, {
-      workspaceId: args.workspaceId,
-      agentId: args.agentId,
-    })
-
-    const dmIdentityKey = [actor.principalId, agent.principalId]
-      .sort()
-      .join(':')
-    const legacyDm = await ctx.db
-      .query('conversations')
-      .withIndex('by_workspaceId_dmIdentityKey', (q) =>
-        q
-          .eq('workspaceId', args.workspaceId)
-          .eq('dmIdentityKey', dmIdentityKey),
-      )
-      .first()
-    const legacyArchived = legacyDm && !legacyDm.deletedAt
-      ? Boolean(await callerArchivedAt(ctx, legacyDm._id, actor.principalId))
-      : false
-    if (legacyDm
-      && !legacyDm.deletedAt
-      && !legacyArchived
-      && !legacyDm.isAutomation
-      && (!legacyDm.agentId || legacyDm.agentId === agent.agentId)) {
-      if (!legacyDm.agentId) {
-        await ctx.db.patch(legacyDm._id, { agentId: agent.agentId, updatedAt: Date.now() })
-      }
-      return { conversationId: legacyDm._id, title: legacyDm.title }
-    }
-
-    // The agent's other threads are all archived (or none exist): start a fresh one. It does not reuse the
-    // identity key while an archived thread still holds it, so DM lookups keep resolving that archived thread.
-    const keyTaken = Boolean(legacyDm && !legacyDm.deletedAt)
-    const conversationId = await insertThread(
-      ctx,
-      { workspaceId: args.workspaceId, userId: args.userId, title: agent.name, ...(keyTaken ? {} : { dmIdentityKey }) },
-      actor,
-      agent,
-      agentPrincipal,
-    )
-    return { conversationId, title: agent.name }
+    return await resolveMainAgentThread(ctx, args)
   },
 })
 
@@ -274,26 +205,7 @@ export const listThreadsByServer = query({
   returns: v.array(threadView),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const actor = await requireActorMembership(ctx, args)
-    const threads = await listThreadDocs(ctx, args)
-    const withArchive = await Promise.all(threads.map(async (thread) => ({
-      thread,
-      archivedAt: await callerArchivedAt(ctx, thread._id, actor.principalId),
-    })))
-    // The main thread is the oldest one the caller has not archived (the one the agent opens into).
-    const mainThreadId = withArchive
-      .filter((item) => !item.archivedAt)
-      .map((item) => item.thread)
-      .sort((a, b) => a.createdAt - b.createdAt || String(a._id).localeCompare(String(b._id)))[0]?._id
-    const views = withArchive.map(({ thread, archivedAt }) => ({
-      conversationId: thread._id,
-      title: thread.title,
-      lastModified: thread.lastModified,
-      createdAt: thread.createdAt,
-      archivedAt,
-      isMain: thread._id === mainThreadId,
-    }))
-    return views.sort((a, b) => b.lastModified - a.lastModified)
+    return await listAgentThreads(ctx, args)
   },
 })
 
@@ -320,45 +232,7 @@ export const listArchivedThreadsByServer = query({
   returns: v.array(archivedThreadView),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const actor = await requireActorMembership(ctx, args)
-    const participantRows = await ctx.db
-      .query('conversationParticipants')
-      .withIndex('by_workspaceId_principalId_status', (q) =>
-        q
-          .eq('workspaceId', args.workspaceId)
-          .eq('principalId', actor.principalId)
-          .eq('status', 'active'),
-      )
-      .collect()
-    const archivedRows = participantRows.filter((row) => row.archivedAt)
-    const conversations = await Promise.all(archivedRows.map((row) => ctx.db.get(row.conversationId)))
-    const agentCache = new Map<string, Doc<'workspaceAgentDefinitions'> | null>()
-    const out: Array<typeof archivedThreadView.type> = []
-    for (let i = 0; i < archivedRows.length; i += 1) {
-      const conversation = conversations[i]
-      if (!conversation?.agentId || conversation.deletedAt || conversation.isAutomation) continue
-      // Only the caller's own threads with the agent (listThreadDocs' rule).
-      if (conversation.userId !== args.userId) continue
-      let agent = agentCache.get(conversation.agentId)
-      if (agent === undefined) {
-        agent = await ctx.db
-          .query('workspaceAgentDefinitions')
-          .withIndex('by_agentId', (q) => q.eq('agentId', conversation.agentId!))
-          .unique()
-        agentCache.set(conversation.agentId, agent)
-      }
-      if (!agent || agent.deletedAt) continue
-      out.push({
-        conversationId: conversation._id,
-        agentId: agent.agentId,
-        agentName: agent.name,
-        agentArchived: Boolean(agent.archivedAt),
-        title: conversation.title,
-        archivedAt: archivedRows[i]!.archivedAt!,
-        lastModified: conversation.lastModified,
-      })
-    }
-    return out.sort((a, b) => b.archivedAt - a.archivedAt)
+    return await listArchivedAgentThreads(ctx, args)
   },
 })
 
@@ -372,26 +246,7 @@ export const listAutomationsByServer = query({
   returns: v.array(agentAutomationView),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    await requireActorMembership(ctx, { workspaceId: args.workspaceId, userId: args.userId })
-    const rows = await ctx.db
-      .query('automations')
-      .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId))
-      .collect()
-    return rows
-      .filter(
-        (row) =>
-          !row.deletedAt &&
-          row.workspaceId === args.workspaceId &&
-          row.userId === args.userId,
-      )
-      .map((row) => ({
-        automationId: row._id,
-        name: row.name ?? row.title ?? 'Untitled automation',
-        enabled: row.enabled !== false,
-        conversationId: row.conversationId,
-        lastRunAt: row.lastRunAt,
-      }))
-      .sort((a, b) => a.name.localeCompare(b.name))
+    return await listAgentAutomations(ctx, args)
   },
 })
 
@@ -412,32 +267,7 @@ export const setThreadArchivedByServer = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const conversation = await ctx.db.get(args.conversationId)
-    if (!conversation
-      || !conversation.agentId
-      || conversation.agentId !== args.agentId
-      || conversation.isAutomation
-      || conversation.deletedAt) {
-      throw new Error('THREAD_NOT_FOUND')
-    }
-    const actor = await requireActorMembership(ctx, {
-      workspaceId: conversation.workspaceId ?? '',
-      userId: args.userId,
-    })
-    const participant = await ctx.db
-      .query('conversationParticipants')
-      .withIndex('by_conversationId_principalId', (q) =>
-        q
-          .eq('conversationId', args.conversationId)
-          .eq('principalId', actor.principalId),
-      )
-      .unique()
-    if (!participant || participant.status !== 'active') throw new Error('THREAD_ACCESS_DENIED')
-    await ctx.db.patch(participant._id, {
-      archivedAt: args.archived ? Date.now() : undefined,
-      updatedAt: Date.now(),
-    })
-    return null
+    return await setAgentThreadArchived(ctx, args)
   },
 })
 
@@ -457,43 +287,241 @@ export const deleteThreadByServer = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const conversation = await ctx.db.get(args.conversationId)
-    if (!conversation
-      || !conversation.agentId
-      || conversation.agentId !== args.agentId
-      || conversation.isAutomation
-      || conversation.deletedAt) {
-      throw new Error('THREAD_NOT_FOUND')
-    }
-    const workspaceId = conversation.workspaceId
-    if (!workspaceId) throw new Error('THREAD_NOT_FOUND')
-    const actor = await requireActorMembership(ctx, { workspaceId, userId: args.userId })
-    const participant = await ctx.db
-      .query('conversationParticipants')
-      .withIndex('by_conversationId_principalId', (q) =>
-        q
-          .eq('conversationId', args.conversationId)
-          .eq('principalId', actor.principalId),
-      )
-      .unique()
-    if (!participant && conversation.userId !== args.userId) throw new Error('THREAD_ACCESS_DENIED')
-
-    // A thread already in the Archived page can always be deleted, even if it is the agent's only one: the agent
-    // stays as it is, and opening it starts a fresh thread. Only an active thread is protected as the last one.
-    const alreadyArchived = Boolean(participant?.archivedAt)
-    if (!alreadyArchived) {
-      const siblings = await listThreadDocs(ctx, {
-        workspaceId,
-        agentId: conversation.agentId,
-        userId: args.userId,
-      })
-      const survivors = siblings.filter((thread) => thread._id !== args.conversationId)
-      if (survivors.length === 0) {
-        throw new Error('AGENT_LAST_THREAD')
-      }
-    }
-    const now = Date.now()
-    await ctx.db.patch(args.conversationId, { deletedAt: now, updatedAt: now })
-    return null
+    return await deleteAgentThread(ctx, args)
   },
 })
+
+export async function createAgentThread(ctx: MutationCtx, args: { workspaceId: string; agentId: string; userId: string; title?: string }) {
+  const actor = await requireActorMembership(ctx, args)
+  const { agent, agentPrincipal } = await requireLiveAgent(ctx, args)
+  const title = args.title?.trim().slice(0, 120) || 'New thread'
+  const conversationId = await insertThread(
+    ctx,
+    { workspaceId: args.workspaceId, userId: args.userId, title },
+    actor,
+    agent,
+    agentPrincipal,
+  )
+  return { conversationId, title }
+}
+
+export async function resolveMainAgentThread(ctx: MutationCtx, args: { workspaceId: string; agentId: string; userId: string }) {
+  const [actor, agent] = await Promise.all([
+    requireActorMembership(ctx, args),
+    requireAgentDefinition(ctx, args),
+  ])
+
+  // Archived agents still resolve their existing main thread so history
+  // stays viewable from Settings → Archived; they just cannot adopt or create.
+  // A thread the caller archived is never the one an agent opens into: archiving
+  // a thread must not leave the agent opening onto it, nor make the agent look archived.
+  // requireLiveAgent is skipped when a main thread resolves — ordering required.
+  // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
+  const threads = await listThreadDocs(ctx, { ...args })
+  const archivedFlags = await Promise.all(
+    threads.map(async (thread) => Boolean(await callerArchivedAt(ctx, thread._id, actor.principalId))),
+  )
+  const main = threads
+    .filter((_, i) => !archivedFlags[i])
+    .sort((a, b) => a.createdAt - b.createdAt || String(a._id).localeCompare(String(b._id)))[0]
+  if (main) return { conversationId: main._id, title: main.title }
+  const { agentPrincipal } = await requireLiveAgent(ctx, {
+    workspaceId: args.workspaceId,
+    agentId: args.agentId,
+  })
+
+  const dmIdentityKey = [actor.principalId, agent.principalId]
+    .sort()
+    .join(':')
+  const legacyDm = await ctx.db
+    .query('conversations')
+    .withIndex('by_workspaceId_dmIdentityKey', (q) =>
+      q
+        .eq('workspaceId', args.workspaceId)
+        .eq('dmIdentityKey', dmIdentityKey),
+    )
+    .first()
+  const legacyArchived = legacyDm && !legacyDm.deletedAt
+    ? Boolean(await callerArchivedAt(ctx, legacyDm._id, actor.principalId))
+    : false
+  if (legacyDm
+    && !legacyDm.deletedAt
+    && !legacyArchived
+    && !legacyDm.isAutomation
+    && (!legacyDm.agentId || legacyDm.agentId === agent.agentId)) {
+    if (!legacyDm.agentId) {
+      await ctx.db.patch(legacyDm._id, { agentId: agent.agentId, updatedAt: Date.now() })
+    }
+    return { conversationId: legacyDm._id, title: legacyDm.title }
+  }
+
+  // The agent's other threads are all archived (or none exist): start a fresh one. It does not reuse the
+  // identity key while an archived thread still holds it, so DM lookups keep resolving that archived thread.
+  const keyTaken = Boolean(legacyDm && !legacyDm.deletedAt)
+  const conversationId = await insertThread(
+    ctx,
+    { workspaceId: args.workspaceId, userId: args.userId, title: agent.name, ...(keyTaken ? {} : { dmIdentityKey }) },
+    actor,
+    agent,
+    agentPrincipal,
+  )
+  return { conversationId, title: agent.name }
+}
+
+export async function listAgentThreads(ctx: Ctx, args: { workspaceId: string; agentId: string; userId: string }) {
+  const actor = await requireActorMembership(ctx, args)
+  const threads = await listThreadDocs(ctx, args)
+  const withArchive = await Promise.all(threads.map(async (thread) => ({
+    thread,
+    archivedAt: await callerArchivedAt(ctx, thread._id, actor.principalId),
+  })))
+  // The main thread is the oldest one the caller has not archived (the one the agent opens into).
+  const mainThreadId = withArchive
+    .filter((item) => !item.archivedAt)
+    .map((item) => item.thread)
+    .sort((a, b) => a.createdAt - b.createdAt || String(a._id).localeCompare(String(b._id)))[0]?._id
+  const views = withArchive.map(({ thread, archivedAt }) => ({
+    conversationId: thread._id,
+    title: thread.title,
+    lastModified: thread.lastModified,
+    createdAt: thread.createdAt,
+    archivedAt,
+    isMain: thread._id === mainThreadId,
+  }))
+  return views.sort((a, b) => b.lastModified - a.lastModified)
+}
+
+export async function listArchivedAgentThreads(ctx: Ctx, args: { workspaceId: string; userId: string }) {
+  const actor = await requireActorMembership(ctx, args)
+  const participantRows = await ctx.db
+    .query('conversationParticipants')
+    .withIndex('by_workspaceId_principalId_status', (q) =>
+      q
+        .eq('workspaceId', args.workspaceId)
+        .eq('principalId', actor.principalId)
+        .eq('status', 'active'),
+    )
+    .collect()
+  const archivedRows = participantRows.filter((row) => row.archivedAt)
+  const conversations = await Promise.all(archivedRows.map((row) => ctx.db.get(row.conversationId)))
+  const agentCache = new Map<string, Doc<'workspaceAgentDefinitions'> | null>()
+  const out: Array<typeof archivedThreadView.type> = []
+  for (let i = 0; i < archivedRows.length; i += 1) {
+    const conversation = conversations[i]
+    if (!conversation?.agentId || conversation.deletedAt || conversation.isAutomation) continue
+    // Only the caller's own threads with the agent (listThreadDocs' rule).
+    if (conversation.userId !== args.userId) continue
+    let agent = agentCache.get(conversation.agentId)
+    if (agent === undefined) {
+      agent = await ctx.db
+        .query('workspaceAgentDefinitions')
+        .withIndex('by_agentId', (q) => q.eq('agentId', conversation.agentId!))
+        .unique()
+      agentCache.set(conversation.agentId, agent)
+    }
+    if (!agent || agent.deletedAt) continue
+    out.push({
+      conversationId: conversation._id,
+      agentId: agent.agentId,
+      agentName: agent.name,
+      agentArchived: Boolean(agent.archivedAt),
+      title: conversation.title,
+      archivedAt: archivedRows[i]!.archivedAt!,
+      lastModified: conversation.lastModified,
+    })
+  }
+  return out.sort((a, b) => b.archivedAt - a.archivedAt)
+}
+
+export async function listAgentAutomations(ctx: Ctx, args: { workspaceId: string; agentId: string; userId: string }) {
+  await requireActorMembership(ctx, { workspaceId: args.workspaceId, userId: args.userId })
+  const rows = await ctx.db
+    .query('automations')
+    .withIndex('by_agentId', (q) => q.eq('agentId', args.agentId))
+    .collect()
+  return rows
+    .filter(
+      (row) =>
+        !row.deletedAt &&
+        row.workspaceId === args.workspaceId &&
+        row.userId === args.userId,
+    )
+    .map((row) => ({
+      automationId: row._id,
+      name: row.name ?? row.title ?? 'Untitled automation',
+      enabled: row.enabled !== false,
+      conversationId: row.conversationId,
+      lastRunAt: row.lastRunAt,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export async function setAgentThreadArchived(ctx: MutationCtx, args: { conversationId: Id<'conversations'>; agentId: string; userId: string; archived: boolean }) {
+  const conversation = await ctx.db.get(args.conversationId)
+  if (!conversation
+    || !conversation.agentId
+    || conversation.agentId !== args.agentId
+    || conversation.isAutomation
+    || conversation.deletedAt) {
+    throw new Error('THREAD_NOT_FOUND')
+  }
+  const actor = await requireActorMembership(ctx, {
+    workspaceId: conversation.workspaceId ?? '',
+    userId: args.userId,
+  })
+  const participant = await ctx.db
+    .query('conversationParticipants')
+    .withIndex('by_conversationId_principalId', (q) =>
+      q
+        .eq('conversationId', args.conversationId)
+        .eq('principalId', actor.principalId),
+    )
+    .unique()
+  if (!participant || participant.status !== 'active') throw new Error('THREAD_ACCESS_DENIED')
+  await ctx.db.patch(participant._id, {
+    archivedAt: args.archived ? Date.now() : undefined,
+    updatedAt: Date.now(),
+  })
+  return null
+}
+
+export async function deleteAgentThread(ctx: MutationCtx, args: { conversationId: Id<'conversations'>; agentId: string; userId: string }) {
+  const conversation = await ctx.db.get(args.conversationId)
+  if (!conversation
+    || !conversation.agentId
+    || conversation.agentId !== args.agentId
+    || conversation.isAutomation
+    || conversation.deletedAt) {
+    throw new Error('THREAD_NOT_FOUND')
+  }
+  const workspaceId = conversation.workspaceId
+  if (!workspaceId) throw new Error('THREAD_NOT_FOUND')
+  const actor = await requireActorMembership(ctx, { workspaceId, userId: args.userId })
+  const participant = await ctx.db
+    .query('conversationParticipants')
+    .withIndex('by_conversationId_principalId', (q) =>
+      q
+        .eq('conversationId', args.conversationId)
+        .eq('principalId', actor.principalId),
+    )
+    .unique()
+  if (!participant && conversation.userId !== args.userId) throw new Error('THREAD_ACCESS_DENIED')
+
+  // A thread already in the Archived page can always be deleted, even if it is the agent's only one: the agent
+  // stays as it is, and opening it starts a fresh thread. Only an active thread is protected as the last one.
+  const alreadyArchived = Boolean(participant?.archivedAt)
+  if (!alreadyArchived) {
+    const siblings = await listThreadDocs(ctx, {
+      workspaceId,
+      agentId: conversation.agentId,
+      userId: args.userId,
+    })
+    const survivors = siblings.filter((thread) => thread._id !== args.conversationId)
+    if (survivors.length === 0) {
+      throw new Error('AGENT_LAST_THREAD')
+    }
+  }
+  const now = Date.now()
+  await ctx.db.patch(args.conversationId, { deletedAt: now, updatedAt: now })
+  return null
+}

@@ -23,7 +23,6 @@ import {
   type AgentToolPreset,
 } from '@/shared/agents/tool-groups'
 import { rememberAgentOpened } from '@/shared/agents/last-agent-by-workspace'
-import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -351,7 +350,6 @@ async function createAgentFromDraft(
       computerError = error instanceof Error ? error.message : 'Could not create the computer.'
     })
   }
-  dispatchAgentDirectoryChanged(workspaceId)
   rememberAgentOpened(workspaceId, created.agent.id)
   return { agent: created.agent, computerError }
 }
