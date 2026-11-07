@@ -7,7 +7,7 @@ import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snap
 import { withTranscriptPartIds } from '@/shared/chat/transcript-part-identity'
 
 const ACTIVE = new Set<string>(ACTIVE_AGENT_RUN_STATUSES)
-type Metadata = Pick<HarnessSnapshot, 'workflowRunId' | 'status' | 'policy'>
+type Metadata = Pick<HarnessSnapshot, 'workflowRunId' | 'status' | 'policy' | 'executionGeneration'>
 
 async function nativeDelivery(ctx: MutationCtx, run: Doc<'harnessRuns'>, metadata: Metadata) {
   if (run.parentRunId || run.rootRunId !== run.runId || !run.deliveryAgentRunId
@@ -83,6 +83,12 @@ export async function projectNativePersonalProgress(
     parts: persistence.parts as NonNullable<Doc<'conversationMessages'>['parts']>,
     nativeRunId: target.delivery._id,
     nativeProgressSequence: rows[0]?.sequence ?? sequence,
+    ...(metadata.policy.publicStreamVersion === 1 ? { publicStreamCheckpoint: {
+      runId: run.runId,
+      executionGeneration: metadata.executionGeneration ?? 0,
+      receiptId: `model:${sequence}`,
+      invocation: sequence,
+    } } : {}),
     updatedAt: Date.now(),
   })
 }

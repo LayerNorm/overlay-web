@@ -14,12 +14,11 @@ export type ActivePublicStreamSnapshot = {
 export type PublicStreamCheckpoint = Pick<ActivePublicStreamSnapshot, 'runId' | 'executionGeneration' | 'receiptId' | 'invocation'>
 
 type MessageWithParts = {
-  _id: string
   content: string
   parts?: readonly unknown[]
   status?: string
   publicStreamCheckpoint?: PublicStreamCheckpoint
-}
+} & ({ _id: string; id?: string } | { id: string; _id?: string })
 
 export function projectActivePublicStreams<T extends MessageWithParts>(
   messages: readonly T[],
@@ -45,7 +44,9 @@ export function projectActivePublicStreams<T extends MessageWithParts>(
       ? message.parts?.filter(part => !part || typeof part !== 'object'
         || !('source' in part) || (part as { source?: unknown }).source !== 'public-stream')
       : message.parts
-    const stream = byMessageId.get(message._id)
+    const messageId = message._id ?? message.id
+    if (!messageId) return message
+    const stream = byMessageId.get(messageId)
     if (!stream) {
       return priorPart && message.content === priorPart.renderedContent
         ? { ...message, content: baseContent, parts: baseParts } as T : message

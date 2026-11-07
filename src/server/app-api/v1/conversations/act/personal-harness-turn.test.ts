@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs'
 import { afterEach, expect, test, vi } from 'vitest'
+import { createUIMessageStreamResponse as sdkCreateUIMessageStreamResponse, parseJsonEventStream, readUIMessageStream, uiMessageChunkSchema } from 'ai'
 import type { AgentRun } from '@/shared/agents/agent-run'
-import type { UIMessage } from '@/server/ai/sdk'
+import type { UIMessage, UIMessageChunk } from '@/server/ai/sdk'
 import type { AuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { ActConversationRequest } from '@/shared/schemas/chat'
 import {
@@ -183,21 +184,8 @@ test('streams admitted multimodal history through the durable adapter', async ()
     role: 'user',
     content: [{ type: 'image', image: uploadedMessages[0]?.parts?.find(item => item.type === 'file')?.url }],
   }])
-  mocks.createUIMessageStreamResponse.mockImplementation(({ stream }) => new Response(
-    new ReadableStream<Uint8Array>({
-      async start(controller) {
-        const reader = stream.getReader()
-        const encoder = new TextEncoder()
-        while (true) {
-          const next = await reader.read()
-          if (next.done) break
-          controller.enqueue(encoder.encode(`${JSON.stringify(next.value)}\n`))
-        }
-        controller.close()
-      },
-    }),
-    { headers: { 'content-type': 'text/event-stream' } },
-  ))
+  mocks.createUIMessageStreamResponse.mockImplementation(({ stream }) =>
+    sdkCreateUIMessageStreamResponse({ stream }))
   mocks.startPersonalHarness.mockImplementation(async options => {
     await options.onAdmitted?.()
     return { getReadable: () => modelStream() }
@@ -290,37 +278,36 @@ test('versioned accepted responses stream persisted text, source metadata, and t
     await options.onAdmitted?.()
     return { accepted: true, runId: 'personal:run-chat', executionGeneration: 2 }
   })
-  mocks.readPublicStreamState.mockResolvedValue({
-    status: 'completed',
-    workflowRunId: 'workflow',
+  const transcriptSteps = Array.from({ length: 12 }, (_, sequence) => ({
+    sequence,
     executionGeneration: 2,
-    transcriptSteps: [{
-      sequence: 0,
-      executionGeneration: 2,
-      receiptId: 'model:0',
-      persistence: {
-        content: 'Persisted answer.',
-        parts: [{ type: 'tool-invocation', toolInvocation: { toolName: 'read_file', state: 'output-available' } }],
-      },
-    }],
-    nextSequence: null,
-    snapshot: null,
+    receiptId: `model:${sequence}`,
+    persistence: {
+      content: 'Persisted answer.',
+      parts: sequence === 0
+        ? [{ type: 'tool-invocation', toolInvocation: { toolCallId: 'call-1', toolName: 'read_file', toolInput: {}, toolOutput: 'file', state: 'output-available' } }]
+        : [],
+    },
+  }))
+  let readCount = 0
+  mocks.readPublicStreamState.mockImplementation(async ({ afterSequence }: { afterSequence: number }) => {
+    readCount++
+    if (readCount === 1) return {
+      status: 'running', workflowRunId: 'workflow', executionGeneration: 2, transcriptSteps: [],
+      nextSequence: null,
+      snapshot: { runId: 'personal:run-chat', executionGeneration: 2, receiptId: 'model:0', invocation: 0,
+        sequence: 0, text: 'Provisional text', assistantMessageId: 'assistant' },
+    }
+    const page = transcriptSteps.filter(step => step.sequence > afterSequence).slice(0, 10)
+    return {
+      status: page.at(-1)?.sequence === 11 ? 'completed' : 'running',
+      workflowRunId: 'workflow', executionGeneration: 2, transcriptSteps: page,
+      nextSequence: page.length === 10 ? page.at(-1)!.sequence : null,
+      snapshot: null,
+    }
   })
-  mocks.createUIMessageStreamResponse.mockImplementation(({ stream }) => new Response(
-    new ReadableStream<Uint8Array>({
-      async start(controller) {
-        const reader = stream.getReader()
-        const encoder = new TextEncoder()
-        while (true) {
-          const next = await reader.read()
-          if (next.done) break
-          controller.enqueue(encoder.encode(`${JSON.stringify(next.value)}\n`))
-        }
-        controller.close()
-      },
-    }),
-    { headers: { 'content-type': 'text/event-stream' } },
-  ))
+  mocks.createUIMessageStreamResponse.mockImplementation(({ stream }) =>
+    sdkCreateUIMessageStreamResponse({ stream }))
 
   const response = await startPersonalHarnessTurn({
     agentRun: run,
@@ -359,12 +346,28 @@ test('versioned accepted responses stream persisted text, source metadata, and t
     },
     workspaceId: 'workspace',
   })
-  const chunks = (await response.text()).trim().split('\n').map(line => JSON.parse(line) as Record<string, unknown>)
+  const parsedReader = parseJsonEventStream({ stream: response.body!, schema: uiMessageChunkSchema }).getReader()
+  const chunks: UIMessageChunk[] = []
+  while (true) {
+    const next = await parsedReader.read()
+    if (next.done) break
+    if (!next.value.success) throw next.value.error
+    chunks.push(next.value.value)
+  }
+  const uiStream = new ReadableStream<UIMessageChunk>({
+    start(controller) {
+      for (const chunk of chunks) controller.enqueue(chunk)
+      controller.close()
+    },
+  })
+  const reconstructed: UIMessage[] = []
+  for await (const message of readUIMessageStream({ stream: uiStream })) reconstructed.push(message)
 
   expect(response.status).toBe(200)
   expect(mocks.readPublicStreamState).toHaveBeenCalledWith({
     actorUserId: 'user', runId: 'personal:run-chat', afterSequence: -1,
   })
+  expect(mocks.readPublicStreamState).toHaveBeenCalledTimes(3)
   expect(chunks).toContainEqual(expect.objectContaining({
     type: 'text-delta', delta: 'Persisted answer.',
   }))
@@ -372,7 +375,10 @@ test('versioned accepted responses stream persisted text, source metadata, and t
     type: 'data-harness-transcript-step',
     data: expect.objectContaining({
       receiptId: 'model:0',
-      parts: [{ type: 'tool-invocation', toolInvocation: { toolName: 'read_file', state: 'output-available' } }],
+      parts: expect.arrayContaining([expect.objectContaining({
+        type: 'tool-invocation',
+        toolInvocation: expect.objectContaining({ toolName: 'read_file', state: 'output-available' }),
+      })]),
     }),
   }))
   expect(chunks).toContainEqual(expect.objectContaining({
@@ -388,4 +394,11 @@ test('versioned accepted responses stream persisted text, source metadata, and t
       sourceCitations,
     },
   })
+  expect(reconstructed.at(-1)?.parts.some(part => part.type === 'text')).toBe(true)
+  const reconstructedText = reconstructed.at(-1)?.parts
+    .filter(part => part.type === 'text').map(part => part.text).join('') ?? ''
+  expect(reconstructedText).not.toContain('Provisional text')
+  expect(chunks.filter(chunk => chunk.type === 'data-harness-transcript-step')).toHaveLength(12)
+  expect(chunks.findIndex(chunk => chunk.type === 'tool-input-available'))
+    .toBeLessThan(chunks.findIndex(chunk => chunk.type === 'tool-output-available'))
 })

@@ -12,9 +12,25 @@ afterEach(() => vi.unstubAllEnvs())
 
 async function seedWritableStream(convex: ReturnType<typeof convexTest>, runId = 'personal:stream-run') {
   const now = Date.now()
+  const workspaceId = `personal:${runId}:workspace`
+  await convex.run(async ctx => {
+    await ctx.db.insert('workspaces', {
+      workspaceId, kind: 'personal', name: 'Personal', slug: workspaceId, status: 'active',
+      personalOwnerUserId: 'owner', createdAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('workspacePrincipals', {
+      workspaceId, principalId: `${workspaceId}:principal`, userId: 'owner', type: 'human',
+      displayName: 'Owner', createdAt: now, updatedAt: now,
+    })
+    await ctx.db.insert('workspaceMemberships', {
+      workspaceId, membershipId: `${workspaceId}:membership`, principalId: `${workspaceId}:principal`,
+      role: 'owner', status: 'active', joinedAt: now, updatedAt: now,
+    })
+  })
   const conversationId = await convex.run(ctx => ctx.db.insert('conversations', {
     userId: 'owner', title: 'Stream test', lastModified: now, createdAt: now, updatedAt: now,
     lastMode: 'act', askModelIds: ['fixture/model'], actModelId: 'fixture/model',
+    workspaceId, conversationType: 'personal',
   }))
   const messageIds = await convex.run(async ctx => {
     const base = {
@@ -39,6 +55,7 @@ async function seedWritableStream(convex: ReturnType<typeof convexTest>, runId =
     policy: {
       actorUserId: 'owner', allowedToolIds: [], requiresPlan: false, deadlineAt: now + 60_000,
       maxCostMicros: 1_000, maxParallelChildren: 1, maxDepth: 1, publicStreamVersion: 1 as const,
+      workspaceId,
     },
     source: { conversationId }, deliveryAgentRunId: messageIds.deliveryId,
     serverSecret: secret,
@@ -64,6 +81,7 @@ async function seedWritableStream(convex: ReturnType<typeof convexTest>, runId =
   })
   return {
     actorUserId: 'owner',
+    workspaceId,
     assistantMessageId: messageIds.assistantMessageId,
     conversationId,
     deliveryId: messageIds.deliveryId,
@@ -248,6 +266,7 @@ test('append mutations enforce UTF-8 segments, UTF-16 cap, retries, gaps, and ca
   expect(message?.publicStreamCheckpoint).toEqual({
     runId: stream.runId, executionGeneration: 0, receiptId: 'model:0', invocation: 0,
   })
+  expect(message?.content).toBe('Canonical text differs.')
   expect(await convex.run(ctx => ctx.db.query('harnessPublicStreams')
     .withIndex('by_runId', q => q.eq('runId', stream.runId)).unique())).toBeNull()
   const read = await convex.query(query('harness/runs:readPublicStreamState'), {
@@ -260,6 +279,34 @@ test('append mutations enforce UTF-8 segments, UTF-16 cap, retries, gaps, and ca
   expect(settled.snapshot.revision).toBeGreaterThan(stream.revision)
   await expect(convex.mutation(append, appendArgs(stream, 21, 'after checkpoint')))
     .rejects.toThrow('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+
+  const unprojected = await seedWritableStream(convex, 'personal:unprojected')
+  await convex.mutation(append, appendArgs(unprojected, 0, 'Still live'))
+  await convex.run(ctx => ctx.db.patch(unprojected.assistantMessageId, { content: 'Prior live base' }))
+  await convex.mutation(mutation('apply'), {
+    actorUserId: unprojected.actorUserId, runId: unprojected.runId, workflowRunId: unprojected.workflowRunId,
+    executionGeneration: 0, operationId: 'receipt', expectedRevision: unprojected.revision,
+    operation: { type: 'record_receipt', receipt: {
+      id: 'model:0', modelId: 'fixture/model', provider: 'fixture', inputTokens: 1, outputTokens: 1,
+      reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000,
+      costMicros: 1, costSource: 'provider',
+    } },
+    serverSecret: secret,
+  })
+  await convex.run(ctx => ctx.db.patch(unprojected.assistantMessageId, { nativeRunId: stream.deliveryId as never }))
+  await convex.mutation(mutation('writeTranscriptStep'), {
+    actorUserId: unprojected.actorUserId, runId: unprojected.runId, workflowRunId: unprojected.workflowRunId,
+    receiptId: 'model:0', stepNumber: 0,
+    persistence: { content: 'Must not project.', parts: [] },
+    serverSecret: secret,
+  })
+  const skipped = await convex.run(async ctx => ({
+    message: await ctx.db.get(unprojected.assistantMessageId),
+    active: await ctx.db.query('harnessPublicStreams').withIndex('by_runId', q => q.eq('runId', unprojected.runId)).unique(),
+  }))
+  expect(skipped.message?.content).toBe('Prior live base')
+  expect(skipped.message?.publicStreamCheckpoint).toBeUndefined()
+  expect(skipped.active).not.toBeNull()
 })
 
 test('append mutations reject changed owners, revoked conversations, and wrong delivery bindings', async () => {
@@ -284,4 +331,35 @@ test('append mutations reject changed owners, revoked conversations, and wrong d
   await wrongDelivery.run(ctx => ctx.db.patch(deliveryStream.deliveryId, { workflowRunId: 'stale-workflow' }))
   await expect(wrongDelivery.mutation(append, appendArgs(deliveryStream, 0, 'x')))
     .rejects.toThrow('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+})
+
+test('personal failure and cancellation retain active text and retire stream rows', async () => {
+  const append = mutation('appendPublicStream')
+  const failed = convexTest(schema, modules)
+  const failureStream = await seedWritableStream(failed, 'personal:failure')
+  await failed.mutation(append, appendArgs(failureStream, 0, 'Failure partial'))
+  await failed.mutation(makeFunctionReference<'mutation'>('chat/conversations:failAgentRun'), {
+    error: { code: 'test_failure', message: 'The run failed.', retryable: false },
+    errorText: 'The run failed.', runId: failureStream.deliveryId,
+    expectedWorkflowRunId: failureStream.workflowRunId, serverSecret: secret, userId: 'owner',
+  })
+  const failedMessage = await failed.run(ctx => ctx.db.get(failureStream.assistantMessageId))
+  expect(failedMessage?.content).toContain('Failure partial')
+  expect(failedMessage?.parts?.some(part => part.type === 'text' && part.text === 'Failure partial')).toBe(true)
+  expect(await failed.run(ctx => ctx.db.query('harnessPublicStreams')
+    .withIndex('by_runId', q => q.eq('runId', failureStream.runId)).unique())).toBeNull()
+
+  const cancelled = convexTest(schema, modules)
+  const cancelStream = await seedWritableStream(cancelled, 'personal:cancelled')
+  await cancelled.mutation(append, appendArgs(cancelStream, 0, 'Stop partial'))
+  await cancelled.mutation(makeFunctionReference<'mutation'>('chat/conversations:cancelAgentRuns'), {
+    conversationId: cancelStream.conversationId, messageId: cancelStream.assistantMessageId,
+    serverSecret: secret, userId: 'owner',
+  })
+  const cancelledMessage = await cancelled.run(ctx => ctx.db.get(cancelStream.assistantMessageId))
+  expect(cancelledMessage?.content).toContain('Stop partial')
+  expect(cancelledMessage?.status).toBe('completed')
+  expect(await cancelled.run(ctx => ctx.db.query('harnessPublicStreams')
+    .withIndex('by_runId', q => q.eq('runId', cancelStream.runId)).unique())).toBeNull()
+
 })

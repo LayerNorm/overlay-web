@@ -1874,15 +1874,9 @@ export const writeTranscriptStep = mutation({
       && activeStream.receiptId === args.receiptId
       && activeStream.executionGeneration === (lineage[0]!.metadata.executionGeneration ?? 0)) {
       const message = await ctx.db.get(activeStream.assistantMessageId)
-      if (message && message.status === 'generating') {
-        await ctx.db.patch(message._id, {
-          publicStreamCheckpoint: {
-            runId: run.runId,
-            executionGeneration: activeStream.executionGeneration,
-            receiptId: activeStream.receiptId,
-            invocation: activeStream.invocation,
-          },
-        })
+      if (message?.publicStreamCheckpoint?.runId === run.runId
+        && message.publicStreamCheckpoint.executionGeneration === activeStream.executionGeneration
+        && message.publicStreamCheckpoint.receiptId === args.receiptId) {
         await clearPublicStreamSegments(ctx, run.runId)
         await ctx.db.delete(activeStream._id)
       }
@@ -1958,7 +1952,9 @@ export const appendPublicStream = mutation({
       throw new Error('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
     }
     const source = parseJson<HarnessSource>(run.sourceJson)
-    if (!('conversationId' in source)) throw new Error('HARNESS_PUBLIC_STREAM_ACCESS_DENIED')
+    if (!('conversationId' in source) || typeof source.conversationId !== 'string') {
+      throw new Error('HARNESS_PUBLIC_STREAM_ACCESS_DENIED')
+    }
     const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
     const deliveryId = run.deliveryAgentRunId
       ? ctx.db.normalizeId('conversationAgentRuns', run.deliveryAgentRunId) : null
@@ -1974,7 +1970,10 @@ export const appendPublicStream = mutation({
     if (delivery.mode !== 'room' && delivery.mode !== 'work' && conversation.userId !== args.actorUserId) {
       throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
     }
-    const assistantMessageId = ctx.db.normalizeId('conversationMessages', delivery.assistantMessageId)
+    const deliveryAssistantMessageId = delivery.assistantMessageId
+    if (!deliveryAssistantMessageId) throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    const assistantMessageId = ctx.db.normalizeId('conversationMessages', deliveryAssistantMessageId)
+    if (!assistantMessageId) throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
     const message = assistantMessageId ? await ctx.db.get(assistantMessageId) : null
     if (!message || message.deletedAt !== undefined || message.conversationId !== conversationId || message.role !== 'assistant'
       || message.status !== 'generating' || message.turnId !== delivery.turnId
@@ -2007,19 +2006,24 @@ export const appendPublicStream = mutation({
       })
       active = await ctx.db.get(streamId)
       if (!active) throw new Error('HARNESS_PUBLIC_STREAM_UNAVAILABLE')
-    } else if (active.receiptId !== args.receiptId || active.workflowRunId !== args.workflowRunId
-      || active.assistantMessageId !== assistantMessageId || !active.active) {
-      throw new Error('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+    } else {
+      if (!active) throw new Error('HARNESS_PUBLIC_STREAM_UNAVAILABLE')
+      if (active.receiptId !== args.receiptId || active.workflowRunId !== args.workflowRunId
+        || active.assistantMessageId !== assistantMessageId || !active.active) {
+        throw new Error('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+      }
     }
 
-    if (args.sequence === active.lastSequence) {
-      if (active.lastText !== args.text) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_CONFLICT')
-      return { accepted: true, duplicate: true, truncated: active.truncated }
+    if (!active) throw new Error('HARNESS_PUBLIC_STREAM_UNAVAILABLE')
+    const current = active
+    if (args.sequence === current.lastSequence) {
+      if (current.lastText !== args.text) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_CONFLICT')
+      return { accepted: true, duplicate: true, truncated: current.truncated }
     }
-    if (args.sequence !== active.nextSequence) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_GAP')
+    if (args.sequence !== current.nextSequence) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_GAP')
 
     let visible = args.text
-    const remaining = Math.max(0, MAX_PUBLIC_STREAM_VISIBLE_CHARS - active.visibleCharacters)
+    const remaining = Math.max(0, MAX_PUBLIC_STREAM_VISIBLE_CHARS - current.visibleCharacters)
     if (visible.length > remaining) {
       let used = 0
       let prefix = ''
@@ -2031,11 +2035,11 @@ export const appendPublicStream = mutation({
       visible = prefix
     }
     const truncated = visible.length < args.text.length
-    let segmentIndex = active.nextSegmentIndex
+    let segmentIndex = current.nextSegmentIndex
     let remainder = visible
     let tail = segmentIndex > 0
       ? await ctx.db.query('harnessPublicStreamSegments').withIndex('by_runId_receiptId_segmentIndex', q =>
-        q.eq('runId', run.runId).eq('receiptId', active!.receiptId).eq('segmentIndex', segmentIndex - 1)).unique()
+        q.eq('runId', run.runId).eq('receiptId', current.receiptId).eq('segmentIndex', segmentIndex - 1)).unique()
       : null
     while (remainder) {
       const available = MAX_PUBLIC_STREAM_SEGMENT_BYTES - (tail ? publicStreamByteLength(tail.text) : 0)
@@ -2087,14 +2091,14 @@ export const appendPublicStream = mutation({
         segmentIndex++
       }
     }
-    await ctx.db.patch(active._id, {
+    await ctx.db.patch(current._id, {
       lastSequence: args.sequence, lastText: args.text, nextSequence: args.sequence + 1,
       nextSegmentIndex: segmentIndex,
-      visibleCharacters: active.visibleCharacters + visible.length,
-      truncated: active.truncated || truncated,
+      visibleCharacters: current.visibleCharacters + visible.length,
+      truncated: current.truncated || truncated,
       updatedAt: Date.now(),
     })
-    return { accepted: true, duplicate: false, truncated: active.truncated || truncated }
+    return { accepted: true, duplicate: false, truncated: current.truncated || truncated }
   },
 })
 
@@ -2116,11 +2120,11 @@ export const readPublicStreamState = query({
     const metadata = lineage[0]!.metadata
     if (metadata.policy.publicStreamVersion !== 1) return null
     const source = parseJson<HarnessSource>(run.sourceJson)
-    if (!('conversationId' in source)) return null
+    if (!('conversationId' in source) || typeof source.conversationId !== 'string') return null
     const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
     const active = await ctx.db.query('harnessPublicStreams')
       .withIndex('by_runId', q => q.eq('runId', run.runId)).unique()
-    const snapshot = conversationId && active
+    const snapshot = conversationId && active?.assistantMessageId
       ? (await readActivePublicStreams(ctx, conversationId, [active.assistantMessageId]))[0] ?? null
       : null
     const steps = await ctx.db.query('harnessTranscriptSteps').withIndex('by_runId_sequence', q =>

@@ -1251,6 +1251,8 @@ export const failAgentRun = mutation({
     const now = Date.now()
     const message = await ctx.db.get(run.assistantMessageId)
     if (message) {
+      const active = (await readActivePublicStreams(ctx, run.conversationId, [message._id]))[0]
+      const activeText = active ? [active.text, active.truncatedMarker].filter(Boolean).join('\n\n') : ''
       const merged = args.failureTranscript
         ? mergeHarnessFailureTranscript({
           liveContent: message.content,
@@ -1262,12 +1264,18 @@ export const failAgentRun = mutation({
       const parts = (merged?.parts ?? message.parts ?? []).filter((part) =>
         part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'
         && part.type !== NATIVE_AGENT_ERROR_PART)
+      if (active && activeText) parts.push({
+        type: 'text',
+        id: transcriptPartIdentity(active.runId, active.receiptId, 0, active.executionGeneration),
+        text: activeText,
+      })
       if (isNative) {
         parts.push({ type: NATIVE_AGENT_ERROR_PART, data: {
           ...args.error, message: nativeAgentErrorMessage(args.error.message), runId: String(run._id), failedAt: now,
         } })
       }
-      const content = merged?.content || (isNative ? message.content : message.content || args.errorText)
+      const baseContent = merged?.content || (isNative ? message.content : message.content || args.errorText)
+      const content = [baseContent, activeText].filter(Boolean).join('\n\n')
       const hasContentPart = parts.some((part) => part.type === 'text')
       await ctx.db.patch(message._id, {
         ...(message.status === 'generating' || message.status === 'error'
@@ -1500,8 +1508,8 @@ export const cancelAgentRuns = mutation({
           : ''
         const finalContent = `${[baseContent.trimEnd(), activeText].filter(Boolean).join('\n\n').trimEnd()}${sentinel}`
         const baseParts = activeStream
-          ? message.parts ?? []
-          : args.partialParts?.length ? args.partialParts : message.parts ?? []
+          ? message.parts ?? (message.content ? [{ type: 'text', text: message.content }] : [])
+          : args.partialParts?.length ? args.partialParts : message.parts ?? [{ type: 'text', text: baseContent }]
         const streamPart = activeStream && activeText
           ? [{
             type: 'text',
@@ -1512,7 +1520,7 @@ export const cancelAgentRuns = mutation({
         writes.push(ctx.db.patch(message._id, {
           content: finalContent,
           parts: [
-            ...baseParts,
+            ...baseParts.filter(part => part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
             ...streamPart,
             { type: 'text', text: sentinel.trimStart() },
           ],

@@ -65,8 +65,8 @@ export function ConvexRoomMessageSubscription({
   const loadedMessages = useMemo(() => {
     const seen = new Set<string>()
     return [...main.results, ...thread.results, ...(permalink ? [permalink] : [])].filter(message => {
-      if (message.conversationId !== conversationId || message.deletedAt !== undefined || seen.has(message._id)) return false
-      seen.add(message._id)
+      if (message.conversationId !== conversationId || message.deletedAt !== undefined || seen.has(message.id)) return false
+      seen.add(message.id)
       return true
     })
   }, [conversationId, main.results, permalink, thread.results])
@@ -76,10 +76,10 @@ export function ConvexRoomMessageSubscription({
     const seen = new Set<string>()
     return candidates.filter(message => {
       if (message.conversationId !== conversationId || message.deletedAt !== undefined
-        || message.status !== 'generating' || seen.has(message._id)) return false
-      seen.add(message._id)
+        || message.status !== 'generating' || seen.has(message.id)) return false
+      seen.add(message.id)
       return true
-    }).slice(0, 50).map(message => message._id)
+    }).slice(0, 50).map(message => message.id as Id<'conversationMessages'>)
   }, [conversationId, main.results, permalink, thread.results])
   const activeStreams = useQuery(api.collaboration.rooms.activePublicStreams,
     room ? {

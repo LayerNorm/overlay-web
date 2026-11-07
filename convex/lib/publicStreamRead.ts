@@ -1,6 +1,5 @@
 import type { Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
-import { ACTIVE_AGENT_RUN_STATUSES } from '../../src/shared/agents/agent-run'
 
 const TRUNCATION_MARKER = '[Additional output omitted]'
 
@@ -52,7 +51,7 @@ export async function readActivePublicStreams(
       .unique()
     if (!stream || !stream.active || stream.conversationId !== conversationId) continue
     const message = await ctx.db.get(assistantMessageId)
-    if (!message || message.conversationId !== conversationId || message.status !== 'generating') continue
+    if (!message || message.deletedAt !== undefined || message.conversationId !== conversationId || message.status !== 'generating') continue
     const run = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', stream.runId)).unique()
     if (!run || run.actorUserId !== message.userId || run.rootRunId !== run.runId || run.parentRunId) continue
     let metadata: {
@@ -63,14 +62,13 @@ export async function readActivePublicStreams(
       policy?: { publicStreamVersion?: number }
     }
     try { metadata = JSON.parse(run.metadataJson) as typeof metadata } catch { continue }
-    if (metadata.policy?.publicStreamVersion !== 1 || metadata.status !== 'running'
+    if (metadata.policy?.publicStreamVersion !== 1
       || metadata.workflowRunId !== stream.workflowRunId
-      || (metadata.executionGeneration ?? 0) !== stream.executionGeneration
-      || metadata.modelReservation?.id !== stream.receiptId || !metadata.modelReservation.dispatch?.modelId) continue
+      || (metadata.executionGeneration ?? 0) !== stream.executionGeneration) continue
     const deliveryId = run.deliveryAgentRunId
       ? ctx.db.normalizeId('conversationAgentRuns', run.deliveryAgentRunId) : null
     const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
-    if (!delivery || !ACTIVE_AGENT_RUN_STATUSES.includes(delivery.status) || delivery.userId !== run.actorUserId
+    if (!delivery || delivery.userId !== run.actorUserId
       || delivery.harnessRunId !== run.runId
       || delivery.workflowRunId !== stream.workflowRunId || delivery.conversationId !== conversationId
       || delivery.assistantMessageId !== message._id || delivery.turnId !== message.turnId

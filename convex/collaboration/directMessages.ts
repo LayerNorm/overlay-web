@@ -496,6 +496,7 @@ export const listMessages = query({
 export function roomMessageView(message: Awaited<ReturnType<typeof hydrateRemoteMessages>>[number]) {
   return {
     id: message._id,
+    conversationId: message.conversationId,
     turnId: message.turnId,
     authorKind: message.authorKind ?? (message.role === 'assistant' ? 'model' : 'human'),
     authorPrincipalId: message.authorPrincipalId,
@@ -514,6 +515,7 @@ export function roomMessageView(message: Awaited<ReturnType<typeof hydrateRemote
     clientNonce: message.clientNonce,
     threadRootMessageId: message.threadRootMessageId,
     status: message.status,
+    publicStreamCheckpoint: message.publicStreamCheckpoint,
   }
 }
 
@@ -1194,7 +1196,7 @@ export const failAgentMessage = mutation({
       }
       : undefined
     await ctx.db.patch(args.messageId, {
-      content: merged.content,
+      content: [merged.content, activeText].filter(Boolean).join('\n\n'),
       parts: activePart ? [...merged.parts, activePart] : merged.parts,
       ...(activeStream ? { publicStreamCheckpoint: {
         runId: activeStream.runId, executionGeneration: activeStream.executionGeneration,

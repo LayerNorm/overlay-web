@@ -54,6 +54,15 @@ test('incomplete known-tool fences and oversized ambiguous candidates fail close
   expect(oversized.flush()).toEqual([])
 })
 
+test('oversized fenced tool candidates suppress their private tail and resume safe prose', () => {
+  const projector = new PublicTextProjector(new Set(['read_file']))
+  expect(projector.push('```json\n{"name":"read_file","arguments":{"path":"')).toEqual([])
+  expect(projector.push('x'.repeat(16_500))).toEqual([])
+  expect(projector.push('private-tail-secret\n\n')).toEqual([])
+  expect(projector.push('```\nSafe prose')).toEqual(['Safe prose'])
+  expect(projector.flush()).toEqual([])
+})
+
 test('JSON fences transition back to ordinary prose after the closing fence', () => {
   const projector = new PublicTextProjector(new Set(['read_file']))
   expect(projector.push('```json\n{"status":"ready"}\n```\nAfter')).toEqual([

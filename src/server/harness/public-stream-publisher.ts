@@ -63,7 +63,7 @@ export class PublicTextProjector {
         this.fenceHeader = ''
         return []
       }
-      if (/^[ \t]*\n$/.test(value)) this.candidateOverflow = false
+      if (!this.insideFence && /^[ \t]*\n$/.test(value)) this.candidateOverflow = false
       return []
     }
     if (this.insideFence) {
@@ -113,12 +113,12 @@ export class PublicTextProjector {
         start = newline + 1
       }
       this.partialLine = this.partialLine.slice(start)
-      if (this.partialLine && this.insideFence && this.fenceHeader && !this.candidate
+      if (this.partialLine && this.insideFence && this.fenceHeader && !this.candidate && !this.candidateOverflow
         && !/^[ \t]*[`{\[]/.test(this.partialLine)) {
         output.push(this.fenceHeader, this.partialLine)
         this.fenceHeader = ''
         this.partialLine = ''
-      } else if (this.partialLine && this.insideFence && !this.fenceHeader && !this.candidate
+      } else if (this.partialLine && this.insideFence && !this.fenceHeader && !this.candidate && !this.candidateOverflow
         && !/^[ \t]*[`{\[]/.test(this.partialLine)) {
         output.push(this.partialLine)
         this.partialLine = ''
@@ -195,8 +195,13 @@ export class PublicTextProjector {
     const output = this.suppressRest || this.suppressionEnd
       ? [] : this.visible(this.markerCarry, true)
     this.markerCarry = ''
-    if (this.candidate && !this.candidateOverflow && !this.isKnownToolCandidate(this.candidate)) {
-      output.push(...this.classify(this.candidate))
+    if (this.candidate && !this.candidateOverflow && !this.insideFence && !this.isKnownToolCandidate(this.candidate)) {
+      try {
+        JSON.parse(this.candidate)
+        output.push(...this.classify(this.candidate))
+      } catch (_error) {
+        // Incomplete protocol-shaped text is not safe to publish.
+      }
     }
     else if (!this.candidateOverflow && this.fenceHeader) output.push(this.fenceHeader)
     this.candidate = ''

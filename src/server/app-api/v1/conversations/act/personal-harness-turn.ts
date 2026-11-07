@@ -171,13 +171,29 @@ export async function startPersonalHarnessTurn(input: {
                 partId = ''
                 offset = 0
                 controller.enqueue({ type: 'start-step' })
-                const canonicalPartId = transcriptPartIdentity(
-                  workflowRun.runId, step.receiptId, 0, step.executionGeneration,
-                )
-                if (step.persistence.content) {
-                  controller.enqueue({ type: 'text-start', id: canonicalPartId })
-                  controller.enqueue({ type: 'text-delta', id: canonicalPartId, delta: step.persistence.content })
-                  controller.enqueue({ type: 'text-end', id: canonicalPartId })
+                const parts = step.persistence.parts.some(part => part.type === 'text')
+                  ? step.persistence.parts
+                  : [...step.persistence.parts, { type: 'text', text: step.persistence.content }]
+                for (const [index, part] of parts.entries()) {
+                  if (part.type === 'text' && typeof part.text === 'string' && part.text) {
+                    const id = transcriptPartIdentity(workflowRun.runId, step.receiptId, index, step.executionGeneration)
+                    controller.enqueue({ type: 'text-start', id })
+                    controller.enqueue({ type: 'text-delta', id, delta: part.text })
+                    controller.enqueue({ type: 'text-end', id })
+                  } else if (part.type === 'tool-invocation' && part.toolInvocation && typeof part.toolInvocation === 'object') {
+                    const tool = part.toolInvocation as Record<string, unknown>
+                    if (typeof tool.toolCallId !== 'string' || typeof tool.toolName !== 'string') continue
+                    const toolCallId = tool.toolCallId
+                    controller.enqueue({ type: 'tool-input-available', toolCallId,
+                      toolName: tool.toolName, input: tool.toolInput, dynamic: true })
+                    if (tool.state === 'output-available') {
+                      controller.enqueue({ type: 'tool-output-available', toolCallId, output: tool.toolOutput, dynamic: true })
+                    } else if (tool.state === 'output-error') {
+                      controller.enqueue({ type: 'tool-output-error', toolCallId, errorText: 'The tool failed.', dynamic: true })
+                    } else if (tool.state === 'output-denied') {
+                      controller.enqueue({ type: 'tool-output-denied', toolCallId })
+                    }
+                  }
                 }
                 controller.enqueue({
                   type: 'data-harness-transcript-step',
@@ -194,7 +210,10 @@ export async function startPersonalHarnessTurn(input: {
                 controller.enqueue({ type: 'finish-step' })
                 afterSequence = step.sequence
               }
-              if (state.nextSequence !== null) afterSequence = Math.max(afterSequence, state.nextSequence)
+              if (state.nextSequence !== null) {
+                afterSequence = Math.max(afterSequence, state.nextSequence)
+                continue
+              }
               const snapshot = state.snapshot
               if (snapshot) {
                 const nextPartId = transcriptPartIdentity(
@@ -246,7 +265,7 @@ export async function startPersonalHarnessTurn(input: {
               controller.enqueue({ type: 'error', errorText: 'The durable stream is unavailable.' })
               controller.close()
             }
-          })
+          }).finally(() => input.signal?.removeEventListener('abort', stop))
         },
         cancel() {
           stopped = true

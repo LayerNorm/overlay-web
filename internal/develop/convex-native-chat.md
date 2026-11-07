@@ -177,7 +177,7 @@ UTF-16 code units without splitting a surrogate pair. Truncation is explicit.
 Settling a transcript step atomically writes its checkpoint identity
 `(runId, generation, receiptId, invocation)` and retires that invocation's
 active segments. Finalize, failure and cancellation paths preserve safe partial
-output where needed, mark the canonical message terminal, and schedule bounded
+output where needed, mark the canonical message terminal, and perform bounded
 cleanup; active rows are not retained as a second transcript.
 
 The native personal Act request remains pending until the durable root's
