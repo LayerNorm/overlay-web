@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add trusted backend-freshness checks on PR updates, main pushes, merge groups and recovery sweeps. Block stale or unverifiable Preview approval without requiring a sync for UI-only drift. After merge, owner/Integration must require `Backend Freshness` in the main ruleset and dispatch the initial sweep.
+
 - Remove more polling from the app shell: a remote agent's status in a channel ("Running a tool · 12s") now comes from a Convex subscription instead of a request every five seconds, and the app's capabilities come only from the server-rendered page instead of a fallback request. Deletes an unused 15-second reconcile helper and an unused server loader for memories. The channel and DM sidebar list keeps its version-triggered refresh for now; making it native is the next step (CN-34b).
 
 - Make Settings → Archived live: archived channels and DMs, files, folders and notes, skills, MCP servers, automations, tasks, agents and agent threads come from Convex subscriptions, each with its own access rules, instead of seven HTTP loads that refreshed only after your own actions or a workspace switch. Something archived in another tab or by a teammate appears at once, and restored or deleted items disappear on their own. Archived files and rooms are selected by their archive state before any limit, so many newer active items can never hide an older archive. Restore and permanent delete still go through the server, which keeps the audit log, removes stored files and stops automations.

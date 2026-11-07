@@ -169,6 +169,49 @@ The temporary `--env-file` contains only the approved deploy key (mode `0600`)
 and is deleted after the build. An empty file also removes Convex authentication
 inputs, even when the key exists in the parent process; do not use an empty file.
 
+### Backend freshness
+
+The trusted `Backend Freshness` workflow and Preview controller compare a PR
+head to live `main`, with the PR head as the comparison base and main as the
+comparison head. Only net main-side changes since the merge base count; backend
+edits made only by the PR are not treated as drift, and UI-only main changes do
+not require a backend sync.
+
+The comparison conservatively treats these paths as backend-affecting:
+
+- `convex/`, `src/server/`, `src/shared/`, `src/app/api/`
+- `packages/`, `config/`, `scripts/convex/`, `scripts/release/`
+- Root `package.json`, `package-lock.json`, `convex.json`, `vercel.json`,
+  `bun.lock`, `bun.lockb`, and `tsconfig*.json`
+- `.github/workflows/pr-preview.yml`
+
+If main contributes a change in those areas, merge/sync main into the PR branch,
+push the updated branch, and rerun freshness and Preview checks. A revert that
+leaves no net change is allowed; cherry-picking equivalent commits does not
+establish that main is an ancestor. GitHub exposes at most 300 changed-file
+records from compare; 300 or more, incomplete metadata, API failures, or a main
+revision that keeps moving fail closed as unknown. Stale or unknown internal PRs
+also receive a failed `PR Preview` status so an older ready result cannot be
+accepted as fresh.
+
+The controller checks freshness before provisioning any requested Preview and
+again immediately before publishing ready. When the Preview label is absent,
+owned resources are cleaned up first, then freshness is checked before the
+not-required success status. Closed and retargeted PR cleanup remains
+independent.
+
+After the code is merged, the owner/Integration must mark `Backend Freshness`
+required in the main ruleset for both PRs and the merge queue, then manually
+dispatch the workflow from main to perform the initial sweep. The code does not
+change live rulesets.
+
+PR events, main pushes, manual dispatches and hourly recovery runs sweep all
+open main PRs, including forks and dependency bots. Unchanged status results are
+reused to avoid exhausting GitHub's per-revision status limit. Merge groups run
+independently for their exact SHA; separate concurrency keys keep a queued merge
+group from being displaced by another PR or merge-group event. No PR code is
+checked out or executed, and no deployment credentials are used by this workflow.
+
 The trusted PR controller also holds the project preview key as
 `CONVEX_PREVIEW_CONTROL_KEY` in the main-only `release-control` environment.
 Six-hour reconciliation validates the project, preview type, PR identifier and

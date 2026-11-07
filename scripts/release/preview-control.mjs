@@ -3,6 +3,7 @@
 import { readFileSync, appendFileSync } from 'node:fs'
 import { pathToFileURL } from 'node:url'
 import { previewPaymentsFromVercel } from './preview-payments.mjs'
+import { checkBackendFreshness } from './backend-freshness.mjs'
 
 export const CONFIG = Object.freeze({
   repository: 'LayerNorm/overlay-web', repositoryId: 1133644268,
@@ -182,7 +183,7 @@ async function pages(api, path, key, query = {}) {
 }
 
 export class PreviewController {
-  constructor({ github, vercel, backends, payments, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  constructor({ github, vercel, backends, payments, backendFreshness, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
     now = Date.now, report = console.log, verifyRemoved = async origin => {
       const result = await fetch(origin, { redirect: 'manual', signal: AbortSignal.timeout(30_000) })
       if (result.status !== 404 || result.headers.get('location')) throw new Error('Closed preview hostname must return 404')
@@ -202,6 +203,8 @@ export class PreviewController {
     this.verifyRemoved = verifyRemoved
     this.repoPath = `/repos/${CONFIG.repository}`
     this.projectPath = `/v9/projects/${CONFIG.projectId}`
+    this.backendFreshness = backendFreshness
+      ?? (headSha => checkBackendFreshness({ api: this.github, repoPath: this.repoPath, headSha }))
   }
   async pull(number) { return this.github(`${this.repoPath}/pulls/${number}`) }
   async verifyProject() {
@@ -224,6 +227,13 @@ export class PreviewController {
       state, context: 'PR Preview', description,
       ...(url ? { target_url: url } : {}),
     } })
+  }
+  async blockIfBackendStale(pr) {
+    let result
+    try { result = await this.backendFreshness(pr.head.sha) } catch { result = null }
+    if (result?.state === 'current') return null
+    await this.status(pr, 'failure', 'Backend is stale or unknown; sync main and retest before Preview.')
+    return { state: 'blocked', number: pr.number, sha: pr.head.sha, reason: result?.reason ?? 'unknown' }
   }
   async environment(pr) {
     const result = await this.vercel(`/v10/projects/${CONFIG.projectId}/env`, { query: { gitBranch: pr.head.ref, decrypt: 'false' } })
@@ -362,8 +372,10 @@ export class PreviewController {
     const current = trustedPull(await this.pull(pr.number), { requireMain: false })
     if (current.state !== 'open' || current.base.ref !== 'main') return this.cleanup(current)
     if (current.head.sha !== pr.head.sha || previewRequested(current)) return { state: 'superseded', number: pr.number }
-    await this.status(pr, 'success', 'Preview not requested; CI still required')
-    return { state: 'not-required', number: pr.number, sha: pr.head.sha }
+    const blocked = await this.blockIfBackendStale(current)
+    if (blocked) return blocked
+    await this.status(current, 'success', 'Preview not requested; CI still required')
+    return { state: 'not-required', number: pr.number, sha: current.head.sha }
   }
   async run(number) {
     previewAddress(number)
@@ -371,6 +383,8 @@ export class PreviewController {
     const pr = trustedPull(await this.pull(number), { requireMain: false })
     if (pr.state !== 'open' || pr.base.ref !== 'main') return this.cleanup(pr)
     if (!previewRequested(pr)) return this.notRequested(pr)
+    const blocked = await this.blockIfBackendStale(pr)
+    if (blocked) return blocked
     const siblings = await this.github(`${this.repoPath}/pulls`, { query: { state: 'open', head: `LayerNorm:${pr.head.ref}`, base: 'main', per_page: 100 } })
     if (siblings.some(other => other.number !== pr.number)) throw new Error('One PR per source branch is required')
     const address = await this.provision(pr)
@@ -424,6 +438,8 @@ export class PreviewController {
       if (after.state !== 'open' || after.base.ref !== 'main') return this.cleanup(after)
       if (!previewRequested(after)) return this.notRequested(after)
       if (after.head.sha !== pr.head.sha) return { state: 'superseded', number }
+      const freshnessBlocked = await this.blockIfBackendStale(pr)
+      if (freshnessBlocked) return freshnessBlocked
       await this.status(pr, 'success', `READY ${pr.head.sha.slice(0, 12)}; browser QA required`, address.origin)
       const evidence = { number, sha: pr.head.sha, url: address.origin, deploymentId: deployment.id,
         backend: backend.name, backendExpiresAt: backend.expiresAt, state: 'ready' }
