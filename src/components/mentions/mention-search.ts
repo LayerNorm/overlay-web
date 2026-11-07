@@ -1,455 +1,120 @@
 /**
- * Non-hook variant of the mention data fetcher for use outside React (e.g. from a
- * TipTap suggestion plugin). Same fetch + cache + scoring policy as `useMentionData`.
+ * Mention search shared by the chat composer, the notebook editor, Cmd-K and the Work context picker. Everything except
+ * connectors comes from the native `search/browse:mentions` query (indexed, permission-checked, at most ten per
+ * category); connectors come from the integration provider over HTTP because that list lives with the provider.
  */
 
+import type { ConvexReactClient } from 'convex/react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { unwrapPaginatedData } from '@/shared/api/pagination'
-import { getActiveChatListWorkspace } from '@/shared/chat/chat-list-cache'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
-import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
+import type { MentionCategory, MentionItem } from '@/shared/knowledge/mention-types'
+import { api } from '../../../convex/_generated/api'
+
+type Connector = { slug: string; name: string; description?: string; logoUrl?: string }
+
+/** How long a loaded connector list is reused before asking the provider again. */
+const CONNECTOR_TTL_MS = 60_000
+
+const connectorLists = new Map<string, { at: number; list: Promise<MentionItem[]> }>()
 
 /**
- * Every request names the workspace the UI is currently showing. Without it the
- * server falls back to the user's stored preference, which lags a workspace
- * switch and would surface another workspace's chats and files in search.
+ * The workspace's connectors, reused for a minute; the provider is the source of truth. A failed load is not kept,
+ * so the next search asks again.
  */
-function workspaceInit(init: RequestInit = {}): RequestInit {
-  const workspaceId = getActiveChatListWorkspace()
-  if (!workspaceId) return init
-  const headers = new Headers(init.headers)
-  headers.set(ACTIVE_WORKSPACE_HEADER, workspaceId)
-  return { ...init, headers }
-}
-
-interface CachedData {
-  cacheKey: string
-  files: MentionItem[]
-  connectors: MentionItem[]
-  automations: MentionItem[]
-  skills: MentionItem[]
-  mcps: MentionItem[]
-  chats: MentionItem[]
-}
-
-type MentionListKey = Exclude<keyof CachedData, 'cacheKey'>
-
-const CATEGORY_META: Array<{ type: MentionType; label: string; icon: string }> = [
-  { type: 'file', label: 'Files', icon: 'FileText' },
-  { type: 'connector', label: 'Connectors', icon: 'Plug' },
-  { type: 'automation', label: 'Automations', icon: 'Zap' },
-  { type: 'skill', label: 'Skills', icon: 'Sparkles' },
-  { type: 'mcp', label: 'MCP Servers', icon: 'Server' },
-  { type: 'chat', label: 'Chats', icon: 'MessageSquare' },
-]
-
-let cache: CachedData | null = null
-let inFlight: Promise<CachedData> | null = null
-let capabilityState: Promise<{
-  chat: boolean
-  files: boolean
-  integrations: boolean
-  automations: boolean
-  skills: boolean
-  mcpServers: boolean
-}> | null = null
-
-export function invalidateMentionCache() {
-  cache = null
-  capabilityState = null
-}
-
-async function fetchAll(): Promise<CachedData> {
-  const currentKeyPrefix = getActiveChatListWorkspace() ?? 'personal'
-  if (cache && cache.cacheKey.startsWith(`${currentKeyPrefix}:`)) return cache
-  if (inFlight) return inFlight
-  inFlight = (async () => {
-    const [automationsEnabled, capabilities] = await Promise.all([
-      areAutomationsEnabled(),
-      getMentionCapabilities(),
-    ])
-    const cacheKey = `${currentKeyPrefix}:${mentionCapabilityCacheKey(capabilities)}`
-    const [filesRes, notesRes, connectorsRes, automationsRes, skillsRes, mcpsRes, chatsRes] =
-      await Promise.allSettled([
-        capabilities.files
-          ? overlayAppClient.files.getResponse({ limit: 100, summary: true }, workspaceInit()).then((r) => (r.ok ? r.json() : []))
-          : Promise.resolve([]),
-        capabilities.files
-          ? overlayAppClient.notes.getResponse({ limit: 100 }, workspaceInit()).then((r) => (r.ok ? r.json() : []))
-          : Promise.resolve([]),
-        capabilities.integrations
-          ? overlayAppClient.integrations.getResponse(undefined, workspaceInit()).then((r) => (r.ok ? r.json() : { items: [] }))
-          : Promise.resolve({ items: [] }),
-        capabilities.automations && automationsEnabled
-          ? overlayAppClient.automations.getResponse({ limit: 100 }, workspaceInit()).then((r) => (r.ok ? r.json() : []))
-          : Promise.resolve([]),
-        capabilities.skills
-          ? overlayAppClient.skills.getResponse({ limit: 100 }, workspaceInit()).then((r) => (r.ok ? r.json() : []))
-          : Promise.resolve([]),
-        capabilities.mcpServers
-          ? overlayAppClient.mcpServers.getResponse({ limit: 100 }, workspaceInit()).then((r) => (r.ok ? r.json() : []))
-          : Promise.resolve([]),
-        capabilities.chat
-          ? overlayAppClient.conversations.getResponse({ limit: 100 }, workspaceInit()).then((r) => (r.ok ? r.json() : []))
-          : Promise.resolve([]),
-      ])
-
-    const canonicalFiles: MentionItem[] = (
-      filesRes.status === 'fulfilled'
-        ? unwrapPaginatedData<{ _id: string; name?: string; kind?: string; mimeType?: string }>(filesRes.value)
-        : []
-    ).map((f: { _id: string; name?: string; kind?: string; mimeType?: string }) => ({
-      type: 'file' as const,
-      id: f._id,
-      name: f.name || 'Untitled',
-      description: f.kind || f.mimeType || 'file',
-      icon: 'FileText',
-    }))
-    const notes: MentionItem[] = (
-      notesRes.status === 'fulfilled'
-        ? unwrapPaginatedData<{ _id: string; title?: string }>(notesRes.value)
-        : []
-    ).map((note: { _id: string; title?: string }) => ({
-      type: 'file' as const,
-      id: note._id,
-      name: note.title || 'Untitled',
-      description: 'note',
-      icon: 'FileText',
-    }))
-    const files = [...new Map([...canonicalFiles, ...notes].map((item) => [item.id, item])).values()]
-    const connectorsRaw = connectorsRes.status === 'fulfilled' ? connectorsRes.value : { items: [] }
-    const connectors: MentionItem[] = (connectorsRaw.items || []).map(
-      (c: { slug: string; name: string; description?: string; logoUrl?: string }) => ({
-        type: 'connector' as const,
-        id: c.slug,
-        name: c.name,
-        description: c.description || '',
-        icon: 'Plug',
-        logoUrl: c.logoUrl,
-      })
-    )
-    const automations: MentionItem[] = capabilities.automations && automationsEnabled ? (
-      automationsRes.status === 'fulfilled'
-        ? unwrapPaginatedData<{ _id: string; name?: string; description?: string; deletedAt?: number }>(automationsRes.value)
-        : []
-    )
-      .filter((a: { deletedAt?: number }) => !a.deletedAt)
-      .map((a: { _id: string; name?: string; description?: string }) => ({
-        type: 'automation' as const,
-        id: a._id,
-        name: a.name || 'Untitled automation',
-        description: a.description || '',
-        icon: 'Zap',
-      })) : []
-    const skills: MentionItem[] = (
-      skillsRes.status === 'fulfilled'
-        ? unwrapPaginatedData<{ _id: string; name: string; description?: string; enabled?: boolean }>(skillsRes.value)
-        : []
-    )
-      .filter((s: { enabled?: boolean }) => s.enabled !== false)
-      .map((s: { _id: string; name: string; description?: string }) => ({
-        type: 'skill' as const,
-        id: s._id,
-        name: s.name,
-        description: s.description || '',
-        icon: 'Sparkles',
-      }))
-    const mcps: MentionItem[] = (
-      mcpsRes.status === 'fulfilled'
-        ? unwrapPaginatedData<{ _id: string; name: string; description?: string; url?: string }>(mcpsRes.value)
-        : []
-    ).map((m: { _id: string; name: string; description?: string; url?: string }) => ({
-      type: 'mcp' as const,
-      id: m._id,
-      name: m.name,
-      description: m.description || m.url || '',
-      icon: 'Server',
-    }))
-    const chats: MentionItem[] = (
-      chatsRes.status === 'fulfilled'
-        ? unwrapPaginatedData<{ _id: string; title: string }>(chatsRes.value)
-        : []
-    ).map((c: { _id: string; title: string }) => ({
-      type: 'chat' as const,
-      id: c._id,
-      name: c.title || 'Untitled chat',
-      icon: 'MessageSquare',
-    }))
-
-    cache = { cacheKey, files, connectors, automations, skills, mcps, chats }
-    return cache
-  })()
-  try {
-    return await inFlight
-  } finally {
-    inFlight = null
-  }
-}
-
-async function areAutomationsEnabled(): Promise<boolean> {
-  return (await getMentionCapabilities()).automations
-}
-
-async function getMentionCapabilities(): Promise<{
-  chat: boolean
-  files: boolean
-  integrations: boolean
-  automations: boolean
-  skills: boolean
-  mcpServers: boolean
-}> {
-  if (!capabilityState) {
-    capabilityState = fetch('/api/v1/capabilities', workspaceInit({ cache: 'no-store' }))
-      .then(async (response) => {
-        if (!response.ok) return defaultMentionCapabilities()
-        const payload = await response.json()
-        const capabilities = payload?.capabilities ?? {}
-        return {
-          chat: capabilities.chat !== false,
-          files: capabilities.files !== false,
-          integrations: capabilities.integrations !== false,
-          automations: capabilities.automations !== false,
-          skills: capabilities.skills !== false,
-          mcpServers: capabilities.mcpServers !== false,
-        }
-      })
-      .catch(defaultMentionCapabilities)
-  }
-  return capabilityState
-}
-
-function defaultMentionCapabilities() {
-  return {
-    chat: true,
-    files: true,
-    integrations: true,
-    automations: true,
-    skills: true,
-    mcpServers: true,
-  }
-}
-
-function mentionCapabilityCacheKey(capabilities: Awaited<ReturnType<typeof getMentionCapabilities>>): string {
-  return CATEGORY_META
-    .filter((cat) => {
-      switch (cat.type) {
-        case 'file':
-          return capabilities.files
-        case 'connector':
-          return capabilities.integrations
-        case 'automation':
-          return capabilities.automations
-        case 'skill':
-          return capabilities.skills
-        case 'mcp':
-          return capabilities.mcpServers
-        case 'chat':
-          return capabilities.chat
-      }
+function connectorsFor(workspaceId: string): Promise<MentionItem[]> {
+  const cached = connectorLists.get(workspaceId)
+  if (cached && Date.now() - cached.at < CONNECTOR_TTL_MS) return cached.list
+  const list = overlayAppClient.integrations
+    .getResponse(undefined, { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId } })
+    .then(async (response) => {
+      if (!response.ok) throw new Error(`connectors ${response.status}`)
+      return await response.json() as { items?: Connector[] }
     })
-    .map((cat) => cat.type)
-    .join('|')
+    .then(({ items }) => (items ?? []).map((connector): MentionItem => ({
+      type: 'connector',
+      id: connector.slug,
+      name: connector.name,
+      description: connector.description || '',
+      icon: 'Plug',
+      logoUrl: connector.logoUrl,
+    })))
+    .catch(() => {
+      if (connectorLists.get(workspaceId)?.list === list) connectorLists.delete(workspaceId)
+      return []
+    })
+  connectorLists.set(workspaceId, { at: Date.now(), list })
+  return list
+}
+
+/** Forget cached connector lists, e.g. after connecting or removing a connector. */
+export function invalidateMentionCache() {
+  connectorLists.clear()
 }
 
 function scoreMatch(item: MentionItem, query: string): number {
-  const q = query.toLowerCase()
   const name = item.name.toLowerCase()
-  if (name === q) return 100
-  if (name.startsWith(q)) return 80
-  if (name.includes(q)) return 60
-  if (item.description?.toLowerCase().includes(q)) return 40
+  if (name === query) return 100
+  if (name.startsWith(query)) return 80
+  if (name.includes(query)) return 60
+  if (item.description?.toLowerCase().includes(query)) return 40
   return 0
 }
 
-export async function searchMentions(query: string): Promise<MentionCategory[]> {
-  const q = query.trim().toLowerCase()
-  if (!q) {
-    // Empty query: return all items (existing behavior for initial dropdown).
-    const data = await fetchAll()
-    const capabilities = await getMentionCapabilities()
-    return CATEGORY_META.filter((cat) => {
-      switch (cat.type) {
-        case 'file':
-          return capabilities.files
-        case 'connector':
-          return capabilities.integrations
-        case 'automation':
-          return capabilities.automations
-        case 'skill':
-          return capabilities.skills
-        case 'mcp':
-          return capabilities.mcpServers
-        case 'chat':
-          return capabilities.chat
-      }
-    }).map((cat) => {
-      const items = data[mentionListKey(cat.type)]
-      return {
-        type: cat.type,
-        label: cat.label,
-        icon: cat.icon,
-        items: items.slice(0, 10),
-      }
-    }).filter((cat) => cat.items.length > 0)
-  }
-
-  // Try the indexed Convex search endpoint first (bounded top-K results).
-  // Falls back to the scan-and-filter approach if the endpoint is unavailable.
-  try {
-    const response = await fetch(
-      `/api/v1/mention-search?q=${encodeURIComponent(q)}`,
-      workspaceInit({ credentials: 'same-origin' }),
-    )
-    if (response.ok) {
-      const result = await response.json() as {
-        conversations: Array<{ _id: string; title: string }>
-        files: Array<{ _id: string; name: string; kind?: string; mimeType?: string }>
-        notes: Array<{ _id: string; title: string }>
-        automations: Array<{ _id: string; name?: string; description?: string }>
-        skills: Array<{ _id: string; name: string; description: string }>
-        mcpServers: Array<{ _id: string; name: string; description?: string }>
-      }
-      const categories: MentionCategory[] = []
-      if (result.conversations.length > 0) {
-        categories.push({
-          type: 'chat',
-          label: 'Chats',
-          icon: 'MessageSquare',
-          items: result.conversations.map((c) => ({
-            type: 'chat' as const,
-            id: c._id,
-            name: c.title || 'Untitled chat',
-            icon: 'MessageSquare',
-          })),
-        })
-      }
-      const fileItems = [
-        ...result.files.map((f) => ({
-          type: 'file' as const,
-          id: f._id,
-          name: f.name || 'Untitled',
-          description: f.kind || f.mimeType || 'file',
-          icon: 'FileText',
-        })),
-        ...result.notes.map((n) => ({
-          type: 'file' as const,
-          id: n._id,
-          name: n.title || 'Untitled',
-          description: 'note',
-          icon: 'FileText',
-        })),
-      ]
-      if (fileItems.length > 0) {
-        categories.push({
-          type: 'file',
-          label: 'Files',
-          icon: 'FileText',
-          items: fileItems.slice(0, 10),
-        })
-      }
-      if (result.automations.length > 0) {
-        categories.push({
-          type: 'automation',
-          label: 'Automations',
-          icon: 'Zap',
-          items: result.automations.map((a) => ({
-            type: 'automation' as const,
-            id: a._id,
-            name: a.name || 'Untitled automation',
-            description: a.description || '',
-            icon: 'Zap',
-          })),
-        })
-      }
-      if (result.skills.length > 0) {
-        categories.push({
-          type: 'skill',
-          label: 'Skills',
-          icon: 'Sparkles',
-          items: result.skills.map((s) => ({
-            type: 'skill' as const,
-            id: s._id,
-            name: s.name,
-            description: s.description || '',
-            icon: 'Sparkles',
-          })),
-        })
-      }
-      if (result.mcpServers.length > 0) {
-        categories.push({
-          type: 'mcp',
-          label: 'MCP Servers',
-          icon: 'Server',
-          items: result.mcpServers.map((m) => ({
-            type: 'mcp' as const,
-            id: m._id,
-            name: m.name,
-            description: m.description || '',
-            icon: 'Server',
-          })),
-        })
-      }
-      // Connectors are not in the Convex search index;
-      // fall back to client-side filtering for that category.
-      const data = await fetchAll()
-      const capabilities = await getMentionCapabilities()
-      if (capabilities.integrations) {
-        const connectorItems = data.connectors
-          .filter((item) => item.name.toLowerCase().includes(q) || (item.description || '').toLowerCase().includes(q))
-          .sort((a, b) => scoreMatch(b, q) - scoreMatch(a, q))
-          .slice(0, 10)
-        if (connectorItems.length > 0) {
-          categories.push({
-            type: 'connector',
-            label: 'Connectors',
-            icon: 'Plug',
-            items: connectorItems,
-          })
-        }
-      }
-      return categories
-    }
-  } catch {
-    // Fall through to scan-and-filter fallback.
-  }
-
-  // Fallback: scan-and-filter (existing behavior).
-  const [data, capabilities] = await Promise.all([fetchAll(), getMentionCapabilities()])
-  return CATEGORY_META.filter((cat) => {
-    switch (cat.type) {
-      case 'file':
-        return capabilities.files
-      case 'connector':
-        return capabilities.integrations
-      case 'automation':
-        return capabilities.automations
-      case 'skill':
-        return capabilities.skills
-      case 'mcp':
-        return capabilities.mcpServers
-      case 'chat':
-        return capabilities.chat
-    }
-  }).map((cat) => {
-    const items = data[mentionListKey(cat.type)]
-    const filtered = q
-      ? items
-          .filter(
-            (item) =>
-              item.name.toLowerCase().includes(q) || (item.description || '').toLowerCase().includes(q),
-          )
-          .sort((a, b) => scoreMatch(b, q) - scoreMatch(a, q))
-      : items
-    return {
-      type: cat.type,
-      label: cat.label,
-      icon: cat.icon,
-      items: filtered.slice(0, 10),
-    }
-  }).filter((cat) => cat.items.length > 0)
+function category(type: MentionCategory['type'], label: string, icon: string, items: MentionItem[]): MentionCategory[] {
+  return items.length ? [{ type, label, icon, items: items.slice(0, 10) }] : []
 }
 
-function mentionListKey(type: MentionType): MentionListKey {
-  if (type === 'connector') return 'connectors'
-  return `${type}s` as MentionListKey
+/**
+ * Mention categories for a query in a workspace (the newest items when the query is empty). Callers that type fast
+ * should keep only the answer for the latest query they asked; each answer carries the query it is for.
+ */
+export async function searchMentions(
+  convex: Pick<ConvexReactClient, 'query'>,
+  workspaceId: string,
+  query: string,
+): Promise<MentionCategory[]> {
+  const q = query.trim().toLowerCase()
+  const result = await convex.query(api.search.browse.mentions, { workspaceId, query: q })
+  if (!result) return []
+  const connectors = result.connectorsAllowed ? await connectorsFor(workspaceId) : []
+  const matchingConnectors = q
+    ? connectors.filter((item) => scoreMatch(item, q) > 0).sort((a, b) => scoreMatch(b, q) - scoreMatch(a, q))
+    : connectors
+  return [
+    ...category('file', 'Files', 'FileText', result.files.map((file) => ({
+      type: 'file' as const,
+      id: file.id,
+      name: file.name || 'Untitled',
+      description: file.kind === 'note' ? 'note' : file.kind || file.mimeType || 'file',
+      icon: 'FileText',
+    }))),
+    ...category('connector', 'Connectors', 'Plug', matchingConnectors),
+    ...category('automation', 'Automations', 'Zap', result.automations.map((automation) => ({
+      type: 'automation' as const,
+      id: automation.id,
+      name: automation.name || 'Untitled automation',
+      description: automation.description || '',
+      icon: 'Zap',
+    }))),
+    ...category('skill', 'Skills', 'Sparkles', result.skills.map((skill) => ({
+      type: 'skill' as const,
+      id: skill.id,
+      name: skill.name,
+      description: skill.description || '',
+      icon: 'Sparkles',
+    }))),
+    ...category('mcp', 'MCP Servers', 'Server', result.mcpServers.map((server) => ({
+      type: 'mcp' as const,
+      id: server.id,
+      name: server.name,
+      description: server.description || '',
+      icon: 'Server',
+    }))),
+    ...category('chat', 'Chats', 'MessageSquare', result.chats.map((chat) => ({
+      type: 'chat' as const,
+      id: chat.id,
+      name: chat.title || 'Untitled chat',
+      icon: 'MessageSquare',
+    }))),
+  ]
 }
