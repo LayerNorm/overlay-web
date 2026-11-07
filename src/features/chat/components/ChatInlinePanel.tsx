@@ -182,12 +182,37 @@ function useCollaborationUnread({
 }
 
 const ROOM_KIND = { dms: 'dm', channels: 'channel', all: 'all' } as const
+const ROOM_PAGE = 50
 
 /**
  * The channel and DM list for the sidebar, live from `collaboration/roomList:list`: new messages, renames, new rooms,
  * joins, leaves and archives in any tab arrive without fetching, retrying or version-triggered refetches. Local
  * optimistic edits (a delete animation, an archive) apply to `chats` and the next live snapshot replaces them.
  */
+/** The live room list for one workspace and view, a page at a time; earlier rows stay on screen while more load. */
+function useRoomListPage({ enabled, workspaceId, kind }: {
+  enabled: boolean
+  workspaceId: string | null | undefined
+  kind: 'dm' | 'channel' | 'all' | null
+}) {
+  // The page grows with "Load more" and starts over when the workspace or view changes.
+  const pageKey = `${workspaceId ?? ''}:${kind ?? ''}`
+  const [page, setPage] = useState({ key: pageKey, limit: ROOM_PAGE })
+  const limit = page.key === pageKey ? page.limit : ROOM_PAGE
+  const result = useQuery(api.collaboration.roomList.list, enabled ? { workspaceId: workspaceId!, kind: kind!, limit } : 'skip') as
+    { rooms: Conversation[]; hasMore: boolean } | null | undefined
+  // While a bigger page loads, the rows already on screen for this workspace and view stay.
+  const [lastPage, setLastPage] = useState<{ key: string; rooms: Conversation[]; hasMore: boolean } | null>(null)
+  const current = enabled && result !== undefined ? { key: pageKey, rooms: result?.rooms ?? [], hasMore: Boolean(result?.hasMore) } : null
+  if (current && (lastPage?.key !== pageKey || lastPage.rooms !== current.rooms)) setLastPage(current)
+  const visible = current ?? (enabled && lastPage?.key === pageKey ? lastPage : null)
+  const loadingMore = enabled && result === undefined && visible !== null
+  const loadMoreChats = useCallback(() => {
+    setPage({ key: pageKey, limit: limit + ROOM_PAGE })
+  }, [limit, pageKey])
+  return { visible, loadingMore, loadMoreChats }
+}
+
 function useChatListData({
   authLoading,
   chatView,
@@ -204,17 +229,17 @@ function useChatListData({
   const { isAuthenticated, isLoading } = useConvexAuth()
   const kind = chatView === 'dms' || chatView === 'channels' || chatView === 'all' ? ROOM_KIND[chatView] : null
   const enabled = Boolean(!nativePersonalView && kind && workspaceId && user && !authLoading && isAuthenticated && !isLoading)
-  const live = useQuery(api.collaboration.roomList.list, enabled ? { workspaceId: workspaceId!, kind: kind! } : 'skip') as
-    Conversation[] | null | undefined
+  const { visible, loadingMore, loadMoreChats } = useRoomListPage({ enabled, workspaceId, kind })
   const [chats, setChats] = useState<Conversation[]>(() => [])
   const [loading, setLoading] = useState(true)
-  const [syncedFrom, setSyncedFrom] = useState<{ live: typeof live; enabled: boolean } | null>(null)
-  if (!syncedFrom || syncedFrom.live !== live || syncedFrom.enabled !== enabled) {
-    setSyncedFrom({ live, enabled })
-    setChats(enabled ? live ?? [] : [])
-    setLoading(enabled ? live === undefined : !nativePersonalView && authLoading)
+  const [syncedFrom, setSyncedFrom] = useState<{ rooms: Conversation[] | null; enabled: boolean } | null>(null)
+  const visibleRooms = visible?.rooms ?? null
+  if (!syncedFrom || syncedFrom.rooms !== visibleRooms || syncedFrom.enabled !== enabled) {
+    setSyncedFrom({ rooms: visibleRooms, enabled })
+    setChats(visibleRooms ?? [])
+    setLoading(enabled ? visible === null : !nativePersonalView && authLoading)
   }
-  return { chats, setChats, loading, setLoading }
+  return { chats, setChats, loading, setLoading, hasMore: Boolean(visible?.hasMore), loadingMore, loadMoreChats }
 }
 
 function useChatListEvents({
@@ -887,6 +912,9 @@ export function ChatInlinePanel({
     setChats,
     loading,
     setLoading,
+    hasMore,
+    loadingMore,
+    loadMoreChats,
   } = useChatListData({
     authLoading,
     chatView,
@@ -944,10 +972,10 @@ export function ChatInlinePanel({
   const listUnavailable = nativePersonalRelevant && nativePersonal.active.status === 'unavailable'
   const listHasMore = nativePersonalView
     ? nativePersonal.active.hasMore
-    : chatView === 'all' && nativePersonalOwner && nativePersonal.active.hasMore
+    : hasMore || (chatView === 'all' && nativePersonalOwner && nativePersonal.active.hasMore)
   const listLoadingMore = nativePersonalView
     ? nativePersonal.active.loadingMore
-    : chatView === 'all' && nativePersonalOwner && nativePersonal.active.loadingMore
+    : loadingMore || (chatView === 'all' && nativePersonalOwner && nativePersonal.active.loadingMore)
   const loadMoreVisibleChats = async () => {
     if (!nativeWorkspaceReady) return
     if (nativePersonalView) {
@@ -955,6 +983,7 @@ export function ChatInlinePanel({
       return
     }
     if (chatView === 'all' && nativePersonalOwner) nativePersonal.active.loadMore()
+    if (hasMore) loadMoreChats()
   }
   const deletingChatIds = useChatListEvents({
     activeId,

@@ -522,7 +522,7 @@ The rate limit provider is selected at bootstrap. Redis is preferred when config
 
 Personal and workspace AI chat lists are native live queries (`chat/personal:list`). The DM and channel
 sidebar list is `collaboration/roomList:list`: the viewer's active, unarchived rooms, newest activity
-first, without agent threads or automation chats. A new message, rename, join, leave or archive updates
+first, without agent threads or automation chats, a page at a time (`limit`, with `hasMore`) after every membership is sorted. A new message, rename, join, leave or archive updates
 every open sidebar; there is no browser list cache, version signal or delta refetch. Archived rooms come
 from `collaboration/archive:rooms`. `GET /api/v1/conversations` remains for API clients.
 

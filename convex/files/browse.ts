@@ -60,27 +60,33 @@ const CHILDREN_SCAN_LIMIT = 500
 
 /**
  * One folder's readable children in a view (the root when `parentId` is null), for resolving relative links in a
- * markdown file: metadata only, at most 500 per source, the same read rules as the tree.
+ * markdown file: metadata only, the same read rules as the tree. At most 500 per source; `complete` is false when a
+ * source had more, so callers must not treat a missing or unique name as settled.
  */
 export const children = query({
   args: { workspaceId: v.string(), parentId: v.union(v.string(), v.null()), view: v.union(v.literal('personal'), v.literal('workspace')) },
   handler: async (ctx, { workspaceId, parentId, view }) => {
     const viewer = await viewerOrNull(ctx, workspaceId)
     if (!viewer) return null
+    let complete = true
+    const bounded = <Row,>(rows: Row[]) => {
+      if (rows.length > CHILDREN_SCAN_LIMIT) complete = false
+      return rows.slice(0, CHILDREN_SCAN_LIMIT)
+    }
     const rows = await listScopedRows(ctx, {
       userId: viewer.userId,
       workspaceId,
       view,
-      fetchMine: async () => await ctx.db.query('files')
+      fetchMine: async () => bounded(await ctx.db.query('files')
         .withIndex('by_workspaceId_userId_parentId_updatedAt', (q) =>
           q.eq('workspaceId', workspaceId).eq('userId', viewer.userId).eq('parentId', parentId ?? undefined))
-        .take(CHILDREN_SCAN_LIMIT),
+        .take(CHILDREN_SCAN_LIMIT + 1)),
       // Selected by folder before the limit, so files elsewhere in the workspace never crowd out this folder's children.
-      fetchShared: async (ws) => await ctx.db.query('files')
+      fetchShared: async (ws) => bounded(await ctx.db.query('files')
         .withIndex('by_workspaceId_scope_parentId', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace').eq('parentId', parentId ?? undefined))
-        .take(CHILDREN_SCAN_LIMIT),
+        .take(CHILDREN_SCAN_LIMIT + 1)),
     })
-    return rows.filter((row) => !row.deletedAt).map(browserFileSummary)
+    return { files: rows.filter((row) => !row.deletedAt).map(browserFileSummary), complete }
   },
 })
 

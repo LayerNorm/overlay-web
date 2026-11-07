@@ -24,7 +24,8 @@ export const rooms = query({
     const rows = await Promise.all(participants.map(async participant => {
       const conversation = await ctx.db.get(participant.conversationId)
       const type = conversation?.conversationType
-      if (!conversation || conversation.deletedAt !== undefined || conversation.workspaceId !== workspaceId
+      // Agent threads are DMs underneath but are listed (and restored) with their agent.
+      if (!conversation || conversation.deletedAt !== undefined || conversation.workspaceId !== workspaceId || conversation.agentId
         || (type !== 'channel' && type !== 'dm')) return null
       return {
         _id: conversation._id,

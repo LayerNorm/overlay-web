@@ -338,7 +338,7 @@ function useSidebarPanelChrome(args: {
   const convex = useConvex()
   const findRooms = useCallback(async (kind: 'dm' | 'channel') => (
     activeWorkspaceId
-      ? await convex.query(api.collaboration.roomList.list, { workspaceId: activeWorkspaceId, kind })
+      ? (await convex.query(api.collaboration.roomList.list, { workspaceId: activeWorkspaceId, kind }))?.rooms ?? null
       : null
   ), [activeWorkspaceId, convex])
   const panelNav = resolveSecondaryPanelNav({

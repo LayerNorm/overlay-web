@@ -4,9 +4,11 @@ import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
 
 const modules = import.meta.glob('./**/*.ts')
-const list = makeFunctionReference<'query'>('collaboration/roomList:list')
+const listRef = makeFunctionReference<'query'>('collaboration/roomList:list')
 
 type Row = { _id: string; title: string; conversationType: string; otherParticipantTypes: string[] }
+type Page = { rooms: Row[]; hasMore: boolean }
+const list = listRef
 
 test('the room list shows the viewer’s own active rooms, newest first, and updates live', async () => {
   const t = convexTest(schema, modules)
@@ -40,11 +42,11 @@ test('the room list shows the viewer’s own active rooms, newest first, and upd
     return { general, dm }
   })
   const as = (subject: string) => t.withIdentity({ subject })
-  const all = await as('alice').query(list, { workspaceId: 'ws', kind: 'all' }) as Row[]
+  const all = (await as('alice').query(list, { workspaceId: 'ws', kind: 'all' }) as Page).rooms
   expect(all.map(row => row.title)).toEqual(['alice, bob', 'general'])
   expect(all[0].otherParticipantTypes).toEqual(['human'])
-  expect((await as('alice').query(list, { workspaceId: 'ws', kind: 'channel' }) as Row[]).map(row => row.title)).toEqual(['general'])
-  expect((await as('alice').query(list, { workspaceId: 'ws', kind: 'dm' }) as Row[]).map(row => row.title)).toEqual(['alice, bob'])
+  expect((await as('alice').query(list, { workspaceId: 'ws', kind: 'channel' }) as Page).rooms.map(row => row.title)).toEqual(['general'])
+  expect((await as('alice').query(list, { workspaceId: 'ws', kind: 'dm' }) as Page).rooms.map(row => row.title)).toEqual(['alice, bob'])
 
   // A new message moves #general to the top; archiving the DM removes it.
   await t.run(async ctx => {
@@ -53,10 +55,39 @@ test('the room list shows the viewer’s own active rooms, newest first, and upd
       .find(row => row.conversationId === ids.dm && row.principalId === 'p-alice')!
     await ctx.db.patch(participant._id, { archivedAt: 101 })
   })
-  expect((await as('alice').query(list, { workspaceId: 'ws', kind: 'all' }) as Row[]).map(row => row.title)).toEqual(['general'])
+  expect((await as('alice').query(list, { workspaceId: 'ws', kind: 'all' }) as Page).rooms.map(row => row.title)).toEqual(['general'])
 
   // Other members see only their own rooms; strangers and other workspaces get nothing.
-  expect((await as('bob').query(list, { workspaceId: 'ws', kind: 'all' }) as Row[]).map(row => row.title)).toEqual(['bob only', 'alice, bob'])
+  expect((await as('bob').query(list, { workspaceId: 'ws', kind: 'all' }) as Page).rooms.map(row => row.title)).toEqual(['bob only', 'alice, bob'])
   expect(await as('stranger').query(list, { workspaceId: 'ws', kind: 'all' })).toBeNull()
   expect(await as('alice').query(list, { workspaceId: 'other', kind: 'all' })).toBeNull()
+})
+
+test('every membership is considered before the page is cut, and the page grows on request', async () => {
+  const t = convexTest(schema, modules)
+  await t.run(async ctx => {
+    await ctx.db.insert('workspaces', { workspaceId: 'ws', kind: 'organization', name: 'QA', slug: 'qa', status: 'active', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('workspacePrincipals', { workspaceId: 'ws', principalId: 'p-alice', userId: 'alice', type: 'human', displayName: 'alice', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('workspaceMemberships', { workspaceId: 'ws', principalId: 'p-alice', membershipId: 'm-alice', role: 'member', status: 'active', joinedAt: 1, updatedAt: 1 })
+    const add = async (title: string, conversationType: string, lastModified: number, extra: Record<string, unknown> = {}) => {
+      const id = await ctx.db.insert('conversations', {
+        workspaceId: 'ws', userId: 'alice', title, conversationType, scope: 'workspace', createdAt: 1, updatedAt: 1, lastModified,
+        lastMode: 'act', askModelIds: [], actModelId: 'm', ...extra,
+      } as never)
+      await ctx.db.insert('conversationParticipants', {
+        conversationId: id, workspaceId: 'ws', principalId: 'p-alice', principalType: 'human', role: 'member', status: 'active', notificationLevel: 'all', joinedAt: 1, updatedAt: 1,
+      } as never)
+    }
+    // Many agent threads joined earlier must not crowd out the one channel.
+    for (let i = 0; i < 1100; i++) await add(`thread ${i}`, 'dm', 1000 + i, { agentId: 'agent' })
+    await add('busy channel', 'channel', 5)
+    for (let i = 0; i < 60; i++) await add(`dm ${i}`, 'dm', 10 + i)
+  })
+  const as = t.withIdentity({ subject: 'alice' })
+  expect((await as.query(list, { workspaceId: 'ws', kind: 'channel' }) as Page).rooms.map(row => row.title)).toEqual(['busy channel'])
+  const first = await as.query(list, { workspaceId: 'ws', kind: 'all' }) as Page
+  expect([first.rooms.length, first.hasMore]).toEqual([50, true])
+  const grown = await as.query(list, { workspaceId: 'ws', kind: 'all', limit: 100 }) as Page
+  expect([grown.rooms.length, grown.hasMore]).toEqual([61, false])
+  expect(grown.rooms.at(-1)?.title).toBe('busy channel')
 })
