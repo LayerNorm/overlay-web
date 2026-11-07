@@ -227,8 +227,12 @@ export function WorkspaceProvider({
     if (!live) return
     // A membership that arrives after the route was judged unavailable (an invitation accepted over HTTP before the
     // subscription caught up) opens the workspace instead of leaving the unavailable screen up.
+    // Each directory-triggered reload is dropped if the address changes before it finishes, so it can never pull
+    // the person back to a page they left.
+    const address = pathnameRef.current
+    const cancelled = () => pathnameRef.current !== address
     if (statusRef.current === 'error') {
-      void loadRef.current({ force: true })
+      void loadRef.current({ force: true, cancelled })
       return
     }
     if (statusRef.current !== 'ready') return
@@ -251,7 +255,7 @@ export function WorkspaceProvider({
     setWorkspaces(listed)
     setInvitations(live.invitations)
     // The open workspace's handle changed elsewhere: resolve this address again, which moves it to the new handle.
-    if (handleChanged) void loadRef.current()
+    if (handleChanged) void loadRef.current({ cancelled })
   }, [live])
 
   const refresh = useCallback(async () => {

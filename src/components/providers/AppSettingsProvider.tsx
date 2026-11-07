@@ -206,11 +206,15 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const pendingRef = useRef<Partial<AppSettings>>({})
   // The newest saved settings from the server, so a refused or superseded change can give way to them.
   const savedRef = useRef<Partial<AppSettings> | null>(null)
+  // Counters that keep an older save's response from replacing newer settings (a later save or live snapshot).
+  const liveSeqRef = useRef(0)
+  const saveSeqRef = useRef(0)
   const isLoading = authLoading || (authUserId !== null && remoteUserId !== authUserId)
 
   const applyRemote = useCallback((remote: Partial<AppSettings> | null) => {
     if (!remote || !authUserId) return
     savedRef.current = remote
+    liveSeqRef.current += 1
     const next = normalizeSettingsPayload({ ...remote, ...pendingRef.current })
     setSettings(next)
     persistSettings(next)
@@ -253,6 +257,8 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     if (!authUserId) return optimistic
 
     pendingRef.current = { ...pendingRef.current, ...patch }
+    const saveSeq = ++saveSeqRef.current
+    const liveSeqAtStart = liveSeqRef.current
     setIsSaving(true)
     try {
       const res = await overlayAppClient.settings.updateResponse(patch)
@@ -262,7 +268,8 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
       }
       // The live settings subscription brings the saved row to every other tab; here the answer is the saved value.
       const saved = normalizeSettingsPayload(await res.json() as Partial<AppSettings>)
-      savedRef.current = saved
+      // Only the newest save, answered before any newer live snapshot, may stand in for the saved row.
+      if (saveSeq === saveSeqRef.current && liveSeqRef.current === liveSeqAtStart) savedRef.current = saved
       return saved
     } catch (error) {
       console.warn('Failed to save settings to server; the saved settings will show again', error)

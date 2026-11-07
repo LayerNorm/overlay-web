@@ -575,7 +575,9 @@ function useSlackImportPanel() {
     activeWorkspace, user, workspaceId, currentUserEmail,
     connectionState, channels, channelsLoaded, channelsLoading, channelsError,
     selectedChannelIds, activeJob, jobs, starting, cancelling, view,
-    users, usersLoaded, usersLoading, usersError, selectedUserIds, inviting,
+    // Waiting for workspace members counts as loading, so the People step never looks like missing Slack access.
+    users, usersLoaded, usersLoading: usersLoading || (connectionState === 'connected' && !usersLoaded && !workspacePeopleReady),
+    usersError, selectedUserIds, inviting,
     oauthPolling,
     setView, loadJobs, checkConnection, loadChannels, loadUsers,
     handleConnect, handleInviteUsers, handleStartImport, handleCancel,
