@@ -172,7 +172,7 @@ test('an ambiguous workflow start leaves the admitted root intact and reports pe
   expect(onAdmitted).toHaveBeenCalledOnce()
   expect(mocks.admit).toHaveBeenCalledOnce()
   expect(mocks.start).toHaveBeenCalledOnce()
-  expect(mocks.get).not.toHaveBeenCalled()
+  expect(mocks.get).toHaveBeenCalledOnce()
 })
 
 test('workflow authentication references contain no credentials', () => {

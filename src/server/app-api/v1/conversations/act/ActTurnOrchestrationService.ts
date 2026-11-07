@@ -562,6 +562,7 @@ export async function executeActTurn(
           })
         },
         sourceCitations: sourceCitationMap,
+        signal: request.signal,
         tools,
         toolingContext: {
           accountAllowedConnectorIds: [...accountAllowedConnectorIds],

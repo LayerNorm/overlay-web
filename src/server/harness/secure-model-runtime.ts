@@ -3,6 +3,7 @@ import { extractReasoningMiddleware, wrapLanguageModel } from 'ai'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import type { HarnessModelReference } from './secure-model'
 import { preserveHarnessSDKFailure } from './execution-failure'
+import { recordPublicStreamMetric } from './public-stream-metrics'
 
 async function model(reference: HarnessModelReference) {
   const provider = await getLanguageModel(reference.modelId, undefined, reference.credentialOwnerId, {
@@ -40,6 +41,7 @@ function captureModelFailure(
 }
 
 export async function secureModelDoStream(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {
+  const dispatchStartedAt = performance.now()
   let result: Awaited<ReturnType<Awaited<ReturnType<typeof model>>['doStream']>>
   try {
     result = await (await model(reference)).doStream(options)
@@ -48,11 +50,23 @@ export async function secureModelDoStream(reference: HarnessModelReference, opti
     throw preserveHarnessSDKFailure(error)
   }
   const stream = captureModelFailure(result.stream)
-  if (!reference.native?.streamToDelivery) return { ...result, stream }
-  const { projectNativeHarnessStream } = await import('./native-model-stream')
+  if (reference.publicStreamVersion === 1 && reference.purpose === 'response') {
+    const authority = reference.personal ?? reference.native
+    if (authority) recordPublicStreamMetric({
+      event: 'model_dispatch', runId: authority.access.runId,
+      generation: authority.access.executionGeneration ?? 0, receiptId: authority.receiptId,
+      modelId: reference.modelId, durationMs: Math.round(performance.now() - dispatchStartedAt),
+    })
+  }
   const toolNames = new Set((options.tools ?? []).flatMap(tool => (
     'name' in tool && typeof tool.name === 'string' ? [tool.name] : []
   )))
+  if (reference.publicStreamVersion === 1 && reference.purpose === 'response') {
+    const { publishUnifiedHarnessStream } = await import('./public-stream-publisher')
+    return { ...result, stream: publishUnifiedHarnessStream(reference, stream, toolNames) }
+  }
+  if (!reference.native?.streamToDelivery) return { ...result, stream }
+  const { projectNativeHarnessStream } = await import('./native-model-stream')
   return { ...result, stream: await projectNativeHarnessStream(reference, stream, toolNames) }
 }
 

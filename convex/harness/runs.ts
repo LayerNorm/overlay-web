@@ -115,6 +115,7 @@ const policyValidator = v.object({
   resourcePauseVersion: v.optional(v.literal(1)),
   executionPolicyVersion: v.optional(v.literal(2)),
   publicProgressVersion: v.optional(v.literal(1)),
+  publicStreamVersion: v.optional(v.literal(1)),
   spendingMode: v.optional(v.union(v.literal('workspace'), v.literal('external'), v.literal('none'))),
   allowedToolIds: v.array(v.string()),
   requiresPlan: v.boolean(),
@@ -1863,7 +1864,193 @@ export const writeTranscriptStep = mutation({
       createdAt: receipt.createdAt,
     })
     await projectNativePersonalProgress(ctx, run, lineage[0]!.metadata, Number(sequenceMatch[1]))
+    const activeStream = await ctx.db.query('harnessPublicStreams')
+      .withIndex('by_runId', query => query.eq('runId', run.runId)).unique()
+    if (lineage[0]!.metadata.policy.publicStreamVersion === 1 && activeStream
+      && activeStream.receiptId === args.receiptId
+      && activeStream.executionGeneration === (lineage[0]!.metadata.executionGeneration ?? 0)) {
+      const segments = await ctx.db.query('harnessPublicStreamSegments')
+        .withIndex('by_runId_receiptId_segmentIndex', query => query.eq('runId', run.runId).eq('receiptId', args.receiptId))
+        .order('asc').take(100)
+      const streamedText = segments.map(segment => segment.text).join('')
+      const message = await ctx.db.get(activeStream.assistantMessageId)
+      if (message && (!streamedText || message.content.includes(streamedText))) {
+        await clearPublicStreamSegments(ctx, run.runId)
+        await ctx.db.delete(activeStream._id)
+      }
+    }
     return { persisted: true }
+  },
+})
+
+const MAX_PUBLIC_STREAM_SEGMENT_BYTES = 8 * 1024
+const MAX_PUBLIC_STREAM_VISIBLE_CHARS = 160_000
+const PUBLIC_STREAM_TRUNCATION_MARKER = '[Additional output omitted]'
+
+function publicStreamByteLength(text: string) {
+  return new TextEncoder().encode(text).byteLength
+}
+
+function takePublicStreamPrefix(text: string, maxBytes: number): { prefix: string; rest: string } {
+  let prefix = ''
+  let bytes = 0
+  let offset = 0
+  for (const character of text) {
+    const size = publicStreamByteLength(character)
+    if (bytes + size > maxBytes) break
+    prefix += character
+    bytes += size
+    offset += character.length
+  }
+  return { prefix, rest: text.slice(offset) }
+}
+
+async function clearPublicStreamSegments(ctx: MutationCtx, runId: string) {
+  const rows = await ctx.db.query('harnessPublicStreamSegments')
+    .withIndex('by_runId', q => q.eq('runId', runId)).take(100)
+  for (const row of rows) await ctx.db.delete(row._id)
+}
+
+export const appendPublicStream = mutation({
+  args: {
+    actorUserId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.string(),
+    executionGeneration: v.number(),
+    receiptId: v.string(),
+    modelId: v.string(),
+    sequence: v.number(),
+    text: v.string(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const invocationMatch = /^model:(0|[1-9]\d*)$/.exec(args.receiptId)
+    if (!args.actorUserId.trim() || !args.runId.trim() || !args.workflowRunId.trim()
+      || !args.modelId.trim() || !invocationMatch || !Number.isSafeInteger(args.executionGeneration)
+      || args.executionGeneration < 0 || !Number.isSafeInteger(args.sequence) || args.sequence < 0
+      || !args.text || publicStreamByteLength(args.text) > MAX_PUBLIC_STREAM_SEGMENT_BYTES) {
+      throw new Error('Invalid public stream batch.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId || run.rootRunId !== run.runId || run.parentRunId) {
+      throw new Error('HARNESS_PUBLIC_STREAM_ACCESS_DENIED')
+    }
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    const metadata = lineage[0]!.metadata
+    const invocation = Number(invocationMatch[1])
+    const reservation = metadata.modelReservation
+    if (metadata.policy.publicStreamVersion !== 1 || metadata.status !== 'running'
+      || metadata.workflowRunId !== args.workflowRunId
+      || (metadata.executionGeneration ?? 0) !== args.executionGeneration
+      || reservation?.id !== args.receiptId || reservation.dispatch?.modelId !== args.modelId) {
+      throw new Error('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+    }
+    const source = parseJson<HarnessSource>(run.sourceJson)
+    if (!('conversationId' in source)) throw new Error('HARNESS_PUBLIC_STREAM_ACCESS_DENIED')
+    const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
+    const deliveryId = run.deliveryAgentRunId
+      ? ctx.db.normalizeId('conversationAgentRuns', run.deliveryAgentRunId) : null
+    const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
+    if (!conversationId || !delivery || delivery.userId !== args.actorUserId
+      || delivery.harnessRunId !== run.runId || delivery.workflowRunId !== args.workflowRunId
+      || delivery.executionEngine !== 'overlay_harness' || delivery.runner !== 'workflow') {
+      throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    }
+    const assistantMessageId = ctx.db.normalizeId('conversationMessages', delivery.assistantMessageId)
+    const message = assistantMessageId ? await ctx.db.get(assistantMessageId) : null
+    if (!message || message.conversationId !== conversationId || message.role !== 'assistant'
+      || message.status !== 'generating' || message.turnId !== delivery.turnId) {
+      throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    }
+
+    let active = await ctx.db.query('harnessPublicStreams')
+      .withIndex('by_runId', q => q.eq('runId', run.runId)).unique()
+    const startsInvocation = !active || args.executionGeneration > active.executionGeneration
+      || (args.executionGeneration === active.executionGeneration && invocation > active.invocation)
+    if (active && (args.executionGeneration < active.executionGeneration
+      || (args.executionGeneration === active.executionGeneration && invocation < active.invocation))) {
+      throw new Error('HARNESS_PUBLIC_STREAM_STALE')
+    }
+    if (startsInvocation) {
+      if (args.sequence !== 0) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_GAP')
+      if (active) {
+        await clearPublicStreamSegments(ctx, run.runId)
+        await ctx.db.delete(active._id)
+      }
+      const streamId = await ctx.db.insert('harnessPublicStreams', {
+        runId: run.runId, workflowRunId: args.workflowRunId,
+        executionGeneration: args.executionGeneration, receiptId: args.receiptId, invocation,
+        conversationId, assistantMessageId, nextSequence: 0, lastSequence: -1, lastText: '',
+        nextSegmentIndex: 0, visibleCharacters: 0, truncated: false, active: true, updatedAt: Date.now(),
+      })
+      active = await ctx.db.get(streamId)
+      if (!active) throw new Error('HARNESS_PUBLIC_STREAM_UNAVAILABLE')
+    } else if (active.receiptId !== args.receiptId || active.workflowRunId !== args.workflowRunId
+      || active.assistantMessageId !== assistantMessageId || !active.active) {
+      throw new Error('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+    }
+
+    if (args.sequence === active.lastSequence) {
+      if (active.lastText !== args.text) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_CONFLICT')
+      return { accepted: true, duplicate: true, truncated: active.truncated }
+    }
+    if (args.sequence !== active.nextSequence) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_GAP')
+
+    let visible = args.text
+    const remaining = Math.max(0, MAX_PUBLIC_STREAM_VISIBLE_CHARS - active.visibleCharacters)
+    if (visible.length > remaining) visible = Array.from(visible).slice(0, remaining).join('')
+    const truncated = visible.length < args.text.length
+    let segmentIndex = active.nextSegmentIndex
+    let remainder = visible
+    let tail = segmentIndex > 0
+      ? await ctx.db.query('harnessPublicStreamSegments').withIndex('by_runId_receiptId_segmentIndex', q =>
+        q.eq('runId', run.runId).eq('receiptId', active!.receiptId).eq('segmentIndex', segmentIndex - 1)).unique()
+      : null
+    while (remainder) {
+      const available = MAX_PUBLIC_STREAM_SEGMENT_BYTES - (tail ? publicStreamByteLength(tail.text) : 0)
+      if (available <= 0) {
+        tail = null
+        segmentIndex++
+        continue
+      }
+      const chunk = takePublicStreamPrefix(remainder, available)
+      if (!chunk.prefix) throw new Error('HARNESS_PUBLIC_STREAM_SEGMENT_INVALID')
+      if (tail) {
+        await ctx.db.patch(tail._id, {
+          text: tail.text + chunk.prefix,
+          lastSequence: args.sequence,
+          ...(truncated && !chunk.rest ? { truncatedMarker: PUBLIC_STREAM_TRUNCATION_MARKER } : {}),
+          updatedAt: Date.now(),
+        })
+        if (chunk.rest) segmentIndex++
+      } else {
+        await ctx.db.insert('harnessPublicStreamSegments', {
+          runId: run.runId, workflowRunId: args.workflowRunId,
+          executionGeneration: args.executionGeneration, receiptId: args.receiptId,
+          segmentIndex, firstSequence: args.sequence, lastSequence: args.sequence,
+          text: chunk.prefix,
+          ...(truncated && !chunk.rest ? { truncatedMarker: PUBLIC_STREAM_TRUNCATION_MARKER } : {}),
+          createdAt: Date.now(), updatedAt: Date.now(),
+        })
+        segmentIndex++
+      }
+      remainder = chunk.rest
+      tail = null
+    }
+    if (truncated && active.nextSegmentIndex === segmentIndex && segmentIndex > 0) {
+      const last = await ctx.db.query('harnessPublicStreamSegments').withIndex('by_runId_receiptId_segmentIndex', q =>
+        q.eq('runId', run.runId).eq('receiptId', active!.receiptId).eq('segmentIndex', segmentIndex - 1)).unique()
+      if (last && !last.truncatedMarker) await ctx.db.patch(last._id, { truncatedMarker: PUBLIC_STREAM_TRUNCATION_MARKER })
+    }
+    await ctx.db.patch(active._id, {
+      lastSequence: args.sequence, lastText: args.text, nextSequence: args.sequence + 1,
+      nextSegmentIndex: segmentIndex,
+      visibleCharacters: active.visibleCharacters + visible.length,
+      truncated: active.truncated || truncated,
+      updatedAt: Date.now(),
+    })
+    return { accepted: true, duplicate: false, truncated: active.truncated || truncated }
   },
 })
 

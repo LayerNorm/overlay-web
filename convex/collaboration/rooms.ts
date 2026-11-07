@@ -20,6 +20,7 @@ import {
   updateParticipantStateFor,
   upsertPresenceFor,
 } from './directMessages'
+import { readActivePublicStreams } from '../lib/publicStreamRead'
 import {
   listPinsFor,
   listReactionsFor,
@@ -107,6 +108,14 @@ export const message = query({
     const row = await ctx.db.get(args.messageId)
     if (!row || row.conversationId !== args.conversationId) return null
     return roomMessageView(await hydrateRemoteMessage(ctx, row))
+  },
+})
+
+export const activePublicStreams = query({
+  args: { ...roomArgs, messageIds: v.array(v.id('conversationMessages')) },
+  handler: async (ctx, args) => {
+    if (!await readableRoom(ctx, args)) return []
+    return await readActivePublicStreams(ctx, args.conversationId, args.messageIds)
   },
 })
 

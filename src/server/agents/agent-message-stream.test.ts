@@ -141,6 +141,37 @@ test('text is batched by size and by elapsed time, not written per token', async
   assert.equal(calls[2]!.args.contentDelta, 'cd')
 })
 
+test('flushes are serialized and coalesce deltas while a durable write is in flight', async () => {
+  let releaseFirst!: () => void
+  let active = 0
+  let peakActive = 0
+  const appends: Array<Record<string, unknown>> = []
+  const store = recordingStore({
+    async appendAgentMessageDelta(args) {
+      active++
+      peakActive = Math.max(peakActive, active)
+      appends.push(args)
+      if (appends.length === 1) await new Promise<void>(resolve => { releaseFirst = resolve })
+      active--
+    },
+  })
+  const stream = streamFor(store.store, () => 0)
+
+  stream.pushText('a'.repeat(AGENT_STREAM_FLUSH_CHARS))
+  await new Promise(resolve => setImmediate(resolve))
+  stream.pushText('b'.repeat(AGENT_STREAM_FLUSH_CHARS))
+  stream.pushText('c'.repeat(AGENT_STREAM_FLUSH_CHARS))
+  await new Promise(resolve => setImmediate(resolve))
+  assert.equal(appends.length, 1)
+  assert.equal(peakActive, 1)
+
+  releaseFirst()
+  await stream.flush()
+  assert.equal(appends.length, 2)
+  assert.equal(appends[1]?.contentDelta, `${'b'.repeat(AGENT_STREAM_FLUSH_CHARS)}${'c'.repeat(AGENT_STREAM_FLUSH_CHARS)}`)
+  assert.equal(peakActive, 1)
+})
+
 test('durable delta events stay coarser than the writes they accompany', async () => {
   let clock = 0
   const { calls, store } = recordingStore()

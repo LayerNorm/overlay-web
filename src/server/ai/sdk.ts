@@ -3,6 +3,7 @@ import 'server-only'
 export {
   asSchema,
   convertToModelMessages,
+  createUIMessageStream,
   createUIMessageStreamResponse,
   experimental_generateVideo,
   generateImage,
@@ -21,5 +22,6 @@ export type {
   TextStreamPart,
   ToolApprovalConfiguration,
   ToolSet,
+  UIMessageChunk,
   UIMessage,
 } from 'ai'

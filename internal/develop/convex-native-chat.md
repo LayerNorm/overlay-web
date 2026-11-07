@@ -158,6 +158,30 @@ Transcript pages are capped at 100 rows. Generated outputs are authorized with
 through the existing authorized file-content URL. Missing or stale output
 policy suppresses file metadata without suppressing text history.
 
+### Unified durable public streaming
+
+New root Harness runs may carry immutable `publicStreamVersion: 1` when their
+workspace ID is an exact entry in the server-only
+`OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS` comma-separated allowlist. Empty is
+disabled; `*` is not a wildcard. Personal, workspace-agent and automation
+admissions use the same policy helper. Existing roots keep the publishing path
+recorded in their admission policy when the environment changes; removing an ID
+stops future enrollment but does not switch an in-flight run.
+
+The versioned path publishes filtered response text from the executor's secure
+model boundary. It does not publish reasoning, child/summary/verification output
+or raw tool payloads. Convex active output is provisional and distinct from
+settled transcript checkpoints. Runs without the version field retain their
+existing transport/projector. Rollback is therefore an enrollment change, not
+a mid-run protocol switch.
+
+Stream timing fields are local monotonic measurements: provider-first-text is
+measured within the executor process and publish-ack within the publisher.
+Browser receive/paint measurements use the browser's own `performance.now()`.
+Do not subtract clocks from different hosts or infer p95/baselines from
+unrepeated samples. Output size is reported in characters, not tokens. Logs and
+telemetry must never include prompts, generated text or credentials.
+
 `nativeSubmittedAt`, `userMetadata`, `conversationMessages.by_conversationId_turnId_role`,
 and `files.by_userId_conversationId_turnId` are additive. Roll back browser
 ownership before removing any of them; keep the fields and indexes through

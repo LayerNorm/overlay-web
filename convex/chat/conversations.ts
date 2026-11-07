@@ -1,4 +1,6 @@
 import { hydrateRemoteMessages, deleteRemoteMessageText } from '../lib/remoteMessageText'
+import { cleanupTerminalPublicStreams } from '../lib/publicStreamRead'
+import { readActivePublicStreams } from '../lib/publicStreamRead'
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { ACTIVE_AGENT_RUN_STATUSES as CANONICAL_ACTIVE_AGENT_RUN_STATUSES } from '../../src/shared/agents/agent-run'
@@ -1183,6 +1185,7 @@ export const completeAgentRun = mutation({
         status: 'completed',
         updatedAt: now,
       })
+      await cleanupTerminalPublicStreams(ctx, message._id)
     }
     await ctx.db.patch(run._id, {
       status: 'completed',
@@ -1275,6 +1278,7 @@ export const failAgentRun = mutation({
           : { content, parts, ...(isNative ? { status: 'error' as const } : {}) }),
         updatedAt: now,
       })
+      await cleanupTerminalPublicStreams(ctx, message._id)
     }
     await ctx.db.patch(run._id, {
       status: 'failed',
@@ -1480,18 +1484,38 @@ export const cancelAgentRuns = mutation({
     const runMessages = await Promise.all(
       activeRuns.map((run) => ctx.db.get(run.assistantMessageId)),
     )
+    const activeStreams = await Promise.all(runMessages.map(async message =>
+      message
+        ? (await readActivePublicStreams(ctx, args.conversationId, [message._id]))[0]
+        : undefined))
     await Promise.all(activeRuns.flatMap((run, i) => {
       const message = runMessages[i]
       const writes = []
       if (message?.status === 'generating') {
-        const baseContent = args.partialContent ?? message.content
+        const activeStream = activeStreams[i]
+        let baseContent = args.partialContent ?? message.content
+        if (activeStream?.text && !baseContent.includes(activeStream.text)) {
+          if (activeStream.text.includes(baseContent)) baseContent = activeStream.text
+          else {
+            let overlap = Math.min(baseContent.length, activeStream.text.length)
+            while (overlap > 0 && baseContent.slice(-overlap) !== activeStream.text.slice(0, overlap)) overlap--
+            baseContent += activeStream.text.slice(overlap)
+          }
+        }
+        if (activeStream?.truncatedMarker && !baseContent.includes(activeStream.truncatedMarker)) {
+          baseContent = `${baseContent.trimEnd()}\n\n${activeStream.truncatedMarker}`
+        }
+        const finalContent = `${baseContent.trimEnd()}${sentinel}`
         const baseParts = args.partialParts?.length
           ? args.partialParts
           : message.parts ?? [{ type: 'text', text: baseContent }]
         writes.push(ctx.db.patch(message._id, {
-          content: `${baseContent.trimEnd()}${sentinel}`,
-          parts: [...baseParts.filter((part) =>
-            part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'), { type: 'text', text: sentinel }],
+          content: finalContent,
+          parts: [
+            ...baseParts.filter((part) => part.type !== 'text'
+              && part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
+            { type: 'text', text: finalContent },
+          ],
           status: 'completed',
           updatedAt: now,
         }))
@@ -1523,6 +1547,7 @@ export const cancelAgentRuns = mutation({
       }))
       return writes
     }))
+    await Promise.all(activeRuns.map(run => cleanupTerminalPublicStreams(ctx, run.assistantMessageId)))
     if (activeRuns.length > 0) {
       await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
     }

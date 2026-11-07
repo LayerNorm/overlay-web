@@ -126,6 +126,25 @@ export class ConvexHarnessRepository implements HarnessRepository {
     return snapshot
   }
 
+  async appendPublicStream(input: {
+    actorUserId: string
+    runId: string
+    workflowRunId: string
+    executionGeneration: number
+    receiptId: string
+    modelId: string
+    sequence: number
+    text: string
+  }): Promise<{ accepted: boolean; duplicate: boolean; truncated: boolean }> {
+    const result = await convex.mutation<{ accepted: boolean; duplicate: boolean; truncated: boolean }>(
+      'harness/runs:appendPublicStream',
+      { ...input, serverSecret: this.serverSecret },
+      { throwOnError: true },
+    )
+    if (!result) throw new Error('Harness public stream write returned no result.')
+    return result
+  }
+
   async get(input: { actorUserId: string; runId: string }): Promise<HarnessSnapshot | null> {
     return await convex.query<HarnessSnapshot | null>('harness/runs:get', {
       actorUserId: input.actorUserId, runId: input.runId,

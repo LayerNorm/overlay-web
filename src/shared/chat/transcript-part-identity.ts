@@ -1,5 +1,16 @@
 import type { HarnessTranscriptPersistence } from '@overlay/agent-runtime/harness-store'
 
+export function transcriptPartIdentity(
+  runId: string,
+  receiptId: string,
+  index: number | string,
+  executionGeneration?: number,
+): string {
+  return JSON.stringify(executionGeneration === undefined
+    ? [runId, receiptId, index]
+    : [runId, executionGeneration, receiptId, index])
+}
+
 export function withTranscriptPartIds(
   runId: string,
   receiptId: string,
@@ -9,7 +20,8 @@ export function withTranscriptPartIds(
     ...persistence,
     parts: persistence.parts.map((part, index) => typeof part.id === 'string' && part.id
       ? part
-      : { ...part, id: JSON.stringify(typeof part.storageOmittedParts === 'number'
-        ? [runId, 'omitted'] : [runId, receiptId, index]) }),
+      : { ...part, id: typeof part.storageOmittedParts === 'number'
+        ? JSON.stringify([runId, 'omitted'])
+        : transcriptPartIdentity(runId, receiptId, index) }),
   }
 }

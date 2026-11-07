@@ -4,6 +4,8 @@ import { usePaginatedQuery, useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { usePersonalChatRouteSelection } from './usePersonalChatRouteSelection'
+import { projectActivePublicStreams } from '@/shared/chat/public-stream-projection'
+import { usePublicStreamMetrics } from './usePublicStreamMetrics'
 
 export {
   canSetPendingTranscript,
@@ -43,6 +45,15 @@ export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, path
   const messages = usePaginatedQuery(api.chat.personal.getMessages,
     canReadMessages ? { workspaceId: workspaceId!, conversationId: conversationId as Id<'conversations'> } : 'skip',
     { initialNumItems: 50 })
+  const activeStreams = useQuery(api.chat.personal.activePublicStreams,
+    canReadMessages ? {
+      workspaceId: workspaceId!,
+      conversationId: conversationId as Id<'conversations'>,
+      messageIds: messages.results.slice(0, 50).map(row => row.message._id),
+    } : 'skip')
+  usePublicStreamMetrics(activeStreams ?? [])
+  const projectedMessages = projectActivePublicStreams(messages.results.map(row => row.message), activeStreams ?? [])
+  const rows = messages.results.map((row, index) => ({ ...row, message: projectedMessages[index]! }))
 
   return {
     selectedConversationId,
@@ -51,7 +62,7 @@ export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, path
     setPendingTranscriptConversation,
     transcript: {
       conversationId: canReadMessages ? conversationId : null,
-      rows: canReadMessages ? messages.results : [],
+      rows: canReadMessages ? rows : [],
       status: transcriptStatus(canRead, canQuery, conversationId, selectedSummary !== undefined,
         summaryInScope, messages.status === 'LoadingFirstPage'),
       queryStatus: messages.status,

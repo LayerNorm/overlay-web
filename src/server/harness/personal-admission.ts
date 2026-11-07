@@ -7,10 +7,17 @@ import type { AuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { personalHarnessWorkflow } from '@/server/workflows/personal-harness'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { personalHarnessPolicy, type PersonalHarnessBudget } from './personal-admission-policy'
+import { recordPublicStreamMetric } from './public-stream-metrics'
 import type { PersonalHarnessWorkflowInput } from './personal-workflow-input'
 
 export class PersonalHarnessAdmissionConflict extends Error {}
 export class PersonalHarnessStartPending extends Error {}
+
+export type PersonalHarnessAcceptedRun = {
+  accepted: true
+  runId: string
+  executionGeneration: number
+}
 
 export function personalHarnessAuthentication(auth: AuthenticatedAppUser): PersonalHarnessWorkflowInput['access']['authentication'] {
   if (auth.authType === 'api-key' && auth.apiKeyId) return { type: 'api-key', apiKeyId: auth.apiKeyId }
@@ -50,6 +57,7 @@ export async function startPersonalHarness(input: {
   }
   let admitted
   try {
+    const existing = await repository.get({ actorUserId: workflow.access.actorUserId, runId })
     admitted = await repository.admit({
       runId,
       goal: input.goal.trim().length > 32_000
@@ -61,7 +69,7 @@ export async function startPersonalHarness(input: {
         actorUserId: workflow.access.actorUserId, workspaceId: workflow.access.workspaceId,
         allowedToolIds: workflow.definitions.map(definition => definition.name),
         modelId: workflow.context.effectiveModelId, paid: input.paid,
-        createdAt: agentRun.createdAt, budget: input.budget,
+        createdAt: agentRun.createdAt, budget: input.budget, existingPolicy: existing?.policy,
       }),
     })
   } catch (cause) {
@@ -72,6 +80,17 @@ export async function startPersonalHarness(input: {
   }
   input.onAdmitted?.()
   if (['completed', 'failed', 'cancelled'].includes(admitted.status)) throw new PersonalHarnessAdmissionConflict('This harness run has already ended.')
+  if (admitted.policy?.publicStreamVersion === 1) recordPublicStreamMetric({
+    event: 'admission_accepted', runId, generation: admitted.executionGeneration ?? 0,
+    modelId: workflow.context.effectiveModelId,
+  })
+  if (admitted.policy?.publicStreamVersion === 1 && admitted.workflowRunId) {
+    return {
+      accepted: true,
+      runId,
+      executionGeneration: admitted.executionGeneration ?? 0,
+    } satisfies PersonalHarnessAcceptedRun
+  }
   if (admitted.workflowRunId) return getRun(admitted.workflowRunId)
   // A lost start acknowledgement is retriable. Only the workflow that atomically
   // claims the durable root can attach delivery or execute models and tools.
@@ -79,6 +98,13 @@ export async function startPersonalHarness(input: {
     await start(personalHarnessWorkflow, [workflow])
   } catch (cause) {
     throw new PersonalHarnessStartPending('The workflow start could not be confirmed. Retry this turn to reconnect safely.', { cause })
+  }
+  if (admitted.policy?.publicStreamVersion === 1) {
+    return {
+      accepted: true,
+      runId,
+      executionGeneration: admitted.executionGeneration ?? 0,
+    } satisfies PersonalHarnessAcceptedRun
   }
   for (let attempt = 0; attempt < 100; attempt++) {
     const state = await repository.get({ actorUserId: agentRun.userId, runId })

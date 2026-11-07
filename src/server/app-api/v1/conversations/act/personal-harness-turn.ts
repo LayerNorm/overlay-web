@@ -7,12 +7,13 @@ import { after, NextResponse } from 'next/server'
 import type { AgentRun } from '@/shared/agents/agent-run'
 import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import type { AuthenticatedAppUser } from '@/server/auth/app-api-auth'
-import { convertToModelMessages, createUIMessageStreamResponse, type UIMessage } from '@/server/ai/sdk'
+import { convertToModelMessages, createUIMessageStreamResponse, type UIMessage, type UIMessageChunk } from '@/server/ai/sdk'
 import { uploadFilePartsForModel } from '@/server/ai/file-upload'
 import { createUiMessageMetadataTransform } from '@/server/chat/ui-message-metadata-transform'
 import { drainWorkProgress } from '@/server/chat/work-progress-drain'
 import { describePersonalChatWorkTools } from '@/server/conversations/personal-chat-work-tools'
 import type { PersonalHarnessBudget } from '@/server/harness/personal-admission-policy'
+import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
 import {
   PersonalHarnessAdmissionConflict,
   PersonalHarnessStartPending,
@@ -61,6 +62,7 @@ export async function startPersonalHarnessTurn(input: {
   releaseConcurrency: () => void
   recordProgress: (content: string) => Promise<void>
   sourceCitations: SourceCitationMap
+  signal?: AbortSignal
   tools: ToolSet
   toolingContext: PersonalHarnessWorkflowInput['context']
   workspaceId: string
@@ -80,11 +82,13 @@ export async function startPersonalHarnessTurn(input: {
   }
 
   try {
-    await uploadFilePartsForModel(
-      input.messagesForModel as Parameters<typeof uploadFilePartsForModel>[0],
-      input.effectiveModelId,
-    )
-    const definitions = await describePersonalChatWorkTools(input.tools, input.hasDynamicApproval)
+    const [, definitions] = await Promise.all([
+      uploadFilePartsForModel(
+        input.messagesForModel as Parameters<typeof uploadFilePartsForModel>[0],
+        input.effectiveModelId,
+      ),
+      describePersonalChatWorkTools(input.tools, input.hasDynamicApproval),
+    ])
     const workflow: PersonalHarnessWorkflowInput = {
       access: {
         actorUserId: input.auth.userId,
@@ -116,6 +120,53 @@ export async function startPersonalHarnessTurn(input: {
       onAdmitted: releaseConcurrency,
     })
     releaseConcurrency()
+    if ('accepted' in workflowRun) {
+      const repository = new ConvexHarnessRepository()
+      let stopped = false
+      const close = (controller: ReadableStreamDefaultController<UIMessageChunk>) => {
+        try { controller.close() } catch (_error) { /* already cancelled */ }
+      }
+      const stream = new ReadableStream<UIMessageChunk>({
+        start(controller) {
+          const stop = () => {
+            stopped = true
+            close(controller)
+          }
+          if (input.signal?.aborted) stop()
+          else input.signal?.addEventListener('abort', stop, { once: true })
+          void (async () => {
+            while (!stopped && !input.signal?.aborted) {
+              try {
+                const state = await repository.get({
+                  actorUserId: input.auth.userId,
+                  runId: workflowRun.runId,
+                })
+                if (!state || ['completed', 'failed', 'cancelled'].includes(state.status)) {
+                  close(controller)
+                  input.signal?.removeEventListener('abort', stop)
+                  return
+                }
+              } catch (_error) {
+                if (stopped) return
+              }
+              await new Promise(resolve => setTimeout(resolve, 250))
+            }
+          })().catch((_error) => close(controller))
+        },
+        cancel() {
+          stopped = true
+        },
+      })
+      const response = createUIMessageStreamResponse({ stream })
+      const headers = responseHeaders()
+      headers.set('x-overlay-harness-run-id', workflowRun.runId)
+      response.headers.forEach((value, name) => headers.set(name, value))
+      return new Response(response.body, {
+        headers,
+        status: response.status,
+        statusText: response.statusText,
+      })
+    }
     const stream = workflowRun.getReadable()
       .pipeThrough(createModelCallToUIChunkTransform())
       .pipeThrough(createUiMessageMetadataTransform(

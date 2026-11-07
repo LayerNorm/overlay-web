@@ -5,6 +5,8 @@ import { usePaginatedQuery, useQuery } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import type { RoomMessageRecord } from './room-message-view'
+import { projectActivePublicStreams } from '@/shared/chat/public-stream-projection'
+import { usePublicStreamMetrics } from '@/components/providers/usePublicStreamMetrics'
 
 export type RoomSummary = {
   title: string
@@ -59,18 +61,25 @@ export function ConvexRoomMessageSubscription({
       ? { ...args, messageId: permalinkMessageId as Id<'conversationMessages'> }
       : 'skip',
   )
+  const loadedMessages = [
+    ...main.results,
+    ...thread.results,
+    ...(permalink ? [permalink] : []),
+  ]
+  const activeStreams = useQuery(api.collaboration.rooms.activePublicStreams,
+    room ? {
+      ...args,
+      messageIds: [...new Set(loadedMessages.slice(0, 50).map(message => message._id))],
+    } : 'skip')
+  usePublicStreamMetrics(activeStreams ?? [])
 
   useEffect(() => { onRoom(room) }, [onRoom, room])
 
   useEffect(() => {
     if (!room || main.status === 'LoadingFirstPage') return
     // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
-    onMessages([
-      ...main.results,
-      ...thread.results,
-      ...(permalink ? [permalink] : []),
-    ] as RoomMessageRecord[])
-  }, [main.results, main.status, onMessages, permalink, room, thread.results])
+    onMessages(projectActivePublicStreams(loadedMessages, activeStreams ?? []) as RoomMessageRecord[])
+  }, [activeStreams, loadedMessages, main.status, onMessages, room])
 
   const { status, loadMore } = main
   useEffect(() => {

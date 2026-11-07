@@ -18,6 +18,7 @@ import { userMessageMetadata } from '../lib/userMessageMetadata'
 import { assertNativeThreadWritable, nativeThreadCompatibility } from '../lib/nativeThreadCompatibility'
 import { ACTIVE_AGENT_RUN_STATUSES } from '@/shared/agents/agent-run'
 import { publicPersonalRun } from '../lib/nativePersonalExecution'
+import { readActivePublicStreams } from '../lib/publicStreamRead'
 
 const resourceArgs = { workspaceId: v.string(), conversationId: v.id('conversations') }
 const chatScope = v.union(v.literal('personal'), v.literal('workspace'))
@@ -137,6 +138,15 @@ export const getMessages = query({
       contextUser: contextUsers.get(message.turnId) ?? null,
       outputs: outputs.get(message.turnId) ?? [],
     })) }
+  },
+})
+
+export const activePublicStreams = query({
+  args: { ...resourceArgs, messageIds: v.array(v.id('conversationMessages')) },
+  handler: async (ctx, args) => {
+    const access = await requireNativePersonalChat(ctx, args)
+    await requireNativeCapability(ctx, access.userId, 'conversations.read')
+    return await readActivePublicStreams(ctx, args.conversationId, args.messageIds)
   },
 })
 

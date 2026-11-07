@@ -5,6 +5,7 @@ import type { HarnessMutationResult, HarnessOperation } from '@overlay/agent-run
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { waitForHarnessModelResources } from './resource-boundary'
 import { isHarnessStepValidation } from './step-validation'
+import { recordPublicStreamMetric } from './public-stream-metrics'
 
 export type HarnessExecutionReference = {
   actorUserId: string
@@ -46,7 +47,13 @@ async function readAndClaim(reference: HarnessExecutionReference, skipInactive: 
     if (skipInactive && ['completed', 'failed', 'cancelled', 'waiting_for_authorization'].includes(state.status)) {
       return { snapshot: state, claimed: false }
     }
-    if (state.workflowRunId) return { snapshot: state, claimed: state.workflowRunId === reference.workflowRunId }
+    if (state.workflowRunId) {
+      const claimed = state.workflowRunId === reference.workflowRunId
+      if (claimed && state.policy.publicStreamVersion === 1) recordPublicStreamMetric({
+        event: 'workflow_claimed', runId: reference.runId, generation: reference.executionGeneration ?? 0,
+      })
+      return { snapshot: state, claimed }
+    }
     const result = await repository.apply({
       actorUserId: reference.actorUserId, runId: reference.runId,
       workflowRunId: reference.workflowRunId,
@@ -58,7 +65,12 @@ async function readAndClaim(reference: HarnessExecutionReference, skipInactive: 
         generation: reference.executionGeneration ?? 0,
       },
     })
-    if (!result.conflict) return { snapshot: result.snapshot, claimed: true }
+    if (!result.conflict) {
+      if (result.snapshot.policy.publicStreamVersion === 1) recordPublicStreamMetric({
+        event: 'workflow_claimed', runId: reference.runId, generation: reference.executionGeneration ?? 0,
+      })
+      return { snapshot: result.snapshot, claimed: true }
+    }
   }
   throw new RetryableError('Harness execution claim is contended.')
 }
