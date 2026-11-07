@@ -8,7 +8,7 @@ export const metadata: Metadata = { title: 'Account', robots: { index: false, fo
 
 async function AccountContent() {
   const session = await getOverlaySession()
-  return <AppClientProviders initialUser={session?.user ?? null} requiresConvexClient={false}><AccountPage /></AppClientProviders>
+  return <AppClientProviders initialUser={session?.user ?? null}><AccountPage /></AppClientProviders>
 }
 
 export default function Page() {

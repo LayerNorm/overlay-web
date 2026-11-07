@@ -183,13 +183,6 @@ const WorkspaceIconPatch = z.object({
 
 export const webApiBoundaryDefinitions = [
   {
-    method: 'GET',
-    path: '/api/v1/account/profile',
-    schema: { response: IdentityProfileResponse },
-    summary: 'Read the signed-in account profile',
-    tag: 'Account',
-  },
-  {
     method: 'PATCH',
     path: '/api/v1/account/profile',
     schema: { json: IdentityProfilePatch, response: IdentityProfileResponse },
@@ -1201,7 +1194,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/shares/impact', reason: 'Share impact analysis; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/shares/shared-with-me', reason: 'Shared-with-me listing; boundary definition pending. Protected by workspace authorization.' },
   // Workspace routes pending full boundary definitions.
-  { routePath: '/api/v1/account/workspaces', reason: 'Account workspace directory and creation; signed-browser-session only with validation and workspace creation rules enforced by the server service.' },
+  { routePath: '/api/v1/account/workspaces', reason: 'Account workspace creation; signed-browser-session only with validation and workspace creation rules enforced by the server service.' },
   { routePath: '/api/v1/workspace-handles/[handle]', reason: 'Authenticated, membership-gated workspace handle resolution. Returns a generic denial for unknown, inaccessible, suspended, or archived workspaces.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/handle', reason: 'Owner-only workspace handle update. Workspace ID remains immutable; handle changes retain historical aliases.' },
   { routePath: '/api/v1/workspace-invitations/[invitationId]/accept', reason: 'Workspace invitation acceptance; boundary definition pending. Protected by workspace authorization.' },
