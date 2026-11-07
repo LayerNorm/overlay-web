@@ -77,7 +77,7 @@ export function useLiveAgentSurfaces(agentId: string | null):
     { connections: SurfaceConnection[]; bindings: SurfaceBinding[]; canBind: boolean } | null | undefined
 }
 
-/** Whether this workspace may connect its own agents, live; undefined while loading, null without access. */
+/** Whether the viewer may connect their own agents in this workspace (owners and admins, rollout permitting), live. */
 export function useConnectedAgentLaunchEnabled(workspaceId: string | null): boolean | null | undefined {
   const { isAuthenticated, isLoading } = useConvexAuth()
   return useQuery(api.agents.environmentsBrowse.launchEnabled,

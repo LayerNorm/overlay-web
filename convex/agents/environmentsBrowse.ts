@@ -53,17 +53,20 @@ export const bindings = query({
 })
 
 /**
- * Whether members of this workspace may connect and launch their own agents: the deployment's external-agent features
- * and this workspace's rollout eligibility, the same rule the server enforces. Null without workspace access.
+ * Whether the viewer may connect their own agents here: an owner or admin (connections and bindings are managed by
+ * them, as on the server), on a deployment with external agents on and this workspace in the rollout. False for other
+ * members; null without workspace access.
  */
 export const launchEnabled = query({
   args: { workspaceId: v.string() },
   handler: async (ctx, { workspaceId }) => {
+    let viewer
     try {
-      await requireNativeWorkspace(ctx, workspaceId)
+      viewer = await requireNativeWorkspace(ctx, workspaceId)
     } catch {
       return null
     }
+    if (viewer.membership.role !== 'owner' && viewer.membership.role !== 'admin') return false
     return await nativeDeploymentFeatureEnabled(ctx, 'externalAgents', workspaceId)
   },
 })

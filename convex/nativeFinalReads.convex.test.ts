@@ -24,7 +24,9 @@ async function fixture() {
       await ctx.db.insert('workspaceMemberships', { workspaceId: 'ws', principalId: `p-${userId}`, membershipId: `m-${userId}`, role: 'member', status: 'active', joinedAt: 1, updatedAt: 1 })
     }
     await ctx.db.insert('workspacePrincipals', { workspaceId: 'ws-early', principalId: 'p-alice-early', userId: 'alice', type: 'human', displayName: 'alice', createdAt: 1, updatedAt: 1 })
-    await ctx.db.insert('workspaceMemberships', { workspaceId: 'ws-early', principalId: 'p-alice-early', membershipId: 'm-alice-early', role: 'member', status: 'active', joinedAt: 1, updatedAt: 1 })
+    await ctx.db.insert('workspaceMemberships', { workspaceId: 'ws-early', principalId: 'p-alice-early', membershipId: 'm-alice-early', role: 'admin', status: 'active', joinedAt: 1, updatedAt: 1 })
+    await ctx.db.insert('workspacePrincipals', { workspaceId: 'ws-early', principalId: 'p-bob-early', userId: 'bob', type: 'human', displayName: 'bob', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('workspaceMemberships', { workspaceId: 'ws-early', principalId: 'p-bob-early', membershipId: 'm-bob-early', role: 'member', status: 'active', joinedAt: 1, updatedAt: 1 })
     const room = await ctx.db.insert('conversations', {
       workspaceId: 'ws', userId: 'alice', title: 'private', conversationType: 'channel', channelVisibility: 'private', scope: 'workspace',
       createdAt: 1, updatedAt: 1, lastModified: 1, lastMode: 'act', askModelIds: [], actModelId: 'm',
@@ -56,7 +58,7 @@ async function publishPolicy(t: Awaited<ReturnType<typeof fixture>>['t'], featur
   })
 }
 
-test('agent launch follows the deployment features and the workspace rollout, for members only', async () => {
+test('agent launch follows the deployment features, the workspace rollout and the viewer\'s role', async () => {
   const { t, as } = await fixture()
   // No published policy: fail closed.
   expect(await as('alice').query(launchEnabled, { workspaceId: 'ws-early' })).toBe(false)
@@ -64,8 +66,10 @@ test('agent launch follows the deployment features and the workspace rollout, fo
   expect(await as('alice').query(launchEnabled, { workspaceId: 'ws-early' })).toBe(true)
   // Not invited in the rollout.
   expect(await as('alice').query(launchEnabled, { workspaceId: 'ws' })).toBe(false)
+  // A plain member cannot manage connections, so the option stays hidden for them.
+  expect(await as('bob').query(launchEnabled, { workspaceId: 'ws-early' })).toBe(false)
   // Not a member: no answer at all.
-  expect(await as('bob').query(launchEnabled, { workspaceId: 'ws-early' })).toBeNull()
+  expect(await as('stranger').query(launchEnabled, { workspaceId: 'ws-early' })).toBeNull()
 })
 
 test('agent accounts are the viewer\'s own and never carry the credential reference', async () => {

@@ -40,8 +40,9 @@ test('client calls are collected as resource.method, including across line break
     '  .stop(args)',
     'overlayAppClient.notes.update(other)',
     'overlayAppClient.integrations.get<{ connected?: string[] }>(undefined)',
+    'overlayAppClient.sharing.impact<{ items: (Foo | Bar)[]; run: () => void }>(resource)',
   ].join('\n'))
-  assert.deepEqual([...calls].sort(), ['conversations.stop', 'integrations.get', 'notes.update'])
+  assert.deepEqual([...calls].sort(), ['conversations.stop', 'integrations.get', 'notes.update', 'sharing.impact'])
 })
 
 test('new calls fail and calls that disappear must leave the baseline', () => {

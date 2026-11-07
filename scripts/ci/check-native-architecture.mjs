@@ -34,7 +34,8 @@ export const BANNED_IDENTIFIERS = [
 const SOURCE_FILE = /\.(c|m)?[jt]sx?$/
 const TEST_FILE = /\.test\.(c|m)?[jt]sx?$/
 const BROWSER_ROOTS = ['src/features/', 'src/components/', 'src/app/', 'src/contexts/', 'src/hooks/']
-const CLIENT_CALL = /\boverlayAppClient\s*\.\s*([A-Za-z_$][\w$]*)\s*\.\s*([A-Za-z_$][\w$]*)\s*(?:<[^()]*?>)?\s*\(/g
+// A call, with or without type arguments (whatever they contain): the method name is followed by `(` or `<`.
+const CLIENT_CALL = /\boverlayAppClient\s*\.\s*([A-Za-z_$][\w$]*)\s*\.\s*([A-Za-z_$][\w$]*)\s*[(<]/g
 
 export function findBannedIdentifiers(source) {
   const findings = []
