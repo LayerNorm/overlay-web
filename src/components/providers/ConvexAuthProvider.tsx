@@ -7,32 +7,17 @@ import {
   convexReactClientEnabled,
 } from '@/components/providers/convex-react-client'
 import { useAuth } from '@/contexts/AuthContext'
-import { fetchConvexToken } from '@/components/providers/convex-token-broker'
 import { createNativeConvexTokenFetcher } from './native-convex-token-broker'
 
-type ConvexAuthContextValue = {
-  accessToken: string | null
-  hasConvexClient: boolean
-}
+const ConvexClientContext = createContext(false)
 
-const ConvexAuthContext = createContext<ConvexAuthContextValue>({
-  accessToken: null,
-  hasConvexClient: false,
-})
-
-export function ConvexAuthProvider({
-  children,
-  requiresConvexClient = convexReactClientEnabled,
-}: {
-  children: React.ReactNode
-  requiresConvexClient?: boolean
-}) {
+export function ConvexAuthProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth()
-  if (!requiresConvexClient || !convexReactClientEnabled) {
+  if (!convexReactClientEnabled) {
     return (
-      <ConvexAuthContext.Provider value={{ accessToken: null, hasConvexClient: false }}>
+      <ConvexClientContext.Provider value={false}>
         {children}
-      </ConvexAuthContext.Provider>
+      </ConvexClientContext.Provider>
     )
   }
   // Remount query caches and transient children before another identity can render.
@@ -51,12 +36,8 @@ function useNativeConvexAuth() {
 }
 
 function ConvexIdentityScope({ children }: { children: React.ReactNode }) {
-  const { user, isLoading, refreshSession } = useAuth()
-  const userId = user?.id ?? null
   const [client] = useState(createConvexReactClient)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const [accessToken, setAccessToken] = useState<string | null>(null)
-  const convexEnabled = Boolean(client)
 
   useEffect(() => {
     if (closeTimer.current) clearTimeout(closeTimer.current)
@@ -66,54 +47,15 @@ function ConvexIdentityScope({ children }: { children: React.ReactNode }) {
     }
   }, [client])
 
-  // Single token refresh path: fetch via the shared broker and update state.
-  // The broker deduplicates in-flight requests so the interval refresh and
-  // other callers share the same fetch.
-  useEffect(() => {
-    let alive = true
-    if (!convexEnabled || isLoading || !userId) {
-      void Promise.resolve().then(() => {
-        if (alive) setAccessToken(null)
-      })
-      return
-    }
-    const refresh = async () => {
-      const token = await fetchConvexToken(refreshSession, userId).catch(() => null)
-      if (alive) setAccessToken(token)
-      return token
-    }
-    void refresh()
-    const interval = window.setInterval(() => {
-      void refresh()
-    }, 4 * 60 * 1000)
-    return () => {
-      alive = false
-      window.clearInterval(interval)
-    }
-  }, [convexEnabled, isLoading, userId, refreshSession])
-
-  // Unmigrated rooms still use HS256 arguments; native auth receives only the
-  // upstream asymmetric identity token through its separate broker.
-
-  const value = useMemo(() => ({
-    accessToken,
-    hasConvexClient: Boolean(client),
-  }), [accessToken, client])
   const content = (
-    <ConvexAuthContext.Provider value={value}>
+    <ConvexClientContext.Provider value={Boolean(client)}>
       {children}
-    </ConvexAuthContext.Provider>
+    </ConvexClientContext.Provider>
   )
-
   if (!client) return content
-
   return <ConvexProviderWithAuth client={client} useAuth={useNativeConvexAuth}>{content}</ConvexProviderWithAuth>
 }
 
-export function useConvexAuthToken(): string | null {
-  return useContext(ConvexAuthContext).accessToken
-}
-
 export function useHasConvexClient(): boolean {
-  return useContext(ConvexAuthContext).hasConvexClient
+  return useContext(ConvexClientContext)
 }

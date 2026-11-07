@@ -4,11 +4,7 @@ import assert from 'node:assert/strict'
 import type { TestContext } from 'node:test'
 import { randomUUID } from 'node:crypto'
 import type { AppSettings } from '@/shared/app/app-contracts'
-import { AccountDeletionService } from '@/server/account'
 import type { AccountDeletionResult } from '@/server/account/AccountDeletionService'
-import type { AccountDataDeletionRepository } from '@/server/account/AccountDataDeletionRepository'
-import type { AppDataProvider } from '@/server/app-data/capabilities'
-import type { OverlayServerContext } from '@/server/bootstrap'
 import { asConversationId, type ActConversationRepository } from '@/server/conversations/ActConversationRepository'
 import type { ActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import type { FileRepository } from '@/server/files/FileRepository'
@@ -23,18 +19,17 @@ import type { SurfaceRepository } from '@/server/surfaces/SurfaceRepository'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 
 export interface AppDataRepositoryContractBackend {
-  accountDeletionRepository?: AccountDataDeletionRepository
   authProvider: UserAuthProvider
   chatSuggestions: ChatSuggestionRepository
   computers: ComputerRepository
   conversations: ActConversationRepository
   surfaces: SurfaceRepository
-  deleteAccount?: (userId: string) => Promise<AccountDeletionResult>
+  deleteAccount: (userId: string) => Promise<AccountDeletionResult>
   files: FileRepository
   memories: MemoryRepository
   name: string
   notes: NoteRepository
-  provider: AppDataProvider
+  provider: 'convex'
   usagePolicy: ActUsagePolicy
   users: UserRepository
 }
@@ -1047,7 +1042,7 @@ export async function runAppDataRepositoryContractSuite(
     })
 
     await t.test(`${backend.name}: account deletion removes repository-owned data`, async () => {
-      const result = await deleteAccount(backend, userId)
+      const result = await backend.deleteAccount(userId)
       accountDeleted = true
       assert.equal(result.deletedRowCount > 0, true)
 
@@ -1067,52 +1062,12 @@ export async function runAppDataRepositoryContractSuite(
     })
   } finally {
     if (foreignUserCreated) {
-      await deleteAccount(backend, foreignUserId).catch((_error) => {})
+      await backend.deleteAccount(foreignUserId).catch((_error) => {})
     }
     if (!accountDeleted) {
-      await deleteAccount(backend, userId).catch((_error) => {})
+      await backend.deleteAccount(userId).catch((_error) => {})
     }
   }
-}
-
-async function deleteAccount(
-  backend: AppDataRepositoryContractBackend,
-  userId: string,
-): Promise<AccountDeletionResult> {
-  if (backend.deleteAccount) {
-    return await backend.deleteAccount(userId)
-  }
-  if (!backend.accountDeletionRepository) {
-    throw new Error(`${backend.name} did not provide an account deletion adapter`)
-  }
-  return await new AccountDeletionService({
-    appDataCapabilities: {
-      provider: backend.provider,
-    },
-    appData: {
-      repositories: {
-        accountDeletion: backend.accountDeletionRepository,
-        providerConnections: {
-          listCredentialRefs: async () => [],
-        },
-        agentProviderAccounts: {
-          listCredentialRefs: async () => [],
-        },
-        mcpGrants: {
-          deleteAllForUser: async () => 0,
-        },
-      },
-    },
-    auth: {
-      deleteUser: async () => {},
-    },
-    byokCredentialStore: {
-      delete: async () => {},
-    },
-    objectStore: {
-      deleteObject: async () => {},
-    },
-  } as unknown as OverlayServerContext).deleteAccount({ userId })
 }
 
 function assertDefaultSettings(settings: AppSettings | null): void {

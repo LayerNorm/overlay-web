@@ -173,7 +173,7 @@ This exact stack was validated against Overlay's real code path (see `internal/d
 - Postgres persistence — all documents in `documents` table
 - 18 cron jobs register and execute on schedule
 - S3 file upload → object store → `getUrl` serve-back round trip
-- HS256 browser-token auth + WorkOS env config on the deployment
+- Native browser auth with WorkOS env config on the deployment
 - Real AI chat via Vercel AI Gateway, persisted to Postgres
 - Data Sync WebSocket handshake returns `101` with admin-key auth
 - Read mirror: `POST /api/v1/data/sync` snapshot materializes all 115 deployed tables as `mirror.<table>`; live `--append` inserts and `--replace` truncates replicate into Postgres within seconds

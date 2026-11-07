@@ -1,6 +1,5 @@
 import 'server-only'
 
-import type { AccountDataDeletionRepository } from '@/server/account/AccountDataDeletionRepository'
 import { ConvexAutomationRepository } from '@/server/automations/ConvexAutomationRepository'
 import type { AutomationRepository } from '@/server/automations/AutomationRepository'
 import { ConvexBillingRepository } from '@/server/billing/ConvexBillingRepository'
@@ -29,22 +28,18 @@ import {
 } from '@/server/auth/replay'
 import {
   ConvexOutboxRepository,
-  type DurableJobRepository,
   type OutboxRepository,
 } from '@/server/jobs'
 import {
   ConvexModelCatalogRepository,
   type ModelCatalogRepository,
 } from '@/server/ai/catalog'
-import type { OverlayRuntimeConfig } from '@/shared/config'
 import { ConvexChatSuggestionRepository } from '@/server/chat-suggestions/ConvexChatSuggestionRepository'
 import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
-import { deriveAppDataCapabilities, type AppDataCapabilities } from './capabilities'
 import {
   ConvexWebhookRepository,
   type WebhookRepository,
 } from '@/server/webhooks'
-import { unsupportedRepository } from './errors'
 import type { UsageRepository } from '@/server/usage'
 import { ConvexUsageRepository } from '@/server/usage'
 import {
@@ -93,7 +88,6 @@ export interface AppDataRepositories {
   cloudAgentProvisions: CloudAgentProvisionRepository
   mcpGrants: McpGrantRepository
   agentProfiles: AgentProfileRepository
-  accountDeletion: AccountDataDeletionRepository
   apiKeys: ApiKeyRepository
   audit: AuditRepository
   authorization: AuthorizationRepositories
@@ -104,7 +98,6 @@ export interface AppDataRepositories {
   computers: ComputerRepository
   conversationCollaboration: ConversationCollaborationRepository
   conversations: ActConversationRepository
-  durableJobs: DurableJobRepository
   files: FileRepository
   fileIngestionJobs: FileIngestionJobRepository
   idempotency: IdempotencyRepository
@@ -126,16 +119,12 @@ export interface AppDataRepositories {
 }
 
 export interface AppDataContext {
-  capabilities: AppDataCapabilities
   repositories: AppDataRepositories
 }
 
-export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null): AppDataContext {
-  const capabilities = deriveAppDataCapabilities(runtimeConfig)
+export function createAppDataContext(): AppDataContext {
   return {
-    capabilities,
     repositories: {
-      accountDeletion: unsupportedRepository<AccountDataDeletionRepository>('AccountDataDeletionRepository'),
       agentProviderAccounts: new ConvexAgentProviderAccountRepository(),
       cloudAgentProvisions: new ConvexCloudAgentProvisionRepository(),
       mcpGrants: new ConvexMcpGrantRepository(),
@@ -150,7 +139,6 @@ export function createAppDataContext(runtimeConfig: OverlayRuntimeConfig | null)
       computers: new ConvexComputerRepository(),
       conversationCollaboration: new ConvexConversationCollaborationRepository(),
       conversations: new ConvexActConversationRepository(),
-      durableJobs: unsupportedRepository<DurableJobRepository>('DurableJobRepository'),
       files: new ConvexFileRepository(),
       fileIngestionJobs: new ConvexFileIngestionJobRepository(),
       idempotency: new ConvexIdempotencyRepository(),

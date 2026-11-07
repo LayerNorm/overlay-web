@@ -123,7 +123,7 @@ export function useChatExperienceController({
     isAuthLoading: authLoading,
 
   })
-  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
+  const { capabilities } = useOverlayCapabilities()
   const {
     models: gatewayCatalogModels,
     isLoading: gatewayModelsLoading,
@@ -144,7 +144,6 @@ export function useChatExperienceController({
     [byokConnections, gatewayCatalogRevision],
   )
   const billingEnabled = capabilities.billing
-  const titleGenerationEnabled = appDataCapabilities.supportsChatPersistence
   const { startSession, completeSession, setActiveViewer } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
   const {
@@ -642,7 +641,6 @@ export function useChatExperienceController({
     activeChatId,
     getNativeSummary: getNativePersonalSummary,
     renameNative: nativePersonal.rename,
-    titleGenerationEnabled,
   })
 
   const recoveredTitleChatIdsRef = useRef(new Set<string>())
