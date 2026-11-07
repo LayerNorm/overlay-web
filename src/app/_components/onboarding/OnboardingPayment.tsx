@@ -8,6 +8,7 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useLiveWorkspaceBilling } from '@/hooks/use-billing'
 import { currentLegalAcceptancePayload, LEGAL_DOCUMENTS } from '@/shared/legal/legal-documents'
 import { EXECUTION_ACCESS_MESSAGES } from '@/shared/billing/execution-access'
+import { navigateToOnboardingCheckout } from './checkout-navigation'
 
 function BillingOffer({ canManage, locked, accepted, setAccepted }: {
   canManage: boolean
@@ -121,7 +122,7 @@ export function OnboardingPayment({ workspaceId, title, disabled, onPrepare, onS
       planAmountCents: 800, topUpAmountCents: 800, autoTopUpEnabled: false, returnTo: 'onboarding', ...currentLegalAcceptancePayload(),
     })
     if (!url) throw new Error('Checkout could not be opened. Your draft is saved.')
-    window.location.assign(url)
+    navigateToOnboardingCheckout(url)
   })
   const access = summary?.executionAccess
   const ready = access?.canExecute === true

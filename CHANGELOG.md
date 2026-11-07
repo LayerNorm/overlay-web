@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Stop a live room read-marker feedback loop that repeatedly fetched the conversation directory during onboarding and could exhaust browser resources before Subscribe reached checkout.
+
+- Open Chats as a fresh personal draft, including desktop rail re-clicks, without creating an empty saved conversation or collapsing its sidebar. Keep onboarding consent checked and suppress the leave-site warning for the saved checkout redirect. After setup, retain the onboarding composer over Work until the loaded selected-task panel has painted and its entrance has finished, without a blank frame, delayed navigation tour or onboarding returning over later pages.
+
 - Remove more polling from the app shell: a remote agent's status in a channel ("Running a tool · 12s") now comes from a Convex subscription instead of a request every five seconds, and the app's capabilities come only from the server-rendered page instead of a fallback request. Deletes an unused 15-second reconcile helper and an unused server loader for memories. The channel and DM sidebar list keeps its version-triggered refresh for now; making it native is the next step (CN-34b).
 
 - Make Settings → Archived live: archived channels and DMs, files, folders and notes, skills, MCP servers, automations, tasks, agents and agent threads come from Convex subscriptions, each with its own access rules, instead of seven HTTP loads that refreshed only after your own actions or a workspace switch. Something archived in another tab or by a teammate appears at once, and restored or deleted items disappear on their own. Archived files and rooms are selected by their archive state before any limit, so many newer active items can never hide an older archive. Restore and permanent delete still go through the server, which keeps the audit log, removes stored files and stops automations.
