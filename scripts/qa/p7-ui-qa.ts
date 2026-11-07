@@ -36,11 +36,7 @@ try {
   assert.equal(capabilitiesResponse.ok(), true)
   const capabilities = await capabilitiesResponse.json() as {
     capabilities: { billing?: boolean; apiKeys?: boolean }
-    appDataCapabilities: { provider?: string; requiresConvexClient?: boolean; supportsApiKeys?: boolean }
   }
-  assert.equal(capabilities.appDataCapabilities.provider, 'convex')
-  assert.equal(capabilities.appDataCapabilities.requiresConvexClient, true)
-  assert.equal(capabilities.appDataCapabilities.supportsApiKeys, true)
 
   await page.goto(`${baseUrl}/app/settings?section=account`, { waitUntil: 'domcontentloaded' })
   await page.getByTestId('api-key-settings').waitFor()

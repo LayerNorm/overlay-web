@@ -302,10 +302,6 @@ export class WorkspaceGovernanceService {
         row.action.startsWith('workspace.invitation') && row.outcome !== 'success'
       )).length,
       unreadDriftConversations: unreadDrift,
-      providerParity: {
-        provider: 'convex',
-        requiresConvexClient: true,
-      },
     }
   }
 
