@@ -2,90 +2,54 @@
 
 import { useCallback, useRef } from 'react'
 import type { MutableRefObject } from 'react'
-import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
-import { consumeNewEmptyChat, removeCachedChat } from '@/shared/chat/chat-list-cache'
-import {
-  buildRestoredMessageExchanges,
-  createConversationUiState,
-  groupOutputsIntoExchanges,
-  restoreGenerationStateForExchanges,
-  syntheticMessagesForOutputGroups,
-} from '@overlay/chat-core'
-import {
-  loadConversationSnapshot,
-  normalizeReplyMetadata,
-  type RawConversationMessage,
-} from './chatTransport'
-import { buildRestoredRuntimeMessages, clearRuntimeMessages, resetRuntimeState } from './conversation-runtime-utils'
-import type { Conversation, ConversationRuntime, ConversationUiState } from '../chat-interface/types'
+import { createConversationUiState } from '@overlay/chat-core'
+import { resetRuntimeState } from './conversation-runtime-utils'
+import type { ConversationRuntime, ConversationUiState } from '../chat-interface/types'
 import type { PersonalChatSummary } from '@/components/providers/PersonalChatProvider'
 
 export interface UseChatConversationLoaderParams {
   activeChatIdRef: MutableRefObject<string | null>
   applyUiStateToView: (ui: ConversationUiState) => void
-  chats: Conversation[]
+  clearTransientComposerState: () => void
   ensureConversationRuntime: (chatId: string) => ConversationRuntime
   emptyRuntimeRef: MutableRefObject<ConversationRuntime>
-  hasAutomationContext: boolean
-  isTemporaryChatRef: MutableRefObject<boolean>
-  isNativePersonalChat: (chatId: string) => boolean
   getNativeSummary: (chatId: string) => PersonalChatSummary | undefined
-  loadGeneratedOutputs: boolean
-  markRead: (chatId: string) => void
-  markNativeRead: (summary: PersonalChatSummary, throughMessageId: string) => void
+  isTemporaryChatRef: MutableRefObject<boolean>
   pendingTitleRef: MutableRefObject<{ chatId: string; title: string } | null>
   persistActiveRuntimeUiState: () => void
   resetComposerToolIds: (temporary: boolean) => void
-  runtimesRef: MutableRefObject<Map<string, ConversationRuntime>>
-  selectedActModel: string
-  selectedModels: string[]
   setActiveChatId: (chatId: string | null) => void
   setActiveChatTitle: (title: string | null) => void
   setActiveViewer: (chatId: string | null) => void
-  setChats: React.Dispatch<React.SetStateAction<Conversation[]>>
-  setComposerNotice: (notice: string | null) => void
   setInterruptedExchangeIdx: (idx: number | null) => void
   setIsSwitchingChat: (switching: boolean) => void
   setIsTemporaryChat: (temporary: boolean) => void
   setRuntimeHydrationVersion: React.Dispatch<React.SetStateAction<number>>
   setSourcesPanel: (panel: null) => void
-  shouldScrollRef: MutableRefObject<boolean>
   syncStandaloneChatUrl: (chatId: string | null, options?: { replaceUrl?: boolean }) => void
-  clearTransientComposerState: () => void
 }
 
+/** Selects a chat immediately. Its transcript comes from the Convex subscription. */
 export function useChatConversationLoader({
   activeChatIdRef,
   applyUiStateToView,
-  chats,
   clearTransientComposerState,
   ensureConversationRuntime,
   emptyRuntimeRef,
-  hasAutomationContext,
-  isTemporaryChatRef,
-  isNativePersonalChat,
   getNativeSummary,
-  loadGeneratedOutputs,
-  markRead,
-  markNativeRead,
+  isTemporaryChatRef,
   pendingTitleRef,
   persistActiveRuntimeUiState,
   resetComposerToolIds,
-  runtimesRef,
-  selectedActModel,
-  selectedModels,
   setActiveChatId,
   setActiveChatTitle,
   setActiveViewer,
-  setChats,
-  setComposerNotice,
   setInterruptedExchangeIdx,
   setIsSwitchingChat,
   setIsTemporaryChat,
   setRuntimeHydrationVersion,
   setSourcesPanel,
-  shouldScrollRef,
   syncStandaloneChatUrl,
 }: UseChatConversationLoaderParams) {
   const loadChatRequestRef = useRef(0)
@@ -95,241 +59,58 @@ export function useChatConversationLoader({
   }, [])
 
   const loadChat = useCallback(async (chatId: string, options: { replaceUrl?: boolean } = {}) => {
-    const requestId = ++loadChatRequestRef.current
+    ++loadChatRequestRef.current
     persistActiveRuntimeUiState()
-    if (isTemporaryChatRef.current) {
-      resetRuntimeState(emptyRuntimeRef.current)
-    }
+    if (isTemporaryChatRef.current) resetRuntimeState(emptyRuntimeRef.current)
     setIsTemporaryChat(false)
     resetComposerToolIds(false)
     clearTransientComposerState()
     setInterruptedExchangeIdx(null)
     setSourcesPanel(null)
-    const nativePersonal = isNativePersonalChat(chatId)
-    const nativeSummary = nativePersonal ? getNativeSummary(chatId) : undefined
-    if (!nativePersonal) markRead(chatId)
+    const summary = getNativeSummary(chatId)
     activeChatIdRef.current = chatId
     setActiveViewer(chatId)
     setActiveChatId(chatId)
     syncStandaloneChatUrl(chatId, options)
     const runtime = ensureConversationRuntime(chatId)
-    const existingChat = chats.find((chat) => chat._id === chatId)
-    const newEmptyChat = consumeNewEmptyChat(chatId)
-    const chatMeta = existingChat ?? newEmptyChat
-    setActiveChatTitle(chatMeta?.title ?? runtime.ui.activeChatTitle ?? null)
     pendingTitleRef.current = null
-
-    if (nativePersonal) {
-      const selection = normalizeChatModelSelection({
-        askModelIds: nativeSummary?.askModelIds?.slice(0, 4) ?? runtime.ui.selectedModels,
-        actModelId: nativeSummary?.actModelId ?? runtime.ui.selectedActModel,
-      })
-      runtime.ui = createConversationUiState({
-        ...runtime.ui,
-        activeChatTitle: nativeSummary?.title ?? null,
-        selectedActModel: selection.actModelId,
-        selectedModels: selection.askModelIds,
-        isFirstMessage: !nativeSummary?.lastMessageId,
-      })
-      runtime.hydrated = false
-      setActiveChatTitle(nativeSummary?.title ?? null)
-      applyUiStateToView(runtime.ui)
-      setRuntimeHydrationVersion((value) => value + 1)
-      setIsSwitchingChat(false)
-      return
-    }
-
-    if (newEmptyChat) {
-      const selection = normalizeChatModelSelection({
-        askModelIds: newEmptyChat.askModelIds?.slice(0, 1) ?? selectedModels.slice(0, 1),
-        actModelId: newEmptyChat.actModelId ?? selectedActModel,
-      })
-      runtime.ui = createConversationUiState({
-        activeChatTitle: newEmptyChat.title,
-        isFirstMessage: true,
-        selectedActModel: selection.actModelId,
-        selectedModels: selection.askModelIds,
-      })
-      runtime.hydrated = true
-      applyUiStateToView(runtime.ui)
-      setRuntimeHydrationVersion((value) => value + 1)
-      return
-    }
-
-    const runtimeHasLoadedHistory =
-      runtime.actChat.messages.some((message) => message.role === 'user') ||
-      runtime.askChats[0].messages.some((message) => message.role === 'user') ||
-      runtime.ui.generationResults.size > 0
-    if (runtime.hydrated && runtimeHasLoadedHistory) {
-      const throughMessageId = nativeSummary?.lastMessageId
-      if (throughMessageId && [
-        ...runtime.askChats[0].messages,
-        ...runtime.actChat.messages,
-      ].some((message) => message.id === throughMessageId)) {
-        markNativeRead(nativeSummary, throughMessageId)
-      }
-      shouldScrollRef.current = true
-      // A conversation with history is never on its first message, even if a blank surface's UI was saved over it.
-      runtime.ui = { ...runtime.ui, isFirstMessage: false }
-      applyUiStateToView(runtime.ui)
-      setRuntimeHydrationVersion((value) => value + 1)
-      return
-    }
-
-    setIsSwitchingChat(true)
+    const selection = normalizeChatModelSelection({
+      askModelIds: summary?.askModelIds?.slice(0, 4) ?? runtime.ui.selectedModels,
+      actModelId: summary?.actModelId ?? runtime.ui.selectedActModel,
+    })
+    runtime.ui = createConversationUiState({
+      ...runtime.ui,
+      activeChatTitle: summary?.title ?? null,
+      selectedActModel: selection.actModelId,
+      selectedModels: selection.askModelIds,
+      isFirstMessage: !summary?.lastMessageId,
+    })
     runtime.hydrated = false
-    try {
-      const shouldLoadMeta = !chatMeta?.title || !chatMeta?.askModelIds?.length || !chatMeta?.actModelId
-      const snapshot = await loadConversationSnapshot({
-        chatId,
-        loadGeneratedOutputs,
-        shouldLoadMeta,
-      })
-      if (requestId !== loadChatRequestRef.current) return
-      if (snapshot.status === 'missing') {
-        removeCachedChat(chatId)
-        setChats((prev) => prev.filter((chat) => chat._id !== chatId))
-        runtimesRef.current.delete(chatId)
-        if (activeChatIdRef.current === chatId) {
-          activeChatIdRef.current = null
-          setActiveChatId(null)
-          setActiveChatTitle(null)
-          setActiveViewer(null)
-          syncStandaloneChatUrl(null, options)
-        }
-        setComposerNotice('That chat no longer exists.')
-        window.setTimeout(() => setComposerNotice(null), 4000)
-        return
-      }
-      if (snapshot.status === 'error') {
-        clearRuntimeMessages(runtime)
-        runtime.hydrated = false
-        setComposerNotice('Could not load chat messages. Try again.')
-        window.setTimeout(() => setComposerNotice(null), 5000)
-        return
-      }
-      let rawMessages: RawConversationMessage[] = normalizeReplyMetadata(snapshot.messages)
-      const hasObservedLastMessage = Boolean(nativeSummary?.lastMessageId
-        && rawMessages.some((message) => message.id === nativeSummary.lastMessageId))
-      const outputs = snapshot.outputs
-      if (requestId !== loadChatRequestRef.current) return
-      const outputGroups = groupOutputsIntoExchanges(outputs)
-
-      if (rawMessages.length === 0 && outputGroups.length > 0) {
-        rawMessages = syntheticMessagesForOutputGroups<RawConversationMessage>(outputGroups)
-      }
-
-      const hasUserMessages = rawMessages.some((msg) => msg.role === 'user')
-      let resolvedTitle = chatMeta?.title ?? null
-      let restoredTextSelection = normalizeChatModelSelection({
-        askModelIds: chatMeta?.askModelIds?.slice(0, 4) ?? selectedModels,
-        actModelId: chatMeta?.actModelId ?? selectedActModel,
-      })
-      if (snapshot.meta) {
-        const meta = snapshot.meta
-        if (requestId !== loadChatRequestRef.current) return
-        if (meta.title) resolvedTitle = meta.title
-        if (meta.askModelIds?.length || meta.actModelId) {
-          restoredTextSelection = normalizeChatModelSelection({
-            askModelIds: meta.askModelIds?.length ? meta.askModelIds.slice(0, 4) : restoredTextSelection.askModelIds,
-            actModelId: meta.actModelId ?? restoredTextSelection.actModelId,
-          })
-        }
-      }
-      const resolvedSelectedModels = restoredTextSelection.askModelIds
-      const resolvedActModel = restoredTextSelection.actModelId
-
-      if (requestId !== loadChatRequestRef.current) return
-
-      const exchanges = buildRestoredMessageExchanges(rawMessages, {
-        defaultModelId: DEFAULT_MODEL_ID,
-        hasAutomationContext,
-      })
-
-      const exchangeModesFromServer = exchanges.map((e) => e.mode)
-      if (requestId !== loadChatRequestRef.current) return
-
-      clearRuntimeMessages(runtime)
-      const linear = buildRestoredRuntimeMessages(exchanges)
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      runtime.askChats[0].messages = [...linear] as any
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      runtime.actChat.messages = [...linear] as any
-
-      const {
-        exchangeGenTypes: restoredGenTypes,
-        generationResults: restoredResults,
-        exchangeModels: restoredExchangeModels,
-      } = restoreGenerationStateForExchanges(exchanges, outputGroups)
-
-      const exchangeModels = restoredExchangeModels.map((models, idx) => {
-        const actualModel = exchanges[idx]?.responses[0]?.model
-        return actualModel ? [actualModel] : models.slice(0, 1)
-      })
-
-      runtime.ui = createConversationUiState({
-        selectedActModel: resolvedActModel,
-        selectedModels: resolvedSelectedModels,
-        exchangeModes: exchangeModesFromServer,
-        exchangeModels,
-        activeChatTitle: resolvedTitle,
-        generationResults: restoredResults,
-        exchangeGenTypes: restoredGenTypes,
-        isFirstMessage: !hasUserMessages,
-      })
-      if (requestId !== loadChatRequestRef.current) return
-      runtime.hydrated = true
-      shouldScrollRef.current = true
-      applyUiStateToView(runtime.ui)
-      setRuntimeHydrationVersion((value) => value + 1)
-      if (hasObservedLastMessage && nativeSummary?.lastMessageId) {
-        markNativeRead(nativeSummary, nativeSummary.lastMessageId)
-      }
-    } catch {
-      clearRuntimeMessages(runtime)
-      runtime.hydrated = false
-      setComposerNotice('Could not load this chat. Try again.')
-      window.setTimeout(() => setComposerNotice(null), 5000)
-    } finally {
-      if (requestId === loadChatRequestRef.current) setIsSwitchingChat(false)
-    }
+    setActiveChatTitle(summary?.title ?? null)
+    applyUiStateToView(runtime.ui)
+    setRuntimeHydrationVersion((value) => value + 1)
+    setIsSwitchingChat(false)
   }, [
     activeChatIdRef,
     applyUiStateToView,
-    chats,
     clearTransientComposerState,
-    getNativeSummary,
-      ensureConversationRuntime,
     emptyRuntimeRef,
-    hasAutomationContext,
+    ensureConversationRuntime,
+    getNativeSummary,
     isTemporaryChatRef,
-    isNativePersonalChat,
-    loadGeneratedOutputs,
-    markRead,
-    markNativeRead,
     pendingTitleRef,
     persistActiveRuntimeUiState,
     resetComposerToolIds,
-    runtimesRef,
-    selectedActModel,
-    selectedModels,
     setActiveChatId,
     setActiveChatTitle,
     setActiveViewer,
-    setChats,
-    setComposerNotice,
     setInterruptedExchangeIdx,
     setIsSwitchingChat,
     setIsTemporaryChat,
     setRuntimeHydrationVersion,
     setSourcesPanel,
-    shouldScrollRef,
     syncStandaloneChatUrl,
   ])
 
-  return {
-    invalidateLoadChatRequest,
-    loadChat,
-    loadChatRequestRef,
-  }
+  return { invalidateLoadChatRequest, loadChat, loadChatRequestRef }
 }

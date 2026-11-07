@@ -4,11 +4,9 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   clearAllChatListCaches,
   clearChatListCache,
-  consumeNewEmptyChat,
   fetchChatListResult,
   fetchNextChatListPage,
   getCachedChatList,
-  markNewEmptyChat,
   setActiveChatListView,
   setActiveChatListWorkspace,
 } from './chat-list-cache'
@@ -47,14 +45,6 @@ test('chat cache requests keep their workspace across navigation, late replies a
   assert.equal(getCachedChatList()?.[0]._id, 'page1')
   assert.deepEqual((await fetchNextChatListPage()).map((chat) => chat._id), ['page2', 'page1'])
   assert.deepEqual(targets, ['id:personal-id', 'id:personal-id'])
-})
-
-test('new empty chat markers are consumed exactly once', () => {
-  clearChatListCache()
-  const chat = { _id: 'chat_1', title: 'New Chat', lastModified: 1 }
-  markNewEmptyChat(chat)
-  assert.deepEqual(consumeNewEmptyChat('chat_1'), chat)
-  assert.equal(consumeNewEmptyChat('chat_1'), null)
 })
 
 test('forced chat-list refreshes share the same in-flight request', async (t) => {

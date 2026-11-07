@@ -43,11 +43,12 @@ function waitForProbe() {
   return new Promise<void>((resolve) => setImmediate(resolve))
 }
 
-test('known native personal rows skip the scope probe only on the personal path', () => {
+test('known native rows skip the scope probe only under their own scope', () => {
+  const scope = 'personal' as const
   const personal = {
-    selectedSummary: { _id: 'selected' },
-    active: { rows: [{ _id: 'active' }] },
-    archived: { rows: [{ _id: 'archived' }] },
+    selectedSummary: { _id: 'selected', scope },
+    active: { rows: [{ _id: 'active', scope }] },
+    archived: { rows: [{ _id: 'archived', scope }] },
   }
   for (const id of ['selected', 'active', 'archived']) {
     assert.equal(isKnownNativePersonalChat(personal, 'personal', id), true)

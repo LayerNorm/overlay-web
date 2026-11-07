@@ -6,6 +6,12 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add trusted backend-freshness checks on PR updates, main pushes, merge groups and recovery sweeps. Block stale or unverifiable Preview approval without requiring a sync for UI-only drift. After merge, owner/Integration must require `Backend Freshness` in the main ruleset and dispatch the initial sweep.
 
+- Fix automation builder chat, which had failed every send since Act stopped accepting the retired `automationMode` flag, and fix failed first turns in any chat, which spun forever with no error instead of ending and showing what went wrong.
+
+- Move workspace and automation chats onto the same live Convex path as personal chats. Their lists, messages, run state, renames, archives, turn deletion, branching and draft edits now update across clients, while reducing chat code by about 1,900 lines and removing the old HTTP history loader, message patching, polling fallback and duplicate chat lists. Branching is now one atomic operation, so a failure cannot leave a half-copied chat.
+
+- Require agents to update a plan's status and progress whenever they implement one of its phases, and add a route-by-route checklist to the Convex-native plan, so progress and remaining work can be verified from the repository.
+
 - Make Convex-native personal chat unconditional: native browser sign-in is now required for every deployment, and the auth flag, backend readiness probe and revision markers are gone. Convex is the only supported backend, so these only added startup calls and extra code paths.
 
 - Make new personal chats reload-safe: the URL, title and selected sidebar row now appear as soon as the chat is saved instead of after the whole reply finishes. A chat interrupted during its first turn now gets its generated title when reopened, opening a personal chat no longer blanks and remounts the chat surface while an unneeded HTTP scope check runs, and the composer and a false "thread safety unavailable" notice no longer flicker when switching chats.

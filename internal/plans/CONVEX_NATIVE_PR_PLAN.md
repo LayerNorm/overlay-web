@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-06. CN-01 to CN-06 and CN-03P are merged to main; this does not by itself establish production activation or pilot acceptance. The personal-chat pilot is being stabilized and its old path contracted before any other domain continues. The other cards have no open PR. Merges and deployments follow the repository's release rules, not this document. The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-06. Phase A is complete. CN-04 to CN-06 and CN-06W are the chat phase: personal, workspace and automation chats all run on the native path, accepted on the #412 preview (results under the CN-06W card). Stop, approval and input response stay on the server by design, and rooms remain on HTTP until CN-08. A second user losing access has backend test coverage only, because no second sandbox account exists yet. The next card after CN-06W is CN-07. Other cards have no open PR. The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -10,6 +10,8 @@ Status: in progress as of 2026-11-06. CN-01 to CN-06 and CN-03P are merged to ma
 | CN-04 | #396 | Merged |
 | CN-03P | #397 | Merged |
 | CN-05, CN-06 | #408 | Merged |
+| CN-04 to CN-06 stabilization | #411 | Merged, deployed. No Convex deploy was needed; its unused readiness markers remain on the production backend until the next deploy |
+| CN-06W | #412 | Accepted on preview; merging |
 | CN-07 to CN-11 | #403 | Closed unmerged, branch kept as reference |
 | CN-12 | #402 | Closed unmerged, branch kept as reference |
 | CN-20 | #398 | Closed unmerged, branch kept as reference |
@@ -63,7 +65,7 @@ These rules take precedence over any earlier scheduling or compatibility text in
 - Do not start the next surface until the old path is deleted, unless it has a named blocker.
 - Every retained old path names a current consumer and the card that removes it. "Rollback" is not a reason.
 - A finished domain should remove more production code than it added. Tests and domain authorization moved out of Next.js may be larger than what they replace; report production, test and docs lines separately, and explain any finished domain that stays net-positive in production code.
-- Work on one surface at a time, with one implementer. Do not run parallel domain branches or combine several cards in one PR.
+- Work with one implementer and no parallel domain branches. Related cards may share one PR and Preview, as Phase C (CN-07 to CN-11) will: keep one commit per card and record each card's acceptance separately in the QA handoff.
 - Green CI is not acceptance. A surface is accepted only after current-head testing with two independent clients, its failure paths, and the permission cases its card names.
 
 ### Every implementation PR must provide
@@ -193,6 +195,26 @@ The architecture plan's acceptance IDs `E01` through `E22` are reused below. No 
 **Retirement/non-goals:** remove personal-chat run polling and competing terminal-state ownership. Keep appropriate execution/stream transports. No wholesale runtime rewrite.
 
 **Pilot release gate:** CN-04 through CN-06 jointly pass the personal-chat acceptance suite, including basic read/unread behavior. Do not claim the pilot complete after only migrating the list or demonstrating one optimistic send.
+
+### CN-06W. Move workspace and automation chats onto the native chat path
+
+**Outcome:** every conversation rendered by `ChatExperience` uses one Convex-native path, so the old personal-chat path can be deleted rather than kept for other chat types.
+
+**Scope:** native lists, transcript, send, run state, archive and rename for workspace-scoped chats and automation conversations, with workspace role and automation-ownership authorization in Convex. Temporary chats stay local and unsaved. Rooms remain CN-08.
+
+**Anchors:** `useChatConversationLoader.ts`, `useLiveConversationSync.ts`, `live-message-patching.ts`, `useChatListController.ts`, `useChatExperienceLifecycle.ts`, `conversationScopeVerification.tsx`, `convex/chat/personal.ts`.
+
+**Depends on:** CN-06.
+
+**Acceptance:** the personal-chat two-tab, reload and failure scenarios pass for workspace and automation chats. Direct calls without workspace access are refused. A second workspace member sees changes live, and removing that member revokes access (`E01`, `E04`, `E05`, `E18`, `E19`).
+
+**Results (#412 preview, head `da3eb91ac`, 2026-11-06):** AI chats are owner-only, so "a second member sees changes live" means a second tab of the same owner; other members never see them, and that refusal is covered by `convex/nativeChatAccess.convex.test.ts`. In Chrome: a workspace first message showed its URL and Stop in about 220 to 270 ms with no safety notice and one user copy. New chats, messages (about 240 ms), turn deletion, branching, archive and Undo (optimistic in 22 ms) and rename all reached a second tab live. Workspace chats stay out of the Personal list, and a workspace chat opened under the personal path redirects. A reload during a first reply kept the chat, one user copy and the finished reply, for personal and workspace chats. Automation chat sends, replies and switches between Chat and Edit. A forced Act failure on a first turn ends the turn and shows the error. Channels still open and send.
+
+QA found and fixed two bugs: automation sends were rejected with 410 because the client still sent the retired `automationMode` flag (also broken on main since 2026-10-31), and a failed first turn spun forever because completing the session switched chats before the error was recorded.
+
+Known and not fixed here: the scope-mismatch redirect takes 4 to 9 s and the Workspace-to-Personal switch 1.5 to 3.5 s, because both still wait on the HTTP scope probe. A chat started on the Automations page is listed under Chats until it becomes an automation, and pressing Edit on it creates a blank draft that is not linked to the chat; both match main. Unread/read, generated-UI editing and media notes were not exercised in the browser.
+
+**Retirement/non-goals:** delete the HTTP history loader, assistant-only patching, the five-second polling fallback, legacy chat list ownership, and the scope probe wherever this card's chats were the last consumer. This should be net-negative in production code. Do not change rooms, the agent executor or automation scheduling.
 
 ## 5. Phase C: agents and collaboration
 
@@ -755,6 +777,77 @@ CN-XX: [one specific product or architectural outcome]
 - Activation and rollback behavior
 - Remaining compatibility consumer and retirement condition
 ```
+
+## 14. Route migration checklist
+
+Use this to verify the migration. It covers the 223 API routes on `main` at `f3aaf7c98`, sorted by route names, this plan and how the web client calls them (96 non-test files use `overlayAppClient`). Handlers were not each read, so a few routes may move once they are. Moving a route's web callers does not mean deleting the route: check desktop, agent and public API consumers first.
+
+The Convex functions behind these routes often cannot be exposed to the browser as they are, because some trust a server secret or a caller-supplied user ID. Each move needs a browser-safe function that takes identity from Convex auth.
+
+### Move to Convex
+
+| Card | Surface | Routes | Web calls to replace |
+|---|---|---|---|
+| CN-07 | Agent directory, profiles | `v1/agents`, `v1/agents/[id]`, `.../profile`, `.../restore`, `.../permanent`, `.../bundle` | `agents.list/get/create/update/archive/restore/deleteArchived/bundle` |
+| CN-08 | DMs, channels, threads | `v1/conversations/channels`, `direct-messages`, `message`, `[id]/messages/[messageId]` | `conversations.addMessage`, `editCollaborativeMessage`, `deleteCollaborativeMessage`, `createWorkspaceChannel`, `createWorkspaceDirectMessage`, `channels` |
+| CN-09 | Agent threads | `v1/agents/[id]/threads`, `.../threads/[threadId]`, `.../threads/resolve` | `agents.listThreads/createThread/deleteThread/setThreadArchived/resolveMainThread` |
+| CN-10 | Room metadata | `[id]/participants`, `pins`, `reactions`, `presence`, `state`, `reports`, `threads/[root]/follow`, `saved-messages` | `addParticipant`, `removeParticipant`, `setPinned`, `setReaction`, `updatePresence`, `updateParticipantState`, `setSaved`, `setThreadFollow`, `reportMessage` |
+| CN-11 | Activity, read state | `v1/conversations/notifications`, `notification-preferences`, `events` | `markNotificationsRead`, `markConversationNotificationsRead` |
+| CN-12 | File metadata | `v1/files` (metadata only), `v1/files/share` | `files.get/updateResponse/deleteResponse/shareResponse` |
+| CN-13 | Uploads, outputs | `v1/outputs`, `v1/files/ingest-jobs` (status), `agent-drive` (metadata) | `files.createResponse` (finalizing only) |
+| CN-14 | Notes | `v1/notes` | `notes.*`, except `notebookAgentResponse` |
+| CN-15 | Memories | `v1/memory` | `memory.*` |
+| CN-16, CN-17 | Work | `v1/work`, `v1/work/[id]`, `.../events`, `.../move`, `v1/work/context` | `work.*` |
+| CN-18, CN-19 | Automations | `v1/automations`, `.../[id]/events`, `v1/agents/[id]/automations`, status reads | `automations.getPage/getResponse/getRuns/createResponse/updateResponse/deleteResponse` |
+| CN-20 | Skills | `v1/skills` | `skills.*` |
+| CN-21 | MCP settings | `v1/mcps` (metadata), `v1/mcp/connections` | `mcpServers.get/getResponse/updateResponse`, `mcpAccess.connections` |
+| CN-22 | Provider, integration status | `v1/provider-accounts`, `v1/providers/connections`, `v1/providers/subscriptions`, `v1/integrations` (reads only) | `providerAccounts.list`, `integrations.get/getResponse` |
+| CN-23 | Computers, environments | `v1/computers`, `v1/computers/[id]`, `v1/agent-environments` (list), `v1/agent-bindings`, `v1/agents/[id]/machine` (status) | `computers.list`, `agentEnvironments.list/listBindings` |
+| CN-24 | Surfaces | `v1/surfaces/bindings`, `.../bindings/[id]`, `v1/surfaces/connections`, `.../channels` | `surfaces.*` |
+| CN-25 | Workspace directory, settings | `v1/workspaces`, `v1/account/workspaces`, `v1/workspace-handles/[handle]`, `[id]/handle`, `[id]/policies`, `[id]/profile`, `[id]/governance` | `workspaces.list`, part of `management` |
+| CN-26 | Members, invitations | `[id]/members`, `[id]/invitations`, `.../[invitationId]`, `[id]/teams`, `.../members`, `[id]/management`, `v1/workspace-invitations/[id]/accept` | `workspaces.invite`, the rest of `management` |
+| CN-27 | Account, preferences, onboarding | `v1/settings`, `v1/account/profile`, `v1/onboarding/*`, `v1/model-catalog`, `v1/bootstrap` | `settings.*`, `bootstrap.getResponse` |
+| CN-28 | Billing reads | `v1/subscription`, `subscription`, `entitlements`, `topups/history`, `[id]/billing` (read) | `subscription.getResponse`, `workspaces.billing` |
+| CN-29 | API keys, tokens | `v1/api-keys` (metadata) | `mcpAccess.revoke` |
+| CN-30 | Webhooks | `v1/webhooks` | `webhooks.*` |
+| CN-31 | Imports | `v1/imports/slack` (status) | None through `overlayAppClient`; check `SlackImportPanel` |
+| CN-32 | Search, pickers | `v1/mention-search`, `v1/search`, `v1/conversations/search` | Picker and lookup callers |
+| CN-33 | Archive, sharing | `v1/scope`, `v1/shares`, `.../impact`, `.../shared-with-me` | `scope.*`, `sharing.*` |
+
+### Chat (CN-06 and CN-06W)
+
+**Native:** `chat/personal` has `list`, `getSummary`, `getMessages`, `getExecution`, `create`, `submit`, `setPreferences`, `rename`, `setArchived` and `setRead`.
+
+CN-06W added `deleteTurn`, `setGeneratedUi`, `addAssistantNote` and `branch`, and these functions now serve personal, workspace and automation chats.
+
+**Still on HTTP from chat, each with a named reason:**
+
+- `stop`, `run/approval` and `run/input`: they abort provider calls and resume durable workflows, so they stay on the server, with status read through `getExecution`
+- `v1/conversations` DELETE: permanent delete from the archive, moved by CN-33
+- `v1/conversations` POST and GET from chat code: retired-thread handoff and room thread safety, removed by CN-08
+
+Deleted by CN-06W: `useChatConversationLoader`'s HTTP history, `useLiveConversationSync`, `live-message-patching`, `useAgentRunLifecycle`, `useChatListController` and `getInitialChatHistory`. `BackgroundPollManager` and `route-data.ts` still serve other surfaces.
+
+### Keep on the server
+
+These do real server work, so only their status should be visible through Convex:
+
+- **Model and media work:** `conversations/act`, `act/extension-plan`, `agent-greeting`, `generate-title`, `generate-image`, `generate-video`, `generate-tab-group-label`, `transcribe`, `notebook-agent`, `harness/continuation`, `agent-gateway`, `chat-suggestions`
+- **Sign-in and sessions:** all of `auth/*`, `better-auth`, `oauth/*`, `account/delete`, `workspaces/active`
+- **Payments:** `checkout`, `portal`, `topups/checkout`, `topups/verify`, and the billing `checkout`, `portal`, `verify`, `top-ups` and `auto-top-up` routes
+- **File bytes:** `files/[id]/content`, `outputs/[id]/content`, `files/presign`, `upload-url`, `ingest-document`, `share/file/[token]`, photo and icon routes, `audit-export`
+- **External protocols:** `mcp`, `agent-mcp`, `v1/mcps/oauth*`, `v1/mcps/test`, `v1/mcp/authorize`, `v1/mcp/client`, `v1/webhooks/slack`, `surfaces/slack/*`, `extensions/*`, `agent-asks`
+- **Agent host and machine protocol:** all `agent-environments/[id]/*` machine routes, `enroll`, `enrollment-sessions`, `cloud`, `operations/reconcile`, `agent-profiles/upload`
+- **Workers and callbacks:** `automations/execute`, `project-events`, `imports/slack/process`, `files/ingest-jobs/process`, `conversations/run/remote*`, `run/resources`, `run/metrics*`
+- **Provider actions, where only the status moves:** `computers/[id]/start`, `stop`, `control`, `desktop`, `providers/connections/test`, `provider-accounts/codex-sign-in`
+- **Other:** `latest-release*`, `security/csp-report`, `link-preview`, `discovery`, `capabilities`, `convex/[type]`, `knowledge/search`, `files/search-text`
+
+### Not routes, but also has to go
+
+- **HTTP loading and sync:** `src/server/app/route-data.ts`, `useChatConversationLoader`, `useLiveConversationSync`, `BackgroundPollManager`
+- **Repository layer:** `src/server/app-data/*` and the repository classes
+- **Old browser token:** `convex/lib/browserConvexToken.ts`
+- **Refetch-on-change plumbing:** local refresh events and version counters
 
 ## Recommendation
 

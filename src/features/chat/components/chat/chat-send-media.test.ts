@@ -16,10 +16,10 @@ function nativeMediaArgs(): Parameters<typeof sendMediaTurn>[0] {
     completeSession: noop, completeSessionForStream: noop, createNewChat: async options => options!.persistedChatId!,
     effectiveGenType: 'image', emptyRuntime: runtime, ensureConversationRuntime: () => runtime,
     isSendBlocked: false, isFirstMessage: true, isTemporaryChatRef: { current: false },
-    loadChats: async () => {}, loadSubscription: async () => {}, nativePersonalEnabled: true,
+    loadSubscription: async () => {}, nativePersonalEnabled: true,
     nativePersonalRoute: true, nativeWorkspaceId: 'workspace', nativeOwnerId: 'owner',
     pendingFirstSendRef: { current: null }, isCurrentScope: () => true, isStreamChatActive: () => true,
-    markChatModified: noop, pendingScrollChatIdRef: { current: null }, pendingScrollTurnIdRef: { current: null },
+    pendingScrollChatIdRef: { current: null }, pendingScrollTurnIdRef: { current: null },
     replyContext: null, selectedActModel: 'model', setGenerationChip: noop, setIsFirstMessage: noop,
     setRuntimeHydrationVersion: noop, startFirstMessageRename: noop, startSession: noop,
     updateRuntimeUiState: noop, videoSubMode: 'text-to-video',
@@ -94,7 +94,6 @@ test('first media sends retain native personal title ownership before subscripti
     })
     const target = runtime()
     const titleOwners: Array<boolean | undefined> = []
-    const modifiedOwners: Array<boolean | undefined> = []
     const pendingFirstSendRef: { current: PendingFirstSendState | null } = { current: null }
     const noop = () => undefined
     await sendMediaTurn({
@@ -113,18 +112,16 @@ test('first media sends retain native personal title ownership before subscripti
       },
       effectiveGenType: 'image', emptyRuntime: runtime(), ensureConversationRuntime: () => target,
       isSendBlocked: true, isFirstMessage: true, isTemporaryChatRef: { current: false },
-      loadChats: async () => {}, loadSubscription: async () => {}, nativePersonalEnabled: true,
-      nativePersonalRoute: scope === 'personal', nativeWorkspaceId: 'workspace', nativeOwnerId: 'owner',
+      loadSubscription: async () => {}, nativePersonalEnabled: true,
+      nativePersonalRoute: true, nativeWorkspaceId: 'workspace', nativeOwnerId: 'owner',
       submitNativePersonalTurn: async () => ({ conversationId: 'new-chat', messageId: 'user' }) as never,
       pendingFirstSendRef, isCurrentScope: () => true, isStreamChatActive: () => true,
-      markChatModified: (_id, _title, nativeOwner) => { modifiedOwners.push(nativeOwner) },
       pendingScrollChatIdRef: { current: null }, pendingScrollTurnIdRef: { current: null },
       replyContext: null, selectedActModel: 'model', setGenerationChip: noop,
       setIsFirstMessage: noop, setRuntimeHydrationVersion: noop, snapshot,
       startFirstMessageRename: (_id, _seed, nativeOwner) => { titleOwners.push(nativeOwner) },
       startSession: noop, updateRuntimeUiState: noop, videoSubMode: 'text-to-video',
     })
-    assert.deepEqual(titleOwners, [scope === 'personal'])
-    assert.deepEqual(modifiedOwners, [scope === 'personal'])
+    assert.deepEqual(titleOwners, [true])
   }
 })

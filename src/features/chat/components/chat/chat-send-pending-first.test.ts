@@ -101,7 +101,6 @@ test('activates pending first send once real chat and stream completion are both
     askMessages: UIMessage[][]
     actMessages: UIMessage[]
   }> = []
-  const marked: Array<[string, string | null | undefined]> = []
   const renamed: Array<[string, string]> = []
   let activeViewer: string | null = null
   let activeChat: string | null = null
@@ -115,7 +114,6 @@ test('activates pending first send once real chat and stream completion are both
     activeChatIdRef,
     applyUiStateToView: (ui) => { appliedUi.push(ui) },
     emptyRuntime,
-    markChatModified: (chatId, title) => marked.push([chatId, title]),
     pendingFirstSendRef,
     replaceConversationRuntime: (chatId, uiSnapshot, askMessages, actMessages) => {
       replaced.push({ chatId, askMessages, actMessages })
@@ -136,7 +134,6 @@ test('activates pending first send once real chat and stream completion are both
   assert.equal(replacedValue.chatId, 'chat-real')
   assert.equal(replacedValue.askMessages[0]?.[0]?.id, 'turn-1')
   assert.equal(replacedValue.actMessages[0]?.id, 'turn-1')
-  assert.deepEqual(marked, [['chat-real', 'Preview']])
   assert.deepEqual(renamed, [['chat-real', 'hello world']])
   assert.equal(activeChatIdRef.current, 'chat-real')
   assert.equal(activeViewer, 'chat-real')

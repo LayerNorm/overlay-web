@@ -146,6 +146,8 @@ If the feature depends on another PR, declare the dependency. Land shared founda
 
 Build the requested behavior and update affected living documentation. Every PR must add a concise entry to root `CHANGELOG.md` under Unreleased in the same PR, explaining in plain language what it adds, changes, fixes or removes and why it matters. This includes documentation, dependency, test and CI PRs: describe their actual effect, not generic “miscellaneous updates.” Update the entry when the scope changes so it describes the final diff. Local direct-main changes follow the same rule.
 
+When the work implements a phase or card of a plan in `internal/plans/`, update that plan in the same PR or direct-main change, without waiting to be asked. Keep its `Status:` line and progress table truthful: separate merged, deployed and accepted work, and record what remains untested. A phase is not complete until its plan says so.
+
 Package render tests preload the shared Node stylesheet and JSX shims, matching ordinary CI rendering; run the package's own test command when adding render coverage.
 
 Run the smallest checks that cover the change. Use `npm run dev` for local web work with your engineer-owned dev backend. Run a smoke check of the affected route or behavior before pushing. Record the actual commands and results. Required repository CI remains mandatory.
@@ -410,7 +412,7 @@ For sensitive changes, expand acceptance checks on the same isolated PR preview.
 
 Use GitHub PRs and checks as the queue and detailed record. Process dependencies first, then follow the owner's priority order; use ready time when no priority is specified. Continue with independent ready PRs when another PR is blocked.
 
-Read the full diff and relevant implementation. Verify the base is main, the scope matches the assignment, dependencies are satisfied, and living docs are updated. Verify that the PR includes its own Unreleased CHANGELOG entry describing the actual final change before merging. Read the latest QA handoff comment: confirm its tested SHA matches the current head and its preview evidence covers the acceptance criteria. Older QA is superseded after a push. Perform additional QA where the evidence or risk calls for it, using Vercel MCP for protected browser access when needed.
+Read the full diff and relevant implementation. Verify the base is main, the scope matches the assignment, dependencies are satisfied, and living docs are updated. Verify that the PR includes its own Unreleased CHANGELOG entry describing the actual final change before merging, and that any plan it implements records the new progress. Read the latest QA handoff comment: confirm its tested SHA matches the current head and its preview evidence covers the acceptance criteria. Older QA is superseded after a push. Perform additional QA where the evidence or risk calls for it, using Vercel MCP for protected browser access when needed.
 
 Post a concise Integration review comment with the reviewed SHA, accepted QA or
 specific blockers, and queue decision. After release, add the accepted main SHA,

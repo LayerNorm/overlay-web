@@ -4,7 +4,6 @@ import type { NativePersonalSubmitArgs } from '@/components/providers/PersonalCh
 import type { PersonalPendingTurn, PersonalTranscriptMessage } from './personal-transcript'
 import type { PendingFirstSendState } from './chat-send-pending-first'
 import { PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
   cloneConversationUiState,
   cloneGenerationResultsMap,
@@ -40,7 +39,6 @@ export async function sendMediaTurn({
   isSendBlocked,
   isFirstMessage,
   isTemporaryChatRef,
-  loadChats,
   loadSubscription,
   nativePersonalEnabled = false,
   nativePersonalRoute = false,
@@ -52,7 +50,7 @@ export async function sendMediaTurn({
   isStreamChatActive,
   pendingFirstSendRef,
   completeSessionForStream,
-  markChatModified,
+  addAssistantNote,
   pendingScrollChatIdRef,
   pendingScrollTurnIdRef,
   replyContext,
@@ -61,7 +59,6 @@ export async function sendMediaTurn({
   setIsFirstMessage,
   setRuntimeHydrationVersion,
   snapshot,
-  startFirstMessageRename,
   startSession,
   updateRuntimeUiState,
   videoSubMode,
@@ -77,7 +74,6 @@ export async function sendMediaTurn({
   isSendBlocked: boolean
   isFirstMessage: boolean
   isTemporaryChatRef: MutableRefObject<boolean>
-  loadChats: () => Promise<void>
   loadSubscription: () => Promise<unknown>
   nativePersonalEnabled?: boolean
   nativePersonalRoute?: boolean
@@ -89,7 +85,6 @@ export async function sendMediaTurn({
   isStreamChatActive?: (chatId: string, temporaryChatSnapshot: boolean) => boolean
   pendingFirstSendRef?: MutableRefObject<PendingFirstSendState | null>
   completeSessionForStream?: CompleteSession
-  markChatModified: (chatId: string, titleSnapshot?: string | null, nativePersonalOwner?: boolean) => void
   pendingScrollChatIdRef: MutableRefObject<string | null>
   pendingScrollTurnIdRef: MutableRefObject<string | null>
   replyContext: ReplyContext
@@ -98,16 +93,15 @@ export async function sendMediaTurn({
   setIsFirstMessage: (isFirstMessage: boolean) => void
   setRuntimeHydrationVersion: Dispatch<SetStateAction<number>>
   snapshot: SubmittedComposerSnapshot
+  addAssistantNote?: (chatId: string, turnId: string, text: string) => Promise<void>
   startFirstMessageRename: (chatId: string, seedText: string, nativePersonalOwner?: boolean) => void
   startSession: StartSession
   updateRuntimeUiState: UpdateRuntimeUiState
   videoSubMode: VideoSubMode
 }) {
   const mediaGenerationModule = import('./chatMediaGeneration')
-  const wasFirst = isFirstMessage
   const promptForModel = buildMediaPromptForModel(replyContext, snapshot.text)
-  const nativePersonalTurn = nativePersonalEnabled && nativePersonalRoute
-    && !snapshot.temporaryChatSnapshot && !workspaceChatsViewActive()
+  const nativePersonalTurn = nativePersonalEnabled && nativePersonalRoute && !snapshot.temporaryChatSnapshot
   const existingChatId = snapshot.temporaryChatSnapshot
     ? TEMPORARY_CHAT_ID
     : (activeChatIdRef.current ?? activeChatId)
@@ -166,7 +160,6 @@ export async function sendMediaTurn({
     runtime.askChats[0].messages = [...runtime.askChats[0].messages, mediaUserMessage as never]
   }
 
-  const nativePersonalCreated = nativePersonalTurn && !existingChatId
   pendingScrollTurnIdRef.current = mediaTurnId
   pendingScrollChatIdRef.current = snapshot.temporaryChatSnapshot ? null : existingChatId
   let chatId = existingChatId
@@ -222,7 +215,6 @@ export async function sendMediaTurn({
     }
   }
   if (!chatId) return
-  if (!snapshot.temporaryChatSnapshot) markChatModified(chatId, snapshot.activeChatTitleSnapshot, nativePersonalCreated)
   if (!snapshot.temporaryChatSnapshot && chatId !== PENDING_FIRST_CHAT_ID) targetRuntime = ensureConversationRuntime(chatId)
   else targetRuntime = emptyRuntime
   if (nativePersonalTurn) {
@@ -236,6 +228,7 @@ export async function sendMediaTurn({
       ...(!existingChatId ? {
         clientId: pendingFirstSendRef?.current?.conversationClientId ?? crypto.randomUUID(),
         title: snapshot.activeChatTitleSnapshot ?? 'New conversation',
+        scope: workspaceChatsViewActive() ? 'workspace' as const : 'personal' as const,
       } : {}),
       turnId: mediaTurnId,
       mode: 'act' as const,
@@ -321,24 +314,6 @@ export async function sendMediaTurn({
   }
 
   setIsFirstMessage(false)
-  if (!snapshot.temporaryChatSnapshot && !nativePersonalTurn) {
-    void overlayAppClient.conversations.addMessageResponse(
-      {
-        conversationId: chatId,
-        turnId: mediaTurnId,
-        mode: 'act',
-        role: 'user',
-        content: snapshot.text,
-        parts: [{ type: 'text', text: snapshot.text }],
-        modelId,
-        ...(replyContext?.replyToTurnId
-          ? { replyToTurnId: replyContext.replyToTurnId, replySnippet: replyContext.snippet }
-          : {}),
-      },
-      { idempotencyKey: `${mediaTurnId}:user` },
-    )
-    if (wasFirst && snapshot.text) startFirstMessageRename(chatId, snapshot.text, nativePersonalCreated)
-  }
   startSession(
     chatId,
     'act',
@@ -384,8 +359,8 @@ export async function sendMediaTurn({
       completeSession: nativePersonalTurn && chatId === PENDING_FIRST_CHAT_ID
         ? (_id, active) => { if (active) completeSessionForStream?.(PENDING_FIRST_CHAT_ID, true) }
         : completeSession,
-      loadChats: snapshot.temporaryChatSnapshot ? (() => {}) : loadChats,
       loadSubscription,
+      addAssistantNote,
     })
   } else {
     const { runVideoGenerationBatch } = await mediaGenerationModule
@@ -405,8 +380,8 @@ export async function sendMediaTurn({
       completeSession: nativePersonalTurn && chatId === PENDING_FIRST_CHAT_ID
         ? (_id, active) => { if (active) completeSessionForStream?.(PENDING_FIRST_CHAT_ID, true) }
         : completeSession,
-      loadChats: snapshot.temporaryChatSnapshot ? (() => {}) : loadChats,
       loadSubscription,
+      addAssistantNote,
     })
   }
 }

@@ -62,7 +62,6 @@ export function activatePendingFirstSend({
   activeChatIdRef,
   applyUiStateToView,
   emptyRuntime,
-  markChatModified,
   pendingFirstSendRef,
   replaceConversationRuntime,
   setActiveChatId,
@@ -75,7 +74,6 @@ export function activatePendingFirstSend({
   activeChatIdRef: MutableRefObject<string | null>
   applyUiStateToView: (ui: ConversationUiState) => void
   emptyRuntime: ConversationRuntime
-  markChatModified: (chatId: string, titleSnapshot?: string | null, nativePersonalOwner?: boolean) => void
   pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
   replaceConversationRuntime: (
     chatId: string,
@@ -103,7 +101,6 @@ export function activatePendingFirstSend({
     [...preview.actChat.messages],
     preview.nativePendingTurns,
   )
-  markChatModified(realId, pending.activeChatTitleSnapshot, pending.nativePersonalOwner)
   startPendingFirstSendRename(pending, startFirstMessageRename)
   activeChatIdRef.current = realId
   setActiveViewer(realId)

@@ -1,124 +1,33 @@
 'use client'
 
-import { useCallback, useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { toast } from '@overlay/ui/primitives'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import {
-  dispatchChatModified,
-  dispatchChatTitleUpdated,
-  mergeChatTitle,
-  resolveChatModifiedTitle,
-  sanitizeChatTitle,
-} from '@/shared/chat/chat-title'
-import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
-import {
-  generateTitle,
-  prefetchTitle,
-} from '@/features/chat/lib/generate-title'
+import { sanitizeChatTitle } from '@/shared/chat/chat-title'
+import { generateTitle, prefetchTitle } from '@/features/chat/lib/generate-title'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
-import type { Conversation, ConversationUiState } from '../chat-interface/types'
 import { persistNativeChatTitle } from '@/features/chat/lib/persist-native-chat-title'
+import type { PersonalChatSummary } from '@/components/providers/PersonalChatProvider'
 
 export function useChatTitleController({
   activeChatId,
-  activeChatIdRef,
-  activeChatTitle,
-  chats,
-  isNativePersonalChat,
-  loadChats,
+  getNativeSummary,
   renameNative,
-  pendingTitleRef,
-  setActiveChatTitle,
-  setChats,
   titleGenerationEnabled,
-  updateRuntimeUiState,
 }: {
   activeChatId: string | null
-  activeChatIdRef: MutableRefObject<string | null>
-  activeChatTitle: string | null
-  chats: Conversation[]
-  isNativePersonalChat: (chatId: string) => boolean
-  loadChats: () => Promise<void>
+  getNativeSummary: (chatId: string) => Pick<PersonalChatSummary, 'title'> | undefined
   renameNative: (chatId: string, title: string) => Promise<void>
-  pendingTitleRef: MutableRefObject<{ chatId: string; title: string } | null>
-  setActiveChatTitle: Dispatch<SetStateAction<string | null>>
-  setChats: Dispatch<SetStateAction<Conversation[]>>
   titleGenerationEnabled: boolean
-  updateRuntimeUiState: (
-    chatId: string,
-    updater: (prev: ConversationUiState) => ConversationUiState,
-  ) => void
 }) {
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingChatTitle, setEditingChatTitle] = useState('')
   const headerTitleInputRef = useRef<HTMLInputElement>(null)
-  const chatsRef = useRef(chats)
-  chatsRef.current = chats
-
-  const applyChatTitleUpdate = useCallback((chatId: string, title: string) => {
-    const nextTitle = sanitizeChatTitle(title, DEFAULT_CHAT_TITLE)
-    if (isNativePersonalChat(chatId)) return nextTitle
-    pendingTitleRef.current = { chatId, title: nextTitle }
-    setChats((prev) => {
-      const exists = prev.some((chat) => chat._id === chatId)
-      if (!exists) {
-        return [{ _id: chatId, title: nextTitle, lastModified: Date.now() }, ...prev]
-      }
-      return prev.map((chat) =>
-        chat._id === chatId ? { ...chat, title: nextTitle } : chat,
-      )
-    })
-    dispatchChatTitleUpdated({ chatId, title: nextTitle })
-    updateRuntimeUiState(chatId, (prev) => ({ ...prev, activeChatTitle: nextTitle }))
-    if (activeChatIdRef.current === chatId) {
-      setActiveChatTitle((prev) => (prev !== null ? nextTitle : prev))
-    }
-    return nextTitle
-  }, [activeChatIdRef, isNativePersonalChat, pendingTitleRef, setActiveChatTitle, setChats, updateRuntimeUiState])
-
-  const markChatModified = useCallback((
-    chatId: string,
-    title?: string | null,
-    nativePersonalOwner = false,
-  ) => {
-    if (nativePersonalOwner || isNativePersonalChat(chatId)) return
-    const pendingTitle = pendingTitleRef.current?.chatId === chatId
-      ? pendingTitleRef.current.title
-      : null
-    const latestListTitle = chatsRef.current.find((chat) => chat._id === chatId)?.title
-    const existingTitle = resolveChatModifiedTitle({
-      explicitTitle: title,
-      pendingTitle,
-      latestListTitle,
-      fallback: DEFAULT_CHAT_TITLE,
-    })
-    const chat = {
-      _id: chatId,
-      title: existingTitle,
-      lastModified: Date.now(),
-    }
-    upsertCachedChat(chat)
-    setChats((prev) => {
-      const existing = prev.find((item) => item._id === chatId)
-      const merged = {
-        ...existing,
-        ...chat,
-        title: mergeChatTitle(existing?.title ?? chat.title, chat.title),
-      }
-      return [merged, ...prev.filter((item) => item._id !== chatId)]
-    })
-    dispatchChatModified({ chat })
-  }, [isNativePersonalChat, pendingTitleRef, setChats])
 
   const beginHeaderChatRename = useCallback(() => {
     if (!activeChatId) return
-    const title =
-      chats.find((chat) => chat._id === activeChatId)?.title ??
-      (isNativePersonalChat(activeChatId) ? null : activeChatTitle) ??
-      DEFAULT_CHAT_TITLE
     setEditingChatId(activeChatId)
-    setEditingChatTitle(title)
-  }, [activeChatId, activeChatTitle, chats, isNativePersonalChat])
+    setEditingChatTitle(getNativeSummary(activeChatId)?.title ?? DEFAULT_CHAT_TITLE)
+  }, [activeChatId, getNativeSummary])
 
   useEffect(() => {
     if (!activeChatId || editingChatId !== activeChatId) return
@@ -129,58 +38,24 @@ export function useChatTitleController({
   }, [activeChatId, editingChatId])
 
   const cancelChatRename = useCallback(() => {
-    // Clearing rename state on active-chat change is intentional.
-    // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
     setEditingChatId(null)
-    // react-doctor-disable-next-line react-doctor/no-adjust-state-on-prop-change
     setEditingChatTitle('')
   }, [])
 
-  useEffect(() => {
+  const [renameChatId, setRenameChatId] = useState(activeChatId)
+  if (renameChatId !== activeChatId) {
+    setRenameChatId(activeChatId)
     cancelChatRename()
-  }, [activeChatId, cancelChatRename])
+  }
 
   const commitChatRename = useCallback(async (chatId: string) => {
-    const localPreviousTitle = activeChatIdRef.current === chatId && !isNativePersonalChat(chatId)
-      ? activeChatTitle
-      : null
-    const previousTitle =
-      chats.find((chat) => chat._id === chatId)?.title ??
-      localPreviousTitle ??
-      DEFAULT_CHAT_TITLE
+    const previousTitle = getNativeSummary(chatId)?.title ?? DEFAULT_CHAT_TITLE
     const nextTitle = sanitizeChatTitle(editingChatTitle, previousTitle)
-
     cancelChatRename()
     if (nextTitle === previousTitle) return
-
-    if (isNativePersonalChat(chatId)) {
-      const persisted = await persistNativeChatTitle(renameNative, chatId, nextTitle)
-      if (!persisted) {
-        toast.error('Could not rename chat.')
-      }
-      return
-    }
-
-    applyChatTitleUpdate(chatId, nextTitle)
-    try {
-      const res = await overlayAppClient.conversations.updateResponse({ conversationId: chatId, title: nextTitle })
-      if (!res.ok) throw new Error('Failed to rename chat')
-    } catch {
-      applyChatTitleUpdate(chatId, previousTitle)
-    } finally {
-      void loadChats()
-    }
-  }, [
-    activeChatIdRef,
-    activeChatTitle,
-    applyChatTitleUpdate,
-    cancelChatRename,
-    chats,
-    editingChatTitle,
-    isNativePersonalChat,
-    loadChats,
-    renameNative,
-  ])
+    const persisted = await persistNativeChatTitle(renameNative, chatId, nextTitle)
+    if (!persisted) toast.error('Could not rename chat.')
+  }, [cancelChatRename, editingChatTitle, getNativeSummary, renameNative])
 
   /**
    * Fire the title request alongside the first message instead of waiting for
@@ -191,51 +66,24 @@ export function useChatTitleController({
    * row and the server update follow once the conversation id arrives.
    */
   const prefetchFirstMessageTitle = useCallback((seedText: string) => {
-    if (!titleGenerationEnabled) return
-    const pending = prefetchTitle(seedText)
-    if (!pending) return
-    void pending.then((aiTitle) => {
-      if (!aiTitle) return
-      // Only paint the pending new-chat surface: once a conversation is active,
-      // startFirstMessageRename owns the title for that id.
-      if (activeChatIdRef.current !== null) return
-      setActiveChatTitle(sanitizeChatTitle(aiTitle, DEFAULT_CHAT_TITLE))
-    })
-  }, [activeChatIdRef, setActiveChatTitle, titleGenerationEnabled])
+    if (titleGenerationEnabled) prefetchTitle(seedText)
+  }, [titleGenerationEnabled])
 
-  const startFirstMessageRename = useCallback((
-    chatId: string,
-    text: string,
-    nativePersonalOwner = false,
-  ) => {
+  const startFirstMessageRename = useCallback((chatId: string, text: string) => {
     if (!titleGenerationEnabled) return
     // Resolves from the prefetched request when the seed matches.
     void generateTitle(text).then(async (aiTitle) => {
-      if (!aiTitle) return
-      if (nativePersonalOwner || isNativePersonalChat(chatId)) {
-        const title = sanitizeChatTitle(aiTitle, DEFAULT_CHAT_TITLE)
-        await persistNativeChatTitle(renameNative, chatId, title)
-        return
-      }
-      const finalTitle = applyChatTitleUpdate(chatId, aiTitle)
-      try {
-        const res = await overlayAppClient.conversations.updateResponse({ conversationId: chatId, title: finalTitle })
-        if (res.ok) void loadChats()
-      } catch {
-        return
-      }
+      if (aiTitle) await persistNativeChatTitle(renameNative, chatId, sanitizeChatTitle(aiTitle, DEFAULT_CHAT_TITLE))
     })
-  }, [applyChatTitleUpdate, isNativePersonalChat, loadChats, renameNative, titleGenerationEnabled])
+  }, [renameNative, titleGenerationEnabled])
 
   return {
-    applyChatTitleUpdate,
     beginHeaderChatRename,
     cancelChatRename,
     commitChatRename,
     editingChatId,
     editingChatTitle,
     headerTitleInputRef,
-    markChatModified,
     prefetchFirstMessageTitle,
     setEditingChatTitle,
     startFirstMessageRename,
