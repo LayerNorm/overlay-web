@@ -49,6 +49,7 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
   '/api/v1/imports/slack/process': internalServiceException(['POST'], 'Internal-secret authenticated Slack import worker bridge.'),
   '/api/v1/automations/project-events': internalServiceException(['POST'], 'Internal-secret authenticated Workflow SDK event projection bridge.'),
   '/api/v1/harness/continuation': internalContinuationException(),
+  '/api/v1/work/resume-assignment': internalServiceException(['POST'], 'Internal-secret authenticated dependency release; generation-fenced assignment claim and current permissions/budget are rechecked.'),
   '/api/v1/surfaces/slack/connect': {
     methods: ['GET'],
     reason: 'Browser navigation that must end in a redirect to Slack consent, not a JSON envelope.',

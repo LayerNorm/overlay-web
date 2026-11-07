@@ -76,7 +76,25 @@ export class WorkService {
       : item
   }
 
+  async resumeAssignment(args: Actor & { id: string; generation: number }): Promise<void> {
+    const item = await this.guard(() => this.repository.get(args))
+    const execution = item?.assignmentExecution
+    if (!item || !execution || item.archivedAt !== null || item.status === 'done' || execution.status !== 'pending'
+      || execution.generation !== args.generation || execution.assignedByUserId !== args.userId
+      || execution.assigneePrincipalId !== item.assigneePrincipalId) return
+    await this.dispatchIfAgentAssigned(args, item, execution.assigneePrincipalId)
+  }
+
+  private async dependenciesDone(args: Actor, item: WorkItem): Promise<boolean> {
+    for (const id of item.blockedBy ?? []) {
+      const blocker = await this.guard(() => this.repository.get({ ...args, id }))
+      if (!blocker || blocker.status !== 'done') return false
+    }
+    return true
+  }
+
   private async dispatchIfAgentAssigned(args: Actor, item: WorkItem, assigneePrincipalId: string): Promise<WorkItem> {
+    if (!await this.dependenciesDone(args, item)) return item
     const context = await this.context(args)
     if (!context.people.some((person) => person.principalId === assigneePrincipalId && person.type === 'agent')) {
       if (item.assignmentExecution) {
@@ -89,10 +107,7 @@ export class WorkService {
       return item
     }
     const generation = item.assignmentExecution?.generation ?? item.updatedAt
-    const startedReplay = item.assignmentExecution?.status === 'started'
-      && item.assignmentExecution.assigneePrincipalId === assigneePrincipalId
-      && Number.isSafeInteger(item.assignmentExecution.generation)
-      && item.assignmentExecution.generation === generation
+    const startedReplay = isStartedAssignmentReplay(item, assigneePrincipalId, generation)
     try {
       await this.requireExecution({
         userId: args.userId,
@@ -219,6 +234,12 @@ export class WorkService {
     if (outcome.reason === 'not_archived') throw new WorkServiceError('Archive the task before deleting it.', 409, 'work_not_archived')
     throw new WorkServiceError('You do not have access to delete this task.', 403, 'work_forbidden')
   }
+}
+
+function isStartedAssignmentReplay(item: WorkItem, assigneePrincipalId: string, generation: number): boolean {
+  const execution = item.assignmentExecution
+  return execution?.status === 'started' && execution.assigneePrincipalId === assigneePrincipalId
+    && Number.isSafeInteger(execution.generation) && execution.generation === generation
 }
 
 export function translateWorkError(error: unknown): Error {

@@ -20,7 +20,7 @@ import { useWorkData, WorkDataProvider } from './WorkDataProvider'
 import { WorkBoard } from './WorkBoard'
 import { WorkList } from './WorkList'
 import { WorkPeek } from './WorkPeek'
-import { WorkQuickAdd, type WorkQuickAddHandle } from './WorkQuickAdd'
+import { WorkTaskComposer, type WorkTaskComposerHandle } from './WorkTaskComposer'
 import { WorkTimeline } from './WorkTimeline'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
 
@@ -111,7 +111,7 @@ function WorkScreen() {
   const { taskId, openTask, closeTask } = useWorkUrlState()
   const { state, items, viewer, truncated } = useWorkData()
   const [query, setQuery] = useState('')
-  const quickAdd = useRef<WorkQuickAddHandle>(null)
+  const quickAdd = useRef<WorkTaskComposerHandle>(null)
   const today = useMemo(() => toWorkDate(new Date()), [])
 
   // C starts a new task from anywhere on the page (typing in a field is left alone).
@@ -149,7 +149,6 @@ function WorkScreen() {
     >
       <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full min-h-0 flex-col" data-testid="work-page">
         {truncated ? <p className="mx-6 mt-3 shrink-0 text-xs text-(--muted)" role="note">Showing the first {WORK_LIMITS.listCap.toLocaleString('en-US')} tasks. Archive finished work to see the rest.</p> : null}
-        <WorkQuickAdd ref={quickAdd} disabled={!loaded} />
         <div className={`flex min-h-0 flex-1 flex-col ${pageScrolls ? 'overflow-auto' : 'overflow-hidden'}`}>
           <WorkBody
             view={view}
@@ -162,6 +161,7 @@ function WorkScreen() {
             onOpen={openTask}
           />
         </div>
+        <WorkTaskComposer ref={quickAdd} disabled={!loaded} />
       </AppScreenBody>
     </AppScreenShell>
   )

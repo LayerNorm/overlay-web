@@ -316,6 +316,10 @@ collision/dialog/mobile tests and all 39 preset variable checks. Set
 
 ## Work: tasks, board, and timeline
 
+Work has a bottom-pinned prompt composer in Personal and Workspace scope. Enter creates a task from the first line (200 characters maximum); Shift+Enter adds description lines. Assignee and Depends on use searchable Popover/Command pickers; Schedule has Start/Due date inputs and presets. Inline settings offer Backlog/Todo and Low/Medium/High (Medium by default). Successful creation clears all fields and refocuses. Context reuses Work's file/note/chat/link search; dictation appears only in Desktop when supported. There is no expand control or Repeat setting yet.
+
+An agent assignment starts immediately unless a dependency is not done. Blocked assignments retain a pending execution; completing the final blocker through either a field edit or a board move schedules a deployment-secret callback under the original assigner's identity. The callback rechecks visibility and budget, and the Convex claim rechecks dependency status atomically with the assignment generation/status, so concurrent releases cannot dispatch twice. Transient callback failures retry six times with capped exponential backoff; terminal failures are logged. Removing dependencies also reevaluates pending assignments.
+
 The Work page (`src/features/work/`) follows the existing patterns and adds a few of its own:
 
 - **One page, three views.** List, Board and Timeline show the same tasks. Scope (`?scope=`), view (`?view=`), filter

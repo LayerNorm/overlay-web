@@ -102,7 +102,7 @@ export function WorkDataProvider({ children }: { children: ReactNode }) {
   const createTask = useCallback<WorkData['createTask']>(async (input) => {
     const scopeToSend = newItemScope(scope)
     const withScope = { ...input, ...(scopeToSend ? { scope: scopeToSend } : {}) }
-    // Giving a new task to an agent starts that agent's turn, which only the server can do.
+    // The server starts assigned agents once their dependencies are done.
     if (input.assigneePrincipalId) {
       return reported(async () => (await overlayAppClient.work.create(withScope)).item, 'Could not add the task.')
     }
