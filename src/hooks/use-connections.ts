@@ -76,3 +76,10 @@ export function useLiveAgentSurfaces(agentId: string | null):
   return useQuery(api.surfaces.browse.forAgent, workspaceId && agentId ? { workspaceId, agentId } : 'skip') as
     { connections: SurfaceConnection[]; bindings: SurfaceBinding[]; canBind: boolean } | null | undefined
 }
+
+/** Whether this workspace may connect its own agents, live; undefined while loading, null without access. */
+export function useConnectedAgentLaunchEnabled(workspaceId: string | null): boolean | null | undefined {
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  return useQuery(api.agents.environmentsBrowse.launchEnabled,
+    workspaceId && isAuthenticated && !isLoading ? { workspaceId } : 'skip') as boolean | null | undefined
+}

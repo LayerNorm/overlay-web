@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { query } from '../_generated/server'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
+import { nativeDeploymentFeatureEnabled } from '../lib/nativeDeploymentPolicy'
 
 function safe<T extends Record<string, unknown>>(row: T) {
   const { _id, _creationTime, publicKey, ...rest } = row as T & { _id?: unknown; _creationTime?: unknown; publicKey?: unknown }
@@ -48,5 +49,21 @@ export const bindings = query({
       ? await ctx.db.query('agentBindings').withIndex('by_workspaceId_agentId', q => q.eq('workspaceId', workspaceId).eq('agentId', agentId)).take(200)
       : await ctx.db.query('agentBindings').withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).take(200)
     return rows.sort((a, b) => b.updatedAt - a.updatedAt).map(row => ({ ...safe(row), id: row.bindingId }))
+  },
+})
+
+/**
+ * Whether members of this workspace may connect and launch their own agents: the deployment's external-agent features
+ * and this workspace's rollout eligibility, the same rule the server enforces. Null without workspace access.
+ */
+export const launchEnabled = query({
+  args: { workspaceId: v.string() },
+  handler: async (ctx, { workspaceId }) => {
+    try {
+      await requireNativeWorkspace(ctx, workspaceId)
+    } catch {
+      return null
+    }
+    return await nativeDeploymentFeatureEnabled(ctx, 'externalAgents', workspaceId)
   },
 })
