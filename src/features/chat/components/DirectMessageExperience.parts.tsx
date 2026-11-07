@@ -4,7 +4,7 @@ import { appendDictatedText } from '@/components/desktop/composer-dictation'
 
 import { RemoteRunLiveness } from './collaboration/RemoteRunLiveness'
 import { useEffect, type Dispatch, type ReactNode, type SetStateAction } from 'react'
-import type { useRouter } from 'next/navigation'
+import { useSearchParams, type useRouter } from 'next/navigation'
 import dynamic from 'next/dynamic'
 import {
   Archive,
@@ -34,7 +34,7 @@ import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { ChatComposer } from './ChatComposer'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
-import { ConvexRoomMessageSubscription } from './collaboration/ConvexRoomMessageSubscription'
+import { ConvexRoomMessageSubscription, type RoomPaging, type RoomSummary } from './collaboration/ConvexRoomMessageSubscription'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
@@ -142,6 +142,8 @@ export function RoomRealtimeSubscriptions({
   threadRootId,
   workspaceId,
   onMessages,
+  onRoom,
+  onPaging,
   onPresence,
 }: {
   enabled: boolean
@@ -151,26 +153,32 @@ export function RoomRealtimeSubscriptions({
   threadRootId: string | null
   workspaceId: string | null | undefined
   onMessages: (messages: RoomMessageRecord[]) => void
+  onRoom: (room: RoomSummary | null | undefined) => void
+  onPaging: (paging: RoomPaging) => void
   onPresence: (presence: ConversationPresence[]) => void
 }) {
-  if (!enabled || !actorUserId || !accessToken || !workspaceId) return null
+  const permalinkMessageId = useSearchParams()?.get('message')?.trim() || null
+  if (!workspaceId) return null
   return (
     <>
       <ConvexRoomMessageSubscription
-        accessToken={accessToken}
-        actorUserId={actorUserId}
         conversationId={conversationId}
         threadRootMessageId={threadRootId}
+        permalinkMessageId={permalinkMessageId}
         workspaceId={workspaceId}
         onMessages={onMessages}
+        onRoom={onRoom}
+        onPaging={onPaging}
       />
-      <ConvexPresenceSubscription
-        accessToken={accessToken}
-        actorUserId={actorUserId}
-        conversationId={conversationId}
-        onPresence={onPresence}
-        workspaceId={workspaceId}
-      />
+      {enabled && actorUserId && accessToken ? (
+        <ConvexPresenceSubscription
+          accessToken={accessToken}
+          actorUserId={actorUserId}
+          conversationId={conversationId}
+          onPresence={onPresence}
+          workspaceId={workspaceId}
+        />
+      ) : null}
     </>
   )
 }

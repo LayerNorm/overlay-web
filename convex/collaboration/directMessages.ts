@@ -16,7 +16,7 @@ import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
 
-type CollaborationCtx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
+type CollaborationCtx = (Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>) & { auth?: QueryCtx['auth'] }
 
 const notificationFilterValidator = v.union(
   v.literal('all'),
@@ -44,16 +44,33 @@ const notificationValidator = v.object({
   conversationState: v.optional(v.union(v.literal('archived'), v.literal('deleted'))),
 })
 
+/**
+ * Room functions trust one of three proofs: the server secret, the legacy browser token, or
+ * native Convex identity. `native` is set only by `nativeRoomActor` below, never from client
+ * arguments, because every public validator here rejects unknown fields.
+ */
+type ActorProof = {
+  accessToken?: string
+  actorUserId: string
+  workspaceId: string
+  serverSecret?: string
+  native?: true
+}
+
+export async function nativeRoomActor(ctx: Pick<QueryCtx, 'auth'>, workspaceId: string) {
+  const identity = await ctx.auth.getUserIdentity()
+  if (!identity?.subject) throw new Error('Unauthorized')
+  return { actorUserId: identity.subject, workspaceId, native: true as const }
+}
+
 async function requireActor(
   ctx: CollaborationCtx,
-  args: {
-    accessToken?: string
-    actorUserId: string
-    workspaceId: string
-    serverSecret?: string
-  },
+  args: ActorProof,
 ) {
-  if (!validateServerSecret(args.serverSecret)) {
+  if (args.native) {
+    const identity = await ctx.auth?.getUserIdentity()
+    if (!identity?.subject || identity.subject !== args.actorUserId) throw new Error('Unauthorized')
+  } else if (!validateServerSecret(args.serverSecret)) {
     await requireAccessToken(args.accessToken ?? '', args.actorUserId)
   }
   const principal = await ctx.db.query('workspacePrincipals')
@@ -110,13 +127,7 @@ async function requireWorkspaceOwner(
 
 async function canAccess(
   ctx: CollaborationCtx,
-  args: {
-    actorUserId: string
-    accessToken?: string
-    conversationId: Id<'conversations'>
-    workspaceId: string
-    serverSecret?: string
-  },
+  args: ActorProof & { conversationId: Id<'conversations'> },
 ) {
   const actor = await requireActor(ctx, args)
   const conversation = await ctx.db.get(args.conversationId)
@@ -141,13 +152,7 @@ async function canAccess(
 
 export async function requireConversationAccess(
   ctx: CollaborationCtx,
-  args: {
-    actorUserId: string
-    accessToken?: string
-    conversationId: Id<'conversations'>
-    workspaceId: string
-    serverSecret?: string
-  },
+  args: ActorProof & { conversationId: Id<'conversations'> },
 ) {
   const access = await canAccess(ctx, args)
   if (!access.allowed || !access.conversation) throw new Error('CONVERSATION_ACCESS_DENIED')
@@ -484,76 +489,30 @@ export const listMessages = query({
   },
 })
 
-/**
- * Browser-facing room transcript subscription. Convex re-runs this query when
- * any indexed message it depends on changes, so workspace participants receive
- * new messages without polling the Next.js BFF.
- *
- * Auth failures return `{ ok: false }` (not an empty message list) so the
- * client keeps the last valid transcript. Browser tokens must be the HS256
- * tokens from `/api/auth/convex-token` (signed with `INTERNAL_API_SECRET`).
- * WorkOS JWTs cannot be verified inside Convex queries because JWKS uses
- * fetch(), which queries forbid.
- */
-export const watchRoomMessages = query({
-  args: {
-    accessToken: v.string(),
-    actorUserId: v.string(),
-    conversationId: v.id('conversations'),
-    limit: v.number(),
-    mainOnly: v.optional(v.boolean()),
-    threadRootMessageId: v.optional(v.id('conversationMessages')),
-    workspaceId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    try {
-      await requireConversationAccess(ctx, args)
-    } catch (error) {
-      // A stale/refreshing browser token must not throw through React's route
-      // boundary. Returning ok:false keeps the last valid transcript mounted
-      // while ConvexAuthProvider refreshes authentication.
-      if (error instanceof Error && [
-        'Unauthorized',
-        'WORKSPACE_ACCESS_DENIED',
-        'CONVERSATION_ACCESS_DENIED',
-      ].includes(error.message)) {
-        return { ok: false as const, messages: [] as Array<Record<string, unknown>> }
-      }
-      throw error
-    }
-    const rows = await ctx.db.query('conversationMessages')
-      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
-      .order('desc')
-      .take(500)
-    const selectedMessages = rows
-      .filter((message) => args.threadRootMessageId === undefined || message.threadRootMessageId === args.threadRootMessageId)
-      .filter((message) => args.mainOnly !== true || !message.threadRootMessageId)
-      .slice(0, Math.max(1, Math.min(100, Math.floor(args.limit))))
-      .reverse()
-    const messages = (await hydrateRemoteMessages(ctx, selectedMessages)).map((message) => ({
-        id: message._id,
-        turnId: message.turnId,
-        authorKind: message.authorKind ?? (message.role === 'assistant' ? 'model' : 'human'),
-        authorPrincipalId: message.authorPrincipalId,
-        importedAuthorName: message.importedAuthorName,
-        importedAuthorEmail: message.importedAuthorEmail,
-        importedAuthorStatus: message.importedAuthorStatus,
-        content: message.content,
-        parts: message.parts,
-        agentPlan: message.agentPlan,
-        createdAt: message.createdAt,
-        updatedAt: message.updatedAt ?? message.createdAt,
-        eventSequence: message.eventSequence,
-        editedAt: message.editedAt,
-        editHistory: message.editHistory,
-        deletedAt: message.deletedAt,
-        clientNonce: message.clientNonce,
-        threadRootMessageId: message.threadRootMessageId,
-        status: message.status,
-      }))
-    return { ok: true as const, messages }
-  },
-})
+/** The browser's view of a room message. */
+export function roomMessageView(message: Awaited<ReturnType<typeof hydrateRemoteMessages>>[number]) {
+  return {
+    id: message._id,
+    turnId: message.turnId,
+    authorKind: message.authorKind ?? (message.role === 'assistant' ? 'model' : 'human'),
+    authorPrincipalId: message.authorPrincipalId,
+    importedAuthorName: message.importedAuthorName,
+    importedAuthorEmail: message.importedAuthorEmail,
+    importedAuthorStatus: message.importedAuthorStatus,
+    content: message.content,
+    parts: message.parts,
+    agentPlan: message.agentPlan,
+    createdAt: message.createdAt,
+    updatedAt: message.updatedAt ?? message.createdAt,
+    eventSequence: message.eventSequence,
+    editedAt: message.editedAt,
+    editHistory: message.editHistory,
+    deletedAt: message.deletedAt,
+    clientNonce: message.clientNonce,
+    threadRootMessageId: message.threadRootMessageId,
+    status: message.status,
+  }
+}
 
 export const addMessage = mutation({
   args: {
@@ -2202,39 +2161,7 @@ export const editMessage = mutation({
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
-    const access = await requireConversationAccess(ctx, args)
-    const message = await ctx.db.get(args.messageId)
-    const content = args.content.trim()
-    if (!content) throw new Error('Message content is required')
-    if (
-      !message
-      || message.conversationId !== args.conversationId
-      || message.authorKind !== 'human'
-      || message.authorPrincipalId !== access.actor.principalId
-      || message.deletedAt
-    ) return false
-    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
-    const hydrated = await hydrateRemoteMessage(ctx, message)
-    const parts: NonNullable<Doc<'conversationMessages'>['parts']> = [
-      { type: 'text', text: content },
-      ...(hydrated.parts ?? []).filter((part) => part.type !== 'text' && part.type !== 'output-text'),
-    ]
-    const textPatch = message.remoteTextStored
-      ? await prepareRemoteMessageText(ctx, message, { content, parts })
-      : { content, parts }
-    const now = Date.now()
-    await ctx.db.patch(message._id, {
-      content: textPatch.content,
-      parts: textPatch.parts,
-      ...('remoteTextStored' in textPatch ? { remoteTextStored: textPatch.remoteTextStored } : {}),
-      editedAt: now,
-      editHistory: [
-        ...(message.editHistory ?? []),
-        { content: message.content, editedAt: now },
-      ],
-      updatedAt: now,
-    })
-    return true
+    return await editRoomMessage(ctx, args)
   },
 })
 
@@ -2247,23 +2174,7 @@ export const deleteMessage = mutation({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const access = await requireConversationAccess(ctx, args)
-    const message = await ctx.db.get(args.messageId)
-    if (
-      !message
-      || message.conversationId !== args.conversationId
-      || message.authorKind !== 'human'
-      || message.authorPrincipalId !== access.actor.principalId
-      || message.deletedAt
-    ) return false
-    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
-    const now = Date.now()
-    await ctx.db.patch(message._id, { content: '', parts: [], deletedAt: now, updatedAt: now })
-    await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
-      sourceKind: 'message',
-      sourceId: args.messageId,
-    })
-    return true
+    return await deleteRoomMessage(ctx, args)
   },
 })
 
@@ -2511,3 +2422,65 @@ export const markNotificationsRead = mutation({
     return unread.length
   },
 })
+
+export async function editRoomMessage(
+  ctx: MutationCtx,
+  args: ActorProof & { content: string; conversationId: Id<'conversations'>; messageId: Id<'conversationMessages'> },
+) {
+  const access = await requireConversationAccess(ctx, args)
+  const message = await ctx.db.get(args.messageId)
+  const content = args.content.trim()
+  if (!content) throw new Error('Message content is required')
+  if (
+    !message
+    || message.conversationId !== args.conversationId
+    || message.authorKind !== 'human'
+    || message.authorPrincipalId !== access.actor.principalId
+    || message.deletedAt
+  ) return false
+  await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
+  const hydrated = await hydrateRemoteMessage(ctx, message)
+  const parts: NonNullable<Doc<'conversationMessages'>['parts']> = [
+    { type: 'text', text: content },
+    ...(hydrated.parts ?? []).filter((part) => part.type !== 'text' && part.type !== 'output-text'),
+  ]
+  const textPatch = message.remoteTextStored
+    ? await prepareRemoteMessageText(ctx, message, { content, parts })
+    : { content, parts }
+  const now = Date.now()
+  await ctx.db.patch(message._id, {
+    content: textPatch.content,
+    parts: textPatch.parts,
+    ...('remoteTextStored' in textPatch ? { remoteTextStored: textPatch.remoteTextStored } : {}),
+    editedAt: now,
+    editHistory: [
+      ...(message.editHistory ?? []),
+      { content: message.content, editedAt: now },
+    ],
+    updatedAt: now,
+  })
+  return true
+}
+
+export async function deleteRoomMessage(
+  ctx: MutationCtx,
+  args: ActorProof & { conversationId: Id<'conversations'>; messageId: Id<'conversationMessages'> },
+) {
+  const access = await requireConversationAccess(ctx, args)
+  const message = await ctx.db.get(args.messageId)
+  if (
+    !message
+    || message.conversationId !== args.conversationId
+    || message.authorKind !== 'human'
+    || message.authorPrincipalId !== access.actor.principalId
+    || message.deletedAt
+  ) return false
+  await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
+  const now = Date.now()
+  await ctx.db.patch(message._id, { content: '', parts: [], deletedAt: now, updatedAt: now })
+  await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+    sourceKind: 'message',
+    sourceId: args.messageId,
+  })
+  return true
+}

@@ -272,12 +272,8 @@ export function DirectMessageExperience({
   const agentId = roomAgentId(vm)
   const agentHref = agentConversationRedirect({ pathname: pathname ?? '', workspaceId: activeWorkspaceId, agentId, conversationId, guided: Boolean(guided),  })
   useEffect(() => { if (agentHref) router.replace(agentHref) }, [agentHref, router])
-  const { loadMessages } = transcript
+  // Guided onboarding writes to this room server-side; the live transcript shows them.
   const pendingMessage = guided?.pendingMessage
-  const guidedRevision = guided?.revision
-  useEffect(() => {
-    if (guidedRevision !== undefined) void loadMessages()
-  }, [guidedRevision, loadMessages])
 
   const { rightPanel, rightPanelClose } = resolveRoomRightPanel({
     panels,
@@ -331,6 +327,8 @@ export function DirectMessageExperience({
         threadRootId={thread.threadRootId}
         workspaceId={activeWorkspaceId}
         onMessages={transcript.applyLiveRoomMessages}
+        onRoom={transcript.applyRoomSummary}
+        onPaging={transcript.setPaging}
         onPresence={roster.applyConvexPresence}
       />
       <AppScreenShell

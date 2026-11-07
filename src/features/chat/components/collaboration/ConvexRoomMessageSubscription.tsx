@@ -1,80 +1,85 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useQuery } from '@/components/providers/convex-hooks'
+import { usePaginatedQuery, useQuery } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import type { RoomMessageRecord } from './room-message-view'
 
-type WatchRoomMessagesResult = {
-  ok: boolean
-  messages: RoomMessageRecord[]
+export type RoomSummary = {
+  title: string
+  conversationType: 'dm' | 'channel'
+  externalPlatform: string | null
 }
 
-function asWatchResult(value: unknown): WatchRoomMessagesResult | undefined {
-  if (value === undefined) return undefined
-  // Backward-compatible: older Convex deploys returned a bare array.
-  if (Array.isArray(value)) {
-    return { ok: true, messages: value as RoomMessageRecord[] }
-  }
-  if (
-    value
-    && typeof value === 'object'
-    && 'ok' in value
-    && 'messages' in value
-    && Array.isArray((value as WatchRoomMessagesResult).messages)
-  ) {
-    return value as WatchRoomMessagesResult
-  }
-  return undefined
+export type RoomPaging = {
+  hasMore: boolean
+  loadingMore: boolean
+  loadMore: () => void
 }
 
+const PAGE_SIZE = 50
+
+/**
+ * Owns the room transcript: the live main timeline, the open thread and a permalinked
+ * message, read with native Convex identity. Results flow into the room's merge with
+ * local optimistic rows. `onRoom` reports undefined while loading and null when the
+ * member cannot read the room.
+ */
 export function ConvexRoomMessageSubscription({
-  accessToken,
-  actorUserId,
   conversationId,
   threadRootMessageId,
+  permalinkMessageId,
   workspaceId,
   onMessages,
+  onRoom,
+  onPaging,
 }: {
-  accessToken: string
-  actorUserId: string
   conversationId: string
   threadRootMessageId: string | null
+  permalinkMessageId: string | null
   workspaceId: string
   onMessages: (messages: RoomMessageRecord[]) => void
+  onRoom: (room: RoomSummary | null | undefined) => void
+  onPaging: (paging: RoomPaging) => void
 }) {
-  const commonArgs = {
-    accessToken,
-    actorUserId,
-    conversationId: conversationId as Id<'conversations'>,
-    limit: 100,
-    workspaceId,
-  }
-  const mainResult = asWatchResult(useQuery(api.collaboration.directMessages.watchRoomMessages, {
-    ...commonArgs,
-    mainOnly: true,
-  }))
-  const threadResult = asWatchResult(useQuery(
-    api.collaboration.directMessages.watchRoomMessages,
-    threadRootMessageId
-      ? {
-          ...commonArgs,
-          threadRootMessageId: threadRootMessageId as Id<'conversationMessages'>,
-        }
+  const args = { workspaceId, conversationId: conversationId as Id<'conversations'> }
+  const room = useQuery(api.collaboration.rooms.access, args)
+  const main = usePaginatedQuery(api.collaboration.rooms.messages, room ? args : 'skip', { initialNumItems: PAGE_SIZE })
+  const thread = usePaginatedQuery(
+    api.collaboration.rooms.messages,
+    room && threadRootMessageId
+      ? { ...args, threadRootMessageId: threadRootMessageId as Id<'conversationMessages'> }
       : 'skip',
-  ))
+    { initialNumItems: PAGE_SIZE },
+  )
+  const permalink = useQuery(
+    api.collaboration.rooms.message,
+    room && permalinkMessageId
+      ? { ...args, messageId: permalinkMessageId as Id<'conversationMessages'> }
+      : 'skip',
+  )
+
+  useEffect(() => { onRoom(room) }, [onRoom, room])
 
   useEffect(() => {
-    // Auth failures return ok:false — leave the last good transcript alone.
-    if (!mainResult?.ok) return
-    const threadMessages = threadResult?.ok ? threadResult.messages : []
+    if (!room || main.status === 'LoadingFirstPage') return
     // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
     onMessages([
-      ...mainResult.messages,
-      ...threadMessages,
-    ])
-  }, [mainResult, onMessages, threadResult])
+      ...main.results,
+      ...thread.results,
+      ...(permalink ? [permalink] : []),
+    ] as RoomMessageRecord[])
+  }, [main.results, main.status, onMessages, permalink, room, thread.results])
+
+  const { status, loadMore } = main
+  useEffect(() => {
+    onPaging({
+      hasMore: status === 'CanLoadMore',
+      loadingMore: status === 'LoadingMore',
+      loadMore: () => loadMore(100),
+    })
+  }, [loadMore, onPaging, status])
 
   return null
 }

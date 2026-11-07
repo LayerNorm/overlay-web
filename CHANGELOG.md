@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Load DM and channel messages natively: rooms open from a live Convex query instead of waiting on an HTTP load, older messages and reply threads page in from an index (fixing threads and roots older than the newest 500 messages that could not load at all), and edits and deletes appear in every open client at once without a reload.
+
 - Make the agent directory live: the sidebar, agent picker, organization chart, automations, search, computer settings and room identities now read agents from one Convex subscription, so creating, renaming or archiving an agent shows up everywhere at once without a reload or refresh event. The agent editor follows changes made elsewhere while it has no unsaved edits, and never overwrites edits in progress.
 
 - Fix automation builder chat, which had failed every send since Act stopped accepting the retired `automationMode` flag, and fix failed first turns in any chat, which spun forever with no error instead of ending and showing what went wrong.

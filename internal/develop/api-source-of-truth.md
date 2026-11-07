@@ -298,9 +298,18 @@ New owner sessions use `flowVersion: 2` and revision-checked name, about, team, 
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Convex appends the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
 - Convex-backed browsers use native `watchConversationListVersion` and `watchNotifications` subscriptions. `/api/v1/conversations/events` remains a long-poll fallback for non-realtime clients and must not be mounted as a browser subscription path.
-- Reactive handlers receive the short-lived BFF HMAC token as an explicit
+- Remaining token-based reactive handlers (presence, notifications, list version) receive the short-lived BFF HMAC token as an explicit
   `accessToken` argument. This token does not configure Convex platform `setAuth`;
   the handler verifies it and binds it to the requested account.
+- Room transcripts are native. Browsers read DM and channel history through
+  `collaboration/rooms:access`, `:messages` (paginated, main timeline or one thread, indexed by
+  thread root) and `:message` (permalinks and thread roots), and edit or delete through
+  `:editMessage` and `:deleteMessage`, all with native Convex identity. `requireActor` accepts that
+  identity only through `nativeRoomActor`, never from client arguments. Send stays on
+  `POST /api/v1/conversations/message` because it starts agent runs and mention email; its optimistic
+  rows reconcile against the live query. `GET /api/v1/conversations?messages=true` and the message
+  PATCH/DELETE routes remain for desktop and API clients, and the pre-send thread writability probe
+  stays on HTTP with send. Presence, participants and room metadata are CN-10.
 - Personal chat creation is deferred until the first send. Newly created DMs and
   channels are client-side drafts until their first message succeeds: they are not
   inserted into the sidebar list, and navigating away removes the current member

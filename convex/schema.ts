@@ -1698,6 +1698,7 @@ export default defineSchema({
     .index('by_conversationId_turnId_role', ['conversationId', 'turnId', 'role'])
     .index('by_userId', ['userId'])
     .index('by_conversationId_createdAt', ['conversationId', 'createdAt'])
+    .index('by_conversationId_threadRootMessageId_createdAt', ['conversationId', 'threadRootMessageId', 'createdAt'])
     .index('by_conversationId_status_updatedAt', ['conversationId', 'status', 'updatedAt'])
     .index('by_status_updatedAt', ['status', 'updatedAt']),
 

@@ -1,6 +1,11 @@
 'use client'
 
 import { useAgentDirectory as useLiveAgentDirectory } from '@/hooks/use-agent-directory'
+import { useMutation } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import type { RoomPaging, RoomSummary } from './collaboration/ConvexRoomMessageSubscription'
 import {
   useCallback,
   useEffect,
@@ -363,7 +368,6 @@ export function useRoomCollaboration({
 
 export function useRoomTranscript({
   conversationId,
-  threadRootId,
 
 
   agentResponding,
@@ -371,7 +375,6 @@ export function useRoomTranscript({
   setNewMessageCount,
 }: {
   conversationId: string
-  threadRootId: string | null
 
 
   agentResponding: string | null
@@ -381,9 +384,16 @@ export function useRoomTranscript({
   const [messages, setMessages] = useState<OptimisticMessage[]>(
     [],
   )
-  const [loading, setLoading] = useState(true)
-  const [hasMoreMessages, setHasMoreMessages] = useState(false)
-  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false)
+  const [participantsLoading, setLoading] = useState(true)
+  const [paging, setPaging] = useState<RoomPaging>({ hasMore: false, loadingMore: false, loadMore: () => undefined })
+  const hasMoreMessages = paging.hasMore
+  const loadingOlderMessages = paging.loadingMore
+  // undefined while the room is resolving, null when this member cannot read it.
+  const [room, setRoom] = useState<{ conversationId: string; summary: RoomSummary | null | undefined; transcriptReady: boolean }>(
+    { conversationId, summary: undefined, transcriptReady: false },
+  )
+  const currentRoom = room.conversationId === conversationId ? room : { summary: undefined, transcriptReady: false }
+  const loading = participantsLoading || (currentRoom.summary !== null && !currentRoom.transcriptReady)
   const [conversationTitle, setConversationTitle] = useState<string | null>(null)
   /** Platform a mirrored surface thread came from (Slack): the room is read-only. */
   const [surfacePlatform, setSurfacePlatform] = useState<string | null>(null)
@@ -401,8 +411,6 @@ export function useRoomTranscript({
   const generatingTextLength = generatingMessages
     .reduce((length, message) => length + message.content.length, 0)
 
-  const activeConversationRef = useRef(conversationId)
-  activeConversationRef.current = conversationId
   useEffect(() => {
     const handleTitleUpdated = (event: Event) => {
       const detail = (event as CustomEvent<ChatTitleUpdatedDetail>).detail
@@ -411,133 +419,33 @@ export function useRoomTranscript({
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, handleTitleUpdated)
     return () => window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, handleTitleUpdated)
   }, [conversationId])
-  const loadMessages = useCallback(async () => {
-    const permalinkMessageId = typeof window === 'undefined'
-      ? undefined
-      : new URLSearchParams(window.location.search).get('message')?.trim() || undefined
-    const result = await overlayAppClient.conversations.get<{
-      title?: string
-      conversationType?: 'personal' | 'dm' | 'channel'
-      externalPlatform?: string
-      messages: Array<{
-        id: string
-        authorKind: RoomMessageRecord['authorKind']
-        authorPrincipalId?: string
-        importedAuthorName?: string
-        importedAuthorEmail?: string
-        importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
-        content?: string
-        parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string; data?: Record<string, unknown> }>
-        createdAt: number
-        updatedAt?: number
-        eventSequence?: number
-        editedAt?: number
-        deletedAt?: number
-        clientNonce?: string
-        threadRootMessageId?: string
-        status?: 'generating' | 'completed' | 'error'
-      }>
-      hasMore?: boolean
-    }>({
-      conversationId,
-      messages: true,
-      limit: 100,
-      ...(permalinkMessageId ? { messageId: permalinkMessageId } : { mainOnly: true }),
-    })
-    const threadResult = threadRootId
-      ? await overlayAppClient.conversations.get<{
-          messages: Array<{
-            id: string
-            authorKind: RoomMessageRecord['authorKind']
-            authorPrincipalId?: string
-            importedAuthorName?: string
-            importedAuthorEmail?: string
-            importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
-            content?: string
-            parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string; data?: Record<string, unknown> }>
-            createdAt: number
-            updatedAt?: number
-            eventSequence?: number
-            editedAt?: number
-            deletedAt?: number
-            clientNonce?: string
-            threadRootMessageId?: string
-            status?: 'generating' | 'completed' | 'error'
-          }>
-        }>({ conversationId, messages: true, limit: 100, threadRootMessageId: threadRootId })
-      : null
-    if (activeConversationRef.current !== conversationId) return
-    const loadedTitle = result.title?.trim()
-    if (loadedTitle) {
-      setConversationTitle((current) => mergeChatTitle(current ?? 'New thread', loadedTitle))
-    }
-    setSurfacePlatform(result.externalPlatform ?? null)
-    setHasMoreMessages(result.hasMore === true)
-    const persisted = [...(result.messages ?? []), ...(threadResult?.messages ?? [])].map((message) => ({
-      ...message,
-      content: message.content
-        ?? message.parts?.find((part) => part.type === 'text')?.text
-        ?? '',
-      turnId: message.id,
-    }))
-    setMessages((current) => mergeRoomMessages(persisted, current))
-  }, [conversationId, threadRootId])
-
-  const loadOlderMessages = useCallback(async () => {
-    if (loadingOlderMessages || !hasMoreMessages) return
-    const earliest = messagesRef.current
-      .filter((message) => !message.threadRootMessageId)
-      .reduce<number | undefined>((value, message) => value === undefined ? message.createdAt : Math.min(value, message.createdAt), undefined)
-    if (earliest === undefined) return
+  const loadOlderMessages = useCallback(() => {
+    if (paging.loadingMore || !paging.hasMore) return
     const node = listRef.current
     if (node) {
       prependScrollRef.current = { height: node.scrollHeight, top: node.scrollTop }
       skipNextMessageGrowthRef.current = true
     }
-    setLoadingOlderMessages(true)
-    try {
-      const result = await overlayAppClient.conversations.get<{
-        messages: Array<{
-          id: string
-          authorKind: RoomMessageRecord['authorKind']
-          authorPrincipalId?: string
-          importedAuthorName?: string
-          importedAuthorEmail?: string
-          importedAuthorStatus?: RoomMessageRecord['importedAuthorStatus']
-          content?: string
-          parts?: Array<{ type?: string; text?: string; url?: string; mediaType?: string; fileName?: string }>
-          createdAt: number
-          updatedAt?: number
-          eventSequence?: number
-          editedAt?: number
-          deletedAt?: number
-          clientNonce?: string
-          threadRootMessageId?: string
-          status?: 'generating' | 'completed' | 'error'
-        }>
-        hasMore?: boolean
-      }>({ conversationId, messages: true, limit: 100, beforeCreatedAt: earliest, mainOnly: true })
-      setHasMoreMessages(result.hasMore === true)
-      const older = (result.messages ?? []).map((message) => ({
-        ...message,
-        content: message.content
-          ?? message.parts?.find((part) => part.type === 'text')?.text
-          ?? '',
-        turnId: message.id,
-      }))
-      setMessages((current) => mergeRoomMessages(older, current))
-    } catch {
-      toast.error('Older messages could not be loaded.')
-      prependScrollRef.current = null
-      skipNextMessageGrowthRef.current = false
-    } finally {
-      setLoadingOlderMessages(false)
-    }
-  }, [conversationId, hasMoreMessages, loadingOlderMessages, ])
+    paging.loadMore()
+  }, [paging])
 
   const applyLiveRoomMessages = useCallback((liveMessages: RoomMessageRecord[]) => {
     setMessages((current) => mergeRoomMessages(liveMessages, current))
-  }, [])
+    setRoom((current) => current.conversationId === conversationId && current.transcriptReady
+      ? current
+      : { conversationId, summary: current.conversationId === conversationId ? current.summary : undefined, transcriptReady: true })
+  }, [conversationId])
+
+  const applyRoomSummary = useCallback((summary: RoomSummary | null | undefined) => {
+    setRoom((current) => ({
+      conversationId,
+      summary,
+      transcriptReady: current.conversationId === conversationId && current.transcriptReady,
+    }))
+    const loadedTitle = summary?.title?.trim()
+    if (loadedTitle) setConversationTitle((current) => mergeChatTitle(current ?? 'New thread', loadedTitle))
+    if (summary !== undefined) setSurfacePlatform(summary?.externalPlatform ?? null)
+  }, [conversationId])
 
   useEffect(() => {
     queueMicrotask(() => setConversationTitle(null))
@@ -613,9 +521,10 @@ export function useRoomTranscript({
     messagesRef,
     stickToBottom,
     setStickToBottom,
-    loadMessages,
     loadOlderMessages,
     applyLiveRoomMessages,
+    applyRoomSummary,
+    setPaging,
     generatingMessages,
     generatingTextLength,
     handleTranscriptScroll,
@@ -627,7 +536,6 @@ export function useRoomLifecycle({
   convexRoomSubscriptionEnabled,
 
   loadParticipants,
-  loadMessages,
   loadCollaboration,
   loadPresence,
   setLoading,
@@ -636,7 +544,6 @@ export function useRoomLifecycle({
   convexRoomSubscriptionEnabled: boolean
 
   loadParticipants: () => Promise<void>
-  loadMessages: () => Promise<void>
   loadCollaboration: () => Promise<void>
   loadPresence: () => Promise<void>
   setLoading: Dispatch<SetStateAction<boolean>>
@@ -656,10 +563,8 @@ export function useRoomLifecycle({
         skipPresencePolling ? Promise.resolve() : loadPresence(),
         loadCollaboration(),
       ])
-      void Promise.all([loadParticipants(), loadMessages()])
-        // A room can receive its transcript through the realtime transport
-        // while one of these initial BFF reads is transiently unavailable.
-        // Do not turn that recoverable race into a false access failure.
+      // The transcript streams in natively; only the roster still loads over HTTP (CN-10).
+      void loadParticipants()
         .catch(() => undefined)
         .finally(() => {
           if (!cancelled) setLoading(false)
@@ -688,7 +593,7 @@ export function useRoomLifecycle({
         .updatePresence(conversationId, { status: 'offline', sessionId })
         .catch(() => undefined)
     }
-  }, [conversationId, convexRoomSubscriptionEnabled, loadCollaboration, loadMessages, loadParticipants, loadPresence, setLoading, ])
+  }, [conversationId, convexRoomSubscriptionEnabled, loadCollaboration, loadParticipants, loadPresence, setLoading, ])
 
   return sessionIdRef
 }
@@ -1048,8 +953,6 @@ export function useSendMessage({
   soloAgentParticipant,
   messagesRef,
   memoryEnabled,
-  convexRoomSubscriptionEnabled,
-  loadMessages,
   commitDraftConversation,
   setAgentResponding,
   messages,
@@ -1077,7 +980,6 @@ export function useSendMessage({
   messagesRef: RefObject<OptimisticMessage[]>
   memoryEnabled: boolean
   convexRoomSubscriptionEnabled: boolean
-  loadMessages: () => Promise<void>
   commitDraftConversation: () => void
   setAgentResponding: Dispatch<SetStateAction<string | null>>
   messages: OptimisticMessage[]
@@ -1340,7 +1242,6 @@ export function useSendMessage({
       // from here. The reply arrives in the transcript on its own, so there is
       // nothing for this client to hold open and nothing to wait for.
       scheduleAgentThreadRename(renameAgentThread, renameAgent, titlePromise, titleAtSend)
-      if (!convexRoomSubscriptionEnabled) await loadMessages().catch(() => undefined)
       commitDraftConversation()
       void saved
       return { accepted: true }
@@ -1705,14 +1606,12 @@ export function useRoomComposer({
 export function useRemoteAgentControls({
   activeWorkspaceId,
   conversationId,
-  loadMessages,
   setMessages,
   setAttachmentError,
 }: {
   activeWorkspaceId: string | null | undefined
   conversationId: string
   setMessages: Dispatch<SetStateAction<OptimisticMessage[]>>
-  loadMessages: () => Promise<void>
   setAttachmentError: Dispatch<SetStateAction<string | null>>
 }) {
   const pendingControls = useRef(new Set<string>())
@@ -1732,10 +1631,8 @@ export function useRemoteAgentControls({
         action,
         controlRequestId: crypto.randomUUID(),
       })
-      await loadMessages()
     } catch (value) {
       setAttachmentError(value instanceof Error ? value.message : 'Could not update the connected agent run.')
-      await loadMessages().catch(() => undefined)
     } finally {
       pendingControls.current.delete(controlKey)
     }
@@ -1750,7 +1647,6 @@ export function useRemoteAgentControls({
     try {
       await overlayAppClient.conversations.resolveRemoteRequest({ workspaceId: activeWorkspaceId,
         conversationId, runId: request.runId, requestKey: request.requestKey, decision, response })
-      await loadMessages()
     } catch (value) {
       setAttachmentError(value instanceof Error ? value.message : 'Could not resolve the connected agent request.')
     }
@@ -1760,9 +1656,8 @@ export function useRemoteAgentControls({
     try {
       await overlayAppClient.conversations.stopResponse({ conversationId, messageId })
     } catch {
-      // The run may have already finished; the live row refresh settles either way.
+      // The run may have already finished; the live transcript settles either way.
     }
-    await loadMessages().catch(() => undefined)
   }
 
   return { controlRemoteQueue, resolveRemoteRequest, stopAgentResponse }
@@ -1780,7 +1675,6 @@ export function useMessageActions({
   savedMessages,
   setSavedMessages,
   setMessages,
-  loadMessages,
 }: {
   isReadOnlyMessage?: (messageId: string) => boolean
   conversationId: string
@@ -1793,8 +1687,10 @@ export function useMessageActions({
   savedMessages: ConversationSavedMessage[]
   setSavedMessages: Dispatch<SetStateAction<ConversationSavedMessage[]>>
   setMessages: Dispatch<SetStateAction<OptimisticMessage[]>>
-  loadMessages: () => Promise<void>
 }) {
+  const { activeWorkspaceId } = useWorkspace()
+  const editRoomMessage = useMutation(api.collaboration.rooms.editMessage)
+  const deleteRoomMessage = useMutation(api.collaboration.rooms.deleteMessage)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
 
@@ -1860,9 +1756,11 @@ export function useMessageActions({
     if (!content) return
 
     try {
-      await overlayAppClient.conversations.editCollaborativeMessage(conversationId, messageId, content)
+      if (!activeWorkspaceId) throw new Error('No workspace')
       setEditingId(null)
-      await loadMessages()
+      const edited = await editRoomMessage({ workspaceId: activeWorkspaceId, conversationId: conversationId as Id<'conversations'>,
+        messageId: messageId as Id<'conversationMessages'>, content })
+      if (!edited) throw new Error('This message can no longer be edited.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not edit this message.')
     }
@@ -1871,8 +1769,10 @@ export function useMessageActions({
   async function deleteMessage(messageId: string) {
     if (isReadOnlyMessage?.(messageId)) return
     try {
-      await overlayAppClient.conversations.deleteCollaborativeMessage(conversationId, messageId)
-      await loadMessages()
+      if (!activeWorkspaceId) throw new Error('No workspace')
+      const deleted = await deleteRoomMessage({ workspaceId: activeWorkspaceId, conversationId: conversationId as Id<'conversations'>,
+        messageId: messageId as Id<'conversationMessages'> })
+      if (!deleted) throw new Error('This message can no longer be deleted.')
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not delete this message.')
     }
@@ -2366,7 +2266,6 @@ export function useDirectMessageRoom({
   ])
   const transcript = useRoomTranscript({
     conversationId,
-    threadRootId: thread.threadRootId,
 
 
     agentResponding,
@@ -2378,7 +2277,6 @@ export function useDirectMessageRoom({
     convexRoomSubscriptionEnabled,
 
     loadParticipants: roster.loadParticipants,
-    loadMessages: transcript.loadMessages,
     loadCollaboration: collab.loadCollaboration,
     loadPresence: roster.loadPresence,
     setLoading: transcript.setLoading,
@@ -2431,7 +2329,6 @@ export function useDirectMessageRoom({
     messagesRef: transcript.messagesRef,
     memoryEnabled,
     convexRoomSubscriptionEnabled,
-    loadMessages: transcript.loadMessages,
     commitDraftConversation,
     setAgentResponding,
     messages: transcript.messages,
@@ -2450,7 +2347,6 @@ export function useDirectMessageRoom({
   const remoteControls = useRemoteAgentControls({
     activeWorkspaceId,
     conversationId,
-    loadMessages: transcript.loadMessages,
     setMessages: transcript.setMessages,
     setAttachmentError: composer.setAttachmentError,
   })
@@ -2470,7 +2366,6 @@ export function useDirectMessageRoom({
     savedMessages: collab.savedMessages,
     setSavedMessages: collab.setSavedMessages,
     setMessages: transcript.setMessages,
-    loadMessages: transcript.loadMessages,
   })
   const navigation = useMessageNavigation({
     listRef: transcript.listRef,
