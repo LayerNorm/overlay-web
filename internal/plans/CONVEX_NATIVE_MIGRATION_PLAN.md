@@ -1,6 +1,6 @@
 # Overlay: Convex-native web application migration
 
-Status: in progress as of 2026-11-06. This architecture is being executed through [the phased PR plan](./CONVEX_NATIVE_PR_PLAN.md), which tracks per-card progress. The foundation and personal-chat pilot code are merged to main; merged code is not proof of production activation or acceptance. The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-06. This architecture is being executed through [the phased PR plan](./CONVEX_NATIVE_PR_PLAN.md), which tracks per-card progress. The foundation and personal chat are live in production, with partial acceptance recorded in that plan. Convex is the only supported backend, and the product has effectively no users, so the compatibility windows, rollout flags and dual-path guidance below are superseded by that plan's "Every domain finishes by contracting" rules. The PR that lands the last phase deletes this plan.
 
 **Scope of this decision:** the architectural direction and the sequence below, not a big-bang implementation.
 

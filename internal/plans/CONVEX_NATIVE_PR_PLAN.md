@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-06. CN-01 to CN-06 and CN-03P are merged to main; this does not by itself establish production activation or pilot acceptance. The personal-chat pilot is being stabilized and its old path contracted before any other domain continues. The other cards have no open PR. Merges and deployments follow the repository's release rules, not this document. The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-06. Phases A and B are merged and live in production. Personal chat is always Convex-native, with its readiness gate and auth flag removed by #411. Its acceptance is partial: two-tab sync, archive and Undo, rename, read state, reload during a first turn and chat opening passed on the PR Preview with one identity. Signed-in production chat and a second user losing access are not yet tested. The next card is CN-06W, followed by Phase C. Other cards have no open PR. The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -10,6 +10,8 @@ Status: in progress as of 2026-11-06. CN-01 to CN-06 and CN-03P are merged to ma
 | CN-04 | #396 | Merged |
 | CN-03P | #397 | Merged |
 | CN-05, CN-06 | #408 | Merged |
+| CN-04 to CN-06 stabilization | #411 | Merged, deployed. No Convex deploy was needed; its unused readiness markers remain on the production backend until the next deploy |
+| CN-06W | None | Not started, next |
 | CN-07 to CN-11 | #403 | Closed unmerged, branch kept as reference |
 | CN-12 | #402 | Closed unmerged, branch kept as reference |
 | CN-20 | #398 | Closed unmerged, branch kept as reference |
@@ -193,6 +195,20 @@ The architecture plan's acceptance IDs `E01` through `E22` are reused below. No 
 **Retirement/non-goals:** remove personal-chat run polling and competing terminal-state ownership. Keep appropriate execution/stream transports. No wholesale runtime rewrite.
 
 **Pilot release gate:** CN-04 through CN-06 jointly pass the personal-chat acceptance suite, including basic read/unread behavior. Do not claim the pilot complete after only migrating the list or demonstrating one optimistic send.
+
+### CN-06W. Move workspace and automation chats onto the native chat path
+
+**Outcome:** every conversation rendered by `ChatExperience` uses one Convex-native path, so the old personal-chat path can be deleted rather than kept for other chat types.
+
+**Scope:** native lists, transcript, send, run state, archive and rename for workspace-scoped chats and automation conversations, with workspace role and automation-ownership authorization in Convex. Temporary chats stay local and unsaved. Rooms remain CN-08.
+
+**Anchors:** `useChatConversationLoader.ts`, `useLiveConversationSync.ts`, `live-message-patching.ts`, `useChatListController.ts`, `useChatExperienceLifecycle.ts`, `conversationScopeVerification.tsx`, `convex/chat/personal.ts`.
+
+**Depends on:** CN-06.
+
+**Acceptance:** the personal-chat two-tab, reload and failure scenarios pass for workspace and automation chats. Direct calls without workspace access are refused. A second workspace member sees changes live, and removing that member revokes access (`E01`, `E04`, `E05`, `E18`, `E19`).
+
+**Retirement/non-goals:** delete the HTTP history loader, assistant-only patching, the five-second polling fallback, legacy chat list ownership, and the scope probe wherever this card's chats were the last consumer. This should be net-negative in production code. Do not change rooms, the agent executor or automation scheduling.
 
 ## 5. Phase C: agents and collaboration
 
