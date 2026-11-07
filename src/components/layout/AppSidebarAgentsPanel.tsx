@@ -159,6 +159,8 @@ function useAgentActions({
   const openAgent = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
     navigation: 'push' | 'replace' = 'push',
+    /** A thread just archived: the live list may not reflect it yet, so never open it. */
+    skipConversationId?: string,
   ) => {
     if (openingAgentId) return
     setOpeningAgentId(agent.id)
@@ -166,7 +168,9 @@ function useAgentActions({
       if (!workspaceId) return
       // A live thread list opens instantly; otherwise resolve (or create) the main thread once.
       const live = bundles[agent.id]
-      const thread = (live && typeof live === 'object' ? live.threads.find((row) => !row.archivedAt) : undefined)
+      const thread = (live && typeof live === 'object'
+        ? live.threads.find((row) => !row.archivedAt && row.conversationId !== skipConversationId)
+        : undefined)
         ?? await resolveMainThread({ workspaceId, agentId: agent.id })
       rememberAgentOpened(workspaceId, agent.id)
       setOpenError(null)
@@ -235,7 +239,7 @@ function useAgentActions({
         // Archiving the thread being viewed moves on to the agent's next active thread (a fresh one if none is left).
         if (activeConversationId === conversationId) {
           try {
-            await openAgent(agent, 'replace')
+            await openAgent(agent, 'replace', conversationId)
           } catch {
             setOpenError(`Could not open ${agent.name}. Check your connection and retry.`)
           }
