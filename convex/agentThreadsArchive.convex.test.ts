@@ -1,8 +1,7 @@
-import { afterEach, beforeAll, beforeEach, describe, expect, test, vi } from 'vitest'
+import { beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
-import * as auth from './lib/auth'
 import type { Id } from './_generated/dataModel'
 import { api } from './_generated/api'
 
@@ -22,6 +21,9 @@ const agentsFn = (name: string, type: 'mutation' | 'query') => makeFunctionRefer
 async function seed() {
   const convex = convexTest(schema, modules)
   await convex.run(async (ctx) => {
+    await ctx.db.insert('workspaces', {
+      workspaceId, kind: 'organization', name: 'Threads', slug: 'threads', status: 'active', createdAt: now, updatedAt: now,
+    })
     for (const [principalId, type, extra] of [
       [humanPrincipal, 'human', { userId }],
       [agentPrincipal, 'agent', { agentId: 'agent-1' }],
@@ -44,25 +46,18 @@ async function seed() {
   const listThreads = () => convex.query(threads('listThreadsByServer', 'query'), base) as Promise<Array<{ conversationId: string; archivedAt?: number; isMain: boolean }>>
   const listArchived = () => convex.query(threads('listArchivedThreadsByServer', 'query'), { serverSecret: secret, workspaceId, userId }) as Promise<Array<{ conversationId: string; agentId: string; agentArchived: boolean }>>
   const listAgents = () => convex.query(agentsFn('listByServer', 'query'), { serverSecret: secret, workspaceId, includeArchived: true }) as Promise<Array<{ agentId: string; archivedAt?: number }>>
-  return { convex, resolveMain, createThread, setArchived, deleteThread, listThreads, listArchived, listAgents }
+  const asUser = (subject = userId) => convex.withIdentity({ subject })
+  return { convex, asUser, resolveMain, createThread, setArchived, deleteThread, listThreads, listArchived, listAgents }
 }
 
 describe('live agent thread activity', () => {
-  beforeEach(() => {
-    vi.spyOn(auth, 'requireAccessToken').mockImplementation(async (token, actor) => {
-      if (token !== `token:${actor}`) throw new Error('Unauthorized')
-      return { iss: 'https://api.workos.com', sub: actor, exp: now / 1000 + 3600 }
-    })
-  })
-  afterEach(() => { vi.restoreAllMocks() })
-
-  const queryArgs = { accessToken: `token:${userId}`, userId, workspaceId, agentId: 'agent-1' }
+  const queryArgs = { workspaceId, agentId: 'agent-1' }
 
   test('projects the latest run, actionable waits, and viewer-relative reviewed completion', async () => {
     const t = await seed()
     const { conversationId: rawId } = await t.resolveMain()
     const conversationId = rawId as Id<'conversations'>
-    const read = () => t.convex.query(api.agents.agentThreads.watchThreadActivity, queryArgs)
+    const read = () => t.asUser().query(api.agents.agentThreads.watchThreadActivity, queryArgs)
     expect(await read()).toEqual([{ conversationId, status: 'idle' }])
     const runId = await t.convex.run(async ctx => {
       const userMessageId = await ctx.db.insert('conversationMessages', {
@@ -98,16 +93,20 @@ describe('live agent thread activity', () => {
       const thread = await t.createThread('Hidden')
       await t.convex.run(ctx => ctx.db.patch(thread.conversationId as Id<'conversations'>, patch))
     }
-    expect(await t.convex.query(api.agents.agentThreads.watchThreadActivity, queryArgs))
+    expect(await t.asUser().query(api.agents.agentThreads.watchThreadActivity, queryArgs))
       .toEqual([{ conversationId: main.conversationId, status: 'idle' }])
   })
 
   test('requires authenticated active membership and respects agent visibility and workspace', async () => {
     const t = await seed()
     await t.resolveMain()
-    const read = (overrides = {}) => t.convex.query(api.agents.agentThreads.watchThreadActivity, { ...queryArgs, ...overrides })
-    await expect(read({ accessToken: 'invalid' })).rejects.toThrow('Unauthorized')
-    await expect(read({ workspaceId: 'foreign-workspace' })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+    const read = (subject = userId, overrides: Partial<typeof queryArgs> = {}) =>
+      t.asUser(subject).query(api.agents.agentThreads.watchThreadActivity, { ...queryArgs, ...overrides })
+    await expect(t.convex.query(api.agents.agentThreads.watchThreadActivity, queryArgs)).rejects.toThrow('UNAUTHENTICATED')
+    await expect(read('another-user')).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+    await expect(read(userId, { workspaceId: 'foreign-workspace' })).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
+    await expect(t.asUser().query(api.agents.agentThreads.watchThreadActivity, { ...queryArgs, userId: 'another-user' } as never))
+      .rejects.toThrow()
     await t.convex.run(async ctx => {
       const agent = await ctx.db.query('workspaceAgentDefinitions').first()
       await ctx.db.patch(agent!._id, { visibility: 'creator', createdByPrincipalId: 'another-human' })

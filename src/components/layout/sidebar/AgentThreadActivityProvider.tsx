@@ -1,10 +1,8 @@
 'use client'
 
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
-import { useQueries } from '@/components/providers/convex-hooks'
-import { useHasConvexClient, useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
-import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { useAuth } from '@/contexts/AuthContext'
+import { useConvexAuth, useQueries } from '@/components/providers/convex-hooks'
+import { useHasConvexClient } from '@/components/providers/ConvexAuthProvider'
 import type { ThreadActivity } from '@/shared/agents/thread-activity'
 import { api } from '../../../../convex/_generated/api'
 
@@ -17,15 +15,13 @@ export function useAgentThreadActivity(agentId: string) {
 type Props = { workspaceId: string | null; agentIds: string[]; children: ReactNode }
 
 function ConvexThreadActivity({ workspaceId, agentIds, children }: Props) {
-  const accessToken = useConvexAuthToken()
-  const { user } = useAuth()
-  const userId = user?.id
+  const { isAuthenticated } = useConvexAuth()
   const queries = useMemo(() => Object.fromEntries(
-    accessToken && userId && workspaceId ? agentIds.map(agentId => [agentId, {
+    isAuthenticated && workspaceId ? agentIds.map(agentId => [agentId, {
       query: api.agents.agentThreads.watchThreadActivity,
-      args: { accessToken, userId, workspaceId, agentId },
+      args: { workspaceId, agentId },
     }]) : [],
-  ), [accessToken, userId, workspaceId, agentIds])
+  ), [isAuthenticated, workspaceId, agentIds])
   // Unlike useQuery, useQueries returns errors. Old backends can omit this
   // additive projection during web-first rollout without breaking navigation.
   const results = useQueries(queries)
@@ -34,9 +30,7 @@ function ConvexThreadActivity({ workspaceId, agentIds, children }: Props) {
 }
 
 export function AgentThreadActivityProvider(props: Props) {
-  const { appDataCapabilities } = useOverlayCapabilities()
   const hasConvexClient = useHasConvexClient()
-  if (appDataCapabilities.provider !== 'convex' || !appDataCapabilities.supportsRealtime
-    || !appDataCapabilities.requiresConvexClient || !hasConvexClient) return <ActivityContext.Provider value={{}}>{props.children}</ActivityContext.Provider>
+  if (!hasConvexClient) return <ActivityContext.Provider value={{}}>{props.children}</ActivityContext.Provider>
   return <ConvexThreadActivity key={props.workspaceId} {...props} />
 }
