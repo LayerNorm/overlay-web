@@ -184,6 +184,7 @@ import type * as platform_uiSettings from "../platform/uiSettings.js";
 import type * as platform_usage from "../platform/usage.js";
 import type * as providers_agentAccounts from "../providers/agentAccounts.js";
 import type * as providers_cloudAgentProvisions from "../providers/cloudAgentProvisions.js";
+import type * as providers_browse from "../providers/browse.js";
 import type * as providers_connections from "../providers/connections.js";
 import type * as providers_subscriptions from "../providers/subscriptions.js";
 import type * as search_mentions from "../search/mentions.js";
@@ -380,6 +381,7 @@ declare const fullApi: ApiFromModules<{
   "platform/usage": typeof platform_usage;
   "providers/agentAccounts": typeof providers_agentAccounts;
   "providers/cloudAgentProvisions": typeof providers_cloudAgentProvisions;
+  "providers/browse": typeof providers_browse;
   "providers/connections": typeof providers_connections;
   "providers/subscriptions": typeof providers_subscriptions;
   "search/mentions": typeof search_mentions;

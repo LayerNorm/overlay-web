@@ -78,3 +78,29 @@ test('connected apps list only the viewer’s active grants', async () => {
   expect(rows[0]).not.toHaveProperty('refreshVersion')
   expect(await t.query(mcpConnections, {})).toBeNull()
 })
+
+test('provider connections list own and workspace-shared subscriptions without vault references', async () => {
+  const { t, as } = await connectionFixture()
+  const providerConnections = makeFunctionReference<'query'>('providers/browse:connections')
+  await t.run(async ctx => {
+    const connection = (fields: Record<string, unknown>) => ctx.db.insert('userProviderConnections', {
+      userId: 'alice', providerId: 'openai', endpoint: 'https://api.openai.com', displayName: 'x', vaultKeyName: 'vault-key',
+      vaultObjectId: 'vault-object', enabledModelIds: [], status: 'active', isDefault: false, isDeletable: true, createdAt: 1, updatedAt: 1, ...fields,
+    } as never)
+    await connection({ displayName: 'Gateway', isDefault: true })
+    await connection({ displayName: 'Alice key' })
+    await connection({ displayName: 'Team Codex', scope: 'workspace', workspaceId: 'ws', authKind: 'subscription', subscriptionProvider: 'codex' })
+    await connection({ displayName: 'Bob key', userId: 'bob' })
+  })
+  const alice = await as('alice').query(providerConnections, { workspaceId: 'ws' }) as Array<Record<string, unknown>>
+  expect(alice.map(row => row.displayName)).toEqual(['Gateway', 'Alice key', 'Team Codex'])
+  for (const row of alice) {
+    expect(row.vaultKeyName).toBeUndefined()
+    expect(row.vaultObjectId).toBeUndefined()
+  }
+  const bob = await as('bob').query(providerConnections, { workspaceId: 'ws' }) as Array<Record<string, unknown>>
+  expect(bob.map(row => [row.displayName, row.canManage])).toEqual([['Bob key', true], ['Team Codex', false]])
+  expect(await as('stranger').query(providerConnections, { workspaceId: 'ws' })).toBeNull()
+  const off = await connectionFixture({ features: {} })
+  expect(await off.as('alice').query(providerConnections, { workspaceId: 'ws' })).toBeNull()
+})
