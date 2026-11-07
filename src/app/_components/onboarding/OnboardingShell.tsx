@@ -179,7 +179,7 @@ function AuthenticatedOnboardingShell({
         ) : showConversation && visibleSession ? (
           <div
             ref={conversation}
-            className={styles.conversation}
+            className={`${styles.conversation} ${handoff ? "relative z-10 bg-background" : ""}`}
             data-hidden={intro}
             inert={intro || Boolean(handoff)}
           >

@@ -122,7 +122,7 @@ function WorkScreen() {
   const title = WORK_VIEW_LABELS[view]
   const selectedTask = items.find((item) => item.id === taskId)
   const loaded = state === 'ready'
-  useOnboardingWorkReady(taskId, state === 'error' || (loaded && (!taskId || Boolean(selectedTask))))
+  useOnboardingWorkReady(taskId, state === 'error' || (loaded && !taskId))
   // The List scrolls the page; the Board and Timeline scroll inside their own area.
   const pageScrolls = view === 'list' || !loaded || visible.length === 0
 

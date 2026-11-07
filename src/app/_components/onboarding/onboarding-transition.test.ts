@@ -4,6 +4,7 @@ import test from 'node:test'
 
 const conversation = readFileSync(new URL('./OnboardingConversation.tsx', import.meta.url), 'utf8')
 const shell = readFileSync(new URL('./OnboardingShell.tsx', import.meta.url), 'utf8')
+const work = readFileSync(new URL('../../../features/work/components/WorkPage.tsx', import.meta.url), 'utf8')
 
 test('payment controls keep their identity while saving the task and while busy', () => {
   assert.match(conversation, /busy && session\.step !== 'task'/)
@@ -21,4 +22,6 @@ test('completion navigates without a delayed tour and retains the last composer 
   assert.doesNotMatch(shell, /atWork|endsWith\("\/work"\)/)
   assert.match(shell, /onReady: finishHandoff/)
   assert.match(conversation, /action\.action === 'finish' \? 0 : 450/)
+  assert.match(shell, /handoff \? "relative z-10 bg-background"/)
+  assert.match(work, /useOnboardingWorkReady\(taskId, state === 'error' \|\| \(loaded && !taskId\)\)/)
 })

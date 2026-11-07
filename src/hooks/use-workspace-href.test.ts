@@ -51,6 +51,7 @@ test('onboarding task selection survives canonical and immutable-ID Work destina
     const url = new URL(canonical, 'https://overlay.invalid')
     assert.equal(url.pathname, '/w/team/personal/work')
     assert.equal(url.searchParams.get('task'), 'first-task')
+    assert.equal(url.searchParams.has('scope'), false)
     assert.equal(parseWorkspaceHandleRoute(url.pathname, url.search)?.scope, 'personal')
   }
 })
