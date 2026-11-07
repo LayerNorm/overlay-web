@@ -125,7 +125,6 @@ const CANONICAL_NOTE_FIXTURE: NoteDoc = {
 
 function CanonicalNotebookEditorFixture() {
   const repository = useMemo<NotebookEditorRepository>(() => ({
-    list: async () => [CANONICAL_NOTE_FIXTURE],
     get: async (noteId) => noteId === CANONICAL_NOTE_FIXTURE._id ? CANONICAL_NOTE_FIXTURE : null,
     create: async () => CANONICAL_NOTE_FIXTURE,
     save: async ({ title, content }) => ({

@@ -1,9 +1,9 @@
 'use client'
 
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useConvexAuth, useMutation, useQuery } from 'convex/react'
 import type { OptimisticLocalStore } from 'convex/browser'
-import type { KnowledgeFile } from '@overlay/app-core'
+import type { KnowledgeFile, NoteDoc } from '@overlay/app-core'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { api } from '../../convex/_generated/api'
@@ -35,6 +35,32 @@ export function useConversationFiles(conversationId: string): KnowledgeFile[] | 
     workspaceId && isAuthenticated && !isLoading ? { workspaceId, conversationId } : 'skip',
   )
   return rows as KnowledgeFile[] | null | undefined
+}
+
+/**
+ * One note as a live document: undefined while loading, null once it is deleted or unreadable. Every save,
+ * from any tab, agent or app, arrives here as a new revision.
+ */
+export function useLiveNote(noteId: string | null): NoteDoc | null | undefined {
+  const { activeWorkspaceId, status } = useWorkspace()
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  const workspaceId = status === 'ready' ? activeWorkspaceId : null
+  const file = useQuery(
+    api.files.browse.get,
+    workspaceId && noteId && isAuthenticated && !isLoading ? { workspaceId, fileId: noteId as Id<'files'> } : 'skip',
+  )
+  return useMemo(() => {
+    if (file === undefined || file === null) return file
+    if (file.kind !== 'note') return null
+    return {
+      _id: file._id,
+      title: file.name,
+      content: file.textContent ?? '',
+      tags: file.tags ?? [],
+      createdAt: file.createdAt,
+      updatedAt: file.updatedAt,
+    }
+  }, [file])
 }
 
 /** Patches one file in every cached tree of its workspace; the server answer replaces the patch. */
