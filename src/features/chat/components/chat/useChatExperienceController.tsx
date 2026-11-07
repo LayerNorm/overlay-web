@@ -55,6 +55,7 @@ import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
 import {
   nativePersonalViewFromState,
   nativeChatHydrated,
+  nativeTitleRecoverySeed,
   personalSummaryForConversation,
 } from './useNativePersonalTranscript'
 import {
@@ -710,6 +711,23 @@ export function useChatExperienceController({
     titleGenerationEnabled,
     updateRuntimeUiState,
   })
+
+  const recoveredTitleChatIdsRef = useRef(new Set<string>())
+  const nativeTitleSeed = nativePersonalConversationActive && nativeSelectedSummary
+    && nativePersonal.transcript.conversationId === nativeSelectedSummary._id
+    ? nativeTitleRecoverySeed({
+        title: nativeSelectedSummary.title,
+        turnActive: nativeTurnActive,
+        status: nativePersonal.transcript.status,
+        messages: nativePersonal.transcript.rows.map((row) => row.message),
+      })
+    : null
+  const nativeTitleChatId = nativeSelectedSummary?._id ?? null
+  useEffect(() => {
+    if (!nativeTitleSeed || !nativeTitleChatId || recoveredTitleChatIdsRef.current.has(nativeTitleChatId)) return
+    recoveredTitleChatIdsRef.current.add(nativeTitleChatId)
+    startFirstMessageRename(nativeTitleChatId, nativeTitleSeed, true)
+  }, [nativeTitleChatId, nativeTitleSeed, startFirstMessageRename])
 
   const isRuntimeCurrent = useCallback((chatId: string, runtime: ConversationRuntime) => (
     runtimesRef.current.get(chatId) === runtime

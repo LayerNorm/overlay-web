@@ -164,6 +164,21 @@ and `files.by_userId_conversationId_turnId` are additive. Roll back browser
 ownership before removing any of them; keep the fields and indexes through
 rollout rollback, with no backfill requirement.
 
+### First turn and chat opening
+
+A native first turn publishes `?id=` as soon as `chat/personal:submit` returns, while
+its stream still owns the pending runtime. `useChatRouteController` must not load
+that ID until activation, or it would tear down the running stream. Reload then
+reopens the durable chat, and the server finishes the accepted run.
+
+Titles are still generated from the sending client. If that client goes away during
+the first turn, opening the settled chat retries once per tab. Two tabs can both
+retry; the last rename wins.
+
+Rows returned by `chat/personal:list` or `getSummary` are already authorized, so
+they skip `startConversationDetailScopeProbe`. The probe remains for unknown IDs,
+workspace chats and rooms, and it unmounts the chat surface until it finishes.
+
 ## Local checks
 
 ```bash
