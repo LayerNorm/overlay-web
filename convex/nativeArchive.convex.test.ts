@@ -59,3 +59,14 @@ test('the archived file view lists archived files the person may read, and resto
   })
   expect(await names('bob')).toEqual([])
 })
+
+test('older archived files stay listed behind many newer active ones', async () => {
+  const { t, as } = await fixture()
+  await t.run(async ctx => {
+    for (let i = 0; i < 305; i++) {
+      await ctx.db.insert('files', { workspaceId: 'ws', userId: 'alice', type: 'file', kind: 'upload', name: `new-${i}`, createdAt: 100 + i, updatedAt: 100 + i } as never)
+    }
+  })
+  const rows = await as('alice').query(files, { workspaceId: 'ws', view: 'archived' }) as Array<{ name: string }>
+  expect(rows.map(row => row.name).sort()).toEqual(['Old private.md', 'Old shared.md'])
+})

@@ -31,9 +31,14 @@ export const list = query({
       userId: viewer.userId,
       workspaceId,
       view,
-      fetchMine: async () => await ctx.db.query('files')
-        .withIndex('by_workspaceId_userId_updatedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', viewer.userId))
-        .order('desc').take(TREE_SCAN_LIMIT),
+      // Own rows in the asked state, selected before the limit so newer active files never hide older archives.
+      fetchMine: async () => view === 'archived'
+        ? await ctx.db.query('files')
+          .withIndex('by_workspaceId_userId_archivedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', viewer.userId).gt('archivedAt', 0))
+          .order('desc').take(TREE_SCAN_LIMIT)
+        : await ctx.db.query('files')
+          .withIndex('by_workspaceId_userId_updatedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', viewer.userId))
+          .order('desc').take(TREE_SCAN_LIMIT),
       // Shared rows in the asked state: archived ones for the Archived view, active ones otherwise.
       fetchShared: async (ws) => view === 'archived'
         ? await ctx.db.query('files')
@@ -70,12 +75,10 @@ export const children = query({
         .withIndex('by_workspaceId_userId_parentId_updatedAt', (q) =>
           q.eq('workspaceId', workspaceId).eq('userId', viewer.userId).eq('parentId', parentId ?? undefined))
         .take(CHILDREN_SCAN_LIMIT),
-      fetchShared: async (ws) => parentId
-        ? (await ctx.db.query('files').withIndex('by_parentId', (q) => q.eq('parentId', parentId)).take(CHILDREN_SCAN_LIMIT))
-          .filter((row) => row.workspaceId === ws && row.scope === 'workspace')
-        : (await ctx.db.query('files')
-          .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace').eq('archivedAt', undefined))
-          .take(CHILDREN_SCAN_LIMIT)).filter((row) => row.parentId === undefined),
+      // Selected by folder before the limit, so files elsewhere in the workspace never crowd out this folder's children.
+      fetchShared: async (ws) => await ctx.db.query('files')
+        .withIndex('by_workspaceId_scope_parentId', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace').eq('parentId', parentId ?? undefined))
+        .take(CHILDREN_SCAN_LIMIT),
     })
     return rows.filter((row) => !row.deletedAt).map(browserFileSummary)
   },

@@ -18,10 +18,10 @@ export const rooms = query({
       return null
     }
     const participants = await ctx.db.query('conversationParticipants')
-      .withIndex('by_workspaceId_principalId_status', q =>
-        q.eq('workspaceId', workspaceId).eq('principalId', viewer.principal.principalId).eq('status', 'active'))
-      .take(MAX_ROWS)
-    const rows = await Promise.all(participants.filter(p => p.archivedAt !== undefined).map(async participant => {
+      .withIndex('by_workspaceId_principalId_status_archivedAt', q =>
+        q.eq('workspaceId', workspaceId).eq('principalId', viewer.principal.principalId).eq('status', 'active').gt('archivedAt', 0))
+      .order('desc').take(MAX_ROWS)
+    const rows = await Promise.all(participants.map(async participant => {
       const conversation = await ctx.db.get(participant.conversationId)
       const type = conversation?.conversationType
       if (!conversation || conversation.deletedAt !== undefined || conversation.workspaceId !== workspaceId

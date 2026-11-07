@@ -12,29 +12,37 @@ import { api } from '../../../convex/_generated/api'
 
 type Connector = { slug: string; name: string; description?: string; logoUrl?: string }
 
-const connectorLists = new Map<string, Promise<MentionItem[]>>()
+/** How long a loaded connector list is reused before asking the provider again. */
+const CONNECTOR_TTL_MS = 60_000
 
-/** The workspace's connectors, loaded once per workspace and page; the provider is the source of truth. */
+const connectorLists = new Map<string, { at: number; list: Promise<MentionItem[]> }>()
+
+/**
+ * The workspace's connectors, reused for a minute; the provider is the source of truth. A failed load is not kept,
+ * so the next search asks again.
+ */
 function connectorsFor(workspaceId: string): Promise<MentionItem[]> {
-  let list = connectorLists.get(workspaceId)
-  if (!list) {
-    list = overlayAppClient.integrations
-      .getResponse(undefined, { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId } })
-      .then(async (response) => (response.ok ? await response.json() as { items?: Connector[] } : { items: [] }))
-      .then(({ items }) => (items ?? []).map((connector): MentionItem => ({
-        type: 'connector',
-        id: connector.slug,
-        name: connector.name,
-        description: connector.description || '',
-        icon: 'Plug',
-        logoUrl: connector.logoUrl,
-      })))
-      .catch(() => {
-        connectorLists.delete(workspaceId)
-        return []
-      })
-    connectorLists.set(workspaceId, list)
-  }
+  const cached = connectorLists.get(workspaceId)
+  if (cached && Date.now() - cached.at < CONNECTOR_TTL_MS) return cached.list
+  const list = overlayAppClient.integrations
+    .getResponse(undefined, { headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId } })
+    .then(async (response) => {
+      if (!response.ok) throw new Error(`connectors ${response.status}`)
+      return await response.json() as { items?: Connector[] }
+    })
+    .then(({ items }) => (items ?? []).map((connector): MentionItem => ({
+      type: 'connector',
+      id: connector.slug,
+      name: connector.name,
+      description: connector.description || '',
+      icon: 'Plug',
+      logoUrl: connector.logoUrl,
+    })))
+    .catch(() => {
+      if (connectorLists.get(workspaceId)?.list === list) connectorLists.delete(workspaceId)
+      return []
+    })
+  connectorLists.set(workspaceId, { at: Date.now(), list })
   return list
 }
 
