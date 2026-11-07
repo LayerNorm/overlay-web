@@ -24,13 +24,12 @@ for (const name of [
   'FilePickerAdapter',
   'FileNavigationAdapter',
   'KnowledgeAnalyticsAdapter',
-  'KnowledgeSurfaceController',
-  'KnowledgeMutationEvent',
-  'KnowledgeEntityMutation',
-  'KnowledgeMutationConsumer',
-  'KnowledgeMutationRevisionTracker',
 ]) {
   if (!contract.includes(name)) throw new Error(`Knowledge surface contract is missing ${name}`)
+}
+// Lists are the host's live Convex subscription; cross-surface mutation events and refetch reconciliation are gone.
+for (const removed of ['KNOWLEDGE_ENTITY_MUTATION_EVENT', 'KNOWLEDGE_RECONCILE_EVENT', 'KnowledgeMutationConsumer', 'KnowledgeSurfaceController']) {
+  if (contract.includes(removed)) throw new Error(`Knowledge surface contract restored event/refetch machinery: ${removed}`)
 }
 
 const appCoreSources = [contractPath, fixturePath].map((file) => fs.readFileSync(file, 'utf8')).join('\n')
@@ -62,18 +61,16 @@ for (const pattern of [
 if (!sharedSurface.includes('SharedKnowledgeSurface')) {
   throw new Error('Shared knowledge package must own SharedKnowledgeSurface')
 }
-if (/\bfilesChanged\b|\bnoteCreated\b/.test(sharedSurface)) {
+if (/\bfilesChanged\b|\bnoteCreated\b|\bentityChanged\b/.test(sharedSurface)) {
   throw new Error('Shared knowledge surface restored broadcast-and-refetch callbacks')
 }
+if (!sharedSurface.includes('liveFiles')) {
+  throw new Error('Shared knowledge surface must take its file list from the host subscription (liveFiles)')
+}
 
-for (const adapterPath of [webAdapterPath]) {
-  const adapter = fs.readFileSync(adapterPath, 'utf8')
-  for (const required of ['KNOWLEDGE_ENTITY_MUTATION_EVENT', 'KnowledgeMutationConsumer', 'isKnowledgeEntityMutation']) {
-    if (!adapter.includes(required)) throw new Error(`${path.relative(root, adapterPath)} lost payload mutation handling: ${required}`)
-  }
-  if (/FILES_CHANGED_EVENT/.test(adapter)) {
-    throw new Error(`${path.relative(root, adapterPath)} restored broadcast-and-refetch behavior`)
-  }
+const adapter = fs.readFileSync(webAdapterPath, 'utf8')
+if (/FILES_CHANGED_EVENT|KNOWLEDGE_ENTITY_MUTATION_EVENT|dispatchEvent|\blist\(/.test(adapter)) {
+  throw new Error(`${path.relative(root, webAdapterPath)} restored list fetching or broadcast-and-refetch behavior`)
 }
 
 const sharedViewer = fs.readFileSync(sharedViewerPath, 'utf8')
@@ -98,6 +95,9 @@ if (!fs.readFileSync(webViewerHostPath, 'utf8').includes('<OutputViewer')) {
 const webWrapper = fs.readFileSync(webWrapperPath, 'utf8')
 if (!webWrapper.includes("from '@overlay/modules-react/knowledge'")) {
   throw new Error('Web KnowledgeView host adapter must render the shared surface')
+}
+if (!webWrapper.includes('useFileTree(')) {
+  throw new Error('Web KnowledgeView must feed the shared surface from the live Convex file tree')
 }
 if (webWrapper.split('\n').length > 260) {
   throw new Error('Web KnowledgeView host adapter regained presentation/orchestration')

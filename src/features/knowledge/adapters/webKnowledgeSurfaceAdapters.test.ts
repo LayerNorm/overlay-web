@@ -7,13 +7,20 @@ import {
   type KnowledgeFile,
 } from '@overlay/app-core'
 import {
-  createWebKnowledgeRepository,
   createWebKnowledgeRouteAdapter,
   createWebKnowledgeSurfaceAdapters,
   type WebKnowledgeAppClient,
+  type WebKnowledgeTreeCommands,
 } from './webKnowledgeSurfaceAdapters'
 
-function createClient(): WebKnowledgeAppClient {
+function commandsFor(client: WebKnowledgeAppClient & { files: { updateResponse(input: Record<string, unknown>): Promise<Response> } }): WebKnowledgeTreeCommands {
+  return {
+    async rename(fileId, name) { await client.files.updateResponse({ fileId, name }) },
+    async move(fileId, parentId) { await client.files.updateResponse({ fileId, parentId }) },
+  }
+}
+
+function createClient(): WebKnowledgeAppClient & { files: { updateResponse(input: Record<string, unknown>): Promise<Response> } } {
   const now = Date.parse('2026-07-20T12:00:00.000Z')
   let sequence = 0
   let files: KnowledgeFile[] = [
@@ -21,9 +28,6 @@ function createClient(): WebKnowledgeAppClient {
   ]
   return {
     files: {
-      async get<T>() {
-        return files as T
-      },
       async getResponse({ fileId }) {
         const file = files.find((candidate) => candidate._id === fileId)
         return file ? Response.json(file) : new Response(null, { status: 404 })
@@ -43,7 +47,7 @@ function createClient(): WebKnowledgeAppClient {
         files = [...files, file]
         return Response.json({ id: file._id, file })
       },
-      async updateResponse(input) {
+      async updateResponse(input: Record<string, unknown>) {
         files = files.map((file) => file._id === input.fileId ? {
           ...file,
           name: typeof input.name === 'string' ? input.name : file.name,
@@ -68,14 +72,6 @@ function createClient(): WebKnowledgeAppClient {
         return new Response(null, { status: 204 })
       },
     },
-    notes: {
-      async get<T>() {
-        return [] as T
-      },
-      async deleteResponse() {
-        return new Response(null, { status: 204 })
-      },
-    },
   }
 }
 
@@ -94,15 +90,16 @@ test('web adapters satisfy the platform-neutral knowledge contract', async () =>
   const picker: FilePickerAdapter = { async pickFiles() { return [] } }
   const opened: string[] = []
   const analytics: string[] = []
+  const client = createClient()
   const adapters = createWebKnowledgeSurfaceAdapters({
-    client: createClient(),
+    commands: commandsFor(client),
+    client,
     route,
     filePicker: picker,
     navigate: (url) => opened.push(url),
     capture: (event) => analytics.push(event),
   })
-  const evidence = await exerciseKnowledgeAdapterContract(adapters)
-  assert.equal(evidence.finalCount, 1)
+  await exerciseKnowledgeAdapterContract(adapters)
   assert.equal(currentUrl.searchParams.get('q'), 'contract')
   assert.equal(currentUrl.searchParams.get('layout'), 'cards')
   assert.deepEqual(opened, ['/app/files?file=navigation-contract'])
@@ -116,7 +113,7 @@ test('saved text uploads open as complete files while actual notes retain the no
     _id: fileId, name: 'payload.txt', type: 'file', kind: 'upload', mimeType: 'text/plain',
     createdAt: 1, updatedAt: 1, content: includeFullText ? fullText : fullText.slice(0, 128 * 1024),
   })
-  const adapters = createWebKnowledgeSurfaceAdapters({ client, navigate: url => opened.push(url) })
+  const adapters = createWebKnowledgeSurfaceAdapters({ commands: commandsFor(client), client, navigate: url => opened.push(url) })
   const file = await adapters.repository.get('saved-upload')
   assert.ok(file)
   assert.ok(file.content === fullText, 'Opening a file must load its full content rather than its searchable prefix')
@@ -126,8 +123,10 @@ test('saved text uploads open as complete files while actual notes retain the no
 
 test('web navigation preserves note editor compatibility', () => {
   const opened: string[] = []
+  const client = createClient()
   const adapters = createWebKnowledgeSurfaceAdapters({
-    client: createClient(),
+    commands: commandsFor(client),
+    client,
     currentUrl: () => new URL('https://getoverlay.io/w/team/workspace/files'),
     route: createWebKnowledgeRouteAdapter({
       currentUrl: () => new URL('https://getoverlay.io/app/files'),
@@ -142,55 +141,4 @@ test('web navigation preserves note editor compatibility', () => {
     _id: 'note', name: 'Note', type: 'note', kind: 'note', parentId: null, createdAt: 1, updatedAt: 1,
   }))
   assert.deepEqual(opened, ['/w/team/workspace/notes?id=note'])
-})
-
-test('opening 100 web files causes zero list refetches', async () => {
-  let fileLists = 0
-  const client = createClient()
-  const originalGet = client.files.get
-  client.files.get = async function <T>(query?: { limit?: number }) {
-    fileLists += 1
-    return originalGet<T>(query)
-  }
-  const opened: string[] = []
-  const adapters = createWebKnowledgeSurfaceAdapters({
-    client,
-    route: createWebKnowledgeRouteAdapter({
-      currentUrl: () => new URL('https://getoverlay.io/app/files'),
-      navigate() {},
-      eventTarget: { addEventListener() {}, removeEventListener() {} } as Pick<Window, 'addEventListener' | 'removeEventListener'>,
-    }),
-    filePicker: { async pickFiles() { return [] } },
-    navigate: (url) => opened.push(url),
-    capture() {},
-    eventTarget: null,
-  })
-  const snapshot = await adapters.repository.list()
-  for (let index = 0; index < 100; index += 1) await adapters.navigation.open(snapshot.nodes[0]!)
-  assert.equal(fileLists, 1)
-  assert.equal(opened.length, 100)
-})
-
-test('web repositories consume mutation payloads without refetching the list', async () => {
-  let fileLists = 0
-  const client = createClient()
-  const originalGet = client.files.get
-  client.files.get = async function <T>(query?: { limit?: number }) {
-    fileLists += 1
-    return originalGet<T>(query)
-  }
-  const target = new EventTarget() as unknown as Window
-  const producer = createWebKnowledgeRepository(client, target, 'web-producer')
-  const consumer = createWebKnowledgeRepository(client, target, 'web-consumer')
-  await producer.list()
-  await consumer.list()
-  const names: string[] = []
-  const unsubscribe = consumer.subscribe((event) => {
-    if (event.type === 'updated') names.push(event.node.name)
-  })
-  await producer.rename({ id: 'seed', name: 'Payload update' })
-  await new Promise((resolve) => setTimeout(resolve, 0))
-  assert.ok(names.includes('Payload update'))
-  assert.equal(fileLists, 2)
-  unsubscribe()
 })

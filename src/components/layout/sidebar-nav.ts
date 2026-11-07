@@ -48,7 +48,6 @@ export function agentThreadHref(
   return agentDestination(baseHref, params, view)
 }
 
-export const arrayOrEmpty = <T,>(value: unknown): T[] => Array.isArray(value) ? value : []
 
 export const toolsInlineItems = [
   { id: 'connectors', label: 'Connectors', icon: Plug },

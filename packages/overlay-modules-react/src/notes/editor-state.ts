@@ -75,16 +75,22 @@ function noteDocToNotebookNote(note: NoteDoc, now = Date.now()): NotebookNote {
 
 export function useEditorLifecycle({
   repository,
-  hideSidebar,
+  liveNotes,
   onNoteChanged,
   media,
 }: {
   repository: NotebookEditorRepository
-  hideSidebar?: boolean
+  /** The host's live note list, for hosts that show the notes sidebar. */
+  liveNotes?: readonly NoteDoc[]
   onNoteChanged?: (note: NotebookNote) => void
   media?: NotebookEditorMediaAdapter
 }) {
-  const [notes, setNotes] = useState<NotebookNote[]>([])
+  const [notes, setNotes] = useState<NotebookNote[]>(() => liveNotes?.map((note) => noteDocToNotebookNote(note)) ?? [])
+  const [previousLiveNotes, setPreviousLiveNotes] = useState(liveNotes)
+  if (previousLiveNotes !== liveNotes) {
+    setPreviousLiveNotes(liveNotes)
+    if (liveNotes) setNotes(liveNotes.map((note) => noteDocToNotebookNote(note)))
+  }
   const [activeNote, setActiveNote] = useState<NotebookNote | null>(null)
   const [title, setTitle] = useState('')
   const [isDirty, setIsDirty] = useState(false)
@@ -152,20 +158,6 @@ export function useEditorLifecycle({
     flushSaveRef.current = () => lifecycleControllerRef.current?.flush()
   }, [])
 
-  const loadNotes = useCallback(async () => {
-    if (hideSidebar) return
-    try {
-      const data = await repository.list()
-      setNotes(Array.isArray(data) ? data.map(noteDocToNotebookNote) : [])
-    } catch {
-      // ignore
-    }
-  }, [hideSidebar, repository])
-
-  useEffect(() => {
-    void loadNotes()
-  }, [loadNotes])
-
   useEffect(() => {
     if (typeof document === 'undefined') return
     if (document.getElementById(NOTEBOOK_INLINE_DIFF_STYLE_ID)) return
@@ -216,7 +208,6 @@ export function useEditorLifecycle({
     isDirty,
     editorConflict,
     lifecycleController: lifecycleControllerRef,
-    loadNotes,
     activeNoteRef,
     titleRef,
     hydratingEditorRef,
@@ -508,6 +499,7 @@ export function useSlashMenu({
 
 export function useNotebookNotes({
   noteId,
+  liveNote,
   hideSidebar,
   repository,
   onNavigateNote,
@@ -521,6 +513,8 @@ export function useNotebookNotes({
   editor,
 }: {
   noteId: string | null
+  /** The open note as the host's subscription sees it; null once it is deleted or unreadable. */
+  liveNote?: NoteDoc | null
   hideSidebar?: boolean
   repository: NotebookEditorRepository
   onNavigateNote: (noteId: string) => void
@@ -590,6 +584,25 @@ export function useNotebookNotes({
     onHydrated?.(activeNote)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, activeNote?._id])
+
+  // A newer version saved elsewhere replaces a clean editor; a dirty one keeps its draft until its save conflicts.
+  const liveRevision = liveNote && liveNote._id === activeNote?._id ? liveNote.updatedAt : undefined
+  useEffect(() => {
+    if (!editor || !liveNote || liveRevision === undefined) return
+    const note = noteDocToNotebookNote(liveNote)
+    const adopted = lifecycleController.current?.receiveRemote({
+      id: note._id, title: note.title, content: note.content, revision: String(note.updatedAt), updatedAt: note.updatedAt,
+    })
+    if (!adopted) return
+    hydratingEditorRef.current = true
+    editor.commands.setContent(noteMarkdownToEditorHtml(toCanonicalNoteMarkdown(note.content)))
+    migrateMathStrings(editor, NOTEBOOK_INLINE_MATH_MIGRATION_REGEX)
+    hydratingEditorRef.current = false
+    setActiveNote(note)
+    setTitle(note.title)
+  // Only a new server revision of the open note triggers this.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, liveRevision])
 
   return {
     openNote,

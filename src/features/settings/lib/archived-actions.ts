@@ -1,6 +1,5 @@
 import {
   EXTENSIONS_CHANGED_EVENT,
-  KNOWLEDGE_RECONCILE_EVENT,
   AUTOMATIONS_UPDATED_EVENT,
   WORK_UPDATED_EVENT,
   MCPS_CHANGED_EVENT,
@@ -271,7 +270,6 @@ export async function restoreArchivedItem(
     case 'folder':
     case 'note':
       await overlayAppClient.scope.restore('files', item.id)
-      window.dispatchEvent(new Event(KNOWLEDGE_RECONCILE_EVENT))
       return
     case 'skill':
       await overlayAppClient.scope.restore('skills', item.id)
@@ -313,11 +311,9 @@ export async function deleteArchivedItem(item: ArchivedItem, workspaceId: string
     case 'file':
     case 'folder':
       await requireOk(await overlayAppClient.files.deleteResponse({ fileId: item.id }), 'File was not deleted')
-      window.dispatchEvent(new Event(KNOWLEDGE_RECONCILE_EVENT))
       return
     case 'note':
       await requireOk(await overlayAppClient.notes.deleteResponse({ noteId: item.id }), 'Note was not deleted')
-      window.dispatchEvent(new Event(KNOWLEDGE_RECONCILE_EVENT))
       return
     case 'skill':
       await requireOk(await overlayAppClient.skills.deleteResponse({ skillId: item.id }), 'Skill was not deleted')
