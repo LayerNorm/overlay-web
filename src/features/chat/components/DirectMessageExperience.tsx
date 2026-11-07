@@ -11,6 +11,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
+import { AgentAssignmentSubscription } from './AgentAssignmentSubscription'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { isRoomAgentResponding } from './collaboration/room-message-view'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
@@ -365,6 +366,7 @@ export function DirectMessageExperience({
               channelTopic={collab.channel?.topic}
               ctx={messageCtx}
               footer={<>
+                <AgentAssignmentSubscription workspaceId={activeWorkspaceId} conversationId={conversationId} />
                 <GuidedPendingMessage pending={pendingMessage} messages={vm.mainMessages} />
                 {guided?.footer}
               </>}

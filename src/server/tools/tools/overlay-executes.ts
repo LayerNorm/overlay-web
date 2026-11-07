@@ -1490,8 +1490,9 @@ export function executeListAgents(options: OverlayToolsOptions) {
   return callAgentAsks(options, { action: 'list' })
 }
 
-export function executeAskAgent(options: OverlayToolsOptions, input: { agent: string; message: string; wait?: boolean }) {
-  return callAgentAsks(options, { action: 'ask', agent: input.agent, message: input.message, wait: input.wait !== false })
+export function executeAskAgent(options: OverlayToolsOptions, input: { agent: string; message: string; wait?: boolean; assignmentId?: string; expectedAttemptId?: string }) {
+  return callAgentAsks(options, { action: 'ask', agent: input.agent, message: input.message, wait: input.wait !== false,
+    assignmentId: input.assignmentId, expectedAttemptId: input.expectedAttemptId })
 }
 
 export function executeReadAgentReply(options: OverlayToolsOptions, input: { conversationId: string; turnId: string }) {

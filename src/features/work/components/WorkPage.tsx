@@ -23,6 +23,7 @@ import { WorkPeek } from './WorkPeek'
 import { WorkQuickAdd, type WorkQuickAddHandle } from './WorkQuickAdd'
 import { WorkTimeline } from './WorkTimeline'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
+import { WorkAssignmentExecutions } from './WorkAssignmentExecutions'
 
 function ListSkeleton() {
   return (
@@ -161,6 +162,7 @@ function WorkScreen() {
             selectedId={taskId}
             onOpen={openTask}
           />
+          <WorkAssignmentExecutions query={query} />
         </div>
       </AppScreenBody>
     </AppScreenShell>

@@ -330,7 +330,7 @@ export function createOverlayServerContext(
       agentId,
     }),
     directory: async (actorUserId, workspaceId) => (await workspaceAgentService.list({ actorUserId, workspaceId })).agents,
-    claimBudget: async (args) => (await lazyConvex.mutation<{ ok: true } | { ok: false; reason: 'budget' | 'turn_limit' }>(
+    claimBudget: async (args) => (await lazyConvex.mutation<{ ok: true; alreadyClaimed?: boolean } | { ok: false; reason: 'budget' | 'turn_limit' }>(
       'agents/agentAsks:claimAgentAskByServer',
       { serverSecret: getInternalApiSecret(), now: Date.now(), ...args },
       { throwOnError: true },

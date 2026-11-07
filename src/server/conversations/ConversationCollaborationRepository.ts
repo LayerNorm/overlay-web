@@ -1,4 +1,5 @@
 import 'server-only'
+import type { AssignmentResultView } from '@/shared/agents/assignment-result'
 
 import type {
   ConversationNotificationLevel,
@@ -193,6 +194,23 @@ export interface ConversationCollaborationRepository {
     actorUserId: string
     workspaceId: string
   }): Promise<DirectMessageSummary>
+  createAgentAssignment(args: {
+    workspaceId: string
+    requesterUserId: string
+    assignmentId: string
+    idempotencyKey: string
+    toolCallId: string
+    parentConversationId: string
+    parentRunId: string
+    rootRunId: string
+    callerAgentId: string
+    assignedAgentId: string
+    brief: string
+    questionTurnId: string
+    revisionOfAssignmentId?: string
+    expectedAttemptId?: string
+  }): Promise<{ assignmentId: string; attemptId?: string; conversationId: string; title: string }>
+  readAgentAssignmentResult(args: { actorUserId: string; workspaceId: string; conversationId: string; turnId: string }): Promise<AssignmentResultView | null>
   listAccessibleConversationIds(args: {
     actorUserId: string
     workspaceId: string

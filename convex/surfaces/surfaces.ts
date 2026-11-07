@@ -274,13 +274,32 @@ export const ensureSurfaceConversation = mutation({
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const existing = await ctx.db
-      .query('conversations')
-      .withIndex('by_surfaceBindingId_externalThreadId', (q) => q
-        .eq('surfaceBindingId', args.surfaceBindingId)
-        .eq('externalThreadId', args.externalThreadId))
-      .collect()
-    const live = existing.find((row) => !row.deletedAt)
+    const binding = await ctx.db.query('surfaceBindings').withIndex('by_entityId', q => q.eq('id', args.surfaceBindingId)).unique()
+    const connection = binding ? await ctx.db.query('surfaceConnections').withIndex('by_entityId', q => q.eq('id', binding.connectionId)).unique() : null
+    if (!binding || !connection || binding.status !== 'active' || connection.status === 'uninstalled'
+      || connection.workspaceId !== args.workspaceId || connection.platform !== args.externalPlatform
+      || binding.channelId !== args.externalChannelId) throw new Error('SURFACE_THREAD_SCOPE_DENIED')
+    const link = await ctx.db.query('surfaceThreadLinks').withIndex('by_external_thread', q =>
+      q.eq('platform', connection.platform).eq('connectionId', connection.id).eq('externalTeamId', connection.externalTeamId)
+        .eq('channelId', binding.channelId).eq('threadId', args.externalThreadId)).unique()
+    let live = link ? await ctx.db.get(link.conversationId) : null
+    if (live && live.workspaceId !== args.workspaceId) throw new Error('SURFACE_THREAD_SCOPE_DENIED')
+    if (live?.deletedAt !== undefined) live = null
+    if (!link) {
+      const bindings = await ctx.db.query('surfaceBindings').withIndex('by_connectionId', q => q.eq('connectionId', connection.id)).collect()
+      const candidates = []
+      for (const candidate of bindings.filter(row => row.channelId === binding.channelId)) {
+        const conversations = await ctx.db.query('conversations').withIndex('by_surfaceBindingId_externalThreadId', q =>
+          q.eq('surfaceBindingId', candidate.id).eq('externalThreadId', args.externalThreadId)).collect()
+        for (const row of conversations.filter(row => row.deletedAt === undefined && row.workspaceId === args.workspaceId
+          && row.externalPlatform === connection.platform && row.externalChannelId === binding.channelId)) {
+          const mapped = await ctx.db.query('surfaceThreadLinks').withIndex('by_conversationId', q => q.eq('conversationId', row._id)).unique()
+          if (!mapped) candidates.push(row)
+        }
+      }
+      if (candidates.length > 1) throw new Error('SURFACE_THREAD_LEGACY_AMBIGUOUS')
+      live = candidates[0] ?? null
+    }
     const now = Date.now()
     let conversationId = live?._id
     if (!conversationId) {
@@ -308,6 +327,14 @@ export const ensureSurfaceConversation = mutation({
         userId: args.userId,
         type: 'conversation.created',
       })
+    }
+    if (!link) {
+      await ctx.db.insert('surfaceThreadLinks', { workspaceId: connection.workspaceId, platform: connection.platform,
+        connectionId: connection.id, externalTeamId: connection.externalTeamId, channelId: binding.channelId,
+        threadId: args.externalThreadId, conversationId, channelName: binding.channelName,
+        originalBindingId: live?.surfaceBindingId ?? binding.id, createdAt: now, updatedAt: now })
+    } else if (link.conversationId !== conversationId) {
+      await ctx.db.patch(link._id, { conversationId, updatedAt: now })
     }
     if (args.workspaceId) {
       // Participant rows make the room visible to the binding creator and the

@@ -4,6 +4,16 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Show authorized Chief assignment executions in Work and its sidebar, with parent/thread links and Slack origin labels. These read-only rows do not create tasks; archived or inaccessible threads are omitted, and linked Slack conversations stay read-only until verified cross-surface delivery is available.
+
+- Coordinate Chief assignments with explicit acceptance or reasoned exclusion/cancellation, parent cancellation propagation, durable native-turn queues and duplicate-safe launch recovery. Current-run finalization waits for published, resolved assignment results without adding a verifier or compulsory plan.
+
+- Keep Chief assignment revisions in one isolated thread with immutable per-attempt run handles, persisted publication-aware results and full authorized reply reads. Canonical Slack thread links survive agent rebinding and expose origin only to authorized viewers. Slack requester linking and revocation remain specified for Phase 4, not enabled here.
+
+- Keep delegated reply reads available while the Chief consolidates completed assignments, and refresh expanded agent thread lists when live thread membership changes.
+
+- Add isolated, idempotent Chief agent assignments with ACL-filtered navigation and execution status projections; preserve shared-source resource restrictions across assignment children and native refreshes.
+
 - Remove more polling from the app shell: a remote agent's status in a channel ("Running a tool · 12s") now comes from a Convex subscription instead of a request every five seconds, and the app's capabilities come only from the server-rendered page instead of a fallback request. Deletes an unused 15-second reconcile helper and an unused server loader for memories. The channel and DM sidebar list keeps its version-triggered refresh for now; making it native is the next step (CN-34b).
 
 - Make Settings → Archived live: archived channels and DMs, files, folders and notes, skills, MCP servers, automations, tasks, agents and agent threads come from Convex subscriptions, each with its own access rules, instead of seven HTTP loads that refreshed only after your own actions or a workspace switch. Something archived in another tab or by a teammate appears at once, and restored or deleted items disappear on their own. Archived files and rooms are selected by their archive state before any limit, so many newer active items can never hide an older archive. Restore and permanent delete still go through the server, which keeps the audit log, removes stored files and stops automations.

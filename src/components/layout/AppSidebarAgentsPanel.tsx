@@ -44,6 +44,9 @@ import { isChief, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identit
 import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-workspace'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { useAgentExpansion } from './sidebar/useAgentExpansion'
+import { AgentThreadActivityProvider, useAgentThreadActivity } from './sidebar/AgentThreadActivityProvider'
+import { AgentActivitySummary } from './sidebar/ThreadActivityIndicator'
+import { useLiveAgentBundle } from './sidebar/useLiveAgentBundle'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { useMutation, useQueries } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
@@ -58,10 +61,17 @@ function bundleThreadTitle(bundle: AgentBundleMap[string] | undefined, conversat
 
 /** Live thread lists for the agents whose rows are open. Each is its own Convex subscription. */
 function useAgentBundles(workspaceId: string | null, agentIds: readonly string[]) {
-  const queries = useMemo(() => Object.fromEntries(workspaceId
-    ? agentIds.map((agentId) => [agentId, { query: api.agents.threads.bundle, args: { workspaceId, agentId } }])
-    : []), [agentIds, workspaceId])
+  const [revisions, setRevisions] = useState<Record<string, number>>({})
+  const subscriptions = useMemo(() => workspaceId
+    ? agentIds.map(agentId => ({ agentId, key: `${agentId}:${revisions[agentId] ?? 0}` }))
+    : [], [agentIds, revisions, workspaceId])
+  const queries = useMemo(() => Object.fromEntries(subscriptions.map(({ agentId, key }) => [key, {
+    query: api.agents.threads.bundle, args: { workspaceId: workspaceId!, agentId },
+  }])), [subscriptions, workspaceId])
   const results = useQueries(queries)
+  const refreshBundle = useCallback(async (agentId: string) => {
+    setRevisions(current => ({ ...current, [agentId]: (current[agentId] ?? 0) + 1 }))
+  }, [])
   // A first-message rename names the thread before the saved title arrives.
   const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>({})
   useEffect(() => {
@@ -78,8 +88,8 @@ function useAgentBundles(workspaceId: string | null, agentIds: readonly string[]
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, onTitleUpdated)
     return () => window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, onTitleUpdated)
   }, [])
-  const bundles = useMemo<AgentBundleMap>(() => Object.fromEntries(Object.keys(queries).map((agentId) => {
-    const result = results[agentId] as WorkspaceAgentBundle | null | undefined | Error
+  const bundles = useMemo<AgentBundleMap>(() => Object.fromEntries(subscriptions.map(({ agentId, key }) => {
+    const result = results[key] as WorkspaceAgentBundle | null | undefined | Error
     if (result === undefined) return [agentId, 'loading']
     if (!result || result instanceof Error) return [agentId, 'error']
     return [agentId, {
@@ -89,8 +99,8 @@ function useAgentBundles(workspaceId: string | null, agentIds: readonly string[]
         title: mergeChatTitle(titleOverrides[thread.conversationId] ?? thread.title, thread.title),
       })),
     }]
-  })), [queries, results, titleOverrides])
-  return { bundles }
+  })), [subscriptions, results, titleOverrides])
+  return { bundles, refreshBundle }
 }
 
 function useSidebarAgentDirectory(workspaceId: string | null) {
@@ -334,6 +344,7 @@ function AgentListRow({
   onCreateThread,
   onArchiveThread,
   onDeleteThread,
+  onRefreshBundle,
 }: {
   agent: WorkspaceAgentDirectoryItem
   pinned: boolean
@@ -352,7 +363,10 @@ function AgentListRow({
   onCreateThread: (agent: WorkspaceAgentDirectoryItem) => void
   onArchiveThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string, archived: boolean) => void
   onDeleteThread: (agent: WorkspaceAgentDirectoryItem, conversationId: string) => void
+  onRefreshBundle: (agentId: string) => Promise<void>
 }) {
+  const activity = useAgentThreadActivity(agent.id)
+  useLiveAgentBundle({ agentId: agent.id, expanded: isExpanded, bundle, activity, refresh: onRefreshBundle })
   return (
     <SidebarMenuItem>
       <div className="group/agent-row relative">
@@ -360,7 +374,7 @@ function AgentListRow({
           isActive={isActive}
           disabled={anyOpening}
           // Reserve both actions on touch too; they are always visible below md.
-          className={`${isChief(agent) ? 'h-12' : 'h-[38px]'} text-sm font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14`}
+          className="h-12 text-sm font-normal data-[active=true]:font-normal group-has-data-[sidebar=menu-action]/menu-item:pr-14"
           onClick={() => {
             if (!isExpanded) onToggleExpanded(agent.id)
             onOpenAgent(agent)
@@ -373,14 +387,14 @@ function AgentListRow({
           </span>
           <span className="min-w-0 flex-1">
             <span className="flex items-center gap-1.5"><span className="truncate">{agent.name}</span>{pinned ? <Pin size={11} className="shrink-0 text-(--muted)" aria-label="Pinned chief of staff" /> : null}</span>
-            {isChief(agent) ? <span className="block truncate text-[11px] leading-4 text-(--muted)">{ownerLabel}</span> : null}
+            <AgentActivitySummary activity={activity} fallback={isChief(agent) ? ownerLabel : undefined} />
           </span>
         </SidebarMenuButton>
         <SidebarMenuAction
           aria-label={`New thread with ${agent.name}`}
           title="New thread"
           disabled={creatingThread}
-          className={`right-7 ${isChief(agent) ? 'top-[14px]' : 'top-[9px]'}`}
+          className="right-7 top-[14px]"
           onClick={(event) => {
             event.stopPropagation()
             if (!isExpanded) onToggleExpanded(agent.id)
@@ -390,7 +404,7 @@ function AgentListRow({
           {creatingThread ? <Loader2 className="animate-spin" aria-hidden /> : <Plus aria-hidden />}
         </SidebarMenuAction>
         <SidebarMenuAction
-          className={isChief(agent) ? 'top-[14px]' : 'top-[9px]'}
+          className="top-[14px]"
           aria-label={isExpanded ? `Collapse ${agent.name}` : `Expand ${agent.name}`}
           aria-expanded={isExpanded}
           onClick={(event) => {
@@ -405,6 +419,7 @@ function AgentListRow({
         <AgentThreadRows
           agent={agent}
           bundle={bundle}
+          activity={activity}
           activeConversationId={activeConversationId}
           onOpenThread={onOpenThread}
           onOpenAutomation={onOpenAutomation}
@@ -440,7 +455,7 @@ export function AgentsInlinePanel({
 
   const { expanded, toggle: toggleExpanded } = useAgentExpansion(activeAgentId)
   const expandedIds = useMemo(() => [...expanded], [expanded])
-  const { bundles } = useAgentBundles(workspaceId, expandedIds)
+  const { bundles, refreshBundle } = useAgentBundles(workspaceId, expandedIds)
   const {
     agents,
     viewerPrincipalId,
@@ -474,6 +489,7 @@ export function AgentsInlinePanel({
     () => pinChiefs(sortAgentsByRecency(tabAgents, getAgentOpenedAt(workspaceId)), viewerPrincipalId),
     [tabAgents, workspaceId, viewerPrincipalId],
   )
+  const activityAgentIds = useMemo(() => sortedAgents.map(agent => agent.id), [sortedAgents])
 
   const {
     openingAgentId,
@@ -533,6 +549,7 @@ export function AgentsInlinePanel({
   }, [loading, activeAgentId, agents, viewerPrincipalId, searchParams, router, pathname, buildWorkspaceHref, workspaceId])
 
   return (
+    <AgentThreadActivityProvider workspaceId={workspaceId} agentIds={activityAgentIds}>
     <SidebarMenu>
       {loading ? (
         // Placeholders as tall as the rows they replace, so the list does not jump when the agents arrive.
@@ -553,6 +570,7 @@ export function AgentsInlinePanel({
               anyOpening={Boolean(openingAgentId)}
               isOpening={openingAgentId === agent.id}
               bundle={bundles[agent.id] ?? 'loading'}
+              onRefreshBundle={refreshBundle}
               activeConversationId={activeConversationId}
               creatingThread={creatingThreadFor === agent.id}
               onToggleExpanded={toggleExpanded}
@@ -590,5 +608,6 @@ export function AgentsInlinePanel({
         </SidebarMenuItem>
       ) : null}
     </SidebarMenu>
+    </AgentThreadActivityProvider>
   )
 }

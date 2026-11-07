@@ -71,11 +71,12 @@ export async function buildAgentTurnContext(args: {
   requestFingerprint: string
   workspaceId: string
   includeAutoRetrieval?: boolean
+  inheritedSharedRoom?: boolean
 }): Promise<AgentTurnContext> {
   const server = getOverlayServerContext()
   // The room rule: in a room others can read, the summoner's private memory, files, and skills are not loaded for the agent
   // (its reply is visible to everyone there). What the workspace shares still is.
-  const access = roomContextAccess(isSharedRoom({
+  const access = roomContextAccess(args.inheritedSharedRoom === true || isSharedRoom({
     conversationType: args.conversationType,
     channelVisibility: args.channelVisibility,
     humanParticipants: args.participants.filter((participant) => participant.principalType === 'human').length,

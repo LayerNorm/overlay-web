@@ -26,6 +26,7 @@ export async function prepareWorkspaceAgentInputs(input: {
   memoryEnabled: boolean
   workspaceId: string
   includeAutoRetrieval?: boolean
+  inheritedSharedRoom?: boolean
   turnIdOverride?: string
   requestFingerprintOverride?: string
   billingProgrammaticSubjectId?: string
@@ -57,6 +58,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     agentPrincipalId: agent.principalId,
     conversationId: input.conversationId,
     effectiveModelId: modelId,
+    inheritedSharedRoom: input.inheritedSharedRoom,
     entitlements: gate.runtimeEntitlements,
     grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.harness === 'overlay' && agent.permissionMode === 'auto' ? 'auto' : 'ask',
@@ -85,6 +87,7 @@ export async function prepareWorkspaceAgentInputs(input: {
     requestFingerprint: identity.requestFingerprint,
     workspaceId: input.workspaceId,
     includeAutoRetrieval: input.includeAutoRetrieval,
+    inheritedSharedRoom: input.inheritedSharedRoom,
   })
   const toolDefinitions = await Promise.all(Object.entries(tooling.tools).map(async ([name, definition]) => ({
     name,

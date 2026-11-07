@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { makeFunctionReference } from 'convex/server'
 import { internal } from '../_generated/api'
 import { action, internalAction } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
@@ -47,6 +48,28 @@ type ArtifactMetadata = {
   expiresAt: number
   resource?: { id: string; revision?: string; operation?: string; page?: number }
 }
+
+type SettledResultArtifactIdentity = {
+  serverSecret: string; actorUserId: string; workspaceId: string; attemptId: string; artifactId: string
+}
+const settledResultMetadata = makeFunctionReference<'query', SettledResultArtifactIdentity, ArtifactMetadata | null>(
+  'collaboration/assignmentResults:settledArtifact',
+)
+
+export const readSettledResultChunk = action({
+  args: { serverSecret: v.string(), actorUserId: v.string(), workspaceId: v.string(), attemptId: v.string(),
+    artifactId: v.string(), offset: v.number(), length: v.number() },
+  returns: v.union(v.bytes(), v.null()),
+  handler: async (ctx, args): Promise<ArrayBuffer | null> => {
+    if (!Number.isSafeInteger(args.offset) || args.offset < 0 || !Number.isSafeInteger(args.length)
+      || args.length < 1 || args.length > 256 * 1024) throw new Error('HARNESS_ARTIFACT_RANGE_INVALID')
+    const row = await ctx.runQuery(settledResultMetadata, { serverSecret: args.serverSecret, actorUserId: args.actorUserId,
+      workspaceId: args.workspaceId, attemptId: args.attemptId, artifactId: args.artifactId })
+    if (!row) return null
+    const blob = await ctx.storage.get(row.storageId as Id<'_storage'>)
+    return blob ? await blob.slice(args.offset, args.offset + args.length).arrayBuffer() : null
+  },
+})
 
 export const put = internalAction({
   args: {

@@ -175,13 +175,18 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
         if (!parent.children.some(child => child.id === childRunId)) throw new Error('This run did not delegate that child.')
         let child = await ports.readChild(childRunId)
         if (child.parentRunId !== parent.runId || child.rootRunId !== parent.rootRunId) throw new Error('Invalid child lineage.')
-        if (!['completed', 'failed', 'cancelled'].includes(child.status)) {
+        let assignment = await ports.readAssignmentResult?.(childRunId)
+        if (!['completed', 'failed', 'cancelled'].includes(child.status) && !assignment?.blocker) {
           await ports.waitForChildren([childRunId])
           child = await ports.readChild(childRunId)
           if (child.parentRunId !== parent.runId || child.rootRunId !== parent.rootRunId) throw new Error('Invalid child lineage.')
+          assignment = await ports.readAssignmentResult?.(childRunId)
         }
-        const result = { status: child.status, summary: child.resultSummary ?? child.workingSummary, evidence: child.evidence, blocker: child.blocker }
-        if (child.status !== 'completed') return result
+        const result = { status: assignment?.runStatus ?? child.status, summary: assignment?.summary ?? child.resultSummary ?? child.workingSummary,
+          evidence: child.evidence, blocker: assignment?.blocker ?? child.blocker,
+          ...(assignment ? { assignment, reply: assignment.reply, publicationPending: assignment.state === 'publication_pending' } : {}) }
+        if (assignment && assignment.state !== 'ready') return result
+        if (result.status !== 'completed') return result
         await ports.apply(`settle-child:${child.runId}:${child.revision}`, { type: 'settle_child', childRunId })
         const evidenceRef = `child-result:${toolCallId}`
         await ports.apply(`control:${toolCallId}`, { type: 'record_evidence', evidence: {

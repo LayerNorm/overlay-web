@@ -19,6 +19,7 @@ vi.mock('@/server/conversations/ActEntitlementService', () => ({
 vi.mock('./native-workflow-input-builder', () => ({ buildNativeHarnessWorkflowInput: vi.fn() }))
 vi.mock('./ConvexHarnessRepository', () => ({
   ConvexHarnessRepository: class {
+    acquireNativeTurn() { return Promise.resolve(true) }
     admit(input: unknown) { return mocks.admit(input) }
     getSurfaceExecutionByHarnessRunId(id: string) { return mocks.surface(id) }
   },
