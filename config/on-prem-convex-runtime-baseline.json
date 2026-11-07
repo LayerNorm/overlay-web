@@ -245,7 +245,9 @@
     "src/features/chat/components/collaboration/CollaborationRealtimeProvider.tsx",
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
     "src/features/chat/components/collaboration/useRoomCompatibility.ts",
-    "src/features/chat/components/collaboration/useRoomState.ts"
+    "src/features/chat/components/collaboration/useRoomState.ts",
+    "src/features/work/components/WorkDataProvider.tsx",
+    "src/features/work/lib/use-live-work.ts"
   ],
   "convexCronJobs": [
     {
@@ -408,9 +410,13 @@
     "src/features/chat/components/collaboration/ConvexRoomMessageSubscription.tsx",
     "src/features/chat/components/collaboration/useRoomCompatibility.ts",
     "src/features/chat/components/collaboration/useRoomState.ts",
+    "src/features/work/components/WorkDataProvider.tsx",
+    "src/features/work/lib/use-live-work.ts",
     "src/hooks/use-agent-directory.ts",
     "src/hooks/use-file-tree.ts",
+    "src/hooks/use-live-automations.ts",
     "src/hooks/use-memories.ts",
+    "src/hooks/use-skills.ts",
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAuditRepository.ts",
     "src/server/admin/index.ts",
