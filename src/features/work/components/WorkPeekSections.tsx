@@ -12,6 +12,8 @@ import { hrefForContext, labelForLink, safeLinkUrl } from '@/shared/work/context
 import { checkBlockedBy } from '@/shared/work/graph'
 import { WORK_LIMITS } from '@/shared/work/status'
 import { useWorkData } from './WorkDataProvider'
+import { useLiveWorkEvents, useWorkCommands } from '../lib/use-live-work'
+import { parseWorkErrorReason, workErrorMessage } from '@/shared/work/errors'
 import { Avatar, StatusIcon } from './work-ui'
 
 export function Section({ title, hint, children }: { title: string; hint?: ReactNode; children: ReactNode }) {
@@ -278,31 +280,11 @@ export function DoneWhenSection({ items, editable, onChange }: { items: WorkDone
   )
 }
 
-/** Loads a task's activity, and again whenever the task changes. */
-function useWorkEvents(taskId: string, version: number) {
-  const [events, setEvents] = useState<WorkEvent[]>([])
-  const [loaded, setLoaded] = useState(false)
-  // Only the newest request may answer: an earlier one that finishes last would hide a just-posted comment.
-  const newest = useRef(0)
-  const load = useCallback(async () => {
-    const mine = ++newest.current
-    try {
-      const response = await overlayAppClient.work.events(taskId)
-      if (mine === newest.current) setEvents(response.events)
-    } catch {
-      // The panel still works without its log.
-    } finally {
-      if (mine === newest.current) setLoaded(true)
-    }
-  }, [taskId])
-  useEffect(() => { setLoaded(false); setEvents([]) }, [taskId])
-  useEffect(() => { void load() }, [load, version])
-  return { events, loaded, reload: load }
-}
-
-export function ActivitySection({ taskId, version, canComment }: { taskId: string; version: number; canComment: boolean }) {
+export function ActivitySection({ taskId, canComment }: { taskId: string; canComment: boolean }) {
   const { people, personByPrincipal, viewer } = useWorkData()
-  const { events, reload } = useWorkEvents(taskId, version)
+  // Live: comments and changes from anyone, in any tab, appear without reloading.
+  const events = useLiveWorkEvents(taskId) ?? []
+  const { addComment } = useWorkCommands()
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [failure, setFailure] = useState<string | null>(null)
@@ -316,11 +298,11 @@ export function ActivitySection({ taskId, version, canComment }: { taskId: strin
     setBusy(true)
     setFailure(null)
     try {
-      await overlayAppClient.work.addComment(taskId, { body })
+      await addComment(taskId, body)
       setDraft('')
-      await reload()
     } catch (caught) {
-      setFailure(caught instanceof Error ? caught.message : 'Could not post the comment.')
+      const reason = parseWorkErrorReason(caught)
+      setFailure(reason ? workErrorMessage(reason) : 'Could not post the comment.')
     } finally {
       setBusy(false)
     }

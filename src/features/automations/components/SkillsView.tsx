@@ -1,28 +1,20 @@
 'use client'
-import { Button } from '@overlay/ui/primitives'
+import { Button, toast } from '@overlay/ui/primitives'
 
 // Compatibility wrapper: skill contracts/controllers live in @overlay/app-core;
 // shared React presentation lives in @overlay/modules-react.
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useMemo, useState, type MouseEvent } from 'react'
 import { Plus } from 'lucide-react'
 import {
-  EXTENSIONS_CHANGED_EVENT,
-  SKILLS_CHANGED_EVENT,
   createSkillCreateRequest,
-  createSkillSummaryFromForm,
   createSkillUpdateRequest,
   filterSkillSummaries,
-  removeSkillSummary,
-  setSkillEnabled,
-  updateSkillSummaryFromForm,
-  upsertSkillSummary,
   type SkillFormValues,
   type SkillSummary,
 } from '@overlay/app-core'
 import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, SkillDialog, SkillsPanel } from '@overlay/modules-react/extensions'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
+import { useLiveSkills, useSkillCommands } from '@/hooks/use-skills'
 import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
@@ -37,8 +29,6 @@ interface DialogState {
 export default function SkillsView({ userId: _userId }: { userId: string; selectedSkillId?: string }) {
   void _userId
 
-  const [skills, setSkills] = useState<SkillSummary[]>([])
-  const [loading, setLoading] = useState(true)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const scope = usePanelScope()
@@ -46,27 +36,11 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
   const { canCreate } = useWorkspaceCreateAccess()
   const canAdd = canCreate('extension', scopeForNewItem(scope))
 
-  const dispatchSkillsChanged = useCallback(() => {
-    window.dispatchEvent(new CustomEvent(SKILLS_CHANGED_EVENT))
-    window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
-  }, [])
-
-  const loadSkills = useCallback(async () => {
-    try {
-      setSkills(await overlayAppClient.skills.get<SkillSummary[]>({ limit: 100, view: listView }))
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
-    }
-  }, [listView])
-
-  useEffect(() => {
-    setLoading(true)
-    void loadSkills()
-  }, [loadSkills])
-
-  useWorkspaceChanged(loadSkills)
+  // Live: skills created, edited, toggled or deleted in any tab appear at once.
+  const live = useLiveSkills(listView)
+  const skills = useMemo<SkillSummary[]>(() => live ?? [], [live])
+  const loading = live === undefined
+  const commands = useSkillCommands()
 
   const filteredSkills = useMemo(
     () => filterSkillSummaries(skills, searchQuery),
@@ -74,41 +48,30 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
   )
 
   async function handleSaveSkill(values: SkillFormValues): Promise<boolean> {
-    if (dialog?.mode === 'edit' && dialog.skill) {
-      const res = await overlayAppClient.skills.updateResponse(createSkillUpdateRequest(dialog.skill._id, values))
-      if (!res.ok) return false
-      const next = updateSkillSummaryFromForm(dialog.skill, values)
-      setSkills((prev) => upsertSkillSummary(prev, next))
-      dispatchSkillsChanged()
+    try {
+      if (dialog?.mode === 'edit' && dialog.skill) {
+        // The form was filled from this version; a newer one saved elsewhere is not overwritten.
+        await commands.update({ ...createSkillUpdateRequest(dialog.skill._id, values), expectedUpdatedAt: dialog.skill.updatedAt })
+      } else {
+        await commands.create({ ...createSkillCreateRequest(values), scope: newItemScope(scope) })
+      }
       return true
+    } catch (caught) {
+      if (caught instanceof Error && caught.message.includes('SKILL_INVALID:conflict')) {
+        toast.error('This skill changed elsewhere. Close the form and open it again to edit the newest version.')
+      }
+      return false
     }
-
-    const res = await overlayAppClient.skills.createResponse({ ...createSkillCreateRequest(values), scope: newItemScope(scope) })
-    if (!res.ok) return false
-    const { id } = (await res.json()) as { id: string }
-    setSkills((prev) => upsertSkillSummary(prev, createSkillSummaryFromForm(id, values)))
-    dispatchSkillsChanged()
-    return true
   }
 
   async function handleDeleteSkill(skill: SkillSummary): Promise<boolean> {
-    const res = await overlayAppClient.skills.deleteResponse({ skillId: skill._id })
-    if (!res.ok) return false
-    setSkills((prev) => removeSkillSummary(prev, skill._id))
-    dispatchSkillsChanged()
-    return true
+    return await commands.remove(skill._id).then(() => true, () => false)
   }
 
-  async function handleQuickToggle(skill: SkillSummary, event: MouseEvent) {
+  function handleQuickToggle(skill: SkillSummary, event: MouseEvent) {
     event.stopPropagation()
-    const newEnabled = skill.enabled === false
-    setSkills((prev) => prev.map((item) => (item._id === skill._id ? setSkillEnabled(item, newEnabled) : item)))
-    try {
-      const res = await overlayAppClient.skills.updateResponse({ skillId: skill._id, enabled: newEnabled })
-      if (res.ok) dispatchSkillsChanged()
-    } catch {
-      // ignore optimistic update errors, matching prior behavior
-    }
+    if ((skill as { canEdit?: boolean }).canEdit === false) return
+    void commands.update({ skillId: skill._id, enabled: skill.enabled === false }).catch(() => undefined)
   }
 
   return (
@@ -146,6 +109,8 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
           state={dialog}
           onClose={() => setDialog(null)}
           onSave={handleSaveSkill}
+          // A workspace skill someone else owns opens read-only unless the viewer may manage it.
+          readOnly={dialog.mode === 'edit' && (dialog.skill as { canEdit?: boolean } | undefined)?.canEdit === false}
           onDelete={handleDeleteSkill}
           scopeActions={dialog.mode === 'edit' && dialog.skill ? (
             <ScopeItemActions
@@ -153,11 +118,7 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
               resource="skills"
               item={dialog.skill}
               variant="buttons"
-              onChanged={() => {
-                setDialog(null)
-                void loadSkills()
-                dispatchSkillsChanged()
-              }}
+              onChanged={() => setDialog(null)}
             />
           ) : undefined}
         />

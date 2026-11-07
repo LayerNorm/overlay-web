@@ -1,12 +1,12 @@
 'use client'
 
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
-import { RefreshCw } from 'lucide-react'
-import { Button } from '@overlay/ui/primitives'
+import { lazy, Suspense, useMemo, useState } from 'react'
+import { Button, toast } from '@overlay/ui/primitives'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useLiveAutomation, useLiveAutomationRuns } from '@/hooks/use-live-automations'
 import type {
   AutomationDetail,
   AutomationDetailTab,
@@ -19,7 +19,6 @@ import type {
 import {
   applyAutomationUpdate,
   automationEditorDraftFromDetail,
-  AUTOMATIONS_UPDATED_EVENT,
   buildAutomationUpdateRequest,
   formatAutomationRunError,
   supportedTimeZoneOptions,
@@ -41,6 +40,12 @@ export type {
   AutomationSchedule,
 }
 
+const NO_RUNS: AutomationRunSummary[] = []
+
+function sameDraft(a: AutomationEditorDraft, b: AutomationEditorDraft): boolean {
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
 export function AutomationEditorPanel({
   automation,
   onSaved,
@@ -56,7 +61,10 @@ export function AutomationEditorPanel({
   const [saveState, setSaveState] = useState<AutomationSaveState>('idle')
   const [testState, setTestState] = useState<AutomationTestState>('idle')
   const [testMessage, setTestMessage] = useState<string | null>(null)
-  const [runs, setRuns] = useState<AutomationRunSummary[]>([])
+  // Live: the definition from any tab or agent, and runs through admission, execution, retries and their end.
+  const liveAutomation = useLiveAutomation(automation._id)
+  const current = liveAutomation ?? automation
+  const runs = useLiveAutomationRuns(automation._id) ?? NO_RUNS
   const [runsBusy, setRunsBusy] = useState(false)
   const [liveWorkflowRunId, setLiveWorkflowRunId] = useState<string | null>(null)
   const timeZoneOptions = useMemo(() => supportedTimeZoneOptions(), [])
@@ -69,27 +77,29 @@ export function AutomationEditorPanel({
     [],
   )
 
-  const loadRuns = useCallback(async () => {
-    const nextRuns = await overlayAppClient.automations.getRuns(
-      automation._id,
-      { cache: 'no-store' },
-    )
-    setRuns(Array.isArray(nextRuns) ? nextRuns : [])
-  }, [automation._id])
-
-  const [prevAutomation, setPrevAutomation] = useState(automation)
-  if (prevAutomation !== automation) {
-    setPrevAutomation(automation)
-    setDraft(automationEditorDraftFromDetail(automation, DEFAULT_MODEL_ID))
-    setSaveState('idle')
-    setTestState('idle')
-    setTestMessage(null)
-    setLiveWorkflowRunId(null)
+  // A different automation starts fresh. A new version of this one replaces the form only while it has no unsaved
+  // edits, so a change made elsewhere never overwrites what is being typed.
+  // `base` is the version the form was filled from; a save is refused if the automation has moved past it.
+  const [prevAutomation, setPrevAutomation] = useState(current)
+  const [base, setBase] = useState(current)
+  if (prevAutomation !== current) {
+    setPrevAutomation(current)
+    const next = automationEditorDraftFromDetail(current, DEFAULT_MODEL_ID)
+    // Clean (unchanged since its base), or already equal to the new version (this editor's own save came back).
+    const adopt = prevAutomation._id !== current._id
+      || sameDraft(draft, automationEditorDraftFromDetail(base, DEFAULT_MODEL_ID))
+      || sameDraft(draft, next)
+    if (adopt) {
+      setDraft(next)
+      setBase(current)
+    }
+    if (prevAutomation._id !== current._id) {
+      setSaveState('idle')
+      setTestState('idle')
+      setTestMessage(null)
+      setLiveWorkflowRunId(null)
+    }
   }
-
-  useEffect(() => {
-    void loadRuns().catch(() => setRuns([]))
-  }, [loadRuns])
 
   function updateDraft(patch: Partial<AutomationEditorDraft>) {
     setDraft((current) => ({ ...current, ...patch }))
@@ -99,26 +109,16 @@ export function AutomationEditorPanel({
     if (!draft.name.trim() || !draft.instructions.trim()) return
     setSaveState('saving')
     try {
-      const request = buildAutomationUpdateRequest({ automation, draft })
+      const request = { ...buildAutomationUpdateRequest({ automation: current, draft }), expectedUpdatedAt: base.updatedAt }
       const res = await overlayAppClient.automations.updateResponse(request)
+      if (res.status === 409) {
+        toast.error('This automation changed elsewhere. Copy your edits, then reopen it to see the newest version.')
+        throw new Error('Automation changed elsewhere')
+      }
       if (!res.ok) throw new Error('Failed to save automation')
-      // Scheduling is owned by the minute cron claiming due runs — enabling
-      // sets nextRunAt on the automation and the next tick picks it up. No
-      // per-automation scheduler workflow is needed (and would double-fire).
-      const refreshedRes = await overlayAppClient.automations.getResponse(
-        { automationId: automation._id },
-        { credentials: 'same-origin', cache: 'no-store' },
-      )
-      if (!refreshedRes.ok)
-        throw new Error('Failed to reload saved automation')
-      const refreshed = (await refreshedRes.json()) as AutomationDetail
-      const updated =
-        refreshed?._id === automation._id
-        ? refreshed
-        : applyAutomationUpdate(automation, request)
-      setDraft(automationEditorDraftFromDetail(updated, DEFAULT_MODEL_ID))
-      onSaved(updated)
-      window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
+      // Scheduling is owned by the minute cron claiming due runs: enabling sets nextRunAt and the next tick picks it
+      // up. The live query brings the saved version (and its next run) back by itself.
+      onSaved(applyAutomationUpdate(current, request))
       setSaveState('saved')
       window.setTimeout(() => setSaveState('idle'), 1500)
     } catch {
@@ -150,8 +150,6 @@ export function AutomationEditorPanel({
       }
       setTestState('success')
       setTestMessage('Durable run started. Live status available in Run Visualization below.')
-      // Refresh runs list so the new run appears in the replay dropdown
-      void loadRuns()
       // Don't navigate away immediately — let the user watch live status.
       // The user can click "Open" in run history to view the chat.
       if (data.conversationId) {
@@ -173,7 +171,6 @@ export function AutomationEditorPanel({
         runId,
       })
       if (!response.ok) throw new Error('Run operation failed')
-      await loadRuns()
     } finally {
       setRunsBusy(false)
     }
@@ -254,17 +251,6 @@ export function AutomationEditorPanel({
               Scheduled and manual execution records.
             </p>
           </div>
-          <Button
-            variant="ghost"
-            size="icon"
-            type="button"
-            aria-label="Refresh automation runs"
-            className="h-8 w-8 rounded-md border border-(--border) p-0 text-(--foreground) hover:bg-transparent disabled:opacity-50"
-            disabled={runsBusy}
-            onClick={() => void loadRuns()}
-          >
-            <RefreshCw size={14} />
-          </Button>
         </div>
         <div className="divide-y divide-(--border) border-y border-(--border)">
           {runs.length === 0 ? (

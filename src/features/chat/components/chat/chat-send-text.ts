@@ -2,7 +2,6 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
 import type { NativePersonalSubmitArgs } from '@/components/providers/PersonalChatProvider'
 import type { PersonalPendingTurn, PersonalTranscriptMessage } from './personal-transcript'
-import { AUTOMATIONS_UPDATED_EVENT } from '@overlay/app-core/automations'
 import { createConversationUiState } from '@overlay/chat-core'
 import type { ReasoningLevel } from '@overlay/chat-core'
 import { toast } from '@overlay/ui/primitives'
@@ -397,7 +396,6 @@ export async function sendTextTurn({
       showLoading: false,
       conversationId: activeChatIdRef.current ?? undefined,
     })
-    window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
   }
 
   startActTextStream({

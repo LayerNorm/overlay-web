@@ -46,6 +46,8 @@ export type CreateAutomationInput = {
 export type UpdateAutomationInput = Partial<Omit<CreateAutomationInput, 'userId' | 'byAgent'>> & {
   automationId: string
   userId: string
+  /** Refuse the update when the automation changed since this version was read. */
+  expectedUpdatedAt?: number
 }
 
 export interface AutomationRepository {

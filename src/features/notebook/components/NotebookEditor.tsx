@@ -75,9 +75,6 @@ export default function NotebookEditor({
   const [seenNoteId, setSeenNoteId] = useState<string | null>(null)
   if (liveNote && seenNoteId !== liveNote._id) setSeenNoteId(liveNote._id)
   const noteGone = liveNote === null && noteId !== null && seenNoteId === noteId
-  useEffect(() => {
-    if (noteGone) router.push(buildWorkspaceHref(null, '/app/files', scope))
-  }, [buildWorkspaceHref, noteGone, router, scope])
 
   const repository = useMemo<NotebookEditorRepository>(() => ({
     get: (noteId, signal) => overlayAppClient.notes.get<NoteDoc>({ noteId }, { signal }).catch((error: unknown) => {
@@ -123,6 +120,7 @@ export default function NotebookEditor({
     <CanonicalNotebookEditor
       noteId={noteId}
       liveNote={liveNote}
+      noteRemoved={noteGone}
       hideSidebar={hideSidebar}
       projectName={projectName}
       repository={repository}

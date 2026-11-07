@@ -19,9 +19,6 @@ import type {
   UpdateSkillRequest,
 } from './contracts'
 
-export const SKILLS_CHANGED_EVENT = 'overlay:skills-changed'
-export const MCPS_CHANGED_EVENT = 'overlay:mcps-changed'
-export const EXTENSIONS_CHANGED_EVENT = 'overlay:extensions-changed'
 
 export interface ConnectorCatalogItem {
   id: string

@@ -58,10 +58,10 @@ export function ExtensionCard({ icon, title, description, status, statusTone = '
   </Card>
 }
 
-export function ExtensionDialog({ title, description, icon, onClose, enabled, onEnabledChange, activeDescription, busy, scopeActions, scopeLabel, children, footer }: {
+export function ExtensionDialog({ title, description, icon, onClose, enabled, onEnabledChange, activeDescription, busy, locked, scopeActions, scopeLabel, children, footer }: {
   title: string; description: string; icon: ReactNode; onClose: () => void
   enabled: boolean; onEnabledChange: (enabled: boolean) => void; activeDescription: string
-  busy?: boolean; scopeActions?: ReactNode; scopeLabel?: string; children: ReactNode; footer: ReactNode
+  busy?: boolean; /** The viewer may not change this extension; its controls are shown but disabled. */ locked?: boolean; scopeActions?: ReactNode; scopeLabel?: string; children: ReactNode; footer: ReactNode
 }) {
   const activeId = useId()
   return <Dialog open onOpenChange={open => { if (!open && !busy) onClose() }}>
@@ -75,7 +75,7 @@ export function ExtensionDialog({ title, description, icon, onClose, enabled, on
         {children}
         <div className="mt-6 flex items-center justify-between gap-5">
           <div><Label htmlFor={activeId}>Active</Label><p className="mt-2 text-xs text-(--muted)">{activeDescription}</p></div>
-          <Switch id={activeId} checked={enabled} onCheckedChange={onEnabledChange} disabled={busy}
+          <Switch id={activeId} checked={enabled} onCheckedChange={onEnabledChange} disabled={busy || locked}
             className="h-5 w-9 border-transparent data-[state=checked]:border-(--foreground) data-[state=checked]:bg-(--foreground) data-[state=unchecked]:bg-(--border) [&_[data-slot=switch-thumb]]:size-4 [&_[data-state=checked]]:translate-x-4 [&_[data-state=unchecked]]:translate-x-0.5" />
         </div>
       </div>

@@ -1,47 +1,29 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { WorkItem } from '@overlay/app-core'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { isResourceInPanelScope } from '@/shared/workspaces/panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { useWorkData } from '../components/WorkDataProvider'
 import { useWorkRoute } from './use-work-route'
+import { useLiveWorkTask } from './use-live-work'
 
 /**
  * The task a link or click named. It is usually in the list on screen; a link can also name one that is not (another
- * scope, or archived), which is read directly. `missing` means the server has no such task for this person.
+ * scope, archived, or past the list window), which is read live on its own. `missing` means there is no such task for
+ * this person, or it was deleted or hidden while open.
  */
 export function useWorkTask(taskId: string): { item: WorkItem | undefined; missing: boolean } {
   const { byId, state, adoptTask } = useWorkData()
-  const [missingId, setMissingId] = useState<string | null>(null)
-  const [resolved, setResolved] = useState<{ id: string; item: WorkItem } | null>(null)
   const { scope } = useWorkRoute()
-  const item = byId.get(taskId)
-  const resolvedItem = resolved?.id === taskId ? resolved.item : undefined
-  const held = item !== undefined || resolvedItem !== undefined
-
+  const listed = byId.get(taskId)
+  const direct = useLiveWorkTask(listed ? null : taskId)
+  const inScope = direct ? isResourceInPanelScope(direct.scope, scope, direct.archivedAt !== null) : false
   useEffect(() => {
-    if (held || state !== 'ready') return
-    let cancelled = false
-    overlayAppClient.work.get(taskId)
-      .then(({ item: found }) => {
-        if (cancelled) return
-        setResolved({ id: taskId, item: found })
-        if (isResourceInPanelScope(found.scope, scope, found.archivedAt !== null)) adoptTask(found)
-      })
-      .catch(() => { if (!cancelled) setMissingId(taskId) })
-    return () => { cancelled = true }
-  }, [adoptTask, held, scope, state, taskId])
-
-  useEffect(() => {
-    if (resolvedItem && isResourceInPanelScope(resolvedItem.scope, scope, resolvedItem.archivedAt !== null)) {
-      adoptTask(resolvedItem)
-    }
-  }, [adoptTask, resolvedItem, scope])
-
-  return { item: item ?? resolvedItem, missing: state === 'ready' && !held && missingId === taskId }
+    if (direct && inScope) adoptTask(direct.id)
+  }, [adoptTask, direct, inScope])
+  return { item: listed ?? direct ?? undefined, missing: state === 'ready' && !listed && direct === null }
 }
 
 /** A task opens in the scope it lives in, so the list behind the panel agrees with it. */

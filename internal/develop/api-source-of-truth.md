@@ -428,6 +428,29 @@ byte transfer.
 There are no file or memory change events: the shared knowledge surface takes its list from the
 host (`liveFiles`) and cannot fetch or broadcast lists itself.
 
+## Work, automations and skills in the browser
+
+These read natively behind the same checks as their routes: an active membership, the role capability
+(`work.use`, `automations.use`, `skills.use`) and the deployment feature from the native policy snapshot
+(`requireNativeCapability`). Reads answer `null` without access.
+
+- **Work** (`work/browse`): `list`, `get` (tasks outside the list window by link), `context`, `events`, and
+  native `create`, `update`, `move` and `addComment` with optimistic updates
+  (`src/features/work/lib/use-live-work.ts`). They share handlers with the server functions (`listWorkFor`,
+  `updateWorkFor`, `moveWorkFor`, `createWorkFor`, `addWorkCommentFor`), and tasks are projected by
+  `src/shared/work/projection.ts`. Assigning a task and changing its scope stay on `/api/v1/work`: assignment
+  checks the budget and admits and starts the agent's turn idempotently (`prepareAssignment` claims one
+  generation).
+- **Automations** (`automations/browse`): `list`, `get` and `runs` are live (`src/hooks/use-live-automations.ts`).
+  Writes stay on `/api/v1/automations` because enabling checks billing, pausing cancels the scheduler workflow,
+  and edits append a note to the automation's thread. Resolving which automation a chat belongs to is still an
+  HTTP read in the chat controller.
+- **Skills** (`integrations/skillsBrowse`): `list`, `create`, `update` (with an `expectedUpdatedAt` guard for
+  stale forms) and `remove`, all native (`src/hooks/use-skills.ts`). `/api/v1/skills` remains for agents and
+  outside apps; mention pickers still list skills over HTTP until cross-resource pickers (CN-32).
+
+There are no Work, automation, skill, MCP or extension change events.
+
 ## File listing
 
 `GET /api/v1/files?page=true&limit=<n>&cursor=<cursor>` returns the standard `{ data, nextCursor, hasMore }` envelope. `@overlay/api-client` exposes this through `files.getPage()`. Calls without `page=true` retain the historical array response, backed by the same bounded first page, so older web/desktop consumers remain compatible during rollout. Convex serves pages through `files/files:listPage`; the legacy `files/files:list` query is capped and exists only for compatibility and internal adapters that have not adopted cursors yet.
