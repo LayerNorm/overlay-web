@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useAgent, useAgentDirectory } from '@/hooks/use-agent-directory'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
@@ -20,46 +21,19 @@ export function useAgentEditorBootstrap({
   initial: ReturnType<typeof getInitialEditorState>
 }) {
   const { capabilities } = useOverlayCapabilities()
-  const [agent, setAgent] = useState<WorkspaceAgentDirectoryItem | null>(initial.agent)
-  const [loading, setLoading] = useState(initial.loading)
-  const [loadFailed, setLoadFailed] = useState(false)
-  const [canCreate, setCanCreate] = useState(initial.canCreate)
+  const live = useAgent(mode === 'edit' && activeWorkspaceId ? agentId ?? null : null)
+  const directory = useAgentDirectory({ enabled: mode === 'new' })
+  // A save answers before the live query does; prefer whichever copy is newer.
+  const [saved, setAgent] = useState<WorkspaceAgentDirectoryItem | null>(initial.agent)
+  const agent = mode === 'edit'
+    ? newerAgent(live, saved?.id === agentId ? saved : null)
+    : saved
+  const loading = mode === 'edit' ? live === undefined && !agent : directory.status === 'loading'
+  const loadFailed = mode === 'edit' ? live === null && !agent : directory.status === 'unavailable'
+  const canCreate = mode === 'edit' ? initial.canCreate : directory.canCreate
   const [connectedAgentsEnabled, setConnectedAgentsEnabled] = useState(false)
   /** Whether the connected-agents check has answered; the settings wait for it so the agent-type choice does not pop in. */
   const [connectedAgentsChecked, setConnectedAgentsChecked] = useState(false)
-
-  // Reset the load state when the load parameters change (before the effect
-  // below kicks off the next fetch).
-  const [loadParams, setLoadParams] = useState({  mode, agentId, activeWorkspaceId })
-  if (
-    loadParams.mode !== mode
-    || loadParams.agentId !== agentId || loadParams.activeWorkspaceId !== activeWorkspaceId
-  ) {
-    setLoadParams({  mode, agentId, activeWorkspaceId })
-    if (activeWorkspaceId) {
-      setLoading(true)
-      setLoadFailed(false)
-    }
-  }
-
-  // Load the agent (edit) or the create permission (new).
-  useEffect(() => {
-
-    if (!activeWorkspaceId) return
-    let cancelled = false
-    if (mode === 'edit' && agentId) {
-      void overlayAppClient.agents.get(activeWorkspaceId, agentId).then(
-        (result) => { if (!cancelled) { setAgent(result.agent); setLoading(false) } },
-        () => { if (!cancelled) { setAgent(null); setLoadFailed(true); setLoading(false) } },
-      )
-    } else {
-      void overlayAppClient.agents.list(activeWorkspaceId).then(
-        (result) => { if (!cancelled) { setCanCreate(result.canCreate); setLoading(false) } },
-        () => { if (!cancelled) { setLoadFailed(true); setLoading(false) } },
-      )
-    }
-    return () => { cancelled = true }
-  }, [activeWorkspaceId, agentId, mode, ])
 
   // Connected-agent availability gates the BYO type.
   useEffect(() => {
@@ -75,4 +49,12 @@ export function useAgentEditorBootstrap({
   }, [activeWorkspaceId, capabilities.externalAgents, ])
 
   return { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked }
+}
+
+function newerAgent(
+  live: WorkspaceAgentDirectoryItem | null | undefined,
+  saved: WorkspaceAgentDirectoryItem | null,
+): WorkspaceAgentDirectoryItem | null {
+  if (!live) return live === null ? null : saved
+  return saved && saved.updatedAt > live.updatedAt ? saved : live
 }

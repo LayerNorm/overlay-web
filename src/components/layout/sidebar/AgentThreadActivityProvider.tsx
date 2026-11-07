@@ -2,7 +2,7 @@
 
 import { createContext, useContext, useMemo, type ReactNode } from 'react'
 import { useQueries } from '@/components/providers/convex-hooks'
-import { useConvexAuthConfiguration, useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
+import { useHasConvexClient, useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import type { ThreadActivity } from '@/shared/agents/thread-activity'
@@ -35,7 +35,7 @@ function ConvexThreadActivity({ workspaceId, agentIds, children }: Props) {
 
 export function AgentThreadActivityProvider(props: Props) {
   const { appDataCapabilities } = useOverlayCapabilities()
-  const { hasConvexClient } = useConvexAuthConfiguration()
+  const hasConvexClient = useHasConvexClient()
   if (appDataCapabilities.provider !== 'convex' || !appDataCapabilities.supportsRealtime
     || !appDataCapabilities.requiresConvexClient || !hasConvexClient) return <ActivityContext.Provider value={{}}>{props.children}</ActivityContext.Provider>
   return <ConvexThreadActivity key={props.workspaceId} {...props} />

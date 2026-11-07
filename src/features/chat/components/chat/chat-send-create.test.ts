@@ -8,11 +8,7 @@ import { createNewChatForSend } from './chat-send-create'
 import type { PendingFirstSendState } from './chat-send-pending-first'
 
 test('deferred first-chat creation exposes the real id to the run lifecycle', async (t) => {
-  const createResponse = t.mock.method(
-    overlayAppClient.conversations,
-    'createResponse',
-    async () => new Response(JSON.stringify({ id: 'chat-real' }), { status: 201 }),
-  )
+  const created: Array<{ title: string; scope: string }> = []
   t.mock.method(
     overlayAppClient.chat,
     'generateTitleResponse',
@@ -48,7 +44,15 @@ test('deferred first-chat creation exposes the real id to the run lifecycle', as
     emptyRuntime: {} as ConversationRuntime,
     ensureConversationRuntime: () => ({} as ConversationRuntime),
     invalidateLoadChatRequest: () => {},
+    isCurrentScope: () => true,
     mode: 'chat',
+    nativePersonalEnabled: true,
+    nativePersonalRoute: true,
+    workspaceId: 'workspace',
+    createNativePersonalChat: async (args) => {
+      created.push({ title: args.title, scope: args.scope })
+      return 'chat-real'
+    },
     options: { clientId: 'client-1', deferActivation: true },
     pendingFirstSendRef,
     pendingScrollChatIdRef: { current: null },
@@ -59,7 +63,6 @@ test('deferred first-chat creation exposes the real id to the run lifecycle', as
     selectedModels: ['test-model'],
     setActiveChatId: () => {},
     setActiveViewer: () => {},
-    setChats: () => {},
     setInterruptedExchangeIdx: () => {},
     setIsTemporaryChat: () => {},
     setPendingRunConversationId: (id) => { pendingRunConversationIds.push(id) },
@@ -73,8 +76,55 @@ test('deferred first-chat creation exposes the real id to the run lifecycle', as
   assert.equal(isConversationScopeVerified('personal:chat-real'), true)
   assert.equal(pending.realChatId, 'chat-real')
   assert.deepEqual(pendingRunConversationIds, ['chat-real'])
-  assert.equal(createResponse.mock.calls[0]?.arguments[0].title, 'Generated first-message title')
-  assert.equal(createResponse.mock.callCount(), 1)
+  assert.deepEqual(created, [{ title: 'Generated first-message title', scope: 'personal' }])
+})
+
+test('a native first turn publishes its durable URL before the stream finishes', async () => {
+  const pending: PendingFirstSendState = {
+    conversationClientId: 'client-native',
+    previewRuntime: {} as ConversationRuntime,
+    streamDone: false,
+    realChatId: null,
+    wasFirst: true,
+    renameStarted: false,
+    renameSeed: 'seed',
+    activeChatTitleSnapshot: null,
+  }
+  const urls: Array<string | null> = []
+  let activationAttempts = 0
+  await createNewChatForSend({
+    activeChatIdRef: { current: null },
+    applyUiStateToView: () => {},
+    clearTransientComposerState: () => {},
+    emptyRuntime: {} as ConversationRuntime,
+    ensureConversationRuntime: () => ({} as ConversationRuntime),
+    invalidateLoadChatRequest: () => {},
+    isCurrentScope: () => true,
+    mode: 'chat',
+    nativePersonalEnabled: true,
+    nativePersonalRoute: true,
+    options: { clientId: 'client-native', deferActivation: true, persistedChatId: 'chat-native' },
+    pendingFirstSendRef: { current: pending },
+    pendingScrollChatIdRef: { current: null },
+    pendingScrollTurnIdRef: { current: null },
+    persistActiveRuntimeUiState: () => {},
+    resetComposerToolIds: () => {},
+    selectedActModel: 'test-model',
+    selectedModels: ['test-model'],
+    setActiveChatId: () => {},
+    setActiveViewer: () => {},
+    setInterruptedExchangeIdx: () => {},
+    setIsTemporaryChat: () => {},
+    setPendingRunConversationId: () => {},
+    setRuntimeHydrationVersion: () => {},
+    syncStandaloneChatUrl: (id) => { urls.push(id) },
+    startFirstMessageRename: () => {},
+    tryActivatePendingFirstSend: () => { activationAttempts += 1 },
+  })
+  assert.deepEqual(urls, ['chat-native'])
+  assert.equal(pending.realChatId, 'chat-native')
+  assert.equal(pending.streamDone, false)
+  assert.equal(activationAttempts, 1)
 })
 
 test('new chat creation follows Workspace path scope over conflicting view query', async () => {
@@ -86,13 +136,7 @@ test('new chat creation follows Workspace path scope over conflicting view query
       dispatchEvent: () => true,
     },
   })
-  const client = overlayAppClient.conversations
-  const originalCreateResponse = client.createResponse
-  let createInput: Parameters<typeof originalCreateResponse>[0] | undefined
-  client.createResponse = (async (input) => {
-    createInput = input
-    return new Response(JSON.stringify({ id: 'chat-created' }), { status: 201 })
-  }) as typeof originalCreateResponse
+  let createdScope: string | undefined
   try {
     await createNewChatForSend({
       activeChatIdRef: { current: null },
@@ -101,7 +145,15 @@ test('new chat creation follows Workspace path scope over conflicting view query
       emptyRuntime: {} as ConversationRuntime,
       ensureConversationRuntime: () => ({} as ConversationRuntime),
       invalidateLoadChatRequest: () => undefined,
+      isCurrentScope: () => true,
       mode: 'chat',
+      nativePersonalEnabled: true,
+      nativePersonalRoute: true,
+      workspaceId: 'workspace',
+      createNativePersonalChat: async (args) => {
+        createdScope = args.scope
+        return 'chat-created'
+      },
       options: { deferActivation: true },
       pendingFirstSendRef: { current: null },
       pendingScrollChatIdRef: { current: null },
@@ -112,7 +164,6 @@ test('new chat creation follows Workspace path scope over conflicting view query
       selectedModels: ['model'],
       setActiveChatId: () => undefined,
       setActiveViewer: () => undefined,
-      setChats: () => undefined,
       setInterruptedExchangeIdx: () => undefined,
       setIsTemporaryChat: () => undefined,
       setPendingRunConversationId: () => undefined,
@@ -121,10 +172,9 @@ test('new chat creation follows Workspace path scope over conflicting view query
       startFirstMessageRename: () => undefined,
       tryActivatePendingFirstSend: () => undefined,
     })
-    assert.equal(createInput?.scope, 'workspace')
+    assert.equal(createdScope, 'workspace')
     assert.equal(isConversationScopeVerified('workspace:chat-created'), true)
   } finally {
-    client.createResponse = originalCreateResponse
     if (originalWindow === undefined) delete (globalThis as typeof globalThis & { window?: Window }).window
     else Object.defineProperty(globalThis, 'window', { configurable: true, value: originalWindow })
   }

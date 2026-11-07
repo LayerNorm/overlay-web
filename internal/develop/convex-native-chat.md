@@ -15,9 +15,8 @@ none is implemented by the harness.
 CN-06 browser lifecycle reads use the public, viewer/workspace/conversation-
 scoped `chat/personal:getExecution` projection. The browser does not replace
 agent admission, billing, approval/input authority or streaming with a local
-run cache. Exact server-owned list, transcript and execution readiness markers
-gate native ownership; an unavailable native query stays unavailable rather
-than falling back to HTTP after the gate succeeds.
+run cache. Native ownership is unconditional; an unavailable native query stays
+unavailable rather than falling back to HTTP.
 
 Use the isolated current-head PR Preview. Follow [Preview QA](./worktree-staging-qa.md)
 to verify the READY deployment SHA and its exact PR-scoped Convex backend before
@@ -163,6 +162,42 @@ policy suppresses file metadata without suppressing text history.
 and `files.by_userId_conversationId_turnId` are additive. Roll back browser
 ownership before removing any of them; keep the fields and indexes through
 rollout rollback, with no backfill requirement.
+
+### Which chats are native
+
+Every AI chat rendered by `ChatExperience` is native: personal chats, chats filed under
+Workspace, and automation threads. They are owner-only, so "Workspace" is where a chat is
+filed, not a sharing rule. `nativePersonalChatScope` allows the owner and reports `kind`.
+It excludes agent threads, DMs, channels and external surfaces, which keep their own rules.
+`chat/personal:list` takes the sidebar scope and never returns automation threads. Personal
+chats do not show workspace-filed outputs; workspace and automation chats do.
+
+| Operation | Path | Why |
+| --- | --- | --- |
+| List, transcript, run state, send, rename, archive, read, delete turn, branch, generated UI edits, media notes | Convex `chat/personal:*` | Shared state, updates every client |
+| Model execution and streaming | `conversations/act` | Server work |
+| Stop, approval and input response | `conversations/stop`, `run/approval`, `run/input` | They abort provider calls and resume durable workflows; status returns through `getExecution` |
+| Title generation, image and video generation | `generate-*` | Provider calls |
+| Permanent delete of an archived chat | `v1/conversations` DELETE | Moves with unified archive, CN-33 |
+| Retired-thread handoff and room thread safety | `v1/conversations` | Rooms only, removed by CN-08 |
+
+Temporary chats are local and unsaved. A failed native operation shows an error and never
+falls back to HTTP. Public `v1/conversations` routes stay for API and agent callers.
+
+### First turn and chat opening
+
+A native first turn publishes `?id=` as soon as `chat/personal:submit` returns, while
+its stream still owns the pending runtime. `useChatRouteController` must not load
+that ID until activation, or it would tear down the running stream. Reload then
+reopens the durable chat, and the server finishes the accepted run.
+
+Titles are still generated from the sending client. If that client goes away during
+the first turn, opening the settled chat retries once per tab. Two tabs can both
+retry; the last rename wins.
+
+Rows returned by `chat/personal:list` or `getSummary` are already authorized, so
+they skip `startConversationDetailScopeProbe`. The probe remains for unknown IDs,
+workspace chats and rooms, and it unmounts the chat surface until it finishes.
 
 ## Local checks
 

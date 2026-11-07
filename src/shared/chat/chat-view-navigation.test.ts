@@ -6,7 +6,6 @@ import {
   resolveSoftChatRoute,
   scopeForConversationDetail,
   selectConversationForView,
-  shouldSkipChatHistoryPrefetch,
 } from './chat-view-navigation'
 import { buildWorkspaceHandleHref } from '../workspaces/routing'
 
@@ -71,22 +70,4 @@ test('an authorized detail in the wrong scope redirects to its actual scoped rou
     buildWorkspaceHandleHref('team-a', '/w/team-a/personal/chat?id=dm-1', actualScope),
     '/w/team-a/workspace/chat?id=dm-1&view=workspace-chats',
   )
-})
-
-test('scoped chat routes and legacy view selectors skip untagged server prefetch', () => {
-  assert.equal(shouldSkipChatHistoryPrefetch({
-    pathScope: 'personal',
-    hasScopeQuery: false,
-    hasViewQuery: false,
-  }), true)
-  assert.equal(shouldSkipChatHistoryPrefetch({
-    pathScope: null,
-    hasScopeQuery: false,
-    hasViewQuery: true,
-  }), true)
-  assert.equal(shouldSkipChatHistoryPrefetch({
-    pathScope: null,
-    hasScopeQuery: false,
-    hasViewQuery: false,
-  }), false)
 })

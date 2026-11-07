@@ -6,6 +6,7 @@ import { buildWorkspaceHandleHref } from '@/shared/workspaces/routing'
 import {
   ConversationDetailScopeGate,
   conversationDetailRouteKey,
+  isKnownNativePersonalChat,
   markConversationScopeVerified,
   startConversationDetailScopeProbe,
   type ConversationDetailScopeStatus,
@@ -41,6 +42,21 @@ function deferred<T>() {
 function waitForProbe() {
   return new Promise<void>((resolve) => setImmediate(resolve))
 }
+
+test('known native rows skip the scope probe only under their own scope', () => {
+  const scope = 'personal' as const
+  const personal = {
+    selectedSummary: { _id: 'selected', scope },
+    active: { rows: [{ _id: 'active', scope }] },
+    archived: { rows: [{ _id: 'archived', scope }] },
+  }
+  for (const id of ['selected', 'active', 'archived']) {
+    assert.equal(isKnownNativePersonalChat(personal, 'personal', id), true)
+    assert.equal(isKnownNativePersonalChat(personal, 'workspace', id), false)
+  }
+  assert.equal(isKnownNativePersonalChat(personal, 'personal', 'unknown'), false)
+  assert.equal(isKnownNativePersonalChat(personal, 'personal', null), false)
+})
 
 test('draft collaboration details are probed before the real conversation renders', async () => {
   const params = new URLSearchParams('id=dm-1&view=dms&draft=1&title=Fresh')

@@ -434,7 +434,6 @@ export function KnowledgeViewHeaderBrowseStory() {
       onSetFileSearchQuery={() => undefined}
       onImportMemory={() => undefined}
       onNewMemory={() => undefined}
-      onRefreshOutputs={() => undefined}
       onSetMemorySearchOpen={() => undefined}
       onSetMemorySearchQuery={() => undefined}
       onSetSelectMode={() => undefined}

@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react'
 import { useConvexAuth, useQueries, type RequestForQueries } from '@/components/providers/convex-hooks'
-import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
+import { useHasConvexClient } from '@/components/providers/ConvexAuthProvider'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { agentThreadHref } from '@/components/layout/sidebar-nav'
 import { api } from '../../../../convex/_generated/api'
@@ -36,7 +36,7 @@ function AssignmentSubscription({ workspaceId, conversationId }: Props) {
 }
 
 export function AgentAssignmentSubscription(props: Props) {
-  const { hasConvexClient } = useConvexAuthConfiguration()
+  const hasConvexClient = useHasConvexClient()
   if (!hasConvexClient || !props.workspaceId) return null
   return <AssignmentSubscription key={`${props.workspaceId}:${props.conversationId}`} {...props} />
 }

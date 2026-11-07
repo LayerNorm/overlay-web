@@ -23,7 +23,6 @@ import {
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
 import type {
   AttachedImage,
-  Conversation,
   ConversationRuntime,
   ConversationUiState,
   PendingChatDocument,
@@ -73,6 +72,7 @@ export function useChatSendController({
   invalidateLoadChatRequest,
   isActiveLoading,
   createNativePersonalChat,
+  addAssistantNote,
   billingAccessNotice,
   isBudgetExhaustedPaid,
   connectionUnavailable,
@@ -81,7 +81,6 @@ export function useChatSendController({
   premiumModelBlocked,
   isTemporaryChat,
   isTemporaryChatRef,
-  loadChats,
   loadSubscription,
   nativePersonalEnabled = false,
   nativePersonalRoute = false,
@@ -90,7 +89,6 @@ export function useChatSendController({
   submitNativePersonalTurn,
   setPendingTranscriptConversation,
   onUsageExhaustedError,
-  markChatModified,
   memoryEnabled,
   mentions,
   mode,
@@ -115,7 +113,6 @@ export function useChatSendController({
   setActiveViewer,
   setAttachedImages,
   setAttachmentError,
-  setChats,
   setComposerNotice,
   setGenerationChip,
   setInput,
@@ -160,6 +157,7 @@ export function useChatSendController({
   invalidateLoadChatRequest: () => void
   isActiveLoading: boolean
   createNativePersonalChat?: Parameters<typeof createNewChatForSend>[0]['createNativePersonalChat']
+  addAssistantNote?: (chatId: string, turnId: string, text: string) => Promise<void>
   billingAccessNotice: string | null
   isBudgetExhaustedPaid: boolean
   connectionUnavailable: boolean
@@ -168,7 +166,6 @@ export function useChatSendController({
   premiumModelBlocked: boolean
   isTemporaryChat: boolean
   isTemporaryChatRef: MutableRefObject<boolean>
-  loadChats: () => Promise<void>
   loadSubscription: () => Promise<unknown>
   nativePersonalEnabled?: boolean
   nativePersonalRoute?: boolean
@@ -177,7 +174,6 @@ export function useChatSendController({
   submitNativePersonalTurn?: Parameters<typeof sendTextTurn>[0]['submitNativePersonalTurn']
   setPendingTranscriptConversation?: Parameters<typeof sendTextTurn>[0]['setPendingTranscriptConversation']
   onUsageExhaustedError: (message: string) => boolean
-  markChatModified: (chatId: string, titleSnapshot?: string | null, nativePersonalOwner?: boolean) => void
   memoryEnabled: boolean
   mentions: MentionItem[]
   mode: 'chat' | 'automate'
@@ -207,7 +203,6 @@ export function useChatSendController({
   setActiveViewer: (chatId: string | null) => void
   setAttachedImages: Dispatch<SetStateAction<AttachedImage[]>>
   setAttachmentError: (error: string | null) => void
-  setChats: Dispatch<SetStateAction<Conversation[]>>
   setComposerNotice: Dispatch<SetStateAction<string | null>>
   setGenerationChip: (chip: 'image' | 'video' | null) => void
   setInput: (input: string) => void
@@ -264,7 +259,6 @@ export function useChatSendController({
       activeChatIdRef,
       applyUiStateToView,
       emptyRuntime: emptyRuntimeRef.current,
-      markChatModified,
       pendingFirstSendRef,
       replaceConversationRuntime,
       setActiveChatId,
@@ -278,7 +272,6 @@ export function useChatSendController({
     activeChatIdRef,
     applyUiStateToView,
     emptyRuntimeRef,
-    markChatModified,
     pendingFirstSendRef,
     replaceConversationRuntime,
     setActiveChatId,
@@ -313,7 +306,6 @@ export function useChatSendController({
       selectedModels,
       setActiveChatId,
       setActiveViewer,
-      setChats,
       setInterruptedExchangeIdx,
       setIsTemporaryChat,
       setPendingRunConversationId,
@@ -344,7 +336,6 @@ export function useChatSendController({
     selectedModels,
     setActiveChatId,
     setActiveViewer,
-    setChats,
     setInterruptedExchangeIdx,
     setIsTemporaryChat,
     setPendingRunConversationId,
@@ -502,7 +493,6 @@ export function useChatSendController({
           isSendBlocked,
           isFirstMessage,
           isTemporaryChatRef,
-          loadChats,
           loadSubscription,
           nativePersonalEnabled,
           nativePersonalRoute,
@@ -510,11 +500,11 @@ export function useChatSendController({
           nativeWorkspaceId,
           submitNativePersonalTurn,
           setPendingTranscriptConversation,
+          addAssistantNote,
           isCurrentScope: isCurrentSendScope,
           isStreamChatActive,
           pendingFirstSendRef,
           completeSessionForStream,
-          markChatModified,
           pendingScrollChatIdRef,
           pendingScrollTurnIdRef,
           replyContext: replyCtxSnapshot,
@@ -548,7 +538,6 @@ export function useChatSendController({
         isFirstMessage,
         isCurrentScope: isCurrentSendScope,
         isStreamChatActive,
-        loadChats,
         loadSubscription,
         nativePersonalEnabled,
         nativePersonalRoute,
@@ -557,7 +546,6 @@ export function useChatSendController({
         submitNativePersonalTurn,
         setPendingTranscriptConversation,
         onUsageExhaustedError,
-        markChatModified,
         pendingFirstSendRef,
         pendingScrollChatIdRef,
         pendingScrollTurnIdRef,
@@ -577,6 +565,7 @@ export function useChatSendController({
       restoreFailedSubmission()
     }
   }, [
+    addAssistantNote,
     nativeThreadReadOnly,
     ensureWritable,
     isCurrentScope,
@@ -604,7 +593,6 @@ export function useChatSendController({
     isStreamChatActive,
     isTemporaryChat,
     isTemporaryChatRef,
-    loadChats,
     loadSubscription,
     nativePersonalEnabled,
     nativePersonalRoute,
@@ -613,7 +601,6 @@ export function useChatSendController({
     submitNativePersonalTurn,
     setPendingTranscriptConversation,
     onUsageExhaustedError,
-    markChatModified,
     memoryEnabled,
     mentions,
     mode,

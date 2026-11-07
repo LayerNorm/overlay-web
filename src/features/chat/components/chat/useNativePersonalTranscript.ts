@@ -10,9 +10,32 @@ import {
   isTerminalAgentRunStatus,
   type AgentRunStatus,
 } from '@/shared/agents/agent-run'
+import { isPlaceholderChatTitle } from '@/shared/chat/chat-title'
 import { PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
 
 const activeRunStatuses = new Set<string>(ACTIVE_AGENT_RUN_STATUSES)
+
+/**
+ * Title generation starts in the sending tab, so a reload during the first turn can
+ * lose it. Returns the first prompt when a settled chat still has a placeholder title.
+ */
+export function nativeTitleRecoverySeed({ title, turnActive, status, messages }: {
+  title: string | null | undefined
+  turnActive: boolean
+  status: string
+  messages: ReadonlyArray<{ role: string; createdAt: number; parts?: ReadonlyArray<{ type: string; text?: unknown }> }>
+}): string | null {
+  if (turnActive || status !== 'ready' || !isPlaceholderChatTitle(title)) return null
+  let firstUser: (typeof messages)[number] | null = null
+  for (const message of messages) {
+    if (message.role === 'user' && (!firstUser || message.createdAt < firstUser.createdAt)) firstUser = message
+  }
+  const text = firstUser?.parts
+    ?.flatMap((part) => (part.type === 'text' && typeof part.text === 'string' ? [part.text] : []))
+    .join(' ')
+    .trim()
+  return text || null
+}
 
 function sdkResponsesForTurn(messages: readonly UIMessage[], turn: PersonalPendingTurn) {
   const exact = messages.filter((message) => {
@@ -226,13 +249,13 @@ export function buildNativeTranscriptView(
   }
 }
 
-export function selectNativePersonalScope({ nativePersonalRoute, isTemporaryChat, hasAutomationContext,
+export function selectNativePersonalScope({ nativePersonalRoute, isTemporaryChat,
   activeChatId, isNativePersonalChat, pendingRunConversationId, pendingTurns, personal, selectedModels, selectedActModel }: {
-  nativePersonalRoute: boolean; isTemporaryChat: boolean; hasAutomationContext: boolean;
+  nativePersonalRoute: boolean; isTemporaryChat: boolean;
   activeChatId: string | null; isNativePersonalChat(id: string): boolean; pendingRunConversationId: string | null;
   pendingTurns: number; personal: ReturnType<typeof usePersonalChat>; selectedModels: string[]; selectedActModel: string;
 }) {
-  const enabled = nativePersonalRoute && !isTemporaryChat && !hasAutomationContext
+  const enabled = nativePersonalRoute && !isTemporaryChat
   const selectedConversationId = personal.selectedConversationId
   const pendingFirst = activeChatId === PENDING_FIRST_CHAT_ID || activeChatId === null
   const active = enabled && Boolean(selectedConversationId

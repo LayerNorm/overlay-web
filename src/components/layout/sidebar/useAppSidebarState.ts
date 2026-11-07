@@ -47,6 +47,7 @@ import {
 } from './appSidebarNav'
 import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
 import { resolveRecentChatHref } from './chatPanelNav'
+import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import {
@@ -186,7 +187,8 @@ function useSidebarNavInteractions(args: {
     activeWorkspaceId,
     buildWorkspaceHref,
   })
-  const recentChatHref = (baseHref: string) => resolveRecentChatHref(baseHref, routeState.scope)
+  const { findRecentChat } = usePersonalChat()
+  const recentChatHref = (baseHref: string) => resolveRecentChatHref(baseHref, routeState.scope, findRecentChat)
   const onSelectNavItem = (item: SidebarNavItem) => selectSidebarNavItem(item, {
     isGuestConfirmed,
 
@@ -265,6 +267,7 @@ function useSidebarPanelChrome(args: {
   automationsEnabled: boolean
   setPendingNav: Dispatch<SetStateAction<{ href: string; fromPath: string } | null>>
 }) {
+  const { findRecentChat } = usePersonalChat()
   const {
     routeState,
     pathname,
@@ -404,7 +407,7 @@ function useSidebarPanelChrome(args: {
     navItemDestination,
     navItemActive: isNavItemActive,
     onSelectItem: onSelectNavItem,
-    recentChatHref: (baseHref: string) => resolveRecentChatHref(baseHref, routeState.scope),
+    recentChatHref: (baseHref: string) => resolveRecentChatHref(baseHref, routeState.scope, findRecentChat),
   })
   const railFooterItems: PrimaryRailItem[] = []
   const mobileNavItems = resolveMobileNavItems(navItems, {

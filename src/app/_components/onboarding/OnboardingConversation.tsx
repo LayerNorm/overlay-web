@@ -8,7 +8,6 @@ import { useAuth } from '@/contexts/AuthContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { AGENT_TOOL_PRESETS, toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
-import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import type { OnboardingAction, OnboardingEmployee, OnboardingSession, OnboardingSessionResponse } from '@/shared/onboarding/session'
 import { onboardingChoices, onboardingProfileSteps } from '@/shared/onboarding/session'
 import { onboardingRequestInit, requestOnboarding } from './onboarding-client'
@@ -113,7 +112,6 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
         }, onboardingRequestInit(session, `employee-${index}`))
         agentIds.push(result.agent.id)
       }
-      dispatchAgentDirectoryChanged(session.workspaceId)
       await advance({ agentIds })
     })
   }

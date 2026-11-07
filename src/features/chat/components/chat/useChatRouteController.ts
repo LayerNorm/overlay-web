@@ -229,8 +229,10 @@ export function useChatRouteController({
     // canonical automationConversationId effect below is allowed to hydrate it.
     if (mode === 'automate' && automationIdParam) return
     if (!idParam || activeChatIdRef.current === idParam) return
+    // The first turn's URL is set while its stream still owns the pending runtime.
+    if (pendingFirstSendRef.current?.realChatId === idParam) return
     void loadChatRef.current?.(idParam, { replaceUrl: false })
-  }, [activeChatIdRef, automationIdParam, chatPrefsHydrated, idParam, mode])
+  }, [activeChatIdRef, automationIdParam, chatPrefsHydrated, idParam, mode, pendingFirstSendRef])
 
   useEffect(() => {
     function handleChatRouteSelected(event: Event) {

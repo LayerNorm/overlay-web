@@ -5,7 +5,8 @@ import { recordFileEdit } from '../lib/growthFileEdits'
 import { Doc, Id } from '../_generated/dataModel'
 import { internal } from '../_generated/api'
 import { selectNoteClientIdCandidate } from '../../src/shared/knowledge/note-client-id'
-import { mutation, query, type QueryCtx } from '../_generated/server'
+import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
+import type { ObjectType } from 'convex/values'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { applyStorageUsageDelta, ensureStorageAvailable } from './lib/storageQuota'
 import { assertOwnedFileR2Key, isOwnedFileR2Key, isOwnedOutputR2Key } from '../../src/shared/storage/storage-keys'
@@ -152,6 +153,22 @@ function previewTextOf(value: string): string {
     .replace(/\n{3,}/g, '\n\n')
     .trim()
     .slice(0, FILE_PREVIEW_CHARS)
+}
+
+/** What a browser may see of a file in a list: no text, and no storage internals. */
+export function browserFileSummary(file: Doc<'files'>) {
+  const { r2Key: _r2Key, storageId: _storageId, ...summary } = normalizeFileSummary(file)
+  void _r2Key
+  void _storageId
+  return summary
+}
+
+/** One file for a browser viewer: inline text included, storage internals left out. */
+export function browserFile(file: Doc<'files'>) {
+  const { r2Key: _r2Key, storageId: _storageId, ...detail } = normalizeFile(file)
+  void _r2Key
+  void _storageId
+  return detail
 }
 
 function normalizeFileSummary(file: Doc<'files'>) {
@@ -1083,168 +1100,179 @@ export const createExtractedDocument = mutation({
   },
 })
 
+const updateArgs = {
+  userId: v.string(),
+  workspaceId: v.optional(v.string()),
+  accessToken: v.optional(v.string()),
+  serverSecret: v.optional(v.string()),
+  fileId: v.id('files'),
+  name: v.optional(v.string()),
+  tags: v.optional(v.array(v.string())),
+  textInObjectStore: v.optional(v.boolean()),
+  content: v.optional(v.string()),
+  textContent: v.optional(v.string()),
+  contentHash: v.optional(v.string()),
+  parentId: v.optional(v.union(v.string(), v.null())),
+  indexStatus: v.optional(v.union(
+    v.literal('pending'),
+    v.literal('indexed'),
+    v.literal('skipped'),
+    v.literal('failed'),
+  )),
+  indexError: v.optional(v.string()),
+  r2Key: v.optional(v.string()),
+  mimeType: v.optional(v.string()),
+  sizeBytes: v.optional(v.number()),
+  modelId: v.optional(v.string()),
+  outputType: v.optional(v.string()),
+  outputSource: v.optional(v.union(
+    v.literal('image_generation'),
+    v.literal('video_generation'),
+    v.literal('browser'),
+    v.literal('sandbox'),
+  )),
+  outputStatus: v.optional(v.union(
+    v.literal('pending'),
+    v.literal('completed'),
+    v.literal('failed'),
+  )),
+  outputUrl: v.optional(v.string()),
+  outputMetadata: v.optional(v.any()),
+  outputErrorMessage: v.optional(v.string()),
+  outputCompletedAt: v.optional(v.number()),
+  expiresAt: v.optional(v.number()),
+  expectedUpdatedAt: v.optional(v.number()),
+  /** An agent or outside app made the change: counted as an edit, credited to no person. */
+  byAgent: v.optional(v.boolean()),
+}
+
 export const update = mutation({
-  args: {
-    userId: v.string(),
-    workspaceId: v.optional(v.string()),
-    accessToken: v.optional(v.string()),
-    serverSecret: v.optional(v.string()),
-    fileId: v.id('files'),
-    name: v.optional(v.string()),
-    tags: v.optional(v.array(v.string())),
-    textInObjectStore: v.optional(v.boolean()),
-    content: v.optional(v.string()),
-    textContent: v.optional(v.string()),
-    contentHash: v.optional(v.string()),
-    parentId: v.optional(v.union(v.string(), v.null())),
-    indexStatus: v.optional(v.union(
-      v.literal('pending'),
-      v.literal('indexed'),
-      v.literal('skipped'),
-      v.literal('failed'),
-    )),
-    indexError: v.optional(v.string()),
-    r2Key: v.optional(v.string()),
-    mimeType: v.optional(v.string()),
-    sizeBytes: v.optional(v.number()),
-    modelId: v.optional(v.string()),
-    outputType: v.optional(v.string()),
-    outputSource: v.optional(v.union(
-      v.literal('image_generation'),
-      v.literal('video_generation'),
-      v.literal('browser'),
-      v.literal('sandbox'),
-    )),
-    outputStatus: v.optional(v.union(
-      v.literal('pending'),
-      v.literal('completed'),
-      v.literal('failed'),
-    )),
-    outputUrl: v.optional(v.string()),
-    outputMetadata: v.optional(v.any()),
-    outputErrorMessage: v.optional(v.string()),
-    outputCompletedAt: v.optional(v.number()),
-    expiresAt: v.optional(v.number()),
-    expectedUpdatedAt: v.optional(v.number()),
-    /** An agent or outside app made the change: counted as an edit, credited to no person. */
-    byAgent: v.optional(v.boolean()),
-  },
+  args: updateArgs,
   returns: v.null(),
-  handler: async (ctx, { userId: callerId, workspaceId, accessToken, serverSecret, fileId, byAgent, ...updates }) => {
-    await authorizeUserAccess({ userId: callerId, accessToken, serverSecret })
-    const existing = await ctx.db.get(fileId)
-    if (!existing || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, callerId).canEdit(existing))) throw new Error('Unauthorized')
-    // Storage, keys, and indexing belong to the file's owner, even when an admin edits a workspace-scoped file.
-    const userId = existing.userId
-    if (updates.expectedUpdatedAt !== undefined && existing.updatedAt !== updates.expectedUpdatedAt) {
-      throw new ConvexError('NOTE_REVISION_CONFLICT')
-    }
-    if (updates.parentId !== undefined) {
-      await assertParentAndProject(ctx, {
-        fileId,
-        userId,
-        parentId: updates.parentId === null ? undefined : updates.parentId,
-      })
-    }
-
-    const kind = inferKind(existing)
-    const existingText = textOf(existing)
-    const nextText = updates.textContent ?? updates.content
-    const blobOnly = (existing.storageId || existing.r2Key) && !existingText.trim()
-    if (blobOnly && nextText !== undefined && kind !== 'output') {
-      throw new Error('Storage-backed files cannot be edited inline.')
-    }
-    const patch: Record<string, unknown> = { updatedAt: Date.now() }
-    if (updates.name !== undefined) {
-      patch.name = fileName(kind, updates.name)
-      patch.extension = extensionOf(updates.name)
-    }
-    if (updates.tags !== undefined && kind === 'note') patch.tags = noteTags(updates.tags)
-    if (updates.parentId !== undefined) patch.parentId = updates.parentId || undefined
-    if (updates.indexStatus !== undefined) patch.indexStatus = updates.indexStatus
-    if (updates.indexError !== undefined) patch.indexError = updates.indexError
-    const textInObjectStore = updates.textInObjectStore ?? existing.textInObjectStore ?? false
-    if (updates.r2Key !== undefined) {
-      // Outputs point at their own keys; a text file whose full text lives in
-      // object storage points at its owner's file key.
-      const allowedKey = isOwnedOutputR2Key(userId, updates.r2Key)
-        || (textInObjectStore && isOwnedFileR2Key(userId, updates.r2Key))
-      if (updates.r2Key && !allowedKey) throw new Error('Invalid storage key')
-      patch.r2Key = updates.r2Key || undefined
-    }
-    if (updates.textInObjectStore !== undefined) patch.textInObjectStore = updates.textInObjectStore || undefined
-    if (updates.mimeType !== undefined) patch.mimeType = updates.mimeType
-    if (updates.sizeBytes !== undefined) patch.sizeBytes = updates.sizeBytes
-    if (updates.modelId !== undefined) patch.modelId = updates.modelId
-    if (updates.outputType !== undefined) patch.outputType = updates.outputType
-    if (updates.outputSource !== undefined) patch.outputSource = updates.outputSource
-    if (updates.outputStatus !== undefined) patch.outputStatus = updates.outputStatus
-    if (updates.outputUrl !== undefined) patch.outputUrl = updates.outputUrl
-    if (updates.outputMetadata !== undefined) patch.outputMetadata = updates.outputMetadata
-    if (updates.outputErrorMessage !== undefined) patch.outputErrorMessage = updates.outputErrorMessage
-    if (updates.outputCompletedAt !== undefined) patch.outputCompletedAt = updates.outputCompletedAt
-    if (updates.expiresAt !== undefined) patch.expiresAt = updates.expiresAt
-
-    let shouldReindex = false
-    let shouldPurge = false
-    let storageDelta = 0
-    if (updates.sizeBytes !== undefined && nextText === undefined) {
-      const previousSizeBytes = existing.sizeBytes ?? 0
-      storageDelta = shouldCountStorage(kind, existing.type, updates.sizeBytes)
-        ? updates.sizeBytes - previousSizeBytes
-        : 0
-      if (storageDelta > 0) await ensureStorageAvailable(ctx as never, userId, storageDelta)
-    }
-    if (nextText !== undefined) {
-      // For text in object storage `content` is only a prefix; the caller passes the full size.
-      const nextSizeBytes = textInObjectStore && updates.sizeBytes !== undefined
-        ? updates.sizeBytes
-        : utf8ByteLength(nextText)
-      const previousSizeBytes = existing.sizeBytes ?? utf8ByteLength(existingText)
-      storageDelta = shouldCountStorage(kind, existing.type, nextSizeBytes)
-        ? nextSizeBytes - previousSizeBytes
-        : 0
-      if (storageDelta > 0) await ensureStorageAvailable(ctx as never, userId, storageDelta)
-      const indexable = isTextIndexable(kind, nextText)
-      const canonicalDuplicate =
-        indexable && updates.contentHash
-          ? await findCanonicalDuplicate(ctx as never, userId, updates.contentHash, fileId)
-          : null
-      patch.content = nextText
-      // Text kept in object storage sends only a prefix as `content`, so its full-text hash decides.
-      const textChanged = updates.contentHash && existing.contentHash
-        ? updates.contentHash !== existing.contentHash
-        : nextText !== existingText
-      if (kind !== 'output' && textChanged) {
-        await recordFileEdit(ctx, fileId, byAgent ? undefined : callerId, patch.updatedAt as number)
-      }
-      // Legacy rows can still carry textContent, which readers prefer over
-      // content. Remove it when writing canonical text so it cannot mask a save.
-      patch.textContent = undefined
-      patch.sizeBytes = nextSizeBytes
-      patch.contentHash = updates.contentHash
-      patch.duplicateOfFileId = canonicalDuplicate?._id
-      patch.indexable = indexable
-      patch.indexStatus = indexable && !canonicalDuplicate ? 'pending' : 'skipped'
-      patch.indexError = undefined
-      shouldPurge = true
-      shouldReindex = indexable && !canonicalDuplicate
-    }
-    await ctx.db.patch(fileId, patch)
-    if (storageDelta !== 0) await applyStorageUsageDelta(ctx as never, userId, storageDelta)
-    if (existing.type === 'file' && shouldPurge) {
-      await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
-        sourceKind: 'file',
-        sourceId: fileId,
-        userId,
-      })
-    }
-    if (shouldReindex) {
-      await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId })
-    }
+  handler: async (ctx, { accessToken, serverSecret, ...args }) => {
+    await authorizeUserAccess({ userId: args.userId, accessToken, serverSecret })
+    await updateFileFor(ctx, args)
     return null
   },
 })
+
+/** Applies a metadata or text update the caller (already authenticated as `userId`) may make. */
+export async function updateFileFor(
+  ctx: MutationCtx,
+  { userId: callerId, workspaceId, fileId, byAgent, ...updates }: Omit<ObjectType<typeof updateArgs>, 'accessToken' | 'serverSecret'>,
+) {
+  const existing = await ctx.db.get(fileId)
+  if (!existing || existing.deletedAt || (workspaceId !== undefined && existing.workspaceId !== workspaceId) || !(await scopeContextLoader(ctx, callerId).canEdit(existing))) throw new Error('Unauthorized')
+  // Storage, keys, and indexing belong to the file's owner, even when an admin edits a workspace-scoped file.
+  const userId = existing.userId
+  if (updates.expectedUpdatedAt !== undefined && existing.updatedAt !== updates.expectedUpdatedAt) {
+    throw new ConvexError('NOTE_REVISION_CONFLICT')
+  }
+  if (updates.parentId !== undefined) {
+    await assertParentAndProject(ctx, {
+      fileId,
+      userId,
+      workspaceId: existing.workspaceId,
+      parentId: updates.parentId === null ? undefined : updates.parentId,
+    })
+  }
+
+  const kind = inferKind(existing)
+  const existingText = textOf(existing)
+  const nextText = updates.textContent ?? updates.content
+  const blobOnly = (existing.storageId || existing.r2Key) && !existingText.trim()
+  if (blobOnly && nextText !== undefined && kind !== 'output') {
+    throw new Error('Storage-backed files cannot be edited inline.')
+  }
+  const patch: Record<string, unknown> = { updatedAt: Date.now() }
+  if (updates.name !== undefined) {
+    patch.name = fileName(kind, updates.name)
+    patch.extension = extensionOf(updates.name)
+  }
+  if (updates.tags !== undefined && kind === 'note') patch.tags = noteTags(updates.tags)
+  if (updates.parentId !== undefined) patch.parentId = updates.parentId || undefined
+  if (updates.indexStatus !== undefined) patch.indexStatus = updates.indexStatus
+  if (updates.indexError !== undefined) patch.indexError = updates.indexError
+  const textInObjectStore = updates.textInObjectStore ?? existing.textInObjectStore ?? false
+  if (updates.r2Key !== undefined) {
+    // Outputs point at their own keys; a text file whose full text lives in
+    // object storage points at its owner's file key.
+    const allowedKey = isOwnedOutputR2Key(userId, updates.r2Key)
+      || (textInObjectStore && isOwnedFileR2Key(userId, updates.r2Key))
+    if (updates.r2Key && !allowedKey) throw new Error('Invalid storage key')
+    patch.r2Key = updates.r2Key || undefined
+  }
+  if (updates.textInObjectStore !== undefined) patch.textInObjectStore = updates.textInObjectStore || undefined
+  if (updates.mimeType !== undefined) patch.mimeType = updates.mimeType
+  if (updates.sizeBytes !== undefined) patch.sizeBytes = updates.sizeBytes
+  if (updates.modelId !== undefined) patch.modelId = updates.modelId
+  if (updates.outputType !== undefined) patch.outputType = updates.outputType
+  if (updates.outputSource !== undefined) patch.outputSource = updates.outputSource
+  if (updates.outputStatus !== undefined) patch.outputStatus = updates.outputStatus
+  if (updates.outputUrl !== undefined) patch.outputUrl = updates.outputUrl
+  if (updates.outputMetadata !== undefined) patch.outputMetadata = updates.outputMetadata
+  if (updates.outputErrorMessage !== undefined) patch.outputErrorMessage = updates.outputErrorMessage
+  if (updates.outputCompletedAt !== undefined) patch.outputCompletedAt = updates.outputCompletedAt
+  if (updates.expiresAt !== undefined) patch.expiresAt = updates.expiresAt
+
+  let shouldReindex = false
+  let shouldPurge = false
+  let storageDelta = 0
+  if (updates.sizeBytes !== undefined && nextText === undefined) {
+    const previousSizeBytes = existing.sizeBytes ?? 0
+    storageDelta = shouldCountStorage(kind, existing.type, updates.sizeBytes)
+      ? updates.sizeBytes - previousSizeBytes
+      : 0
+    if (storageDelta > 0) await ensureStorageAvailable(ctx as never, userId, storageDelta)
+  }
+  if (nextText !== undefined) {
+    // For text in object storage `content` is only a prefix; the caller passes the full size.
+    const nextSizeBytes = textInObjectStore && updates.sizeBytes !== undefined
+      ? updates.sizeBytes
+      : utf8ByteLength(nextText)
+    const previousSizeBytes = existing.sizeBytes ?? utf8ByteLength(existingText)
+    storageDelta = shouldCountStorage(kind, existing.type, nextSizeBytes)
+      ? nextSizeBytes - previousSizeBytes
+      : 0
+    if (storageDelta > 0) await ensureStorageAvailable(ctx as never, userId, storageDelta)
+    const indexable = isTextIndexable(kind, nextText)
+    const canonicalDuplicate =
+      indexable && updates.contentHash
+        ? await findCanonicalDuplicate(ctx as never, userId, updates.contentHash, fileId)
+        : null
+    patch.content = nextText
+    // Text kept in object storage sends only a prefix as `content`, so its full-text hash decides.
+    const textChanged = updates.contentHash && existing.contentHash
+      ? updates.contentHash !== existing.contentHash
+      : nextText !== existingText
+    if (kind !== 'output' && textChanged) {
+      await recordFileEdit(ctx, fileId, byAgent ? undefined : callerId, patch.updatedAt as number)
+    }
+    // Legacy rows can still carry textContent, which readers prefer over
+    // content. Remove it when writing canonical text so it cannot mask a save.
+    patch.textContent = undefined
+    patch.sizeBytes = nextSizeBytes
+    patch.contentHash = updates.contentHash
+    patch.duplicateOfFileId = canonicalDuplicate?._id
+    patch.indexable = indexable
+    patch.indexStatus = indexable && !canonicalDuplicate ? 'pending' : 'skipped'
+    patch.indexError = undefined
+    shouldPurge = true
+    shouldReindex = indexable && !canonicalDuplicate
+  }
+  await ctx.db.patch(fileId, patch)
+  if (storageDelta !== 0) await applyStorageUsageDelta(ctx as never, userId, storageDelta)
+  if (existing.type === 'file' && shouldPurge) {
+    await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+      sourceKind: 'file',
+      sourceId: fileId,
+      userId,
+    })
+  }
+  if (shouldReindex) {
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexFileInternal, { fileId })
+  }
+}
 
 export const remove = mutation({
   args: {

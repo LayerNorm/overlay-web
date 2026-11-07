@@ -3,14 +3,12 @@ import { createIdempotencyKey } from '@overlay/api-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
-import { dispatchChatCreated, isPlaceholderChatTitle } from '@/shared/chat/chat-title'
-import { upsertCachedChat } from '@/shared/chat/chat-list-cache'
+import { isPlaceholderChatTitle } from '@/shared/chat/chat-title'
 import { DEFAULT_CHAT_TITLE } from '../chat-interface/constants'
 import { legacyWorkspaceScopeForRoute, readWorkspacePathScope } from '@/shared/workspaces/routing'
 import { peekResolvedTitle } from '@/features/chat/lib/generate-title'
 import { markConversationScopeVerified } from '../conversationScopeVerification'
 import type {
-  Conversation,
   ConversationRuntime,
   ConversationUiState,
 } from '../chat-interface/types'
@@ -55,6 +53,7 @@ function newChatTitle(
     : options.title!
 }
 
+/** Rooms hand off retired threads to a new chat. Removed with the room migration, CN-08. */
 export async function createHandoffConversation({
   workspaceId,
   title,
@@ -101,7 +100,6 @@ export async function createNewChatForSend({
   selectedModels,
   setActiveChatId,
   setActiveViewer,
-  setChats,
   setInterruptedExchangeIdx,
   setIsTemporaryChat,
   setPendingRunConversationId,
@@ -126,6 +124,7 @@ export async function createNewChatForSend({
     askModelIds: string[]
     actModelId: string
     lastMode: 'act'
+    scope: 'personal' | 'workspace'
   }) => Promise<string>
   nativePersonalEnabled?: boolean
   nativePersonalRoute?: boolean
@@ -139,7 +138,6 @@ export async function createNewChatForSend({
   selectedModels: string[]
   setActiveChatId: (chatId: string | null) => void
   setActiveViewer: (chatId: string | null) => void
-  setChats: Dispatch<SetStateAction<Conversation[]>>
   setInterruptedExchangeIdx: (idx: number | null) => void
   setIsTemporaryChat: (isTemporaryChat: boolean) => void
   setPendingRunConversationId: (conversationId: string | null) => void
@@ -156,7 +154,7 @@ export async function createNewChatForSend({
   })
   const initialSelectedModels = normalizedInitialSelection.askModelIds
   const workspaceScoped = workspaceChatsViewActive()
-  const nativePersonalCreated = nativePersonalEnabled && nativePersonalRoute && !workspaceScoped
+  const nativePersonalCreated = nativePersonalEnabled && nativePersonalRoute
   const trimmedClientId = options.clientId?.trim()
     || (nativePersonalCreated ? crypto.randomUUID() : undefined)
   const prepareActivation = () => {
@@ -185,26 +183,13 @@ export async function createNewChatForSend({
             askModelIds: initialSelectedModels,
             actModelId: normalizedInitialSelection.actModelId,
             lastMode: 'act',
+            scope: workspaceScoped ? 'workspace' : 'personal',
           }),
         }
       }
       if (!isCurrentScope()) return null
-    } else if (options.persistedChatId) {
-      data = { id: options.persistedChatId }
     } else {
-      const res = await overlayAppClient.conversations.createResponse(
-        {
-          title: initialTitle,
-          askModelIds: initialSelectedModels,
-          actModelId: normalizedInitialSelection.actModelId,
-          lastMode: 'act',
-          ...(trimmedClientId ? { clientId: trimmedClientId } : {}),
-          ...(workspaceScoped ? { scope: 'workspace' as const } : {}),
-        },
-        { idempotencyKey: trimmedClientId ?? createIdempotencyKey() },
-      )
-      if (!res.ok) return null
-      data = await res.json()
+      throw new Error('Native personal chat is unavailable')
     }
     return data
   }
@@ -219,24 +204,8 @@ export async function createNewChatForSend({
     )
   }
   setInterruptedExchangeIdx(null)
-  const newChat: Conversation = {
-    _id: data.id,
-    title: initialTitle,
-    lastModified: Date.now(),
-    conversationType: 'personal',
-    scope: workspaceScoped ? 'workspace' : 'personal',
-    ...(workspaceId ? { workspaceId } : {}),
-    lastMode: 'act',
-    askModelIds: initialSelectedModels,
-    actModelId: normalizedInitialSelection.actModelId,
-  }
   const pendingFirstSend = pendingFirstSendRef.current
   if (pendingFirstSend) pendingFirstSend.nativePersonalOwner = nativePersonalCreated
-  if (!nativePersonalCreated) {
-    upsertCachedChat(newChat)
-    setChats((prev) => [newChat, ...prev])
-    dispatchChatCreated({ chat: newChat })
-  }
   if (options.deferActivation) {
     const pending = pendingFirstSendRef.current
     if (pending && trimmedClientId && pending.conversationClientId === trimmedClientId) {
@@ -246,6 +215,8 @@ export async function createNewChatForSend({
       if (pendingScrollTurnIdRef.current && !pendingScrollChatIdRef.current) {
         pendingScrollChatIdRef.current = data.id
       }
+      // The native chat is durable now, so a reload during the first turn can reopen it.
+      if (nativePersonalCreated) syncStandaloneChatUrl(data.id)
       tryActivatePendingFirstSend()
     }
     return data.id

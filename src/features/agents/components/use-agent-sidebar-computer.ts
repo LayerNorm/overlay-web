@@ -49,13 +49,7 @@ export function useAgentSidebarComputer({
     setWakeError(null)
   }, [activeWorkspaceId, agentId, enabled, computer?.status])
 
-  const shouldPoll = Boolean(enabled && activeWorkspaceId && computer
-    && (visible || computer.status === 'provisioning' || (computer.status as string) === 'starting'))
-  useEffect(() => {
-    if (!shouldPoll || !activeWorkspaceId) return
-    const timer = window.setInterval(loadComputer, 5_000)
-    return () => window.clearInterval(timer)
-  }, [activeWorkspaceId, loadComputer, shouldPoll])
+  // The computer's status is a live query in useAgentComputer; nothing polls here.
 
   useEffect(() => {
     if (!visible || !enabled || !activeWorkspaceId || computerLoading || computer?.status !== 'ready') {

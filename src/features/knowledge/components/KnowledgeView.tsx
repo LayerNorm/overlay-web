@@ -5,11 +5,7 @@
 import { isEditableType } from '@/shared/files/file-viewer-types'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
-  KNOWLEDGE_ENTITY_MUTATION_EVENT,
-  createKnowledgeMutationPublisher,
-  createManualMemoryRequest,
   type KnowledgeFileNode,
-  type MemoryRow,
 } from '@overlay/app-core'
 import {
   KnowledgeBulkActionsContext,
@@ -17,7 +13,6 @@ import {
   KnowledgeRowActionsContext,
   SharedKnowledgeSurface,
   type SharedKnowledgeFilePort,
-  type SharedKnowledgeMemoryPort,
   type KnowledgeBulkSelection,
   type SharedKnowledgeRouteState,
 } from '@overlay/modules-react/knowledge'
@@ -25,39 +20,24 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { ReactNode } from 'react'
 import { useCallback, useMemo, useTransition } from 'react'
 import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
+import { useFileTree, useFileTreeCommands } from '@/hooks/use-file-tree'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { ScopeBulkActions } from '@/components/layout/ScopeBulkActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
 import { newItemScope } from '@/shared/workspaces/panel-scope'
 import { createWebKnowledgeSurfaceAdapters } from '../adapters/webKnowledgeSurfaceAdapters'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
-import { responseError, uploadWebFile } from '../adapters/webKnowledgeFilePort'
-
-const nextKnowledgeMutation = createKnowledgeMutationPublisher(
-  `web-knowledge:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
-)
-
-function publishKnowledgeMutation(
-  entity: 'file' | 'note',
-  id: string,
-  operation: 'created' | 'updated' | 'moved' | 'deleted',
-): void {
-  window.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
-    detail: nextKnowledgeMutation({ entity, id, operation }),
-  }))
-}
+import { uploadWebFile } from '../adapters/webKnowledgeFilePort'
 
 export default function KnowledgeView({
   userId: _userId,
   mode = 'knowledge',
   initialFiles,
-  initialMemories,
   renderFileViewer,
 }: {
   userId: string
   mode?: 'knowledge' | 'files'
   initialFiles?: KnowledgeFileNode[]
-  initialMemories?: MemoryRow[]
   renderFileViewer(props: { file: KnowledgeFileNode; name: string; content: string; url?: string }): ReactNode
 }) {
   void _userId
@@ -96,24 +76,13 @@ export default function KnowledgeView({
   const { canCreate } = useWorkspaceCreateAccess()
   const canAdd = canCreate('content', newItemScope(scope) ?? 'personal')
 
+  const liveFiles = useFileTree(listView)
+  const commands = useFileTreeCommands()
   const adapters = useMemo(() => createWebKnowledgeSurfaceAdapters({
+    commands,
     navigate: (url, options) => options?.replace ? router.replace(url) : router.push(url),
     getScope: () => scope,
-    getListView: () => listView,
-  }), [router, scope, listView])
-
-  const memories = useMemo<SharedKnowledgeMemoryPort>(() => ({
-    list: () => overlayAppClient.memory.get<MemoryRow[]>({ limit: 100 }),
-    async create(content) {
-      const response = await overlayAppClient.memory.createResponse(createManualMemoryRequest(content))
-      return response.ok
-        ? { ok: true }
-        : { ok: false, error: await responseError(response, 'Could not save memory') }
-    },
-    async delete(memoryId) {
-      return (await overlayAppClient.memory.deleteResponse({ memoryId })).ok
-    },
-  }), [])
+  }), [commands, router, scope])
 
   const files = useMemo<SharedKnowledgeFilePort>(() => ({
     async saveContent(fileId, content) {
@@ -126,36 +95,21 @@ export default function KnowledgeView({
         ? `/api/v1/files/${file._id}/content`
         : undefined
     },
-    entityChanged(entity, id, operation) {
-      publishKnowledgeMutation(entity, id, operation)
-    },
   }), [scope])
 
-  // Move and Archive on a hovered row. The item leaves the list being viewed either way, so it is dropped from it.
+  // Move and Archive on a hovered row. The live list drops the item; an open file closes when it leaves the list.
   const renderRowActions = useCallback((node: KnowledgeFileNode) => (
-    <ScopeItemActions
-      kind="content"
-      resource="files"
-      item={node}
-      onChanged={() => {
-        publishKnowledgeMutation(node.kind === 'note' ? 'note' : 'file', node._id, 'deleted')
-        // From an open file, go back to the list it just left.
-        if (route.file) updateQuery({ file: null })
-      }}
-    />
-  ), [route.file, updateQuery])
+    <ScopeItemActions kind="content" resource="files" item={node} />
+  ), [])
 
   const renderBulkActions = useCallback(({ nodes, afterChange }: KnowledgeBulkSelection) => (
     <ScopeBulkActions
       kind="content"
       resource="files"
       items={nodes}
-      onDone={(changedIds, all) => {
+      onDone={(_changedIds, all) => {
         // The changed items left this list; when every one did, select mode ends too.
         if (all) afterChange()
-        for (const node of nodes) {
-          if (changedIds.includes(node._id)) publishKnowledgeMutation(node.kind === 'note' ? 'note' : 'file', node._id, 'deleted')
-        }
       }}
     />
   ), [])
@@ -170,13 +124,12 @@ export default function KnowledgeView({
         mode={mode}
         // The server renders the Personal list, so it only seeds that scope.
         initialFiles={scope === 'personal' ? initialFiles : undefined}
-        initialMemories={initialMemories}
+        liveFiles={liveFiles as KnowledgeFileNode[] | null | undefined}
         route={route}
         queryPending={queryPending}
         onUpdateQuery={updateQuery}
         headerTabs={mode === 'files' ? <PageSubviewTabs /> : undefined}
         adapters={adapters}
-        memories={memories}
         files={files}
         renderFileViewer={renderFileViewer}
       />

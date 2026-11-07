@@ -4,8 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 import { Confirmation, ConfirmationAction, ConfirmationActions, ConfirmationBody, ConfirmationIcon, ConfirmationRequest, ConfirmationTitle } from '@overlay/chat-react'
 import { toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import type { useAgentRunLifecycle } from './useAgentRunLifecycle'
-import type { NativeRunCommandScope } from './native-personal-lifecycle'
+import type { NativeRunCommandScope, useNativePersonalRunLifecycle } from './native-personal-lifecycle'
 import { RunInputRequest } from './RunInputRequest'
 import { submitNativeRunApproval } from './native-work-command-actions'
 import { useNativeWorkCommandState } from './useNativeWorkCommandState'
@@ -15,7 +14,7 @@ export function useWorkApproval({
   activeChatId,
   nativeScope,
 }: {
-  agentRunLifecycle: ReturnType<typeof useAgentRunLifecycle>
+  agentRunLifecycle: ReturnType<typeof useNativePersonalRunLifecycle>
   activeChatId: string | null
   nativeScope?: NativeRunCommandScope
 }) {

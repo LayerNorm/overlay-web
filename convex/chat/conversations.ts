@@ -10,7 +10,6 @@ import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from '../collaboration/events'
 import { requireConversationAccess } from '../collaboration/directMessages'
 import { cancelHarnessDelivery } from '../harness/runs'
-import { conversationListVersion } from '../lib/conversationListVersion'
 import { deleteChunksForSource } from '../knowledge/knowledge'
 import { INTERRUPTED_RESPONSE_NOTICE } from '../../src/shared/chat/agent-assistant-text'
 import { assertNativeHarnessRun, assertSupportedAgentExecution } from '../../src/shared/agents/native-run-retirement'
@@ -28,7 +27,7 @@ const generatedUiVariant = v.object({
   body: v.string(),
 })
 
-const generatedUiData = v.union(
+export const generatedUiData = v.union(
   v.object({
     version: v.literal(1),
     kind: v.literal('draft.text'),
@@ -1800,31 +1799,6 @@ export const watchAgentRun = query({
       .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversationId))
       .order('desc')
       .first()
-  },
-})
-
-/**
- * Lightweight browser-facing invalidation signal for the personal conversation
- * list. Returns the latest list-relevant event version for the user. Streaming
- * deltas update the open transcript without refetching sidebar history.  When the version changes, the client fetches the delta (updatedSince)
- * and upserts individual rows instead of reloading the full list.
- */
-export const watchPersonalConversationListVersion = query({
-  args: {
-    userId: v.string(),
-    accessToken: v.string(),
-  },
-  returns: v.object({
-    ok: v.boolean(),
-    version: v.number(),
-  }),
-  handler: async (ctx, { userId, accessToken }) => {
-    try {
-      await authorizeUserAccess({ userId, accessToken })
-    } catch {
-      return { ok: false, version: 0 }
-    }
-    return { ok: true, version: await conversationListVersion(ctx, { userId }) }
   },
 })
 

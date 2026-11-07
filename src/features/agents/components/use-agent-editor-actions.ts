@@ -10,7 +10,6 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { enabledAgentToolGroupIds } from '@/shared/agents/tool-groups'
 import { announceArchived } from '@/shared/app/archive-toast'
-import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { workspaceAgentUsesByo } from '../lib/byo-agent-setup'
 import { startAgentChat } from '../lib/agent-chat'
 import {
@@ -127,7 +126,6 @@ export function useAgentEditorActions({
             throw computerError
           })
         }
-        dispatchAgentDirectoryChanged(activeWorkspaceId)
         toast.success('Agent created.')
         if (onCreated) onCreated(saved.agent)
         else router.push(buildWorkspaceHref(activeWorkspaceId, `/app/agents/${encodeURIComponent(saved.agent.id)}?hello=1`, 'personal'))
@@ -173,7 +171,6 @@ export function useAgentEditorActions({
         enabledToolGroups,
         computer,
       })
-      dispatchAgentDirectoryChanged(activeWorkspaceId)
       if (form.isVersionCurrent(editVersion)) {
         setAgent(saved.agent)
         setDirty(false)
@@ -218,14 +215,12 @@ export function useAgentEditorActions({
       // Revoke the hosted environment before archiving so cleanup remains attributable to the agent.
       if (cloudAgent) await overlayAppClient.cloudAgents.remove(activeWorkspaceId, agent.id)
       await overlayAppClient.agents.archive(activeWorkspaceId, agent.id)
-      dispatchAgentDirectoryChanged(activeWorkspaceId)
       const workspaceId = activeWorkspaceId
       announceArchived({
         name: agent.name,
         // Hosted agents stay archived; restoring one does not restore its retired runtime.
         ...(cloudAgent ? {} : {
           undo: async () => { await overlayAppClient.agents.restore(workspaceId, agent.id) },
-          onUndone: () => dispatchAgentDirectoryChanged(workspaceId),
         }),
       })
       if (onArchived) onArchived()

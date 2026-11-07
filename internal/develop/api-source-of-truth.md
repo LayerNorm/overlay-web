@@ -103,6 +103,31 @@ activity only and never replaces the human caller's permissions.
 Work scope, archive and restore mutations also require server authentication; a browser token cannot bypass
 the web capability/runtime checks or supply an agent activity actor directly to Convex.
 
+## Agent directory
+
+Browsers read agents through the live Convex queries `agents/directory:list` and
+`agents/directory:get` (`src/hooks/use-agent-directory.ts`). They authenticate with native
+Convex identity and port the service's rules: creator-only agents are visible only to their
+creator, `canEdit` follows the creator or a workspace owner/admin (personal chiefs: their owner),
+guests cannot create, and non-members read `null`. `agents/directory:ensureChiefs` provisions a
+member's chief agents once per workspace load, which the list and get BFF routes used to do as a
+read side effect. Every consumer shares one subscription, so there is no directory refresh event.
+
+Writes (create, update, archive, restore, delete) stay on `/api/v1/agents*` because they run
+server-side policy and side effects: harness and external-agent policy, model support, teams,
+connected-agent bindings, computer provisioning and config-profile cleanup. Desktop, mobile and
+agent tools also call these routes. The live queries reflect each write in every client.
+Settings → Archived lists archived agents and threads over HTTP until the settings phase (Phase F)
+makes that whole page live.
+
+Agent threads are native too (`agents/threads`): `bundle` (the member's threads and automations
+for one visible agent, live), `archived`, `resolveMain` (adopts or creates the main thread once;
+concurrent opens resolve the same thread), `create`, `setArchived` and `remove`. Each applies the
+directory's visibility rule before the shared thread logic in `agentThreads.ts`. The sidebar opens a
+live thread list without a request, and the conversation verifies a deep link against that same
+list. The `/api/v1/agents/[agentId]/threads|bundle|main-thread` routes remain for server and API
+callers such as onboarding.
+
 ## Connected-agent drive
 
 The bearer-only `/api/agent-drive` transport is separate from app-session APIs and defaults off.
@@ -255,7 +280,9 @@ Persistent chat context and hybrid retrieval both resolve memories by `workspace
 
 ## Account workspace entry
 
-`GET` and `POST /api/v1/account/workspaces` use an account-scoped BFF context and require a signed browser session. Listing never creates a Personal workspace: with no memberships it returns an empty `workspaces` array, an empty-string `activeWorkspaceId`, and invitations queried only for the email in the signed session. The Convex query returns pending, unexpired invitations for active workspaces, capped at the directory limit, and exposes only invitation/workspace summaries. Creation reuses the existing workspace validation and free-workspace limit, activates the created workspace, and sets the active-workspace cookie. Invitation acceptance is also account-scoped so accepting an invitation does not bootstrap Personal. `/api/v1/settings` is account-scoped without a session-only restriction to preserve its existing API authentication methods.
+The browser reads the account's workspaces natively: `collaboration/directory:workspaces` lists active memberships (personal first) with member counts and routing handles, the saved active workspace (falling back to the first, without writing), and pending, unexpired invitations for the email on the account record, for active workspaces only. It never creates a Personal workspace. `collaboration/directory:resolveHandle` resolves `/w/<handle>` links for active members, and `collaboration/directory:policy` returns the sharing policy (defaults when none is stored) with `canManage`. The workspace provider, the account page and the sidebar's New buttons subscribe to these, so renames, icons, handles, membership loss and policy changes reach every tab; the route still decides each tab's workspace, so switching in one tab does not move another. Workspace settings tabs (people, guests, teams, roles, agents), chat mentions, the channel and direct-message pickers, the memories owner filter and the Slack import diff read `collaboration/management:view({ workspaceId, view })` natively. It returns the same `WorkspaceManagementResponse` rows as `GET /api/v1/workspaces/[workspaceId]/management`: active members with names and photos resolved from each account, pending invitations (expiry applied on read) and guest grants for owners and admins only, teams, role counts, and agents with the avatars of agents the viewer may see. Losing membership returns null at once. Inviting, resending (both send email), cancelling, role changes, removal, ownership transfer and team edits stay on the server.
+
+`POST /api/v1/account/workspaces` uses an account-scoped BFF context and requires a signed browser session. Creation reuses the existing workspace validation and free-workspace limit, activates the created workspace, and sets the active-workspace cookie. Invitation acceptance is also account-scoped so accepting an invitation does not bootstrap Personal. `/api/v1/settings` is account-scoped without a session-only restriction to preserve its existing API authentication methods; the web app reads settings natively (`platform/uiSettings:mine`) and only writes through `PATCH`. The account profile is read natively too (`auth/accountBrowse:identity`); `/api/v1/account/profile` keeps only `PATCH` and the photo routes.
 
 ## Conversational onboarding
 
@@ -280,10 +307,34 @@ New owner sessions use `flowVersion: 2` and revision-checked name, about, team, 
 - Convex room transcript append, finalize, failure, and sanitization writes require a linked supported native Harness or connected remote AgentRun. The unowned `startAgentMessage` mutation and unmarked buffered agent posts are retired; native streaming uses the assistant message admitted by `startAgentTurn`, and startup failures are persisted directly as terminal errors. This does not grant tool-effect authority or reconcile uncertain receipts; late tool receipts may still be retained on a completed message without reopening execution.
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Convex appends the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
-- Convex-backed browsers use native `watchConversationListVersion` and `watchNotifications` subscriptions. `/api/v1/conversations/events` remains a long-poll fallback for non-realtime clients and must not be mounted as a browser subscription path.
-- Reactive handlers receive the short-lived BFF HMAC token as an explicit
-  `accessToken` argument. This token does not configure Convex platform `setAuth`;
-  the handler verifies it and binds it to the requested account.
+- Browsers read Activity through `collaboration/activity:notifications` and the DM/channel list
+  version through `collaboration/activity:listVersion`, both with native identity. Each notification
+  carries `conversationType`, so opening one routes without looking the room up. Read state goes
+  through `collaboration/activity:markRead`, which takes the notification ids the member has seen or
+  one open room's id; a notification that arrives meanwhile stays unread, and an already-read row keeps
+  its first read time. The browser applies it optimistically to the live list, and room unread badges
+  are derived from that list, so there is no local read map or read event. `/api/v1/conversations/events`
+  remains a long-poll fallback for non-realtime clients and must not be mounted as a browser subscription path.
+- Room transcripts are native. Browsers read DM and channel history through
+  `collaboration/rooms:access`, `:messages` (paginated, main timeline or one thread, indexed by
+  thread root) and `:message` (permalinks and thread roots), and edit or delete through
+  `:editMessage` and `:deleteMessage`, all with native Convex identity. `requireActor` accepts that
+  identity only through `nativeRoomActor`, never from client arguments. Send stays on
+  `POST /api/v1/conversations/message` because it starts agent runs and mention email; its optimistic
+  rows reconcile against the live query. `GET /api/v1/conversations?messages=true` and the message
+  PATCH/DELETE routes remain for desktop and API clients. Room and thread writability is the live
+  `collaboration/rooms:compatibility` query (read through `useRoomCompatibility`), so opening a room
+  or focusing the window fetches nothing; send still enforces it on the server. The former
+  thread-safety-changed event and response observer are removed.
+- Room metadata is native too. `collaboration/rooms:state` returns the room's participants, channel
+  facts, reactions, pins, the member's saves and followed threads in it, and presence, or null once
+  the member is removed, which closes the room in every open client. Actions are native mutations
+  (`setReaction`, `setPinned`, `setSaved`, `setThreadFollow`, `updateMyState` for mute and read,
+  `addParticipant`, `removeParticipant`, `heartbeat`) with optimistic updates applied to that query,
+  so a rejected action rolls back and concurrent changes converge. Presence rows older than two
+  minutes read as offline; every open client's 45-second heartbeat re-runs the query so stale
+  sessions expire. Room archive and delete (self or everyone) stay on HTTP because they also update
+  the conversation lists, which CN-11 moves.
 - Personal chat creation is deferred until the first send. Newly created DMs and
   channels are client-side drafts until their first message succeeds: they are not
   inserted into the sidebar list, and navigating away removes the current member
@@ -354,6 +405,77 @@ credentials are never public contract fields.
   stream-auth route, and Cloudflare relay are not part of the API contract.
   Both runners persist one terminal assistant-message snapshot.
 
+## Files, notes and memories in the browser
+
+Browsers read files natively; the file HTTP routes remain for agents, outside apps, desktop and
+byte transfer.
+
+- `files/browse:list` is the live file tree (files, folders, notes, outputs) for one workspace
+  and view, shared by the Files page and the sidebar (`src/hooks/use-file-tree.ts`). Rows are
+  summaries: no text and no storage keys (`browserFileSummary`). Non-members read `null`.
+- `files/browse:get` returns one readable file with its inline text (`browserFile`). The Files
+  viewer opens from the list row at once and loads full text through
+  `GET /api/v1/files?fileId=…&fullText=true`, which reads text kept in object storage. The notes
+  editor subscribes to `get` (`useLiveNote`) so saves made elsewhere reach a clean editor.
+- `files/browse:rename` and `:move` run the shared `updateFileFor` with native identity and apply
+  optimistically to every cached tree. Create, delete, uploads, ingestion, text saves and note
+  saves stay on the server: they place large text in object storage, clean up objects, and
+  canonicalize and sanitize note Markdown.
+- `files/browse:forConversation` is a thread's live Library (the agent drive panel).
+- `knowledge/memoryBrowse:list` is the live Memories list with the server's rules: owner-only
+  memories reach only their author, attribution covers active members and agents the viewer can
+  see, and an owner filter accepts a member or agent principal. Memory writes stay on
+  `/api/v1/memory` (dedupe, segmentation, indexing).
+
+There are no file or memory change events: the shared knowledge surface takes its list from the
+host (`liveFiles`) and cannot fetch or broadcast lists itself.
+
+## Work, automations and skills in the browser
+
+These read natively behind the same checks as their routes: an active membership, the role capability
+(`work.use`, `automations.use`, `skills.use`) and the deployment feature from the native policy snapshot
+(`requireNativeCapability`). Reads answer `null` without access.
+
+- **Work** (`work/browse`): `list`, `get` (tasks outside the list window by link), `context`, `events`, and
+  native `create`, `update`, `move` and `addComment` with optimistic updates
+  (`src/features/work/lib/use-live-work.ts`). They share handlers with the server functions (`listWorkFor`,
+  `updateWorkFor`, `moveWorkFor`, `createWorkFor`, `addWorkCommentFor`), and tasks are projected by
+  `src/shared/work/projection.ts`. Assigning a task and changing its scope stay on `/api/v1/work`: assignment
+  checks the budget and admits and starts the agent's turn idempotently (`prepareAssignment` claims one
+  generation).
+- **Automations** (`automations/browse`): `list`, `get` and `runs` are live (`src/hooks/use-live-automations.ts`).
+  Writes stay on `/api/v1/automations` because enabling checks billing, pausing cancels the scheduler workflow,
+  and edits append a note to the automation's thread. Resolving which automation a chat belongs to is still an
+  HTTP read in the chat controller.
+- **Skills** (`integrations/skillsBrowse`): `list`, `create`, `update` (with an `expectedUpdatedAt` guard for
+  stale forms) and `remove`, all native (`src/hooks/use-skills.ts`). `/api/v1/skills` remains for agents and
+  outside apps; mention pickers still list skills over HTTP until cross-resource pickers (CN-32).
+
+There are no Work, automation, skill, MCP or extension change events.
+
+## Connections in the browser (MCP, providers, Computers, environments, surfaces)
+
+Browsers read connection state natively; every write stays on its route because it encrypts credentials, checks
+network addresses, runs OAuth or device flows, calls a provider, or checks billing.
+
+- `integrations/mcpBrowse:servers` (membership, `mcp.use`, `mcpServers` feature) uses the credential-free
+  `mcpServerSummary`; members who cannot edit a shared server get its URL without userinfo or query.
+  `:connections` lists the viewer's active MCP grants for Settings → Connected apps; the endpoint is the page origin
+  plus `/api/mcp`.
+- `providers/browse:connections` (membership, `modelRouting`) returns personal connections plus workspace-shared
+  subscription connections via `stripSecrets`. `useByokModels` feeds its cache and the model registry from it and
+  calls `GET /api/v1/providers/connections` only to seed a missing default gateway (catalog data is server-side).
+  Integration connected state stays on `/api/v1/integrations`, because the integration provider owns it.
+- `computers/browse:list` (membership, `computers`) mirrors `ComputerService` visibility and drops provider
+  references; `agents/environmentsBrowse:list` (members) drops public keys and adds the verification phrase for
+  pending environments; `:bindings` is for owners and admins. The online window lives in
+  `src/shared/agents/environment-status.ts` and is applied in the browser on a local clock, because a stale
+  heartbeat writes nothing to re-run a query.
+- `surfaces/browse:forAgent` returns an agent's workspace surface connections, bindings and `canBind` with the
+  `SurfaceService` rules. Channel listing, binding and Slack OAuth stay on `/api/v1/surfaces`.
+
+There is no connection polling in the browser.
+
 ## File listing
 
 `GET /api/v1/files?page=true&limit=<n>&cursor=<cursor>` returns the standard `{ data, nextCursor, hasMore }` envelope. `@overlay/api-client` exposes this through `files.getPage()`. Calls without `page=true` retain the historical array response, backed by the same bounded first page, so older web/desktop consumers remain compatible during rollout. Convex serves pages through `files/files:listPage`; the legacy `files/files:list` query is capped and exists only for compatibility and internal adapters that have not adopted cursors yet.
@@ -376,15 +498,18 @@ The rate limit provider is selected at bootstrap. Redis is preferred when config
 
 ### Versioned conversation list reconciliation
 
-Personal conversation mutations (`create`, `update`, `remove` in `convex/chat/conversations.ts`) now emit `conversationEvents` rows, just like collaboration conversations. The `conversationEvents` table has a new `by_userId_createdAt` index for user-scoped version queries.
-
-`watchPersonalConversationListVersion` (in `convex/chat/conversations.ts`) returns the latest event `_creationTime` for a user. `watchConversationListVersion` (in `convex/collaboration/directMessages.ts`) returns the latest event for a workspace. The `CollaborationRealtimeProvider` subscribes to both and merges them via `Math.max` — any personal or collaboration change triggers a single version bump.
+Personal and workspace AI chat lists are native live queries (`chat/personal:list`), so they need no
+version signal. The DM and channel lists still load over HTTP: `collaboration/activity:listVersion`
+returns the latest semantic `conversationEvents` time for the workspace (text deltas never bump it).
 
 When the version changes, the client fetches only the delta via `GET /api/v1/conversations?updatedSince=<version-1000>` and upserts individual rows into the chat list cache (`upsertCachedChat` / `removeCachedChat`). This replaces the previous full-list reload on every version change.
 
 ### Presence subscription
 
-`watchPresence` (in `convex/collaboration/directMessages.ts`) provides a Convex subscription for conversation presence and typing state. When Convex realtime is available, `DirectMessageExperience` skips the 15-second HTTP presence polling fallback. The heartbeat (45s) remains to keep the user's own presence row alive. The query catches `Unauthorized`, `WORKSPACE_ACCESS_DENIED`, and `CONVERSATION_ACCESS_DENIED` errors gracefully (returning `{ok: false, presence: []}`) so that self-scoped conversation deletion/archive does not crash the React error boundary when the subscription is still active.
+Presence and typing are part of `collaboration/rooms:state` and are written by the native
+`collaboration/rooms:heartbeat` mutation every 45 seconds and on typing. There is no polling fallback.
+The state query returns null for a member who lost access, so archive or removal never throws into a
+React error boundary.
 
 ### Indexed mention and workspace search
 
@@ -487,8 +612,6 @@ and agent-drive uploads set it directly. These records count as work produced
 without crediting the owner as a human active user. Existing ownership, quota and
 revision checks still apply.
 
-Native personal-chat ownership uses a request-local server readiness probe through
-the existing settings read. Only the backend-owned `nativePersonalChatRevision`
-marker activates the new queries; cached browser preferences cannot select a
-transport. Old or unavailable readiness retains legacy guarded reads and writes
-during web-first upgrades and rollback.
+All AI chats (personal, workspace-filed and automation threads) use native Convex
+queries and mutations in the browser, with no readiness probe or HTTP fallback. Model
+execution, streaming, stop, approval and input response stay on the server path.

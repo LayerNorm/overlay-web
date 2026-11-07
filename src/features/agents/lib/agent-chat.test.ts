@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { startAgentChat } from './agent-chat'
 
 test('startAgentChat stores initial instructions before navigation', async (t) => {
@@ -20,9 +19,6 @@ test('startAgentChat stores initial instructions before navigation', async (t) =
   t.after(() => {
     Object.defineProperty(globalThis, 'window', { configurable: true, value: previousWindow })
   })
-  t.mock.method(overlayAppClient.agents, 'resolveMainThread', async () => ({
-    thread: { conversationId: 'conversation-new-agent', title: 'New thread' },
-  }))
   const savedAt = 1_000
   t.mock.method(Date, 'now', () => savedAt)
   let pendingAtNavigation: string | undefined
@@ -33,6 +29,7 @@ test('startAgentChat stores initial instructions before navigation', async (t) =
     agentPrincipalId: 'agent-principal-1',
     initialMessage: '  Follow these instructions  ',
     surface: 'agents',
+    resolveMainThread: async () => ({ conversationId: 'conversation-new-agent', title: 'New thread' }),
     push: () => {
       pendingAtNavigation = values.get('overlay:pending-collaboration-message')
     },

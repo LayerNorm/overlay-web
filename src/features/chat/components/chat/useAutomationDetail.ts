@@ -5,7 +5,11 @@ import type { Dispatch, MutableRefObject, SetStateAction } from 'react'
 import type { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import type { AutomationDetail, AutomationDetailTab } from '@overlay/app-core'
 import { toast } from '@overlay/ui/primitives'
+import { useConvex } from 'convex/react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { api } from '../../../../../convex/_generated/api'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import type { useChatPreferences } from './useChatPreferences'
 import { usePanelScope } from '@/hooks/use-panel-scope'
@@ -28,6 +32,7 @@ export function useAutomationDetail({
   setSelectedActModel,
   setSelectedModels,
   userAskModelOverrideRef,
+  persistChatModel,
 }: {
   mode: 'chat' | 'automate'
   automationIdParam: string | null
@@ -43,8 +48,12 @@ export function useAutomationDetail({
   setSelectedActModel: ChatPrefs['setSelectedActModel']
   setSelectedModels: ChatPrefs['setSelectedModels']
   userAskModelOverrideRef: MutableRefObject<boolean>
+  persistChatModel: (askModelIds: string[], actModelId: string) => void
 }) {
   const creatingAutomationDraftRef = useRef(false)
+  // Native one-shot reads; the open editor subscribes to the same automation live.
+  const convex = useConvex()
+  const { activeWorkspaceId } = useWorkspace()
 
   const refreshSelectedAutomation = useCallback(async (options?: {
     showLoading?: boolean
@@ -61,8 +70,10 @@ export function useAutomationDetail({
       if (!automationId) {
         const conversationId = options?.conversationId ?? activeChatIdRef.current
         if (conversationId) {
-          const page = await overlayAppClient.automations.getPage<AutomationDetail>({ limit: 100 })
-          const linked = (Array.isArray(page.data) ? page.data : []).find((automation) => (
+          const listed = activeWorkspaceId
+            ? await convex.query(api.automations.browse.list, { workspaceId: activeWorkspaceId, includeAgentBound: true })
+            : null
+          const linked = ((listed ?? []) as AutomationDetail[]).find((automation) => (
             automation.conversationId === conversationId
           ))
           if (linked) {
@@ -80,27 +91,17 @@ export function useAutomationDetail({
         setSelectedAutomation(null)
         return
       }
-      const res = await overlayAppClient.automations.getResponse({ automationId }, {
-        credentials: 'same-origin',
-        cache: 'no-store',
-      })
-      if (!res.ok) throw new Error('Failed to load automation')
-      const automation = await res.json() as AutomationDetail
+      if (!activeWorkspaceId) throw new Error('No workspace')
+      const automation = await convex.query(api.automations.browse.get, {
+        workspaceId: activeWorkspaceId,
+        automationId: automationId as Id<'automations'>,
+      }) as AutomationDetail | null
+      if (!automation) throw new Error('Automation not found')
       // Only the automation-owned thread is shown — the source conversation is
       // provenance (the chat the automation was drafted in) and stays a normal
       // chat for its owner.
-      const candidates = [automation.conversationId]
-        .filter((value): value is string => Boolean(value))
-      let resolvedConversationId: string | null = null
-      for (const candidate of candidates) {
-        const conversationResponse = await overlayAppClient.conversations.getResponse({
-          conversationId: candidate,
-        }, { cache: 'no-store' }).catch(() => null)
-        if (conversationResponse?.ok) {
-          resolvedConversationId = candidate
-          break
-        }
-      }
+      // The native transcript query enforces access to this thread.
+      const resolvedConversationId = automation.conversationId ?? null
       const validatedAutomation: AutomationDetail = {
         ...automation,
         sourceConversationId:
@@ -127,7 +128,7 @@ export function useAutomationDetail({
     } finally {
       setSelectedAutomationLoading(false)
     }
-  }, [activeChatIdRef, automationIdParam, mode, pathname, router, searchParams, setSelectedAutomation, setSelectedAutomationLoading])
+  }, [activeChatIdRef, activeWorkspaceId, automationIdParam, convex, mode, pathname, router, searchParams, setSelectedAutomation, setSelectedAutomationLoading])
 
   useEffect(() => {
     void refreshSelectedAutomation()
@@ -194,21 +195,14 @@ export function useAutomationDetail({
         modelId,
       })
       if (!res.ok) throw new Error('Failed to save automation model')
-      if (activeChatId) {
-        await overlayAppClient.conversations.updateResponse({
-          conversationId: activeChatId,
-          actModelId: modelId,
-          askModelIds: [modelId],
-          lastMode: 'act',
-        })
-      }
+      if (activeChatId) persistChatModel([modelId], modelId)
     } catch {
       setSelectedAutomation(previousAutomation)
       const fallbackModelId = previousAutomation.modelId ?? selectedActModel
       setSelectedActModel(fallbackModelId)
       setSelectedModels([fallbackModelId])
     }
-  }, [selectedAutomation, activeChatId, selectedActModel, setSelectedActModel, setSelectedModels, setSelectedAutomation, userAskModelOverrideRef])
+  }, [selectedAutomation, activeChatId, persistChatModel, selectedActModel, setSelectedActModel, setSelectedModels, setSelectedAutomation, userAskModelOverrideRef])
 
   const automationHeaderModelId = selectedAutomation?.modelId ?? selectedActModel ?? DEFAULT_MODEL_ID
 

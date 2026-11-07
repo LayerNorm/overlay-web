@@ -8,7 +8,6 @@ import type {
 } from './contracts'
 import { AUTOMATION_GRAPH_VERSION } from './contracts'
 
-export const AUTOMATIONS_UPDATED_EVENT = 'overlay:automations-updated'
 
 export type AutomationDetail = AutomationSummary
 export type AutomationDetailTab = 'chat' | 'edit'
@@ -84,6 +83,8 @@ export interface UpdateAutomationRequest {
   graphSource?: string
   graph?: AutomationGraph
   concurrencyPolicy?: 'skip' | 'queue'
+  /** Refuse the save when the automation changed since the form loaded this version. */
+  expectedUpdatedAt?: number
 }
 
 export interface DeleteAutomationResponse {

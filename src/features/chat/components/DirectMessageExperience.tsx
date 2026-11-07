@@ -9,8 +9,6 @@ import { useAppSettings } from '@/components/providers/AppSettingsProvider'
 import { LinkOpenInterceptor } from './LinkOpenInterceptor'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
-import { useAuth } from '@/contexts/AuthContext'
 import { ChatDropOverlay } from './ChatDropOverlay'
 import { NativeThreadReadOnlyFooter } from './NativeThreadReadOnlyFooter'
 import { AgentAssignmentSubscription } from './AgentAssignmentSubscription'
@@ -244,16 +242,9 @@ export function DirectMessageExperience({
   guided?: { footer: ReactNode; composer: GuidedRoomComposer | null; revision: number; headerActions?: ReactNode; pendingMessage?: { text: string; clientNonce: string } | null };
 }) {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
-  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
-  const { user: authUser } = useAuth()
-  const convexAccessToken = useConvexAuthToken()
-  const { refreshNotifications } = useCollaborationRealtime()
+  const { capabilities } = useOverlayCapabilities()
+  const { markConversationRead } = useCollaborationRealtime()
   const { settings: appSettings } = useAppSettings()
-  const convexLiveSyncEnabled = appDataCapabilities.provider === 'convex'
-    && appDataCapabilities.requiresConvexClient
-    && appDataCapabilities.supportsRealtime
-  const convexRoomSubscriptionEnabled = convexLiveSyncEnabled
-    && Boolean(authUser?.id && convexAccessToken && activeWorkspaceId)
   const router = useRouter()
   const panels = useRoomPanels({ renderAttachmentViewer: AttachmentViewer })
   const room = useDirectMessageRoom({
@@ -264,8 +255,7 @@ export function DirectMessageExperience({
     draftTitle,
     router,
     activeWorkspaceId,
-    convexRoomSubscriptionEnabled,
-    refreshNotifications,
+    markConversationRead,
     onOpenAttachmentPreview: panels.openAttachmentPreview,
   })
   const { vm, roster, collab, thread, transcript, composer, roomActions, messageCtx } = room
@@ -273,12 +263,8 @@ export function DirectMessageExperience({
   const agentId = roomAgentId(vm)
   const agentHref = agentConversationRedirect({ pathname: pathname ?? '', workspaceId: activeWorkspaceId, agentId, conversationId, guided: Boolean(guided),  })
   useEffect(() => { if (agentHref) router.replace(agentHref) }, [agentHref, router])
-  const { loadMessages } = transcript
+  // Guided onboarding writes to this room server-side; the live transcript shows them.
   const pendingMessage = guided?.pendingMessage
-  const guidedRevision = guided?.revision
-  useEffect(() => {
-    if (guidedRevision !== undefined) void loadMessages()
-  }, [guidedRevision, loadMessages])
 
   const { rightPanel, rightPanelClose } = resolveRoomRightPanel({
     panels,
@@ -325,14 +311,12 @@ export function DirectMessageExperience({
         onOpenInOverlay={panels.openLinkPreview}
       />
       <RoomRealtimeSubscriptions
-        enabled={convexRoomSubscriptionEnabled}
-        accessToken={convexAccessToken}
-        actorUserId={authUser?.id}
         conversationId={conversationId}
         threadRootId={thread.threadRootId}
         workspaceId={activeWorkspaceId}
         onMessages={transcript.applyLiveRoomMessages}
-        onPresence={roster.applyConvexPresence}
+        onRoom={transcript.applyRoomSummary}
+        onPaging={transcript.setPaging}
       />
       <AppScreenShell
         contentClassName="flex min-h-0"
@@ -433,10 +417,7 @@ export function DirectMessageExperience({
         currentParticipant={vm.currentParticipant}
         participants={roster.participants}
         router={router}
-        onParticipantsAdded={() => {
-          room.setAddPeopleOpen(false)
-          void roster.loadParticipants()
-        }}
+        onParticipantsAdded={() => room.setAddPeopleOpen(false)}
       />
     </QuestionnaireComposerProvider>
   );

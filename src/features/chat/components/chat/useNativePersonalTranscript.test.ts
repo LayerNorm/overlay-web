@@ -8,9 +8,24 @@ import { projectPersonalTranscript } from './personal-transcript'
 import { nativePendingTurnsForScope } from './native-personal-lifecycle'
 import {
   buildNativeTranscriptView,
+  nativeTitleRecoverySeed,
   projectScopedNativeTranscript,
   useNativePersonalTranscript,
 } from './useNativePersonalTranscript'
+
+test('recovers a placeholder title only from a settled chat', () => {
+  const messages = [
+    { role: 'assistant' as const, createdAt: 3, parts: [{ type: 'text', text: 'Reply' }] },
+    { role: 'user' as const, createdAt: 2, parts: [{ type: 'text', text: 'Second prompt' }] },
+    { role: 'user' as const, createdAt: 1, parts: [{ type: 'text', text: 'First prompt' }] },
+  ]
+  const settled = { title: 'New conversation', turnActive: false, status: 'ready', messages }
+  assert.equal(nativeTitleRecoverySeed(settled), 'First prompt')
+  assert.equal(nativeTitleRecoverySeed({ ...settled, title: 'Named by someone' }), null)
+  assert.equal(nativeTitleRecoverySeed({ ...settled, turnActive: true }), null)
+  assert.equal(nativeTitleRecoverySeed({ ...settled, status: 'loading' }), null)
+  assert.equal(nativeTitleRecoverySeed({ ...settled, messages: [] }), null)
+})
 
 const pending: PersonalPendingTurn = {
   turnId: 'turn', userAcknowledged: false, responses: [],

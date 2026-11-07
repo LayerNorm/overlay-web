@@ -1,10 +1,4 @@
 import {
-  EXTENSIONS_CHANGED_EVENT,
-  KNOWLEDGE_RECONCILE_EVENT,
-  AUTOMATIONS_UPDATED_EVENT,
-  WORK_UPDATED_EVENT,
-  MCPS_CHANGED_EVENT,
-  SKILLS_CHANGED_EVENT,
   automationHref,
   fileTreeRouteView,
   getAutomationDisplayName,
@@ -17,7 +11,6 @@ import {
 } from '@overlay/app-core'
 import type { WorkspaceAgentDirectoryItem, WorkspaceArchivedAgentThread } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { dispatchAgentDirectoryChanged } from '@/shared/workspace/sidebar-events'
 import { dispatchChatDeleted, dispatchChatModified } from '@/shared/chat/chat-title'
 import { excludeNativePersonalChats } from '@/shared/chat/native-personal-chat'
 import {
@@ -242,9 +235,7 @@ async function requireOk(response: Response, message: string): Promise<void> {
 type NativePersonalRestore = (item: ArchivedItem) => Promise<void>
 
 function isPersonalChatRestore(item: ArchivedItem): boolean {
-  return item.kind === 'chat'
-    && item.scope === 'personal'
-    && (item.conversationType ?? 'personal') === 'personal'
+  return item.kind === 'chat' && (item.conversationType ?? 'personal') === 'personal'
 }
 
 export async function restoreArchivedItem(
@@ -274,36 +265,27 @@ export async function restoreArchivedItem(
     case 'folder':
     case 'note':
       await overlayAppClient.scope.restore('files', item.id)
-      window.dispatchEvent(new Event(KNOWLEDGE_RECONCILE_EVENT))
       return
     case 'skill':
       await overlayAppClient.scope.restore('skills', item.id)
-      window.dispatchEvent(new CustomEvent(SKILLS_CHANGED_EVENT))
-      window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
       return
     case 'mcp-server':
       await overlayAppClient.scope.restore('mcp-servers', item.id)
-      window.dispatchEvent(new CustomEvent(MCPS_CHANGED_EVENT))
-      window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
       return
     case 'automation':
       await overlayAppClient.scope.restore('automations', item.id)
-      window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
       return
     case 'work-item':
       await overlayAppClient.scope.restore('work', item.id)
-      window.dispatchEvent(new Event(WORK_UPDATED_EVENT))
       return
     case 'agent':
       if (!workspaceId) throw new Error('No workspace')
       await overlayAppClient.agents.restore(workspaceId, item.id)
-      dispatchAgentDirectoryChanged(workspaceId)
       return
     case 'agent-thread':
       // Only the thread: the agent's own state is not touched.
       if (!workspaceId || !item.agentId) throw new Error('No workspace')
       await overlayAppClient.agents.setThreadArchived(workspaceId, item.agentId, item.id, false)
-      dispatchAgentDirectoryChanged(workspaceId)
       return
   }
 }
@@ -318,47 +300,37 @@ export async function deleteArchivedItem(item: ArchivedItem, workspaceId: string
     case 'file':
     case 'folder':
       await requireOk(await overlayAppClient.files.deleteResponse({ fileId: item.id }), 'File was not deleted')
-      window.dispatchEvent(new Event(KNOWLEDGE_RECONCILE_EVENT))
       return
     case 'note':
       await requireOk(await overlayAppClient.notes.deleteResponse({ noteId: item.id }), 'Note was not deleted')
-      window.dispatchEvent(new Event(KNOWLEDGE_RECONCILE_EVENT))
       return
     case 'skill':
       await requireOk(await overlayAppClient.skills.deleteResponse({ skillId: item.id }), 'Skill was not deleted')
-      window.dispatchEvent(new CustomEvent(SKILLS_CHANGED_EVENT))
-      window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
       return
     case 'mcp-server':
       await requireOk(await overlayAppClient.mcpServers.deleteResponse({ mcpServerId: item.id }), 'MCP server was not deleted')
-      window.dispatchEvent(new CustomEvent(MCPS_CHANGED_EVENT))
-      window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
       return
     case 'automation': {
       const response = await overlayAppClient.automations.deleteResponse({ automationId: item.id })
       await requireOk(response, 'Automation was not deleted')
       const payload = await overlayAppClient.automations.parseDeleteResponse(response).catch(() => ({} as { linkedConversationIds?: string[] }))
       for (const chatId of payload.linkedConversationIds ?? []) dispatchChatDeleted({ chatId })
-      window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
       return
     }
     case 'work-item':
       // The task and whatever was archived under it. The server refuses a task that is not archived.
       await overlayAppClient.work.remove(item.id)
-      window.dispatchEvent(new Event(WORK_UPDATED_EVENT))
       return
     case 'agent':
       // Deletes the archived agent and its threads. A live agent has no row here, and the server refuses it.
       if (!workspaceId) throw new Error('No workspace')
       await overlayAppClient.agents.deleteArchived(workspaceId, item.id)
-      dispatchAgentDirectoryChanged(workspaceId)
       return
     case 'agent-thread':
       // Only this thread. The agent keeps running, and starts a fresh thread the next time it is opened.
       if (!workspaceId || !item.agentId) throw new Error('No workspace')
       await overlayAppClient.agents.deleteThread(workspaceId, item.agentId, item.id)
       dispatchChatDeleted({ chatId: item.id })
-      dispatchAgentDirectoryChanged(workspaceId)
       return
   }
 }

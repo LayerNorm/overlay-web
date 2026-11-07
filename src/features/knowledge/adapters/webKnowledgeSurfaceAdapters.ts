@@ -4,12 +4,6 @@ import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { newItemScope, parsePanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 import { buildWorkspaceHandleHref, buildWorkspaceHref, readWorkspacePathScope, readWorkspaceRouteTarget } from '@/shared/workspaces/routing'
 import {
-  KNOWLEDGE_ENTITY_MUTATION_EVENT,
-  KNOWLEDGE_RECONCILE_EVENT,
-  KnowledgeMutationConsumer,
-  createKnowledgeMutationPublisher,
-  isKnowledgeEntityMutation,
-  noteDocToKnowledgeFile,
   opensInDocumentEditor,
   normalizeKnowledgeSurfaceNode,
   type FileNavigationAdapter,
@@ -19,8 +13,6 @@ import {
   type KnowledgeCreateInput,
   type KnowledgeDeleteInput,
   type KnowledgeFile,
-  type KnowledgeMutationEvent,
-  type KnowledgeEntityMutation,
   type KnowledgePickedFile,
   type KnowledgeRenameInput,
   type KnowledgeRepository,
@@ -30,29 +22,20 @@ import {
   type KnowledgeSurfaceRouteState,
   type KnowledgeMoveInput,
   type UpdateFileRequest,
-  type NoteDoc,
 } from '@overlay/app-core'
 
 interface FilesClientLike {
-  get<T>(query?: { limit?: number; view?: PanelScope }, options?: { signal?: AbortSignal }): Promise<T>
   getResponse(query: { fileId: string; fullText?: boolean }, options?: { signal?: AbortSignal }): Promise<Response>
   createResponse(input: CreateFileRequest): Promise<Response>
   updateResponse(input: UpdateFileRequest): Promise<Response>
   deleteResponse(input: { fileId: string }): Promise<Response>
 }
 
-interface NotesClientLike {
-  get<T>(query?: { limit?: number; noteId?: string; view?: PanelScope }, options?: { signal?: AbortSignal }): Promise<T>
-  deleteResponse(input: { noteId: string }): Promise<Response>
-}
-
 export interface WebKnowledgeAppClient {
   files: FilesClientLike
-  notes: NotesClientLike
 }
 
 type KnowledgeEventTarget = Pick<Window, 'addEventListener' | 'removeEventListener'>
-  & Partial<Pick<Window, 'dispatchEvent'>>
 
 function responseError(response: Response, fallback: string): Promise<Error> {
   return response.json()
@@ -83,60 +66,32 @@ async function responseNode(response: Response, fallback: KnowledgeCreateInput):
   })
 }
 
+/** File and folder renames and moves, applied natively by the host (see `useFileTreeCommands`). */
+export interface WebKnowledgeTreeCommands {
+  rename(fileId: string, name: string): Promise<void>
+  move(fileId: string, parentId: string | null): Promise<void>
+}
+
+/**
+ * Commands and one-file reads for the shared surface. Lists are not here: the host passes its live Convex tree.
+ * Create and delete stay on the server, which places large text and cleans up object storage.
+ */
 export function createWebKnowledgeRepository(
+  commands: WebKnowledgeTreeCommands,
   client: WebKnowledgeAppClient = overlayAppClient,
-  eventTarget: KnowledgeEventTarget | null | undefined =
-    typeof window === 'undefined' ? undefined : window,
-  origin = `web:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
-  /** The scope being viewed: lists show it, and new files are created in it. */
+  /** The scope being viewed: new files are created in it. */
   getScope: () => PanelScope = () => 'personal',
-  /** What lists ask for; defaults to the scope. A workspace of one person asks for everything (undefined). */
-  getListView: () => PanelScope | undefined = getScope,
 ): KnowledgeRepository {
-  const listeners = new Set<(event: KnowledgeMutationEvent) => void>()
-  const byId = new Map<string, KnowledgeSurfaceNode>()
-  let externalCleanup: (() => void) | undefined
-  const nextMutation = createKnowledgeMutationPublisher(origin)
-
-  function emit(event: KnowledgeMutationEvent): void {
-    for (const listener of listeners) listener(event)
+  async function get(id: string, signal?: AbortSignal): Promise<KnowledgeSurfaceNode | null> {
+    const response = await client.files.getResponse({ fileId: id, fullText: true }, { signal })
+    if (response.status === 404) return null
+    if (!response.ok) throw await responseError(response, 'Could not load file')
+    return normalizeKnowledgeSurfaceNode(await response.json() as KnowledgeFile)
   }
-
-  function publish(mutation: Omit<KnowledgeEntityMutation, 'origin' | 'revision'>): void {
-    if (!eventTarget?.dispatchEvent || typeof CustomEvent === 'undefined') return
-    eventTarget.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
-      detail: nextMutation(mutation),
-    }))
-  }
-
-  async function list(signal?: AbortSignal): Promise<{ nodes: KnowledgeSurfaceNode[]; revision: string }> {
-    const [fileRows, noteRows] = await Promise.all([
-      client.files.get<KnowledgeFile[]>({ limit: 100, view: getListView() }, { signal }),
-      client.notes.get<NoteDoc[]>({ limit: 100, view: getListView() }, { signal }),
-    ])
-    const files = Array.isArray(fileRows) ? fileRows : []
-    const notes = Array.isArray(noteRows) ? noteRows.map(noteDocToKnowledgeFile) : []
-    const canonicalIds = new Set(files.map((file) => file._id))
-    const nodes = [...files, ...notes.filter((note) => !canonicalIds.has(note._id))]
-      .map(normalizeKnowledgeSurfaceNode)
-    byId.clear()
-    for (const node of nodes) byId.set(node.id, node)
-    const revision = String(nodes.reduce((latest, node) => Math.max(latest, node.updatedAt), 0))
-    return { nodes, revision }
-  }
-
-  const repository: KnowledgeRepository = {
-    list,
-    async get(id, signal) {
-      const response = await client.files.getResponse({ fileId: id, fullText: true }, { signal })
-      if (response.status === 404) return null
-      if (!response.ok) throw await responseError(response, 'Could not load file')
-      const node = normalizeKnowledgeSurfaceNode(await response.json() as KnowledgeFile)
-      byId.set(node.id, node)
-      return node
-    },
+  return {
+    get,
     async create(input) {
-      const node = await responseNode(await client.files.createResponse({
+      return await responseNode(await client.files.createResponse({
         name: input.name,
         type: input.kind === 'folder' ? 'folder' : 'file',
         kind: input.kind === 'file' ? 'upload' : input.kind,
@@ -148,101 +103,16 @@ export function createWebKnowledgeRepository(
         clientId: input.clientId,
         scope: newItemScope(getScope()),
       }), input)
-      byId.set(node.id, node)
-      emit({ type: 'created', node })
-      publish({ entity: node.kind === 'note' ? 'note' : 'file', id: node.id, operation: 'created' })
-      return node
     },
-    async rename(input: KnowledgeRenameInput) {
-      const response = await client.files.updateResponse({ fileId: input.id, name: input.name })
-      if (!response.ok) throw await responseError(response, 'Could not rename file')
-      const current = byId.get(input.id) ?? await repository.get(input.id)
-      if (!current) throw new Error(`Knowledge node ${input.id} was not found`)
-      const node = { ...current, name: input.name, updatedAt: Date.now() }
-      byId.set(node.id, node)
-      emit({ type: 'updated', node })
-      publish({ entity: node.kind === 'note' ? 'note' : 'file', id: node.id, operation: 'updated' })
-      return node
-    },
-    async move(input: KnowledgeMoveInput) {
-      const response = await client.files.updateResponse({ fileId: input.id, parentId: input.parentId })
-      if (!response.ok) throw await responseError(response, 'Could not move file')
-      const current = byId.get(input.id) ?? await repository.get(input.id)
-      if (!current) throw new Error(`Knowledge node ${input.id} was not found`)
-      const node = { ...current, parentId: input.parentId, updatedAt: Date.now() }
-      byId.set(node.id, node)
-      emit({ type: 'moved', id: node.id, parentId: node.parentId, revision: node.revision })
-      publish({ entity: node.kind === 'note' ? 'note' : 'file', id: node.id, operation: 'moved' })
-      return node
-    },
+    rename: (input: KnowledgeRenameInput) => commands.rename(input.id, input.name),
+    move: (input: KnowledgeMoveInput) => commands.move(input.id, input.parentId),
     async delete(input: KnowledgeDeleteInput) {
-      const nodes = await Promise.all(input.ids.map((id) => byId.get(id) ?? repository.get(id)))
-      await Promise.all(input.ids.map(async (id, i) => {
-        const node = nodes[i]
-        const response = node?.kind === 'note'
-          ? await client.notes.deleteResponse({ noteId: id })
-          : await client.files.deleteResponse({ fileId: id })
+      await Promise.all(input.ids.map(async (id) => {
+        const response = await client.files.deleteResponse({ fileId: id })
         if (!response.ok) throw await responseError(response, 'Could not delete file')
       }))
-      const deleted = input.ids.map((id) => byId.get(id)).filter(Boolean) as KnowledgeSurfaceNode[]
-      for (const id of input.ids) byId.delete(id)
-      emit({ type: 'deleted', ids: input.ids })
-      for (const node of deleted) {
-        publish({ entity: node.kind === 'note' ? 'note' : 'file', id: node.id, operation: 'deleted' })
-      }
-    },
-    subscribe(listener) {
-      listeners.add(listener)
-      if (listeners.size === 1 && eventTarget) {
-        const consumer = new KnowledgeMutationConsumer({
-          origin,
-          repository,
-          async loadNode(mutation, signal) {
-            if (mutation.entity !== 'note') return repository.get(mutation.id, signal)
-            try {
-              const note = await client.notes.get<NoteDoc>({ noteId: mutation.id }, { signal })
-              const node = normalizeKnowledgeSurfaceNode(noteDocToKnowledgeFile(note))
-              byId.set(node.id, node)
-              return node
-            } catch (error) {
-              if (signal.aborted) throw error
-              return repository.get(mutation.id, signal)
-            }
-          },
-          apply: emit,
-        })
-        const handleMutation = (event: Event) => {
-          const mutation = (event as CustomEvent<unknown>).detail
-          if (isKnowledgeEntityMutation(mutation)) void consumer.handle(mutation).catch(() => undefined)
-        }
-        const handleReconcile = (event: Event) => {
-          const reason = (event as CustomEvent<{ reason?: string }>).detail?.reason
-          const normalized = reason === 'authentication-changed' || reason === 'cache-corruption'
-            ? reason
-            : 'explicit-refresh'
-          void consumer.reconcile(normalized).catch(() => undefined)
-        }
-        const handleOnline = () => { void consumer.reconcile('reconnected').catch(() => undefined) }
-        eventTarget.addEventListener(KNOWLEDGE_ENTITY_MUTATION_EVENT, handleMutation)
-        eventTarget.addEventListener(KNOWLEDGE_RECONCILE_EVENT, handleReconcile)
-        eventTarget.addEventListener('online', handleOnline)
-        externalCleanup = () => {
-          consumer.dispose()
-          eventTarget.removeEventListener(KNOWLEDGE_ENTITY_MUTATION_EVENT, handleMutation)
-          eventTarget.removeEventListener(KNOWLEDGE_RECONCILE_EVENT, handleReconcile)
-          eventTarget.removeEventListener('online', handleOnline)
-        }
-      }
-      return () => {
-        listeners.delete(listener)
-        if (listeners.size === 0) {
-          externalCleanup?.()
-          externalCleanup = undefined
-        }
-      }
     },
   }
-  return repository
 }
 
 function routeFromUrl(url: URL): KnowledgeSurfaceRouteState {
@@ -324,17 +194,16 @@ export function createWebFilePickerAdapter(
 }
 
 export function createWebKnowledgeSurfaceAdapters(options: {
+  commands: WebKnowledgeTreeCommands
   client?: WebKnowledgeAppClient
   route?: KnowledgeRouteAdapter
   filePicker?: FilePickerAdapter
   navigate?: (url: string, options?: { replace?: boolean }) => void
   capture?: (event: string, properties?: Record<string, unknown>) => void
   eventTarget?: KnowledgeEventTarget | null
-  origin?: string
   currentUrl?: () => URL
   getScope?: () => PanelScope
-  getListView?: () => PanelScope | undefined
-} = {}): KnowledgeSurfaceAdapters {
+}): KnowledgeSurfaceAdapters {
   const navigate = options.navigate ?? ((url) => window.location.assign(url))
   const currentUrl = options.currentUrl ?? (() => (
     typeof window === 'undefined'
@@ -369,7 +238,7 @@ export function createWebKnowledgeSurfaceAdapters(options: {
     },
   }
   return {
-    repository: createWebKnowledgeRepository(options.client, options.eventTarget, options.origin, options.getScope, options.getListView),
+    repository: createWebKnowledgeRepository(options.commands, options.client, options.getScope),
     route: options.route ?? createWebKnowledgeRouteAdapter({ eventTarget: options.eventTarget ?? undefined }),
     filePicker: options.filePicker ?? createWebFilePickerAdapter(),
     navigation,

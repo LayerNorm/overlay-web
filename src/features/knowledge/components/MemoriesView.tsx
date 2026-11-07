@@ -8,7 +8,9 @@ import { Brain, CheckSquare, Copy, Loader2, Plus, Square, Trash2, UserRound, X }
 import { ListboxSelect, Button, Textarea, toast } from '@overlay/ui/primitives'
 import { Dialog, DialogContent } from '@overlay/ui'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { unwrapPaginatedData } from '@/shared/api/pagination'
+import { useAgentDirectory } from '@/hooks/use-agent-directory'
+import { useMemories } from '@/hooks/use-memories'
+import { useLiveWorkspaceManagement } from '@/hooks/use-workspace-members'
 import { MemoriesLoadingState } from './MemoriesLoadingState'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 
@@ -129,19 +131,28 @@ interface MemoryMemberOption {
 
 function useMemoryMembers({
   activeWorkspaceId,
-  loadMemories,
 }: {
   activeWorkspaceId: string | null | undefined
-  loadMemories: (memberPrincipalId?: string) => Promise<void>
 }) {
-  const [members, setMembers] = useState<MemoryMemberOption[]>([])
+  // Live: members and guests joining, leaving or renamed update the owner filter.
+  const livePeople = useLiveWorkspaceManagement(activeWorkspaceId, 'people')
+  const liveGuests = useLiveWorkspaceManagement(activeWorkspaceId, 'guests')
+  const people = useMemo<MemoryMemberOption[]>(() => {
+    const byPrincipalId = new Map<string, MemoryMemberOption>()
+    for (const item of [...(livePeople?.items ?? []), ...(liveGuests?.items ?? [])]) {
+      if (item.kind === 'member' && item.principalId && item.status === 'active') {
+        byPrincipalId.set(item.principalId, { name: item.name, principalId: item.principalId })
+      }
+    }
+    return [...byPrincipalId.values()].sort((a, b) => a.name.localeCompare(b.name))
+  }, [liveGuests, livePeople])
+  const { agents: directoryAgents } = useAgentDirectory()
   const [selectedMemberPrincipalId, setSelectedMemberPrincipalId] = useState('all')
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!activeWorkspaceId) return;
-    let cancelled = false;
     // `?owner=<principalId>` deep-links from an agent profile's memories section.
     const requestedOwner = typeof window === 'undefined'
       ? null
@@ -150,65 +161,18 @@ function useMemoryMembers({
       setSelectedIds(new Set())
       setSelectionMode(false)
     })
-    void Promise.all([
-      overlayAppClient.workspaces.management(activeWorkspaceId, "people"),
-      overlayAppClient.workspaces.management(activeWorkspaceId, "guests"),
-      overlayAppClient.agents
-        .list(activeWorkspaceId)
-        .catch(() => ({ agents: [] })),
-      requestedOwner ? Promise.resolve() : loadMemories("all"),
-    ])
-      .then(([people, guests, agentDirectory]) => {
-        if (cancelled) return;
-        const byPrincipalId = new Map<
-          string,
-          { name: string; principalId: string; isAgent?: boolean }
-        >();
-        for (const item of [...people.items, ...guests.items]) {
-          if (
-            item.kind === "member" &&
-            item.principalId &&
-            item.status === "active"
-          ) {
-            byPrincipalId.set(item.principalId, {
-              name: item.name,
-              principalId: item.principalId,
-            });
-          }
-        }
-        // Agents appear after humans — they own memories in their own right and
-        // the same member filter resolves them server-side.
-        const humans = [...byPrincipalId.values()].sort((a, b) =>
-          a.name.localeCompare(b.name),
-        );
-        const agents = (agentDirectory.agents ?? [])
-          .filter((agent) => agent.principalId)
-          .map((agent) => ({
-            name: agent.name,
-            principalId: agent.principalId,
-            isAgent: true as const,
-          }))
-          .sort((a, b) => a.name.localeCompare(b.name));
-        const options = [...humans, ...agents];
-        setMembers(options);
-        const initial =
-          requestedOwner &&
-          options.some((m) => m.principalId === requestedOwner)
-            ? requestedOwner
-            : "all";
-        setSelectedMemberPrincipalId(initial);
-        if (requestedOwner) void loadMemories(initial);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setMembers([]);
-          setSelectedMemberPrincipalId("all");
-        }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeWorkspaceId, loadMemories]);
+    // The list filters by this principal server-side, so a link to an agent's or member's memories works at once.
+    if (requestedOwner) queueMicrotask(() => setSelectedMemberPrincipalId(requestedOwner));
+  }, [activeWorkspaceId]);
+
+  // Agents appear after humans: they own memories in their own right.
+  const members = useMemo(() => [
+    ...people,
+    ...(directoryAgents ?? [])
+      .filter((agent) => agent.principalId)
+      .map((agent) => ({ name: agent.name, principalId: agent.principalId, isAgent: true as const }))
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  ], [directoryAgents, people])
 
   return {
     members,
@@ -224,12 +188,9 @@ function useMemoryMembers({
 export default function MemoriesView({ userId: _userId, onHeaderStateChange }: MemoriesViewProps) {
   void _userId
   const { activeWorkspaceId } = useWorkspace()
-  const [memories, setMemories] = useState<Memory[]>([])
   /** Set when a chat source citation deep-links here via `?memory=<id>`. */
   const [highlightedMemoryId, setHighlightedMemoryId] = useState<string | null>(null)
   const jumpedMemoryIdRef = useRef<string | null>(null)
-  const loadRequestIdRef = useRef(0)
-  const [isLoading, setIsLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
   const [addText, setAddText] = useState('')
   const [addType, setAddType] = useState<Memory['type']>('fact')
@@ -243,29 +204,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
   const metaChipClass =
     'rounded-full border border-(--border) bg-(--surface-muted) px-2 py-0.5 text-[10px] text-(--muted)'
 
-  const loadMemories = useCallback(async (memberPrincipalId = 'all') => {
-    const requestId = ++loadRequestIdRef.current
-    setIsLoading(true)
-    try {
-      const res = await overlayAppClient.memory.getResponse({
-        limit: 100,
-        memberPrincipalId: memberPrincipalId === 'all' ? undefined : memberPrincipalId,
-      })
-      if (res.ok) {
-        const rows = unwrapPaginatedData<MemoryListItem>(await res.json())
-        if (requestId === loadRequestIdRef.current) {
-          setMemories(uniqueMemoriesFromRows(rows))
-        }
-      } else if (requestId === loadRequestIdRef.current) {
-        setMemories([])
-      }
-    } catch {
-      if (requestId === loadRequestIdRef.current) setMemories([])
-    } finally {
-      if (requestId === loadRequestIdRef.current) setIsLoading(false)
-    }
-  }, [])
-
   const {
     members,
     selectedMemberPrincipalId,
@@ -274,7 +212,12 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
     setSelectionMode,
     selectedIds,
     setSelectedIds,
-  } = useMemoryMembers({ activeWorkspaceId, loadMemories })
+  } = useMemoryMembers({ activeWorkspaceId })
+
+  // One live list: adds, deletes and extracted memories from any chat or agent appear without reloading.
+  const liveRows = useMemories(selectedMemberPrincipalId === 'all' ? undefined : selectedMemberPrincipalId)
+  const memories = useMemo(() => uniqueMemoriesFromRows((liveRows ?? []) as MemoryListItem[]), [liveRows])
+  const isLoading = liveRows === undefined
 
   // Deep link from a chat source chip: scroll the cited memory into view and
   // ring it, mirroring the message permalink behaviour in chats.
@@ -329,7 +272,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
       setAddImportance("3");
       setShowAdd(false);
       toast.success('Memory saved.')
-      await loadMemories(selectedMemberPrincipalId);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not save memory')
     } finally {
@@ -345,7 +287,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
         toast.error('Could not delete memory.')
         return
       }
-      setMemories((prev) => prev.filter((memory) => memory.memoryId !== memoryId))
       setSelectedIds((prev) => {
         const next = new Set(prev)
         next.delete(memoryId)
@@ -370,7 +311,6 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
     }))
     const deletedIds = new Set(results.filter((result) => result.deleted).map((result) => result.id))
     const failedIds = results.filter((result) => !result.deleted).map((result) => result.id)
-    setMemories((prev) => prev.filter((memory) => !deletedIds.has(memory.memoryId)))
     setSelectedIds(new Set(failedIds))
     if (failedIds.length > 0) {
       toast.error(
@@ -402,8 +342,7 @@ export default function MemoriesView({ userId: _userId, onHeaderStateChange }: M
     setSelectedMemberPrincipalId(value)
     setSelectedIds(new Set())
     setSelectionMode(false)
-    void loadMemories(value)
-  }, [loadMemories, setSelectedIds, setSelectedMemberPrincipalId, setSelectionMode])
+  }, [setSelectedIds, setSelectedMemberPrincipalId, setSelectionMode])
 
   const handleToggleSelectionMode = useCallback(() => {
     setSelectionMode((value) => !value)

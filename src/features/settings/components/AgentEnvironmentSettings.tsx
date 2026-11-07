@@ -3,10 +3,11 @@
 import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 import { Button, Textarea, toast } from '@overlay/ui/primitives'
 
-import { useCallback, useEffect, useState } from 'react'
-import { Check, Copy, Laptop, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Check, Copy, Laptop, ShieldCheck, Trash2 } from 'lucide-react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useLiveAgentEnvironments } from '@/hooks/use-connections'
 
 type Environment = {
   id: string
@@ -22,33 +23,16 @@ type Environment = {
 
 export function AgentEnvironmentSettings() {
   const { activeWorkspaceId } = useWorkspace()
-  const [environments, setEnvironments] = useState<Environment[]>([])
   const [roots, setRoots] = useState<Record<string, string>>({})
   const [editingRoots, setEditingRoots] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [copiedCommandId, setCopiedCommandId] = useState<string | null>(null)
 
-  const refresh = useCallback(async () => {
-    if (!activeWorkspaceId) return
-    try {
-      const data = await overlayAppClient.agentEnvironments.list(activeWorkspaceId, { cache: 'no-store' })
-      setEnvironments(data.environments as Environment[])
-      setError(null)
-    } catch (value) {
-      setError(value instanceof Error ? value.message : 'Failed to load environments')
-    }
-  }, [activeWorkspaceId])
-
-  useEffect(() => { void refresh() }, [refresh])
-  useEffect(() => {
-    if (environments.length === 0) return
-    const refreshInterval = environments.some((environment) => environment.status === 'pending')
-      ? 3_000
-      : 15_000
-    const timer = window.setInterval(() => void refresh(), refreshInterval)
-    return () => window.clearInterval(timer)
-  }, [environments, refresh])
+  // Live: enrollment, approval, heartbeats and revocation arrive as they happen, with no polling.
+  const live = useLiveAgentEnvironments()
+  const environments = useMemo(() => (live ?? []) as Environment[], [live])
+  const loadError = live === null ? 'Failed to load environments' : null
 
   async function approve(environmentId: string) {
     const environment = environments.find((candidate) => candidate.id === environmentId)
@@ -66,7 +50,6 @@ export function AgentEnvironmentSettings() {
         environmentId,
         { mode: 'selected_roots', roots: selectedRoots },
       )
-      await refresh()
       toast.success('Environment approved.')
     } catch (value) {
       toast.error(value instanceof Error ? value.message : 'Approval failed')
@@ -91,7 +74,6 @@ export function AgentEnvironmentSettings() {
         { mode: 'selected_roots', roots: selectedRoots },
       )
       setEditingRoots(null)
-      await refresh()
       toast.success('Project roots updated.')
     } catch (value) {
       toast.error(value instanceof Error ? value.message : 'Project root update failed')
@@ -118,7 +100,6 @@ export function AgentEnvironmentSettings() {
     try {
       if (!activeWorkspaceId) throw new Error('Choose a workspace first')
       await overlayAppClient.agentEnvironments.revoke(activeWorkspaceId, environmentId)
-      await refresh()
       toast.success('Environment revoked.')
     } catch (value) {
       toast.error(value instanceof Error ? value.message : 'Revocation failed')
@@ -134,12 +115,11 @@ export function AgentEnvironmentSettings() {
         <p className="mt-1 text-sm text-(--muted)">Create or connect an environment while setting up a Bring Your Own Agent. Manage its access, health, and revocation here.</p>
       </div>
 
-      {error ? <p role="alert" className="text-sm text-red-500">{error}</p> : null}
+      {error ?? loadError ? <p role="alert" className="text-sm text-red-500">{error ?? loadError}</p> : null}
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <h2 className="text-sm font-semibold text-(--foreground)">Environments</h2>
-          <Button variant="ghost" type="button" aria-label="Refresh environments" onClick={() => void refresh()} className={unstyledButton(`rounded-lg p-2 text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)`)}><RefreshCw size={15} /></Button>
         </div>
         {environments.length === 0 ? <p className="rounded-xl border border-dashed border-(--border) p-8 text-center text-sm text-(--muted)">No environments connected yet.</p> : null}
         {environments.map((environment) => (

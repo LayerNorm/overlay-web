@@ -489,6 +489,8 @@ export type WorkspaceNotification = {
   body?: string
   createdAt: number
   readAt?: number
+  /** Lets a notification open its room without looking the room up. */
+  conversationType?: 'personal' | 'dm' | 'channel'
   /** Set when the related conversation is archived for this actor or deleted. */
   conversationState?: 'archived' | 'deleted'
 }

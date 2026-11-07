@@ -10,10 +10,10 @@
  * here and filtered client-side.
  */
 
+import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { CommandPalette, type CommandPaletteRow } from '@overlay/ui/overlays'
-import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import {
   Bot,
   FileText,
@@ -126,7 +126,16 @@ export function GlobalSearchDialog({
   const [query, setQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState<SearchType | null>(initialCategory)
   const [categories, setCategories] = useState<MentionCategory[]>([])
-  const [agents, setAgents] = useState<SearchItem[]>([])
+  const directory = useAgentDirectory({ enabled: open })
+  const agents = useMemo<SearchItem[]>(() => (
+    workspaceId && directory.workspaceId === workspaceId ? directory.agents ?? [] : []
+  ).map((agent) => ({
+    type: 'agent' as const,
+    id: agent.id,
+    name: agent.name,
+    description: agent.description || agent.instructions || '',
+    icon: 'Bot',
+  })), [directory.agents, directory.workspaceId, workspaceId])
   // Task results belong to the workspace they were fetched for; another workspace never shows them.
   const [taskResults, setTaskResults] = useState<{ workspaceId: string | null | undefined; items: SearchItem[] }>({ workspaceId: undefined, items: [] })
   const tasks = taskResults.workspaceId === workspaceId ? taskResults.items : EMPTY_SEARCH_ITEMS
@@ -168,36 +177,6 @@ export function GlobalSearchDialog({
       cancelled = true
     }
   }, [open, query])
-
-  // Agents are a small, workspace-scoped list: fetch once per open and
-  // filter locally instead of round-tripping on every keystroke.
-  useEffect(() => {
-    if (!open) return
-    let cancelled = false
-
-    void (async () => {
-      const { agents } = workspaceId
-        ? await overlayAppClient.agents
-            .list(workspaceId)
-            .catch(() => ({ agents: [] as WorkspaceAgentDirectoryItem[] }))
-        : { agents: [] as WorkspaceAgentDirectoryItem[] }
-      if (cancelled) return
-
-      setAgents(
-        agents.map((agent) => ({
-          type: 'agent' as const,
-          id: agent.id,
-          name: agent.name,
-          description: agent.description || agent.instructions || '',
-          icon: 'Bot',
-        })),
-      )
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [open, workspaceId])
 
   // Tasks are like agents: a small list the person can see, fetched once per open and filtered here.
   useEffect(() => {

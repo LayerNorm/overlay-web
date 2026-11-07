@@ -16,6 +16,8 @@ export async function startAgentChat(args: {
   surface?: 'agents' | 'chat'
   scope?: PanelScope
   buildHref?: (workspaceId: string | null, href: string, scope?: PanelScope) => string
+  /** Required with `agentId`: the native `agents/threads:resolveMain` mutation. */
+  resolveMainThread?: (args: { workspaceId: string; agentId: string }) => Promise<{ conversationId: string; title: string }>
   push(href: string): void
 }): Promise<string | null> {
   const surface = args.surface ?? 'chat'
@@ -23,9 +25,10 @@ export async function startAgentChat(args: {
   if (!args.workspaceId) return null
   // Agents open into their main thread. The resolver adopts the legacy DM
   // when one exists, so pre-thread history is never lost.
-  const { thread } = args.agentId
-    ? await overlayAppClient.agents.resolveMainThread(args.workspaceId, args.agentId)
-    : { thread: null }
+  if (args.agentId && !args.resolveMainThread) throw new Error('Agent threads are unavailable')
+  const thread = args.agentId
+    ? await args.resolveMainThread!({ workspaceId: args.workspaceId, agentId: args.agentId })
+    : null
   const conversationId = thread?.conversationId
     ?? (await overlayAppClient.conversations.createWorkspaceDirectMessage(args.workspaceId, {
       principalIds: [args.agentPrincipalId],

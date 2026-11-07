@@ -121,7 +121,6 @@ export default function ChatExperience(props: ChatExperienceProps) {
   return (
     <>
       {c.agentRunLifecycle.convexQueryBridge}
-      {c.liveQueryBridge}
       <LinkOpenInterceptor
         preference={c.settings.linkOpenPreference}
         onOpenInOverlay={c.openLinkPreview}

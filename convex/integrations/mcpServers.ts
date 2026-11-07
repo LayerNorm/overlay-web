@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import type { Doc } from '../_generated/dataModel'
 import { mutation, query } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { assertCanCreateInScope, getReadableRow, listScopedRows, scopeContextLoader } from '../lib/resourceScope'
@@ -43,6 +44,41 @@ async function authorizeUserAccess(params: {
   await requireAccessToken(params.accessToken ?? '', params.userId)
 }
 
+/** A server as a member may see it: credentials, tokens and the OAuth client secret never leave the server. */
+export function mcpServerSummary(s: Doc<'mcpServers'>) {
+  return {
+    _id: s._id,
+    userId: s.userId,
+    scope: s.scope ?? ('personal' as const),
+    archivedAt: s.archivedAt,
+    archivedFromScope: s.archivedFromScope,
+    name: s.name,
+    description: s.description,
+    transport: s.transport,
+    url: s.url,
+    enabled: s.enabled,
+    authType: s.authType,
+    hasAuth:
+      !!s.authConfig || !!s.encryptedAuthConfig || !!s.encryptedOAuthTokens || s.oauthStatus === 'connected',
+    timeoutMs: s.timeoutMs,
+    toolCatalogCount: s.toolCatalog?.length ?? 0,
+    toolCatalogUpdatedAt: s.toolCatalogUpdatedAt,
+    toolCatalogError: s.toolCatalogError,
+    defaultToolPolicy: s.defaultToolPolicy ?? 'allow',
+    toolPolicies: s.toolPolicies ?? {},
+    // Non-secret OAuth state only. Tokens and the client secret stay encrypted and server-side.
+    oauthStatus: s.oauthStatus,
+    oauthClientId: s.oauthClientId,
+    oauthIssuer: s.oauthIssuer,
+    oauthScope: s.oauthScope,
+    oauthResource: s.oauthResource,
+    oauthConnectedAt: s.oauthConnectedAt,
+    oauthError: s.oauthError,
+    createdAt: s.createdAt,
+    updatedAt: s.updatedAt,
+  }
+}
+
 export const list = query({
   args: {
     userId: v.string(),
@@ -65,38 +101,7 @@ export const list = query({
       fetchShared: async (ws) => await ctx.db.query('mcpServers')
         .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).collect(),
     })
-    // Scrub authConfig from the response (a workspace-scoped server shares its use, never its credentials)
-    return all.map((s) => ({
-      _id: s._id,
-      userId: s.userId,
-      scope: s.scope ?? ('personal' as const),
-      archivedAt: s.archivedAt,
-      archivedFromScope: s.archivedFromScope,
-      name: s.name,
-      description: s.description,
-      transport: s.transport,
-      url: s.url,
-      enabled: s.enabled,
-      authType: s.authType,
-      hasAuth:
-        !!s.authConfig || !!s.encryptedAuthConfig || !!s.encryptedOAuthTokens || s.oauthStatus === 'connected',
-      timeoutMs: s.timeoutMs,
-      toolCatalogCount: s.toolCatalog?.length ?? 0,
-      toolCatalogUpdatedAt: s.toolCatalogUpdatedAt,
-      toolCatalogError: s.toolCatalogError,
-      defaultToolPolicy: s.defaultToolPolicy ?? 'allow',
-      toolPolicies: s.toolPolicies ?? {},
-      // Non-secret OAuth state only. Tokens and the client secret stay encrypted and server-side.
-      oauthStatus: s.oauthStatus,
-      oauthClientId: s.oauthClientId,
-      oauthIssuer: s.oauthIssuer,
-      oauthScope: s.oauthScope,
-      oauthResource: s.oauthResource,
-      oauthConnectedAt: s.oauthConnectedAt,
-      oauthError: s.oauthError,
-      createdAt: s.createdAt,
-      updatedAt: s.updatedAt,
-    }))
+    return all.map(mcpServerSummary)
   },
 })
 

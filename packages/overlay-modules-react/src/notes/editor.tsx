@@ -5,6 +5,7 @@
 import { Button, Textarea } from '@overlay/ui/primitives'
 import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 import {
+  useEffect,
   useState,
   useCallback,
   type ReactNode,
@@ -55,8 +56,8 @@ export interface NotebookEditorModel {
   name: string
 }
 
+/** Note commands and one-note reads. Lists and live versions come from the host as props. */
 export interface NotebookEditorRepository {
-  list(signal?: AbortSignal): Promise<NoteDoc[]>
   get(noteId: string, signal?: AbortSignal): Promise<NoteDoc | null>
   create(input?: { title?: string; content?: string }): Promise<NoteDoc>
   save(input: {
@@ -104,6 +105,15 @@ export interface NotebookEditorHeaderRenderProps {
 
 export interface CanonicalNotebookEditorProps {
   noteId: string | null
+  /** The host's live note list, shown by the notes sidebar when it is enabled. */
+  notes?: readonly NoteDoc[]
+  /** The open note as the host's live subscription sees it; newer versions refresh a clean editor. */
+  liveNote?: NoteDoc | null
+  /**
+   * The open note was deleted, archived or became unreadable elsewhere. A clean editor goes back to Files; one with
+   * unsaved edits stays open with a notice so the text can be copied.
+   */
+  noteRemoved?: boolean
   hideSidebar?: boolean
   showNotesSidebar?: boolean
   hideBackButton?: boolean
@@ -354,7 +364,9 @@ function NotebookEditorBody({
   showFloatingFormatToolbar,
   setShowFloatingFormatToolbar,
   resolvingRequestedNote,
+  noteRemoved = false,
 }: {
+  noteRemoved?: boolean
   lifecycle: EditorLifecycle
   mutations: NoteMutations
   slashState: SlashState
@@ -391,7 +403,11 @@ function NotebookEditorBody({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         {activeNote ? (
           <>
-          {editorConflict ? (
+          {noteRemoved ? (
+            <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-6 py-2 text-xs text-amber-800 dark:text-amber-200" role="alert">
+              This note was deleted or you no longer have access to it. Your unsaved text is still here; copy it before leaving.
+            </div>
+          ) : editorConflict ? (
             <div className="shrink-0 border-b border-amber-500/30 bg-amber-500/10 px-6 py-2 text-xs text-amber-800 dark:text-amber-200" role="alert">
               {editorConflict.message} Your local draft has been preserved.
             </div>
@@ -570,6 +586,9 @@ function NotebookHeaderBlock({
 
 export function CanonicalNotebookEditor({
   noteId,
+  notes: notesList,
+  liveNote,
+  noteRemoved = false,
   hideSidebar,
   showNotesSidebar,
   hideBackButton,
@@ -604,7 +623,7 @@ export function CanonicalNotebookEditor({
   renderAgentComposer,
   renderHeader,
 }: CanonicalNotebookEditorProps) {
-  const lifecycle = useEditorLifecycle({ repository, hideSidebar, onNoteChanged, media })
+  const lifecycle = useEditorLifecycle({ repository, liveNotes: notesList, onNoteChanged, media })
   const {
     notes,
     setNotes,
@@ -633,6 +652,7 @@ export function CanonicalNotebookEditor({
 
   const notesApi = useNotebookNotes({
     noteId,
+    liveNote,
     hideSidebar,
     repository,
     onNavigateNote,
@@ -681,9 +701,14 @@ export function CanonicalNotebookEditor({
   const [showFloatingFormatToolbar, setShowFloatingFormatToolbar] = useState(false)
 
   const handleBackToFiles = useCallback(async () => {
-    await flushSaveRef.current()
+    if (!noteRemoved) await flushSaveRef.current()
     onBackToFiles()
-  }, [flushSaveRef, onBackToFiles])
+  }, [flushSaveRef, noteRemoved, onBackToFiles])
+
+  // Nothing unsaved is lost by leaving a note that is gone; otherwise stay so the text can be copied.
+  useEffect(() => {
+    if (noteRemoved && !isDirty) onBackToFiles()
+  }, [isDirty, noteRemoved, onBackToFiles])
 
   const { assistantHeader, agentComposer } = notebookChromeElements({
     agent,
@@ -758,6 +783,7 @@ export function CanonicalNotebookEditor({
         showFloatingFormatToolbar={showFloatingFormatToolbar}
         setShowFloatingFormatToolbar={setShowFloatingFormatToolbar}
         resolvingRequestedNote={resolvingRequestedNote}
+        noteRemoved={noteRemoved}
       />
     </AppScreenShell>
   )

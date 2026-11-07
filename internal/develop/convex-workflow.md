@@ -250,18 +250,12 @@ the endpoint rejects a verified token whose subject differs from its session use
 Changing accounts remounts the client cache and its UI subtree. Refresh uses the
 existing browser session lock; token flights cannot cross identities.
 
-Hosted WorkOS is enabled by default because existing backend revisions already
-trust its issuer/JWKS. Preview login retains real sandbox WorkOS tokens. Set
-`OVERLAY_CONVEX_NATIVE_AUTH_ENABLED=false` on the web to disable native token
-issuance without removing legacy subscriptions during rollback.
-
-For OIDC or Better Auth private installations, native issuance remains disabled
-until explicitly enabled. Deploy the additive `convex/auth.config.ts` update with
-the explicit `OVERLAY_PROVIDER_AUTH` and matching provider
-configuration on the isolated/private backend, then set
-`OVERLAY_CONVEX_NATIVE_AUTH_ENABLED=true` on the web. An upgraded web with an older
-backend continues legacy subscriptions until that opt-in. These are rollout
-controls, not an alternative database implementation.
+Native browser identity is mandatory for every authenticated deployment. Convex is
+the only supported backend for cloud and self-hosted setups, and there is no flag
+or fallback. Preview login retains real sandbox WorkOS tokens. OIDC and Better Auth
+deployments must deploy `convex/auth.config.ts` with the explicit
+`OVERLAY_PROVIDER_AUTH` and matching provider configuration, or personal chat is
+unavailable.
 
 Convex's auth evaluator throws on any missing environment read, including optional
 fallbacks. Set `OVERLAY_PROVIDER_AUTH` explicitly before the backend upgrade:
@@ -298,15 +292,8 @@ globally; resource preloads need their own authorization.
 
 ### Native personal-chat list ownership (CN-04)
 
-The native transcript client additionally requires the server-owned
-`nativePersonalTranscriptRevision: "native-personal-transcript-v1"` marker from
-the existing `platform/uiSettings:getByServer` endpoint, alongside
-`nativePersonalChatRevision: "native-personal-list-v1"`. The shell and chat route
-share a request-local readiness probe. An old, unknown or unavailable backend
-keeps both list and history ownership on the guarded legacy path, including
-server-preloaded history. This is an expand/contract release gate, not a runtime
-database abstraction. Backend rollback leaves the additive transcript fields
-and indexes in place. Native summaries validate model preferences as well as
+Personal chat is always native: there is no readiness probe or legacy fallback, and
+server-preloaded history applies only to routes outside personal chat. Native summaries validate model preferences as well as
 list metadata so the transcript UI can consume one typed contract.
 
 Canonical title projection updates only the selected runtime's title and title
@@ -375,21 +362,13 @@ ownership back. Server execution, billing admission and mutation authorization
 remain authoritative. Hosted preview acceptance is separate and is not claimed
 by this local implementation.
 
-The shell and chat route enable native personal ownership only after a fresh,
-request-local server probe of the existing `platform/uiSettings:getByServer`
-endpoint reports the exact list (`nativePersonalChatRevision`), transcript
-(`nativePersonalTranscriptRevision`) and execution (`nativePersonalExecutionRevision`)
-markers. Missing, unknown or failed readiness keeps the guarded legacy transport
-through web-first upgrades and backend rollback; cached browser preferences
-cannot enable it. A reload after the backend sync activates native ownership.
-This is separate from native authentication readiness; configured-but-failing
-native operations do not fall back after activation. These markers are
-server-owned and cannot be saved as a user preference.
+A failing native personal operation shows an error; it never falls back to HTTP.
+Deploy web before its matching Convex functions, and expect personal chat to be
+unavailable until both are live. Fix forward rather than adding a compatibility path.
 
-Web and Convex deploy independently. The incoming web must work with the old
-backend, and the incoming backend must work with the old web, including retained
-rollback revisions. Never remove an old field or require a new field in the same
-release that first introduces its replacement.
+Web and Convex deploy independently, with web first. The product has effectively no
+users, so a brief gap between the two deploys is acceptable. Do not keep compatibility
+paths for it. Data changes still must not lose or corrupt stored records.
 
 Worked example: rename `files.name` to `displayName` (illustrative; this migration
 does not change the current schema).
@@ -880,9 +859,11 @@ with the same token, and fail on browser runtime or authentication errors.
 
 Collaboration realtime is native Convex when `appDataCapabilities.provider === 'convex'`:
 
-- `watchRoomMessages` owns room transcript updates.
-- `watchConversationListVersion` provides a metadata-free invalidation signal for the sidebar.
-- `watchNotifications` is the single app-level notification subscription.
+- `collaboration/rooms:messages` and `:state` own room transcripts, metadata and presence.
+- `collaboration/activity:listVersion` provides a metadata-free invalidation signal for the DM and channel lists.
+- `collaboration/activity:notifications` is the single app-level notification subscription.
+
+All of these use native Convex identity, not a browser-held access token.
 
 Do not run `/api/v1/conversations/events` long-polls alongside those subscriptions. That endpoint is a non-realtime fallback; polling it against the Convex repository multiplies one browser connection into repeated Convex queries and authorization calls.
 

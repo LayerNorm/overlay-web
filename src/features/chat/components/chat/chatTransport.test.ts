@@ -3,7 +3,7 @@ import test from 'node:test'
 import { Chat } from '@ai-sdk/react'
 import type { ChatTransport, UIMessage } from 'ai'
 import type { ConversationRuntime } from '../chat-interface/types'
-import { startActRetryStream } from './chatTransport'
+import { startActRetryStream, startActTextStream } from './chatTransport'
 
 test('real AI SDK Chat retry rolls both histories back after a swallowed compatibility POST error', async () => {
   const error = Object.assign(new Error('Compatibility is unavailable.'), {
@@ -103,3 +103,32 @@ for (const superseded of [false, true]) {
     assert.deepEqual(errors, [])
   })
 }
+
+test('a failed first turn reports its error before completion activates the real chat', async () => {
+  let active = true
+  const events: string[] = []
+  const runtime = {
+    actChat: { sendMessage: async () => { throw new Error('Act rejected') }, error: undefined },
+    askChats: [{ messages: [], stop: () => undefined }],
+  } as unknown as ConversationRuntime
+
+  await startActTextStream({
+    chatId: 'pending-first',
+    targetRuntime: runtime,
+    textModelsForTurn: ['model'],
+    selectedActModel: 'model',
+    turnId: 'turn-1',
+    partsForModel: [{ type: 'text', text: 'Hello' }],
+    commonBody: {},
+    isChatActive: () => active,
+    completeSession: (_id, wasActive) => {
+      events.push(`complete:${wasActive}`)
+      active = false
+    },
+    loadSubscription: () => undefined,
+    onError: () => { events.push('error') },
+    logPrefix: 'test',
+  } as unknown as Parameters<typeof startActTextStream>[0])
+
+  assert.deepEqual(events, ['error', 'complete:true'])
+})

@@ -12,39 +12,32 @@ import { createNativeConvexTokenFetcher } from './native-convex-token-broker'
 
 type ConvexAuthContextValue = {
   accessToken: string | null
-  nativeAuthConfigured: boolean
   hasConvexClient: boolean
 }
 
 const ConvexAuthContext = createContext<ConvexAuthContextValue>({
   accessToken: null,
-  nativeAuthConfigured: false,
   hasConvexClient: false,
 })
 
 export function ConvexAuthProvider({
   children,
   requiresConvexClient = convexReactClientEnabled,
-  nativeAuthConfigured = false,
 }: {
   children: React.ReactNode
   requiresConvexClient?: boolean
-  nativeAuthConfigured?: boolean
 }) {
   const { user } = useAuth()
   if (!requiresConvexClient || !convexReactClientEnabled) {
     return (
-      <ConvexAuthContext.Provider value={{ accessToken: null, nativeAuthConfigured, hasConvexClient: false }}>
+      <ConvexAuthContext.Provider value={{ accessToken: null, hasConvexClient: false }}>
         {children}
       </ConvexAuthContext.Provider>
     )
   }
   // Remount query caches and transient children before another identity can render.
   return (
-    <ConvexIdentityScope
-      key={user ? `user:${user.id}` : 'anonymous'}
-      nativeAuthConfigured={nativeAuthConfigured}
-    >
+    <ConvexIdentityScope key={user ? `user:${user.id}` : 'anonymous'}>
       {children}
     </ConvexIdentityScope>
   )
@@ -57,13 +50,7 @@ function useNativeConvexAuth() {
   return useMemo(() => ({ isLoading, isAuthenticated: Boolean(userId), fetchAccessToken }), [isLoading, userId, fetchAccessToken])
 }
 
-function ConvexIdentityScope({
-  children,
-  nativeAuthConfigured,
-}: {
-  children: React.ReactNode
-  nativeAuthConfigured: boolean
-}) {
+function ConvexIdentityScope({ children }: { children: React.ReactNode }) {
   const { user, isLoading, refreshSession } = useAuth()
   const userId = user?.id ?? null
   const [client] = useState(createConvexReactClient)
@@ -110,9 +97,8 @@ function ConvexIdentityScope({
 
   const value = useMemo(() => ({
     accessToken,
-    nativeAuthConfigured,
     hasConvexClient: Boolean(client),
-  }), [accessToken, client, nativeAuthConfigured])
+  }), [accessToken, client])
   const content = (
     <ConvexAuthContext.Provider value={value}>
       {children}
@@ -128,7 +114,6 @@ export function useConvexAuthToken(): string | null {
   return useContext(ConvexAuthContext).accessToken
 }
 
-export function useConvexAuthConfiguration(): Pick<ConvexAuthContextValue, 'nativeAuthConfigured' | 'hasConvexClient'> {
-  const { nativeAuthConfigured, hasConvexClient } = useContext(ConvexAuthContext)
-  return { nativeAuthConfigured, hasConvexClient }
+export function useHasConvexClient(): boolean {
+  return useContext(ConvexAuthContext).hasConvexClient
 }

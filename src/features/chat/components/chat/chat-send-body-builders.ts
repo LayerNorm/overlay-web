@@ -302,7 +302,6 @@ export function buildCommonActBody({
         : { conversationId: chatId }),
     turnId,
     mode: requestMode,
-    automationMode: requestMode === 'automate',
     ...(requestMode === 'automate' && automationIdParam ? { automationId: automationIdParam } : {}),
     ...(indexedFileNames.length > 0 ? { indexedFileNames, indexedAttachments } : {}),
     ...(replyContext?.bodyForModel ? { replyContextForModel: replyContext.bodyForModel } : {}),

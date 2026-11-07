@@ -22,9 +22,10 @@ import {
   createPersonalChatArchiveOptimisticUpdate,
   updatePersonalChatUnread,
 } from './personal-chat-optimistic'
-import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
+import { useHasConvexClient } from '@/components/providers/ConvexAuthProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { PersonalChatErrorBoundary } from './personal-chat-error-boundary'
+import { usePersonalChatCommands, type PersonalChatCommands } from './usePersonalChatCommands'
 import {
   isWorkspaceRouteTargetPending,
   legacyWorkspaceScopeForRoute,
@@ -74,6 +75,11 @@ type PersonalChatContextValue = {
   create(args: NativePersonalCreateArgs): Promise<Id<'conversations'>>
   submit(args: NativePersonalSubmitArgs): Promise<FunctionReturnType<typeof api.chat.personal.submit>>
   setPreferences(args: NativePersonalPreferencesArgs): Promise<void>
+  deleteTurn: PersonalChatCommands['deleteTurn']
+  branch: PersonalChatCommands['branch']
+  setGeneratedUi: PersonalChatCommands['setGeneratedUi']
+  addAssistantNote: PersonalChatCommands['addAssistantNote']
+  findRecentChat: PersonalChatCommands['findRecentChat']
   setPendingTranscriptConversation(
     conversationId: string | null,
     ownerId?: string | null,
@@ -104,6 +110,22 @@ const emptyTranscript: PersonalChatTranscript = {
 
 const emptyExecution: PersonalChatExecution = { status: 'disabled', value: null }
 
+const unavailable = async (): Promise<never> => { throw new Error('Native personal chat is unavailable') }
+const unavailableActions = {
+  create: unavailable,
+  submit: unavailable,
+  setPreferences: unavailable,
+  deleteTurn: unavailable,
+  branch: unavailable,
+  setGeneratedUi: unavailable,
+  addAssistantNote: unavailable,
+  findRecentChat: async () => null,
+  setPendingTranscriptConversation() {},
+  rename: unavailable,
+  setArchived: unavailable,
+  setRead: unavailable,
+}
+
 const PersonalChatContext = createContext<PersonalChatContextValue>({
   configured: false,
   available: false,
@@ -115,28 +137,20 @@ const PersonalChatContext = createContext<PersonalChatContextValue>({
   execution: emptyExecution,
   active: emptyList,
   archived: emptyList,
-  async create() { throw new Error('Native personal chat is unavailable') },
-  async submit() { throw new Error('Native personal chat is unavailable') },
-  async setPreferences() { throw new Error('Native personal chat is unavailable') },
-  setPendingTranscriptConversation() {},
-  async rename() {},
-  async setArchived() {},
-  async setRead() {},
+  ...unavailableActions,
 })
 
-export function PersonalChatProvider({ children, backendReady = false }: { children: ReactNode; backendReady?: boolean }) {
-  const authConfiguration = useConvexAuthConfiguration()
+export function PersonalChatProvider({ children }: { children: ReactNode }) {
+  const hasConvexClient = useHasConvexClient()
   const workspace = useWorkspace()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const workspaceId = workspace.activeWorkspaceId
-  const nativeConfigured = authConfiguration.nativeAuthConfigured && backendReady
-  const available = nativeConfigured && authConfiguration.hasConvexClient
 
-  if (!available) {
-    const status: ListStatus = nativeConfigured ? 'unavailable' : 'disabled'
+  if (!hasConvexClient) {
+    const status: ListStatus = 'disabled'
     const value: PersonalChatContextValue = {
-      configured: nativeConfigured,
+      configured: false,
       available: false,
       workspaceId,
       viewerUserId: null,
@@ -146,13 +160,7 @@ export function PersonalChatProvider({ children, backendReady = false }: { child
       execution: { ...emptyExecution, status },
       active: { ...emptyList, status },
       archived: { ...emptyList, status },
-      async create() { throw new Error('Native personal chat is unavailable') },
-      async submit() { throw new Error('Native personal chat is unavailable') },
-      async setPreferences() { throw new Error('Native personal chat is unavailable') },
-      setPendingTranscriptConversation() {},
-      async rename() { throw new Error('Native personal chat is unavailable') },
-      async setArchived() { throw new Error('Native personal chat is unavailable') },
-      async setRead() { throw new Error('Native personal chat is unavailable') },
+      ...unavailableActions,
     }
     return <PersonalChatContext.Provider value={value}>{children}</PersonalChatContext.Provider>
   }
@@ -173,13 +181,7 @@ export function PersonalChatProvider({ children, backendReady = false }: { child
         execution: { ...emptyExecution, status: 'unavailable' },
         active: { ...emptyList, status: 'unavailable' },
         archived: { ...emptyList, status: 'unavailable' },
-        async create() { throw new Error('Native personal chat is unavailable') },
-        async submit() { throw new Error('Native personal chat is unavailable') },
-        async setPreferences() { throw new Error('Native personal chat is unavailable') },
-        setPendingTranscriptConversation() {},
-        async rename() { throw new Error('Native personal chat is unavailable') },
-        async setArchived() { throw new Error('Native personal chat is unavailable') },
-        async setRead() { throw new Error('Native personal chat is unavailable') },
+        ...unavailableActions,
       }}
     >
       <NativePersonalChatProvider
@@ -212,26 +214,34 @@ function isChatConsumerPath(pathname: string | null): boolean {
   return segments[1] === 'chat'
 }
 
+function isAutomationConsumerPath(pathname: string | null): boolean {
+  if (!pathname) return false
+  const handleRoute = parseWorkspaceHandleRoute(pathname)
+  if (handleRoute) return handleRoute.surface === 'automations'
+  const segments = pathname.split('/').filter(Boolean)
+  return segments[0] === 'app' && segments.includes('automations')
+}
+
 function personalChatQueryDemand(pathname: string | null, routeParams: URLSearchParams) {
   const isChatSurface = isChatConsumerPath(pathname)
   const routeScope = readWorkspacePathScope(pathname ?? '')
     ?? legacyWorkspaceScopeForRoute('chat', routeParams)
   const view = routeParams.get('view')
-  const isNativePersonalChatSurface = isChatSurface
-    && routeScope !== 'workspace'
-    && !routeParams.get('automationId')
-    && !['all', 'workspace-chats', 'dms', 'channels', 'room', 'rooms'].includes(view ?? '')
+  const isRoomView = ['dms', 'channels', 'room', 'rooms'].includes(view ?? '')
+  const isNativePersonalChatSurface = (isChatSurface && !isRoomView) || isAutomationConsumerPath(pathname)
+  const activeScope = routeScope === 'workspace' ? 'workspace' as const : 'personal' as const
   const handleRoute = pathname ? parseWorkspaceHandleRoute(pathname) : null
   const isArchivedRoute = handleRoute?.surface === 'archived'
     || pathname === '/app/archived'
     || pathname?.startsWith('/app/archived/') === true
     || (pathname?.startsWith('/app/w/') === true && pathname.endsWith('/archived'))
   const isArchivedSettings = pathname?.endsWith('/settings') === true && routeParams.get('section') === 'archived'
-  const needsActiveList = isNativePersonalChatSurface
+  // The sidebar lists AI chats on room routes too.
+  const needsActiveList = isChatSurface
   const needsArchivedList = isArchivedRoute || isArchivedSettings
   const canReadSelectedSummary = isNativePersonalChatSurface || isArchivedRoute
   const routeId = canReadSelectedSummary ? routeParams.get('id') : null
-  return { needsActiveList, needsArchivedList, canReadSelectedSummary, routeId }
+  return { needsActiveList, needsArchivedList, canReadSelectedSummary, routeId, activeScope, isNativePersonalChatSurface }
 }
 
 function NativePersonalChatProvider({
@@ -258,7 +268,9 @@ function NativePersonalChatProvider({
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const routeParams = useMemo(() => new URLSearchParams(searchParams.toString()), [searchParams])
-  const { needsActiveList, needsArchivedList, canReadSelectedSummary, routeId } = personalChatQueryDemand(pathname, routeParams)
+  const {
+    needsActiveList, needsArchivedList, canReadSelectedSummary, routeId, activeScope, isNativePersonalChatSurface,
+  } = personalChatQueryDemand(pathname, routeParams)
   const canQuery = Boolean(workspaceReady && workspaceId && !authLoading && isAuthenticated)
   const canQueryActive = canQuery && needsActiveList && !temporaryActive
   const canQueryArchived = canQuery && needsArchivedList
@@ -268,7 +280,7 @@ function NativePersonalChatProvider({
     workspaceId, canQuery, canRead: canReadNativeSummary, pathname, routeId,
   })
   const execution = useNativePersonalExecution({
-    enabled: needsActiveList && !temporaryActive,
+    enabled: isNativePersonalChatSurface && !temporaryActive,
     canQuery,
     workspaceId,
     viewerUserId,
@@ -279,7 +291,7 @@ function NativePersonalChatProvider({
   })
   const activeQuery = usePaginatedQuery(
     api.chat.personal.list,
-    canQueryActive ? { workspaceId: workspaceId!, archived: false } : 'skip',
+    canQueryActive ? { workspaceId: workspaceId!, archived: false, scope: activeScope } : 'skip',
     { initialNumItems: 30 },
   )
   const archivedQuery = usePaginatedQuery(
@@ -410,6 +422,7 @@ function NativePersonalChatProvider({
   const setPreferences = useCallback(async (args: NativePersonalPreferencesArgs) => {
     await preferencesMutation(args)
   }, [preferencesMutation])
+  const { deleteTurn, branch, setGeneratedUi, addAssistantNote, findRecentChat } = usePersonalChatCommands(workspaceId)
   const baseListStatus = personalChatListStatus({ configured, workspaceReady, authLoading, workspaceId, isAuthenticated })
   const activeStatus = !needsActiveList || temporaryActive
     ? 'disabled'
@@ -463,6 +476,11 @@ function NativePersonalChatProvider({
     create,
     submit,
     setPreferences,
+    deleteTurn,
+    branch,
+    setGeneratedUi,
+    addAssistantNote,
+    findRecentChat,
     setPendingTranscriptConversation,
   }), [
     activeQuery,
@@ -478,6 +496,11 @@ function NativePersonalChatProvider({
     create,
     submit,
     setPreferences,
+    deleteTurn,
+    branch,
+    setGeneratedUi,
+    addAssistantNote,
+    findRecentChat,
     setPendingTranscriptConversation,
     selectedConversationId,
     setArchived,

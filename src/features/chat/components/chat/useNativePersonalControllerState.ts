@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useLayoutEffect, useMemo, useRef, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type Dispatch, type SetStateAction } from 'react'
+import { markPersonalChatQueryReady } from '../../lib/realtime-baseline'
 import type { usePersonalChat } from '@/components/providers/PersonalChatProvider'
 import type { ConversationRuntime } from '../chat-interface/types'
 import { useNativeThreadSafety } from './useNativeThreadSafety'
@@ -15,6 +16,22 @@ import {
   useNativePersonalTranscript,
 } from './useNativePersonalTranscript'
 import { PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
+
+/**
+ * A first turn keeps its pending runtime until the stream ends. Its active ID can
+ * still be null after the durable URL is published, so match the selected chat too.
+ */
+export function isNativePendingFirstTurn(
+  activeChatId: string | null,
+  pendingRunConversationId: string | null,
+  selectedConversationId: string | null,
+) {
+  return activeChatId === PENDING_FIRST_CHAT_ID || (
+    activeChatId === null
+    && pendingRunConversationId !== null
+    && selectedConversationId === pendingRunConversationId
+  )
+}
 
 export function useNativePersonalSafetyScope({
   activeChatId,
@@ -31,7 +48,9 @@ export function useNativePersonalSafetyScope({
   nativePersonalRoute: boolean
   pendingRunConversationId: string | null
 }) {
-  const nativePendingFirst = activeChatId === PENDING_FIRST_CHAT_ID
+  const nativePendingFirst = isNativePendingFirstTurn(
+    activeChatId, pendingRunConversationId, nativePersonal.selectedConversationId,
+  )
   const nativeSafetyConversationId = nativePersonalRoute
     ? nativePersonal.selectedConversationId ?? (nativePendingFirst ? pendingRunConversationId : null)
     : isTemporaryChat || nativePendingFirst ? null : activeChatId
@@ -65,7 +84,6 @@ export function useNativePersonalControllerState({
   activeChatId,
   activeRuntime,
   chatWorkspaceId,
-  hasAutomationContext,
   isNativePersonalChat,
   isTemporaryChat,
   nativePersonal,
@@ -82,7 +100,6 @@ export function useNativePersonalControllerState({
   activeChatId: string | null
   activeRuntime: ConversationRuntime
   chatWorkspaceId: string | null
-  hasAutomationContext: boolean
   isNativePersonalChat(id: string): boolean
   isTemporaryChat: boolean
   nativePersonal: ReturnType<typeof usePersonalChat>
@@ -119,7 +136,6 @@ export function useNativePersonalControllerState({
   const scope = selectNativePersonalScope({
     nativePersonalRoute,
     isTemporaryChat,
-    hasAutomationContext,
     activeChatId,
     isNativePersonalChat,
     pendingRunConversationId,
@@ -186,6 +202,10 @@ export function useNativePersonalControllerState({
     onJournalChange: nativeJournalChanged,
     isCurrentScope: isNativeCommandScopeCurrent,
   })
+  const transcriptReady = scope.enabled && nativePersonal.transcript.status === 'ready' && Boolean(nativePersonal.transcript.conversationId)
+  useEffect(() => {
+    if (transcriptReady) markPersonalChatQueryReady()
+  }, [transcriptReady])
   const executionRun = nativePersonal.execution.value?.run ?? null
   const nativeCurrentTurnId = nativePersonalCurrentTurnId(
     nativeTranscriptState.projection, executionRun, [...nativeJournal.values()],

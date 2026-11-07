@@ -42,6 +42,26 @@ export function isConversationScopeVerified(routeKey: string | null) {
   return Boolean(routeKey && verifiedConversationRouteKeys.has(routeKey))
 }
 
+/**
+ * Convex only returns AI chat rows the viewer may read, so a known row filed under this
+ * path's scope needs no HTTP scope probe. A row under the other scope still redirects. The transcript query still enforces access for each read.
+ */
+export function isKnownNativePersonalChat(
+  personal: {
+    selectedSummary?: { _id: string; scope: PanelScope } | null
+    active: { rows: ReadonlyArray<{ _id: string; scope: PanelScope }> }
+    archived: { rows: ReadonlyArray<{ _id: string; scope: PanelScope }> }
+  },
+  pathScope: PanelScope | null,
+  conversationId: string | null,
+) {
+  if (!pathScope || !conversationId) return false
+  const known = (row: { _id: string; scope: PanelScope }) => row._id === conversationId && row.scope === pathScope
+  return Boolean(personal.selectedSummary && known(personal.selectedSummary))
+    || personal.active.rows.some(known)
+    || personal.archived.rows.some(known)
+}
+
 export function ConversationDetailScopeGate({
   routeKey,
   status,

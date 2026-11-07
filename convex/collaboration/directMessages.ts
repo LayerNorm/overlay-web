@@ -1,5 +1,6 @@
 import { hydrateRemoteMessages, hydrateRemoteMessage, prepareRemoteMessageText } from '../lib/remoteMessageText'
 import { v } from 'convex/values'
+import type { ObjectType } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { mutation, query } from '../_generated/server'
 import { internal } from '../_generated/api'
@@ -7,7 +8,6 @@ import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
-import { conversationListVersion } from '../lib/conversationListVersion'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
 import { assertNativeHarnessRun, assertSupportedAgentExecution, nativeRunRetiredError } from '../../src/shared/agents/native-run-retirement'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
@@ -16,7 +16,7 @@ import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
 
-type CollaborationCtx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
+type CollaborationCtx = (Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>) & { auth?: QueryCtx['auth'] }
 
 const notificationFilterValidator = v.union(
   v.literal('all'),
@@ -41,19 +41,37 @@ const notificationValidator = v.object({
   body: v.optional(v.string()),
   createdAt: v.number(),
   readAt: v.optional(v.number()),
+  conversationType: v.optional(v.union(v.literal('personal'), v.literal('dm'), v.literal('channel'))),
   conversationState: v.optional(v.union(v.literal('archived'), v.literal('deleted'))),
 })
 
+/**
+ * Room functions trust one of three proofs: the server secret, the legacy browser token, or
+ * native Convex identity. `native` is set only by `nativeRoomActor` below, never from client
+ * arguments, because every public validator here rejects unknown fields.
+ */
+type ActorProof = {
+  accessToken?: string
+  actorUserId: string
+  workspaceId: string
+  serverSecret?: string
+  native?: true
+}
+
+export async function nativeRoomActor(ctx: Pick<QueryCtx, 'auth'>, workspaceId: string) {
+  const identity = await ctx.auth.getUserIdentity()
+  if (!identity?.subject) throw new Error('Unauthorized')
+  return { actorUserId: identity.subject, workspaceId, native: true as const }
+}
+
 async function requireActor(
   ctx: CollaborationCtx,
-  args: {
-    accessToken?: string
-    actorUserId: string
-    workspaceId: string
-    serverSecret?: string
-  },
+  args: ActorProof,
 ) {
-  if (!validateServerSecret(args.serverSecret)) {
+  if (args.native) {
+    const identity = await ctx.auth?.getUserIdentity()
+    if (!identity?.subject || identity.subject !== args.actorUserId) throw new Error('Unauthorized')
+  } else if (!validateServerSecret(args.serverSecret)) {
     await requireAccessToken(args.accessToken ?? '', args.actorUserId)
   }
   const principal = await ctx.db.query('workspacePrincipals')
@@ -110,13 +128,7 @@ async function requireWorkspaceOwner(
 
 async function canAccess(
   ctx: CollaborationCtx,
-  args: {
-    actorUserId: string
-    accessToken?: string
-    conversationId: Id<'conversations'>
-    workspaceId: string
-    serverSecret?: string
-  },
+  args: ActorProof & { conversationId: Id<'conversations'> },
 ) {
   const actor = await requireActor(ctx, args)
   const conversation = await ctx.db.get(args.conversationId)
@@ -141,13 +153,7 @@ async function canAccess(
 
 export async function requireConversationAccess(
   ctx: CollaborationCtx,
-  args: {
-    actorUserId: string
-    accessToken?: string
-    conversationId: Id<'conversations'>
-    workspaceId: string
-    serverSecret?: string
-  },
+  args: ActorProof & { conversationId: Id<'conversations'> },
 ) {
   const access = await canAccess(ctx, args)
   if (!access.allowed || !access.conversation) throw new Error('CONVERSATION_ACCESS_DENIED')
@@ -484,76 +490,30 @@ export const listMessages = query({
   },
 })
 
-/**
- * Browser-facing room transcript subscription. Convex re-runs this query when
- * any indexed message it depends on changes, so workspace participants receive
- * new messages without polling the Next.js BFF.
- *
- * Auth failures return `{ ok: false }` (not an empty message list) so the
- * client keeps the last valid transcript. Browser tokens must be the HS256
- * tokens from `/api/auth/convex-token` (signed with `INTERNAL_API_SECRET`).
- * WorkOS JWTs cannot be verified inside Convex queries because JWKS uses
- * fetch(), which queries forbid.
- */
-export const watchRoomMessages = query({
-  args: {
-    accessToken: v.string(),
-    actorUserId: v.string(),
-    conversationId: v.id('conversations'),
-    limit: v.number(),
-    mainOnly: v.optional(v.boolean()),
-    threadRootMessageId: v.optional(v.id('conversationMessages')),
-    workspaceId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    try {
-      await requireConversationAccess(ctx, args)
-    } catch (error) {
-      // A stale/refreshing browser token must not throw through React's route
-      // boundary. Returning ok:false keeps the last valid transcript mounted
-      // while ConvexAuthProvider refreshes authentication.
-      if (error instanceof Error && [
-        'Unauthorized',
-        'WORKSPACE_ACCESS_DENIED',
-        'CONVERSATION_ACCESS_DENIED',
-      ].includes(error.message)) {
-        return { ok: false as const, messages: [] as Array<Record<string, unknown>> }
-      }
-      throw error
-    }
-    const rows = await ctx.db.query('conversationMessages')
-      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
-      .order('desc')
-      .take(500)
-    const selectedMessages = rows
-      .filter((message) => args.threadRootMessageId === undefined || message.threadRootMessageId === args.threadRootMessageId)
-      .filter((message) => args.mainOnly !== true || !message.threadRootMessageId)
-      .slice(0, Math.max(1, Math.min(100, Math.floor(args.limit))))
-      .reverse()
-    const messages = (await hydrateRemoteMessages(ctx, selectedMessages)).map((message) => ({
-        id: message._id,
-        turnId: message.turnId,
-        authorKind: message.authorKind ?? (message.role === 'assistant' ? 'model' : 'human'),
-        authorPrincipalId: message.authorPrincipalId,
-        importedAuthorName: message.importedAuthorName,
-        importedAuthorEmail: message.importedAuthorEmail,
-        importedAuthorStatus: message.importedAuthorStatus,
-        content: message.content,
-        parts: message.parts,
-        agentPlan: message.agentPlan,
-        createdAt: message.createdAt,
-        updatedAt: message.updatedAt ?? message.createdAt,
-        eventSequence: message.eventSequence,
-        editedAt: message.editedAt,
-        editHistory: message.editHistory,
-        deletedAt: message.deletedAt,
-        clientNonce: message.clientNonce,
-        threadRootMessageId: message.threadRootMessageId,
-        status: message.status,
-      }))
-    return { ok: true as const, messages }
-  },
-})
+/** The browser's view of a room message. */
+export function roomMessageView(message: Awaited<ReturnType<typeof hydrateRemoteMessages>>[number]) {
+  return {
+    id: message._id,
+    turnId: message.turnId,
+    authorKind: message.authorKind ?? (message.role === 'assistant' ? 'model' : 'human'),
+    authorPrincipalId: message.authorPrincipalId,
+    importedAuthorName: message.importedAuthorName,
+    importedAuthorEmail: message.importedAuthorEmail,
+    importedAuthorStatus: message.importedAuthorStatus,
+    content: message.content,
+    parts: message.parts,
+    agentPlan: message.agentPlan,
+    createdAt: message.createdAt,
+    updatedAt: message.updatedAt ?? message.createdAt,
+    eventSequence: message.eventSequence,
+    editedAt: message.editedAt,
+    editHistory: message.editHistory,
+    deletedAt: message.deletedAt,
+    clientNonce: message.clientNonce,
+    threadRootMessageId: message.threadRootMessageId,
+    status: message.status,
+  }
+}
 
 export const addMessage = mutation({
   args: {
@@ -1525,130 +1485,141 @@ export const canAccessConversation = query({
   handler: async (ctx, args) => (await canAccess(ctx, args)).allowed,
 })
 
+const listParticipantsArgs = {
+    actorUserId: v.string(),
+    conversationId: v.id('conversations'),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  }
+
+export async function listParticipantsFor(ctx: QueryCtx, args: ObjectType<typeof listParticipantsArgs> & { native?: true }) {
+  await requireConversationAccess(ctx, args)
+  return await participantViews(ctx, args.conversationId)
+}
+
 export const listParticipants = query({
-  args: {
-    actorUserId: v.string(),
-    conversationId: v.id('conversations'),
-    workspaceId: v.string(),
-    serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    await requireConversationAccess(ctx, args)
-    return await participantViews(ctx, args.conversationId)
-  },
+  args: listParticipantsArgs,
+  handler: async (ctx, args) => await listParticipantsFor(ctx, args),
 })
 
-export const addParticipant = mutation({
-  args: {
+const addParticipantArgs = {
     actorUserId: v.string(),
     conversationId: v.id('conversations'),
     principalId: v.string(),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const access = await requireConversationAccess(ctx, args)
-    if (access.participant?.role !== 'moderator') throw new Error('CONVERSATION_MODERATOR_REQUIRED')
-    if (access.conversation?.conversationType === 'dm') {
-      throw new Error('DIRECT_MESSAGE_REQUIRES_NEW_GROUP')
-    }
-    const [principal, membership] = await Promise.all([
-      ctx.db.query('workspacePrincipals')
-      .withIndex('by_principalId', (q) => q.eq('principalId', args.principalId))
-        .unique(),
-      ctx.db.query('workspaceMemberships')
-      .withIndex('by_workspaceId_principalId', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('principalId', args.principalId)
-        )).unique(),
-    ])
-    if (
-      !principal
-      || principal.workspaceId !== args.workspaceId
-      || principal.archivedAt
-      || (principal.type !== 'human' && principal.type !== 'agent')
-      || membership?.status !== 'active'
-    ) throw new Error('Participant is not eligible')
-    const existing = await ctx.db.query('conversationParticipants')
-      .withIndex('by_conversationId_principalId', (q) => (
-        q.eq('conversationId', args.conversationId).eq('principalId', args.principalId)
-      )).unique()
-    const now = Date.now()
-    let participant
-    if (existing) {
-      await ctx.db.patch(existing._id, {
-        status: 'active',
-        removedAt: undefined,
-        archivedAt: undefined,
-        updatedAt: now,
-      })
-      participant = { ...existing, status: 'active' as const, removedAt: undefined, archivedAt: undefined, updatedAt: now }
-    } else {
-      const id = await ctx.db.insert('conversationParticipants', {
-        conversationId: args.conversationId,
-        workspaceId: args.workspaceId,
-        principalId: args.principalId,
-        principalType: principal.type,
-        role: 'member',
-        status: 'active',
-        notificationLevel: 'all',
-        joinedAt: now,
-        updatedAt: now,
-      })
-      participant = (await ctx.db.get(id))!
-    }
-    await ctx.db.insert('workspaceNotifications', {
-      notificationId: crypto.randomUUID(),
-      workspaceId: args.workspaceId,
-      recipientPrincipalId: args.principalId,
-      type: 'participant',
-      conversationId: args.conversationId,
-      actorPrincipalId: access.actor.principalId,
-      title: `${access.actor.displayName} added you to a conversation`,
-      eventSequence: now,
-      createdAt: now,
-    })
-    return await participantViewById(ctx, participant)
-  },
-})
+  }
 
-export const removeParticipant = mutation({
-  args: {
-    actorUserId: v.string(),
-    conversationId: v.id('conversations'),
-    principalId: v.string(),
-    workspaceId: v.string(),
-    serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const access = await requireConversationAccess(ctx, args)
-    if (access.actor.principalId !== args.principalId && access.participant?.role !== 'moderator') {
-      throw new Error('CONVERSATION_MODERATOR_REQUIRED')
-    }
-    const active = await ctx.db.query('conversationParticipants')
-      .withIndex('by_conversationId_status', (q) => (
-        q.eq('conversationId', args.conversationId).eq('status', 'active')
-      )).collect()
-    if (active.length <= 1 && access.actor.principalId !== args.principalId) {
-      throw new Error('A conversation must retain one participant')
-    }
-    const participant = await ctx.db.query('conversationParticipants')
-      .withIndex('by_conversationId_principalId', (q) => (
-        q.eq('conversationId', args.conversationId).eq('principalId', args.principalId)
-      )).unique()
-    if (!participant || participant.status !== 'active') return false
-    const now = Date.now()
-    await ctx.db.patch(participant._id, {
-      status: 'removed',
-      removedAt: now,
-      archivedAt: now,
+export async function addParticipantFor(ctx: MutationCtx, args: ObjectType<typeof addParticipantArgs> & { native?: true }) {
+  const access = await requireConversationAccess(ctx, args)
+  if (access.participant?.role !== 'moderator') throw new Error('CONVERSATION_MODERATOR_REQUIRED')
+  if (access.conversation?.conversationType === 'dm') {
+    throw new Error('DIRECT_MESSAGE_REQUIRES_NEW_GROUP')
+  }
+  const [principal, membership] = await Promise.all([
+    ctx.db.query('workspacePrincipals')
+    .withIndex('by_principalId', (q) => q.eq('principalId', args.principalId))
+      .unique(),
+    ctx.db.query('workspaceMemberships')
+    .withIndex('by_workspaceId_principalId', (q) => (
+      q.eq('workspaceId', args.workspaceId).eq('principalId', args.principalId)
+      )).unique(),
+  ])
+  if (
+    !principal
+    || principal.workspaceId !== args.workspaceId
+    || principal.archivedAt
+    || (principal.type !== 'human' && principal.type !== 'agent')
+    || membership?.status !== 'active'
+  ) throw new Error('Participant is not eligible')
+  const existing = await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_principalId', (q) => (
+      q.eq('conversationId', args.conversationId).eq('principalId', args.principalId)
+    )).unique()
+  const now = Date.now()
+  let participant
+  if (existing) {
+    await ctx.db.patch(existing._id, {
+      status: 'active',
+      removedAt: undefined,
+      archivedAt: undefined,
       updatedAt: now,
     })
-    return true
-  },
+    participant = { ...existing, status: 'active' as const, removedAt: undefined, archivedAt: undefined, updatedAt: now }
+  } else {
+    const id = await ctx.db.insert('conversationParticipants', {
+      conversationId: args.conversationId,
+      workspaceId: args.workspaceId,
+      principalId: args.principalId,
+      principalType: principal.type,
+      role: 'member',
+      status: 'active',
+      notificationLevel: 'all',
+      joinedAt: now,
+      updatedAt: now,
+    })
+    participant = (await ctx.db.get(id))!
+  }
+  await ctx.db.insert('workspaceNotifications', {
+    notificationId: crypto.randomUUID(),
+    workspaceId: args.workspaceId,
+    recipientPrincipalId: args.principalId,
+    type: 'participant',
+    conversationId: args.conversationId,
+    actorPrincipalId: access.actor.principalId,
+    title: `${access.actor.displayName} added you to a conversation`,
+    eventSequence: now,
+    createdAt: now,
+  })
+  return await participantViewById(ctx, participant)
+}
+
+export const addParticipant = mutation({
+  args: addParticipantArgs,
+  handler: async (ctx, args) => await addParticipantFor(ctx, args),
 })
 
-export const updateParticipantState = mutation({
-  args: {
+const removeParticipantArgs = {
+    actorUserId: v.string(),
+    conversationId: v.id('conversations'),
+    principalId: v.string(),
+    workspaceId: v.string(),
+    serverSecret: v.optional(v.string()),
+  }
+
+export async function removeParticipantFor(ctx: MutationCtx, args: ObjectType<typeof removeParticipantArgs> & { native?: true }) {
+  const access = await requireConversationAccess(ctx, args)
+  if (access.actor.principalId !== args.principalId && access.participant?.role !== 'moderator') {
+    throw new Error('CONVERSATION_MODERATOR_REQUIRED')
+  }
+  const active = await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_status', (q) => (
+      q.eq('conversationId', args.conversationId).eq('status', 'active')
+    )).collect()
+  if (active.length <= 1 && access.actor.principalId !== args.principalId) {
+    throw new Error('A conversation must retain one participant')
+  }
+  const participant = await ctx.db.query('conversationParticipants')
+    .withIndex('by_conversationId_principalId', (q) => (
+      q.eq('conversationId', args.conversationId).eq('principalId', args.principalId)
+    )).unique()
+  if (!participant || participant.status !== 'active') return false
+  const now = Date.now()
+  await ctx.db.patch(participant._id, {
+    status: 'removed',
+    removedAt: now,
+    archivedAt: now,
+    updatedAt: now,
+  })
+  return true
+}
+
+export const removeParticipant = mutation({
+  args: removeParticipantArgs,
+  handler: async (ctx, args) => await removeParticipantFor(ctx, args),
+})
+
+const updateParticipantStateArgs = {
     actorUserId: v.string(),
     archived: v.optional(v.boolean()),
     conversationId: v.id('conversations'),
@@ -1658,62 +1629,67 @@ export const updateParticipantState = mutation({
     notificationLevel: v.optional(v.union(v.literal('all'), v.literal('mentions'), v.literal('muted'))),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const access = await requireConversationAccess(ctx, args)
-    let participant = access.participant
-    const now = Date.now()
-    if (!participant) {
-      // Personal chats are owned by userId and never created a participant
-      // row. Archive (and other per-actor state) still needs one.
-      if ((access.conversation.conversationType ?? 'personal') !== 'personal') {
-        throw new Error('CONVERSATION_ACCESS_DENIED')
-      }
-      const existing = await ctx.db.query('conversationParticipants')
-        .withIndex('by_conversationId_principalId', (q) => (
-          q.eq('conversationId', args.conversationId).eq('principalId', access.actor.principalId)
-        )).unique()
-      if (existing) {
-        participant = existing
-      } else {
-        const id = await ctx.db.insert('conversationParticipants', {
-          conversationId: args.conversationId,
-          workspaceId: args.workspaceId,
-          principalId: access.actor.principalId,
-          principalType: 'human',
-          role: 'moderator',
-          status: 'active',
-          notificationLevel: 'all',
-          joinedAt: now,
-          updatedAt: now,
-        })
-        const created = await ctx.db.get(id)
-        if (!created) throw new Error('CONVERSATION_ACCESS_DENIED')
-        participant = created
-      }
+  }
+
+export async function updateParticipantStateFor(ctx: MutationCtx, args: ObjectType<typeof updateParticipantStateArgs> & { native?: true }) {
+  const access = await requireConversationAccess(ctx, args)
+  let participant = access.participant
+  const now = Date.now()
+  if (!participant) {
+    // Personal chats are owned by userId and never created a participant
+    // row. Archive (and other per-actor state) still needs one.
+    if ((access.conversation.conversationType ?? 'personal') !== 'personal') {
+      throw new Error('CONVERSATION_ACCESS_DENIED')
     }
-    const requestedReadSequence = Number.isSafeInteger(args.readSequence) && (args.readSequence ?? 0) >= 0
-      ? args.readSequence
-      : undefined
-    let readSequence = requestedReadSequence
-    if (args.markRead || requestedReadSequence !== undefined) {
-      const events = await ctx.db.query('conversationEvents')
-        .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
-        .collect()
-      const latestSequence = events.reduce((max, event) => Math.max(max, event._creationTime), 0)
-      readSequence = Math.min(requestedReadSequence ?? Number.MAX_SAFE_INTEGER, latestSequence)
+    const existing = await ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_principalId', (q) => (
+        q.eq('conversationId', args.conversationId).eq('principalId', access.actor.principalId)
+      )).unique()
+    if (existing) {
+      participant = existing
+    } else {
+      const id = await ctx.db.insert('conversationParticipants', {
+        conversationId: args.conversationId,
+        workspaceId: args.workspaceId,
+        principalId: access.actor.principalId,
+        principalType: 'human',
+        role: 'moderator',
+        status: 'active',
+        notificationLevel: 'all',
+        joinedAt: now,
+        updatedAt: now,
+      })
+      const created = await ctx.db.get(id)
+      if (!created) throw new Error('CONVERSATION_ACCESS_DENIED')
+      participant = created
     }
-    const patch = {
-      ...(args.notificationLevel ? { notificationLevel: args.notificationLevel } : {}),
-      ...(args.archived !== undefined ? { archivedAt: args.archived ? now : undefined } : {}),
-      ...(args.markRead ? { lastReadAt: now, lastReadSequence: readSequence ?? 0, markedUnreadAt: undefined } : {}),
-      ...(readSequence !== undefined && !args.markRead ? { lastReadSequence: readSequence } : {}),
-      ...(args.markUnread ? { markedUnreadAt: now } : {}),
-      updatedAt: now,
-    }
-    await ctx.db.patch(participant._id, patch)
-    return await participantViewById(ctx, { ...participant, ...patch })
-  },
+  }
+  const requestedReadSequence = Number.isSafeInteger(args.readSequence) && (args.readSequence ?? 0) >= 0
+    ? args.readSequence
+    : undefined
+  let readSequence = requestedReadSequence
+  if (args.markRead || requestedReadSequence !== undefined) {
+    const events = await ctx.db.query('conversationEvents')
+      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', args.conversationId))
+      .collect()
+    const latestSequence = events.reduce((max, event) => Math.max(max, event._creationTime), 0)
+    readSequence = Math.min(requestedReadSequence ?? Number.MAX_SAFE_INTEGER, latestSequence)
+  }
+  const patch = {
+    ...(args.notificationLevel ? { notificationLevel: args.notificationLevel } : {}),
+    ...(args.archived !== undefined ? { archivedAt: args.archived ? now : undefined } : {}),
+    ...(args.markRead ? { lastReadAt: now, lastReadSequence: readSequence ?? 0, markedUnreadAt: undefined } : {}),
+    ...(readSequence !== undefined && !args.markRead ? { lastReadSequence: readSequence } : {}),
+    ...(args.markUnread ? { markedUnreadAt: now } : {}),
+    updatedAt: now,
+  }
+  await ctx.db.patch(participant._id, patch)
+  return await participantViewById(ctx, { ...participant, ...patch })
+}
+
+export const updateParticipantState = mutation({
+  args: updateParticipantStateArgs,
+  handler: async (ctx, args) => await updateParticipantStateFor(ctx, args),
 })
 
 export const archiveConversationForEveryone = mutation({
@@ -1787,8 +1763,7 @@ export const deleteConversationForEveryone = mutation({
   },
 })
 
-export const upsertPresence = mutation({
-  args: {
+const upsertPresenceArgs = {
     actorUserId: v.string(),
     conversationId: v.optional(v.id('conversations')),
     sessionId: v.optional(v.string()),
@@ -1796,98 +1771,65 @@ export const upsertPresence = mutation({
     typing: v.optional(v.boolean()),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args)
-    if (args.conversationId) await requireConversationAccess(ctx, { ...args, conversationId: args.conversationId })
-    const sessionId = args.sessionId?.trim() || 'legacy'
-    const existingRows = await ctx.db.query('workspacePresence')
-      .withIndex('by_workspaceId_principalId', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('principalId', actor.principalId)
-      )).collect()
-    const existing = existingRows.find((row) => (row.sessionId ?? 'legacy') === sessionId)
-    const now = Date.now()
-    const value = {
-      workspaceId: args.workspaceId,
-      principalId: actor.principalId,
-      sessionId,
-      conversationId: args.conversationId,
-      status: args.status,
-      lastSeenAt: now,
-      typingExpiresAt: args.typing && args.conversationId ? now + 6_000 : undefined,
-      updatedAt: now,
-    }
-    if (existing) await ctx.db.patch(existing._id, value)
-    else await ctx.db.insert('workspacePresence', value)
-    return {
-      ...value,
-      typing: Boolean(value.typingExpiresAt && value.typingExpiresAt > now),
-    }
-  },
+  }
+
+export async function upsertPresenceFor(ctx: MutationCtx, args: ObjectType<typeof upsertPresenceArgs> & { native?: true }) {
+  const actor = await requireActor(ctx, args)
+  if (args.conversationId) await requireConversationAccess(ctx, { ...args, conversationId: args.conversationId })
+  const sessionId = args.sessionId?.trim() || 'legacy'
+  const existingRows = await ctx.db.query('workspacePresence')
+    .withIndex('by_workspaceId_principalId', (q) => (
+      q.eq('workspaceId', args.workspaceId).eq('principalId', actor.principalId)
+    )).collect()
+  const existing = existingRows.find((row) => (row.sessionId ?? 'legacy') === sessionId)
+  const now = Date.now()
+  const value = {
+    workspaceId: args.workspaceId,
+    principalId: actor.principalId,
+    sessionId,
+    conversationId: args.conversationId,
+    status: args.status,
+    lastSeenAt: now,
+    typingExpiresAt: args.typing && args.conversationId ? now + 6_000 : undefined,
+    updatedAt: now,
+  }
+  if (existing) await ctx.db.patch(existing._id, value)
+  else await ctx.db.insert('workspacePresence', value)
+  return {
+    ...value,
+    typing: Boolean(value.typingExpiresAt && value.typingExpiresAt > now),
+  }
+}
+
+export const upsertPresence = mutation({
+  args: upsertPresenceArgs,
+  handler: async (ctx, args) => await upsertPresenceFor(ctx, args),
 })
 
-export const listPresence = query({
-  args: {
+const listPresenceArgs = {
     actorUserId: v.string(),
     conversationId: v.id('conversations'),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    await requireConversationAccess(ctx, args)
-    return await computePresence(ctx, args.conversationId, args.workspaceId)
-  },
-})
+  }
 
-/**
- * Live subscription for conversation presence.
- * Uses accessToken auth so the browser can subscribe via useQuery
- * and get realtime presence/typing updates without HTTP polling.
- */
-export const watchPresence = query({
-  args: {
-    accessToken: v.string(),
-    actorUserId: v.string(),
-    conversationId: v.id('conversations'),
-    workspaceId: v.string(),
-  },
-  returns: v.union(
-    v.object({ ok: v.literal(false), presence: v.array(v.any()) }),
-    v.object({ ok: v.literal(true), presence: v.array(v.any()) }),
-  ),
-  handler: async (ctx, args) => {
-    try {
-      const presence = await computePresence(ctx, args.conversationId, args.workspaceId, args)
-      return { ok: true as const, presence }
-    } catch (error) {
-      if (
-        error instanceof Error &&
-        ['Unauthorized', 'WORKSPACE_ACCESS_DENIED', 'CONVERSATION_ACCESS_DENIED'].includes(
-          error.message,
-        )
-      ) {
-        return { ok: false as const, presence: [] }
-      }
-      throw error
-    }
-  },
+export async function listPresenceFor(ctx: QueryCtx, args: ObjectType<typeof listPresenceArgs> & { native?: true }) {
+  await requireConversationAccess(ctx, args)
+  return await computePresence(ctx, args.conversationId, args.workspaceId)
+}
+
+export const listPresence = query({
+  args: listPresenceArgs,
+  handler: async (ctx, args) => await listPresenceFor(ctx, args),
 })
 
 async function computePresence(
   ctx: CollaborationCtx,
   conversationId: Id<'conversations'>,
   workspaceId: string,
-  authArgs?: { accessToken?: string; actorUserId?: string; serverSecret?: string },
 ) {
-  if (authArgs) {
-    await requireConversationAccess(ctx, {
-      conversationId,
-      workspaceId,
-      actorUserId: authArgs.actorUserId ?? '',
-      accessToken: authArgs.accessToken,
-      serverSecret: authArgs.serverSecret,
-    })
-  }
+  // Callers authorize first. Sessions silent for two minutes read as offline, so a closed tab
+  // expires on the next heartbeat from anyone in the room.
   const participants = await ctx.db.query('conversationParticipants')
     .withIndex('by_conversationId_status', (q) => (
       q.eq('conversationId', conversationId).eq('status', 'active')
@@ -2162,35 +2104,6 @@ export const listConversationEvents = query({
   },
 })
 
-/**
- * A lightweight browser-facing invalidation signal for the conversation list.
- * It intentionally returns no event metadata: any active workspace member may
- * observe that the workspace changed, but private conversation identifiers stay
- * behind the normal list/access checks.
- */
-export const watchConversationListVersion = query({
-  args: {
-    accessToken: v.string(),
-    actorUserId: v.string(),
-    workspaceId: v.string(),
-  },
-  returns: v.union(
-    v.object({ ok: v.literal(false), version: v.number() }),
-    v.object({ ok: v.literal(true), version: v.number() }),
-  ),
-  handler: async (ctx, args) => {
-    try {
-      await requireActor(ctx, args)
-    } catch (error) {
-      if (error instanceof Error && ['Unauthorized', 'WORKSPACE_ACCESS_DENIED'].includes(error.message)) {
-        return { ok: false as const, version: 0 }
-      }
-      throw error
-    }
-    return { ok: true as const, version: await conversationListVersion(ctx, { workspaceId: args.workspaceId }) }
-  },
-})
-
 export const editMessage = mutation({
   args: {
     actorUserId: v.string(),
@@ -2202,39 +2115,7 @@ export const editMessage = mutation({
   },
   returns: v.boolean(),
   handler: async (ctx, args) => {
-    const access = await requireConversationAccess(ctx, args)
-    const message = await ctx.db.get(args.messageId)
-    const content = args.content.trim()
-    if (!content) throw new Error('Message content is required')
-    if (
-      !message
-      || message.conversationId !== args.conversationId
-      || message.authorKind !== 'human'
-      || message.authorPrincipalId !== access.actor.principalId
-      || message.deletedAt
-    ) return false
-    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
-    const hydrated = await hydrateRemoteMessage(ctx, message)
-    const parts: NonNullable<Doc<'conversationMessages'>['parts']> = [
-      { type: 'text', text: content },
-      ...(hydrated.parts ?? []).filter((part) => part.type !== 'text' && part.type !== 'output-text'),
-    ]
-    const textPatch = message.remoteTextStored
-      ? await prepareRemoteMessageText(ctx, message, { content, parts })
-      : { content, parts }
-    const now = Date.now()
-    await ctx.db.patch(message._id, {
-      content: textPatch.content,
-      parts: textPatch.parts,
-      ...('remoteTextStored' in textPatch ? { remoteTextStored: textPatch.remoteTextStored } : {}),
-      editedAt: now,
-      editHistory: [
-        ...(message.editHistory ?? []),
-        { content: message.content, editedAt: now },
-      ],
-      updatedAt: now,
-    })
-    return true
+    return await editRoomMessage(ctx, args)
   },
 })
 
@@ -2247,36 +2128,16 @@ export const deleteMessage = mutation({
     serverSecret: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const access = await requireConversationAccess(ctx, args)
-    const message = await ctx.db.get(args.messageId)
-    if (
-      !message
-      || message.conversationId !== args.conversationId
-      || message.authorKind !== 'human'
-      || message.authorPrincipalId !== access.actor.principalId
-      || message.deletedAt
-    ) return false
-    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
-    const now = Date.now()
-    await ctx.db.patch(message._id, { content: '', parts: [], deletedAt: now, updatedAt: now })
-    await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
-      sourceKind: 'message',
-      sourceId: args.messageId,
-    })
-    return true
+    return await deleteRoomMessage(ctx, args)
   },
 })
 
-async function listNotificationRows(
+export async function listNotificationRows(
   ctx: QueryCtx,
-  args: {
-    actorUserId: string
+  args: ActorProof & {
     filter?: 'all' | 'unread' | 'mentions' | 'threads' | 'reactions'
     limit?: number
     unreadOnly?: boolean
-    workspaceId: string
-    accessToken?: string
-    serverSecret?: string
   },
 ) {
   const actor = await requireActor(ctx, args)
@@ -2293,6 +2154,8 @@ async function listNotificationRows(
   })
   const conversationIds = [...new Set(notifications.map((row) => row.conversationId))]
   const conversationStateById = new Map<string, 'archived' | 'deleted'>()
+  // Carried on each notification so opening it routes without looking the room up.
+  const conversationTypeById = new Map<string, 'personal' | 'dm' | 'channel'>()
   await Promise.all(conversationIds.map(async (conversationId) => {
     const [conversation, participant] = await Promise.all([
       ctx.db.get(conversationId),
@@ -2306,6 +2169,7 @@ async function listNotificationRows(
       conversation: conversation ? { deletedAt: conversation.deletedAt } : null,
     })
     if (state) conversationStateById.set(String(conversationId), state)
+    if (conversation) conversationTypeById.set(String(conversationId), conversation.conversationType ?? 'personal')
   }))
   return notifications.map((row) => ({
     id: row.notificationId,
@@ -2322,6 +2186,7 @@ async function listNotificationRows(
     body: row.body,
     createdAt: row.createdAt,
     readAt: row.readAt,
+    conversationType: conversationTypeById.get(String(row.conversationId)),
     conversationState: conversationStateById.get(String(row.conversationId)),
   }))
 }
@@ -2339,91 +2204,74 @@ export const listNotifications = query({
   handler: listNotificationRows,
 })
 
-export const watchNotifications = query({
-  args: {
-    accessToken: v.string(),
-    actorUserId: v.string(),
-    filter: v.optional(notificationFilterValidator),
-    limit: v.optional(v.number()),
-    unreadOnly: v.optional(v.boolean()),
-    workspaceId: v.string(),
-  },
-  returns: v.union(
-    v.object({ ok: v.literal(false), notifications: v.array(notificationValidator) }),
-    v.object({ ok: v.literal(true), notifications: v.array(notificationValidator) }),
-  ),
-  handler: async (ctx, args) => {
-    try {
-      return { ok: true as const, notifications: await listNotificationRows(ctx, args) }
-    } catch (error) {
-      if (error instanceof Error && ['Unauthorized', 'WORKSPACE_ACCESS_DENIED'].includes(error.message)) {
-        return { ok: false as const, notifications: [] }
-      }
-      throw error
-    }
-  },
-})
-
-export const setThreadFollow = mutation({
-  args: {
+const setThreadFollowArgs = {
     actorUserId: v.string(),
     conversationId: v.id('conversations'),
     threadRootMessageId: v.id('conversationMessages'),
     followed: v.boolean(),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const access = await requireConversationAccess(ctx, args)
-    await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
-    const existing = await ctx.db.query('conversationThreadFollows')
-      .withIndex('by_conversationId_threadRootMessageId_principalId', (q) => (
-        q.eq('conversationId', args.conversationId)
-          .eq('threadRootMessageId', args.threadRootMessageId)
-          .eq('principalId', access.actor.principalId)
-      )).unique()
-    if (args.followed && !existing) {
-      await ctx.db.insert('conversationThreadFollows', {
-        workspaceId: args.workspaceId,
-        conversationId: args.conversationId,
-        threadRootMessageId: args.threadRootMessageId,
-        principalId: access.actor.principalId,
-        followedAt: Date.now(),
-      })
-      return true
-    }
-    if (!args.followed && existing) {
-      await ctx.db.delete(existing._id)
-      return true
-    }
-    return false
-  },
+  }
+
+export async function setThreadFollowFor(ctx: MutationCtx, args: ObjectType<typeof setThreadFollowArgs> & { native?: true }) {
+  const access = await requireConversationAccess(ctx, args)
+  await getMessageForThread(ctx, args.conversationId, args.threadRootMessageId)
+  const existing = await ctx.db.query('conversationThreadFollows')
+    .withIndex('by_conversationId_threadRootMessageId_principalId', (q) => (
+      q.eq('conversationId', args.conversationId)
+        .eq('threadRootMessageId', args.threadRootMessageId)
+        .eq('principalId', access.actor.principalId)
+    )).unique()
+  if (args.followed && !existing) {
+    await ctx.db.insert('conversationThreadFollows', {
+      workspaceId: args.workspaceId,
+      conversationId: args.conversationId,
+      threadRootMessageId: args.threadRootMessageId,
+      principalId: access.actor.principalId,
+      followedAt: Date.now(),
+    })
+    return true
+  }
+  if (!args.followed && existing) {
+    await ctx.db.delete(existing._id)
+    return true
+  }
+  return false
+}
+
+export const setThreadFollow = mutation({
+  args: setThreadFollowArgs,
+  handler: async (ctx, args) => await setThreadFollowFor(ctx, args),
 })
 
-export const listThreadFollows = query({
-  args: {
+const listThreadFollowsArgs = {
     actorUserId: v.string(),
     conversationId: v.id('conversations'),
     threadRootMessageId: v.optional(v.id('conversationMessages')),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const access = await requireConversationAccess(ctx, args)
-    const rows = await ctx.db.query('conversationThreadFollows')
-      .withIndex('by_conversationId_threadRootMessageId_principalId', (q) => {
-        const scoped = q.eq('conversationId', args.conversationId)
-        return args.threadRootMessageId ? scoped.eq('threadRootMessageId', args.threadRootMessageId) : scoped
-      }).collect()
-    return rows
-      .filter((row) => args.threadRootMessageId || row.principalId === access.actor.principalId)
-      .map((row) => ({
-        conversationId: row.conversationId,
-        threadRootMessageId: row.threadRootMessageId,
-        principalId: row.principalId,
-        followedAt: row.followedAt,
-      }))
-  },
+  }
+
+export async function listThreadFollowsFor(ctx: QueryCtx, args: ObjectType<typeof listThreadFollowsArgs> & { native?: true }) {
+  const access = await requireConversationAccess(ctx, args)
+  const rows = await ctx.db.query('conversationThreadFollows')
+    .withIndex('by_conversationId_threadRootMessageId_principalId', (q) => {
+      const scoped = q.eq('conversationId', args.conversationId)
+      return args.threadRootMessageId ? scoped.eq('threadRootMessageId', args.threadRootMessageId) : scoped
+    }).collect()
+  return rows
+    .filter((row) => args.threadRootMessageId || row.principalId === access.actor.principalId)
+    .map((row) => ({
+      conversationId: row.conversationId,
+      threadRootMessageId: row.threadRootMessageId,
+      principalId: row.principalId,
+      followedAt: row.followedAt,
+    }))
+}
+
+export const listThreadFollows = query({
+  args: listThreadFollowsArgs,
+  handler: async (ctx, args) => await listThreadFollowsFor(ctx, args),
 })
 
 const defaultNotificationPreferences = {
@@ -2486,28 +2334,94 @@ export const updateNotificationPreferences = mutation({
   },
 })
 
-export const markNotificationsRead = mutation({
-  args: {
+const markNotificationsReadArgs = {
     actorUserId: v.string(),
     conversationId: v.optional(v.id('conversations')),
     notificationIds: v.optional(v.array(v.string())),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args)
-    const ids = args.notificationIds ? new Set(args.notificationIds) : null
-    const rows = await ctx.db.query('workspaceNotifications')
-      .withIndex('by_workspaceId_recipientPrincipalId_createdAt', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('recipientPrincipalId', actor.principalId)
-      )).collect()
-    const unread = rows.filter((row) => !(
-      row.readAt
-      || (ids && !ids.has(row.notificationId))
-      || (args.conversationId && row.conversationId !== args.conversationId)
-    ))
-    const readAt = Date.now()
-    await Promise.all(unread.map((row) => ctx.db.patch(row._id, { readAt })))
-    return unread.length
-  },
+  }
+
+export async function markNotificationsReadFor(ctx: MutationCtx, args: ObjectType<typeof markNotificationsReadArgs> & { native?: true }) {
+  const actor = await requireActor(ctx, args)
+  const ids = args.notificationIds ? new Set(args.notificationIds) : null
+  const rows = await ctx.db.query('workspaceNotifications')
+    .withIndex('by_workspaceId_recipientPrincipalId_createdAt', (q) => (
+      q.eq('workspaceId', args.workspaceId).eq('recipientPrincipalId', actor.principalId)
+    )).collect()
+  const unread = rows.filter((row) => !(
+    row.readAt
+    || (ids && !ids.has(row.notificationId))
+    || (args.conversationId && row.conversationId !== args.conversationId)
+  ))
+  const readAt = Date.now()
+  await Promise.all(unread.map((row) => ctx.db.patch(row._id, { readAt })))
+  return unread.length
+}
+
+export const markNotificationsRead = mutation({
+  args: markNotificationsReadArgs,
+  handler: async (ctx, args) => await markNotificationsReadFor(ctx, args),
 })
+
+export async function editRoomMessage(
+  ctx: MutationCtx,
+  args: ActorProof & { content: string; conversationId: Id<'conversations'>; messageId: Id<'conversationMessages'> },
+) {
+  const access = await requireConversationAccess(ctx, args)
+  const message = await ctx.db.get(args.messageId)
+  const content = args.content.trim()
+  if (!content) throw new Error('Message content is required')
+  if (
+    !message
+    || message.conversationId !== args.conversationId
+    || message.authorKind !== 'human'
+    || message.authorPrincipalId !== access.actor.principalId
+    || message.deletedAt
+  ) return false
+  await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
+  const hydrated = await hydrateRemoteMessage(ctx, message)
+  const parts: NonNullable<Doc<'conversationMessages'>['parts']> = [
+    { type: 'text', text: content },
+    ...(hydrated.parts ?? []).filter((part) => part.type !== 'text' && part.type !== 'output-text'),
+  ]
+  const textPatch = message.remoteTextStored
+    ? await prepareRemoteMessageText(ctx, message, { content, parts })
+    : { content, parts }
+  const now = Date.now()
+  await ctx.db.patch(message._id, {
+    content: textPatch.content,
+    parts: textPatch.parts,
+    ...('remoteTextStored' in textPatch ? { remoteTextStored: textPatch.remoteTextStored } : {}),
+    editedAt: now,
+    editHistory: [
+      ...(message.editHistory ?? []),
+      { content: message.content, editedAt: now },
+    ],
+    updatedAt: now,
+  })
+  return true
+}
+
+export async function deleteRoomMessage(
+  ctx: MutationCtx,
+  args: ActorProof & { conversationId: Id<'conversations'>; messageId: Id<'conversationMessages'> },
+) {
+  const access = await requireConversationAccess(ctx, args)
+  const message = await ctx.db.get(args.messageId)
+  if (
+    !message
+    || message.conversationId !== args.conversationId
+    || message.authorKind !== 'human'
+    || message.authorPrincipalId !== access.actor.principalId
+    || message.deletedAt
+  ) return false
+  await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
+  const now = Date.now()
+  await ctx.db.patch(message._id, { content: '', parts: [], deletedAt: now, updatedAt: now })
+  await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
+    sourceKind: 'message',
+    sourceId: args.messageId,
+  })
+  return true
+}

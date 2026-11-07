@@ -53,13 +53,16 @@ async function resolveViewConversationId({
 }
 
 /** The newest AI chat in the scope, so the Chats nav item reopens where the person left off. */
-export async function resolveRecentChatHref(baseHref: string, scope: 'personal' | 'workspace'): Promise<string> {
+export async function resolveRecentChatHref(
+  baseHref: string,
+  scope: 'personal' | 'workspace',
+  findRecent: (scope: 'personal' | 'workspace') => Promise<string | null>,
+): Promise<string> {
   try {
-    const page = await overlayAppClient.conversations.getPage<CachedConversation & { scope?: 'personal' | 'workspace' }>({ limit: 24, view: 'personal' })
-    const recent = page.data.find((chat) => (chat.scope ?? 'personal') === scope)
-    if (!recent) return baseHref
+    const recentId = await findRecent(scope)
+    if (!recentId) return baseHref
     const view = scope === 'workspace' ? 'workspace-chats' : 'personal'
-    return mergeHrefSearchParams(baseHref, new URLSearchParams({ view, id: recent._id }))
+    return mergeHrefSearchParams(baseHref, new URLSearchParams({ view, id: recentId }))
   } catch {
     return baseHref
   }

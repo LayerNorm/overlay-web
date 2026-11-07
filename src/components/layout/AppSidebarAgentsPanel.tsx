@@ -2,7 +2,7 @@
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { readWorkspacePathScope } from '@/shared/workspaces/routing'
-import { useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import {
   ChevronRight,
@@ -11,15 +11,12 @@ import {
   Pin,
 } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, Button } from '@overlay/ui/primitives'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, Button, toast } from '@overlay/ui/primitives'
 import { announceArchived } from '@/shared/app/archive-toast'
 import { AgentCreature } from '@/components/orb/Creature'
 import { automationHref } from '@overlay/app-core/automations'
 import {
-  AGENT_DIRECTORY_CHANGED_EVENT,
   AGENT_DRAFT_PREVIEW_EVENT,
-  type AgentDirectoryChangedEventDetail,
   type AgentDraftPreviewEventDetail,
   type AgentDraftPreviewPatch,
 } from '@/shared/workspace/sidebar-events'
@@ -38,7 +35,6 @@ import {
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
 import {
-  arrayOrEmpty,
   agentHref,
   agentThreadHref,
   type AgentsPanelView,
@@ -48,10 +44,13 @@ import { isChief, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identit
 import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-workspace'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { useAgentExpansion } from './sidebar/useAgentExpansion'
-import { resolveAgentEntryThread } from './sidebar/resolveAgentEntryThread'
 import { AgentThreadActivityProvider, useAgentThreadActivity } from './sidebar/AgentThreadActivityProvider'
 import { AgentActivitySummary } from './sidebar/ThreadActivityIndicator'
 import { useLiveAgentBundle } from './sidebar/useLiveAgentBundle'
+import { useAgentDirectory } from '@/hooks/use-agent-directory'
+import { useMutation, useQueries } from 'convex/react'
+import { api } from '../../../convex/_generated/api'
+import type { Id } from '../../../convex/_generated/dataModel'
 
 type AgentBundleMap = Record<string, WorkspaceAgentBundle | 'loading' | 'error'>
 
@@ -60,172 +59,70 @@ function bundleThreadTitle(bundle: AgentBundleMap[string] | undefined, conversat
   return bundle.threads.find((thread) => thread.conversationId === conversationId)?.title || 'Thread'
 }
 
-function useAgentBundles(workspaceId: string | null) {
-  const [bundles, setBundles] = useState<AgentBundleMap>({})
-  const bundleRequests = useRef(new Map<string, symbol>())
-  const threadTitleOverrides = useRef(new Map<string, string>())
-
-  const loadBundle = useCallback(async (agentId: string) => {
-    if (!workspaceId) return
-    const request = Symbol(agentId)
-    bundleRequests.current.set(agentId, request)
-    setBundles((current) => {
-      const existing = current[agentId]
-      return existing && typeof existing === 'object'
-        ? current
-        : { ...current, [agentId]: 'loading' }
-    })
-    try {
-      const bundle = await overlayAppClient.agents.bundle(workspaceId, agentId)
-      if (bundleRequests.current.get(agentId) !== request) return
-      setBundles((current) => {
-        const previous = current[agentId]
-        const previousThreads = previous && typeof previous === 'object'
-          ? new Map(previous.threads.map((thread) => [thread.conversationId, thread.title] as const))
-          : new Map<string, string>()
-        return {
-          ...current,
-          [agentId]: {
-            ...bundle,
-            threads: bundle.threads.map((thread) => {
-              const titleBeforeFetch = threadTitleOverrides.current.get(thread.conversationId)
-                ?? previousThreads.get(thread.conversationId)
-                ?? thread.title
-              return {
-                ...thread,
-                title: mergeChatTitle(titleBeforeFetch, thread.title),
-              }
-            }),
-          },
-        }
-      })
-    } catch {
-      if (bundleRequests.current.get(agentId) !== request) return
-      setBundles((current) => ({ ...current, [agentId]: 'error' }))
-    }
-  }, [workspaceId])
-
-  // A first-message rename applies the generated title to the thread row it
-  // belongs to without refetching the whole bundle.
+/** Live thread lists for the agents whose rows are open. Each is its own Convex subscription. */
+function useAgentBundles(workspaceId: string | null, agentIds: readonly string[]) {
+  const [revisions, setRevisions] = useState<Record<string, number>>({})
+  const subscriptions = useMemo(() => workspaceId
+    ? agentIds.map(agentId => ({ agentId, key: `${agentId}:${revisions[agentId] ?? 0}` }))
+    : [], [agentIds, revisions, workspaceId])
+  const queries = useMemo(() => Object.fromEntries(subscriptions.map(({ agentId, key }) => [key, {
+    query: api.agents.threads.bundle, args: { workspaceId: workspaceId!, agentId },
+  }])), [subscriptions, workspaceId])
+  const results = useQueries(queries)
+  const refreshBundle = useCallback(async (agentId: string) => {
+    setRevisions(current => ({ ...current, [agentId]: (current[agentId] ?? 0) + 1 }))
+  }, [])
+  // A first-message rename names the thread before the saved title arrives.
+  const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>({})
   useEffect(() => {
     const onTitleUpdated = (event: Event) => {
       const { chatId, title } = (event as CustomEvent<ChatTitleUpdatedDetail>).detail ?? {}
       if (!chatId || !title) return
-      if (!isPlaceholderChatTitle(title)) threadTitleOverrides.current.set(chatId, title)
-      else threadTitleOverrides.current.delete(chatId)
-      setBundles((current) => {
-        let touched = false
+      setTitleOverrides((current) => {
         const next = { ...current }
-        for (const agentId of Object.keys(next)) {
-          const bundle = next[agentId]
-          if (!bundle || typeof bundle !== 'object') continue
-          if (!bundle.threads.some((thread) => thread.conversationId === chatId)) continue
-          next[agentId] = {
-            ...bundle,
-            threads: bundle.threads.map((thread) =>
-              thread.conversationId === chatId
-                ? { ...thread, title }
-                : thread),
-          }
-          touched = true
-        }
-        return touched ? next : current
+        if (!isPlaceholderChatTitle(title)) next[chatId] = title
+        else delete next[chatId]
+        return next
       })
     }
     window.addEventListener(CHAT_TITLE_UPDATED_EVENT, onTitleUpdated)
     return () => window.removeEventListener(CHAT_TITLE_UPDATED_EVENT, onTitleUpdated)
   }, [])
-
-  return { bundles, setBundles, loadBundle }
+  const bundles = useMemo<AgentBundleMap>(() => Object.fromEntries(subscriptions.map(({ agentId, key }) => {
+    const result = results[key] as WorkspaceAgentBundle | null | undefined | Error
+    if (result === undefined) return [agentId, 'loading']
+    if (!result || result instanceof Error) return [agentId, 'error']
+    return [agentId, {
+      ...result,
+      threads: result.threads.map((thread) => ({
+        ...thread,
+        title: mergeChatTitle(titleOverrides[thread.conversationId] ?? thread.title, thread.title),
+      })),
+    }]
+  })), [subscriptions, results, titleOverrides])
+  return { bundles, refreshBundle }
 }
 
-function useExpandedAgents({
-  activeAgentId,
-  bundles,
-  loadBundle,
-}: {
-  activeAgentId: string | null
-  bundles: AgentBundleMap
-  loadBundle: (agentId: string) => Promise<void>
-}) {
-  const { expanded, toggle } = useAgentExpansion(activeAgentId)
-  // Fetch the URL agent's bundle once it is known absent. Reloading when the
-  // bundle is already present re-triggers on every setBundles and loops
-  // forever — directory-change events handle refreshes instead.
-  useEffect(() => {
-    if (!activeAgentId || activeAgentId in bundles) return
-    void loadBundle(activeAgentId)
-  }, [activeAgentId, bundles, loadBundle])
-
-  const toggleExpanded = useCallback((agentId: string) => {
-    toggle(agentId)
-    const state = bundles[agentId]
-    if (state === undefined || state === 'error') void loadBundle(agentId)
-  }, [bundles, loadBundle, toggle])
-
-  return { expanded, toggleExpanded }
-}
-
-function useAgentDirectory(
-  workspaceId: string | null,
-  expanded: Set<string>,
-  loadBundle: (agentId: string) => Promise<void>,
-  setBundles: Dispatch<SetStateAction<AgentBundleMap>>,
-) {
-  const [agents, setAgents] = useState<WorkspaceAgentDirectoryItem[]>([])
-  const [viewerPrincipalId, setViewerPrincipalId] = useState<string | null>(null)
-  const [draftPreviews, setDraftPreviews] = useState<Record<string, AgentDraftPreviewPatch>>({})
-  const [loading, setLoading] = useState(true)
-
-  const loadAgents = useCallback(async (showLoading = true) => {
-    if (!workspaceId) {
-      setAgents([])
-      setViewerPrincipalId(null)
-      setLoading(false)
-      return
-    }
-    if (showLoading) setLoading(true)
-    try {
-      const response = await overlayAppClient.agents.list(workspaceId)
-      setAgents(arrayOrEmpty<WorkspaceAgentDirectoryItem>(response.agents))
-      setViewerPrincipalId(response.viewerPrincipalId ?? null)
-    } catch {
-      setAgents([])
-    } finally {
-      if (showLoading) setLoading(false)
-    }
-  }, [workspaceId])
-
-  useEffect(() => { void loadAgents() }, [loadAgents])
+function useSidebarAgentDirectory(workspaceId: string | null) {
+  const live = useAgentDirectory()
+  const agents = live.agents ?? []
+  const viewerPrincipalId = live.viewerPrincipalId
+  const loading = live.status === 'loading'
+  // Unsaved editor drafts, keyed by workspace so switching workspaces drops them.
+  const [drafts, setDrafts] = useState<{ workspaceId: string | null; previews: Record<string, AgentDraftPreviewPatch> }>(
+    { workspaceId, previews: {} },
+  )
+  const draftPreviews = drafts.workspaceId === workspaceId ? drafts.previews : {}
 
   useEffect(() => {
-    const refreshAgents = (event: Event) => {
-      const changedWorkspaceId = (event as CustomEvent<AgentDirectoryChangedEventDetail>).detail?.workspaceId
-      if (changedWorkspaceId && changedWorkspaceId !== workspaceId) return
-      void loadAgents(false)
-      // Agent lifecycle events (rename/archive/restore) can change what the
-      // expanded bundles contain — refetch them rather than diffing.
-      setBundles((current) => {
-        for (const agentId of Object.keys(current)) {
-          if (expanded.has(agentId)) void loadBundle(agentId)
-        }
-        return current
-      })
-    }
-    window.addEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
-    return () => window.removeEventListener(AGENT_DIRECTORY_CHANGED_EVENT, refreshAgents)
-  }, [expanded, loadAgents, loadBundle, setBundles, workspaceId])
-
-  useEffect(() => {
-    setDraftPreviews({})
     const onDraftPreview = (event: Event) => {
       const detail = (event as CustomEvent<AgentDraftPreviewEventDetail>).detail
       if (!detail || detail.workspaceId !== workspaceId) return
-      setDraftPreviews((current) => {
-        const next = { ...current }
+      setDrafts((current) => {
+        const next = { ...(current.workspaceId === workspaceId ? current.previews : {}) }
         if (detail.patch) next[detail.agentId] = detail.patch
         else delete next[detail.agentId]
-        return next
+        return { workspaceId, previews: next }
       })
     }
     window.addEventListener(AGENT_DRAFT_PREVIEW_EVENT, onDraftPreview)
@@ -242,8 +139,6 @@ function useAgentActions({
   view,
   onNavigate,
   bundles,
-  setBundles,
-  loadBundle,
   activeAgentId,
   activeConversationId,
   sortedAgents,
@@ -254,13 +149,15 @@ function useAgentActions({
   view: AgentsPanelView
   onNavigate?: () => void
   bundles: AgentBundleMap
-  setBundles: Dispatch<SetStateAction<AgentBundleMap>>
-  loadBundle: (agentId: string) => Promise<void>
   activeAgentId: string | null
   activeConversationId: string | null
   sortedAgents: WorkspaceAgentDirectoryItem[]
 }) {
   const router = useRouter()
+  const resolveMainThread = useMutation(api.agents.threads.resolveMain)
+  const createAgentThread = useMutation(api.agents.threads.create)
+  const setAgentThreadArchived = useMutation(api.agents.threads.setArchived)
+  const removeAgentThread = useMutation(api.agents.threads.remove)
   const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
   const [openError, setOpenError] = useState<string | null>(null)
   const [creatingThreadFor, setCreatingThreadFor] = useState<string | null>(null)
@@ -272,15 +169,19 @@ function useAgentActions({
   const openAgent = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
     navigation: 'push' | 'replace' = 'push',
+    /** A thread just archived: the live list may not reflect it yet, so never open it. */
+    skipConversationId?: string,
   ) => {
     if (openingAgentId) return
     setOpeningAgentId(agent.id)
     try {
       if (!workspaceId) return
-      const thread = await resolveAgentEntryThread({
-        list: async () => (await overlayAppClient.agents.bundle(workspaceId, agent.id)).threads,
-        fallback: async () => (await overlayAppClient.agents.resolveMainThread(workspaceId, agent.id)).thread,
-      })
+      // A live thread list opens instantly; otherwise resolve (or create) the main thread once.
+      const live = bundles[agent.id]
+      const thread = (live && typeof live === 'object'
+        ? live.threads.find((row) => !row.archivedAt && row.conversationId !== skipConversationId)
+        : undefined)
+        ?? await resolveMainThread({ workspaceId, agentId: agent.id })
       rememberAgentOpened(workspaceId, agent.id)
       setOpenError(null)
       dispatchChatCreated({
@@ -298,7 +199,7 @@ function useAgentActions({
     } finally {
       setOpeningAgentId(null)
     }
-  }, [baseHref, onNavigate, openingAgentId, router, view, workspaceId])
+  }, [baseHref, bundles, onNavigate, openingAgentId, resolveMainThread, router, view, workspaceId])
 
   const openThread = useCallback((
     agent: WorkspaceAgentDirectoryItem,
@@ -319,34 +220,14 @@ function useAgentActions({
     if (!workspaceId || creatingThreadFor) return
     setCreatingThreadFor(agent.id)
     try {
-      const { thread } = await overlayAppClient.agents.createThread(workspaceId, agent.id, {})
+      const thread = await createAgentThread({ workspaceId, agentId: agent.id })
       rememberAgentOpened(workspaceId, agent.id)
-      setBundles((current) => {
-        const existing = current[agent.id]
-        if (existing === 'loading' || existing === 'error' || !existing) return current
-        return {
-          ...current,
-          [agent.id]: {
-            ...existing,
-            threads: [{
-              conversationId: thread.conversationId,
-              title: thread.title,
-              lastModified: Date.now(),
-              createdAt: Date.now(),
-              isMain: false,
-            }, ...existing.threads],
-          },
-        }
-      })
-      // A collapsed row may still have a bundle request in flight. Refresh after
-      // the mutation; only the newest request may publish the resulting tree.
-      await loadBundle(agent.id)
       router.push(agentThreadHref(baseHref, agent.id, thread.conversationId, view))
       onNavigate?.()
     } finally {
       setCreatingThreadFor(null)
     }
-  }, [baseHref, creatingThreadFor, loadBundle, onNavigate, router, setBundles, view, workspaceId])
+  }, [baseHref, createAgentThread, creatingThreadFor, onNavigate, router, view, workspaceId])
 
   const archiveThread = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -356,31 +237,28 @@ function useAgentActions({
     if (!workspaceId) return
     try {
       // Only this thread is archived: the agent stays where it is, and the thread lands in Settings → Archived.
-      await overlayAppClient.agents.setThreadArchived(workspaceId, agent.id, conversationId, archived)
       const archivedTitle = bundleThreadTitle(bundles[agent.id], conversationId)
-      // An archived thread leaves the agent's list; a restored one comes back with the next load.
-      void loadBundle(agent.id)
+      await setAgentThreadArchived({ workspaceId, agentId: agent.id, conversationId: conversationId as Id<'conversations'>, archived })
       if (archived) {
         announceArchived({
           name: archivedTitle,
           undo: async () => {
-            await overlayAppClient.agents.setThreadArchived(workspaceId, agent.id, conversationId, false)
+            await setAgentThreadArchived({ workspaceId, agentId: agent.id, conversationId: conversationId as Id<'conversations'>, archived: false })
           },
-          onUndone: () => void loadBundle(agent.id),
         })
         // Archiving the thread being viewed moves on to the agent's next active thread (a fresh one if none is left).
         if (activeConversationId === conversationId) {
           try {
-            await openAgent(agent, 'replace')
+            await openAgent(agent, 'replace', conversationId)
           } catch {
             setOpenError(`Could not open ${agent.name}. Check your connection and retry.`)
           }
         }
       }
     } catch {
-      void loadBundle(agent.id)
+      toast.error('Could not update this thread.')
     }
-  }, [activeConversationId, bundles, loadBundle, openAgent, workspaceId])
+  }, [activeConversationId, bundles, openAgent, setAgentThreadArchived, workspaceId])
 
   const deleteThread = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -388,21 +266,7 @@ function useAgentActions({
   ) => {
     if (!workspaceId) return
     try {
-      await overlayAppClient.agents.deleteThread(workspaceId, agent.id, conversationId)
-      setBundles((current) => {
-        const existing = current[agent.id]
-        if (existing === 'loading' || existing === 'error' || !existing) return current
-        let threads = existing.threads.filter((thread) => thread.conversationId !== conversationId)
-        // When the main thread goes away the oldest survivor becomes main.
-        const active = threads.filter((thread) => !thread.archivedAt)
-        if (active.length && !active.some((thread) => thread.isMain)) {
-          const oldest = active.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b))
-          threads = threads.map((thread) => (
-            thread.conversationId === oldest.conversationId ? { ...thread, isMain: true } : thread
-          ))
-        }
-        return { ...current, [agent.id]: { ...existing, threads } }
-      })
+      await removeAgentThread({ workspaceId, agentId: agent.id, conversationId: conversationId as Id<'conversations'> })
       // Deleting the thread being viewed must bounce to the surviving main
       // thread — otherwise the surface keeps rendering a deleted
       // conversation. Bare `?agent=` is avoided because the surface's live
@@ -420,10 +284,12 @@ function useAgentActions({
             : agentHref(baseHref, agent.id, view),
         )
       }
-    } catch {
-      void loadBundle(agent.id)
+    } catch (error) {
+      toast.error(error instanceof Error && error.message.includes('AGENT_LAST_THREAD')
+        ? 'An agent must keep at least one thread.'
+        : 'Could not delete this thread.')
     }
-  }, [activeConversationId, baseHref, bundles, loadBundle, router, setBundles, view, workspaceId])
+  }, [activeConversationId, baseHref, bundles, removeAgentThread, router, view, workspaceId])
 
   const openAgentById = useCallback(async (
     agent: WorkspaceAgentDirectoryItem,
@@ -587,14 +453,15 @@ export function AgentsInlinePanel({
   const buildWorkspaceHref = useWorkspaceHref()
   const scopedBaseHref = buildWorkspaceHref(workspaceId, baseHref, view)
 
-  const { bundles, setBundles, loadBundle } = useAgentBundles(workspaceId)
-  const { expanded, toggleExpanded } = useExpandedAgents({ activeAgentId, bundles, loadBundle })
+  const { expanded, toggle: toggleExpanded } = useAgentExpansion(activeAgentId)
+  const expandedIds = useMemo(() => [...expanded], [expanded])
+  const { bundles, refreshBundle } = useAgentBundles(workspaceId, expandedIds)
   const {
     agents,
     viewerPrincipalId,
     draftPreviews,
     loading,
-  } = useAgentDirectory(workspaceId, expanded, loadBundle, setBundles)
+  } = useSidebarAgentDirectory(workspaceId)
 
   // Unsaved editor drafts overlay the fetched directory so the row renames and
   // re-skins while the user types; the override clears on save/cancel/close.
@@ -642,8 +509,6 @@ export function AgentsInlinePanel({
     view,
     onNavigate,
     bundles,
-    setBundles,
-    loadBundle,
     activeAgentId,
     activeConversationId,
     sortedAgents,
@@ -705,7 +570,7 @@ export function AgentsInlinePanel({
               anyOpening={Boolean(openingAgentId)}
               isOpening={openingAgentId === agent.id}
               bundle={bundles[agent.id] ?? 'loading'}
-              onRefreshBundle={loadBundle}
+              onRefreshBundle={refreshBundle}
               activeConversationId={activeConversationId}
               creatingThread={creatingThreadFor === agent.id}
               onToggleExpanded={toggleExpanded}

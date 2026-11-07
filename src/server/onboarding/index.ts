@@ -1,8 +1,3 @@
-export type {
-  OnboardingCompleteResult,
-  OnboardingRepository,
-  OnboardingStatus,
-} from './OnboardingRepository'
 export { ConversationalOnboardingService, OnboardingServiceError } from './ConversationalOnboardingService'
 export type {
   OnboardingEffects,

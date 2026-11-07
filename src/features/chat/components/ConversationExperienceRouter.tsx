@@ -14,10 +14,13 @@ import {
   readWorkspacePathScope,
 } from '@/shared/workspaces/routing'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
 import {
   ConversationDetailScopeGate,
   conversationDetailRouteKey,
   isConversationScopeVerified,
+  isKnownNativePersonalChat,
+  markConversationScopeVerified,
   startConversationDetailScopeProbe,
   type ConversationDetailScopeStatus,
   type ConversationScopeDetail,
@@ -91,6 +94,9 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
     conversationId,
 
   })
+  const personalChat = usePersonalChat()
+  const knownNativeChat = isKnownNativePersonalChat(personalChat, pathScope, conversationId)
+  if (knownNativeChat && pathScope && conversationId) markConversationScopeVerified(pathScope, conversationId)
   useEffect(() => {
     if (!resourceRouteKey || !conversationId || !pathScope || isConversationScopeVerified(resourceRouteKey)) return
     return startConversationDetailScopeProbe({
@@ -108,7 +114,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
       replace: (destination) => router.replace(destination),
       setStatus: setScopeRouteStatus,
     })
-  }, [browserRouteVersion, conversationId, searchView, pathScope, resourceRouteKey, buildWorkspaceHref, pathname, router])
+  }, [browserRouteVersion, conversationId, knownNativeChat, searchView, pathScope, resourceRouteKey, buildWorkspaceHref, pathname, router])
 
   void browserRouteVersion
   const selectedScope = pathScope ?? legacyWorkspaceScopeForRoute(

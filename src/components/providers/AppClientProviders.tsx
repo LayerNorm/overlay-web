@@ -8,6 +8,7 @@ import { ArchiveToastHost } from '@/components/feedback/ArchiveToastHost'
 import ObservabilityClient from '@/components/providers/ObservabilityClient'
 import { AppSettingsProvider } from '@/components/providers/AppSettingsProvider'
 import { ConvexAuthProvider } from '@/components/providers/ConvexAuthProvider'
+import { LiveAccountSync } from '@/components/providers/LiveAccountSync'
 import { prefetchGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { shouldLoadGatewayModelCatalog } from '@/shared/ai/gateway/catalog-access'
 
@@ -28,12 +29,10 @@ export function AppClientProviders({
   children,
   initialUser,
   requiresConvexClient,
-  nativeAuthConfigured = false,
 }: {
   children: ReactNode
   initialUser: AuthUser | null
   requiresConvexClient?: boolean
-  nativeAuthConfigured?: boolean
 }) {
   return (
     <AuthProvider
@@ -41,13 +40,11 @@ export function AppClientProviders({
       initialSessionResolved={Boolean(initialUser)}
     >
       <AppSettingsProvider>
-        <ConvexAuthProvider
-          requiresConvexClient={requiresConvexClient}
-          nativeAuthConfigured={nativeAuthConfigured}
-        >
+        <ConvexAuthProvider requiresConvexClient={requiresConvexClient}>
           <Suspense fallback={null}>
             <ObservabilityClient />
           </Suspense>
+          <LiveAccountSync />
           {children}
           <ArchiveToastHost />
           <Analytics />
