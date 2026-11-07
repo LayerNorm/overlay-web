@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Settings → Connected apps now names each connection's workspace from the live workspace list instead of loading the list over HTTP, so a renamed workspace shows its new name at once. Issuing tokens and disconnecting apps still go through the server, which seals tokens and records the audit trail.
+
 - Make billing live: Workspace → Billing, the onboarding payment step, the chat composer's budget gates, model pickers and the sidebar usage meters read the workspace's plan and balance from Convex subscriptions. A Stripe-confirmed payment, a top-up, a charge or a plan change by another admin shows everywhere at once. Removes the sidebar's 60-second poll, the subscription refetch after every chat turn and the 3-second poll after checkout. The live views and the billing routes share one summary builder, so they always agree, and Stripe customer and subscription IDs never reach the browser. Checkout, top-ups, the portal and automatic top-ups still run on the server.
 
 - Fix four edge cases in the live workspace and settings data found in review: accepting an invitation no longer leaves "Workspace unavailable" on screen if the live list catches up a moment later, a page open at a workspace handle follows a handle change made in another tab instead of stalling, the Slack import waits for the member list before marking Slack users as new, and a refused settings save shows the saved value again instead of the unsaved one. An older settings save can no longer replace newer settings, a background workspace check never pulls you back to a page you left, and the Slack import shows its loading state while members load instead of a false "no access" message.
