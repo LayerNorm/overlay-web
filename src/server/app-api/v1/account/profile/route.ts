@@ -23,16 +23,6 @@ type AccountIdentity = {
   photoObjectKey?: string
 }
 
-export async function GET(_request: Request, context: AccountAppApiRouteContext) {
-  try {
-    const identity = await getIdentity(context.auth.userId)
-    if (!identity) return NextResponse.json({ error: 'Profile not found.' }, { status: 404 })
-    return NextResponse.json(toAccountProfile(identity))
-  } catch (_error) {
-    return NextResponse.json({ error: 'Could not load account profile.' }, { status: 500 })
-  }
-}
-
 export async function PATCH(_request: Request, context: AccountAppApiRouteContext) {
   const patch: Record<string, unknown> = {}
   const body = context.parsedJson

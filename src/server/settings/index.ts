@@ -1,1 +1,1 @@
-export type { AppSettingsPatch, AppSettingsRepository } from './AppSettingsRepository'
+export type { AppSettingsPatch } from './AppSettingsRepository'

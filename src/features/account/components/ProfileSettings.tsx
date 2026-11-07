@@ -7,7 +7,7 @@ import { Avatar, AvatarFallback, AvatarImage, Button, Input, Label, toast } from
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { WorkspaceAvatar } from '@/components/identity/WorkspaceAvatar'
 import { IdentityImageEditor, type IdentityImageChoice } from '@/components/identity/IdentityImageEditor'
-import { identityRequest, notifyIdentityUpdated, useIdentityProfile, type IdentityProfile } from '@/hooks/useIdentityProfile'
+import { identityRequest, useIdentityProfile, type IdentityProfile } from '@/hooks/useIdentityProfile'
 
 export function ProfileSettings() {
   const { activeWorkspace } = useWorkspace()
@@ -24,7 +24,7 @@ function WorkspaceProfile({ workspaceId, workspaceName }: { workspaceId: string;
   const endpoint = `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/profile`
   const { profile, error, loading, reload, setProfile } = useIdentityProfile(endpoint)
   if (!profile) return <div className="py-8 text-sm text-muted-foreground" role="status">{loading ? 'Loading your profile...' : <><p role="alert">{error}</p><Button variant="ghost" onClick={() => void reload()}>Try again</Button></>}</div>
-  return <ProfileForm profile={profile} workspaceName={workspaceName} endpoint={endpoint} onSaved={(next) => { setProfile(next); notifyIdentityUpdated(workspaceId) }} />
+  return <ProfileForm profile={profile} workspaceName={workspaceName} endpoint={endpoint} onSaved={(next) => setProfile(next)} />
 }
 
 function ProfileForm({ profile, workspaceName, endpoint, onSaved }: { profile: IdentityProfile; workspaceName: string; endpoint: string; onSaved(profile: IdentityProfile): void }) {

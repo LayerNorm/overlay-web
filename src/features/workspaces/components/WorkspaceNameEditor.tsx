@@ -5,7 +5,6 @@ import { Button, Input, toast } from '@overlay/ui/primitives'
 
 import { useState } from 'react'
 import { Check, Loader2, Pencil, X } from 'lucide-react'
-import { useWorkspace } from '@/contexts/WorkspaceContext'
 import type { WorkspaceManagementClient, WorkspaceSummary } from '@/shared/workspaces/types'
 
 /**
@@ -18,7 +17,6 @@ export function WorkspaceNameEditor({
   workspace: Pick<WorkspaceSummary, 'id' | 'name' | 'role'>
   client: Pick<WorkspaceManagementClient, 'renameWorkspace'>
 }) {
-  const { refresh } = useWorkspace()
   const canRename = workspace.role === 'owner' || workspace.role === 'admin'
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(workspace.name)
@@ -36,8 +34,8 @@ export function WorkspaceNameEditor({
     }
     setBusy(true)
     try {
+      // The live workspace list shows the new name in every tab.
       await client.renameWorkspace(workspace.id, name)
-      await refresh()
       setEditing(false)
       toast.success('Workspace renamed.')
     } catch (caught) {

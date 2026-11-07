@@ -58,7 +58,7 @@ function request(path: string, method = 'GET', body?: unknown, accessToken?: str
   })
 }
 
-test('account directory, creation, and invitation acceptance skip workspace bootstrap while legacy BFF still resolves context', async (t) => {
+test('account workspace creation and invitation acceptance skip workspace bootstrap while legacy BFF still resolves context', async (t) => {
   const server = getOverlayServerContext()
   const access = workspaceAccess()
   let resolveCalls = 0
@@ -67,7 +67,6 @@ test('account directory, creation, and invitation acceptance skip workspace boot
   let createCalls = 0
   let idempotencyReservations = 0
   let acceptedEmail = ''
-  let listedInvitationEmail = ''
   let sessionEnabled = true
   t.mock.method(server.auth, 'getSession', async () => sessionEnabled
     ? {
@@ -107,11 +106,6 @@ test('account directory, creation, and invitation acceptance skip workspace boot
     resolveCalls += 1
     return access
   })
-  t.mock.method(server.workspaceService, 'listForUser', async () => [])
-  t.mock.method(server.workspaceService, 'listReceivedInvitations', async (args) => {
-    listedInvitationEmail = args.email
-    return []
-  })
   t.mock.method(server.workspaceService, 'createOrganization', async () => {
     createCalls += 1
     return access
@@ -127,18 +121,9 @@ test('account directory, creation, and invitation acceptance skip workspace boot
   })
 
   const directory = await import('@/app/api/v1/account/workspaces/route')
-  const listed = await directory.GET(request('/api/v1/account/workspaces?email=attacker@example.test'))
-  assert.equal(listed.status, 200)
-  assert.deepEqual(await listed.json(), { workspaces: [], activeWorkspaceId: '', invitations: [] })
-  assert.equal(listedInvitationEmail, 'member@example.test')
-  assert.equal(resolveCalls, 0)
-  assert.equal(ensureCalls, 0)
+  assert.equal('GET' in directory, false)
 
   sessionEnabled = false
-  const rejectedDirectory = await directory.GET(
-    request('/api/v1/account/workspaces?userId=user_1', 'GET', undefined, 'access-token'),
-  )
-  assert.equal(rejectedDirectory.status, 403)
   const rejectedCreate = await directory.POST(
     request('/api/v1/account/workspaces?userId=user_1', 'POST', { name: 'Studio' }, 'access-token'),
   )
