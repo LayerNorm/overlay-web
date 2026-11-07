@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-06. Phase A is complete. CN-04 to CN-06 and CN-06W are the chat phase: personal chat is merged and live; workspace and automation chats are implemented on the current PR, with acceptance recorded below once tested. Stop, approval and input response stay on the server by design, and rooms remain on HTTP until CN-08. A second user losing access has backend test coverage only, because no second sandbox account exists yet. The next card after CN-06W is CN-07. Other cards have no open PR. The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-06. Phase A is complete. CN-04 to CN-06 and CN-06W are the chat phase: personal, workspace and automation chats all run on the native path, accepted on the #412 preview (results under the CN-06W card). Stop, approval and input response stay on the server by design, and rooms remain on HTTP until CN-08. A second user losing access has backend test coverage only, because no second sandbox account exists yet. The next card after CN-06W is CN-07. Other cards have no open PR. The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -11,7 +11,7 @@ Status: in progress as of 2026-11-06. Phase A is complete. CN-04 to CN-06 and CN
 | CN-03P | #397 | Merged |
 | CN-05, CN-06 | #408 | Merged |
 | CN-04 to CN-06 stabilization | #411 | Merged, deployed. No Convex deploy was needed; its unused readiness markers remain on the production backend until the next deploy |
-| CN-06W | Current PR | Implemented; preview acceptance pending |
+| CN-06W | #412 | Accepted on preview; merging |
 | CN-07 to CN-11 | #403 | Closed unmerged, branch kept as reference |
 | CN-12 | #402 | Closed unmerged, branch kept as reference |
 | CN-20 | #398 | Closed unmerged, branch kept as reference |
@@ -207,6 +207,12 @@ The architecture plan's acceptance IDs `E01` through `E22` are reused below. No 
 **Depends on:** CN-06.
 
 **Acceptance:** the personal-chat two-tab, reload and failure scenarios pass for workspace and automation chats. Direct calls without workspace access are refused. A second workspace member sees changes live, and removing that member revokes access (`E01`, `E04`, `E05`, `E18`, `E19`).
+
+**Results (#412 preview, head `da3eb91ac`, 2026-11-06):** AI chats are owner-only, so "a second member sees changes live" means a second tab of the same owner; other members never see them, and that refusal is covered by `convex/nativeChatAccess.convex.test.ts`. In Chrome: a workspace first message showed its URL and Stop in about 220 to 270 ms with no safety notice and one user copy. New chats, messages (about 240 ms), turn deletion, branching, archive and Undo (optimistic in 22 ms) and rename all reached a second tab live. Workspace chats stay out of the Personal list, and a workspace chat opened under the personal path redirects. A reload during a first reply kept the chat, one user copy and the finished reply, for personal and workspace chats. Automation chat sends, replies and switches between Chat and Edit. A forced Act failure on a first turn ends the turn and shows the error. Channels still open and send.
+
+QA found and fixed two bugs: automation sends were rejected with 410 because the client still sent the retired `automationMode` flag (also broken on main since 2026-10-31), and a failed first turn spun forever because completing the session switched chats before the error was recorded.
+
+Known and not fixed here: the scope-mismatch redirect takes 4 to 9 s and the Workspace-to-Personal switch 1.5 to 3.5 s, because both still wait on the HTTP scope probe. A chat started on the Automations page is listed under Chats until it becomes an automation, and pressing Edit on it creates a blank draft that is not linked to the chat; both match main. Unread/read, generated-UI editing and media notes were not exercised in the browser.
 
 **Retirement/non-goals:** delete the HTTP history loader, assistant-only patching, the five-second polling fallback, legacy chat list ownership, and the scope probe wherever this card's chats were the last consumer. This should be net-negative in production code. Do not change rooms, the agent executor or automation scheduling.
 
