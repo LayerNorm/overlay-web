@@ -70,6 +70,7 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
 
   function handleQuickToggle(skill: SkillSummary, event: MouseEvent) {
     event.stopPropagation()
+    if ((skill as { canEdit?: boolean }).canEdit === false) return
     void commands.update({ skillId: skill._id, enabled: skill.enabled === false }).catch(() => undefined)
   }
 
@@ -108,6 +109,8 @@ export default function SkillsView({ userId: _userId }: { userId: string; select
           state={dialog}
           onClose={() => setDialog(null)}
           onSave={handleSaveSkill}
+          // A workspace skill someone else owns opens read-only unless the viewer may manage it.
+          readOnly={dialog.mode === 'edit' && (dialog.skill as { canEdit?: boolean } | undefined)?.canEdit === false}
           onDelete={handleDeleteSkill}
           scopeActions={dialog.mode === 'edit' && dialog.skill ? (
             <ScopeItemActions
