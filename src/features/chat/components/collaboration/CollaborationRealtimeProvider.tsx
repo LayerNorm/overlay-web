@@ -21,7 +21,6 @@ import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 
 type CollaborationRealtimeContextValue = {
-  conversationListVersion: number | null
   notifications: WorkspaceNotification[]
   notificationsReady: boolean
   /** Marks exactly these notifications read. Anything that arrives meanwhile stays unread. */
@@ -33,7 +32,6 @@ type CollaborationRealtimeContextValue = {
 const NO_NOTIFICATIONS: WorkspaceNotification[] = []
 
 const CollaborationRealtimeContext = createContext<CollaborationRealtimeContextValue>({
-  conversationListVersion: null,
   notifications: NO_NOTIFICATIONS,
   notificationsReady: false,
   markNotificationsRead: () => undefined,
@@ -69,7 +67,7 @@ function usePageVisibility(): boolean {
 }
 
 /**
- * Activity notifications and the room list version for the active workspace, read live with native
+ * Activity notifications for the active workspace, read live with native
  * identity. Read state is optimistic: marking read updates the live list at once and the server
  * result replaces it, so a failure restores the unread state by itself.
  */
@@ -80,7 +78,6 @@ export function CollaborationRealtimeProvider({ children }: { children: ReactNod
   const desktop = useDesktopBridge()
   const args = activeWorkspaceId && isAuthenticated && !isLoading ? { workspaceId: activeWorkspaceId } : null
   const result = useQuery(api.collaboration.activity.notifications, args ?? 'skip')
-  const listVersion = useQuery(api.collaboration.activity.listVersion, args ?? 'skip')
   const notifications = (result as WorkspaceNotification[] | null | undefined) ?? NO_NOTIFICATIONS
 
   const markRead = useMutation(api.collaboration.activity.markRead).withOptimisticUpdate(markReadOptimistically)
@@ -113,12 +110,11 @@ export function CollaborationRealtimeProvider({ children }: { children: ReactNod
   }, [desktop, notifications, result, visible, workspaceId])
 
   const value = useMemo(() => ({
-    conversationListVersion: typeof listVersion === 'number' ? listVersion : null,
     notifications,
     notificationsReady: result !== undefined,
     markNotificationsRead,
     markConversationRead,
-  }), [listVersion, markConversationRead, markNotificationsRead, notifications, result])
+  }), [markConversationRead, markNotificationsRead, notifications, result])
 
   return (
     <CollaborationRealtimeContext.Provider value={value}>

@@ -187,7 +187,6 @@ export function SecondaryPanelResourceList({
   agentsView,
   activeWorkspaceId,
   buildWorkspaceHref,
-  chatPanelRefreshKey,
   renderChatPanel,
   renderAutomationsPanel,
   renderFilesPanel,
@@ -200,7 +199,6 @@ export function SecondaryPanelResourceList({
   agentsView: AgentsPanelView
   activeWorkspaceId: string | null
   buildWorkspaceHref: (workspaceId: string, href: string) => string
-  chatPanelRefreshKey: number
   renderChatPanel?: (context: AppSidebarChatPanelContext) => ReactNode
   renderAutomationsPanel?: (context: AppSidebarNavigateContext) => ReactNode
   renderFilesPanel?: (context: AppSidebarNavigateContext) => ReactNode
@@ -212,7 +210,6 @@ export function SecondaryPanelResourceList({
     <Suspense fallback={<SidebarListSkeleton />}>
       {panelKind === 'chat' && renderChatPanel
         ? renderChatPanel({
-          refreshKey: chatPanelRefreshKey,
           onNavigate,
           view: chatsView,
           section,

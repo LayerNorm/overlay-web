@@ -35,6 +35,38 @@ async function readable<Row extends Scoped>(ctx: Ctx, viewer: Viewer, own: Row[]
   return [...mine, ...others].slice(0, LIMIT)
 }
 
+/** Name hits first, then description hits, without repeats. */
+function byNameThenDescription<Row extends { _id: string }>(names: Row[], descriptions: Row[]) {
+  const seen = new Set(names.map(row => row._id))
+  return [...names, ...descriptions.filter(row => !seen.has(row._id))]
+}
+
+/** Channels and DMs the viewer takes part in and has not archived (never agent threads or automation chats). */
+async function rooms(ctx: Ctx, viewer: Viewer, q: string) {
+  const principalId = viewer.principal.principalId
+  const candidates = q
+    ? await ctx.db.query('conversations').withSearchIndex('search_title', s => s.search('title', q)
+      .eq('workspaceId', viewer.workspaceId).eq('deletedAt', undefined)).take(SCAN)
+    : (await Promise.all((await ctx.db.query('conversationParticipants')
+      .withIndex('by_workspaceId_principalId_status_archivedAt', i => i.eq('workspaceId', viewer.workspaceId)
+        .eq('principalId', principalId).eq('status', 'active').eq('archivedAt', undefined))
+      .take(SCAN)).map(row => ctx.db.get(row.conversationId))))
+      .filter(row => row !== null)
+      .sort((a, b) => b.lastModified - a.lastModified)
+  const out: Array<{ id: string; title: string }> = []
+  for (const conversation of candidates) {
+    if (out.length >= LIMIT) break
+    const type = conversation.conversationType
+    if ((type !== 'dm' && type !== 'channel') || conversation.agentId || conversation.isAutomation || conversation.deletedAt) continue
+    const participant = await ctx.db.query('conversationParticipants')
+      .withIndex('by_conversationId_principalId', i => i.eq('conversationId', conversation._id).eq('principalId', principalId))
+      .first()
+    if (!participant || participant.status !== 'active' || participant.archivedAt !== undefined) continue
+    out.push({ id: conversation._id, title: conversation.title })
+  }
+  return out
+}
+
 async function chats(ctx: Ctx, viewer: Viewer, q: string) {
   const rows = q
     ? await ctx.db.query('conversations').withSearchIndex('search_title', s => s.search('title', q)
@@ -78,7 +110,12 @@ async function automations(ctx: Ctx, viewer: Viewer, q: string) {
           .eq('userId', viewer.userId).eq('workspaceId', viewer.workspaceId).eq('deletedAt', undefined)).take(SCAN),
         ctx.db.query('automations').withSearchIndex('search_name', s => s.search('name', q)
           .eq('workspaceId', viewer.workspaceId).eq('deletedAt', undefined)).take(SCAN),
-      ])
+        ctx.db.query('automations').withSearchIndex('search_description', s => s.search('description', q)
+          .eq('userId', viewer.userId).eq('workspaceId', viewer.workspaceId).eq('deletedAt', undefined)).take(SCAN),
+        ctx.db.query('automations').withSearchIndex('search_description', s => s.search('description', q)
+          .eq('workspaceId', viewer.workspaceId).eq('deletedAt', undefined)).take(SCAN),
+      ]).then(([ownName, sharedName, ownDescription, sharedDescription]) =>
+        [byNameThenDescription(ownName, ownDescription), byNameThenDescription(sharedName, sharedDescription)] as const)
     : await Promise.all([
         ctx.db.query('automations').withIndex('by_workspaceId_userId_archivedAt', i =>
           i.eq('workspaceId', viewer.workspaceId).eq('userId', viewer.userId).eq('archivedAt', undefined)).order('desc').take(SCAN),
@@ -93,7 +130,10 @@ async function skills(ctx: Ctx, viewer: Viewer, q: string) {
     ? await Promise.all([
         ctx.db.query('skills').withSearchIndex('search_name', s => s.search('name', q).eq('userId', viewer.userId).eq('workspaceId', viewer.workspaceId)).take(SCAN),
         ctx.db.query('skills').withSearchIndex('search_name', s => s.search('name', q).eq('workspaceId', viewer.workspaceId)).take(SCAN),
-      ])
+        ctx.db.query('skills').withSearchIndex('search_description', s => s.search('description', q).eq('userId', viewer.userId).eq('workspaceId', viewer.workspaceId)).take(SCAN),
+        ctx.db.query('skills').withSearchIndex('search_description', s => s.search('description', q).eq('workspaceId', viewer.workspaceId)).take(SCAN),
+      ]).then(([ownName, sharedName, ownDescription, sharedDescription]) =>
+        [byNameThenDescription(ownName, ownDescription), byNameThenDescription(sharedName, sharedDescription)] as const)
     : await Promise.all([
         ctx.db.query('skills').withIndex('by_workspaceId_userId_archivedAt', i =>
           i.eq('workspaceId', viewer.workspaceId).eq('userId', viewer.userId).eq('archivedAt', undefined)).order('desc').take(SCAN),
@@ -110,7 +150,10 @@ async function mcpServers(ctx: Ctx, viewer: Viewer, q: string) {
     ? await Promise.all([
         ctx.db.query('mcpServers').withSearchIndex('search_name', s => s.search('name', q).eq('userId', viewer.userId).eq('workspaceId', viewer.workspaceId)).take(SCAN),
         ctx.db.query('mcpServers').withSearchIndex('search_name', s => s.search('name', q).eq('workspaceId', viewer.workspaceId)).take(SCAN),
-      ])
+        ctx.db.query('mcpServers').withSearchIndex('search_description', s => s.search('description', q).eq('userId', viewer.userId).eq('workspaceId', viewer.workspaceId)).take(SCAN),
+        ctx.db.query('mcpServers').withSearchIndex('search_description', s => s.search('description', q).eq('workspaceId', viewer.workspaceId)).take(SCAN),
+      ]).then(([ownName, sharedName, ownDescription, sharedDescription]) =>
+        [byNameThenDescription(ownName, ownDescription), byNameThenDescription(sharedName, sharedDescription)] as const)
     : await Promise.all([
         ctx.db.query('mcpServers').withIndex('by_workspaceId_userId_archivedAt', i =>
           i.eq('workspaceId', viewer.workspaceId).eq('userId', viewer.userId).eq('archivedAt', undefined)).order('desc').take(SCAN),
@@ -145,8 +188,9 @@ export const mentions = query({
       allowed(ctx, viewer, 'mcp.use'),
       allowed(ctx, viewer, 'integrations.use'),
     ])
-    const [chatRows, fileRows, automationRows, skillRows, mcpRows] = await Promise.all([
+    const [chatRows, roomRows, fileRows, automationRows, skillRows, mcpRows] = await Promise.all([
       canChats ? chats(ctx, viewer, q) : [],
+      canChats ? rooms(ctx, viewer, q) : [],
       canFiles ? files(ctx, viewer, q) : [],
       canAutomations ? automations(ctx, viewer, q) : [],
       canSkills ? skills(ctx, viewer, q) : [],
@@ -154,7 +198,7 @@ export const mentions = query({
     ])
     return {
       query: q,
-      chats: chatRows,
+      chats: [...chatRows, ...roomRows].slice(0, LIMIT),
       files: fileRows,
       automations: automationRows,
       skills: skillRows,
