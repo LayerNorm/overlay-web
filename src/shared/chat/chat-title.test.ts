@@ -15,7 +15,7 @@ test('fallback titles use a short, clean excerpt of the first message', () => {
 })
 
 test('recognizes empty and placeholder chat titles', () => {
-  for (const title of ['', '  ', 'New Chat', ' New thread ']) {
+  for (const title of ['', '  ', 'New Chat', ' New thread ', 'New conversation']) {
     assert.equal(isPlaceholderChatTitle(title), true)
   }
   assert.equal(isPlaceholderChatTitle('Quarterly planning'), false)

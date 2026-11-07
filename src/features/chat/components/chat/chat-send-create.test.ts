@@ -77,6 +77,55 @@ test('deferred first-chat creation exposes the real id to the run lifecycle', as
   assert.equal(createResponse.mock.callCount(), 1)
 })
 
+test('a native first turn publishes its durable URL before the stream finishes', async () => {
+  const pending: PendingFirstSendState = {
+    conversationClientId: 'client-native',
+    previewRuntime: {} as ConversationRuntime,
+    streamDone: false,
+    realChatId: null,
+    wasFirst: true,
+    renameStarted: false,
+    renameSeed: 'seed',
+    activeChatTitleSnapshot: null,
+  }
+  const urls: Array<string | null> = []
+  let activationAttempts = 0
+  await createNewChatForSend({
+    activeChatIdRef: { current: null },
+    applyUiStateToView: () => {},
+    clearTransientComposerState: () => {},
+    emptyRuntime: {} as ConversationRuntime,
+    ensureConversationRuntime: () => ({} as ConversationRuntime),
+    invalidateLoadChatRequest: () => {},
+    isCurrentScope: () => true,
+    mode: 'chat',
+    nativePersonalEnabled: true,
+    nativePersonalRoute: true,
+    options: { clientId: 'client-native', deferActivation: true, persistedChatId: 'chat-native' },
+    pendingFirstSendRef: { current: pending },
+    pendingScrollChatIdRef: { current: null },
+    pendingScrollTurnIdRef: { current: null },
+    persistActiveRuntimeUiState: () => {},
+    resetComposerToolIds: () => {},
+    selectedActModel: 'test-model',
+    selectedModels: ['test-model'],
+    setActiveChatId: () => {},
+    setActiveViewer: () => {},
+    setChats: () => {},
+    setInterruptedExchangeIdx: () => {},
+    setIsTemporaryChat: () => {},
+    setPendingRunConversationId: () => {},
+    setRuntimeHydrationVersion: () => {},
+    syncStandaloneChatUrl: (id) => { urls.push(id) },
+    startFirstMessageRename: () => {},
+    tryActivatePendingFirstSend: () => { activationAttempts += 1 },
+  })
+  assert.deepEqual(urls, ['chat-native'])
+  assert.equal(pending.realChatId, 'chat-native')
+  assert.equal(pending.streamDone, false)
+  assert.equal(activationAttempts, 1)
+})
+
 test('new chat creation follows Workspace path scope over conflicting view query', async () => {
   const originalWindow = globalThis.window
   Object.defineProperty(globalThis, 'window', {
