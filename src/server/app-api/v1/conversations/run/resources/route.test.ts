@@ -27,7 +27,7 @@ function context(overrides: Partial<AppApiRouteContext['auth']> = {}): AppApiRou
   return {
     params: Promise.resolve({}), auth: { userId: 'owner', accessToken: 'test', authType: 'session', ...overrides },
     parsedQuery: {}, parsedJson: {}, parsedFormData: null, capabilities: DEFAULT_OVERLAY_CAPABILITIES,
-    appDataCapabilities: {} as AppApiRouteContext['appDataCapabilities'], requestFingerprint: 'test', requestIdempotencyKey: null,
+    requestFingerprint: 'test', requestIdempotencyKey: null,
     workspace: {
       workspace: { id: 'workspace', kind: 'personal', name: 'QA', slug: 'qa', status: 'active', createdAt: 1, updatedAt: 1 },
       principal: { id: 'owner', userId: 'owner', workspaceId: 'workspace', type: 'human', displayName: 'QA', createdAt: 1, updatedAt: 1 },

@@ -1,6 +1,5 @@
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { logAuthDebug, summarizeEnvResolutionForLog, summarizeJwtForLog } from './authDebug'
-import { verifyBrowserConvexAccessToken } from './browserConvexToken'
 
 /** Canonical WorkOS issuer; tokens may use a trailing slash (e.g. AuthKit defaults). */
 const WORKOS_ISSUER_PRIMARY = 'https://api.workos.com'
@@ -326,21 +325,6 @@ export async function getVerifiedAccessTokenClaims(
   const header = decodeBase64UrlJson<JwtHeader>(headerSegment)
   const claims = decodeBase64UrlJson<JwtAccessTokenClaims>(payloadSegment)
   if (!header || !claims) return null
-
-  // Browser Convex subscriptions use HS256 tokens minted by the Next BFF.
-  // Queries/mutations cannot call fetch() for WorkOS JWKS, so this path is the
-  // only browser-auth mechanism that is safe inside reactive Convex queries.
-  if (header.alg === 'HS256') {
-    const browserClaims = await verifyBrowserConvexAccessToken(trimmed)
-    if (!browserClaims) return null
-    return {
-      iss: browserClaims.iss,
-      sub: browserClaims.sub,
-      aud: browserClaims.aud,
-      exp: browserClaims.exp,
-      iat: browserClaims.iat,
-    }
-  }
 
   if (header.alg !== 'RS256' || typeof header.kid !== 'string' || !header.kid.trim()) {
     return null

@@ -34,7 +34,6 @@ import { InMemoryVectorStore } from '@/server/storage/providers/in-memory-vector
 import { NoOpObjectStore } from '@/server/storage/providers/noop-object-store'
 import { R2ObjectStore } from '@/server/storage/providers/r2-object-store'
 import { S3CompatibleObjectStore } from '@/server/storage/providers/s3-compatible-object-store'
-import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { createAppDataContext, type AppDataContext } from '@/server/app-data/repositories'
 import {
   createByokCredentialStore,
@@ -113,7 +112,6 @@ import { deriveOverlayCapabilities as resolveOverlayCapabilities } from '@overla
 
 export interface OverlayServerContext extends OverlayProviderContext {
   appData: AppDataContext
-  appDataCapabilities: AppDataCapabilities
   byokCredentialStore: ByokCredentialStore
   auditService: AuditService
   chatUsagePolicy: ActUsagePolicy
@@ -163,7 +161,7 @@ export function createOverlayServerContext(
   if (runtimeConfig) {
     assertSelectedProviderConfig(runtimeConfig)
   }
-  const appData = createAppDataContext(runtimeConfig)
+  const appData = createAppDataContext()
   const objectStore = appConfig.objectStore ?? createObjectStoreForRuntime(runtimeConfig)
   const byokCredentialStore = createByokCredentialStore(runtimeConfig)
   const chatUsagePolicy = createActUsagePolicy({
@@ -462,7 +460,6 @@ export function createOverlayServerContext(
     rateLimiter,
     eventBus,
     appData,
-    appDataCapabilities: appData.capabilities,
     byokCredentialStore,
     auditService,
     chatUsagePolicy,

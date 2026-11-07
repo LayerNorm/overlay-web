@@ -507,11 +507,6 @@ export function WorkspaceSharingPolicySection({
               ['Authorization denials', String(state.metrics.authorizationDenials)],
               ['Invitation failures', String(state.metrics.invitationFailures)],
               ['Unread drift', String(state.metrics.unreadDriftConversations)],
-              ['Provider', state.metrics.providerParity.provider],
-              [
-                'Convex required',
-                state.metrics.providerParity.requiresConvexClient ? 'yes' : 'no',
-              ],
             ].map(([label, value]) => (
               <div key={label}>
                 <dt className="text-(--muted-light)">{label}</dt>

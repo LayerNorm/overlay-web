@@ -348,7 +348,6 @@ test('metrics report denials, invitation failures, and provider parity', async (
   const metrics = await service.collectMetrics({ actorUserId: OWNER, workspaceId: WORKSPACE })
   assert.equal(metrics.authorizationDenials, 1)
   assert.equal(metrics.invitationFailures, 1)
-  assert.deepEqual(metrics.providerParity, { provider: 'convex', requiresConvexClient: true })
   assert.equal(metrics.workspaceId, WORKSPACE)
 })
 
