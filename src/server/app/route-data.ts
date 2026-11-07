@@ -7,7 +7,6 @@ import type {
   ConnectedIntegrationsResponse,
   IntegrationSearchResponse,
   KnowledgeFileNode,
-  MemoryRow,
   NoteDoc,
 } from '@overlay/app-core'
 import { noteDocToKnowledgeFile } from '@overlay/app-core'
@@ -21,7 +20,6 @@ import {
 } from '@/app/api/v1/_utils/bff'
 import * as filesService from '@/server/app-api/v1/files/route'
 import * as notesService from '@/server/app-api/v1/notes/route'
-import * as memoryService from '@/server/app-api/v1/memory/route'
 import * as bootstrapService from '@/server/app-api/v1/bootstrap/route'
 import * as integrationsService from '@/server/app-api/v1/integrations/route'
 import { ACTIVE_WORKSPACE_HEADER, ROUTE_WORKSPACE_SCOPE_HEADER } from '@/shared/workspaces/constants'
@@ -114,14 +112,6 @@ export async function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {
   ])
   const fileIds = new Set(files.map((file) => file._id))
   return [...files, ...notes.map(noteDocToKnowledgeFile).filter((note) => !fileIds.has(note._id))]
-}
-
-export function getInitialKnowledgeMemories(): Promise<MemoryRow[]> {
-  return callAppApi<MemoryRow[]>(
-    '/api/v1/memory?limit=100',
-    memoryService.GET as BffDomainService,
-    [],
-  )
 }
 
 export async function getInitialIntegrationsData(): Promise<InitialIntegrationsRouteData> {
