@@ -13,7 +13,6 @@ import {
 import { usePathname, useRouter } from 'next/navigation'
 import { useConvex, useConvexAuth, useQuery } from 'convex/react'
 import type { AccountWorkspaceInvitation } from '@overlay/workspace-contracts'
-import { setActiveChatListWorkspace } from '@/shared/chat/chat-list-cache'
 import { dispatchWorkspaceChanged } from '@/shared/workspaces/events'
 import {
   readWorkspaceRouteTarget,
@@ -144,7 +143,6 @@ export function WorkspaceProvider({
       setWorkspaces([])
       setInvitations([])
       setActiveWorkspaceId(null)
-      setActiveChatListWorkspace(null)
       setResolvedRouteTargetKey(null)
       return
     }
@@ -184,7 +182,6 @@ export function WorkspaceProvider({
     if (routeResolution.unavailable || (routeResolution.workspaceId && !routeWorkspace)) {
       setWorkspaces([])
       setActiveWorkspaceId(null)
-      setActiveChatListWorkspace(null)
       setError('Workspace not found or you no longer have access.')
       setStatus('error')
       return
@@ -197,7 +194,6 @@ export function WorkspaceProvider({
     setWorkspaces(listed)
     setInvitations(directory.invitations)
     setActiveWorkspaceId(nextActiveWorkspaceId)
-    setActiveChatListWorkspace(nextActiveWorkspaceId)
     setResolvedRouteTargetKey(workspaceRouteTargetKey(routeTarget))
     setStatus('ready')
     const previousWorkspaceId = activeWorkspaceIdRef.current
@@ -244,7 +240,6 @@ export function WorkspaceProvider({
     if (activeId && !listed.some((workspace) => workspace.id === activeId)) {
       setWorkspaces([])
       setActiveWorkspaceId(null)
-      setActiveChatListWorkspace(null)
       setError('Workspace not found or you no longer have access.')
       setStatus('error')
       return

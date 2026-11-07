@@ -61,13 +61,25 @@ async function fixture() {
     await skill('Roadmap skill shared', { scope: 'workspace' })
     await skill('Roadmap skill private')
     await skill('Roadmap skill off', { scope: 'workspace', enabled: false })
+    await skill('Release helper', { description: 'deploys the roadmap build' })
     await ctx.db.insert('mcpServers', {
-      workspaceId: 'ws', userId: 'alice', name: 'Roadmap server', url: 'https://mcp.example/secret-path', transport: 'streamable-http',
+      workspaceId: 'ws', userId: 'alice', name: 'Roadmap server', description: 'tools', url: 'https://mcp.example/secret-path', transport: 'streamable-http',
       enabled: true, authType: 'none', scope: 'workspace', createdAt: 1, updatedAt: 1,
     } as never)
     const chat = { workspaceId: 'ws', userId: 'alice', createdAt: 1, updatedAt: 1, lastMode: 'act', askModelIds: [], actModelId: 'm' }
     await ctx.db.insert('conversations', { ...chat, title: 'Roadmap chat', lastModified: 1 } as never)
     await ctx.db.insert('conversations', { ...chat, title: 'Roadmap automation chat', isAutomation: true, lastModified: 2 } as never)
+    // A channel Bob created that Alice joined, one she archived, and one she is not in.
+    const room = (title: string, extra: Record<string, unknown> = {}) => ctx.db.insert('conversations', {
+      ...chat, userId: 'bob', title, conversationType: 'channel', scope: 'workspace', lastModified: 3, ...extra,
+    } as never)
+    const join = (conversationId: Awaited<ReturnType<typeof room>>, principalId: string, extra: Record<string, unknown> = {}) => ctx.db.insert('conversationParticipants', {
+      conversationId, workspaceId: 'ws', principalId, principalType: 'human', role: 'member', status: 'active', notificationLevel: 'all', joinedAt: 1, updatedAt: 1, ...extra,
+    } as never)
+    const joined = await room('Roadmap channel')
+    await join(joined, 'p-alice'); await join(joined, 'p-bob')
+    await join(await room('Roadmap archived channel'), 'p-alice', { archivedAt: 4 })
+    await join(await room('Roadmap private channel'), 'p-bob')
     return folder
   })
   return { t, as: (subject: string) => t.withIdentity({ subject }) }
@@ -78,8 +90,10 @@ test('mentions search own and workspace-shared items, never archived, deleted, d
   const alice = await as('alice').query(fn.mentions, { workspaceId: 'ws', query: 'roadmap' }) as Mentions
   expect(alice.files.map(f => f.name).sort()).toEqual(['Roadmap note', 'Roadmap private.md', 'Roadmap shared.md'])
   expect(alice.files.find(f => f.name === 'Roadmap note')?.kind).toBe('note')
-  expect(alice.skills.map(s => s.name).sort()).toEqual(['Roadmap skill private', 'Roadmap skill shared'])
-  expect(alice.chats.map(c => c.title)).toEqual(['Roadmap chat'])
+  expect(alice.skills.map(s => s.name).sort()).toEqual(['Release helper', 'Roadmap skill private', 'Roadmap skill shared'])
+  expect(alice.chats.map(c => c.title).sort()).toEqual(['Roadmap channel', 'Roadmap chat'])
+  // Skills match on description too, after name matches.
+  expect(alice.skills.map(s => s.name)).toContain('Release helper')
   expect(alice.mcpServers.map(s => s.name)).toEqual(['Roadmap server'])
   expect(JSON.stringify(alice)).not.toMatch(/secret-path|https:/)
 
@@ -87,7 +101,7 @@ test('mentions search own and workspace-shared items, never archived, deleted, d
   const bob = await as('bob').query(fn.mentions, { workspaceId: 'ws', query: 'roadmap' }) as Mentions
   expect(bob.files.map(f => f.name).sort()).toEqual(['Roadmap note', 'Roadmap shared.md'])
   expect(bob.skills.map(s => s.name)).toEqual(['Roadmap skill shared'])
-  expect(bob.chats).toEqual([])
+  expect(bob.chats.map(c => c.title).sort()).toEqual(['Roadmap channel', 'Roadmap private channel'])
 })
 
 test('each category needs its capability; strangers get nothing; an empty query lists the newest', async () => {
@@ -105,9 +119,22 @@ test('each category needs its capability; strangers get nothing; an empty query 
 test('folder children resolve links with the tree read rules', async () => {
   const { t, as } = await fixture()
   const folder = await t.run(async ctx => (await ctx.db.query('files').collect()).find(row => row.kind === 'folder')!._id)
-  const inFolder = await as('bob').query(fn.children, { workspaceId: 'ws', parentId: folder, view: 'workspace' }) as Array<{ name: string }>
-  expect(inFolder.map(row => row.name)).toEqual(['Roadmap shared.md'])
-  const root = await as('bob').query(fn.children, { workspaceId: 'ws', parentId: null, view: 'workspace' }) as Array<{ name: string }>
-  expect(root.map(row => row.name).sort()).toEqual(['Roadmap folder', 'Roadmap note'])
+  type Listing = { files: Array<{ name: string }>; complete: boolean }
+  const inFolder = await as('bob').query(fn.children, { workspaceId: 'ws', parentId: folder, view: 'workspace' }) as Listing
+  expect(inFolder.files.map(row => row.name)).toEqual(['Roadmap shared.md'])
+  expect(inFolder.complete).toBe(true)
+  const root = await as('bob').query(fn.children, { workspaceId: 'ws', parentId: null, view: 'workspace' }) as Listing
+  expect(root.files.map(row => row.name).sort()).toEqual(['Roadmap folder', 'Roadmap note'])
   expect(await as('stranger').query(fn.children, { workspaceId: 'ws', parentId: null, view: 'workspace' })).toBeNull()
+})
+
+test('a folder with more children than one read is reported incomplete', async () => {
+  const { t, as } = await fixture()
+  await t.run(async ctx => {
+    for (let i = 0; i < 501; i++) {
+      await ctx.db.insert('files', { workspaceId: 'ws', userId: 'alice', type: 'file', kind: 'upload', name: `bulk-${i}`, scope: 'workspace', createdAt: 1, updatedAt: 1 } as never)
+    }
+  })
+  const root = await as('bob').query(fn.children, { workspaceId: 'ws', parentId: null, view: 'workspace' }) as { complete: boolean }
+  expect(root.complete).toBe(false)
 })
