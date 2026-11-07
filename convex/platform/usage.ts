@@ -119,7 +119,7 @@ async function getDailyUsageForPatch(ctx: MutationCtx, userId: string, date: str
 type EntitlementCtx = QueryCtx | MutationCtx
 
 /** Personal setup/storage has no execution allowance. Workspace funding is resolved separately. */
-async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
+export async function buildEntitlements(ctx: EntitlementCtx, userId: string) {
   const subscription = await ctx.db
     .query('subscriptions')
     .withIndex('by_userId', (q) => q.eq('userId', userId))

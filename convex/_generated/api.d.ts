@@ -55,6 +55,7 @@ import type * as billing_accountSubscriptions from "../billing/accountSubscripti
 import type * as billing_accounts from "../billing/accounts.js";
 import type * as billing_autoTopUpReconcile from "../billing/autoTopUpReconcile.js";
 import type * as billing_autoTopUpSettlement from "../billing/autoTopUpSettlement.js";
+import type * as billing_browse from "../billing/browse.js";
 import type * as billing_lib_stripeOverlaySubscription from "../billing/lib/stripeOverlaySubscription.js";
 import type * as billing_paidFirstMigration from "../billing/paidFirstMigration.js";
 import type * as billing_paidFirstMigrationNode from "../billing/paidFirstMigrationNode.js";
@@ -70,8 +71,8 @@ import type * as collaboration_activity from "../collaboration/activity.js";
 import type * as collaboration_agents from "../collaboration/agents.js";
 import type * as collaboration_channels from "../collaboration/channels.js";
 import type * as collaboration_conversationMigration from "../collaboration/conversationMigration.js";
-import type * as collaboration_directory from "../collaboration/directory.js";
 import type * as collaboration_directMessages from "../collaboration/directMessages.js";
+import type * as collaboration_directory from "../collaboration/directory.js";
 import type * as collaboration_events from "../collaboration/events.js";
 import type * as collaboration_management from "../collaboration/management.js";
 import type * as collaboration_rooms from "../collaboration/rooms.js";
@@ -258,6 +259,7 @@ declare const fullApi: ApiFromModules<{
   "billing/accounts": typeof billing_accounts;
   "billing/autoTopUpReconcile": typeof billing_autoTopUpReconcile;
   "billing/autoTopUpSettlement": typeof billing_autoTopUpSettlement;
+  "billing/browse": typeof billing_browse;
   "billing/lib/stripeOverlaySubscription": typeof billing_lib_stripeOverlaySubscription;
   "billing/paidFirstMigration": typeof billing_paidFirstMigration;
   "billing/paidFirstMigrationNode": typeof billing_paidFirstMigrationNode;
@@ -273,8 +275,8 @@ declare const fullApi: ApiFromModules<{
   "collaboration/agents": typeof collaboration_agents;
   "collaboration/channels": typeof collaboration_channels;
   "collaboration/conversationMigration": typeof collaboration_conversationMigration;
-  "collaboration/directory": typeof collaboration_directory;
   "collaboration/directMessages": typeof collaboration_directMessages;
+  "collaboration/directory": typeof collaboration_directory;
   "collaboration/events": typeof collaboration_events;
   "collaboration/management": typeof collaboration_management;
   "collaboration/rooms": typeof collaboration_rooms;

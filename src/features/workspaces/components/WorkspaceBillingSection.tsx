@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { CircleAlert, CreditCard, Loader2, RefreshCw, WalletCards } from 'lucide-react'
+import { CircleAlert, CreditCard, Loader2, WalletCards } from 'lucide-react'
 import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, EmptyState, Toggle, toast } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse, WorkspaceSummary } from '@overlay/workspace-contracts'
 import { currentLegalAcceptancePayload } from '@/shared/legal/legal-documents'
@@ -14,6 +14,7 @@ import {
   TOP_UP_MIN_AMOUNT_CENTS,
 } from '@/shared/billing/billing-pricing'
 import { formatBytes } from '@/shared/storage/storage-limits'
+import { useLiveWorkspaceBilling } from '@/hooks/use-billing'
 import { DollarAmountInput } from './DollarAmountInput'
 import { WorkspaceAutoTopUpCard } from './WorkspaceAutoTopUpCard'
 import { WorkspaceUsagePanel } from './WorkspaceUsagePanel'
@@ -50,7 +51,6 @@ export function WorkspaceBillingSection({
         icon={<CircleAlert size={28} />}
         title="Workspace billing is unavailable"
         description={state.message}
-        action={<Button size="sm" onClick={billing.refresh}><RefreshCw size={13} />Try again</Button>}
       />
     )
   }
@@ -65,34 +65,23 @@ const handledCheckoutKeys = new Set<string>()
 function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: WorkspaceSummary) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [state, setState] = useState<BillingState>({ status: 'loading' })
+  // Live: a payment confirmed by the Stripe webhook, a top-up, a charge or a change by another admin shows at once.
+  const live = useLiveWorkspaceBilling(workspace.id)
+  const state = useMemo<BillingState>(() => (live === undefined ? { status: 'loading' }
+    : live === null ? { status: 'error', message: 'You no longer have access to this workspace.' }
+      : { status: 'ready', summary: live }), [live])
   const [busy, setBusy] = useState<string | null>(null)
   const [planAmountCents, setPlanAmountCents] = useState(800)
   const [topUpAmountCents, setTopUpAmountCents] = useState(800)
-  const [refreshKey, setRefreshKey] = useState(0)
+  // The plan amount starts at the current plan once it is known, then stays the person's choice.
+  const [planAmountSeeded, setPlanAmountSeeded] = useState(false)
+  if (live && !planAmountSeeded) {
+    setPlanAmountSeeded(true)
+    if (live.subscription.planAmountCents >= 800) setPlanAmountCents(live.subscription.planAmountCents)
+  }
   const [acceptedCheckoutTerms, setAcceptedCheckoutTerms] = useState(false)
   const [upgradeDialogOpen, setUpgradeDialogOpen] = useState(false)
   const handledUpgradeParamRef = useRef(false)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    setState({ status: 'loading' })
-    void client
-      .billing(workspace.id, controller.signal)
-      .then((summary) => {
-        if (controller.signal.aborted) return
-        setState({ status: 'ready', summary })
-        if (summary.subscription.planAmountCents >= 800) {
-          setPlanAmountCents(summary.subscription.planAmountCents)
-        }
-      })
-      .catch((error) => {
-        if (!controller.signal.aborted) {
-          setState({ status: 'error', message: error instanceof Error ? error.message : 'Could not load workspace billing.' })
-        }
-      })
-    return () => controller.abort()
-  }, [client, refreshKey, workspace.id])
 
   useEffect(() => {
     if (searchParams?.get('upgrade') !== '1') {
@@ -123,7 +112,6 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
       .verifyBillingCheckout(workspace.id, { kind, sessionId })
       .then(() => {
         toast.success(kind === 'paid_plan' ? 'Workspace subscription activated.' : 'Workspace credits added.')
-        setRefreshKey((value) => value + 1)
       })
       .catch((error) => toast.error(error instanceof Error ? error.message : 'Checkout verification failed.'))
       .finally(() => {
@@ -145,7 +133,6 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
         return
       }
       toast.success('Billing settings updated.')
-      setRefreshKey((value) => value + 1)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Workspace billing action failed.')
     } finally {
@@ -164,7 +151,6 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
     setAcceptedCheckoutTerms,
     upgradeDialogOpen,
     setUpgradeDialogOpen,
-    refresh: () => setRefreshKey((value) => value + 1),
     run,
   }
 }
@@ -268,7 +254,6 @@ function WorkspaceUpgradeDialog({
       window.location.assign(url)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not start workspace checkout.')
-      billing.refresh()
     } finally {
       setCheckoutBusy(false)
     }
