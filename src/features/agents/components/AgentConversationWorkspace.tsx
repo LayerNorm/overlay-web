@@ -103,7 +103,7 @@ function useAgentWorkspaceActions(args: {
         }
       })()
     },
-    [activeWorkspaceId, buildHref, router, onEditorModeChange, onError],
+    [activeWorkspaceId, buildHref, resolveMainThread, router, onEditorModeChange, onError],
   )
 
   const handleArchived = useCallback(() => {
