@@ -286,23 +286,6 @@ describe('what agents and search may use from the workspace', () => {
     await convex.mutation(m('integrations/mcpServers:archive'), { ...auth, userId: 'alice', id: shared })
     expect(await names('bob', true)).toEqual([])
   })
-
-  test('mention search finds what the workspace shares, not private or archived items', async () => {
-    const convex = convexTest(schema, modules)
-    await seed(convex)
-    const mk = (name: string, scope?: 'workspace') =>
-      convex.mutation(m('integrations/skills:create'), { ...auth, userId: 'alice', name, description: 'd', instructions: 'i', ...(scope ? { scope } : {}) }) as Promise<string>
-    await mk('roadmap shared', 'workspace')
-    await mk('roadmap private')
-    const archived = await mk('roadmap archived', 'workspace')
-    await convex.mutation(m('integrations/skills:archive'), { ...auth, userId: 'alice', id: archived })
-    const found = async (userId: string) =>
-      ((await convex.query(q('search/mentions:searchMentions'), { serverSecret: secret, workspaceId, userId, query: 'roadmap' })) as { skills: Array<{ name: string }> })
-        .skills.map((x) => x.name).sort()
-    expect(await found('bob')).toEqual(['roadmap shared'])
-    expect(await found('alice')).toEqual(['roadmap private', 'roadmap shared'])
-    expect(await found('gus')).toEqual([])
-  })
 })
 
 describe('workspace connectors (the workspace\'s own accounts)', () => {

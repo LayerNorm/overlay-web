@@ -162,15 +162,6 @@ export function installFakeWorkApi() {
         return json({ success: true }, 201)
       }
     }
-    if (path === '/api/v1/mention-search' && method === 'GET') {
-      const q = (url.searchParams.get('q') ?? '').toLowerCase()
-      const pick = <T extends { name?: string; title?: string }>(rows: T[]) => rows.filter((row) => (row.name ?? row.title ?? '').toLowerCase().includes(q))
-      return json({
-        files: pick([{ _id: 'f1', name: 'launch-brief.pdf' }, { _id: 'f2', name: 'sales-calls-oct.zip' }]),
-        notes: pick([{ _id: 'n1', title: 'Positioning v3' }]),
-        conversations: pick([{ _id: 'c1', title: '#launch thread' }]),
-      })
-    }
     if (path === '/api/v1/scope' && method === 'POST') {
       const item = items.find((candidate) => candidate.id === body.id)
       if (!item || !visible(item)) return json({ error: 'Not found.', reason: 'not_found' }, 404)
@@ -192,7 +183,7 @@ export function installFakeWorkApi() {
 
   window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(typeof input === 'string' || input instanceof URL ? String(input) : input.url, window.location.origin)
-    if (!url.pathname.startsWith('/api/v1/work') && url.pathname !== '/api/v1/scope' && url.pathname !== '/api/v1/mention-search') return original(input, init)
+    if (!url.pathname.startsWith('/api/v1/work') && url.pathname !== '/api/v1/scope') return original(input, init)
     const method = (init?.method ?? (input instanceof Request ? input.method : 'GET')).toUpperCase()
     const body = typeof init?.body === 'string' && init.body ? JSON.parse(init.body) : {}
     state.calls.push({ method, path: url.pathname + url.search, body })
