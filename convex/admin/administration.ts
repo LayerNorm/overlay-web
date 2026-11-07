@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { mutation } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
+import { auditWorkspaceId } from '../lib/auditWorkspace'
 
 export const appendAuditByServer = mutation({
   args: {
@@ -37,6 +38,7 @@ export const appendAuditByServer = mutation({
       requestId: args.requestId,
       ipAddress: args.ipAddress,
       metadataJson: args.metadataJson,
+      workspaceId: auditWorkspaceId(args.metadataJson),
       createdAt: args.createdAt,
     }
     const id = await ctx.db.insert('auditEvents', values)

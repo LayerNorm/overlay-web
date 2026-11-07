@@ -109,7 +109,11 @@ export class WorkspaceGovernanceService {
       scope: { workspaceId: access.workspace.id, principalId: access.principal.id },
     })
     const now = (this.deps.now ?? Date.now)()
-    const rows = await this.deps.audit.list({ limit: args.limit ?? 1_000 })
+    const rows = await this.deps.audit.listForWorkspace({
+      workspaceId: access.workspace.id,
+      fromRecordedAt: args.fromRecordedAt,
+      limit: args.limit ?? 1_000,
+    })
     const events = rows
       .map((row) => ({
         id: row.id,
@@ -284,7 +288,7 @@ export class WorkspaceGovernanceService {
       this.deps.metrics?.failedDeliveries(workspaceId) ?? Promise.resolve(0),
       this.deps.metrics?.agentRuns(workspaceId) ?? Promise.resolve({ queued: 0, failed: 0 }),
       this.deps.metrics?.unreadDrift(workspaceId) ?? Promise.resolve(0),
-      this.deps.audit.list({ limit: 500 }),
+      this.deps.audit.listForWorkspace({ workspaceId, limit: 500 }),
     ])
     const workspaceEvents = auditRows.filter((row) => (
       (row.metadata as Record<string, unknown> | undefined)?.workspaceId === workspaceId
