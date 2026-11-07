@@ -6,7 +6,6 @@ import { loadOverlayConfig, type LoadOverlayConfigOptions } from '@/server/confi
 import { deploymentEnv } from '@/server/env/deployment-env'
 import { resolveConvexUrl } from '@/server/database/convex-url'
 import { withObservabilityProviderCapabilities } from '@/server/capabilities'
-import { applyAppDataCapabilitiesToOverlayCapabilities, deriveAppDataCapabilities } from '@/server/app-data/capabilities'
 import { connectedAgentRolloutConfigFromEnv, parseConnectedAgentRolloutStage } from '@/shared/agents/connected-agent-rollout'
 import {
   NATIVE_POLICY_RESPONSE_MAX_BYTES,
@@ -19,10 +18,7 @@ export async function resolveNativeDeploymentPolicy(options: LoadOverlayConfigOp
   const config = await loadOverlayConfig({ ...options, env })
   const backend = resolveConvexUrl(env)
   if (!backend.url || backend.invalid) throw new Error('NATIVE_POLICY_UNAVAILABLE')
-  const capabilities = applyAppDataCapabilitiesToOverlayCapabilities(
-    withObservabilityProviderCapabilities(deriveOverlayCapabilities(config), config),
-    deriveAppDataCapabilities(config),
-  )
+  const capabilities = withObservabilityProviderCapabilities(deriveOverlayCapabilities(config), config)
   const rollout = connectedAgentRolloutConfigFromEnv(env)
   const policy = {
     version: 1 as const,

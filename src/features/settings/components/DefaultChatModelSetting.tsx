@@ -12,7 +12,6 @@ import { useChatReasoningPreferences } from '@/components/providers/useChatReaso
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { useAuth } from '@/contexts/AuthContext'
 import { resolveDefaultChatModelSelection } from '@/shared/chat/default-chat-model'
-import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 
 export function DefaultChatModelSetting({
   defaultActModelId,
@@ -28,13 +27,10 @@ export function DefaultChatModelSetting({
   onSelect: (actModelId: string, askModelIds: string[]) => void
 }) {
   const { revision: catalogRevision } = useGatewayModelCatalog()
-  const { appDataCapabilities } = useOverlayCapabilities()
   const { user } = useAuth()
   const workspaceId = useOptionalWorkspace()?.activeWorkspaceId ?? 'personal'
   const { reasoningByModel, onModelReasoningChange } = useChatReasoningPreferences({ type: 'workspace', id: workspaceId })
-  const { connections: byokConnections } = useByokModels({
-    enabled: appDataCapabilities.provider === 'convex',
-  })
+  const { connections: byokConnections } = useByokModels()
   const effectiveOnlyAllowZdr = onlyAllowZdrModels
   const models = useMemo(() => {
     void catalogRevision

@@ -2,38 +2,40 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { probeReactiveQueries, browserRuntimeErrors } from './reactive-smoke.mjs'
 const input = { backendUrl: 'https://fixture.convex.cloud', userId: 'user_fixture', token: 'header.payload.signature' }
-function fixture({ forgedRows = [], ownRows = [{ userId: input.userId }], error = false, silent = false } = {}) {
+function fixture({ identity = { userId: input.userId }, anonymous = null, error = false, silent = false } = {}) {
   const calls = []
   return { calls, createClient: async url => {
     calls.push({ url })
-    return { setAuth: () => { throw new Error('Handler tokens must never enter platform auth') },
+    let fetchToken = null
+    return { setAuth: fetch => { fetchToken = fetch; calls.push({ setAuth: true }) },
       onUpdate: (name, args, update, fail) => {
         calls.push({ name, args })
-        if (!silent) queueMicrotask(() => error ? fail(new Error('private diagnostic'))
-          : update(args.userId === input.userId ? ownRows : forgedRows))
+        if (!silent) queueMicrotask(async () => error ? fail(new Error('private diagnostic'))
+          : update(fetchToken && (await fetchToken()) === input.token ? identity : anonymous))
         return () => calls.push({ unsubscribed: true })
       }, close: async () => calls.push({ closed: true }) }
   } }
 }
-test('reactive smoke authenticates through handler arguments and rejects a forged user', async () => {
+test('reactive smoke authenticates natively and an anonymous socket sees no identity', async () => {
   const f = fixture()
-  assert.deepEqual(await probeReactiveQueries({ ...input, ...f }), { ownAccountRead: true, differentUserDenied: true })
+  assert.deepEqual(await probeReactiveQueries({ ...input, ...f }), { ownAccountRead: true, anonymousDenied: true })
   const queries = f.calls.filter(c => c.args)
   assert.equal(queries.length, 2)
-  assert.ok(queries.every(c => c.args.accessToken === input.token))
+  assert.ok(queries.every(c => c.name === 'auth/viewer:current' && Object.keys(c.args).length === 0))
+  assert.equal(f.calls.filter(c => c.setAuth).length, 1)
   assert.equal(f.calls.filter(c => c.unsubscribed).length, 2)
-  assert.equal(f.calls.at(-1).closed, true)
+  assert.equal(f.calls.filter(c => c.closed).length, 2)
 })
-test('invalid results, query errors and timeouts close the socket and cannot count as proof', async () => {
-  for (const option of [{ ownRows: [] }, { ownRows: [{ userId: 'user_other' }] },
-    { forgedRows: [{ userId: 'user_other' }] }, { error: true }, { silent: true }]) {
+test('invalid results, query errors and timeouts close the sockets and cannot count as proof', async () => {
+  for (const option of [{ identity: null }, { identity: { userId: 'user_other' } },
+    { anonymous: { userId: 'user_other' } }, { error: true }, { silent: true }]) {
     const f = fixture(option)
     await assert.rejects(probeReactiveQueries({ ...input, ...f, timeoutMs: 5 }))
-    assert.equal(f.calls.at(-1).closed, true)
+    assert.equal(f.calls.filter(c => c.closed).length, 2)
     assert.ok(f.calls.some(c => c.unsubscribed))
   }
 })
-test('an invalid backend or absent handler token refuses to open a socket', async () => {
+test('an invalid backend or absent token refuses to open a socket', async () => {
   for (const patch of [{ backendUrl: 'http://fixture.convex.cloud' }, { backendUrl: 'https://outside.example' },
     { token: '' }, { userId: 'other' }]) {
     const f = fixture()

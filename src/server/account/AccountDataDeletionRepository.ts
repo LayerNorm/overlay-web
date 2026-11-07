@@ -51,7 +51,3 @@ export interface AccountDataDeletionResult {
   userExisted: boolean
   verification: AccountDataDeletionVerification
 }
-
-export interface AccountDataDeletionRepository {
-  deleteUserAccount(args: { userId: string }): Promise<AccountDataDeletionResult>
-}

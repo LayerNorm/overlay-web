@@ -6,7 +6,7 @@ test('native tokens use a separate endpoint, force refresh and deduplicate match
   let refreshes = 0
   let requests = 0
   t.mock.method(globalThis, 'fetch', async (url: string, options: RequestInit) => {
-    assert.equal(url, '/api/auth/convex-token?native=1')
+    assert.equal(url, '/api/auth/convex-token')
     assert.equal(options.cache, 'no-store')
     assert.equal(options.credentials, 'same-origin')
     requests++

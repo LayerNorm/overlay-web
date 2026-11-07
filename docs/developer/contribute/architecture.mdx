@@ -34,9 +34,11 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
   translations (Box today, E2B planned). Provider SDK types and raw handles do not cross into public routes, billing, or
   connected-agent persistence.
 
-App data lives exclusively in Convex: `src/server/app-data/capabilities.ts`
-publishes the Convex capability set and `src/server/app-data/repositories.ts`
-constructs the Convex repositories every domain service consumes. The bespoke
+App data lives exclusively in Convex. There is no database-provider switch or
+capability set to check: `src/server/app-data/repositories.ts` constructs the
+Convex repositories the server context hands to domain services, and module-level
+HTTP services construct their Convex repository directly. Browser code reads and
+writes Convex natively and never asks which backend is in use. The bespoke
 Postgres repository layer, Drizzle schema, app-data migrations, and parity
 harness were removed; enterprise self-hosting runs the official
 `convex-backend` binary (see `internal/develop/convex-only-self-hosting.md`).
