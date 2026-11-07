@@ -1,7 +1,6 @@
 import {
   EXTENSIONS_CHANGED_EVENT,
   AUTOMATIONS_UPDATED_EVENT,
-  WORK_UPDATED_EVENT,
   MCPS_CHANGED_EVENT,
   SKILLS_CHANGED_EVENT,
   automationHref,
@@ -287,7 +286,6 @@ export async function restoreArchivedItem(
       return
     case 'work-item':
       await overlayAppClient.scope.restore('work', item.id)
-      window.dispatchEvent(new Event(WORK_UPDATED_EVENT))
       return
     case 'agent':
       if (!workspaceId) throw new Error('No workspace')
@@ -336,7 +334,6 @@ export async function deleteArchivedItem(item: ArchivedItem, workspaceId: string
     case 'work-item':
       // The task and whatever was archived under it. The server refuses a task that is not archived.
       await overlayAppClient.work.remove(item.id)
-      window.dispatchEvent(new Event(WORK_UPDATED_EVENT))
       return
     case 'agent':
       // Deletes the archived agent and its threads. A live agent has no row here, and the server refuses it.

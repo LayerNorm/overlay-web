@@ -7,7 +7,6 @@ import { ListChecks, Plus } from 'lucide-react'
 import type { WorkItem } from '@overlay/app-core'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { WorkRefreshErrorNotice } from './WorkRefreshErrorNotice'
 import { Button, HeaderSearch } from '@overlay/ui/primitives'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
@@ -71,14 +70,13 @@ function WorkBody({
   selectedId: string | null
   onOpen: (id: string) => void
 }) {
-  const { state, items, byId, refresh } = useWorkData()
+  const { state, items, byId } = useWorkData()
   if (state === 'loading') return <ListSkeleton />
   if (state === 'error') {
     return (
       <EmptyState
         title="Could not load tasks"
-        description="Check your connection, then try again."
-        action={<Button variant="secondary" size="sm" onClick={() => void refresh()}>Try again</Button>}
+        description="You do not have access to Work in this workspace."
       />
     )
   }
@@ -111,7 +109,7 @@ function WorkBody({
 function WorkScreen() {
   const { scope, view, solo } = useWorkRoute()
   const { taskId, openTask, closeTask } = useWorkUrlState()
-  const { state, items, viewer, error, refresh, truncated } = useWorkData()
+  const { state, items, viewer, truncated } = useWorkData()
   const [query, setQuery] = useState('')
   const quickAdd = useRef<WorkQuickAddHandle>(null)
   const today = useMemo(() => toWorkDate(new Date()), [])
@@ -151,7 +149,6 @@ function WorkScreen() {
     >
       <AppScreenBody padding="none" maxWidth="none" scroll="hidden" className="flex h-full min-h-0 flex-col" data-testid="work-page">
         {truncated ? <p className="mx-6 mt-3 shrink-0 text-xs text-(--muted)" role="note">Showing the first {WORK_LIMITS.listCap.toLocaleString('en-US')} tasks. Archive finished work to see the rest.</p> : null}
-        {state !== 'error' ? <WorkRefreshErrorNotice error={error} onRetry={() => void refresh()} /> : null}
         <WorkQuickAdd ref={quickAdd} disabled={!loaded} />
         <div className={`flex min-h-0 flex-1 flex-col ${pageScrolls ? 'overflow-auto' : 'overflow-hidden'}`}>
           <WorkBody

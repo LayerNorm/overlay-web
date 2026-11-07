@@ -176,6 +176,7 @@ import type * as surfaces_surfaces from "../surfaces/surfaces.js";
 import type * as webhooks_deliveries from "../webhooks/deliveries.js";
 import type * as webhooks_deliveryRunner from "../webhooks/deliveryRunner.js";
 import type * as webhooks_subscriptions from "../webhooks/subscriptions.js";
+import type * as work_browse from "../work/browse.js";
 import type * as work_workItemEvents from "../work/workItemEvents.js";
 import type * as work_workItems from "../work/workItems.js";
 
@@ -354,6 +355,7 @@ declare const fullApi: ApiFromModules<{
   "webhooks/deliveries": typeof webhooks_deliveries;
   "webhooks/deliveryRunner": typeof webhooks_deliveryRunner;
   "webhooks/subscriptions": typeof webhooks_subscriptions;
+  "work/browse": typeof work_browse;
   "work/workItemEvents": typeof work_workItemEvents;
   "work/workItems": typeof work_workItems;
 }>;
