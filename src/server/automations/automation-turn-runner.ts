@@ -496,7 +496,6 @@ export async function prepareAutomationAgentTurn(
     parsedJson: { automationId: input.automationId, surfaceBindingId: input.surface?.bindingId },
     parsedFormData: null,
     capabilities: {} as CapabilityCheck,
-    appDataCapabilities: overlayContext.appDataCapabilities,
     requestFingerprint,
     requestIdempotencyKey,
     workspace: workspaceAccess,

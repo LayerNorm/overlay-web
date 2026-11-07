@@ -14,7 +14,6 @@ import type { GatewayCatalogModel } from '@/shared/ai/gateway/gateway-catalog'
 import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { useByokModels } from '@/components/providers/useByokModels'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
-import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { gatewayCatalogModelHasSupportedPricing } from '@/shared/ai/gateway/gateway-catalog'
 
 function formatPrice(value?: number) {
@@ -240,10 +239,7 @@ export function ModelCatalogSetting({
   onChange: (patch: ModelSettingsPatch) => void
 }) {
   const { models, isLoading, error, refresh, revision } = useGatewayModelCatalog()
-  const { appDataCapabilities } = useOverlayCapabilities()
-  const { connections: byokConnections, refresh: refreshByok } = useByokModels({
-    enabled: appDataCapabilities.provider === 'convex',
-  })
+  const { connections: byokConnections, refresh: refreshByok } = useByokModels()
   const [query, setQuery] = useState('')
   const [catalogType, setCatalogType] = useState<'language' | 'image' | 'video'>('language')
 

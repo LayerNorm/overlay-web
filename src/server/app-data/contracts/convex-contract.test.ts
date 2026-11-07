@@ -4,7 +4,6 @@ import test from 'node:test'
 import { AccountDeletionService } from '@/server/account'
 import type { AccountDeletionResult } from '@/server/account/AccountDeletionService'
 import type { OverlayServerContext } from '@/server/bootstrap'
-import { CONVEX_APP_DATA_CAPABILITIES } from '@/server/app-data/capabilities'
 import { ConvexActConversationRepository } from '@/server/conversations/ConvexActConversationRepository'
 import { BillingBackedActUsagePolicy } from '@/server/conversations/ActUsagePolicy'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
@@ -46,7 +45,6 @@ test('real Convex app-data repository contracts', {
 
 async function deleteConvexAccount(userId: string): Promise<AccountDeletionResult> {
   return await new AccountDeletionService({
-    appDataCapabilities: CONVEX_APP_DATA_CAPABILITIES,
     auth: {
       deleteUser: async () => {},
     },

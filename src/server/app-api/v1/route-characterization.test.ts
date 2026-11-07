@@ -3,7 +3,6 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { DEFAULT_APP_SETTINGS, deriveOverlayCapabilities } from '@overlay/app-core'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { automationService } from '@/server/automations/http'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { fileService } from '@/server/files/http'
@@ -43,33 +42,6 @@ test.after(() => {
   }
 })
 
-const TEST_CONVEX_APP_DATA_CAPABILITIES: AppDataCapabilities = {
-  provider: 'convex',
-  supportsRealtime: true,
-  supportsStreamResume: true,
-  supportsChatPersistence: true,
-  supportsFileMetadata: true,
-  supportsFileUploads: true,
-  supportsNotes: true,
-  supportsIntegrations: true,
-  supportsSkills: true,
-  supportsMcpServers: true,
-  supportsSettings: true,
-  supportsOnboarding: true,
-  supportsUsageAccounting: true,
-  supportsBillingRecords: true,
-  supportsVectorSearch: true,
-  supportsAutomations: true,
-  supportsWebhooks: true,
-  supportsApiKeys: true,
-  supportsAccountDeletion: true,
-  supportsBackgroundMaintenance: true,
-  supportsManagedScheduler: true,
-  supportsPersistentIdempotency: true,
-  supportsServiceAuthReplayStore: true,
-  requiresConvexClient: true,
-}
-
 function request(path: string, init: {
   body?: BodyInit | null
   headers?: HeadersInit
@@ -98,7 +70,6 @@ function context(): AppApiRouteContext {
     parsedFormData: null,
     parsedJson: {},
     parsedQuery: {},
-    appDataCapabilities: TEST_CONVEX_APP_DATA_CAPABILITIES,
     requestFingerprint: 'fixture-request-fingerprint',
     requestIdempotencyKey: 'fixture-idempotency-key',
     workspace: {

@@ -2,23 +2,19 @@ import 'server-only'
 
 import { NextResponse } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { repositoryProxy } from '@/server/app-data/errors'
+import { ConvexBillingRepository } from './ConvexBillingRepository'
+import { lazyService } from '@/server/lazy-service'
+import { ConvexUsageRepository } from '@/server/usage/ConvexUsageRepository'
 import { publicEnv } from '@/shared/env/public-env'
 import { DEFAULT_APP_URL, normalizeAppBaseUrl } from '@/shared/web/normalize-app-url'
 import { BillingCustomerService, BillingServiceError } from './BillingCustomerService'
 import { WorkspaceBillingService } from './WorkspaceBillingService'
-import type { BillingRepository } from './BillingRepository'
-import type { UsageRepository } from '@/server/usage/UsageRepository'
 import { LegalAcceptanceError } from '@/server/legal/legal-acceptance'
 import { getOverlayCapabilities } from '@/server/capabilities'
 import { WorkspaceExecutionError } from './WorkspaceExecutionPolicy'
 
-const billingRepository = repositoryProxy<BillingRepository>(
-  () => getOverlayServerContext().appData.repositories.billing,
-)
-const usageRepository = repositoryProxy<UsageRepository>(
-  () => getOverlayServerContext().appData.repositories.usage,
-)
+const billingRepository = new ConvexBillingRepository()
+const usageRepository = new ConvexUsageRepository()
 
 export const billingCustomerService = new BillingCustomerService({
   repository: billingRepository,
@@ -30,7 +26,7 @@ export const workspaceBillingService = new WorkspaceBillingService({
   baseUrl: getBillingBaseUrl,
   billingProvider: () => getOverlayServerContext().billing,
   usage: usageRepository,
-  workspaces: repositoryProxy(() => getOverlayServerContext().workspaceService),
+  workspaces: lazyService(() => getOverlayServerContext().workspaceService),
 })
 
 function getBillingBaseUrl(): string {

@@ -3,7 +3,6 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { deriveOverlayCapabilities } from '@overlay/app-core'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 
 const originalNextPhase = process.env.NEXT_PHASE
@@ -25,7 +24,6 @@ function context(body: Record<string, unknown>, work: boolean): AppApiRouteConte
     parsedFormData: null,
     parsedJson: body,
     parsedQuery: {},
-    appDataCapabilities: { provider: 'convex' } as unknown as AppDataCapabilities,
     requestFingerprint: 'fp',
     requestIdempotencyKey: 'key',
     workspace: {

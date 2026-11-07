@@ -4,17 +4,15 @@ import { isAutomatedCaller, type AppApiRouteContext } from '@/server/app-api/bff
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { scopeForbiddenResponse } from '@/server/app-api/scope-errors'
 import { parseResourceScope, parseResourceView } from '@/shared/workspaces/resource-scope'
-import { repositoryProxy } from '@/server/app-data/errors'
-import { NoteRevisionConflictError, NoteService, NoteServiceError, type NoteRepository } from '@/server/notes'
+import { ConvexNoteRepository } from '@/server/notes/ConvexNoteRepository'
+import { NoteRevisionConflictError, NoteService, NoteServiceError } from '@/server/notes'
 import type { CreateNoteRequest, UpdateNoteRequest } from '@overlay/app-core'
 
 const noteService = new NoteService({
   billing: {
     getEntitlements: (userId) => getOverlayServerContext().billing.getEntitlements(userId),
   },
-  noteRepository: repositoryProxy<NoteRepository>(
-    () => getOverlayServerContext().appData.repositories.notes,
-  ),
+  noteRepository: new ConvexNoteRepository(),
 })
 
 function readBooleanParam(value: string | null): boolean | undefined {

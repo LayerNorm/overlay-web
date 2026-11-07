@@ -43,7 +43,6 @@ function apiContext(userId = 'user_1'): AppApiRouteContext {
     parsedQuery: {},
     parsedJson: {},
     parsedFormData: null,
-    appDataCapabilities: {} as AppApiRouteContext['appDataCapabilities'],
     requestFingerprint: 'test-request-fingerprint',
     requestIdempotencyKey: 'test-idempotency-key',
     workspace: { workspace: { id: 'workspace-1' } } as AppApiRouteContext['workspace'],

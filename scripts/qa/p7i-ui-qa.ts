@@ -23,10 +23,7 @@ try {
   assert.equal(capabilities.ok(), true)
   const capabilityBody = await capabilities.json() as {
     capabilities: { mcpServers?: boolean; skills?: boolean }
-    appDataCapabilities: { provider?: string; requiresConvexClient?: boolean }
   }
-  assert.equal(capabilityBody.appDataCapabilities.provider, 'convex')
-  assert.equal(capabilityBody.appDataCapabilities.requiresConvexClient, true)
   assert.equal(capabilityBody.capabilities.skills, true)
   assert.equal(capabilityBody.capabilities.mcpServers, true)
 
