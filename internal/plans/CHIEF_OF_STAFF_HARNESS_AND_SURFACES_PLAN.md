@@ -1,6 +1,24 @@
 # Chief of Staff Harness and Surface Implementation Plan
 
-Status: Proposed implementation plan. The revised web/Slack mockup is the visual reference; production implementation has not started in this session.
+Status: In progress in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409). Phases 1 to 3 are partially implemented; no phase has passed its exit gate yet. Phases 4 to 6 have not started. See [Progress](#progress). The revised web/Slack mockup is the visual reference.
+
+## Progress
+
+Legend: `[x]` done in PR #409, `[~]` partially done, `[ ]` not started.
+
+| Phase | State | Summary |
+|---|---|---|
+| 1. Assignment and authorization contracts | Mostly done | Assignment records, idempotent isolated threads, authorization and ACL-filtered queries are in. Attempt, result and surface-link records and the Slack requester spec are not. |
+| 2. Native Chief orchestration | Partial | Named delegation creates assignments, the Chief contract is in, and the Chief can read delegated replies on follow-up runs. Revisions, cancellation, failure handling and crash recovery are not. |
+| 3. Web experience | Partial | Assignments panel, `Assigned from` backlinks and the PR 405 sidebar with live thread insertion are in. Work view, origin labels and linked-thread composition are not. |
+| 4. Chief-only Slack | Not started | A Sign in with Slack identity helper exists locally but is uncommitted and unwired. |
+| 5. Personal-Chief contributions | Not started | Cross-owner personal-Chief delegation is refused until grants exist. |
+| 6. Connected agents and transports | Not started | External and connected agents are rejected before any assignment is written. |
+
+Verified on the isolated PR preview: two-agent delegation with one consolidated answer, repeated delegations in the same Chief thread, distinct assignment threads, live statuses, parent and child navigation, live sidebar insertion, light/dark and narrow layouts, archive/restore, and no assignment panel in ordinary DMs. CI is green.
+
+Also done beyond the checklist: shared-room and Slack-origin privacy restrictions carry through every delegated assignment, follow-up and tool call; exact retries reuse the same assignment and are not charged twice.
+
 
 ## 1. Outcome
 
@@ -278,19 +296,19 @@ Each phase should be a reviewable change set. The boundaries below are implement
 
 ### Phase 1: Canonical assignment and authorization contracts
 
-- [ ] Define assignment, attempt, result, surface-link and authority contracts.
-- [ ] Add indexed, backward-compatible persistence and authorization checks.
-- [ ] Implement idempotent fresh assignment-thread creation.
-- [ ] Add ACL-aware parent/child queries and stable deep links.
-- [ ] Specify requester mapping, audience checks and revocation behavior before exposing Slack execution.
+- [~] Define assignment, attempt, result, surface-link and authority contracts. Assignment and authority are done; attempt, result and surface-link are not.
+- [x] Add indexed, backward-compatible persistence and authorization checks.
+- [x] Implement idempotent fresh assignment-thread creation.
+- [x] Add ACL-aware parent/child queries and stable deep links.
+- [ ] Specify requester mapping, audience checks and revocation behavior before exposing Slack execution. Audience restrictions are inherited; requester mapping and revocation are not specified.
 
 **Exit gate:** two assignments to the same agent produce distinct threads; replay produces only one assignment; unauthorized callers cannot discover either thread or its artifacts.
 
 ### Phase 2: Native Chief orchestration
 
-- [ ] Wire named delegation to assignments and existing Harness child admission.
-- [ ] Unify persisted result handles and durable child waits.
-- [ ] Add Chief instructions for discovery, briefing, follow-through and synthesis.
+- [x] Wire named delegation to assignments and existing Harness child admission.
+- [~] Unify persisted result handles and durable child waits. Reply-reading tools stay available after the plan completes; there is no unified persisted result record yet.
+- [x] Add Chief instructions for discovery, briefing, follow-through and synthesis.
 - [ ] Implement revisions, failure dispositions, cancellation and queued follow-ups.
 - [ ] Recover persisted-but-unlaunched children and duplicate settlement events.
 - [ ] Keep structural completion checks without restoring answer verification.
@@ -299,12 +317,12 @@ Each phase should be a reviewable change set. The boundaries below are implement
 
 ### Phase 3: Web experience
 
-- [ ] Implement parent assignment list and dedicated specialist threads.
-- [ ] Apply PR 405's sidebar treatment and per-user read status.
+- [x] Implement parent assignment list and dedicated specialist threads.
+- [x] Apply PR 405's sidebar treatment and per-user read status.
 - [ ] Surface the same execution in Work without duplicate task records.
 - [ ] Add origin/destination labels and artifact permissions.
 - [ ] Enable linked-thread composition only when the shared admission and delivery path is ready.
-- [ ] Validate desktop/mobile, themes, keyboard use and restricted viewers.
+- [~] Validate desktop/mobile, themes, keyboard use and restricted viewers. Desktop, narrow and both themes are verified in the browser; restricted viewers are covered by Convex tests only; keyboard use is not tested.
 
 **Exit gate:** the approved mockup's Working, Needs you and Completed flows are backed by persisted state; reload and cross-tab updates remain correct.
 
