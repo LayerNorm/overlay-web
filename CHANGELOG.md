@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make webhooks live: Settings → Webhooks shows your endpoints and their recent deliveries from Convex subscriptions. Each delivery's move from pending to delivered, failed or dead-lettered appears as the delivery runner records it, and endpoints changed in another tab update at once. The manual refresh button is gone. Signing secrets and payloads are never sent to the list. The webhooks permission now also requires webhooks to be turned on for the deployment, matching the settings route. Creating and editing endpoints, which checks their addresses, and rotating secrets still go through the server.
+
 - Settings → Connected apps now names each connection's workspace from the live workspace list instead of loading the list over HTTP, so a renamed workspace shows its new name at once. Issuing tokens and disconnecting apps still go through the server, which seals tokens and records the audit trail.
 
 - Make billing live: Workspace → Billing, the onboarding payment step, the chat composer's budget gates, model pickers and the sidebar usage meters read the workspace's plan and balance from Convex subscriptions. A Stripe-confirmed payment, a top-up, a charge or a plan change by another admin shows everywhere at once. Removes the sidebar's 60-second poll, the subscription refetch after every chat turn and the 3-second poll after checkout. The live views and the billing routes share one summary builder, so they always agree, and Stripe customer and subscription IDs never reach the browser. Checkout, top-ups, the portal and automatic top-ups still run on the server.

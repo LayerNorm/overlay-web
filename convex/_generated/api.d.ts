@@ -198,6 +198,7 @@ import type * as surfaces_browse from "../surfaces/browse.js";
 import type * as surfaces_chatState from "../surfaces/chatState.js";
 import type * as surfaces_surfaceExecutions from "../surfaces/surfaceExecutions.js";
 import type * as surfaces_surfaces from "../surfaces/surfaces.js";
+import type * as webhooks_browse from "../webhooks/browse.js";
 import type * as webhooks_deliveries from "../webhooks/deliveries.js";
 import type * as webhooks_deliveryRunner from "../webhooks/deliveryRunner.js";
 import type * as webhooks_subscriptions from "../webhooks/subscriptions.js";
@@ -402,6 +403,7 @@ declare const fullApi: ApiFromModules<{
   "surfaces/chatState": typeof surfaces_chatState;
   "surfaces/surfaceExecutions": typeof surfaces_surfaceExecutions;
   "surfaces/surfaces": typeof surfaces_surfaces;
+  "webhooks/browse": typeof webhooks_browse;
   "webhooks/deliveries": typeof webhooks_deliveries;
   "webhooks/deliveryRunner": typeof webhooks_deliveryRunner;
   "webhooks/subscriptions": typeof webhooks_subscriptions;
