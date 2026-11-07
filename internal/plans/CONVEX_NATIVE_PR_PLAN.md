@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-07. Phases A to E and the first two Phase F PRs are complete and live in production: chats, agents, rooms, Activity, files, notes, memories, Work, automations, skills, connections, the workspace directory and policy, members and invitations, and account settings run on the native path. The production Convex backend was last deployed from main `aed08ebdd` after the matching web release. The third Phase F PR (CN-28 to CN-31: billing, connected-app names, webhooks, Slack import progress) is implemented and awaits preview acceptance; Phase G (CN-32, CN-33) follows. Stop, approval, input response, room send, agent assignment, automation writes, connection writes, workspace and membership writes, invitations, settings writes, onboarding, Stripe checkout and top-ups, token issuing, webhook configuration and Slack listing stay on the server by design because they run workflows, agent turns, billing checks, credential encryption, OAuth, email, validation, SSRF checks or provider calls. Second-member cases are tested on previews with a seeded collaborator acting through the Convex CLI. The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-07. Phases A to F are complete and live in production (web and Convex at `7aa5d75f9`): chats, agents, rooms, Activity, files, notes, memories, Work, automations, skills, connections, the workspace directory, members, account settings, billing, webhooks and Slack import run on the native path. The Phase G PR (CN-32 search and pickers, CN-33 Settings → Archived, CN-34a shell polling cleanup) is implemented and awaits preview acceptance; CN-34b (the native channel/DM sidebar list, removing the chat-list cache and its events, retiring the browser bootstrap) follows in its own PR, then Phase H. Stop, approval, input response, room send, agent assignment, automation writes, connection writes, workspace and membership writes, invitations, settings writes, onboarding, Stripe operations, token issuing, webhook configuration, Slack listing, connectors, restore and permanent delete stay on the server by design because they run workflows, agent turns, billing checks, credential encryption, OAuth, email, validation, SSRF checks, audit logging, object deletion or provider calls. Second-member cases are tested on previews with a seeded collaborator acting through the Convex CLI. The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -17,7 +17,9 @@ Status: in progress as of 2026-11-07. Phases A to E and the first two Phase F PR
 | CN-16 to CN-20 | #415 | Merged and deployed: web and Convex production at `228e9bedc`, production smoke passed |
 | CN-21 to CN-24 | #416 | Merged and deployed: web and Convex production at `0589eb36b`, production smoke passed |
 | CN-25 to CN-27 | #418 | Merged and deployed: web and Convex production at `aed08ebdd`, production smoke passed |
-| CN-28 to CN-31 | Phase F billing PR | Implemented; preview acceptance pending |
+| CN-28 to CN-31 | #420 | Merged and deployed: web and Convex production at `7aa5d75f9`, production smoke passed |
+| CN-32, CN-33, CN-34a | Phase G PR | Implemented; preview acceptance pending |
+| CN-34b | — | Not started: native channel/DM sidebar list, chat-list cache and events removal, browser bootstrap retirement |
 | CN-07 to CN-11 (old attempt) | #403 | Closed unmerged, superseded by the Phase C PR |
 | CN-12 (old attempt) | #402 | Closed unmerged, superseded by the Phase D PR |
 | CN-20 (old attempt) | #398 | Closed unmerged, superseded by the Phase E PR |
@@ -702,6 +704,8 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 
 **Retirement/non-goals:** remove duplicate HTTP lookup caches and full-workspace client scans. Preserve valid external search execution and current ranking semantics.
 
+**Implemented (Phase G PR):** `search/browse:mentions` serves the composer, notebook, Cmd-K and Work context searches. Each category needs its capability; shared items are filtered by read rules; archived and deleted items, folders and automation chats are excluded. Answers carry their query so a stale one is dropped. The composer's six 100-item downloads, `/api/v1/mention-search` and `search/mentions:searchMentions` are removed. Cmd-K tasks come from the live Work list. Markdown links resolve through `files/browse:children`. Connectors stay on the provider over HTTP.
+
 ### CN-33. Complete unified archive, restore, and scope movement
 
 **Outcome:** the unified archived/settings views are as reactive and correct as each originating feature.
@@ -716,6 +720,8 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 
 **Retirement/non-goals:** delete remaining resource-specific archive loaders and event plumbing. This is cross-resource completion, not permission to postpone ordinary archive support from earlier cards.
 
+**Implemented (Phase G PR):** Settings → Archived subscribes to each resource's native query: new `collaboration/archive:rooms` (per-person room archive) and an archived view of `files/browse:list`, plus the existing archived views. The seven HTTP loads, the reloads after actions and the workspace-change refetch are gone. Restore and permanent delete stay on their server routes (audit, object deletion, workflow cancellation, cascades); native scope mutations would first need the audit log in Convex.
+
 ### CN-34. Retire shell snapshot bootstrap and database polling
 
 **Outcome:** the app shell renders directly from the completed native domain queries with no hidden refresh system.
@@ -729,6 +735,12 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 **Acceptance:** cold/warm navigation and server hydration match native queries; no old-scope flash; subscription counts remain bounded after repeated navigation; no authoritative-data UI polling remains (`E06`, `E09`, `E18`, `E21`).
 
 **Retirement/non-goals:** delete the shared snapshot/polling infrastructure now unused. Retain real feature/entitlement/runtime capabilities, auth refresh where required, device-local timers, presence heartbeats, and provider-side status acquisition.
+
+**Split:**
+- **CN-34a (Phase G PR):** `collaboration/rooms:runLiveness` replaces the 5-second remote-run poll. The capabilities fallback fetch, `useVisibleReconciliation` and `getInitialKnowledgeMemories` are deleted.
+- **CN-34b (next PR):** a native channel/DM sidebar list (active and archived, with unread state). That lets `chat-list-cache`, the version-triggered delta refetch, the retry loop and the `overlay:chat-*` list events go, along with the browser `/api/v1/bootstrap` reads (integration registry from static config, billing-off entitlements).
+
+**Kept by design:** integration connected state (the provider is the source of truth), session and token refresh, presence heartbeats, device-local timers, provider sign-in polling, and the one-time account-page capabilities read outside the app shell.
 
 ## 10. Phase H: remove the obsolete architecture
 

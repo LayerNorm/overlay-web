@@ -67,6 +67,21 @@ export const compatibility = query({
   },
 })
 
+/**
+ * A remote agent run's liveness in a room the member may read, live: the heartbeat and open tools the agent host
+ * reports, without the run's transcript or another room's runs. Null without access or before the first heartbeat.
+ */
+export const runLiveness = query({
+  args: { ...roomArgs, runId: v.string() },
+  handler: async (ctx, args) => {
+    if (args.runId.length > 200) return null
+    const room = await readableRoom(ctx, args)
+    if (!room) return null
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', args.runId)).unique()
+    return run?.conversationId === args.conversationId ? run.liveness ?? null : null
+  },
+})
+
 /** The room's header facts for a member who may read it, or null; drives the unavailable state. */
 export const access = query({
   args: roomArgs,
