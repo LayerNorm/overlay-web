@@ -5,6 +5,8 @@ import { HarnessPlanValidationError } from '@overlay/agent-runtime/harness-state
 import { applyHarnessOperation, applyHarnessOperationStep, readHarnessEvidence, claimHarnessState, readAndClaimHarnessState } from './state-steps'
 import { HARNESS_STEP_VALIDATION } from './step-validation'
 
+vi.mock('server-only', () => ({}))
+
 const mocks = vi.hoisted(() => ({ get: vi.fn(), apply: vi.fn(), readEvidence: vi.fn(), resources: vi.fn() }))
 vi.mock('./resource-boundary', () => ({ waitForHarnessModelResources: mocks.resources }))
 
@@ -20,7 +22,11 @@ const reference = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow'
 
 beforeEach(() => {
   vi.resetAllMocks()
-  mocks.get.mockResolvedValue({ workflowRunId: reference.workflowRunId, revision: 3 })
+  mocks.get.mockResolvedValue({
+    workflowRunId: reference.workflowRunId,
+    revision: 3,
+    policy: { publicStreamVersion: undefined },
+  })
 })
 
 test.each(Object.values(HARNESS_STEP_VALIDATION))('step validation crosses the durable boundary as data: %s', async message => {
@@ -137,7 +143,12 @@ test('exact evidence reads preserve the requested ID', async () => {
 })
 
 test('read and claim returns the post-claim snapshot in one boundary', async () => {
-  const claimed = { workflowRunId: reference.workflowRunId, revision: 4, status: 'running' }
+  const claimed = {
+    workflowRunId: reference.workflowRunId,
+    revision: 4,
+    status: 'running',
+    policy: { publicStreamVersion: undefined },
+  }
   mocks.get.mockResolvedValue({ revision: 3, status: 'running' })
   mocks.apply.mockResolvedValue({ conflict: false, snapshot: claimed })
   expect(await readAndClaimHarnessState(reference)).toEqual({ snapshot: claimed, claimed: true })
@@ -157,7 +168,10 @@ test('read and claim leaves terminal and foreign-owned runs unclaimed', async ()
 
 test('claim keeps its existing behavior for unowned terminal runs', async () => {
   mocks.get.mockResolvedValue({ revision: 3, status: 'cancelled' })
-  mocks.apply.mockResolvedValue({ conflict: false, snapshot: {} })
+  mocks.apply.mockResolvedValue({
+    conflict: false,
+    snapshot: { policy: { publicStreamVersion: undefined } },
+  })
   expect(await claimHarnessState(reference)).toBe(true)
   expect(mocks.apply).toHaveBeenCalledOnce()
 })
@@ -172,7 +186,13 @@ test('combined admission fences stale generations even when the workflow identit
 
 test('combined admission claims the current successor generation', async () => {
   const successor = { ...reference, executionGeneration: 2 }
-  const snapshot = { revision: 5, status: 'running', executionGeneration: 2, workflowRunId: reference.workflowRunId }
+  const snapshot = {
+    revision: 5,
+    status: 'running',
+    executionGeneration: 2,
+    workflowRunId: reference.workflowRunId,
+    policy: { publicStreamVersion: undefined },
+  }
   mocks.get.mockResolvedValue({ ...snapshot, workflowRunId: undefined, revision: 4 })
   mocks.apply.mockResolvedValue({ conflict: false, snapshot })
   expect(await readAndClaimHarnessState(successor)).toEqual({ snapshot, claimed: true })

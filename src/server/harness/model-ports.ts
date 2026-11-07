@@ -21,6 +21,22 @@ import { HarnessYield, waitForHarnessModelRecovery } from './model-recovery'
 
 type ModelStep = Parameters<HarnessExecutionPorts['recordModelStep']>[0]
 
+function recordPreparationMetricIfEligible(
+  reference: HarnessExecutionReference,
+  publicStreamVersion: number | undefined,
+  receiptId: string,
+  modelId: string,
+): void {
+  if (publicStreamVersion !== 1) return
+  recordPublicStreamMetric({
+    event: 'preparation_complete',
+    runId: reference.runId,
+    generation: reference.executionGeneration ?? 0,
+    receiptId,
+    modelId,
+  })
+}
+
 export function createHarnessModelPorts(input: {
   reference: HarnessExecutionReference
   modelId: string
@@ -169,11 +185,9 @@ export function createHarnessModelPorts(input: {
         },
       })
       preparedCalls.set(request.receiptId, prepared)
-      if (request.state.policy.publicStreamVersion === 1) recordPublicStreamMetric({
-        event: 'preparation_complete', runId: reference.runId,
-        generation: reference.executionGeneration ?? 0,
-        receiptId: request.receiptId, modelId: prepared.model.modelId,
-      })
+      recordPreparationMetricIfEligible(
+        reference, request.state.policy.publicStreamVersion, request.receiptId, prepared.model.modelId,
+      )
       const reasoning = isKimiK3ModelId(input.modelId) && request.settings.reasoning !== undefined
         ? 'xhigh'
         : request.settings.reasoning

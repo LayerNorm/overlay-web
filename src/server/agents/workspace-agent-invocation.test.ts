@@ -130,7 +130,7 @@ test('room agent turns use native Harness admission and delivery', async () => {
 
   assert.match(messageRoute, /if \(turn\.resumed\) (?:continue|return)/)
   assert.match(nativeStart, /prepareNativeHarnessTurn/)
-  assert.match(nativeStart, /repository\)\.admit/)
+  assert.match(nativeStart, /admissionRepository\.admit/)
   assert.match(nativeStart, /nativeHarnessWorkflow, \[prepared\.workflowInput\]/)
   assert.match(workflowInput, /prepareWorkspaceAgentInputs/)
   assert.match(preparation, /loadRoomTurnContext/)

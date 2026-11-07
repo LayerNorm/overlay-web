@@ -5,6 +5,14 @@ export type PersonalHarnessBudget = { maxProviderCostUsd?: number; durationMs?: 
 
 const DAY_MS = 24 * 60 * 60 * 1_000
 
+function selectPublicStreamVersion(
+  existingPolicy: HarnessPolicy | null | undefined,
+  workspaceId: string,
+): 1 | undefined {
+  if (existingPolicy) return existingPolicy.publicStreamVersion === 1 ? 1 : undefined
+  return isUnifiedStreamingWorkspaceEnabled(workspaceId) ? 1 : undefined
+}
+
 export function isUnifiedStreamingWorkspaceEnabled(
   workspaceId: string,
   allowlist = process.env.OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS ?? '',
@@ -37,9 +45,7 @@ export function personalHarnessPolicy(input: {
   const byok = isByokModelId(input.modelId)
   const workspaceFunded = input.paid && !byok && !hasExplicitSpendCap
   const versioned = !hasExplicitSpendCap
-  const publicStreamVersion = input.existingPolicy
-    ? input.existingPolicy.publicStreamVersion === 1 ? 1 : undefined
-    : isUnifiedStreamingWorkspaceEnabled(input.workspaceId) ? 1 : undefined
+  const publicStreamVersion = selectPublicStreamVersion(input.existingPolicy, input.workspaceId)
   return {
     publicProgressVersion: 1,
     ...(publicStreamVersion === 1 ? { publicStreamVersion: 1 as const } : {}),
