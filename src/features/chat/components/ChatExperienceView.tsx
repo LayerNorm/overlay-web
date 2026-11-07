@@ -130,7 +130,8 @@ export function ChatExperienceView({
 
             {messageListProps && <ChatMessageList {...messageListProps} />}
             {composerProps && (
-              nativeThreadSafety.readOnly ? (
+              // Sending stays blocked while checking; replacing the composer would only make it flicker.
+              nativeThreadSafety.readOnly && nativeThreadSafety.status !== 'checking' ? (
                 <NativeThreadReadOnlyFooter safety={nativeThreadSafety} onNewThread={onNewNativeThread} />
               ) : (
               <ChatComposer

@@ -22,7 +22,7 @@ import {
   createPersonalChatArchiveOptimisticUpdate,
   updatePersonalChatUnread,
 } from './personal-chat-optimistic'
-import { useConvexAuthConfiguration } from '@/components/providers/ConvexAuthProvider'
+import { useHasConvexClient } from '@/components/providers/ConvexAuthProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { PersonalChatErrorBoundary } from './personal-chat-error-boundary'
 import {
@@ -124,19 +124,17 @@ const PersonalChatContext = createContext<PersonalChatContextValue>({
   async setRead() {},
 })
 
-export function PersonalChatProvider({ children, backendReady = false }: { children: ReactNode; backendReady?: boolean }) {
-  const authConfiguration = useConvexAuthConfiguration()
+export function PersonalChatProvider({ children }: { children: ReactNode }) {
+  const hasConvexClient = useHasConvexClient()
   const workspace = useWorkspace()
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const workspaceId = workspace.activeWorkspaceId
-  const nativeConfigured = authConfiguration.nativeAuthConfigured && backendReady
-  const available = nativeConfigured && authConfiguration.hasConvexClient
 
-  if (!available) {
-    const status: ListStatus = nativeConfigured ? 'unavailable' : 'disabled'
+  if (!hasConvexClient) {
+    const status: ListStatus = 'disabled'
     const value: PersonalChatContextValue = {
-      configured: nativeConfigured,
+      configured: false,
       available: false,
       workspaceId,
       viewerUserId: null,

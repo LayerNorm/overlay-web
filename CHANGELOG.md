@@ -10,6 +10,14 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Show live thread status icons beside single-line sidebar titles, preserve the curved thread indentation on desktop and mobile, and summarize working, ready-to-review, and needs-you threads beneath each agent.
 
+- Make Convex-native personal chat unconditional: native browser sign-in is now required for every deployment, and the auth flag, backend readiness probe and revision markers are gone. Convex is the only supported backend, so these only added startup calls and extra code paths.
+
+- Make new personal chats reload-safe: the URL, title and selected sidebar row now appear as soon as the chat is saved instead of after the whole reply finishes. A chat interrupted during its first turn now gets its generated title when reopened, opening a personal chat no longer blanks and remounts the chat surface while an unneeded HTTP scope check runs, and the composer and a false "thread safety unavailable" notice no longer flicker when switching chats.
+
+- Require each Convex-native migration domain to delete its old path before the next surface starts, and move the migration to one implementer and one surface at a time, so old and new paths stop accumulating side by side.
+
+- Add the Convex-native migration architecture plan and its phased PR plan under `internal/plans/`, with current card status, so agents and reviewers can reference the same scope, dependencies and acceptance gates from the repository.
+
 - Land CN-05 personal history/sending and CN-06 durable execution/progress together on the main-targeted integration branch.
 
 - Reconcile a sender's streamed native reply with its canonical row even when the local stream lacks the recorded model, so the sender no longer shows a phantom second response version until reload.

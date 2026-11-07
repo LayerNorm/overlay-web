@@ -34,7 +34,7 @@ export interface ChatArchivedDetail {
 
 export function isPlaceholderChatTitle(title: string | null | undefined): boolean {
   const normalized = title?.trim().toLowerCase()
-  return !normalized || normalized === 'new chat' || normalized === 'new thread'
+  return !normalized || normalized === 'new chat' || normalized === 'new thread' || normalized === 'new conversation'
 }
 
 export function mergeChatTitle(existing: string, incoming: string): string {

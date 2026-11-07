@@ -42,6 +42,25 @@ export function isConversationScopeVerified(routeKey: string | null) {
   return Boolean(routeKey && verifiedConversationRouteKeys.has(routeKey))
 }
 
+/**
+ * Convex only returns personal rows the viewer may read, so a known row needs no
+ * HTTP scope probe. The transcript query still enforces access for each read.
+ */
+export function isKnownNativePersonalChat(
+  personal: {
+    selectedSummary?: { _id: string } | null
+    active: { rows: ReadonlyArray<{ _id: string }> }
+    archived: { rows: ReadonlyArray<{ _id: string }> }
+  },
+  pathScope: PanelScope | null,
+  conversationId: string | null,
+) {
+  if (pathScope !== 'personal' || !conversationId) return false
+  return personal.selectedSummary?._id === conversationId
+    || personal.active.rows.some((row) => row._id === conversationId)
+    || personal.archived.rows.some((row) => row._id === conversationId)
+}
+
 export function ConversationDetailScopeGate({
   routeKey,
   status,

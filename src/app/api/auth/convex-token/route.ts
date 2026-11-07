@@ -2,8 +2,7 @@ import { NextResponse } from 'next/server'
 import { mintBrowserConvexAccessToken } from '@/server/auth/browser-convex-token'
 import { getOverlaySession } from '@/server/auth/session'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { getOverlayRuntimeConfigSync } from '@/server/config'
-import { nativeConvexAuthEnabled, resolveNativeConvexToken } from '@/server/auth/native-convex-token'
+import { resolveNativeConvexToken } from '@/server/auth/native-convex-token'
 
 const headers = { 'Cache-Control': 'no-store, max-age=0', Vary: 'Cookie, Authorization' }
 
@@ -15,11 +14,6 @@ export async function GET(request: Request) {
   }
   try {
     if (new URL(request.url).searchParams.get('native') === '1') {
-      const config = getOverlayRuntimeConfigSync()
-      const provider = config.providers.auth?.provider ?? config.auth.provider
-      if (!nativeConvexAuthEnabled(provider, process.env.OVERLAY_CONVEX_NATIVE_AUTH_ENABLED)) {
-        return NextResponse.json({ token: null, userId: session.user.id }, { headers })
-      }
       const auth = getOverlayServerContext().auth
       const token = await resolveNativeConvexToken(session, (value) => auth.verifyAccessToken(value))
       if (!token) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers })

@@ -16,6 +16,22 @@ import {
 } from './useNativePersonalTranscript'
 import { PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
 
+/**
+ * A first turn keeps its pending runtime until the stream ends. Its active ID can
+ * still be null after the durable URL is published, so match the selected chat too.
+ */
+export function isNativePendingFirstTurn(
+  activeChatId: string | null,
+  pendingRunConversationId: string | null,
+  selectedConversationId: string | null,
+) {
+  return activeChatId === PENDING_FIRST_CHAT_ID || (
+    activeChatId === null
+    && pendingRunConversationId !== null
+    && selectedConversationId === pendingRunConversationId
+  )
+}
+
 export function useNativePersonalSafetyScope({
   activeChatId,
   chatWorkspaceId,
@@ -31,7 +47,9 @@ export function useNativePersonalSafetyScope({
   nativePersonalRoute: boolean
   pendingRunConversationId: string | null
 }) {
-  const nativePendingFirst = activeChatId === PENDING_FIRST_CHAT_ID
+  const nativePendingFirst = isNativePendingFirstTurn(
+    activeChatId, pendingRunConversationId, nativePersonal.selectedConversationId,
+  )
   const nativeSafetyConversationId = nativePersonalRoute
     ? nativePersonal.selectedConversationId ?? (nativePendingFirst ? pendingRunConversationId : null)
     : isTemporaryChat || nativePendingFirst ? null : activeChatId

@@ -246,6 +246,8 @@ export async function createNewChatForSend({
       if (pendingScrollTurnIdRef.current && !pendingScrollChatIdRef.current) {
         pendingScrollChatIdRef.current = data.id
       }
+      // The native chat is durable now, so a reload during the first turn can reopen it.
+      if (nativePersonalCreated) syncStandaloneChatUrl(data.id)
       tryActivatePendingFirstSend()
     }
     return data.id
