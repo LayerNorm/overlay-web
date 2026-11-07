@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Move workspace and automation chats onto the same live Convex path as personal chats. Their lists, messages, run state, renames, archives, turn deletion, branching and draft edits now update across clients, while reducing chat code by about 1,900 lines and removing the old HTTP history loader, message patching, polling fallback and duplicate chat lists. Branching is now one atomic operation, so a failure cannot leave a half-copied chat.
+
 - Require agents to update a plan's status and progress whenever they implement one of its phases, and add a route-by-route checklist to the Convex-native plan, so progress and remaining work can be verified from the repository.
 
 - Make Convex-native personal chat unconditional: native browser sign-in is now required for every deployment, and the auth flag, backend readiness probe and revision markers are gone. Convex is the only supported backend, so these only added startup calls and extra code paths.

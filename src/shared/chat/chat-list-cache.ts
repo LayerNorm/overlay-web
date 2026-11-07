@@ -22,7 +22,6 @@ export type CachedConversation = {
 }
 
 const CACHE_TTL_MS = 15_000
-const NEW_EMPTY_CHAT_TTL_MS = 30_000
 export const INITIAL_CHAT_LIST_LIMIT = 24
 
 export type ChatListPageInfo = {
@@ -49,7 +48,6 @@ type WorkspaceChatListCache = {
   inFlight: Promise<ChatListFetchOutcome> | null
   nextPageInFlight: Promise<CachedConversation[]> | null
   cachedPageInfo: ChatListPageInfo
-  pendingEmptyChats: Map<string, { chat: CachedConversation; expiresAt: number }>
   rateLimitedUntil: number
 }
 
@@ -69,7 +67,6 @@ function createWorkspaceCache(): WorkspaceChatListCache {
     inFlight: null,
     nextPageInFlight: null,
     cachedPageInfo: { hasMore: false },
-    pendingEmptyChats: new Map(),
     rateLimitedUntil: 0,
   }
 }
@@ -144,21 +141,6 @@ export function upsertCachedChat(chat: CachedConversation) {
     : chat
   cache.cachedChats = sortByLastModified([merged, ...current.filter((item) => item._id !== chat._id)])
   cache.cachedAt = Date.now()
-}
-
-export function markNewEmptyChat(chat: CachedConversation) {
-  getWorkspaceCache().pendingEmptyChats.set(chat._id, {
-    chat,
-    expiresAt: Date.now() + NEW_EMPTY_CHAT_TTL_MS,
-  })
-}
-
-export function consumeNewEmptyChat(chatId: string): CachedConversation | null {
-  const pendingEmptyChats = getWorkspaceCache().pendingEmptyChats
-  const entry = pendingEmptyChats.get(chatId)
-  pendingEmptyChats.delete(chatId)
-  if (!entry || entry.expiresAt < Date.now()) return null
-  return entry.chat
 }
 
 export function removeCachedChat(chatId: string) {

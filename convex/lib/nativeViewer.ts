@@ -27,6 +27,12 @@ export async function requireNativeWorkspace(ctx: NativeContext, workspaceId: st
   return { ...viewer, workspaceId, principal, membership }
 }
 
+export type NativeChatKind = 'personal' | 'workspace' | 'automation'
+
+/**
+ * AI chats are owner-only, whichever sidebar scope they are filed under. Agent threads,
+ * rooms and external surfaces have their own access rules and are excluded.
+ */
 export async function nativePersonalChatScope(
   ctx: NativeContext,
   viewer: Awaited<ReturnType<typeof requireNativeWorkspace>>,
@@ -35,20 +41,20 @@ export async function nativePersonalChatScope(
   if (!conversation || conversation.deletedAt !== undefined
     || conversation.workspaceId !== viewer.workspaceId || conversation.userId !== viewer.userId
     || (conversation.conversationType ?? 'personal') !== 'personal'
-    || (conversation.scope ?? 'personal') !== 'personal'
-    || conversation.agentId || conversation.isAutomation || conversation.externalPlatform || conversation.surfaceBindingId) return null
+    || conversation.agentId || conversation.externalPlatform || conversation.surfaceBindingId) return null
   const automation = await ctx.db.query('automations')
     .withIndex('by_conversationId_deletedAt', q => q.eq('conversationId', conversation._id).eq('deletedAt', undefined)).first()
-  if (automation) return null
+  const kind: NativeChatKind = conversation.isAutomation || automation
+    ? 'automation'
+    : conversation.scope === 'workspace' ? 'workspace' : 'personal'
   const participant = await ctx.db.query('conversationParticipants')
     .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversation._id)
       .eq('principalId', viewer.principal.principalId)).unique()
   if (participant && (participant.workspaceId !== viewer.workspaceId || participant.principalType !== 'human'
     || participant.status !== 'active' || participant.removedAt !== undefined)) return null
-  return { ...viewer, conversation, participant }
+  return { ...viewer, conversation, participant, kind }
 }
 
-// This pilot deliberately excludes shared, agent, external and automation chats.
 export async function requireNativePersonalChat(
   ctx: NativeContext,
   args: { workspaceId: string; conversationId: Id<'conversations'> },

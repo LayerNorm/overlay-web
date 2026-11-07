@@ -24,8 +24,8 @@ interface MediaGenerationBaseParams {
   isChatActive: (chatId: string) => boolean
   updateRuntimeUiState: UpdateRuntimeUiState
   completeSession: CompleteSession
-  loadChats: RefreshAfterTurn
   loadSubscription: RefreshAfterTurn
+  addAssistantNote?: (chatId: string, turnId: string, text: string) => Promise<void>
 }
 
 export interface RunImageGenerationBatchParams extends MediaGenerationBaseParams {
@@ -99,7 +99,7 @@ function appendMediaSummary(
     | 'targetRuntime'
     | 'isChatActive'
     | 'completeSession'
-    | 'loadChats'
+    | 'addAssistantNote'
     | 'loadSubscription'
   >,
   results: Array<{ ok: boolean; modelId: string }>,
@@ -121,23 +121,8 @@ function appendMediaSummary(
     ...params.targetRuntime.askChats[0].messages,
     assistantMessage as never,
   ]
-  if (!params.temporaryChat) {
-    void overlayAppClient.conversations.addMessageResponse(
-      {
-        conversationId: params.chatId,
-        turnId: params.turnId,
-        mode: 'act',
-        role: 'assistant',
-        variantIndex: 0,
-        content: summary,
-        contentType: 'text',
-        parts: [{ type: 'text', text: summary }],
-      },
-      { idempotencyKey: `${params.turnId}:assistant` },
-    )
-  }
+  if (!params.temporaryChat) void params.addAssistantNote?.(params.chatId, params.turnId, summary)
   params.completeSession(params.chatId, params.isChatActive(params.chatId))
-  if (!params.temporaryChat) void params.loadChats()
   void params.loadSubscription()
 }
 

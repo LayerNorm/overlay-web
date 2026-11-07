@@ -29,7 +29,6 @@ export function useChatRetryController({
   completeSession,
   ensureConversationRuntime,
   isActiveLoading,
-  loadChats,
   loadSubscription,
   mode,
   onUsageExhaustedError,
@@ -48,7 +47,6 @@ export function useChatRetryController({
   completeSession: (chatId: string, active: boolean) => void
   ensureConversationRuntime: (chatId: string) => ConversationRuntime
   isActiveLoading: boolean
-  loadChats: () => Promise<void>
   loadSubscription: () => Promise<unknown>
   mode: 'chat' | 'automate'
   onUsageExhaustedError: (message: string) => boolean
@@ -138,7 +136,6 @@ export function useChatRetryController({
           commonBody: baseBody,
           isChatActive: (id) => activeChatIdRef.current === id,
           completeSession,
-          loadChats,
           loadSubscription,
           onError: (error, fallbackMessage) => reportTextStreamError(error, fallbackMessage, onUsageExhaustedError),
           logPrefix: 'Act retry',
@@ -160,7 +157,6 @@ export function useChatRetryController({
       completeSession,
       ensureConversationRuntime,
       isActiveLoading,
-      loadChats,
       loadSubscription,
       mode,
       onUsageExhaustedError,

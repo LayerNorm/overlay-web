@@ -403,8 +403,6 @@ function useChatListEvents({
   baseHref,
   chatView,
   nativePersonalIds,
-  nativePersonalOwner,
-  nativePersonalSelected,
   nativePersonalView,
   openChat,
   pathname,
@@ -418,8 +416,6 @@ function useChatListEvents({
   baseHref: string
   chatView: ChatView
   nativePersonalIds: ReadonlySet<string>
-  nativePersonalOwner: boolean
-  nativePersonalSelected: boolean
   nativePersonalView: boolean
   openChat: (chat: Conversation) => void
   pathname: string
@@ -446,16 +442,7 @@ function useChatListEvents({
       const { detail } = event as CustomEvent<ChatCreatedDetail>
       const nextChat = detail?.chat
       if (!nextChat?._id) return
-      const ambiguousPersonal = (nextChat.conversationType ?? 'personal') === 'personal'
-        && (!nextChat.workspaceId || nextChat.scope === undefined || nextChat.scope === 'personal')
-      if (nativePersonalView || nativePersonalIds.has(nextChat._id)
-        || isNativePersonalChatCandidate(nextChat, workspaceId)
-        || (nativePersonalOwner && (
-          !workspaceId || ambiguousPersonal
-          || (nativePersonalSelected && nextChat._id === activeId)
-          || (nextChat.scope === 'workspace' && !nextChat.workspaceId)
-          || Boolean(workspaceId && nextChat.workspaceId && nextChat.workspaceId !== workspaceId)
-        ))) return
+      if (nativePersonalView || isNativePersonalChatCandidate(nextChat, workspaceId)) return
       upsertCachedChat(nextChat)
       setLoading(false)
       setChats((prev) => {
@@ -475,19 +462,7 @@ function useChatListEvents({
     const handleChatTitleUpdated = useEffectEvent((event: Event) => {
       const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
       if (!detail?.chatId || !detail.title) return
-      const cachedChat = getCachedChatList()?.find((chat) => chat._id === detail.chatId)
-      const knownNonPilot = Boolean(cachedChat && (
-        cachedChat.scope === 'workspace'
-          ? Boolean(workspaceId && cachedChat.workspaceId === workspaceId)
-          : ['dm', 'channel'].includes(cachedChat.conversationType ?? '')
-            && (!cachedChat.workspaceId || cachedChat.workspaceId === workspaceId)
-      ))
-      if (nativePersonalView || nativePersonalIds.has(detail.chatId)
-        || (nativePersonalOwner && (
-          !workspaceId
-          || (nativePersonalSelected && detail.chatId === activeId)
-          || !knownNonPilot
-        ))) return
+      if (nativePersonalView || nativePersonalIds.has(detail.chatId)) return
       upsertCachedChat({
         _id: detail.chatId,
         title: detail.title,
@@ -511,16 +486,7 @@ function useChatListEvents({
       const { detail } = event as CustomEvent<ChatArchivedDetail>
       const archivedChatId = detail?.chat?._id
       if (!archivedChatId) return
-      const ambiguousPersonal = (detail.chat.conversationType ?? 'personal') === 'personal'
-        && (!detail.chat.workspaceId || detail.chat.scope === undefined || detail.chat.scope === 'personal')
-      if (nativePersonalView || nativePersonalIds.has(archivedChatId)
-        || isNativePersonalChatCandidate(detail.chat, workspaceId)
-        || (nativePersonalOwner && (
-          !workspaceId || ambiguousPersonal
-          || (nativePersonalSelected && archivedChatId === activeId)
-          || (detail.chat.scope === 'workspace' && !detail.chat.workspaceId)
-          || Boolean(workspaceId && detail.chat.workspaceId && detail.chat.workspaceId !== workspaceId)
-        ))) return
+      if (nativePersonalView || isNativePersonalChatCandidate(detail.chat, workspaceId)) return
       removeActiveChat(archivedChatId)
       clearLastChatForView(workspaceId, chatView, archivedChatId)
       if (activeId !== archivedChatId) return
@@ -567,8 +533,6 @@ function useChatListEvents({
     baseHref,
     chatView,
     nativePersonalIds,
-    nativePersonalOwner,
-    nativePersonalSelected,
     nativePersonalView,
     openChat,
     pathname,
@@ -1126,14 +1090,14 @@ export function ChatInlinePanel({
   } = useChatListData({
     authLoading,
     chatView,
-    nativePersonalView: nativePersonalOwner && chatView === 'personal',
+    nativePersonalView: nativePersonalOwner && (chatView === 'personal' || chatView === 'workspace-chats'),
     refreshKey,
     user,
     workspaceId,
     conversationListVersion,
   })
-  const nativePersonalView = nativePersonalOwner && chatView === 'personal'
-  const nativePersonalRelevant = nativePersonalOwner && (chatView === 'personal' || chatView === 'all')
+  const nativePersonalView = nativePersonalOwner && (chatView === 'personal' || chatView === 'workspace-chats')
+  const nativePersonalRelevant = nativePersonalView || (nativePersonalOwner && chatView === 'all')
   const nativeWorkspaceReady = !nativePersonalOwner || Boolean(nativePersonal.workspaceId)
   const nativePersonalIds = useMemo(() => nativePersonalOwner ? new Set([
     ...nativePersonal.active.rows.map((chat) => chat._id),
@@ -1145,9 +1109,6 @@ export function ChatInlinePanel({
     nativePersonal.selectedSummary,
     nativePersonalOwner,
   ])
-  const nativePersonalSelected = nativePersonalRelevant
-    && nativePersonal.selectedConversationId === activeId
-    && Boolean(nativePersonal.selectedSummary)
   const getNativeSummary = useCallback((chatId: string) => (
     nativePersonalOwner
       ? nativePersonal.active.rows.find((chat) => chat._id === chatId)
@@ -1161,38 +1122,23 @@ export function ChatInlinePanel({
     nativePersonal.selectedSummary,
     nativePersonalOwner,
   ])
-  const nonPilotChats = useMemo(() => nativeWorkspaceReady
-    ? excludeNativePersonalChats(legacyChats, nativePersonalOwner ? nativePersonal.workspaceId : workspaceId)
-      .filter((chat) => {
-        const activeWorkspaceId = nativePersonalOwner ? nativePersonal.workspaceId : workspaceId
-        if (chat.workspaceId && chat.workspaceId !== activeWorkspaceId) return false
-        if (nativePersonalOwner && (
-          chat.scope === 'personal'
-          || (chat.scope === undefined && (chat.conversationType === undefined || chat.conversationType === 'personal'))
-        )) return false
-        if (!chat.workspaceId && !['dm', 'channel'].includes(chat.conversationType ?? '')) return false
-        return true
-      })
-    : [], [
-    legacyChats,
-    nativePersonal.workspaceId,
-    nativePersonalOwner,
-    nativeWorkspaceReady,
-    workspaceId,
-  ])
+  const roomChats = useMemo(() => nativeWorkspaceReady
+    ? excludeNativePersonalChats(legacyChats, workspaceId)
+      .filter((chat) => !chat.workspaceId || chat.workspaceId === (nativePersonalOwner ? nativePersonal.workspaceId : workspaceId))
+    : [], [legacyChats, nativePersonal.workspaceId, nativePersonalOwner, nativeWorkspaceReady, workspaceId])
   const chats: Conversation[] = useMemo(() => !nativeWorkspaceReady
     ? []
     : nativePersonalRelevant
-      ? chatView === 'personal'
+      ? nativePersonalView
         ? nativePersonal.active.rows
-        : [...nativePersonal.active.rows, ...nonPilotChats]
+        : [...nativePersonal.active.rows, ...roomChats]
       : legacyChats, [
-    chatView,
     legacyChats,
     nativePersonal.active.rows,
     nativePersonalRelevant,
+    nativePersonalView,
     nativeWorkspaceReady,
-    nonPilotChats,
+    roomChats,
   ])
   const listLoading = !nativeWorkspaceReady || (nativePersonalView
     ? nativePersonal.active.status === 'loading'
@@ -1218,8 +1164,6 @@ export function ChatInlinePanel({
     baseHref: scopedBaseHref,
     chatView,
     nativePersonalIds,
-    nativePersonalOwner,
-    nativePersonalSelected,
     nativePersonalView,
     openChat,
     pathname,

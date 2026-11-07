@@ -1,10 +1,10 @@
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import type { ConversationRuntime } from '../chat-interface/types'
 
 type Update = {
   conversationId: string | null
+  persist: (args: { conversationId: string; messageId: string; partId: string; data: GeneratedUiData }) => Promise<void>
   runtime: ConversationRuntime
   messageId: string
   partId: string
@@ -32,15 +32,15 @@ function patchMessages(messages: UIMessage[], update: Update): UIMessage[] {
 async function persistAndPatch(update: Update): Promise<boolean> {
   if (!update.isCurrent()) return false
   if (update.conversationId) {
-    const response = await overlayAppClient.conversations.updateMessageUiPartResponse({
-      conversationId: update.conversationId,
-      messageId: update.messageId,
-      partId: update.partId,
-      data: update.data,
-    })
-    if (!response.ok) {
-      const payload = await response.json().catch(() => null) as { error?: string } | null
-      throw new Error(payload?.error || 'Could not save draft edits.')
+    try {
+      await update.persist({
+        conversationId: update.conversationId,
+        messageId: update.messageId,
+        partId: update.partId,
+        data: update.data,
+      })
+    } catch {
+      throw new Error('Could not save draft edits.')
     }
   }
   if (!update.isCurrent()) return false

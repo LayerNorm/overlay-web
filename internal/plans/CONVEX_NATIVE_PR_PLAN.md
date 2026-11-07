@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-06. Phases A and B are merged and live in production. Personal chat is always Convex-native, with its readiness gate and auth flag removed by #411. Its acceptance is partial: two-tab sync, archive and Undo, rename, read state, reload during a first turn and chat opening passed on the PR Preview with one identity. Signed-in production chat and a second user losing access are not yet tested. The next card is CN-06W, followed by Phase C. Other cards have no open PR. The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-06. Phase A is complete. CN-04 to CN-06 and CN-06W are the chat phase: personal chat is merged and live; workspace and automation chats are implemented on the current PR, with acceptance recorded below once tested. Stop, approval and input response stay on the server by design, and rooms remain on HTTP until CN-08. A second user losing access has backend test coverage only, because no second sandbox account exists yet. The next card after CN-06W is CN-07. Other cards have no open PR. The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -11,7 +11,7 @@ Status: in progress as of 2026-11-06. Phases A and B are merged and live in prod
 | CN-03P | #397 | Merged |
 | CN-05, CN-06 | #408 | Merged |
 | CN-04 to CN-06 stabilization | #411 | Merged, deployed. No Convex deploy was needed; its unused readiness markers remain on the production backend until the next deploy |
-| CN-06W | None | Not started, next |
+| CN-06W | Current PR | Implemented; preview acceptance pending |
 | CN-07 to CN-11 | #403 | Closed unmerged, branch kept as reference |
 | CN-12 | #402 | Closed unmerged, branch kept as reference |
 | CN-20 | #398 | Closed unmerged, branch kept as reference |
@@ -812,10 +812,15 @@ The Convex functions behind these routes often cannot be exposed to the browser 
 
 **Native:** `chat/personal` has `list`, `getSummary`, `getMessages`, `getExecution`, `create`, `submit`, `setPreferences`, `rename`, `setArchived` and `setRead`.
 
-**Still on HTTP or shared with other chats:**
+CN-06W added `deleteTurn`, `setGeneratedUi`, `addAssistantNote` and `branch`, and these functions now serve personal, workspace and automation chats.
 
-- `v1/conversations` and its `get`, `getResponse`, `updateResponse` and `deleteResponse` calls, which workspace and automation chats also use
-- `run`, `run/approval`, `run/input` and `stop`, as far as personal chat still uses them
+**Still on HTTP from chat, each with a named reason:**
+
+- `stop`, `run/approval` and `run/input`: they abort provider calls and resume durable workflows, so they stay on the server, with status read through `getExecution`
+- `v1/conversations` DELETE: permanent delete from the archive, moved by CN-33
+- `v1/conversations` POST and GET from chat code: retired-thread handoff and room thread safety, removed by CN-08
+
+Deleted by CN-06W: `useChatConversationLoader`'s HTTP history, `useLiveConversationSync`, `live-message-patching`, `useAgentRunLifecycle`, `useChatListController` and `getInitialChatHistory`. `BackgroundPollManager` and `route-data.ts` still serve other surfaces.
 
 ### Keep on the server
 

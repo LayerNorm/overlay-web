@@ -487,6 +487,6 @@ and agent-drive uploads set it directly. These records count as work produced
 without crediting the owner as a human active user. Existing ownership, quota and
 revision checks still apply.
 
-Personal chat always uses native Convex queries and mutations in the browser, with
-no readiness probe or HTTP fallback. Model execution and streaming stay on the
-server path.
+All AI chats (personal, workspace-filed and automation threads) use native Convex
+queries and mutations in the browser, with no readiness probe or HTTP fallback. Model
+execution, streaming, stop, approval and input response stay on the server path.

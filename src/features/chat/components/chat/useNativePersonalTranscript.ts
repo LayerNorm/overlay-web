@@ -249,13 +249,13 @@ export function buildNativeTranscriptView(
   }
 }
 
-export function selectNativePersonalScope({ nativePersonalRoute, isTemporaryChat, hasAutomationContext,
+export function selectNativePersonalScope({ nativePersonalRoute, isTemporaryChat,
   activeChatId, isNativePersonalChat, pendingRunConversationId, pendingTurns, personal, selectedModels, selectedActModel }: {
-  nativePersonalRoute: boolean; isTemporaryChat: boolean; hasAutomationContext: boolean;
+  nativePersonalRoute: boolean; isTemporaryChat: boolean;
   activeChatId: string | null; isNativePersonalChat(id: string): boolean; pendingRunConversationId: string | null;
   pendingTurns: number; personal: ReturnType<typeof usePersonalChat>; selectedModels: string[]; selectedActModel: string;
 }) {
-  const enabled = nativePersonalRoute && !isTemporaryChat && !hasAutomationContext
+  const enabled = nativePersonalRoute && !isTemporaryChat
   const selectedConversationId = personal.selectedConversationId
   const pendingFirst = activeChatId === PENDING_FIRST_CHAT_ID || activeChatId === null
   const active = enabled && Boolean(selectedConversationId

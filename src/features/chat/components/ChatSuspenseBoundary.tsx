@@ -1,8 +1,6 @@
 import { Suspense, type ReactNode } from 'react'
 import ChatExperience from './ChatExperience'
 import { ConversationExperienceRouter } from './ConversationExperienceRouter'
-import type { CachedConversation, ChatListPageInfo } from '@/shared/chat/chat-list-cache'
-import type { ConversationLoadSnapshot } from './chat/chatTransport'
 
 type ChatInterfaceProps = {
   userId: string | null
@@ -12,8 +10,6 @@ type ChatInterfaceProps = {
   mode?: 'chat' | 'automate'
   hideHeader?: boolean
   belowEmptyComposer?: ReactNode
-  initialChats?: CachedConversation[]
-  initialChatPageInfo?: ChatListPageInfo
 
 }
 

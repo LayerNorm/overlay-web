@@ -28,6 +28,7 @@ export function useAutomationDetail({
   setSelectedActModel,
   setSelectedModels,
   userAskModelOverrideRef,
+  persistChatModel,
 }: {
   mode: 'chat' | 'automate'
   automationIdParam: string | null
@@ -43,6 +44,7 @@ export function useAutomationDetail({
   setSelectedActModel: ChatPrefs['setSelectedActModel']
   setSelectedModels: ChatPrefs['setSelectedModels']
   userAskModelOverrideRef: MutableRefObject<boolean>
+  persistChatModel: (askModelIds: string[], actModelId: string) => void
 }) {
   const creatingAutomationDraftRef = useRef(false)
 
@@ -89,18 +91,8 @@ export function useAutomationDetail({
       // Only the automation-owned thread is shown — the source conversation is
       // provenance (the chat the automation was drafted in) and stays a normal
       // chat for its owner.
-      const candidates = [automation.conversationId]
-        .filter((value): value is string => Boolean(value))
-      let resolvedConversationId: string | null = null
-      for (const candidate of candidates) {
-        const conversationResponse = await overlayAppClient.conversations.getResponse({
-          conversationId: candidate,
-        }, { cache: 'no-store' }).catch(() => null)
-        if (conversationResponse?.ok) {
-          resolvedConversationId = candidate
-          break
-        }
-      }
+      // The native transcript query enforces access to this thread.
+      const resolvedConversationId = automation.conversationId ?? null
       const validatedAutomation: AutomationDetail = {
         ...automation,
         sourceConversationId:
@@ -194,21 +186,14 @@ export function useAutomationDetail({
         modelId,
       })
       if (!res.ok) throw new Error('Failed to save automation model')
-      if (activeChatId) {
-        await overlayAppClient.conversations.updateResponse({
-          conversationId: activeChatId,
-          actModelId: modelId,
-          askModelIds: [modelId],
-          lastMode: 'act',
-        })
-      }
+      if (activeChatId) persistChatModel([modelId], modelId)
     } catch {
       setSelectedAutomation(previousAutomation)
       const fallbackModelId = previousAutomation.modelId ?? selectedActModel
       setSelectedActModel(fallbackModelId)
       setSelectedModels([fallbackModelId])
     }
-  }, [selectedAutomation, activeChatId, selectedActModel, setSelectedActModel, setSelectedModels, setSelectedAutomation, userAskModelOverrideRef])
+  }, [selectedAutomation, activeChatId, persistChatModel, selectedActModel, setSelectedActModel, setSelectedModels, setSelectedAutomation, userAskModelOverrideRef])
 
   const automationHeaderModelId = selectedAutomation?.modelId ?? selectedActModel ?? DEFAULT_MODEL_ID
 

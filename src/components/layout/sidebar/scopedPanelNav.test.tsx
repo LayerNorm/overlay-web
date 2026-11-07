@@ -315,15 +315,12 @@ test('solo Workspace AI chats stay under Workspace scope', async () => {
   assert.deepEqual(destinations, ['/w/team-a/workspace/chat?view=workspace-chats'])
 })
 
-test('recent Workspace chats merge with the canonical route query', async (t) => {
-  t.mock.method(overlayAppClient.conversations, 'getPage', async <T,>() => ({
-    data: [{ _id: 'recent-chat', scope: 'workspace' }] as unknown as T[],
-    hasMore: false,
-  }))
+test('recent Workspace chats merge with the canonical route query', async () => {
   assert.equal(
-    await resolveRecentChatHref('/w/team-a/workspace/chat?view=workspace-chats', 'workspace'),
+    await resolveRecentChatHref('/w/team-a/workspace/chat?view=workspace-chats', 'workspace', async () => 'recent-chat'),
     '/w/team-a/workspace/chat?view=workspace-chats&id=recent-chat',
   )
+  assert.equal(await resolveRecentChatHref('/w/team-a/chat', 'personal', async () => null), '/w/team-a/chat')
 })
 
 test('Work opens a nav-only panel with List, Board, and Timeline under the scope, and reads the view from the URL', () => {

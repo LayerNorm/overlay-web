@@ -5,36 +5,26 @@ import type { PersonalChatSummary, usePersonalChat } from '@/components/provider
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import { toast } from '@overlay/ui/primitives'
 import { nativeChatTitleForDisplay } from '@/features/chat/lib/persist-native-chat-title'
-import {
-  legacyWorkspaceScopeForRoute,
-  readWorkspacePathScope,
-} from '@/shared/workspaces/routing'
 import { PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
 
 export function useNativePersonalRouteState({
   activeWorkspaceId,
   authLoading,
   isTemporaryChatRef,
-  mode,
   nativePersonal,
-  pathname,
   searchParams,
   userId,
 }: {
   activeWorkspaceId: string | null
   authLoading: boolean
   isTemporaryChatRef: MutableRefObject<boolean>
-  mode: 'chat' | 'automate'
   nativePersonal: ReturnType<typeof usePersonalChat>
-  pathname: string | null
   searchParams: Pick<URLSearchParams, 'get' | 'toString'>
   userId: string | null
 }) {
-  const nativePersonalEnabled = nativePersonal.configured
-    && (Boolean(userId) || authLoading)
-    && mode === 'chat'
+  const nativePersonalEnabled = nativePersonal.configured && (Boolean(userId) || authLoading)
   const chatWorkspaceId = nativePersonal.configured ? nativePersonal.workspaceId : activeWorkspaceId
-  const nativePersonalRoute = nativePersonalEnabled && isNativePersonalRoute(pathname, searchParams)
+  const nativePersonalRoute = nativePersonalEnabled && isNativePersonalRoute(searchParams)
   const nativePersonalChatIds = useMemo(() => new Set<string>([
     ...nativePersonal.active.rows.map((chat) => chat._id),
     ...nativePersonal.archived.rows.map((chat) => chat._id),
@@ -151,12 +141,6 @@ export function useNativePersonalReadObservation({
   ])
 }
 
-function isNativePersonalRoute(pathname: string | null, searchParams: Pick<URLSearchParams, 'get' | 'toString'>) {
-  const routeScope = readWorkspacePathScope(pathname ?? '') ?? legacyWorkspaceScopeForRoute(
-    'chat',
-    new URLSearchParams(searchParams.toString()),
-  )
-  return routeScope !== 'workspace'
-    && !searchParams.get('automationId')
-    && !['all', 'workspace-chats', 'dms', 'channels', 'room', 'rooms'].includes(searchParams.get('view') ?? '')
+function isNativePersonalRoute(searchParams: Pick<URLSearchParams, 'get' | 'toString'>) {
+  return !['dms', 'channels', 'room', 'rooms'].includes(searchParams.get('view') ?? '')
 }

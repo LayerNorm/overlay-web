@@ -242,9 +242,7 @@ async function requireOk(response: Response, message: string): Promise<void> {
 type NativePersonalRestore = (item: ArchivedItem) => Promise<void>
 
 function isPersonalChatRestore(item: ArchivedItem): boolean {
-  return item.kind === 'chat'
-    && item.scope === 'personal'
-    && (item.conversationType ?? 'personal') === 'personal'
+  return item.kind === 'chat' && (item.conversationType ?? 'personal') === 'personal'
 }
 
 export async function restoreArchivedItem(

@@ -6,10 +6,8 @@ import { toast } from '@overlay/ui/primitives'
 import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import type { AutomationDetail } from '@overlay/app-core'
 import { usePathname, useSearchParams, useRouter } from 'next/navigation'
-import { normalizeChatModelSelection } from '@/shared/chat/chat-model-prefs'
 import { isTextModelLocked as isWorkspaceTextModelLocked } from '@/components/providers/useWorkspaceTextModelAccess'
 import type { ChatModel } from '@/shared/ai/gateway/model-types'
-import { useChatListEventSync } from './useChatListEventSync'
 import { useChatAttachments } from '../useChatAttachments'
 import { useChatBillingControls } from './useChatBillingControls'
 import { useDraftReviewActions } from './useDraftReviewActions'
@@ -17,7 +15,6 @@ import { useChatPreferences } from './useChatPreferences'
 import { useChatPanels } from './useChatPanels'
 import { useChatConversationLoader } from './useChatConversationLoader'
 import { useConversationUiState } from './useConversationUiState'
-import { useChatListController } from './useChatListController'
 import { useChatModelSelectionController } from './useChatModelSelectionController'
 import { useChatRetryController } from './useChatRetryController'
 import { saveGeneratedUiChange } from './generated-ui-mutation'
@@ -46,7 +43,6 @@ import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvi
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
-import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
 import { useGeneratedUiConnectorActions } from './useGeneratedUiConnectorActions'
 import { useChatMentions } from '../use-chat-mentions'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -67,12 +63,11 @@ import {
   useNativePersonalReadObservation,
   useNativePersonalRouteState,
 } from './useNativePersonalRouteState'
-import { useChatExperienceLifecycle } from './useChatExperienceLifecycle'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-drafts'
 import { buildNativeThreadHandoff } from '@/shared/chat/native-thread-handoff'
 import { agentConversationRedirect } from '@/shared/chat/chat-view-navigation'
-import { dispatchChatCreated } from '@/shared/chat/chat-title'
+import { CHAT_DELETED_EVENT, dispatchChatCreated, type ChatDeletedDetail } from '@/shared/chat/chat-title'
 import type { Conversation, ConversationRuntime } from '../chat-interface/types'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
 import type { PendingFirstSendState } from './chat-send-pending-first'
@@ -111,9 +106,6 @@ export function useChatExperienceController({
   mode = 'chat',
   hideHeader = false,
   belowEmptyComposer,
-  initialChats,
-  initialChatPageInfo,
-
 }: ChatExperienceProps) {
   recordRender('ChatExperience')
   const router = useRouter()
@@ -154,11 +146,8 @@ export function useChatExperienceController({
     [byokConnections, gatewayCatalogRevision],
   )
   const billingEnabled = capabilities.billing
-  const convexLiveSyncEnabled = appDataCapabilities.requiresConvexClient && appDataCapabilities.supportsRealtime
   const titleGenerationEnabled = appDataCapabilities.supportsChatPersistence
-  const generatedOutputsEnabled = true
-  const convexAccessToken = useConvexAuthToken()
-  const { startSession, completeSession, markRead, setActiveViewer, sessions } = useAsyncSessions()
+  const { startSession, completeSession, setActiveViewer } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
   const {
     isTemporaryChat,
@@ -174,16 +163,13 @@ export function useChatExperienceController({
     getNativePersonalSummary,
     isNativePersonalChat,
     markNativePersonalRead,
-    nativePersonalChatIds,
     nativePersonalEnabled,
     nativePersonalRoute,
   } = useNativePersonalRouteState({
     activeWorkspaceId,
     authLoading,
     isTemporaryChatRef,
-    mode,
     nativePersonal,
-    pathname,
     searchParams,
     userId,
   })
@@ -196,18 +182,6 @@ export function useChatExperienceController({
     }
   }, [setActiveViewer])
 
-  const { chats, loadChats, setChats } = useChatListController({
-    initialChatPageInfo,
-    initialChats,
-    pendingTitleRef,
-    nativePersonalChats: nativePersonal.active.rows,
-    nativeSelectedSummary: nativePersonal.selectedSummary,
-    nativePersonalEnabled,
-    nativePersonalRoute,
-    allowLegacyMixedList: searchParams.get('view') === 'all',
-    workspaceId: chatWorkspaceId,
-    userId,
-  })
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [documentVisible, setDocumentVisible] = useState(true)
   useEffect(() => {
@@ -403,7 +377,6 @@ export function useChatExperienceController({
   })
   /** User turn ids currently playing the delete (fade-out) animation */
   const [exitingTurnIds, setExitingTurnIds] = useState<string[]>([])
-  const [, setDeletingChatIds] = useState<string[]>([])
   const [activeChatDeleting, setActiveChatDeleting] = useState(false)
   const [selectedAutomation, setSelectedAutomation] = useState<AutomationDetail | null>(null)
   const [selectedAutomationLoading, setSelectedAutomationLoading] = useState(false)
@@ -555,7 +528,6 @@ export function useChatExperienceController({
     activeChatId,
     activeRuntime,
     chatWorkspaceId,
-    hasAutomationContext,
     isNativePersonalChat,
     isTemporaryChat,
     nativePersonal,
@@ -599,58 +571,30 @@ export function useChatExperienceController({
     }).catch(() => toast.error('Could not save model selection.'))
   }, [nativePersonal, nativePersonalConversationActive, nativeSelectedSummary])
 
-  useChatListEventSync({
-    activeChatIdRef,
-    nativePersonalIds: nativePersonalChatIds,
-    nativePersonalRoute,
-    isNativePersonalChat,
-    nativePersonalEnabled,
-    workspaceId: chatWorkspaceId,
-    resetActiveChatAfterDelete,
-    setActiveChatDeleting,
-    setActiveChatTitle,
-    setChats,
-    setDeletingChatIds,
-    updateRuntimeUiState,
-  })
+  useEffect(() => {
+    function handleChatDeleted(event: Event) {
+      const chatId = (event as CustomEvent<ChatDeletedDetail>).detail?.chatId
+      if (!chatId || activeChatIdRef.current !== chatId) return
+      setActiveChatDeleting(true)
+      window.setTimeout(() => {
+        if (activeChatIdRef.current === chatId) resetActiveChatAfterDelete(chatId)
+        setActiveChatDeleting(false)
+      }, 180)
+    }
+    window.addEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
+    return () => window.removeEventListener(CHAT_DELETED_EVENT, handleChatDeleted)
+  }, [resetActiveChatAfterDelete])
 
   useEffect(() => {
     persistActiveRuntimeUiState()
   }, [persistActiveRuntimeUiState])
 
-  const onRuntimeMessagesChanged = useCallback(() => {
-    forceLiveSyncRender((value) => value + 1)
-  }, [])
-
   const activeAskChats = activeRuntime.askChats
   const localStreamActive = [...activeAskChats, actChat].some(
     chat => chat.status === 'streaming' || chat.status === 'submitted',
   )
-  const {
-    agentRunLifecycle,
-    isActiveLoading,
-    liveQueryBridge,
-  } = useChatExperienceLifecycle({
-    activeChatId,
-    activeChatIdRef,
-    actChat,
-    authUserId: authUser?.id,
-    chatInstances,
-    completeSession,
-    convexAccessToken,
-    enableConvexLiveSync: convexLiveSyncEnabled,
-    loadChats,
-    nativePersonalEnabled: nativePersonalSendEnabled,
-    nativeLifecycle,
-    nativeTurnActive,
-    onRuntimeMessagesChanged,
-    runtimeHydrationVersion,
-    runtimesRef,
-    runConversationId,
-    hasAuthenticatedUser: Boolean(authUser),
-    localStreamActive,
-    sessions,
-  })
+  const agentRunLifecycle = nativeLifecycle
+  const isActiveLoading = nativePersonalSendEnabled ? nativeTurnActive : localStreamActive
 
   useEffect(() => {
     setIsOptimisticLoading(false)
@@ -693,23 +637,14 @@ export function useChatExperienceController({
     editingChatId,
     editingChatTitle,
     headerTitleInputRef,
-    markChatModified,
     setEditingChatTitle,
     prefetchFirstMessageTitle,
     startFirstMessageRename,
   } = useChatTitleController({
     activeChatId,
-    activeChatIdRef,
-    activeChatTitle: displayedActiveChatTitle,
-    chats,
-    isNativePersonalChat,
-    loadChats,
+    getNativeSummary: getNativePersonalSummary,
     renameNative: nativePersonal.rename,
-    pendingTitleRef,
-    setActiveChatTitle,
-    setChats,
     titleGenerationEnabled,
-    updateRuntimeUiState,
   })
 
   const recoveredTitleChatIdsRef = useRef(new Set<string>())
@@ -726,7 +661,7 @@ export function useChatExperienceController({
   useEffect(() => {
     if (!nativeTitleSeed || !nativeTitleChatId || recoveredTitleChatIdsRef.current.has(nativeTitleChatId)) return
     recoveredTitleChatIdsRef.current.add(nativeTitleChatId)
-    startFirstMessageRename(nativeTitleChatId, nativeTitleSeed, true)
+    startFirstMessageRename(nativeTitleChatId, nativeTitleSeed)
   }, [nativeTitleChatId, nativeTitleSeed, startFirstMessageRename])
 
   const isRuntimeCurrent = useCallback((chatId: string, runtime: ConversationRuntime) => (
@@ -747,6 +682,7 @@ export function useChatExperienceController({
     try {
       changed = await saveGeneratedUiChange({
         conversationId: targetChatId === TEMPORARY_CHAT_ID ? null : targetChatId,
+        persist: nativePersonal.setGeneratedUi,
         runtime, messageId, partId, data,
         isCurrent: () => targetChatId === TEMPORARY_CHAT_ID
           ? emptyRuntimeRef.current === runtime
@@ -764,7 +700,7 @@ export function useChatExperienceController({
       forceLiveSyncRender((value) => value + 1)
     }
 
-  }, [actChatRef, chat0Ref, emptyRuntimeRef, forceLiveSyncRender, isTemporaryChatRef, nativeThreadSafety.readOnly, runtimesRef])
+  }, [actChatRef, chat0Ref, emptyRuntimeRef, forceLiveSyncRender, isTemporaryChatRef, nativePersonal.setGeneratedUi, nativeThreadSafety.readOnly, runtimesRef])
 
   /** Hide header rename until `loadChat` has applied messages/meta (`runtime.hydrated`). */
   const activeChatHydrated = nativeChatHydrated(nativePersonalSendEnabled, nativePersonal.transcript.status,
@@ -806,26 +742,8 @@ export function useChatExperienceController({
 
   useEffect(() => {
     if (authLoading) return
-    if (initialChats === undefined || (!userId && authUser?.id)) void loadChats()
     void loadSubscription()
-  }, [authLoading, authUser?.id, initialChats,  loadChats, loadSubscription, userId])
-
-  useEffect(() => {
-    if (!activeChatId || nativePersonalConversationActive) return
-    const t = window.setTimeout(() => {
-      const normalized = normalizeChatModelSelection({
-        askModelIds: selectedModels,
-        actModelId: selectedActModel,
-      })
-      void overlayAppClient.conversations.updateResponse({
-        conversationId: activeChatId,
-        lastMode: 'act',
-        askModelIds: normalized.askModelIds,
-        actModelId: normalized.actModelId,
-      })
-    }, 600)
-    return () => clearTimeout(t)
-  }, [selectedModels, selectedActModel, activeChatId, nativePersonalConversationActive])
+  }, [authLoading, loadSubscription])
 
   const {
     refreshSelectedAutomation,
@@ -847,39 +765,28 @@ export function useChatExperienceController({
     setSelectedActModel,
     setSelectedModels,
     userAskModelOverrideRef,
+    persistChatModel: persistNativeTextSelection,
   })
 
   const { invalidateLoadChatRequest, loadChat } = useChatConversationLoader({
     activeChatIdRef,
     applyUiStateToView,
-    chats,
     clearTransientComposerState,
     ensureConversationRuntime,
     emptyRuntimeRef,
     getNativeSummary: getNativePersonalSummary,
-    hasAutomationContext,
-    isNativePersonalChat,
     isTemporaryChatRef,
-    loadGeneratedOutputs: generatedOutputsEnabled,
-    markRead,
-    markNativeRead: markNativePersonalRead,
     pendingTitleRef,
     persistActiveRuntimeUiState,
     resetComposerToolIds,
-    runtimesRef,
-    selectedActModel,
-    selectedModels,
     setActiveChatId,
     setActiveChatTitle,
     setActiveViewer,
-    setChats,
-    setComposerNotice,
     setInterruptedExchangeIdx,
     setIsSwitchingChat,
     setIsTemporaryChat,
     setRuntimeHydrationVersion,
     setSourcesPanel,
-    shouldScrollRef,
     syncStandaloneChatUrl,
   })
 
@@ -990,7 +897,6 @@ export function useChatExperienceController({
     completeSession,
     ensureConversationRuntime,
     isActiveLoading,
-    loadChats,
     loadSubscription,
     mode,
     onUsageExhaustedError,
@@ -1003,10 +909,7 @@ export function useChatExperienceController({
 
   const { requireAuth } = useGuestGate()
 
-  const {
-    createNewChat,
-    handleSend,
-  } = useChatSendController({
+  const { handleSend } = useChatSendController({
     nativeThreadReadOnly: nativeThreadSafety.readOnly,
     ensureWritable: nativeThreadSafety.ensureWritable,
     isCurrentScope: nativeThreadSafety.isCurrentScope,
@@ -1033,7 +936,6 @@ export function useChatExperienceController({
     premiumModelBlocked,
     isTemporaryChat,
     isTemporaryChatRef,
-    loadChats,
     loadSubscription,
     nativePersonalEnabled,
     nativePersonalRoute: nativePersonalSendEnabled,
@@ -1042,8 +944,8 @@ export function useChatExperienceController({
     submitNativePersonalTurn: nativePersonal.submit,
     setPendingTranscriptConversation: nativePersonal.setPendingTranscriptConversation,
     createNativePersonalChat: (args) => nativePersonal.create(args),
+    addAssistantNote: nativePersonal.addAssistantNote,
     onUsageExhaustedError,
-    markChatModified,
     memoryEnabled,
     mentions,
     mode,
@@ -1068,7 +970,6 @@ export function useChatExperienceController({
     setActiveViewer,
     setAttachedImages,
     setAttachmentError,
-    setChats,
     setComposerNotice,
     setGenerationChip,
     setInput,
@@ -1116,10 +1017,10 @@ export function useChatExperienceController({
     isTemporaryChat,
     activeChatId,
     setIsSwitchingChat,
-    createNewChat,
     loadChat,
-    runtimesRef,
-    activeChatTitle: displayedActiveChatTitle,
+    nativeBranch: nativePersonal.branch,
+    nativeDeleteTurn: nativePersonal.deleteTurn,
+    nativeWorkspaceId: nativePersonal.workspaceId,
     setExitingTurnIds,
   })
   const {
@@ -1141,7 +1042,7 @@ export function useChatExperienceController({
   })
 
   const derivedChatView = buildChatDerivedView({
-    chats,
+    chats: nativePersonal.active.rows,
     activeChatId: displayActiveChatId,
     activeRuntime,
     generationResults: viewGenerationResults,
@@ -1215,7 +1116,7 @@ export function useChatExperienceController({
     activeChatIdRef,
     actChat,
     chat0,
-    forceLiveSyncRender: onRuntimeMessagesChanged,
+    forceLiveSyncRender: () => forceLiveSyncRender((value) => value + 1),
     getActiveRuntime: getActiveRuntimeForStop,
     isActiveLoading,
     onSend: effectiveHandleSend,
@@ -1296,7 +1197,6 @@ export function useChatExperienceController({
     ])
 
   return {
-    chats,
     favoriteScope: viewerUserId,
     activeChatId: displayActiveChatId,
     activeChatHydrated,
@@ -1469,7 +1369,6 @@ export function useChatExperienceController({
     settings,
     capabilities,
     agentRunLifecycle,
-    liveQueryBridge,
     activeChatDeleting,
     generatedUiConnectorActions,
     hideSidebar,

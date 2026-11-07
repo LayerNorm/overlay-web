@@ -39,6 +39,7 @@ export function minimalSummary(summary: PersonalChatSummary): PersonalChatSummar
     createdAt: summary.createdAt,
     scope: summary.scope,
     conversationType: summary.conversationType,
+    kind: summary.kind,
     title: summary.title,
     askModelIds: summary.askModelIds,
     actModelId: summary.actModelId,
