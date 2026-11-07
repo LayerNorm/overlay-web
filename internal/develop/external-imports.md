@@ -25,7 +25,7 @@ Workspace Settings → Import tab
       - Download files
       - Normalize → insert as conversationMessages
       - Dedup via source→Overlay ID mappings
-  → Progress via polling
+  → Progress via the live `imports/slackBrowse:status` query
   → Coverage report on completion
 ```
 
@@ -144,9 +144,10 @@ Source-to-Overlay ID mappings for dedup and resume. Indexed by `(workspaceId, so
 | Method | Path | Action |
 | --- | --- | --- |
 | GET | `/api/v1/imports/slack?action=channels` | List accessible Slack channels |
-| GET | `/api/v1/imports/slack?action=jobs` | List import jobs for workspace |
-| GET | `/api/v1/imports/slack?action=job&jobId=...` | Get single job status |
+| GET | `/api/v1/imports/slack?action=users` | List Slack users (Composio), to match them with workspace members |
 | POST | `/api/v1/imports/slack` | `action=start` or `action=cancel` |
+
+Job progress and the Slack connection state are not BFF reads: the panel subscribes to the native `imports/slackBrowse:status` query, which returns whether the viewer's own Slack connector is connected and the workspace's 20 most recent jobs (never the connector account reference). Listing channels and users (Composio) and starting or cancelling an import stay on the server.
 
 Slack import job persistence and the scheduled processing bridge remain Convex-only. PostgreSQL
 deployments classify these routes as unavailable; they must not silently call Convex or advertise
@@ -170,10 +171,10 @@ The `SlackImportPanel` component in `src/features/workspaces/components/SlackImp
 1. **Not connected / Connect** — "Connect Slack" button triggers Composio OAuth; this is the active Connect step until the service is connected
 2. **People** — review/invite Slack members before importing; once Slack is connected, the Connect step is marked complete
 3. **Chats picker** — checkboxes for each accessible channel, DM, and group DM; "Select all public" convenience; start import button
-4. **Progress** — live polling of job status, progress bar, cancel button; shows "Preparing…" until the backend reports usable chat totals instead of displaying a misleading 0-of-0 count
+4. **Progress** — live job status from `imports/slackBrowse:status` (no polling), progress bar, cancel button; shows "Preparing…" until the backend reports usable chat totals instead of displaying a misleading 0-of-0 count
 5. **Done** — terminal summary (completed/failed/cancelled) with coverage and next actions. The import wizard lands on Done instead of returning to People.
 
-The connection check runs on initial mount and while OAuth is being completed. It must not reset the current view when the user advances from People to the Chats picker; otherwise the picker flashes and the wizard returns to People.
+The connection state comes from the same live query: it is set on first load and changes on its own when OAuth finishes in another tab (the panel waits up to five minutes after **Connect Slack**, then re-enables the button). It must not reset the current view when the user advances from People to the Chats picker; otherwise the picker flashes and the wizard returns to People.
 
 ## Conversation lifecycle scope (archive/delete)
 

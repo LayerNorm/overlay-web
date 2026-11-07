@@ -76,18 +76,6 @@ async function workspaceMutation<T>(
 }
 
 export const workspaceManagementClient: WorkspaceManagementClient = {
-  async billing(workspaceId, signal) {
-    return await readJson(await fetchWithSessionRecovery(
-      `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/billing`,
-      {
-        cache: 'no-store',
-        credentials: 'same-origin',
-        headers: { [ACTIVE_WORKSPACE_HEADER]: workspaceId },
-        signal,
-      },
-    ))
-  },
-
   async initializeBilling(workspaceId) {
     return await workspaceMutation(
       workspaceId,

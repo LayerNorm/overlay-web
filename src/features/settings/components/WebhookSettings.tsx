@@ -2,8 +2,9 @@
 
 import { unstyledButton, unstyledInput } from '@overlay/ui/control-reset'
 
-import { useCallback, useEffect, useState } from 'react'
-import { Check, Copy, Plus, RefreshCw, RotateCw, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { useConvexAuth, useQuery } from 'convex/react'
+import { Check, Copy, Plus, RotateCw, Trash2 } from 'lucide-react'
 import type {
   WebhookDelivery,
   WebhookSubscription,
@@ -14,6 +15,8 @@ import {
   type WebhookEventType,
 } from '@/shared/schemas/webhooks'
 import { Toggle, Button, Input } from '@overlay/ui/primitives'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { api } from '../../../../convex/_generated/api'
 
 const EVENT_LABELS: Record<WebhookEventType, string> = {
   'automation.failed': 'Automation failed',
@@ -22,9 +25,16 @@ const EVENT_LABELS: Record<WebhookEventType, string> = {
   'chat.failed': 'Chat failed',
 }
 
+const NO_SUBSCRIPTIONS: WebhookSubscription[] = []
+const NO_DELIVERIES: WebhookDelivery[] = []
+
 export function WebhookSettings() {
-  const [subscriptions, setSubscriptions] = useState<WebhookSubscription[]>([])
-  const [deliveries, setDeliveries] = useState<WebhookDelivery[]>([])
+  // Live: endpoints changed in any tab and every delivery transition from the runner show without reloading.
+  const { activeWorkspaceId } = useWorkspace()
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  const query = activeWorkspaceId && isAuthenticated && !isLoading ? { workspaceId: activeWorkspaceId } : 'skip'
+  const subscriptions = (useQuery(api.webhooks.browse.subscriptions, query) ?? NO_SUBSCRIPTIONS) as WebhookSubscription[]
+  const deliveries = (useQuery(api.webhooks.browse.deliveries, query) ?? NO_DELIVERIES) as WebhookDelivery[]
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [url, setUrl] = useState('')
   const [description, setDescription] = useState('')
@@ -33,21 +43,6 @@ export function WebhookSettings() {
   const [copied, setCopied] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  const load = useCallback(async () => {
-    const [loadedSubscriptions, loadedDeliveries] = await Promise.all([
-      overlayAppClient.webhooks.list({ cache: 'no-store' }),
-      overlayAppClient.webhooks.listDeliveries({}, { cache: 'no-store' }),
-    ])
-    setSubscriptions(loadedSubscriptions)
-    setDeliveries(loadedDeliveries)
-  }, [])
-
-  useEffect(() => {
-    void load().catch((loadError) => {
-      setError(loadError instanceof Error ? loadError.message : 'Failed to load webhooks')
-    })
-  }, [load])
 
   async function mutate(action: () => Promise<Response>, onSuccess?: (response: Response) => Promise<void>) {
     setBusy(true)
@@ -59,7 +54,6 @@ export function WebhookSettings() {
         throw new Error(payload.error || 'Webhook operation failed')
       }
       await onSuccess?.(response)
-      await load()
     } catch (mutationError) {
       setError(mutationError instanceof Error ? mutationError.message : 'Webhook operation failed')
     } finally {
@@ -171,15 +165,6 @@ export function WebhookSettings() {
       <section>
         <div className="mb-3 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-(--foreground)">Subscriptions</h3>
-          <Button variant="ghost"
-            type="button"
-            aria-label="Refresh webhooks"
-            className={unstyledButton(`inline-flex size-8 items-center justify-center rounded-md border border-(--border) disabled:opacity-50`)}
-            disabled={busy}
-            onClick={() => void load()}
-          >
-            <RefreshCw size={14} />
-          </Button>
         </div>
         <div className="divide-y divide-(--border) border-y border-(--border)">
           {subscriptions.length === 0 ? (

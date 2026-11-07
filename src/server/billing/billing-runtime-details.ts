@@ -1,11 +1,6 @@
 import type { Entitlements } from '@/shared/app/app-contracts'
-import {
-  centsToDollarAmount,
-  clampTopUpAmountCents,
-  TOP_UP_MAX_AMOUNT_CENTS,
-  TOP_UP_MIN_AMOUNT_CENTS,
-  TOP_UP_STEP_AMOUNT_CENTS,
-} from '@/shared/billing/billing-pricing'
+import { getTopUpPreferenceSnapshot } from '@/shared/billing/app-subscription'
+import { centsToDollarAmount } from '@/shared/billing/billing-pricing'
 
 export function isPaidPlan(entitlements: Pick<Entitlements, 'tier' | 'planKind'>): boolean {
   if (entitlements.planKind) return entitlements.planKind === 'paid'
@@ -70,25 +65,6 @@ export function formatBudgetUsage(entitlements: Pick<
   }
 }
 
-export function getTopUpPreferenceSnapshot(entitlements: Pick<
-  Entitlements,
-  'autoTopUpEnabled' | 'autoTopUpAmountCents'
->) {
-  const topUpAmountCents = clampTopUpAmountCents(
-    typeof entitlements.autoTopUpAmountCents === 'number' && entitlements.autoTopUpAmountCents > 0
-      ? entitlements.autoTopUpAmountCents
-      : TOP_UP_MIN_AMOUNT_CENTS,
-  )
-  return {
-    topUpAmountCents,
-    autoTopUpEnabled: Boolean(entitlements.autoTopUpEnabled),
-    topUpMinAmountCents: TOP_UP_MIN_AMOUNT_CENTS,
-    topUpMaxAmountCents: TOP_UP_MAX_AMOUNT_CENTS,
-    topUpStepAmountCents: TOP_UP_STEP_AMOUNT_CENTS,
-    autoTopUpAmountCents: topUpAmountCents,
-  }
-}
-
 export function buildInsufficientCreditsPayload(
   entitlements: Pick<Entitlements, 'autoTopUpEnabled' | 'autoTopUpAmountCents'>,
   message: string,
@@ -102,3 +78,5 @@ export function buildInsufficientCreditsPayload(
     },
   } as const
 }
+
+export { getTopUpPreferenceSnapshot }

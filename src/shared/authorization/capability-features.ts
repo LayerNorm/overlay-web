@@ -16,4 +16,5 @@ export const CAPABILITY_FEATURE: Partial<Record<AuthorizationCapability, keyof C
   'tools.use': 'chat',
   'work.use': 'work',
   'web_search.use': 'webSearch',
+  'webhooks.manage': 'webhooks',
 }
