@@ -65,7 +65,7 @@ These rules take precedence over any earlier scheduling or compatibility text in
 - Do not start the next surface until the old path is deleted, unless it has a named blocker.
 - Every retained old path names a current consumer and the card that removes it. "Rollback" is not a reason.
 - A finished domain should remove more production code than it added. Tests and domain authorization moved out of Next.js may be larger than what they replace; report production, test and docs lines separately, and explain any finished domain that stays net-positive in production code.
-- Work on one surface at a time, with one implementer. Do not run parallel domain branches or combine several cards in one PR.
+- Work with one implementer and no parallel domain branches. Related cards may share one PR and Preview, as Phase C (CN-07 to CN-11) will: keep one commit per card and record each card's acceptance separately in the QA handoff.
 - Green CI is not acceptance. A surface is accepted only after current-head testing with two independent clients, its failure paths, and the permission cases its card names.
 
 ### Every implementation PR must provide
