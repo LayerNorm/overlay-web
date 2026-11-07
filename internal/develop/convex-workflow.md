@@ -903,7 +903,7 @@ with the same token, and fail on browser runtime or authentication errors.
 Collaboration realtime is native Convex when `appDataCapabilities.provider === 'convex'`:
 
 - `collaboration/rooms:messages` and `:state` own room transcripts, metadata and presence.
-- `collaboration/activity:listVersion` provides a metadata-free invalidation signal for the DM and channel lists.
+- `collaboration/roomList:list` is the live DM and channel sidebar list (the viewer's active, unarchived rooms).
 - `collaboration/activity:notifications` is the single app-level notification subscription.
 
 All of these use native Convex identity, not a browser-held access token.
