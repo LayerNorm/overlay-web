@@ -88,11 +88,6 @@ export function createWebKnowledgeRepository(
     if (!response.ok) throw await responseError(response, 'Could not load file')
     return normalizeKnowledgeSurfaceNode(await response.json() as KnowledgeFile)
   }
-  async function existing(id: string): Promise<KnowledgeSurfaceNode> {
-    const node = await get(id)
-    if (!node) throw new Error(`Knowledge node ${id} was not found`)
-    return node
-  }
   return {
     get,
     async create(input) {
@@ -109,14 +104,8 @@ export function createWebKnowledgeRepository(
         scope: newItemScope(getScope()),
       }), input)
     },
-    async rename(input: KnowledgeRenameInput) {
-      await commands.rename(input.id, input.name)
-      return await existing(input.id)
-    },
-    async move(input: KnowledgeMoveInput) {
-      await commands.move(input.id, input.parentId)
-      return await existing(input.id)
-    },
+    rename: (input: KnowledgeRenameInput) => commands.rename(input.id, input.name),
+    move: (input: KnowledgeMoveInput) => commands.move(input.id, input.parentId),
     async delete(input: KnowledgeDeleteInput) {
       await Promise.all(input.ids.map(async (id) => {
         const response = await client.files.deleteResponse({ fileId: id })

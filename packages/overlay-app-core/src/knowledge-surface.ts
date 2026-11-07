@@ -100,8 +100,9 @@ export interface KnowledgeUploadInput {
 export interface KnowledgeRepository {
   get(id: string, signal?: AbortSignal): Promise<KnowledgeSurfaceNode | null>
   create(input: KnowledgeCreateInput): Promise<KnowledgeSurfaceNode>
-  rename(input: KnowledgeRenameInput): Promise<KnowledgeSurfaceNode>
-  move(input: KnowledgeMoveInput): Promise<KnowledgeSurfaceNode>
+  /** The host's live list shows the result; nothing is read back. */
+  rename(input: KnowledgeRenameInput): Promise<void>
+  move(input: KnowledgeMoveInput): Promise<void>
   delete(input: KnowledgeDeleteInput): Promise<void>
   upload?(input: KnowledgeUploadInput): Promise<KnowledgeSurfaceNode>
 }

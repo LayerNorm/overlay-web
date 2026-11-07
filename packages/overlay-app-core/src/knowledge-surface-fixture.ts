@@ -105,10 +105,10 @@ export function createFixtureKnowledgeRepository(
       return node
     },
     async rename(input: KnowledgeRenameInput) {
-      return commit({ ...find(input.id), name: input.name })
+      commit({ ...find(input.id), name: input.name })
     },
     async move(input: KnowledgeMoveInput) {
-      return commit({ ...find(input.id), parentId: input.parentId })
+      commit({ ...find(input.id), parentId: input.parentId })
     },
     async delete(input: KnowledgeDeleteInput) {
       const deleted = new Set(input.ids)
@@ -221,18 +221,10 @@ export async function exerciseKnowledgeAdapterContract(
     parentId: null,
     content: 'draft',
   })
-  const renamed = await adapters.repository.rename({
-    id: file.id,
-    name: 'final.txt',
-  })
-  if (renamed.name !== 'final.txt')
+  await adapters.repository.rename({ id: file.id, name: 'final.txt' })
+  if ((await adapters.repository.get(file.id))?.name !== 'final.txt')
     throw new Error('Knowledge repository did not persist rename')
-  const moved = await adapters.repository.move({
-    id: file.id,
-    parentId: folder.id,
-  })
-  if (moved.parentId !== folder.id)
-    throw new Error('Knowledge repository did not persist move')
+  await adapters.repository.move({ id: file.id, parentId: folder.id })
   const loaded = await adapters.repository.get(file.id)
   if (!loaded || loaded.parentId !== folder.id) throw new Error('Knowledge repository get does not reflect mutations')
   await adapters.repository.delete({ ids: [folder.id] })

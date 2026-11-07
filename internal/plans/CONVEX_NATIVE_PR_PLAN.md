@@ -13,7 +13,7 @@ Status: in progress as of 2026-11-07. Phases A to C are complete and live in pro
 | CN-04 to CN-06 stabilization | #411 | Merged, deployed. No Convex deploy was needed; its unused readiness markers remain on the production backend until the next deploy |
 | CN-06W | #412 | Merged and deployed: web and Convex production at `1799597ac`, production smoke passed |
 | CN-07 to CN-11 | #413 | Merged and deployed: web and Convex production at `2fcade1e1`, production smoke passed |
-| CN-12 to CN-15 | Phase D PR | Implemented; preview acceptance pending |
+| CN-12 to CN-15 | #414 | Implemented; preview acceptance pending |
 | CN-07 to CN-11 (old attempt) | #403 | Closed unmerged, superseded by the Phase C PR |
 | CN-12 (old attempt) | #402 | Closed unmerged, superseded by the Phase D PR |
 | CN-20 | #398 | Closed unmerged, branch kept as reference |
