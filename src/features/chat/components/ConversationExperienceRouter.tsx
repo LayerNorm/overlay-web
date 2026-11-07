@@ -1,7 +1,7 @@
 'use client'
 
 import { Hash, Mail } from 'lucide-react'
-import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
+import { useEffect, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import ChatExperience from './ChatExperience'
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
@@ -29,14 +29,36 @@ import {
 /**
  * Soft chat switches use `history.pushState` (see ChatInlinePanel) so the app
  * shell does not remount. Next's `useSearchParams` does not observe that, so
- * DMs/channels re-read `window.location` whenever soft navigation fires.
+ * DMs/channels subscribe to `window.location.search` directly. A store
+ * subscription also re-checks the URL after each commit, which catches
+ * `router.push`: Next writes history only after the render that receives the
+ * new search params, so that render can still see the previous URL.
  */
-function readBrowserChatRoute(): SoftChatRoute | null {
-  if (typeof window === 'undefined') return null
-  const params = new URLSearchParams(window.location.search)
+function subscribeBrowserChatRoute(onChange: () => void) {
+  window.addEventListener('overlay:chat-route-selected', onChange)
+  window.addEventListener('popstate', onChange)
+  return () => {
+    window.removeEventListener('overlay:chat-route-selected', onChange)
+    window.removeEventListener('popstate', onChange)
+  }
+}
+
+function readBrowserSearch(): string {
+  return window.location.search
+}
+
+function readServerSearch(): string | null {
+  return null
+}
+
+function parseBrowserChatRoute(search: string | null): (SoftChatRoute & { draft: boolean; title?: string }) | null {
+  if (search === null) return null
+  const params = new URLSearchParams(search)
   return {
     conversationId: params.get('id'),
     view: params.get('view'),
+    draft: params.get('draft') === '1',
+    title: params.get('title') ?? undefined,
   }
 }
 
@@ -61,33 +83,22 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
   const searchParams = useSearchParams()
   const searchConversationId = searchParams?.get('id') ?? null
   const searchView = searchParams?.get('view') ?? null
-  const draft = searchParams?.get('draft') === '1'
-  const draftTitle = searchParams?.get('title') ?? undefined
-  const browserRoute = readBrowserChatRoute()
+  const browserSearch = useSyncExternalStore(subscribeBrowserChatRoute, readBrowserSearch, readServerSearch)
+  const browserRoute = parseBrowserChatRoute(browserSearch)
   const searchRoute = {
     conversationId: searchConversationId,
     view: searchView,
   }
   const browserView = browserRoute?.view ?? null
-  const route = browserView === searchView
+  const useBrowserRoute = browserView === searchView
+  const route = useBrowserRoute
     ? resolveSoftChatRoute(browserRoute, searchRoute)
     : searchRoute
   const conversationId = route.conversationId
-  // Bumped only from browser soft-nav / popstate so we re-read window.location.
-  const [browserRouteVersion, setBrowserRouteVersion] = useState(0)
+  // Draft flags travel with the route that picked the conversation.
+  const draft = useBrowserRoute && browserRoute ? browserRoute.draft : searchParams?.get('draft') === '1'
+  const draftTitle = useBrowserRoute && browserRoute ? browserRoute.title : searchParams?.get('title') ?? undefined
   const [scopeRouteStatus, setScopeRouteStatus] = useState<ConversationDetailScopeStatus | null>(null)
-
-  useEffect(() => {
-    function bumpBrowserRoute() {
-      setBrowserRouteVersion((value) => value + 1)
-    }
-    window.addEventListener('overlay:chat-route-selected', bumpBrowserRoute)
-    window.addEventListener('popstate', bumpBrowserRoute)
-    return () => {
-      window.removeEventListener('overlay:chat-route-selected', bumpBrowserRoute)
-      window.removeEventListener('popstate', bumpBrowserRoute)
-    }
-  }, [])
 
   const resourceRouteKey = conversationDetailRouteKey({
     pathScope,
@@ -114,9 +125,8 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
       replace: (destination) => router.replace(destination),
       setStatus: setScopeRouteStatus,
     })
-  }, [browserRouteVersion, conversationId, knownNativeChat, searchView, pathScope, resourceRouteKey, buildWorkspaceHref, pathname, router])
+  }, [browserSearch, conversationId, knownNativeChat, searchView, pathScope, resourceRouteKey, buildWorkspaceHref, pathname, router])
 
-  void browserRouteVersion
   const selectedScope = pathScope ?? legacyWorkspaceScopeForRoute(
     'chat',
     new URLSearchParams(searchParams?.toString() ?? ''),
