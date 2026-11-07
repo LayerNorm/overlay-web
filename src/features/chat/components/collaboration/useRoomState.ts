@@ -1,6 +1,7 @@
 'use client'
 
 import { useConvexAuth, useMutation, useQuery } from 'convex/react'
+import { useMemo } from 'react'
 import type { OptimisticLocalStore } from 'convex/browser'
 import type { FunctionReturnType } from 'convex/server'
 import { api } from '../../../../../convex/_generated/api'
@@ -22,9 +23,9 @@ function patchRoomState(store: OptimisticLocalStore, args: RoomArgs, patch: (sta
 /** Participants, reactions, pins, saves, followed threads and presence for one room, live. */
 export function useRoomState(workspaceId: string | null | undefined, conversationId: string) {
   const { isAuthenticated, isLoading } = useConvexAuth()
-  const args: RoomArgs | null = workspaceId && isAuthenticated && !isLoading
+  const args = useMemo<RoomArgs | null>(() => workspaceId && isAuthenticated && !isLoading
     ? { workspaceId, conversationId: conversationId as Id<'conversations'> }
-    : null
+    : null, [workspaceId, conversationId, isAuthenticated, isLoading])
   const state = useQuery(api.collaboration.rooms.state, args ?? 'skip')
 
   const setReaction = useMutation(api.collaboration.rooms.setReaction).withOptimisticUpdate((store, change) => {

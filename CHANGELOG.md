@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep room read-marker callbacks stable across live renders so idle chat views stop resubmitting read mutations. Convex's pending-write navigation protection and the notes editor's unsaved-change protection remain enabled.
+
 - Show authorized Chief assignment executions in Work and its sidebar, with parent/thread links and Slack origin labels. These read-only rows do not create tasks; archived or inaccessible threads are omitted, and linked Slack conversations stay read-only until verified cross-surface delivery is available.
 
 - Coordinate Chief assignments with explicit acceptance or reasoned exclusion/cancellation, parent cancellation propagation, durable native-turn queues and duplicate-safe launch recovery. Current-run finalization waits for published, resolved assignment results without adding a verifier or compulsory plan.
