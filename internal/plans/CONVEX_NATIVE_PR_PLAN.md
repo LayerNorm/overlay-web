@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-07. Phases A to E are complete and live in production: chats, agents, rooms, Activity, files, notes, memories, Work, automations and skills run on the native path. The production Convex backend was last deployed from main `228e9bedc` after the matching web release. Phase F ships in three PRs; the first (CN-21 to CN-24, connections, #416) passed preview acceptance and awaits merge. Stop, approval, input response, room send, agent assignment, automation writes and connection writes stay on the server by design because they run workflows, agent turns, billing checks, credential encryption, OAuth or provider calls. Second-member cases are tested on previews with a seeded collaborator acting through the Convex CLI. The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-07. Phases A to E and the first Phase F PR are complete and live in production: chats, agents, rooms, Activity, files, notes, memories, Work, automations, skills and connections (MCP, providers, computers, environments, surfaces) run on the native path. The production Convex backend was last deployed from main `0589eb36b` after the matching web release. Phase F ships in three PRs; the second (CN-25 to CN-27: workspace directory and policy, members and invitations, account settings and identity) is implemented on the Phase F workspace PR and awaits preview acceptance. Stop, approval, input response, room send, agent assignment, automation writes, connection writes, workspace and membership writes, invitations (which send email), settings writes and onboarding stay on the server by design because they run workflows, agent turns, billing checks, credential encryption, OAuth, email, validation or provider calls. Second-member cases are tested on previews with a seeded collaborator acting through the Convex CLI. The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -15,7 +15,8 @@ Status: in progress as of 2026-11-07. Phases A to E are complete and live in pro
 | CN-07 to CN-11 | #413 | Merged and deployed: web and Convex production at `2fcade1e1`, production smoke passed |
 | CN-12 to CN-15 | #414 | Merged and deployed: web and Convex production at `8c57d1c52`, production smoke passed |
 | CN-16 to CN-20 | #415 | Merged and deployed: web and Convex production at `228e9bedc`, production smoke passed |
-| CN-21 to CN-24 | #416 | Preview accepted with a second member; merge pending |
+| CN-21 to CN-24 | #416 | Merged and deployed: web and Convex production at `0589eb36b`, production smoke passed |
+| CN-25 to CN-27 | Phase F workspace PR | Implemented; preview acceptance pending |
 | CN-07 to CN-11 (old attempt) | #403 | Closed unmerged, superseded by the Phase C PR |
 | CN-12 (old attempt) | #402 | Closed unmerged, superseded by the Phase D PR |
 | CN-20 (old attempt) | #398 | Closed unmerged, superseded by the Phase E PR |
@@ -576,6 +577,8 @@ Not covered: real Slack OAuth, a real MCP OAuth round trip and a real Boat machi
 
 **Retirement/non-goals:** remove directory/settings HTTP ownership. Keep session-cookie and external organization orchestration. Membership administration is CN-26, billing is CN-28.
 
+**Implemented (Phase F workspace PR):** `collaboration/directory:workspaces|resolveHandle|policy` feed the workspace provider, the account page, the Sharing tab and every New button's create rules live. The route still picks each tab's workspace, so switching elsewhere never moves it; losing access shows the unavailable screen at once. The HTTP list read and the server's received-invitations path are deleted; create, switch, rename, icon, handle and policy writes stay on the server. Invitations use the account record's email rather than the session's.
+
 ### CN-26. Make membership, roles, and invitations native
 
 **Outcome:** access management updates every subscribed client and preserves external identity/delivery semantics.
@@ -590,6 +593,8 @@ Not covered: real Slack OAuth, a real MCP OAuth round trip and a real Boat machi
 
 **Retirement/non-goals:** remove member/invitation snapshots and refresh events. Do not remove the WorkOS/session boundary or weaken last-owner/role invariants.
 
+**Implemented (Phase F workspace PR):** `collaboration/management:view` returns the settings tabs' rows (same shape and manager-only rules as the HTTP view) to Settings, mentions, the channel and DM pickers, the memories owner filter and the Slack import. The browser management loader is gone; the HTTP view remains for API clients. Every membership and invitation write stays on the server, unchanged.
+
 ### CN-27. Make account preferences and onboarding state native
 
 **Outcome:** app-owned account choices and onboarding progress synchronize without overwriting local drafts or device settings.
@@ -603,6 +608,8 @@ Not covered: real Slack OAuth, a real MCP OAuth round trip and a real Boat machi
 **Acceptance:** remote preference changes apply appropriately; dirty forms survive; account switch clears old state; local OS/dictation preferences remain device-local.
 
 **Retirement/non-goals:** remove persisted-preference HTTP snapshots and unsupported repository placeholders once proven unused. Do not migrate a placeholder as though it were a working store. No sign-in UX redesign.
+
+**Implemented (Phase F workspace PR):** `platform/uiSettings:mine` and `auth/accountBrowse:identity` reach the settings and auth providers through `LiveAccountSync`; pending local changes stay on top until saved, and the identity overlay is keyed to its account. The account-profile GET, the identity-updated event and the onboarding and settings repository placeholders are deleted. `/api/v1/settings` GET stays for API clients. Onboarding stays on the server: reading it can flush pending onboarding messages and finish the session.
 
 ### CN-28. Subscribe billing, usage, and entitlement projections
 
