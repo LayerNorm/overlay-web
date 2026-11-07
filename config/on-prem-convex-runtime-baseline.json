@@ -199,6 +199,7 @@
     "src/app/api/v1/work/[id]/move/route.ts",
     "src/app/api/v1/work/[id]/route.ts",
     "src/app/api/v1/work/context/route.ts",
+    "src/app/api/v1/work/resume-assignment/route.ts",
     "src/app/api/v1/work/route.ts",
     "src/app/api/v1/workspace-handles/[handle]/route.ts",
     "src/app/api/v1/workspace-invitations/[invitationId]/accept/route.ts",
@@ -597,9 +598,11 @@
     "convex/knowledge/memories.ts",
     "convex/knowledge/memoryExtractorNode.ts",
     "convex/lib/agentDriveFiles.ts",
+    "convex/lib/workDependencies.ts",
     "convex/platform/growth.ts",
     "convex/platform/nativePolicy.ts",
     "convex/platform/usage.ts",
-    "convex/webhooks/deliveryRunner.ts"
+    "convex/webhooks/deliveryRunner.ts",
+    "convex/work/workItems.ts"
   ]
 }
