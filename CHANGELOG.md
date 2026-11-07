@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make an agent thread's Library tab live: files an agent publishes or a person attaches in the thread now appear while the panel is open, instead of only after reopening it. Removes the outputs tab's Refresh button and its unused refresh state, since outputs are part of the live file list.
+
 - Make Files live and open them instantly: the Files page and sidebar now read files, folders, notes and outputs from one Convex subscription per scope, so creating, renaming, moving, archiving or deleting anything shows up in every open tab without a reload. Clicking a file opens its viewer at once from the list while its text loads, an open file follows remote renames and closes if it is deleted or you lose access, and rename and move apply instantly everywhere. Removes the file change events, their reconciliation and retry machinery, the cross-tab event bridge nobody used, and an unused list controller. The live list carries no file text or storage keys.
 
 - Make Activity and read state native: notifications and unread badges come from one live Convex query, marking read updates every open client at once, and a notification that arrives while you are marking others read stays unread. Opening a notification goes straight to its room without an extra lookup. Removes the local read maps, two unused refresh events and the obsolete personal list-version subscription.

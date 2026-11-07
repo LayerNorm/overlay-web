@@ -77,3 +77,27 @@ export const move = mutation({
     return null
   },
 })
+
+/** Files a thread produced or received, live, for the thread's Library: the viewer's own plus workspace-shared ones. */
+export const forConversation = query({
+  args: { workspaceId: v.string(), conversationId: v.string() },
+  handler: async (ctx, { workspaceId, conversationId }) => {
+    const viewer = await viewerOrNull(ctx, workspaceId)
+    if (!viewer) return null
+    const rows = await listScopedRows(ctx, {
+      userId: viewer.userId,
+      workspaceId,
+      view: undefined,
+      fetchMine: async () => await ctx.db.query('files')
+        .withIndex('by_workspaceId_userId_conversationId_updatedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', viewer.userId).eq('conversationId', conversationId))
+        .order('desc').take(TREE_SCAN_LIMIT),
+      fetchShared: async (ws) => (await ctx.db.query('files')
+        .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace').eq('archivedAt', undefined))
+        .take(TREE_SCAN_LIMIT)).filter((row) => row.conversationId === conversationId),
+    })
+    return rows
+      .filter((row) => !row.deletedAt && row.type === 'file')
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map(browserFileSummary)
+  },
+})

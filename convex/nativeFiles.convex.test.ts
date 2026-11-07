@@ -96,3 +96,25 @@ test('rename and move reach every subscriber and respect edit rights and workspa
   await expect(as('alice').mutation(move, { workspaceId: 'ws', fileId: ids.note, parentId: foreignFolder })).rejects.toThrow('Unauthorized')
   await expect(as('alice').mutation(rename, { workspaceId: 'ws', fileId: ids.note, name: '   ' })).rejects.toThrow('INVALID_NAME')
 })
+
+test("a thread's Library lists its files live for each reader", async () => {
+  const { t, as } = await fixture()
+  const forConversation = makeFunctionReference<'query'>('files/browse:forConversation')
+  await t.run(async ctx => {
+    const file = (fields: Record<string, unknown>) => ctx.db.insert('files', {
+      workspaceId: 'ws', userId: 'alice', type: 'file', kind: 'output', conversationId: 'c1', createdAt: 1, updatedAt: 1, ...fields,
+    } as never)
+    await file({ name: 'chart.png', updatedAt: 3 })
+    await file({ name: 'report.md', scope: 'workspace', updatedAt: 2 })
+    await file({ name: 'elsewhere.md', conversationId: 'c2' })
+    await file({ name: 'removed.png', deletedAt: 5 })
+  })
+  expect(names(await as('alice').query(forConversation, { workspaceId: 'ws', conversationId: 'c1' }))).toEqual(['chart.png', 'report.md'])
+  expect(names(await as('bob').query(forConversation, { workspaceId: 'ws', conversationId: 'c1' }))).toEqual(['report.md'])
+  expect(await as('stranger').query(forConversation, { workspaceId: 'ws', conversationId: 'c1' })).toBeNull()
+  // Publishing a file reaches the subscription without any refetch.
+  await t.run(ctx => ctx.db.insert('files', {
+    workspaceId: 'ws', userId: 'alice', name: 'new.csv', type: 'file', kind: 'output', conversationId: 'c1', createdAt: 9, updatedAt: 9,
+  }))
+  expect(names(await as('alice').query(forConversation, { workspaceId: 'ws', conversationId: 'c1' }))[0]).toBe('new.csv')
+})

@@ -25,6 +25,18 @@ export function useFileTree(view: PanelScope, enabled = true): KnowledgeFile[] |
   return rows as KnowledgeFile[] | null | undefined
 }
 
+/** A thread's files, live: undefined while loading, null when the viewer cannot read the workspace. */
+export function useConversationFiles(conversationId: string): KnowledgeFile[] | null | undefined {
+  const { activeWorkspaceId, status } = useWorkspace()
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  const workspaceId = status === 'ready' ? activeWorkspaceId : null
+  const rows = useQuery(
+    api.files.browse.forConversation,
+    workspaceId && isAuthenticated && !isLoading ? { workspaceId, conversationId } : 'skip',
+  )
+  return rows as KnowledgeFile[] | null | undefined
+}
+
 /** Patches one file in every cached tree of its workspace; the server answer replaces the patch. */
 function patchTrees(store: OptimisticLocalStore, workspaceId: string, fileId: string, patch: { name?: string; parentId?: string | null }) {
   for (const { args, value } of store.getAllQueries(api.files.browse.list)) {

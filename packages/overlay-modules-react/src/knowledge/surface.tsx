@@ -472,7 +472,6 @@ export function SharedKnowledgeSurface({
             onSetFileSearchQuery={folderBrowser.setFileSearchQuery}
             onImportMemory={() => memories.setShowImportMemory(true)}
             onNewMemory={() => memories.setShowAddMemory(true)}
-            onRefreshOutputs={() => select.setOutputsRefreshKey((k) => k + 1)}
             onSetMemorySearchOpen={memories.setMemorySearchOpen}
             onSetMemorySearchQuery={memories.setMemorySearchQuery}
             onSetSelectMode={select.setSelectMode}

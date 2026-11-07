@@ -670,7 +670,6 @@ export function useSelectMode({
   const [selectedFileIds, setSelectedFileIds] = useState<Set<string>>(() => new Set())
   const [selectedOutputIds, setSelectedOutputIds] = useState<Set<string>>(() => new Set())
   const [bulkDeleting, setBulkDeleting] = useState(false)
-  const [, setOutputsRefreshKey] = useState(0)
 
   const [prevActiveTab, setPrevActiveTab] = useState(activeTab)
   if (prevActiveTab !== activeTab) {
@@ -770,7 +769,6 @@ export function useSelectMode({
     setBulkDeleting(true)
     try {
       await adapters.repository.delete({ ids: [...selectedOutputIds] })
-      setOutputsRefreshKey((k) => k + 1)
       exitSelectMode()
     } finally {
       setBulkDeleting(false)
@@ -784,7 +782,6 @@ export function useSelectMode({
     selectedFileIds,
     selectedOutputIds,
     bulkDeleting,
-    setOutputsRefreshKey,
     exitSelectMode,
     toggleMemorySelect,
     toggleFileBulkSelect,
