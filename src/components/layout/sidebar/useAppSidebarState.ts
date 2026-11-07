@@ -470,7 +470,6 @@ function useSidebarDerivedPanels(args: {
   setMobileView: Dispatch<SetStateAction<'nav' | 'panel'>>
   setMobileAccountOpen: Dispatch<SetStateAction<boolean>>
   setAccountMenuOpen: Dispatch<SetStateAction<boolean>>
-  setChatPanelRefreshKey: Dispatch<SetStateAction<number>>
   mobileMenuOpen: boolean
 }) {
   const {
@@ -507,7 +506,6 @@ function useSidebarDerivedPanels(args: {
     setMobileView,
     setMobileAccountOpen,
     setAccountMenuOpen,
-    setChatPanelRefreshKey,
     mobileMenuOpen,
   } = args
   const savedScope = useSavedPanelScope()
@@ -562,7 +560,6 @@ function useSidebarDerivedPanels(args: {
     pathname,
     requireAuth,
     onCloseMobileMenu: closeMobileDrawer,
-    onChatCreated: () => setChatPanelRefreshKey((value: number) => value + 1),
   })
 
   useSidebarNavHotkeys({
@@ -767,7 +764,6 @@ export function useAppSidebarState({
   const setSidebarCollapsed = useCallback((next: boolean) => {
     setStoredSidebarCollapsed(next)
   }, [])
-  const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
@@ -836,7 +832,6 @@ export function useAppSidebarState({
     setMobileView,
     setMobileAccountOpen,
     setAccountMenuOpen,
-    setChatPanelRefreshKey,
     mobileMenuOpen,
   })
 
@@ -868,7 +863,6 @@ export function useAppSidebarState({
     mobileAccountRef,
     sidebarCollapsed,
     setSidebarCollapsed,
-    chatPanelRefreshKey,
     hideTemporaryChatChrome,
     createChat,
     globalSearchOpen,

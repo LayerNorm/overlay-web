@@ -1,4 +1,4 @@
-import type { CachedConversation } from './chat-list-cache'
+import type { ChatListConversation } from './chat-list-conversation'
 import { buildWorkspaceHref, resolveWorkspaceSurface } from '../workspaces/routing'
 
 export function agentConversationRedirect(args: { pathname: string; workspaceId: string | null; agentId?: string; conversationId: string; guided: boolean;  }) {
@@ -41,9 +41,9 @@ export function resolveSoftChatRoute(
  * A stale session id must never make a DM render as a channel (or vice versa).
  */
 export function selectConversationForView(
-  chats: CachedConversation[],
+  chats: ChatListConversation[],
   storedConversationId: string | null,
-): CachedConversation | null {
+): ChatListConversation | null {
   if (storedConversationId) {
     const stored = chats.find((chat) => chat._id === storedConversationId)
     if (stored) return stored

@@ -5,7 +5,7 @@ import {
   selectConversationForView,
   type CollaborationChatView,
 } from '@/shared/chat/chat-view-navigation'
-import type { CachedConversation } from '@/shared/chat/chat-list-cache'
+import type { ChatListConversation } from '@/shared/chat/chat-list-conversation'
 import { chatsInlineItems } from '@/components/layout/sidebar-nav'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
 import { mergeHrefSearchParams } from '@/shared/workspaces/routing'
@@ -31,7 +31,7 @@ async function resolveViewConversationId({
   navigationVersion: number
 }): Promise<{ stale: boolean; conversationId: string | null }> {
   try {
-    const page = await overlayAppClient.conversations.getPage<CachedConversation>({
+    const page = await overlayAppClient.conversations.getPage<ChatListConversation>({
       limit: 24,
       view: view as CollaborationChatView,
     })

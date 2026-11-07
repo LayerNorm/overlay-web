@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 import { useHotkeys } from 'react-hotkeys-hook'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { categorizeCollaborationUnreadNotifications } from '@/shared/chat/notification-badges'
-import type { CachedConversation } from '@/shared/chat/chat-list-cache'
+import type { ChatListConversation } from '@/shared/chat/chat-list-conversation'
 import { TEMPORARY_CHAT_UI_EVENT, type TemporaryChatUiEventDetail } from '@/shared/chat/temporary-chat-ui'
 import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
@@ -72,10 +72,10 @@ export function useCollaborationUnread({
     const categorizeUnread = async () => {
       try {
         const unreadNotifications = collaborationNotifications.filter((notification) => !notification.readAt)
-        let conversations: CachedConversation[] = []
+        let conversations: ChatListConversation[] = []
         if (unreadNotifications.length > 0) {
           try {
-            const page = await overlayAppClient.conversations.getPage<CachedConversation>({ view: 'all', limit: 100 })
+            const page = await overlayAppClient.conversations.getPage<ChatListConversation>({ view: 'all', limit: 100 })
             conversations = page.data
           } catch {
             // Activity remains complete even when the conversation directory is briefly unavailable.

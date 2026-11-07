@@ -308,7 +308,7 @@ New owner sessions use `flowVersion: 2` and revision-checked name, about, team, 
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Convex appends the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
 - Browsers read Activity through `collaboration/activity:notifications` and the DM/channel list
-  version through `collaboration/activity:listVersion`, both with native identity. Each notification
+  through `collaboration/roomList:list`, both with native identity. Each notification
   carries `conversationType`, so opening one routes without looking the room up. Read state goes
   through `collaboration/activity:markRead`, which takes the notification ids the member has seen or
   one open room's id; a notification that arrives meanwhile stays unread, and an already-read row keeps
@@ -518,13 +518,13 @@ The rate limit provider is selected at bootstrap. Redis is preferred when config
 
 ## Realtime and shared resource state (Phase C)
 
-### Versioned conversation list reconciliation
+### Conversation lists
 
-Personal and workspace AI chat lists are native live queries (`chat/personal:list`), so they need no
-version signal. The DM and channel lists still load over HTTP: `collaboration/activity:listVersion`
-returns the latest semantic `conversationEvents` time for the workspace (text deltas never bump it).
-
-When the version changes, the client fetches only the delta via `GET /api/v1/conversations?updatedSince=<version-1000>` and upserts individual rows into the chat list cache (`upsertCachedChat` / `removeCachedChat`). This replaces the previous full-list reload on every version change.
+Personal and workspace AI chat lists are native live queries (`chat/personal:list`). The DM and channel
+sidebar list is `collaboration/roomList:list`: the viewer's active, unarchived rooms, newest activity
+first, without agent threads or automation chats. A new message, rename, join, leave or archive updates
+every open sidebar; there is no browser list cache, version signal or delta refetch. Archived rooms come
+from `collaboration/archive:rooms`. `GET /api/v1/conversations` remains for API clients.
 
 ### Presence subscription
 
