@@ -8,6 +8,7 @@ import { ArchiveToastHost } from '@/components/feedback/ArchiveToastHost'
 import ObservabilityClient from '@/components/providers/ObservabilityClient'
 import { AppSettingsProvider } from '@/components/providers/AppSettingsProvider'
 import { ConvexAuthProvider } from '@/components/providers/ConvexAuthProvider'
+import { LiveAccountSync } from '@/components/providers/LiveAccountSync'
 import { prefetchGatewayModelCatalog } from '@/components/providers/useGatewayModelCatalog'
 import { shouldLoadGatewayModelCatalog } from '@/shared/ai/gateway/catalog-access'
 
@@ -43,6 +44,7 @@ export function AppClientProviders({
           <Suspense fallback={null}>
             <ObservabilityClient />
           </Suspense>
+          <LiveAccountSync />
           {children}
           <ArchiveToastHost />
           <Analytics />

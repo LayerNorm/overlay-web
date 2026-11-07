@@ -11,7 +11,7 @@ For a description of what each route does and its associated implementation file
 
 ## Authentication, sessions, account
 
-- `GET, PATCH /api/v1/account/profile`
+- `PATCH /api/v1/account/profile`
 - `GET, POST /api/v1/account/profile/photo`
 
 - `POST /api/auth/preview-login`

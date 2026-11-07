@@ -183,13 +183,6 @@ const WorkspaceIconPatch = z.object({
 
 export const webApiBoundaryDefinitions = [
   {
-    method: 'GET',
-    path: '/api/v1/account/profile',
-    schema: { response: IdentityProfileResponse },
-    summary: 'Read the signed-in account profile',
-    tag: 'Account',
-  },
-  {
     method: 'PATCH',
     path: '/api/v1/account/profile',
     schema: { json: IdentityProfilePatch, response: IdentityProfileResponse },

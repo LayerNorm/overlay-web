@@ -6,7 +6,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -22,11 +21,12 @@ type AppSettingsContextValue = {
   settings: AppSettings
   isLoading: boolean
   isSaving: boolean
-  refresh: () => Promise<void>
   updateSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
+/** Receives the live settings row (or null when signed out) from the sync inside the Convex provider. */
+const AppSettingsSyncContext = createContext<((remote: Partial<AppSettings> | null) => void) | null>(null)
 const APP_SETTINGS_STORAGE_KEY = 'overlay.app.settings'
 const MAX_MODEL_ID_LENGTH = 160
 const MAX_ASK_MODEL_IDS = 4
@@ -199,42 +199,20 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const { user, isLoading: authLoading } = useAuth()
   const authUserId = user?.id ?? null
   const [settings, setSettings] = useState<AppSettings>(() => readStoredSettings() ?? DEFAULT_APP_SETTINGS)
-  const [isLoading, setIsLoading] = useState(true)
+  const [remoteUserId, setRemoteUserId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  // Changes not yet confirmed by the server. They stay on top of live snapshots so a slower save is not undone
+  // by a snapshot taken before it, and leave once the server answers.
+  const pendingRef = useRef<Partial<AppSettings>>({})
+  const isLoading = authLoading || (authUserId !== null && remoteUserId !== authUserId)
 
-  const refresh = useCallback(async () => {
-    const stored = readStoredSettings()
-    if (stored) {
-      setSettings(stored)
-    }
-    if (authLoading) return
-    if (!authUserId) {
-      setSettings(stored ?? DEFAULT_APP_SETTINGS)
-      setIsLoading(false)
-      return
-    }
-
-    try {
-      const res = await overlayAppClient.settings.getResponse({ cache: 'no-store' })
-      if (res.ok) {
-        const next = normalizeSettingsPayload(await res.json() as Partial<AppSettings>)
-        setSettings(next)
-        persistSettings(next)
-      } else if (res.status === 401) {
-        setSettings(stored ?? DEFAULT_APP_SETTINGS)
-      }
-    } catch {
-      if (!stored) {
-        setSettings(DEFAULT_APP_SETTINGS)
-      }
-    } finally {
-      setIsLoading(false)
-    }
-  }, [authLoading, authUserId])
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
+  const applyRemote = useCallback((remote: Partial<AppSettings> | null) => {
+    if (!remote || !authUserId) return
+    const next = normalizeSettingsPayload({ ...remote, ...pendingRef.current })
+    setSettings(next)
+    persistSettings(next)
+    setRemoteUserId(authUserId)
+  }, [authUserId])
 
   const prevPresetVarsRef = useRef<Set<string>>(new Set())
 
@@ -271,21 +249,26 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     persistSettings(optimistic)
     if (!authUserId) return optimistic
 
+    pendingRef.current = { ...pendingRef.current, ...patch }
     setIsSaving(true)
     try {
       const res = await overlayAppClient.settings.updateResponse(patch)
       if (!res.ok) {
-        console.warn('Failed to save settings to server; using local state')
+        console.warn('Failed to save settings to server; the saved settings will show again')
         return optimistic
       }
-      const saved = normalizeSettingsPayload(await res.json() as Partial<AppSettings>)
-      setSettings(saved)
-      persistSettings(saved)
-      return saved
+      // The live settings subscription brings the saved row to this and every other tab.
+      return normalizeSettingsPayload(await res.json() as Partial<AppSettings>)
     } catch (error) {
-      console.warn('Failed to save settings to server; using local state', error)
+      console.warn('Failed to save settings to server; the saved settings will show again', error)
       return optimistic
     } finally {
+      // A later change to the same field keeps its own pending value.
+      const pending = { ...pendingRef.current } as Record<string, unknown>
+      for (const [key, value] of Object.entries(patch)) {
+        if (pending[key] === value) delete pending[key]
+      }
+      pendingRef.current = pending as Partial<AppSettings>
       setIsSaving(false)
     }
   }, [authUserId, settings])
@@ -294,13 +277,14 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     settings,
     isLoading,
     isSaving,
-    refresh,
     updateSettings,
-  }), [settings, isLoading, isSaving, refresh, updateSettings])
+  }), [settings, isLoading, isSaving, updateSettings])
 
   return (
     <AppSettingsContext.Provider value={value}>
-      {children}
+      <AppSettingsSyncContext.Provider value={applyRemote}>
+        {children}
+      </AppSettingsSyncContext.Provider>
     </AppSettingsContext.Provider>
   )
 }
@@ -316,4 +300,9 @@ export function useAppSettings() {
 /** Like `useAppSettings`, but null outside the provider (for components that also render in isolation). */
 export function useOptionalAppSettings() {
   return useContext(AppSettingsContext)
+}
+
+/** For the live settings sync inside the Convex provider. */
+export function useAppSettingsSync() {
+  return useContext(AppSettingsSyncContext)
 }

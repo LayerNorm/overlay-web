@@ -164,7 +164,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   {
     path: '/api/v1/account/profile',
-    methods: { GET: authenticated(), PATCH: authenticated() },
+    methods: { PATCH: authenticated() },
   },
   {
     path: '/api/v1/account/profile/photo',

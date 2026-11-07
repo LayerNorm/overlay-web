@@ -61,7 +61,7 @@ import { useLiveWorkspacePolicy } from '@/hooks/use-workspace-create-access'
 import { useLiveWorkspaceManagement, useLiveWorkspacePrincipals, type WorkspaceManagementTab } from '@/hooks/use-workspace-members'
 import { AgentCreature } from '@/components/orb/Creature'
 import { IdentityImageEditor, type IdentityImageChoice } from '@/components/identity/IdentityImageEditor'
-import { identityRequest, notifyIdentityUpdated } from '@/hooks/useIdentityProfile'
+import { identityRequest } from '@/hooks/useIdentityProfile'
 import { workspaceIconUrl } from '@/shared/workspaces/icon-presets'
 
 const MANAGEMENT_TABS: readonly WorkspaceManagementTab[] = ['people', 'guests', 'teams', 'roles', 'chats-agents']
@@ -85,7 +85,6 @@ function WorkspaceIconControl({ workspace }: { workspace: WorkspaceSummary }) {
     } else {
       await identityRequest(endpoint, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ preset: 'preset' in choice ? choice.preset : null }) })
     }
-    notifyIdentityUpdated(workspace.id)
     toast.success('Workspace icon saved.')
   }
 

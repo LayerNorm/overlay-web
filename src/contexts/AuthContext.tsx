@@ -16,6 +16,10 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
+
+/** The account's chosen name and photo, from the live account identity query. */
+export type AccountIdentityOverlay = { userId: string; displayName: string; photoUrl: string | null }
+const AccountIdentitySyncContext = createContext<((identity: AccountIdentityOverlay | null) => void) | null>(null)
 const SESSION_CHECK_INTERVAL_MS = 4 * 60 * 1000
 // Minimum time after a successful session check before a focus/visibility
 // refresh is allowed.  Prevents redundant checks when the user rapidly
@@ -37,6 +41,9 @@ export function AuthProvider({
   const [isLoading, setIsLoading] = useState(!initialSessionResolved)
   const lastCheckAtRef = useRef(0)
   const hadSession = useRef(Boolean(initialUser))
+  // The latest live account name and photo; session checks return the sign-in provider's values, so this is
+  // applied over every one of them.
+  const identityRef = useRef<AccountIdentityOverlay | null>(null)
 
   const [prevInitial, setPrevInitial] = useState({ user: initialUser, resolved: initialSessionResolved })
   if (initialUser !== prevInitial.user || initialSessionResolved !== prevInitial.resolved) {
@@ -49,12 +56,10 @@ export function AuthProvider({
     }
   }
 
-  useEffect(() => {
-    if (!initialSessionResolved || !initialUser) return
-    void applyAccountIdentity(initialUser).then((resolvedUser) => {
-      setUser((current) => current?.id === resolvedUser.id ? resolvedUser : current)
-    })
-  }, [initialSessionResolved, initialUser])
+  const applyLiveIdentity = useCallback((identity: AccountIdentityOverlay | null) => {
+    identityRef.current = identity
+    if (identity) setUser((current) => current ? withAccountIdentity(current, identity) : current)
+  }, [])
 
   const checkSession = useCallback(async (trigger: 'interval' | 'focus' | 'visibility' | 'manual' = 'manual') => {
     // Skip focus/visibility refreshes if we checked very recently.
@@ -64,7 +69,7 @@ export function AuthProvider({
       const result = await requestSessionState()
       if (result.status === 'authenticated') {
         hadSession.current = true
-        setUser(await applyAccountIdentity(result.user))
+        setUser(withAccountIdentity(result.user, identityRef.current))
       } else if (result.status === 'unauthenticated') {
         if (hadSession.current) await notifyDesktopSignedOut()
         hadSession.current = false
@@ -74,15 +79,6 @@ export function AuthProvider({
       setIsLoading(false)
     }
   }, [])
-
-  useEffect(() => {
-    const handleIdentityUpdate = (event: Event) => {
-      const workspaceId = (event as CustomEvent<{ workspaceId?: string }>).detail?.workspaceId
-      if (!workspaceId) void checkSession('manual')
-    }
-    window.addEventListener('overlay:identity-updated', handleIdentityUpdate)
-    return () => window.removeEventListener('overlay:identity-updated', handleIdentityUpdate)
-  }, [checkSession])
 
   const signOut = useCallback(async () => {
     try {
@@ -140,27 +136,26 @@ export function AuthProvider({
 
   return (
     <AuthContext.Provider value={authValue}>
-      {children}
+      <AccountIdentitySyncContext.Provider value={applyLiveIdentity}>
+        {children}
+      </AccountIdentitySyncContext.Provider>
     </AuthContext.Provider>
   )
 }
 
-async function applyAccountIdentity(user: AuthUser): Promise<AuthUser> {
-  try {
-    const response = await fetch('/api/v1/account/profile', {
-      credentials: 'same-origin',
-      cache: 'no-store',
-    })
-    if (!response.ok) return user
-    const profile = await response.json() as { displayName?: string; photoUrl?: string | null }
-    return {
-      ...user,
-      ...(profile.displayName ? { firstName: profile.displayName, lastName: undefined } : {}),
-      profilePictureUrl: profile.photoUrl ?? undefined,
-    }
-  } catch {
-    return user
+function withAccountIdentity(user: AuthUser, identity: AccountIdentityOverlay | null): AuthUser {
+  // Never another account's name: after a switch the old account's values are ignored until the new ones arrive.
+  if (!identity || identity.userId !== user.id) return user
+  return {
+    ...user,
+    ...(identity.displayName ? { firstName: identity.displayName, lastName: undefined } : {}),
+    profilePictureUrl: identity.photoUrl ?? undefined,
   }
+}
+
+/** For the live account sync inside the Convex provider: applies the account's name and photo to the signed-in user. */
+export function useAccountIdentitySync() {
+  return useContext(AccountIdentitySyncContext)
 }
 
 export function AuthBoundary(props: AuthProviderProps) {
