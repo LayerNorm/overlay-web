@@ -104,3 +104,52 @@ test('provider connections list own and workspace-shared subscriptions without v
   const off = await connectionFixture({ features: {} })
   expect(await off.as('alice').query(providerConnections, { workspaceId: 'ws' })).toBeNull()
 })
+
+test('Computers follow the server visibility rules and never carry provider references', async () => {
+  const { t, as } = await connectionFixture()
+  const computers = makeFunctionReference<'query'>('computers/browse:list')
+  await t.run(async ctx => {
+    await ctx.db.patch((await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', 'ws').eq('principalId', 'p-carol')).unique())!._id, { role: 'owner' })
+    const agent = (agentId: string, visibility: string, creator: string) => ctx.db.insert('workspaceAgentDefinitions', {
+      agentId, workspaceId: 'ws', principalId: `ap-${agentId}`, name: agentId, instructions: 'x', harness: 'overlay', modelId: 'm',
+      allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: creator, visibility, createdAt: 1, updatedAt: 1,
+    } as never)
+    await agent('shared-agent', 'workspace', 'p-alice')
+    await agent('private-agent', 'creator', 'p-alice')
+    const computer = (id: string, ownerType: string, ownerId: string) => ctx.db.insert('computers', {
+      id, workspaceId: 'ws', ownerType, ownerId, provider: 'box', providerRef: 'secret-ref', size: 'default', status: 'ready', createdBy: 'alice', createdAt: 1, updatedAt: 1,
+    } as never)
+    await computer('alice-pc', 'user', 'alice')
+    await computer('shared-pc', 'agent', 'shared-agent')
+    await computer('private-pc', 'agent', 'private-agent')
+    await computer('orphan-pc', 'agent', 'deleted-agent')
+  })
+  const ids = async (subject: string) => ((await as(subject).query(computers, { workspaceId: 'ws' })) as Array<{ id: string; providerRef: unknown }>)
+  const alice = await ids('alice')
+  expect(alice.map(c => c.id)).toEqual(['alice-pc', 'shared-pc', 'private-pc'])
+  expect(alice.every(c => c.providerRef === null)).toBe(true)
+  expect((await ids('bob')).map(c => c.id)).toEqual(['shared-pc'])
+  expect((await ids('carol')).map(c => c.id)).toEqual(['shared-pc', 'private-pc', 'orphan-pc'])
+  expect(await as('stranger').query(computers, { workspaceId: 'ws' })).toBeNull()
+})
+
+test('environments never carry public keys, pending ones show their phrase, and bindings are for managers', async () => {
+  const { t, as } = await connectionFixture()
+  const environments = makeFunctionReference<'query'>('agents/environmentsBrowse:list')
+  const bindings = makeFunctionReference<'query'>('agents/environmentsBrowse:bindings')
+  await t.run(async ctx => {
+    await ctx.db.patch((await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', 'ws').eq('principalId', 'p-alice')).unique())!._id, { role: 'admin' })
+    await ctx.db.insert('agentEnvironments', { environmentId: 'env-1', workspaceId: 'ws', kind: 'local', name: 'Laptop', status: 'online', publicKey: 'pk', capabilities: {}, lastSeenAt: 5, createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('agentEnvironments', { environmentId: 'env-2', workspaceId: 'ws', kind: 'local', name: 'New', status: 'pending', capabilities: {}, createdAt: 2, updatedAt: 2 })
+    await ctx.db.insert('agentEnrollmentSessions', { enrollmentSessionId: 'e', workspaceId: 'ws', createdByUserId: 'alice', codeHash: 'hash', verificationPhrase: 'blue fox', status: 'redeemed', environmentId: 'env-2', expiresAt: 9e15, createdAt: 2, updatedAt: 2 })
+    await ctx.db.insert('agentBindings', { bindingId: 'b', workspaceId: 'ws', agentId: 'a', environmentId: 'env-1', protocolAdapter: 'acp', adapterConfig: {}, enabled: true, createdAt: 1, updatedAt: 1 })
+  })
+  const rows = await as('bob').query(environments, { workspaceId: 'ws' }) as Array<Record<string, unknown>>
+  expect(rows.map(r => r.id)).toEqual(['env-2', 'env-1'])
+  expect(rows.find(r => r.id === 'env-1')).not.toHaveProperty('publicKey')
+  expect(rows.find(r => r.id === 'env-2')).toMatchObject({ verificationPhrase: 'blue fox' })
+  expect(JSON.stringify(rows)).not.toContain('hash')
+  expect(await as('bob').query(bindings, { workspaceId: 'ws' })).toBeNull()
+  expect((await as('alice').query(bindings, { workspaceId: 'ws', agentId: 'a' }) as Array<{ id: string }>).map(b => b.id)).toEqual(['b'])
+  expect(await as('stranger').query(environments, { workspaceId: 'ws' })).toBeNull()
+})
