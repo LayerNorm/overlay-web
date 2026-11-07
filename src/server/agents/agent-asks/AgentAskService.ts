@@ -22,6 +22,7 @@ import type { ConversationCollaborationRepository } from '@/server/conversations
 import type { AgentRun } from '@/shared/agents/agent-run'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import type { NativeAgentAssignmentContext } from './native-assignment-context'
+import type { AssignmentResultView } from '@/shared/agents/assignment-result'
 import {
   HARNESS_DISPATCH_REQUIRED_CODE,
   HARNESS_DISPATCH_REQUIRED_MESSAGE,
@@ -41,7 +42,7 @@ export class AgentAskError extends Error {
 }
 
 type Collaboration = Pick<ConversationCollaborationRepository,
-  'createDirectMessage' | 'createAgentAssignment' | 'addAgentMessage' | 'addMessage' | 'listMessages' | 'listParticipants' | 'getAccessibleConversation'>
+  'createDirectMessage' | 'createAgentAssignment' | 'readAgentAssignmentResult' | 'addAgentMessage' | 'addMessage' | 'listMessages' | 'listParticipants' | 'getAccessibleConversation'>
 
 export type AgentAskStatus = 'completed' | 'working' | 'failed'
 export type AgentAskResult = {
@@ -51,6 +52,8 @@ export type AgentAskResult = {
   conversationId: string
   turnId: string
   assignmentId?: string
+  attemptId?: string
+  result?: AssignmentResultView
   reply?: string
   error?: string
 }
@@ -112,6 +115,8 @@ export class AgentAskService {
     /** The asking agent and the turn it is in; absent for an outside app asking for the person. */
     caller?: Caller
     nativeAssignment?: NativeAgentAssignmentContext
+    assignmentId?: string
+    expectedAttemptId?: string
     target: string
     message: string
     wait: boolean
@@ -126,6 +131,7 @@ export class AgentAskService {
       throw new AgentAskError("External agents can't be asked from this run yet.", 409, 'native_external_agent_unsupported')
     }
     if (args.nativeAssignment && !args.caller) throw new AgentAskError('Native assignment identity is missing.', 400, 'invalid_assignment')
+    if (args.assignmentId && !args.nativeAssignment) throw new AgentAskError('Revisions require a native assignment context.', 409, 'native_assignment_required')
     if (!args.caller) return await this.askAsPerson({ ...args, message, target })
 
     const { caller, lineage } = await this.callerLineage(args, visible, args.caller)
@@ -145,11 +151,12 @@ export class AgentAskService {
     let assignmentCreated = false
     try {
       const content = `Asked by ${caller.name}: ${message}`
-      const assignmentId = args.nativeAssignment
+      const dispatchAssignmentId = args.nativeAssignment
         ? `assignment_${createHash('sha256').update(`${args.nativeAssignment.parentRunId}\0${args.nativeAssignment.toolCallId}\0${target.id}`).digest('hex')}`
         : undefined
-      const questionTurnId = assignmentId
-        ? `ask_${createHash('sha256').update(assignmentId).digest('hex').slice(0, 24)}`
+      const assignmentId = args.assignmentId ?? dispatchAssignmentId
+      const questionTurnId = dispatchAssignmentId
+        ? `ask_${createHash('sha256').update(dispatchAssignmentId).digest('hex').slice(0, 24)}`
         : `ask_${createHash('sha256').update(`${args.caller.turnId}:${target.id}:${message}`).digest('hex').slice(0, 24)}`
       const room = args.nativeAssignment && assignmentId
         ? await this.dependencies.collaboration.createAgentAssignment({
@@ -165,6 +172,8 @@ export class AgentAskService {
             assignedAgentId: target.id,
             brief: message,
             questionTurnId,
+            revisionOfAssignmentId: args.assignmentId,
+            expectedAttemptId: args.expectedAttemptId,
           })
         : await this.dependencies.collaboration.createDirectMessage({
             actorUserId: args.actorUserId,
@@ -182,7 +191,7 @@ export class AgentAskService {
       const result = await this.finishAsk({
         person: args, agent: target.name, conversationId: room.conversationId, turnId: turn.turnId, wait: args.wait,
       })
-      return assignmentId ? { ...result, assignmentId } : result
+      return assignmentId ? { ...result, assignmentId, ...('attemptId' in room ? { attemptId: room.attemptId } : {}) } : result
     } catch (error) {
       // Nothing reached the other agent, so the question is not spent.
       if (!dispatchId || (claim.alreadyClaimed !== true && !assignmentCreated)) {
@@ -277,6 +286,14 @@ export class AgentAskService {
       actorUserId: args.actorUserId, conversationId: args.conversationId, workspaceId: args.workspaceId,
     })
     if (!accessible) throw new AgentAskError('That conversation was not found.', 404, 'not_found')
+    const assignment = await this.dependencies.collaboration.readAgentAssignmentResult(args)
+    if (assignment) {
+      const status = assignment.state !== 'ready' ? 'working' : assignment.runStatus === 'completed' ? 'completed' : 'failed'
+      return { status, agent: 'The agent', conversationId: args.conversationId, turnId: args.turnId,
+        assignmentId: assignment.assignmentId, attemptId: assignment.attemptId, result: assignment,
+        ...(assignment.state === 'ready' ? { reply: assignment.reply } : {}),
+        ...(status === 'failed' ? { error: assignment.failureReason ?? 'Assignment failed.' } : {}) }
+    }
     const reply = await this.findReply(args)
     return this.resultFrom(reply, { agent: 'The agent', conversationId: args.conversationId, turnId: args.turnId })
   }
@@ -458,9 +475,8 @@ export class AgentAskService {
     const now = this.dependencies.now ?? Date.now
     const sleep = this.dependencies.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
     const deadline = now() + (this.dependencies.waitMs ?? REPLY_WAIT_MS)
-    const handle = { agent: args.agent, conversationId: args.conversationId, turnId: args.turnId }
     for (;;) {
-      const result = this.resultFrom(await this.findReply(args), handle)
+      const result = { ...await this.read(args), agent: args.agent }
       if (result.status !== 'working' || now() >= deadline) return result
       await sleep(REPLY_POLL_MS)
     }

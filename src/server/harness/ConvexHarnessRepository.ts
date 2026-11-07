@@ -17,6 +17,7 @@ import type {
 import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessArtifactMetadata } from './artifact-context'
 import type { HarnessRunnerCheckpoint } from './ports'
+import type { AssignmentResultView } from '@/shared/agents/assignment-result'
 import type {
   HarnessConsumeResourceGrantInput, HarnessGrantResourcesInput, HarnessResourceConsumeResult,
   HarnessResourceGrantReceipt, HarnessResourcePauseInput, HarnessResourceRequestRecord,
@@ -38,6 +39,29 @@ function artifactClient() {
 }
 
 export class ConvexHarnessRepository implements HarnessRepository {
+  async readAssignmentResult(args: { actorUserId: string; workspaceId: string; parentRunId?: string; childRunId?: string; conversationId?: string; turnId?: string }) {
+    return await convex.query<AssignmentResultView | null>('collaboration/assignmentResults:read', { ...args, serverSecret: this.serverSecret }, { throwOnError: true })
+  }
+
+  async settleAssignmentResult(childRunId: string) {
+    await convex.mutation('collaboration/assignmentResults:settle', { childRunId, serverSecret: this.serverSecret }, { throwOnError: true })
+  }
+
+  async readSettledAssignmentArtifact(input: { actorUserId: string; workspaceId: string; attemptId: string; artifactId: string }) {
+    const identity = { ...input, serverSecret: this.serverSecret }
+    const metadata = await convex.query<HarnessArtifactMetadata | null>('collaboration/assignmentResults:settledArtifact', identity, { throwOnError: true })
+    if (!metadata) return null
+    const client = artifactClient()
+    const bytes = new Uint8Array(metadata.byteSize)
+    for (let offset = 0; offset < metadata.byteSize; offset += 256 * 1024) {
+      const chunk = await client.action(api.harness.artifacts.readSettledResultChunk, { ...identity, offset,
+        length: Math.min(256 * 1024, metadata.byteSize - offset) })
+      if (!chunk) throw new Error('Harness artifact content is unavailable.')
+      bytes.set(new Uint8Array(chunk), offset)
+    }
+    return bytes
+  }
+
   private get serverSecret(): string {
     return getInternalApiSecret()
   }

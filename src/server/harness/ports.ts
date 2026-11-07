@@ -8,6 +8,7 @@ import type { ModelMessage, StepResult, ToolSet } from 'ai'
 import type { HarnessChild, HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessOperation } from '@overlay/agent-runtime/harness-store'
 import type { HarnessModelReference } from './secure-model'
+import type { AssignmentResultView } from '@/shared/agents/assignment-result'
 import type { HarnessInstructionContext } from './context'
 import type { HarnessToolApprovalGrant } from './tool-approvals'
 import type { AuthenticatedToolDenial, ObservedToolOutcome } from './tool-outcome-persistence'
@@ -98,6 +99,7 @@ export interface HarnessExecutionPorts {
   recordToolResult(event: WorkflowAgentToolExecutionEndEvent<ToolSet>): Promise<void>
   delegate(input: HarnessDelegation, toolCallId: string): Promise<HarnessChild>
   readChild(childRunId: string): Promise<HarnessSnapshot>
+  readAssignmentResult?(childRunId: string): Promise<AssignmentResultView | null>
   waitForChildren(childRunIds: string[]): Promise<void>
   waitForInput(state: HarnessSnapshot): Promise<ModelMessage[] | null>
   waitForApproval(requests: HarnessApprovalRequest[]): Promise<Array<{

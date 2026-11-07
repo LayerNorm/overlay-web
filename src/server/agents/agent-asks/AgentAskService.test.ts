@@ -4,6 +4,7 @@ import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { agentLineagePart, MAX_AGENT_ASKS_PER_ROOT } from '@/shared/agents/agent-lineage'
 import { AgentAskError, AgentAskService } from './AgentAskService'
 import { nativeAgentAssignmentContext } from './native-assignment-context'
+import type { AssignmentResultView } from '@/shared/agents/assignment-result'
 
 const agent = (id: string, name: string, extra: Partial<WorkspaceAgentDirectoryItem> = {}): WorkspaceAgentDirectoryItem => ({
   id, name, principalId: `p-${id}`, workspaceId: 'ws', instructions: '', harness: 'overlay', modelId: 'm', allowedToolIds: [],
@@ -13,7 +14,7 @@ const agent = (id: string, name: string, extra: Partial<WorkspaceAgentDirectoryI
 
 type Row = Record<string, unknown> & { _id: string; turnId: string }
 
-function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown>; initialAskClaims?: number; replies?: Map<string, Row[]> } = {}) {
+function setup(options: { assignmentResult?: AssignmentResultView; assignmentReadError?: Error; agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown>; initialAskClaims?: number; replies?: Map<string, Row[]> } = {}) {
   const agents = options.agents ?? [agent('scout', 'Scout'), agent('planner', 'Planner'), agent('writer', 'Writer')]
   const trigger: Row | null = options.trigger === undefined
     ? { _id: 'm1', turnId: 'human-turn-1', authorKind: 'human', content: 'hi', role: 'user', mode: 'act', contentType: 'text', createdAt: 0 } as Row
@@ -36,6 +37,10 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
     getCallerRun: async (args) => { callerLookups.push(args); return (options.callerRun ?? null) as never },
     directory: async () => agents,
     collaboration: {
+      readAgentAssignmentResult: async () => {
+        if (options.assignmentReadError) throw options.assignmentReadError
+        return options.assignmentResult ?? null
+      },
       createDirectMessage: async () => ({ conversationId: 'room-1', workspaceId: 'ws', title: '', participants: [], created: true } as never),
       createAgentAssignment: async (args: Record<string, unknown>) => {
         assignmentCalls.push(args)
@@ -137,6 +142,25 @@ test('native assignments isolate dispatches and replay the same assignment messa
   assert.notEqual(replay.assignmentId, second.assignmentId)
   assert.notEqual(replay.conversationId, second.conversationId)
   assert.equal(state.assignments.size, 2)
+})
+
+test('assignment reply reads preserve full final text, publication pending and execution failures', async () => {
+  const reply = 'Full final reply. '.repeat(2500)
+  const assignmentResult: AssignmentResultView = { assignmentId: 'assignment', attemptId: 'attempt', conversationId: 'room',
+    turnId: 'turn', superseded: true, state: 'ready', runStatus: 'completed', terminal: true, summary: 'Summary', reply, artifactRefs: [] }
+  const args = { actorUserId: 'u1', workspaceId: 'ws', conversationId: 'room', turnId: 'turn' }
+  const complete = await setup({ assignmentResult }).service.read(args)
+  assert.equal(complete.reply, reply)
+  assert.equal(complete.result?.superseded, true)
+  assert.equal(complete.status, 'completed')
+  const pending = await setup({ assignmentResult: { ...assignmentResult, state: 'publication_pending', reply: undefined } }).service.read(args)
+  assert.equal(pending.status, 'working')
+  assert.equal(pending.reply, undefined)
+  const failed = await setup({ assignmentResult: { ...assignmentResult, runStatus: 'failed', failureReason: 'Tool failed' } }).service.read(args)
+  assert.equal(failed.status, 'failed')
+  assert.equal(failed.reply, reply)
+  assert.equal(failed.error, 'Tool failed')
+  await assert.rejects(setup({ assignmentReadError: new Error('ASSIGNMENT_ACCESS_DENIED') }).service.read(args), /ASSIGNMENT_ACCESS_DENIED/)
 })
 
 test('native replay at the ask-budget boundary reuses its persisted dispatch claim', async () => {

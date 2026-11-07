@@ -1,4 +1,5 @@
 import 'server-only'
+import type { AssignmentResultView } from '@/shared/agents/assignment-result'
 
 import type {
   ConversationNotificationLevel,
@@ -206,7 +207,10 @@ export interface ConversationCollaborationRepository {
     assignedAgentId: string
     brief: string
     questionTurnId: string
-  }): Promise<{ assignmentId: string; conversationId: string; title: string }>
+    revisionOfAssignmentId?: string
+    expectedAttemptId?: string
+  }): Promise<{ assignmentId: string; attemptId?: string; conversationId: string; title: string }>
+  readAgentAssignmentResult(args: { actorUserId: string; workspaceId: string; conversationId: string; turnId: string }): Promise<AssignmentResultView | null>
   listAccessibleConversationIds(args: {
     actorUserId: string
     workspaceId: string

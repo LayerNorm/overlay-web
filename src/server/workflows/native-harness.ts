@@ -8,7 +8,7 @@ import { createHarnessWaitPorts } from '@/server/harness/waits'
 import { admitNativeHarnessChild } from '@/server/harness/native-child-steps'
 import { buildNativeHarnessDelivery } from '@/server/harness/native-tool-metrics'
 import {
-  attachNativeHarnessDelivery, finishNativeHarnessDelivery, projectNativeHarnessWait,
+  attachNativeHarnessDelivery, finishNativeHarnessDelivery, projectNativeHarnessWait, readNativeAssignmentResult, settleNativeAssignmentResult,
 } from '@/server/harness/native-delivery-steps'
 import { notifyHarnessAncestors, readHarnessChild } from '@/server/harness/personal-wait-steps'
 import { harnessWakeToken } from '@/server/harness/wait-token'
@@ -87,6 +87,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
         projectWait: projection => projectNativeHarnessWait(access, projection),
       }),
       readChild: childRunId => readHarnessChild(access, childRunId),
+      readAssignmentResult: childRunId => readNativeAssignmentResult(access, childRunId),
       continueExecution: checkpoint => handoffHarnessContinuation({
         reference: access, workflowKind: 'native',
         checkpoint,
@@ -153,6 +154,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     const journal = await readHarnessTranscriptForDelivery(access, result)
     const delivery = buildNativeHarnessDelivery(result, activeToolNames, journal)
     await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: input.context.memoryEnabled }, activeToolNames)
+    await settleNativeAssignmentResult(access)
   }
   if (initial.parentRunId) await notifyHarnessAncestors(access)
   return { runId: result.snapshot.runId, status: result.snapshot.status }

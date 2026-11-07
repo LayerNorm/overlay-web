@@ -22,6 +22,26 @@ type AssignmentArgs = {
   assignedAgentId: string
   brief: string
   questionTurnId: string
+  revisionOfAssignmentId?: string
+  expectedAttemptId?: string
+}
+
+function dispatchFingerprint(args: AssignmentArgs) {
+  return JSON.stringify([args.workspaceId, args.requesterUserId, args.assignmentId, args.parentConversationId,
+    args.parentRunId, args.rootRunId, args.callerAgentId, args.assignedAgentId, args.brief, args.questionTurnId,
+    args.revisionOfAssignmentId ?? null, args.expectedAttemptId ?? null])
+}
+
+async function createAttempt(ctx: MutationCtx, args: AssignmentArgs, conversationId: Doc<'conversations'>['_id'], ordinal: number) {
+  const attemptId = `attempt:${args.idempotencyKey}`
+  await ctx.db.insert('agentAssignmentAttempts', {
+    workspaceId: args.workspaceId, assignmentId: args.assignmentId, conversationId,
+    attemptId, ordinal, dispatchKey: args.idempotencyKey, expectedAttemptId: args.expectedAttemptId,
+    dispatchFingerprint: dispatchFingerprint(args),
+    parentRunId: args.parentRunId, rootRunId: args.rootRunId, requesterUserId: args.requesterUserId,
+    brief: args.brief, questionTurnId: args.questionTurnId, createdAt: Date.now(),
+  })
+  return attemptId
 }
 
 async function requireRequester(ctx: DbContext, args: { workspaceId: string; requesterUserId: string }) {
@@ -141,6 +161,7 @@ async function assertCallerRun(
     || ['completed', 'failed', 'cancelled'].includes(delivery.status)) {
     throw new Error('HARNESS_ACCESS_DENIED')
   }
+  return run
 }
 
 async function accessibleConversation(
@@ -181,6 +202,14 @@ function agentScope(agent: Doc<'workspaceAgentDefinitions'>): 'workspace' | 'per
 }
 
 async function projectedStatus(ctx: DbContext, assignment: Doc<'agentAssignments'>) {
+  if (assignment.currentAttemptId) {
+    const attempt = await ctx.db.query('agentAssignmentAttempts').withIndex('by_attemptId', q => q.eq('attemptId', assignment.currentAttemptId!)).unique()
+    if (!attempt?.deliveryAgentRunId) return 'queued'
+    const result = await ctx.db.query('agentAssignmentResults').withIndex('by_attemptId', q => q.eq('attemptId', attempt.attemptId)).unique()
+    if (result?.publicationPending) return 'publication_pending'
+    const delivery = await ctx.db.get(attempt.deliveryAgentRunId)
+    return result?.runStatus ?? delivery?.status ?? 'queued'
+  }
   const runs = await ctx.db.query('conversationAgentRuns')
     .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', assignment.conversationId))
     .order('desc')
@@ -189,6 +218,27 @@ async function projectedStatus(ctx: DbContext, assignment: Doc<'agentAssignments
 }
 
 const navigationScope = v.union(v.literal('workspace'), v.literal('personal'))
+const originView = v.object({ platform: v.literal('slack'), channelName: v.optional(v.string()), channelId: v.string(), threadLinkId: v.string() })
+
+async function authorizedOrigin(ctx: QueryCtx, viewer: Awaited<ReturnType<typeof requireNativeWorkspace>>, workspaceId: string, conversationId: Doc<'conversations'>['_id']) {
+  const visited = new Set<string>()
+  let current = conversationId
+  while (!visited.has(current)) {
+    visited.add(current)
+    if (!await accessibleConversation(ctx, viewer, workspaceId, current)) return undefined
+    const link = await ctx.db.query('surfaceThreadLinks').withIndex('by_conversationId', q => q.eq('conversationId', current)).unique()
+    if (link) {
+      const connection = await ctx.db.query('surfaceConnections').withIndex('by_entityId', q => q.eq('id', link.connectionId)).unique()
+      if (link.workspaceId !== workspaceId || !connection || connection.workspaceId !== workspaceId
+        || connection.status === 'uninstalled' || connection.externalTeamId !== link.externalTeamId) return undefined
+      return { platform: link.platform, channelName: link.channelName, channelId: link.channelId, threadLinkId: String(link._id) }
+    }
+    const assignment = await ctx.db.query('agentAssignments').withIndex('by_conversationId', q => q.eq('conversationId', current)).unique()
+    if (!assignment || assignment.workspaceId !== workspaceId) return undefined
+    current = assignment.parentConversationId
+  }
+  return undefined
+}
 const parentView = v.object({
   assignmentId: v.string(),
   conversationId: v.id('conversations'),
@@ -204,6 +254,7 @@ const assignmentView = v.object({
   title: v.string(),
   status: v.string(),
   scope: navigationScope,
+  currentAttemptId: v.optional(v.string()),
 })
 
 export const createAgentAssignment = mutation({
@@ -221,8 +272,10 @@ export const createAgentAssignment = mutation({
     assignedAgentId: v.string(),
     brief: v.string(),
     questionTurnId: v.string(),
+    revisionOfAssignmentId: v.optional(v.string()),
+    expectedAttemptId: v.optional(v.string()),
   },
-  returns: v.object({ assignmentId: v.string(), conversationId: v.id('conversations'), title: v.string() }),
+  returns: v.object({ assignmentId: v.string(), attemptId: v.optional(v.string()), conversationId: v.id('conversations'), title: v.string() }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
     if (!args.assignmentId.trim() || !args.toolCallId.trim() || args.toolCallId.length > 256
@@ -247,7 +300,44 @@ export const createAgentAssignment = mutation({
     }
     visibleToRequester(caller.agent, requester.principalId, args.requesterUserId)
     visibleToRequester(target.agent, requester.principalId, args.requesterUserId)
-    await assertCallerRun(ctx, args, caller.principal.principalId)
+    const callerRun = await assertCallerRun(ctx, args, caller.principal.principalId)
+    if (args.revisionOfAssignmentId && args.revisionOfAssignmentId !== args.assignmentId) throw new Error('ASSIGNMENT_REVISION_CONFLICT')
+
+    const replay = await ctx.db.query('agentAssignmentAttempts')
+      .withIndex('by_workspaceId_dispatchKey', q => q.eq('workspaceId', args.workspaceId).eq('dispatchKey', args.idempotencyKey)).unique()
+    if (replay) {
+      const assignment = await ctx.db.query('agentAssignments').withIndex('by_assignmentId', q => q.eq('assignmentId', replay.assignmentId)).unique()
+      if (!assignment || replay.dispatchFingerprint !== dispatchFingerprint(args)
+        || assignment.assignedAgentId !== args.assignedAgentId || assignment.callerAgentId !== args.callerAgentId
+        || assignment.parentConversationId !== args.parentConversationId || replay.assignmentId !== args.assignmentId
+        || replay.requesterUserId !== args.requesterUserId || replay.parentRunId !== args.parentRunId
+        || replay.rootRunId !== args.rootRunId || replay.brief !== args.brief || replay.questionTurnId !== args.questionTurnId
+        || replay.expectedAttemptId !== args.expectedAttemptId
+        || Boolean(args.revisionOfAssignmentId) !== (replay.ordinal > 1)) throw new Error('ASSIGNMENT_IDEMPOTENCY_CONFLICT')
+      const child = await requireConversationAccess(ctx, { actorUserId: args.requesterUserId, workspaceId: args.workspaceId,
+        conversationId: replay.conversationId, serverSecret: args.serverSecret })
+      return { assignmentId: replay.assignmentId, attemptId: replay.attemptId, conversationId: replay.conversationId, title: child.conversation.title }
+    }
+    if (args.revisionOfAssignmentId) {
+      if (args.assignmentId !== args.revisionOfAssignmentId || !args.expectedAttemptId) throw new Error('ASSIGNMENT_REVISION_CONFLICT')
+      const assignment = await ctx.db.query('agentAssignments').withIndex('by_assignmentId', q => q.eq('assignmentId', args.assignmentId)).unique()
+      if (!assignment || assignment.workspaceId !== args.workspaceId || assignment.requesterUserId !== args.requesterUserId
+        || assignment.callerAgentId !== args.callerAgentId || assignment.assignedAgentId !== args.assignedAgentId
+        || assignment.parentConversationId !== args.parentConversationId) throw new Error('ASSIGNMENT_ACCESS_DENIED')
+      await requireConversationAccess(ctx, { actorUserId: args.requesterUserId, workspaceId: args.workspaceId,
+        conversationId: assignment.conversationId, serverSecret: args.serverSecret })
+      if (!assignment.currentAttemptId) throw new Error('LEGACY_ASSIGNMENT_REVISION_UNSUPPORTED')
+      if (assignment.currentAttemptId !== args.expectedAttemptId) throw new Error('ASSIGNMENT_REVISION_CONFLICT')
+      const previous = await ctx.db.query('agentAssignmentAttempts').withIndex('by_attemptId', q => q.eq('attemptId', args.expectedAttemptId!)).unique()
+      if (!previous || previous.assignmentId !== assignment.assignmentId) throw new Error('ASSIGNMENT_REVISION_CONFLICT')
+      const attemptId = await createAttempt(ctx, args, assignment.conversationId, previous.ordinal + 1)
+      await ctx.db.patch(previous._id, { disposition: 'revision_requested', dispositionReason: args.brief,
+        disposedByRunId: args.parentRunId, disposedAt: Date.now() })
+      await ctx.db.patch(assignment._id, { currentAttemptId: attemptId, coordinationRevision: (assignment.coordinationRevision ?? 0) + 1, updatedAt: Date.now() })
+      const conversation = await ctx.db.get(assignment.conversationId)
+      return { assignmentId: args.assignmentId, attemptId, conversationId: assignment.conversationId, title: conversation!.title }
+    }
+    if (args.expectedAttemptId) throw new Error('ASSIGNMENT_REVISION_CONFLICT')
 
     const existing = await ctx.db.query('agentAssignments')
       .withIndex('by_workspaceId_idempotencyKey', q => q.eq('workspaceId', args.workspaceId)
@@ -311,6 +401,7 @@ export const createAgentAssignment = mutation({
       createdAt: now,
       updatedAt: now,
     })
+    const attemptId = await createAttempt(ctx, args, conversationId, 1)
     await ctx.db.insert('agentAssignments', {
       workspaceId: args.workspaceId,
       assignmentId: args.assignmentId,
@@ -324,15 +415,17 @@ export const createAgentAssignment = mutation({
       conversationId,
       brief: args.brief,
       questionTurnId: args.questionTurnId,
+      currentAttemptId: attemptId, coordinationRevision: 0, authorityPolicyVersion: JSON.parse(callerRun.metadataJson).policyRevision ?? 0,
+      contextRefs: [], dependsOnAssignmentIds: [], updatedAt: now,
       createdAt: now,
     })
-    return { assignmentId: args.assignmentId, conversationId, title }
+    return { assignmentId: args.assignmentId, attemptId, conversationId, title }
   },
 })
 
 export const forConversation = query({
   args: { workspaceId: v.string(), conversationId: v.string() },
-  returns: v.object({ parent: v.union(v.null(), parentView), assignments: v.array(assignmentView) }),
+  returns: v.object({ parent: v.union(v.null(), parentView), assignments: v.array(assignmentView), origin: v.optional(originView) }),
   handler: async (ctx, args) => {
     const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
     await requireNativeCapability(ctx, viewer.userId, 'conversations.read')
@@ -385,8 +478,10 @@ export const forConversation = query({
         title: child.title,
         status: await projectedStatus(ctx, assignment),
         scope: agentScope(agent),
+        currentAttemptId: assignment.currentAttemptId,
       })
     }
-    return { parent, assignments }
+    const origin = await authorizedOrigin(ctx, viewer, args.workspaceId, conversationId)
+    return { parent, assignments, ...(origin ? { origin } : {}) }
   },
 })

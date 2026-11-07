@@ -326,6 +326,8 @@ export async function dispatchNativeHarnessAgentRequest(
   }
   if (toolName === 'ask_agent') {
     if (typeof values.agent !== 'string' || typeof values.message !== 'string') throw new FatalError('Invalid ask_agent input.')
+    if ((values.assignmentId !== undefined && typeof values.assignmentId !== 'string')
+      || (values.expectedAttemptId !== undefined && typeof values.expectedAttemptId !== 'string')) throw new FatalError('Invalid assignment revision input.')
     const target = values.agent
     const message = values.message
     const directory = await server.workspaceAgentService.list({
@@ -359,6 +361,8 @@ export async function dispatchNativeHarnessAgentRequest(
         ...actor,
         target,
         message,
+        assignmentId: typeof values.assignmentId === 'string' ? values.assignmentId : undefined,
+        expectedAttemptId: typeof values.expectedAttemptId === 'string' ? values.expectedAttemptId : undefined,
         wait: false,
         nativeAssignment: nativeAgentAssignmentContext({
           parentConversationId: access.conversationId,

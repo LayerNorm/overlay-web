@@ -44,6 +44,32 @@ function noPlanState() {
   }, Date.now())
 }
 
+test('assignment child reads return the canonical full reply and never settle publication-pending results', async () => {
+  const f = fixture()
+  const reply = 'Full final reply. '.repeat(2500)
+  const readAssignmentResult = vi.fn(async () => ({ assignmentId: 'assignment', attemptId: 'attempt',
+    conversationId: 'room', turnId: 'reply-turn', superseded: false, terminal: true,
+    state: 'ready' as const, runStatus: 'completed', summary: 'Short summary', reply, artifactRefs: [] }))
+  f.ports.readAssignmentResult = readAssignmentResult
+  const result = await createHarnessControlTools(f.ports).harness_read_child.execute!(
+    { childRunId: 'child' }, { toolCallId: 'read-assignment', messages: [] },
+  )
+  expect(result).toMatchObject({ reply, assignment: { reply, attemptId: 'attempt' } })
+  expect(readAssignmentResult).toHaveBeenCalledWith('child')
+  f.apply.mockClear()
+  f.ports.readAssignmentResult = vi.fn(async () => ({ ...await readAssignmentResult(), state: 'publication_pending', reply: undefined }))
+  const pending = await createHarnessControlTools(f.ports).harness_read_child.execute!(
+    { childRunId: 'child' }, { toolCallId: 'read-pending', messages: [] },
+  )
+  expect(pending).toMatchObject({ publicationPending: true })
+  expect(f.apply).not.toHaveBeenCalled()
+  f.ports.readAssignmentResult = vi.fn(async () => ({ ...await readAssignmentResult(), runStatus: 'failed', failureReason: 'Delivery failed' }))
+  expect(await createHarnessControlTools(f.ports).harness_read_child.execute!(
+    { childRunId: 'child' }, { toolCallId: 'failed-delivery', messages: [] },
+  )).toMatchObject({ status: 'failed', reply })
+  expect(f.apply).not.toHaveBeenCalled()
+})
+
 test('plan steps need only an id and a title', async () => {
   const f = fixture()
   const apply = vi.fn<HarnessExecutionPorts['apply']>(async () => f.ports.read())

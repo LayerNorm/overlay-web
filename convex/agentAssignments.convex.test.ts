@@ -121,6 +121,236 @@ function args(data: Awaited<ReturnType<typeof fixture>>, overrides: Record<strin
   }
 }
 
+async function dispatched(data: Awaited<ReturnType<typeof fixture>>, input = args(data)) {
+  const assignment = await data.convex.mutation(createAssignment, input)
+  const messageId = await data.convex.mutation(mutation('collaboration/directMessages:addAgentMessage'), {
+    serverSecret: secret, actorUserId: 'alice', workspaceId: 'workspace', conversationId: assignment.conversationId,
+    authorPrincipalId: 'caller-principal', clientNonce: input.questionTurnId, content: input.brief,
+    turnId: input.questionTurnId, modelId: 'openrouter/free', messagePurpose: 'agent_request',
+  })
+  const turnId = `agent_${messageId}_target`
+  const turn = await data.convex.mutation(mutation('collaboration/directMessages:startAgentTurn'), {
+    serverSecret: secret, actorUserId: 'alice', workspaceId: 'workspace', conversationId: assignment.conversationId,
+    agentId: 'target', authorPrincipalId: 'target-principal', initiatorPrincipalId: 'caller-principal',
+    clientNonce: turnId, turnId, userMessageId: messageId, modelId: 'openrouter/free', executionEngine: 'overlay_harness',
+  })
+  const childRunId = `workspace:${turn.runId}`
+  const revision = await data.convex.run(async ctx => {
+    const run = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', data.parentRunId)).unique()
+    return JSON.parse(run!.metadataJson).revision
+  })
+  await data.convex.mutation(mutation('harness/runs:apply'), {
+    actorUserId: 'alice', runId: data.parentRunId, serverSecret: secret, expectedRevision: revision,
+    operationId: `dispatch:${input.toolCallId}`, operation: {
+      type: 'admit_named_child', child: { id: childRunId, stepId: `step:${input.toolCallId}`, allowedToolIds: [],
+        maxCostMicros: 0, costMicros: 0, status: 'running', evidenceRefs: [] },
+      step: { title: 'Review', acceptanceCriteria: ['Reply to the request'] }, goal: input.brief, constraints: [],
+      target: { deliveryAgentRunId: turn.runId, conversationId: assignment.conversationId },
+    },
+  })
+  return { ...assignment, childRunId, turnId, turn, messageId }
+}
+
+async function childState(data: Awaited<ReturnType<typeof fixture>>, child: Awaited<ReturnType<typeof dispatched>>, status: string, finalized: boolean, content = 'Full reply. '.repeat(2500)) {
+  await data.convex.run(async ctx => {
+    const run = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', child.childRunId)).unique()
+    const state = JSON.parse(run!.metadataJson)
+    await ctx.db.patch(run!._id, { metadataJson: JSON.stringify({ ...state, revision: state.revision + 1,
+      status, resultSummary: 'A short summary', ...(status === 'failed' ? { terminalReason: 'Tool failed' } : {}) }) })
+    if (finalized) {
+      await ctx.db.patch(child.turn.messageId, { status: status === 'completed' ? 'completed' : 'error', content })
+      await ctx.db.patch(child.turn.runId, { status: status === 'completed' ? 'completed' : status === 'cancelled' ? 'cancelled' : 'failed' })
+    }
+  })
+  await data.convex.mutation(mutation('collaboration/assignmentResults:settle'), { serverSecret: secret, childRunId: child.childRunId })
+}
+
+const readResult = query('collaboration/assignmentResults:read')
+const readArtifact = query('collaboration/assignmentResults:settledArtifact')
+const resultActor = { serverSecret: secret, actorUserId: 'alice', workspaceId: 'workspace' }
+
+test('attempt replay has one brief and delivery; revisions preserve the conversation and immutable provenance', async () => {
+  const data = await fixture()
+  const original = await dispatched(data)
+  const replay = await dispatched(data)
+  expect(replay).toEqual({ ...original, turn: { ...original.turn, resumed: true } })
+  const nextInput = args(data, { toolCallId: 'revision', assignmentId: original.assignmentId,
+    revisionOfAssignmentId: original.assignmentId, expectedAttemptId: original.attemptId, brief: 'Please revise' })
+  const next = await dispatched(data, nextInput)
+  expect(next.conversationId).toBe(original.conversationId)
+  expect(next.attemptId).not.toBe(original.attemptId)
+  expect(next.childRunId).not.toBe(original.childRunId)
+  expect(next.turnId).not.toBe(original.turnId)
+  await childState(data, next, 'completed', true, 'Current result')
+  await childState(data, original, 'completed', true, 'Old result')
+  expect(await data.convex.query(readResult, { ...resultActor, childRunId: original.childRunId })).toMatchObject({ reply: 'Old result', superseded: true })
+  expect(await data.convex.query(readResult, { ...resultActor, childRunId: next.childRunId })).toMatchObject({ reply: 'Current result', superseded: false })
+  await expect(data.convex.mutation(createAssignment, { ...nextInput, toolCallId: 'stale', idempotencyKey: `harness-run:${data.parentRunId}:tool:stale` }))
+    .rejects.toThrow('ASSIGNMENT_REVISION_CONFLICT')
+  await data.convex.run(async ctx => {
+    expect(await ctx.db.query('agentAssignments').collect()).toHaveLength(1)
+    expect(await ctx.db.query('agentAssignmentAttempts').collect()).toHaveLength(2)
+    const assignment = (await ctx.db.query('agentAssignments').collect())[0]!
+    expect(assignment.currentAttemptId).toBe(next.attemptId)
+    expect(assignment.questionTurnId).toBe('ask-call-1')
+    const messages = await ctx.db.query('conversationMessages').withIndex('by_conversationId_createdAt', q => q.eq('conversationId', original.conversationId)).collect()
+    expect(messages).toHaveLength(4)
+  })
+})
+
+test('competing revisions claim the expected attempt once and cannot retarget or change requester/caller authority', async () => {
+  const data = await fixture()
+  const original = await data.convex.mutation(createAssignment, args(data))
+  const revision = { assignmentId: original.assignmentId, revisionOfAssignmentId: original.assignmentId, expectedAttemptId: original.attemptId }
+  await expect(data.convex.mutation(createAssignment, args(data, { ...revision, toolCallId: 'retarget', assignedAgentId: 'caller' }))).rejects.toThrow()
+  await expect(data.convex.mutation(createAssignment, args(data, { ...revision, toolCallId: 'other-requester', requesterUserId: 'bob' }))).rejects.toThrow('HARNESS_ACCESS_DENIED')
+  await expect(data.convex.mutation(createAssignment, args(data, { ...revision, toolCallId: 'other-caller', callerAgentId: 'target', assignedAgentId: 'caller' }))).rejects.toThrow('HARNESS_ACCESS_DENIED')
+  const competing = await Promise.allSettled(['revision-a', 'revision-b'].map(toolCallId =>
+    data.convex.mutation(createAssignment, args(data, { ...revision, toolCallId }))))
+  expect(competing.filter(result => result.status === 'fulfilled')).toHaveLength(1)
+  expect(competing.filter(result => result.status === 'rejected')).toHaveLength(1)
+  await data.convex.run(async ctx => {
+    expect(await ctx.db.query('agentAssignmentAttempts').collect()).toHaveLength(2)
+  })
+})
+
+test('legacy assignments stay read projections and are never lazily materialized into attempts', async () => {
+  const data = await fixture()
+  const legacy = await data.convex.mutation(createAssignment, args(data))
+  await data.convex.run(async ctx => {
+    const assignment = (await ctx.db.query('agentAssignments').collect())[0]!
+    await ctx.db.patch(assignment._id, { currentAttemptId: undefined })
+    for (const attempt of await ctx.db.query('agentAssignmentAttempts').collect()) await ctx.db.delete(attempt._id)
+  })
+  expect(await data.convex.query(readResult, { ...resultActor, conversationId: legacy.conversationId, turnId: 'legacy-reply' })).toBeNull()
+  expect(await data.convex.mutation(createAssignment, args(data))).not.toHaveProperty('attemptId')
+  await expect(data.convex.mutation(createAssignment, args(data, { toolCallId: 'legacy-revision', assignmentId: legacy.assignmentId,
+    revisionOfAssignmentId: legacy.assignmentId, expectedAttemptId: 'unmaterialized' }))).rejects.toThrow('LEGACY_ASSIGNMENT_REVISION_UNSUPPORTED')
+  await data.convex.run(async ctx => { expect(await ctx.db.query('agentAssignmentAttempts').collect()).toHaveLength(0) })
+})
+
+test('publication is pending until delivery finalizes; both handles return the entire persisted reply and terminal receipts freeze', async () => {
+  const data = await fixture()
+  const child = await dispatched(data)
+  await childState(data, child, 'completed', false)
+  expect(await data.convex.query(readResult, { ...resultActor, childRunId: child.childRunId })).toMatchObject({ state: 'publication_pending', terminal: true })
+  const full = 'Full reply. '.repeat(2500)
+  await childState(data, child, 'completed', true, full)
+  const native = await data.convex.query(readResult, { ...resultActor, parentRunId: data.parentRunId, childRunId: child.childRunId })
+  const tool = await data.convex.query(readResult, { ...resultActor, conversationId: child.conversationId, turnId: child.turnId })
+  expect(native).toEqual(tool)
+  expect(tool.reply).toBe(full)
+  expect(tool.state).toBe('ready')
+  await childState(data, child, 'running', false)
+  expect(await data.convex.query(readResult, { ...resultActor, childRunId: child.childRunId })).toEqual(tool)
+  await expect(data.convex.query(readResult, { ...resultActor, childRunId: child.childRunId, parentRunId: 'forged' })).rejects.toThrow('ASSIGNMENT_LINEAGE_DENIED')
+})
+
+test('real child settlement publishes pending state and duplicate receipts do not change the envelope', async () => {
+  const data = await fixture()
+  const child = await dispatched(data)
+  const state = await data.convex.run(async ctx => {
+    const run = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', child.childRunId)).unique()
+    return JSON.parse(run!.metadataJson)
+  })
+  await data.convex.mutation(mutation('harness/runs:apply'), { serverSecret: secret, actorUserId: 'alice',
+    runId: child.childRunId, operationId: 'finish-child', expectedRevision: state.revision,
+    operation: { type: 'finish', resultSummary: 'Actual child summary' } })
+  expect(await data.convex.query(readResult, { ...resultActor, childRunId: child.childRunId }))
+    .toMatchObject({ state: 'publication_pending', summary: 'Actual child summary' })
+  const before = await data.convex.run(ctx => ctx.db.query('agentAssignmentResults').collect())
+  await data.convex.mutation(mutation('collaboration/assignmentResults:settle'), { serverSecret: secret, childRunId: child.childRunId })
+  expect(await data.convex.run(ctx => ctx.db.query('agentAssignmentResults').collect())).toEqual(before)
+})
+
+test.each(['failed', 'cancelled'])('%s with text remains failed execution, and empty completed replies are ready', async status => {
+  const data = await fixture()
+  const child = await dispatched(data)
+  await childState(data, child, status, true, 'This claims success')
+  expect(await data.convex.query(readResult, { ...resultActor, childRunId: child.childRunId })).toMatchObject({ runStatus: status, state: 'ready', reply: 'This claims success' })
+  const empty = await dispatched(data, args(data, { toolCallId: 'empty' }))
+  await childState(data, empty, 'completed', true, '')
+  expect(await data.convex.query(readResult, { ...resultActor, childRunId: empty.childRunId })).toMatchObject({ runStatus: 'completed', state: 'ready', reply: '' })
+})
+
+test('settled artifact reads require both source and child ACLs, bound provenance and expiry without opening the active-run API', async () => {
+  const data = await fixture()
+  const child = await dispatched(data)
+  await data.convex.run(async ctx => {
+    const storageId = await ctx.storage.store(new Blob(['Artifact']))
+    await ctx.db.insert('harnessContextArtifacts', { artifactId: 'artifact', runId: child.childRunId,
+      workflowRunId: 'workflow', toolCallId: 'tool', toolName: 'search', digest: 'digest', storageId,
+      byteSize: 8, mediaPartCount: 0, createdAt: Date.now(), expiresAt: Date.now() + 60_000 })
+  })
+  await childState(data, child, 'completed', true)
+  const request = { ...resultActor, attemptId: child.attemptId, artifactId: 'artifact' }
+  expect(await data.convex.query(readArtifact, request)).toMatchObject({ artifactId: 'artifact' })
+  const chunkReader = makeFunctionReference<'action'>('harness/artifacts:readSettledResultChunk')
+  expect(new TextDecoder().decode(await data.convex.action(chunkReader, { ...request, offset: 0, length: 8 }))).toBe('Artifact')
+  await expect(data.convex.action(chunkReader, { ...request, offset: -1, length: 8 })).rejects.toThrow('HARNESS_ARTIFACT_RANGE_INVALID')
+  await expect(data.convex.query(query('harness/artifactMetadata:getMetadataForServer'), {
+    serverSecret: secret, actorUserId: 'alice', runId: child.childRunId, workflowRunId: 'workflow', artifactId: 'artifact',
+  })).rejects.toThrow('HARNESS_ARTIFACT_UNAUTHORIZED')
+  for (const actorUserId of ['bob', 'charlie']) {
+    await expect(data.convex.query(readResult, { ...resultActor, actorUserId, childRunId: child.childRunId })).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+    await expect(data.convex.query(readArtifact, { ...request, actorUserId })).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+    await expect(data.convex.action(chunkReader, { ...request, actorUserId, offset: 0, length: 8 })).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+  }
+  await data.convex.run(async ctx => {
+    const artifact = (await ctx.db.query('harnessContextArtifacts').collect())[0]!
+    await ctx.db.patch(artifact._id, { expiresAt: Date.now() - 1 })
+  })
+  expect(await data.convex.query(readArtifact, request)).toBeNull()
+  expect(await data.convex.action(chunkReader, { ...request, offset: 0, length: 8 })).toBeNull()
+  expect((await data.convex.query(readResult, { ...resultActor, childRunId: child.childRunId })).artifactRefs).toEqual([])
+  await data.convex.run(async ctx => {
+    const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', data.parentConversationId).eq('principalId', 'alice')).unique()
+    await ctx.db.patch(participant!._id, { status: 'removed' })
+  })
+  await expect(data.convex.query(readResult, { ...resultActor, childRunId: child.childRunId })).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+})
+
+test('settled artifact resource access is rechecked after source visibility is revoked', async () => {
+  const data = await fixture()
+  const child = await dispatched(data)
+  const fileId = await data.convex.run(async ctx => {
+    const id = await ctx.db.insert('files', { userId: 'charlie', workspaceId: 'workspace', scope: 'workspace',
+      name: 'Shared note', type: 'file', kind: 'note', createdAt: 1, updatedAt: 1 })
+    const storageId = await ctx.storage.store(new Blob(['Note']))
+    await ctx.db.insert('harnessContextArtifacts', { artifactId: 'file-artifact', runId: child.childRunId,
+      workflowRunId: 'workflow', toolCallId: 'file-tool', toolName: 'get_note', digest: 'digest', storageId,
+      byteSize: 4, mediaPartCount: 0, createdAt: Date.now(), expiresAt: Date.now() + 60_000, resource: { id } })
+    return id
+  })
+  await childState(data, child, 'completed', true)
+  const request = { ...resultActor, attemptId: child.attemptId, artifactId: 'file-artifact' }
+  expect(await data.convex.query(readArtifact, request)).toMatchObject({ resource: { id: fileId } })
+  await data.convex.run(async ctx => { await ctx.db.patch(fileId, { scope: 'personal' }) })
+  await expect(data.convex.query(readArtifact, request)).rejects.toThrow('HARNESS_ARTIFACT_SOURCE_UNAVAILABLE')
+  expect((await data.convex.query(readResult, { ...resultActor, childRunId: child.childRunId })).artifactRefs).toEqual([])
+})
+
+test('origin is inherited only while the viewer can access the source', async () => {
+  const data = await fixture()
+  const child = await data.convex.mutation(createAssignment, args(data))
+  await data.convex.run(async ctx => {
+    await ctx.db.insert('surfaceConnections', { id: 'connection', workspaceId: 'workspace', platform: 'slack', externalTeamId: 'T',
+      status: 'active', installedByUserId: 'alice', createdAt: 1, updatedAt: 1 })
+    await ctx.db.insert('surfaceThreadLinks', { workspaceId: 'workspace', platform: 'slack', connectionId: 'connection', externalTeamId: 'T',
+      channelId: 'C', threadId: 'thread', conversationId: data.parentConversationId, channelName: 'private-name',
+      originalBindingId: 'binding', createdAt: 1, updatedAt: 1 })
+  })
+  const alice = data.convex.withIdentity({ subject: 'alice', issuer: 'https://issuer.example.test' })
+  expect((await alice.query(forConversation, { workspaceId: 'workspace', conversationId: child.conversationId })).origin).toMatchObject({ platform: 'slack', channelName: 'private-name' })
+  await data.convex.run(async ctx => {
+    const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', data.parentConversationId).eq('principalId', 'alice')).unique()
+    await ctx.db.patch(participant!._id, { status: 'removed' })
+  })
+  const hidden = await alice.query(forConversation, { workspaceId: 'workspace', conversationId: child.conversationId })
+  expect(hidden.origin).toBeUndefined()
+  expect(JSON.stringify(hidden)).not.toContain('private-name')
+})
+
 test('exact replay reuses an isolated thread and changed input under the key rejects', async () => {
   const data = await fixture()
   const input = args(data)

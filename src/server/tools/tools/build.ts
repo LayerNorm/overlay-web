@@ -569,6 +569,8 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       inputSchema: z.object({
         agent: z.string().min(1).describe('The agent id or its exact name, from list_agents.'),
         message: z.string().min(1).max(8000).describe('What you need, with all the context the agent needs.'),
+        assignmentId: z.string().min(1).optional().describe('Revise this exact assignment in its existing thread. Omit for new work.'),
+        expectedAttemptId: z.string().min(1).optional().describe('The current attemptId, required when revising an assignment.'),
         wait: z.boolean().optional().describe('Wait for the reply (default true).'),
       }),
       execute: async (input) => {

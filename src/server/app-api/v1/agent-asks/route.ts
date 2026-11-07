@@ -15,6 +15,8 @@ const bodySchema = z.discriminatedUnion('action', [
     agent: z.string().min(1).max(200),
     message: z.string().min(1).max(8_000),
     wait: z.boolean().optional(),
+    assignmentId: z.string().min(1).max(300).optional(),
+    expectedAttemptId: z.string().min(1).max(600).optional(),
     // Absent when an outside app asks for the person; all three are present when an agent asks.
     callerAgentId: z.string().min(1).max(80).optional(),
     callerConversationId: z.string().min(1).max(80).optional(),
@@ -59,6 +61,8 @@ export async function POST(_request: Request, context: AppApiRouteContext) {
             : {}),
           target: input.agent,
           message: input.message,
+          assignmentId: input.assignmentId,
+          expectedAttemptId: input.expectedAttemptId,
           wait: input.wait !== false,
         }), { headers: NO_STORE })
       }

@@ -2,6 +2,7 @@ import { paginationOptsValidator } from 'convex/server'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import { requireConversationAccess } from '../collaboration/directMessages'
+import { bindAssignmentAttempt, settleAssignmentAttempt } from '../collaboration/assignmentResults'
 import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
@@ -1253,6 +1254,7 @@ async function persistMetadata(ctx: MutationCtx, run: RunRow, snapshot: HarnessS
     metadataJson: stableJson(metadataFromSnapshot(snapshot)),
     updatedAt: snapshot.updatedAt,
   })
+  await settleAssignmentAttempt(ctx, run.runId)
   if (isTerminalStatus(snapshot.status)) {
     const expiresAt = snapshot.updatedAt + 30 * 24 * 60 * 60_000
     const artifacts = await ctx.db.query('harnessContextArtifacts')
@@ -1576,6 +1578,7 @@ async function applyReducer(
         throw new Error('HARNESS_DELIVERY_TARGET_DENIED')
       }
       const snapshot = admitHarnessNamedChild(current, operation.child, operation.step, now)
+      await bindAssignmentAttempt(ctx, delivery, admission.runId, run.runId, run.rootRunId)
       const childSnapshot = createHarnessSnapshot({
         runId: admission.runId,
         goal: admission.goal,
@@ -1602,6 +1605,7 @@ async function applyReducer(
       const childLineage = await loadLineage(ctx, childRun, current.policy.actorUserId, serverSecret)
       const childMetadata = childLineage[0]!.metadata
       const childSnapshot = await hydrateSnapshot(ctx, childRun)
+      await settleAssignmentAttempt(ctx, childRun.runId)
       let snapshot = settleHarnessChild(current, childSnapshot, now)
       if (childSnapshot.status === 'completed') {
         const rawSummary = childSnapshot.resultSummary?.trim() || childSnapshot.workingSummary.trim() || `Completed child run ${childSnapshot.runId}.`
