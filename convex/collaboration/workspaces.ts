@@ -2592,20 +2592,62 @@ export const listWorkspaceAuditEventsByServer = query({
       })
       .order('desc')
       .take(limit)
-    return rows.map((row) => ({
-      eventId: row.eventId,
-      actorType: row.actorType,
-      actorUserId: row.actorUserId,
-      actorApiKeyId: row.actorApiKeyId,
-      action: row.action,
-      resourceType: row.resourceType,
-      resourceId: row.resourceId,
-      outcome: row.outcome,
-      requestId: row.requestId,
-      ipAddress: row.ipAddress,
-      metadataJson: row.metadataJson,
-      createdAt: row.createdAt,
-    }))
+    return rows.map(toWorkspaceAuditEvent)
+  },
+})
+
+function toWorkspaceAuditEvent(row: Doc<'auditEvents'>) {
+  return {
+    eventId: row.eventId,
+    actorType: row.actorType,
+    actorUserId: row.actorUserId,
+    actorApiKeyId: row.actorApiKeyId,
+    action: row.action,
+    resourceType: row.resourceType,
+    resourceId: row.resourceId,
+    outcome: row.outcome,
+    requestId: row.requestId,
+    ipAddress: row.ipAddress,
+    metadataJson: row.metadataJson,
+    createdAt: row.createdAt,
+  }
+}
+
+/**
+ * One oldest-first page of a workspace's audit events, for exports. Unlike the
+ * newest-first list above, an export must be able to read a whole window, so
+ * the caller follows `continueCursor` until it has enough rows or `isDone`.
+ * Server-secret only; the caller has already required an owner or admin.
+ */
+export const pageWorkspaceAuditEventsByServer = query({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    fromRecordedAt: v.optional(v.number()),
+    cursor: v.union(v.string(), v.null()),
+    numItems: v.number(),
+  },
+  returns: v.object({
+    page: v.array(workspaceAuditEventValidator),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const numItems = Math.max(1, Math.min(Math.floor(args.numItems), MAX_WORKSPACE_AUDIT_EVENTS))
+    const result = await ctx.db
+      .query('auditEvents')
+      .withIndex('by_workspaceId_createdAt', (q) => {
+        const scoped = q.eq('workspaceId', args.workspaceId)
+        return args.fromRecordedAt === undefined ? scoped : scoped.gte('createdAt', args.fromRecordedAt)
+      })
+      .order('asc')
+      .paginate({ cursor: args.cursor, numItems })
+    return {
+      page: result.page.map(toWorkspaceAuditEvent),
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    }
   },
 })
 

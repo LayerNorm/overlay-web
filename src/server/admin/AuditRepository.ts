@@ -39,6 +39,17 @@ export interface AuditRepository {
     fromRecordedAt?: number
     limit?: number
   }): Promise<AuditEventRecord[]>
+  /**
+   * One oldest-first page of a workspace's events, for exports that must read a
+   * whole window. Follow `continueCursor` until `isDone`. Same authorization
+   * rule as `listForWorkspace`.
+   */
+  pageForWorkspace(args: {
+    workspaceId: string
+    fromRecordedAt?: number
+    cursor: string | null
+    numItems: number
+  }): Promise<{ events: AuditEventRecord[]; isDone: boolean; continueCursor: string }>
 }
 
 export function sanitizeAuditMetadata(value: Record<string, unknown>): Record<string, unknown> {

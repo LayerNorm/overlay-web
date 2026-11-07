@@ -55,6 +55,24 @@ export class ConvexAuditRepository implements AuditRepository {
     )
     return (rows ?? []).map(fromRow)
   }
+
+  async pageForWorkspace(
+    args: Parameters<AuditRepository['pageForWorkspace']>[0],
+  ): ReturnType<AuditRepository['pageForWorkspace']> {
+    const result = await convex.query<{ page: ConvexAuditRow[]; isDone: boolean; continueCursor: string }>(
+      'collaboration/workspaces:pageWorkspaceAuditEventsByServer',
+      {
+        workspaceId: args.workspaceId,
+        ...(args.fromRecordedAt === undefined ? {} : { fromRecordedAt: args.fromRecordedAt }),
+        cursor: args.cursor,
+        numItems: args.numItems,
+        serverSecret: this.serverSecret,
+      },
+      { throwOnError: true },
+    )
+    if (!result) throw new Error('Failed to read workspace audit events')
+    return { events: result.page.map(fromRow), isDone: result.isDone, continueCursor: result.continueCursor }
+  }
 }
 
 function fromRow(row: ConvexAuditRow): AuditEventRecord {
