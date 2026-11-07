@@ -24,8 +24,10 @@ import {
   Sparkles,
   Zap,
 } from 'lucide-react'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { invalidateMentionCache, searchMentions } from '@/components/mentions/mention-search'
+import { useConvexAuth, useQuery } from 'convex/react'
+import type { WorkItem } from '@overlay/app-core'
+import { useMentionSearch } from '@/hooks/use-mention-search'
+import { api } from '../../../convex/_generated/api'
 import type { MentionCategory, MentionItem, MentionType } from '@/shared/knowledge/mention-types'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useAuthorization } from '@/components/providers/AuthorizationProvider'
@@ -136,17 +138,31 @@ export function GlobalSearchDialog({
     description: agent.description || agent.instructions || '',
     icon: 'Bot',
   })), [directory.agents, directory.workspaceId, workspaceId])
-  // Task results belong to the workspace they were fetched for; another workspace never shows them.
-  const [taskResults, setTaskResults] = useState<{ workspaceId: string | null | undefined; items: SearchItem[] }>({ workspaceId: undefined, items: [] })
-  const tasks = taskResults.workspaceId === workspaceId ? taskResults.items : EMPTY_SEARCH_ITEMS
   const { capabilities } = useOverlayCapabilities()
   const { allows } = useAuthorization()
   const workEnabled = capabilities.work && allows({ all: ['work.use'] })
+  // Tasks are like agents: the person's visible tasks, live, filtered here.
+  const { isAuthenticated, isLoading: convexAuthLoading } = useConvexAuth()
+  const liveTasks = useQuery(
+    api.work.browse.list,
+    open && workEnabled && workspaceId && isAuthenticated && !convexAuthLoading ? { workspaceId } : 'skip',
+  ) as WorkItem[] | null | undefined
+  const tasks = useMemo<SearchItem[]>(() => {
+    if (!liveTasks) return EMPTY_SEARCH_ITEMS
+    const titles = new Map(liveTasks.map((task) => [task.id, task.title]))
+    return liveTasks.map((task) => ({
+      type: 'work' as const,
+      id: task.id,
+      name: task.title,
+      description: [WORK_STATUS_LABELS[task.status], task.parentId ? titles.get(task.parentId) : null].filter(Boolean).join(' · '),
+      icon: 'ListChecks',
+    }))
+  }, [liveTasks])
+  const searchMentions = useMentionSearch()
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (!open) return
-    invalidateMentionCache()
     queueMicrotask(() => {
       setQuery('')
       setSelectedCategory(initialCategory)
@@ -160,6 +176,7 @@ export function GlobalSearchDialog({
       if (cancelled) return
       setLoading(true)
     })
+    // Each keystroke's answer replaces the previous one only while it is still the current query.
     void searchMentions(query)
       .then((cats) => {
         if (cancelled) return
@@ -176,30 +193,7 @@ export function GlobalSearchDialog({
     return () => {
       cancelled = true
     }
-  }, [open, query])
-
-  // Tasks are like agents: a small list the person can see, fetched once per open and filtered here.
-  useEffect(() => {
-    if (!open || !workEnabled) return
-    let cancelled = false
-    void overlayAppClient.work.list()
-      .then(({ items }) => {
-        if (cancelled) return
-        const titles = new Map(items.map((task) => [task.id, task.title]))
-        setTaskResults({
-          workspaceId,
-          items: items.map((task) => ({
-            type: 'work' as const,
-            id: task.id,
-            name: task.title,
-            description: [WORK_STATUS_LABELS[task.status], task.parentId ? titles.get(task.parentId) : null].filter(Boolean).join(' · '),
-            icon: 'ListChecks',
-          })),
-        })
-      })
-      .catch(() => { if (!cancelled) setTaskResults({ workspaceId, items: [] }) })
-    return () => { cancelled = true }
-  }, [open, workEnabled, workspaceId])
+  }, [open, query, searchMentions])
 
   const allCategories: SearchCategory[] = useMemo(() => {
     const needle = query.trim().toLowerCase()

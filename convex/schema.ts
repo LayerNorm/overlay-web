@@ -2036,6 +2036,7 @@ export default defineSchema({
     .index('by_r2Key', ['r2Key'])
     .index('by_storageId', ['storageId'])
     .index('by_parentId', ['parentId'])
+    .index('by_workspaceId_scope_parentId', ['workspaceId', 'scope', 'parentId'])
     .index('by_legacyNoteId', ['legacyNoteId'])
     .index('by_legacyOutputId', ['legacyOutputId'])
     .index('by_outputExpiry', ['kind', 'outputStatus', 'expiresAt'])
@@ -2601,7 +2602,8 @@ export default defineSchema({
   })
     .index('by_conversationId_principalId', ['conversationId', 'principalId'])
     .index('by_conversationId_status', ['conversationId', 'status'])
-    .index('by_workspaceId_principalId_status', ['workspaceId', 'principalId', 'status']),
+    .index('by_workspaceId_principalId_status', ['workspaceId', 'principalId', 'status'])
+    .index('by_workspaceId_principalId_status_archivedAt', ['workspaceId', 'principalId', 'status', 'archivedAt']),
 
   conversationPins: defineTable({
     conversationId: v.id('conversations'),

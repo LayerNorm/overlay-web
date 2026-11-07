@@ -157,7 +157,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     path: '/api/v1/search',
     methods: { GET: authenticated() },
   },
-  { path: '/api/v1/mention-search', methods: { GET: authenticated() } },
   {
     path: '/api/v1/workspaces',
     methods: { GET: authenticated(), POST: authenticated() },

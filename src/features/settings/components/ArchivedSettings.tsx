@@ -26,7 +26,6 @@ import { Button, Input, ListboxSelect, toast } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
-import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { ScopeTag } from '@/components/layout/ScopeTag'
 import {
   ARCHIVED_CATEGORIES,
@@ -39,7 +38,8 @@ import {
   type ArchivedItem,
   type ArchivedItemKind,
 } from '../lib/archived-items'
-import { deleteArchivedItem, loadArchivedItems, restoreArchivedItem, runBulk } from '../lib/archived-actions'
+import { deleteArchivedItem, restoreArchivedItem, runBulk } from '../lib/archived-actions'
+import { useLiveArchivedItems } from '../lib/use-live-archived'
 
 const KIND_ICONS: Record<ArchivedItemKind, LucideIcon> = {
   chat: MessageSquare,
@@ -85,43 +85,19 @@ export function ArchivedSettings() {
   const workspace = useOptionalWorkspace()
   const workspaceId = workspace?.switchingWorkspaceId ? null : workspace?.activeWorkspaceId ?? null
   const nativePersonal = usePersonalChat()
-  const [legacyState, setLegacyState] = useState<{
-    workspaceId: string | null
-    items: ArchivedItem[]
-    failedSources: string[]
-  } | null>(null)
-  const legacyItems = legacyState?.workspaceId === workspaceId ? legacyState.items : null
-  const failedSources = legacyState?.workspaceId === workspaceId ? legacyState.failedSources : []
+  // Live: archives, restores and deletes made anywhere (another tab, another member) show without reloading.
+  const live = useLiveArchivedItems(workspaceId)
+  const legacyItems = live.items
+  const failedSources = useMemo(
+    () => live.failed.map((source) => ARCHIVED_CATEGORY_LABELS[source].toLowerCase()),
+    [live.failed],
+  )
   const [category, setCategory] = useState<ArchivedCategoryFilter>('all')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [pendingDelete, setPendingDelete] = useState<ArchivedItem[] | null>(null)
   const [busy, setBusy] = useState(false)
   const lastToggled = useRef<string | null>(null)
-  const requestEpoch = useRef(0)
-  const workspaceIdRef = useRef(workspaceId)
-  workspaceIdRef.current = workspaceId
-
-  const load = useCallback(async () => {
-    const requestWorkspaceId = workspaceId
-    if (requestWorkspaceId !== workspaceIdRef.current) return
-    const requestId = ++requestEpoch.current
-    const result = await loadArchivedItems(workspaceId, {
-      nativePersonalConfigured: nativePersonal.configured,
-    })
-    if (requestId !== requestEpoch.current || requestWorkspaceId !== workspaceIdRef.current) return
-    setLegacyState({
-      workspaceId: requestWorkspaceId,
-      items: result.items,
-      failedSources: result.failed.map((source) => ARCHIVED_CATEGORY_LABELS[source].toLowerCase()),
-    })
-  }, [nativePersonal.configured, workspaceId])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-  useWorkspaceChanged(load)
-
   const nativeItems = useMemo<ArchivedItem[]>(() => {
     if (!nativePersonal.configured || !workspaceId) return []
     const summaries = [...nativePersonal.archived.rows]
@@ -221,7 +197,6 @@ export function ArchivedSettings() {
       toast.error('Could not restore that. You may not have access to it.')
     } finally {
       setBusy(false)
-      await load()
     }
   }
 
@@ -254,7 +229,6 @@ export function ArchivedSettings() {
     } finally {
       setBusy(false)
       setPendingDelete(null)
-      await load()
     }
   }
 

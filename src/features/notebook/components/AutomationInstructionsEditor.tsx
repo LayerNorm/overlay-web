@@ -14,7 +14,8 @@ import TaskList from '@tiptap/extension-task-list'
 import Typography from '@tiptap/extension-typography'
 import { Bold, Code, Italic, List, ListOrdered, ListTodo, Quote } from 'lucide-react'
 import { common, createLowlight } from 'lowlight'
-import { overlayMentionSuggestion } from './tiptap-mention-suggestion'
+import { createOverlayMentionSuggestion } from './tiptap-mention-suggestion'
+import { useMentionSearch } from '@/hooks/use-mention-search'
 import { serializeMentionToken } from '@/shared/knowledge/mention-tokens'
 import type { MentionType } from '@/shared/knowledge/mention-types'
 
@@ -268,6 +269,9 @@ export function AutomationInstructionsEditor({
   const [initialContent] = useState(() => normalizeMarkdownInput(value))
   const [expanded, setExpanded] = useState(false)
   const lastEmittedValueRef = useRef(value)
+  // Built once with the editor; the search always uses the workspace the page shows.
+  const searchMentions = useMentionSearch()
+  const [mentionSuggestion] = useState(() => createOverlayMentionSuggestion(searchMentions))
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -297,7 +301,7 @@ export function AutomationInstructionsEditor({
             'inline-flex items-center px-1.5 py-0.5 mx-0.5 rounded-md bg-(--surface-muted) border border-(--border) text-xs font-medium text-(--foreground) align-baseline',
         },
         renderText: ({ node }) => `@${node.attrs.label}`,
-        suggestion: overlayMentionSuggestion,
+        suggestion: mentionSuggestion,
       }),
     ],
     content: initialContent,
