@@ -102,6 +102,7 @@ import type * as imports_slackImporter from "../imports/slackImporter.js";
 import type * as imports_slackJobs from "../imports/slackJobs.js";
 import type * as imports_slackMappings from "../imports/slackMappings.js";
 import type * as imports_slackRunner from "../imports/slackRunner.js";
+import type * as integrations_mcpBrowse from "../integrations/mcpBrowse.js";
 import type * as integrations_mcpServers from "../integrations/mcpServers.js";
 import type * as integrations_skills from "../integrations/skills.js";
 import type * as integrations_skillsBrowse from "../integrations/skillsBrowse.js";
@@ -297,6 +298,7 @@ declare const fullApi: ApiFromModules<{
   "imports/slackJobs": typeof imports_slackJobs;
   "imports/slackMappings": typeof imports_slackMappings;
   "imports/slackRunner": typeof imports_slackRunner;
+  "integrations/mcpBrowse": typeof integrations_mcpBrowse;
   "integrations/mcpServers": typeof integrations_mcpServers;
   "integrations/skills": typeof integrations_skills;
   "integrations/skillsBrowse": typeof integrations_skillsBrowse;

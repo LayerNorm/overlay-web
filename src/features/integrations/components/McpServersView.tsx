@@ -3,7 +3,7 @@ import { Button } from '@overlay/ui/primitives'
 
 // Compatibility wrapper: MCP contracts/controllers live in @overlay/app-core;
 // shared React presentation lives in @overlay/modules-react.
-import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useMemo, useState, type MouseEvent } from 'react'
 import { Plus } from 'lucide-react'
 import {
   createMcpCreateRequest,
@@ -13,10 +13,7 @@ import {
   filterMcpServers,
   formatMcpMutationError,
   formatMcpTestResult,
-  removeMcpServerSummary,
   setMcpServerEnabled,
-  updateMcpSummaryFromForm,
-  upsertMcpServerSummary,
   type McpMutationResult,
   type McpServerFormValues,
   type McpServerSummary,
@@ -26,7 +23,7 @@ import {
 import { AppScreenShell } from '@overlay/modules-react/shell'
 import { ExtensionPageHeader, McpServerDialog, McpServersPanel } from '@overlay/modules-react/extensions'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
+import { useLiveMcpServers } from '@/hooks/use-connections'
 import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { useWorkspaceCreateAccess } from '@/hooks/use-workspace-create-access'
@@ -40,8 +37,6 @@ interface DialogState {
 
 export default function McpServersView({ userId: _userId }: { userId: string }) {
   void _userId
-  const [servers, setServers] = useState<McpServerSummary[]>([])
-  const [loading, setLoading] = useState(true)
   const [dialog, setDialog] = useState<DialogState | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const scope = usePanelScope()
@@ -49,30 +44,14 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
   const { canCreate } = useWorkspaceCreateAccess()
   const canAdd = canCreate('extension', scopeForNewItem(scope))
 
-  const loadServers = useCallback(async () => {
-    try {
-      setServers(await overlayAppClient.mcpServers.get<McpServerSummary[]>({ limit: 100, view: listView }))
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
-    }
-  }, [listView])
-
-  useEffect(() => {
-    setLoading(true)
-    void loadServers()
-  }, [loadServers])
-
-  useWorkspaceChanged(loadServers)
-
-  // The OAuth flow completes in another tab, so refresh when the user comes back to see the
-  // updated connection status without a manual reload.
-  useEffect(() => {
-    const onFocus = () => { void loadServers() }
-    window.addEventListener('focus', onFocus)
-    return () => window.removeEventListener('focus', onFocus)
-  }, [loadServers])
+  // Live: configuration and connection state, including OAuth finished in another tab, arrive without reloading.
+  const live = useLiveMcpServers(listView)
+  // A quick toggle shows at once and gives way to the live value when the server answers.
+  const [toggles, setToggles] = useState<ReadonlyMap<string, boolean>>(() => new Map())
+  const servers = useMemo<McpServerSummary[]>(() => (live ?? []).map((server) => (
+    toggles.has(server._id) ? setMcpServerEnabled(server, toggles.get(server._id)!) : server
+  )), [live, toggles])
+  const loading = live === undefined
 
   const filteredServers = useMemo(
     () => filterMcpServers(servers, searchQuery),
@@ -88,14 +67,11 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
     if (dialog?.mode === 'edit' && dialog.server) {
       const res = await overlayAppClient.mcpServers.updateResponse(createMcpUpdateRequest(dialog.server._id, values))
       if (!res.ok) return failure(res, 'Could not save this MCP server.')
-      setServers((prev) => upsertMcpServerSummary(prev, updateMcpSummaryFromForm(dialog.server!, values)))
       return { ok: true }
     }
 
     const res = await overlayAppClient.mcpServers.createResponse({ ...createMcpCreateRequest(values), scope: newItemScope(scope) })
     if (!res.ok) return failure(res, 'Could not add this MCP server.')
-    const { id } = (await res.json()) as { id: string }
-    setServers((prev) => upsertMcpServerSummary(prev, createMcpSummaryFromForm(id, values)))
     return { ok: true }
   }
 
@@ -117,7 +93,6 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
         }
         const { id } = (await created.json()) as { id: string }
         mcpServerId = id
-        setServers((prev) => upsertMcpServerSummary(prev, createMcpSummaryFromForm(id, values)))
         setDialog({ mode: 'edit', server: createMcpSummaryFromForm(id, values) })
       } else {
         const updated = await overlayAppClient.mcpServers.updateResponse(
@@ -142,7 +117,6 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
       }
       if (data?.alreadyConnected) {
         oauthTab?.close()
-        await loadServers()
         return { ok: true }
       }
       if (!data?.redirectUrl) {
@@ -162,14 +136,12 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
   async function handleDisconnectOAuth(server: McpServerSummary): Promise<McpMutationResult> {
     const res = await overlayAppClient.mcpServers.disconnectOAuthResponse({ mcpServerId: server._id })
     if (!res.ok) return failure(res, 'Could not disconnect this server.')
-    await loadServers()
     return { ok: true }
   }
 
   async function handleDeleteServer(server: McpServerSummary): Promise<McpMutationResult> {
     const res = await overlayAppClient.mcpServers.deleteResponse({ mcpServerId: server._id })
     if (!res.ok) return failure(res, 'Could not delete this MCP server.')
-    setServers((prev) => removeMcpServerSummary(prev, server._id))
     return { ok: true }
   }
 
@@ -189,11 +161,17 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
   async function handleQuickToggle(server: McpServerSummary, event: MouseEvent) {
     event.stopPropagation()
     const newEnabled = !server.enabled
-    setServers((prev) => prev.map((item) => (item._id === server._id ? setMcpServerEnabled(item, newEnabled) : item)))
+    setToggles((current) => new Map(current).set(server._id, newEnabled))
     try {
-      const res = await overlayAppClient.mcpServers.updateResponse({ mcpServerId: server._id, enabled: newEnabled })
+      await overlayAppClient.mcpServers.updateResponse({ mcpServerId: server._id, enabled: newEnabled })
     } catch {
-      // ignore optimistic update errors, matching prior behavior
+      // The live value shows again below.
+    } finally {
+      setToggles((current) => {
+        const next = new Map(current)
+        next.delete(server._id)
+        return next
+      })
     }
   }
 
@@ -242,10 +220,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
               resource="mcp-servers"
               item={dialog.server}
               variant="buttons"
-              onChanged={() => {
-                setDialog(null)
-                void loadServers()
-              }}
+              onChanged={() => setDialog(null)}
             />
           ) : undefined}
         />

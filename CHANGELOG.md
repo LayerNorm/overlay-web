@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make MCP servers and connected apps live: the MCP page shows configuration and connection state from a Convex subscription, so a server connected through OAuth in another tab, or changed by a teammate, updates without a reload or the old refresh-on-focus. Settings → Connected apps updates when an app is connected or revoked anywhere. Credentials, tokens and OAuth secrets are never sent, and members who cannot edit a shared server see its address without any key in it. Adding, editing, testing and OAuth stay on the server, which encrypts credentials and checks addresses.
+
 - Keep unsaved note text when the note is deleted or archived elsewhere: the editor now stays open with a notice so the text can be copied, and returns to Files by itself only when nothing is unsaved. Opening an automation from a chat now reads it natively instead of over HTTP, and the Files page drops a memories data loader it never used.
 
 - Fix two problems found by testing with a second workspace member: a skill someone else owns now opens view-only for members who cannot edit it, instead of offering Save and Delete that the server then refused; and saving an automation whose form was opened before someone else changed it is now refused with a message, instead of silently undoing their change.
