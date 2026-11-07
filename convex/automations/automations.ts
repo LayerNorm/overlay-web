@@ -153,6 +153,20 @@ export function computeNextRunAt(scheduleInput: AutomationSchedule, fromMs: numb
   return sharedComputeNextRunAt(scheduleInput, fromMs)
 }
 
+/** The caller's own automations plus other members' workspace-scoped ones, for a view. */
+export async function listWorkspaceAutomations(
+  ctx: QueryCtx,
+  { userId, workspaceId, view }: { userId: string; workspaceId: string; view?: 'personal' | 'workspace' | 'archived' },
+) {
+  return await listScopedRows(ctx, {
+    userId, workspaceId, view,
+    fetchMine: async () => await ctx.db.query('automations')
+      .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId)).collect(),
+    fetchShared: async (ws) => await ctx.db.query('automations')
+      .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).collect(),
+  })
+}
+
 export const list = query({
   args: {
     userId: v.string(),
@@ -175,15 +189,7 @@ export const list = query({
     }
     const pageLimit = Math.min(100, Math.max(1, Math.floor(limit ?? 100)))
     if (workspaceId !== undefined) {
-      // With a workspace: the caller's own automations plus other members' workspace-scoped ones, for the requested view.
-      const scoped = await listScopedRows(ctx, {
-        userId, workspaceId, view,
-        fetchMine: async () => await ctx.db.query('automations')
-          .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId)).collect(),
-        fetchShared: async (ws) => await ctx.db.query('automations')
-          .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace')).collect(),
-      })
-      return scoped
+      return (await listWorkspaceAutomations(ctx, { userId, workspaceId, view }))
         .filter((row) => (includeDeleted ? true : !row.deletedAt))
         .filter((row) => (excludeAgentBound ? !row.agentId : true))
         .filter((row) => (beforeUpdatedAt !== undefined && Number.isFinite(beforeUpdatedAt) ? row.updatedAt < beforeUpdatedAt : true))

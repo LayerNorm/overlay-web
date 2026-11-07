@@ -42,6 +42,7 @@ import type * as auth_viewer from "../auth/viewer.js";
 import type * as authorization_defaults from "../authorization/defaults.js";
 import type * as automations_automationRunner from "../automations/automationRunner.js";
 import type * as automations_automations from "../automations/automations.js";
+import type * as automations_browse from "../automations/browse.js";
 import type * as automations_terminalWebhook from "../automations/terminalWebhook.js";
 import type * as automations_workflowAccess from "../automations/workflowAccess.js";
 import type * as automations_workflowEventProjector from "../automations/workflowEventProjector.js";
@@ -221,6 +222,7 @@ declare const fullApi: ApiFromModules<{
   "authorization/defaults": typeof authorization_defaults;
   "automations/automationRunner": typeof automations_automationRunner;
   "automations/automations": typeof automations_automations;
+  "automations/browse": typeof automations_browse;
   "automations/terminalWebhook": typeof automations_terminalWebhook;
   "automations/workflowAccess": typeof automations_workflowAccess;
   "automations/workflowEventProjector": typeof automations_workflowEventProjector;

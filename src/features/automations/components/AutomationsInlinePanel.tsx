@@ -1,8 +1,5 @@
 'use client'
-import { unstyledButton } from '@overlay/ui/control-reset'
-import { Button } from '@overlay/ui/primitives'
-
-import { useState, useCallback, useEffect, useMemo, useRef, type MouseEvent } from 'react'
+import { useState, useCallback, useMemo, type MouseEvent } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { dispatchChatDeleted } from '@/shared/chat/chat-title'
@@ -11,20 +8,16 @@ import type { AutomationSummary } from '@overlay/app-core'
 import type { DeleteAutomationResponse } from '@overlay/app-core/automations'
 import {
   applyAutomationRename,
-  AUTOMATIONS_UPDATED_EVENT,
   getAutomationDisplayName,
-  removeAutomationById,
 } from '@overlay/app-core/automations'
 import { AutomationsInlineList } from '@overlay/modules-react/automations'
-import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
+import { useLiveAutomations } from '@/hooks/use-live-automations'
 import { usePanelListView } from '@/hooks/use-panel-scope'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { AgentCreature } from '@/components/orb/Creature'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-
-const INITIAL_SIDEBAR_LIST_LIMIT = 24
 
 export function AutomationsInlinePanel({
   onNavigate,
@@ -34,80 +27,36 @@ export function AutomationsInlinePanel({
   const router = useRouter()
   const searchParams = useSearchParams()
   const { activeWorkspaceId } = useWorkspace()
-  const [automations, setAutomations] = useState<AutomationSummary[]>([])
   const directory = useAgentDirectory()
   const agents = useMemo<WorkspaceAgentDirectoryItem[]>(
     () => directory.workspaceId === activeWorkspaceId ? directory.agents ?? [] : [],
     [activeWorkspaceId, directory.agents, directory.workspaceId],
   )
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const nextCursorRef = useRef<string | undefined>(undefined)
-  const [hasMore, setHasMore] = useState(false)
   const [editingAutomationId, setEditingAutomationId] = useState<string | null>(null)
   const [editingAutomationName, setEditingAutomationName] = useState('')
   const [pendingDeleteAutomationId, setPendingDeleteAutomationId] = useState<string | null>(null)
   const [deletingAutomationIds, setDeletingAutomationIds] = useState<string[]>([])
-  const [pendingNavId, setPendingNavId] = useState<string | null>(null)
   const activeId = searchParams?.get('id') ?? null
   const activeAutomationId = searchParams?.get('automationId') ?? null
   const listView = usePanelListView()
   const agentsById = useMemo(() => new Map(agents.map((agent) => [agent.id, agent])), [agents])
 
-  const loadAutomations = useCallback(async () => {
-    try {
-      const page = await overlayAppClient.automations.getPage<AutomationSummary>({
-        limit: INITIAL_SIDEBAR_LIST_LIMIT,
-        view: listView,
-      })
-      setAutomations(Array.isArray(page.data) ? page.data : [])
-      nextCursorRef.current = page.nextCursor
-      setHasMore(page.hasMore)
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
-    }
-  }, [listView])
-
-  async function loadMoreAutomations() {
-    if (!nextCursorRef.current) return
-    setLoadingMore(true)
-    try {
-      const page = await overlayAppClient.automations.getPage<AutomationSummary>({
-        cursor: nextCursorRef.current,
-        limit: INITIAL_SIDEBAR_LIST_LIMIT,
-        view: listView,
-      })
-      setAutomations((current) => {
-        const byId = new Map(current.map((automation) => [automation._id, automation]))
-        for (const automation of Array.isArray(page.data) ? page.data : []) {
-          byId.set(automation._id, automation)
-        }
-        return [...byId.values()]
-      })
-      nextCursorRef.current = page.nextCursor
-      setHasMore(page.hasMore)
-    } finally {
-      setLoadingMore(false)
-    }
-  }
-
-  useEffect(() => {
-    setLoading(true)
-    void loadAutomations()
-  }, [loadAutomations])
-
-  useWorkspaceChanged(loadAutomations)
-
-  useEffect(() => {
-    function handleAutomationsUpdated() {
-      setLoading(true)
-      void loadAutomations()
-    }
-    window.addEventListener(AUTOMATIONS_UPDATED_EVENT, handleAutomationsUpdated)
-    return () => window.removeEventListener(AUTOMATIONS_UPDATED_EVENT, handleAutomationsUpdated)
-  }, [loadAutomations])
+  // Live: definitions, schedules and enabled state from any tab or agent appear without a reload.
+  const live = useLiveAutomations(listView)
+  // A rename shows at once and stays until the live list carries it (or the server refuses it).
+  const [renames, setRenames] = useState<ReadonlyMap<string, string>>(() => new Map())
+  const automations = useMemo<AutomationSummary[]>(() => {
+    let rows = (live ?? []) as AutomationSummary[]
+    for (const [id, name] of renames) rows = applyAutomationRename(rows, id, name)
+    return rows
+  }, [live, renames])
+  const loading = live === undefined
+  const forgetRename = useCallback((id: string) => setRenames((current) => {
+    if (!current.has(id)) return current
+    const next = new Map(current)
+    next.delete(id)
+    return next
+  }), [])
 
   function beginAutomationRename(automation: AutomationSummary, event: MouseEvent) {
     event.stopPropagation()
@@ -129,14 +78,13 @@ export function AutomationsInlinePanel({
       return
     }
 
-    setAutomations((prev) => applyAutomationRename(prev, automation._id, nextName))
+    setRenames((current) => new Map(current).set(automation._id, nextName))
     cancelAutomationRename()
     try {
       const res = await overlayAppClient.automations.updateResponse({ automationId: automation._id, name: nextName })
       if (!res.ok) throw new Error('Failed to rename automation')
-      window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
-    } catch {
-      setAutomations((prev) => applyAutomationRename(prev, automation._id, previousName))
+    } finally {
+      forgetRename(automation._id)
     }
   }
 
@@ -148,11 +96,9 @@ export function AutomationsInlinePanel({
       const res = await overlayAppClient.automations.deleteResponse({ automationId: automation._id })
       if (!res.ok) throw new Error('Failed to delete automation')
       const payload: DeleteAutomationResponse = await overlayAppClient.automations.parseDeleteResponse(res).catch(() => ({}))
-      setAutomations((prev) => removeAutomationById(prev, automation._id))
       for (const chatId of payload.linkedConversationIds ?? []) {
         dispatchChatDeleted({ chatId })
       }
-      window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
     } catch {
       // keep row in place
     } finally {
@@ -172,19 +118,10 @@ export function AutomationsInlinePanel({
         editingAutomationName={editingAutomationName}
         pendingDeleteAutomationId={pendingDeleteAutomationId}
         deletingAutomationIds={deletingAutomationIds}
-        pendingNavId={pendingNavId}
-        onNavigateAutomation={(automation, href) => {
-          setPendingNavId(automation._id)
-          void overlayAppClient.automations.getResponse(
-            { automationId: automation._id },
-            { credentials: 'same-origin', cache: 'no-store' },
-          )
-            .catch(() => null)
-            .finally(() => {
-              setPendingNavId(null)
-              router.push(href)
-              onNavigate?.()
-            })
+        pendingNavId={null}
+        onNavigateAutomation={(_automation, href) => {
+          router.push(href)
+          onNavigate?.()
         }}
         onBeginRename={beginAutomationRename}
         onEditingNameChange={setEditingAutomationName}
@@ -201,11 +138,6 @@ export function AutomationsInlinePanel({
             kind="content"
             resource="automations"
             item={automation}
-            onChanged={() => {
-              // It leaves the list being viewed (moved to the other scope, or archived).
-              setAutomations((current) => removeAutomationById(current, automation._id))
-              window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
-            }}
           />
         )}
         renderLeadingIcon={(automation) => {
@@ -213,16 +145,6 @@ export function AutomationsInlinePanel({
           return agent ? <AgentCreature isDefault={agent.isDefault} agent={agent} size={16} /> : null
         }}
       />
-      {hasMore ? (
-        <Button variant="ghost"
-          type="button"
-          disabled={loadingMore}
-          onClick={() => void loadMoreAutomations()}
-          className={unstyledButton(`h-7 w-full rounded-md px-2.5 text-left text-xs text-(--muted-light) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground) disabled:cursor-wait disabled:opacity-60`)}
-        >
-          {loadingMore ? 'Loading...' : 'Load more'}
-        </Button>
-      ) : null}
     </div>
   )
 }

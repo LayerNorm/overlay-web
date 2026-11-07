@@ -8,7 +8,6 @@ import type {
 } from './contracts'
 import { AUTOMATION_GRAPH_VERSION } from './contracts'
 
-export const AUTOMATIONS_UPDATED_EVENT = 'overlay:automations-updated'
 
 export type AutomationDetail = AutomationSummary
 export type AutomationDetailTab = 'chat' | 'edit'

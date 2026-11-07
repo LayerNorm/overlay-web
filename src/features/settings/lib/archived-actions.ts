@@ -1,6 +1,5 @@
 import {
   EXTENSIONS_CHANGED_EVENT,
-  AUTOMATIONS_UPDATED_EVENT,
   MCPS_CHANGED_EVENT,
   SKILLS_CHANGED_EVENT,
   automationHref,
@@ -282,7 +281,6 @@ export async function restoreArchivedItem(
       return
     case 'automation':
       await overlayAppClient.scope.restore('automations', item.id)
-      window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
       return
     case 'work-item':
       await overlayAppClient.scope.restore('work', item.id)
@@ -328,7 +326,6 @@ export async function deleteArchivedItem(item: ArchivedItem, workspaceId: string
       await requireOk(response, 'Automation was not deleted')
       const payload = await overlayAppClient.automations.parseDeleteResponse(response).catch(() => ({} as { linkedConversationIds?: string[] }))
       for (const chatId of payload.linkedConversationIds ?? []) dispatchChatDeleted({ chatId })
-      window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
       return
     }
     case 'work-item':

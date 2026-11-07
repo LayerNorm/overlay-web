@@ -1,5 +1,4 @@
 import {
-  AUTOMATIONS_UPDATED_EVENT,
   EXTENSIONS_CHANGED_EVENT,
   MCPS_CHANGED_EVENT,
   SKILLS_CHANGED_EVENT,
@@ -30,9 +29,8 @@ export function announceArchived(detail: ArchiveToastDetail): void {
 /** Lists showing this kind of resource reload, so a restored item reappears where it belongs. */
 export function refreshAfterRestore(resource: ScopedResourceKind): void {
   if (typeof window === 'undefined') return
-  // Files and Work are live Convex lists and need no reload.
-  if (resource === 'automations') window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
-  else if (resource === 'skills') {
+  // Files, Work and automations are live Convex lists and need no reload.
+  if (resource === 'skills') {
     window.dispatchEvent(new CustomEvent(SKILLS_CHANGED_EVENT))
     window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
   } else if (resource === 'mcp-servers') {
