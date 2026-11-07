@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-07. Phases A to D are complete and live in production: chats, agents, rooms, Activity, files, notes and memories run on the native path. The production Convex backend was last deployed from main `8c57d1c52` after the matching web release. Phase E (CN-16 to CN-20, Work, automations and skills) is implemented on #415 and accepted on its preview with a second member (results under section 7). Stop, approval, input response, room send, agent assignment and automation writes stay on the server by design because they run workflows, agent turns, billing checks or email. Cases that need a second member have Convex test coverage only, because no second sandbox account exists yet. The next phase after E is F (control plane and settings). The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-07. Phases A to E are complete and live in production: chats, agents, rooms, Activity, files, notes, memories, Work, automations and skills run on the native path. The production Convex backend was last deployed from main `228e9bedc` after the matching web release. Phase F ships in three PRs; the first (CN-21 to CN-24, connections) is implemented on the Phase F connections PR. Stop, approval, input response, room send, agent assignment, automation writes and connection writes stay on the server by design because they run workflows, agent turns, billing checks, credential encryption, OAuth or provider calls. Second-member cases are tested on previews with a seeded collaborator acting through the Convex CLI. The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -14,11 +14,12 @@ Status: in progress as of 2026-11-07. Phases A to D are complete and live in pro
 | CN-06W | #412 | Merged and deployed: web and Convex production at `1799597ac`, production smoke passed |
 | CN-07 to CN-11 | #413 | Merged and deployed: web and Convex production at `2fcade1e1`, production smoke passed |
 | CN-12 to CN-15 | #414 | Merged and deployed: web and Convex production at `8c57d1c52`, production smoke passed |
-| CN-16 to CN-20 | #415 | Accepted on preview; merging |
+| CN-16 to CN-20 | #415 | Merged and deployed: web and Convex production at `228e9bedc`, production smoke passed |
+| CN-21 to CN-24 | Phase F connections PR | Implemented; preview acceptance pending |
 | CN-07 to CN-11 (old attempt) | #403 | Closed unmerged, superseded by the Phase C PR |
 | CN-12 (old attempt) | #402 | Closed unmerged, superseded by the Phase D PR |
 | CN-20 (old attempt) | #398 | Closed unmerged, superseded by the Phase E PR |
-| CN-21 | #401 | Closed unmerged, branch kept as reference |
+| CN-21 (old attempt) | #401 | Closed unmerged, superseded by the Phase F connections PR |
 | CN-25 | #400 | Closed unmerged, branch kept as reference |
 
 Closed branches are source material, not accepted work. Reuse their Convex authorization code and tests only after reviewing them against current main.
@@ -500,6 +501,8 @@ Tested in Chrome as a real member (Google sign-in) of the paid **Preview QA Team
 
 **Retirement/non-goals:** remove MCP configuration/status snapshots and polling. Keep external protocol/OAuth. Token issuance/revocation UX is completed in CN-29.
 
+**Implemented (Phase F connections PR):** `integrations/mcpBrowse:servers|connections` feed the MCP page and Settings → Connected apps live; the focus/workspace refetches and the version bump are gone. Credentials never leave the server and non-editors see a shared server's URL without keys. Create, edit, test, OAuth and revoke stay on the server.
+
 ### CN-22. Make integration and model-provider connection state native
 
 **Outcome:** connected apps/provider changes update settings and composer model availability remotely.
@@ -513,6 +516,8 @@ Tested in Chrome as a real member (Google sign-in) of the paid **Preview QA Team
 **Acceptance:** external success/failure appears in both clients; disconnect removes availability; personal/workspace sharing is respected; no secret-bearing record is subscribed to.
 
 **Retirement/non-goals:** remove stored-status HTTP polling and local success caches. Keep OAuth/provider/subscription runtimes and credential refresh infrastructure.
+
+**Implemented (Phase F connections PR):** `providers/browse:connections` replaces the 60-second and focus polling behind every model picker and Settings → Providers; the default gateway is still seeded once over HTTP. Integration connected state stays on the server because the integration provider is its source of truth; agent provider accounts were not polled and are unchanged.
 
 ### CN-23. Make Computers and environment status reactive
 
@@ -528,6 +533,8 @@ Tested in Chrome as a real member (Google sign-in) of the paid **Preview QA Team
 
 **Retirement/non-goals:** remove UI polling of stored status. Keep provider acquisition/heartbeats and terminal/browser/desktop transports. No compute-provider replacement.
 
+**Implemented (Phase F connections PR):** `computers/browse:list` and `agents/environmentsBrowse:list|bindings` replace five polls (Computer settings, the agent panel and sidebar, environment settings, agent options, BYO enrollment). Visibility mirrors the server; provider references, public keys and credential hashes stay server-side; the online window is applied on a local clock. Lifecycle commands stay on the server.
+
 ### CN-24. Make surface/channel bindings and extension-host status reactive
 
 **Outcome:** surface bindings and execution status converge across the trusted web host.
@@ -541,6 +548,8 @@ Tested in Chrome as a real member (Google sign-in) of the paid **Preview QA Team
 **Acceptance:** remote bind/unbind updates views; execution status survives refresh; untrusted iframe code receives only its existing scoped contract, never privileged Convex credentials.
 
 **Retirement/non-goals:** remove host metadata refetch loops. Keep external-channel events, extension APIs, and runtime protocols.
+
+**Implemented (Phase F connections PR):** `surfaces/browse:forAgent` makes an agent's Slack connections, bindings and bind right live. The `/app/x` extension host renders on the server with no browser loads, so it needed nothing.
 
 ### CN-25. Make workspace directory and app-owned settings reactive
 
