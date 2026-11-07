@@ -8,7 +8,6 @@ import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireAccessToken, validateServerSecret } from '../lib/auth'
 import { recordConversationEvent } from './events'
-import { conversationListVersion } from '../lib/conversationListVersion'
 import { resolveConversationActivityState } from '../../src/shared/chat/conversation-activity-state'
 import { assertNativeHarnessRun, assertSupportedAgentExecution, nativeRunRetiredError } from '../../src/shared/agents/native-run-retirement'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
@@ -42,6 +41,7 @@ const notificationValidator = v.object({
   body: v.optional(v.string()),
   createdAt: v.number(),
   readAt: v.optional(v.number()),
+  conversationType: v.optional(v.union(v.literal('personal'), v.literal('dm'), v.literal('channel'))),
   conversationState: v.optional(v.union(v.literal('archived'), v.literal('deleted'))),
 })
 
@@ -2104,35 +2104,6 @@ export const listConversationEvents = query({
   },
 })
 
-/**
- * A lightweight browser-facing invalidation signal for the conversation list.
- * It intentionally returns no event metadata: any active workspace member may
- * observe that the workspace changed, but private conversation identifiers stay
- * behind the normal list/access checks.
- */
-export const watchConversationListVersion = query({
-  args: {
-    accessToken: v.string(),
-    actorUserId: v.string(),
-    workspaceId: v.string(),
-  },
-  returns: v.union(
-    v.object({ ok: v.literal(false), version: v.number() }),
-    v.object({ ok: v.literal(true), version: v.number() }),
-  ),
-  handler: async (ctx, args) => {
-    try {
-      await requireActor(ctx, args)
-    } catch (error) {
-      if (error instanceof Error && ['Unauthorized', 'WORKSPACE_ACCESS_DENIED'].includes(error.message)) {
-        return { ok: false as const, version: 0 }
-      }
-      throw error
-    }
-    return { ok: true as const, version: await conversationListVersion(ctx, { workspaceId: args.workspaceId }) }
-  },
-})
-
 export const editMessage = mutation({
   args: {
     actorUserId: v.string(),
@@ -2161,16 +2132,12 @@ export const deleteMessage = mutation({
   },
 })
 
-async function listNotificationRows(
+export async function listNotificationRows(
   ctx: QueryCtx,
-  args: {
-    actorUserId: string
+  args: ActorProof & {
     filter?: 'all' | 'unread' | 'mentions' | 'threads' | 'reactions'
     limit?: number
     unreadOnly?: boolean
-    workspaceId: string
-    accessToken?: string
-    serverSecret?: string
   },
 ) {
   const actor = await requireActor(ctx, args)
@@ -2187,6 +2154,8 @@ async function listNotificationRows(
   })
   const conversationIds = [...new Set(notifications.map((row) => row.conversationId))]
   const conversationStateById = new Map<string, 'archived' | 'deleted'>()
+  // Carried on each notification so opening it routes without looking the room up.
+  const conversationTypeById = new Map<string, 'personal' | 'dm' | 'channel'>()
   await Promise.all(conversationIds.map(async (conversationId) => {
     const [conversation, participant] = await Promise.all([
       ctx.db.get(conversationId),
@@ -2200,6 +2169,7 @@ async function listNotificationRows(
       conversation: conversation ? { deletedAt: conversation.deletedAt } : null,
     })
     if (state) conversationStateById.set(String(conversationId), state)
+    if (conversation) conversationTypeById.set(String(conversationId), conversation.conversationType ?? 'personal')
   }))
   return notifications.map((row) => ({
     id: row.notificationId,
@@ -2216,6 +2186,7 @@ async function listNotificationRows(
     body: row.body,
     createdAt: row.createdAt,
     readAt: row.readAt,
+    conversationType: conversationTypeById.get(String(row.conversationId)),
     conversationState: conversationStateById.get(String(row.conversationId)),
   }))
 }
@@ -2231,31 +2202,6 @@ export const listNotifications = query({
   },
   returns: v.array(notificationValidator),
   handler: listNotificationRows,
-})
-
-export const watchNotifications = query({
-  args: {
-    accessToken: v.string(),
-    actorUserId: v.string(),
-    filter: v.optional(notificationFilterValidator),
-    limit: v.optional(v.number()),
-    unreadOnly: v.optional(v.boolean()),
-    workspaceId: v.string(),
-  },
-  returns: v.union(
-    v.object({ ok: v.literal(false), notifications: v.array(notificationValidator) }),
-    v.object({ ok: v.literal(true), notifications: v.array(notificationValidator) }),
-  ),
-  handler: async (ctx, args) => {
-    try {
-      return { ok: true as const, notifications: await listNotificationRows(ctx, args) }
-    } catch (error) {
-      if (error instanceof Error && ['Unauthorized', 'WORKSPACE_ACCESS_DENIED'].includes(error.message)) {
-        return { ok: false as const, notifications: [] }
-      }
-      throw error
-    }
-  },
 })
 
 const setThreadFollowArgs = {
@@ -2388,30 +2334,34 @@ export const updateNotificationPreferences = mutation({
   },
 })
 
-export const markNotificationsRead = mutation({
-  args: {
+const markNotificationsReadArgs = {
     actorUserId: v.string(),
     conversationId: v.optional(v.id('conversations')),
     notificationIds: v.optional(v.array(v.string())),
     workspaceId: v.string(),
     serverSecret: v.optional(v.string()),
-  },
-  handler: async (ctx, args) => {
-    const actor = await requireActor(ctx, args)
-    const ids = args.notificationIds ? new Set(args.notificationIds) : null
-    const rows = await ctx.db.query('workspaceNotifications')
-      .withIndex('by_workspaceId_recipientPrincipalId_createdAt', (q) => (
-        q.eq('workspaceId', args.workspaceId).eq('recipientPrincipalId', actor.principalId)
-      )).collect()
-    const unread = rows.filter((row) => !(
-      row.readAt
-      || (ids && !ids.has(row.notificationId))
-      || (args.conversationId && row.conversationId !== args.conversationId)
-    ))
-    const readAt = Date.now()
-    await Promise.all(unread.map((row) => ctx.db.patch(row._id, { readAt })))
-    return unread.length
-  },
+  }
+
+export async function markNotificationsReadFor(ctx: MutationCtx, args: ObjectType<typeof markNotificationsReadArgs> & { native?: true }) {
+  const actor = await requireActor(ctx, args)
+  const ids = args.notificationIds ? new Set(args.notificationIds) : null
+  const rows = await ctx.db.query('workspaceNotifications')
+    .withIndex('by_workspaceId_recipientPrincipalId_createdAt', (q) => (
+      q.eq('workspaceId', args.workspaceId).eq('recipientPrincipalId', actor.principalId)
+    )).collect()
+  const unread = rows.filter((row) => !(
+    row.readAt
+    || (ids && !ids.has(row.notificationId))
+    || (args.conversationId && row.conversationId !== args.conversationId)
+  ))
+  const readAt = Date.now()
+  await Promise.all(unread.map((row) => ctx.db.patch(row._id, { readAt })))
+  return unread.length
+}
+
+export const markNotificationsRead = mutation({
+  args: markNotificationsReadArgs,
+  handler: async (ctx, args) => await markNotificationsReadFor(ctx, args),
 })
 
 export async function editRoomMessage(

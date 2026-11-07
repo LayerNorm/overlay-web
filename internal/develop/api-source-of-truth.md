@@ -306,10 +306,14 @@ New owner sessions use `flowVersion: 2` and revision-checked name, about, team, 
 - Convex room transcript append, finalize, failure, and sanitization writes require a linked supported native Harness or connected remote AgentRun. The unowned `startAgentMessage` mutation and unmarked buffered agent posts are retired; native streaming uses the assistant message admitted by `startAgentTurn`, and startup failures are persisted directly as terminal errors. This does not grant tool-effect authority or reconcile uncertain receipts; late tool receipts may still be retained on a completed message without reopening execution.
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Convex appends the replaced body before an edit.
 - `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
-- Convex-backed browsers use native `watchConversationListVersion` and `watchNotifications` subscriptions. `/api/v1/conversations/events` remains a long-poll fallback for non-realtime clients and must not be mounted as a browser subscription path.
-- Remaining token-based reactive handlers (notifications and list version, until CN-11) receive the short-lived BFF HMAC token as an explicit
-  `accessToken` argument. This token does not configure Convex platform `setAuth`;
-  the handler verifies it and binds it to the requested account.
+- Browsers read Activity through `collaboration/activity:notifications` and the DM/channel list
+  version through `collaboration/activity:listVersion`, both with native identity. Each notification
+  carries `conversationType`, so opening one routes without looking the room up. Read state goes
+  through `collaboration/activity:markRead`, which takes the notification ids the member has seen or
+  one open room's id; a notification that arrives meanwhile stays unread, and an already-read row keeps
+  its first read time. The browser applies it optimistically to the live list, and room unread badges
+  are derived from that list, so there is no local read map or read event. `/api/v1/conversations/events`
+  remains a long-poll fallback for non-realtime clients and must not be mounted as a browser subscription path.
 - Room transcripts are native. Browsers read DM and channel history through
   `collaboration/rooms:access`, `:messages` (paginated, main timeline or one thread, indexed by
   thread root) and `:message` (permalinks and thread roots), and edit or delete through
@@ -420,15 +424,18 @@ The rate limit provider is selected at bootstrap. Redis is preferred when config
 
 ### Versioned conversation list reconciliation
 
-Personal conversation mutations (`create`, `update`, `remove` in `convex/chat/conversations.ts`) now emit `conversationEvents` rows, just like collaboration conversations. The `conversationEvents` table has a new `by_userId_createdAt` index for user-scoped version queries.
-
-`watchPersonalConversationListVersion` (in `convex/chat/conversations.ts`) returns the latest event `_creationTime` for a user. `watchConversationListVersion` (in `convex/collaboration/directMessages.ts`) returns the latest event for a workspace. The `CollaborationRealtimeProvider` subscribes to both and merges them via `Math.max` — any personal or collaboration change triggers a single version bump.
+Personal and workspace AI chat lists are native live queries (`chat/personal:list`), so they need no
+version signal. The DM and channel lists still load over HTTP: `collaboration/activity:listVersion`
+returns the latest semantic `conversationEvents` time for the workspace (text deltas never bump it).
 
 When the version changes, the client fetches only the delta via `GET /api/v1/conversations?updatedSince=<version-1000>` and upserts individual rows into the chat list cache (`upsertCachedChat` / `removeCachedChat`). This replaces the previous full-list reload on every version change.
 
 ### Presence subscription
 
-`watchPresence` (in `convex/collaboration/directMessages.ts`) provides a Convex subscription for conversation presence and typing state. When Convex realtime is available, `DirectMessageExperience` skips the 15-second HTTP presence polling fallback. The heartbeat (45s) remains to keep the user's own presence row alive. The query catches `Unauthorized`, `WORKSPACE_ACCESS_DENIED`, and `CONVERSATION_ACCESS_DENIED` errors gracefully (returning `{ok: false, presence: []}`) so that self-scoped conversation deletion/archive does not crash the React error boundary when the subscription is still active.
+Presence and typing are part of `collaboration/rooms:state` and are written by the native
+`collaboration/rooms:heartbeat` mutation every 45 seconds and on typing. There is no polling fallback.
+The state query returns null for a member who lost access, so archive or removal never throws into a
+React error boundary.
 
 ### Indexed mention and workspace search
 

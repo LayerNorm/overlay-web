@@ -173,12 +173,11 @@ export function useThreadPanel({
 export function useReadMarkers({
   conversationId,
   room,
-
-  refreshNotifications,
+  markConversationRead,
 }: {
   conversationId: string
   room: RoomStateApi
-  refreshNotifications: () => void
+  markConversationRead: (conversationId: string) => void
 }) {
   const { args: roomArgs, updateMyState } = room
   const [unreadBoundarySequence, setUnreadBoundarySequence] = useState<number | null>(null)
@@ -186,18 +185,9 @@ export function useReadMarkers({
   const unreadBoundaryInitializedRef = useRef(false)
   const readMarkInFlightRef = useRef(false)
 
-  const clearCollaborationNotifications = useCallback(async () => {
-
-    try {
-      await overlayAppClient.conversations.markConversationNotificationsRead(conversationId)
-      refreshNotifications()
-    } catch {
-      // Badge clear is best-effort; the room transcript still works.
-    }
-    window.dispatchEvent(new CustomEvent('overlay:collaboration-read', {
-      detail: { conversationId },
-    }))
-  }, [conversationId, refreshNotifications, ])
+  const clearCollaborationNotifications = useCallback(() => {
+    markConversationRead(conversationId)
+  }, [conversationId, markConversationRead])
 
   const markVisibleRead = useCallback(async () => {
     if (document.visibilityState !== 'visible') return
@@ -211,7 +201,7 @@ export function useReadMarkers({
       await updateMyState({ ...roomArgs, markRead: true })
       setUnreadBoundarySequence(null)
       setNewMessageCount(0)
-      await clearCollaborationNotifications()
+      clearCollaborationNotifications()
     } finally {
       readMarkInFlightRef.current = false
     }
@@ -2041,7 +2031,7 @@ export function useDirectMessageRoom({
   draftTitle,
   router,
   activeWorkspaceId,
-  refreshNotifications,
+  markConversationRead,
   onOpenAttachmentPreview,
 }: {
   conversationId: string
@@ -2051,7 +2041,7 @@ export function useDirectMessageRoom({
   draftTitle: string | undefined
   router: ReturnType<typeof useRouter>
   activeWorkspaceId: string | null | undefined
-  refreshNotifications: () => void
+  markConversationRead: (conversationId: string) => void
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
 }) {
   const createAgentThread = useMutation(api.agents.threads.create)
@@ -2068,7 +2058,7 @@ export function useDirectMessageRoom({
   const [mentions, setMentions] = useState<MentionItem[]>([])
 
   const room = useRoomState(activeWorkspaceId, conversationId)
-  const readMarkers = useReadMarkers({ conversationId, room, refreshNotifications })
+  const readMarkers = useReadMarkers({ conversationId, room, markConversationRead })
   const roster = useRoomRoster({ room, noteParticipantsLoaded: readMarkers.noteParticipantsLoaded })
   const collab = useRoomCollaboration({ room })
   const thread = useThreadPanel({ conversationId, room, setRoomPanel })

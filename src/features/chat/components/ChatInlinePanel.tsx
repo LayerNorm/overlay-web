@@ -179,35 +179,16 @@ function useCollaborationUnread({
   user: AuthUser | null
   collaborationNotifications: WorkspaceNotification[]
 }) {
-  const [collaborationUnread, setCollaborationUnread] = useState<Record<string, number>>({})
-  useEffect(() => {
-    if (!workspaceId || !user) {
-      queueMicrotask(() => setCollaborationUnread({}))
-      return
-    }
+  // Derived from live notifications: marking a room read updates them, so badges follow.
+  return useMemo(() => {
     const counts: Record<string, number> = {}
+    if (!workspaceId || !user) return counts
     for (const notification of collaborationNotifications) {
-      if (notification.readAt) continue
-      if (!notification.conversationId) continue
+      if (notification.readAt || !notification.conversationId) continue
       counts[notification.conversationId] = (counts[notification.conversationId] ?? 0) + 1
     }
-    queueMicrotask(() => setCollaborationUnread(counts))
-    function handleCollaborationRead(event: Event) {
-      const conversationId = (event as CustomEvent<{ conversationId?: string }>).detail?.conversationId
-      if (!conversationId) return
-      setCollaborationUnread((current) => {
-        if (!(conversationId in current)) return current
-        const next = { ...current }
-        delete next[conversationId]
-        return next
-      })
-    }
-    window.addEventListener('overlay:collaboration-read', handleCollaborationRead)
-    return () => {
-      window.removeEventListener('overlay:collaboration-read', handleCollaborationRead)
-    }
-  }, [collaborationNotifications,  user, workspaceId])
-  return collaborationUnread
+    return counts
+  }, [collaborationNotifications, user, workspaceId])
 }
 
 function useChatListData({

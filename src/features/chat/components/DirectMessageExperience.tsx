@@ -242,7 +242,7 @@ export function DirectMessageExperience({
 }) {
   const { activeWorkspace, activeWorkspaceId } = useWorkspace()
   const { capabilities } = useOverlayCapabilities()
-  const { refreshNotifications } = useCollaborationRealtime()
+  const { markConversationRead } = useCollaborationRealtime()
   const { settings: appSettings } = useAppSettings()
   const router = useRouter()
   const panels = useRoomPanels({ renderAttachmentViewer: AttachmentViewer })
@@ -254,7 +254,7 @@ export function DirectMessageExperience({
     draftTitle,
     router,
     activeWorkspaceId,
-    refreshNotifications,
+    markConversationRead,
     onOpenAttachmentPreview: panels.openAttachmentPreview,
   })
   const { vm, roster, collab, thread, transcript, composer, roomActions, messageCtx } = room

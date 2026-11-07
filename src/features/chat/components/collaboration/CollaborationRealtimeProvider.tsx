@@ -10,29 +10,51 @@ import {
   useState,
   type ReactNode,
 } from 'react'
+import { useConvexAuth, useMutation, useQuery } from 'convex/react'
+import type { OptimisticLocalStore } from 'convex/browser'
+import type { FunctionArgs } from 'convex/server'
 import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
-import { useQuery } from '@/components/providers/convex-hooks'
-import { useConvexAuthToken } from '@/components/providers/ConvexAuthProvider'
-import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { api } from '../../../../../convex/_generated/api'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 
 type CollaborationRealtimeContextValue = {
   conversationListVersion: number | null
   notifications: WorkspaceNotification[]
   notificationsReady: boolean
-  refreshNotifications(): void
+  /** Marks exactly these notifications read. Anything that arrives meanwhile stays unread. */
+  markNotificationsRead(ids: string[]): void
+  /** Marks one open room's notifications read. */
+  markConversationRead(conversationId: string): void
 }
+
+const NO_NOTIFICATIONS: WorkspaceNotification[] = []
 
 const CollaborationRealtimeContext = createContext<CollaborationRealtimeContextValue>({
   conversationListVersion: null,
-  notifications: [],
+  notifications: NO_NOTIFICATIONS,
   notificationsReady: false,
-  refreshNotifications: () => undefined,
+  markNotificationsRead: () => undefined,
+  markConversationRead: () => undefined,
 })
+
+/** Shows notifications read at once; the server answer replaces this, so a failure restores them. */
+function markReadOptimistically(
+  store: OptimisticLocalStore,
+  change: FunctionArgs<typeof api.collaboration.activity.markRead>,
+) {
+  const current = store.getQuery(api.collaboration.activity.notifications, { workspaceId: change.workspaceId })
+  if (!current) return
+  const ids = change.notificationIds ? new Set(change.notificationIds) : null
+  const readAt = Date.now()
+  store.setQuery(api.collaboration.activity.notifications, { workspaceId: change.workspaceId }, current.map((item) => (
+    !item.readAt && (ids?.has(item.id) || (change.conversationId && item.conversationId === change.conversationId))
+      ? { ...item, readAt }
+      : item
+  )))
+}
 
 function usePageVisibility(): boolean {
   const [visible, setVisible] = useState(() => (
@@ -46,121 +68,60 @@ function usePageVisibility(): boolean {
   return visible
 }
 
-function ConvexCollaborationSubscriptions({
-  accessToken,
-  actorUserId,
-  enabled,
-  onConversationListVersion,
-  onNotifications,
-  workspaceId,
-}: {
-  accessToken: string | null
-  actorUserId: string | null
-  enabled: boolean
-  onConversationListVersion(version: number): void
-  onNotifications(notifications: WorkspaceNotification[]): void
-  workspaceId: string | null
-}) {
-  const args = enabled && accessToken && actorUserId && workspaceId
-    ? { accessToken, actorUserId, workspaceId }
-    : 'skip'
-  const listVersion = useQuery(api.collaboration.directMessages.watchConversationListVersion, args)
-  const notificationResult = useQuery(
-    api.collaboration.directMessages.watchNotifications,
-    args === 'skip' ? 'skip' : { ...args, filter: 'all' as const, limit: 100 },
-  )
-
-  // Personal conversation list version subscription (user-scoped).
-  // Merged with the workspace version so the client detects both
-  // personal and collaboration conversation changes.
-  const personalArgs = enabled && accessToken && actorUserId
-    ? { userId: actorUserId, accessToken }
-    : 'skip'
-  const personalListVersion = useQuery(
-    api.chat.conversations.watchPersonalConversationListVersion,
-    personalArgs,
-  )
-
-  useEffect(() => {
-    const workspaceVersion = listVersion?.ok ? listVersion.version : 0
-    const personalVersion = personalListVersion?.ok ? personalListVersion.version : 0
-    // Use the max of both versions so any change triggers a refresh.
-    // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
-    onConversationListVersion(Math.max(workspaceVersion, personalVersion))
-  }, [listVersion, personalListVersion, onConversationListVersion])
-
-  useEffect(() => {
-    if (notificationResult?.ok) {
-      // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
-      onNotifications(notificationResult.notifications as WorkspaceNotification[])
-    }
-  }, [notificationResult, onNotifications])
-
-  return null
-}
-
+/**
+ * Activity notifications and the room list version for the active workspace, read live with native
+ * identity. Read state is optimistic: marking read updates the live list at once and the server
+ * result replaces it, so a failure restores the unread state by itself.
+ */
 export function CollaborationRealtimeProvider({ children }: { children: ReactNode }) {
-  const { appDataCapabilities } = useOverlayCapabilities()
-  const { user } = useAuth()
   const { activeWorkspaceId } = useWorkspace()
-  const accessToken = useConvexAuthToken()
+  const { isAuthenticated, isLoading } = useConvexAuth()
   const visible = usePageVisibility()
   const desktop = useDesktopBridge()
-  const seen = useRef<Set<string> | null>(null)
-  const [notifications, setNotifications] = useState<WorkspaceNotification[]>([])
-  const [notificationsReady, setNotificationsReady] = useState(false)
-  const [conversationListVersion, setConversationListVersion] = useState<number | null>(null)
-  const convexEnabled = appDataCapabilities.provider === 'convex'
-    && appDataCapabilities.requiresConvexClient
-    && appDataCapabilities.supportsRealtime
+  const args = activeWorkspaceId && isAuthenticated && !isLoading ? { workspaceId: activeWorkspaceId } : null
+  const result = useQuery(api.collaboration.activity.notifications, args ?? 'skip')
+  const listVersion = useQuery(api.collaboration.activity.listVersion, args ?? 'skip')
+  const notifications = (result as WorkspaceNotification[] | null | undefined) ?? NO_NOTIFICATIONS
 
+  const markRead = useMutation(api.collaboration.activity.markRead).withOptimisticUpdate(markReadOptimistically)
+  const workspaceId = args?.workspaceId ?? null
+  const markNotificationsRead = useCallback((ids: string[]) => {
+    if (!workspaceId || ids.length === 0) return
+    void markRead({ workspaceId, notificationIds: ids }).catch(() => undefined)
+  }, [markRead, workspaceId])
+  const markConversationRead = useCallback((conversationId: string) => {
+    if (!workspaceId) return
+    void markRead({ workspaceId, conversationId: conversationId as Id<'conversations'> }).catch(() => undefined)
+  }, [markRead, workspaceId])
+
+  // Desktop badge and banners for notifications that arrive while the window is hidden.
+  const seen = useRef<{ workspaceId: string | null; ids: Set<string> } | null>(null)
   useEffect(() => {
-    let alive = true
-    void Promise.resolve().then(() => {
-      if (!alive) return
-      seen.current = null
-      setNotifications([])
-      setNotificationsReady(false)
-      setConversationListVersion(null)
-    })
-    return () => { alive = false }
-  }, [activeWorkspaceId, user?.id])
-
-  const refreshNotifications = useCallback(() => {}, [])
-
-  const handleNotifications = useCallback((next: WorkspaceNotification[]) => {
-    if (desktop?.info.capabilities.includes('window')) void desktop.bridge.call('window.setBadgeCount', { count: Math.min(99999, next.filter((item) => !item.readAt).length) }).catch(() => {})
-    if (seen.current && desktop?.info.capabilities.includes('notifications') && !visible) {
-      for (const item of next) {
-        if (seen.current.has(item.id) || item.readAt || item.conversationState === 'deleted') continue
+    if (result === undefined || result === null) return
+    if (desktop?.info.capabilities.includes('window')) {
+      void desktop.bridge.call('window.setBadgeCount', { count: Math.min(99999, notifications.filter((item) => !item.readAt).length) }).catch(() => {})
+    }
+    const previous = seen.current?.workspaceId === workspaceId ? seen.current.ids : null
+    if (previous && desktop?.info.capabilities.includes('notifications') && !visible) {
+      for (const item of notifications) {
+        if (previous.has(item.id) || item.readAt || item.conversationState === 'deleted') continue
         const route = buildWorkspaceHref(item.workspaceId, '/app/chat') + (item.conversationId ? `?id=${encodeURIComponent(item.conversationId)}` : '')
         void desktop.bridge.call('notifications.show', { title: item.title.slice(0, 200), body: (item.body ?? '').slice(0, 2000), route }).catch(() => {})
       }
     }
-    seen.current = new Set(next.map((item) => item.id))
-    setNotifications(next)
-    setNotificationsReady(true)
-  }, [desktop, visible])
+    seen.current = { workspaceId, ids: new Set(notifications.map((item) => item.id)) }
+  }, [desktop, notifications, result, visible, workspaceId])
 
   const value = useMemo(() => ({
-    conversationListVersion,
+    conversationListVersion: typeof listVersion === 'number' ? listVersion : null,
     notifications,
-    notificationsReady,
-    refreshNotifications,
-  }), [conversationListVersion, notifications, notificationsReady, refreshNotifications])
+    notificationsReady: result !== undefined,
+    markNotificationsRead,
+    markConversationRead,
+  }), [listVersion, markConversationRead, markNotificationsRead, notifications, result])
 
   return (
     <CollaborationRealtimeContext.Provider value={value}>
-      {convexEnabled ? (
-        <ConvexCollaborationSubscriptions
-          accessToken={accessToken}
-          actorUserId={user?.id ?? null}
-          enabled={visible || Boolean(desktop)}
-          onConversationListVersion={setConversationListVersion}
-          onNotifications={handleNotifications}
-          workspaceId={activeWorkspaceId}
-        />
-      ) : null}
       {children}
     </CollaborationRealtimeContext.Provider>
   )

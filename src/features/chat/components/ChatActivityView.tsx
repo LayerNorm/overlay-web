@@ -10,8 +10,6 @@ import type {
 import { Button, SegmentedControl } from '@overlay/ui/primitives'
 import { AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { dispatchCollaborationNotificationsChanged } from '@/shared/chat/collaboration-events'
 import { conversationActivityLabel } from '@/shared/chat/conversation-activity-state'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
@@ -57,59 +55,29 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
   const pathname = usePathname() ?? ''
   const buildScopedHref = useWorkspaceHref()
   const [filter, setFilter] = useState<WorkspaceNotificationFilter>('all')
-  const { notifications: sourceNotifications, notificationsReady } = useCollaborationRealtime()
-  const [locallyRead, setLocallyRead] = useState<Map<string, number>>(() => new Map())
-  const notifications = useMemo(() => sourceNotifications
-    .filter((notification) => {
-      if (filter === 'unread') return !notification.readAt && !locallyRead.has(notification.id)
-      if (filter === 'mentions') return notification.type === 'mention'
-      if (filter === 'threads') return notification.type === 'thread'
-      if (filter === 'reactions') return notification.type === 'reaction'
-      return true
-    })
-    .map((notification) => locallyRead.has(notification.id)
-      ? { ...notification, readAt: notification.readAt ?? locallyRead.get(notification.id) }
-      : notification), [filter, locallyRead, sourceNotifications])
+  const { notifications: sourceNotifications, notificationsReady, markNotificationsRead } = useCollaborationRealtime()
+  const notifications = useMemo(() => sourceNotifications.filter((notification) => {
+    if (filter === 'unread') return !notification.readAt
+    if (filter === 'mentions') return notification.type === 'mention'
+    if (filter === 'threads') return notification.type === 'thread'
+    if (filter === 'reactions') return notification.type === 'reaction'
+    return true
+  }), [filter, sourceNotifications])
   const loading = !notificationsReady
 
   const unreadCount = notifications.filter((notification) => !notification.readAt).length
 
-  // Mark all notifications as read when the Activity view is opened.
-  // This is intentionally a side effect of opening the view, not a user action.
+  // Opening Activity marks what it shows as read. Only these ids: a notification that arrives
+  // afterwards stays unread until it is seen.
+  const shownUnreadIds = useMemo(() => sourceNotifications
+    .filter((notification) => !notification.readAt)
+    .map(({ id }) => id), [sourceNotifications])
   useEffect(() => {
-    const unreadIds = sourceNotifications
-      .filter((notification) => !notification.readAt)
-      .map(({ id }) => id)
-    if (unreadIds.length === 0) return
-    // Optimistically mark read in the local state so the badge drops immediately.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setLocallyRead((current) => {
-      const next = new Map(current)
-      const readAt = Date.now()
-      for (const id of unreadIds) next.set(id, readAt)
-      return next
-    })
-    void overlayAppClient.conversations
-      .markNotificationsRead(unreadIds)
-      .then(() => dispatchCollaborationNotificationsChanged())
-      .catch(() => undefined)
-  }, [sourceNotifications])
+    markNotificationsRead(shownUnreadIds)
+  }, [markNotificationsRead, shownUnreadIds])
 
-  async function openNotification(notification: WorkspaceNotification) {
-    const conversationPromise = notification.conversationId
-      ? overlayAppClient.conversations
-          .get<{
-          conversationType?: 'personal' | 'dm' | 'channel'
-          }>({ conversationId: notification.conversationId })
-          .catch(() => null)
-      : Promise.resolve(null)
-    if (!notification.readAt) {
-      void overlayAppClient.conversations
-        .markNotificationsRead([notification.id])
-        .then(() => dispatchCollaborationNotificationsChanged())
-        .catch(() => undefined)
-      setLocallyRead((current) => new Map(current).set(notification.id, Date.now()))
-    }
+  function openNotification(notification: WorkspaceNotification) {
+    if (!notification.readAt) markNotificationsRead([notification.id])
     if (!notification.conversationId) return
     if (notification.conversationState === 'archived') {
       const workspaceId = readWorkspaceIdFromPath(pathname)
@@ -119,10 +87,9 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
       router.push(`${archivedBase}?id=${encodeURIComponent(notification.conversationId)}`)
       return
     }
-    const conversation = await conversationPromise
-    const view = conversation?.conversationType === 'channel'
+    const view = notification.conversationType === 'channel'
       ? 'channels'
-      : conversation?.conversationType === 'dm'
+      : notification.conversationType === 'dm'
         ? 'dms'
         : 'personal'
     const query = new URLSearchParams({ view, id: notification.conversationId })
@@ -135,21 +102,8 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
     router.push(mergeHrefSearchParams(chatBase, query))
   }
 
-  async function markAllRead() {
-    const unreadIds = notifications
-      .filter((notification) => !notification.readAt)
-      .map(({ id }) => id)
-    if (unreadIds.length === 0) return
-    setLocallyRead((current) => {
-      const next = new Map(current)
-      const readAt = Date.now()
-      for (const id of unreadIds) next.set(id, readAt)
-      return next
-    })
-    await overlayAppClient.conversations
-      .markNotificationsRead(unreadIds)
-      .then(() => dispatchCollaborationNotificationsChanged())
-      .catch(() => undefined)
+  function markAllRead() {
+    markNotificationsRead(notifications.filter((notification) => !notification.readAt).map(({ id }) => id))
   }
 
   return (
@@ -188,7 +142,7 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
                 <Button
                   variant="ghost"
                   type="button"
-                  onClick={() => void markAllRead()}
+                  onClick={markAllRead}
                   className="h-auto gap-1.5 rounded-md px-2 py-1 text-xs font-normal text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)"
                 >
                   <BellOff size={13} /> Mark all read
@@ -201,7 +155,7 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
                   <Button
                     variant="ghost"
                     type="button"
-                    onClick={() => void openNotification(notification)}
+                    onClick={() => openNotification(notification)}
                     className={`flex h-auto w-full items-start justify-start gap-3 rounded-lg px-3 py-3 text-left font-normal transition-colors hover:bg-(--surface-subtle) hover:text-current ${notification.readAt ? 'opacity-70' : ''}`}
                   >
                     <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-(--surface-muted) text-(--muted)">

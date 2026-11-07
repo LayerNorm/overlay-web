@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make Activity and read state native: notifications and unread badges come from one live Convex query, marking read updates every open client at once, and a notification that arrives while you are marking others read stays unread. Opening a notification goes straight to its room without an extra lookup. Removes the local read maps, two unused refresh events and the obsolete personal list-version subscription.
+
 - Make room details live: participants, reactions, pins, saved messages, thread follows, mute and presence now come from one native Convex query per room, so they match in every open client without refetching. Reactions, pins, saves and follows update instantly and roll back by themselves if the server refuses them, and removing someone from a room closes it for them at once. Presence and typing now use native heartbeats instead of a polling fallback.
 
 - Make agent threads live and immediate: the sidebar's thread lists update in every open client, opening an agent you have already expanded goes straight to its thread with no request, and creating, archiving, restoring or deleting a thread updates everywhere at once. Opening a thread no longer re-downloads the agent's thread list to check access, and a link to someone else's thread is still refused.
