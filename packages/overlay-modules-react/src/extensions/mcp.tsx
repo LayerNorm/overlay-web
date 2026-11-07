@@ -41,6 +41,8 @@ export interface McpServerDialogProps {
   onDisconnectOAuth?: (server: McpServerSummary) => Promise<McpMutationResult>
   /** Move and archive controls for an existing server, supplied by the host (they depend on who is viewing). */
   scopeActions?: ReactNode
+  /** The viewer may use this server but not change it: every control is shown disabled, with no save or delete. */
+  readOnly?: boolean
 }
 
 type FormValuesUpdate = <Key extends keyof McpServerFormValues>(key: Key, value: McpServerFormValues[Key]) => void
@@ -347,11 +349,13 @@ function McpServerDialogFooter({
   saving,
   saved,
   values,
+  readOnly,
   onClose,
   onSave,
   onDelete,
 }: {
   isEdit: boolean
+  readOnly: boolean
   initial: McpServerSummary | undefined
   busy: boolean
   saving: boolean
@@ -363,13 +367,13 @@ function McpServerDialogFooter({
 }) {
   return (
     <>
-      <div>{isEdit && initial ? <DeleteExtensionButton name={initial.name || 'this server'} kind="server" disabled={busy} onConfirm={onDelete} /> : null}</div>
+      <div>{isEdit && initial && !readOnly ? <DeleteExtensionButton name={initial.name || 'this server'} kind="server" disabled={busy} onConfirm={onDelete} /> : null}</div>
       <div className="flex items-center gap-2">
-        <Button variant="outline" disabled={busy} onClick={onClose}>Cancel</Button>
-        <Button variant="primary" onClick={onSave} disabled={busy || !values.name.trim() || !values.url.trim()}>
+        <Button variant="outline" disabled={busy} onClick={onClose}>{readOnly ? 'Close' : 'Cancel'}</Button>
+        {readOnly ? null : <Button variant="primary" onClick={onSave} disabled={busy || !values.name.trim() || !values.url.trim()}>
           {saving ? <Loader2 size={14} className="animate-spin" /> : saved ? <Check size={14} /> : null}
           {saving ? 'Saving...' : saved ? 'Saved' : isEdit ? 'Save changes' : 'Add server'}
-        </Button>
+        </Button>}
       </div>
     </>
   )
@@ -384,10 +388,12 @@ export function McpServerDialog({
   onConnectOAuth,
   onDisconnectOAuth,
   scopeActions,
+  readOnly = false,
 }: McpServerDialogProps) {
   const isEdit = state.mode === 'edit'
   const initial = state.server
-  const scopeLabel = initial?.archivedAt !== undefined ? 'Archived' : (initial?.scope ?? 'personal') === 'workspace' ? 'Shared with the workspace' : 'Only you'
+  const baseScopeLabel = initial?.archivedAt !== undefined ? 'Archived' : (initial?.scope ?? 'personal') === 'workspace' ? 'Shared with the workspace' : 'Only you'
+  const scopeLabel = readOnly ? `${baseScopeLabel} · View only` : baseScopeLabel
   const [values, setValues] = useState<McpServerFormValues>(() => mcpServerToFormValues(initial))
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -416,18 +422,20 @@ export function McpServerDialog({
       title={isEdit ? initial?.name || 'MCP server' : 'Add MCP server'}
       description="Give your agents access to external tools."
       icon={<Server size={20} strokeWidth={1.6} />}
-      onClose={onClose} busy={busy}
+      onClose={onClose} busy={busy} locked={readOnly}
       enabled={values.enabled} onEnabledChange={enabled => update('enabled', enabled)}
       activeDescription="Make this server available to your agents."
-      scopeActions={isEdit ? scopeActions : undefined} scopeLabel={scopeLabel}
+      scopeActions={isEdit && !readOnly ? scopeActions : undefined} scopeLabel={scopeLabel}
       footer={<McpServerDialogFooter
-        isEdit={isEdit} initial={initial} busy={busy} saving={saving} saved={saved} values={values}
+        isEdit={isEdit} initial={initial} busy={busy} saving={saving} saved={saved} values={values} readOnly={readOnly}
         onClose={onClose} onSave={() => void handleSave()} onDelete={() => void handleDelete()}
       />}
     >
       <Tabs defaultValue="configuration">
         <TabsList className="mb-5 self-start"><TabsTrigger value="configuration">Configuration</TabsTrigger><TabsTrigger value="tools">Tools</TabsTrigger></TabsList>
-        <TabsContent value="configuration" className="space-y-5">
+        <TabsContent value="configuration">
+          {/* A disabled fieldset turns every field, select and button inside it off at once for a read-only viewer. */}
+          <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-5 border-0 p-0">
           <McpServerFormFields values={values} update={update} />
           <McpAuthSecretFields values={values} update={update} />
           {isOAuth ? <McpOAuthSection
@@ -446,14 +454,17 @@ export function McpServerDialog({
           <Field label="Timeout (ms)">
             <Input type="number" aria-label="Timeout (ms)" value={values.timeoutMs} onChange={event => update('timeoutMs', event.target.value === '' ? '' : Number(event.target.value))} placeholder="30000" />
           </Field>
+          </fieldset>
         </TabsContent>
-        <TabsContent value="tools" className="space-y-5">
+        <TabsContent value="tools">
+          <fieldset disabled={readOnly} className="m-0 min-w-0 space-y-5 border-0 p-0">
           <p className="text-sm text-(--muted)">Choose how agents can use tools from this server.</p>
       <Field label="Tool execution policy">
         <FieldSelect aria-label="Tool execution policy" value={values.defaultToolPolicy} onChange={(value) => update('defaultToolPolicy', value as McpToolPolicyMode)} options={[{ value: 'allow', label: 'Allow tools' }, { value: 'approval_required', label: 'Require approval' }, { value: 'deny', label: 'Deny tools' }]} />
       </Field>
           {initial?.toolCatalogCount !== undefined ? <p className="text-sm text-(--muted)">{initial.toolCatalogCount} tools discovered</p> : null}
           {initial?.toolCatalogError ? <p role="status" className="text-xs text-red-500">{initial.toolCatalogError}</p> : null}
+          </fieldset>
         </TabsContent>
       </Tabs>
       <McpDialogBanners testResult={testResult} isOAuth={isOAuth} mutationError={mutationError} onSwitchToOAuth={() => update('authType', 'oauth')} />

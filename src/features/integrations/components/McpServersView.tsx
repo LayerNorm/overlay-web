@@ -52,6 +52,8 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
     toggles.has(server._id) ? setMcpServerEnabled(server, toggles.get(server._id)!) : server
   )), [live, toggles])
   const loading = live === undefined
+  // Servers this person may use but not change; their dialog opens view-only and the quick toggle does nothing.
+  const readOnlyIds = useMemo(() => new Set((live ?? []).filter((server) => !server.canEdit).map((server) => server._id)), [live])
 
   const filteredServers = useMemo(
     () => filterMcpServers(servers, searchQuery),
@@ -160,6 +162,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
 
   async function handleQuickToggle(server: McpServerSummary, event: MouseEvent) {
     event.stopPropagation()
+    if (readOnlyIds.has(server._id)) return
     const newEnabled = !server.enabled
     setToggles((current) => new Map(current).set(server._id, newEnabled))
     try {
@@ -214,6 +217,7 @@ export default function McpServersView({ userId: _userId }: { userId: string }) 
           onTest={handleTestServer}
           onConnectOAuth={handleConnectOAuth}
           onDisconnectOAuth={handleDisconnectOAuth}
+          readOnly={dialog.mode === 'edit' && Boolean(dialog.server && readOnlyIds.has(dialog.server._id))}
           scopeActions={dialog.mode === 'edit' && dialog.server ? (
             <ScopeItemActions
               kind="extension"
