@@ -1,39 +1,18 @@
 'use client'
 
-import { useEffect, useState } from 'react'
 import { FileCode, FileText, Image } from 'lucide-react'
-import type { KnowledgeFile } from '@overlay/app-core'
 import { Button } from '@overlay/ui/primitives'
 import { useRouter } from 'next/navigation'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useConversationFiles } from '@/hooks/use-file-tree'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 
 export function AgentLibraryTab({ conversationId }: { conversationId: string }) {
   const router = useRouter()
   const buildWorkspaceHref = useWorkspaceHref()
-  const [libraryState, setLibraryState] = useState<{
-    conversationId: string
-    files: KnowledgeFile[] | null
-    failed: boolean
-  }>({ conversationId: '', files: null, failed: false })
-
-  useEffect(() => {
-    let cancelled = false
-    void overlayAppClient.files.get<KnowledgeFile[]>(
-      { conversationId, limit: 100, summary: true },
-      { cache: 'no-store' },
-    ).then((result) => {
-      if (!cancelled) setLibraryState({ conversationId, files: result, failed: false })
-    }).catch(() => {
-      if (!cancelled) setLibraryState({ conversationId, files: null, failed: true })
-    })
-    return () => { cancelled = true }
-  }, [conversationId])
-
-  const currentState = libraryState.conversationId === conversationId ? libraryState : null
-  if (currentState?.failed) return <p className="py-2 text-xs text-(--muted)">Could not load files.</p>
-  if (!currentState?.files) return <p className="py-2 text-xs text-(--muted)">Loading files...</p>
-  const threadFiles = currentState.files.filter((file) => file.kind !== 'folder')
+  const files = useConversationFiles(conversationId)
+  if (files === null) return <p className="py-2 text-xs text-(--muted)">Could not load files.</p>
+  if (!files) return <p className="py-2 text-xs text-(--muted)">Loading files...</p>
+  const threadFiles = files
   if (threadFiles.length === 0) {
     return (
       <div className="flex flex-1 items-center justify-center text-center">

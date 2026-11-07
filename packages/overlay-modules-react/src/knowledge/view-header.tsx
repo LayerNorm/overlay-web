@@ -8,7 +8,6 @@ import {
   LayoutGrid,
   LayoutList,
   Plus,
-  RefreshCw,
   SquareMousePointer,
   Trash2,
 } from 'lucide-react'
@@ -438,7 +437,6 @@ function TabToolbar({
   onNewMemory,
   onPickFile,
   onPickFolder,
-  onRefreshOutputs,
   onSetSelectMode,
   onUpdateQuery,
   outputFilter,
@@ -475,7 +473,6 @@ function TabToolbar({
   onNewMemory: () => void
   onPickFile?: () => void
   onPickFolder?: () => void
-  onRefreshOutputs: () => void
   onSetSelectMode: (value: boolean) => void
   onUpdateQuery: (updates: Record<string, string | null | undefined>) => void
   outputFilter: OutputFilter
@@ -519,16 +516,6 @@ function TabToolbar({
       ) : null}
       {(activeTab === 'memories' || activeTab === 'files' || activeTab === 'outputs') ? (
         <LayoutControls layout={layout} onUpdateQuery={onUpdateQuery} />
-      ) : null}
-      {activeTab === 'outputs' ? (
-        <Button variant="ghost"
-          type="button"
-          title="Refresh"
-          onClick={onRefreshOutputs}
-          className={unstyledButton(TOOLBAR_ICON_BUTTON_CLASS)}
-        >
-          <RefreshCw size={14} strokeWidth={1.75} />
-        </Button>
       ) : null}
       <TabActionControls
         activeTab={activeTab}
@@ -589,7 +576,6 @@ export function KnowledgeViewHeader({
   onSetFileSearchQuery,
   onImportMemory,
   onNewMemory,
-  onRefreshOutputs,
   onSetMemorySearchOpen,
   onSetMemorySearchQuery,
   onSetSelectMode,
@@ -648,7 +634,6 @@ export function KnowledgeViewHeader({
   onSetFileSearchQuery: (value: string) => void
   onImportMemory: () => void
   onNewMemory: () => void
-  onRefreshOutputs: () => void
   onSetMemorySearchOpen: (value: boolean | ((value: boolean) => boolean)) => void
   onSetMemorySearchQuery: (value: string) => void
   onSetSelectMode: (value: boolean) => void
@@ -734,7 +719,6 @@ export function KnowledgeViewHeader({
             onNewMemory={onNewMemory}
             onPickFile={onPickFile}
             onPickFolder={onPickFolder}
-            onRefreshOutputs={onRefreshOutputs}
             onSetSelectMode={onSetSelectMode}
             onUpdateQuery={onUpdateQuery}
             outputFilter={outputFilter}

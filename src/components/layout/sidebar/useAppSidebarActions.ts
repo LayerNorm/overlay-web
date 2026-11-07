@@ -3,8 +3,6 @@
 import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  KNOWLEDGE_ENTITY_MUTATION_EVENT,
-  createKnowledgeMutationPublisher,
   type OverlaySidebarAction,
   type OverlaySidebarActionKey,
 } from '@overlay/app-core'
@@ -14,16 +12,6 @@ import type { GateReason } from '@/components/providers/GuestGateProvider'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { newItemScope } from '@/shared/workspaces/panel-scope'
-
-const nextSidebarActionMutation = createKnowledgeMutationPublisher(
-  `web-sidebar-action:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
-)
-
-function publishCreatedNote(id: string): void {
-  window.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
-    detail: nextSidebarActionMutation({ entity: 'note', id, operation: 'created' }),
-  }))
-}
 
 export interface UseAppSidebarActionsOptions {
   user: object | null
@@ -121,7 +109,6 @@ export function useAppSidebarActions({
     }
     const noteId = data.id ?? data.note?._id
     if (!noteId) return false
-    publishCreatedNote(noteId)
     onCloseMobileMenu()
     router.push(buildWorkspaceHref(null, `/app/notes?id=${encodeURIComponent(noteId)}`, scope))
     return true

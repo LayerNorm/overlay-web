@@ -9,10 +9,8 @@ import {
   toRightPanelMode,
   type PanelPresentation,
 } from '@/shared/ui/panel-presentation'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
-  KNOWLEDGE_ENTITY_MUTATION_EVENT,
-  createKnowledgeMutationPublisher,
   createLocalNotebookNote,
   type CreateNoteResponse,
   type NoteDoc,
@@ -33,23 +31,11 @@ import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
+import { useLiveNote } from '@/hooks/use-file-tree'
 
 const MarkdownMessage = dynamic(() =>
   import('@overlay/chat-react').then((module) => ({ default: module.MarkdownMessage })),
 )
-
-const nextNotebookMutation = createKnowledgeMutationPublisher(
-  `web-notebook:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
-)
-
-function publishNotebookMutation(
-  id: string,
-  operation: 'created' | 'updated' | 'deleted',
-): void {
-  window.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
-    detail: nextNotebookMutation({ entity: 'note', id, operation }),
-  }))
-}
 
 export default function NotebookEditor({
   userId: _userId,
@@ -83,15 +69,23 @@ export default function NotebookEditor({
     storePanelPresentation(presentation)
   }, [])
 
+  const noteId = searchParams?.get('id') ?? null
+  const liveNote = useLiveNote(noteId)
+  // The open note was deleted, archived or became unreadable elsewhere: go back to the files it belonged to.
+  const [seenNoteId, setSeenNoteId] = useState<string | null>(null)
+  if (liveNote && seenNoteId !== liveNote._id) setSeenNoteId(liveNote._id)
+  const noteGone = liveNote === null && noteId !== null && seenNoteId === noteId
+  useEffect(() => {
+    if (noteGone) router.push(buildWorkspaceHref(null, '/app/files', scope))
+  }, [buildWorkspaceHref, noteGone, router, scope])
+
   const repository = useMemo<NotebookEditorRepository>(() => ({
-    list: (signal) => overlayAppClient.notes.get<NoteDoc[]>({ limit: 100 }, { signal }),
     get: (noteId, signal) => overlayAppClient.notes.get<NoteDoc>({ noteId }, { signal }).catch((error: unknown) => {
       if (error instanceof DOMException && error.name === 'AbortError') throw error
       return null
     }),
     async create() {
       const result = await overlayAppClient.notes.create({ title: 'Untitled', content: '' }) as CreateNoteResponse
-      publishNotebookMutation(result.note?._id ?? result.id, 'created')
       return result.note ?? {
         ...createLocalNotebookNote(result.id),
         title: 'Untitled',
@@ -117,19 +111,18 @@ export default function NotebookEditor({
         }
       }
       if (!response.ok) throw new Error(body?.error || 'Could not save note')
-      publishNotebookMutation(body?.note?._id ?? noteId, 'updated')
       return { note: body?.note }
     },
     async delete(noteId) {
       const response = await overlayAppClient.notes.deleteResponse({ noteId })
       if (!response.ok) throw new Error('Could not delete note')
-      publishNotebookMutation(noteId, 'deleted')
     },
   }), [])
 
   return (
     <CanonicalNotebookEditor
-      noteId={searchParams?.get('id') ?? null}
+      noteId={noteId}
+      liveNote={liveNote}
       hideSidebar={hideSidebar}
       projectName={projectName}
       repository={repository}
@@ -154,7 +147,6 @@ export default function NotebookEditor({
           item={note}
           onChanged={() => {
             // The note left this scope (or was archived): back to the list it belongs to.
-            publishNotebookMutation(note._id, 'deleted')
             router.push(buildWorkspaceHref(null, '/app/files', scope))
           }}
         />

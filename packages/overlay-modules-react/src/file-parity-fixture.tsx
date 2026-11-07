@@ -89,6 +89,7 @@ function CanonicalFilesSurfaceFixture() {
       <SharedKnowledgeSurface
         mode="files"
         initialFiles={files}
+        liveFiles={files}
         initialMemories={[]}
         route={route}
         onUpdateQuery={(updates) => setRoute((current) => ({
@@ -106,7 +107,6 @@ function CanonicalFilesSurfaceFixture() {
           upload: async () => ({ ok: true }),
           isEditable: () => false,
           contentUrl: () => undefined,
-          entityChanged: () => undefined,
         }}
         renderFileViewer={() => null}
       />
@@ -125,7 +125,6 @@ const CANONICAL_NOTE_FIXTURE: NoteDoc = {
 
 function CanonicalNotebookEditorFixture() {
   const repository = useMemo<NotebookEditorRepository>(() => ({
-    list: async () => [CANONICAL_NOTE_FIXTURE],
     get: async (noteId) => noteId === CANONICAL_NOTE_FIXTURE._id ? CANONICAL_NOTE_FIXTURE : null,
     create: async () => CANONICAL_NOTE_FIXTURE,
     save: async ({ title, content }) => ({

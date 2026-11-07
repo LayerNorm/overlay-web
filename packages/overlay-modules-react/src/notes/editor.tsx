@@ -55,8 +55,8 @@ export interface NotebookEditorModel {
   name: string
 }
 
+/** Note commands and one-note reads. Lists and live versions come from the host as props. */
 export interface NotebookEditorRepository {
-  list(signal?: AbortSignal): Promise<NoteDoc[]>
   get(noteId: string, signal?: AbortSignal): Promise<NoteDoc | null>
   create(input?: { title?: string; content?: string }): Promise<NoteDoc>
   save(input: {
@@ -104,6 +104,10 @@ export interface NotebookEditorHeaderRenderProps {
 
 export interface CanonicalNotebookEditorProps {
   noteId: string | null
+  /** The host's live note list, shown by the notes sidebar when it is enabled. */
+  notes?: readonly NoteDoc[]
+  /** The open note as the host's live subscription sees it; newer versions refresh a clean editor. */
+  liveNote?: NoteDoc | null
   hideSidebar?: boolean
   showNotesSidebar?: boolean
   hideBackButton?: boolean
@@ -570,6 +574,8 @@ function NotebookHeaderBlock({
 
 export function CanonicalNotebookEditor({
   noteId,
+  notes: notesList,
+  liveNote,
   hideSidebar,
   showNotesSidebar,
   hideBackButton,
@@ -604,7 +610,7 @@ export function CanonicalNotebookEditor({
   renderAgentComposer,
   renderHeader,
 }: CanonicalNotebookEditorProps) {
-  const lifecycle = useEditorLifecycle({ repository, hideSidebar, onNoteChanged, media })
+  const lifecycle = useEditorLifecycle({ repository, liveNotes: notesList, onNoteChanged, media })
   const {
     notes,
     setNotes,
@@ -633,6 +639,7 @@ export function CanonicalNotebookEditor({
 
   const notesApi = useNotebookNotes({
     noteId,
+    liveNote,
     hideSidebar,
     repository,
     onNavigateNote,

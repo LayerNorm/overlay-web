@@ -411,6 +411,8 @@
     "src/features/chat/components/collaboration/useRoomCompatibility.ts",
     "src/features/chat/components/collaboration/useRoomState.ts",
     "src/hooks/use-agent-directory.ts",
+    "src/hooks/use-file-tree.ts",
+    "src/hooks/use-memories.ts",
     "src/server/account/AccountDeletionService.ts",
     "src/server/admin/ConvexAuditRepository.ts",
     "src/server/admin/index.ts",

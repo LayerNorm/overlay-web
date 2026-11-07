@@ -5,7 +5,6 @@ import {
   type KnowledgeAnalyticsAdapter,
   type KnowledgeCreateInput,
   type KnowledgeDeleteInput,
-  type KnowledgeMutationEvent,
   type KnowledgePickedFile,
   type KnowledgeRenameInput,
   type KnowledgeRepository,
@@ -19,6 +18,7 @@ import {
 const FIXED_NOW = Date.parse('2026-07-20T12:00:00.000Z')
 
 export interface FixtureKnowledgeSurfaceAdapters extends KnowledgeSurfaceAdapters {
+  repository: FixtureKnowledgeRepository
   evidence: {
     analytics: Array<{ event: string; properties?: Readonly<Record<string, string | number | boolean | null>> }>
     openedIds: string[]
@@ -50,16 +50,16 @@ function defaultNodes(): KnowledgeSurfaceNode[] {
   ]
 }
 
+/** The fixture's repository also exposes its current nodes, standing in for a host's live list. */
+export interface FixtureKnowledgeRepository extends KnowledgeRepository {
+  nodes(): KnowledgeSurfaceNode[]
+}
+
 export function createFixtureKnowledgeRepository(
   initialNodes: readonly KnowledgeSurfaceNode[] = defaultNodes(),
-): KnowledgeRepository {
+): FixtureKnowledgeRepository {
   let nodes = initialNodes.map(normalizeKnowledgeSurfaceNode)
   let revision = 1
-  const listeners = new Set<(event: KnowledgeMutationEvent) => void>()
-
-  function emit(event: KnowledgeMutationEvent): void {
-    for (const listener of listeners) listener(event)
-  }
 
   function find(id: string): KnowledgeSurfaceNode {
     const node = nodes.find((candidate) => candidate.id === id)
@@ -80,9 +80,7 @@ export function createFixtureKnowledgeRepository(
   }
 
   return {
-    async list() {
-      return { nodes: [...nodes], revision: String(revision) }
-    },
+    nodes: () => [...nodes],
     async get(id) {
       return nodes.find((node) => node.id === id) ?? null
     },
@@ -104,18 +102,13 @@ export function createFixtureKnowledgeRepository(
         revision: { revision: String(revision), updatedAt: FIXED_NOW + revision },
       } as KnowledgeSurfaceNode)
       nodes = [...nodes, node]
-      emit({ type: 'created', node, revision: String(revision) })
       return node
     },
     async rename(input: KnowledgeRenameInput) {
-      const updated = commit({ ...find(input.id), name: input.name })
-      emit({ type: 'updated', node: updated, revision: updated.revision?.revision })
-      return updated
+      commit({ ...find(input.id), name: input.name })
     },
     async move(input: KnowledgeMoveInput) {
-      const updated = commit({ ...find(input.id), parentId: input.parentId })
-      emit({ type: 'moved', id: input.id, parentId: input.parentId, revision: updated.revision })
-      return updated
+      commit({ ...find(input.id), parentId: input.parentId })
     },
     async delete(input: KnowledgeDeleteInput) {
       const deleted = new Set(input.ids)
@@ -131,7 +124,6 @@ export function createFixtureKnowledgeRepository(
       }
       nodes = nodes.filter((node) => !deleted.has(node.id))
       revision += 1
-      emit({ type: 'deleted', ids: [...deleted], revision: String(revision) })
     },
     async upload({ file, parentId, onProgress }) {
       onProgress?.({ status: 'uploading', progress: 0.5, bytesSent: file.sizeBytes / 2, bytesTotal: file.sizeBytes })
@@ -143,10 +135,6 @@ export function createFixtureKnowledgeRepository(
       })
       onProgress?.({ status: 'complete', progress: 1, bytesSent: file.sizeBytes, bytesTotal: file.sizeBytes })
       return node
-    },
-    subscribe(listener) {
-      listeners.add(listener)
-      return () => listeners.delete(listener)
     },
   }
 }
@@ -213,18 +201,13 @@ export function createFixtureKnowledgeSurfaceAdapters(options?: {
 }
 
 export interface KnowledgeAdapterContractEvidence {
-  eventTypes: string[]
   createdId: string
-  finalCount: number
 }
 
 /** Shared contract exercise used by web, desktop, and fixture adapter tests. */
 export async function exerciseKnowledgeAdapterContract(
   adapters: KnowledgeSurfaceAdapters,
 ): Promise<KnowledgeAdapterContractEvidence> {
-  const eventTypes: string[] = []
-  const unsubscribe = adapters.repository.subscribe((event) => eventTypes.push(event.type))
-  const before = await adapters.repository.list()
   // Ordered probe steps — each verifies the adapter's write semantics in sequence.
   // react-doctor-disable-next-line react-doctor/server-sequential-independent-await
   const folder = await adapters.repository.create({
@@ -238,23 +221,14 @@ export async function exerciseKnowledgeAdapterContract(
     parentId: null,
     content: 'draft',
   })
-  const renamed = await adapters.repository.rename({
-    id: file.id,
-    name: 'final.txt',
-  })
-  if (renamed.name !== 'final.txt')
+  await adapters.repository.rename({ id: file.id, name: 'final.txt' })
+  if ((await adapters.repository.get(file.id))?.name !== 'final.txt')
     throw new Error('Knowledge repository did not persist rename')
-  const moved = await adapters.repository.move({
-    id: file.id,
-    parentId: folder.id,
-  })
-  if (moved.parentId !== folder.id)
-    throw new Error('Knowledge repository did not persist move')
+  await adapters.repository.move({ id: file.id, parentId: folder.id })
   const loaded = await adapters.repository.get(file.id)
   if (!loaded || loaded.parentId !== folder.id) throw new Error('Knowledge repository get does not reflect mutations')
   await adapters.repository.delete({ ids: [folder.id] })
   if (await adapters.repository.get(file.id)) throw new Error('Knowledge repository delete did not remove descendants')
-  const after = await adapters.repository.list()
 
   const initialRoute = adapters.route.read()
   adapters.route.write({ ...initialRoute, query: 'contract', layout: 'grid' })
@@ -273,11 +247,5 @@ export async function exerciseKnowledgeAdapterContract(
     updatedAt: FIXED_NOW,
   }))
   adapters.analytics.track('knowledge_contract_exercised', { createdId: file.id })
-  unsubscribe()
-
-  if (!eventTypes.includes('created') || !eventTypes.includes('updated') || !eventTypes.includes('moved') || !eventTypes.includes('deleted')) {
-    throw new Error(`Knowledge repository mutation events are incomplete: ${eventTypes.join(', ')}`)
-  }
-  if (after.nodes.length !== before.nodes.length) throw new Error('Knowledge repository contract did not restore initial count')
-  return { eventTypes, createdId: file.id, finalCount: after.nodes.length }
+  return { createdId: file.id }
 }

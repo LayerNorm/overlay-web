@@ -1,28 +1,18 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ChevronRight, Loader2 } from 'lucide-react'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import {
-  KNOWLEDGE_ENTITY_MUTATION_EVENT,
-  KNOWLEDGE_RECONCILE_EVENT,
-  KnowledgeMutationConsumer,
   canMoveFileInTree,
   filterFilesForTreeSearch,
   fileTreeRouteView,
-  noteDocToKnowledgeFile,
-  normalizeKnowledgeSurfaceNode,
-  removeKnowledgeFileSubtrees,
-  createKnowledgeMutationPublisher,
-  isKnowledgeEntityMutation,
   type FileTreeEntry,
-  type NoteDoc,
 } from '@overlay/app-core'
 import { FilesInlineTree } from '@overlay/modules-react'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
+import { useFileTree, useFileTreeCommands } from '@/hooks/use-file-tree'
 import { usePanelListView, usePanelScope } from '@/hooks/use-panel-scope'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { withPanelScope } from '@/shared/workspaces/panel-scope'
@@ -37,13 +27,8 @@ import {
 } from '@overlay/ui/primitives'
 import { cn } from '@overlay/ui'
 
-import { arrayOrEmpty } from './sidebar-nav'
 import type { InlineNavItem } from '@overlay/shell-react'
 export type { InlineNavItem } from '@overlay/shell-react'
-
-const nextSidebarMutation = createKnowledgeMutationPublisher(
-  `web-sidebar:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
-)
 
 export function FilesInlinePanel({
   searchQuery = '',
@@ -54,8 +39,6 @@ export function FilesInlinePanel({
 }) {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const [files, setFiles] = useState<FileTreeEntry[]>([])
-  const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const activeFileId = searchParams?.get('file') ?? null
   const activeNoteId = searchParams?.get('id') ?? null
@@ -64,88 +47,10 @@ export function FilesInlinePanel({
   const listView = usePanelListView()
   const buildWorkspaceHref = useWorkspaceHref()
 
-  const fetchItems = useCallback(async (signal?: AbortSignal): Promise<FileTreeEntry[]> => {
-    const [fileRows, noteRows] = await Promise.all([
-      overlayAppClient.files.get<FileTreeEntry[]>({ limit: 100, summary: true, view: listView }, { signal }),
-      overlayAppClient.notes.get<NoteDoc[]>({ limit: 100, view: listView }, { signal }),
-    ])
-    const files = arrayOrEmpty<FileTreeEntry>(fileRows)
-    const fileIds = new Set(files.map((file) => file._id))
-    const notes = arrayOrEmpty<NoteDoc>(noteRows)
-      .map(noteDocToKnowledgeFile)
-      .filter((note) => !fileIds.has(note._id))
-    return [...files, ...notes]
-  }, [listView])
-
-  const loadItems = useCallback(async () => {
-    try {
-      setFiles(await fetchItems())
-    } catch {
-      // ignore
-    } finally {
-      setLoading(false)
-    }
-  }, [fetchItems])
-
-  useEffect(() => {
-    setLoading(true)
-    void loadItems()
-  }, [loadItems])
-
-  useWorkspaceChanged(loadItems)
-
-  useEffect(() => {
-    const consumer = new KnowledgeMutationConsumer({
-      origin: 'web-sidebar-consumer',
-      repository: {
-        async list(signal) {
-          return {
-            nodes: (await fetchItems(signal)).map((file) => normalizeKnowledgeSurfaceNode({
-              ...file,
-              createdAt: file.updatedAt ?? 0,
-            })),
-          }
-        },
-        async get() { return null },
-      },
-      async loadNode(mutation, signal) {
-        if (mutation.entity === 'note') {
-          const note = await overlayAppClient.notes.get<NoteDoc>({ noteId: mutation.id }, { signal })
-          return normalizeKnowledgeSurfaceNode(noteDocToKnowledgeFile(note))
-        }
-        const response = await overlayAppClient.files.getResponse({ fileId: mutation.id }, { signal })
-        if (response.status === 404) return null
-        if (!response.ok) throw new Error('Could not update sidebar file')
-        return normalizeKnowledgeSurfaceNode(await response.json())
-      },
-      apply(event) {
-        if (event.type === 'reset') {
-          setFiles([...event.nodes])
-        } else if (event.type === 'created' || event.type === 'updated') {
-          setFiles((current) => current.some((file) => file._id === event.node.id)
-            ? current.map((file) => file._id === event.node.id ? event.node : file)
-            : [...current, event.node])
-        } else if (event.type === 'deleted') {
-          setFiles((current) => removeKnowledgeFileSubtrees(current, event.ids))
-        }
-      },
-    })
-    const handleMutation = (event: Event) => {
-      const mutation = (event as CustomEvent<unknown>).detail
-      if (isKnowledgeEntityMutation(mutation)) void consumer.handle(mutation).catch(() => undefined)
-    }
-    const handleReconcile = () => { void consumer.reconcile('explicit-refresh').catch(() => undefined) }
-    const handleOnline = () => { void consumer.reconcile('reconnected').catch(() => undefined) }
-    window.addEventListener(KNOWLEDGE_ENTITY_MUTATION_EVENT, handleMutation)
-    window.addEventListener(KNOWLEDGE_RECONCILE_EVENT, handleReconcile)
-    window.addEventListener('online', handleOnline)
-    return () => {
-      consumer.dispose()
-      window.removeEventListener(KNOWLEDGE_ENTITY_MUTATION_EVENT, handleMutation)
-      window.removeEventListener(KNOWLEDGE_RECONCILE_EVENT, handleReconcile)
-      window.removeEventListener('online', handleOnline)
-    }
-  }, [fetchItems])
+  const liveFiles = useFileTree(listView)
+  const files = useMemo(() => (liveFiles ?? []) as FileTreeEntry[], [liveFiles])
+  const loading = liveFiles === undefined
+  const { move } = useFileTreeCommands()
 
   function toggleFile(fileId: string) {
     setExpanded((prev) => {
@@ -170,15 +75,9 @@ export function FilesInlinePanel({
     onNavigate?.()
   }
 
-  async function moveFile(fileId: string, parentId: string | null) {
+  function moveFile(fileId: string, parentId: string | null) {
     if (!canMoveFileInTree(files, fileId, parentId)) return
-    const res = await overlayAppClient.files.updateResponse({ fileId, parentId })
-    if (res.ok) {
-      setFiles((current) => current.map((file) => file._id === fileId ? { ...file, parentId } : file))
-      window.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
-        detail: nextSidebarMutation({ entity: 'file', id: fileId, operation: 'moved' }),
-      }))
-    }
+    void move(fileId, parentId).catch(() => undefined)
   }
 
   const q = searchQuery.trim()

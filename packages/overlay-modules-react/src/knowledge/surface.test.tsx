@@ -14,7 +14,7 @@ test('shared surface preserves the web files markup and controls', () => {
   const html = renderToStaticMarkup(
     <SharedKnowledgeSurface
       mode="files"
-      initialFiles={files}
+      liveFiles={files}
       initialMemories={[]}
       route={{ file: null, memory: null, folder: null, view: 'all', layout: 'list', outputFilter: null }}
       onUpdateQuery={() => undefined}
@@ -25,7 +25,6 @@ test('shared surface preserves the web files markup and controls', () => {
         upload: async () => ({ ok: true }),
         isEditable: () => false,
         contentUrl: () => undefined,
-        entityChanged: () => undefined,
       }}
       renderFileViewer={() => null}
     />,
@@ -43,7 +42,7 @@ test('folder navigation exposes a screen-reader breadcrumb contract', () => {
   const html = renderToStaticMarkup(
     <SharedKnowledgeSurface
       mode="files"
-      initialFiles={files}
+      liveFiles={files}
       initialMemories={[]}
       route={{ file: null, memory: null, folder: 'folder', view: 'all', layout: 'list', outputFilter: null }}
       onUpdateQuery={() => undefined}
@@ -54,11 +53,43 @@ test('folder navigation exposes a screen-reader breadcrumb contract', () => {
         upload: async () => ({ ok: true }),
         isEditable: () => false,
         contentUrl: () => undefined,
-        entityChanged: () => undefined,
       }}
       renderFileViewer={() => null}
     />,
   )
   assert.match(html, /aria-label="Folder breadcrumbs"/)
   assert.match(html, /aria-current="page"/)
+})
+
+function renderSurface(props: { liveFiles: readonly KnowledgeFileNode[] | null | undefined; file?: string | null }) {
+  return renderToStaticMarkup(
+    <SharedKnowledgeSurface
+      mode="files"
+      liveFiles={props.liveFiles}
+      initialMemories={[]}
+      route={{ file: props.file ?? null, memory: null, folder: null, view: 'all', layout: 'list', outputFilter: null }}
+      onUpdateQuery={() => undefined}
+      adapters={createFixtureKnowledgeSurfaceAdapters()}
+      memories={{ list: async () => [], create: async () => ({ ok: true }), delete: async () => true }}
+      files={{
+        saveContent: async () => true,
+        upload: async () => ({ ok: true }),
+        isEditable: () => false,
+        contentUrl: () => undefined,
+      }}
+      renderFileViewer={({ name, content }) => <div data-viewer={name}>{content || 'text pending'}</div>}
+    />,
+  )
+}
+
+test('a file opens from its live metadata before its text loads', () => {
+  const doc: KnowledgeFileNode = { _id: 'doc', name: 'Plan.md', type: 'file', kind: 'upload', parentId: null, createdAt: 1, updatedAt: 3 }
+  const html = renderSurface({ liveFiles: [...files, doc], file: 'doc' })
+  assert.match(html, /data-viewer="Plan.md"/)
+  assert.match(html, /text pending/)
+})
+
+test('the list shows loading, then an error when the scope cannot be read', () => {
+  assert.match(renderSurface({ liveFiles: undefined }), /aria-busy="true"/)
+  assert.match(renderSurface({ liveFiles: null }), /Could not load files/)
 })

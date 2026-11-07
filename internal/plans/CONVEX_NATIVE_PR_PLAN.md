@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-06. Phase A and the chat phase (CN-04 to CN-06W) are complete and live in production: personal, workspace and automation chats run on the native path, and the production Convex backend was deployed from main `1799597ac` after the matching web release. Phase C (CN-07 to CN-11) is implemented on #413 with one commit per card and accepted on its preview (results under section 5); cases that need a second member or a paid agent reply have Convex test coverage only. Stop, approval, input response and room send stay on the server by design because they run workflows, agent turns or email. Cases that need a second member have Convex test coverage only, because no second sandbox account exists yet. The next phase after C is D (files and knowledge). The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-07. Phases A to C are complete and live in production: personal, workspace and automation chats run on the native path, and agents, rooms and Activity are native. The production Convex backend was last deployed from main `2fcade1e1` after the matching web release. Phase D (CN-12 to CN-15, files and knowledge) is implemented on #414 with one commit per card and accepted on its preview (results under section 6). Stop, approval, input response and room send stay on the server by design because they run workflows, agent turns or email. Cases that need a second member have Convex test coverage only, because no second sandbox account exists yet. The next phase after D is E (Work, automations and skills). The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -12,9 +12,10 @@ Status: in progress as of 2026-11-06. Phase A and the chat phase (CN-04 to CN-06
 | CN-05, CN-06 | #408 | Merged |
 | CN-04 to CN-06 stabilization | #411 | Merged, deployed. No Convex deploy was needed; its unused readiness markers remain on the production backend until the next deploy |
 | CN-06W | #412 | Merged and deployed: web and Convex production at `1799597ac`, production smoke passed |
-| CN-07 to CN-11 | #413 | Accepted on preview; merging |
+| CN-07 to CN-11 | #413 | Merged and deployed: web and Convex production at `2fcade1e1`, production smoke passed |
+| CN-12 to CN-15 | #414 | Accepted on preview; merging |
 | CN-07 to CN-11 (old attempt) | #403 | Closed unmerged, superseded by the Phase C PR |
-| CN-12 | #402 | Closed unmerged, branch kept as reference |
+| CN-12 (old attempt) | #402 | Closed unmerged, superseded by the Phase D PR |
 | CN-20 | #398 | Closed unmerged, branch kept as reference |
 | CN-21 | #401 | Closed unmerged, branch kept as reference |
 | CN-25 | #400 | Closed unmerged, branch kept as reference |
@@ -327,6 +328,8 @@ Known and not fixed here: a cold preview takes about 11 s to boot the workspace 
 
 **Retirement/non-goals:** delete fetch-before-selection and metadata event/refetch ownership. Keep content/download/signed-URL endpoints with genuine byte-transfer responsibilities. Upload orchestration is CN-13.
 
+**Implemented (Phase D PR):** `files/browse:list|get|rename|move`. One live tree per workspace view feeds the Files page and the sidebar; rows carry no text or storage keys. The viewer opens from the list row while text loads by revision, follows remote renames, and closes when the file leaves the list (deleted, archived, moved out of scope or access revoked). Rename and move are native and optimistic. Deletes the knowledge mutation events, consumer, revision tracker, unused surface controller and the unused cross-tab event bridge. Create, delete and text saves stay on the server (object-storage placement and cleanup). Production −1,000 lines net for the card.
+
 ### CN-13. Unify uploads, outputs, attachments, and agent-drive publication
 
 **Outcome:** uploading and publishing a file produces one durable item that every surface sees.
@@ -340,6 +343,8 @@ Known and not fixed here: a cold preview takes about 11 s to boot the workspace 
 **Acceptance:** interrupted upload/retry does not duplicate or falsely complete a file; another client sees publication; signed URL expiry and revoked access behave correctly; existing run outputs link to the same record.
 
 **Retirement/non-goals:** remove duplicate attachment/output metadata stores and status polling. Keep object storage and local byte progress; no storage-provider migration.
+
+**Implemented (Phase D PR):** outputs, uploads and attachments are already one `files` row each, and byte uploads already finalize idempotently through upload intents keyed by object key, so this card is small: `files/browse:forConversation` makes an agent thread's Library live, and the outputs Refresh button and its dead state are removed because outputs are part of the CN-12 tree. No status polling remained. Upload, presign and document ingestion stay on the server.
 
 ### CN-14. Make Notes reactive with safe concurrent editing
 
@@ -355,6 +360,8 @@ Known and not fixed here: a cold preview takes about 11 s to boot the workspace 
 
 **Retirement/non-goals:** remove duplicate note/file state ownership and HTTP reloads. No new rich-text storage format or CRDT collaboration project.
 
+**Implemented (Phase D PR):** the notes editor subscribes to its note (`files/browse:get` through `useLiveNote`). `NotebookEditorController.receiveRemote` adopts a newer revision only while the editor is clean and idle; a dirty editor keeps its draft and its `expectedUpdatedAt` save conflicts. A note deleted elsewhere returns to Files. The editor's notes list is a host prop (unused on the web), which removes an HTTP list fetch on every open. Note saves deliberately stay on the server, which canonicalizes and sanitizes note Markdown.
+
 ### CN-15. Make Memories and extraction status reactive
 
 **Outcome:** memory edits and extraction results appear without refresh while retaining scope/provenance.
@@ -368,6 +375,19 @@ Known and not fixed here: a cold preview takes about 11 s to boot the workspace 
 **Acceptance:** two clients observe edits/deletes/extraction completion; personal/workspace access is enforced; provenance and error state survive retries.
 
 **Retirement/non-goals:** delete memory invalidation events and HTTP list ownership. Keep inference/extraction execution where it belongs.
+
+**Implemented (Phase D PR):** `knowledge/memoryBrowse:list` serves Settings → Memories and the agent memory section live, with owner-only visibility, attribution limited to active members and visible agents, and a member or agent filter. The member picker takes agents from the live directory, closing the CN-07 gap. Extraction writes the same table, so no separate status query is needed; no memory events existed. Memory writes stay on `/api/v1/memory`. The shared knowledge surface's memories tab is unreachable on the web (Files mode) and is left for other hosts.
+
+### Phase D preview acceptance (#414, 2026-11-07)
+
+Tested in Chrome with two tabs of the same account on a fresh preview backend; changes were made through the web API in one tab, as an agent or another member would, and observed in the other. Second-member visibility rules are covered by the `nativeFiles` and `nativeMemories` Convex tests.
+
+- **CN-12:** a created file reached the other tab's list and sidebar; a rename reached it in about 780 ms; a file opened 12 ms after the click while its text loaded; with it open in the other tab, a text save arrived in 772 ms, a rename in 616 ms, and a delete closed the viewer in 428 ms. A drag-and-drop move reached the other tab in 191 ms. QA found that the move then read the file back over HTTP for an unused return value; rename and move now return nothing.
+- **CN-13:** a file published into an agent thread appeared in its open Library tab in 394 ms.
+- **CN-14:** a clean note editor received a remote save in 380 ms, and opening a note no longer fetches the notes list. With unsaved typing, a remote save left the draft in place, showed the conflict notice, and the stale save did not overwrite the server. A note deleted elsewhere returned the editor to Files (its unsaved draft is discarded).
+- **CN-15:** Settings → Memories loaded with no HTTP memory or agent list; a memory added elsewhere appeared in 463 ms and a delete in 642 ms.
+
+No console errors in either tab.
 
 ## 7. Phase E: Work, automations, and skills
 
