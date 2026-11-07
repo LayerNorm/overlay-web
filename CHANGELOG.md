@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Align sidebar activity with native Convex authentication and shared thread visibility checks, removing legacy token arguments, backend-capability gating, and silent query-error fallbacks without changing the sidebar design.
+
 - Render idle sidebar threads as text only, without reserving an empty status-icon slot.
 
 - Honor the selected single or double sidebar layout in mobile and narrow-screen drawers instead of substituting the older mobile navigator.
