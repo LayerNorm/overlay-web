@@ -23,6 +23,11 @@ function transcriptStatus(canRead: boolean, canQuery: boolean, id: string | null
   return loading ? 'loading' : 'ready'
 }
 
+/** Whether a route id could be a Convex document id; anything else is treated as not found without a query. */
+export function isConvexIdShape(id: string): boolean {
+  return /^[0-9a-z]{20,40}$/.test(id)
+}
+
 export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, pathname, routeId }: {
   workspaceId: string | null
   canQuery: boolean
@@ -33,10 +38,13 @@ export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, path
   const {
     selectedConversationId, viewerUserId, conversationId, setPendingTranscriptConversation,
   } = usePersonalChatRouteSelection({ workspaceId, canQuery, canRead, pathname, routeId })
-  const selectedSummary = useQuery(api.chat.personal.getSummary,
-    canQuery && canRead && conversationId
+  // A malformed `?id=` would fail the query's id validator and take the chat provider down; treat it as not found.
+  const wellFormed = conversationId !== null && isConvexIdShape(conversationId)
+  const queriedSummary = useQuery(api.chat.personal.getSummary,
+    canQuery && canRead && wellFormed
       ? { workspaceId: workspaceId!, conversationId: conversationId as Id<'conversations'> }
       : 'skip')
+  const selectedSummary = canQuery && canRead && conversationId !== null && !wellFormed ? null : queriedSummary
   const summaryInScope = Boolean(selectedSummary && selectedSummary._id === conversationId
     && selectedSummary.workspaceId === workspaceId)
   const canReadMessages = canQuery && canRead && summaryInScope

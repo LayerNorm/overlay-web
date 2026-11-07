@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   canSetPendingTranscript,
+  isConvexIdShape,
   pendingIntentMatches,
   pendingTranscriptInvalid,
   selectedChatIdFromRouteEvent,
@@ -51,4 +52,11 @@ test('a stale pending setter cannot clear a newer activation intent', () => {
   assert.equal(pendingIntentMatches(current, 'old-turn', 'viewer', 'workspace'), false)
   assert.equal(pendingIntentMatches(current, 'new-turn', 'viewer', 'workspace'), true)
   assert.equal(pendingIntentMatches(current, 'new-turn', 'viewer', 'other'), false)
+})
+
+test('only well-formed Convex ids reach the summary query', () => {
+  assert.equal(isConvexIdShape('sd77723e5vzpdkhgyexaqjem158hrzpe'), true)
+  for (const id of ['missing', '', '__overlay_pending_first_chat__', 'SD77723E5VZPDKHGYEXAQJEM158HRZPE', 'sd77723e5vzpdkhg-exaqjem158hrzpe']) {
+    assert.equal(isConvexIdShape(id), false, id)
+  }
 })

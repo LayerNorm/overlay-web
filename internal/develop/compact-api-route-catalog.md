@@ -27,7 +27,6 @@ For a description of what each route does and its associated implementation file
 - `POST /api/auth/native/authorize`
 - `POST /api/auth/native/exchange`
 - `POST /api/auth/native/refresh`
-- `GET /api/auth/native/subscription`
 - `GET /api/auth/options`
 - `POST /api/auth/reset-password`
 - `GET /api/auth/session`
@@ -35,7 +34,6 @@ For a description of what each route does and its associated implementation file
 - `POST /api/auth/sign-out`
 - `POST /api/auth/sign-up`
 - `GET /api/auth/sso/[provider]`
-- `POST /api/auth/sync-profile`
 - `POST /api/auth/verify-email`
 - `DELETE, GET, PATCH, POST, PUT /api/better-auth/[...all]`
 
@@ -131,7 +129,6 @@ For a description of what each route does and its associated implementation file
 
 - `POST /api/v1/automations/project-events`
 - `POST /api/v1/automations/[id]/approve`
-- `POST /api/v1/automations/[id]/cancel-scheduler`
 - `GET /api/v1/automations/[id]/events`
 - `POST /api/v1/automations/[id]/run`
 - `POST /api/v1/automations/[id]/start-scheduler`
@@ -143,14 +140,9 @@ For a description of what each route does and its associated implementation file
 
 ## Conversations and AgentRun lifecycle
 
-- `DELETE, PATCH /api/v1/conversations/[conversationId]/messages/[messageId]`
 - `DELETE, GET, POST /api/v1/conversations/[conversationId]/participants`
-- `GET, PATCH /api/v1/conversations/[conversationId]/pins`
-- `GET, PATCH /api/v1/conversations/[conversationId]/presence`
-- `GET, PATCH /api/v1/conversations/[conversationId]/reactions`
 - `POST /api/v1/conversations/[conversationId]/reports`
 - `PATCH /api/v1/conversations/[conversationId]/state`
-- `GET, PATCH /api/v1/conversations/[conversationId]/threads/[threadRootMessageId]/follow`
 - `POST /api/v1/conversations/act/extension-plan`
 - `POST /api/v1/conversations/act`
 - `GET, POST /api/v1/conversations/channels`
@@ -158,8 +150,6 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/conversations/events`
 - `DELETE, POST /api/v1/conversations/message`
 - `POST /api/v1/conversations/agent-greeting`
-- `GET, PATCH /api/v1/conversations/notification-preferences`
-- `GET, PATCH /api/v1/conversations/notifications`
 - `DELETE, GET, PATCH, POST /api/v1/conversations`
 - `POST /api/v1/conversations/run/approval`
 - `POST /api/v1/conversations/run/input`
@@ -170,8 +160,6 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/conversations/run/remote/request`
 - `POST /api/v1/conversations/run/remote` — idempotent control requests, typed state/recovery errors, cloud wake, and pending cancellation.
 - `GET /api/v1/conversations/run`
-- `GET, PATCH /api/v1/conversations/saved-messages`
-- `GET /api/v1/conversations/search`
 - `GET /api/v1/conversations/trace`
 - `PATCH /api/v1/conversations/share`
 - `POST /api/v1/conversations/stop`
@@ -214,7 +202,6 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/link-preview`
 - `POST /api/v1/notebook-agent`
 - `DELETE, GET, PATCH, POST /api/v1/notes`
-- `GET /api/v1/search`
 - `DELETE, GET, PATCH, POST /api/v1/skills`
 - `POST /api/v1/scope`
 - `GET, POST /api/v1/work`

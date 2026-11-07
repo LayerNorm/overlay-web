@@ -130,7 +130,6 @@ import type * as lib_agentMcpCallSchema from "../lib/agentMcpCallSchema.js";
 import type * as lib_appCallback from "../lib/appCallback.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authDebug from "../lib/authDebug.js";
-import type * as lib_browserConvexToken from "../lib/browserConvexToken.js";
 import type * as lib_connectedAgentPolicyProjection from "../lib/connectedAgentPolicyProjection.js";
 import type * as lib_gatewayCatalogPricing from "../lib/gatewayCatalogPricing.js";
 import type * as lib_gatewayCredits from "../lib/gatewayCredits.js";
@@ -337,7 +336,6 @@ declare const fullApi: ApiFromModules<{
   "lib/appCallback": typeof lib_appCallback;
   "lib/auth": typeof lib_auth;
   "lib/authDebug": typeof lib_authDebug;
-  "lib/browserConvexToken": typeof lib_browserConvexToken;
   "lib/connectedAgentPolicyProjection": typeof lib_connectedAgentPolicyProjection;
   "lib/gatewayCatalogPricing": typeof lib_gatewayCatalogPricing;
   "lib/gatewayCredits": typeof lib_gatewayCredits;
