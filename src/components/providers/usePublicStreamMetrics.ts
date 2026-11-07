@@ -31,9 +31,9 @@ export function usePublicStreamMetrics(streams: readonly ActivePublicStreamSnaps
       }
       requestAnimationFrame(() => {
         try {
-          posthog.capture('harness_public_stream_first_paint', {
+          posthog.capture('harness_public_stream_next_frame', {
             ...properties,
-            receive_to_paint_ms: Math.round(performance.now() - receivedAt),
+            receive_to_next_frame_ms: Math.round(performance.now() - receivedAt),
           })
         } catch {
           return

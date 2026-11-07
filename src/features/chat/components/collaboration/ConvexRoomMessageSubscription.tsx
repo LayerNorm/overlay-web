@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useMemo } from 'react'
 import { usePaginatedQuery, useQuery } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
@@ -61,25 +62,43 @@ export function ConvexRoomMessageSubscription({
       ? { ...args, messageId: permalinkMessageId as Id<'conversationMessages'> }
       : 'skip',
   )
-  const loadedMessages = [
-    ...main.results,
-    ...thread.results,
-    ...(permalink ? [permalink] : []),
-  ]
+  const loadedMessages = useMemo(() => {
+    const seen = new Set<string>()
+    return [...main.results, ...thread.results, ...(permalink ? [permalink] : [])].filter(message => {
+      if (message.conversationId !== conversationId || message.deletedAt !== undefined || seen.has(message._id)) return false
+      seen.add(message._id)
+      return true
+    })
+  }, [conversationId, main.results, permalink, thread.results])
+  const activeMessageIds = useMemo(() => {
+    const latestMain = [...main.results].sort((a, b) => b.createdAt - a.createdAt)
+    const candidates = [...thread.results, ...(permalink ? [permalink] : []), ...latestMain]
+    const seen = new Set<string>()
+    return candidates.filter(message => {
+      if (message.conversationId !== conversationId || message.deletedAt !== undefined
+        || message.status !== 'generating' || seen.has(message._id)) return false
+      seen.add(message._id)
+      return true
+    }).slice(0, 50).map(message => message._id)
+  }, [conversationId, main.results, permalink, thread.results])
   const activeStreams = useQuery(api.collaboration.rooms.activePublicStreams,
     room ? {
       ...args,
-      messageIds: [...new Set(loadedMessages.slice(0, 50).map(message => message._id))],
+      messageIds: activeMessageIds,
     } : 'skip')
   usePublicStreamMetrics(activeStreams ?? [])
+  const projectedMessages = useMemo(
+    () => projectActivePublicStreams(loadedMessages, activeStreams ?? []) as RoomMessageRecord[],
+    [activeStreams, loadedMessages],
+  )
 
   useEffect(() => { onRoom(room) }, [onRoom, room])
 
   useEffect(() => {
     if (!room || main.status === 'LoadingFirstPage') return
     // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
-    onMessages(projectActivePublicStreams(loadedMessages, activeStreams ?? []) as RoomMessageRecord[])
-  }, [activeStreams, loadedMessages, main.status, onMessages, room])
+    onMessages(projectedMessages)
+  }, [main.status, onMessages, projectedMessages, room, conversationId])
 
   const { status, loadMore } = main
   useEffect(() => {

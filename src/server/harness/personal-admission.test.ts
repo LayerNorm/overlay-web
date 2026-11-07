@@ -126,6 +126,54 @@ test('a claimed duplicate returns the canonical workflow without starting anothe
   expect(mocks.getRun).toHaveBeenCalledWith('canonical-workflow')
 })
 
+test('versioned admission returns its durable root handle without exposing a workflow handle', async () => {
+  mocks.get.mockResolvedValue(snapshot())
+  mocks.admit.mockResolvedValue(snapshot({
+    policy: { publicStreamVersion: 1 },
+    executionGeneration: 3,
+  }))
+
+  await expect(startPersonalHarness({ workflow, agentRun: agentRun(), paid: true, goal: 'Read.' }))
+    .resolves.toEqual({ accepted: true, runId: 'personal:run_1', executionGeneration: 3 })
+  expect(mocks.start).toHaveBeenCalledOnce()
+  expect(mocks.getRun).not.toHaveBeenCalled()
+})
+
+test('a versioned existing winner reconnects to the root without starting another workflow', async () => {
+  mocks.admit.mockResolvedValue(snapshot({
+    workflowRunId: 'canonical-workflow',
+    policy: { publicStreamVersion: 1 },
+    executionGeneration: 4,
+  }))
+
+  await expect(startPersonalHarness({
+    workflow, agentRun: agentRun({ harnessRunId: 'personal:run_1' }), paid: true, goal: 'Read.',
+  })).resolves.toEqual({ accepted: true, runId: 'personal:run_1', executionGeneration: 4 })
+  expect(mocks.start).not.toHaveBeenCalled()
+  expect(mocks.getRun).not.toHaveBeenCalled()
+})
+
+test('a concurrent losing workflow returns the durable root handle rather than its own Run', async () => {
+  mocks.get.mockResolvedValue(snapshot())
+  mocks.admit.mockResolvedValue(snapshot({ policy: { publicStreamVersion: 1 } }))
+  mocks.start.mockResolvedValue({ runId: 'losing-workflow' })
+
+  await expect(startPersonalHarness({ workflow, agentRun: agentRun(), paid: true, goal: 'Read.' }))
+    .resolves.toEqual({ accepted: true, runId: 'personal:run_1', executionGeneration: 0 })
+  expect(mocks.getRun).not.toHaveBeenCalled()
+})
+
+test('a lost versioned start acknowledgement is retried under the durable claim fence', async () => {
+  mocks.get.mockResolvedValue(snapshot())
+  mocks.admit.mockResolvedValue(snapshot({ policy: { publicStreamVersion: 1 }, executionGeneration: 2 }))
+  mocks.start.mockRejectedValueOnce(new Error('acknowledgement lost')).mockResolvedValueOnce({ runId: 'retry' })
+
+  await expect(startPersonalHarness({ workflow, agentRun: agentRun(), paid: true, goal: 'Read.' }))
+    .resolves.toEqual({ accepted: true, runId: 'personal:run_1', executionGeneration: 2 })
+  expect(mocks.start).toHaveBeenCalledTimes(2)
+  expect(mocks.getRun).not.toHaveBeenCalled()
+})
+
 test('a duplicate start acknowledgement resolves to the workflow that claimed the root', async () => {
   mocks.start.mockImplementation(async () => {
     mocks.get.mockResolvedValueOnce(snapshot({ workflowRunId: 'actual-winner' }))

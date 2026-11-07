@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   createUIMessageStreamResponse: vi.fn(),
   drainWorkProgress: vi.fn(),
   describeTools: vi.fn(),
+  readPublicStreamState: vi.fn(),
   startPersonalHarness: vi.fn(),
   uploadFilePartsForModel: vi.fn(),
 }))
@@ -36,6 +37,11 @@ vi.mock('@/server/ai/sdk', () => ({
 vi.mock('@/server/ai/file-upload', () => ({ uploadFilePartsForModel: mocks.uploadFilePartsForModel }))
 vi.mock('@/server/chat/work-progress-drain', () => ({ drainWorkProgress: mocks.drainWorkProgress }))
 vi.mock('@/server/conversations/personal-chat-work-tools', () => ({ describePersonalChatWorkTools: mocks.describeTools }))
+vi.mock('@/server/harness/ConvexHarnessRepository', () => ({
+  ConvexHarnessRepository: class {
+    readPublicStreamState = mocks.readPublicStreamState
+  },
+}))
 vi.mock('@/server/harness/personal-admission', () => {
   class PersonalHarnessAdmissionConflict extends Error {}
   class PersonalHarnessStartPending extends Error {}
@@ -271,4 +277,115 @@ test('streams admitted multimodal history through the durable adapter', async ()
   expect(body).toContain('sourceCitations')
   expect(releaseConcurrency).toHaveBeenCalledOnce()
   expect(mocks.after).toHaveBeenCalledOnce()
+})
+
+test('versioned accepted responses stream persisted text, source metadata, and terminal state', async () => {
+  const run = makeAgentRun()
+  const sourceCitations = { source: { kind: 'file', sourceId: 'file-1' } } as const
+  const auth = { userId: 'user', authType: 'session', accessToken: 'private-token' } as AuthenticatedAppUser
+  mocks.describeTools.mockResolvedValue([{ name: 'read_file' }])
+  mocks.uploadFilePartsForModel.mockImplementation(async (messages: UIMessage[]) => messages)
+  mocks.convertToModelMessages.mockResolvedValue([{ role: 'user', content: 'Show the result.' }])
+  mocks.startPersonalHarness.mockImplementation(async options => {
+    await options.onAdmitted?.()
+    return { accepted: true, runId: 'personal:run-chat', executionGeneration: 2 }
+  })
+  mocks.readPublicStreamState.mockResolvedValue({
+    status: 'completed',
+    workflowRunId: 'workflow',
+    executionGeneration: 2,
+    transcriptSteps: [{
+      sequence: 0,
+      executionGeneration: 2,
+      receiptId: 'model:0',
+      persistence: {
+        content: 'Persisted answer.',
+        parts: [{ type: 'tool-invocation', toolInvocation: { toolName: 'read_file', state: 'output-available' } }],
+      },
+    }],
+    nextSequence: null,
+    snapshot: null,
+  })
+  mocks.createUIMessageStreamResponse.mockImplementation(({ stream }) => new Response(
+    new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const reader = stream.getReader()
+        const encoder = new TextEncoder()
+        while (true) {
+          const next = await reader.read()
+          if (next.done) break
+          controller.enqueue(encoder.encode(`${JSON.stringify(next.value)}\n`))
+        }
+        controller.close()
+      },
+    }),
+    { headers: { 'content-type': 'text/event-stream' } },
+  ))
+
+  const response = await startPersonalHarnessTurn({
+    agentRun: run,
+    auth,
+    conversationId: 'conversation',
+    emitWebhook: true,
+    effectiveModelId: 'candidate-0',
+    goal: 'Show the result.',
+    hasDynamicApproval: false,
+    instructions: 'Answer the request.',
+    messagesForModel: [{ id: 'user-message', role: 'user', parts: [{ type: 'text', text: 'Show the result.' }] }] as UIMessage[],
+    paid: true,
+    principalId: 'principal',
+    rawReasoning: 'low',
+    requestId: 'request-accepted',
+    releaseConcurrency: vi.fn(),
+    recordProgress: vi.fn(async () => {}),
+    sourceCitations,
+    tools: { read_file: {} } as never,
+    toolingContext: {
+      accountAllowedConnectorIds: [],
+      accountAllowedToolIds: ['read_file'],
+      baseUrl: 'https://internal.example',
+      billingProgrammaticSubjectId: 'billing-subject',
+      conversationId: 'conversation',
+      effectiveModelId: 'candidate-0',
+      latestUserText: 'Show the result.',
+      mediaToolIntent: 'none',
+      memoryEnabled: false,
+      mode: 'chat',
+      requestFingerprint: 'request-fingerprint',
+      requestedToolIds: ['read_file'],
+      turnId: 'turn-chat',
+      userId: 'user',
+      workspaceId: 'workspace',
+    },
+    workspaceId: 'workspace',
+  })
+  const chunks = (await response.text()).trim().split('\n').map(line => JSON.parse(line) as Record<string, unknown>)
+
+  expect(response.status).toBe(200)
+  expect(mocks.readPublicStreamState).toHaveBeenCalledWith({
+    actorUserId: 'user', runId: 'personal:run-chat', afterSequence: -1,
+  })
+  expect(chunks).toContainEqual(expect.objectContaining({
+    type: 'text-delta', delta: 'Persisted answer.',
+  }))
+  expect(chunks).toContainEqual(expect.objectContaining({
+    type: 'data-harness-transcript-step',
+    data: expect.objectContaining({
+      receiptId: 'model:0',
+      parts: [{ type: 'tool-invocation', toolInvocation: { toolName: 'read_file', state: 'output-available' } }],
+    }),
+  }))
+  expect(chunks).toContainEqual(expect.objectContaining({
+    type: 'message-metadata',
+    messageMetadata: expect.objectContaining({ harnessAccepted: expect.objectContaining({ status: 'running' }) }),
+  }))
+  expect(chunks.at(-1)).toMatchObject({
+    type: 'finish',
+    messageMetadata: {
+      harnessAccepted: {
+        runId: 'personal:run-chat', executionGeneration: 2, status: 'completed',
+      },
+      sourceCitations,
+    },
+  })
 })

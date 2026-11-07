@@ -1,5 +1,6 @@
 import type { Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
+import { ACTIVE_AGENT_RUN_STATUSES } from '../../src/shared/agents/agent-run'
 
 const TRUNCATION_MARKER = '[Additional output omitted]'
 
@@ -30,9 +31,6 @@ export async function cleanupTerminalPublicStreams(
       q.eq('conversationId', message.conversationId).eq('assistantMessageId', assistantMessageId))
     .take(10)
   for (const stream of streams) {
-    const content = await readStreamContent(ctx, stream)
-    if ((content.text && !message.content.includes(content.text))
-      || (content.truncated && !message.content.includes(TRUNCATION_MARKER))) continue
     const segments = await ctx.db.query('harnessPublicStreamSegments')
       .withIndex('by_runId', q => q.eq('runId', stream.runId)).take(100)
     for (const segment of segments) await ctx.db.delete(segment._id)
@@ -41,7 +39,7 @@ export async function cleanupTerminalPublicStreams(
 }
 
 export async function readActivePublicStreams(
-  ctx: QueryCtx,
+  ctx: QueryCtx | MutationCtx,
   conversationId: Id<'conversations'>,
   requestedMessageIds: Id<'conversationMessages'>[],
 ) {
@@ -54,14 +52,45 @@ export async function readActivePublicStreams(
       .unique()
     if (!stream || !stream.active || stream.conversationId !== conversationId) continue
     const message = await ctx.db.get(assistantMessageId)
-    if (!message || message.conversationId !== conversationId) continue
+    if (!message || message.conversationId !== conversationId || message.status !== 'generating') continue
+    const run = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', stream.runId)).unique()
+    if (!run || run.actorUserId !== message.userId || run.rootRunId !== run.runId || run.parentRunId) continue
+    let metadata: {
+      status?: string
+      workflowRunId?: string
+      executionGeneration?: number
+      modelReservation?: { id?: string; dispatch?: { modelId?: string } }
+      policy?: { publicStreamVersion?: number }
+    }
+    try { metadata = JSON.parse(run.metadataJson) as typeof metadata } catch { continue }
+    if (metadata.policy?.publicStreamVersion !== 1 || metadata.status !== 'running'
+      || metadata.workflowRunId !== stream.workflowRunId
+      || (metadata.executionGeneration ?? 0) !== stream.executionGeneration
+      || metadata.modelReservation?.id !== stream.receiptId || !metadata.modelReservation.dispatch?.modelId) continue
+    const deliveryId = run.deliveryAgentRunId
+      ? ctx.db.normalizeId('conversationAgentRuns', run.deliveryAgentRunId) : null
+    const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
+    if (!delivery || !ACTIVE_AGENT_RUN_STATUSES.includes(delivery.status) || delivery.userId !== run.actorUserId
+      || delivery.harnessRunId !== run.runId
+      || delivery.workflowRunId !== stream.workflowRunId || delivery.conversationId !== conversationId
+      || delivery.assistantMessageId !== message._id || delivery.turnId !== message.turnId
+      || delivery.executionEngine !== 'overlay_harness' || delivery.runner !== 'workflow') continue
+    const checkpoint = message.publicStreamCheckpoint
+    if (checkpoint && (checkpoint.executionGeneration > stream.executionGeneration
+      || (checkpoint.executionGeneration === stream.executionGeneration
+        && checkpoint.invocation >= stream.invocation))) continue
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.deletedAt !== undefined) continue
+    if (delivery.mode === 'room' || delivery.mode === 'work') {
+      if (!delivery.agentPrincipalId || message.authorKind !== 'agent'
+        || message.authorPrincipalId !== delivery.agentPrincipalId) continue
+    } else if (conversation.userId !== run.actorUserId || message.userId !== run.actorUserId
+      || message.authorKind === 'agent' || message.authorPrincipalId !== undefined) continue
     const { text, truncated } = await readStreamContent(ctx, stream)
     if (!text && !truncated) continue
-    if (text && message.content.includes(text)
-      && (!truncated || message.content.includes(TRUNCATION_MARKER))) continue
     output.push({
       assistantMessageId, runId: stream.runId, executionGeneration: stream.executionGeneration,
-      receiptId: stream.receiptId, sequence: stream.nextSequence - 1, text,
+      receiptId: stream.receiptId, invocation: stream.invocation, sequence: stream.nextSequence - 1, text,
       truncatedMarker: truncated ? TRUNCATION_MARKER : undefined,
     })
   }

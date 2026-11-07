@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { usePaginatedQuery, useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
@@ -49,11 +50,23 @@ export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, path
     canReadMessages ? {
       workspaceId: workspaceId!,
       conversationId: conversationId as Id<'conversations'>,
-      messageIds: messages.results.slice(0, 50).map(row => row.message._id),
+      messageIds: messages.results
+        .filter(row => row.message.conversationId === conversationId && row.message.status === 'generating')
+        .slice(0, 50).map(row => row.message._id),
     } : 'skip')
   usePublicStreamMetrics(activeStreams ?? [])
-  const projectedMessages = projectActivePublicStreams(messages.results.map(row => row.message), activeStreams ?? [])
-  const rows = messages.results.map((row, index) => ({ ...row, message: projectedMessages[index]! }))
+  const scopedRows = useMemo(
+    () => messages.results.filter(row => row.message.conversationId === conversationId),
+    [conversationId, messages.results],
+  )
+  const projectedMessages = useMemo(
+    () => projectActivePublicStreams(scopedRows.map(row => row.message), activeStreams ?? []),
+    [activeStreams, scopedRows],
+  )
+  const rows = useMemo(
+    () => scopedRows.map((row, index) => ({ ...row, message: projectedMessages[index]! })),
+    [projectedMessages, scopedRows],
+  )
 
   return {
     selectedConversationId,

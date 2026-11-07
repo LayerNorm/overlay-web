@@ -19,6 +19,7 @@ import { assertNativeThreadWritable, nativeThreadCompatibility } from '../lib/na
 import { nativeAgentErrorPart } from '../lib/nativeAgentErrorPart'
 import { harnessDiagnosticValidator } from '../lib/harnessDiagnosticValidator'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
+import { transcriptPartIdentity } from '../../src/shared/chat/transcript-part-identity'
 import { NATIVE_AGENT_ERROR_PART, nativeAgentErrorMessage } from '../../src/shared/agents/native-agent-error'
 import { createHarnessDiagnostic, harnessDiagnosticMessage } from '../../packages/overlay-agent-runtime/src/harness-diagnostic'
 
@@ -1478,9 +1479,6 @@ export const cancelAgentRuns = mutation({
       assertAgentRunTransition(run.status, 'cancelled')
     }
     const cancelledHarnessRoots: Array<{ agentRunId: string; runId: string }> = []
-    for (const run of activeRuns) {
-      if (run.harnessRunId) cancelledHarnessRoots.push(await cancelHarnessDelivery(ctx, run, now, args.serverSecret))
-    }
     const runMessages = await Promise.all(
       activeRuns.map((run) => ctx.db.get(run.assistantMessageId)),
     )
@@ -1488,34 +1486,40 @@ export const cancelAgentRuns = mutation({
       message
         ? (await readActivePublicStreams(ctx, args.conversationId, [message._id]))[0]
         : undefined))
+    for (const run of activeRuns) {
+      if (run.harnessRunId) cancelledHarnessRoots.push(await cancelHarnessDelivery(ctx, run, now, args.serverSecret))
+    }
     await Promise.all(activeRuns.flatMap((run, i) => {
       const message = runMessages[i]
       const writes = []
       if (message?.status === 'generating') {
         const activeStream = activeStreams[i]
-        let baseContent = args.partialContent ?? message.content
-        if (activeStream?.text && !baseContent.includes(activeStream.text)) {
-          if (activeStream.text.includes(baseContent)) baseContent = activeStream.text
-          else {
-            let overlap = Math.min(baseContent.length, activeStream.text.length)
-            while (overlap > 0 && baseContent.slice(-overlap) !== activeStream.text.slice(0, overlap)) overlap--
-            baseContent += activeStream.text.slice(overlap)
-          }
-        }
-        if (activeStream?.truncatedMarker && !baseContent.includes(activeStream.truncatedMarker)) {
-          baseContent = `${baseContent.trimEnd()}\n\n${activeStream.truncatedMarker}`
-        }
-        const finalContent = `${baseContent.trimEnd()}${sentinel}`
-        const baseParts = args.partialParts?.length
-          ? args.partialParts
-          : message.parts ?? [{ type: 'text', text: baseContent }]
+        const baseContent = activeStream ? message.content : args.partialContent ?? message.content
+        const activeText = activeStream
+          ? [activeStream.text, activeStream.truncatedMarker].filter(Boolean).join('\n\n')
+          : ''
+        const finalContent = `${[baseContent.trimEnd(), activeText].filter(Boolean).join('\n\n').trimEnd()}${sentinel}`
+        const baseParts = activeStream
+          ? message.parts ?? []
+          : args.partialParts?.length ? args.partialParts : message.parts ?? []
+        const streamPart = activeStream && activeText
+          ? [{
+            type: 'text',
+            id: transcriptPartIdentity(activeStream.runId, activeStream.receiptId, 0, activeStream.executionGeneration),
+            text: activeText,
+          }]
+          : []
         writes.push(ctx.db.patch(message._id, {
           content: finalContent,
           parts: [
-            ...baseParts.filter((part) => part.type !== 'text'
-              && part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
-            { type: 'text', text: finalContent },
+            ...baseParts,
+            ...streamPart,
+            { type: 'text', text: sentinel.trimStart() },
           ],
+          ...(activeStream ? { publicStreamCheckpoint: {
+            runId: activeStream.runId, executionGeneration: activeStream.executionGeneration,
+            receiptId: activeStream.receiptId, invocation: activeStream.invocation,
+          } } : {}),
           status: 'completed',
           updatedAt: now,
         }))

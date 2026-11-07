@@ -1501,6 +1501,12 @@ export default defineSchema({
     nativeSubmittedAt: v.optional(v.number()),
     nativeRunId: v.optional(v.id('conversationAgentRuns')),
     nativeProgressSequence: v.optional(v.number()),
+    publicStreamCheckpoint: v.optional(v.object({
+      runId: v.string(),
+      executionGeneration: v.number(),
+      receiptId: v.string(),
+      invocation: v.number(),
+    })),
     userMetadata: v.optional(userMessageMetadata),
     // Kept apart from `parts`, which streaming and finalization replace.
     agentPlan: v.optional(v.array(runPlanStepValidator)),
@@ -3057,6 +3063,7 @@ export default defineSchema({
   harnessTranscriptSteps: defineTable({
     runId: v.string(),
     receiptId: v.string(),
+    executionGeneration: v.optional(v.number()),
     sequence: v.number(),
     stepNumber: v.number(),
     persistenceJson: v.string(),

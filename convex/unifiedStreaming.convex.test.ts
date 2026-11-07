@@ -1,11 +1,86 @@
-import { afterEach, expect, test, vi } from 'vitest'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
 
 const modules = import.meta.glob('./**/*.ts')
 const query = (name: string) => makeFunctionReference<'query'>(name)
+const mutation = (name: string) => makeFunctionReference<'mutation'>(`harness/runs:${name}`)
+const secret = 'unified-streaming-test-secret'
+beforeEach(() => vi.stubEnv('INTERNAL_API_SECRET', secret))
 afterEach(() => vi.unstubAllEnvs())
+
+async function seedWritableStream(convex: ReturnType<typeof convexTest>, runId = 'personal:stream-run') {
+  const now = Date.now()
+  const conversationId = await convex.run(ctx => ctx.db.insert('conversations', {
+    userId: 'owner', title: 'Stream test', lastModified: now, createdAt: now, updatedAt: now,
+    lastMode: 'act', askModelIds: ['fixture/model'], actModelId: 'fixture/model',
+  }))
+  const messageIds = await convex.run(async ctx => {
+    const base = {
+      conversationId, userId: 'owner', turnId: 'turn', mode: 'act' as const,
+      contentType: 'text' as const, createdAt: now, updatedAt: now,
+    }
+    const userMessageId = await ctx.db.insert('conversationMessages', {
+      ...base, role: 'user', content: 'Request', status: 'completed',
+    })
+    const assistantMessageId = await ctx.db.insert('conversationMessages', {
+      ...base, role: 'assistant', content: '', status: 'generating',
+    })
+    const deliveryId = await ctx.db.insert('conversationAgentRuns', {
+      conversationId, turnId: 'turn', userId: 'owner', userMessageId, assistantMessageId,
+      mode: 'chat', runner: 'workflow', executionEngine: 'overlay_harness', status: 'queued',
+      createdAt: now, updatedAt: now,
+    })
+    return { assistantMessageId, deliveryId }
+  })
+  const admission = {
+    runId, goal: 'Answer the request.', constraints: [],
+    policy: {
+      actorUserId: 'owner', allowedToolIds: [], requiresPlan: false, deadlineAt: now + 60_000,
+      maxCostMicros: 1_000, maxParallelChildren: 1, maxDepth: 1, publicStreamVersion: 1 as const,
+    },
+    source: { conversationId }, deliveryAgentRunId: messageIds.deliveryId,
+    serverSecret: secret,
+  }
+  const admitted = await convex.mutation(mutation('admit'), admission) as { revision: number }
+  const workflowRunId = `workflow:${runId}`
+  const apply = async (operationId: string, expectedRevision: number, operation: Record<string, unknown>) =>
+    await convex.mutation(mutation('apply'), {
+      actorUserId: 'owner', runId, workflowRunId, executionGeneration: 0,
+      operationId, expectedRevision, operation, serverSecret: secret,
+    }) as { snapshot: { revision: number } }
+  let result = await apply('claim', admitted.revision, {
+    type: 'claim_execution', workflowRunId, generation: 0,
+  })
+  result = await apply('reserve', result.snapshot.revision, {
+    type: 'reserve_model', id: 'model:0', maxCostMicros: 1_000,
+  })
+  result = await apply('dispatch', result.snapshot.revision, {
+    type: 'bind_model_dispatch', id: 'model:0', modelId: 'fixture/model', billingReservationId: 'billing',
+  })
+  await convex.run(async ctx => {
+    await ctx.db.patch(messageIds.deliveryId, { workflowRunId, status: 'running' })
+  })
+  return {
+    actorUserId: 'owner',
+    assistantMessageId: messageIds.assistantMessageId,
+    conversationId,
+    deliveryId: messageIds.deliveryId,
+    runId,
+    workflowRunId,
+    serverSecret: secret,
+    revision: result.snapshot.revision,
+  }
+}
+
+function appendArgs(stream: Awaited<ReturnType<typeof seedWritableStream>>, sequence: number, text: string) {
+  return {
+    actorUserId: stream.actorUserId, runId: stream.runId, workflowRunId: stream.workflowRunId,
+    executionGeneration: 0, receiptId: 'model:0', modelId: 'fixture/model', sequence, text,
+    serverSecret: stream.serverSecret,
+  }
+}
 
 test('authorized personal, automation, and room readers see sequenced snapshots; revocation fails closed', async () => {
   const convex = convexTest(schema, modules)
@@ -35,27 +110,51 @@ test('authorized personal, automation, and room readers see sequenced snapshots;
     const personal = await conversation({})
     const automation = await conversation({ isAutomation: true })
     const room = await conversation({ conversationType: 'channel', scope: 'workspace' })
-    const addStream = async (conversationId: typeof personal, runId: string) => {
+    const addStream = async (conversationId: typeof personal, runId: string, mode: 'chat' | 'room') => {
+      const userMessageId = await ctx.db.insert('conversationMessages', {
+        conversationId, userId: 'owner', turnId: runId, role: 'user', mode: 'act',
+        content: 'Request', contentType: 'text', status: 'completed', createdAt: now, updatedAt: now,
+      })
       const assistantMessageId = await ctx.db.insert('conversationMessages', {
         conversationId, userId: 'owner', turnId: runId, role: 'assistant', mode: 'act',
         content: '', contentType: 'text', status: 'generating', createdAt: now, updatedAt: now,
+        ...(mode === 'room' ? { authorKind: 'agent' as const, authorPrincipalId: 'p-owner' } : {}),
+      })
+      const workflowRunId = `workflow:${runId}`
+      const deliveryId = await ctx.db.insert('conversationAgentRuns', {
+        conversationId, turnId: runId, userId: 'owner', userMessageId, assistantMessageId,
+        mode, runner: 'workflow', executionEngine: 'overlay_harness', status: 'running',
+        harnessRunId: runId, workflowRunId,
+        ...(mode === 'room' ? { agentPrincipalId: 'p-owner' } : {}),
+        createdAt: now, updatedAt: now,
+      })
+      await ctx.db.insert('harnessRuns', {
+        runId, actorUserId: 'owner', rootRunId: runId, deliveryAgentRunId: deliveryId,
+        activeDescendantCount: 0, sourceJson: JSON.stringify({ conversationId }),
+        admissionJson: '{}',
+        metadataJson: JSON.stringify({
+          runId, rootRunId: runId, status: 'running', workflowRunId, executionGeneration: 2,
+          policy: { actorUserId: 'owner', workspaceId: 'ws', publicStreamVersion: 1 },
+          modelReservation: { id: 'model:0', dispatch: { modelId: 'model' } },
+        }),
+        createdAt: now, updatedAt: now,
       })
       await ctx.db.insert('harnessPublicStreams', {
-        runId, workflowRunId: `workflow:${runId}`, executionGeneration: 2, receiptId: 'model:0',
+        runId, workflowRunId, executionGeneration: 2, receiptId: 'model:0',
         invocation: 0, conversationId, assistantMessageId, nextSequence: 2, lastSequence: 1,
         lastText: 'Live answer', nextSegmentIndex: 1, visibleCharacters: 11, truncated: false,
         active: true, updatedAt: now,
       })
       await ctx.db.insert('harnessPublicStreamSegments', {
-        runId, workflowRunId: `workflow:${runId}`, executionGeneration: 2, receiptId: 'model:0',
+        runId, workflowRunId, executionGeneration: 2, receiptId: 'model:0',
         segmentIndex: 0, firstSequence: 0, lastSequence: 1, text: 'Live answer',
         createdAt: now, updatedAt: now,
       })
       return assistantMessageId
     }
-    const personalMessage = await addStream(personal, 'personal:run')
-    const automationMessage = await addStream(automation, 'automation:run')
-    const roomMessage = await addStream(room, 'workspace:run')
+    const personalMessage = await addStream(personal, 'personal:run', 'chat')
+    const automationMessage = await addStream(automation, 'automation:run', 'chat')
+    const roomMessage = await addStream(room, 'workspace:run', 'room')
     await ctx.db.insert('conversationParticipants', {
       conversationId: room, workspaceId: 'ws', principalId: 'p-owner', principalType: 'human',
       role: 'member', status: 'active', notificationLevel: 'all', joinedAt: now, updatedAt: now,
@@ -89,4 +188,100 @@ test('authorized personal, automation, and room readers see sequenced snapshots;
   await expect(owner.query(roomStreams, {
     workspaceId: 'ws', conversationId: ids.room, messageIds: [ids.roomMessage],
   })).resolves.toEqual([])
+})
+
+test('append mutations enforce UTF-8 segments, UTF-16 cap, retries, gaps, and canonical settlement', async () => {
+  const convex = convexTest(schema, modules)
+  const stream = await seedWritableStream(convex)
+  const append = mutation('appendPublicStream')
+  await expect(convex.mutation(append, appendArgs(stream, 0, 'a'.repeat(8_190))))
+    .resolves.toMatchObject({ accepted: true, duplicate: false })
+  await expect(convex.mutation(append, appendArgs(stream, 1, '😀z')))
+    .resolves.toMatchObject({ accepted: true, duplicate: false })
+  await expect(convex.mutation(append, appendArgs(stream, 1, '😀z')))
+    .resolves.toMatchObject({ accepted: true, duplicate: true })
+  await expect(convex.mutation(append, appendArgs(stream, 1, 'different')))
+    .rejects.toThrow('HARNESS_PUBLIC_STREAM_SEQUENCE_CONFLICT')
+  await expect(convex.mutation(append, appendArgs(stream, 3, 'gap')))
+    .rejects.toThrow('HARNESS_PUBLIC_STREAM_SEQUENCE_GAP')
+  for (let sequence = 2; sequence <= 19; sequence++) {
+    await convex.mutation(append, appendArgs(stream, sequence, 'a'.repeat(8_192)))
+  }
+  const finalText = `${'a'.repeat(4_351)}😀`
+  await expect(convex.mutation(append, appendArgs(stream, 20, finalText)))
+    .resolves.toMatchObject({ accepted: true, truncated: true })
+  await expect(convex.mutation(append, { ...appendArgs(stream, 21, 'stale generation'), executionGeneration: 1 }))
+    .rejects.toThrow('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+  await expect(convex.mutation(append, appendArgs(stream, 22, 'gap')))
+    .rejects.toThrow('HARNESS_PUBLIC_STREAM_SEQUENCE_GAP')
+
+  const rows = await convex.run(async ctx => ({
+    segments: await ctx.db.query('harnessPublicStreamSegments')
+      .withIndex('by_runId_receiptId_segmentIndex', q => q.eq('runId', stream.runId).eq('receiptId', 'model:0'))
+      .order('asc').collect(),
+    active: await ctx.db.query('harnessPublicStreams').withIndex('by_runId', q => q.eq('runId', stream.runId)).unique(),
+  }))
+  expect(rows.segments.map(row => row.segmentIndex)).toEqual(rows.segments.map((_, index) => index))
+  expect(rows.segments.every(row => new TextEncoder().encode(row.text).byteLength <= 8_192)).toBe(true)
+  expect(rows.segments.map(row => row.text).join('').length).toBe(160_000)
+  expect(rows.segments.map(row => row.text).join('').includes('\uFFFD')).toBe(false)
+  expect(rows.active?.visibleCharacters).toBe(160_000)
+  expect(rows.active?.truncated).toBe(true)
+
+  const settled = await convex.mutation(mutation('apply'), {
+    actorUserId: stream.actorUserId, runId: stream.runId, workflowRunId: stream.workflowRunId,
+    executionGeneration: 0, operationId: 'receipt', expectedRevision: stream.revision,
+    operation: { type: 'record_receipt', receipt: {
+      id: 'model:0', modelId: 'fixture/model', provider: 'fixture', inputTokens: 1, outputTokens: 1,
+      reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000,
+      costMicros: 1, costSource: 'provider',
+    } },
+    serverSecret: secret,
+  }) as { snapshot: { revision: number } }
+  await convex.mutation(mutation('writeTranscriptStep'), {
+    actorUserId: stream.actorUserId, runId: stream.runId, workflowRunId: stream.workflowRunId,
+    receiptId: 'model:0', stepNumber: 0,
+    persistence: { content: 'Canonical text differs.', parts: [] },
+    serverSecret: secret,
+  })
+  const message = await convex.run(ctx => ctx.db.get(stream.assistantMessageId))
+  expect(message?.publicStreamCheckpoint).toEqual({
+    runId: stream.runId, executionGeneration: 0, receiptId: 'model:0', invocation: 0,
+  })
+  expect(await convex.run(ctx => ctx.db.query('harnessPublicStreams')
+    .withIndex('by_runId', q => q.eq('runId', stream.runId)).unique())).toBeNull()
+  const read = await convex.query(query('harness/runs:readPublicStreamState'), {
+    actorUserId: stream.actorUserId, runId: stream.runId, afterSequence: -1, serverSecret: secret,
+  })
+  expect(read).toMatchObject({
+    snapshot: null,
+    transcriptSteps: [{ sequence: 0, receiptId: 'model:0', persistence: { content: 'Canonical text differs.' } }],
+  })
+  expect(settled.snapshot.revision).toBeGreaterThan(stream.revision)
+  await expect(convex.mutation(append, appendArgs(stream, 21, 'after checkpoint')))
+    .rejects.toThrow('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+})
+
+test('append mutations reject changed owners, revoked conversations, and wrong delivery bindings', async () => {
+  const append = mutation('appendPublicStream')
+  const ownerChanged = convexTest(schema, modules)
+  const ownerStream = await seedWritableStream(ownerChanged, 'personal:owner-changed')
+  await ownerChanged.run(async ctx => {
+    const run = await ctx.db.query('harnessRuns')
+      .withIndex('by_runId', q => q.eq('runId', ownerStream.runId)).unique()
+    if (run) await ctx.db.patch(run._id, { actorUserId: 'other' })
+  })
+  await expect(ownerChanged.mutation(append, appendArgs(ownerStream, 0, 'x')))
+    .rejects.toThrow('HARNESS_PUBLIC_STREAM_ACCESS_DENIED')
+
+  const revoked = convexTest(schema, modules)
+  const revokedStream = await seedWritableStream(revoked, 'personal:revoked')
+  await revoked.run(ctx => ctx.db.patch(revokedStream.conversationId, { deletedAt: Date.now() }))
+  await expect(revoked.mutation(append, appendArgs(revokedStream, 0, 'x'))).rejects.toThrow()
+
+  const wrongDelivery = convexTest(schema, modules)
+  const deliveryStream = await seedWritableStream(wrongDelivery, 'personal:wrong-delivery')
+  await wrongDelivery.run(ctx => ctx.db.patch(deliveryStream.deliveryId, { workflowRunId: 'stale-workflow' }))
+  await expect(wrongDelivery.mutation(append, appendArgs(deliveryStream, 0, 'x')))
+    .rejects.toThrow('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
 })

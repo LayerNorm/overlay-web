@@ -41,29 +41,36 @@ function captureModelFailure(
 }
 
 export async function secureModelDoStream(reference: HarnessModelReference, options: LanguageModelV4CallOptions) {
+  let selectedModel: Awaited<ReturnType<typeof model>>
+  try {
+    selectedModel = await model(reference)
+  } catch (error) {
+    await recordConfirmedRejection(reference, error)
+    throw preserveHarnessSDKFailure(error)
+  }
   const dispatchStartedAt = performance.now()
+  const authority = reference.personal ?? reference.native
+  if (authority && reference.publicStreamVersion === 1 && reference.purpose === 'response') {
+    recordPublicStreamMetric({
+      event: 'model_dispatch', runId: authority.access.runId,
+      generation: authority.access.executionGeneration ?? 0, receiptId: authority.receiptId,
+      modelId: reference.modelId,
+    })
+  }
   let result: Awaited<ReturnType<Awaited<ReturnType<typeof model>>['doStream']>>
   try {
-    result = await (await model(reference)).doStream(options)
+    result = await selectedModel.doStream(options)
   } catch (error) {
     await recordConfirmedRejection(reference, error)
     throw preserveHarnessSDKFailure(error)
   }
   const stream = captureModelFailure(result.stream)
-  if (reference.publicStreamVersion === 1 && reference.purpose === 'response') {
-    const authority = reference.personal ?? reference.native
-    if (authority) recordPublicStreamMetric({
-      event: 'model_dispatch', runId: authority.access.runId,
-      generation: authority.access.executionGeneration ?? 0, receiptId: authority.receiptId,
-      modelId: reference.modelId, durationMs: Math.round(performance.now() - dispatchStartedAt),
-    })
-  }
   const toolNames = new Set((options.tools ?? []).flatMap(tool => (
     'name' in tool && typeof tool.name === 'string' ? [tool.name] : []
   )))
   if (reference.publicStreamVersion === 1 && reference.purpose === 'response') {
     const { publishUnifiedHarnessStream } = await import('./public-stream-publisher')
-    return { ...result, stream: publishUnifiedHarnessStream(reference, stream, toolNames) }
+    return { ...result, stream: publishUnifiedHarnessStream(reference, stream, toolNames, dispatchStartedAt) }
   }
   if (!reference.native?.streamToDelivery) return { ...result, stream }
   const { projectNativeHarnessStream } = await import('./native-model-stream')

@@ -149,6 +149,7 @@ export function createAgentMessageStream(args: {
   let pendingParts: Array<Record<string, unknown>> | null = null
   let latestParts: Array<Record<string, unknown>> | null = null
   let lastFlushAt = now()
+  let firstTextFlushScheduled = false
   /** No event has been published yet, so the first flush must publish one. */
   let lastEventAt = Number.NEGATIVE_INFINITY
   /** Serializes writes so deltas cannot be appended out of order. */
@@ -157,6 +158,7 @@ export function createAgentMessageStream(args: {
   let coalescedWrite: { contentDelta: string; parts: Array<Record<string, unknown>> | null } | null = null
   let flushTimer: ReturnType<typeof setTimeout> | undefined
   let progressOverflow = false
+  let terminal = false
 
   const enqueue = (work: () => Promise<void>): Promise<void> => {
     queue = queue.then(work, work)
@@ -220,8 +222,9 @@ export function createAgentMessageStream(args: {
   }
 
   const maybeFlush = (flushParts = true): void => {
-    if (disabled || progressOverflow) return
+    if (disabled || progressOverflow || terminal) return
     const due = pendingText.length >= AGENT_STREAM_FLUSH_CHARS
+      || (pendingText.length > 0 && !firstTextFlushScheduled)
       || (pendingText.length > 0 && now() - lastFlushAt >= AGENT_STREAM_FLUSH_INTERVAL_MS)
       || (flushParts && (pendingParts !== null || coalescedWrite !== null || pendingText.length > 0))
     if (!due) {
@@ -237,6 +240,7 @@ export function createAgentMessageStream(args: {
     const parts = pendingParts
     pendingText = ''
     pendingParts = null
+    if (contentDelta) firstTextFlushScheduled = true
     const merged = {
       contentDelta: (coalescedWrite?.contentDelta ?? '') + contentDelta,
       parts: parts ?? coalescedWrite?.parts ?? null,
@@ -264,7 +268,7 @@ export function createAgentMessageStream(args: {
 
     /** Buffers generated text; writes once a flush threshold trips. */
     pushText(delta: string, parts?: Array<Record<string, unknown>>): void {
-      if (disabled || !delta) return
+      if (disabled || terminal || !delta) return
       if (progressOverflow) return
       if (pendingText.length + (coalescedWrite?.contentDelta.length ?? 0) + delta.length > MAX_PENDING_PROGRESS_CHARS) {
         pendingText = ''
@@ -286,7 +290,7 @@ export function createAgentMessageStream(args: {
      * both rare and the most interesting thing a reader can see.
      */
     pushParts(parts: Array<Record<string, unknown>>): void {
-      if (disabled) return
+      if (disabled || terminal) return
       pendingParts = parts
       latestParts = parts.map((part) => ({ ...part }))
       maybeFlush()
@@ -301,6 +305,10 @@ export function createAgentMessageStream(args: {
     async flush(): Promise<void> {
       if (flushTimer) clearTimeout(flushTimer)
       flushTimer = undefined
+      if (terminal) {
+        await queue
+        return
+      }
       if (disabled || progressOverflow) {
         if (inFlightWrite) await inFlightWrite
         return
@@ -331,6 +339,8 @@ export function createAgentMessageStream(args: {
       parts?: Array<Record<string, unknown>>
       tokens?: { input: number; output: number }
     }): Promise<string | null> {
+      if (terminal) return messageId
+      terminal = true
       if (flushTimer) clearTimeout(flushTimer)
       flushTimer = undefined
       pendingText = ''
@@ -367,12 +377,20 @@ export function createAgentMessageStream(args: {
       content?: string
       parts?: Array<Record<string, unknown>>
     }): Promise<void> {
+      if (terminal) return
       if (flushTimer) clearTimeout(flushTimer)
       flushTimer = undefined
-      while (!disabled && (inFlightWrite || coalescedWrite || pendingText || pendingParts)) {
+      if (progressOverflow) {
+        pendingText = ''
+        pendingParts = null
+        coalescedWrite = null
+      }
+      while (!disabled && !progressOverflow && (inFlightWrite || coalescedWrite || pendingText || pendingParts)) {
         maybeFlush(true)
         if (inFlightWrite) await inFlightWrite
+        else if (coalescedWrite || pendingText || pendingParts) await Promise.resolve()
       }
+      terminal = true
       pendingText = ''
       pendingParts = null
       const parts = result?.parts ?? latestParts

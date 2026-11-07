@@ -47,7 +47,7 @@ async function nativeDelivery(ctx: MutationCtx, run: Doc<'harnessRuns'>, metadat
     || conversation.userId !== run.actorUserId || (conversation.scope ?? 'personal') !== 'personal'
     || (conversation.conversationType ?? 'personal') !== 'personal' || conversation.agentId
     || conversation.isAutomation || conversation.externalPlatform || conversation.surfaceBindingId
-    || user.nativeSubmittedAt === undefined || message.userId !== run.actorUserId
+    || user.nativeSubmittedAt === undefined || user.userId !== run.actorUserId || message.userId !== run.actorUserId
     || message.authorKind === 'agent' || message.authorPrincipalId !== undefined) return null
   const automation = await ctx.db.query('automations')
     .withIndex('by_conversationId_deletedAt', q => q.eq('conversationId', conversation._id).eq('deletedAt', undefined)).first()
@@ -66,7 +66,7 @@ export async function projectNativePersonalProgress(
   const rows = await ctx.db.query('harnessTranscriptSteps')
     .withIndex('by_runId_sequence', q => q.eq('runId', run.runId)).order('desc').take(26)
   const steps = rows.slice(0, 25).reverse().map(row => withTranscriptPartIds(
-    run.runId, row.receiptId, JSON.parse(row.persistenceJson) as HarnessTranscriptPersistence,
+    run.runId, row.receiptId, JSON.parse(row.persistenceJson) as HarnessTranscriptPersistence, row.executionGeneration ?? 0,
   ))
   const earlier = rows.length > 25 ? '[Earlier progress is available in the full trace]' : ''
   const controls = (target.message.parts ?? []).filter(part => part.type.startsWith('data-native-agent-'))

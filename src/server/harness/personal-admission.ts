@@ -94,10 +94,19 @@ export async function startPersonalHarness(input: {
   if (admitted.workflowRunId) return getRun(admitted.workflowRunId)
   // A lost start acknowledgement is retriable. Only the workflow that atomically
   // claims the durable root can attach delivery or execute models and tools.
-  try {
-    await start(personalHarnessWorkflow, [workflow])
-  } catch (cause) {
-    throw new PersonalHarnessStartPending('The workflow start could not be confirmed. Retry this turn to reconnect safely.', { cause })
+  let started = false
+  for (let attempt = 0; attempt < (admitted.policy?.publicStreamVersion === 1 ? 2 : 1); attempt++) {
+    try {
+      await start(personalHarnessWorkflow, [workflow])
+      started = true
+      break
+    } catch (cause) {
+      if (attempt > 0 || admitted.policy?.publicStreamVersion !== 1) {
+        throw new PersonalHarnessStartPending(
+          'The workflow start could not be confirmed. Retry this turn to reconnect safely.', { cause },
+        )
+      }
+    }
   }
   if (admitted.policy?.publicStreamVersion === 1) {
     return {
@@ -106,6 +115,7 @@ export async function startPersonalHarness(input: {
       executionGeneration: admitted.executionGeneration ?? 0,
     } satisfies PersonalHarnessAcceptedRun
   }
+  if (!started) throw new PersonalHarnessStartPending('The workflow start could not be confirmed.')
   for (let attempt = 0; attempt < 100; attempt++) {
     const state = await repository.get({ actorUserId: agentRun.userId, runId })
     if (state?.workflowRunId) return getRun(state.workflowRunId)

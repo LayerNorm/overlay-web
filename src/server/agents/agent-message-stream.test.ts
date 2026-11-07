@@ -110,35 +110,33 @@ test('the durable row is opened lazily, so an empty turn leaves no bubble', asyn
   assert.equal(stream.messageId, null)
 })
 
-test('text is batched by size and by elapsed time, not written per token', async () => {
+test('the first safe text flushes immediately, then text batches by size and elapsed time', async () => {
   let clock = 0
   const { calls, store } = recordingStore()
   const stream = streamFor(store, () => clock)
 
-  // Below both thresholds: still buffered.
+  // The first safe text establishes the durable row immediately.
   stream.pushText('a'.repeat(10))
   await new Promise((resolve) => setImmediate(resolve))
-  assert.deepEqual(calls.map((call) => call.method), [])
+  assert.deepEqual(calls.map((call) => call.method), ['start', 'append'])
+  assert.equal(calls[1]!.args.contentDelta, 'a'.repeat(10))
 
   // Crossing the character threshold flushes without waiting for the interval.
   stream.pushText('b'.repeat(AGENT_STREAM_FLUSH_CHARS))
   await new Promise((resolve) => setImmediate(resolve))
-  assert.deepEqual(calls.map((call) => call.method), ['start', 'append'])
-  assert.equal(
-    calls[1]!.args.contentDelta,
-    `${'a'.repeat(10)}${'b'.repeat(AGENT_STREAM_FLUSH_CHARS)}`,
-  )
+  assert.equal(calls.filter((call) => call.method === 'append').length, 2)
+  assert.equal(calls[2]!.args.contentDelta, 'b'.repeat(AGENT_STREAM_FLUSH_CHARS))
 
   // A short tail waits for the interval rather than costing another write.
   stream.pushText('c')
   await new Promise((resolve) => setImmediate(resolve))
-  assert.equal(calls.length, 2)
+  assert.equal(calls.length, 3)
 
   clock += AGENT_STREAM_FLUSH_INTERVAL_MS
   stream.pushText('d')
   await new Promise((resolve) => setImmediate(resolve))
-  assert.equal(calls.length, 3)
-  assert.equal(calls[2]!.args.contentDelta, 'cd')
+  assert.equal(calls.length, 4)
+  assert.equal(calls[3]!.args.contentDelta, 'cd')
 })
 
 test('flushes are serialized and coalesce deltas while a durable write is in flight', async () => {
@@ -200,9 +198,11 @@ test('a parts change always flushes, since tool calls move at step boundaries', 
   stream.pushParts([{ type: 'tool-invocation', toolInvocation: { toolName: 'search' } }])
   await new Promise((resolve) => setImmediate(resolve))
 
-  const append = calls.find((call) => call.method === 'append')
+  const appends = calls.filter((call) => call.method === 'append')
+  const append = appends.at(-1)
   assert.ok(append)
-  assert.equal(append.args.contentDelta, 'thinking')
+  assert.equal(appends[0]!.args.contentDelta, 'thinking')
+  assert.equal(append.args.contentDelta, '')
   assert.deepEqual(append.args.parts, [
     { type: 'tool-invocation', toolInvocation: { toolName: 'search' } },
   ])
@@ -342,23 +342,45 @@ test('text and ordered parts stream atomically without writing every token', asy
   push('Before')
   push(' tool')
   await new Promise((resolve) => setImmediate(resolve))
-  assert.deepEqual(calls, [])
+  const textWritesBeforeParts = calls.filter((call) => call.method === 'append')
+  assert.equal(textWritesBeforeParts[0]!.args.contentDelta, 'Before')
+  assert.equal(textWritesBeforeParts.length, 1)
   parts.push({ type: 'tool-invocation', toolInvocation: { toolCallId: 'one', toolName: 'search', state: 'input-available' } })
   stream.pushParts(parts.map((part) => ({ ...part })))
   await stream.flush()
-  const first = calls.find((call) => call.method === 'append')!
-  assert.equal(first.args.contentDelta, 'Before tool')
-  assert.deepEqual(first.args.parts, parts)
+  const last = calls.filter((call) => call.method === 'append').at(-1)!
+  assert.equal(last.args.contentDelta, ' tool')
+  assert.deepEqual(last.args.parts, parts)
 
   clock += AGENT_STREAM_FLUSH_INTERVAL_MS
   push('After')
   await new Promise((resolve) => setImmediate(resolve))
   const writes = calls.filter((call) => call.method === 'append')
-  assert.equal(writes.length, 2)
-  assert.equal(writes[1]!.args.contentDelta, 'After')
-  assert.deepEqual((writes[1]!.args.parts as Array<Record<string, unknown>>).map((part) => part.type), ['text', 'tool-invocation', 'text'])
+  assert.equal(writes.length, 3)
+  assert.equal(writes[2]!.args.contentDelta, 'After')
+  assert.deepEqual((writes[2]!.args.parts as Array<Record<string, unknown>>).map((part) => part.type), ['text', 'tool-invocation', 'text'])
   push(' answer')
-  assert.equal((writes[1]!.args.parts as Array<Record<string, unknown>>)[2]!.text, 'After')
+  assert.equal((writes[2]!.args.parts as Array<Record<string, unknown>>)[2]!.text, 'After')
   await stream.flush()
   assert.equal(parts[2]!.text, 'After answer')
+})
+
+test('the first safe legacy text flushes immediately', async () => {
+  const { calls, store } = recordingStore()
+  const stream = streamFor(store, () => 0)
+  stream.pushText('first')
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(calls.filter((call) => call.method === 'append').length, 1)
+  await stream.finalize({ content: 'first' })
+})
+
+test('failure after progress overflow clears pending parts and terminates', async () => {
+  const { calls, store } = recordingStore()
+  const stream = streamFor(store, () => 0)
+  stream.pushText('x'.repeat(AGENT_STREAM_FLUSH_CHARS))
+  await new Promise((resolve) => setImmediate(resolve))
+  stream.pushText('x'.repeat(64 * 1024 + 1))
+  stream.pushParts([{ type: 'tool-invocation', toolInvocation: { toolName: 'read_file' } }])
+  await stream.fail({ content: 'partial response' })
+  assert.equal(calls.at(-1)?.method, 'fail')
 })

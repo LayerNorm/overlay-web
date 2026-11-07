@@ -15,6 +15,7 @@ export function withTranscriptPartIds(
   runId: string,
   receiptId: string,
   persistence: HarnessTranscriptPersistence,
+  executionGeneration?: number,
 ): HarnessTranscriptPersistence {
   return {
     ...persistence,
@@ -22,6 +23,6 @@ export function withTranscriptPartIds(
       ? part
       : { ...part, id: typeof part.storageOmittedParts === 'number'
         ? JSON.stringify([runId, 'omitted'])
-        : transcriptPartIdentity(runId, receiptId, index) }),
+        : transcriptPartIdentity(runId, receiptId, index, executionGeneration) }),
   }
 }

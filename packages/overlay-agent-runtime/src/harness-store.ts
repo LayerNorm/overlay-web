@@ -116,6 +116,7 @@ export type HarnessTranscriptStep = {
   receiptId: string
   stepNumber: number
   sequence: number
+  executionGeneration?: number
   persistence: HarnessTranscriptPersistence
 }
 

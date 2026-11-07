@@ -171,16 +171,34 @@ stops future enrollment but does not switch an in-flight run.
 The versioned path publishes filtered response text from the executor's secure
 model boundary. It does not publish reasoning, child/summary/verification output
 or raw tool payloads. Convex active output is provisional and distinct from
-settled transcript checkpoints. Runs without the version field retain their
+settled transcript checkpoints. Active rows are limited to one stream per root;
+each segment is at most 8 KiB UTF-8 and visible text is capped at 160,000
+UTF-16 code units without splitting a surrogate pair. Truncation is explicit.
+Settling a transcript step atomically writes its checkpoint identity
+`(runId, generation, receiptId, invocation)` and retires that invocation's
+active segments. Finalize, failure and cancellation paths preserve safe partial
+output where needed, mark the canonical message terminal, and schedule bounded
+cleanup; active rows are not retained as a second transcript.
+
+The native personal Act request remains pending until the durable root's
+authoritative Convex state is terminal. Its SSE adapter reads the same persisted
+active stream and settled transcript steps, including source metadata and
+ordered tool-part metadata; it never forwards a losing Workflow handle or raw
+SDK output. It reads only the stream projection rather than repeatedly loading
+the full root snapshot. Runs without `publicStreamVersion` retain their
 existing transport/projector. Rollback is therefore an enrollment change, not
 a mid-run protocol switch.
 
 Stream timing fields are local monotonic measurements: provider-first-text is
 measured within the executor process and publish-ack within the publisher.
-Browser receive/paint measurements use the browser's own `performance.now()`.
-Do not subtract clocks from different hosts or infer p95/baselines from
-unrepeated samples. Output size is reported in characters, not tokens. Logs and
-telemetry must never include prompts, generated text or credentials.
+`model_dispatch` is recorded immediately before provider invocation, so
+provider-first-text includes provider setup. Browser `receive_to_next_frame_ms`
+measures receipt to the next scheduled animation frame, not a confirmed DOM
+paint. Authorization, context, history, tools and admission spans use a local
+monotonic clock. Do not subtract clocks from different hosts or infer
+p95/baselines from unrepeated samples. Output size is reported in characters,
+not tokens. Logs and telemetry must never include prompts, generated text or
+credentials.
 
 `nativeSubmittedAt`, `userMetadata`, `conversationMessages.by_conversationId_turnId_role`,
 and `files.by_userId_conversationId_turnId` are additive. Roll back browser

@@ -14,6 +14,7 @@ import { drainWorkProgress } from '@/server/chat/work-progress-drain'
 import { describePersonalChatWorkTools } from '@/server/conversations/personal-chat-work-tools'
 import type { PersonalHarnessBudget } from '@/server/harness/personal-admission-policy'
 import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
+import { transcriptPartIdentity } from '@/shared/chat/transcript-part-identity'
 import {
   PersonalHarnessAdmissionConflict,
   PersonalHarnessStartPending,
@@ -123,38 +124,133 @@ export async function startPersonalHarnessTurn(input: {
     if ('accepted' in workflowRun) {
       const repository = new ConvexHarnessRepository()
       let stopped = false
-      const close = (controller: ReadableStreamDefaultController<UIMessageChunk>) => {
-        try { controller.close() } catch (_error) { /* already cancelled */ }
-      }
+      let stop = () => { stopped = true }
       const stream = new ReadableStream<UIMessageChunk>({
         start(controller) {
-          const stop = () => {
+          stop = () => {
             stopped = true
-            close(controller)
+            try { controller.close() } catch (_error) { /* already closed */ }
           }
-          if (input.signal?.aborted) stop()
-          else input.signal?.addEventListener('abort', stop, { once: true })
+          if (input.signal?.aborted) {
+            stop()
+            return
+          }
+          input.signal?.addEventListener('abort', stop, { once: true })
+          controller.enqueue({ type: 'start', messageId: input.agentRun.assistantMessageId })
+          controller.enqueue({
+            type: 'message-metadata',
+            messageMetadata: {
+              harnessAccepted: {
+                runId: workflowRun.runId,
+                executionGeneration: workflowRun.executionGeneration,
+                status: 'running',
+              },
+              ...(Object.keys(input.sourceCitations).length > 0 ? { sourceCitations: input.sourceCitations } : {}),
+            },
+          })
           void (async () => {
+            let offset = 0
+            let partId = ''
+            let afterSequence = -1
             while (!stopped && !input.signal?.aborted) {
-              try {
-                const state = await repository.get({
-                  actorUserId: input.auth.userId,
-                  runId: workflowRun.runId,
-                })
-                if (!state || ['completed', 'failed', 'cancelled'].includes(state.status)) {
-                  close(controller)
-                  input.signal?.removeEventListener('abort', stop)
-                  return
-                }
-              } catch (_error) {
-                if (stopped) return
+              const state = await repository.readPublicStreamState({
+                actorUserId: input.auth.userId,
+                runId: workflowRun.runId,
+                afterSequence,
+              })
+              if (!state) {
+                controller.enqueue({ type: 'error', errorText: 'The durable stream is unavailable.' })
+                controller.close()
+                return
               }
-              await new Promise(resolve => setTimeout(resolve, 250))
+              for (const step of state.transcriptSteps) {
+                if (partId) {
+                  controller.enqueue({ type: 'text-end', id: partId })
+                  controller.enqueue({ type: 'reset-step' })
+                }
+                partId = ''
+                offset = 0
+                controller.enqueue({ type: 'start-step' })
+                const canonicalPartId = transcriptPartIdentity(
+                  workflowRun.runId, step.receiptId, 0, step.executionGeneration,
+                )
+                if (step.persistence.content) {
+                  controller.enqueue({ type: 'text-start', id: canonicalPartId })
+                  controller.enqueue({ type: 'text-delta', id: canonicalPartId, delta: step.persistence.content })
+                  controller.enqueue({ type: 'text-end', id: canonicalPartId })
+                }
+                controller.enqueue({
+                  type: 'data-harness-transcript-step',
+                  id: `${workflowRun.runId}:${step.sequence}`,
+                  data: {
+                    runId: workflowRun.runId,
+                    executionGeneration: step.executionGeneration,
+                    receiptId: step.receiptId,
+                    sequence: step.sequence,
+                    parts: step.persistence.parts,
+                  },
+                  transient: true,
+                } as unknown as UIMessageChunk)
+                controller.enqueue({ type: 'finish-step' })
+                afterSequence = step.sequence
+              }
+              if (state.nextSequence !== null) afterSequence = Math.max(afterSequence, state.nextSequence)
+              const snapshot = state.snapshot
+              if (snapshot) {
+                const nextPartId = transcriptPartIdentity(
+                  snapshot.runId, snapshot.receiptId, 0, snapshot.executionGeneration,
+                )
+                if (nextPartId !== partId) {
+                  if (partId) {
+                    controller.enqueue({ type: 'text-end', id: partId })
+                    controller.enqueue({ type: 'finish-step' })
+                  }
+                  partId = nextPartId
+                  offset = 0
+                  controller.enqueue({ type: 'start-step' })
+                  controller.enqueue({ type: 'text-start', id: partId })
+                }
+                const text = [snapshot.text, snapshot.truncatedMarker].filter(Boolean).join('\n\n')
+                if (text.length > offset) {
+                  controller.enqueue({ type: 'text-delta', id: partId, delta: text.slice(offset) })
+                  offset = text.length
+                }
+              }
+              if (['completed', 'failed', 'cancelled'].includes(state.status)) {
+                if (partId) {
+                  controller.enqueue({ type: 'text-end', id: partId })
+                  controller.enqueue({ type: 'finish-step' })
+                }
+                if (state.status === 'failed') {
+                  controller.enqueue({ type: 'error', errorText: 'The durable run failed.' })
+                }
+                controller.enqueue({
+                  type: 'finish',
+                  finishReason: state.status === 'failed' ? 'error' : 'stop',
+                  messageMetadata: {
+                    harnessAccepted: {
+                      runId: workflowRun.runId,
+                      executionGeneration: state.executionGeneration,
+                      status: state.status,
+                    },
+                    ...(Object.keys(input.sourceCitations).length > 0 ? { sourceCitations: input.sourceCitations } : {}),
+                  },
+                })
+                controller.close()
+                return
+              }
+              await new Promise(resolve => setTimeout(resolve, 150))
             }
-          })().catch((_error) => close(controller))
+          })().catch((_error) => {
+            if (!stopped) {
+              controller.enqueue({ type: 'error', errorText: 'The durable stream is unavailable.' })
+              controller.close()
+            }
+          })
         },
         cancel() {
           stopped = true
+          input.signal?.removeEventListener('abort', stop)
         },
       })
       const response = createUIMessageStreamResponse({ stream })

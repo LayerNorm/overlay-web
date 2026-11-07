@@ -12,5 +12,9 @@ export type PublicStreamMetric = {
 }
 
 export function recordPublicStreamMetric(metric: PublicStreamMetric): void {
-  logger.info('[harness] unified public stream', metric)
+  try {
+    logger.info('[harness] unified public stream', metric)
+  } catch (_error) {
+    // Telemetry is best-effort and must not affect the workflow.
+  }
 }

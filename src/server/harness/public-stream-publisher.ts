@@ -18,6 +18,7 @@ export class PublicTextProjector {
   private fenceHeader = ''
   private insideFence = false
   private markerCarry = ''
+  private suppressionCarry = ''
   private suppressionEnd = ''
   private suppressRest = false
 
@@ -28,14 +29,26 @@ export class PublicTextProjector {
     return visible ? [visible] : []
   }
 
+  private isKnownToolCandidate(value: string): boolean {
+    const names = [...this.toolNames].map(name => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')
+    return Boolean(names && new RegExp(`["'](?:name|tool)["']\\s*:\\s*["'](?:${names})["']`).test(value))
+  }
+
   private line(value: string): string[] {
     if (this.candidate) {
+      if (this.insideFence && /^[ \t]*```/.test(value)) {
+        const complete = this.candidate + value
+        this.candidate = ''
+        this.insideFence = false
+        this.fenceHeader = ''
+        return this.isKnownToolCandidate(complete) ? [] : [complete]
+      }
       this.candidate += value
       if (this.candidate.length > MAX_CLASSIFIER_CHARS) {
         this.candidate = ''
         this.candidateOverflow = true
       }
-      if (/^[ \t]*\n$/.test(value)) {
+      if (!this.insideFence && /^[ \t]*\n$/.test(value)) {
         const result = this.candidateOverflow ? [] : this.classify(this.candidate)
         this.candidate = ''
         this.candidateOverflow = false
@@ -44,6 +57,12 @@ export class PublicTextProjector {
       return []
     }
     if (this.candidateOverflow) {
+      if (this.insideFence && /^[ \t]*```/.test(value)) {
+        this.candidateOverflow = false
+        this.insideFence = false
+        this.fenceHeader = ''
+        return []
+      }
       if (/^[ \t]*\n$/.test(value)) this.candidateOverflow = false
       return []
     }
@@ -84,28 +103,44 @@ export class PublicTextProjector {
 
   private visible(value: string, final = false): string[] {
     const output: string[] = []
-    this.partialLine += value
-    let start = 0
-    while (true) {
-      const newline = this.partialLine.indexOf('\n', start)
-      if (newline < 0) break
-      output.push(...this.line(this.partialLine.slice(start, newline + 1)))
-      start = newline + 1
+    const process = (chunk: string) => {
+      this.partialLine += chunk
+      let start = 0
+      while (true) {
+        const newline = this.partialLine.indexOf('\n', start)
+        if (newline < 0) break
+        output.push(...this.line(this.partialLine.slice(start, newline + 1)))
+        start = newline + 1
+      }
+      this.partialLine = this.partialLine.slice(start)
+      if (this.partialLine && this.insideFence && this.fenceHeader && !this.candidate
+        && !/^[ \t]*[`{\[]/.test(this.partialLine)) {
+        output.push(this.fenceHeader, this.partialLine)
+        this.fenceHeader = ''
+        this.partialLine = ''
+      } else if (this.partialLine && this.insideFence && !this.fenceHeader && !this.candidate
+        && !/^[ \t]*[`{\[]/.test(this.partialLine)) {
+        output.push(this.partialLine)
+        this.partialLine = ''
+      } else if (this.partialLine && !this.candidate && !this.candidateOverflow
+        && !/^[ \t]*[\[{`]/.test(this.partialLine)) {
+        output.push(this.partialLine)
+        this.partialLine = ''
+      }
+      if (this.partialLine.length + this.candidate.length + this.fenceHeader.length
+        + this.markerCarry.length + this.suppressionCarry.length > MAX_CLASSIFIER_CHARS) {
+        this.partialLine = ''
+        this.candidate = ''
+        this.fenceHeader = ''
+        this.candidateOverflow = true
+      }
     }
-    this.partialLine = this.partialLine.slice(start)
-    if (this.partialLine && this.insideFence && this.fenceHeader && !this.candidate
-      && !/^[ \t]*[`{\[]/.test(this.partialLine)) {
-      output.push(this.fenceHeader, this.partialLine)
-      this.fenceHeader = ''
-      this.partialLine = ''
-    } else if (this.partialLine && this.insideFence && !this.fenceHeader && !this.candidate
-      && !/^[ \t]*[`{\[]/.test(this.partialLine)) {
-      output.push(this.partialLine)
-      this.partialLine = ''
-    } else if (this.partialLine && !this.candidate && !this.candidateOverflow
-      && !/^[ \t]*[\[{`]/.test(this.partialLine)) {
-      output.push(this.partialLine)
-      this.partialLine = ''
+    for (let offset = 0; offset < value.length;) {
+      let end = Math.min(value.length, offset + 4_096)
+      const last = value.charCodeAt(end - 1)
+      if (end < value.length && last >= 0xD800 && last <= 0xDBFF) end--
+      process(value.slice(offset, end))
+      offset = end
     }
     if (final && this.partialLine) {
       output.push(...this.line(this.partialLine))
@@ -116,12 +151,20 @@ export class PublicTextProjector {
 
   push(text: string): string[] {
     if (!text || this.suppressRest) return []
-    const combined = this.markerCarry + text
+    const combined = this.suppressionCarry + this.markerCarry + text
+    this.suppressionCarry = ''
     this.markerCarry = ''
     if (this.suppressionEnd) {
       const endMarker = this.suppressionEnd
       const end = combined.indexOf(endMarker)
-      if (end < 0) return []
+      if (end < 0) {
+        let held = 0
+        for (let length = Math.min(endMarker.length - 1, combined.length); length > held; length--) {
+          if (endMarker.startsWith(combined.slice(-length))) held = length
+        }
+        this.suppressionCarry = combined.slice(combined.length - held)
+        return []
+      }
       this.suppressionEnd = ''
       return this.push(combined.slice(end + endMarker.length))
     }
@@ -135,6 +178,7 @@ export class PublicTextProjector {
       if (marker.includes('python_tag')) this.suppressRest = true
       else this.suppressionEnd = marker === '<tool_call>' ? '</tool_call>' : ''
       if (!this.suppressionEnd) this.suppressRest = true
+      if (this.suppressionEnd) output.push(...this.push(combined.slice(markerIndex.index + marker.length)))
       return output
     }
     let held = 0
@@ -151,7 +195,9 @@ export class PublicTextProjector {
     const output = this.suppressRest || this.suppressionEnd
       ? [] : this.visible(this.markerCarry, true)
     this.markerCarry = ''
-    if (this.candidate && !this.candidateOverflow) output.push(...this.classify(this.candidate))
+    if (this.candidate && !this.candidateOverflow && !this.isKnownToolCandidate(this.candidate)) {
+      output.push(...this.classify(this.candidate))
+    }
     else if (!this.candidateOverflow && this.fenceHeader) output.push(this.fenceHeader)
     this.candidate = ''
     this.fenceHeader = ''
@@ -182,6 +228,7 @@ export function publishUnifiedHarnessStream(
   reference: HarnessModelReference,
   source: ReadableStream<LanguageModelV4StreamPart>,
   toolNames: ReadonlySet<string>,
+  modelDispatchStartedAt = performance.now(),
 ): ReadableStream<LanguageModelV4StreamPart> {
   const authority = reference.personal ?? reference.native
   if (!authority || reference.publicStreamVersion !== 1 || reference.purpose !== 'response') return source
@@ -189,7 +236,7 @@ export function publishUnifiedHarnessStream(
   const writer = new ConvexHarnessRepository()
   const projector = new PublicTextProjector(toolNames)
   const now = () => performance.now()
-  const startedAt = now()
+  const startedAt = modelDispatchStartedAt
   let firstProviderTextAt: number | undefined
   let pending = ''
   let pendingBytes = 0
@@ -205,7 +252,9 @@ export function publishUnifiedHarnessStream(
   let pump: Promise<void> | undefined
   const key = { runId: access.runId, generation: access.executionGeneration ?? 0,
     receiptId: authority.receiptId, modelId: reference.modelId }
-  const metric = (event: string, fields: Record<string, unknown> = {}) => logger.info('[harness] unified public stream', { event, ...key, ...fields })
+  const metric = (event: string, fields: Record<string, unknown> = {}) => {
+    try { logger.info('[harness] unified public stream', { event, ...key, ...fields }) } catch (_error) { void _error }
+  }
   const clearTimer = () => { if (timer) clearTimeout(timer); timer = undefined }
   const stop = () => { disabled = true; pending = ''; pendingBytes = 0; clearTimer() }
 
@@ -214,7 +263,6 @@ export function publishUnifiedHarnessStream(
     if (pump) return pump
     pump = (async () => {
       while (!disabled && pending && (forced || pendingBytes >= MAX_BATCH_BYTES || closed)) {
-        forced = false
         const batch = takePrefix(pending, MAX_BATCH_BYTES)
         if (!batch.prefix) break
         pending = batch.rest
@@ -241,6 +289,7 @@ export function publishUnifiedHarnessStream(
           }
         }
       }
+      if (!pending) forced = false
     })().finally(() => {
       pump = undefined
       if (!disabled && pending && (forced || pendingBytes >= MAX_BATCH_BYTES || closed)) void requestPump()
@@ -259,11 +308,19 @@ export function publishUnifiedHarnessStream(
       pendingBytes += utf8Size(next.prefix)
       peakPendingBytes = Math.max(peakPendingBytes, pendingBytes)
       remainder = next.rest
-      if (writes === 0 || pendingBytes >= MAX_BATCH_BYTES) await requestPump(true)
+      if (writes === 0 || pendingBytes >= MAX_BATCH_BYTES) void requestPump(true)
       else if (!timer) timer = setTimeout(() => { timer = undefined; void requestPump(true) }, FLUSH_INTERVAL_MS)
     }
   }
-  const flush = async () => { clearTimer(); await requestPump(true); if (pump) await pump }
+  const flush = async () => {
+    clearTimer()
+    await requestPump(true)
+    while (!disabled && (pending || pump)) {
+      if (!pump) void requestPump(true)
+      const current = pump
+      if (current) await current
+    }
+  }
 
   const transformed = source.pipeThrough(new TransformStream<LanguageModelV4StreamPart, LanguageModelV4StreamPart>({
     async transform(part, controller) {
@@ -309,7 +366,13 @@ export function publishUnifiedHarnessStream(
           controller.close()
         } else controller.enqueue(result.value)
       } catch (error) {
-        stop()
+        clearTimer()
+        try {
+          for (const safeText of projector.flush()) await append(safeText)
+          await flush()
+        } catch (_persistError) {
+          stop()
+        }
         metric('stream_error')
         controller.error(error)
       }

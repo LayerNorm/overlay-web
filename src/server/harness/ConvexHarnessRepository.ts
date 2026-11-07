@@ -23,6 +23,7 @@ import type {
   HarnessResourceRequestReference,
 } from '@overlay/agent-runtime/harness-resource'
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
+import type { ActivePublicStreamSnapshot } from '@/shared/chat/public-stream-projection'
 import { ConvexHttpClient } from 'convex/browser'
 import { api } from '../../../convex/_generated/api'
 import { deploymentEnv } from '@/server/env/deployment-env'
@@ -143,6 +144,24 @@ export class ConvexHarnessRepository implements HarnessRepository {
     )
     if (!result) throw new Error('Harness public stream write returned no result.')
     return result
+  }
+
+  async readPublicStreamState(input: { actorUserId: string; runId: string; afterSequence: number }): Promise<{
+    status: string
+    workflowRunId: string | null
+    executionGeneration: number
+    snapshot: ActivePublicStreamSnapshot | null
+    transcriptSteps: Array<{
+      receiptId: string
+      sequence: number
+      executionGeneration: number
+      persistence: { content: string; parts: Array<Record<string, unknown>> }
+    }>
+    nextSequence: number | null
+  } | null> {
+    return await convex.query('harness/runs:readPublicStreamState', {
+      ...input, serverSecret: this.serverSecret,
+    }, { throwOnError: true })
   }
 
   async get(input: { actorUserId: string; runId: string }): Promise<HarnessSnapshot | null> {
