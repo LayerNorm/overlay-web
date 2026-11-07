@@ -289,7 +289,7 @@ async function participantViews(
   })
 }
 
-async function otherParticipantTypes(
+export async function otherParticipantTypes(
   ctx: CollaborationCtx,
   conversationId: Id<'conversations'>,
   actorPrincipalId: string,

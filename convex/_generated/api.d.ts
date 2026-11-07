@@ -78,6 +78,7 @@ import type * as collaboration_directMessages from "../collaboration/directMessa
 import type * as collaboration_directory from "../collaboration/directory.js";
 import type * as collaboration_events from "../collaboration/events.js";
 import type * as collaboration_management from "../collaboration/management.js";
+import type * as collaboration_roomList from "../collaboration/roomList.js";
 import type * as collaboration_rooms from "../collaboration/rooms.js";
 import type * as collaboration_sharing from "../collaboration/sharing.js";
 import type * as collaboration_workspaces from "../collaboration/workspaces.js";
@@ -133,7 +134,6 @@ import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authDebug from "../lib/authDebug.js";
 import type * as lib_browserConvexToken from "../lib/browserConvexToken.js";
 import type * as lib_connectedAgentPolicyProjection from "../lib/connectedAgentPolicyProjection.js";
-import type * as lib_conversationListVersion from "../lib/conversationListVersion.js";
 import type * as lib_gatewayCatalogPricing from "../lib/gatewayCatalogPricing.js";
 import type * as lib_gatewayCredits from "../lib/gatewayCredits.js";
 import type * as lib_growthFileEdits from "../lib/growthFileEdits.js";
@@ -287,6 +287,7 @@ declare const fullApi: ApiFromModules<{
   "collaboration/directory": typeof collaboration_directory;
   "collaboration/events": typeof collaboration_events;
   "collaboration/management": typeof collaboration_management;
+  "collaboration/roomList": typeof collaboration_roomList;
   "collaboration/rooms": typeof collaboration_rooms;
   "collaboration/sharing": typeof collaboration_sharing;
   "collaboration/workspaces": typeof collaboration_workspaces;
@@ -342,7 +343,6 @@ declare const fullApi: ApiFromModules<{
   "lib/authDebug": typeof lib_authDebug;
   "lib/browserConvexToken": typeof lib_browserConvexToken;
   "lib/connectedAgentPolicyProjection": typeof lib_connectedAgentPolicyProjection;
-  "lib/conversationListVersion": typeof lib_conversationListVersion;
   "lib/gatewayCatalogPricing": typeof lib_gatewayCatalogPricing;
   "lib/gatewayCredits": typeof lib_gatewayCredits;
   "lib/growthFileEdits": typeof lib_growthFileEdits;

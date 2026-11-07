@@ -31,9 +31,6 @@ import { resolveAgentRunNotice, type AgentRunNoticePrevious } from './agent-run-
 import { useChatRuntimes } from './useChatRuntimes'
 import { useComposerTextState } from './useComposerTextState'
 import {
-  type ChatListPageInfo,
-} from '@/shared/chat/chat-list-cache'
-import {
   tryLogTtftClientFirstText,
 } from '@/shared/chat/ttft-client-debug'
 import { useAsyncSessions } from '@/components/providers/async-sessions-store'
@@ -70,7 +67,7 @@ import { clearDraft, readDraft, writeDraft } from '@/shared/chat/conversation-dr
 import { buildNativeThreadHandoff } from '@/shared/chat/native-thread-handoff'
 import { agentConversationRedirect } from '@/shared/chat/chat-view-navigation'
 import { CHAT_DELETED_EVENT, dispatchChatCreated, type ChatDeletedDetail } from '@/shared/chat/chat-title'
-import type { Conversation, ConversationRuntime } from '../chat-interface/types'
+import type { ConversationRuntime } from '../chat-interface/types'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
 import type { PendingFirstSendState } from './chat-send-pending-first'
 import { useChatTemporaryState } from './useChatTemporaryState'
@@ -95,8 +92,6 @@ export type ChatExperienceProps = {
   mode?: 'chat' | 'automate'
   hideHeader?: boolean
   belowEmptyComposer?: React.ReactNode
-  initialChats?: Conversation[]
-  initialChatPageInfo?: ChatListPageInfo
 
 }
 

@@ -1,4 +1,4 @@
-import type { CachedConversation } from './chat-list-cache'
+import type { ChatListConversation } from './chat-list-conversation'
 import { buildWorkspaceHref, resolveWorkspaceSurface } from '../workspaces/routing'
 
 export function agentConversationRedirect(args: { pathname: string; workspaceId: string | null; agentId?: string; conversationId: string; guided: boolean;  }) {
@@ -6,7 +6,6 @@ export function agentConversationRedirect(args: { pathname: string; workspaceId:
   return `${buildWorkspaceHref(args.workspaceId, '/app/agents')}?${new URLSearchParams({ agent: args.agentId, id: args.conversationId })}`
 }
 
-export type CollaborationChatView = 'dms' | 'channels'
 
 export function isTransientConversationDraft(conversationType: 'dm' | 'channel', draft: boolean): boolean {
   // Channels are durable as soon as they are created, even without messages.
@@ -41,9 +40,9 @@ export function resolveSoftChatRoute(
  * A stale session id must never make a DM render as a channel (or vice versa).
  */
 export function selectConversationForView(
-  chats: CachedConversation[],
+  chats: ChatListConversation[],
   storedConversationId: string | null,
-): CachedConversation | null {
+): ChatListConversation | null {
   if (storedConversationId) {
     const stored = chats.find((chat) => chat._id === storedConversationId)
     if (stored) return stored

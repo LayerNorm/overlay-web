@@ -68,12 +68,11 @@ export function AppShellSidebar() {
           />
         ),
       }}
-      renderChatPanel={({ refreshKey, onNavigate, view, section }) => (
+      renderChatPanel={({ onNavigate, view, section }) => (
         // Activity is its own route with its own list; only the conversation subviews render the chat list.
         view === 'activity' ? <ActivityInlinePanel onNavigate={onNavigate} />
         : (
           <ChatInlinePanel
-            refreshKey={refreshKey}
             searchQuery=""
             onNavigate={onNavigate}
             baseHref={chatBaseHref}
