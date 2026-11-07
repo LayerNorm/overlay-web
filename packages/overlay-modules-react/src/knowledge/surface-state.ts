@@ -358,6 +358,108 @@ export function useSurfaceFileList({
 
 type LoadedFile = { id: string; revision: number; node: FileNode; text: string }
 
+function listedFile(files: readonly FileNode[], id: string | null): FileNode | null {
+  return id ? files.find((file) => file._id === id && file.type === 'file') ?? null : null
+}
+
+/**
+ * The open file's text, loaded separately from its live metadata and reloaded when the file's revision changes,
+ * unless this viewer holds unsaved edits (`dirtyRef`). Calls `onMissing` when the file is gone or unreadable.
+ */
+function useFileText({
+  adapters,
+  selectedId,
+  revision,
+  paused,
+  saves,
+  dirtyRef,
+  onMissing,
+}: {
+  adapters: KnowledgeSurfaceAdapters
+  selectedId: string | null
+  revision: number | null
+  paused: boolean
+  saves: number
+  dirtyRef: React.MutableRefObject<boolean>
+  onMissing: () => void
+}) {
+  const [loaded, setLoaded] = useState<LoadedFile | null>(null)
+  useEffect(() => {
+    if (!selectedId || paused || dirtyRef.current) return
+    if (loaded && loaded.id === selectedId && (revision === null || loaded.revision === revision)) return
+    const controller = new AbortController()
+    void adapters.repository.get(selectedId, controller.signal).then(async (node) => {
+      if (controller.signal.aborted) return
+      if (!node) return onMissing()
+      if (opensInDocumentEditor(node)) return await adapters.navigation.open(node, { replace: true })
+      setLoaded({ id: node._id, revision: node.updatedAt, node, text: node.textContent ?? node.content ?? '' })
+    }).catch(() => undefined)
+    return () => controller.abort()
+  }, [adapters.navigation, adapters.repository, dirtyRef, loaded, onMissing, paused, revision, saves, selectedId])
+  return loaded && loaded.id === selectedId && !paused ? loaded : null
+}
+
+/** Debounced text and title saves for the open file. The live list carries the results back. */
+function useOpenedFileSaves(adapters: KnowledgeSurfaceAdapters, filePort: SharedKnowledgeFilePort) {
+  const [draft, setDraft] = useState<{ id: string; text: string } | null>(null)
+  const [titleDraft, setTitleDraft] = useState<{ id: string; name: string } | null>(null)
+  const [isSavingFile, setIsSavingFile] = useState(false)
+  const [saves, setSaves] = useState(0)
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dirtyRef = useRef(false)
+
+  useEffect(() => () => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+  }, [])
+
+  function editText(fileId: string, val: string) {
+    dirtyRef.current = true
+    setDraft({ id: fileId, text: val })
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
+    saveTimerRef.current = setTimeout(async () => {
+      saveTimerRef.current = null
+      setIsSavingFile(true)
+      await filePort.saveContent(fileId, val).catch(() => false)
+      if (!saveTimerRef.current) dirtyRef.current = false
+      setIsSavingFile(false)
+      setSaves((count) => count + 1)
+    }, 800)
+  }
+
+  function editTitle(fileId: string, val: string) {
+    setTitleDraft({ id: fileId, name: val })
+    const nextName = val.trim() || 'Untitled'
+    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+    titleSaveTimerRef.current = setTimeout(async () => {
+      // A refused rename drops the draft, so the title shows the live name again.
+      await adapters.repository.rename({ id: fileId, name: nextName }).catch(() => setTitleDraft(null))
+    }, 600)
+  }
+
+  const reset = useCallback(() => {
+    dirtyRef.current = false
+    setDraft(null)
+    setTitleDraft(null)
+  }, [])
+
+  /** Called while rendering: once the server holds this viewer's text or title, its draft is dropped. */
+  function reconcile(loaded: LoadedFile | null, listed: FileNode | null) {
+    if (draft && loaded && draft.id === loaded.id && draft.text === loaded.text) setDraft(null)
+    if (titleDraft && listed && titleDraft.id === listed._id && titleDraft.name === listed.name) setTitleDraft(null)
+  }
+
+  function viewFor(selectedId: string | null) {
+    return {
+      text: draft?.id === selectedId ? draft.text : undefined,
+      title: titleDraft?.id === selectedId ? titleDraft.name : undefined,
+    }
+  }
+
+  return { isSavingFile, saves, dirtyRef, editText, editTitle, reset, reconcile, viewFor }
+}
+
 /**
  * The open file. Its metadata comes from the live list, so the viewer opens at once and follows remote renames,
  * moves and deletes; its text loads separately and reloads when the file's revision changes, unless this viewer
@@ -382,72 +484,37 @@ export function useOpenedFile({
 }) {
   const [selectedId, setSelectedId] = useState<string | null>(openFilesInHost ? null : fileOpenParam)
   const [previousFileOpenParam, setPreviousFileOpenParam] = useState(fileOpenParam)
-  const [loaded, setLoaded] = useState<LoadedFile | null>(null)
-  const [draft, setDraft] = useState<{ id: string; text: string } | null>(null)
-  const [titleDraft, setTitleDraft] = useState<{ id: string; name: string } | null>(null)
-  const [isSavingFile, setIsSavingFile] = useState(false)
-  const [saves, setSaves] = useState(0)
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const dirtyRef = useRef(false)
+  const [seenListedId, setSeenListedId] = useState<string | null>(null)
   const lastFileTriggerRef = useRef<HTMLElement | null>(null)
+  const saves = useOpenedFileSaves(adapters, filePort)
 
   if (previousFileOpenParam !== fileOpenParam) {
     setPreviousFileOpenParam(fileOpenParam)
     if (!openFilesInHost) setSelectedId(fileOpenParam)
   }
 
-  const listed = selectedId ? files.find((file) => file._id === selectedId && file.type === 'file') ?? null : null
+  const listed = listedFile(files, selectedId)
   // The open file left the live list (deleted, archived, moved out of this scope, or access revoked).
-  const [seenListedId, setSeenListedId] = useState<string | null>(null)
   if (listed && seenListedId !== listed._id) setSeenListedId(listed._id)
   const vanished = Boolean(selectedId && seenListedId === selectedId && !listed && !filesLoading)
-  const loadedNode = loaded && loaded.id === selectedId && !vanished ? loaded : null
-  const selectedFile = vanished ? null : listed ?? loadedNode?.node ?? null
-  const revision = listed?.updatedAt ?? null
+  const closeMissing = useCallback(() => updateQuery({ file: null }), [updateQuery])
+  const loaded = useFileText({
+    adapters, selectedId, revision: listed?.updatedAt ?? null, paused: vanished,
+    saves: saves.saves, dirtyRef: saves.dirtyRef, onMissing: closeMissing,
+  })
+  const selectedFile = vanished ? null : listed ?? loaded?.node ?? null
 
-  // A remote save the viewer had not seen replaces the text unless this viewer is editing.
-  if (draft && loadedNode && draft.id === loadedNode.id && draft.text === loadedNode.text) {
-    setDraft(null)
-  }
-  if (titleDraft && listed && titleDraft.id === listed._id && titleDraft.name === listed.name) setTitleDraft(null)
-
-  useEffect(() => {
-    if (!selectedId || vanished || dirtyRef.current) return
-    if (loaded && loaded.id === selectedId && (revision === null || loaded.revision === revision)) return
-    const controller = new AbortController()
-    void adapters.repository.get(selectedId, controller.signal).then(async (node) => {
-      if (controller.signal.aborted) return
-      if (!node) {
-        // Gone, or this viewer lost access.
-        setSelectedId(null)
-        updateQuery({ file: null })
-        return
-      }
-      if (opensInDocumentEditor(node)) {
-        await adapters.navigation.open(node, { replace: true })
-        return
-      }
-      setLoaded({ id: node._id, revision: node.updatedAt, node, text: node.textContent ?? node.content ?? '' })
-    }).catch(() => undefined)
-    return () => controller.abort()
-  }, [adapters.navigation, adapters.repository, loaded, revision, saves, selectedId, updateQuery, vanished])
+  saves.reconcile(loaded, listed)
 
   useEffect(() => {
     if (vanished) updateQuery({ file: null })
   }, [updateQuery, vanished])
 
-  useEffect(() => () => {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
-  }, [])
-
+  const { reset } = saves
   const clearOpenedFile = useCallback(() => {
-    dirtyRef.current = false
+    reset()
     setSelectedId(null)
-    setDraft(null)
-    setTitleDraft(null)
-  }, [])
+  }, [reset])
 
   function handleSelectFile(node: FileNode) {
     if (openFilesInHost || opensInDocumentEditor(node)) {
@@ -467,49 +534,18 @@ export function useOpenedFile({
     })
   }
 
-  function handleFileContentChange(val: string) {
-    if (!selectedFile) return
-    const fileId = selectedFile._id
-    dirtyRef.current = true
-    setDraft({ id: fileId, text: val })
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
-    saveTimerRef.current = setTimeout(async () => {
-      saveTimerRef.current = null
-      setIsSavingFile(true)
-      await filePort.saveContent(fileId, val).catch(() => false)
-      if (!saveTimerRef.current) dirtyRef.current = false
-      setIsSavingFile(false)
-      setSaves((count) => count + 1)
-    }, 800)
-  }
-
-  function handleFileTitleChange(val: string) {
-    if (!selectedFile) return
-    const fileId = selectedFile._id
-    setTitleDraft({ id: fileId, name: val })
-    const nextName = val.trim() || 'Untitled'
-    if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
-    titleSaveTimerRef.current = setTimeout(async () => {
-      try {
-        await adapters.repository.rename({ id: fileId, name: nextName })
-      } catch {
-        // The live name stays; the draft is dropped so the title shows it again.
-        setTitleDraft(null)
-      }
-    }, 600)
-  }
-
+  const drafts = saves.viewFor(selectedId)
   return {
     selectedFile,
-    fileContent: draft && draft.id === selectedId ? draft.text : loadedNode?.text ?? '',
-    fileContentLoading: Boolean(selectedFile && !loadedNode),
-    fileTitle: titleDraft && titleDraft.id === selectedId ? titleDraft.name : selectedFile?.name ?? '',
-    isSavingFile,
+    fileContent: drafts.text ?? loaded?.text ?? '',
+    fileContentLoading: Boolean(selectedFile && !loaded),
+    fileTitle: drafts.title ?? selectedFile?.name ?? '',
+    isSavingFile: saves.isSavingFile,
     handleSelectFile,
     closeFileDialog,
     clearOpenedFile,
-    handleFileContentChange,
-    handleFileTitleChange,
+    handleFileContentChange: (val: string) => { if (selectedFile) saves.editText(selectedFile._id, val) },
+    handleFileTitleChange: (val: string) => { if (selectedFile) saves.editTitle(selectedFile._id, val) },
   }
 }
 
