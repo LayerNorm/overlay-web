@@ -52,7 +52,8 @@ export function useLiveArchivedItems(workspaceId: string | null): { items: Archi
       ...archivedExtensions(read<SkillSummary>(skills, 'extensions'), read<McpServerSummary>(servers, 'extensions')),
       ...archivedAutomations(read<AutomationSummary>(automations, 'automations')),
       ...archivedWork(read<WorkItem>(work, 'work')),
-      ...archivedAgents(read<WorkspaceAgentDirectoryItem>(agents, 'agents'), read<WorkspaceArchivedAgentThread>(threads, 'agents')),
+      // The directory answers with { agents, ... }; null means no access.
+      ...archivedAgents(read<WorkspaceAgentDirectoryItem>(agents === null ? null : (agents as { agents: unknown }).agents, 'agents'), read<WorkspaceArchivedAgentThread>(threads, 'agents')),
     ]
     return { items, failed: [...failed] }
   }, [agents, automations, files, rooms, servers, skills, threads, work, workspaceId])
