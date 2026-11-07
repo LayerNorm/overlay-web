@@ -1,18 +1,16 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
-import { WORK_UPDATED_EVENT, type WorkContext, type WorkItem } from '@overlay/app-core'
+import type { WorkContext, WorkItem } from '@overlay/app-core'
 import { SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from '@overlay/ui/primitives'
 import { SidebarListSkeleton } from '@overlay/ui/feedback'
 import { useAuth } from '@/contexts/AuthContext'
-import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { matchesFilter, parseWorkFilter, sortByRank, type WorkFilter, type WorkViewer } from '@/shared/work/query'
 import { useWorkRoute } from '../lib/use-work-route'
+import { useLiveWork } from '../lib/use-live-work'
 import { WORK_TASK_PARAM } from '../lib/use-work-url-state'
-import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { StatusIcon } from './work-ui'
 
 interface SidebarWork {
@@ -26,54 +24,11 @@ const EMPTY_LABEL: Record<WorkFilter, string> = {
   all: 'No open tasks',
 }
 
-/** The three sidebar sections share one load per scope, so opening Work asks the server once. */
-let shared: { key: string; promise: Promise<SidebarWork> } | null = null
-
-function loadSidebarWork(key: string, listView: PanelScope | undefined, force: boolean): Promise<SidebarWork> {
-  if (!force && shared?.key === key) return shared.promise
-  const promise = Promise.all([
-    overlayAppClient.work.list(listView ? { view: listView } : undefined),
-    overlayAppClient.work.context().catch(() => null),
-  ]).then(([list, context]) => ({ items: list.items, context }))
-  shared = { key, promise }
-  promise.catch(() => { if (shared?.promise === promise) shared = null })
-  return promise
-}
-
-const listeners = new Set<(key: string, data: SidebarWork) => void>()
-
-/** The Work page hands its list to the sidebar after every change, so a new or edited task shows there at once. */
-export function publishSidebarWork(listView: PanelScope | undefined, data: SidebarWork) {
-  const key = listView ?? 'all'
-  shared = { key, promise: Promise.resolve(data) }
-  for (const listener of listeners) listener(key, data)
-}
-
+/** The sidebar sections read the same live subscription as the Work page, so they always agree with it. */
 function useSidebarWork(): SidebarWork | null {
   const { listView } = useWorkRoute()
-  const key = listView ?? 'all'
-  const [data, setData] = useState<SidebarWork | null>(null)
-  const load = useCallback((force: boolean) => {
-    let live = true
-    loadSidebarWork(key, listView, force).then((next) => { if (live) setData(next) }, () => { if (live) setData({ items: [], context: null }) })
-    return () => { live = false }
-  }, [key, listView])
-  useEffect(() => load(false), [load])
-  useEffect(() => {
-    const listener = (published: string, next: SidebarWork) => { if (published === key) setData(next) }
-    listeners.add(listener)
-    return () => { listeners.delete(listener) }
-  }, [key])
-  useEffect(() => {
-    const reload = () => { load(true) }
-    window.addEventListener(WORK_UPDATED_EVENT, reload)
-    return () => window.removeEventListener(WORK_UPDATED_EVENT, reload)
-  }, [load])
-  useWorkspaceChanged(useCallback(() => {
-    setData(null)
-    load(true)
-  }, [load]))
-  return data
+  const { items, context } = useLiveWork(listView)
+  return useMemo(() => (items === undefined ? null : { items: items ?? [], context }), [context, items])
 }
 
 /** One Work section in the sidebar (Needs you, Assigned to me, Everything) listing its open tasks. */

@@ -6,7 +6,6 @@ import type {
   UpdateFileRequest,
 } from './contracts'
 
-export const NOTES_CHANGED_EVENT = 'overlay:notes-changed'
 
 export const NOTEBOOK_INLINE_MATH_MIGRATION_REGEX =
   /(?<!\$)\$(?![\d\s$])([^$\n]*(?:\\[a-zA-Z@]+|[=^_{}]|[a-zA-Z]\s*[+\-*/=^_]|[+\-*/=^_]\s*[a-zA-Z]|[a-zA-Z])[^$\n]*)\$(?![\d$])/g

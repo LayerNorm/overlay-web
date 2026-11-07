@@ -1,5 +1,5 @@
-import { ConvexError, v } from 'convex/values'
-import { mutation, query, type MutationCtx } from '../_generated/server'
+import { ConvexError, v, type ObjectType } from 'convex/values'
+import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
 import { validateServerSecret } from '../lib/auth'
 import { insertCollaborationMessage } from '../collaboration/directMessages'
@@ -235,70 +235,75 @@ export const context = query({
     } catch {
       return null
     }
-    const viewer = await loadWorkViewer(ctx, workspaceId, userId)
-    if (viewer.viewer.role === null || viewer.viewer.role === 'guest') return null
-    const principals = await ctx.db.query('workspacePrincipals').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).collect()
-    const memberships = await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).collect()
-    const roleByPrincipal = new Map(memberships.filter((m) => m.status === 'active').map((m) => [m.principalId, m.role]))
-    const eligible = principals.filter((p) => p.archivedAt === undefined)
-    const humanUserIds = Array.from(new Set(eligible.flatMap((principal) =>
-      principal.type === 'human' && principal.userId ? [principal.userId] : [])))
-    const accountRows = await Promise.all(humanUserIds.map((id) => ctx.db.query('subscriptions')
-      .withIndex('by_userId', (q) => q.eq('userId', id))
-      .first()))
-    const accountByUserId = new Map(accountRows.filter(Boolean).map((account) => [account!.userId, account!]))
-    const assignees = (await Promise.all(eligible.map(async (p) => {
-      if (p.type === 'agent') {
-        const agent = await agentAssignability(ctx, { workspaceId, principal: p })
-        if (!agent || (agent.visibility === 'creator' && agent.createdByPrincipalId !== viewer.principalId)) return null
-        return {
-          principalId: p.principalId,
-          type: p.type,
-          userId: null,
-          displayName: p.displayName,
-          agentVisibility: agent.visibility,
-          ...(agent.avatarColor !== undefined ? { avatarColor: agent.avatarColor } : {}),
-          ...(agent.avatarShape !== undefined ? { avatarShape: agent.avatarShape } : {}),
-          ...(agent.isDefault !== undefined ? { isDefault: agent.isDefault } : {}),
-        }
-      }
-      if (p.type !== 'human' || !roleByPrincipal.has(p.principalId) || roleByPrincipal.get(p.principalId) === 'guest') return null
-      const account = p.userId ? accountByUserId.get(p.userId) : undefined
-      const providerName = [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim()
-        || account?.name
-      const photoUrl = resolveIdentityPhotoUrl({
-        workspacePhotoUrl: p.photoObjectKey
-          ? versionedIdentityUrl(
-              `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/profile/photo?principalId=${encodeURIComponent(p.principalId)}`,
-              p.photoObjectKey,
-            )
-          : null,
-        accountPhotoUrl: account?.photoObjectKey
-          ? versionedIdentityUrl(
-              `/api/v1/account/profile/photo?userId=${encodeURIComponent(p.userId ?? '')}`,
-              account.photoObjectKey,
-            )
-          : null,
-        providerPhotoUrl: account?.profilePictureUrl,
-      })
+    return await workContextFor(ctx, { userId, workspaceId })
+  },
+})
+
+/** The people and agents a task can be given to, and who is asking; null for guests and non-members. */
+export async function workContextFor(ctx: QueryCtx, { userId, workspaceId }: { userId: string; workspaceId: string }) {
+  const viewer = await loadWorkViewer(ctx, workspaceId, userId)
+  if (viewer.viewer.role === null || viewer.viewer.role === 'guest') return null
+  const principals = await ctx.db.query('workspacePrincipals').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).collect()
+  const memberships = await ctx.db.query('workspaceMemberships').withIndex('by_workspaceId', (q) => q.eq('workspaceId', workspaceId)).collect()
+  const roleByPrincipal = new Map(memberships.filter((m) => m.status === 'active').map((m) => [m.principalId, m.role]))
+  const eligible = principals.filter((p) => p.archivedAt === undefined)
+  const humanUserIds = Array.from(new Set(eligible.flatMap((principal) =>
+    principal.type === 'human' && principal.userId ? [principal.userId] : [])))
+  const accountRows = await Promise.all(humanUserIds.map((id) => ctx.db.query('subscriptions')
+    .withIndex('by_userId', (q) => q.eq('userId', id))
+    .first()))
+  const accountByUserId = new Map(accountRows.filter(Boolean).map((account) => [account!.userId, account!]))
+  const assignees = (await Promise.all(eligible.map(async (p) => {
+    if (p.type === 'agent') {
+      const agent = await agentAssignability(ctx, { workspaceId, principal: p })
+      if (!agent || (agent.visibility === 'creator' && agent.createdByPrincipalId !== viewer.principalId)) return null
       return {
         principalId: p.principalId,
         type: p.type,
-        userId: p.userId ?? null,
-        displayName: resolveIdentityDisplayName({
-          workspaceOverride: p.displayNameOverride,
-          accountOverride: account?.displayNameOverride,
-          providerName,
-          legacyDisplayName: p.displayName,
-          email: account?.email ?? p.email,
-        }),
-        ...(photoUrl ? { photoUrl } : {}),
+        userId: null,
+        displayName: p.displayName,
+        agentVisibility: agent.visibility,
+        ...(agent.avatarColor !== undefined ? { avatarColor: agent.avatarColor } : {}),
+        ...(agent.avatarShape !== undefined ? { avatarShape: agent.avatarShape } : {}),
+        ...(agent.isDefault !== undefined ? { isDefault: agent.isDefault } : {}),
       }
-    }))).filter((person) => person !== null)
-      .sort((a, b) => (a.type === b.type ? a.displayName.localeCompare(b.displayName) : a.type === 'human' ? -1 : 1))
-    return { principalId: viewer.principalId, role: viewer.viewer.role, canCreateInWorkspace: await canCreateWorkspaceTask(ctx, workspaceId, userId), assignees }
-  },
-})
+    }
+    if (p.type !== 'human' || !roleByPrincipal.has(p.principalId) || roleByPrincipal.get(p.principalId) === 'guest') return null
+    const account = p.userId ? accountByUserId.get(p.userId) : undefined
+    const providerName = [account?.firstName, account?.lastName].filter(Boolean).join(' ').trim()
+      || account?.name
+    const photoUrl = resolveIdentityPhotoUrl({
+      workspacePhotoUrl: p.photoObjectKey
+        ? versionedIdentityUrl(
+            `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/profile/photo?principalId=${encodeURIComponent(p.principalId)}`,
+            p.photoObjectKey,
+          )
+        : null,
+      accountPhotoUrl: account?.photoObjectKey
+        ? versionedIdentityUrl(
+            `/api/v1/account/profile/photo?userId=${encodeURIComponent(p.userId ?? '')}`,
+            account.photoObjectKey,
+          )
+        : null,
+      providerPhotoUrl: account?.profilePictureUrl,
+    })
+    return {
+      principalId: p.principalId,
+      type: p.type,
+      userId: p.userId ?? null,
+      displayName: resolveIdentityDisplayName({
+        workspaceOverride: p.displayNameOverride,
+        accountOverride: account?.displayNameOverride,
+        providerName,
+        legacyDisplayName: p.displayName,
+        email: account?.email ?? p.email,
+      }),
+      ...(photoUrl ? { photoUrl } : {}),
+    }
+  }))).filter((person) => person !== null)
+    .sort((a, b) => (a.type === b.type ? a.displayName.localeCompare(b.displayName) : a.type === 'human' ? -1 : 1))
+  return { principalId: viewer.principalId, role: viewer.viewer.role, canCreateInWorkspace: await canCreateWorkspaceTask(ctx, workspaceId, userId), assignees }
+}
 
 async function canCreateWorkspaceTask(ctx: MutationCtx | Parameters<typeof loadScopeContext>[0], workspaceId: string, userId: string) {
   try {
@@ -321,37 +326,42 @@ export const list = query({
     } catch {
       return []
     }
-    // Read only the rows the view needs, and never more than the list can hold, so a long history costs nothing extra.
-    const cap = WORK_LIMITS.listCap
-    const archivedView = view === 'archived'
-    const rows = await listScopedRows(ctx, {
-      userId, workspaceId, view,
-      fetchMine: async () => {
-        // Archived rows of either scope; otherwise only the scope the view needs, read straight from an index that
-        // includes it. (A person's own workspace tasks also arrive with the shared read below.)
-        if (archivedView) {
-          return await ctx.db.query('workItems')
-            .withIndex('by_workspaceId_userId_archivedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId).gt('archivedAt', 0))
-            .take(cap)
-        }
-        const wanted = view === 'workspace' ? 'workspace' : 'personal'
-        return await ctx.db.query('workItems')
-          .withIndex('by_workspaceId_userId_scope_archivedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId).eq('scope', wanted).eq('archivedAt', undefined))
-          .take(cap)
-      },
-      fetchShared: async (ws) => {
-        const shared = ctx.db.query('workItems').withIndex('by_workspaceId_scope_archivedAt', (q) => {
-          const inWorkspace = q.eq('workspaceId', ws).eq('scope', 'workspace')
-          return archivedView ? inWorkspace.gt('archivedAt', 0) : inWorkspace.eq('archivedAt', undefined)
-        })
-        return await shared.take(cap)
-      },
-    })
-    return rows
-      .sort((a, b) => compareRanked({ rank: a.rank, createdAt: a.createdAt, id: a._id }, { rank: b.rank, createdAt: b.createdAt, id: b._id }))
-      .slice(0, WORK_LIMITS.listCap)
+    return await listWorkFor(ctx, { userId, workspaceId, view })
   },
 })
+
+/** The tasks a member can see in a view, in board order, capped at the list size. */
+export async function listWorkFor(ctx: QueryCtx, { userId, workspaceId, view }: { userId: string; workspaceId: string; view?: 'personal' | 'workspace' | 'archived' }) {
+  // Read only the rows the view needs, and never more than the list can hold, so a long history costs nothing extra.
+  const cap = WORK_LIMITS.listCap
+  const archivedView = view === 'archived'
+  const rows = await listScopedRows(ctx, {
+    userId, workspaceId, view,
+    fetchMine: async () => {
+      // Archived rows of either scope; otherwise only the scope the view needs, read straight from an index that
+      // includes it. (A person's own workspace tasks also arrive with the shared read below.)
+      if (archivedView) {
+        return await ctx.db.query('workItems')
+          .withIndex('by_workspaceId_userId_archivedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId).gt('archivedAt', 0))
+          .take(cap)
+      }
+      const wanted = view === 'workspace' ? 'workspace' : 'personal'
+      return await ctx.db.query('workItems')
+        .withIndex('by_workspaceId_userId_scope_archivedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId).eq('scope', wanted).eq('archivedAt', undefined))
+        .take(cap)
+    },
+    fetchShared: async (ws) => {
+      const shared = ctx.db.query('workItems').withIndex('by_workspaceId_scope_archivedAt', (q) => {
+        const inWorkspace = q.eq('workspaceId', ws).eq('scope', 'workspace')
+        return archivedView ? inWorkspace.gt('archivedAt', 0) : inWorkspace.eq('archivedAt', undefined)
+      })
+      return await shared.take(cap)
+    },
+  })
+  return rows
+    .sort((a, b) => compareRanked({ rank: a.rank, createdAt: a.createdAt, id: a._id }, { rank: b.rank, createdAt: b.createdAt, id: b._id }))
+    .slice(0, WORK_LIMITS.listCap)
+}
 
 export const get = query({
   args: { ...auth, id: v.string() },
@@ -423,228 +433,243 @@ async function assertBlockers(ctx: MutationCtx, args: { row: WorkItemDoc; blocke
   return blockers
 }
 
+const createArgs = {
+  ...auth,
+  title: v.string(),
+  scope: scopeArg,
+  description: v.optional(v.string()),
+  status: v.optional(statusArg),
+  blocked: v.optional(v.boolean()),
+  priority: v.optional(v.number()),
+  assigneePrincipalId: v.optional(v.string()),
+  reviewerUserId: v.optional(v.string()),
+  startDate: v.optional(v.string()),
+  dueDate: v.optional(v.string()),
+  parentId: v.optional(v.string()),
+  blockedBy: v.optional(v.array(v.string())),
+  doneWhen: v.optional(doneWhenArg),
+  context: v.optional(contextArg),
+}
+
 export const create = mutation({
-  args: {
-    ...auth,
-    title: v.string(),
-    scope: scopeArg,
-    description: v.optional(v.string()),
-    status: v.optional(statusArg),
-    blocked: v.optional(v.boolean()),
-    priority: v.optional(v.number()),
-    assigneePrincipalId: v.optional(v.string()),
-    reviewerUserId: v.optional(v.string()),
-    startDate: v.optional(v.string()),
-    dueDate: v.optional(v.string()),
-    parentId: v.optional(v.string()),
-    blockedBy: v.optional(v.array(v.string())),
-    doneWhen: v.optional(doneWhenArg),
-    context: v.optional(contextArg),
-  },
-  handler: async (ctx, args) => {
-    await authorize(args)
-    const scope = await assertCanCreateInScope(ctx, { kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
-    const viewer = await loadWorkViewer(ctx, args.workspaceId, args.userId)
-    if (viewer.viewer.role === null || viewer.viewer.role === 'guest') throw new Error('Unauthorized')
-    const actorPrincipalId = await workEventActorPrincipalId(ctx, {
-      workspaceId: args.workspaceId,
-      principalId: viewer.principalId,
-      actingAgentPrincipalId: args.actingAgentPrincipalId,
-    })
-    const title = normalizeTitle(args.title)
-    const status = args.status ?? DEFAULT_WORK_STATUS
-    const startDate = args.startDate !== undefined ? normalizeDate(args.startDate) : undefined
-    const dueDate = args.dueDate !== undefined ? normalizeDate(args.dueDate) : undefined
-    assertDateOrder(startDate, dueDate)
-    if (args.assigneePrincipalId) {
-      await assertAssignable(ctx, { workspaceId: args.workspaceId, scope, creatorPrincipalId: viewer.principalId, principalId: args.assigneePrincipalId })
-    }
-    const assignmentExecution = args.assigneePrincipalId
-      ? await initialAssignmentExecution(ctx, {
-          workspaceId: args.workspaceId,
-          assignedByUserId: args.userId,
-          principalId: args.assigneePrincipalId,
-          generation: Date.now(),
-        })
-      : undefined
-    if (args.reviewerUserId) {
-      await assertReviewer(ctx, { workspaceId: args.workspaceId, scope, creatorUserId: args.userId, reviewerUserId: args.reviewerUserId })
-    }
-    let parentId: Id<'workItems'> | undefined
-    if (args.parentId) parentId = (await assertParent(ctx, { parentId: args.parentId, workspaceId: args.workspaceId, scope, userId: args.userId }))._id
-    const now = Date.now()
-    const id = await ctx.db.insert('workItems', {
-      scope,
-      workspaceId: args.workspaceId,
-      userId: args.userId,
-      title,
-      ...(args.description !== undefined ? { description: normalizeDescription(args.description) } : {}),
-      status,
-      blocked: args.blocked ?? false,
-      priority: args.priority !== undefined ? normalizePriority(args.priority) : DEFAULT_WORK_PRIORITY,
-      rank: await endRank(ctx, args.workspaceId, status),
-      ...(args.assigneePrincipalId ? { assigneePrincipalId: args.assigneePrincipalId } : {}),
-      ...(assignmentExecution ? { assignmentExecution } : {}),
-      ...(args.reviewerUserId ? { reviewerUserId: args.reviewerUserId } : {}),
-      ...(startDate !== undefined ? { startDate } : {}),
-      ...(dueDate !== undefined ? { dueDate } : {}),
-      ...(parentId ? { parentId } : {}),
-      ...(args.doneWhen ? { doneWhen: normalizeDoneWhen(args.doneWhen) } : {}),
-      ...(args.context ? { context: normalizeContext(args.context) } : {}),
-      createdAt: now,
-      updatedAt: now,
-    })
-    if (args.blockedBy?.length) {
-      const row = await ctx.db.get(id)
-      if (!row) throw new Error('WORK_INVALID:not_found')
-      const blockers = await assertBlockers(ctx, { row, blockedBy: args.blockedBy, userId: args.userId })
-      await ctx.db.patch(id, { blockedBy: blockers.map((blocker) => blocker._id) })
-    }
-    await logWorkEvent(ctx, { workItemId: id, workspaceId: args.workspaceId, actorPrincipalId, kind: 'created', data: { status, scope } })
-    return await ctx.db.get(id)
+  args: createArgs,
+  handler: async (ctx, { accessToken: _accessToken, serverSecret, ...args }) => {
+    await authorize({ serverSecret })
+    return await createWorkFor(ctx, args)
   },
 })
+
+/** Creates a task as the member (or the agent acting for them) in a scope they may create in. */
+export async function createWorkFor(ctx: MutationCtx, args: Omit<ObjectType<typeof createArgs>, 'accessToken' | 'serverSecret'>) {
+  const scope = await assertCanCreateInScope(ctx, { kind: 'content', scope: args.scope, workspaceId: args.workspaceId, userId: args.userId })
+  const viewer = await loadWorkViewer(ctx, args.workspaceId, args.userId)
+  if (viewer.viewer.role === null || viewer.viewer.role === 'guest') throw new Error('Unauthorized')
+  const actorPrincipalId = await workEventActorPrincipalId(ctx, {
+    workspaceId: args.workspaceId,
+    principalId: viewer.principalId,
+    actingAgentPrincipalId: args.actingAgentPrincipalId,
+  })
+  const title = normalizeTitle(args.title)
+  const status = args.status ?? DEFAULT_WORK_STATUS
+  const startDate = args.startDate !== undefined ? normalizeDate(args.startDate) : undefined
+  const dueDate = args.dueDate !== undefined ? normalizeDate(args.dueDate) : undefined
+  assertDateOrder(startDate, dueDate)
+  if (args.assigneePrincipalId) {
+    await assertAssignable(ctx, { workspaceId: args.workspaceId, scope, creatorPrincipalId: viewer.principalId, principalId: args.assigneePrincipalId })
+  }
+  const assignmentExecution = args.assigneePrincipalId
+    ? await initialAssignmentExecution(ctx, {
+        workspaceId: args.workspaceId,
+        assignedByUserId: args.userId,
+        principalId: args.assigneePrincipalId,
+        generation: Date.now(),
+      })
+    : undefined
+  if (args.reviewerUserId) {
+    await assertReviewer(ctx, { workspaceId: args.workspaceId, scope, creatorUserId: args.userId, reviewerUserId: args.reviewerUserId })
+  }
+  let parentId: Id<'workItems'> | undefined
+  if (args.parentId) parentId = (await assertParent(ctx, { parentId: args.parentId, workspaceId: args.workspaceId, scope, userId: args.userId }))._id
+  const now = Date.now()
+  const id = await ctx.db.insert('workItems', {
+    scope,
+    workspaceId: args.workspaceId,
+    userId: args.userId,
+    title,
+    ...(args.description !== undefined ? { description: normalizeDescription(args.description) } : {}),
+    status,
+    blocked: args.blocked ?? false,
+    priority: args.priority !== undefined ? normalizePriority(args.priority) : DEFAULT_WORK_PRIORITY,
+    rank: await endRank(ctx, args.workspaceId, status),
+    ...(args.assigneePrincipalId ? { assigneePrincipalId: args.assigneePrincipalId } : {}),
+    ...(assignmentExecution ? { assignmentExecution } : {}),
+    ...(args.reviewerUserId ? { reviewerUserId: args.reviewerUserId } : {}),
+    ...(startDate !== undefined ? { startDate } : {}),
+    ...(dueDate !== undefined ? { dueDate } : {}),
+    ...(parentId ? { parentId } : {}),
+    ...(args.doneWhen ? { doneWhen: normalizeDoneWhen(args.doneWhen) } : {}),
+    ...(args.context ? { context: normalizeContext(args.context) } : {}),
+    createdAt: now,
+    updatedAt: now,
+  })
+  if (args.blockedBy?.length) {
+    const row = await ctx.db.get(id)
+    if (!row) throw new Error('WORK_INVALID:not_found')
+    const blockers = await assertBlockers(ctx, { row, blockedBy: args.blockedBy, userId: args.userId })
+    await ctx.db.patch(id, { blockedBy: blockers.map((blocker) => blocker._id) })
+  }
+  await logWorkEvent(ctx, { workItemId: id, workspaceId: args.workspaceId, actorPrincipalId, kind: 'created', data: { status, scope } })
+  return await ctx.db.get(id)
+}
 
 /** Every field `update` can change except `status`. */
 const UPDATE_FIELDS = ['title', 'description', 'blocked', 'priority', 'assigneePrincipalId', 'reviewerUserId', 'startDate', 'dueDate', 'parentId', 'blockedBy', 'doneWhen', 'context', 'scope'] as const
 
+const updateArgs = {
+  ...auth,
+  id: v.string(),
+  expectedUpdatedAt: v.optional(v.number()),
+  scope: scopeArg,
+  title: v.optional(v.string()),
+  description: v.optional(v.union(v.string(), v.null())),
+  status: v.optional(statusArg),
+  blocked: v.optional(v.boolean()),
+  priority: v.optional(v.number()),
+  assigneePrincipalId: v.optional(v.union(v.string(), v.null())),
+  reviewerUserId: v.optional(v.union(v.string(), v.null())),
+  startDate: v.optional(v.union(v.string(), v.null())),
+  dueDate: v.optional(v.union(v.string(), v.null())),
+  parentId: v.optional(v.union(v.string(), v.null())),
+  blockedBy: v.optional(v.array(v.string())),
+  doneWhen: v.optional(doneWhenArg),
+  context: v.optional(contextArg),
+}
+
 export const update = mutation({
-  args: {
-    ...auth,
-    id: v.string(),
-    expectedUpdatedAt: v.optional(v.number()),
-    scope: scopeArg,
-    title: v.optional(v.string()),
-    description: v.optional(v.union(v.string(), v.null())),
-    status: v.optional(statusArg),
-    blocked: v.optional(v.boolean()),
-    priority: v.optional(v.number()),
-    assigneePrincipalId: v.optional(v.union(v.string(), v.null())),
-    reviewerUserId: v.optional(v.union(v.string(), v.null())),
-    startDate: v.optional(v.union(v.string(), v.null())),
-    dueDate: v.optional(v.union(v.string(), v.null())),
-    parentId: v.optional(v.union(v.string(), v.null())),
-    blockedBy: v.optional(v.array(v.string())),
-    doneWhen: v.optional(doneWhenArg),
-    context: v.optional(contextArg),
-  },
-  handler: async (ctx, args) => {
+  args: updateArgs,
+  handler: async (ctx, { accessToken: _accessToken, ...args }) => {
     await authorize(args)
-    const viewer = await loadWorkViewer(ctx, args.workspaceId, args.userId)
-    let row = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.id), userId: args.userId, workspaceId: args.workspaceId })
-    if (!row) throw new Error('Unauthorized')
-    if (!canWork(row, viewer)) {
-      const onlyStatus = UPDATE_FIELDS.every((field) => (args as Record<string, unknown>)[field] === undefined)
-      if (!onlyStatus || !mayAnswerReview(row, viewer, args.userId, args.status)) throw new Error('Unauthorized')
-    }
-    if (row.archivedAt !== undefined) throw new Error('WORK_INVALID:archived')
-    if (args.expectedUpdatedAt !== undefined && args.expectedUpdatedAt !== row.updatedAt) {
-      throw new ConvexError('WORK_INVALID:conflict')
-    }
-    if (args.scope !== undefined && args.scope !== rowScope(row)) {
-      const changed = await workScopeMutations.applyScope(ctx, { ...args, to: args.scope })
-      if (!changed.ok) throw new ConvexError('WORK_INVALID:scope_forbidden')
-      row = await loadWorkItem(ctx, args.id)
-      if (!row) throw new Error('Unauthorized')
-    }
-    const scope = rowScope(row)
-    const actorPrincipalId = await workEventActorPrincipalId(ctx, {
-      workspaceId: args.workspaceId,
-      principalId: viewer.principalId,
-      actingAgentPrincipalId: args.actingAgentPrincipalId,
-    })
-    const patch: Partial<WorkItemDoc> = {}
-    const events: Array<{ kind: Parameters<typeof logWorkEvent>[1]['kind']; data?: unknown }> = []
-
-    if (args.title !== undefined) {
-      const title = normalizeTitle(args.title)
-      if (title !== row.title) { patch.title = title; events.push({ kind: 'title', data: { from: row.title, to: title } }) }
-    }
-    if (args.description !== undefined) patch.description = args.description === null ? undefined : normalizeDescription(args.description)
-    if (args.priority !== undefined && args.priority !== row.priority) {
-      patch.priority = normalizePriority(args.priority)
-      events.push({ kind: 'priority', data: { from: row.priority, to: args.priority } })
-    }
-    if (args.blocked !== undefined && args.blocked !== row.blocked) {
-      patch.blocked = args.blocked
-      events.push({ kind: 'blocked', data: { to: args.blocked } })
-    }
-    if (args.status !== undefined && args.status !== row.status) {
-      patch.status = args.status
-      patch.rank = await endRank(ctx, row.workspaceId, args.status)
-      events.push({ kind: 'status', data: { from: row.status, to: args.status } })
-    }
-    if (args.assigneePrincipalId !== undefined && (args.assigneePrincipalId ?? undefined) !== row.assigneePrincipalId) {
-      if (args.assigneePrincipalId !== null) {
-        await assertAssignable(ctx, { workspaceId: row.workspaceId, scope, creatorPrincipalId: viewer.principalId, principalId: args.assigneePrincipalId })
-      }
-      patch.assigneePrincipalId = args.assigneePrincipalId ?? undefined
-      patch.assignmentExecution = args.assigneePrincipalId
-        ? await initialAssignmentExecution(ctx, {
-            workspaceId: row.workspaceId,
-            assignedByUserId: args.userId,
-            principalId: args.assigneePrincipalId,
-            generation: Math.max(Date.now(), row.updatedAt + 1),
-          })
-        : undefined
-      events.push({ kind: 'assignee', data: { from: row.assigneePrincipalId ?? null, to: args.assigneePrincipalId } })
-    }
-    if (args.reviewerUserId !== undefined && (args.reviewerUserId ?? undefined) !== row.reviewerUserId) {
-      if (args.reviewerUserId !== null) {
-        await assertReviewer(ctx, { workspaceId: row.workspaceId, scope, creatorUserId: row.userId, reviewerUserId: args.reviewerUserId })
-      }
-      patch.reviewerUserId = args.reviewerUserId ?? undefined
-      events.push({ kind: 'reviewer', data: { from: row.reviewerUserId ?? null, to: args.reviewerUserId } })
-    }
-    if (args.startDate !== undefined || args.dueDate !== undefined) {
-      const startDate = args.startDate === undefined ? row.startDate : args.startDate === null ? undefined : normalizeDate(args.startDate)
-      const dueDate = args.dueDate === undefined ? row.dueDate : args.dueDate === null ? undefined : normalizeDate(args.dueDate)
-      assertDateOrder(startDate, dueDate)
-      if (startDate !== row.startDate || dueDate !== row.dueDate) {
-        patch.startDate = startDate
-        patch.dueDate = dueDate
-        events.push({ kind: 'dates', data: { startDate: startDate ?? null, dueDate: dueDate ?? null } })
-      }
-    }
-    if (args.parentId !== undefined && (args.parentId ?? undefined) !== (row.parentId ? String(row.parentId) : undefined)) {
-      patch.parentId = args.parentId === null
-        ? undefined
-        : (await assertParent(ctx, { id: String(row._id), parentId: args.parentId, workspaceId: row.workspaceId, scope, userId: args.userId }))._id
-    }
-    if (args.blockedBy !== undefined) {
-      const blockers = await assertBlockers(ctx, { row, blockedBy: args.blockedBy, userId: args.userId })
-      const before = new Set((row.blockedBy ?? []).map(String))
-      const after = new Set(blockers.map((blocker) => String(blocker._id)))
-      if (before.size !== after.size || [...after].some((id) => !before.has(id))) {
-        patch.blockedBy = blockers.map((blocker) => blocker._id)
-        // The log is read by everyone who can read this task, so a blocker's title is copied only when they can read it too.
-        const titleOf = async (id: string) => {
-          const blocker = await ctx.db.get(id as Id<'workItems'>)
-          if (!blocker) return 'a task'
-          const sharedWithReaders = scope === 'workspace' ? rowScope(blocker) === 'workspace' && blocker.workspaceId === row.workspaceId : blocker.userId === row.userId
-          return sharedWithReaders ? blocker.title : 'a private task'
-        }
-        events.push({ kind: 'dependencies', data: {
-          added: await Promise.all([...after].filter((id) => !before.has(id)).map(titleOf)),
-          removed: await Promise.all([...before].filter((id) => !after.has(id)).map(titleOf)),
-        } })
-      }
-    }
-    if (args.doneWhen !== undefined) patch.doneWhen = normalizeDoneWhen(args.doneWhen)
-    if (args.context !== undefined) patch.context = normalizeContext(args.context)
-
-    if (Object.keys(patch).length === 0) return row
-    const updatedAt = Math.max(Date.now(), row.updatedAt + 1)
-    if (patch.assignmentExecution?.status === 'pending') {
-      patch.assignmentExecution.generation = updatedAt
-    }
-    await ctx.db.patch(row._id, { ...patch, updatedAt })
-    for (const event of events) {
-      await logWorkEvent(ctx, { workItemId: row._id, workspaceId: row.workspaceId, actorPrincipalId, ...event })
-    }
-    return await ctx.db.get(row._id)
+    return await updateWorkFor(ctx, args)
   },
 })
+
+/** Applies a task edit the member may make (see `canWork` and review answers). */
+/** `serverSecret` is needed only for a scope change, which the native path never sends. */
+export async function updateWorkFor(ctx: MutationCtx, args: Omit<ObjectType<typeof updateArgs>, 'accessToken'>) {
+  const viewer = await loadWorkViewer(ctx, args.workspaceId, args.userId)
+  let row = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.id), userId: args.userId, workspaceId: args.workspaceId })
+  if (!row) throw new Error('Unauthorized')
+  if (!canWork(row, viewer)) {
+    const onlyStatus = UPDATE_FIELDS.every((field) => (args as Record<string, unknown>)[field] === undefined)
+    if (!onlyStatus || !mayAnswerReview(row, viewer, args.userId, args.status)) throw new Error('Unauthorized')
+  }
+  if (row.archivedAt !== undefined) throw new Error('WORK_INVALID:archived')
+  if (args.expectedUpdatedAt !== undefined && args.expectedUpdatedAt !== row.updatedAt) {
+    throw new ConvexError('WORK_INVALID:conflict')
+  }
+  if (args.scope !== undefined && args.scope !== rowScope(row)) {
+    const changed = await workScopeMutations.applyScope(ctx, { ...args, to: args.scope })
+    if (!changed.ok) throw new ConvexError('WORK_INVALID:scope_forbidden')
+    row = await loadWorkItem(ctx, args.id)
+    if (!row) throw new Error('Unauthorized')
+  }
+  const scope = rowScope(row)
+  const actorPrincipalId = await workEventActorPrincipalId(ctx, {
+    workspaceId: args.workspaceId,
+    principalId: viewer.principalId,
+    actingAgentPrincipalId: args.actingAgentPrincipalId,
+  })
+  const patch: Partial<WorkItemDoc> = {}
+  const events: Array<{ kind: Parameters<typeof logWorkEvent>[1]['kind']; data?: unknown }> = []
+
+  if (args.title !== undefined) {
+    const title = normalizeTitle(args.title)
+    if (title !== row.title) { patch.title = title; events.push({ kind: 'title', data: { from: row.title, to: title } }) }
+  }
+  if (args.description !== undefined) patch.description = args.description === null ? undefined : normalizeDescription(args.description)
+  if (args.priority !== undefined && args.priority !== row.priority) {
+    patch.priority = normalizePriority(args.priority)
+    events.push({ kind: 'priority', data: { from: row.priority, to: args.priority } })
+  }
+  if (args.blocked !== undefined && args.blocked !== row.blocked) {
+    patch.blocked = args.blocked
+    events.push({ kind: 'blocked', data: { to: args.blocked } })
+  }
+  if (args.status !== undefined && args.status !== row.status) {
+    patch.status = args.status
+    patch.rank = await endRank(ctx, row.workspaceId, args.status)
+    events.push({ kind: 'status', data: { from: row.status, to: args.status } })
+  }
+  if (args.assigneePrincipalId !== undefined && (args.assigneePrincipalId ?? undefined) !== row.assigneePrincipalId) {
+    if (args.assigneePrincipalId !== null) {
+      await assertAssignable(ctx, { workspaceId: row.workspaceId, scope, creatorPrincipalId: viewer.principalId, principalId: args.assigneePrincipalId })
+    }
+    patch.assigneePrincipalId = args.assigneePrincipalId ?? undefined
+    patch.assignmentExecution = args.assigneePrincipalId
+      ? await initialAssignmentExecution(ctx, {
+          workspaceId: row.workspaceId,
+          assignedByUserId: args.userId,
+          principalId: args.assigneePrincipalId,
+          generation: Math.max(Date.now(), row.updatedAt + 1),
+        })
+      : undefined
+    events.push({ kind: 'assignee', data: { from: row.assigneePrincipalId ?? null, to: args.assigneePrincipalId } })
+  }
+  if (args.reviewerUserId !== undefined && (args.reviewerUserId ?? undefined) !== row.reviewerUserId) {
+    if (args.reviewerUserId !== null) {
+      await assertReviewer(ctx, { workspaceId: row.workspaceId, scope, creatorUserId: row.userId, reviewerUserId: args.reviewerUserId })
+    }
+    patch.reviewerUserId = args.reviewerUserId ?? undefined
+    events.push({ kind: 'reviewer', data: { from: row.reviewerUserId ?? null, to: args.reviewerUserId } })
+  }
+  if (args.startDate !== undefined || args.dueDate !== undefined) {
+    const startDate = args.startDate === undefined ? row.startDate : args.startDate === null ? undefined : normalizeDate(args.startDate)
+    const dueDate = args.dueDate === undefined ? row.dueDate : args.dueDate === null ? undefined : normalizeDate(args.dueDate)
+    assertDateOrder(startDate, dueDate)
+    if (startDate !== row.startDate || dueDate !== row.dueDate) {
+      patch.startDate = startDate
+      patch.dueDate = dueDate
+      events.push({ kind: 'dates', data: { startDate: startDate ?? null, dueDate: dueDate ?? null } })
+    }
+  }
+  if (args.parentId !== undefined && (args.parentId ?? undefined) !== (row.parentId ? String(row.parentId) : undefined)) {
+    patch.parentId = args.parentId === null
+      ? undefined
+      : (await assertParent(ctx, { id: String(row._id), parentId: args.parentId, workspaceId: row.workspaceId, scope, userId: args.userId }))._id
+  }
+  if (args.blockedBy !== undefined) {
+    const blockers = await assertBlockers(ctx, { row, blockedBy: args.blockedBy, userId: args.userId })
+    const before = new Set((row.blockedBy ?? []).map(String))
+    const after = new Set(blockers.map((blocker) => String(blocker._id)))
+    if (before.size !== after.size || [...after].some((id) => !before.has(id))) {
+      patch.blockedBy = blockers.map((blocker) => blocker._id)
+      // The log is read by everyone who can read this task, so a blocker's title is copied only when they can read it too.
+      const titleOf = async (id: string) => {
+        const blocker = await ctx.db.get(id as Id<'workItems'>)
+        if (!blocker) return 'a task'
+        const sharedWithReaders = scope === 'workspace' ? rowScope(blocker) === 'workspace' && blocker.workspaceId === row.workspaceId : blocker.userId === row.userId
+        return sharedWithReaders ? blocker.title : 'a private task'
+      }
+      events.push({ kind: 'dependencies', data: {
+        added: await Promise.all([...after].filter((id) => !before.has(id)).map(titleOf)),
+        removed: await Promise.all([...before].filter((id) => !after.has(id)).map(titleOf)),
+      } })
+    }
+  }
+  if (args.doneWhen !== undefined) patch.doneWhen = normalizeDoneWhen(args.doneWhen)
+  if (args.context !== undefined) patch.context = normalizeContext(args.context)
+
+  if (Object.keys(patch).length === 0) return row
+  const updatedAt = Math.max(Date.now(), row.updatedAt + 1)
+  if (patch.assignmentExecution?.status === 'pending') {
+    patch.assignmentExecution.generation = updatedAt
+  }
+  await ctx.db.patch(row._id, { ...patch, updatedAt })
+  for (const event of events) {
+    await logWorkEvent(ctx, { workItemId: row._id, workspaceId: row.workspaceId, actorPrincipalId, ...event })
+  }
+  return await ctx.db.get(row._id)
+}
 
 const assignmentExecutionValidator = v.object({
   assignedByUserId: v.string(),
@@ -777,43 +802,50 @@ export const completeAssignment = mutation({
  * Drops a task into a column: set its status and put it between two neighbours (either may be omitted for the top or
  * bottom). The server reads the neighbours' current ranks, so two people dragging at once still land sensibly.
  */
+const moveArgs = {
+  ...auth,
+  id: v.string(),
+  status: v.optional(statusArg),
+  afterId: v.optional(v.union(v.string(), v.null())),
+  beforeId: v.optional(v.union(v.string(), v.null())),
+}
+
 export const move = mutation({
-  args: {
-    ...auth,
-    id: v.string(),
-    status: v.optional(statusArg),
-    afterId: v.optional(v.union(v.string(), v.null())),
-    beforeId: v.optional(v.union(v.string(), v.null())),
-  },
-  handler: async (ctx, args) => {
-    await authorize(args)
-    const viewer = await loadWorkViewer(ctx, args.workspaceId, args.userId)
-    const row = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.id), userId: args.userId, workspaceId: args.workspaceId })
-    if (!row || (!canWork(row, viewer) && !mayAnswerReview(row, viewer, args.userId, args.status))) throw new Error('Unauthorized')
-    if (row.archivedAt !== undefined) throw new Error('WORK_INVALID:archived')
-    const actorPrincipalId = await workEventActorPrincipalId(ctx, {
-      workspaceId: args.workspaceId,
-      principalId: viewer.principalId,
-      actingAgentPrincipalId: args.actingAgentPrincipalId,
-    })
-    const status = args.status ?? row.status
-
-    const neighbour = async (id: string | null | undefined) => {
-      if (!id || id === args.id) return null
-      const found = await getReadableRow(ctx, { row: await loadWorkItem(ctx, id), userId: args.userId, workspaceId: args.workspaceId })
-      return found && found.status === status ? found : null
-    }
-    const [above, below] = await Promise.all([neighbour(args.afterId), neighbour(args.beforeId)])
-    const rank = above || below ? rankBetween(above?.rank ?? null, below?.rank ?? null) : await endRank(ctx, row.workspaceId, status)
-
-    await ctx.db.patch(row._id, { status, rank, updatedAt: Math.max(Date.now(), row.updatedAt + 1) })
-    if (status !== row.status) {
-      await logWorkEvent(ctx, { workItemId: row._id, workspaceId: row.workspaceId, actorPrincipalId, kind: 'status', data: { from: row.status, to: status } })
-    }
-    if (needsRebalance(rank)) await rebalanceColumn(ctx, row.workspaceId, status)
-    return await ctx.db.get(row._id)
+  args: moveArgs,
+  handler: async (ctx, { accessToken: _accessToken, serverSecret, ...args }) => {
+    await authorize({ serverSecret })
+    return await moveWorkFor(ctx, args)
   },
 })
+
+/** Moves a task within or across board columns, ranked between its new neighbours. */
+export async function moveWorkFor(ctx: MutationCtx, args: Omit<ObjectType<typeof moveArgs>, 'accessToken' | 'serverSecret'>) {
+  const viewer = await loadWorkViewer(ctx, args.workspaceId, args.userId)
+  const row = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.id), userId: args.userId, workspaceId: args.workspaceId })
+  if (!row || (!canWork(row, viewer) && !mayAnswerReview(row, viewer, args.userId, args.status))) throw new Error('Unauthorized')
+  if (row.archivedAt !== undefined) throw new Error('WORK_INVALID:archived')
+  const actorPrincipalId = await workEventActorPrincipalId(ctx, {
+    workspaceId: args.workspaceId,
+    principalId: viewer.principalId,
+    actingAgentPrincipalId: args.actingAgentPrincipalId,
+  })
+  const status = args.status ?? row.status
+
+  const neighbour = async (id: string | null | undefined) => {
+    if (!id || id === args.id) return null
+    const found = await getReadableRow(ctx, { row: await loadWorkItem(ctx, id), userId: args.userId, workspaceId: args.workspaceId })
+    return found && found.status === status ? found : null
+  }
+  const [above, below] = await Promise.all([neighbour(args.afterId), neighbour(args.beforeId)])
+  const rank = above || below ? rankBetween(above?.rank ?? null, below?.rank ?? null) : await endRank(ctx, row.workspaceId, status)
+
+  await ctx.db.patch(row._id, { status, rank, updatedAt: Math.max(Date.now(), row.updatedAt + 1) })
+  if (status !== row.status) {
+    await logWorkEvent(ctx, { workItemId: row._id, workspaceId: row.workspaceId, actorPrincipalId, kind: 'status', data: { from: row.status, to: status } })
+  }
+  if (needsRebalance(rank)) await rebalanceColumn(ctx, row.workspaceId, status)
+  return await ctx.db.get(row._id)
+}
 
 export type WorkItemId = Id<'workItems'>
 

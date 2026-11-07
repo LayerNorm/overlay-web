@@ -1,9 +1,4 @@
 import {
-  EXTENSIONS_CHANGED_EVENT,
-  AUTOMATIONS_UPDATED_EVENT,
-  WORK_UPDATED_EVENT,
-  MCPS_CHANGED_EVENT,
-  SKILLS_CHANGED_EVENT,
   automationHref,
   fileTreeRouteView,
   getAutomationDisplayName,
@@ -273,21 +268,15 @@ export async function restoreArchivedItem(
       return
     case 'skill':
       await overlayAppClient.scope.restore('skills', item.id)
-      window.dispatchEvent(new CustomEvent(SKILLS_CHANGED_EVENT))
-      window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
       return
     case 'mcp-server':
       await overlayAppClient.scope.restore('mcp-servers', item.id)
-      window.dispatchEvent(new CustomEvent(MCPS_CHANGED_EVENT))
-      window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
       return
     case 'automation':
       await overlayAppClient.scope.restore('automations', item.id)
-      window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
       return
     case 'work-item':
       await overlayAppClient.scope.restore('work', item.id)
-      window.dispatchEvent(new Event(WORK_UPDATED_EVENT))
       return
     case 'agent':
       if (!workspaceId) throw new Error('No workspace')
@@ -317,26 +306,20 @@ export async function deleteArchivedItem(item: ArchivedItem, workspaceId: string
       return
     case 'skill':
       await requireOk(await overlayAppClient.skills.deleteResponse({ skillId: item.id }), 'Skill was not deleted')
-      window.dispatchEvent(new CustomEvent(SKILLS_CHANGED_EVENT))
-      window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
       return
     case 'mcp-server':
       await requireOk(await overlayAppClient.mcpServers.deleteResponse({ mcpServerId: item.id }), 'MCP server was not deleted')
-      window.dispatchEvent(new CustomEvent(MCPS_CHANGED_EVENT))
-      window.dispatchEvent(new CustomEvent(EXTENSIONS_CHANGED_EVENT))
       return
     case 'automation': {
       const response = await overlayAppClient.automations.deleteResponse({ automationId: item.id })
       await requireOk(response, 'Automation was not deleted')
       const payload = await overlayAppClient.automations.parseDeleteResponse(response).catch(() => ({} as { linkedConversationIds?: string[] }))
       for (const chatId of payload.linkedConversationIds ?? []) dispatchChatDeleted({ chatId })
-      window.dispatchEvent(new Event(AUTOMATIONS_UPDATED_EVENT))
       return
     }
     case 'work-item':
       // The task and whatever was archived under it. The server refuses a task that is not archived.
       await overlayAppClient.work.remove(item.id)
-      window.dispatchEvent(new Event(WORK_UPDATED_EVENT))
       return
     case 'agent':
       // Deletes the archived agent and its threads. A live agent has no row here, and the server refuses it.

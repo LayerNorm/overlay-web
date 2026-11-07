@@ -1,6 +1,6 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-07. Phases A to C are complete and live in production: personal, workspace and automation chats run on the native path, and agents, rooms and Activity are native. The production Convex backend was last deployed from main `2fcade1e1` after the matching web release. Phase D (CN-12 to CN-15, files and knowledge) is implemented on #414 with one commit per card and accepted on its preview (results under section 6). Stop, approval, input response and room send stay on the server by design because they run workflows, agent turns or email. Cases that need a second member have Convex test coverage only, because no second sandbox account exists yet. The next phase after D is E (Work, automations and skills). The PR that lands the last phase deletes this plan.
+Status: in progress as of 2026-11-07. Phases A to D are complete and live in production: chats, agents, rooms, Activity, files, notes and memories run on the native path. The production Convex backend was last deployed from main `8c57d1c52` after the matching web release. Phase E (CN-16 to CN-20, Work, automations and skills) is implemented on #415 and accepted on its preview with a second member (results under section 7). Stop, approval, input response, room send, agent assignment and automation writes stay on the server by design because they run workflows, agent turns, billing checks or email. Cases that need a second member have Convex test coverage only, because no second sandbox account exists yet. The next phase after E is F (control plane and settings). The PR that lands the last phase deletes this plan.
 
 | Card | PR | State on 2026-11-06 |
 |---|---|---|
@@ -13,10 +13,11 @@ Status: in progress as of 2026-11-07. Phases A to C are complete and live in pro
 | CN-04 to CN-06 stabilization | #411 | Merged, deployed. No Convex deploy was needed; its unused readiness markers remain on the production backend until the next deploy |
 | CN-06W | #412 | Merged and deployed: web and Convex production at `1799597ac`, production smoke passed |
 | CN-07 to CN-11 | #413 | Merged and deployed: web and Convex production at `2fcade1e1`, production smoke passed |
-| CN-12 to CN-15 | #414 | Accepted on preview; merging |
+| CN-12 to CN-15 | #414 | Merged and deployed: web and Convex production at `8c57d1c52`, production smoke passed |
+| CN-16 to CN-20 | #415 | Accepted on preview; merging |
 | CN-07 to CN-11 (old attempt) | #403 | Closed unmerged, superseded by the Phase C PR |
 | CN-12 (old attempt) | #402 | Closed unmerged, superseded by the Phase D PR |
-| CN-20 | #398 | Closed unmerged, branch kept as reference |
+| CN-20 (old attempt) | #398 | Closed unmerged, superseded by the Phase E PR |
 | CN-21 | #401 | Closed unmerged, branch kept as reference |
 | CN-25 | #400 | Closed unmerged, branch kept as reference |
 
@@ -405,6 +406,8 @@ No console errors in either tab.
 
 **Retirement/non-goals:** remove Work snapshot reload/event ownership for these operations. Existing move/assignment commands may temporarily remain explicitly classified HTTP commands against the same subscribed state; CN-17 replaces them.
 
+**Implemented (Phase E PR):** `work/browse:list|get|context|events|create|update|addComment` behind active membership, `work.use` and the Work deployment feature. The Work page, sidebar sections, task panel and task links subscribe; edits, creates and comments are native and optimistic, and a refused edit reverts only itself. The handlers are shared with the server functions and task projection moved to `src/shared/work/projection.ts`. Deletes the provider's load, pending, newest and refresh bookkeeping, the sidebar load and publish channel, the Work refresh event and the reload error notice. Agent assignment and scope moves stay on the server.
+
 ### CN-17. Make Work ordering, dependencies, and assignment execution native
 
 **Outcome:** drag/drop and assignment stay instant without losing rank, graph, or execution guarantees.
@@ -418,6 +421,8 @@ No console errors in either tab.
 **Acceptance:** simultaneous moves converge; a failed move does not restore an obsolete whole board; invalid dependencies/assignments fail; duplicate submission cannot launch duplicate assigned work (`E15`, `E16`).
 
 **Retirement/non-goals:** remove remaining browser Work CRUD commands and custom pending/reload bookkeeping. Keep canonical rank and execution state machines rather than inventing replacements.
+
+**Implemented (Phase E PR):** board and review moves use `work/browse:move` with an optimistic rank; the server re-ranks from live neighbours, so concurrent moves converge, and a refusal reverts only that task. Assignment admission deliberately stays on `/api/v1/work`: it checks the budget and claims one generation through `prepareAssignment`, so duplicate submissions cannot start duplicate runs; its execution state is part of the live task.
 
 ### CN-18. Make automation definitions and schedule editing native
 
@@ -433,6 +438,8 @@ No console errors in either tab.
 
 **Retirement/non-goals:** remove automation-definition snapshots and reloads. Existing runner remains; run-now/history is CN-19.
 
+**Implemented (Phase E PR, with CN-19 in one commit because both change the editor):** `automations/browse:list|get` behind active membership, `automations.use` and the Automations feature. The sidebar list and the editor subscribe; the editor replaces its form with a remote version only while it has no unsaved edits. Deletes the refresh event, paged HTTP sidebar list, pre-navigation fetch and post-save refetch. Writes stay on the server (billing check for enabling, scheduler workflow cancellation, update notes). Linking a chat to its automation is still an HTTP read in the chat controller.
+
 ### CN-19. Subscribe automation execution and run history
 
 **Outcome:** a run can be followed across tabs and refreshes through actual durable progress.
@@ -447,6 +454,8 @@ No console errors in either tab.
 
 **Retirement/non-goals:** remove run-history/status polling. No replacement scheduler or workflow engine.
 
+**Implemented (Phase E PR):** `automations/browse:runs` streams the owner's run history (newest 50) through every state; the runs Refresh button and reloads after test, cancel and retry are removed. Run, cancel and retry commands stay on the server.
+
 ### CN-20. Make skill management and availability native
 
 **Outcome:** creating or updating a skill updates every authorized management view and picker.
@@ -460,6 +469,20 @@ No console errors in either tab.
 **Acceptance:** remote changes update pickers; invalid/stale edits fail safely; permissions and archived availability remain consistent.
 
 **Retirement/non-goals:** remove skill HTTP ownership and reload signals. Skill execution and external tool transport do not change.
+
+**Implemented (Phase E PR):** `integrations/skillsBrowse:list|create|update|remove`, fully native behind active membership, `skills.use` and the Skills feature, with required fields, length caps, edit rights and an `expectedUpdatedAt` guard for stale forms. The Skills page subscribes and applies edits optimistically. Deletes the skills, MCP and extensions change events (no listeners existed) and two unused file and note event constants. Mention pickers still list skills over HTTP until CN-32.
+
+### Phase E preview acceptance (#415, 2026-11-07)
+
+Tested in Chrome as a real member (Google sign-in) of the paid **Preview QA Team** on the PR's isolated backend, with a second member acting through the Convex CLI's `--identity` (the seeded synthetic collaborator). The browser account was added to the team by appending membership rows to that preview backend only. Server-only steps (scope moves, archive, automation edits) used the preview's own internal secret, never printed.
+
+- **CN-16:** a task the other member created in Workspace scope reached the list and sidebar 142 ms after the server write; their personal task stayed hidden. With the task open, their comment arrived before their command returned and their rename and status change in 59 ms. My comment from the panel reached them; Work made no HTTP calls. When they moved the task to Personal, it left my list at once and the open panel showed it was no longer available.
+- **CN-17:** dragging a task to another column applied instantly with no HTTP call and the other member read the new status.
+- **CN-18:** a new automation appeared in the sidebar without a refresh event; a remote rename updated a clean editor and the sidebar. QA found that saving a form opened before a remote change silently reverted it; saves now carry the form's version and are refused with a message (fixed on this PR). Opening an automation from a chat now reads it natively.
+- **CN-19:** a test run appeared as Queued and moved to its end state in the run history without reloading. The run itself ended with an authorization diagnostic in this seeded setup (a hand-added membership); the executor is unchanged by this phase and was not re-validated end to end.
+- **CN-20:** the other member's skill create, rename and disable reached the Skills page before their command returned. A stale edit form was refused with a message. QA found that members could open others' skills with Save and Delete enabled (the server refused); such skills now open view-only.
+
+**Phase D, second member (same session):** their shared file appeared live and their private file did not; with it open, their native rename, text change and move to Personal reached the viewer (the last closed it). Their workspace memory appeared attributed to them and their owner-only memory stayed hidden. Their save to a shared note reached a clean editor live. A note removed elsewhere now keeps unsaved text with a notice instead of discarding it.
 
 ## 8. Phase F: control plane and settings
 

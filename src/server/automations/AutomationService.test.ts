@@ -916,3 +916,18 @@ test('AutomationService.runAutomation targets only the owned conversation', asyn
   assert.equal(executorInputs.length, 1)
   assert.equal(executorInputs[0]?.conversationId, undefined)
 })
+
+test('AutomationService.updateAutomation refuses a save from an older version before any side effect', async () => {
+  const repository = createRepository()
+  const { service } = createService(repository)
+  await assert.rejects(
+    service.updateAutomation({
+      userId: 'user_1',
+      workspaceId: 'workspace_1',
+      body: { automationId: 'automation_1', name: 'Stale', enabled: false, expectedUpdatedAt: 5 },
+    }),
+    (error: unknown) => (error as { statusCode?: number }).statusCode === 409,
+  )
+  assert.equal(repository.updatedAutomations.length, 0)
+  assert.equal(repository.updateNotes.length, 0)
+})
