@@ -1,10 +1,6 @@
 import { MessageSquare } from 'lucide-react'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { getLastChatForView } from '@/shared/chat/last-chat-by-view'
-import {
-  selectConversationForView,
-  type CollaborationChatView,
-} from '@/shared/chat/chat-view-navigation'
+import { selectConversationForView } from '@/shared/chat/chat-view-navigation'
 import type { ChatListConversation } from '@/shared/chat/chat-list-conversation'
 import { chatsInlineItems } from '@/components/layout/sidebar-nav'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
@@ -21,33 +17,35 @@ export interface SidebarRouter {
 // a newer selection is stale and must not steer the route.
 let chatViewNavigationVersion = 0
 
+/** Reads the viewer's live rooms of one kind (the native room list), or null when unavailable. */
+export type FindRooms = (kind: 'dm' | 'channel') => Promise<readonly ChatListConversation[] | null>
+
 async function resolveViewConversationId({
   view,
   activeWorkspaceId,
   navigationVersion,
+  findRooms,
 }: {
-  view: string
+  view: 'dms' | 'channels'
   activeWorkspaceId: string | null
   navigationVersion: number
+  findRooms?: FindRooms
 }): Promise<{ stale: boolean; conversationId: string | null }> {
   try {
-    const page = await overlayAppClient.conversations.getPage<ChatListConversation>({
-      limit: 24,
-      view: view as CollaborationChatView,
-    })
+    const rooms = await findRooms?.(view === 'dms' ? 'dm' : 'channel') ?? []
     if (navigationVersion !== chatViewNavigationVersion) {
       return { stale: true, conversationId: null }
     }
     return {
       stale: false,
       conversationId: selectConversationForView(
-        page.data,
+        [...rooms],
         getLastChatForView(activeWorkspaceId, view),
       )?._id ?? null,
     }
   } catch {
     // Stay in the selected subview with its empty state. Reusing an
-    // unvalidated id here can mix a DM and channel after a failed fetch.
+    // unvalidated id here can mix a DM and channel after a failed read.
     return { stale: false, conversationId: null }
   }
 }
@@ -82,6 +80,7 @@ export function buildChatPanelNav({
   closeMobileDrawer,
   beginSecondaryNavigation,
   solo,
+  findRooms,
 }: {
 
   chatsView: string
@@ -93,6 +92,7 @@ export function buildChatPanelNav({
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
   solo: boolean
+  findRooms?: FindRooms
 }): SecondaryPanelNav {
   const chatItems = (chatsInlineItems).map((item) => ({ ...item, badgeCount: chatUnreadBadges[item.id] }))
   const flat: SecondaryPanelNav = {
@@ -122,6 +122,7 @@ export function buildChatPanelNav({
           view: next,
           activeWorkspaceId,
           navigationVersion,
+          findRooms,
         })
         if (result.stale) return
         conversationId = result.conversationId

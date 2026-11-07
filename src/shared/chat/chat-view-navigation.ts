@@ -6,7 +6,6 @@ export function agentConversationRedirect(args: { pathname: string; workspaceId:
   return `${buildWorkspaceHref(args.workspaceId, '/app/agents')}?${new URLSearchParams({ agent: args.agentId, id: args.conversationId })}`
 }
 
-export type CollaborationChatView = 'dms' | 'channels'
 
 export function isTransientConversationDraft(conversationType: 'dm' | 'channel', draft: boolean): boolean {
   // Channels are durable as soon as they are created, even without messages.

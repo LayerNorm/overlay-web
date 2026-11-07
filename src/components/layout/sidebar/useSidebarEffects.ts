@@ -1,13 +1,11 @@
 'use client'
 
 import { useLiveWorkspaceEntitlements } from '@/hooks/use-billing'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import { useRouter } from 'next/navigation'
 import { useHotkeys } from 'react-hotkeys-hook'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { categorizeCollaborationUnreadNotifications } from '@/shared/chat/notification-badges'
-import type { ChatListConversation } from '@/shared/chat/chat-list-conversation'
 import { TEMPORARY_CHAT_UI_EVENT, type TemporaryChatUiEventDetail } from '@/shared/chat/temporary-chat-ui'
 import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 import type { WorkspaceNotification } from '@overlay/workspace-contracts'
@@ -52,49 +50,20 @@ export function useTemporaryChatUiHidden({
 }
 
 export function useCollaborationUnread({
-
   user,
   activeWorkspaceId,
   collaborationNotifications,
 }: {
-
   user: object | null
   activeWorkspaceId: string | null
   collaborationNotifications: WorkspaceNotification[]
 }): { dms: number; channels: number; total: number } {
-  const [collaborationUnread, setCollaborationUnread] = useState({ dms: 0, channels: 0, total: 0 })
-
-  useEffect(() => {
-    if (!user || !activeWorkspaceId) {
-      return
-    }
-    let cancelled = false
-    const categorizeUnread = async () => {
-      try {
-        const unreadNotifications = collaborationNotifications.filter((notification) => !notification.readAt)
-        let conversations: ChatListConversation[] = []
-        if (unreadNotifications.length > 0) {
-          try {
-            const page = await overlayAppClient.conversations.getPage<ChatListConversation>({ view: 'all', limit: 100 })
-            conversations = page.data
-          } catch {
-            // Activity remains complete even when the conversation directory is briefly unavailable.
-          }
-        }
-        if (!cancelled) {
-          setCollaborationUnread(categorizeCollaborationUnreadNotifications(unreadNotifications, conversations))
-        }
-      } catch {
-        // The primary chat navigation stays usable while conversation categorization retries.
-      }
-    }
-    void categorizeUnread()
-    return () => {
-      cancelled = true
-    }
-  }, [activeWorkspaceId, collaborationNotifications,  user])
-
-  return collaborationUnread
+  // Each live notification carries its room type, so the counts need no conversation lookup.
+  return useMemo(() => (
+    user && activeWorkspaceId
+      ? categorizeCollaborationUnreadNotifications(collaborationNotifications.filter((notification) => !notification.readAt))
+      : { dms: 0, channels: 0, total: 0 }
+  ), [activeWorkspaceId, collaborationNotifications, user])
 }
 
 export function useUnreadChatRedirect({
