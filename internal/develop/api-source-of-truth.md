@@ -116,8 +116,7 @@ read side effect. Every consumer shares one subscription, so there is no directo
 Writes (create, update, archive, restore, delete) stay on `/api/v1/agents*` because they run
 server-side policy and side effects: harness and external-agent policy, model support, teams,
 connected-agent bindings, computer provisioning and config-profile cleanup. Desktop, mobile and
-agent tools also call these routes. The live queries reflect each write in every client. The
-Memories owner filter still lists agents over HTTP until the memories card in Phase D, and
+agent tools also call these routes. The live queries reflect each write in every client.
 Settings → Archived lists archived agents and threads over HTTP until the settings phase (Phase F)
 makes that whole page live.
 
@@ -403,6 +402,31 @@ credentials are never public contract fields.
 - The retired `conversationMessageDeltas` table, delta hydration queries,
   stream-auth route, and Cloudflare relay are not part of the API contract.
   Both runners persist one terminal assistant-message snapshot.
+
+## Files, notes and memories in the browser
+
+Browsers read files natively; the file HTTP routes remain for agents, outside apps, desktop and
+byte transfer.
+
+- `files/browse:list` is the live file tree (files, folders, notes, outputs) for one workspace
+  and view, shared by the Files page and the sidebar (`src/hooks/use-file-tree.ts`). Rows are
+  summaries: no text and no storage keys (`browserFileSummary`). Non-members read `null`.
+- `files/browse:get` returns one readable file with its inline text (`browserFile`). The Files
+  viewer opens from the list row at once and loads full text through
+  `GET /api/v1/files?fileId=…&fullText=true`, which reads text kept in object storage. The notes
+  editor subscribes to `get` (`useLiveNote`) so saves made elsewhere reach a clean editor.
+- `files/browse:rename` and `:move` run the shared `updateFileFor` with native identity and apply
+  optimistically to every cached tree. Create, delete, uploads, ingestion, text saves and note
+  saves stay on the server: they place large text in object storage, clean up objects, and
+  canonicalize and sanitize note Markdown.
+- `files/browse:forConversation` is a thread's live Library (the agent drive panel).
+- `knowledge/memoryBrowse:list` is the live Memories list with the server's rules: owner-only
+  memories reach only their author, attribution covers active members and agents the viewer can
+  see, and an owner filter accepts a member or agent principal. Memory writes stay on
+  `/api/v1/memory` (dedupe, segmentation, indexing).
+
+There are no file or memory change events: the shared knowledge surface takes its list from the
+host (`liveFiles`) and cannot fetch or broadcast lists itself.
 
 ## File listing
 
