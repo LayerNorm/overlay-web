@@ -2,7 +2,8 @@ import 'server-only'
 
 import { NextResponse } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { repositoryProxy } from '@/server/app-data/errors'
+import { ConvexActConversationRepository } from './ConvexActConversationRepository'
+import { lazyService } from '@/server/lazy-service'
 import { ActContextService } from './ActContextService'
 import { ActEntitlementService, ActConversationServiceError } from './ActEntitlementService'
 import { ActMessagePersistenceService } from './ActMessagePersistenceService'
@@ -11,13 +12,9 @@ import { AgentRunService } from './AgentRunService'
 import type { ActConversationRepository } from './ActConversationRepository'
 import { nativeRunRetirementErrorResponse } from './native-run-retirement-http'
 
-export const actConversationRepository = repositoryProxy<ActConversationRepository>(
-  () => getOverlayServerContext().appData.repositories.conversations,
-)
+export const actConversationRepository: ActConversationRepository = new ConvexActConversationRepository()
 
-const actUsagePolicy = repositoryProxy(
-  () => getOverlayServerContext().chatUsagePolicy,
-)
+const actUsagePolicy = lazyService(() => getOverlayServerContext().chatUsagePolicy)
 
 export const actContextService = new ActContextService({
   repository: actConversationRepository,

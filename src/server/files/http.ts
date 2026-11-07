@@ -4,15 +4,11 @@ import { scopeForbiddenResponse } from '@/server/app-api/scope-errors'
 import { logger } from '@/server/observability/logger'
 import { NextResponse } from 'next/server'
 import { R2GlobalBudgetError } from '@/server/storage/r2-budget'
-import { getOverlayServerContext } from '@/server/bootstrap'
-import { repositoryProxy } from '@/server/app-data/errors'
+import { ConvexFileRepository } from './ConvexFileRepository'
 import { FileService, FileServiceError } from './FileService'
-import type { FileRepository } from './FileRepository'
 
 export const fileService = new FileService({
-  repository: repositoryProxy<FileRepository>(
-    () => getOverlayServerContext().appData.repositories.files,
-  ),
+  repository: new ConvexFileRepository(),
 })
 
 export function fileErrorResponse(error: unknown, fallback = 'Failed to save file') {

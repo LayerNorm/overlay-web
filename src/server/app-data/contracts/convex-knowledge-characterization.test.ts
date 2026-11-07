@@ -3,7 +3,6 @@ import 'server-only'
 import test from 'node:test'
 import { AccountDeletionService } from '@/server/account'
 import type { OverlayServerContext } from '@/server/bootstrap'
-import { CONVEX_APP_DATA_CAPABILITIES } from '@/server/app-data/capabilities'
 import { ConvexFileRepository } from '@/server/files/ConvexFileRepository'
 import { ConvexKnowledgeSearchRepository } from '@/server/knowledge/ConvexKnowledgeSearchRepository'
 import { ConvexMemoryRepository } from '@/server/memory/ConvexMemoryRepository'
@@ -56,7 +55,6 @@ test('Convex knowledge characterization', {
 
 async function deleteConvexUser(userId: string): Promise<void> {
   await new AccountDeletionService({
-    appDataCapabilities: CONVEX_APP_DATA_CAPABILITIES,
     auth: { deleteUser: async () => {} },
     billing: { cancelSubscription: async () => {} },
     objectStore: { deleteObject: async () => {} },

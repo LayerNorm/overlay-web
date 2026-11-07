@@ -175,7 +175,7 @@ test('createOverlayServerContext wires Redis rate limiting when selected', () =>
   )
 })
 
-test('createOverlayServerContext returns Convex app-data context with chat route capabilities', () => {
+test('createOverlayServerContext builds the Convex-backed services', () => {
   const base = fixture('saas-staging.json')
   const runtimeConfig = parseOverlayRuntimeConfig({
     ...base,
@@ -195,16 +195,6 @@ test('createOverlayServerContext returns Convex app-data context with chat route
   })
   const context = createOverlayServerContext({ appConfig: {}, runtimeConfig })
 
-  assert.equal(context.appDataCapabilities.provider, 'convex')
-  assert.equal(context.appDataCapabilities.supportsRealtime, true)
-  assert.equal(context.appDataCapabilities.supportsStreamResume, true)
-  assert.equal(context.appDataCapabilities.supportsChatPersistence, true)
-  assert.equal(context.appDataCapabilities.supportsSkills, true)
-  assert.equal(context.appDataCapabilities.supportsMcpServers, true)
-  assert.equal(context.appDataCapabilities.supportsBackgroundMaintenance, true)
-  assert.equal(context.appDataCapabilities.supportsManagedScheduler, true)
-  assert.equal(context.appDataCapabilities.supportsPersistentIdempotency, true)
-  assert.equal(context.appDataCapabilities.supportsServiceAuthReplayStore, true)
   assert.equal(context.userService instanceof UserService, true)
 })
 
