@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make Slack import progress live: the Slack import panel reads whether Slack is connected and every import job's progress from a Convex subscription. A running import keeps showing its real progress after a reload or in another tab, finishing Slack sign-in in another tab is noticed at once, and the 3-second job poll and the OAuth connection poll are gone. This also closes a gap where any signed-in account could list another workspace's import jobs: the old job-list query had no membership check and is removed, along with two unused job queries. The runner's job-listing queries are now internal-only. Listing Slack channels and users, and starting or cancelling an import, still go through the server.
+
 - Make webhooks live: Settings → Webhooks shows your endpoints and their recent deliveries from Convex subscriptions. Each delivery's move from pending to delivered, failed or dead-lettered appears as the delivery runner records it, and endpoints changed in another tab update at once. The manual refresh button is gone. Signing secrets and payloads are never sent to the list. The webhooks permission now also requires webhooks to be turned on for the deployment, matching the settings route. Creating and editing endpoints, which checks their addresses, and rotating secrets still go through the server.
 
 - Settings → Connected apps now names each connection's workspace from the live workspace list instead of loading the list over HTTP, so a renamed workspace shows its new name at once. Issuing tokens and disconnecting apps still go through the server, which seals tokens and records the audit trail.

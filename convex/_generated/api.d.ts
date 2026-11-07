@@ -104,6 +104,7 @@ import type * as harness_nativeDelivery from "../harness/nativeDelivery.js";
 import type * as harness_resourceValidators from "../harness/resourceValidators.js";
 import type * as harness_runs from "../harness/runs.js";
 import type * as http from "../http.js";
+import type * as imports_slackBrowse from "../imports/slackBrowse.js";
 import type * as imports_slackImporter from "../imports/slackImporter.js";
 import type * as imports_slackJobs from "../imports/slackJobs.js";
 import type * as imports_slackMappings from "../imports/slackMappings.js";
@@ -309,6 +310,7 @@ declare const fullApi: ApiFromModules<{
   "harness/resourceValidators": typeof harness_resourceValidators;
   "harness/runs": typeof harness_runs;
   http: typeof http;
+  "imports/slackBrowse": typeof imports_slackBrowse;
   "imports/slackImporter": typeof imports_slackImporter;
   "imports/slackJobs": typeof imports_slackJobs;
   "imports/slackMappings": typeof imports_slackMappings;
