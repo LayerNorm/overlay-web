@@ -3,7 +3,6 @@
 import { notifyDesktopSignedOut } from '@overlay/desktop-bridge'
 
 import { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef, type ReactNode } from 'react'
-import { KNOWLEDGE_RECONCILE_EVENT } from '@overlay/app-core'
 import { requestSessionState, type BrowserAuthUser } from '@/shared/auth/browser-session'
 
 export type AuthUser = BrowserAuthUser
@@ -36,7 +35,6 @@ export function AuthProvider({
 }: AuthProviderProps) {
   const [user, setUser] = useState<AuthUser | null>(initialUser)
   const [isLoading, setIsLoading] = useState(!initialSessionResolved)
-  const reconciledUserId = useRef(initialUser?.id ?? null)
   const lastCheckAtRef = useRef(0)
   const hadSession = useRef(Boolean(initialUser))
 
@@ -57,16 +55,6 @@ export function AuthProvider({
       setUser((current) => current?.id === resolvedUser.id ? resolvedUser : current)
     })
   }, [initialSessionResolved, initialUser])
-
-  useEffect(() => {
-    if (isLoading) return
-    const nextUserId = user?.id ?? null
-    if (reconciledUserId.current === nextUserId) return
-    reconciledUserId.current = nextUserId
-    window.dispatchEvent(new CustomEvent(KNOWLEDGE_RECONCILE_EVENT, {
-      detail: { reason: 'authentication-changed' },
-    }))
-  }, [isLoading, user?.id])
 
   const checkSession = useCallback(async (trigger: 'interval' | 'focus' | 'visibility' | 'manual' = 'manual') => {
     // Skip focus/visibility refreshes if we checked very recently.

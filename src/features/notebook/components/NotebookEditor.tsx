@@ -11,8 +11,6 @@ import {
 } from '@/shared/ui/panel-presentation'
 import { useCallback, useMemo, useState } from 'react'
 import {
-  KNOWLEDGE_ENTITY_MUTATION_EVENT,
-  createKnowledgeMutationPublisher,
   createLocalNotebookNote,
   type CreateNoteResponse,
   type NoteDoc,
@@ -37,19 +35,6 @@ import { usePanelScope } from '@/hooks/use-panel-scope'
 const MarkdownMessage = dynamic(() =>
   import('@overlay/chat-react').then((module) => ({ default: module.MarkdownMessage })),
 )
-
-const nextNotebookMutation = createKnowledgeMutationPublisher(
-  `web-notebook:${globalThis.crypto?.randomUUID?.() ?? Date.now()}`,
-)
-
-function publishNotebookMutation(
-  id: string,
-  operation: 'created' | 'updated' | 'deleted',
-): void {
-  window.dispatchEvent(new CustomEvent(KNOWLEDGE_ENTITY_MUTATION_EVENT, {
-    detail: nextNotebookMutation({ entity: 'note', id, operation }),
-  }))
-}
 
 export default function NotebookEditor({
   userId: _userId,
@@ -91,7 +76,6 @@ export default function NotebookEditor({
     }),
     async create() {
       const result = await overlayAppClient.notes.create({ title: 'Untitled', content: '' }) as CreateNoteResponse
-      publishNotebookMutation(result.note?._id ?? result.id, 'created')
       return result.note ?? {
         ...createLocalNotebookNote(result.id),
         title: 'Untitled',
@@ -117,13 +101,11 @@ export default function NotebookEditor({
         }
       }
       if (!response.ok) throw new Error(body?.error || 'Could not save note')
-      publishNotebookMutation(body?.note?._id ?? noteId, 'updated')
       return { note: body?.note }
     },
     async delete(noteId) {
       const response = await overlayAppClient.notes.deleteResponse({ noteId })
       if (!response.ok) throw new Error('Could not delete note')
-      publishNotebookMutation(noteId, 'deleted')
     },
   }), [])
 
@@ -154,7 +136,6 @@ export default function NotebookEditor({
           item={note}
           onChanged={() => {
             // The note left this scope (or was archived): back to the list it belongs to.
-            publishNotebookMutation(note._id, 'deleted')
             router.push(buildWorkspaceHref(null, '/app/files', scope))
           }}
         />

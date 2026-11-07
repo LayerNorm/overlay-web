@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Make Files live and open them instantly: the Files page and sidebar now read files, folders, notes and outputs from one Convex subscription per scope, so creating, renaming, moving, archiving or deleting anything shows up in every open tab without a reload. Clicking a file opens its viewer at once from the list while its text loads, an open file follows remote renames and closes if it is deleted or you lose access, and rename and move apply instantly everywhere. Removes the file change events, their reconciliation and retry machinery, the cross-tab event bridge nobody used, and an unused list controller. The live list carries no file text or storage keys.
+
 - Make Activity and read state native: notifications and unread badges come from one live Convex query, marking read updates every open client at once, and a notification that arrives while you are marking others read stays unread. Opening a notification goes straight to its room without an extra lookup. Removes the local read maps, two unused refresh events and the obsolete personal list-version subscription.
 
 - Make room details live: participants, reactions, pins, saved messages, thread follows, mute and presence now come from one native Convex query per room, so they match in every open client without refetching. Reactions, pins, saves and follows update instantly and roll back by themselves if the server refuses them, and removing someone from a room closes it for them at once. Presence and typing now use native heartbeats instead of a polling fallback.

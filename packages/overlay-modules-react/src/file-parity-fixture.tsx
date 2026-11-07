@@ -89,6 +89,7 @@ function CanonicalFilesSurfaceFixture() {
       <SharedKnowledgeSurface
         mode="files"
         initialFiles={files}
+        liveFiles={files}
         initialMemories={[]}
         route={route}
         onUpdateQuery={(updates) => setRoute((current) => ({
@@ -106,7 +107,6 @@ function CanonicalFilesSurfaceFixture() {
           upload: async () => ({ ok: true }),
           isEditable: () => false,
           contentUrl: () => undefined,
-          entityChanged: () => undefined,
         }}
         renderFileViewer={() => null}
       />

@@ -80,6 +80,7 @@ import type * as dev_seed from "../dev/seed.js";
 import type * as email_deliveryRunner from "../email/deliveryRunner.js";
 import type * as email_outbox from "../email/outbox.js";
 import type * as files_artifactPublications from "../files/artifactPublications.js";
+import type * as files_browse from "../files/browse.js";
 import type * as files_files from "../files/files.js";
 import type * as files_ingestion_jobs from "../files/ingestion/jobs.js";
 import type * as files_ingestion_runner from "../files/ingestion/runner.js";
@@ -256,6 +257,7 @@ declare const fullApi: ApiFromModules<{
   "email/deliveryRunner": typeof email_deliveryRunner;
   "email/outbox": typeof email_outbox;
   "files/artifactPublications": typeof files_artifactPublications;
+  "files/browse": typeof files_browse;
   "files/files": typeof files_files;
   "files/ingestion/jobs": typeof files_ingestion_jobs;
   "files/ingestion/runner": typeof files_ingestion_runner;

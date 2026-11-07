@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
-import type { Dispatch, SetStateAction } from 'react'
 import { toast } from '@overlay/ui/primitives'
 import { beginKnowledgeUploadToast } from './upload-toast'
 import {
@@ -12,7 +11,6 @@ import {
   folderBreadcrumb as buildFolderBreadcrumb,
   knowledgePendingPreview,
   opensInDocumentEditor,
-  removeKnowledgeFileSubtrees,
   resolveKnowledgeLayout,
   resolveKnowledgeOutputFilter,
   resolveKnowledgeTab,
@@ -339,152 +337,116 @@ export function useSurfaceMemories({
   }
 }
 
+/**
+ * The host owns the list: `liveFiles` is its current subscription result (undefined while loading, null when the
+ * viewer cannot read the scope). `initialFiles` only paints the first frame before the subscription answers.
+ */
 export function useSurfaceFileList({
   initialFiles,
-  adapters,
-  activeTab,
+  liveFiles,
 }: {
   initialFiles: FileNode[] | undefined
-  adapters: KnowledgeSurfaceAdapters
-  activeTab: Tab
+  liveFiles: readonly FileNode[] | null | undefined
 }) {
-  const [files, setFiles] = useState<FileNode[]>(() => initialFiles ?? [])
-  const [filesLoading, setFilesLoading] = useState(initialFiles === undefined)
-  const [filesRefreshing, setFilesRefreshing] = useState(false)
-  const [filesLoadError, setFilesLoadError] = useState<string | null>(null)
-  const hasLoadedFilesRef = useRef(initialFiles !== undefined)
-
-  const loadFiles = useCallback(async () => {
-    const initial = !hasLoadedFilesRef.current
-    if (initial) setFilesLoading(true)
-    else setFilesRefreshing(true)
-    try {
-      const result = await adapters.repository.list()
-      setFiles([...result.nodes])
-      setFilesLoadError(null)
-      hasLoadedFilesRef.current = true
-    } catch (error) {
-      setFilesLoadError(error instanceof Error ? error.message : 'Could not load files')
-    } finally {
-      setFilesLoading(false)
-      setFilesRefreshing(false)
-    }
-  }, [adapters.repository])
-
-  useEffect(() => adapters.repository.subscribe((event) => {
-    if (event.type === 'reset') {
-      setFiles([...event.nodes])
-      return
-    }
-    if (event.type === 'created' || event.type === 'updated') {
-      setFiles((current) => {
-        const exists = current.some((node) => node._id === event.node._id)
-        return exists
-          ? current.map((node) => node._id === event.node._id ? event.node : node)
-          : [...current, event.node]
-      })
-      return
-    }
-    if (event.type === 'moved') {
-      setFiles((current) => current.map((node) => node._id === event.id
-        ? { ...node, parentId: event.parentId }
-        : node))
-      return
-    }
-    if (event.type === 'deleted') {
-      setFiles((current) => removeKnowledgeFileSubtrees(current, event.ids))
-      return
-    }
-    if (event.type === 'upload-progress' || event.type === 'conflict') {
-      setFiles((current) => current.map((node) => node._id === event.id
-        ? { ...node, ...(event.type === 'conflict' ? { conflict: event.conflict } : { upload: event.upload }) }
-        : node))
-    }
-  }), [adapters.repository])
-
-  useEffect(() => {
-    if (activeTab !== 'files' && activeTab !== 'outputs') return
-    // `initialFiles` seeds the first paint so there is no spinner, but it must not
-    // suppress loading forever. It is a server snapshot taken when the route
-    // rendered: anything created afterwards — notably from the sidebar, which
-    // publishes its mutation while this surface is unmounted and navigating away —
-    // never reached this list, so a new note stayed invisible until a hard reload.
-    // Revalidate on mount and let the seeded rows cover the gap.
-    void loadFiles()
-  }, [activeTab, loadFiles])
-
+  const files = useMemo(() => [...(liveFiles ?? initialFiles ?? [])], [initialFiles, liveFiles])
   return {
     files,
-    setFiles,
-    filesLoading,
-    filesRefreshing,
-    filesLoadError,
-    loadFiles,
+    filesLoading: liveFiles === undefined && initialFiles === undefined,
+    filesLoadError: liveFiles === null ? 'Could not load files' : null,
   }
 }
 
+type LoadedFile = { id: string; revision: number; node: FileNode; text: string }
+
+/**
+ * The open file. Its metadata comes from the live list, so the viewer opens at once and follows remote renames,
+ * moves and deletes; its text loads separately and reloads when the file's revision changes, unless this viewer
+ * holds unsaved edits.
+ */
 export function useOpenedFile({
   adapters,
   filePort,
-  setFiles,
+  files,
+  filesLoading,
   openFilesInHost,
   fileOpenParam,
   updateQuery,
 }: {
   adapters: KnowledgeSurfaceAdapters
   filePort: SharedKnowledgeFilePort
-  setFiles: React.Dispatch<React.SetStateAction<FileNode[]>>
+  files: FileNode[]
+  filesLoading: boolean
   openFilesInHost: boolean
   fileOpenParam: string | null
   updateQuery: (updates: Record<string, string | null | undefined>) => void
 }) {
-  const [selectedFile, setSelectedFile] = useState<FileNode | null>(null)
-  const [fileContent, setFileContent] = useState('')
-  const [fileTitle, setFileTitle] = useState('')
-  const [isSavingFile, setIsSavingFile] = useState(false)
+  const [selectedId, setSelectedId] = useState<string | null>(openFilesInHost ? null : fileOpenParam)
   const [previousFileOpenParam, setPreviousFileOpenParam] = useState(fileOpenParam)
+  const [loaded, setLoaded] = useState<LoadedFile | null>(null)
+  const [draft, setDraft] = useState<{ id: string; text: string } | null>(null)
+  const [titleDraft, setTitleDraft] = useState<{ id: string; name: string } | null>(null)
+  const [isSavingFile, setIsSavingFile] = useState(false)
+  const [saves, setSaves] = useState(0)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const titleSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const dirtyRef = useRef(false)
   const lastFileTriggerRef = useRef<HTMLElement | null>(null)
-  const loadVersionRef = useRef(0)
-
-  const clearOpenedFile = useCallback(() => {
-    loadVersionRef.current += 1
-    setSelectedFile(null)
-    setFileContent('')
-    setFileTitle('')
-  }, [])
 
   if (previousFileOpenParam !== fileOpenParam) {
     setPreviousFileOpenParam(fileOpenParam)
-    if (!fileOpenParam) {
-      setSelectedFile(null)
-      setFileContent('')
-      setFileTitle('')
-    }
+    if (!openFilesInHost) setSelectedId(fileOpenParam)
   }
 
-  useEffect(() => () => { loadVersionRef.current += 1 }, [fileOpenParam])
+  const listed = selectedId ? files.find((file) => file._id === selectedId && file.type === 'file') ?? null : null
+  // The open file left the live list (deleted, archived, moved out of this scope, or access revoked).
+  const [seenListedId, setSeenListedId] = useState<string | null>(null)
+  if (listed && seenListedId !== listed._id) setSeenListedId(listed._id)
+  const vanished = Boolean(selectedId && seenListedId === selectedId && !listed && !filesLoading)
+  const loadedNode = loaded && loaded.id === selectedId && !vanished ? loaded : null
+  const selectedFile = vanished ? null : listed ?? loadedNode?.node ?? null
+  const revision = listed?.updatedAt ?? null
 
-  const loadFile = useCallback(async (fileId: string) => {
-    const loadVersion = ++loadVersionRef.current
-    if (document.activeElement instanceof HTMLElement) {
-      lastFileTriggerRef.current = document.activeElement
-    }
-    const file = await adapters.repository.get(fileId)
-    if (!file || loadVersion !== loadVersionRef.current) return
-    if (opensInDocumentEditor(file)) {
-      await adapters.navigation.open(file, { replace: true })
-      return
-    }
-    setSelectedFile(file)
-    setFileTitle(file.name)
-    setFileContent(file.textContent ?? file.content ?? '')
-  }, [adapters.navigation, adapters.repository])
+  // A remote save the viewer had not seen replaces the text unless this viewer is editing.
+  if (draft && loadedNode && draft.id === loadedNode.id && draft.text === loadedNode.text) {
+    setDraft(null)
+  }
+  if (titleDraft && listed && titleDraft.id === listed._id && titleDraft.name === listed.name) setTitleDraft(null)
+
+  useEffect(() => {
+    if (!selectedId || vanished || dirtyRef.current) return
+    if (loaded && loaded.id === selectedId && (revision === null || loaded.revision === revision)) return
+    const controller = new AbortController()
+    void adapters.repository.get(selectedId, controller.signal).then(async (node) => {
+      if (controller.signal.aborted) return
+      if (!node) {
+        // Gone, or this viewer lost access.
+        setSelectedId(null)
+        updateQuery({ file: null })
+        return
+      }
+      if (opensInDocumentEditor(node)) {
+        await adapters.navigation.open(node, { replace: true })
+        return
+      }
+      setLoaded({ id: node._id, revision: node.updatedAt, node, text: node.textContent ?? node.content ?? '' })
+    }).catch(() => undefined)
+    return () => controller.abort()
+  }, [adapters.navigation, adapters.repository, loaded, revision, saves, selectedId, updateQuery, vanished])
+
+  useEffect(() => {
+    if (vanished) updateQuery({ file: null })
+  }, [updateQuery, vanished])
 
   useEffect(() => () => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
+  }, [])
+
+  const clearOpenedFile = useCallback(() => {
+    dirtyRef.current = false
+    setSelectedId(null)
+    setDraft(null)
+    setTitleDraft(null)
   }, [])
 
   function handleSelectFile(node: FileNode) {
@@ -492,7 +454,8 @@ export function useOpenedFile({
       void adapters.navigation.open(node as Parameters<typeof adapters.navigation.open>[0])
       return
     }
-    void loadFile(node._id)
+    if (document.activeElement instanceof HTMLElement) lastFileTriggerRef.current = document.activeElement
+    setSelectedId(node._id)
     updateQuery({ view: 'files', file: node._id })
   }
 
@@ -505,47 +468,46 @@ export function useOpenedFile({
   }
 
   function handleFileContentChange(val: string) {
-    setFileContent(val)
     if (!selectedFile) return
+    const fileId = selectedFile._id
+    dirtyRef.current = true
+    setDraft({ id: fileId, text: val })
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(async () => {
+      saveTimerRef.current = null
       setIsSavingFile(true)
-      const saved = await filePort.saveContent(selectedFile._id, val)
-      if (saved) filePort.entityChanged('file', selectedFile._id, 'updated')
-      setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f } : f))
+      await filePort.saveContent(fileId, val).catch(() => false)
+      if (!saveTimerRef.current) dirtyRef.current = false
       setIsSavingFile(false)
+      setSaves((count) => count + 1)
     }, 800)
   }
 
   function handleFileTitleChange(val: string) {
-    setFileTitle(val)
     if (!selectedFile) return
+    const fileId = selectedFile._id
+    setTitleDraft({ id: fileId, name: val })
     const nextName = val.trim() || 'Untitled'
     if (titleSaveTimerRef.current) clearTimeout(titleSaveTimerRef.current)
     titleSaveTimerRef.current = setTimeout(async () => {
-      setIsSavingFile(true)
       try {
-        await adapters.repository.rename({ id: selectedFile._id, name: nextName })
-        setSelectedFile((prev) => prev ? { ...prev, name: nextName } : prev)
-        setFiles((prev) => prev.map((f) => f._id === selectedFile._id ? { ...f, name: nextName } : f))
+        await adapters.repository.rename({ id: fileId, name: nextName })
       } catch {
-        // Keep the previous persisted title when the host rejects the rename.
+        // The live name stays; the draft is dropped so the title shows it again.
+        setTitleDraft(null)
       }
-      setIsSavingFile(false)
     }, 600)
   }
 
   return {
     selectedFile,
-    setSelectedFile,
-    fileContent,
-    setFileContent,
-    fileTitle,
-    setFileTitle,
+    fileContent: draft && draft.id === selectedId ? draft.text : loadedNode?.text ?? '',
+    fileContentLoading: Boolean(selectedFile && !loadedNode),
+    fileTitle: titleDraft && titleDraft.id === selectedId ? titleDraft.name : selectedFile?.name ?? '',
     isSavingFile,
-    loadFile,
     handleSelectFile,
     closeFileDialog,
+    clearOpenedFile,
     handleFileContentChange,
     handleFileTitleChange,
   }
@@ -616,23 +578,11 @@ export function useFileMutations({
   adapters,
   activeFolder,
   files,
-  setFiles,
-  selectedFile,
-  setSelectedFile,
-  setFileContent,
-  setFileTitle,
-  updateQuery,
   navigateToFolder,
 }: {
   adapters: KnowledgeSurfaceAdapters
   activeFolder: FileNode | null
   files: FileNode[]
-  setFiles: React.Dispatch<React.SetStateAction<FileNode[]>>
-  selectedFile: FileNode | null
-  setSelectedFile: React.Dispatch<React.SetStateAction<FileNode | null>>
-  setFileContent: React.Dispatch<React.SetStateAction<string>>
-  setFileTitle: React.Dispatch<React.SetStateAction<string>>
-  updateQuery: (updates: Record<string, string | null | undefined>) => void
   navigateToFolder: (folderId: string | null) => void
 }) {
   const [dialog, setDialog] = useState<{ type: 'file' | 'folder'; parentId: string | null } | null>(null)
@@ -672,15 +622,8 @@ export function useFileMutations({
     const node = files.find((f) => f._id === id)
     await adapters.repository.delete({ ids: [id] })
     const deletedIds = collectKnowledgeFileSubtreeIds(files, [id])
-    setFiles((prev) => removeKnowledgeFileSubtrees(prev, [id]))
     if (node) {
       adapters.analytics.track('knowledge_file_deleted', { file_name: node.name, type: node.type })
-    }
-    if (selectedFile && deletedIds.has(selectedFile._id)) {
-      setSelectedFile(null)
-      setFileContent('')
-      setFileTitle('')
-      updateQuery({ file: null })
     }
     if (activeFolder && deletedIds.has(activeFolder._id)) {
       navigateToFolder(null)
@@ -706,12 +649,7 @@ export function useSelectMode({
   loadMemories,
   selectedMemory,
   setSelectedMemory,
-  selectedFile,
-  setSelectedFile,
-  setFileContent,
-  setFileTitle,
   files,
-  setFiles,
   activeFolder,
   navigateToFolder,
   updateQuery,
@@ -722,12 +660,7 @@ export function useSelectMode({
   loadMemories: () => Promise<void>
   selectedMemory: MemoryListItem | null
   setSelectedMemory: React.Dispatch<React.SetStateAction<MemoryListItem | null>>
-  selectedFile: FileNode | null
-  setSelectedFile: React.Dispatch<React.SetStateAction<FileNode | null>>
-  setFileContent: React.Dispatch<React.SetStateAction<string>>
-  setFileTitle: React.Dispatch<React.SetStateAction<string>>
   files: FileNode[]
-  setFiles: React.Dispatch<React.SetStateAction<FileNode[]>>
   activeFolder: FileNode | null
   navigateToFolder: (folderId: string | null) => void
   updateQuery: (updates: Record<string, string | null | undefined>) => void
@@ -816,14 +749,6 @@ export function useSelectMode({
       const deletedRootIds = ids
 
       const deletedIds = collectKnowledgeFileSubtreeIds(files, deletedRootIds)
-      setFiles((prev) => removeKnowledgeFileSubtrees(prev, deletedRootIds))
-
-      if (selectedFile && deletedIds.has(selectedFile._id)) {
-        setSelectedFile(null)
-        setFileContent('')
-        setFileTitle('')
-        updateQuery({ file: null })
-      }
       if (activeFolder && deletedIds.has(activeFolder._id)) {
         navigateToFolder(null)
       }
@@ -837,7 +762,6 @@ export function useSelectMode({
   function dropSelectedFromView() {
     const ids = Array.from(selectedFileIds)
     if (ids.length === 0) return
-    setFiles((prev) => removeKnowledgeFileSubtrees(prev, ids))
     exitSelectMode()
   }
 
@@ -898,7 +822,6 @@ async function uploadFlatBatch(
   list: readonly File[],
   filePort: SharedKnowledgeFilePort,
   parentId: string | null,
-  setFiles: Dispatch<SetStateAction<FileNode[]>>,
 ): Promise<UploadBatchResult> {
   let uploadedCount = 0
   try {
@@ -906,10 +829,6 @@ async function uploadFlatBatch(
       const result = await uploadSingleFile(filePort, file, parentId)
       if (!result.ok) return { uploadedCount, errorMessage: result.error ?? 'One or more files failed to upload.' }
       uploadedCount += 1
-      if (result.file) {
-        setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
-        filePort.entityChanged('file', result.file._id, 'created')
-      }
     }
     return { uploadedCount, errorMessage: null }
   } catch (error) {
@@ -925,7 +844,6 @@ async function uploadFolderBatch(
   adapters: KnowledgeSurfaceAdapters,
   filePort: SharedKnowledgeFilePort,
   parentId: string | null,
-  setFiles: Dispatch<SetStateAction<FileNode[]>>,
 ): Promise<UploadBatchResult> {
   let uploadedCount = 0
   const folders = new Map<string, string>()
@@ -950,7 +868,6 @@ async function uploadFolderBatch(
       const result = await uploadSingleFile(filePort, file, folders.get(parentFolderPath) ?? parentId)
       if (!result.ok) return { uploadedCount, errorMessage: result.error ?? 'One or more files failed to upload.' }
       uploadedCount += 1
-      if (result.file) setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
     }
     return { uploadedCount, errorMessage: null }
   } catch (error) {
@@ -981,12 +898,10 @@ export function useFileUploads({
   adapters,
   filePort,
   activeFolder,
-  setFiles,
 }: {
   adapters: KnowledgeSurfaceAdapters
   filePort: SharedKnowledgeFilePort
   activeFolder: FileNode | null
-  setFiles: React.Dispatch<React.SetStateAction<FileNode[]>>
 }) {
   const fileUploadRef = useRef<HTMLInputElement>(null)
 
@@ -995,8 +910,8 @@ export function useFileUploads({
     const label = list.length === 1 ? list[0]!.name : `${folderUpload ? 'Folder' : 'Files'} · ${list.length} files`
     const uploadToast = beginKnowledgeUploadToast(toast, `Uploading ${label}…`)
     const result = folderUpload
-      ? await uploadFolderBatch(list, adapters, filePort, activeFolder?._id ?? null, setFiles)
-      : await uploadFlatBatch(list, filePort, activeFolder?._id ?? null, setFiles)
+      ? await uploadFolderBatch(list, adapters, filePort, activeFolder?._id ?? null)
+      : await uploadFlatBatch(list, filePort, activeFolder?._id ?? null)
     const successMessage = list.length === 1 && !folderUpload ? `Uploaded ${list[0]!.name}.` : `Uploaded ${list.length} files.`
     settleUploadToast(uploadToast, result, list.length, successMessage)
   }
@@ -1019,10 +934,6 @@ export function useFileUploads({
         uploadToast.error(result.error ?? 'Upload failed. Check the file and try again.')
         return
       }
-      if (result.file) {
-        setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
-        filePort.entityChanged('file', result.file._id, 'created')
-      }
       uploadToast.success(`Uploaded ${file.name}.`)
     } catch (error) {
       uploadToast.error(error instanceof Error ? error.message : 'Could not upload file.')
@@ -1042,11 +953,9 @@ export function useFileUploads({
 export function useFolderUpload({
   adapters,
   filePort,
-  setFiles,
 }: {
   adapters: KnowledgeSurfaceAdapters
   filePort: SharedKnowledgeFilePort
-  setFiles: React.Dispatch<React.SetStateAction<FileNode[]>>
 }) {
   const folderUploadRef = useRef<HTMLInputElement>(null)
 
@@ -1086,10 +995,6 @@ export function useFolderUpload({
           break
         }
         uploadedCount += 1
-        if (result.file) {
-          setFiles((current) => [...current.filter((node) => node._id !== result.file!._id), result.file!])
-          filePort.entityChanged('file', result.file._id, 'created')
-        }
       }
     } catch (error) {
       errorMessage = error instanceof Error ? error.message : 'Could not upload folder.'

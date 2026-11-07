@@ -1,0 +1,79 @@
+import { v } from 'convex/values'
+import { mutation, query, type QueryCtx } from '../_generated/server'
+import { getReadableRow, listScopedRows } from '../lib/resourceScope'
+import { requireNativeWorkspace } from '../lib/nativeViewer'
+import { browserFile, browserFileSummary, updateFileFor } from './files'
+
+/** Rows read per source for the live tree, newest first. */
+const TREE_SCAN_LIMIT = 300
+
+const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
+
+async function viewerOrNull(ctx: QueryCtx, workspaceId: string) {
+  try {
+    return await requireNativeWorkspace(ctx, workspaceId)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The live file tree (files, folders, notes and outputs) the signed-in member can see in a workspace view. Omitting
+ * the view lists everything active: their own rows plus other members' workspace-scoped ones. Rows carry metadata
+ * and a note preview, never full text or storage keys; text loads per file.
+ */
+export const list = query({
+  args: { workspaceId: v.string(), view: viewArg },
+  handler: async (ctx, { workspaceId, view }) => {
+    const viewer = await viewerOrNull(ctx, workspaceId)
+    if (!viewer) return null
+    const rows = await listScopedRows(ctx, {
+      userId: viewer.userId,
+      workspaceId,
+      view,
+      fetchMine: async () => await ctx.db.query('files')
+        .withIndex('by_workspaceId_userId_updatedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', viewer.userId))
+        .order('desc').take(TREE_SCAN_LIMIT),
+      fetchShared: async (ws) => await ctx.db.query('files')
+        .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace').eq('archivedAt', undefined))
+        .take(TREE_SCAN_LIMIT),
+    })
+    return rows
+      .filter((row) => !row.deletedAt)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+      .map(browserFileSummary)
+  },
+})
+
+/** One readable file with its inline text, or null when it is gone or the member lost access. */
+export const get = query({
+  args: { workspaceId: v.string(), fileId: v.id('files') },
+  handler: async (ctx, { workspaceId, fileId }) => {
+    const viewer = await viewerOrNull(ctx, workspaceId)
+    if (!viewer) return null
+    const row = await getReadableRow(ctx, { row: await ctx.db.get(fileId), userId: viewer.userId, workspaceId })
+    return row && !row.deletedAt ? browserFile(row) : null
+  },
+})
+
+export const rename = mutation({
+  args: { workspaceId: v.string(), fileId: v.id('files'), name: v.string() },
+  returns: v.null(),
+  handler: async (ctx, { workspaceId, fileId, name }) => {
+    const viewer = await requireNativeWorkspace(ctx, workspaceId)
+    const trimmed = name.trim()
+    if (!trimmed || trimmed.length > 255) throw new Error('INVALID_NAME')
+    await updateFileFor(ctx, { userId: viewer.userId, workspaceId, fileId, name: trimmed })
+    return null
+  },
+})
+
+export const move = mutation({
+  args: { workspaceId: v.string(), fileId: v.id('files'), parentId: v.union(v.id('files'), v.null()) },
+  returns: v.null(),
+  handler: async (ctx, { workspaceId, fileId, parentId }) => {
+    const viewer = await requireNativeWorkspace(ctx, workspaceId)
+    await updateFileFor(ctx, { userId: viewer.userId, workspaceId, fileId, parentId })
+    return null
+  },
+})
