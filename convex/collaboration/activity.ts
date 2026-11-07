@@ -1,7 +1,5 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
-import { conversationListVersion } from '../lib/conversationListVersion'
-import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { listNotificationRows, markNotificationsReadFor, nativeRoomActor } from './directMessages'
 
 const DENIED = new Set(['Unauthorized', 'UNAUTHENTICATED', 'WORKSPACE_ACCESS_DENIED'])
@@ -16,20 +14,6 @@ export const notifications = query({
       if (error instanceof Error && DENIED.has(error.message)) return null
       throw error
     }
-  },
-})
-
-/** Changes whenever a DM or channel list in this workspace changes, so the room lists know to refresh. */
-export const listVersion = query({
-  args: { workspaceId: v.string() },
-  handler: async (ctx, args) => {
-    try {
-      await requireNativeWorkspace(ctx, args.workspaceId)
-    } catch (error) {
-      if (error instanceof Error && DENIED.has(error.message)) return null
-      throw error
-    }
-    return await conversationListVersion(ctx, { workspaceId: args.workspaceId })
   },
 })
 

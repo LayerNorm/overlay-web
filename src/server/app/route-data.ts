@@ -3,7 +3,6 @@ import 'server-only'
 import { connection, NextRequest } from 'next/server'
 import { headers } from 'next/headers'
 import type {
-  AppBootstrapResponse,
   ConnectedIntegrationsResponse,
   IntegrationSearchResponse,
   KnowledgeFileNode,
@@ -20,7 +19,6 @@ import {
 } from '@/app/api/v1/_utils/bff'
 import * as filesService from '@/server/app-api/v1/files/route'
 import * as notesService from '@/server/app-api/v1/notes/route'
-import * as bootstrapService from '@/server/app-api/v1/bootstrap/route'
 import * as integrationsService from '@/server/app-api/v1/integrations/route'
 import { ACTIVE_WORKSPACE_HEADER, ROUTE_WORKSPACE_SCOPE_HEADER } from '@/shared/workspaces/constants'
 import { parsePanelScope } from '@/shared/workspaces/panel-scope'
@@ -28,7 +26,6 @@ import * as workspaceHandleService from '@/server/app-api/v1/workspace-handles/[
 
 
 export type InitialIntegrationsRouteData = {
-  bootstrap: AppBootstrapResponse | null
   connected: ConnectedIntegrationsResponse | null
   catalog: IntegrationSearchResponse | null
 }
@@ -115,12 +112,7 @@ export async function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {
 }
 
 export async function getInitialIntegrationsData(): Promise<InitialIntegrationsRouteData> {
-  const [bootstrap, connected, catalog] = await Promise.all([
-    callAppApi<AppBootstrapResponse | null>(
-      '/api/v1/bootstrap',
-      bootstrapService.GET as BffDomainService,
-      null,
-    ),
+  const [connected, catalog] = await Promise.all([
     callAppApi<ConnectedIntegrationsResponse | null>(
       '/api/v1/integrations',
       integrationsService.GET as BffDomainService,
@@ -133,5 +125,5 @@ export async function getInitialIntegrationsData(): Promise<InitialIntegrationsR
     ),
   ])
 
-  return { bootstrap, connected, catalog }
+  return { connected, catalog }
 }

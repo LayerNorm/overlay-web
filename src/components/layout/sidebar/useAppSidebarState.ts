@@ -6,6 +6,8 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useCallback, useMemo, useRef, useSyncExternalStore, type Dispatch, type SetStateAction } from 'react'
 import { TOUR_NAVIGATION_EVENT } from './tour-navigation'
 import { MessageSquare } from 'lucide-react'
+import { useConvex } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import type { PrimaryRailItem } from './AppSidebarPrimaryRail'
 import {
   resolveOverlayAppShellConfig,
@@ -333,6 +335,12 @@ function useSidebarPanelChrome(args: {
   const shouldLoadCollaborationUnread = Boolean(user) && Boolean(activeWorkspaceId)
 
   const solo = useIsSoloWorkspace()
+  const convex = useConvex()
+  const findRooms = useCallback(async (kind: 'dm' | 'channel') => (
+    activeWorkspaceId
+      ? (await convex.query(api.collaboration.roomList.list, { workspaceId: activeWorkspaceId, kind }))?.rooms ?? null
+      : null
+  ), [activeWorkspaceId, convex])
   const panelNav = resolveSecondaryPanelNav({
     panelKind: routeState.panelKind,
 
@@ -350,6 +358,7 @@ function useSidebarPanelChrome(args: {
     closeMobileDrawer,
     beginSecondaryNavigation,
     solo,
+    findRooms,
   })
 
   const { access: createAccess, viewer: createViewer, canCreate } = useWorkspaceCreateAccess()
@@ -470,7 +479,6 @@ function useSidebarDerivedPanels(args: {
   setMobileView: Dispatch<SetStateAction<'nav' | 'panel'>>
   setMobileAccountOpen: Dispatch<SetStateAction<boolean>>
   setAccountMenuOpen: Dispatch<SetStateAction<boolean>>
-  setChatPanelRefreshKey: Dispatch<SetStateAction<number>>
   mobileMenuOpen: boolean
 }) {
   const {
@@ -507,7 +515,6 @@ function useSidebarDerivedPanels(args: {
     setMobileView,
     setMobileAccountOpen,
     setAccountMenuOpen,
-    setChatPanelRefreshKey,
     mobileMenuOpen,
   } = args
   const savedScope = useSavedPanelScope()
@@ -562,7 +569,6 @@ function useSidebarDerivedPanels(args: {
     pathname,
     requireAuth,
     onCloseMobileMenu: closeMobileDrawer,
-    onChatCreated: () => setChatPanelRefreshKey((value: number) => value + 1),
   })
 
   useSidebarNavHotkeys({
@@ -767,7 +773,6 @@ export function useAppSidebarState({
   const setSidebarCollapsed = useCallback((next: boolean) => {
     setStoredSidebarCollapsed(next)
   }, [])
-  const [chatPanelRefreshKey, setChatPanelRefreshKey] = useState(0)
   const menuRef = useRef<HTMLDivElement>(null)
   const mobileMenuRef = useRef<HTMLDivElement>(null)
   const mobileAccountRef = useRef<HTMLDivElement>(null)
@@ -836,7 +841,6 @@ export function useAppSidebarState({
     setMobileView,
     setMobileAccountOpen,
     setAccountMenuOpen,
-    setChatPanelRefreshKey,
     mobileMenuOpen,
   })
 
@@ -868,7 +872,6 @@ export function useAppSidebarState({
     mobileAccountRef,
     sidebarCollapsed,
     setSidebarCollapsed,
-    chatPanelRefreshKey,
     hideTemporaryChatChrome,
     createChat,
     globalSearchOpen,

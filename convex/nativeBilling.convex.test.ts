@@ -105,9 +105,9 @@ test('entitlements show the live balance and follow charges; an unfunded workspa
   })
 })
 
-test('with billing off the entitlements query yields to the booted entitlements and nothing is gated', async () => {
+test('with billing off the entitlements are the member’s own, live, and nothing is gated', async () => {
   const { as } = await fixture({ billing: false })
-  expect(await as('mark').query(fn.entitlements, { workspaceId: 'ws' })).toBeNull()
+  expect(await as('mark').query(fn.entitlements, { workspaceId: 'ws' })).toMatchObject({ tier: expect.any(String) })
   expect(await as('mark').query(fn.summary, { workspaceId: 'ws' })).toMatchObject({ executionAccess: { state: 'ready', canExecute: true } })
   expect(await as('stranger').query(fn.entitlements, { workspaceId: 'ws' })).toBeNull()
 })
