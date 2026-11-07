@@ -25,7 +25,7 @@ import {
 import { useHasConvexClient } from '@/components/providers/ConvexAuthProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { PersonalChatErrorBoundary } from './personal-chat-error-boundary'
-import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
+import { usePersonalChatCommands, type PersonalChatCommands } from './usePersonalChatCommands'
 import {
   isWorkspaceRouteTargetPending,
   legacyWorkspaceScopeForRoute,
@@ -38,9 +38,6 @@ export type PersonalChatSummary = NonNullable<FunctionReturnType<typeof api.chat
 export type NativePersonalCreateArgs = FunctionArgs<typeof api.chat.personal.create>
 export type NativePersonalSubmitArgs = FunctionArgs<typeof api.chat.personal.submit>
 export type NativePersonalPreferencesArgs = FunctionArgs<typeof api.chat.personal.setPreferences>
-type NativeDeleteTurnArgs = FunctionArgs<typeof api.chat.personal.deleteTurn>
-type NativeBranchArgs = FunctionArgs<typeof api.chat.personal.branch>
-type NativeGeneratedUiInput = { conversationId: string; messageId: string; partId: string; data: GeneratedUiData }
 type ListStatus = 'disabled' | 'loading' | 'ready' | 'unavailable'
 type PersonalTranscriptRow = FunctionReturnType<typeof api.chat.personal.getMessages>['page'][number]
 
@@ -78,11 +75,11 @@ type PersonalChatContextValue = {
   create(args: NativePersonalCreateArgs): Promise<Id<'conversations'>>
   submit(args: NativePersonalSubmitArgs): Promise<FunctionReturnType<typeof api.chat.personal.submit>>
   setPreferences(args: NativePersonalPreferencesArgs): Promise<void>
-  deleteTurn(args: NativeDeleteTurnArgs): Promise<void>
-  branch(args: NativeBranchArgs): Promise<string>
-  setGeneratedUi(args: NativeGeneratedUiInput): Promise<void>
-  addAssistantNote(conversationId: string, turnId: string, text: string): Promise<void>
-  findRecentChat(scope: 'personal' | 'workspace'): Promise<string | null>
+  deleteTurn: PersonalChatCommands['deleteTurn']
+  branch: PersonalChatCommands['branch']
+  setGeneratedUi: PersonalChatCommands['setGeneratedUi']
+  addAssistantNote: PersonalChatCommands['addAssistantNote']
+  findRecentChat: PersonalChatCommands['findRecentChat']
   setPendingTranscriptConversation(
     conversationId: string | null,
     ownerId?: string | null,
@@ -113,6 +110,22 @@ const emptyTranscript: PersonalChatTranscript = {
 
 const emptyExecution: PersonalChatExecution = { status: 'disabled', value: null }
 
+const unavailable = async (): Promise<never> => { throw new Error('Native personal chat is unavailable') }
+const unavailableActions = {
+  create: unavailable,
+  submit: unavailable,
+  setPreferences: unavailable,
+  deleteTurn: unavailable,
+  branch: unavailable,
+  setGeneratedUi: unavailable,
+  addAssistantNote: unavailable,
+  findRecentChat: async () => null,
+  setPendingTranscriptConversation() {},
+  rename: unavailable,
+  setArchived: unavailable,
+  setRead: unavailable,
+}
+
 const PersonalChatContext = createContext<PersonalChatContextValue>({
   configured: false,
   available: false,
@@ -124,18 +137,7 @@ const PersonalChatContext = createContext<PersonalChatContextValue>({
   execution: emptyExecution,
   active: emptyList,
   archived: emptyList,
-  async create() { throw new Error('Native personal chat is unavailable') },
-  async submit() { throw new Error('Native personal chat is unavailable') },
-  async setPreferences() { throw new Error('Native personal chat is unavailable') },
-  async deleteTurn() { throw new Error('Native personal chat is unavailable') },
-  async branch() { throw new Error('Native personal chat is unavailable') },
-  async setGeneratedUi() { throw new Error('Native personal chat is unavailable') },
-  async addAssistantNote() { throw new Error('Native personal chat is unavailable') },
-  async findRecentChat() { return null },
-  setPendingTranscriptConversation() {},
-  async rename() {},
-  async setArchived() {},
-  async setRead() {},
+  ...unavailableActions,
 })
 
 export function PersonalChatProvider({ children }: { children: ReactNode }) {
@@ -158,18 +160,7 @@ export function PersonalChatProvider({ children }: { children: ReactNode }) {
       execution: { ...emptyExecution, status },
       active: { ...emptyList, status },
       archived: { ...emptyList, status },
-      async create() { throw new Error('Native personal chat is unavailable') },
-      async submit() { throw new Error('Native personal chat is unavailable') },
-      async setPreferences() { throw new Error('Native personal chat is unavailable') },
-      async deleteTurn() { throw new Error('Native personal chat is unavailable') },
-      async branch() { throw new Error('Native personal chat is unavailable') },
-      async setGeneratedUi() { throw new Error('Native personal chat is unavailable') },
-      async addAssistantNote() { throw new Error('Native personal chat is unavailable') },
-      async findRecentChat() { return null },
-      setPendingTranscriptConversation() {},
-      async rename() { throw new Error('Native personal chat is unavailable') },
-      async setArchived() { throw new Error('Native personal chat is unavailable') },
-      async setRead() { throw new Error('Native personal chat is unavailable') },
+      ...unavailableActions,
     }
     return <PersonalChatContext.Provider value={value}>{children}</PersonalChatContext.Provider>
   }
@@ -190,18 +181,7 @@ export function PersonalChatProvider({ children }: { children: ReactNode }) {
         execution: { ...emptyExecution, status: 'unavailable' },
         active: { ...emptyList, status: 'unavailable' },
         archived: { ...emptyList, status: 'unavailable' },
-        async create() { throw new Error('Native personal chat is unavailable') },
-        async submit() { throw new Error('Native personal chat is unavailable') },
-        async setPreferences() { throw new Error('Native personal chat is unavailable') },
-        async deleteTurn() { throw new Error('Native personal chat is unavailable') },
-        async branch() { throw new Error('Native personal chat is unavailable') },
-        async setGeneratedUi() { throw new Error('Native personal chat is unavailable') },
-        async addAssistantNote() { throw new Error('Native personal chat is unavailable') },
-        async findRecentChat() { return null },
-        setPendingTranscriptConversation() {},
-        async rename() { throw new Error('Native personal chat is unavailable') },
-        async setArchived() { throw new Error('Native personal chat is unavailable') },
-        async setRead() { throw new Error('Native personal chat is unavailable') },
+        ...unavailableActions,
       }}
     >
       <NativePersonalChatProvider
@@ -232,17 +212,6 @@ function isChatConsumerPath(pathname: string | null): boolean {
     return segments[2] === 'chat'
   }
   return segments[1] === 'chat'
-}
-
-function generatedUiMutationArgs(workspaceId: string | null, args: NativeGeneratedUiInput) {
-  if (!workspaceId) throw new Error('Native personal chat is unavailable')
-  return {
-    workspaceId,
-    conversationId: args.conversationId as Id<'conversations'>,
-    messageId: args.messageId as Id<'conversationMessages'>,
-    partId: args.partId,
-    data: args.data as FunctionArgs<typeof api.chat.personal.setGeneratedUi>['data'],
-  }
 }
 
 function isAutomationConsumerPath(pathname: string | null): boolean {
@@ -453,28 +422,7 @@ function NativePersonalChatProvider({
   const setPreferences = useCallback(async (args: NativePersonalPreferencesArgs) => {
     await preferencesMutation(args)
   }, [preferencesMutation])
-  const deleteTurnMutation = useMutation(api.chat.personal.deleteTurn)
-  const branchMutation = useMutation(api.chat.personal.branch)
-  const generatedUiMutation = useMutation(api.chat.personal.setGeneratedUi)
-  const noteMutation = useMutation(api.chat.personal.addAssistantNote)
-  const deleteTurn = useCallback(async (args: NativeDeleteTurnArgs) => {
-    await deleteTurnMutation(args)
-  }, [deleteTurnMutation])
-  const branch = useCallback((args: NativeBranchArgs) => branchMutation(args), [branchMutation])
-  const setGeneratedUi = useCallback(async (args: NativeGeneratedUiInput) => {
-    await generatedUiMutation(generatedUiMutationArgs(workspaceId, args))
-  }, [generatedUiMutation, workspaceId])
-  const addAssistantNote = useCallback(async (conversationId: string, turnId: string, text: string) => {
-    if (!workspaceId) return
-    await noteMutation({ workspaceId, conversationId: conversationId as Id<'conversations'>, turnId, text })
-  }, [noteMutation, workspaceId])
-  const findRecentChat = useCallback(async (scope: 'personal' | 'workspace') => {
-    if (!workspaceId) return null
-    const result = await client.query(api.chat.personal.list, {
-      workspaceId, archived: false, scope, paginationOpts: { numItems: 10, cursor: null },
-    })
-    return result.page[0]?._id ?? null
-  }, [client, workspaceId])
+  const { deleteTurn, branch, setGeneratedUi, addAssistantNote, findRecentChat } = usePersonalChatCommands(workspaceId)
   const baseListStatus = personalChatListStatus({ configured, workspaceReady, authLoading, workspaceId, isAuthenticated })
   const activeStatus = !needsActiveList || temporaryActive
     ? 'disabled'
