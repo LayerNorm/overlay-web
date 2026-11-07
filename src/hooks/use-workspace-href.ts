@@ -40,7 +40,10 @@ function isAddressableWorkspaceHref(
   descriptor: NonNullable<ReturnType<typeof readWorkspaceRouteDescriptor>>,
   source: URL,
 ): boolean {
+  // An archived chat link names its workspace, so a pasted link or a reload opens it there and not in whichever
+  // workspace happens to be active.
   return (SCOPED_WORKSPACE_SURFACES.has(descriptor.surface)
+    || descriptor.surface === 'archived'
     || isWorkspaceManagementSettingsRoute(descriptor, source.searchParams))
     && source.searchParams.get('section') !== 'account'
 }
