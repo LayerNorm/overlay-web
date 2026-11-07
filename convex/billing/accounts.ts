@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { mutation, query } from '../_generated/server'
+import { mutation, query, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { assertBillingAccountOwnership } from '../../src/shared/billing/billing-account'
 import {
@@ -47,17 +47,22 @@ export const getWorkspaceByWorkspaceIdByServer = query({
   returns: v.union(billingAccountValidator, v.null()),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const rows = await ctx.db
-      .query('billingAccounts')
-      .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId.trim()))
-      .take(2)
-    if (rows.length > 1) throw new Error('duplicate_workspace_billing_accounts')
-    const account = rows[0]
-    if (!account) return null
-    assertBillingAccountOwnership(account)
-    return toBillingAccountRecord(account)
+    return await workspaceBillingAccountFor(ctx, args)
   },
 })
+
+/** A workspace's billing account record, or null when it has no wallet yet. */
+export async function workspaceBillingAccountFor(ctx: Pick<QueryCtx, 'db'>, args: { workspaceId: string }) {
+  const rows = await ctx.db
+    .query('billingAccounts')
+    .withIndex('by_workspaceId', (q) => q.eq('workspaceId', args.workspaceId.trim()))
+    .take(2)
+  if (rows.length > 1) throw new Error('duplicate_workspace_billing_accounts')
+  const account = rows[0]
+  if (!account) return null
+  assertBillingAccountOwnership(account)
+  return toBillingAccountRecord(account)
+}
 
 export const ensurePersonalByServer = mutation({
   args: {

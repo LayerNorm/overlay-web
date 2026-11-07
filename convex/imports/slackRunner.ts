@@ -1,6 +1,6 @@
 import { fetchAppCallback } from '../lib/appCallback'
 import { v } from 'convex/values'
-import { internalAction, internalMutation, query } from '../_generated/server'
+import { internalAction, internalMutation, internalQuery } from '../_generated/server'
 import { validateServerSecret } from '../lib/auth'
 import type { Id } from '../_generated/dataModel'
 import { internal as _internal } from '../_generated/api'
@@ -13,7 +13,7 @@ const internal = _internal as any
  * List queued Slack import jobs that haven't been picked up yet
  * (server-secret only, called by the cron action).
  */
-export const listQueuedJobsInternal = query({
+export const listQueuedJobsInternal = internalQuery({
   args: {
     serverSecret: v.string(),
     limit: v.optional(v.number()),
@@ -48,7 +48,7 @@ export const listQueuedJobsInternal = query({
  * List stuck Slack import jobs (in 'importing' or 'listing_channels' status
  * but not updated recently — likely the worker was killed).
  */
-export const listStuckJobsInternal = query({
+export const listStuckJobsInternal = internalQuery({
   args: {
     serverSecret: v.string(),
     staleAfterMs: v.optional(v.number()),

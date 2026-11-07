@@ -7,19 +7,17 @@ import {
 } from '@overlay/workspace-contracts'
 import type { BillingProvider } from '@overlay/app-core'
 import type { WorkspaceService } from '@/server/workspaces/WorkspaceService'
-import { centsToBillingCredits } from '@/shared/billing/billing-account'
 import {
   clampPaidPlanAmountCents,
   clampTopUpAmountCents,
   isValidTopUpAmount,
   quantityToPlanAmountCents,
 } from '@/shared/billing/billing-pricing'
-import { autoTopUpFitsLimit, validateAutoTopUpInput } from '@/shared/billing/auto-top-up'
-import { workspaceUsageSummary } from './workspace-usage-summary'
-import type { BillingRepository, BillingSubscriptionRecord } from './BillingRepository'
+import { validateAutoTopUpInput } from '@/shared/billing/auto-top-up'
+import { billingPeriodStartOf, composeWorkspaceBillingSummary } from '@/shared/billing/workspace-billing-summary'
+import type { BillingRepository } from './BillingRepository'
 import type { UsageRepository } from '@/server/usage/UsageRepository'
 import { BillingServiceError } from './BillingCustomerService'
-import { workspaceExecutionAccess } from '@/shared/billing/execution-access'
 
 type Deps = {
   billingEnabled?: () => Promise<boolean>
@@ -57,50 +55,31 @@ export class WorkspaceBillingService {
       limitBytes: actorEntitlements?.overlayStorageBytesLimit ?? 0,
     }
     const billingEnabled = await this.deps.billingEnabled?.() ?? true
-    if (!account) return { ...emptySummary(access.workspace.id, canManage, canTopUp, storage), executionAccess: workspaceExecutionAccess({ billingEnabled, remainingCents: 0 }) }
-    const [entitlements, subscription] = await Promise.all([
-      this.deps.repository.getBillingAccountEntitlementsByServer({ billingAccountId: account.billingAccountId }),
-      this.deps.repository.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId }),
-    ])
-    const totalCents = entitlements?.budgetTotalCents ?? 0
-    const usedCents = entitlements?.budgetUsedCents ?? 0
-    const remainingCents = entitlements?.budgetRemainingCents ?? 0
-    return {
+    const [balance, plan] = account
+      ? await Promise.all([
+          this.deps.repository.getBillingAccountEntitlementsByServer({ billingAccountId: account.billingAccountId }),
+          this.deps.repository.getBillingAccountSubscriptionByServer({ billingAccountId: account.billingAccountId }),
+        ])
+      : [null, null]
+    const now = Date.now()
+    const usageTotals = account && plan?.planKind === 'paid'
+      ? await this.deps.repository.getBillingAccountUsageTotalsByServer({
+          billingAccountId: account.billingAccountId,
+          periodStart: billingPeriodStartOf(plan, now),
+        })
+      : undefined
+    return composeWorkspaceBillingSummary({
       workspaceId: access.workspace.id,
       canManage,
       canTopUp,
-      initialized: true,
-      executionAccess: workspaceExecutionAccess({ billingEnabled, accountStatus: account.status, subscription, remainingCents }),
-      pricingVersion: account.pricingVersion,
-      credits: {
-        total: centsToBillingCredits(totalCents),
-        used: centsToBillingCredits(usedCents),
-        remaining: centsToBillingCredits(remainingCents),
-        allowancePercentUsed: entitlements?.allowancePercentUsed ?? 0,
-        topUpBalance: centsToBillingCredits(entitlements?.topUpBalanceCents ?? 0),
-      },
-      subscription: {
-        planKind: subscription?.planKind ?? 'free',
-        planAmountCents: subscription?.planAmountCents ?? 0,
-        ...(subscription?.status ? { status: subscription.status } : {}),
-        ...(subscription?.currentPeriodEnd ? { currentPeriodEnd: subscription.currentPeriodEnd } : {}),
-      },
+      billingEnabled,
       storage,
-      ...(subscription?.planKind === 'paid'
-        ? {
-            autoTopUp: autoTopUpSummary(subscription),
-            usage: workspaceUsageSummary(
-              await this.deps.repository.getBillingAccountUsageTotalsByServer({
-                billingAccountId: account.billingAccountId,
-                periodStart: periodStartOf(subscription),
-              }),
-              subscription,
-              periodStartOf(subscription),
-              usedCents,
-            ),
-          }
-        : {}),
-    }
+      account,
+      balance,
+      plan,
+      usageTotals,
+      now,
+    })
   }
 
   /**
@@ -321,48 +300,5 @@ export class WorkspaceBillingService {
 
   private fail(message: string, statusCode: number): never {
     throw new BillingServiceError({ error: message }, statusCode)
-  }
-}
-
-/** The current billing period, or the last 30 days when the plan has no period yet. */
-function periodStartOf(plan: BillingSubscriptionRecord): number {
-  return plan.currentPeriodStart ?? Date.now() - 30 * 24 * 60 * 60 * 1000
-}
-
-function autoTopUpSummary(plan: BillingSubscriptionRecord): NonNullable<WorkspaceBillingSummaryResponse['autoTopUp']> {
-  const enabled = Boolean(plan.autoTopUpEnabled)
-  const amountCents = plan.autoTopUpAmountCents ?? 0
-  const spentThisPeriodCents = plan.autoTopUpSpentThisPeriodCents ?? 0
-  const monthlyLimitCents = plan.autoTopUpMonthlyLimitCents ?? null
-  return {
-    enabled,
-    amountCents,
-    monthlyLimitCents,
-    spentThisPeriodCents,
-    limitReached: enabled && !autoTopUpFitsLimit({ monthlyLimitCents: monthlyLimitCents ?? undefined, spentThisPeriodCents }, amountCents),
-  }
-}
-
-function emptySummary(
-  workspaceId: string,
-  canManage: boolean,
-  canTopUp: boolean,
-  storage: { usedBytes: number; limitBytes: number },
-): WorkspaceBillingSummaryResponse {
-  return {
-    workspaceId,
-    canManage,
-    canTopUp,
-    initialized: false,
-    pricingVersion: 'markup_25_v1',
-    credits: {
-      total: 0,
-      used: 0,
-      remaining: 0,
-      allowancePercentUsed: 0,
-      topUpBalance: 0,
-    },
-    subscription: { planKind: 'free', planAmountCents: 0 },
-    storage,
   }
 }

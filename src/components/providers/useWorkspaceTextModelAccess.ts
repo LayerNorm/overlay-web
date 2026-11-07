@@ -1,12 +1,13 @@
 'use client'
 
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ChatModel } from '@/shared/ai/gateway/model-types'
 import { getModelsByIntelligence } from '@/shared/ai/gateway/model-data'
 import { byokConnectionsToChatModels } from '@/shared/ai/gateway/byok-model-conversion'
 import { useByokModels } from './useByokModels'
 import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useLiveWorkspaceEntitlements } from '@/hooks/use-billing'
 
 export type WorkspaceModelEntitlements = {
   tier: 'free' | 'pro' | 'max'
@@ -106,8 +107,17 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
   onEntitlementsFetched?: (data: T) => void
 }) {
   const { connections, isLoading: connectionsLoading } = useByokModels()
-  const [entitlements, setEntitlements] = useState<T | null>(null)
-  const [loading, setLoading] = useState(true)
+  // Live when billing is on: every charge, top-up and payment updates the gates and meters without refetching.
+  const live = useLiveWorkspaceEntitlements<T>(activeWorkspaceId, billingEnabled)
+  const [bootstrapEntitlements, setBootstrapEntitlements] = useState<T | null>(null)
+  const [bootstrapLoading, setBootstrapLoading] = useState(true)
+  const entitlements = billingEnabled ? live ?? null : bootstrapEntitlements
+  const loading = billingEnabled ? live === undefined : bootstrapLoading
+  const liveRef = useRef(live)
+  useEffect(() => { liveRef.current = live }, [live])
+  useEffect(() => {
+    if (billingEnabled && live) onEntitlementsFetched?.(live)
+  }, [billingEnabled, live, onEntitlementsFetched])
   const bootstrapEntitlementsKeyRef = useRef<string | null>(null)
   const derived = resolveEntitlementDerived(entitlements, billingEnabled, onlyAllowZdrModels)
   const selectableTextModels = useMemo(() => {
@@ -144,7 +154,7 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
   const loadBootstrapEntitlements = useCallback(async () => {
     const key = activeWorkspaceId ?? ''
     if (bootstrapEntitlementsKeyRef.current === key) return null
-    setLoading(true)
+    setBootstrapLoading(true)
     try {
       const response = await overlayAppClient.bootstrap.getResponse({
         cache: 'no-store',
@@ -155,38 +165,23 @@ export function useWorkspaceTextModelAccess<T extends WorkspaceModelEntitlements
       if (!response.ok) return null
       const data = await response.json() as { entitlements?: T | null }
       bootstrapEntitlementsKeyRef.current = key
-      setEntitlements(data.entitlements ?? null)
+      setBootstrapEntitlements(data.entitlements ?? null)
       return data.entitlements ?? null
     } catch {
       return null
     } finally {
-      setLoading(false)
+      setBootstrapLoading(false)
     }
   }, [activeWorkspaceId])
 
+  /**
+   * The current entitlements. With billing on they are live, so this never fetches (callers that used to refresh
+   * after each turn get the newest snapshot); with billing off it loads the booted entitlements once per workspace.
+   */
   const loadSubscription = useCallback(async () => {
-    if (!billingEnabled) {
-      return await loadBootstrapEntitlements()
-    }
-    setLoading(true)
-    try {
-      const response = await overlayAppClient.subscription.getResponse({
-        cache: 'no-store',
-        ...(activeWorkspaceId
-          ? { headers: { [ACTIVE_WORKSPACE_HEADER]: activeWorkspaceId } }
-          : {}),
-      })
-      if (!response.ok) return null
-      const data = await response.json() as T
-      setEntitlements(data)
-      onEntitlementsFetched?.(data)
-      return data
-    } catch {
-      return null
-    } finally {
-      setLoading(false)
-    }
-  }, [activeWorkspaceId, billingEnabled, loadBootstrapEntitlements, onEntitlementsFetched])
+    if (!billingEnabled) return await loadBootstrapEntitlements()
+    return liveRef.current ?? null
+  }, [billingEnabled, loadBootstrapEntitlements])
 
   return {
     ...derived,
