@@ -1,15 +1,14 @@
 'use client'
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useCallback, useLayoutEffect, useRef } from 'react'
 import type { NativePersonalExecutionState } from '@/components/providers/native-personal-execution'
 import {
-  NATIVE_THREAD_SAFETY_CHANGED,
-  nativeThreadSafetyErrorStatus,
   nativeThreadSafetyNotice,
   nativeThreadSafetyStatus,
   type NativeThreadSafetyStatus,
 } from '@/shared/chat/native-thread-safety'
+
+export type RoomCompatibility = { compatibility: unknown; agentId: string | null }
 
 export function useNativeThreadSafety({
   conversationId,
@@ -20,6 +19,7 @@ export function useNativeThreadSafety({
   nativeExecution,
   verifiedUserId,
   scopeSynchronized = true,
+  liveCompatibility,
 }: {
   conversationId: string | null
   scopeConversationId?: string | null
@@ -29,6 +29,8 @@ export function useNativeThreadSafety({
   nativeExecution?: NativePersonalExecutionState
   verifiedUserId?: string | null
   scopeSynchronized?: boolean
+  /** Rooms pass `useRoomCompatibility`: undefined while loading, null without access. */
+  liveCompatibility?: RoomCompatibility | null
 }) {
   const scope = JSON.stringify([workspaceId, scopeConversationId, threadRootMessageId, verifiedUserId])
   const activeScope = useRef<string | null>(scope)
@@ -38,9 +40,12 @@ export function useNativeThreadSafety({
       if (activeScope.current === scope) activeScope.current = null
     }
   }, [scope])
-  const request = useRef(0)
   const writeCheck = useRef<{ scope: string } | null>(null)
-  const [snapshot, setSnapshot] = useState<{ scope: string; status: NativeThreadSafetyStatus; agentId?: string } | null>(null)
+  // Rooms read writability live instead of fetching it on every open and focus.
+  const live = liveCompatibility
+  const roomStatus: NativeThreadSafetyStatus = !conversationId
+    ? 'writable'
+    : live === undefined ? 'checking' : live === null ? 'error' : nativeThreadSafetyStatus(live.compatibility)
   const execution = nativeExecution?.status === 'ready' ? nativeExecution.value : null
   const nativeIdentityMatches = Boolean(execution
     && execution.conversationId === conversationId
@@ -56,33 +61,12 @@ export function useNativeThreadSafety({
         : nativeIdentityMatches
           ? nativeThreadSafetyStatus(execution?.compatibility)
           : 'unavailable'
-  const status = nativeMode
-    ? nativeStatus
-    : !conversationId ? 'writable' : snapshot?.scope === scope ? snapshot.status : 'checking'
+  const status = nativeMode ? nativeStatus : roomStatus
 
-  const refresh = useCallback(async () => {
-    if (activeScope.current !== scope) return 'error'
-    if (nativeMode) return nativeStatus
-    if (!conversationId) return 'writable'
-    const revision = ++request.current
-    let next: NativeThreadSafetyStatus
-    let agentId: string | undefined
-    try {
-      const result = await overlayAppClient.conversations.get<{ nativeThreadCompatibility?: unknown; agentId?: string }>({
-        conversationId,
-        ...(threadRootMessageId ? { threadRootMessageId } : {}),
-      })
-      next = nativeThreadSafetyStatus(result.nativeThreadCompatibility)
-      agentId = result.agentId
-    } catch (error) {
-      next = nativeThreadSafetyErrorStatus(error)
-    }
-    if (activeScope.current === scope && request.current === revision) {
-      setSnapshot({ scope, status: next, agentId })
-      return next
-    }
-    return 'error'
-  }, [conversationId, nativeMode, nativeStatus, scope, threadRootMessageId])
+  // Both sources are live, so a check reads the current answer instead of fetching.
+  const refresh = useCallback(async (): Promise<NativeThreadSafetyStatus> => (
+    activeScope.current === scope ? status : 'error'
+  ), [scope, status])
 
   const checkWritable = useCallback(async () => {
     if (activeScope.current !== scope || writeCheck.current?.scope === scope) {
@@ -101,27 +85,6 @@ export function useNativeThreadSafety({
 
   const isCurrentScope = useCallback(() => activeScope.current === scope, [scope])
 
-  useEffect(() => {
-    if (nativeMode) return
-    const initialRefreshTimer = window.setTimeout(() => { void refresh() }, 0)
-    const recheck = () => { void refresh() }
-    window.addEventListener('focus', recheck)
-    window.addEventListener(NATIVE_THREAD_SAFETY_CHANGED, recheck)
-    return () => {
-      window.clearTimeout(initialRefreshTimer)
-      request.current += 1
-      window.removeEventListener('focus', recheck)
-      window.removeEventListener(NATIVE_THREAD_SAFETY_CHANGED, recheck)
-    }
-  }, [nativeMode, refresh])
-
-  useEffect(() => {
-    if (nativeMode) return
-    if (status !== 'unavailable') return
-    const timer = window.setTimeout(() => { void refresh() }, 10_000)
-    return () => window.clearTimeout(timer)
-  }, [nativeMode, refresh, snapshot, status])
-
   return {
     status,
     readOnly: status !== 'writable',
@@ -132,7 +95,7 @@ export function useNativeThreadSafety({
     isCurrentScope,
     agentId: nativeMode
       ? (execution?.compatibility as { agentId?: string } | undefined)?.agentId
-      : snapshot?.scope === scope ? snapshot.agentId : undefined,
+      : live?.agentId ?? undefined,
   }
 }
 

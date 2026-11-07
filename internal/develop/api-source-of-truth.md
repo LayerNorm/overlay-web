@@ -321,8 +321,10 @@ New owner sessions use `flowVersion: 2` and revision-checked name, about, team, 
   identity only through `nativeRoomActor`, never from client arguments. Send stays on
   `POST /api/v1/conversations/message` because it starts agent runs and mention email; its optimistic
   rows reconcile against the live query. `GET /api/v1/conversations?messages=true` and the message
-  PATCH/DELETE routes remain for desktop and API clients, and the pre-send thread writability probe
-  stays on HTTP with send.
+  PATCH/DELETE routes remain for desktop and API clients. Room and thread writability is the live
+  `collaboration/rooms:compatibility` query (read through `useRoomCompatibility`), so opening a room
+  or focusing the window fetches nothing; send still enforces it on the server. The former
+  thread-safety-changed event and response observer are removed.
 - Room metadata is native too. `collaboration/rooms:state` returns the room's participants, channel
   facts, reactions, pins, the member's saves and followed threads in it, and presence, or null once
   the member is removed, which closes the room in every open client. Actions are native mutations

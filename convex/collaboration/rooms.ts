@@ -4,6 +4,7 @@ import { mutation, query } from '../_generated/server'
 import type { QueryCtx } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
 import { hydrateRemoteMessage, hydrateRemoteMessages } from '../lib/remoteMessageText'
+import { nativeThreadCompatibility } from '../lib/nativeThreadCompatibility'
 import {
   addParticipantFor,
   deleteRoomMessage,
@@ -43,6 +44,28 @@ async function readableRoom(ctx: QueryCtx, args: { workspaceId: string; conversa
     throw error
   }
 }
+
+/**
+ * Whether new messages may be posted to this conversation or one of its threads, live. Send still
+ * enforces it on the server; this lets the composer reflect it without a request per open or focus.
+ * Null when the member cannot access the conversation.
+ */
+export const compatibility = query({
+  args: { ...roomArgs, threadRootMessageId: v.optional(v.id('conversationMessages')) },
+  handler: async (ctx, args) => {
+    try {
+      const actor = await nativeRoomActor(ctx, args.workspaceId)
+      const access = await requireConversationAccess(ctx, { ...actor, conversationId: args.conversationId })
+      return {
+        compatibility: await nativeThreadCompatibility(ctx, access.conversation, args.threadRootMessageId),
+        agentId: access.conversation.agentId ?? null,
+      }
+    } catch (error) {
+      if (error instanceof Error && (DENIED.has(error.message) || error.message === 'INVALID_THREAD_ROOT')) return null
+      throw error
+    }
+  },
+})
 
 /** The room's header facts for a member who may read it, or null; drives the unavailable state. */
 export const access = query({

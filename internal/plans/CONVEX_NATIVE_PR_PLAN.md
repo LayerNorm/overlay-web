@@ -249,7 +249,7 @@ Known and not fixed here: the scope-mismatch redirect takes 4 to 9 s and the Wor
 
 **Retirement/non-goals:** remove room HTTP transcript ownership and loading gates. Participant administration and collaborative metadata are CN-10; preserve their current behavior until then.
 
-**Implemented (Phase C PR):** `collaboration/rooms:access|messages|message|editMessage|deleteMessage` with native identity through `nativeRoomActor`; a thread-root index fixes roots and replies older than the newest 500 rows. Removes the HTTP initial load, older-message pager, token watch query and post-action reloads. Send and the pre-send writability probe stay on HTTP because send starts agent runs and mention email.
+**Implemented (Phase C PR):** `collaboration/rooms:access|messages|message|editMessage|deleteMessage` with native identity through `nativeRoomActor`; a thread-root index fixes roots and replies older than the newest 500 rows. Removes the HTTP initial load, older-message pager, token watch query and post-action reloads. Writability is the live `rooms:compatibility` query, replacing an HTTP probe on every open and window focus that preview QA showed could trip the per-user rate limit. Send stays on HTTP because it starts agent runs and mention email.
 
 ### CN-09. Make agent thread navigation and archive immediate
 

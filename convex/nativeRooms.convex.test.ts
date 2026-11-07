@@ -9,6 +9,7 @@ const messages = makeFunctionReference<'query'>('collaboration/rooms:messages')
 const message = makeFunctionReference<'query'>('collaboration/rooms:message')
 const edit = makeFunctionReference<'mutation'>('collaboration/rooms:editMessage')
 const remove = makeFunctionReference<'mutation'>('collaboration/rooms:deleteMessage')
+const compatibility = makeFunctionReference<'query'>('collaboration/rooms:compatibility')
 const page = (numItems: number, cursor: string | null = null) => ({ numItems, cursor })
 
 type Row = { id: string; content: string; threadRootMessageId?: string; deletedAt?: number }
@@ -89,4 +90,12 @@ test('only the author edits or deletes a message, and both change it in place', 
   expect(await as('bob').mutation(remove, args)).toBe(false)
   expect(await as('alice').mutation(remove, args)).toBe(true)
   expect((await as('bob').query(message, args) as Row).deletedAt).toBeTypeOf('number')
+})
+
+test('room writability is readable live by participants only', async () => {
+  const { as, ids } = await fixture()
+  const args = { workspaceId: 'ws', conversationId: ids.channel }
+  expect(await as('alice').query(compatibility, args)).toEqual({ compatibility: { readOnly: false }, agentId: null })
+  expect(await as('alice').query(compatibility, { ...args, threadRootMessageId: ids.root })).toEqual({ compatibility: { readOnly: false }, agentId: null })
+  expect(await as('carol').query(compatibility, args)).toBeNull()
 })

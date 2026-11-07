@@ -1,12 +1,13 @@
 'use client'
 
 import { useAgentDirectory as useLiveAgentDirectory } from '@/hooks/use-agent-directory'
-import { useMutation } from 'convex/react'
+import { useConvex, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import type { RoomPaging, RoomSummary } from './collaboration/ConvexRoomMessageSubscription'
 import { useRoomState, type RoomStateApi } from './collaboration/useRoomState'
+import { useRoomCompatibility } from './collaboration/useRoomCompatibility'
 import {
   useCallback,
   useEffect,
@@ -2045,6 +2046,7 @@ export function useDirectMessageRoom({
   onOpenAttachmentPreview: RoomMessageContext['onOpenAttachmentPreview']
 }) {
   const createAgentThread = useMutation(api.agents.threads.create)
+  const convex = useConvex()
 
   const [menuOpen, setMenuOpen] = useState(false)
   const menuTriggerRef = useRef<HTMLButtonElement>(null)
@@ -2062,11 +2064,20 @@ export function useDirectMessageRoom({
   const roster = useRoomRoster({ room, noteParticipantsLoaded: readMarkers.noteParticipantsLoaded })
   const collab = useRoomCollaboration({ room })
   const thread = useThreadPanel({ conversationId, room, setRoomPanel })
-  const nativeThreadSafety = useNativeThreadSafety({ conversationId, workspaceId: activeWorkspaceId })
+  const roomCompatibility = useRoomCompatibility({ workspaceId: activeWorkspaceId, conversationId })
+  const selectedCompatibility = useRoomCompatibility({
+    workspaceId: activeWorkspaceId,
+    conversationId: thread.threadRootId ? conversationId : null,
+    threadRootMessageId: thread.threadRootId,
+  })
+  const nativeThreadSafety = useNativeThreadSafety({
+    conversationId, workspaceId: activeWorkspaceId, liveCompatibility: roomCompatibility,
+  })
   const selectedThreadSafety = useNativeThreadSafety({
     conversationId: thread.threadRootId ? conversationId : null,
     workspaceId: activeWorkspaceId,
     threadRootMessageId: thread.threadRootId ?? undefined,
+    liveCompatibility: selectedCompatibility,
   })
   const effectiveSelectedThreadSafety = nativeThreadSafety.readOnly
     ? nativeThreadSafety
@@ -2084,10 +2095,13 @@ export function useDirectMessageRoom({
       return checkSelectedThreadWritable()
     }
     try {
-      const result = await overlayAppClient.conversations.get<{
-        nativeThreadCompatibility?: unknown
-      }>({ conversationId, threadRootMessageId: root })
-      const status = nativeThreadSafetyStatus(result.nativeThreadCompatibility)
+      if (!activeWorkspaceId) return { accepted: false, status: 'error' as const }
+      const result = await convex.query(api.collaboration.rooms.compatibility, {
+        workspaceId: activeWorkspaceId,
+        conversationId: conversationId as Id<'conversations'>,
+        threadRootMessageId: root as Id<'conversationMessages'>,
+      })
+      const status = result ? nativeThreadSafetyStatus(result.compatibility) : 'error'
       return {
         accepted: status === 'writable',
         status,
@@ -2096,6 +2110,8 @@ export function useDirectMessageRoom({
       return { accepted: false, status: nativeThreadSafetyErrorStatus(error), error }
     }
   }, [
+    activeWorkspaceId,
+    convex,
     conversationId,
     checkMainRoomWritable,
     checkSelectedThreadWritable,
