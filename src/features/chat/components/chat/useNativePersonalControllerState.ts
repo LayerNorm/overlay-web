@@ -1,6 +1,7 @@
 'use client'
 
-import { useCallback, useLayoutEffect, useMemo, useRef, type Dispatch, type SetStateAction } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, type Dispatch, type SetStateAction } from 'react'
+import { markPersonalChatQueryReady } from '../../lib/realtime-baseline'
 import type { usePersonalChat } from '@/components/providers/PersonalChatProvider'
 import type { ConversationRuntime } from '../chat-interface/types'
 import { useNativeThreadSafety } from './useNativeThreadSafety'
@@ -83,7 +84,6 @@ export function useNativePersonalControllerState({
   activeChatId,
   activeRuntime,
   chatWorkspaceId,
-  hasAutomationContext,
   isNativePersonalChat,
   isTemporaryChat,
   nativePersonal,
@@ -100,7 +100,6 @@ export function useNativePersonalControllerState({
   activeChatId: string | null
   activeRuntime: ConversationRuntime
   chatWorkspaceId: string | null
-  hasAutomationContext: boolean
   isNativePersonalChat(id: string): boolean
   isTemporaryChat: boolean
   nativePersonal: ReturnType<typeof usePersonalChat>
@@ -137,7 +136,6 @@ export function useNativePersonalControllerState({
   const scope = selectNativePersonalScope({
     nativePersonalRoute,
     isTemporaryChat,
-    hasAutomationContext,
     activeChatId,
     isNativePersonalChat,
     pendingRunConversationId,
@@ -204,6 +202,10 @@ export function useNativePersonalControllerState({
     onJournalChange: nativeJournalChanged,
     isCurrentScope: isNativeCommandScopeCurrent,
   })
+  const transcriptReady = scope.enabled && nativePersonal.transcript.status === 'ready' && Boolean(nativePersonal.transcript.conversationId)
+  useEffect(() => {
+    if (transcriptReady) markPersonalChatQueryReady()
+  }, [transcriptReady])
   const executionRun = nativePersonal.execution.value?.run ?? null
   const nativeCurrentTurnId = nativePersonalCurrentTurnId(
     nativeTranscriptState.projection, executionRun, [...nativeJournal.values()],

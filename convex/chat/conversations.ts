@@ -28,7 +28,7 @@ const generatedUiVariant = v.object({
   body: v.string(),
 })
 
-const generatedUiData = v.union(
+export const generatedUiData = v.union(
   v.object({
     version: v.literal(1),
     kind: v.literal('draft.text'),

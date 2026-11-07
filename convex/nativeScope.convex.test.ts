@@ -68,11 +68,11 @@ test('membership revocation and archived principals/workspaces invalidate subseq
   await expect(user.query(personalChat, args)).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
 })
 
-test('personal pilot does not widen access to another owner, shared links, rooms or non-pilot chats', async () => {
+test('native chat access excludes other owners, shared links, rooms, agent threads and external chats', async () => {
   const { t, user, ids, args } = await fixture()
   const patches: Partial<Doc<'conversations'>>[] = [
-    { userId: 'user-b', shareVisibility: 'public' }, { scope: 'workspace' }, { conversationType: 'dm' },
-    { conversationType: 'channel' }, { agentId: 'agent' }, { isAutomation: true },
+    { userId: 'user-b', shareVisibility: 'public' }, { userId: 'user-b', scope: 'workspace' }, { userId: 'user-b', isAutomation: true },
+    { conversationType: 'dm' }, { conversationType: 'channel' }, { agentId: 'agent' },
     { externalPlatform: 'slack' }, { surfaceBindingId: 'binding' }, { deletedAt: 0 }, { workspaceId: undefined },
   ]
   for (const patch of patches) {
@@ -83,6 +83,18 @@ test('personal pilot does not widen access to another owner, shared links, rooms
       args.conversationId = id
     })
     await expect(user.query(personalChat, args)).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+  }
+})
+
+test('an owner can use their own workspace-filed and automation chats', async () => {
+  const { t, user, ids, args } = await fixture()
+  for (const patch of [{ scope: 'workspace' }, { isAutomation: true }] as Partial<Doc<'conversations'>>[]) {
+    await t.run(async ctx => {
+      const original = await ctx.db.get(ids.conversationId)
+      const { _id: _id, _creationTime: _creationTime, ...fields } = original!
+      args.conversationId = await ctx.db.insert('conversations', { ...fields, ...patch })
+    })
+    expect(await user.query(personalChat, args)).toEqual(args)
   }
 })
 
@@ -98,14 +110,21 @@ test('legacy personal chats need no participant but removed participants cannot 
   await expect(user.query(personalChat, args)).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
 })
 
-test('native personal scope excludes legacy automation bindings without conversation flags', async () => {
+test('legacy automation bindings stay owner-only and leave chat kind when deleted', async () => {
   const { t, user, args } = await fixture()
-  expect(await user.query(personalChat, args)).toEqual(args)
+  const summary = makeFunctionReference<'query'>('chat/personal:getSummary')
+  const role = await t.run(ctx => ctx.db.insert('authorizationRoles', {
+    roleId: 'scope-reader', name: 'Reader', capabilities: ['conversations.read'], isSystem: true, createdAt: 1, updatedAt: 1,
+  }))
+  expect(role).toBeTruthy()
+  await t.run(ctx => ctx.db.insert('authorizationUserRoles', { roleId: 'scope-reader', userId: 'user-a', createdAt: 1 }))
+  expect(await user.query(summary, args)).toMatchObject({ kind: 'personal' })
   const automationId = await t.run(ctx => ctx.db.insert('automations', {
     workspaceId: args.workspaceId, userId: 'user-a', conversationId: args.conversationId,
     createdAt: 1, updatedAt: 1,
   }))
-  await expect(user.query(personalChat, args)).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+  expect(await user.query(summary, args)).toMatchObject({ kind: 'automation' })
+  await expect(t.withIdentity({ subject: 'user-b' }).query(personalChat, args)).rejects.toThrow('WORKSPACE_ACCESS_DENIED')
   await t.run(ctx => ctx.db.patch(automationId, { deletedAt: 0 }))
-  expect(await user.query(personalChat, args)).toEqual(args)
+  expect(await user.query(summary, args)).toMatchObject({ kind: 'personal' })
 })

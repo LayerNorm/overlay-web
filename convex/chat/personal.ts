@@ -1,6 +1,10 @@
 import { paginationOptsValidator, paginationResultValidator } from 'convex/server'
 import { convexToJson, v } from 'convex/values'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
+import { deleteChunksForSource } from '../knowledge/knowledge'
+import { deleteRemoteMessageText } from '../lib/remoteMessageText'
+import { generatedUiData } from './conversations'
+import { normalizeGeneratedUiData } from '../../packages/overlay-chat-core/src/generated-ui'
 import { nativePersonalChatScope, requireNativePersonalChat, requireNativeWorkspace } from '../lib/nativeViewer'
 import { recordConversationEvent } from '../collaboration/events'
 import { sanitizeChatTitle } from '@/shared/chat/chat-title'
@@ -16,13 +20,16 @@ import { ACTIVE_AGENT_RUN_STATUSES } from '@/shared/agents/agent-run'
 import { publicPersonalRun } from '../lib/nativePersonalExecution'
 
 const resourceArgs = { workspaceId: v.string(), conversationId: v.id('conversations') }
+const chatScope = v.union(v.literal('personal'), v.literal('workspace'))
+const MAX_BRANCH_MESSAGES = 500
 type Access = Awaited<ReturnType<typeof requireNativePersonalChat>>
 
 const summaryValidator = v.object({
   _id: v.id('conversations'), workspaceId: v.string(), title: v.string(),
   lastModified: v.number(), createdAt: v.number(),
   askModelIds: v.array(v.string()), actModelId: v.string(), lastMode: v.union(v.literal('ask'), v.literal('act')),
-  conversationType: v.literal('personal'), scope: v.literal('personal'),
+  conversationType: v.literal('personal'), scope: chatScope,
+  kind: v.union(v.literal('personal'), v.literal('workspace'), v.literal('automation')),
   archivedAt: v.optional(v.number()), lastReadAt: v.optional(v.number()),
   markedUnreadAt: v.optional(v.number()), lastMessageId: v.optional(v.id('conversationMessages')),
   lastMessageAt: v.optional(v.number()), unread: v.boolean(),
@@ -42,7 +49,8 @@ async function summary(ctx: QueryCtx, access: Access) {
     actModelId: conversation.actModelId,
     lastMode: conversation.lastMode,
     conversationType: 'personal' as const,
-    scope: 'personal' as const,
+    scope: conversation.scope === 'workspace' ? 'workspace' as const : 'personal' as const,
+    kind: access.kind,
     archivedAt: participant?.archivedAt,
     lastReadAt: participant?.lastReadAt,
     markedUnreadAt: participant?.markedUnreadAt,
@@ -54,7 +62,7 @@ async function summary(ctx: QueryCtx, access: Access) {
 }
 
 export const list = query({
-  args: { workspaceId: v.string(), archived: v.boolean(), paginationOpts: paginationOptsValidator },
+  args: { workspaceId: v.string(), archived: v.boolean(), scope: v.optional(chatScope), paginationOpts: paginationOptsValidator },
   returns: paginationResultValidator(summaryValidator),
   handler: async (ctx, args) => {
     const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
@@ -64,7 +72,8 @@ export const list = query({
       .order('desc').paginate({ ...args.paginationOpts, numItems: Math.max(1, Math.min(100, args.paginationOpts.numItems)) })
     const rows = await Promise.all(result.page.map(async conversation => {
       const access = await nativePersonalChatScope(ctx, viewer, conversation)
-      if (!access || (access.participant?.archivedAt !== undefined) !== args.archived) return null
+      if (!access || access.kind === 'automation' || (args.scope && access.kind !== args.scope)
+        || (access.participant?.archivedAt !== undefined) !== args.archived) return null
       return summary(ctx, access)
     }))
     return { ...result, page: rows.filter(row => row !== null) }
@@ -122,7 +131,7 @@ export const getMessages = query({
         .first()
       return [turnId, user ? await hydrateRemoteMessage(ctx, user) : null] as const
     })))
-    const outputs = await personalOutputs(ctx, args, access.userId, [...new Set(messages.map(message => message.turnId))])
+    const outputs = await personalOutputs(ctx, args, access.userId, access.kind, [...new Set(messages.map(message => message.turnId))])
     return { ...result, page: messages.map(message => ({
       message,
       contextUser: contextUsers.get(message.turnId) ?? null,
@@ -146,6 +155,7 @@ async function personalOutputs(
   ctx: QueryCtx,
   args: { workspaceId: string; conversationId: Id<'conversations'> },
   userId: string,
+  kind: Access['kind'],
   turnIds: string[],
 ) {
   const allowed = await canReadOutputs(ctx, userId)
@@ -153,7 +163,9 @@ async function personalOutputs(
     const files = await ctx.db.query('files').withIndex('by_userId_conversationId_turnId', q =>
       q.eq('userId', userId).eq('conversationId', args.conversationId).eq('turnId', turnId)).take(101)
     if (files.length > 100) throw new Error('PERSONAL_TURN_OUTPUT_LIMIT')
-    const outputs = files.filter(file => file.kind === 'output' && file.scope !== 'workspace'
+    const outputs = files.filter(file => file.kind === 'output'
+      // A personal chat never shows workspace-filed files, even the owner's own.
+      && (kind !== 'personal' || file.scope !== 'workspace')
       && (!file.workspaceId || file.workspaceId === args.workspaceId)
       && file.deletedAt === undefined && file.archivedAt === undefined).map(file => ({
       _id: file._id, type: file.outputType ?? 'document', status: file.outputStatus ?? 'completed',
@@ -178,7 +190,7 @@ function preferences(args: { askModelIds: string[]; actModelId: string; lastMode
 
 async function createPersonalConversation(ctx: MutationCtx, args: {
   workspaceId: string; clientId: string; title: string
-  askModelIds: string[]; actModelId: string; lastMode: 'ask' | 'act'
+  askModelIds: string[]; actModelId: string; lastMode: 'ask' | 'act'; scope?: 'personal' | 'workspace'
 }) {
     const viewer = await requireNativeWorkspace(ctx, args.workspaceId)
     await requireNativeCapability(ctx, viewer.userId, 'conversations.create')
@@ -195,7 +207,7 @@ async function createPersonalConversation(ctx: MutationCtx, args: {
     const conversationId = await ctx.db.insert('conversations', {
       workspaceId: viewer.workspaceId, userId: viewer.userId, clientId,
       title: sanitizeChatTitle(args.title, 'New conversation'), ...preferences(args),
-      conversationType: 'personal', scope: 'personal', createdByPrincipalId: viewer.principal.principalId,
+      conversationType: 'personal', scope: args.scope ?? 'personal', createdByPrincipalId: viewer.principal.principalId,
       createdAt: now, updatedAt: now, lastModified: now,
     })
     await recordConversationEvent(ctx, { conversationId, workspaceId: viewer.workspaceId,
@@ -204,7 +216,7 @@ async function createPersonalConversation(ctx: MutationCtx, args: {
 }
 
 export const create = mutation({
-  args: { workspaceId: v.string(), clientId: v.string(), title: v.string(), ...preferenceArgs },
+  args: { workspaceId: v.string(), clientId: v.string(), title: v.string(), scope: v.optional(chatScope), ...preferenceArgs },
   handler: createPersonalConversation,
 })
 
@@ -216,7 +228,7 @@ const userPart = v.union(
 export const submit = mutation({
   args: {
     workspaceId: v.string(), conversationId: v.optional(v.id('conversations')),
-    clientId: v.optional(v.string()), title: v.optional(v.string()), turnId: v.string(),
+    clientId: v.optional(v.string()), title: v.optional(v.string()), scope: v.optional(chatScope), turnId: v.string(),
     mode: v.union(v.literal('ask'), v.literal('act')), modelId: v.string(),
     contentType: v.union(v.literal('text'), v.literal('image'), v.literal('video')),
     parts: v.array(userPart), attachmentNames: v.optional(v.array(v.string())),
@@ -228,7 +240,7 @@ export const submit = mutation({
     if (!turnId || turnId.length > 200) throw new Error('INVALID_TURN_ID')
     const conversationId = args.conversationId ?? await createPersonalConversation(ctx, {
       workspaceId: args.workspaceId, clientId: args.clientId ?? turnId, title: args.title ?? 'New conversation',
-      askModelIds: [args.modelId], actModelId: args.modelId, lastMode: args.mode,
+      askModelIds: [args.modelId], actModelId: args.modelId, lastMode: args.mode, scope: args.scope,
     })
     const access = await requireNativePersonalChat(ctx, { workspaceId: args.workspaceId, conversationId })
     await requireNativeCapability(ctx, access.userId, 'conversations.edit')
@@ -354,5 +366,133 @@ export const setRead = mutation({
       updatedAt: now,
     })
     return null
+  },
+})
+
+export const deleteTurn = mutation({
+  args: { ...resourceArgs, turnId: v.string() },
+  returns: v.object({ deletedMessages: v.number() }),
+  handler: async (ctx, args) => {
+    const access = await requireNativePersonalChat(ctx, args)
+    await requireNativeCapability(ctx, access.userId, 'conversations.delete')
+    await assertNativeThreadWritable(ctx, access.conversation)
+    const turnId = args.turnId.trim()
+    if (!turnId) return { deletedMessages: 0 }
+    const messages = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_turnId_role', q => q.eq('conversationId', args.conversationId).eq('turnId', turnId))
+      .collect()
+    if (!messages.length) return { deletedMessages: 0 }
+    await admitWrite(ctx, access.userId)
+    for (const message of messages) {
+      await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
+    }
+    // Remove knowledge chunks in the same transaction so deleted text is not retrievable.
+    await Promise.all(messages.flatMap(message => [
+      deleteChunksForSource(ctx.db, 'message', message._id),
+      deleteRemoteMessageText(ctx, message),
+      ctx.db.delete(message._id),
+    ]))
+    const now = Date.now()
+    await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    return { deletedMessages: messages.length }
+  },
+})
+
+export const setGeneratedUi = mutation({
+  args: { ...resourceArgs, messageId: v.id('conversationMessages'), partId: v.string(), data: generatedUiData },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const access = await requireNativePersonalChat(ctx, args)
+    await requireNativeCapability(ctx, access.userId, 'conversations.edit')
+    const message = await ctx.db.get(args.messageId)
+    if (!message || message.conversationId !== args.conversationId
+      || message.userId !== access.userId || message.role !== 'assistant') throw new Error('MESSAGE_ACCESS_DENIED')
+    await assertNativeThreadWritable(ctx, access.conversation, message.threadRootMessageId ?? message._id)
+    const data = normalizeGeneratedUiData(args.data)
+    if (!data) throw new Error('INVALID_GENERATED_UI')
+    let changed = false
+    const parts = (message.parts ?? []).map(part => {
+      if (part.type !== 'data' || !('id' in part) || part.id !== args.partId
+        || !('dataType' in part) || part.dataType !== 'overlay.generated_ui') return part
+      changed = true
+      return { ...part, data: args.data }
+    })
+    if (!changed) throw new Error('GENERATED_UI_NOT_FOUND')
+    await admitWrite(ctx, access.userId)
+    const now = Date.now()
+    await ctx.db.patch(args.messageId, { parts, updatedAt: now })
+    await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    return null
+  },
+})
+
+// Media generation reports its outcome as text. Only text is accepted, on an existing turn of the owner's chat.
+export const addAssistantNote = mutation({
+  args: { ...resourceArgs, turnId: v.string(), text: v.string() },
+  returns: v.id('conversationMessages'),
+  handler: async (ctx, args) => {
+    const access = await requireNativePersonalChat(ctx, args)
+    await requireNativeCapability(ctx, access.userId, 'conversations.edit')
+    await assertNativeThreadWritable(ctx, access.conversation)
+    const turnId = args.turnId.trim()
+    const text = args.text.trim()
+    if (!turnId || !text || text.length > 4000) throw new Error('INVALID_NOTE')
+    const user = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_turnId_role', q => q.eq('conversationId', args.conversationId).eq('turnId', turnId).eq('role', 'user')).first()
+    if (!user) throw new Error('TURN_NOT_FOUND')
+    await admitWrite(ctx, access.userId)
+    const now = Date.now()
+    const existing = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_turnId_role', q => q.eq('conversationId', args.conversationId).eq('turnId', turnId).eq('role', 'assistant')).first()
+    const payload = { content: text, parts: [{ type: 'text' as const, text }], status: 'completed' as const, updatedAt: now }
+    const messageId = existing
+      ? (await ctx.db.patch(existing._id, payload), existing._id)
+      : await ctx.db.insert('conversationMessages', {
+          conversationId: args.conversationId, userId: access.userId, turnId, role: 'assistant',
+          mode: 'act', contentType: 'text', variantIndex: 0, createdAt: now, ...payload,
+        })
+    await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
+    await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, { messageId })
+    return messageId
+  },
+})
+
+export const branch = mutation({
+  args: { ...resourceArgs, turnId: v.string(), clientId: v.string() },
+  returns: v.id('conversations'),
+  handler: async (ctx, args) => {
+    const access = await requireNativePersonalChat(ctx, args)
+    await requireNativeCapability(ctx, access.userId, 'conversations.read')
+    const rows = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', args.conversationId))
+      .order('asc').take(MAX_BRANCH_MESSAGES + 1)
+    const lastIndex = rows.findLastIndex(message => message.turnId === args.turnId)
+    if (lastIndex < 0) throw new Error('TURN_NOT_FOUND')
+    if (rows.length > MAX_BRANCH_MESSAGES) throw new Error('BRANCH_TOO_LONG')
+    const { conversation } = access
+    const conversationId = await createPersonalConversation(ctx, {
+      workspaceId: args.workspaceId, clientId: args.clientId,
+      title: `${conversation.title.trim() || 'Chat'} branch`,
+      askModelIds: conversation.askModelIds, actModelId: conversation.actModelId, lastMode: conversation.lastMode,
+      scope: conversation.scope === 'workspace' ? 'workspace' : 'personal',
+    })
+    // Retrying with the same clientId returns the first branch without copying twice.
+    const copied = await ctx.db.query('conversationMessages')
+      .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', conversationId)).first()
+    if (copied) return conversationId
+    const now = Date.now()
+    for (const message of await hydrateRemoteMessages(ctx, rows.slice(0, lastIndex + 1))) {
+      if (message.role !== 'user' && message.role !== 'assistant') continue
+      const parts = message.parts?.filter(part => part.type === 'text' || part.type === 'file')
+      const content = message.content?.trim() || (message.role === 'assistant' ? '[Response]' : '[Message]')
+      const messageId = await ctx.db.insert('conversationMessages', {
+        conversationId, userId: access.userId, turnId: message.turnId, role: message.role, mode: message.mode ?? 'act',
+        content, contentType: message.contentType ?? 'text', parts: parts?.length ? parts : [{ type: 'text', text: content }],
+        modelId: message.modelId, variantIndex: message.variantIndex, replyToTurnId: message.replyToTurnId,
+        replySnippet: message.replySnippet, status: 'completed', createdAt: message.createdAt, updatedAt: now,
+      })
+      await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, { messageId })
+    }
+    return conversationId
   },
 })

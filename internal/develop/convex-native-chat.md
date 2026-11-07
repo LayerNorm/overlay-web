@@ -163,6 +163,27 @@ and `files.by_userId_conversationId_turnId` are additive. Roll back browser
 ownership before removing any of them; keep the fields and indexes through
 rollout rollback, with no backfill requirement.
 
+### Which chats are native
+
+Every AI chat rendered by `ChatExperience` is native: personal chats, chats filed under
+Workspace, and automation threads. They are owner-only, so "Workspace" is where a chat is
+filed, not a sharing rule. `nativePersonalChatScope` allows the owner and reports `kind`.
+It excludes agent threads, DMs, channels and external surfaces, which keep their own rules.
+`chat/personal:list` takes the sidebar scope and never returns automation threads. Personal
+chats do not show workspace-filed outputs; workspace and automation chats do.
+
+| Operation | Path | Why |
+| --- | --- | --- |
+| List, transcript, run state, send, rename, archive, read, delete turn, branch, generated UI edits, media notes | Convex `chat/personal:*` | Shared state, updates every client |
+| Model execution and streaming | `conversations/act` | Server work |
+| Stop, approval and input response | `conversations/stop`, `run/approval`, `run/input` | They abort provider calls and resume durable workflows; status returns through `getExecution` |
+| Title generation, image and video generation | `generate-*` | Provider calls |
+| Permanent delete of an archived chat | `v1/conversations` DELETE | Moves with unified archive, CN-33 |
+| Retired-thread handoff and room thread safety | `v1/conversations` | Rooms only, removed by CN-08 |
+
+Temporary chats are local and unsaved. A failed native operation shows an error and never
+falls back to HTTP. Public `v1/conversations` routes stay for API and agent callers.
+
 ### First turn and chat opening
 
 A native first turn publishes `?id=` as soon as `chat/personal:submit` returns, while

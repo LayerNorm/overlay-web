@@ -60,7 +60,6 @@ export async function sendTextTurn({
   isFirstMessage,
   isCurrentScope,
   isStreamChatActive,
-  loadChats,
   loadSubscription,
   nativePersonalEnabled = false,
   nativePersonalRoute = false,
@@ -69,7 +68,6 @@ export async function sendTextTurn({
   submitNativePersonalTurn,
   setPendingTranscriptConversation,
   onUsageExhaustedError,
-  markChatModified,
   pendingFirstSendRef,
   pendingScrollChatIdRef,
   pendingScrollTurnIdRef,
@@ -94,7 +92,6 @@ export async function sendTextTurn({
   isFirstMessage: boolean
   isCurrentScope: () => boolean
   isStreamChatActive: (chatId: string, temporaryChatSnapshot: boolean) => boolean
-  loadChats: () => Promise<void>
   loadSubscription: () => Promise<unknown>
   nativePersonalEnabled?: boolean
   nativePersonalRoute?: boolean
@@ -103,7 +100,6 @@ export async function sendTextTurn({
   submitNativePersonalTurn?: (args: NativePersonalSubmitArgs) => Promise<{ conversationId: string; messageId: string }>
   setPendingTranscriptConversation?: (conversationId: string | null, ownerId?: string | null, intentKey?: string) => void
   onUsageExhaustedError: (message: string) => boolean
-  markChatModified: (chatId: string, titleSnapshot?: string | null) => void
   pendingFirstSendRef: MutableRefObject<PendingFirstSendState | null>
   pendingScrollChatIdRef: MutableRefObject<string | null>
   pendingScrollTurnIdRef: MutableRefObject<string | null>
@@ -251,9 +247,6 @@ export async function sendTextTurn({
     targetRuntime.nativePendingTurns.set(textTurnId, pendingNativeTurn)
     setRuntimeHydrationVersion((value) => value + 1)
   }
-  if (!snapshot.temporaryChatSnapshot && chatId !== PENDING_FIRST_CHAT_ID) {
-    markChatModified(chatId, snapshot.activeChatTitleSnapshot)
-  }
 
   if (
     !snapshot.temporaryChatSnapshot &&
@@ -305,6 +298,7 @@ export async function sendTextTurn({
       ...(!existingChatId ? {
         clientId: conversationClientId!,
         title: snapshot.activeChatTitleSnapshot ?? 'New conversation',
+        scope: workspaceChatsViewActive() ? 'workspace' as const : 'personal' as const,
       } : {}),
       turnId: textTurnId,
       mode: 'act' as const,
@@ -417,7 +411,6 @@ export async function sendTextTurn({
     commonBody: commonActBody,
     isChatActive: (id) => isStreamChatActive(id, snapshot.temporaryChatSnapshot),
     completeSession: completeSessionForStream,
-    loadChats: snapshot.temporaryChatSnapshot ? (() => {}) : loadChats,
     loadSubscription: refreshAfterActTextTurn,
     onError: (error, fallbackMessage) => {
       const pending = targetRuntime.nativePendingTurns?.get(textTurnId)

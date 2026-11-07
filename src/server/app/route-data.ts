@@ -11,8 +11,6 @@ import type {
   NoteDoc,
 } from '@overlay/app-core'
 import { noteDocToKnowledgeFile } from '@overlay/app-core'
-import type { CachedConversation } from '@/shared/chat/chat-list-cache'
-import type { PaginatedEnvelope } from '@/shared/api/pagination'
 import { unwrapPaginatedData } from '@/shared/api/pagination'
 import { getBaseUrl } from '@/server/web/app-url'
 import {
@@ -21,7 +19,6 @@ import {
   type AccountBffDomainService,
   type BffDomainService,
 } from '@/app/api/v1/_utils/bff'
-import * as conversationsService from '@/server/app-api/v1/conversations/route'
 import * as filesService from '@/server/app-api/v1/files/route'
 import * as notesService from '@/server/app-api/v1/notes/route'
 import * as memoryService from '@/server/app-api/v1/memory/route'
@@ -29,10 +26,8 @@ import * as bootstrapService from '@/server/app-api/v1/bootstrap/route'
 import * as integrationsService from '@/server/app-api/v1/integrations/route'
 import { ACTIVE_WORKSPACE_HEADER, ROUTE_WORKSPACE_SCOPE_HEADER } from '@/shared/workspaces/constants'
 import { parsePanelScope } from '@/shared/workspaces/panel-scope'
-import { shouldSkipChatHistoryPrefetch } from '@/shared/chat/chat-view-navigation'
 import * as workspaceHandleService from '@/server/app-api/v1/workspace-handles/[handle]/route'
 
-const INITIAL_CHAT_LIST_LIMIT = 24
 
 export type InitialIntegrationsRouteData = {
   bootstrap: AppBootstrapResponse | null
@@ -100,23 +95,6 @@ async function callAppApi<T>(path: string, service: BffDomainService, fallback: 
     return unwrapPaginatedData(value as unknown, fallback as unknown[]) as T
   }
   return value as T
-}
-
-export function getInitialChatHistory(legacyScopedView = false): Promise<PaginatedEnvelope<CachedConversation> | null> {
-  return (async () => {
-    const headerList = await headers()
-    const routeScope = headerList.get(ROUTE_WORKSPACE_SCOPE_HEADER)
-    if (shouldSkipChatHistoryPrefetch({
-      pathScope: routeScope,
-      hasScopeQuery: legacyScopedView,
-      hasViewQuery: legacyScopedView,
-    }) || parsePanelScope(routeScope)) return null
-    return callAppApi<PaginatedEnvelope<CachedConversation> | null>(
-      `/api/v1/conversations?limit=${INITIAL_CHAT_LIST_LIMIT}&view=personal`,
-      conversationsService.GET as BffDomainService,
-      null,
-    )
-  })()
 }
 
 export async function getInitialKnowledgeFiles(): Promise<KnowledgeFileNode[]> {

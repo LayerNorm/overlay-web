@@ -9,10 +9,8 @@ export function isNativePersonalChatCandidate(
   chat: PersonalChatFields,
   workspaceId: string | null | undefined,
 ): boolean {
-  return Boolean(workspaceId)
-    && chat.workspaceId === workspaceId
-    && (chat.conversationType ?? 'personal') === 'personal'
-    && (chat.scope ?? 'personal') === 'personal'
+  void workspaceId
+  return (chat.conversationType ?? 'personal') === 'personal'
 }
 
 export function excludeNativePersonalChats<Row extends PersonalChatFields>(

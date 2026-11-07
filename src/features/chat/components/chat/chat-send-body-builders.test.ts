@@ -144,6 +144,8 @@ test('builds pending-first and normal act bodies without null conversation ids',
   assert.equal(pendingRecord.scope, 'workspace')
   assert.equal(pendingRecord.conversationId, undefined)
   assert.equal(pendingRecord.automationId, 'automation-1')
+  assert.equal(pendingRecord.mode, 'automate')
+  assert.equal(pendingRecord.automationMode, undefined, 'the Act route rejects this retired flag with 410')
   assert.deepEqual(pendingRecord.askModelIds, ['model-a'])
 
   const normalBody = buildCommonActBody({

@@ -248,7 +248,9 @@ test('pagination preserves its cursor across excluded rows, equal timestamps and
   expect(ids).toHaveLength(4)
   expect(new Set(ids).size).toBe(4)
   expect(ids).not.toContain(args.conversationId)
-  await expect(user.mutation(rename, { ...args, title: 'Automation' })).rejects.toThrow('CONVERSATION_ACCESS_DENIED')
+  // Automation threads stay out of chat lists, but their owner can still use them.
+  await user.mutation(rename, { ...args, title: 'Automation' })
+  expect(await user.query(getSummary, args)).toMatchObject({ title: 'Automation', kind: 'automation' })
 })
 
 test('read acknowledgement is bounded by the observed message, not a later completion', async () => {

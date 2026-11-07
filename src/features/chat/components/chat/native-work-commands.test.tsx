@@ -1,3 +1,4 @@
+import type { AgentRunResource } from '@overlay/api-client'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { createElement } from 'react'
@@ -6,8 +7,9 @@ import { act, create } from 'react-test-renderer'
 import { QuestionnairePanel } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
-import { toAgentRunResource } from './useAgentRunLifecycle'
 import { useWorkApproval } from './useWorkApproval'
+
+const toAgentRunResource = (doc: Record<string, unknown>) => ({ ...doc, id: doc._id }) as unknown as AgentRunResource
 
 const inputRun = toAgentRunResource({
   _id: 'run_1',

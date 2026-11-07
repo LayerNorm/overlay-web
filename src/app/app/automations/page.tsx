@@ -1,7 +1,6 @@
 import { Suspense } from 'react'
 import { getOverlaySession } from '@/server/auth/session'
 import ChatSuspenseBoundary from '@/features/chat/components/ChatSuspenseBoundary'
-import { getInitialChatHistory } from '@/server/app/route-data'
 import { getOverlayCapabilitiesSync } from '@/server/capabilities'
 import { ChatRouteSkeleton } from '../_components/AppRouteSkeletons'
 import { AppScreenBody, AppScreenShell } from '@overlay/modules-react/shell'
@@ -21,44 +20,27 @@ function DisabledAutomationsRoute() {
   )
 }
 
-async function AutomationsRouteContent({
-  searchParams,
-}: {
-  searchParams?: Promise<{ scope?: string | string[]; view?: string | string[] }>
-}) {
+async function AutomationsRouteContent() {
   const session = await getOverlaySession()
-  const params = await searchParams
 
   const userId = session?.user.id ?? null
   const firstName = session?.user.firstName ?? undefined
-  const initialChatPage = userId
-    ? await getInitialChatHistory(params?.scope !== undefined || params?.view !== undefined)
-    : { data: [], hasMore: false }
   return (
     <ChatSuspenseBoundary
       userId={userId}
       firstName={firstName}
       mode="automate"
-      initialChats={initialChatPage?.data}
-      initialChatPageInfo={initialChatPage ? {
-        nextCursor: initialChatPage.nextCursor,
-        hasMore: initialChatPage.hasMore,
-      } : undefined}
     />
   )
 }
 
-export default function AutomationsPage({
-  searchParams,
-}: {
-  searchParams?: Promise<{ scope?: string | string[]; view?: string | string[] }>
-}) {
+export default function AutomationsPage() {
   const capabilities = getOverlayCapabilitiesSync()
   if (!capabilities.automations) return <DisabledAutomationsRoute />
 
   return (
     <Suspense fallback={<ChatRouteSkeleton mode="automate" />}>
-      <AutomationsRouteContent searchParams={searchParams} />
+      <AutomationsRouteContent />
     </Suspense>
   )
 }
