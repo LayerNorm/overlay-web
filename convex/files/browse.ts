@@ -7,7 +7,7 @@ import { browserFile, browserFileSummary, updateFileFor } from './files'
 /** Rows read per source for the live tree, newest first. */
 const TREE_SCAN_LIMIT = 300
 
-const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace')))
+const viewArg = v.optional(v.union(v.literal('personal'), v.literal('workspace'), v.literal('archived')))
 
 async function viewerOrNull(ctx: QueryCtx, workspaceId: string) {
   try {
@@ -34,9 +34,14 @@ export const list = query({
       fetchMine: async () => await ctx.db.query('files')
         .withIndex('by_workspaceId_userId_updatedAt', (q) => q.eq('workspaceId', workspaceId).eq('userId', viewer.userId))
         .order('desc').take(TREE_SCAN_LIMIT),
-      fetchShared: async (ws) => await ctx.db.query('files')
-        .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace').eq('archivedAt', undefined))
-        .take(TREE_SCAN_LIMIT),
+      // Shared rows in the asked state: archived ones for the Archived view, active ones otherwise.
+      fetchShared: async (ws) => view === 'archived'
+        ? await ctx.db.query('files')
+          .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace').gt('archivedAt', 0))
+          .order('desc').take(TREE_SCAN_LIMIT)
+        : await ctx.db.query('files')
+          .withIndex('by_workspaceId_scope_archivedAt', (q) => q.eq('workspaceId', ws).eq('scope', 'workspace').eq('archivedAt', undefined))
+          .take(TREE_SCAN_LIMIT),
     })
     return rows
       .filter((row) => !row.deletedAt)
