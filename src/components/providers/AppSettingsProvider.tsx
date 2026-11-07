@@ -6,7 +6,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -22,11 +21,12 @@ type AppSettingsContextValue = {
   settings: AppSettings
   isLoading: boolean
   isSaving: boolean
-  refresh: () => Promise<void>
   updateSettings: (patch: Partial<AppSettings>) => Promise<AppSettings>
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null)
+/** Receives the live settings row (or null when signed out) from the sync inside the Convex provider. */
+const AppSettingsSyncContext = createContext<((remote: Partial<AppSettings> | null) => void) | null>(null)
 const APP_SETTINGS_STORAGE_KEY = 'overlay.app.settings'
 const MAX_MODEL_ID_LENGTH = 160
 const MAX_ASK_MODEL_IDS = 4
@@ -199,42 +199,27 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const { user, isLoading: authLoading } = useAuth()
   const authUserId = user?.id ?? null
   const [settings, setSettings] = useState<AppSettings>(() => readStoredSettings() ?? DEFAULT_APP_SETTINGS)
-  const [isLoading, setIsLoading] = useState(true)
+  const [remoteUserId, setRemoteUserId] = useState<string | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  // Changes not yet confirmed by the server. They stay on top of live snapshots so a slower save is not undone
+  // by a snapshot taken before it, and leave once the server answers.
+  const pendingRef = useRef<Partial<AppSettings>>({})
+  // The newest saved settings from the server, so a refused or superseded change can give way to them.
+  const savedRef = useRef<Partial<AppSettings> | null>(null)
+  // Counters that keep an older save's response from replacing newer settings (a later save or live snapshot).
+  const liveSeqRef = useRef(0)
+  const saveSeqRef = useRef(0)
+  const isLoading = authLoading || (authUserId !== null && remoteUserId !== authUserId)
 
-  const refresh = useCallback(async () => {
-    const stored = readStoredSettings()
-    if (stored) {
-      setSettings(stored)
-    }
-    if (authLoading) return
-    if (!authUserId) {
-      setSettings(stored ?? DEFAULT_APP_SETTINGS)
-      setIsLoading(false)
-      return
-    }
-
-    try {
-      const res = await overlayAppClient.settings.getResponse({ cache: 'no-store' })
-      if (res.ok) {
-        const next = normalizeSettingsPayload(await res.json() as Partial<AppSettings>)
-        setSettings(next)
-        persistSettings(next)
-      } else if (res.status === 401) {
-        setSettings(stored ?? DEFAULT_APP_SETTINGS)
-      }
-    } catch {
-      if (!stored) {
-        setSettings(DEFAULT_APP_SETTINGS)
-      }
-    } finally {
-      setIsLoading(false)
-    }
-  }, [authLoading, authUserId])
-
-  useEffect(() => {
-    void refresh()
-  }, [refresh])
+  const applyRemote = useCallback((remote: Partial<AppSettings> | null) => {
+    if (!remote || !authUserId) return
+    savedRef.current = remote
+    liveSeqRef.current += 1
+    const next = normalizeSettingsPayload({ ...remote, ...pendingRef.current })
+    setSettings(next)
+    persistSettings(next)
+    setRemoteUserId(authUserId)
+  }, [authUserId])
 
   const prevPresetVarsRef = useRef<Set<string>>(new Set())
 
@@ -271,21 +256,38 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     persistSettings(optimistic)
     if (!authUserId) return optimistic
 
+    pendingRef.current = { ...pendingRef.current, ...patch }
+    const saveSeq = ++saveSeqRef.current
+    const liveSeqAtStart = liveSeqRef.current
     setIsSaving(true)
     try {
       const res = await overlayAppClient.settings.updateResponse(patch)
       if (!res.ok) {
-        console.warn('Failed to save settings to server; using local state')
+        console.warn('Failed to save settings to server; the saved settings will show again')
         return optimistic
       }
+      // The live settings subscription brings the saved row to every other tab; here the answer is the saved value.
       const saved = normalizeSettingsPayload(await res.json() as Partial<AppSettings>)
-      setSettings(saved)
-      persistSettings(saved)
+      // Only the newest save, answered before any newer live snapshot, may stand in for the saved row.
+      if (saveSeq === saveSeqRef.current && liveSeqRef.current === liveSeqAtStart) savedRef.current = saved
       return saved
     } catch (error) {
-      console.warn('Failed to save settings to server; using local state', error)
+      console.warn('Failed to save settings to server; the saved settings will show again', error)
       return optimistic
     } finally {
+      // A later change to the same field keeps its own pending value.
+      const pending = { ...pendingRef.current } as Record<string, unknown>
+      for (const [key, value] of Object.entries(patch)) {
+        if (pending[key] === value) delete pending[key]
+      }
+      pendingRef.current = pending as Partial<AppSettings>
+      // Show the saved settings again with only the changes still in flight on top: a refused change disappears,
+      // and a snapshot that arrived while this one was pending is no longer hidden.
+      if (savedRef.current) {
+        const next = normalizeSettingsPayload({ ...savedRef.current, ...pendingRef.current })
+        setSettings(next)
+        persistSettings(next)
+      }
       setIsSaving(false)
     }
   }, [authUserId, settings])
@@ -294,13 +296,14 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     settings,
     isLoading,
     isSaving,
-    refresh,
     updateSettings,
-  }), [settings, isLoading, isSaving, refresh, updateSettings])
+  }), [settings, isLoading, isSaving, updateSettings])
 
   return (
     <AppSettingsContext.Provider value={value}>
-      {children}
+      <AppSettingsSyncContext.Provider value={applyRemote}>
+        {children}
+      </AppSettingsSyncContext.Provider>
     </AppSettingsContext.Provider>
   )
 }
@@ -316,4 +319,9 @@ export function useAppSettings() {
 /** Like `useAppSettings`, but null outside the provider (for components that also render in isolation). */
 export function useOptionalAppSettings() {
   return useContext(AppSettingsContext)
+}
+
+/** For the live settings sync inside the Convex provider. */
+export function useAppSettingsSync() {
+  return useContext(AppSettingsSyncContext)
 }

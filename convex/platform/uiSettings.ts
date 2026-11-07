@@ -113,52 +113,72 @@ export const getByServer = query({
   }),
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    const existing = await getExistingSettings(ctx, args.userId)
-    if (!existing) return {
-      ...defaultUiSettings(),
-      harnessRevision: 'overlay-harness-v1' as const,
-      harnessModelRecoveryRevision: 'settled-retry-v1' as const,
-      nativeThreadCompatibilityRevision: 'tracked-native-v1' as const,
-      harnessArtifactPublicationRevision: 'binary-artifact-v1' as const,
-      harnessTranscriptRevision: 'settled-public-v1' as const,
-      harnessFullTranscriptRevision: 'full-public-v1' as const,
-    }
-    const settings = {
-      theme: existing.theme,
-      lightThemePreset: existing.lightThemePreset ?? 'default-light',
-      darkThemePreset: existing.darkThemePreset ?? 'default-dark',
-      useSecondarySidebar: existing.useSecondarySidebar,
-      // Legacy rows may still store 'chunk'; always expose token-only to clients.
-      chatStreamingMode:
-        existing.chatStreamingMode === 'chunk' ? 'token' : (existing.chatStreamingMode ?? 'token'),
-      autoContinue: existing.autoContinue ?? false,
-      collapseAgentWork: existing.collapseAgentWork ?? true,
-      linkOpenPreference: existing.linkOpenPreference ?? 'ask',
-      defaultChatMode: existing.defaultChatMode ?? 'act',
-      modelPreference: existing.modelPreference ?? 'same-for-each-chat',
-      defaultAskModelIds: safeModelIds(existing.defaultAskModelIds) ?? [],
-      sendWithEnter: existing.sendWithEnter ?? true,
-      attachFilesToKnowledgeByDefault: existing.attachFilesToKnowledgeByDefault ?? false,
-      onlyAllowZdrModels: existing.onlyAllowZdrModels ?? false,
-      dismissedZdrWarningGlobally: existing.dismissedZdrWarningGlobally ?? false,
-      dismissedZdrWarningModelIds: safeModelIds(existing.dismissedZdrWarningModelIds, 100) ?? [],
-      enabledChatModelIds: safeModelIds(existing.enabledChatModelIds, MAX_ENABLED_MODEL_IDS) ?? [],
-      modelOrder: safeModelIds(existing.modelOrder, MAX_ENABLED_MODEL_IDS) ?? [],
-    }
-    return {
-      ...settings,
-      harnessRevision: 'overlay-harness-v1' as const,
-      harnessModelRecoveryRevision: 'settled-retry-v1' as const,
-      nativeThreadCompatibilityRevision: 'tracked-native-v1' as const,
-      harnessArtifactPublicationRevision: 'binary-artifact-v1' as const,
-      harnessTranscriptRevision: 'settled-public-v1' as const,
-      harnessFullTranscriptRevision: 'full-public-v1' as const,
-      ...(safeModelId(existing.defaultActModelId) ? { defaultActModelId: safeModelId(existing.defaultActModelId) } : {}),
-      ...(safeModelId(existing.defaultImageModelId) ? { defaultImageModelId: safeModelId(existing.defaultImageModelId) } : {}),
-      ...(safeModelId(existing.defaultVideoModelId) ? { defaultVideoModelId: safeModelId(existing.defaultVideoModelId) } : {}),
-      ...(safeAspectRatio(existing.defaultImageAspectRatio) ? { defaultImageAspectRatio: safeAspectRatio(existing.defaultImageAspectRatio) } : {}),
-      ...(safeAspectRatio(existing.defaultVideoAspectRatio) ? { defaultVideoAspectRatio: safeAspectRatio(existing.defaultVideoAspectRatio) } : {}),
-    }
+    return await uiSettingsFor(ctx, args.userId)
+  },
+})
+
+/** A person's stored UI settings with defaults and sanitized model IDs, plus the server-owned revision markers. */
+async function uiSettingsFor(ctx: QueryCtx, userId: string) {
+  const existing = await getExistingSettings(ctx, userId)
+  if (!existing) return {
+    ...defaultUiSettings(),
+    harnessRevision: 'overlay-harness-v1' as const,
+    harnessModelRecoveryRevision: 'settled-retry-v1' as const,
+    nativeThreadCompatibilityRevision: 'tracked-native-v1' as const,
+    harnessArtifactPublicationRevision: 'binary-artifact-v1' as const,
+    harnessTranscriptRevision: 'settled-public-v1' as const,
+    harnessFullTranscriptRevision: 'full-public-v1' as const,
+  }
+  const settings = {
+    theme: existing.theme,
+    lightThemePreset: existing.lightThemePreset ?? 'default-light',
+    darkThemePreset: existing.darkThemePreset ?? 'default-dark',
+    useSecondarySidebar: existing.useSecondarySidebar,
+    // Legacy rows may still store 'chunk'; always expose token-only to clients.
+    chatStreamingMode:
+      existing.chatStreamingMode === 'chunk' ? 'token' : (existing.chatStreamingMode ?? 'token'),
+    autoContinue: existing.autoContinue ?? false,
+    collapseAgentWork: existing.collapseAgentWork ?? true,
+    linkOpenPreference: existing.linkOpenPreference ?? 'ask',
+    defaultChatMode: existing.defaultChatMode ?? 'act',
+    modelPreference: existing.modelPreference ?? 'same-for-each-chat',
+    defaultAskModelIds: safeModelIds(existing.defaultAskModelIds) ?? [],
+    sendWithEnter: existing.sendWithEnter ?? true,
+    attachFilesToKnowledgeByDefault: existing.attachFilesToKnowledgeByDefault ?? false,
+    onlyAllowZdrModels: existing.onlyAllowZdrModels ?? false,
+    dismissedZdrWarningGlobally: existing.dismissedZdrWarningGlobally ?? false,
+    dismissedZdrWarningModelIds: safeModelIds(existing.dismissedZdrWarningModelIds, 100) ?? [],
+    enabledChatModelIds: safeModelIds(existing.enabledChatModelIds, MAX_ENABLED_MODEL_IDS) ?? [],
+    modelOrder: safeModelIds(existing.modelOrder, MAX_ENABLED_MODEL_IDS) ?? [],
+  }
+  return {
+    ...settings,
+    harnessRevision: 'overlay-harness-v1' as const,
+    harnessModelRecoveryRevision: 'settled-retry-v1' as const,
+    nativeThreadCompatibilityRevision: 'tracked-native-v1' as const,
+    harnessArtifactPublicationRevision: 'binary-artifact-v1' as const,
+    harnessTranscriptRevision: 'settled-public-v1' as const,
+    harnessFullTranscriptRevision: 'full-public-v1' as const,
+    ...(safeModelId(existing.defaultActModelId) ? { defaultActModelId: safeModelId(existing.defaultActModelId) } : {}),
+    ...(safeModelId(existing.defaultImageModelId) ? { defaultImageModelId: safeModelId(existing.defaultImageModelId) } : {}),
+    ...(safeModelId(existing.defaultVideoModelId) ? { defaultVideoModelId: safeModelId(existing.defaultVideoModelId) } : {}),
+    ...(safeAspectRatio(existing.defaultImageAspectRatio) ? { defaultImageAspectRatio: safeAspectRatio(existing.defaultImageAspectRatio) } : {}),
+    ...(safeAspectRatio(existing.defaultVideoAspectRatio) ? { defaultVideoAspectRatio: safeAspectRatio(existing.defaultVideoAspectRatio) } : {}),
+  }
+}
+
+/**
+ * The signed-in person's UI settings, live: a change on another device or tab (theme, default models, send key)
+ * applies here without a reload. Null when signed out. Writes stay on the validated settings route.
+ */
+export const mine = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity()
+    if (!identity?.subject) return null
+    const settings = await uiSettingsFor(ctx, identity.subject)
+    // Same public shape as the settings route: the secondary sidebar is on unless turned off; streaming is token-only.
+    return { ...settings, useSecondarySidebar: settings.useSecondarySidebar !== false, chatStreamingMode: 'token' as const }
   },
 })
 

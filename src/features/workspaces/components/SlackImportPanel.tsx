@@ -20,6 +20,7 @@ import { Button, EmptyState, Toggle, toast } from '@overlay/ui/primitives'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useLiveWorkspaceManagement } from '@/hooks/use-workspace-members'
 import { createOAuthCompletionGuard } from './oauth-completion-guard'
 
 interface SlackChannel {
@@ -116,6 +117,12 @@ function useSlackImportPanel() {
   const { activeWorkspace } = useWorkspace()
   const { user } = useAuth()
   const workspaceId = activeWorkspace?.id
+  // Live workspace people, to show which Slack users are already here.
+  const workspacePeople = useLiveWorkspaceManagement(workspaceId, 'people')
+  // The newest people snapshot, read after the Slack request returns so members who arrived meanwhile count.
+  const workspacePeopleRef = useRef(workspacePeople)
+  useEffect(() => { workspacePeopleRef.current = workspacePeople }, [workspacePeople])
+  const workspacePeopleReady = workspacePeople !== undefined
   const currentUserEmail = user?.email?.trim().toLowerCase() || null
 
   const [connectionState, setConnectionState] = useState<ConnectionState>('loading')
@@ -236,6 +243,8 @@ function useSlackImportPanel() {
   const loadUsers = useCallback(async (force = false) => {
     if (!workspaceId || connectionState !== 'connected') return
     if (usersLoaded && !force) return
+    // Classify only against a loaded member list, or existing colleagues would show as new and be preselected.
+    if (!workspacePeopleReady) return
     setUsersLoading(true)
     setUsersError(null)
     try {
@@ -245,12 +254,7 @@ function useSlackImportPanel() {
         throw new Error(String(usersData.error ?? 'Failed to load Slack users'))
       }
 
-      let mgmtData: { items: unknown[] } = { items: [] }
-      try {
-        mgmtData = await overlayAppClient.workspaces.management(activeWorkspace.id, 'people') as { items: unknown[] }
-      } catch (err) {
-        console.warn('[SlackImport] Failed to load workspace people:', err)
-      }
+      const mgmtData = { items: workspacePeopleRef.current?.items ?? [] }
 
       const slackUsers = (usersData.users ?? []) as Array<{
         id: string
@@ -305,7 +309,7 @@ function useSlackImportPanel() {
     } finally {
       if (mountedRef.current) setUsersLoading(false)
     }
-  }, [workspaceId, connectionState, usersLoaded, activeWorkspace?.id, currentUserEmail])
+  }, [workspaceId, connectionState, usersLoaded, currentUserEmail, workspacePeopleReady])
 
   useEffect(() => {
     if (view === 'people' && connectionState === 'connected' && !usersLoaded && !usersLoading) {
@@ -571,7 +575,9 @@ function useSlackImportPanel() {
     activeWorkspace, user, workspaceId, currentUserEmail,
     connectionState, channels, channelsLoaded, channelsLoading, channelsError,
     selectedChannelIds, activeJob, jobs, starting, cancelling, view,
-    users, usersLoaded, usersLoading, usersError, selectedUserIds, inviting,
+    // Waiting for workspace members counts as loading, so the People step never looks like missing Slack access.
+    users, usersLoaded, usersLoading: usersLoading || (connectionState === 'connected' && !usersLoaded && !workspacePeopleReady),
+    usersError, selectedUserIds, inviting,
     oauthPolling,
     setView, loadJobs, checkConnection, loadChannels, loadUsers,
     handleConnect, handleInviteUsers, handleStartImport, handleCancel,
