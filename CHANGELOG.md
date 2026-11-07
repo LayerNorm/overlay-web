@@ -4,6 +4,14 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Align sidebar activity with native Convex authentication and shared thread visibility checks, removing legacy token arguments, backend-capability gating, and silent query-error fallbacks without changing the sidebar design.
+
+- Render idle sidebar threads as text only, without reserving an empty status-icon slot.
+
+- Honor the selected single or double sidebar layout in mobile and narrow-screen drawers instead of substituting the older mobile navigator.
+
+- Show live thread status icons beside single-line sidebar titles, preserve the curved thread indentation on desktop and mobile, and summarize working, ready-to-review, and needs-you threads beneath each agent.
+
 - Remove more polling from the app shell: a remote agent's status in a channel ("Running a tool · 12s") now comes from a Convex subscription instead of a request every five seconds, and the app's capabilities come only from the server-rendered page instead of a fallback request. Deletes an unused 15-second reconcile helper and an unused server loader for memories. The channel and DM sidebar list keeps its version-triggered refresh for now; making it native is the next step (CN-34b).
 
 - Make Settings → Archived live: archived channels and DMs, files, folders and notes, skills, MCP servers, automations, tasks, agents and agent threads come from Convex subscriptions, each with its own access rules, instead of seven HTTP loads that refreshed only after your own actions or a workspace switch. Something archived in another tab or by a teammate appears at once, and restored or deleted items disappear on their own. Archived files and rooms are selected by their archive state before any limit, so many newer active items can never hide an older archive. Restore and permanent delete still go through the server, which keeps the audit log, removes stored files and stops automations.

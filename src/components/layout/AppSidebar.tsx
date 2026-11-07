@@ -4,12 +4,12 @@ import NextLink from 'next/link'
 import dynamic from 'next/dynamic'
 import { CircleHelp, Moon, Settings, Sun } from 'lucide-react'
 import { CollapsibleSection } from '@overlay/ui/primitives'
-import { DoubleSidebar, ShellAdapterProvider, SidebarAccountAvatar, SidebarAccountMenu, SidebarAccountProfile, UnifiedSidebar, type PrimaryRailItem, type ShellAdapter } from '@overlay/shell-react'
+import { ShellAdapterProvider, SidebarAccountAvatar, SidebarAccountMenu, SidebarAccountProfile, type PrimaryRailItem, type ShellAdapter } from '@overlay/shell-react'
 import { StorageBar, UsageBar } from './sidebar/SidebarUsageMeters'
 import {
   DesktopAccountSlot,
   MobileDrawer,
-  MobileSidebar,
+  SelectedSidebar,
   MobileTopBar,
   SecondaryPanelResourceList,
   SidebarBrandLink,
@@ -41,6 +41,40 @@ function renderAccountProfile(
       onAccountClick={onAccountClick}
     />
   )
+}
+
+function resolveMobileSidebarProps({
+  classicLayout,
+  railItems,
+  classicFooterItems,
+  unifiedFooterItems,
+  closeMobileDrawer,
+}: {
+  classicLayout: boolean
+  railItems: PrimaryRailItem[]
+  classicFooterItems: PrimaryRailItem[]
+  unifiedFooterItems: PrimaryRailItem[] | undefined
+  closeMobileDrawer: () => void
+}) {
+  const closeAfterSelect = (item: PrimaryRailItem) => ({
+    ...item,
+    onSelect: () => {
+      closeMobileDrawer()
+      item.onSelect()
+    },
+  })
+  if (classicLayout) {
+    return {
+      drawerClassName: 'w-[calc(100vw-1rem)] max-w-[340px]',
+      items: railItems,
+      footerItems: classicFooterItems,
+    }
+  }
+  return {
+    drawerClassName: undefined,
+    items: railItems.map(closeAfterSelect),
+    footerItems: unifiedFooterItems?.map(closeAfterSelect),
+  }
 }
 
 export type {
@@ -101,6 +135,7 @@ export default function AppSidebar({
   const closeMobileAccountMenus = () => {
     s.setMobileAccountOpen(false)
     s.closeAccountMenus()
+    s.closeMobileDrawer()
   }
   const accountHeader = renderAccountProfile(s, s.closeAccountMenus)
   const mobileAccountHeader = renderAccountProfile(s, closeMobileAccountMenus)
@@ -138,6 +173,21 @@ export default function AppSidebar({
       onAccountMenuOpenChange={s.setAccountMenuOpen}
       accountHeader={accountHeader}
       accountMenu={accountMenuContent}
+      userAvatar={userAvatar}
+      onSignIn={() => s.requireAuth('send')}
+    />
+  )
+  const mobileAccountSlot = (
+    <DesktopAccountSlot
+      menuRef={s.mobileMenuRef}
+      isGuestConfirmed={s.isGuestConfirmed}
+      workspace={workspace}
+      railExpanded={!classicLayout}
+      displayName={s.displayName}
+      accountMenuOpen={s.accountMenuOpen}
+      onAccountMenuOpenChange={s.setAccountMenuOpen}
+      accountHeader={mobileAccountHeader}
+      accountMenu={mobileAccountMenu}
       userAvatar={userAvatar}
       onSignIn={() => s.requireAuth('send')}
     />
@@ -192,6 +242,29 @@ export default function AppSidebar({
     { id: 'settings', label: 'Settings', icon: Settings, active: s.routeState.panelKind === 'settings', href: settingsHref, onSelect: () => s.router.push(settingsHref) },
     ...s.railFooterItems,
   ]
+  const mobileSidebarProps = resolveMobileSidebarProps({
+    classicLayout,
+    railItems: s.railItems,
+    classicFooterItems: railFooterItems,
+    unifiedFooterItems: s.railFooterItems,
+    closeMobileDrawer: s.closeMobileDrawer,
+  })
+  const sidebarProps = {
+    useSecondarySidebar: classicLayout,
+    brand: brandLink,
+    railBrand: <SidebarBrandLink href={brandHomeHref} logoSrc={s.brandConfig.logoSrc} logoAlt={s.brandConfig.logoAlt} label={brandLabel} onNavigate={s.closeMobileDrawer} className="flex size-10 items-center justify-center rounded-lg" labelClassName="sr-only" markOnly />,
+    title: s.panelTitle,
+    themePreset: appSettings?.settings.theme === 'dark' ? appSettings.settings.darkThemePreset : appSettings?.settings.lightThemePreset,
+    items: s.railItems,
+    footerItems: classicLayout ? railFooterItems : s.railFooterItems,
+    panelKind: s.routeState.panelKind,
+    panelNav: s.panelNav,
+    panelAction: s.panelAction,
+    sectionActions,
+    renderSection,
+    sectionRows,
+    scope: s.routeState.scope,
+  }
 
   return (
     <ShellAdapterProvider value={shellAdapter}>
@@ -226,9 +299,10 @@ export default function AppSidebar({
         onSignIn={() => s.requireAuth('send')}
       />
 
-      {classicLayout ? null : (
-        <UnifiedSidebar
-          brand={brandLink}
+      {!classicLayout || !s.hideTemporaryChatChrome ? (
+        <SelectedSidebar
+          {...sidebarProps}
+          panelId={classicLayout ? 'app-context-sidebar' : undefined}
           keyboardShortcut
           resizable
           collapsed={s.sidebarCollapsed}
@@ -236,109 +310,31 @@ export default function AppSidebar({
             s.setAccountMenuOpen(false)
             s.setSidebarCollapsed(collapsed)
           }}
-          items={s.railItems}
-          footerItems={s.railFooterItems}
-          panelKind={s.routeState.panelKind}
-          panelNav={s.panelNav}
-          panelAction={s.panelAction}
-          sectionActions={sectionActions}
-          renderSection={renderSection}
-          sectionRows={sectionRows}
           onSearch={() => s.openGlobalSearch(null)}
-          scope={s.routeState.scope}
           account={desktopAccountSlot}
-          className={`hidden h-full transition-[width,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${
-            s.hideTemporaryChatChrome ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'
-          }`}
+          className={classicLayout ? 'hidden md:flex' : `hidden h-full transition-[width,opacity] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] md:flex ${s.hideTemporaryChatChrome ? 'w-0 opacity-0 pointer-events-none' : 'opacity-100'}`}
         >
           {panelChildren}
-        </UnifiedSidebar>
-      )}
-
-      {classicLayout && !s.hideTemporaryChatChrome ? (
-      <DoubleSidebar
-        brand={brandLink}
-        railBrand={<SidebarBrandLink href={brandHomeHref} logoSrc={s.brandConfig.logoSrc} logoAlt={s.brandConfig.logoAlt} label={brandLabel} onNavigate={s.closeMobileDrawer} className="flex size-10 items-center justify-center rounded-lg" labelClassName="sr-only" markOnly />}
-        title={s.panelTitle}
-        panelId="app-context-sidebar"
-        themePreset={appSettings?.settings.theme === 'dark' ? appSettings.settings.darkThemePreset : appSettings?.settings.lightThemePreset}
-        keyboardShortcut
-        resizable
-        collapsed={s.sidebarCollapsed}
-        onCollapsedChange={(collapsed) => {
-          s.setAccountMenuOpen(false)
-          s.setSidebarCollapsed(collapsed)
-        }}
-        items={s.railItems}
-        footerItems={railFooterItems}
-        panelKind={s.routeState.panelKind}
-        panelNav={s.panelNav}
-        panelAction={s.panelAction}
-        sectionActions={sectionActions}
-        renderSection={renderSection}
-        sectionRows={sectionRows}
-        onSearch={() => s.openGlobalSearch(null)}
-        scope={s.routeState.scope}
-        account={desktopAccountSlot}
-        className={s.hideTemporaryChatChrome ? 'hidden' : 'hidden md:flex'}
-      >
-        {panelChildren}
-      </DoubleSidebar>
+        </SelectedSidebar>
       ) : null}
 
-      {classicLayout ? (
-        <MobileSidebar
-          open={s.mobileMenuOpen}
-          hidden={s.hideTemporaryChatChrome}
-          onClose={s.closeMobileDrawer}
-          view={s.mobileView}
-          showPanel={s.routeState.showSecondaryPanel}
-          onBack={() => s.setMobileView('nav')}
-          panelTitle={s.panelTitle}
-          panelNav={s.panelNav}
-          panelAction={s.panelAction}
-          panelSearch={s.panelSearch}
-          panelChildren={panelChildren}
-          brandLink={brandLink}
-          navItems={s.mobileNavItems}
-          onSelectItem={s.onSelectMobileNavItem}
-
-          menuRef={s.mobileMenuRef}
-          isGuestConfirmed={s.isGuestConfirmed}
-          workspace={workspace}
-          displayName={s.displayName}
-          accountMenuOpen={s.accountMenuOpen}
-          onAccountMenuOpenChange={s.setAccountMenuOpen}
-          accountHeader={mobileAccountHeader}
-          accountMenu={accountMenuContent}
-          userAvatar={userAvatar}
-          onSignIn={() => s.requireAuth('send')}
-        />
-      ) : (
-        <MobileDrawer open={s.mobileMenuOpen} hidden={s.hideTemporaryChatChrome} onClose={s.closeMobileDrawer}>
-          <UnifiedSidebar
-            brand={brandLink}
+        <MobileDrawer open={s.mobileMenuOpen} hidden={s.hideTemporaryChatChrome} onClose={s.closeMobileDrawer}
+          className={mobileSidebarProps.drawerClassName}>
+          <SelectedSidebar
+            {...sidebarProps}
             collapsed={false}
             inlineMore
             publishSubviews={false}
-            onCollapsedChange={s.closeMobileDrawer}
-            items={s.railItems.map((item) => ({ ...item, onSelect: () => { s.closeMobileDrawer(); item.onSelect() } }))}
-            footerItems={s.railFooterItems?.map((item) => ({ ...item, onSelect: () => { s.closeMobileDrawer(); item.onSelect() } }))}
-            panelKind={s.routeState.panelKind}
-            panelNav={s.panelNav}
-            panelAction={s.panelAction}
-            sectionActions={sectionActions}
-            renderSection={renderSection}
-            sectionRows={sectionRows}
+            onCollapsedChange={(collapsed) => { if (collapsed) s.closeMobileDrawer() }}
+            items={mobileSidebarProps.items}
+            footerItems={mobileSidebarProps.footerItems}
             onSearch={() => { s.closeMobileDrawer(); s.openGlobalSearch(null) }}
-            scope={s.routeState.scope}
-            account={desktopAccountSlot}
-            className="h-full w-full bg-transparent"
+            account={mobileAccountSlot}
+            className="mobile-sidebar-layout h-full w-full bg-transparent"
           >
             {panelChildren}
-          </UnifiedSidebar>
+          </SelectedSidebar>
         </MobileDrawer>
-      )}
 
       <GlobalSearchDialog
         open={s.globalSearchOpen}

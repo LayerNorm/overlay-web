@@ -10,6 +10,15 @@ failures; notification permissions remain in macOS System Settings.
 
 ## Brand, Theme, And Navigation
 
+The saved `useSecondarySidebar` setting selects the same sidebar component at every
+viewport width. Below 768px, the selected single sidebar or icon-rail/context-panel
+layout opens inside the navigation drawer rather than switching to the legacy
+two-step mobile navigator. Drawer panels fit the available width without changing
+the desktop collapse preference or either sidebar's design.
+
+Threads without a status render their title directly, without an empty icon slot;
+status icons only occupy space when there is a status to display.
+
 Account is the workspace-independent `/account` page, linked above Settings in the
 workspace menu. It shows account identity, memberships, sign out and account deletion;
 it must remain usable when workspace loading fails or there are no memberships.
@@ -87,6 +96,8 @@ export const overlayAppShell = defineOverlayAppConfig({
 Registries merge with defaults by `id`. If you provide an item with the same `id`, Overlay replaces that item’s metadata. Unspecified default items remain available.
 
 Work leads the default primary navigation and `/app/work` is the authenticated home (the brand link, the default password/SSO sign-in redirect and `/app` all go there; explicit Account/desktop return destinations remain unchanged; a deployment with `OVERLAY_FEATURE_WORK=0` shows a notice with a link to Agents). The authenticated Agents surface uses the contextual sidebar as its roster; selecting an agent opens that agent's direct conversation. The conversation header's settings control composes the existing agent editor inside `AppScreenSidePanel`, which is docked on desktop and presented as an overlay dialog on smaller screens. The full-page `/app/agents/new` and `/app/agents/:id` routes remain compatibility entry points.
+
+Agent thread titles remain single-line rows inside the curved tree, including the mobile drawer. A live, viewer-scoped Convex projection (`agents/threads:activity`) supplies a spinner for running/queued/child-waiting work, an amber question bubble for input, approval, authorization or resource pauses, a green check for an unread completed response, and a muted check after review. Failed and cancelled runs have distinct non-success indicators. Empty threads have no indicator. Agent subtitles summarize working, ready and needs-you counts even while collapsed; chief ownership remains the fallback when there is no actionable activity. Archived, deleted, automation-owned and other users' threads are excluded. Read state uses the participant's read timestamp relative to the latest run's completion, with explicit Mark unread respected; visible transcript settlement and returning to the tab refresh the read marker. The query uses native Convex identity and the thread list's workspace and agent visibility checks, not browser-supplied tokens or user IDs. Subscriptions wait for native authentication; revoked access clears activity, while unexpected query failures reach the error boundary instead of silently looking idle. No schema migration is needed. Deploy the matching web and isolated backend revision for Preview acceptance.
 
 While Settings is open, the primary rail exposes a temporary return item after the normal navigation list. It uses the existing `X` icon and the label `Settings`, and returns the user to Agents; it should not be inserted at the top of the primary navigation.
 

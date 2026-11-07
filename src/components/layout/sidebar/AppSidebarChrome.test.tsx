@@ -4,7 +4,32 @@ import React from 'react'
 import { Circle } from 'lucide-react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { buildWorkPanelNav } from './workPanelNav'
-import { getDesktopSidebarViewportSnapshot, MobileNavStep, MobilePanelStep, SidebarBrandLink, SidebarRailBrand, subscribeToDesktopSidebarViewport } from './AppSidebarChrome'
+import { getDesktopSidebarViewportSnapshot, MobileNavStep, MobilePanelStep, SelectedSidebar, SidebarBrandLink, SidebarRailBrand, subscribeToDesktopSidebarViewport } from './AppSidebarChrome'
+
+test('desktop and drawer select the same sidebar from the saved setting', () => {
+  for (const useSecondarySidebar of [true, false, undefined]) {
+    for (const className of ['hidden md:flex', 'mobile-sidebar-layout h-full w-full']) {
+      const html = renderToStaticMarkup(<SelectedSidebar
+        useSecondarySidebar={useSecondarySidebar}
+        brand="Overlay" railBrand="O" title="Agents"
+        collapsed={false} onCollapsedChange={() => {}}
+        items={[{ id: 'agents', label: 'Agents', icon: Circle, active: true, onSelect() {} }]}
+        panelKind="agents" scope="personal" account="Account"
+        className={className}
+      ><span>Thread list</span></SelectedSidebar>)
+      if (useSecondarySidebar === false) {
+        assert.doesNotMatch(html, /data-double-sidebar/)
+        assert.match(html, /aria-label="Sidebar"/)
+      } else {
+        assert.match(html, /data-double-sidebar/)
+        assert.match(html, /aria-label="Primary navigation"/)
+        assert.match(html, /aria-label="Agents sidebar"/)
+      }
+      assert.match(html, /Thread list/)
+      assert.match(html, /Account/)
+    }
+  }
+})
 
 test('mobile Work panel renders Organization below Timeline and closes the drawer on navigation', () => {
   for (const scope of ['personal', 'workspace'] as const) {
