@@ -1126,6 +1126,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Production release 2026-09-16: `846d41f43` promoted on `overlay-landing` and production Convex synced. Managed harness agents enabled for every workspace (`OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS=1`, `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true`, `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE=general`); the production `VERCEL_TOKEN` (rotated/dead) and empty `AI_GATEWAY_API_KEY` were replaced with valid values so sandbox provisioning and in-sandbox model brokering work.
 
+- Alternate the homepage headline with “Give your agents a workspace.” every five seconds using an upward rolling transition. Both headlines retain colorful section links, the surrounding layout stays fixed, and reduced-motion preferences disable the rolling animation.
+
 ## 2026-10-13 — Release workflow migration
 
 - Complete the release workflow migration: isolated PR previews without a paid custom suffix, native main merge queue, on-demand exact-main candidates, manual web-first production promotion, and verified rollback/restoration. Production release `bee84a33a2d4` passed authenticated smoke; automatic staging Stripe checkout/cancellation and browser storage acceptance passed.
