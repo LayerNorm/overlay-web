@@ -36,9 +36,10 @@ export function permissionModeForConnectedHarness(
 
 /**
  * A durable turn is no longer bounded by the request that started it, so the
- * cap can be what the work needs rather than what a response could hold.
+ * cap can be what the work needs rather than what a response could hold. Reasoning
+ * models spend thinking tokens from the same per-call limit, so leave room for both.
  */
-const MAX_OUTPUT_TOKENS_AGENT = 16_000
+const MAX_OUTPUT_TOKENS_AGENT = 32_000
 
 /**
  * Each mentioned agent gets its own budget reservation and its own durable

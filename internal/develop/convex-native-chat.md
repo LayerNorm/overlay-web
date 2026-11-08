@@ -214,6 +214,21 @@ The working state's `unverifiedNarrative` names the response's real ending
 (`cutOffResponseNarrative`), never its opening excerpt, because the model treats
 the working state as authoritative and would resume from where that excerpt ends.
 
+Per-call output limits come from `harnessOutputLimits` in
+`src/server/harness/model-ports.ts`. Personal chat and workspace agents request
+32,000 tokens per model call. Compaction still reserves a quarter of the
+working-context budget for output, but the response is bounded by the model's own
+output maximum and by the space left in its real context window after the working
+budget, not by that reserve. Thinking tokens count against the same limit, so a
+reasoning model needs room for both. A reply longer than one call continues in the
+next call as described above. Larger limits raise each call's spend reservation;
+unused reservation is released when the call settles.
+
+Thinking is not carried into the next call. If a call reaches its limit having
+produced only thinking (the provider-reported reasoning tokens cover all but a few
+output tokens), `harnessReasoningSetting` runs the continuation with
+`reasoning: 'none'` so it writes the answer instead of thinking from scratch again.
+
 The native personal Act request remains pending until the durable root's
 authoritative Convex state is terminal. Its SSE adapter reads the same persisted
 active stream and settled transcript steps, including source metadata and

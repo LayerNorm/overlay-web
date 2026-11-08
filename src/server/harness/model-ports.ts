@@ -8,7 +8,7 @@ import { buildHarnessStepInstructions } from './context'
 import { prepareHarnessArtifactPrompt } from './artifact-prompt'
 import { createHarnessCompactionPort } from './compaction-port'
 import { captureHarnessModelUsage } from './model-usage'
-import type { HarnessExecutionPorts } from './ports'
+import type { HarnessExecutionPorts, HarnessModelSettings } from './ports'
 import type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
 import { readHarnessModelLimits } from './model-preparation'
 import { settleHarnessModelUsage } from './settle-model-step'
@@ -35,6 +35,54 @@ function recordPreparationMetricIfEligible(
     receiptId,
     modelId,
   })
+}
+
+const DEFAULT_MAX_OUTPUT_TOKENS = 8_192
+
+/**
+ * Output limits for one harness model call.
+ *
+ * Compaction keeps the prompt inside the working-context budget and reserves a
+ * quarter of that budget for output. The response itself is bounded by the
+ * model's real context window, not by that reserve: once the prompt is compacted,
+ * everything between the working budget and the model window is free for output.
+ * Tying the response to the reserve capped every call at 8,000 tokens with the
+ * 32,000-token budget, which reasoning models could spend entirely on thinking.
+ */
+export function harnessOutputLimits(
+  requested: number | undefined,
+  modelMaxOutput: number | null,
+  workingContextTokens: number,
+  modelContextWindow: number,
+): { maxOutputTokens: number; compactionOutputReserve: number } {
+  const allowed = Math.min(requested ?? DEFAULT_MAX_OUTPUT_TOKENS, modelMaxOutput ?? DEFAULT_MAX_OUTPUT_TOKENS)
+  const reserve = Math.max(1, Math.floor(workingContextTokens / 4))
+  const headroom = Math.max(reserve, modelContextWindow - workingContextTokens)
+  return { maxOutputTokens: Math.min(allowed, headroom), compactionOutputReserve: Math.min(allowed, reserve) }
+}
+
+/** Below this many visible tokens, a capped call is treated as having written nothing. */
+const THINKING_ONLY_VISIBLE_TOKENS = 64
+
+type ReasoningSetting = NonNullable<HarnessModelSettings['reasoning']>
+
+/**
+ * Reasoning for the next response call.
+ *
+ * Thinking is not carried into the next call, so a call that hit its output limit
+ * with nothing but thinking would make every continuation think from scratch and
+ * write nothing. When the previous response receipt shows that, the continuation
+ * runs with thinking off so it writes the answer.
+ */
+export function harnessReasoningSetting(
+  modelId: string,
+  requested: ReasoningSetting | undefined,
+  truncatedResponse: boolean,
+  previousReceipt: { id: string; outputTokens: number; reasoningTokens: number } | undefined,
+): ReasoningSetting | undefined {
+  if (truncatedResponse && previousReceipt?.id.startsWith('model:') && previousReceipt.reasoningTokens > 0
+    && previousReceipt.outputTokens - previousReceipt.reasoningTokens < THINKING_ONLY_VISIBLE_TOKENS) return 'none'
+  return isKimiK3ModelId(modelId) && requested !== undefined ? 'xhigh' : requested
 }
 
 export function createHarnessModelPorts(input: {
@@ -101,8 +149,8 @@ export function createHarnessModelPorts(input: {
       const limits = await modelLimits(input.modelId)
       const modelContextWindow = limits.contextWindow ?? FALLBACK_CONTEXT_WINDOW
       const contextWindow = Math.min(input.contextBudgetTokens ?? limits.previewContextBudgetTokens ?? contextBudgetTokens, modelContextWindow)
-      const maxOutputTokens = Math.min(request.settings.maxOutputTokens ?? 8_192,
-        limits.maxOutputTokens ?? 8_192, Math.max(1, Math.floor(contextWindow / 4)))
+      const { maxOutputTokens, compactionOutputReserve } = harnessOutputLimits(
+        request.settings.maxOutputTokens, limits.maxOutputTokens, contextWindow, modelContextWindow)
       let state = request.state
       let promptMessages = request.messages
       promptMessages = await prepareHarnessArtifactPrompt({
@@ -119,7 +167,7 @@ export function createHarnessModelPorts(input: {
       const compacted = await compactHarnessPrompt({
         messages: promptMessages,
         contextWindow,
-        outputReserveTokens: maxOutputTokens,
+        outputReserveTokens: compactionOutputReserve,
         fixedOverheadTokens,
         previousSummary: state.workingSummary,
         estimatePromptTokens: estimateHarnessPromptTokens,
@@ -196,9 +244,8 @@ export function createHarnessModelPorts(input: {
       recordPreparationMetricIfEligible(
         reference, request.state.policy.publicStreamVersion, request.receiptId, prepared.model.modelId,
       )
-      const reasoning = isKimiK3ModelId(input.modelId) && request.settings.reasoning !== undefined
-        ? 'xhigh'
-        : request.settings.reasoning
+      const reasoning = harnessReasoningSetting(input.modelId, request.settings.reasoning,
+        request.instructionContext.truncatedResponse, request.state.latestReceipt)
       return {
         messages,
         instructions,
