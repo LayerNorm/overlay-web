@@ -159,3 +159,61 @@ test('automation resumes reject agent tool revocation and connector revocation a
   mocks.state.mockResolvedValueOnce({ ...snapshot(), policy: { ...snapshot().policy, allowedToolIds: ['read_file', 'gmail_send'] } })
   await expect(refreshPersonalHarnessAccess(automationAccess, automationContext, 'gmail_send')).rejects.toThrow(/permissions have been revoked/)
 })
+
+test('an automation admitted with connected-app router tools and no connectors keeps running until a connector grant changes', async () => {
+  const automationAccess: PersonalHarnessAccess = {
+    ...access,
+    authentication: {
+      type: 'automation', automationId: 'automation', automationRunId: 'automation-run',
+      originWorkflowRunId: 'workflow',
+    },
+  }
+  const automationContext: PersonalChatWorkToolingContext = {
+    ...context,
+    accountAllowedToolIds: ['read_file'],
+    accountAllowedConnectorIds: [],
+    integrationToolIds: ['COMPOSIO_SEARCH_TOOLS'],
+    requestedToolIds: [],
+    automationExecution: true,
+    automationId: 'automation',
+    automationRunId: 'automation-run',
+    billingProgrammaticSubjectId: 'automation:automation',
+  }
+  const admitted = () => ({ ...snapshot(), policy: { ...snapshot().policy, allowedToolIds: ['COMPOSIO_SEARCH_TOOLS', 'read_file'] } })
+  mocks.automationGrant.mockResolvedValue({
+    approvalMode: 'ask', allowedToolIds: ['read_file', 'COMPOSIO_SEARCH_TOOLS'], allowedConnectorIds: [],
+  })
+  mocks.state.mockResolvedValue(admitted())
+  await expect(refreshPersonalHarnessAccess(automationAccess, automationContext)).resolves.toMatchObject({
+    integrationToolIds: ['COMPOSIO_SEARCH_TOOLS'], automationExecution: true,
+  })
+  // A connector appearing or disappearing mid-run changes the grant the run was admitted with.
+  mocks.filter.mockImplementation(async ({ resourceType, resourceIds }) =>
+    resourceType === 'connector' ? ['gmail'] : resourceIds)
+  await expect(refreshPersonalHarnessAccess(automationAccess, { ...automationContext, accountAllowedConnectorIds: ['gmail', 'slack'] }))
+    .rejects.toThrow(/permissions have been revoked/)
+})
+
+test('automation web and generated-UI tools follow admission rules: allowed for the owner, withheld by an agent without web search', async () => {
+  const automationAccess: PersonalHarnessAccess = {
+    ...access,
+    authentication: { type: 'automation', automationId: 'automation', automationRunId: 'automation-run', originWorkflowRunId: 'workflow' },
+  }
+  const automationContext: PersonalChatWorkToolingContext = {
+    ...context,
+    accountAllowedToolIds: ['read_file'], accountAllowedConnectorIds: [], integrationToolIds: [], requestedToolIds: [],
+    automationExecution: true, automationId: 'automation', automationRunId: 'automation-run',
+    billingProgrammaticSubjectId: 'automation:automation',
+  }
+  mocks.state.mockResolvedValue({ ...snapshot(), policy: { ...snapshot().policy,
+    allowedToolIds: ['present_generated_ui', 'read_file', 'web_search'] } })
+  mocks.automationGrant.mockResolvedValue({ approvalMode: 'ask', allowedToolIds: ['read_file'], allowedConnectorIds: [], withheldToolIds: [] })
+  await expect(refreshPersonalHarnessAccess(automationAccess, automationContext, 'web_search')).resolves.toMatchObject({ automationExecution: true })
+  mocks.automationGrant.mockResolvedValue({ approvalMode: 'ask', allowedToolIds: ['read_file'], allowedConnectorIds: [],
+    withheldToolIds: ['web_search', 'deep_search', 'web_fetch'] })
+  await expect(refreshPersonalHarnessAccess(automationAccess, automationContext)).rejects.toThrow(/permissions have been revoked/)
+  // An account tool the owner lost is still revoked.
+  mocks.automationGrant.mockResolvedValue({ approvalMode: 'ask', allowedToolIds: ['read_file'], allowedConnectorIds: [], withheldToolIds: [] })
+  mocks.filter.mockImplementation(async ({ resourceType, resourceIds }) => resourceType === 'tool' ? [] : resourceIds)
+  await expect(refreshPersonalHarnessAccess(automationAccess, automationContext)).rejects.toThrow(/permissions have been revoked/)
+})

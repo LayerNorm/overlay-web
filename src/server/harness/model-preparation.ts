@@ -32,6 +32,7 @@ export async function preparePersonalHarnessModel(input: {
   context: Omit<PersonalChatWorkToolingContext, 'entitlements' | 'paid'>
   receiptId: string
   purpose?: 'response' | 'summary' | 'verification'
+  publicStreamVersion?: 1
   options: LanguageModelV4CallOptions
 }): Promise<{
   model: HarnessModelReference
@@ -51,6 +52,7 @@ export async function preparePersonalHarnessModel(input: {
       modelId: context.effectiveModelId, credentialOwnerId: access.actorUserId,
       sessionId: access.conversationId,
       ...(input.purpose ? { purpose: input.purpose } : {}),
+      ...(input.publicStreamVersion === 1 ? { publicStreamVersion: 1 as const } : {}),
       personal: {
         access: {
           actorUserId: access.actorUserId, workspaceId: access.workspaceId, principalId: access.principalId,

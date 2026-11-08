@@ -272,6 +272,36 @@ function buildExecutionContext(
   }
 }
 
+// Every tool an automation run was admitted with must still be allowed, judged by the
+// rule that admitted it: account tools by the current account and source grants,
+// integration tools by an unchanged connector grant, and web search, MCP and
+// connected-app tools by a bound agent's capabilities. Tools no grant names (such as
+// generated UI) stay governed by the per-call capability checks above.
+function assertAutomationGrantCurrent(
+  state: HarnessState,
+  context: PersonalContext,
+  sourceGrant: Awaited<ReturnType<typeof refreshAutomationHarnessSource>>,
+  grants: Awaited<ReturnType<typeof readCurrentModelAndGrants>>,
+  toolName?: string,
+): void {
+  const integrationToolIds = new Set(context.integrationToolIds ?? [])
+  const accountToolIds = new Set(context.accountAllowedToolIds ?? [])
+  const withheld = new Set(sourceGrant.withheldToolIds)
+  const currentConnectors = grants.accountAllowedConnectorIds
+  const initialConnectors = context.accountAllowedConnectorIds ?? []
+  const connectorGrantChanged = initialConnectors.length !== currentConnectors.length
+    || initialConnectors.some(id => !currentConnectors.includes(id))
+  const stillAllowed = (id: string) => {
+    if (withheld.has(id)) return false
+    if (integrationToolIds.has(id)) return !connectorGrantChanged && sourceGrant.allowedToolIds.includes(id)
+    if (accountToolIds.has(id)) return sourceGrant.allowedToolIds.includes(id) && grants.accountAllowedToolIds.includes(id)
+    return true
+  }
+  if (state.policy.allowedToolIds.some(id => !stillAllowed(id)) || (toolName && !stillAllowed(toolName))) {
+    throw new FatalError('Automation agent permissions have been revoked.')
+  }
+}
+
 // Call inside the model/tool step, not only in an earlier preparation step:
 // a durable replay must not reuse a permission decision made before a wait.
 export async function refreshPersonalHarnessAccess(
@@ -309,20 +339,7 @@ export async function refreshPersonalHarnessAccess(
   assertPersonalCapabilities(authorization, subject, context, toolName)
   await assertModelCatalogAccess(authorization, subject, context.effectiveModelId)
   const grants = await readCurrentModelAndGrants(authorization, subject, access, context)
-  if (sourceGrant) {
-    const integrationToolIds = new Set(context.integrationToolIds ?? [])
-    const currentConnectors = grants.accountAllowedConnectorIds
-    const initialConnectors = context.accountAllowedConnectorIds ?? []
-    const connectorGrantChanged = initialConnectors.length !== currentConnectors.length
-      || initialConnectors.some(id => !currentConnectors.includes(id))
-    const currentSourceToolIds = sourceGrant.allowedToolIds.filter(id => integrationToolIds.has(id)
-      ? !connectorGrantChanged
-      : grants.accountAllowedToolIds.includes(id))
-    const revokedSnapshotTools = state.policy.allowedToolIds.filter(id => !currentSourceToolIds.includes(id))
-    if (revokedSnapshotTools.length || (toolName && !currentSourceToolIds.includes(toolName))) {
-      throw new FatalError('Automation agent permissions have been revoked.')
-    }
-  }
+  if (sourceGrant) assertAutomationGrantCurrent(state, context, sourceGrant, grants, toolName)
   await assertCurrentModelPolicy(
     context.effectiveModelId,
     access.actorUserId,

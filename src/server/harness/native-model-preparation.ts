@@ -10,6 +10,7 @@ export async function prepareNativeHarnessModel(input: {
   context: NativeHarnessContext
   receiptId: string
   purpose?: HarnessModelPurpose
+  publicStreamVersion?: 1
   options: LanguageModelV4CallOptions
 }): Promise<PreparedHarnessModel> {
   'use step'
@@ -24,6 +25,7 @@ export async function prepareNativeHarnessModel(input: {
       modelId: input.context.modelId, credentialOwnerId: access.actorUserId,
       sessionId: access.conversationId,
       ...(input.purpose ? { purpose: input.purpose } : {}),
+      ...(input.publicStreamVersion === 1 ? { publicStreamVersion: 1 as const } : {}),
       native: {
         access: {
           actorUserId: access.actorUserId, runId: access.runId, workflowRunId: access.workflowRunId,

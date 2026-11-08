@@ -13,6 +13,7 @@ import { assertAutomationAdmissionSource } from '@/server/harness/automation-acc
 import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
 import type { PersonalHarnessAccess } from '@/server/harness/personal-access'
 import { personalHarnessPolicy } from '@/server/harness/personal-admission-policy'
+import { recordPublicStreamMetric } from '@/server/harness/public-stream-metrics'
 
 async function ensureConversationStep(input: AutomationAgentTurnInput): Promise<{
   conversationId: string
@@ -211,8 +212,11 @@ async function admitAutomationHarnessStep(input: {
   deliveryAgentRunId: string
 }) {
   'use step'
-  return await new ConvexHarnessRepository().admit({
-    runId: `personal:${input.deliveryAgentRunId}`,
+  const repository = new ConvexHarnessRepository()
+  const runId = `personal:${input.deliveryAgentRunId}`
+  const existing = await repository.get({ actorUserId: input.actorUserId, runId })
+  const admitted = await repository.admit({
+    runId,
     goal: input.goal.slice(0, 32_000) || 'Respond to the automation instructions.',
     constraints: [],
     policy: personalHarnessPolicy({
@@ -222,10 +226,15 @@ async function admitAutomationHarnessStep(input: {
       modelId: input.modelId,
       paid: input.paid,
       createdAt: input.createdAt,
+      existingPolicy: existing?.policy,
     }),
     source: { conversationId: input.conversationId },
     deliveryAgentRunId: input.deliveryAgentRunId,
   })
+  if (admitted.policy?.publicStreamVersion === 1) recordPublicStreamMetric({
+    event: 'admission_accepted', runId, generation: admitted.executionGeneration ?? 0, modelId: input.modelId,
+  })
+  return admitted
 }
 
 /**

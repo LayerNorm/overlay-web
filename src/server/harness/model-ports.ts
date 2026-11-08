@@ -14,11 +14,28 @@ import { readHarnessModelLimits } from './model-preparation'
 import { settleHarnessModelUsage } from './settle-model-step'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
 import { estimateHarnessPromptTokens } from './artifact-context'
+import { recordPublicStreamMetric } from './public-stream-metrics'
 
 export type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
 import { HarnessYield, waitForHarnessModelRecovery } from './model-recovery'
 
 type ModelStep = Parameters<HarnessExecutionPorts['recordModelStep']>[0]
+
+function recordPreparationMetricIfEligible(
+  reference: HarnessExecutionReference,
+  publicStreamVersion: number | undefined,
+  receiptId: string,
+  modelId: string,
+): void {
+  if (publicStreamVersion !== 1) return
+  recordPublicStreamMetric({
+    event: 'preparation_complete',
+    runId: reference.runId,
+    generation: reference.executionGeneration ?? 0,
+    receiptId,
+    modelId,
+  })
+}
 
 export function createHarnessModelPorts(input: {
   reference: HarnessExecutionReference
@@ -27,6 +44,7 @@ export function createHarnessModelPorts(input: {
     modelId: string
     receiptId: string
     purpose: HarnessModelPurpose
+    publicStreamVersion?: 1
     options: LanguageModelV4CallOptions
   }) => Promise<PreparedHarnessModel>
   contextBudgetTokens?: number
@@ -158,6 +176,7 @@ export function createHarnessModelPorts(input: {
         modelId: input.modelId,
         receiptId: request.receiptId,
         purpose: 'response',
+        publicStreamVersion: request.state.policy.publicStreamVersion,
         options: {
           ...request.settings,
           maxOutputTokens: responseMaxOutputTokens,
@@ -166,6 +185,9 @@ export function createHarnessModelPorts(input: {
         },
       })
       preparedCalls.set(request.receiptId, prepared)
+      recordPreparationMetricIfEligible(
+        reference, request.state.policy.publicStreamVersion, request.receiptId, prepared.model.modelId,
+      )
       const reasoning = isKimiK3ModelId(input.modelId) && request.settings.reasoning !== undefined
         ? 'xhigh'
         : request.settings.reasoning

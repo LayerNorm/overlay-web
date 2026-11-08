@@ -105,7 +105,7 @@ beforeEach(() => {
 
 test('closeStream:false automation follows a continued task to persisted terminal delivery', async () => {
   mocks.harnessWorkflow.mockResolvedValue({ runId: 'personal:delivery', status: 'running' })
-  mocks.readHarness.mockResolvedValueOnce(null).mockResolvedValueOnce({
+  mocks.readHarness.mockResolvedValueOnce(null).mockResolvedValueOnce(null).mockResolvedValueOnce({
     runId: 'personal:delivery', workflowRunId: 'successor', executionGeneration: 1,
     status: 'completed', policy: { actorUserId: 'user', workspaceId: 'workspace' },
   })
@@ -221,7 +221,7 @@ test.each([
   ['cancelled', 'Run stopped by its owner.'],
 ] as const)('same-owner %s terminal replay settles its persisted reason', async (status, terminalReason) => {
   mocks.harnessWorkflow.mockRejectedValueOnce(new Error('workflow replayed a terminal failure'))
-  mocks.readHarness.mockResolvedValueOnce({
+  mocks.readHarness.mockResolvedValueOnce(null).mockResolvedValueOnce({
     runId: 'personal:delivery', workflowRunId: 'workflow', status, terminalReason,
     policy: { actorUserId: 'user', workspaceId: 'workspace' },
   })
