@@ -7,6 +7,7 @@ import { generateHarnessModel, HarnessLanguageModel, streamHarnessModel } from '
 import { authorizePersonalHarnessModelDispatch, type PersonalHarnessModelDispatch } from './personal-model-dispatch'
 import { authorizeNativeHarnessModelDispatch, type NativeHarnessModelDispatch } from './native-model-dispatch'
 
+vi.mock('server-only', () => ({}))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
 vi.mock('./personal-model-dispatch', () => ({ authorizePersonalHarnessModelDispatch: vi.fn() }))
 vi.mock('./native-model-dispatch', () => ({ authorizeNativeHarnessModelDispatch: vi.fn() }))

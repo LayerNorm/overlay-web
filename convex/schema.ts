@@ -1517,6 +1517,12 @@ export default defineSchema({
     nativeSubmittedAt: v.optional(v.number()),
     nativeRunId: v.optional(v.id('conversationAgentRuns')),
     nativeProgressSequence: v.optional(v.number()),
+    publicStreamCheckpoint: v.optional(v.object({
+      runId: v.string(),
+      executionGeneration: v.number(),
+      receiptId: v.string(),
+      invocation: v.number(),
+    })),
     userMetadata: v.optional(userMessageMetadata),
     // Kept apart from `parts`, which streaming and finalization replace.
     agentPlan: v.optional(v.array(runPlanStepValidator)),
@@ -3075,6 +3081,7 @@ export default defineSchema({
   harnessTranscriptSteps: defineTable({
     runId: v.string(),
     receiptId: v.string(),
+    executionGeneration: v.optional(v.number()),
     sequence: v.number(),
     stepNumber: v.number(),
     persistenceJson: v.string(),
@@ -3083,6 +3090,42 @@ export default defineSchema({
     createdAt: v.number(),
   }).index('by_runId_receiptId', ['runId', 'receiptId'])
     .index('by_runId_sequence', ['runId', 'sequence']),
+
+  harnessPublicStreams: defineTable({
+    runId: v.string(),
+    workflowRunId: v.string(),
+    executionGeneration: v.number(),
+    receiptId: v.string(),
+    invocation: v.number(),
+    conversationId: v.id('conversations'),
+    assistantMessageId: v.id('conversationMessages'),
+    nextSequence: v.number(),
+    lastSequence: v.number(),
+    lastText: v.string(),
+    nextSegmentIndex: v.number(),
+    visibleCharacters: v.number(),
+    truncated: v.boolean(),
+    active: v.boolean(),
+    updatedAt: v.number(),
+  })
+    .index('by_runId', ['runId'])
+    .index('by_conversation_assistantMessageId', ['conversationId', 'assistantMessageId']),
+
+  harnessPublicStreamSegments: defineTable({
+    runId: v.string(),
+    workflowRunId: v.string(),
+    executionGeneration: v.number(),
+    receiptId: v.string(),
+    segmentIndex: v.number(),
+    firstSequence: v.number(),
+    lastSequence: v.number(),
+    text: v.string(),
+    truncatedMarker: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index('by_runId', ['runId'])
+    .index('by_runId_receiptId_segmentIndex', ['runId', 'receiptId', 'segmentIndex']),
 
   /** The parent's reservation for a delegated child; the child run itself is a separate `harnessRuns` row. */
   harnessChildren: defineTable({

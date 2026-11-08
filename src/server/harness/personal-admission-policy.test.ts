@@ -1,5 +1,8 @@
-import { expect, test } from 'vitest'
-import { personalHarnessPolicy } from './personal-admission-policy'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { isUnifiedStreamingWorkspaceEnabled, personalHarnessPolicy } from './personal-admission-policy'
+
+beforeEach(() => vi.stubEnv('OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS', ''))
+afterEach(() => vi.unstubAllEnvs())
 
 const input = { actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: ['write', 'read', 'read'],
   modelId: 'fixture/model', paid: true, createdAt: 1_000 }
@@ -21,6 +24,21 @@ test('new admissions use v2 lifecycle while only Overlay-funded paid runs use wo
 test('free accounts and BYOK cannot authorize Overlay-funded model spend', () => {
   expect(personalHarnessPolicy({ ...input, paid: false }).spendingMode).toBe('none')
   expect(personalHarnessPolicy({ ...input, modelId: 'byok/key/model' }).spendingMode).toBe('external')
+})
+
+test('unified stream enrollment is exact and immutable for an admitted root', () => {
+  expect(isUnifiedStreamingWorkspaceEnabled('workspace', ' workspace-2, workspace ')).toBe(true)
+  expect(isUnifiedStreamingWorkspaceEnabled('work', 'workspace')).toBe(false)
+  expect(isUnifiedStreamingWorkspaceEnabled('workspace', '*')).toBe(false)
+  expect(isUnifiedStreamingWorkspaceEnabled('workspace', '')).toBe(false)
+
+  vi.stubEnv('OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS', 'workspace')
+  const enrolled = personalHarnessPolicy(input)
+  expect(enrolled.publicStreamVersion).toBe(1)
+
+  vi.stubEnv('OVERLAY_UNIFIED_STREAMING_WORKSPACE_IDS', '')
+  expect(personalHarnessPolicy({ ...input, existingPolicy: enrolled }).publicStreamVersion).toBe(1)
+  expect(personalHarnessPolicy({ ...input, existingPolicy: personalHarnessPolicy(input) }).publicStreamVersion).toBeUndefined()
 })
 
 test('invalid budgets fail closed', () => {
