@@ -3,7 +3,7 @@ import { createHarnessSnapshot, type HarnessSnapshot } from '@overlay/agent-runt
 import type { HarnessExecutionReference } from './state-steps'
 import type { HarnessModelReference } from './secure-model'
 import type { PreparedHarnessModel } from './model-ports'
-import { createHarnessModelPorts } from './model-ports'
+import { createHarnessModelPorts, harnessOutputLimits } from './model-ports'
 
 const mocks = vi.hoisted(() => ({
   read: vi.fn(), limits: vi.fn(), compact: vi.fn(), wait: vi.fn(), reset: vi.fn(), recovery: vi.fn(), apply: vi.fn(),
@@ -163,6 +163,37 @@ test('model preparation reuses the boundary state and reads catalog limits once 
   expect(mocks.read).not.toHaveBeenCalled()
   expect(prepare).toHaveBeenCalledTimes(2)
   expect(mocks.compact.mock.calls[0][0].previousSummary).toBe(state.workingSummary)
+})
+
+test('the response output limit uses the model window while compaction keeps its working-budget reserve', () => {
+  // 1M-window model, 32k working budget: the reply can use the requested 32k; compaction reserves 8k.
+  expect(harnessOutputLimits(32_000, 64_000, 32_000, 1_000_000)).toEqual({ maxOutputTokens: 32_000, compactionOutputReserve: 8_000 })
+  // The model's own output maximum still wins.
+  expect(harnessOutputLimits(32_000, 16_000, 32_000, 1_000_000)).toEqual({ maxOutputTokens: 16_000, compactionOutputReserve: 8_000 })
+  // Prompt (at most the working budget) plus output never exceeds the model window.
+  expect(harnessOutputLimits(32_000, 64_000, 32_000, 48_000)).toEqual({ maxOutputTokens: 16_000, compactionOutputReserve: 8_000 })
+  // When the working budget is the whole window, fall back to the quarter reserve.
+  expect(harnessOutputLimits(32_000, 64_000, 32_000, 32_000)).toEqual({ maxOutputTokens: 8_000, compactionOutputReserve: 8_000 })
+  // Unspecified limits keep the 8,192 default.
+  expect(harnessOutputLimits(undefined, null, 128_000, 1_000_000)).toEqual({ maxOutputTokens: 8_192, compactionOutputReserve: 8_192 })
+})
+
+test('a large-window model is prepared with the requested output limit, not a quarter of the working budget', async () => {
+  const state = runningState()
+  const prepare = vi.fn(async ({ modelId }: { modelId: string }): Promise<PreparedHarnessModel> => ({
+    model: { modelId, credentialOwnerId: 'user' } as HarnessModelReference,
+    options: {} as never, contextWindow: 1_000_000, estimatedCostMicros: 0,
+  }))
+  mocks.limits.mockResolvedValue({ contextWindow: 1_000_000, maxOutputTokens: 64_000 })
+  mocks.compact.mockImplementation(async ({ messages }) => ({ messages, didCompact: false, summaryFailed: false, fitsBudget: true }))
+  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  const prepared = await ports.prepareModel({
+    receiptId: 'model:0', state, messages: [], toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 32_000 },
+    instructionContext: { instructions: 'Follow the plan.', continuation: false, truncatedResponse: false, finalAnswerRequired: false },
+  })
+  expect(mocks.compact.mock.calls[0][0]).toMatchObject({ contextWindow: 32_000, outputReserveTokens: 8_000 })
+  expect(prepare.mock.calls[0][0].options.maxOutputTokens).toBe(32_000)
+  expect(prepared.settings.maxOutputTokens).toBe(32_000)
 })
 
 test('summary funding denial yields its exact receipt instead of failing or preparing an unfunded response', async () => {

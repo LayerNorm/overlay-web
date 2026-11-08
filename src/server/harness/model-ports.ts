@@ -37,6 +37,30 @@ function recordPreparationMetricIfEligible(
   })
 }
 
+const DEFAULT_MAX_OUTPUT_TOKENS = 8_192
+
+/**
+ * Output limits for one harness model call.
+ *
+ * Compaction keeps the prompt inside the working-context budget and reserves a
+ * quarter of that budget for output. The response itself is bounded by the
+ * model's real context window, not by that reserve: once the prompt is compacted,
+ * everything between the working budget and the model window is free for output.
+ * Tying the response to the reserve capped every call at 8,000 tokens with the
+ * 32,000-token budget, which reasoning models could spend entirely on thinking.
+ */
+export function harnessOutputLimits(
+  requested: number | undefined,
+  modelMaxOutput: number | null,
+  workingContextTokens: number,
+  modelContextWindow: number,
+): { maxOutputTokens: number; compactionOutputReserve: number } {
+  const allowed = Math.min(requested ?? DEFAULT_MAX_OUTPUT_TOKENS, modelMaxOutput ?? DEFAULT_MAX_OUTPUT_TOKENS)
+  const reserve = Math.max(1, Math.floor(workingContextTokens / 4))
+  const headroom = Math.max(reserve, modelContextWindow - workingContextTokens)
+  return { maxOutputTokens: Math.min(allowed, headroom), compactionOutputReserve: Math.min(allowed, reserve) }
+}
+
 export function createHarnessModelPorts(input: {
   reference: HarnessExecutionReference
   modelId: string
@@ -101,8 +125,8 @@ export function createHarnessModelPorts(input: {
       const limits = await modelLimits(input.modelId)
       const modelContextWindow = limits.contextWindow ?? FALLBACK_CONTEXT_WINDOW
       const contextWindow = Math.min(input.contextBudgetTokens ?? limits.previewContextBudgetTokens ?? contextBudgetTokens, modelContextWindow)
-      const maxOutputTokens = Math.min(request.settings.maxOutputTokens ?? 8_192,
-        limits.maxOutputTokens ?? 8_192, Math.max(1, Math.floor(contextWindow / 4)))
+      const { maxOutputTokens, compactionOutputReserve } = harnessOutputLimits(
+        request.settings.maxOutputTokens, limits.maxOutputTokens, contextWindow, modelContextWindow)
       let state = request.state
       let promptMessages = request.messages
       promptMessages = await prepareHarnessArtifactPrompt({
@@ -119,7 +143,7 @@ export function createHarnessModelPorts(input: {
       const compacted = await compactHarnessPrompt({
         messages: promptMessages,
         contextWindow,
-        outputReserveTokens: maxOutputTokens,
+        outputReserveTokens: compactionOutputReserve,
         fixedOverheadTokens,
         previousSummary: state.workingSummary,
         estimatePromptTokens: estimateHarnessPromptTokens,
