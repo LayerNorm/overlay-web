@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add a bottom-pinned Work composer with searchable assignees and dependencies, Start/Due dates, context, status and priority. Agent assignments start immediately unless dependencies are unfinished, then start automatically when the last blocker is done.
+
 - Stop a live room read-marker feedback loop that repeatedly fetched the conversation directory during onboarding and could exhaust browser resources before Subscribe reached checkout.
 
 - Open Chats as a fresh personal draft, including desktop rail re-clicks, without creating an empty saved conversation or collapsing its sidebar. Keep onboarding consent checked and suppress the leave-site warning for the saved checkout redirect. After setup, retain the onboarding composer over Work until the loaded selected-task panel has painted and its entrance has finished, without a blank frame, delayed navigation tour or onboarding returning over later pages.
