@@ -215,6 +215,11 @@ reasoning model needs room for both. A reply longer than one call continues in t
 next call as described above. Larger limits raise each call's spend reservation;
 unused reservation is released when the call settles.
 
+Thinking is not carried into the next call. If a call reaches its limit having
+produced only thinking (the provider-reported reasoning tokens cover all but a few
+output tokens), `harnessReasoningSetting` runs the continuation with
+`reasoning: 'none'` so it writes the answer instead of thinking from scratch again.
+
 The native personal Act request remains pending until the durable root's
 authoritative Convex state is terminal. Its SSE adapter reads the same persisted
 active stream and settled transcript steps, including source metadata and

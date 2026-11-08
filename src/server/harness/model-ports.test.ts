@@ -3,7 +3,7 @@ import { createHarnessSnapshot, type HarnessSnapshot } from '@overlay/agent-runt
 import type { HarnessExecutionReference } from './state-steps'
 import type { HarnessModelReference } from './secure-model'
 import type { PreparedHarnessModel } from './model-ports'
-import { createHarnessModelPorts, harnessOutputLimits } from './model-ports'
+import { createHarnessModelPorts, harnessOutputLimits, harnessReasoningSetting } from './model-ports'
 
 const mocks = vi.hoisted(() => ({
   read: vi.fn(), limits: vi.fn(), compact: vi.fn(), wait: vi.fn(), reset: vi.fn(), recovery: vi.fn(), apply: vi.fn(),
@@ -176,6 +176,19 @@ test('the response output limit uses the model window while compaction keeps its
   expect(harnessOutputLimits(32_000, 64_000, 32_000, 32_000)).toEqual({ maxOutputTokens: 8_000, compactionOutputReserve: 8_000 })
   // Unspecified limits keep the 8,192 default.
   expect(harnessOutputLimits(undefined, null, 128_000, 1_000_000)).toEqual({ maxOutputTokens: 8_192, compactionOutputReserve: 8_192 })
+})
+
+test('a continuation after a thinking-only capped call turns thinking off', () => {
+  const thinkingOnly = { id: 'model:0', outputTokens: 32_000, reasoningTokens: 32_000 }
+  expect(harnessReasoningSetting('anthropic/claude-sonnet-5.5', undefined, true, thinkingOnly)).toBe('none')
+  expect(harnessReasoningSetting('anthropic/claude-sonnet-5.5', 'high', true, { ...thinkingOnly, reasoningTokens: 31_999 })).toBe('none')
+  // A capped call that wrote text keeps the requested reasoning.
+  expect(harnessReasoningSetting('anthropic/claude-sonnet-5.5', 'high', true, { ...thinkingOnly, reasoningTokens: 4_000 })).toBe('high')
+  // Not a continuation of a capped response, or the latest receipt is not a response call.
+  expect(harnessReasoningSetting('anthropic/claude-sonnet-5.5', 'high', false, thinkingOnly)).toBe('high')
+  expect(harnessReasoningSetting('anthropic/claude-sonnet-5.5', 'high', true, { ...thinkingOnly, id: 'summary:model:0:0' })).toBe('high')
+  // A non-reasoning model that wrote nothing is left alone.
+  expect(harnessReasoningSetting('anthropic/claude-haiku-4.5', undefined, true, { id: 'model:0', outputTokens: 0, reasoningTokens: 0 })).toBeUndefined()
 })
 
 test('a large-window model is prepared with the requested output limit, not a quarter of the working budget', async () => {
