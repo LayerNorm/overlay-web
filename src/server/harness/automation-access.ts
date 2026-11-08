@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { FatalError, RetryableError } from 'workflow'
-import { resolveAgentGrant } from '@/server/agents/agent-tooling'
+import { agentWithheldToolIds, resolveAgentGrant } from '@/server/agents/agent-tooling'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
 import type { PersonalHarnessAccess } from './personal-access'
@@ -18,8 +18,14 @@ type Source = {
 
 export type AutomationSourceGrant = {
   approvalMode: 'ask' | 'auto'
+  /** Account and integration tools the source still grants. */
   allowedToolIds: string[]
   allowedConnectorIds: string[]
+  /**
+   * Tools a bound agent's capabilities withhold (web search, MCP, connected apps),
+   * exactly as `applyAgentCapabilityFilter` removed them at admission.
+   */
+  withheldToolIds: string[]
 }
 
 function isDeleted(automation: AutomationRecord): boolean {
@@ -167,7 +173,7 @@ async function resolveAutomationSourceGrant(
     return { approvalMode: 'ask', allowedToolIds: [
       ...(context.accountAllowedToolIds ?? []),
       ...(context.integrationToolIds ?? []),
-    ], allowedConnectorIds: context.accountAllowedConnectorIds ?? [] }
+    ], allowedConnectorIds: context.accountAllowedConnectorIds ?? [], withheldToolIds: [] }
   }
   const agent = await agentService.get({
     actorUserId: access.actorUserId, workspaceId: access.workspaceId, agentId: automation.agentId,
@@ -187,6 +193,9 @@ async function resolveAutomationSourceGrant(
       ...(integrations ? context.integrationToolIds ?? [] : []),
     ],
     allowedConnectorIds,
+    withheldToolIds: [...agentWithheldToolIds({
+      capabilities: grant.capabilities, integrationToolIds: context.integrationToolIds ?? [],
+    })],
   }
 }
 

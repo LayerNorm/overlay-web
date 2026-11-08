@@ -5,10 +5,13 @@ import type { PersonalHarnessAccess } from './personal-access'
 
 const mocks = vi.hoisted(() => ({
   run: vi.fn(), automation: vi.fn(), workspace: vi.fn(), conversation: vi.fn(), agentRun: vi.fn(), agent: vi.fn(),
-  capabilities: ['integrations'],
+  capabilities: ['integrations', 'web_search'] as string[],
 }))
 vi.mock('server-only', () => ({}))
 vi.mock('@/server/agents/agent-tooling', () => ({
+  agentWithheldToolIds: ({ capabilities, integrationToolIds }: { capabilities: Set<string>; integrationToolIds: string[] }) =>
+    new Set([...(capabilities.has('web_search') ? [] : ['web_search', 'deep_search', 'web_fetch']),
+      ...(capabilities.has('integrations') ? [] : integrationToolIds)]),
   resolveAgentGrant: ({ allowedToolIds }: { allowedToolIds: string[] }) => ({
     overlayToolIds: allowedToolIds,
     capabilities: new Set(mocks.capabilities),
@@ -41,7 +44,7 @@ const access: PersonalHarnessAccess = {
 
 beforeEach(() => {
   vi.resetAllMocks()
-  mocks.capabilities = ['integrations']
+  mocks.capabilities = ['integrations', 'web_search']
   mocks.run.mockResolvedValue({ automation, run })
   mocks.workspace.mockResolvedValue({ workspace: { id: 'workspace' }, principal: { id: 'principal' } })
   mocks.conversation.mockResolvedValue({ userId: 'user', workspaceId: 'workspace', conversationType: 'personal' })
@@ -104,7 +107,7 @@ test('the refreshed grant names the connected-app router tools exactly as admiss
   // Without a bound agent: the owner's tools, router tools included even before any app is connected.
   mocks.run.mockResolvedValue({ automation: { ...automation, agentId: undefined }, run })
   expect(await refreshAutomationHarnessSource(access, context as never)).toEqual({
-    approvalMode: 'ask', allowedToolIds: ['read_file', 'COMPOSIO_SEARCH_TOOLS'], allowedConnectorIds: [],
+    approvalMode: 'ask', allowedToolIds: ['read_file', 'COMPOSIO_SEARCH_TOOLS'], allowedConnectorIds: [], withheldToolIds: [],
   })
   expect(mocks.agent).not.toHaveBeenCalled()
   // With an agent that may use integrations: the same, intersected with its overlay tools.
@@ -114,7 +117,8 @@ test('the refreshed grant names the connected-app router tools exactly as admiss
   // With an agent that may not: no integration tools and no connectors.
   mocks.capabilities = []
   expect(await refreshAutomationHarnessSource(access, { ...context, accountAllowedConnectorIds: ['gmail'] } as never))
-    .toEqual({ approvalMode: 'ask', allowedToolIds: ['read_file'], allowedConnectorIds: [] })
+    .toEqual({ approvalMode: 'ask', allowedToolIds: ['read_file'], allowedConnectorIds: [],
+      withheldToolIds: ['web_search', 'deep_search', 'web_fetch', 'COMPOSIO_SEARCH_TOOLS'] })
 })
 
 test('scheduler admission requires enabled state and exact scheduler owner', async () => {
