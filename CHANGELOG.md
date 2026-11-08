@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Alternate the homepage headline with “Give your agents a workspace.” every five seconds using an upward rolling transition. Both headlines retain colorful section links, the surrounding layout stays fixed, and reduced-motion preferences disable the rolling animation.
+- Restore the Convex-native migration plan (`internal/plans/CONVEX_NATIVE_PR_PLAN.md`) at the owner's request as the completed record: every card from CN-01 to CN-37 is marked merged and live, with the closing PRs (#426 to #428) and the follow-up fixes (#419, #425, #429, #430) in its table, the HTTP reads kept on purpose and an outcome summary.
 
 - Fix starting a direct message with someone you had a DM with before but had left, deleted for yourself or archived: it now reopens that DM for you. Before, it returned the old conversation without re-adding you, so it opened with "0 people", every action failed with an access error and it never appeared in the sidebar.
 
@@ -1125,6 +1125,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ### Operational
 
 - Production release 2026-09-16: `846d41f43` promoted on `overlay-landing` and production Convex synced. Managed harness agents enabled for every workspace (`OVERLAY_FEATURE_OVERLAY_CLOUD_ENVIRONMENTS=1`, `OVERLAY_FEATURE_MANAGED_HARNESS_AGENTS=true`, `OVERLAY_MANAGED_HARNESS_ROLLOUT_STAGE=general`); the production `VERCEL_TOKEN` (rotated/dead) and empty `AI_GATEWAY_API_KEY` were replaced with valid values so sandbox provisioning and in-sandbox model brokering work.
+
+- Alternate the homepage headline with “Give your agents a workspace.” every five seconds using an upward rolling transition. Both headlines retain colorful section links, the surrounding layout stays fixed, and reduced-motion preferences disable the rolling animation.
 
 ## 2026-10-13 — Release workflow migration
 
