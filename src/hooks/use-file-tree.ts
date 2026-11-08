@@ -1,6 +1,7 @@
 'use client'
 
 import { useCallback, useMemo } from 'react'
+import type { FunctionReturnType } from 'convex/server'
 import { useConvexAuth, useMutation, useQuery } from 'convex/react'
 import type { OptimisticLocalStore } from 'convex/browser'
 import type { KnowledgeFile, NoteDoc } from '@overlay/app-core'
@@ -49,18 +50,20 @@ export function useLiveNote(noteId: string | null): NoteDoc | null | undefined {
     api.files.browse.get,
     workspaceId && noteId && isAuthenticated && !isLoading ? { workspaceId, fileId: noteId as Id<'files'> } : 'skip',
   )
-  return useMemo(() => {
-    if (file === undefined || file === null) return file
-    if (file.kind !== 'note') return null
-    return {
-      _id: file._id,
-      title: file.name,
-      content: file.textContent ?? '',
-      tags: file.tags ?? [],
-      createdAt: file.createdAt,
-      updatedAt: file.updatedAt,
-    }
-  }, [file])
+  return useMemo(() => (file === undefined || file === null ? file : noteDocFromFile(file)), [file])
+}
+
+/** A note as the editor reads it, from the native file row (notes keep their full text inline); null for other kinds. */
+export function noteDocFromFile(file: NonNullable<FunctionReturnType<typeof api.files.browse.get>>): NoteDoc | null {
+  if (file.kind !== 'note') return null
+  return {
+    _id: file._id,
+    title: file.name,
+    content: file.textContent ?? '',
+    tags: file.tags ?? [],
+    createdAt: file.createdAt,
+    updatedAt: file.updatedAt,
+  }
 }
 
 /** Patches one file in every cached tree of its workspace; the server answer replaces the patch. */

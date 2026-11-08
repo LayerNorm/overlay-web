@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { query } from '../_generated/server'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
+import { nativeDeploymentFeatureEnabled } from '../lib/nativeDeploymentPolicy'
 
 function safe<T extends Record<string, unknown>>(row: T) {
   const { _id, _creationTime, publicKey, ...rest } = row as T & { _id?: unknown; _creationTime?: unknown; publicKey?: unknown }
@@ -48,5 +49,24 @@ export const bindings = query({
       ? await ctx.db.query('agentBindings').withIndex('by_workspaceId_agentId', q => q.eq('workspaceId', workspaceId).eq('agentId', agentId)).take(200)
       : await ctx.db.query('agentBindings').withIndex('by_workspaceId', q => q.eq('workspaceId', workspaceId)).take(200)
     return rows.sort((a, b) => b.updatedAt - a.updatedAt).map(row => ({ ...safe(row), id: row.bindingId }))
+  },
+})
+
+/**
+ * Whether the viewer may connect their own agents here: an owner or admin (connections and bindings are managed by
+ * them, as on the server), on a deployment with external agents on and this workspace in the rollout. False for other
+ * members; null without workspace access.
+ */
+export const launchEnabled = query({
+  args: { workspaceId: v.string() },
+  handler: async (ctx, { workspaceId }) => {
+    let viewer
+    try {
+      viewer = await requireNativeWorkspace(ctx, workspaceId)
+    } catch {
+      return null
+    }
+    if (viewer.membership.role !== 'owner' && viewer.membership.role !== 'admin') return false
+    return await nativeDeploymentFeatureEnabled(ctx, 'externalAgents', workspaceId)
   },
 })
