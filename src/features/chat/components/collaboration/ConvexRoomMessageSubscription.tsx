@@ -65,7 +65,8 @@ export function ConvexRoomMessageSubscription({
   const loadedMessages = useMemo(() => {
     const seen = new Set<string>()
     return [...main.results, ...thread.results, ...(permalink ? [permalink] : [])].filter(message => {
-      if (message.conversationId !== conversationId || message.deletedAt !== undefined || seen.has(message.id)) return false
+      // Deleted rows stay: the room renders them as tombstones.
+      if ((message.conversationId && message.conversationId !== conversationId) || seen.has(message.id)) return false
       seen.add(message.id)
       return true
     })
@@ -75,14 +76,15 @@ export function ConvexRoomMessageSubscription({
     const candidates = [...thread.results, ...(permalink ? [permalink] : []), ...latestMain]
     const seen = new Set<string>()
     return candidates.filter(message => {
-      if (message.conversationId !== conversationId || message.deletedAt !== undefined
+      if ((message.conversationId && message.conversationId !== conversationId) || message.deletedAt !== undefined
         || message.status !== 'generating' || seen.has(message.id)) return false
       seen.add(message.id)
       return true
     }).slice(0, 50).map(message => message.id as Id<'conversationMessages'>)
   }, [conversationId, main.results, permalink, thread.results])
+  // Only subscribe while something is generating: idle rooms never depend on the stream query.
   const activeStreams = useQuery(api.collaboration.rooms.activePublicStreams,
-    room ? {
+    room && activeMessageIds.length > 0 ? {
       ...args,
       messageIds: activeMessageIds,
     } : 'skip')

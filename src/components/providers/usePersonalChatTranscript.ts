@@ -54,13 +54,15 @@ export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, path
   const messages = usePaginatedQuery(api.chat.personal.getMessages,
     canReadMessages ? { workspaceId: workspaceId!, conversationId: conversationId as Id<'conversations'> } : 'skip',
     { initialNumItems: 50 })
+  const generatingMessageIds = messages.results
+    .filter(row => row.message.conversationId === conversationId && row.message.status === 'generating')
+    .slice(0, 50).map(row => row.message._id)
+  // Only subscribe while something is generating: idle chats never depend on the stream query.
   const activeStreams = useQuery(api.chat.personal.activePublicStreams,
-    canReadMessages ? {
+    canReadMessages && generatingMessageIds.length > 0 ? {
       workspaceId: workspaceId!,
       conversationId: conversationId as Id<'conversations'>,
-      messageIds: messages.results
-        .filter(row => row.message.conversationId === conversationId && row.message.status === 'generating')
-        .slice(0, 50).map(row => row.message._id),
+      messageIds: generatingMessageIds,
     } : 'skip')
   usePublicStreamMetrics(activeStreams ?? [])
   const scopedRows = useMemo(
