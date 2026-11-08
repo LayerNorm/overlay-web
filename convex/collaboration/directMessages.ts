@@ -15,6 +15,8 @@ import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
+import { cleanupTerminalPublicStreams, readActivePublicStreams } from '../lib/publicStreamRead'
+import { transcriptPartIdentity } from '../../src/shared/chat/transcript-part-identity'
 
 type CollaborationCtx = (Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>) & { auth?: QueryCtx['auth'] }
 
@@ -467,6 +469,7 @@ export const listMessages = query({
 export function roomMessageView(message: Awaited<ReturnType<typeof hydrateRemoteMessages>>[number]) {
   return {
     id: message._id,
+    conversationId: message.conversationId,
     turnId: message.turnId,
     authorKind: message.authorKind ?? (message.role === 'assistant' ? 'model' : 'human'),
     authorPrincipalId: message.authorPrincipalId,
@@ -485,6 +488,7 @@ export function roomMessageView(message: Awaited<ReturnType<typeof hydrateRemote
     clientNonce: message.clientNonce,
     threadRootMessageId: message.threadRootMessageId,
     status: message.status,
+    publicStreamCheckpoint: message.publicStreamCheckpoint,
   }
 }
 
@@ -1062,6 +1066,7 @@ export const appendAgentMessageDelta = mutation({
       type: 'message.delta',
       messageId: args.messageId,
     })
+    await cleanupTerminalPublicStreams(ctx, args.messageId)
   },
 })
 
@@ -1105,6 +1110,7 @@ export const finalizeAgentMessage = mutation({
       type: 'message.completed',
       messageId: args.messageId,
     })
+    await cleanupTerminalPublicStreams(ctx, args.messageId)
     await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMessageInternal, {
       messageId: args.messageId,
     })
@@ -1151,9 +1157,24 @@ export const failAgentMessage = mutation({
     const merged = mergeHarnessFailureTranscript({
       liveContent, liveParts, settledContent, settledParts,
     })
+    const activeStream = (await readActivePublicStreams(ctx, message.conversationId, [message._id]))[0]
+    const activeText = activeStream
+      ? [activeStream.text, activeStream.truncatedMarker].filter(Boolean).join('\n\n')
+      : ''
+    const activePart = activeStream && activeText
+      ? {
+        type: 'text',
+        id: transcriptPartIdentity(activeStream.runId, activeStream.receiptId, 0, activeStream.executionGeneration),
+        text: activeText,
+      }
+      : undefined
     await ctx.db.patch(args.messageId, {
-      content: merged.content,
-      parts: merged.parts,
+      content: [merged.content, activeText].filter(Boolean).join('\n\n'),
+      parts: activePart ? [...merged.parts, activePart] : merged.parts,
+      ...(activeStream ? { publicStreamCheckpoint: {
+        runId: activeStream.runId, executionGeneration: activeStream.executionGeneration,
+        receiptId: activeStream.receiptId, invocation: activeStream.invocation,
+      } } : {}),
       status: 'error',
       updatedAt: Date.now(),
     })
@@ -1164,6 +1185,7 @@ export const failAgentMessage = mutation({
       type: 'message.failed',
       messageId: args.messageId,
     })
+    await cleanupTerminalPublicStreams(ctx, args.messageId)
   },
 })
 

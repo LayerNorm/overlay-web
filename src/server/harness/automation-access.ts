@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { FatalError, RetryableError } from 'workflow'
-import { resolveAgentGrant } from '@/server/agents/agent-tooling'
+import { agentWithheldToolIds, resolveAgentGrant } from '@/server/agents/agent-tooling'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { PersonalChatWorkToolingContext } from '@/shared/agents/personal-chat-work'
 import type { PersonalHarnessAccess } from './personal-access'
@@ -18,8 +18,14 @@ type Source = {
 
 export type AutomationSourceGrant = {
   approvalMode: 'ask' | 'auto'
+  /** Account and integration tools the source still grants. */
   allowedToolIds: string[]
   allowedConnectorIds: string[]
+  /**
+   * Tools a bound agent's capabilities withhold (web search, MCP, connected apps),
+   * exactly as `applyAgentCapabilityFilter` removed them at admission.
+   */
+  withheldToolIds: string[]
 }
 
 function isDeleted(automation: AutomationRecord): boolean {
@@ -158,9 +164,16 @@ async function resolveAutomationSourceGrant(
   context: Pick<PersonalChatWorkToolingContext,
     'accountAllowedToolIds' | 'accountAllowedConnectorIds' | 'integrationToolIds'>,
 ): Promise<AutomationSourceGrant> {
+  // Integration tools (the connected-app router tools) are admitted with every turn
+  // that may use integrations, whether or not any connector is connected yet. The
+  // refreshed grant must name them the same way, or every such run reads as revoked
+  // before its first model call. Revocation stays enforced: the caller drops them
+  // when the connector grant changes, and capability checks still apply.
   if (!automation.agentId) {
-    return { approvalMode: 'ask', allowedToolIds: context.accountAllowedToolIds ?? [],
-      allowedConnectorIds: context.accountAllowedConnectorIds ?? [] }
+    return { approvalMode: 'ask', allowedToolIds: [
+      ...(context.accountAllowedToolIds ?? []),
+      ...(context.integrationToolIds ?? []),
+    ], allowedConnectorIds: context.accountAllowedConnectorIds ?? [], withheldToolIds: [] }
   }
   const agent = await agentService.get({
     actorUserId: access.actorUserId, workspaceId: access.workspaceId, agentId: automation.agentId,
@@ -171,14 +184,18 @@ async function resolveAutomationSourceGrant(
   const grant = resolveAgentGrant({
     agentId: automation.agentId, allowedToolIds: agent.allowedToolIds, isDefaultMaster: agent.isDefault === true,
   })
-  const allowedConnectorIds = grant.capabilities.has('integrations') ? context.accountAllowedConnectorIds ?? [] : []
+  const integrations = grant.capabilities.has('integrations')
+  const allowedConnectorIds = integrations ? context.accountAllowedConnectorIds ?? [] : []
   return {
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask',
     allowedToolIds: [
       ...(context.accountAllowedToolIds ?? []).filter(id => grant.overlayToolIds.includes(id)),
-      ...(allowedConnectorIds.length ? context.integrationToolIds ?? [] : []),
+      ...(integrations ? context.integrationToolIds ?? [] : []),
     ],
     allowedConnectorIds,
+    withheldToolIds: [...agentWithheldToolIds({
+      capabilities: grant.capabilities, integrationToolIds: context.integrationToolIds ?? [],
+    })],
   }
 }
 

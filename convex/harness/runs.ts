@@ -6,6 +6,7 @@ import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { projectNativePersonalProgress } from '../lib/nativePersonalProgress'
+import { readActivePublicStreams } from '../lib/publicStreamRead'
 import { uniqueWorkspaceAccount } from '../billing/accountModel'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
 import {
@@ -115,6 +116,7 @@ const policyValidator = v.object({
   resourcePauseVersion: v.optional(v.literal(1)),
   executionPolicyVersion: v.optional(v.literal(2)),
   publicProgressVersion: v.optional(v.literal(1)),
+  publicStreamVersion: v.optional(v.literal(1)),
   spendingMode: v.optional(v.union(v.literal('workspace'), v.literal('external'), v.literal('none'))),
   allowedToolIds: v.array(v.string()),
   requiresPlan: v.boolean(),
@@ -1786,6 +1788,7 @@ export const listMessageTranscriptSteps = query({
       resultSummary: metadata?.resultSummary ?? null,
       steps: await Promise.all(rows.map(async row => ({
         sequence: row.sequence,
+        executionGeneration: row.executionGeneration ?? 0,
         persistence: parseJson<{ content: string; parts: Array<Record<string, unknown>> }>(row.persistenceJson),
         ...(row.fullPersistenceStorageId ? {
           fullPersistenceUrl: await ctx.storage.getUrl(row.fullPersistenceStorageId),
@@ -1812,7 +1815,8 @@ export const writeTranscriptStep = mutation({
   handler: async (ctx, args) => {
     requireHarnessServerSecret(args.serverSecret)
     const sequenceMatch = /^model:(\d+)$/.exec(args.receiptId)
-    if (!args.actorUserId.trim() || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+    if (!args.actorUserId.trim() || args.actorUserId.length > MAX_ID_LENGTH
+      || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
       || !args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH
       || !sequenceMatch || !Number.isSafeInteger(Number(sequenceMatch[1])) || !Number.isSafeInteger(args.stepNumber) || args.stepNumber < 0
       || args.persistence.content.length > 160_000 || args.persistence.parts.length > 81
@@ -1853,6 +1857,7 @@ export const writeTranscriptStep = mutation({
     await ctx.db.insert('harnessTranscriptSteps', {
       runId: run.runId,
       receiptId: args.receiptId,
+      executionGeneration: lineage[0]!.metadata.executionGeneration ?? 0,
       sequence: Number(sequenceMatch[1]),
       stepNumber: args.stepNumber,
       persistenceJson,
@@ -1863,7 +1868,280 @@ export const writeTranscriptStep = mutation({
       createdAt: receipt.createdAt,
     })
     await projectNativePersonalProgress(ctx, run, lineage[0]!.metadata, Number(sequenceMatch[1]))
+    const activeStream = await ctx.db.query('harnessPublicStreams')
+      .withIndex('by_runId', query => query.eq('runId', run.runId)).unique()
+    if (lineage[0]!.metadata.policy.publicStreamVersion === 1 && activeStream
+      && activeStream.receiptId === args.receiptId
+      && activeStream.executionGeneration === (lineage[0]!.metadata.executionGeneration ?? 0)) {
+      const message = await ctx.db.get(activeStream.assistantMessageId)
+      if (message?.publicStreamCheckpoint?.runId === run.runId
+        && message.publicStreamCheckpoint.executionGeneration === activeStream.executionGeneration
+        && message.publicStreamCheckpoint.receiptId === args.receiptId) {
+        await clearPublicStreamSegments(ctx, run.runId)
+        await ctx.db.delete(activeStream._id)
+      }
+    }
     return { persisted: true }
+  },
+})
+
+const MAX_PUBLIC_STREAM_SEGMENT_BYTES = 8 * 1024
+const MAX_PUBLIC_STREAM_VISIBLE_CHARS = 160_000
+const PUBLIC_STREAM_TRUNCATION_MARKER = '[Additional output omitted]'
+
+function publicStreamByteLength(text: string) {
+  return new TextEncoder().encode(text).byteLength
+}
+
+function takePublicStreamPrefix(text: string, maxBytes: number): { prefix: string; rest: string } {
+  let prefix = ''
+  let bytes = 0
+  let offset = 0
+  for (const character of text) {
+    const size = publicStreamByteLength(character)
+    if (bytes + size > maxBytes) break
+    prefix += character
+    bytes += size
+    offset += character.length
+  }
+  return { prefix, rest: text.slice(offset) }
+}
+
+async function clearPublicStreamSegments(ctx: MutationCtx, runId: string) {
+  const rows = await ctx.db.query('harnessPublicStreamSegments')
+    .withIndex('by_runId', q => q.eq('runId', runId)).take(100)
+  for (const row of rows) await ctx.db.delete(row._id)
+}
+
+export const appendPublicStream = mutation({
+  args: {
+    actorUserId: v.string(),
+    runId: v.string(),
+    workflowRunId: v.string(),
+    executionGeneration: v.number(),
+    receiptId: v.string(),
+    modelId: v.string(),
+    sequence: v.number(),
+    text: v.string(),
+    serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    const invocationMatch = /^model:(0|[1-9]\d*)$/.exec(args.receiptId)
+    if (!args.actorUserId.trim() || args.actorUserId.length > MAX_ID_LENGTH
+      || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+      || !args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH
+      || !args.modelId.trim() || args.modelId.length > MAX_ID_LENGTH || args.receiptId.length > MAX_ID_LENGTH
+      || !invocationMatch || !Number.isSafeInteger(Number(invocationMatch[1])) || !Number.isSafeInteger(args.executionGeneration)
+      || args.executionGeneration < 0 || !Number.isSafeInteger(args.sequence) || args.sequence < 0
+      || !args.text || publicStreamByteLength(args.text) > MAX_PUBLIC_STREAM_SEGMENT_BYTES) {
+      throw new Error('Invalid public stream batch.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId || run.rootRunId !== run.runId || run.parentRunId) {
+      throw new Error('HARNESS_PUBLIC_STREAM_ACCESS_DENIED')
+    }
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    const metadata = lineage[0]!.metadata
+    const invocation = Number(invocationMatch[1])
+    const reservation = metadata.modelReservation
+    if (metadata.policy.publicStreamVersion !== 1 || metadata.status !== 'running'
+      || metadata.workflowRunId !== args.workflowRunId
+      || (metadata.executionGeneration ?? 0) !== args.executionGeneration
+      || reservation?.id !== args.receiptId || reservation.dispatch?.modelId !== args.modelId) {
+      throw new Error('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+    }
+    const source = parseJson<HarnessSource>(run.sourceJson)
+    if (!('conversationId' in source) || typeof source.conversationId !== 'string') {
+      throw new Error('HARNESS_PUBLIC_STREAM_ACCESS_DENIED')
+    }
+    const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
+    const deliveryId = run.deliveryAgentRunId
+      ? ctx.db.normalizeId('conversationAgentRuns', run.deliveryAgentRunId) : null
+    const delivery = deliveryId ? await ctx.db.get(deliveryId) : null
+    if (!conversationId || !delivery || delivery.conversationId !== conversationId
+      || delivery.status !== 'running' || delivery.userId !== args.actorUserId
+      || delivery.harnessRunId !== run.runId || delivery.workflowRunId !== args.workflowRunId
+      || delivery.executionEngine !== 'overlay_harness' || delivery.runner !== 'workflow') {
+      throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    }
+    const conversation = await ctx.db.get(conversationId)
+    if (!conversation || conversation.deletedAt !== undefined) throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    if (delivery.mode !== 'room' && delivery.mode !== 'work' && conversation.userId !== args.actorUserId) {
+      throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    }
+    const deliveryAssistantMessageId = delivery.assistantMessageId
+    if (!deliveryAssistantMessageId) throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    const assistantMessageId = ctx.db.normalizeId('conversationMessages', deliveryAssistantMessageId)
+    if (!assistantMessageId) throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    const message = assistantMessageId ? await ctx.db.get(assistantMessageId) : null
+    if (!message || message.deletedAt !== undefined || message.conversationId !== conversationId || message.role !== 'assistant'
+      || message.status !== 'generating' || message.turnId !== delivery.turnId
+      || (message.nativeRunId !== undefined && message.nativeRunId !== delivery._id)
+      || ((delivery.mode === 'room' || delivery.mode === 'work')
+        ? (!delivery.agentPrincipalId || message.authorKind !== 'agent' || message.authorPrincipalId !== delivery.agentPrincipalId)
+        : (message.userId !== args.actorUserId || message.authorKind === 'agent' || message.authorPrincipalId !== undefined))) {
+      throw new Error('HARNESS_PUBLIC_STREAM_DELIVERY_DENIED')
+    }
+
+    let active = await ctx.db.query('harnessPublicStreams')
+      .withIndex('by_runId', q => q.eq('runId', run.runId)).unique()
+    const startsInvocation = !active || args.executionGeneration > active.executionGeneration
+      || (args.executionGeneration === active.executionGeneration && invocation > active.invocation)
+    if (active && (args.executionGeneration < active.executionGeneration
+      || (args.executionGeneration === active.executionGeneration && invocation < active.invocation))) {
+      throw new Error('HARNESS_PUBLIC_STREAM_STALE')
+    }
+    if (startsInvocation) {
+      if (args.sequence !== 0) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_GAP')
+      if (active) {
+        await clearPublicStreamSegments(ctx, run.runId)
+        await ctx.db.delete(active._id)
+      }
+      const streamId = await ctx.db.insert('harnessPublicStreams', {
+        runId: run.runId, workflowRunId: args.workflowRunId,
+        executionGeneration: args.executionGeneration, receiptId: args.receiptId, invocation,
+        conversationId, assistantMessageId, nextSequence: 0, lastSequence: -1, lastText: '',
+        nextSegmentIndex: 0, visibleCharacters: 0, truncated: false, active: true, updatedAt: Date.now(),
+      })
+      active = await ctx.db.get(streamId)
+      if (!active) throw new Error('HARNESS_PUBLIC_STREAM_UNAVAILABLE')
+    } else {
+      if (!active) throw new Error('HARNESS_PUBLIC_STREAM_UNAVAILABLE')
+      if (active.receiptId !== args.receiptId || active.workflowRunId !== args.workflowRunId
+        || active.assistantMessageId !== assistantMessageId || !active.active) {
+        throw new Error('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+      }
+    }
+
+    if (!active) throw new Error('HARNESS_PUBLIC_STREAM_UNAVAILABLE')
+    const current = active
+    if (args.sequence === current.lastSequence) {
+      if (current.lastText !== args.text) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_CONFLICT')
+      return { accepted: true, duplicate: true, truncated: current.truncated }
+    }
+    if (args.sequence !== current.nextSequence) throw new Error('HARNESS_PUBLIC_STREAM_SEQUENCE_GAP')
+
+    let visible = args.text
+    const remaining = Math.max(0, MAX_PUBLIC_STREAM_VISIBLE_CHARS - current.visibleCharacters)
+    if (visible.length > remaining) {
+      let used = 0
+      let prefix = ''
+      for (const character of visible) {
+        if (used + character.length > remaining) break
+        prefix += character
+        used += character.length
+      }
+      visible = prefix
+    }
+    const truncated = visible.length < args.text.length
+    let segmentIndex = current.nextSegmentIndex
+    let remainder = visible
+    let tail = segmentIndex > 0
+      ? await ctx.db.query('harnessPublicStreamSegments').withIndex('by_runId_receiptId_segmentIndex', q =>
+        q.eq('runId', run.runId).eq('receiptId', current.receiptId).eq('segmentIndex', segmentIndex - 1)).unique()
+      : null
+    while (remainder) {
+      const available = MAX_PUBLIC_STREAM_SEGMENT_BYTES - (tail ? publicStreamByteLength(tail.text) : 0)
+      if (available <= 0) {
+        tail = null
+        continue
+      }
+      const chunk = takePublicStreamPrefix(remainder, available)
+      if (!chunk.prefix) {
+        tail = null
+        continue
+      }
+      if (tail) {
+        await ctx.db.patch(tail._id, {
+          text: tail.text + chunk.prefix,
+          lastSequence: args.sequence,
+          ...(truncated && !chunk.rest ? { truncatedMarker: PUBLIC_STREAM_TRUNCATION_MARKER } : {}),
+          updatedAt: Date.now(),
+        })
+      } else {
+        await ctx.db.insert('harnessPublicStreamSegments', {
+          runId: run.runId, workflowRunId: args.workflowRunId,
+          executionGeneration: args.executionGeneration, receiptId: args.receiptId,
+          segmentIndex, firstSequence: args.sequence, lastSequence: args.sequence,
+          text: chunk.prefix,
+          ...(truncated && !chunk.rest ? { truncatedMarker: PUBLIC_STREAM_TRUNCATION_MARKER } : {}),
+          createdAt: Date.now(), updatedAt: Date.now(),
+        })
+        segmentIndex++
+      }
+      remainder = chunk.rest
+      tail = null
+    }
+    if (truncated) {
+      const last = segmentIndex > 0
+        ? await ctx.db.query('harnessPublicStreamSegments').withIndex('by_runId_receiptId_segmentIndex', q =>
+          q.eq('runId', run.runId).eq('receiptId', active!.receiptId).eq('segmentIndex', segmentIndex - 1)).unique()
+        : null
+      if (last) {
+        if (!last.truncatedMarker) await ctx.db.patch(last._id, { truncatedMarker: PUBLIC_STREAM_TRUNCATION_MARKER })
+      } else {
+        await ctx.db.insert('harnessPublicStreamSegments', {
+          runId: run.runId, workflowRunId: args.workflowRunId,
+          executionGeneration: args.executionGeneration, receiptId: args.receiptId,
+          segmentIndex, firstSequence: args.sequence, lastSequence: args.sequence,
+          text: '', truncatedMarker: PUBLIC_STREAM_TRUNCATION_MARKER,
+          createdAt: Date.now(), updatedAt: Date.now(),
+        })
+        segmentIndex++
+      }
+    }
+    await ctx.db.patch(current._id, {
+      lastSequence: args.sequence, lastText: args.text, nextSequence: args.sequence + 1,
+      nextSegmentIndex: segmentIndex,
+      visibleCharacters: current.visibleCharacters + visible.length,
+      truncated: current.truncated || truncated,
+      updatedAt: Date.now(),
+    })
+    return { accepted: true, duplicate: false, truncated: current.truncated || truncated }
+  },
+})
+
+export const readPublicStreamState = query({
+  args: {
+    actorUserId: v.string(), runId: v.string(), afterSequence: v.optional(v.number()), serverSecret: v.string(),
+  },
+  handler: async (ctx, args) => {
+    requireHarnessServerSecret(args.serverSecret)
+    if (!args.actorUserId.trim() || args.actorUserId.length > MAX_ID_LENGTH
+      || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
+      || (args.afterSequence !== undefined
+        && (!Number.isSafeInteger(args.afterSequence) || args.afterSequence < -1))) {
+      throw new Error('Invalid public stream read request.')
+    }
+    const run = await findRun(ctx, args.runId)
+    if (!run || run.actorUserId !== args.actorUserId || run.rootRunId !== run.runId || run.parentRunId) return null
+    const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)
+    const metadata = lineage[0]!.metadata
+    if (metadata.policy.publicStreamVersion !== 1) return null
+    const source = parseJson<HarnessSource>(run.sourceJson)
+    if (!('conversationId' in source) || typeof source.conversationId !== 'string') return null
+    const conversationId = ctx.db.normalizeId('conversations', source.conversationId)
+    const active = await ctx.db.query('harnessPublicStreams')
+      .withIndex('by_runId', q => q.eq('runId', run.runId)).unique()
+    const snapshot = conversationId && active?.assistantMessageId
+      ? (await readActivePublicStreams(ctx, conversationId, [active.assistantMessageId]))[0] ?? null
+      : null
+    const steps = await ctx.db.query('harnessTranscriptSteps').withIndex('by_runId_sequence', q =>
+      q.eq('runId', run.runId).gt('sequence', args.afterSequence ?? -1)).order('asc').take(10)
+    return {
+      status: metadata.status,
+      workflowRunId: metadata.workflowRunId ?? null,
+      executionGeneration: metadata.executionGeneration ?? 0,
+      snapshot,
+      transcriptSteps: steps.map(step => ({
+        receiptId: step.receiptId,
+        sequence: step.sequence,
+        executionGeneration: step.executionGeneration ?? 0,
+        persistence: parseJson<HarnessTranscriptPersistence>(step.persistenceJson),
+      })),
+      nextSequence: steps.length === 10 ? steps.at(-1)!.sequence : null,
+    }
   },
 })
 
@@ -1897,6 +2175,7 @@ export const listTranscriptSteps = query({
         receiptId: row.receiptId,
         stepNumber: row.stepNumber,
         sequence: row.sequence,
+        executionGeneration: row.executionGeneration ?? 0,
         persistence: parseJson<HarnessTranscriptPersistence>(row.persistenceJson),
       })),
       cursor: page.continueCursor,

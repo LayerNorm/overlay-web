@@ -59,16 +59,24 @@ export function resolveAgentGrant(grant: WorkspaceAgentToolGrant): {
  * are the ones assembled by provider paths that carry no stable per-tool id:
  * web search, connected apps, and MCP servers.
  */
+export function agentWithheldToolIds(args: {
+  capabilities: ReadonlySet<AgentToolCapability>
+  integrationToolIds: readonly string[]
+}): Set<string> {
+  const withheld = new Set<string>()
+  if (!args.capabilities.has('web_search')) WEB_SEARCH_TOOL_IDS.forEach((id) => withheld.add(id))
+  if (!args.capabilities.has('mcp')) MCP_TOOL_IDS.forEach((id) => withheld.add(id))
+  if (!args.capabilities.has('integrations')) args.integrationToolIds.forEach((id) => withheld.add(id))
+  return withheld
+}
+
 export function applyAgentCapabilityFilter(args: {
   capabilities: ReadonlySet<AgentToolCapability>
   integrationToolIds: readonly string[]
   overlayToolIds: readonly string[]
   tools: ToolSet
 }): ToolSet {
-  const withheld = new Set<string>()
-  if (!args.capabilities.has('web_search')) WEB_SEARCH_TOOL_IDS.forEach((id) => withheld.add(id))
-  if (!args.capabilities.has('mcp')) MCP_TOOL_IDS.forEach((id) => withheld.add(id))
-  if (!args.capabilities.has('integrations')) args.integrationToolIds.forEach((id) => withheld.add(id))
+  const withheld = agentWithheldToolIds(args)
   if (withheld.size === 0) return args.tools
   return Object.fromEntries(
     Object.entries(args.tools).filter(([toolId]) => !withheld.has(toolId)),

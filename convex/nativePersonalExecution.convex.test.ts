@@ -104,7 +104,7 @@ test('settled native checkpoints preserve rich identities, reject regression and
   expect(await write(1)).toEqual({ persisted: true })
   const first = await message()
   expect(first).toMatchObject({ nativeProgressSequence: 1, content: 'Step 1', status: 'generating' })
-  const identity = JSON.stringify([runId, 'model:1', 0])
+  const identity = JSON.stringify([runId, 0, 'model:1', 0])
   expect(first.parts[0].id).toBe(identity)
   await write(0)
   expect(await message()).toEqual(first)

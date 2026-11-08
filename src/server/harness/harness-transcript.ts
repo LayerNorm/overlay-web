@@ -86,7 +86,7 @@ export async function writeSettledHarnessTranscriptStep(
     const repository = new ConvexHarnessRepository()
     const state = await repository.get(reference)
     if (!state) throw new HarnessAuthorizationError()
-    if (state.policy.publicProgressVersion !== 1) return
+    if (state.policy.publicProgressVersion !== 1 && state.policy.publicStreamVersion !== 1) return
     await repository.writeTranscriptStep({
       actorUserId: reference.actorUserId,
       runId: reference.runId,
@@ -94,7 +94,7 @@ export async function writeSettledHarnessTranscriptStep(
       receiptId,
       stepNumber,
       persistence: reference.runId.startsWith('personal:')
-        ? withTranscriptPartIds(reference.runId, receiptId, persistence) : persistence,
+        ? withTranscriptPartIds(reference.runId, receiptId, persistence, state.executionGeneration ?? 0) : persistence,
     })
   } catch (error) {
     throw transcriptError(error)
@@ -110,7 +110,7 @@ export async function readSettledHarnessTranscriptPage(
     const repository = new ConvexHarnessRepository()
     const state = await repository.get(reference)
     if (!state) throw new HarnessAuthorizationError()
-    if (state.policy.publicProgressVersion !== 1) return { steps: [], cursor: '', isDone: true }
+    if (state.policy.publicProgressVersion !== 1 && state.policy.publicStreamVersion !== 1) return { steps: [], cursor: '', isDone: true }
     const page = await repository.listTranscriptSteps({
       actorUserId: reference.actorUserId,
       runId: reference.runId,
@@ -120,7 +120,7 @@ export async function readSettledHarnessTranscriptPage(
     return reference.runId.startsWith('personal:') ? {
       ...page,
       steps: page.steps.map(step => ({
-        ...step, persistence: withTranscriptPartIds(reference.runId, step.receiptId, step.persistence),
+        ...step, persistence: withTranscriptPartIds(reference.runId, step.receiptId, step.persistence, step.executionGeneration ?? 0),
       })),
     } : page
   } catch (error) {

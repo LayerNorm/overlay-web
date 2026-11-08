@@ -9,11 +9,12 @@ export function createPersonalHarnessModelPorts(
     reference: input.access,
     modelId: input.context.effectiveModelId,
     contextBudgetTokens: input.contextBudgetTokens,
-    prepare: ({ modelId, receiptId, purpose, options }) => preparePersonalHarnessModel({
+    prepare: ({ modelId, receiptId, purpose, publicStreamVersion, options }) => preparePersonalHarnessModel({
       access: input.access,
       context: { ...input.context, effectiveModelId: modelId },
       receiptId,
       purpose,
+      publicStreamVersion,
       options,
     }),
   })
