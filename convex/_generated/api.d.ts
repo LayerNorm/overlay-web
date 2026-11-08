@@ -159,6 +159,7 @@ import type * as lib_preview from "../lib/preview.js";
 import type * as lib_previewDelivery from "../lib/previewDelivery.js";
 import type * as lib_previewProviderBudget from "../lib/previewProviderBudget.js";
 import type * as lib_providerConnectionScope from "../lib/providerConnectionScope.js";
+import type * as lib_publicStreamRead from "../lib/publicStreamRead.js";
 import type * as lib_remoteMessageText from "../lib/remoteMessageText.js";
 import type * as lib_remoteRecovery from "../lib/remoteRecovery.js";
 import type * as lib_remoteRecoveryMachine from "../lib/remoteRecoveryMachine.js";
@@ -367,6 +368,7 @@ declare const fullApi: ApiFromModules<{
   "lib/previewDelivery": typeof lib_previewDelivery;
   "lib/previewProviderBudget": typeof lib_previewProviderBudget;
   "lib/providerConnectionScope": typeof lib_providerConnectionScope;
+  "lib/publicStreamRead": typeof lib_publicStreamRead;
   "lib/remoteMessageText": typeof lib_remoteMessageText;
   "lib/remoteRecovery": typeof lib_remoteRecovery;
   "lib/remoteRecoveryMachine": typeof lib_remoteRecoveryMachine;

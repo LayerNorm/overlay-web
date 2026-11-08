@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Turn on unified durable streaming for every production workspace that exists today (owner decision after the #424 release): new personal chat, workspace agent and automation runs in those workspaces publish through the persisted stream, so output survives reloads and Stop keeps the partial answer. Enrollment is an exact-ID production setting, so workspaces created later stay on the existing path until added; rollback is removing the IDs and redeploying, and runs already started keep their path. Also refresh the generated Convex API types for the stream reader module that #424 added.
+
 - Restore the Convex-native migration plan (`internal/plans/CONVEX_NATIVE_PR_PLAN.md`) at the owner's request as the completed record: every card from CN-01 to CN-37 is marked merged and live, with the closing PRs (#426 to #428) and the follow-up fixes (#419, #425, #429, #430) in its table, the HTTP reads kept on purpose and an outcome summary.
 
 - Fix starting a direct message with someone you had a DM with before but had left, deleted for yourself or archived: it now reopens that DM for you. Before, it returned the old conversation without re-adding you, so it opened with "0 people", every action failed with an access error and it never appeared in the sidebar.
