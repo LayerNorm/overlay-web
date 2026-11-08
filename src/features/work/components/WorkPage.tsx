@@ -23,6 +23,7 @@ import { WorkPeek } from './WorkPeek'
 import { WorkTaskComposer, type WorkTaskComposerHandle } from './WorkTaskComposer'
 import { WorkTimeline } from './WorkTimeline'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
+import { useOnboardingWorkReady } from '@/components/providers/OnboardingWorkHandoff'
 
 function ListSkeleton() {
   return (
@@ -121,6 +122,7 @@ function WorkScreen() {
   const title = WORK_VIEW_LABELS[view]
   const selectedTask = items.find((item) => item.id === taskId)
   const loaded = state === 'ready'
+  useOnboardingWorkReady(taskId, state === 'error' || (loaded && !taskId))
   // The List scrolls the page; the Board and Timeline scroll inside their own area.
   const pageScrolls = view === 'list' || !loaded || visible.length === 0
 
@@ -168,6 +170,8 @@ function WorkScreen() {
 }
 
 function WorkUnavailable() {
+  const { taskId } = useWorkUrlState()
+  useOnboardingWorkReady(taskId, true)
   return (
     <AppScreenShell>
       <AppScreenBody padding="none" maxWidth="none" className="flex h-full items-center justify-center px-6">

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import type { WorkspaceSummary } from '@overlay/workspace-contracts'
 import { buildWorkspaceHrefForContext } from './use-workspace-href'
+import { buildWorkspaceHandleHref, parseWorkspaceHandleRoute } from '@/shared/workspaces/routing'
 
 const baseWorkspace: WorkspaceSummary = {
   id: 'workspace-1',
@@ -32,6 +33,27 @@ test('workspace hrefs use a confirmed routing handle', () => {
     buildHref({ ...baseWorkspace, routingHandle: 'team' }),
     '/w/team/personal/chat?view=personal',
   )
+})
+
+test('onboarding task selection survives canonical and immutable-ID Work destinations', () => {
+  for (const routingHandle of [undefined, 'team']) {
+    const workspace = { ...baseWorkspace, routingHandle }
+    const href = buildWorkspaceHrefForContext({
+      workspaceId: workspace.id,
+      href: '/app/work?task=first-task&scope=personal',
+      scope: 'personal',
+      currentScope: 'workspace',
+      target: null,
+      workspaces: [workspace],
+      activeWorkspace: workspace,
+    })
+    const canonical = buildWorkspaceHandleHref('team', href)
+    const url = new URL(canonical, 'https://overlay.invalid')
+    assert.equal(url.pathname, '/w/team/personal/work')
+    assert.equal(url.searchParams.get('task'), 'first-task')
+    assert.equal(url.searchParams.has('scope'), false)
+    assert.equal(parseWorkspaceHandleRoute(url.pathname, url.search)?.scope, 'personal')
+  }
 })
 
 test('archived chat links name their workspace so a full page load opens them there', () => {

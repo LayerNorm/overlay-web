@@ -75,7 +75,7 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
   }
   const act = async (action: OnboardingAction) => {
     // A short beat so Overlay's reply reads as a reply, not a page swap.
-    const [next] = await Promise.all([requestOnboarding(session.workspaceId, action), new Promise((resolve) => window.setTimeout(resolve, 450))])
+    const [next] = await Promise.all([requestOnboarding(session.workspaceId, action), new Promise((resolve) => window.setTimeout(resolve, action.action === 'finish' ? 0 : 450))])
     onChange(next)
     return next
   }
@@ -178,7 +178,7 @@ export function OnboardingConversation({ session, onChange, onShowWork, onSkip }
   // Controls sit in the message text column, directly under Overlay's question.
   const footer = (
     <div ref={replyRef} className={styles.reply}>
-      {busy ? <OnboardingDots /> : <div key={`${session.step}:${session.revision}`} className={styles.appear}>{controls()}</div>}
+      {busy && session.step !== 'task' ? <OnboardingDots /> : <div key={session.step} className={styles.appear}>{controls()}</div>}
       {error && !busy ? <p role="alert" className="mt-3 text-xs text-destructive">{error}</p> : null}
     </div>
   )

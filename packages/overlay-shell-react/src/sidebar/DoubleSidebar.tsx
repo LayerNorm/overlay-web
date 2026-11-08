@@ -16,7 +16,7 @@ const MORE_GROUPS = [{ ids: ['files', 'extensions', 'automations'] }]
 
 export function selectDoubleSidebarItem(item: PrimaryRailItem, collapsed: boolean, onCollapsedChange: (collapsed: boolean) => void) {
   if (item.disabled) return
-  if (item.active) {
+  if (item.active && item.id !== 'chat') {
     onCollapsedChange(!collapsed)
     return
   }
