@@ -11,10 +11,6 @@ import {
   type CapabilityCheck,
 } from '@overlay/app-core'
 import {
-  applyAppDataCapabilitiesToOverlayCapabilities,
-  deriveAppDataCapabilities,
-} from '@/server/app-data/capabilities'
-import {
   getDeepSearchTool,
   getWebFetchTool,
   getWebSearchTool,
@@ -494,10 +490,7 @@ function getActCapabilitiesSync(): CapabilityCheck {
     return deriveOverlayCapabilities()
   }
   const runtimeConfig = getOverlayRuntimeConfigSync()
-  return applyAppDataCapabilitiesToOverlayCapabilities(
-    deriveOverlayCapabilities(runtimeConfig),
-    deriveAppDataCapabilities(runtimeConfig),
-  )
+  return deriveOverlayCapabilities(runtimeConfig)
 }
 
 async function getActCapabilities(): Promise<CapabilityCheck> {
@@ -505,8 +498,5 @@ async function getActCapabilities(): Promise<CapabilityCheck> {
     return deriveOverlayCapabilities()
   }
   const runtimeConfig = await getOverlayRuntimeConfig()
-  return applyAppDataCapabilitiesToOverlayCapabilities(
-    deriveOverlayCapabilities(runtimeConfig),
-    deriveAppDataCapabilities(runtimeConfig),
-  )
+  return deriveOverlayCapabilities(runtimeConfig)
 }

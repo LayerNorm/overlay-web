@@ -1,8 +1,8 @@
 # Overlay Convex-native migration: phased PR execution plan
 
-Status: in progress as of 2026-11-07. Phases A to E and the first two Phase F PRs are complete and live in production: chats, agents, rooms, Activity, files, notes, memories, Work, automations, skills, connections, the workspace directory and policy, members and invitations, and account settings run on the native path. The production Convex backend was last deployed from main `aed08ebdd` after the matching web release. The third Phase F PR (CN-28 to CN-31: billing, connected-app names, webhooks, Slack import progress) is implemented and awaits preview acceptance; Phase G (CN-32, CN-33) follows. Stop, approval, input response, room send, agent assignment, automation writes, connection writes, workspace and membership writes, invitations, settings writes, onboarding, Stripe checkout and top-ups, token issuing, webhook configuration and Slack listing stay on the server by design because they run workflows, agent turns, billing checks, credential encryption, OAuth, email, validation, SSRF checks or provider calls. Second-member cases are tested on previews with a seeded collaborator acting through the Convex CLI. The PR that lands the last phase deletes this plan.
+Status: complete as of 2026-11-07. All phases (A to H, CN-01 to CN-37) are merged and live in production; web and Convex were last verified together at `52d23db74`. The browser reads everything Convex can serve natively; the few remaining browser HTTP reads each have a recorded server reason (see `internal/develop/api-source-of-truth.md`), and `npm run check:native-architecture` keeps it that way in CI. This plan would normally be deleted when its last phase lands; it was deleted in #428 and restored at the owner's request as the completed record. Nothing here is pending.
 
-| Card | PR | State on 2026-11-06 |
+| Card | PR | Final state |
 |---|---|---|
 | CN-01 | #392 | Merged |
 | CN-02 | #393 | Merged |
@@ -17,7 +17,16 @@ Status: in progress as of 2026-11-07. Phases A to E and the first two Phase F PR
 | CN-16 to CN-20 | #415 | Merged and deployed: web and Convex production at `228e9bedc`, production smoke passed |
 | CN-21 to CN-24 | #416 | Merged and deployed: web and Convex production at `0589eb36b`, production smoke passed |
 | CN-25 to CN-27 | #418 | Merged and deployed: web and Convex production at `aed08ebdd`, production smoke passed |
-| CN-28 to CN-31 | Phase F billing PR | Implemented; preview acceptance pending |
+| CN-28 to CN-31 | #420 | Merged and deployed: web and Convex production at `7aa5d75f9`, production smoke passed |
+| CN-32, CN-33, CN-34a | #422 | Merged and deployed (`deefde3d9`); production smoke passed |
+| CN-34b | #423 | Merged and deployed (`18068fc0d`); production smoke passed |
+| CN-35, CN-36a, CN-36b | #426 | Merged and deployed (`b58b8dc9f`); production smoke passed |
+| CN-37 | #427 | Merged and deployed (`d02d1496b`); production smoke passed |
+| CN-37 close-out: last native-overlapping browser reads | #428 | Merged and deployed (`c67595992`); production smoke passed |
+| Follow-up: workspace health metrics scoped by workspace | #419 | Merged and deployed (`b760bb2ce`); metrics return 200 in production; audit backfill run |
+| Follow-up: reopen a DM you left | #430 | Merged and deployed (`2aa4782d4`); verified on preview |
+| Follow-up: new channels open at once | #425 | Merged and deployed (`2820f07c7`); verified on preview |
+| Follow-up: archived-chat links carry their workspace | #429 | Merged and deployed (`52d23db74`); verified on preview |
 | CN-07 to CN-11 (old attempt) | #403 | Closed unmerged, superseded by the Phase C PR |
 | CN-12 (old attempt) | #402 | Closed unmerged, superseded by the Phase D PR |
 | CN-20 (old attempt) | #398 | Closed unmerged, superseded by the Phase E PR |
@@ -26,7 +35,7 @@ Status: in progress as of 2026-11-07. Phases A to E and the first two Phase F PR
 
 Closed branches are source material, not accepted work. Reuse their Convex authorization code and tests only after reviewing them against current main.
 
-This is the execution companion to the [Convex-native migration architecture plan](./CONVEX_NATIVE_MIGRATION_PLAN.md). It turns that plan's broad phases into **37 focused PR-sized change sets**, each with an explicit outcome, scope, dependencies, acceptance gate, and retirement work.
+This is the execution companion to the Convex-native migration architecture plan (`CONVEX_NATIVE_MIGRATION_PLAN.md`, deleted in #428; see git history). It turns that plan's broad phases into **37 focused PR-sized change sets**, each with an explicit outcome, scope, dependencies, acceptance gate, and retirement work.
 
 The numbering is a stable planning identifier, not a GitHub PR number. Dependencies define order; unrelated branches can proceed in parallel after the pilot. The count is a planning estimate, not a requirement to force oversized work into exactly 37 pull requests. Split an oversized card into suffixed parts, for example `CN-14a` and `CN-14b`, preserving its acceptance contract. Do not merge unrelated cards merely to reduce the number.
 
@@ -702,6 +711,8 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 
 **Retirement/non-goals:** remove duplicate HTTP lookup caches and full-workspace client scans. Preserve valid external search execution and current ranking semantics.
 
+**Implemented (Phase G PR):** `search/browse:mentions` serves the composer, notebook, Cmd-K and Work context searches. Each category needs its capability; shared items are filtered by read rules; archived and deleted items, folders and automation chats are excluded. Answers carry their query so a stale one is dropped. The composer's six 100-item downloads, `/api/v1/mention-search` and `search/mentions:searchMentions` are removed. Cmd-K tasks come from the live Work list. Markdown links resolve through `files/browse:children`. Connectors stay on the provider over HTTP.
+
 ### CN-33. Complete unified archive, restore, and scope movement
 
 **Outcome:** the unified archived/settings views are as reactive and correct as each originating feature.
@@ -716,6 +727,8 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 
 **Retirement/non-goals:** delete remaining resource-specific archive loaders and event plumbing. This is cross-resource completion, not permission to postpone ordinary archive support from earlier cards.
 
+**Implemented (Phase G PR):** Settings → Archived subscribes to each resource's native query: new `collaboration/archive:rooms` (per-person room archive) and an archived view of `files/browse:list`, plus the existing archived views. The seven HTTP loads, the reloads after actions and the workspace-change refetch are gone. Restore and permanent delete stay on their server routes (audit, object deletion, workflow cancellation, cascades); native scope mutations would first need the audit log in Convex.
+
 ### CN-34. Retire shell snapshot bootstrap and database polling
 
 **Outcome:** the app shell renders directly from the completed native domain queries with no hidden refresh system.
@@ -729,6 +742,12 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 **Acceptance:** cold/warm navigation and server hydration match native queries; no old-scope flash; subscription counts remain bounded after repeated navigation; no authoritative-data UI polling remains (`E06`, `E09`, `E18`, `E21`).
 
 **Retirement/non-goals:** delete the shared snapshot/polling infrastructure now unused. Retain real feature/entitlement/runtime capabilities, auth refresh where required, device-local timers, presence heartbeats, and provider-side status acquisition.
+
+**Split:**
+- **CN-34a (Phase G PR):** `collaboration/rooms:runLiveness` replaces the 5-second remote-run poll. The capabilities fallback fetch, `useVisibleReconciliation` and `getInitialKnowledgeMemories` are deleted.
+- **CN-34b (own PR):** `collaboration/roomList:list` is the live channel/DM sidebar list; archived rooms already come from `collaboration/archive:rooms` and unread state from the Activity subscription. `chat-list-cache` (with its retry loop, paging and delta refetch), `collaboration/activity:listVersion` and the sidebar refresh key are deleted. Sidebar unread badges count from the room type each live notification carries, and the Direct Messages/Channels subview picks its room from the native list, so the browser no longer lists conversations over HTTP. The browser no longer reads `/api/v1/bootstrap`: the Integrations page takes its registry from static app config, and `billing/browse:entitlements` returns the member's own entitlements when billing is off, so the model gates are live in every mode. The `overlay:chat-*` events stay only for local effects the live list cannot provide: navigating away from an archived open room and the delete animation. `GET /api/v1/conversations` and `GET /api/v1/bootstrap` remain for API, desktop and mobile clients.
+
+**Kept by design:** integration connected state (the provider is the source of truth), session and token refresh, presence heartbeats, device-local timers, provider sign-in polling, and the one-time account-page capabilities read outside the app shell.
 
 ## 10. Phase H: remove the obsolete architecture
 
@@ -746,6 +765,8 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 
 **Retirement/non-goals:** remove only browser auth infrastructure. Do not delete `INTERNAL_API_SECRET` or unrelated service authentication merely because the browser token previously used it.
 
+**Progress (2026-11-07):** implemented with CN-36a in one PR. The zero-consumer audit found no caller of the HS256 token in web, desktop, mobile or shared packages: `useConvexAuthToken` had no users and every browser query already used native auth. Deleted the minting module, constants, broker, Convex verifier and the provider's refresh loop; `/api/auth/convex-token` always returns the verified native token; Convex rejects HS256 tokens even when correctly signed (guard test). Release smoke now proves realtime auth natively via `auth/viewer:current`.
+
 ### CN-36. Remove the remaining database-provider repository registry
 
 **Outcome:** Convex is an explicit backend commitment in server code too, without breaking external API consumers.
@@ -760,6 +781,11 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 
 **Retirement/non-goals:** remove persistence portability, not useful storage/runtime/provider boundaries or `@overlay/api-client` wholesale. If remaining callers span many unrelated domains, split this into domain-specific cleanup PRs rather than landing a giant registry rewrite.
 
+**Split (2026-11-07):** the registry has 99 caller files across ~35 domains, so CN-36 lands in parts.
+- **CN-36a (merged with CN-35 in #426):** delete the provider-selection layer: `AppDataCapabilities` and its derive/apply helpers, `appDataCapabilities` on the server context, BFF route context, `/api/v1/capabilities`, `/api/v1/bootstrap` and the browser `CapabilitiesProvider`, the provider gates on BYOK models, chat titling and file-ingestion jobs, the `unsupportedRepository` placeholders (`accountDeletion`, `durableJobs`), `repositoryProxy` (module HTTP services construct Convex repositories directly; a small `lazyService` remains for services built with the server context), and the always-"convex" governance `providerParity` metric.
+- **CN-36b (merged in #426):** delete the repository interfaces nothing implements (`DurableJobRepository`, `AccountDataDeletionRepository` and the web copy of `AdministrativeRepository`; their data types stay).
+- **Decision, not more PRs:** the remaining ~40 `XRepository` interfaces each have exactly one Convex implementation, but services take them as constructor dependencies and their tests inject fakes through them. That is a test seam, which this card's non-goals keep ("not useful storage/runtime/provider boundaries"), not persistence portability. With the capability set and placeholders gone, `AppDataRepositories` is the server context's typed set of Convex repositories, not a provider registry. Collapsing every interface into its class would touch ~100 files and every fake for no behavior change, so CN-36 ends here. CN-37 adds the boundary check that keeps a provider switch from returning.
+
 ### CN-37. Enforce the native architecture and close migration compatibility
 
 **Outcome:** the migration is finished, not indefinitely dual-path, and ordinary development cannot quietly recreate the original problem.
@@ -773,6 +799,16 @@ Not covered: the memories owner filter and Slack import use the same hook as the
 **Acceptance:** full surface ledger has no unclassified path; every retained HTTP endpoint has a real consumer/runtime reason; E01-E22 pass at the integrated revision; performance/cost budgets and supported client compatibility are reviewed. No boundary rule indiscriminately bans legitimate HTTP or timers.
 
 **Retirement/non-goals:** delete obsolete provider-contract assertions only after preserving their domain/security guarantees in native/compatibility tests. No new product feature or visual redesign in this final PR.
+
+**Progress (2026-11-07), merged in #427 and live:**
+- **Guard:** `scripts/ci/check-native-architecture.mjs` runs in the Lint and boundary checks job. It rejects the retired provider-capability names, repository proxies and the HS256 browser token. It also holds every browser `overlayAppClient.<resource>.<method>` call in `scripts/baselines/browser-http-calls.json` (111 calls, 159 sites): new calls fail, and removed calls must leave the baseline.
+- **Rollout flag removed:** the always-true `nativePersonal.configured` and its fallbacks in chat, the archived-chat reader and Settings → Archived.
+- **Last HTTP list read in chat removed:** the archived-chat reader (`/app/archived?id=`) now reads archived rooms from `collaboration/archive:rooms` and personal chats from the live list, instead of downloading `/api/v1/conversations?archived=true`.
+- **Routes deleted (13, none with a web, desktop, agent-host, package or public-API caller):** `auth/sync-profile`, `auth/native/subscription`, `v1/search`, `v1/conversations/search`, `v1/conversations/notification-preferences`, `v1/automations/[id]/cancel-scheduler`, and the collaboration routes the browser replaced with native functions in CN-08 to CN-11 (message edit/delete, pins, presence, reactions, thread follow, notifications, saved messages).
+- **Code behind those routes deleted:** their 16 `@overlay/api-client` methods, 10 repository methods and 9 server-secret Convex functions.
+- **Scripts:** fixed the phase scripts that listed a deleted test, and removed the `smoke:vercel-sandbox` script whose file was gone.
+- **Kept with reasons:** channel and DM creation (server-side policy), agent-host machine routes, `agent-profiles/upload`, `agent-environments/cloud`, extensions, `convex/[type]`, `run/metrics*`, onboarding and workspace management (server by design per CN-26/CN-27), and everything in the public OpenAPI spec.
+- **Closed in #428:** the browser now reads agent accounts, connected-agent environments and bindings, launch eligibility, chat-link scope and notebook notes from Convex, and an unused free-plan hook was deleted. The guard now also counts client calls written with type arguments. Reads kept on HTTP, with reasons: the integration provider's catalog and connections, Slack channel listing, sharing disclosure before a share change, the participant check inside an archived-room delete, and the workspace list on the OAuth consent page (outside the app shell).
 
 ## 11. Parallelism and critical path
 
@@ -961,8 +997,8 @@ These do real server work, so only their status should be visible through Convex
 - **Old browser token:** `convex/lib/browserConvexToken.ts`
 - **Refetch-on-change plumbing:** local refresh events and version counters
 
-## Recommendation
+## Outcome
 
-Approve this as the working PR roadmap, then execute **CN-01 through CN-06 first**. Review the complete chat pilot before scaling across domains. The subsequent cards provide a comprehensive queue, but their estimates and fine-grained splits should be adjusted using what the pilot actually establishes.
+Every card shipped. Personal chat, agents, rooms, Activity, files, notes, memories, Work, automations, skills, connections, workspace settings, members, account settings, billing, webhooks, imports, search, Archived and the sidebar all read and write Convex natively with server-side identity; the HS256 browser token, the database-provider capability layer, the shell bootstrap reads and the polling loops are gone. Server routes remain only for real server work (model runs, stop/approval/input, billing, OAuth and credentials, email, validated or audited writes, provider calls and file bytes) and for API, desktop and agent consumers. CI enforces the result through `check:native-architecture` and its browser-call baseline.
 
-The standard for a completed PR is not “we now call Convex.” It is: **a specific user-visible behavior has one authoritative state path, is responsive, stays synchronized, handles failure correctly, and no longer needs its old web plumbing.**
+The standard each PR was held to still applies to new work: **a user-visible behavior has one authoritative state path, is responsive, stays synchronized, handles failure correctly, and no longer needs old web plumbing.**

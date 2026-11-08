@@ -13,11 +13,6 @@ import {
   getOverlayRuntimeConfigSync,
 } from '@/server/config'
 import {
-  applyAppDataCapabilitiesToOverlayCapabilities,
-  deriveAppDataCapabilities,
-  type AppDataCapabilities,
-} from '@/server/app-data/capabilities'
-import {
   getCapabilityDisabledError,
   getRequiredCapabilityForRoute,
 } from './capabilities-core'
@@ -34,18 +29,7 @@ export function getOverlayCapabilitiesSync(): CapabilityCheck {
     return deriveOverlayCapabilities()
   }
   const runtimeConfig = getOverlayRuntimeConfigSync()
-  const appDataCapabilities = deriveAppDataCapabilities(runtimeConfig)
-  return applyAppDataCapabilitiesToOverlayCapabilities(
-    withObservabilityProviderCapabilities(deriveOverlayCapabilities(runtimeConfig), runtimeConfig),
-    appDataCapabilities,
-  )
-}
-
-export function getAppDataCapabilitiesSync(): AppDataCapabilities {
-  if (process.env.NEXT_PHASE === 'phase-production-build') {
-    return deriveAppDataCapabilities(null)
-  }
-  return deriveAppDataCapabilities(getOverlayRuntimeConfigSync())
+  return withObservabilityProviderCapabilities(deriveOverlayCapabilities(runtimeConfig), runtimeConfig)
 }
 
 export async function getOverlayCapabilities(): Promise<CapabilityCheck> {
@@ -53,11 +37,7 @@ export async function getOverlayCapabilities(): Promise<CapabilityCheck> {
     return deriveOverlayCapabilities()
   }
   const runtimeConfig = await getOverlayRuntimeConfig()
-  const appDataCapabilities = deriveAppDataCapabilities(runtimeConfig)
-  return applyAppDataCapabilitiesToOverlayCapabilities(
-    withObservabilityProviderCapabilities(deriveOverlayCapabilities(runtimeConfig), runtimeConfig),
-    appDataCapabilities,
-  )
+  return withObservabilityProviderCapabilities(deriveOverlayCapabilities(runtimeConfig), runtimeConfig)
 }
 
 export function withObservabilityProviderCapabilities(
@@ -91,13 +71,6 @@ export function withWorkspaceExternalAgentCapabilities(
     externalAgents: capabilities.externalAgents && launchEnabled,
     cloudAgents: false,
   }
-}
-
-export async function getAppDataCapabilities(): Promise<AppDataCapabilities> {
-  if (process.env.NEXT_PHASE === 'phase-production-build') {
-    return deriveAppDataCapabilities(null)
-  }
-  return deriveAppDataCapabilities(await getOverlayRuntimeConfig())
 }
 
 export function capabilityDisabledResponse(capability: OverlayCapability): NextResponse {

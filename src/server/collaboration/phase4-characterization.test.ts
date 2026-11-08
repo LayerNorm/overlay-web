@@ -14,15 +14,9 @@ test('Phase 4 channel guarantees remain enabled after Agents rolls forward', () 
   assert.equal(flags.get('agents'), true)
 })
 
-test('Phase 4 protects channel search, reactions, pins, and saved-message routes', () => {
+test('Phase 4 protects the channel route', () => {
   const routes = new Map(AUTHORIZATION_ROUTE_POLICIES.map((rule) => [rule.path, rule]))
-  for (const path of [
-    '/api/v1/conversations/channels',
-    '/api/v1/conversations/search',
-    '/api/v1/conversations/saved-messages',
-    '/api/v1/conversations/:conversationId/reactions',
-    '/api/v1/conversations/:conversationId/pins',
-  ]) assert.ok(routes.get(path), `missing ${path}`)
+  assert.ok(routes.get('/api/v1/conversations/channels'), 'missing /api/v1/conversations/channels')
 })
 
 test('Phase 4 schema carries channel shape, threads, reactions, pins, saves, and #general backfill', async () => {

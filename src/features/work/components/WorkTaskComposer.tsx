@@ -1,12 +1,14 @@
 'use client'
 
-import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react'
+import { useConvex } from 'convex/react'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { Settings, X } from 'lucide-react'
 import { Button, Textarea } from '@overlay/ui/primitives'
 import { unstyledTextarea } from '@overlay/ui/control-reset'
 import { useAutosizeTextarea } from '@overlay/ui/hooks'
 import { PromptInput, PromptInputBody, PromptInputFooter, PromptInputSubmit } from '@overlay/chat-react'
-import type { CreateWorkItemRequest, WorkItem, WorkPerson } from '@overlay/app-core'
+import type { CreateWorkItemRequest, WorkContextRef, WorkItem, WorkPerson } from '@overlay/app-core'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { WORK_LIMITS, WORK_PRIORITIES, WORK_PRIORITY_LABELS } from '@/shared/work/status'
 import { DesktopComposerControls } from '@/components/desktop/DesktopComposerControls'
@@ -15,6 +17,7 @@ import { useWorkRoute } from '../lib/use-work-route'
 import { useWorkData } from './WorkDataProvider'
 import { ComposerAssignee, ComposerDependencies, ComposerSchedule } from './WorkComposerPickers'
 import { WorkComposerContext } from './WorkComposerContext'
+import { searchContext } from './WorkPeekSections'
 
 export interface WorkTaskComposerHandle { focus(): void }
 type ComposerProps = {
@@ -23,10 +26,11 @@ type ComposerProps = {
   tasks: readonly WorkItem[]
   scope: PanelScope
   principalId: string | null
+  search(query: string): Promise<WorkContextRef[]>
   createTask(input: Omit<CreateWorkItemRequest, 'scope'>): Promise<WorkItem | null>
 }
 
-export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerProps>(function WorkTaskComposerForm({ disabled, people, tasks, scope, principalId, createTask }, ref) {
+export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerProps>(function WorkTaskComposerForm({ disabled, people, tasks, scope, principalId, createTask, search }, ref) {
   const [draft, setDraft] = useState(emptyComposerDraft)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -81,7 +85,7 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
           className={unstyledTextarea('block max-h-48 min-h-11 w-full resize-none overflow-y-auto bg-transparent px-1 py-1.5 text-sm text-(--foreground) outline-none placeholder:text-(--muted-light)')} />
         {draft.context.length ? <div className="flex flex-wrap gap-1 pt-1">{draft.context.map((context, index) => <Button key={`${context.type}:${context.id}`} type="button" variant="secondary" size="sm" className="h-7 max-w-full text-xs" disabled={locked} aria-label={`Remove ${context.label}`} onClick={() => patch({ context: draft.context.filter((_, i) => i !== index) })}><span className="truncate">{context.label}</span><X size={12} /></Button>)}</div> : null}
         <PromptInputFooter className="mt-1 flex-wrap">
-          <WorkComposerContext disabled={locked || draft.context.length >= WORK_LIMITS.contextItems} onAdd={context => patch({ context: [...draft.context.filter(item => item.type !== context.type || item.id !== context.id), context] })} />
+          <WorkComposerContext search={search} disabled={locked || draft.context.length >= WORK_LIMITS.contextItems} onAdd={context => patch({ context: [...draft.context.filter(item => item.type !== context.type || item.id !== context.id), context] })} />
           <span className="flex-1" />
           {assignee?.type === 'agent' && draft.blockedBy.length ? <span className="text-[11px] text-(--muted-light)">Starts when dependencies finish</span> : null}
           <DesktopComposerControls disabled={locked} onAppendText={text => setDraft(current => ({ ...current, text: [current.text, text].filter(Boolean).join('\n') }))} />
@@ -96,5 +100,8 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
 export const WorkTaskComposer = forwardRef<WorkTaskComposerHandle, { disabled?: boolean }>(function WorkTaskComposer({ disabled }, ref) {
   const { people, items, viewer, createTask } = useWorkData()
   const { scope } = useWorkRoute()
-  return <WorkTaskComposerForm key={scope} ref={ref} disabled={disabled} people={people} tasks={items} scope={scope} principalId={viewer?.principalId ?? null} createTask={createTask} />
+  const convex = useConvex()
+  const { activeWorkspaceId } = useWorkspace()
+  const search = useCallback((query: string) => activeWorkspaceId ? searchContext(convex, activeWorkspaceId, query) : Promise.resolve([]), [activeWorkspaceId, convex])
+  return <WorkTaskComposerForm key={`${activeWorkspaceId}:${scope}`} ref={ref} disabled={disabled} people={people} tasks={items} scope={scope} principalId={viewer?.principalId ?? null} createTask={createTask} search={search} />
 })

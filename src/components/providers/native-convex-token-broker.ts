@@ -7,10 +7,10 @@ export function createNativeConvexTokenFetcher(userId: string | null, refreshSes
     const run = async () => {
       if (forceRefreshToken) await refreshSession()
       const options: RequestInit = { credentials: 'same-origin', cache: 'no-store', signal: AbortSignal.timeout(30_000) }
-      let response = await fetch('/api/auth/convex-token?native=1', options)
+      let response = await fetch('/api/auth/convex-token', options)
       if (response.status === 401 && !forceRefreshToken) {
         await refreshSession()
-        response = await fetch('/api/auth/convex-token?native=1', { ...options, signal: AbortSignal.timeout(30_000) })
+        response = await fetch('/api/auth/convex-token', { ...options, signal: AbortSignal.timeout(30_000) })
       }
       if (!response.ok) return null
       const data = await response.json() as { token?: unknown; userId?: unknown }

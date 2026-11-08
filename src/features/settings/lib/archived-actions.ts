@@ -5,29 +5,23 @@ import {
   type AutomationSummary,
   type FileTreeEntry,
   type McpServerSummary,
-  type NoteDoc,
   type SkillSummary,
   type WorkItem,
 } from '@overlay/app-core'
 import type { WorkspaceAgentDirectoryItem, WorkspaceArchivedAgentThread } from '@overlay/workspace-contracts'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { dispatchChatDeleted, dispatchChatModified } from '@/shared/chat/chat-title'
-import { excludeNativePersonalChats } from '@/shared/chat/native-personal-chat'
 import {
   archivedItemKey,
   orderForDelete,
-  type ArchivedCategory,
   type ArchivedItem,
   type BulkOutcome,
 } from './archived-items'
 
-const LIST_LIMIT = 100
-
 type ScopedFields = { archivedFromScope?: 'personal' | 'workspace'; scope?: 'personal' | 'workspace'; archivedAt?: number }
 const scopeOf = (row: ScopedFields) => row.archivedFromScope ?? row.scope ?? 'personal'
-const asArray = <T,>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : [])
 
-type ArchivedConversationRow = {
+export type ArchivedConversationRow = {
   _id: string
   title?: string | null
   conversationType?: string
@@ -37,22 +31,8 @@ type ArchivedConversationRow = {
   lastModified?: number
 }
 
-export interface ArchivedLoadResult {
-  items: ArchivedItem[]
-  /** Sources that could not be read; the rest still show. */
-  failed: ArchivedCategory[]
-}
-
-async function loadChats(nativePersonalConfigured: boolean, workspaceId: string | null): Promise<ArchivedItem[]> {
-  const response = await fetch('/api/v1/conversations?archived=true', { cache: 'no-store', credentials: 'same-origin' })
-  if (!response.ok) throw new Error('Could not load archived chats.')
-  const body: unknown = await response.json()
-  const allRows = asArray<ArchivedConversationRow>(Array.isArray(body) ? body : (body as { data?: unknown } | null)?.data)
-  const rows = nativePersonalConfigured
-    ? workspaceId
-      ? excludeNativePersonalChats(allRows, workspaceId)
-      : []
-    : allRows
+/** Archived channels and direct messages (archiving is per person); personal AI chats come from the native chat list. */
+export function archivedRooms(rows: readonly ArchivedConversationRow[]): ArchivedItem[] {
   return rows.map((row) => ({
     key: archivedItemKey('chat', row._id),
     kind: 'chat' as const,
@@ -68,52 +48,29 @@ async function loadChats(nativePersonalConfigured: boolean, workspaceId: string 
   }))
 }
 
-async function loadFiles(): Promise<ArchivedItem[]> {
-  const [fileRows, noteRows] = await Promise.all([
-    overlayAppClient.files.get<FileTreeEntry[]>({ limit: LIST_LIMIT, summary: true, view: 'archived' }),
-    overlayAppClient.notes.get<NoteDoc[]>({ limit: LIST_LIMIT, view: 'archived' }),
-  ])
-  const files = asArray<FileTreeEntry & ScopedFields>(fileRows)
-  const fileIds = new Set(files.map((file) => file._id))
-  const notes = asArray<NoteDoc & ScopedFields>(noteRows).filter((note) => !fileIds.has(note._id))
-  const all: Array<{ id: string; parentId?: string | null }> = [...files.map((f) => ({ id: f._id, parentId: f.parentId })), ...notes.map((n) => ({ id: n._id }))]
-  const present = new Set(all.map((row) => row.id))
-  return [
-    ...files
-      // A folder's contents are archived with it; list only the top of each archived subtree.
-      .filter((file) => !file.parentId || !present.has(file.parentId))
-      .map((file): ArchivedItem => {
-        const isFolder = file.type === 'folder'
-        const kind = isFolder ? 'folder' : fileTreeRouteView(file) === 'note' ? 'note' : 'file'
-        return {
-          key: archivedItemKey(kind, file._id),
-          kind,
-          category: 'files',
-          id: file._id,
-          name: file.name,
-          scope: scopeOf(file),
-          archivedAt: file.archivedAt,
-        }
-      }),
-    ...notes.map((note): ArchivedItem => ({
-      key: archivedItemKey('note', note._id),
-      kind: 'note',
-      category: 'files',
-      id: note._id,
-      name: note.title || 'Untitled',
-      scope: scopeOf(note),
-      archivedAt: note.archivedAt,
-    })),
-  ]
+/** Archived files, folders and notes; a folder's contents are archived with it, so only the top of each subtree shows. */
+export function archivedFiles(rows: readonly (FileTreeEntry & ScopedFields)[]): ArchivedItem[] {
+  const present = new Set(rows.map((row) => row._id))
+  return rows
+    .filter((file) => !file.parentId || !present.has(file.parentId))
+    .map((file): ArchivedItem => {
+      const isFolder = file.type === 'folder'
+      const kind = isFolder ? 'folder' : fileTreeRouteView(file) === 'note' ? 'note' : 'file'
+      return {
+        key: archivedItemKey(kind, file._id),
+        kind,
+        category: 'files',
+        id: file._id,
+        name: file.name,
+        scope: scopeOf(file),
+        archivedAt: file.archivedAt,
+      }
+    })
 }
 
-async function loadExtensions(): Promise<ArchivedItem[]> {
-  const [skills, servers] = await Promise.all([
-    overlayAppClient.skills.get<SkillSummary[]>({ limit: LIST_LIMIT, view: 'archived' }),
-    overlayAppClient.mcpServers.get<McpServerSummary[]>({ limit: LIST_LIMIT, view: 'archived' }),
-  ])
+export function archivedExtensions(skills: readonly SkillSummary[], servers: readonly McpServerSummary[]): ArchivedItem[] {
   return [
-    ...asArray<SkillSummary>(skills).map((skill): ArchivedItem => ({
+    ...skills.map((skill): ArchivedItem => ({
       key: archivedItemKey('skill', skill._id),
       kind: 'skill',
       category: 'extensions',
@@ -123,7 +80,7 @@ async function loadExtensions(): Promise<ArchivedItem[]> {
       scope: scopeOf(skill),
       archivedAt: skill.archivedAt,
     })),
-    ...asArray<McpServerSummary>(servers).map((server): ArchivedItem => ({
+    ...servers.map((server): ArchivedItem => ({
       key: archivedItemKey('mcp-server', server._id),
       kind: 'mcp-server',
       category: 'extensions',
@@ -136,9 +93,8 @@ async function loadExtensions(): Promise<ArchivedItem[]> {
   ]
 }
 
-async function loadAutomations(): Promise<ArchivedItem[]> {
-  const page = await overlayAppClient.automations.getPage<AutomationSummary>({ limit: LIST_LIMIT, view: 'archived' })
-  return asArray<AutomationSummary>(page.data).map((automation) => ({
+export function archivedAutomations(rows: readonly AutomationSummary[]): ArchivedItem[] {
+  return rows.map((automation) => ({
     key: archivedItemKey('automation', automation._id),
     kind: 'automation' as const,
     category: 'automations' as const,
@@ -151,9 +107,7 @@ async function loadAutomations(): Promise<ArchivedItem[]> {
 }
 
 /** Archived tasks. A task archived together with its parent shows only under that parent's row. */
-export async function loadArchivedWork(): Promise<ArchivedItem[]> {
-  const { items } = await overlayAppClient.work.list({ view: 'archived' })
-  const archived = asArray<WorkItem>(items)
+export function archivedWork(archived: readonly WorkItem[]): ArchivedItem[] {
   const byId = new Map(archived.map((task) => [task.id, task]))
   return archived
     .filter((task) => {
@@ -172,10 +126,7 @@ export async function loadArchivedWork(): Promise<ArchivedItem[]> {
 }
 
 /** Archived agents, and the threads archived on their own (an agent stays live when only a thread is archived). */
-async function loadAgents(workspaceId: string): Promise<ArchivedItem[]> {
-  const response = await overlayAppClient.agents.list(workspaceId, { includeArchived: true })
-  const agents = asArray<WorkspaceAgentDirectoryItem>(response.agents)
-  const threads = asArray<WorkspaceArchivedAgentThread>(response.archivedThreads)
+export function archivedAgents(agents: readonly WorkspaceAgentDirectoryItem[], threads: readonly WorkspaceArchivedAgentThread[]): ArchivedItem[] {
   return [
     ...agents
       .filter((agent) => Boolean(agent.archivedAt))
@@ -202,29 +153,6 @@ async function loadAgents(workspaceId: string): Promise<ArchivedItem[]> {
       agentArchived: thread.agentArchived,
     })),
   ]
-}
-
-/** Everything the person has archived, from every source. A source that fails is reported; the others still show. */
-export async function loadArchivedItems(
-  workspaceId: string | null,
-  options: { nativePersonalConfigured?: boolean } = {},
-): Promise<ArchivedLoadResult> {
-  const sources: Array<[ArchivedCategory, Promise<ArchivedItem[]>]> = [
-    ['chats', loadChats(Boolean(options.nativePersonalConfigured), workspaceId)],
-    ['files', loadFiles()],
-    ['extensions', loadExtensions()],
-    ['automations', loadAutomations()],
-    ['work', loadArchivedWork()],
-    ['agents', workspaceId ? loadAgents(workspaceId) : Promise.resolve([])],
-  ]
-  const settled = await Promise.allSettled(sources.map(([, promise]) => promise))
-  const items: ArchivedItem[] = []
-  const failed: ArchivedCategory[] = []
-  settled.forEach((result, index) => {
-    if (result.status === 'fulfilled') items.push(...result.value)
-    else failed.push(sources[index]![0])
-  })
-  return { items, failed }
 }
 
 async function requireOk(response: Response, message: string): Promise<void> {

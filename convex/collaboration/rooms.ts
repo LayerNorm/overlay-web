@@ -45,6 +45,17 @@ async function readableRoom(ctx: QueryCtx, args: { workspaceId: string; conversa
   }
 }
 
+/** A readable room's type and scope, so a chat link can be routed to the right view. Null without access. */
+export const scope = query({
+  args: roomArgs,
+  handler: async (ctx, args) => {
+    const room = await readableRoom(ctx, args)
+    if (!room) return null
+    const conversationType = room.conversation.conversationType === 'channel' ? 'channel' as const : 'dm' as const
+    return { conversationType, scope: room.conversation.scope === 'personal' ? 'personal' as const : 'workspace' as const }
+  },
+})
+
 /**
  * Whether new messages may be posted to this conversation or one of its threads, live. Send still
  * enforces it on the server; this lets the composer reflect it without a request per open or focus.
@@ -64,6 +75,21 @@ export const compatibility = query({
       if (error instanceof Error && (DENIED.has(error.message) || error.message === 'INVALID_THREAD_ROOT')) return null
       throw error
     }
+  },
+})
+
+/**
+ * A remote agent run's liveness in a room the member may read, live: the heartbeat and open tools the agent host
+ * reports, without the run's transcript or another room's runs. Null without access or before the first heartbeat.
+ */
+export const runLiveness = query({
+  args: { ...roomArgs, runId: v.string() },
+  handler: async (ctx, args) => {
+    if (args.runId.length > 200) return null
+    const room = await readableRoom(ctx, args)
+    if (!room) return null
+    const run = await ctx.db.query('conversationAgentRuns').withIndex('by_externalRunId', q => q.eq('externalRunId', args.runId)).unique()
+    return run?.conversationId === args.conversationId ? run.liveness ?? null : null
   },
 })
 

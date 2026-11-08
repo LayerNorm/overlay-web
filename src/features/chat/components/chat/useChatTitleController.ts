@@ -12,12 +12,10 @@ export function useChatTitleController({
   activeChatId,
   getNativeSummary,
   renameNative,
-  titleGenerationEnabled,
 }: {
   activeChatId: string | null
   getNativeSummary: (chatId: string) => Pick<PersonalChatSummary, 'title'> | undefined
   renameNative: (chatId: string, title: string) => Promise<void>
-  titleGenerationEnabled: boolean
 }) {
   const [editingChatId, setEditingChatId] = useState<string | null>(null)
   const [editingChatTitle, setEditingChatTitle] = useState('')
@@ -66,16 +64,15 @@ export function useChatTitleController({
    * row and the server update follow once the conversation id arrives.
    */
   const prefetchFirstMessageTitle = useCallback((seedText: string) => {
-    if (titleGenerationEnabled) prefetchTitle(seedText)
-  }, [titleGenerationEnabled])
+    prefetchTitle(seedText)
+  }, [])
 
   const startFirstMessageRename = useCallback((chatId: string, text: string) => {
-    if (!titleGenerationEnabled) return
     // Resolves from the prefetched request when the seed matches.
     void generateTitle(text).then(async (aiTitle) => {
       if (aiTitle) await persistNativeChatTitle(renameNative, chatId, sanitizeChatTitle(aiTitle, DEFAULT_CHAT_TITLE))
     })
-  }, [renameNative, titleGenerationEnabled])
+  }, [renameNative])
 
   return {
     beginHeaderChatRename,

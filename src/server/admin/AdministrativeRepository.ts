@@ -14,18 +14,6 @@ export type AdministrativePrincipal = {
   revokedBy?: string
 }
 
-export interface AdministrativeRepository {
-  get(args: { userId: string }): Promise<AdministrativePrincipal | null>
-  list(): Promise<AdministrativePrincipal[]>
-  grant(args: {
-    grantedBy: string
-    reason?: string
-    role: AdministrativeRole
-    userId: string
-  }): Promise<AdministrativePrincipal>
-  revoke(args: { revokedBy: string; userId: string }): Promise<boolean>
-}
-
 export function isAdministrativeRole(value: unknown): value is AdministrativeRole {
   return typeof value === 'string' && ADMINISTRATIVE_ROLES.includes(value as AdministrativeRole)
 }

@@ -4,7 +4,6 @@ import { NextRequest } from 'next/server'
 import { ConvexError } from 'convex/values'
 import { deriveOverlayCapabilities } from '@overlay/app-core'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
-import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getAuthorizationRoutePolicy } from '@/server/authorization/authorization-route-policy'
 
@@ -19,7 +18,6 @@ test.after(() => {
   else process.env.INTERNAL_API_SECRET = originalInternalApiSecret
 })
 
-const CAPABILITIES = { provider: 'convex' } as unknown as AppDataCapabilities
 
 function request(path: string, init: { method?: string; body?: unknown } = {}) {
   return new NextRequest(`https://overlay.test${path}`, {
@@ -37,7 +35,6 @@ function context(params: Record<string, string> = {}, parsedJson: Record<string,
     parsedFormData: null,
     parsedJson,
     parsedQuery: {},
-    appDataCapabilities: CAPABILITIES,
     requestFingerprint: 'fp',
     requestIdempotencyKey: 'key',
     workspace: {

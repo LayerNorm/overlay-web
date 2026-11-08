@@ -30,7 +30,6 @@ const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/auth/native/authorize': ['POST'],
   '/api/auth/native/exchange': ['POST'],
   '/api/auth/native/refresh': ['POST'],
-  '/api/auth/native/subscription': ['GET'],
   '/api/auth/options': ['GET'],
   // Preview environment + sandbox identity + scoped header secret; absent elsewhere.
   '/api/auth/preview-login': ['POST'],
@@ -40,7 +39,6 @@ const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/auth/sign-out': ['POST'],
   '/api/auth/sign-up': ['POST'],
   '/api/auth/sso/[provider]': ['GET'],
-  '/api/auth/sync-profile': ['POST'],
   '/api/auth/verify-email': ['POST'],
   '/api/better-auth/[...all]': [],
   '/api/checkout': ['POST'],

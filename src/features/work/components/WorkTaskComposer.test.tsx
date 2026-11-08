@@ -19,7 +19,7 @@ test('Enter submits, duplicate submits are held, success resets and refocuses; f
   const createTask = (input: unknown) => { requests.push(input); return new Promise<WorkItem | null>(done => { resolve = done }) }
   const node = { style: {}, scrollHeight: 40, getBoundingClientRect: () => ({ width: 500 }), focus: () => { focuses++ } }
   try {
-    await act(async () => { renderer = create(<WorkTaskComposerForm scope="personal" principalId="me" people={[]} tasks={[]} createTask={createTask} />, { createNodeMock: element => element.type === 'textarea' ? node : null }) })
+    await act(async () => { renderer = create(<WorkTaskComposerForm scope="personal" principalId="me" people={[]} tasks={[]} createTask={createTask} search={async () => []} />, { createNodeMock: element => element.type === 'textarea' ? node : null }) })
     const input = () => renderer!.root.findByType('textarea')
     const send = () => renderer!.root.findByProps({ 'aria-label': 'Add task' })
     assert.equal(send().props.disabled, true)

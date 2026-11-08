@@ -26,7 +26,6 @@ import { Button, Input, ListboxSelect, toast } from '@overlay/ui/primitives'
 import { ConfirmDialog } from '@overlay/ui/overlays'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { usePersonalChat } from '@/components/providers/PersonalChatProvider'
-import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { ScopeTag } from '@/components/layout/ScopeTag'
 import {
   ARCHIVED_CATEGORIES,
@@ -39,7 +38,9 @@ import {
   type ArchivedItem,
   type ArchivedItemKind,
 } from '../lib/archived-items'
-import { deleteArchivedItem, loadArchivedItems, restoreArchivedItem, runBulk } from '../lib/archived-actions'
+import { deleteArchivedItem, restoreArchivedItem, runBulk } from '../lib/archived-actions'
+import { useLiveArchivedItems } from '../lib/use-live-archived'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 
 const KIND_ICONS: Record<ArchivedItemKind, LucideIcon> = {
   chat: MessageSquare,
@@ -83,47 +84,24 @@ function deleteDescription(items: readonly ArchivedItem[]): string {
  */
 export function ArchivedSettings() {
   const workspace = useOptionalWorkspace()
+  const buildWorkspaceHref = useWorkspaceHref()
   const workspaceId = workspace?.switchingWorkspaceId ? null : workspace?.activeWorkspaceId ?? null
   const nativePersonal = usePersonalChat()
-  const [legacyState, setLegacyState] = useState<{
-    workspaceId: string | null
-    items: ArchivedItem[]
-    failedSources: string[]
-  } | null>(null)
-  const legacyItems = legacyState?.workspaceId === workspaceId ? legacyState.items : null
-  const failedSources = legacyState?.workspaceId === workspaceId ? legacyState.failedSources : []
+  // Live: archives, restores and deletes made anywhere (another tab, another member) show without reloading.
+  const live = useLiveArchivedItems(workspaceId)
+  const legacyItems = live.items
+  const failedSources = useMemo(
+    () => live.failed.map((source) => ARCHIVED_CATEGORY_LABELS[source].toLowerCase()),
+    [live.failed],
+  )
   const [category, setCategory] = useState<ArchivedCategoryFilter>('all')
   const [query, setQuery] = useState('')
   const [selected, setSelected] = useState<Set<string>>(() => new Set())
   const [pendingDelete, setPendingDelete] = useState<ArchivedItem[] | null>(null)
   const [busy, setBusy] = useState(false)
   const lastToggled = useRef<string | null>(null)
-  const requestEpoch = useRef(0)
-  const workspaceIdRef = useRef(workspaceId)
-  workspaceIdRef.current = workspaceId
-
-  const load = useCallback(async () => {
-    const requestWorkspaceId = workspaceId
-    if (requestWorkspaceId !== workspaceIdRef.current) return
-    const requestId = ++requestEpoch.current
-    const result = await loadArchivedItems(workspaceId, {
-      nativePersonalConfigured: nativePersonal.configured,
-    })
-    if (requestId !== requestEpoch.current || requestWorkspaceId !== workspaceIdRef.current) return
-    setLegacyState({
-      workspaceId: requestWorkspaceId,
-      items: result.items,
-      failedSources: result.failed.map((source) => ARCHIVED_CATEGORY_LABELS[source].toLowerCase()),
-    })
-  }, [nativePersonal.configured, workspaceId])
-
-  useEffect(() => {
-    void load()
-  }, [load])
-  useWorkspaceChanged(load)
-
   const nativeItems = useMemo<ArchivedItem[]>(() => {
-    if (!nativePersonal.configured || !workspaceId) return []
+    if (!workspaceId) return []
     const summaries = [...nativePersonal.archived.rows]
     const selectedSummary = nativePersonal.selectedSummary
     if (selectedSummary?.archivedAt
@@ -145,7 +123,6 @@ export function ArchivedSettings() {
     }))
   }, [
     nativePersonal.archived.rows,
-    nativePersonal.configured,
     nativePersonal.selectedSummary,
     workspaceId,
   ])
@@ -158,8 +135,7 @@ export function ArchivedSettings() {
   useEffect(() => {
     if (items) setSelected((current) => pruneSelection(current, items))
   }, [items])
-  const reportedFailedSources = nativePersonal.configured
-    && nativePersonal.archived.status === 'unavailable'
+  const reportedFailedSources = nativePersonal.archived.status === 'unavailable'
     && !failedSources.includes('chats')
     ? [...failedSources, 'chats']
     : failedSources
@@ -203,7 +179,7 @@ export function ArchivedSettings() {
         await restoreArchivedItem(
           targets[0]!,
           workspaceId,
-          nativePersonal.configured ? restoreNativePersonal : undefined,
+          restoreNativePersonal,
         )
         toast.success(`Restored “${targets[0]!.name}”.`)
       } else {
@@ -211,7 +187,7 @@ export function ArchivedSettings() {
           targets,
           'restore',
           workspaceId,
-          nativePersonal.configured ? restoreNativePersonal : undefined,
+          restoreNativePersonal,
         )
         const summary = summarizeBulk('restored', outcome)
         if (outcome.failed.length === 0) toast.success(summary)
@@ -221,7 +197,6 @@ export function ArchivedSettings() {
       toast.error('Could not restore that. You may not have access to it.')
     } finally {
       setBusy(false)
-      await load()
     }
   }
 
@@ -254,11 +229,10 @@ export function ArchivedSettings() {
     } finally {
       setBusy(false)
       setPendingDelete(null)
-      await load()
     }
   }
 
-  if (items === null || (nativePersonal.configured && nativePersonal.archived.status === 'loading')) {
+  if (items === null || nativePersonal.archived.status === 'loading') {
     return (
       <div className="flex min-h-48 items-center justify-center text-(--muted)">
         <Loader2 size={18} className="animate-spin" aria-label="Loading archived items" />
@@ -364,7 +338,7 @@ export function ArchivedSettings() {
                   />
                   <Icon size={15} className="shrink-0 text-(--muted)" aria-hidden />
                   {item.href && item.kind === 'chat' ? (
-                    <Link href={item.href} className="min-w-0 flex-1">{label}</Link>
+                    <Link href={buildWorkspaceHref(item.workspaceId ?? workspaceId, item.href)} className="min-w-0 flex-1">{label}</Link>
                   ) : (
                     <div className="min-w-0 flex-1">{label}</div>
                   )}
@@ -398,7 +372,7 @@ export function ArchivedSettings() {
         </div>
       )}
 
-      {nativePersonal.configured && nativePersonal.archived.hasMore ? (
+      {nativePersonal.archived.hasMore ? (
         <Button
           variant="ghost"
           disabled={nativePersonal.archived.loadingMore}

@@ -1,7 +1,9 @@
 'use client'
 
-import { useState, useCallback, useEffect, useEffectEvent, useMemo, useRef, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
+import { useState, useCallback, useEffect, useEffectEvent, useMemo, type Dispatch, type MouseEvent, type SetStateAction } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
+import { useConvexAuth, useQuery } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { Archive, Bot, Check, Hash, MessageSquare, Pencil, Slack, UserRound, UsersRound } from 'lucide-react'
@@ -24,17 +26,6 @@ import {
   type ChatTitleUpdatedDetail,
 } from '@/shared/chat/chat-title'
 import { NEW_CHANNEL_EVENT, NEW_DIRECT_MESSAGE_EVENT } from '@/shared/chat/collaboration-events'
-import {
-  fetchChatListResult,
-  fetchNextChatListPage,
-  clearChatListCache,
-  getCachedChatList,
-  getCachedChatListPageInfo,
-  removeCachedChat,
-  setActiveChatListView,
-  upsertCachedChat,
-  type CachedConversation,
-} from '@/shared/chat/chat-list-cache'
 import { clearLastChatForView, rememberLastChatForView } from '@/shared/chat/last-chat-by-view'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { announceArchived } from '@/shared/app/archive-toast'
@@ -60,7 +51,6 @@ import {
   readWorkspacePathScope,
 } from '@/shared/workspaces/routing'
 import { agentThreadHref } from '@/components/layout/sidebar-nav'
-import { useWorkspaceChanged } from '@/hooks/use-workspace-changed'
 import { useCollaborationRealtime } from './collaboration/CollaborationRealtimeProvider'
 import { ConversationScopeActionDialog } from './collaboration/ConversationScopeActionDialog'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
@@ -191,195 +181,71 @@ function useCollaborationUnread({
   }, [collaborationNotifications, user, workspaceId])
 }
 
+const ROOM_KIND = { dms: 'dm', channels: 'channel', all: 'all' } as const
+const ROOM_PAGE = 50
+const NO_ROOMS: Conversation[] = []
+
+/**
+ * The channel and DM list for the sidebar, live from `collaboration/roomList:list`: new messages, renames, new rooms,
+ * joins, leaves and archives in any tab arrive without fetching, retrying or version-triggered refetches. Local
+ * optimistic edits (a delete animation, an archive) apply to `chats` and the next live snapshot replaces them.
+ */
+/** The live room list for one workspace and view, a page at a time; earlier rows stay on screen while more load. */
+function useRoomListPage({ enabled, workspaceId, kind }: {
+  enabled: boolean
+  workspaceId: string | null | undefined
+  kind: 'dm' | 'channel' | 'all' | null
+}) {
+  // The page grows with "Load more" and starts over when the workspace or view changes.
+  const pageKey = `${workspaceId ?? ''}:${kind ?? ''}`
+  const [page, setPage] = useState({ key: pageKey, limit: ROOM_PAGE })
+  const limit = page.key === pageKey ? page.limit : ROOM_PAGE
+  const result = useQuery(api.collaboration.roomList.list, enabled ? { workspaceId: workspaceId!, kind: kind!, limit } : 'skip') as
+    { rooms: Conversation[]; hasMore: boolean } | null | undefined
+  // While a bigger page loads, the rows already on screen for this workspace and view stay.
+  const [lastPage, setLastPage] = useState<{ key: string; rooms: Conversation[]; hasMore: boolean } | null>(null)
+  // A denied read (null) shows no rooms; the shared empty array keeps this from re-syncing on every render.
+  const current = enabled && result !== undefined ? { key: pageKey, rooms: result?.rooms ?? NO_ROOMS, hasMore: Boolean(result?.hasMore) } : null
+  if (current && (lastPage?.key !== pageKey || lastPage.rooms !== current.rooms)) setLastPage(current)
+  const visible = current ?? (enabled && lastPage?.key === pageKey ? lastPage : null)
+  const loadingMore = enabled && result === undefined && visible !== null
+  const loadMoreChats = useCallback(() => {
+    setPage({ key: pageKey, limit: limit + ROOM_PAGE })
+  }, [limit, pageKey])
+  return { visible, loadingMore, loadMoreChats }
+}
+
 function useChatListData({
   authLoading,
   chatView,
   nativePersonalView,
-  refreshKey,
   user,
   workspaceId,
-  conversationListVersion,
 }: {
   authLoading: boolean
   chatView: ChatView
   nativePersonalView: boolean
-  refreshKey: number
   user: AuthUser | null
   workspaceId: string | null | undefined
-  conversationListVersion: number | null
 }) {
-
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  const kind = chatView === 'dms' || chatView === 'channels' || chatView === 'all' ? ROOM_KIND[chatView] : null
+  const enabled = Boolean(!nativePersonalView && kind && workspaceId && user && !authLoading && isAuthenticated && !isLoading)
+  const { visible, loadingMore, loadMoreChats } = useRoomListPage({ enabled, workspaceId, kind })
   const [chats, setChats] = useState<Conversation[]>(() => [])
   const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(() => getCachedChatListPageInfo().hasMore)
-  const lastConversationListVersionRef = useRef<number | null>(null)
-
-  const loadChats = useCallback(async (signal?: { cancelled: boolean }) => {
-
-    if (nativePersonalView) {
-      setChats([])
-      setHasMore(false)
-      setLoading(false)
-      return
-    }
-    if (authLoading) return
-    if (!user) {
-      clearChatListCache()
-      setChats([])
-      setHasMore(false)
-      setLoading(false)
-      return
-    }
-    // While the user is authenticated, an empty/failed response is almost always
-    // transient on first paint (the Convex token may not be minted yet, so the
-    // BFF briefly returns 401). Keep the loading skeleton and retry with backoff
-    // instead of flashing "No chats yet". We only ever commit to the empty state
-    // on a genuinely successful response with zero chats.
-    const MAX_ATTEMPTS = 8
-    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-      if (signal?.cancelled) return
-      // The cache is display-only here. It may have been populated by a guest
-      // server render before the client recovered the authenticated session.
-      const outcome = await fetchChatListResult({ force: true })
-      if (signal?.cancelled) return
-      if (outcome.status === 'success') {
-        setChats(outcome.chats)
-        setHasMore(getCachedChatListPageInfo().hasMore)
-        setLoading(false)
-        return
-      }
-      // The server gives us an exact Retry-After window. The shared list cache
-      // suppresses requests during that window, so do not turn one 429 into an
-      // eight-attempt retry loop. Existing cached chats remain usable.
-      if (outcome.status === 'rate-limited') {
-        setLoading(false)
-        return
-      }
-      await new Promise((resolve) => setTimeout(resolve, Math.min(300 * 2 ** attempt, 3000)))
-    }
-    // Exhausted retries; stop the skeleton so the UI doesn't hang indefinitely.
-    if (!signal?.cancelled) setLoading(false)
-  }, [authLoading, nativePersonalView, user])
-
-  async function loadMoreChats() {
-    if (!user || nativePersonalView) return
-    setLoadingMore(true)
-    try {
-      setChats(await fetchNextChatListPage())
-      setHasMore(getCachedChatListPageInfo().hasMore)
-    } finally {
-      setLoadingMore(false)
-    }
+  const [syncedFrom, setSyncedFrom] = useState<{ rooms: Conversation[] | null; enabled: boolean } | null>(null)
+  const visibleRooms = visible?.rooms ?? null
+  if (!syncedFrom || syncedFrom.rooms !== visibleRooms || syncedFrom.enabled !== enabled) {
+    setSyncedFrom({ rooms: visibleRooms, enabled })
+    setChats(visibleRooms ?? [])
+    setLoading(enabled ? visible === null : !nativePersonalView && authLoading)
   }
-
-  useEffect(() => {
-    const signal = { cancelled: false }
-    let timeoutId: number | undefined
-    queueMicrotask(() => {
-      if (signal.cancelled) return
-      if (nativePersonalView) {
-        setChats([])
-        setHasMore(false)
-        setLoading(false)
-        return
-      }
-      if (authLoading) {
-        setLoading(true)
-        return
-      }
-      if (!user) {
-        clearChatListCache()
-        setChats([])
-        setHasMore(false)
-        setLoading(false)
-        return
-      }
-      const cached = getCachedChatList()
-      if (cached?.length) {
-        setChats(cached)
-        setHasMore(getCachedChatListPageInfo().hasMore)
-        setLoading(false)
-      } else {
-        setChats([])
-        setLoading(true)
-      }
-      timeoutId = window.setTimeout(() => {
-        if (!getCachedChatList()?.length) setLoading(true)
-        void loadChats(signal)
-      }, 0)
-    })
-    return () => {
-      signal.cancelled = true
-      if (timeoutId !== undefined) window.clearTimeout(timeoutId)
-    }
-  }, [authLoading, chatView, loadChats, nativePersonalView, refreshKey, user, workspaceId])
-
-  useWorkspaceChanged(useCallback(() => {
-    if (!nativePersonalView) void loadChats()
-  }, [loadChats, nativePersonalView]))
-
-  useEffect(() => {
-    lastConversationListVersionRef.current = null
-  }, [workspaceId])
-
-  // Delta reconcile is guarded by lastConversationListVersionRef — a stale run
-  // only upserts already-fresh rows.
-  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
-  useEffect(() => {
-    if (nativePersonalView) {
-      lastConversationListVersionRef.current = null
-      return
-    }
-    if (conversationListVersion === null) return
-    const previous = lastConversationListVersionRef.current
-    lastConversationListVersionRef.current = conversationListVersion
-    if (previous === null || previous === conversationListVersion) return
-    // Versioned reconciliation: fetch only the delta (conversations updated
-    // since the last known version) and upsert individual rows instead of
-    // reloading the full list.  Fall back to full reload on error.
-    const reconcileDelta = async () => {
-      try {
-        // Use updatedSince to fetch only changed conversations.
-        // The _creationTime of the event is approximately when the change
-        // happened, so we subtract a small buffer to avoid missing events
-        // that were committed in the same millisecond.
-        const since = Math.max(0, previous - 1000)
-        const response = await overlayAppClient.conversations.getResponse({
-          updatedSince: since,
-          limit: 100,
-        }, { credentials: 'same-origin', cache: 'no-store' })
-        if (!response.ok) {
-          void loadChats()
-          return
-        }
-        const data = await response.json() as { data?: Array<Record<string, unknown>>; conversations?: Array<Record<string, unknown>> }
-        const changed = data.data ?? data.conversations ?? []
-        if (changed.length === 0) return
-        // Upsert each changed conversation into the cache and state.
-        for (const conv of changed) {
-          if (!conv._id) continue
-          if (conv.deletedAt) {
-            removeCachedChat(conv._id as string)
-          } else {
-            upsertCachedChat(conv as CachedConversation)
-          }
-        }
-        // Refresh state from cache to reflect the upserts.
-        const cached = getCachedChatList()
-        if (cached) setChats(cached)
-      } catch {
-        // Fall back to full reload if delta reconciliation fails.
-        void loadChats()
-      }
-    }
-    void reconcileDelta()
-  }, [conversationListVersion, loadChats, nativePersonalView])
-
-  return { chats, setChats, loading, setLoading, hasMore, loadingMore, loadChats, loadMoreChats }
+  return { chats, setChats, loading, setLoading, hasMore: Boolean(visible?.hasMore), loadingMore, loadMoreChats }
 }
 
 function useChatListEvents({
+  currentChats,
   activeId,
   baseHref,
   chatView,
@@ -405,11 +271,12 @@ function useChatListEvents({
   workspaceId: string | null | undefined
   setChats: Dispatch<SetStateAction<Conversation[]>>
   setLoading: Dispatch<SetStateAction<boolean>>
+  /** The rooms list as shown, for picking the next room after the open one is archived. */
+  currentChats: readonly Conversation[]
 }) {
   const [deletingChatIds, setDeletingChatIds] = useState<string[]>([])
 
   const removeActiveChat = useCallback((chatId: string) => {
-    removeCachedChat(chatId)
     setDeletingChatIds((prev) => (
       prev.includes(chatId) ? prev : [...prev, chatId]
     ))
@@ -424,7 +291,6 @@ function useChatListEvents({
       const nextChat = detail?.chat
       if (!nextChat?._id) return
       if (nativePersonalView || isNativePersonalChatCandidate(nextChat, workspaceId)) return
-      upsertCachedChat(nextChat)
       setLoading(false)
       setChats((prev) => {
         const existingIndex = prev.findIndex((chat) => chat._id === nextChat._id)
@@ -444,11 +310,6 @@ function useChatListEvents({
       const { detail } = event as CustomEvent<ChatTitleUpdatedDetail>
       if (!detail?.chatId || !detail.title) return
       if (nativePersonalView || nativePersonalIds.has(detail.chatId)) return
-      upsertCachedChat({
-        _id: detail.chatId,
-        title: detail.title,
-        lastModified: Date.now(),
-      })
       setChats((prev) => {
         const existing = prev.find((chat) => chat._id === detail.chatId)
         if (!existing) return prev
@@ -472,7 +333,7 @@ function useChatListEvents({
       clearLastChatForView(workspaceId, chatView, archivedChatId)
       if (activeId !== archivedChatId) return
       if (!chatInView(detail.chat, chatView)) return
-      const nextChat = (getCachedChatList() ?? []).find((candidate) => {
+      const nextChat = currentChats.find((candidate) => {
         if (candidate._id === archivedChatId) return false
         if (chatView === 'personal' || chatView === 'workspace-chats') return isAiChatInView(candidate, chatView)
         if (chatView === 'dms') return candidate.conversationType === 'dm'
@@ -598,14 +459,12 @@ function useChatRename({
 function useChatArchive({
   activeChatId,
   getNativeSummary,
-  loadChats,
   navigateAwayFromArchivedChat,
   setNativeArchived,
   setEditingChatId,
 }: {
   activeChatId: string | null
   getNativeSummary: (chatId: string) => PersonalChatSummary | undefined
-  loadChats: (signal?: { cancelled: boolean }) => Promise<void>
   navigateAwayFromArchivedChat: (chatId: string) => void
   setNativeArchived: (summary: PersonalChatSummary, archived: boolean) => Promise<void>
   setEditingChatId: Dispatch<SetStateAction<string | null>>
@@ -667,7 +526,6 @@ function useChatArchive({
       setPendingArchiveChat(null)
     } catch (error) {
       setArchiveError(error instanceof Error ? error.message : 'Conversation could not be archived')
-      void loadChats()
     } finally {
       setArchiveBusy(false)
     }
@@ -982,21 +840,16 @@ function useChatPanelRoute({
     ? 'workspace'
     : 'personal'
   const scopedBaseHref = buildWorkspaceHref(workspaceId ?? null, baseHref, viewScope)
-  // Both AI chat views share the personal list; the scope filter runs here.
-  // Sections share one list of every conversation and each filters its own view.
-  setActiveChatListView(sectionView ? 'all' : chatView === 'workspace-chats' ? 'personal' : chatView)
   return { activeId, buildWorkspaceHref, chatView, pathname, scopedBaseHref }
 }
 
 export function ChatInlinePanel({
-  refreshKey,
   searchQuery = '',
   onNavigate,
   baseHref = '/app/chat',
   workspaceId,
   view: sectionView,
 }: {
-  refreshKey: number
   searchQuery?: string
   onNavigate?: () => void
   baseHref?: string
@@ -1008,15 +861,24 @@ export function ChatInlinePanel({
   const { activeWorkspace } = useWorkspace()
   const { sessions, getUnread } = useAsyncSessions()
   const { user, isLoading: authLoading } = useAuth()
-  const {
-    conversationListVersion,
-    notifications: collaborationNotifications,
-  } = useCollaborationRealtime()
+  const { notifications: collaborationNotifications } = useCollaborationRealtime()
   const nativePersonal = usePersonalChat()
-  const nativePersonalOwner = nativePersonal.configured && (Boolean(user) || authLoading)
+  const nativePersonalOwner = Boolean(user) || authLoading
   const { activeId, buildWorkspaceHref, chatView, pathname, scopedBaseHref } = useChatPanelRoute({
     baseHref, workspaceId, sectionView,
   })
+
+  // Same-surface switches update history directly and tell the conversation
+  // router to re-read the URL; `router.push` alone leaves the pane rendering
+  // the previous room until Next commits its own history update.
+  const navigateChatHref = useCallback((href: string, detail: { chatId: string | null; view: string }) => {
+    if (isSameChatSurface(pathname, baseHref)) {
+      window.history.pushState(null, '', href)
+      window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', { detail }))
+    } else {
+      router.push(href)
+    }
+  }, [baseHref, pathname, router])
 
   const openChat = useCallback((chat: Conversation) => {
     const targetView = chat.conversationType === 'channel'
@@ -1036,16 +898,9 @@ export function ChatInlinePanel({
     }))
     // Soft-navigate on the same chat surface so Next does not remount the app
     // shell (and WorkspaceProvider) on every switch.
-    if (isSameChatSurface(pathname, baseHref)) {
-      window.history.pushState(null, '', href)
-      window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
-        detail: { chatId: chat._id, view: targetView },
-      }))
-    } else {
-      router.push(href)
-    }
+    navigateChatHref(href, { chatId: chat._id, view: targetView })
     onNavigate?.()
-  }, [baseHref, buildWorkspaceHref,  onNavigate, pathname, router, workspaceId])
+  }, [baseHref, buildWorkspaceHref, navigateChatHref, onNavigate, workspaceId])
 
   const {
     newDirectMessageOpen,
@@ -1066,16 +921,13 @@ export function ChatInlinePanel({
     setLoading,
     hasMore,
     loadingMore,
-    loadChats,
     loadMoreChats,
   } = useChatListData({
     authLoading,
     chatView,
     nativePersonalView: nativePersonalOwner && (chatView === 'personal' || chatView === 'workspace-chats'),
-    refreshKey,
     user,
     workspaceId,
-    conversationListVersion,
   })
   const nativePersonalView = nativePersonalOwner && (chatView === 'personal' || chatView === 'workspace-chats')
   const nativePersonalRelevant = nativePersonalView || (nativePersonalOwner && chatView === 'all')
@@ -1138,7 +990,7 @@ export function ChatInlinePanel({
       return
     }
     if (chatView === 'all' && nativePersonalOwner) nativePersonal.active.loadMore()
-    if (hasMore) await loadMoreChats()
+    if (hasMore) loadMoreChats()
   }
   const deletingChatIds = useChatListEvents({
     activeId,
@@ -1153,6 +1005,7 @@ export function ChatInlinePanel({
     workspaceId: nativePersonalOwner ? workspaceId : null,
     setChats,
     setLoading,
+    currentChats: legacyChats,
   })
   const {
     editingChatId,
@@ -1218,7 +1071,6 @@ export function ChatInlinePanel({
   } = useChatArchive({
     activeChatId: activeId,
     getNativeSummary,
-    loadChats,
     navigateAwayFromArchivedChat,
     setNativeArchived: nativePersonal.setArchived,
     setEditingChatId,
@@ -1226,9 +1078,9 @@ export function ChatInlinePanel({
 
   useEffect(() => {
     const archived = nativePersonal.selectedSummary
-    if (!nativePersonal.configured || !archived?.archivedAt) return
+    if (!archived?.archivedAt) return
     navigateAwayFromArchivedChat(archived._id)
-  }, [navigateAwayFromArchivedChat, nativePersonal.configured, nativePersonal.selectedSummary])
+  }, [navigateAwayFromArchivedChat, nativePersonal.selectedSummary])
 
   return (
     <>
@@ -1260,7 +1112,7 @@ export function ChatInlinePanel({
     <ChatListDialogs
       workspaceId={workspaceId}
       buildHref={buildWorkspaceHref}
-
+      navigateChatHref={navigateChatHref}
       router={router}
       onNavigate={onNavigate}
       newDirectMessageOpen={newDirectMessageOpen}
@@ -1281,7 +1133,7 @@ export function ChatInlinePanel({
 function ChatListDialogs({
   workspaceId,
   buildHref,
-
+  navigateChatHref,
   router,
   onNavigate,
   newDirectMessageOpen,
@@ -1297,7 +1149,7 @@ function ChatListDialogs({
 }: {
   workspaceId?: string | null
   buildHref: ReturnType<typeof useWorkspaceHref>
-
+  navigateChatHref: (href: string, detail: { chatId: string | null; view: string }) => void
   router: ReturnType<typeof useRouter>
   onNavigate?: () => void
   newDirectMessageOpen: boolean
@@ -1321,14 +1173,15 @@ function ChatListDialogs({
           onCreated={({ id, title, agentId }) => {
             // Agent DMs are threads under the agent — they open on the agents
             // surface and never appear in the chat list.
-            const href = agentId
-              ? agentThreadHref(buildHref(workspaceId, '/app/agents'), agentId, id)
-              : buildHref(
+            if (agentId) {
+              router.push(agentThreadHref(buildHref(workspaceId, '/app/agents'), agentId, id))
+            } else {
+              navigateChatHref(buildHref(
                 workspaceId,
                 `/app/chat?${new URLSearchParams({ view: 'dms', id, draft: '1', title }).toString()}`,
                 'workspace',
-              )
-            router.push(href)
+              ), { chatId: id, view: 'dms' })
+            }
             onNavigate?.()
           }}
         />
@@ -1340,11 +1193,11 @@ function ChatListDialogs({
 
           onOpenChange={setNewChannelOpen}
           onCreated={({ id, title }) => {
-            router.push(buildHref(
+            navigateChatHref(buildHref(
               workspaceId ?? null,
               `/app/chat?${new URLSearchParams({ view: 'channels', id, title }).toString()}`,
               'workspace',
-            ))
+            ), { chatId: id, view: 'channels' })
             onNavigate?.()
           }}
         />

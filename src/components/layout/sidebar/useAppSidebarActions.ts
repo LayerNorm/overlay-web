@@ -18,7 +18,6 @@ export interface UseAppSidebarActionsOptions {
   pathname: string
   requireAuth: (reason: GateReason) => void
   onCloseMobileMenu: () => void
-  onChatCreated: () => void
 }
 
 function isKnownActionKey(actionKey: OverlaySidebarActionKey): actionKey is
@@ -37,7 +36,6 @@ export function useAppSidebarActions({
   pathname,
   requireAuth,
   onCloseMobileMenu,
-  onChatCreated,
 }: UseAppSidebarActionsOptions) {
   const router = useRouter()
   const scope = usePanelScope()
@@ -47,7 +45,6 @@ export function useAppSidebarActions({
       requireAuth('send')
       return false
     }
-    onChatCreated()
     onCloseMobileMenu()
     const view = scope === 'workspace' ? 'workspace-chats' : 'personal'
     const href = buildWorkspaceHref(null, `/app/chat?view=${view}`, scope)
@@ -61,7 +58,6 @@ export function useAppSidebarActions({
     }
     return true
   }, [
-    onChatCreated,
     onCloseMobileMenu,
     pathname,
     buildWorkspaceHref,

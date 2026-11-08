@@ -2,7 +2,8 @@
 
 import { unstyledButton } from '@overlay/ui/control-reset'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
+import { useConvexAuth, useQuery } from 'convex/react'
 import { KeyRound, Plus, Trash2 } from 'lucide-react'
 import type { ProviderAccountResource } from '@overlay/api-client'
 import { Button, toast } from '@overlay/ui/primitives'
@@ -10,6 +11,7 @@ import { ConfirmDialog } from '@overlay/ui/overlays'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { AGENT_PROVIDERS, isSupportedAgentProviderId, type AgentProviderAuthMethod } from '@/shared/agents/provider-accounts'
 import { AccountDialog } from '@/components/agents/AgentAccountDialog'
+import { api } from '../../../../convex/_generated/api'
 
 const METHOD_LABEL: Record<AgentProviderAuthMethod, string> = { subscription: 'Subscription', api_key: 'API key' }
 
@@ -25,25 +27,14 @@ function formatLastUsed(timestamp: number | undefined): string {
 
 /** Provider-account connections for supported model and subscription adapters. */
 export function AgentAccountSettings() {
-  const [accounts, setAccounts] = useState<ProviderAccountResource[] | null>(null)
-  const [loadError, setLoadError] = useState<string | null>(null)
+  // Live: a connect, reconnect or removal anywhere shows without refetching.
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  const live = useQuery(api.providers.agentAccounts.mine, isAuthenticated && !isLoading ? {} : 'skip')
+  const accounts: ProviderAccountResource[] | null = live === undefined ? null : live ?? []
+  const loadError = live === null ? 'Could not load your accounts.' : null
   const [dialog, setDialog] = useState<{ mode: 'connect' } | { mode: 'reconnect'; account: ProviderAccountResource } | null>(null)
   const [removing, setRemoving] = useState<ProviderAccountResource | null>(null)
   const [busy, setBusy] = useState(false)
-
-  const refresh = useCallback(async () => {
-    try {
-      const result = await overlayAppClient.providerAccounts.list({ cache: 'no-store' })
-      setAccounts(result.data)
-      setLoadError(null)
-    } catch (loadError) {
-      setLoadError(loadError instanceof Error ? loadError.message : 'Could not load your accounts.')
-      setAccounts((current) => current ?? [])
-    }
-  }, [])
-
-  // react-doctor-disable-next-line react-doctor/no-set-state-after-await-in-effect
-  useEffect(() => { void refresh() }, [refresh])
 
   const remove = async () => {
     if (!removing) return
@@ -52,7 +43,6 @@ export function AgentAccountSettings() {
       await overlayAppClient.providerAccounts.remove(removing.id)
       setRemoving(null)
       toast.success('Account removed.')
-      await refresh()
     } catch (removeError) {
       toast.error(removeError instanceof Error ? removeError.message : 'Could not remove the account.')
     } finally {
@@ -130,7 +120,7 @@ export function AgentAccountSettings() {
           key={dialog.mode === 'reconnect' ? dialog.account.id : 'connect'}
           target={dialog.mode === 'reconnect' ? dialog.account : null}
           onClose={() => setDialog(null)}
-          onSaved={() => { setDialog(null); void refresh() }}
+          onSaved={() => { setDialog(null) }}
         />
       ) : null}
 

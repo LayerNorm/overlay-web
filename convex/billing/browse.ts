@@ -72,18 +72,17 @@ export const workspaceSummary = query({
 
 /**
  * What the composer, model pickers and sidebar meters need to know about the workspace's balance, live: the same
- * view as the subscription route, so a charge, top-up or payment shows without refetching after each turn. Null
- * without access or when billing is off on this deployment (the app then uses the entitlements it booted with).
+ * view as the subscription route, so a charge, top-up or payment shows without refetching after each turn. With
+ * billing off on this deployment, the member's own entitlements (what the server enforces then). Null without access.
  */
 export const entitlements = query({
   args: { workspaceId: v.string() },
   handler: async (ctx, { workspaceId }) => {
     const viewer = await viewerFor(ctx, workspaceId)
-    if (!viewer || !(await nativeDeploymentFeatureEnabled(ctx, 'billing'))) return null
-    const [account, mine] = await Promise.all([
-      workspaceBillingAccountFor(ctx, { workspaceId }),
-      buildEntitlements(ctx, viewer.userId),
-    ])
+    if (!viewer) return null
+    const mine = await buildEntitlements(ctx, viewer.userId)
+    if (!(await nativeDeploymentFeatureEnabled(ctx, 'billing'))) return mine
+    const account = await workspaceBillingAccountFor(ctx, { workspaceId })
     if (!account || account.status !== 'active') return unfundedAppSubscription(mine)
     const funded = await accountEntitlementsFor(ctx, { billingAccountId: account.billingAccountId })
     if (!funded) return unfundedAppSubscription(mine)

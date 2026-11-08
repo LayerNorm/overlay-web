@@ -676,10 +676,14 @@ export default defineSchema({
     requestId: v.optional(v.string()),
     ipAddress: v.optional(v.string()),
     metadataJson: v.string(),
+    // Copied from `metadata.workspaceId` on append so owners can read their
+    // workspace's events without an operator-wide scan.
+    workspaceId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index('by_eventId', ['eventId'])
     .index('by_actorUserId_createdAt', ['actorUserId', 'createdAt'])
+    .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
     .index('by_createdAt', ['createdAt']),
 
   emailOutbox: defineTable({
@@ -936,6 +940,10 @@ export default defineSchema({
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId'],
+    })
+    .searchIndex('search_description', {
+      searchField: 'description',
+      filterFields: ['userId', 'workspaceId'],
     }),
 
   personalChiefIdentities: defineTable({
@@ -1097,6 +1105,10 @@ export default defineSchema({
     .searchIndex('search_name', {
       searchField: 'name',
       filterFields: ['userId', 'workspaceId', 'deletedAt'],
+    })
+    .searchIndex('search_description', {
+      searchField: 'description',
+      filterFields: ['userId', 'workspaceId', 'deletedAt'],
     }),
 
   automationRuns: defineTable({
@@ -1250,6 +1262,10 @@ export default defineSchema({
     .index('by_userId_enabled', ['userId', 'enabled'])
     .searchIndex('search_name', {
       searchField: 'name',
+      filterFields: ['userId', 'workspaceId'],
+    })
+    .searchIndex('search_description', {
+      searchField: 'description',
       filterFields: ['userId', 'workspaceId'],
     }),
 
@@ -2030,6 +2046,7 @@ export default defineSchema({
     .index('by_r2Key', ['r2Key'])
     .index('by_storageId', ['storageId'])
     .index('by_parentId', ['parentId'])
+    .index('by_workspaceId_scope_parentId', ['workspaceId', 'scope', 'parentId'])
     .index('by_legacyNoteId', ['legacyNoteId'])
     .index('by_legacyOutputId', ['legacyOutputId'])
     .index('by_outputExpiry', ['kind', 'outputStatus', 'expiresAt'])
@@ -2595,7 +2612,8 @@ export default defineSchema({
   })
     .index('by_conversationId_principalId', ['conversationId', 'principalId'])
     .index('by_conversationId_status', ['conversationId', 'status'])
-    .index('by_workspaceId_principalId_status', ['workspaceId', 'principalId', 'status']),
+    .index('by_workspaceId_principalId_status', ['workspaceId', 'principalId', 'status'])
+    .index('by_workspaceId_principalId_status_archivedAt', ['workspaceId', 'principalId', 'status', 'archivedAt']),
 
   conversationPins: defineTable({
     conversationId: v.id('conversations'),

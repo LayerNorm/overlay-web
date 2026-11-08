@@ -1,12 +1,15 @@
 'use client'
 
 import { Hash, Mail } from 'lucide-react'
-import { useEffect, useState, type ComponentProps, type ReactNode } from 'react'
+import { useEffect, useState, useSyncExternalStore, type ComponentProps, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import ChatExperience from './ChatExperience'
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
 import { DirectMessageExperience } from './DirectMessageExperience'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useConvex } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
+import { isConvexIdShape } from '@/components/providers/usePersonalChatTranscript'
 import { resolveSoftChatRoute, type SoftChatRoute } from '@/shared/chat/chat-view-navigation'
 import {
   legacyWorkspaceScopeForRoute,
@@ -29,14 +32,36 @@ import {
 /**
  * Soft chat switches use `history.pushState` (see ChatInlinePanel) so the app
  * shell does not remount. Next's `useSearchParams` does not observe that, so
- * DMs/channels re-read `window.location` whenever soft navigation fires.
+ * DMs/channels subscribe to `window.location.search` directly. A store
+ * subscription also re-checks the URL after each commit, which catches
+ * `router.push`: Next writes history only after the render that receives the
+ * new search params, so that render can still see the previous URL.
  */
-function readBrowserChatRoute(): SoftChatRoute | null {
-  if (typeof window === 'undefined') return null
-  const params = new URLSearchParams(window.location.search)
+function subscribeBrowserChatRoute(onChange: () => void) {
+  window.addEventListener('overlay:chat-route-selected', onChange)
+  window.addEventListener('popstate', onChange)
+  return () => {
+    window.removeEventListener('overlay:chat-route-selected', onChange)
+    window.removeEventListener('popstate', onChange)
+  }
+}
+
+function readBrowserSearch(): string {
+  return window.location.search
+}
+
+function readServerSearch(): string | null {
+  return null
+}
+
+function parseBrowserChatRoute(search: string | null): (SoftChatRoute & { draft: boolean; title?: string }) | null {
+  if (search === null) return null
+  const params = new URLSearchParams(search)
   return {
     conversationId: params.get('id'),
     view: params.get('view'),
+    draft: params.get('draft') === '1',
+    title: params.get('title') ?? undefined,
   }
 }
 
@@ -61,33 +86,22 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
   const searchParams = useSearchParams()
   const searchConversationId = searchParams?.get('id') ?? null
   const searchView = searchParams?.get('view') ?? null
-  const draft = searchParams?.get('draft') === '1'
-  const draftTitle = searchParams?.get('title') ?? undefined
-  const browserRoute = readBrowserChatRoute()
+  const browserSearch = useSyncExternalStore(subscribeBrowserChatRoute, readBrowserSearch, readServerSearch)
+  const browserRoute = parseBrowserChatRoute(browserSearch)
   const searchRoute = {
     conversationId: searchConversationId,
     view: searchView,
   }
   const browserView = browserRoute?.view ?? null
-  const route = browserView === searchView
+  const useBrowserRoute = browserView === searchView
+  const route = useBrowserRoute
     ? resolveSoftChatRoute(browserRoute, searchRoute)
     : searchRoute
   const conversationId = route.conversationId
-  // Bumped only from browser soft-nav / popstate so we re-read window.location.
-  const [browserRouteVersion, setBrowserRouteVersion] = useState(0)
+  // Draft flags travel with the route that picked the conversation.
+  const draft = useBrowserRoute && browserRoute ? browserRoute.draft : searchParams?.get('draft') === '1'
+  const draftTitle = useBrowserRoute && browserRoute ? browserRoute.title : searchParams?.get('title') ?? undefined
   const [scopeRouteStatus, setScopeRouteStatus] = useState<ConversationDetailScopeStatus | null>(null)
-
-  useEffect(() => {
-    function bumpBrowserRoute() {
-      setBrowserRouteVersion((value) => value + 1)
-    }
-    window.addEventListener('overlay:chat-route-selected', bumpBrowserRoute)
-    window.addEventListener('popstate', bumpBrowserRoute)
-    return () => {
-      window.removeEventListener('overlay:chat-route-selected', bumpBrowserRoute)
-      window.removeEventListener('popstate', bumpBrowserRoute)
-    }
-  }, [])
 
   const resourceRouteKey = conversationDetailRouteKey({
     pathScope,
@@ -95,6 +109,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
 
   })
   const personalChat = usePersonalChat()
+  const convex = useConvex()
   const knownNativeChat = isKnownNativePersonalChat(personalChat, pathScope, conversationId)
   if (knownNativeChat && pathScope && conversationId) markConversationScopeVerified(pathScope, conversationId)
   useEffect(() => {
@@ -104,7 +119,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
       conversationId,
       pathScope,
       pathname,
-      getConversation: (id) => overlayAppClient.conversations.get<ConversationScopeDetail>({ conversationId: id }),
+      getConversation: (id) => readConversationScope(convex, personalChat.workspaceId, id),
       getLocation: () => ({
         pathname: window.location.pathname,
         search: window.location.search,
@@ -114,9 +129,8 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
       replace: (destination) => router.replace(destination),
       setStatus: setScopeRouteStatus,
     })
-  }, [browserRouteVersion, conversationId, knownNativeChat, searchView, pathScope, resourceRouteKey, buildWorkspaceHref, pathname, router])
+  }, [browserSearch, conversationId, convex, knownNativeChat, personalChat.workspaceId, searchView, pathScope, resourceRouteKey, buildWorkspaceHref, pathname, router])
 
-  void browserRouteVersion
   const selectedScope = pathScope ?? legacyWorkspaceScopeForRoute(
     'chat',
     new URLSearchParams(searchParams?.toString() ?? ''),
@@ -165,4 +179,19 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
       {content}
     </ConversationDetailScopeGate>
   )
+}
+
+/** A chat link's type and scope from Convex: an AI chat the person owns, or a room they belong to. Throws when neither. */
+async function readConversationScope(
+  convex: ReturnType<typeof useConvex>,
+  workspaceId: string | null,
+  id: string,
+): Promise<ConversationScopeDetail> {
+  if (!workspaceId || !isConvexIdShape(id)) throw new Error('Conversation not found')
+  const conversationId = id as Id<'conversations'>
+  const chat = await convex.query(api.chat.personal.getSummary, { workspaceId, conversationId })
+  if (chat) return { conversationType: 'personal', scope: chat.scope }
+  const room = await convex.query(api.collaboration.rooms.scope, { workspaceId, conversationId })
+  if (room) return room
+  throw new Error('Conversation not found')
 }

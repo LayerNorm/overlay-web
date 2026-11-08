@@ -6,9 +6,8 @@ import { PromptInputButton } from '@overlay/chat-react'
 import { Command, CommandEmpty, CommandInput, CommandItem, CommandList, Popover, PopoverContent, PopoverTrigger } from '@overlay/ui/primitives'
 import type { WorkContextRef } from '@overlay/app-core'
 import { labelForLink, safeLinkUrl } from '@/shared/work/context-links'
-import { searchContext } from './WorkPeekSections'
 
-export function WorkComposerContext({ disabled, onAdd }: { disabled?: boolean; onAdd(context: WorkContextRef): void }) {
+export function WorkComposerContext({ disabled, onAdd, search }: { disabled?: boolean; onAdd(context: WorkContextRef): void; search(query: string): Promise<WorkContextRef[]> }) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [result, setResult] = useState<{ query: string; hits: WorkContextRef[] }>({ query: '', hits: [] })
@@ -18,12 +17,12 @@ export function WorkComposerContext({ disabled, onAdd }: { disabled?: boolean; o
     if (!open || link || text.length < 2) return
     const controller = new AbortController()
     const timer = setTimeout(() => {
-      void searchContext(text, controller.signal).then(hits => {
+      void search(text).then(hits => {
         if (!controller.signal.aborted) setResult({ query: text, hits })
       }).catch(() => { if (!controller.signal.aborted) setResult({ query: text, hits: [] }) })
     }, 200)
     return () => { clearTimeout(timer); controller.abort() }
-  }, [link, open, text])
+  }, [link, open, search, text])
   const pick = (context: WorkContextRef) => { onAdd(context); setQuery(''); setOpen(false) }
   return <Popover open={open} onOpenChange={setOpen}>
     <PopoverTrigger asChild><PromptInputButton aria-label="Add context" disabled={disabled} className="size-8"><Plus size={16} /></PromptInputButton></PopoverTrigger>
