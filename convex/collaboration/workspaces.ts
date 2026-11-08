@@ -2551,6 +2551,106 @@ export const recordAuditExportByServer = mutation({
   },
 })
 
+const MAX_WORKSPACE_AUDIT_EVENTS = 1_000
+
+const workspaceAuditEventValidator = v.object({
+  eventId: v.string(),
+  actorType: v.union(v.literal('user'), v.literal('api_key'), v.literal('service'), v.literal('system')),
+  actorUserId: v.optional(v.string()),
+  actorApiKeyId: v.optional(v.string()),
+  action: v.string(),
+  resourceType: v.string(),
+  resourceId: v.optional(v.string()),
+  outcome: v.union(v.literal('success'), v.literal('denied'), v.literal('failure')),
+  requestId: v.optional(v.string()),
+  ipAddress: v.optional(v.string()),
+  metadataJson: v.string(),
+  createdAt: v.number(),
+})
+
+/**
+ * Newest audit events recorded for one workspace. The caller (the governance
+ * service) has already required an owner or admin; operator-wide reads stay in
+ * the standalone admin console.
+ */
+export const listWorkspaceAuditEventsByServer = query({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    fromRecordedAt: v.optional(v.number()),
+    limit: v.optional(v.number()),
+  },
+  returns: v.array(workspaceAuditEventValidator),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const limit = Math.max(1, Math.min(Math.floor(args.limit ?? 500), MAX_WORKSPACE_AUDIT_EVENTS))
+    const rows = await ctx.db
+      .query('auditEvents')
+      .withIndex('by_workspaceId_createdAt', (q) => {
+        const scoped = q.eq('workspaceId', args.workspaceId)
+        return args.fromRecordedAt === undefined ? scoped : scoped.gte('createdAt', args.fromRecordedAt)
+      })
+      .order('desc')
+      .take(limit)
+    return rows.map(toWorkspaceAuditEvent)
+  },
+})
+
+function toWorkspaceAuditEvent(row: Doc<'auditEvents'>) {
+  return {
+    eventId: row.eventId,
+    actorType: row.actorType,
+    actorUserId: row.actorUserId,
+    actorApiKeyId: row.actorApiKeyId,
+    action: row.action,
+    resourceType: row.resourceType,
+    resourceId: row.resourceId,
+    outcome: row.outcome,
+    requestId: row.requestId,
+    ipAddress: row.ipAddress,
+    metadataJson: row.metadataJson,
+    createdAt: row.createdAt,
+  }
+}
+
+/**
+ * One oldest-first page of a workspace's audit events, for exports. Unlike the
+ * newest-first list above, an export must be able to read a whole window, so
+ * the caller follows `continueCursor` until it has enough rows or `isDone`.
+ * Server-secret only; the caller has already required an owner or admin.
+ */
+export const pageWorkspaceAuditEventsByServer = query({
+  args: {
+    serverSecret: v.string(),
+    workspaceId: v.string(),
+    fromRecordedAt: v.optional(v.number()),
+    cursor: v.union(v.string(), v.null()),
+    numItems: v.number(),
+  },
+  returns: v.object({
+    page: v.array(workspaceAuditEventValidator),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+  }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    const numItems = Math.max(1, Math.min(Math.floor(args.numItems), MAX_WORKSPACE_AUDIT_EVENTS))
+    const result = await ctx.db
+      .query('auditEvents')
+      .withIndex('by_workspaceId_createdAt', (q) => {
+        const scoped = q.eq('workspaceId', args.workspaceId)
+        return args.fromRecordedAt === undefined ? scoped : scoped.gte('createdAt', args.fromRecordedAt)
+      })
+      .order('asc')
+      .paginate({ cursor: args.cursor, numItems })
+    return {
+      page: result.page.map(toWorkspaceAuditEvent),
+      isDone: result.isDone,
+      continueCursor: result.continueCursor,
+    }
+  },
+})
+
 export const listAuditExportsByServer = query({
   args: { serverSecret: v.string(), workspaceId: v.string(), limit: v.optional(v.number()) },
   returns: v.array(auditExportValidator),

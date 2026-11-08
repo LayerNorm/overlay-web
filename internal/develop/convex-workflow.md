@@ -965,6 +965,8 @@ The Convex CLI may regenerate `convex/_generated/api.d.ts` during a production p
 
 After Stage 3d, legacy customer-secret operator reads/writes are removed. The web shell uses the additive fixed-member initializer deployed in Stage 2; remaining authorization reads and operational audit append do not grant operator access. Deploy the contracted backend only after the switched web revision is live.
 
+Workspace governance (owner/admin metrics and audit export) never uses the operator-wide audit list. `appendAuditByServer` copies `metadata.workspaceId` into the indexed `auditEvents.workspaceId` column, and `collaboration/workspaces:listWorkspaceAuditEventsByServer` reads one workspace through `by_workspaceId_createdAt` after the service has authorized the caller. After the customer Convex sync that adds the column, run `npx convex run migrations/backfillAuditWorkspaceIds:run` once on that deployment (idempotent, self-continuing) so older rows are included.
+
 ## Operator backend cutover
 
 The standalone admin console uses a dedicated operator secret and WorkOS identity. Customer-web default member provisioning moves to `authorization/defaults:ensureDefaultUserRoleByServer`, which accepts only a user id and creates the fixed non-operator member role. This additive endpoint must be deployed before switching the web shell caller; only after the switched web revision is live may the legacy operator mutations be removed. Ordinary authorization reads and append-only operational audit remain available to the web app.

@@ -30,6 +30,26 @@ export interface AuditRepository {
     limit?: number
     resourceType?: string
   }): Promise<AuditEventRecord[]>
+  /**
+   * Newest events recorded for one workspace (`metadata.workspaceId`). Callers
+   * must authorize the workspace first; this never reads other workspaces.
+   */
+  listForWorkspace(args: {
+    workspaceId: string
+    fromRecordedAt?: number
+    limit?: number
+  }): Promise<AuditEventRecord[]>
+  /**
+   * One oldest-first page of a workspace's events, for exports that must read a
+   * whole window. Follow `continueCursor` until `isDone`. Same authorization
+   * rule as `listForWorkspace`.
+   */
+  pageForWorkspace(args: {
+    workspaceId: string
+    fromRecordedAt?: number
+    cursor: string | null
+    numItems: number
+  }): Promise<{ events: AuditEventRecord[]; isDone: boolean; continueCursor: string }>
 }
 
 export function sanitizeAuditMetadata(value: Record<string, unknown>): Record<string, unknown> {
