@@ -10,6 +10,8 @@ export type ActivePublicStreamSnapshot = {
   text: string
   truncatedMarker?: string
   status?: string
+  /** The streaming call continues text the previous call stopped mid-output. */
+  continuesPrevious?: boolean
 }
 export type PublicStreamCheckpoint = Pick<ActivePublicStreamSnapshot, 'runId' | 'executionGeneration' | 'receiptId' | 'invocation'>
 
@@ -29,6 +31,8 @@ type PublicStreamProjectionPart = {
   sequence?: unknown
   renderedContent?: unknown
   baseContent?: unknown
+  /** The base text part this projection extended in place, restored when it retires. */
+  continuedPart?: unknown
 }
 
 function isPublicStreamProjectionPart(part: unknown): part is PublicStreamProjectionPart {
@@ -69,7 +73,15 @@ function getBaseContent(message: MessageWithParts, priorPart: PublicStreamProjec
 }
 
 function getBaseParts(message: MessageWithParts, hasPriorPart: boolean): readonly unknown[] | undefined {
-  return hasPriorPart ? message.parts?.filter(part => !isPublicStreamProjectionPart(part)) : message.parts
+  return hasPriorPart ? message.parts?.flatMap(part => {
+    if (!isPublicStreamProjectionPart(part)) return [part]
+    return part.continuedPart && typeof part.continuedPart === 'object' ? [part.continuedPart] : []
+  }) : message.parts
+}
+
+function isTextPart(part: unknown): part is { type: 'text'; text: string } {
+  return Boolean(part && typeof part === 'object' && (part as { type?: unknown }).type === 'text'
+    && typeof (part as { text?: unknown }).text === 'string')
 }
 
 function restoreRenderedProjection<T extends MessageWithParts>(
@@ -114,22 +126,27 @@ function projectMessage<T extends MessageWithParts>(
     return priorPart ? { ...message, content: baseContent, parts: baseParts } as T : message
   }
   const projectionId = transcriptPartIdentity(stream.runId, stream.receiptId, 0, stream.executionGeneration)
-  const separator = baseContent.trim() ? '\n\n' : ''
+  const continues = stream.continuesPrevious === true && Boolean(baseContent.trim())
+  const separator = !baseContent.trim() || continues ? '' : '\n\n'
   const renderedContent = `${baseContent}${separator}${text}`
+  // Continued text extends the last text block, so a cut-off Markdown list stays one list.
+  const continuedPart = continues && isTextPart(baseParts?.at(-1)) ? baseParts!.at(-1) as { type: 'text'; text: string } : undefined
   const part = {
     type: 'text',
-    id: projectionId,
+    id: continuedPart && 'id' in continuedPart && typeof continuedPart.id === 'string' ? continuedPart.id : projectionId,
     source: 'public-stream',
     runId: stream.runId,
     executionGeneration: stream.executionGeneration,
     receiptId: stream.receiptId,
     invocation: stream.invocation,
     sequence: stream.sequence,
-    text,
+    text: continuedPart ? `${continuedPart.text}${text}` : text,
     baseContent,
     renderedContent,
+    ...(continuedPart ? { continuedPart } : {}),
   }
-  return { ...message, content: renderedContent, parts: [...(baseParts ?? []), part] } as T
+  const parts = continuedPart ? [...baseParts!.slice(0, -1), part] : [...(baseParts ?? []), part]
+  return { ...message, content: renderedContent, parts } as T
 }
 
 function isValidStreamSnapshot(stream: ActivePublicStreamSnapshot): boolean {

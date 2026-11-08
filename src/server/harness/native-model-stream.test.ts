@@ -162,3 +162,17 @@ test('live text remains bounded while provider output is untouched', async () =>
   expect(mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')).toBe('\n\nMore o')
   expect(JSON.stringify(mocks.append.mock.calls)).not.toContain('old secret')
 })
+
+test('a call continuing cut-off output joins the delivery text without a paragraph break', async () => {
+  mocks.list.mockResolvedValue([{ ...message, content: '22. The Thames Barrier.\n23', parts: [{ type: 'text', text: '22. The Thames Barrier.\n23' }] }])
+  const continued = { ...reference, native: { ...reference.native!, continuesPreviousOutput: true } }
+  await drain(await projectNativeHarnessStream(continued, source([text('. The Tagus estuary barrier.'), finish])))
+  const visible = mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')
+  expect(visible).toBe('. The Tagus estuary barrier.')
+  const parts = mocks.append.mock.calls.at(-1)![0].parts as Array<{ type: string; text?: string }>
+  expect(parts.filter(part => part.type === 'text').map(part => part.text)).toEqual(['22. The Thames Barrier.\n23. The Tagus estuary barrier.'])
+
+  mocks.append.mockClear()
+  await drain(await projectNativeHarnessStream(reference, source([text('Done.'), finish])))
+  expect(mocks.append.mock.calls.map(([args]) => args.contentDelta).join('')).toBe('\n\nDone.')
+})

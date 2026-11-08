@@ -1807,7 +1807,7 @@ export const writeTranscriptStep = mutation({
     workflowRunId: v.string(),
     receiptId: v.string(),
     stepNumber: v.number(),
-    persistence: v.object({ content: v.string(), parts: v.array(v.any()) }),
+    persistence: v.object({ content: v.string(), parts: v.array(v.any()), outputLimitReached: v.optional(v.literal(true)) }),
     fullPersistenceStorageId: v.optional(v.id('_storage')),
     fullPersistenceDigest: v.optional(v.string()),
     serverSecret: v.string(),

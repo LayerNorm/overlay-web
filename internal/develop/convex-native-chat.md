@@ -191,6 +191,52 @@ retained text and retires the rows. Finalize, failure and cancellation paths pre
 output where needed, mark the canonical message terminal, and perform bounded
 cleanup; active rows are not retained as a second transcript.
 
+Step text joins in one place, `src/shared/chat/step-text-join.ts`. Separate model
+calls are joined with a blank line. A call that stopped at its output-token cap
+(`finishReason: 'length'`) is saved with `outputLimitReached: true` on its
+transcript step and keeps the whitespace it stopped on; the next call's text then
+joins it directly and extends the same text part, so a cut-off Markdown list stays
+one list. The settled checkpoint, final delivery, legacy progress copy, failure
+and cancellation settlement all use this rule, and the active-stream readers
+return `continuesPrevious: true` so the live projection joins the same way. Workspace-agent
+and room deliveries that stream straight into the message get the same rule: the
+model ports pass `continuesPrevious` into native preparation, which sets
+`continuesPreviousOutput` on the dispatch so the delivery stream skips its
+paragraph break. Work (a tool call) between the calls still starts a new block. Steps saved before the
+flag existed keep the blank-line join.
+
+The continuation call must see what the cut-off call wrote. `@ai-sdk/workflow`
+ends its loop on `finishReason: 'length'` without adding that response to its
+message history, so the harness runner (`withCutOffResponse` in
+`src/server/harness/runner.ts`) appends it as the last assistant message, followed
+by a user message asking to continue from the exact character where it stopped.
+The working state's `unverifiedNarrative` names the response's real ending
+(`cutOffResponseNarrative`), never its opening excerpt, because the model treats
+the working state as authoritative and would resume from where that excerpt ends.
+The continuation instruction asks the model to start with the next space or
+punctuation when the cut fell after a complete word; models otherwise often drop
+the leading space and run two words together.
+
+`compactAssistantPersistenceForConvex` lets the final answer text part use the whole
+180,000-character part-text budget (other text parts keep the 80,000 cap), because
+continued calls are joined into one part and a single 32,000-token call can exceed
+80,000 characters.
+
+Per-call output limits come from `harnessOutputLimits` in
+`src/server/harness/model-ports.ts`. Personal chat and workspace agents request
+32,000 tokens per model call. Compaction still reserves a quarter of the
+working-context budget for output, but the response is bounded by the model's own
+output maximum and by the space left in its real context window after the working
+budget, not by that reserve. Thinking tokens count against the same limit, so a
+reasoning model needs room for both. A reply longer than one call continues in the
+next call as described above. Larger limits raise each call's spend reservation;
+unused reservation is released when the call settles.
+
+Thinking is not carried into the next call. If a call reaches its limit having
+produced only thinking (the provider-reported reasoning tokens cover all but a few
+output tokens), `harnessReasoningSetting` runs the continuation with
+`reasoning: 'none'` so it writes the answer instead of thinking from scratch again.
+
 The native personal Act request remains pending until the durable root's
 authoritative Convex state is terminal. Its SSE adapter reads the same persisted
 active stream and settled transcript steps, including source metadata and

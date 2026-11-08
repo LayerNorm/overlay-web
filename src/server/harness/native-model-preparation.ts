@@ -11,6 +11,7 @@ export async function prepareNativeHarnessModel(input: {
   receiptId: string
   purpose?: HarnessModelPurpose
   publicStreamVersion?: 1
+  continuesPrevious?: boolean
   options: LanguageModelV4CallOptions
 }): Promise<PreparedHarnessModel> {
   'use step'
@@ -36,7 +37,9 @@ export async function prepareNativeHarnessModel(input: {
           userMessageId: access.userMessageId, assistantMessageId: access.assistantMessageId, turnId: access.turnId,
         },
         receiptId: input.receiptId, memoryEnabled: input.context.memoryEnabled, sharedRoom: input.context.sharedRoom,
-        ...(input.purpose === 'response' && access.runId === `workspace:${access.agentRunId}` ? { streamToDelivery: true } : {}),
+        ...(input.purpose === 'response' && access.runId === `workspace:${access.agentRunId}` ? {
+          streamToDelivery: true, ...(input.continuesPrevious ? { continuesPreviousOutput: true } : {}),
+        } : {}),
         requestFingerprint: input.context.requestFingerprint, inputTokenBudget, maxOutputTokens, contextWindow,
       },
     },
