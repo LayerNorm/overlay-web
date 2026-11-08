@@ -205,6 +205,15 @@ model ports pass `continuesPrevious` into native preparation, which sets
 paragraph break. Work (a tool call) between the calls still starts a new block. Steps saved before the
 flag existed keep the blank-line join.
 
+The continuation call must see what the cut-off call wrote. `@ai-sdk/workflow`
+ends its loop on `finishReason: 'length'` without adding that response to its
+message history, so the harness runner (`withCutOffResponse` in
+`src/server/harness/runner.ts`) appends it as the last assistant message, followed
+by a user message asking to continue from the exact character where it stopped.
+The working state's `unverifiedNarrative` names the response's real ending
+(`cutOffResponseNarrative`), never its opening excerpt, because the model treats
+the working state as authoritative and would resume from where that excerpt ends.
+
 The native personal Act request remains pending until the durable root's
 authoritative Convex state is terminal. Its SSE adapter reads the same persisted
 active stream and settled transcript steps, including source metadata and

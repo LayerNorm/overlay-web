@@ -181,6 +181,8 @@ async function shouldRecoverModelInvocation(
 }
 
 
+export const HARNESS_CUT_OFF_CONTINUATION_MESSAGE = 'Your previous message stopped at the output limit. Continue it from the exact character where it stopped, even mid-word or mid-sentence. Output only the continuation: no preamble, acknowledgement or restart, and do not repeat anything already written.'
+
 const STAGNATION_RECOVERY_START = 2
 const STAGNATION_PAUSE_AFTER = 6
 
@@ -231,9 +233,29 @@ async function finishOrCheckpointInvocation(
     type: 'checkpoint',
     summary: JSON.stringify(buildHarnessCheckpoint(state)),
     purpose: 'continuation',
-    unverifiedNarrative: latestCheckpointSummaryText(runSteps, toolNames).slice(0, 8_000),
+    unverifiedNarrative: truncatedResponse
+      ? cutOffResponseNarrative(latestCheckpointSummaryText(runSteps, toolNames))
+      : latestCheckpointSummaryText(runSteps, toolNames).slice(0, 8_000),
   })
   return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
+}
+
+// WorkflowAgent ends its loop at an output-limit finish without adding that
+// response to its history, so the next call would never see what was written.
+export function withCutOffResponse(messages: ModelMessage[], step: StepResult<ToolSet> | undefined): ModelMessage[] {
+  if (step?.finishReason !== 'length' || !step.text || messages.at(-1)?.role === 'assistant') return messages
+  return [...messages, { role: 'assistant', content: [{ type: 'text', text: step.text }] }]
+}
+
+const CUT_OFF_TAIL_CHARACTERS = 600
+
+// The working state outranks conversation history. A cut-off response's opening
+// characters there make the model resume from where that excerpt ends, so name
+// the response's true end instead; the full text stays the last assistant turn.
+export function cutOffResponseNarrative(text: string): string {
+  const tail = text.length > CUT_OFF_TAIL_CHARACTERS ? `…${text.slice(-CUT_OFF_TAIL_CHARACTERS)}` : text
+  return 'The latest assistant message stopped at the output limit and is already saved and shown to the person. '
+    + `It ends exactly with: ${JSON.stringify(tail)}`
 }
 
 function latestFinalAnswerText(
@@ -544,7 +566,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     }
     // WorkflowAgent returns its system prompt in history. Rebuild it exclusively
     // from trusted instructions and current durable state on every invocation.
-    messages = invocationMessages.filter(message => message.role !== 'system')
+    messages = withCutOffResponse(invocationMessages.filter(message => message.role !== 'system'), invocationSteps.at(-1))
     stepReceiptIds.push(...invocationSteps.map(step => receiptByStepNumber.get(step.stepNumber)))
     steps.push(...invocationSteps)
     deliverySteps.push(...invocationSteps)
@@ -587,7 +609,9 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     // A continuation is a new turn, not an assistant prefill. Some providers
     // reject assistant-tailed prompts, including after verification feedback.
     if (messages.at(-1)?.role === 'assistant') {
-      messages = [...messages, { role: 'user', content: 'Continue the existing task from its current state. Do not repeat completed actions or text you already wrote.' }]
+      messages = [...messages, { role: 'user', content: truncatedResponse
+        ? HARNESS_CUT_OFF_CONTINUATION_MESSAGE
+        : 'Continue the existing task from its current state. Do not repeat completed actions or text you already wrote.' }]
     }
   }
 }
