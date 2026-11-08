@@ -10,6 +10,7 @@ import { type UpdateWorkItemRequest, type WorkItem, type WorkPerson } from '@ove
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { validateWorkDates, validateWorkTitle } from '@/shared/work/status'
 import { useEscapeToClose, useScopeFollowsTask, useWorkTask } from '../lib/use-work-task'
+import { useOnboardingWorkReady } from '@/components/providers/OnboardingWorkHandoff'
 import { eligibleParents } from '../lib/work-state'
 import { ContextSection, DoneWhenSection, ObjectiveSection, ActivitySection, Section, WaitingOnSection } from './WorkPeekSections'
 import { useWorkData } from './WorkDataProvider'
@@ -177,10 +178,11 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
   const { item, missing } = useWorkTask(taskId)
   const { viewer, canWork, updateTask, moveTask } = useWorkData()
   const scopeMatches = useScopeFollowsTask(item)
+  const handoffContent = useOnboardingWorkReady(taskId, scopeMatches && (Boolean(item) || missing))
   useEscapeToClose(onClose)
 
   if (missing) {
-    return <PanelMessage title="Task" onClose={onClose}><div className="px-6 py-10 text-center text-sm text-(--muted)">This task is not available. It may have been deleted, or it belongs to someone else.</div></PanelMessage>
+    return <PanelMessage title="Task" onClose={onClose}><div ref={handoffContent} className="px-6 py-10 text-center text-sm text-(--muted)">This task is not available. It may have been deleted, or it belongs to someone else.</div></PanelMessage>
   }
   if (!item) {
     return (
@@ -229,7 +231,7 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
         />
       )}
     >
-      <div className="px-7 pb-10 pt-6">
+      <div ref={handoffContent} className="px-7 pb-10 pt-6">
         <PeekTitle item={item} editable={editable} onSave={(title) => save({ title })} />
         {archived ? (
           <div className="mb-5 flex items-center gap-2 rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-[13px] text-(--muted)" data-testid="work-archived-note">

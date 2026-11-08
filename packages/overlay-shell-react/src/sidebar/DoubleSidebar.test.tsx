@@ -71,6 +71,18 @@ test('active destination toggles without selecting or resetting its current thre
   assert.deepEqual(collapsed, [true, false, false])
 })
 
+test('active Chats selects a new draft and keeps the contextual panel open', () => {
+  for (const initiallyCollapsed of [false, true]) {
+    const selected: string[] = []
+    const collapsed: boolean[] = []
+    selectDoubleSidebarItem({ ...items[2], active: true, onSelect: () => selected.push('draft') }, initiallyCollapsed, (next) => collapsed.push(next))
+    assert.deepEqual(selected, ['draft'])
+    assert.deepEqual(collapsed, [false])
+    selectDoubleSidebarItem({ ...items[2], active: true, disabled: true }, initiallyCollapsed, (next) => collapsed.push(next))
+    assert.deepEqual(collapsed, [false])
+  }
+})
+
 test('work keeps view navigation plus separately rendered task groups', () => {
   const html = render({
     title: 'Work', panelKind: 'work',
