@@ -8,22 +8,20 @@ import { nativeChatTitleForDisplay } from '@/features/chat/lib/persist-native-ch
 import { PENDING_FIRST_CHAT_ID } from './chat-send-body-builders'
 
 export function useNativePersonalRouteState({
-  activeWorkspaceId,
   authLoading,
   isTemporaryChatRef,
   nativePersonal,
   searchParams,
   userId,
 }: {
-  activeWorkspaceId: string | null
   authLoading: boolean
   isTemporaryChatRef: MutableRefObject<boolean>
   nativePersonal: ReturnType<typeof usePersonalChat>
   searchParams: Pick<URLSearchParams, 'get' | 'toString'>
   userId: string | null
 }) {
-  const nativePersonalEnabled = nativePersonal.configured && (Boolean(userId) || authLoading)
-  const chatWorkspaceId = nativePersonal.configured ? nativePersonal.workspaceId : activeWorkspaceId
+  const nativePersonalEnabled = Boolean(userId) || authLoading
+  const chatWorkspaceId = nativePersonal.workspaceId
   const nativePersonalRoute = nativePersonalEnabled && isNativePersonalRoute(searchParams)
   const nativePersonalChatIds = useMemo(() => new Set<string>([
     ...nativePersonal.active.rows.map((chat) => chat._id),

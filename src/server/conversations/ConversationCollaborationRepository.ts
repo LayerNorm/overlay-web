@@ -4,19 +4,12 @@ import type {
   ConversationNotificationLevel,
   ConversationParticipant,
   ConversationParticipantStateInput,
-  ConversationPin,
-  ConversationPresence,
-  ConversationSavedMessage,
   ChannelCreateInput,
   ChannelSummary,
   DirectMessageCreateInput,
   DirectMessageSummary,
   MessageReaction,
   WorkspaceChatSearchResult,
-  WorkspaceNotification,
-  WorkspaceNotificationFilter,
-  WorkspaceNotificationPreferences,
-  ConversationThreadFollow,
 } from '@overlay/workspace-contracts'
 import type {
   ConversationEventRow,
@@ -239,19 +232,6 @@ export interface ConversationCollaborationRepository {
     actorUserId: string
     workspaceId: string
   }): Promise<{ conversationsDeleted: number; participantsRemoved: number }>
-  upsertPresence(args: {
-    actorUserId: string
-    conversationId?: string
-    sessionId?: string
-    status: 'online' | 'away' | 'offline'
-    typing?: boolean
-    workspaceId: string
-  }): Promise<ConversationPresence>
-  listPresence(args: {
-    actorUserId: string
-    conversationId: string
-    workspaceId: string
-  }): Promise<ConversationPresence[]>
   recordMessageActivity(args: {
     actorUserId: string
     body?: string
@@ -261,24 +241,12 @@ export interface ConversationCollaborationRepository {
     threadRootMessageId?: string
     workspaceId: string
   }): Promise<void>
-  editMessage(args: {
-    actorUserId: string
-    content: string
-    conversationId: string
-    messageId: string
-    workspaceId: string
-  }): Promise<boolean>
   deleteMessage(args: {
     actorUserId: string
     conversationId: string
     messageId: string
     workspaceId: string
   }): Promise<boolean>
-  listReactions(args: {
-    actorUserId: string
-    conversationId: string
-    workspaceId: string
-  }): Promise<MessageReaction[]>
   setReaction(args: {
     actorUserId: string
     conversationId: string
@@ -287,11 +255,6 @@ export interface ConversationCollaborationRepository {
     messageId: string
     workspaceId: string
   }): Promise<MessageReaction[]>
-  listPins(args: {
-    actorUserId: string
-    conversationId: string
-    workspaceId: string
-  }): Promise<ConversationPin[]>
   setPinned(args: {
     actorUserId: string
     conversationId: string
@@ -299,10 +262,6 @@ export interface ConversationCollaborationRepository {
     pinned: boolean
     workspaceId: string
   }): Promise<boolean>
-  listSavedMessages(args: {
-    actorUserId: string
-    workspaceId: string
-  }): Promise<ConversationSavedMessage[]>
   setSaved(args: {
     actorUserId: string
     conversationId: string
@@ -316,41 +275,6 @@ export interface ConversationCollaborationRepository {
     query: string
     workspaceId: string
   }): Promise<WorkspaceChatSearchResult[]>
-  listNotifications(args: {
-    actorUserId: string
-    filter?: WorkspaceNotificationFilter
-    limit?: number
-    unreadOnly?: boolean
-    workspaceId: string
-  }): Promise<WorkspaceNotification[]>
-  markNotificationsRead(args: {
-    actorUserId: string
-    conversationId?: string
-    notificationIds?: string[]
-    workspaceId: string
-  }): Promise<number>
-  setThreadFollow(args: {
-    actorUserId: string
-    conversationId: string
-    threadRootMessageId: string
-    followed: boolean
-    workspaceId: string
-  }): Promise<boolean>
-  listThreadFollows(args: {
-    actorUserId: string
-    conversationId: string
-    threadRootMessageId?: string
-    workspaceId: string
-  }): Promise<ConversationThreadFollow[]>
-  getNotificationPreferences(args: {
-    actorUserId: string
-    workspaceId: string
-  }): Promise<WorkspaceNotificationPreferences>
-  updateNotificationPreferences(args: {
-    actorUserId: string
-    workspaceId: string
-    preferences: Partial<WorkspaceNotificationPreferences>
-  }): Promise<WorkspaceNotificationPreferences>
 }
 
 export type ConversationParticipantStatePatch = {
