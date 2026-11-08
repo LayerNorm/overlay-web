@@ -1,5 +1,6 @@
 import type { StepResult, ToolSet } from 'ai'
 import { normalizeAgentAssistantText } from '@/shared/chat/agent-assistant-text'
+import { keepCutOffTrailingWhitespace } from '@/shared/chat/step-text-join'
 import { resolveToolOutcomes, type ResolvedToolOutcome } from './tool-outcomes'
 import { summarizeToolResultForTranscript } from '@/shared/tools/tool-result-summary'
 import {
@@ -404,10 +405,18 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
     }
   }
 
+  // A call cut off by its output-token cap is continued by the next call's text.
+  let textContinues = false
   for (const step of list) {
     const trimmedText = step.text?.trim()
     if (trimmedText) {
-      textSegments.push(normalizeAgentAssistantText(trimmedText))
+      const normalized = normalizeAgentAssistantText(trimmedText)
+      const text = step.finishReason === 'length' ? keepCutOffTrailingWhitespace(step.text, normalized) : normalized
+      if (textContinues && textSegments.length) textSegments[textSegments.length - 1] += text
+      else textSegments.push(text)
+    }
+    if (trimmedText || toolCallsForStep(step).length) {
+      textContinues = step.finishReason === 'length' && !toolCallsForStep(step).length
     }
     for (const tc of toolCallsForStep(step)) {
       const outcome = toolOutcomes.get(tc.toolCallId)
@@ -435,19 +444,34 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
 
   const parts: Array<Record<string, unknown>> = []
   const renderedToolCallIds = new Map<string, number>()
+  let partsContinue = false
   for (const step of list) {
+    const stepContent = orderedContentForStep(step)
+    const lastTextIndex = stepContent.findLastIndex(part => part.type === 'text')
+    const cutOff = step.finishReason === 'length'
+    let continues = partsContinue
     // SDK content preserves generation order; the convenience fields group by type.
-    for (const tc of orderedContentForStep(step)) {
+    for (const [index, tc] of stepContent.entries()) {
       if (tc.type === 'text' || tc.type === 'reasoning') {
         if (typeof tc.text === 'string' && tc.text.trim()) {
-          parts.push({
-            type: tc.type,
-            text: normalizeAgentAssistantText(tc.text.trim()),
-            ...(tc.type === 'reasoning' ? { state: 'done' } : {}),
-          })
+          const trimmed = tc.text.trim()
+          const normalized = normalizeAgentAssistantText(trimmed)
+          const text = cutOff && index === lastTextIndex ? keepCutOffTrailingWhitespace(tc.text, normalized) : normalized
+          const previous = parts.at(-1)
+          if (tc.type === 'text' && continues && previous?.type === 'text' && typeof previous.text === 'string') {
+            parts[parts.length - 1] = { ...previous, text: `${previous.text}${text}` }
+          } else {
+            parts.push({
+              type: tc.type,
+              text,
+              ...(tc.type === 'reasoning' ? { state: 'done' } : {}),
+            })
+          }
+          if (tc.type === 'text') continues = false
         }
         continue
       }
+      continues = false
       const sourceCall = toolCallFromPart(tc)
       if (!sourceCall) continue
       const call = canonicalToolCalls.get(sourceCall.toolCallId) ?? sourceCall
@@ -485,6 +509,8 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
         parts[existingIndex] = toolPart
       }
     }
+    const publicOutput = stepContent.some(part => part.type !== 'reasoning')
+    if (publicOutput) partsContinue = cutOff && lastTextIndex >= 0 && !toolCallsForStep(step).length
   }
   if (!parts.some((part) => part.type === 'text') && content) {
     parts.push({ type: 'text', text: content })

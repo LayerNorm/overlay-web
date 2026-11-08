@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
+import { readActivePublicStreams } from './lib/publicStreamRead'
 
 const modules = import.meta.glob('./**/*.ts')
 const query = (name: string) => makeFunctionReference<'query'>(name)
@@ -409,4 +410,74 @@ test('a workspace-scope chat settles its steps into a checkpoint, so live and se
   })
   expect(settled.message?.nativeProgressSequence).toBe(0)
   expect(settled.active).toBeNull()
+})
+
+async function settleStep(
+  convex: ReturnType<typeof convexTest>,
+  stream: Awaited<ReturnType<typeof seedWritableStream>>,
+  sequence: number,
+  revision: number,
+  persistence: { content: string; parts: Array<Record<string, unknown>>; outputLimitReached?: true },
+) {
+  const apply = async (operationId: string, expectedRevision: number, operation: Record<string, unknown>) =>
+    await convex.mutation(mutation('apply'), {
+      actorUserId: stream.actorUserId, runId: stream.runId, workflowRunId: stream.workflowRunId,
+      executionGeneration: 0, operationId, expectedRevision, operation, serverSecret: secret,
+    }) as { snapshot: { revision: number } }
+  const result = await apply(`receipt:${sequence}`, revision, { type: 'record_receipt', receipt: {
+    id: `model:${sequence}`, modelId: 'fixture/model', provider: 'fixture', inputTokens: 1,
+    outputTokens: persistence.outputLimitReached ? 8_000 : 1,
+    reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000,
+    costMicros: 1, costSource: 'provider',
+  } })
+  await convex.mutation(mutation('writeTranscriptStep'), {
+    actorUserId: stream.actorUserId, runId: stream.runId, workflowRunId: stream.workflowRunId,
+    receiptId: `model:${sequence}`, stepNumber: 0, persistence, serverSecret: secret,
+  })
+  return { apply, revision: result.snapshot.revision }
+}
+
+test('a call cut off at its output cap continues the same Markdown list, live and saved', async () => {
+  const convex = convexTest(schema, modules)
+  const stream = await seedWritableStream(convex, 'personal:output-cap')
+  const cut = '22. The Thames Barrier.\n23'
+  const continued = '. The Tagus estuary barrier.\n24. The Maeslantkering.'
+  const settled = await settleStep(convex, stream, 0, stream.revision, {
+    content: cut, parts: [{ type: 'text', text: cut }], outputLimitReached: true,
+  })
+  let revision = (await settled.apply('reserve:1', settled.revision, {
+    type: 'reserve_model', id: 'model:1', maxCostMicros: 100,
+  })).snapshot.revision
+  revision = (await settled.apply('dispatch:1', revision, {
+    type: 'bind_model_dispatch', id: 'model:1', modelId: 'fixture/model', billingReservationId: 'billing',
+  })).snapshot.revision
+  await convex.mutation(mutation('appendPublicStream'), { ...appendArgs(stream, 0, continued), receiptId: 'model:1' })
+  const live = await convex.run(ctx => readActivePublicStreams(ctx, stream.conversationId, [stream.assistantMessageId]))
+  expect(live).toMatchObject([{ receiptId: 'model:1', text: continued, continuesPrevious: true }])
+
+  await settleStep(convex, stream, 1, revision, { content: continued, parts: [{ type: 'text', text: continued }] })
+  const message = await convex.run(ctx => ctx.db.get(stream.assistantMessageId))
+  expect(message?.content).toBe(`${cut}${continued}`)
+  expect(message?.parts?.filter(part => part.type === 'text').map(part => (part as { text: string }).text))
+    .toEqual([`${cut}${continued}`])
+})
+
+test('separate calls keep a blank line between their text, and the live reader does not join them', async () => {
+  const convex = convexTest(schema, modules)
+  const stream = await seedWritableStream(convex, 'personal:separate-calls')
+  const settled = await settleStep(convex, stream, 0, stream.revision, {
+    content: 'Checking the files.', parts: [{ type: 'text', text: 'Checking the files.' }],
+  })
+  let revision = (await settled.apply('reserve:1', settled.revision, {
+    type: 'reserve_model', id: 'model:1', maxCostMicros: 100,
+  })).snapshot.revision
+  revision = (await settled.apply('dispatch:1', revision, {
+    type: 'bind_model_dispatch', id: 'model:1', modelId: 'fixture/model', billingReservationId: 'billing',
+  })).snapshot.revision
+  await convex.mutation(mutation('appendPublicStream'), { ...appendArgs(stream, 0, 'Done.'), receiptId: 'model:1' })
+  const live = await convex.run(ctx => readActivePublicStreams(ctx, stream.conversationId, [stream.assistantMessageId]))
+  expect(live[0]?.continuesPrevious).toBeUndefined()
+  await settleStep(convex, stream, 1, revision, { content: 'Done.', parts: [{ type: 'text', text: 'Done.' }] })
+  const message = await convex.run(ctx => ctx.db.get(stream.assistantMessageId))
+  expect(message?.content).toBe('Checking the files.\n\nDone.')
 })

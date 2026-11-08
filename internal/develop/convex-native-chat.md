@@ -191,6 +191,17 @@ retained text and retires the rows. Finalize, failure and cancellation paths pre
 output where needed, mark the canonical message terminal, and perform bounded
 cleanup; active rows are not retained as a second transcript.
 
+Step text joins in one place, `src/shared/chat/step-text-join.ts`. Separate model
+calls are joined with a blank line. A call that stopped at its output-token cap
+(`finishReason: 'length'`) is saved with `outputLimitReached: true` on its
+transcript step and keeps the whitespace it stopped on; the next call's text then
+joins it directly and extends the same text part, so a cut-off Markdown list stays
+one list. The settled checkpoint, final delivery, legacy progress copy, failure
+and cancellation settlement all use this rule, and the active-stream readers
+return `continuesPrevious: true` so the live projection joins the same way. Work
+(a tool call) between the calls still starts a new block. Steps saved before the
+flag existed keep the blank-line join.
+
 The native personal Act request remains pending until the durable root's
 authoritative Convex state is terminal. Its SSE adapter reads the same persisted
 active stream and settled transcript steps, including source metadata and
