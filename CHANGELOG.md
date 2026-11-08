@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Refresh the visible Chief plan when an assignment is accepted or excluded, keeping the delivery and transcript projections aligned with the settled Harness milestone.
+
 - Renew native Chief leases during a blocking child-result read when the conversation projects a child wait but the Harness is still running the read tool. Keep workflow ownership, membership and model-dispatch checks intact.
 
 - Keep room read-marker callbacks stable across live renders so idle chat views stop resubmitting read mutations. Convex's pending-write navigation protection and the notes editor's unsaved-change protection remain enabled.

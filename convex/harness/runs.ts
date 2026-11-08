@@ -1287,6 +1287,7 @@ export async function settleResolvedAssignmentChild(ctx: MutationCtx, parent: Ru
   }
   await persistMetadata(ctx, latestParent, next)
   await persistPlan(ctx, parent.runId, current.planRevision, current.plan, next, now)
+  if (stableJson(current.plan) !== stableJson(next.plan)) await projectPlanToDelivery(ctx, latestParent, next.plan, now)
   await persistChildren(ctx, parent.runId, current.children, next.children)
 }
 

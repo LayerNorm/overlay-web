@@ -234,8 +234,25 @@ test('Phase 2: success requires publication and acceptance, failure requires rea
   await expect(resolution(data, failed, 'accept')).rejects.toThrow('ASSIGNMENT_RESULT_NOT_ACCEPTABLE')
   await childState(data, success, 'completed', true, 'The complete specialist answer')
   await resolution(data, success, 'accept')
+  await data.convex.run(async ctx => {
+    const delivery = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', data.parentConversationId)).first()
+    const reply = await ctx.db.get(delivery!.assistantMessageId)
+    expect(delivery!.plan).toEqual([
+      { id: 'ask:call-1', title: 'Review', status: 'done' },
+      { id: 'ask:failure', title: 'Review', status: 'running' },
+    ])
+    expect(reply!.agentPlan).toEqual(delivery!.plan)
+  })
   await expect(applyOperation(data, data.parentRunId, 'still-unresolved', { type: 'finish' })).rejects.toThrow('ASSIGNMENTS_UNRESOLVED')
   await resolution(data, failed, 'exclude', 'Proceed without the failed specialist')
+  await data.convex.run(async ctx => {
+    const delivery = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', data.parentConversationId)).first()
+    const reply = await ctx.db.get(delivery!.assistantMessageId)
+    expect(delivery!.plan?.map(step => step.status)).toEqual(['done', 'done'])
+    expect(reply!.agentPlan).toEqual(delivery!.plan)
+  })
   expect(await applyOperation(data, data.parentRunId, 'finish', { type: 'finish', resultSummary: 'One result accepted, one failed result excluded.' })).toMatchObject({ snapshot: { status: 'completed' } })
   expect(await data.convex.query(readResult, { ...resultActor, childRunId: failed.childRunId })).toMatchObject({ runStatus: 'failed', reply: 'Partial text is not success' })
 })
