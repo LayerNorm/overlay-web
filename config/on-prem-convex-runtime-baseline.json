@@ -185,6 +185,7 @@
     "src/app/api/v1/work/[id]/move/route.ts",
     "src/app/api/v1/work/[id]/route.ts",
     "src/app/api/v1/work/context/route.ts",
+    "src/app/api/v1/work/resume-assignment/route.ts",
     "src/app/api/v1/work/route.ts",
     "src/app/api/v1/workspace-handles/[handle]/route.ts",
     "src/app/api/v1/workspace-invitations/[invitationId]/accept/route.ts",
@@ -252,6 +253,7 @@
     "src/features/settings/lib/use-live-archived.ts",
     "src/features/work/components/WorkDataProvider.tsx",
     "src/features/work/components/WorkPeekSections.tsx",
+    "src/features/work/components/WorkTaskComposer.tsx",
     "src/features/work/lib/use-live-work.ts",
     "src/features/workspaces/components/SlackImportPanel.tsx"
   ],
@@ -439,6 +441,7 @@
     "src/features/settings/lib/use-live-archived.ts",
     "src/features/work/components/WorkDataProvider.tsx",
     "src/features/work/components/WorkPeekSections.tsx",
+    "src/features/work/components/WorkTaskComposer.tsx",
     "src/features/work/lib/use-live-work.ts",
     "src/features/workspaces/components/SlackImportPanel.tsx",
     "src/hooks/use-agent-directory.ts",
@@ -618,10 +621,12 @@
     "convex/knowledge/memories.ts",
     "convex/knowledge/memoryExtractorNode.ts",
     "convex/lib/agentDriveFiles.ts",
+    "convex/lib/workDependencies.ts",
     "convex/migrations/backfillAuditWorkspaceIds.ts",
     "convex/platform/growth.ts",
     "convex/platform/nativePolicy.ts",
     "convex/platform/usage.ts",
-    "convex/webhooks/deliveryRunner.ts"
+    "convex/webhooks/deliveryRunner.ts",
+    "convex/work/workItems.ts"
   ]
 }

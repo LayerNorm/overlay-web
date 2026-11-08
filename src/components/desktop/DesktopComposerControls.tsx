@@ -13,9 +13,11 @@ import {
 export function DesktopComposerControls({
   onAppendText,
   onImages,
+  disabled = false,
 }: {
   onAppendText: (text: string) => void;
-  onImages: (files: File[]) => void;
+  onImages?: (files: File[]) => void;
+  disabled?: boolean;
 }) {
   const desktop = useDesktopBridge();
   const [phase, setPhase] = useState<DictationPhase>("idle");
@@ -29,7 +31,7 @@ export function DesktopComposerControls({
     current.current = { onAppendText, onImages };
   }, [onAppendText, onImages]);
   useLayoutEffect(() => {
-    if (!desktop) return;
+    if (!desktop || disabled) return;
     const capture = createComposerDictation({
       readModel: async () =>
         methodSchemas["transcription.transcribe"].shape.model.parse(
@@ -82,7 +84,7 @@ export function DesktopComposerControls({
       capture.cancel();
       dictation.current = null;
     };
-  }, [desktop]);
+  }, [desktop, disabled]);
   if (!desktop) return null;
   const { bridge, info } = desktop;
   const capturing = phase === "opening" || phase === "recording";
@@ -97,15 +99,16 @@ export function DesktopComposerControls({
                 ? "Transcribing message"
                 : "Dictate message"
           }
-          disabled={phase === "transcribing"}
+          disabled={disabled || phase === "transcribing"}
           onClick={() => dictation.current?.toggle()}
         >
           {capturing ? <Square size={16} /> : <Mic size={16} />}
         </PromptInputButton>
       ) : null}
-      {info.capabilities.includes("capture") ? (
+      {onImages && info.capabilities.includes("capture") ? (
         <PromptInputButton
           aria-label="Attach screenshot"
+          disabled={disabled}
           onClick={() => {
             setError("");
             const ticket = attachment.current;
@@ -114,7 +117,7 @@ export function DesktopComposerControls({
               .then(async (shot) => {
                 const blob = await (await fetch(shot.dataUrl)).blob();
                 if (ticket?.active)
-                  current.current.onImages([
+                  current.current.onImages?.([
                     new File([blob], shot.name, { type: blob.type }),
                   ]);
               })

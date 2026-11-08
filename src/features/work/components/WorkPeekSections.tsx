@@ -1,11 +1,11 @@
 'use client'
 import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { Check, FileText, Link as LinkIcon, MessageSquare, NotebookText, Plus, X } from 'lucide-react'
 import { FloatingMenu, MenuItem, Button, Input, Textarea } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
-import type { WorkContextRef, WorkContextType, WorkDoneWhen, WorkEvent, WorkItem } from '@overlay/app-core'
+import type { WorkContextRef, WorkContextType, WorkDoneWhen, WorkItem } from '@overlay/app-core'
 import { useConvex, type ConvexReactClient } from 'convex/react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { api } from '../../../../convex/_generated/api'
@@ -86,7 +86,7 @@ const CONTEXT_ICONS: Record<WorkContextType, typeof FileText> = { file: FileText
 type SearchHit = WorkContextRef
 
 /** Files, notes and chats matching the text, from the native workspace search (notes are typed as notes). */
-async function searchContext(convex: Pick<ConvexReactClient, 'query'>, workspaceId: string, query: string): Promise<SearchHit[]> {
+export async function searchContext(convex: Pick<ConvexReactClient, 'query'>, workspaceId: string, query: string): Promise<SearchHit[]> {
   const result = await convex.query(api.search.browse.mentions, { workspaceId, query })
   if (!result) return []
   return [
