@@ -154,10 +154,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { GET: authenticated() },
   },
   {
-    path: '/api/v1/search',
-    methods: { GET: authenticated() },
-  },
-  {
     path: '/api/v1/account/workspaces',
     methods: { POST: authenticated() },
   },
@@ -287,31 +283,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     },
   },
   {
-    path: '/api/v1/conversations/search',
-    methods: { GET: capability('conversations.read') },
-  },
-  {
-    path: '/api/v1/conversations/saved-messages',
-    methods: {
-      GET: capability('conversations.read'),
-      PATCH: capability('conversations.edit'),
-    },
-  },
-  {
-    path: '/api/v1/conversations/notifications',
-    methods: {
-      GET: capability('conversations.read'),
-      PATCH: capability('conversations.edit'),
-    },
-  },
-  {
-    path: '/api/v1/conversations/notification-preferences',
-    methods: {
-      GET: capability('conversations.read'),
-      PATCH: capability('conversations.edit'),
-    },
-  },
-  {
     path: '/api/v1/conversations/:conversationId/participants',
     methods: {
       GET: resource('conversation', 'view', {}, 'conversations.read'),
@@ -324,43 +295,8 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { PATCH: resource('conversation', 'view', {}, 'conversations.read') },
   },
   {
-    path: '/api/v1/conversations/:conversationId/presence',
-    methods: {
-      GET: resource('conversation', 'view', {}, 'conversations.read'),
-      PATCH: resource('conversation', 'view', {}, 'conversations.read'),
-    },
-  },
-  {
-    path: '/api/v1/conversations/:conversationId/threads/:threadRootMessageId/follow',
-    methods: {
-      GET: resource('conversation', 'view', {}, 'conversations.read'),
-      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
-    },
-  },
-  {
-    path: '/api/v1/conversations/:conversationId/reactions',
-    methods: {
-      GET: resource('conversation', 'view', {}, 'conversations.read'),
-      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
-    },
-  },
-  {
-    path: '/api/v1/conversations/:conversationId/pins',
-    methods: {
-      GET: resource('conversation', 'view', {}, 'conversations.read'),
-      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
-    },
-  },
-  {
     path: '/api/v1/conversations/:conversationId/reports',
     methods: { POST: authenticated() },
-  },
-  {
-    path: '/api/v1/conversations/:conversationId/messages/:messageId',
-    methods: {
-      PATCH: resource('conversation', 'edit', {}, 'conversations.edit'),
-      DELETE: resource('conversation', 'edit', {}, 'conversations.edit'),
-    },
   },
   { path: '/api/v1/conversations/agent-greeting', methods: { POST: authenticated() } },
   {
@@ -623,10 +559,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   },
   {
     path: '/api/v1/automations/:id/start-scheduler',
-    methods: { POST: capability('automations.use') },
-  },
-  {
-    path: '/api/v1/automations/:id/cancel-scheduler',
     methods: { POST: capability('automations.use') },
   },
   {

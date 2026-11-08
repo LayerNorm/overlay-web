@@ -38,7 +38,9 @@ App data lives exclusively in Convex. There is no database-provider switch or
 capability set to check: `src/server/app-data/repositories.ts` constructs the
 Convex repositories the server context hands to domain services, and module-level
 HTTP services construct their Convex repository directly. Browser code reads and
-writes Convex natively and never asks which backend is in use. The bespoke
+writes Convex natively and never asks which backend is in use; `npm run check:native-architecture` keeps it
+that way (no provider switch, no browser token argument, and no new browser HTTP call for data Convex already
+serves). The bespoke
 Postgres repository layer, Drizzle schema, app-data migrations, and parity
 harness were removed; enterprise self-hosting runs the official
 `convex-backend` binary (see `internal/develop/convex-only-self-hosting.md`).

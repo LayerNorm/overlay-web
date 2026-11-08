@@ -863,7 +863,7 @@ export function ChatInlinePanel({
   const { user, isLoading: authLoading } = useAuth()
   const { notifications: collaborationNotifications } = useCollaborationRealtime()
   const nativePersonal = usePersonalChat()
-  const nativePersonalOwner = nativePersonal.configured && (Boolean(user) || authLoading)
+  const nativePersonalOwner = Boolean(user) || authLoading
   const { activeId, buildWorkspaceHref, chatView, pathname, scopedBaseHref } = useChatPanelRoute({
     baseHref, workspaceId, sectionView,
   })
@@ -1073,9 +1073,9 @@ export function ChatInlinePanel({
 
   useEffect(() => {
     const archived = nativePersonal.selectedSummary
-    if (!nativePersonal.configured || !archived?.archivedAt) return
+    if (!archived?.archivedAt) return
     navigateAwayFromArchivedChat(archived._id)
-  }, [navigateAwayFromArchivedChat, nativePersonal.configured, nativePersonal.selectedSummary])
+  }, [navigateAwayFromArchivedChat, nativePersonal.selectedSummary])
 
   return (
     <>
