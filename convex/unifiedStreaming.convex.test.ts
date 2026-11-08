@@ -412,6 +412,34 @@ test('a workspace-scope chat settles its steps into a checkpoint, so live and se
   expect(settled.active).toBeNull()
 })
 
+test('an agent thread settles each step while running, though its trigger has its own turn id', async () => {
+  const convex = convexTest(schema, modules)
+  const stream = await seedWritableStream(convex, 'workspace:agent-thread')
+  await convex.run(async ctx => {
+    const delivery = await ctx.db.get(stream.deliveryId)
+    const agentTurn = `agent_${delivery!.userMessageId}_agent`
+    await ctx.db.patch(delivery!.userMessageId, { turnId: 'human_trigger' })
+    await ctx.db.patch(stream.assistantMessageId, {
+      turnId: agentTurn, authorKind: 'agent', authorPrincipalId: 'agent-principal',
+      parts: [{ type: 'tool-invocation', toolInvocation: { toolCallId: 'call-0', toolName: 'search', state: 'input-available' } }],
+    })
+    await ctx.db.patch(stream.deliveryId, { mode: 'room', turnId: agentTurn, agentPrincipalId: 'agent-principal' })
+  })
+  await convex.mutation(mutation('appendPublicStream'), appendArgs(stream, 0, 'Before the tool.'))
+  await settleStep(convex, stream, 0, stream.revision, {
+    content: 'Before the tool.',
+    parts: [
+      { type: 'text', text: 'Before the tool.' },
+      { type: 'tool-invocation', toolInvocation: { toolCallId: 'call-0', toolName: 'search', state: 'output-available' } },
+    ],
+  })
+  const message = await convex.run(ctx => ctx.db.get(stream.assistantMessageId))
+  expect(message?.status).toBe('generating')
+  expect(message?.nativeProgressSequence).toBe(0)
+  expect(message?.parts?.map(part => part.type)).toEqual(['text', 'tool-invocation'])
+  expect(message?.publicStreamCheckpoint?.receiptId).toBe('model:0')
+})
+
 async function settleStep(
   convex: ReturnType<typeof convexTest>,
   stream: Awaited<ReturnType<typeof seedWritableStream>>,
