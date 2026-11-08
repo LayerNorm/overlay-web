@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
+import { nativeViewer } from '../lib/nativeViewer'
 import type { Doc } from '../_generated/dataModel'
 
 const providerValidator = v.union(v.literal('claude-code'), v.literal('codex'), v.literal('opencode'), v.literal('hermes'), v.literal('cursor'))
@@ -39,6 +40,24 @@ async function readById(ctx: QueryCtx | MutationCtx, accountId: string) {
   const id = ctx.db.normalizeId('agentProviderAccounts', accountId)
   return id ? await ctx.db.get(id) : null
 }
+
+/**
+ * The signed-in person's own agent accounts, live, for Settings: connecting, reconnecting or removing one (here or in
+ * another tab) shows at once. Never returns the credential reference. Null when signed out.
+ */
+export const mine = query({
+  args: {},
+  returns: v.union(v.null(), v.array(publicRowValidator)),
+  handler: async (ctx) => {
+    const viewer = await nativeViewer(ctx)
+    if (!viewer) return null
+    const rows = await ctx.db
+      .query('agentProviderAccounts')
+      .withIndex('by_userId', (q) => q.eq('userId', viewer.userId))
+      .take(100)
+    return rows.map(toPublic)
+  },
+})
 
 export const listPublicByServer = query({
   args: { serverSecret: v.string(), userId: v.string() },

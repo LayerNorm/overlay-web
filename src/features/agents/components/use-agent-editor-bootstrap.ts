@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useAgent, useAgentDirectory } from '@/hooks/use-agent-directory'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useConnectedAgentLaunchEnabled } from '@/hooks/use-connections'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import type { getInitialEditorState } from '../lib/agent-editor-state'
 
@@ -31,22 +31,11 @@ export function useAgentEditorBootstrap({
   const loading = mode === 'edit' ? live === undefined && !agent : directory.status === 'loading'
   const loadFailed = mode === 'edit' ? live === null && !agent : directory.status === 'unavailable'
   const canCreate = mode === 'edit' ? initial.canCreate : directory.canCreate
-  const [connectedAgentsEnabled, setConnectedAgentsEnabled] = useState(false)
+  // Connected-agent availability gates the BYO type; live, so a rollout change shows without reopening the editor.
+  const launch = useConnectedAgentLaunchEnabled(activeWorkspaceId)
+  const connectedAgentsEnabled = capabilities.externalAgents === true && launch === true
   /** Whether the connected-agents check has answered; the settings wait for it so the agent-type choice does not pop in. */
-  const [connectedAgentsChecked, setConnectedAgentsChecked] = useState(false)
-
-  // Connected-agent availability gates the BYO type.
-  useEffect(() => {
-    if (!activeWorkspaceId) return
-    let cancelled = false
-    void overlayAppClient.agentEnvironments.listBindings(activeWorkspaceId)
-      .then((result) => { if (!cancelled) {
-        setConnectedAgentsEnabled(capabilities.externalAgents === true && result.launchEnabled === true)
-        setConnectedAgentsChecked(true)
-      } })
-      .catch(() => { if (!cancelled) { setConnectedAgentsEnabled(false); setConnectedAgentsChecked(true) } })
-    return () => { cancelled = true }
-  }, [activeWorkspaceId, capabilities.externalAgents, ])
+  const connectedAgentsChecked = launch !== undefined || !activeWorkspaceId
 
   return { agent, setAgent, loading, loadFailed, canCreate, connectedAgentsEnabled, connectedAgentsChecked }
 }

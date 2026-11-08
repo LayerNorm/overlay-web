@@ -160,14 +160,17 @@ rows remain attributed to the stable `agent-memory:<agentId>` principal within t
 The database also keeps a user-delete compatibility trigger so older runtimes retain the prior
 cascade behavior during a rolling upgrade or rollback.
 
-Bindings are managed through `/api/v1/agent-bindings` and remain separate from agent identity.
+Bindings are written through `/api/v1/agent-bindings` (owners and admins) and remain separate from agent identity.
+The browser reads environments and bindings live from `agents/environmentsBrowse:list` and `:bindings`, and the
+form reads an agent's saved binding once with `convex.query`.
 The Agents directory derives its connected-harness label from the active binding rather than the
 agent's historical model ID, so agents created before the BYO editor still display their actual
 runtime.
 The agent editor starts with an explicit `Create your own agent` versus `Bring your own agent`
-choice. The BYO branch is rendered only after a workspace-scoped connected-agent request succeeds;
-deployments with the global flag disabled and workspaces outside the active rollout stage stay on
-the normal Overlay-agent editor instead of exposing a form that can never submit.
+choice. The BYO branch is rendered only when `agents/environmentsBrowse:launchEnabled` is true: the viewer is a
+workspace owner or admin (who manage connections, as `listBindings` and `upsertBinding` require), the deployment's
+external-agent features are on, and the workspace is in the active rollout stage. Everyone else stays on the normal
+Overlay-agent editor instead of seeing a form that can never submit. Onboarding uses the same check.
 Overlay-only instructions, model selection, and tool grants never appear in the BYO branch. The
 BYO branch selects the harness first, filters approved environments by advertised ACP adapter, and
 records an explicitly granted default working directory. Creating an environment stays inside the same editor

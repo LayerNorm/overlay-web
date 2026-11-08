@@ -5,7 +5,9 @@ import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
 import { useEffect, useMemo, useState } from 'react'
 import type { AgentEnvironmentResource } from '@overlay/api-client'
 import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
+import { useConvex } from 'convex/react'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { api } from '../../../../convex/_generated/api'
 import { useLiveAgentEnvironments } from '@/hooks/use-connections'
 import {
   availableByoHarnesses,
@@ -38,10 +40,10 @@ export function useByoConnection(args: {
 }) {
   const { activeWorkspaceId,  agent, agentType, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding, onCloudBinding } = args
   const [environmentChoice, setEnvironmentChoice] = useState<EnvironmentChoice>('existing')
-  const [loadedEnvironments, setEnvironments] = useState<AgentEnvironmentResource[]>([])
   // Live: a new machine enrolling, its approval and heartbeats arrive without polling.
   const liveEnvironments = useLiveAgentEnvironments()
-  const environments = liveEnvironments ?? loadedEnvironments
+  const environments = useMemo<AgentEnvironmentResource[]>(() => liveEnvironments ?? [], [liveEnvironments])
+  const convex = useConvex()
   const [environmentsLoading, setEnvironmentsLoading] = useState(false)
   const [environmentId, setEnvironmentId] = useState('')
   const [adapterId, setAdapterId] = useState(() => resolveByoAdapterId(agent?.modelId, agent ? undefined : args.initialAdapterId))
@@ -68,13 +70,13 @@ export function useByoConnection(args: {
     setEnvironmentsLoading(true)
     setEnvironmentError(null)
     setAdapterId(resolveByoAdapterId(agent?.modelId, agent ? undefined : args.initialAdapterId))
-    void Promise.all([
-      overlayAppClient.agentEnvironments.list(activeWorkspaceId, { cache: 'no-store' }),
-      agent ? overlayAppClient.agentEnvironments.listBindings(activeWorkspaceId, agent.id) : Promise.resolve({ bindings: [] }),
-    ]).then(([environmentResult, bindingResult]) => {
+    // The agent's saved binding seeds the form once; environments themselves stay live.
+    void (agent
+      ? convex.query(api.agents.environmentsBrowse.bindings, { workspaceId: activeWorkspaceId, agentId: agent.id })
+      : Promise.resolve([])
+    ).then((bindings) => {
       if (cancelled) return
-      setEnvironments(environmentResult.environments)
-      const binding = bindingResult.bindings[0]
+      const binding = bindings?.[0]
       if (!binding) return
       if (binding.protocolAdapter === 'harness') {
         onLegacyHostedBinding?.()
@@ -94,14 +96,14 @@ export function useByoConnection(args: {
       setWorkingDirectory(typeof binding.adapterConfig.workingDirectory === 'string'
         ? binding.adapterConfig.workingDirectory : '')
     }).catch((value) => {
-      if (!cancelled) setEnvironmentError(value instanceof Error ? value.message : 'Could not load environments.')
+      if (!cancelled) setEnvironmentError(value instanceof Error ? value.message : 'Could not load this agent\'s connection.')
     }).finally(() => {
       if (!cancelled) { setEnvironmentsLoading(false); setLoadedFor(agent?.id ?? 'new') }
     })
     return () => { cancelled = true }
     // `onLegacyHostedBinding` must be a stable useCallback from the page — a new
     // function identity every render would refetch environments in a loop.
-  }, [activeWorkspaceId, agent, agentType, args.initialAdapterId, connectedAgentsEnabled, setAgentType, onLegacyHostedBinding, onCloudBinding, ])
+  }, [activeWorkspaceId, agent, agentType, args.initialAdapterId, connectedAgentsEnabled, convex, setAgentType, onLegacyHostedBinding, onCloudBinding])
 
   useEffect(() => {
     if (!command || setupEnvironmentId) return
