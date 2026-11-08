@@ -95,6 +95,31 @@ test('an agent assignment is prepared and dispatched once; same-assignee edits d
   assert.equal(dispatches, 1)
 })
 
+test('blocked assignments wait, then resume under their original generation exactly once', async () => {
+  const assigned = { ...item, archivedAt: null, assigneePrincipalId: 'agent-1', blockedBy: ['blocker'], assignmentExecution: { assignedByUserId: 'u1', assigneePrincipalId: 'agent-1', generation: 42, status: 'pending' } } as WorkItem
+  let done = false
+  let dispatches = 0
+  let checks = 0
+  const service = new WorkService(repository({
+    create: async () => assigned,
+    get: async args => args.id === 'blocker' ? { ...item, status: done ? 'done' : 'todo' } : assigned,
+    context: async () => ({ principalId: 'p1', role: 'member', canCreateInWorkspace: true, people: [{ principalId: 'agent-1', type: 'agent', userId: null, displayName: 'Agent' }] }),
+    prepareAssignment: async () => ({ claimed: true, execution: { ...assigned.assignmentExecution!, conversationId: 'chat', messageId: 'msg', turnId: 'turn', status: 'starting' } }),
+    completeAssignment: async () => { assigned.assignmentExecution = { ...assigned.assignmentExecution!, status: 'started' }; return true },
+  }), async () => { dispatches++; return [] }, async () => { checks++; return allowExecution() })
+  await service.create({ ...actor, input: { title: 'Task', assigneePrincipalId: 'agent-1', blockedBy: ['blocker'] } })
+  await service.resumeAssignment({ ...actor, id: assigned.id, generation: 42 })
+  assert.equal(dispatches, 0)
+  assert.equal(checks, 0)
+  done = true
+  await service.resumeAssignment({ ...actor, id: assigned.id, generation: 41 })
+  assert.equal(dispatches, 0)
+  await service.resumeAssignment({ ...actor, id: assigned.id, generation: 42 })
+  await service.resumeAssignment({ ...actor, id: assigned.id, generation: 42 })
+  assert.equal(dispatches, 1)
+  assert.equal(checks, 1)
+})
+
 test('a persisted agent assignment missing from context is reported with the saved task id', async () => {
   const agentItem = {
     ...item,

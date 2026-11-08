@@ -12,6 +12,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Show live thread status icons beside single-line sidebar titles, preserve the curved thread indentation on desktop and mobile, and summarize working, ready-to-review, and needs-you threads beneath each agent.
 
+- Add a bottom-pinned Work composer with searchable assignees and dependencies, Start/Due dates, context, status and priority. Agent assignments start immediately unless dependencies are unfinished, then start automatically when the last blocker is done.
+
 - Stop a live room read-marker feedback loop that repeatedly fetched the conversation directory during onboarding and could exhaust browser resources before Subscribe reached checkout.
 
 - Open Chats as a fresh personal draft, including desktop rail re-clicks, without creating an empty saved conversation or collapsing its sidebar. Keep onboarding consent checked and suppress the leave-site warning for the saved checkout redirect. After setup, retain the onboarding composer over Work until the loaded selected-task panel has painted and its entrance has finished, without a blank frame, delayed navigation tour or onboarding returning over later pages.
