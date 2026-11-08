@@ -184,6 +184,11 @@ Settling a transcript step atomically writes its checkpoint identity
 active segments. Every enrolled chat kind must settle through this projection
 (personal and owner-only workspace-scope chats, automations, rooms and work);
 a kind it skips keeps live text on screen beside the legacy progress copy.
+Room and work turns have their own `agent_<trigger>_<agent>` turn id, and the
+trigger may be another agent's ask, so the projection matches only the reply's
+turn id and checks the trigger's conversation, as admission does. Requiring the
+trigger's turn too skipped every agent thread, so each new call's live text
+replaced the last one's until the turn ended.
 Cancellation never reads the live
 stream rows (that races the executor's writes and fails Stop): `cancelAgentRuns`
 cancels the run, then the scheduled `settleCancelledPublicStream` keeps the

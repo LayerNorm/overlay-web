@@ -21,11 +21,17 @@ async function nativeDelivery(ctx: MutationCtx, run: Doc<'harnessRuns'>, metadat
   const [conversation, user, message] = await Promise.all([
     ctx.db.get(delivery.conversationId), ctx.db.get(delivery.userMessageId), ctx.db.get(delivery.assistantMessageId),
   ])
+  // An agent turn in a room or work thread has its own `agent_<trigger>_<agent>` turn id, and
+  // its trigger may be another agent's ask, so only the reply must carry the delivery's turn,
+  // as admission already requires. Requiring the trigger's turn too skipped every agent
+  // thread, leaving only the newest call's live text on screen while the turn ran.
+  const agentTurn = delivery.mode === 'room' || delivery.mode === 'work'
   if (!conversation || !conversation.workspaceId
     || conversation.workspaceId !== metadata.policy.workspaceId || conversation.deletedAt !== undefined
-    || !user || user.role !== 'user' || user.deletedAt !== undefined
+    || !user || user.deletedAt !== undefined || user.conversationId !== delivery.conversationId
+    || (!agentTurn && (user.role !== 'user' || user.turnId !== delivery.turnId))
     || !message || message.role !== 'assistant' || message.status !== 'generating' || message.deletedAt !== undefined
-    || [user, message].some(row => row.conversationId !== delivery.conversationId || row.turnId !== delivery.turnId)
+    || message.conversationId !== delivery.conversationId || message.turnId !== delivery.turnId
     || (message.nativeRunId !== undefined && message.nativeRunId !== delivery._id)) return null
   // Versioned runs settle every step here, writing the checkpoint that retires the step's
   // live stream. A chat this skips would keep its live text on screen next to the step text
