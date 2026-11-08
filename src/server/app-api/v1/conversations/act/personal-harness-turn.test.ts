@@ -245,7 +245,7 @@ test('streams admitted multimodal history through the durable adapter', async ()
   expect(workflowInput.context.mediaToolIntent).toBe('image')
   expect(workflowInput.definitions).toEqual([{ name: 'read_file' }])
   expect(workflowInput.delivery).toEqual({ emitWebhook: true, sourceCitations })
-  expect(workflowInput.settings).toEqual({ maxOutputTokens: 8_192, reasoning: 'high' })
+  expect(workflowInput.settings).toEqual({ maxOutputTokens: 32_000, reasoning: 'high' })
   expect(workflowInput.context).toMatchObject({
     accountAllowedConnectorIds: ['connector-1'],
     accountAllowedToolIds: ['read_file'],

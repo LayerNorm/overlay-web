@@ -9,6 +9,7 @@ import type { SourceCitationMap } from '@/shared/knowledge/ask-knowledge-types'
 import { HARNESS_CONTROL_TOOLS } from './context'
 import { stripTextualToolCalls } from './textual-tool-calls'
 import { compactHarnessTranscriptPersistence } from './harness-transcript'
+import { joinStepTranscripts, stepsEndMidOutput } from '@/shared/chat/step-text-join'
 import type { HarnessTranscriptPersistence, HarnessTranscriptStep } from '@overlay/agent-runtime/harness-store'
 import { withTranscriptPartIds } from '@/shared/chat/transcript-part-identity'
 
@@ -66,12 +67,12 @@ export function buildPersonalHarnessDelivery(
   const liveTranscript = liveSteps.length
     ? buildAssistantPersistenceFromSteps(liveSteps, summary)
     : undefined
-  let transcript = settledTranscript
-    ? compactHarnessTranscriptPersistence({
-      content: [settledTranscript.persistence.content, liveTranscript?.content]
-        .filter((content): content is string => Boolean(content)).join('\n\n'),
-      parts: [...settledTranscript.persistence.parts, ...(liveTranscript?.parts ?? [])],
-    })
+  const joined = settledTranscript && joinStepTranscripts([
+    { ...settledTranscript.persistence, outputLimitReached: stepsEndMidOutput(settledTranscript.steps.map(step => step.persistence)) },
+    ...(liveTranscript ? [liveTranscript] : []),
+  ])
+  let transcript = joined
+    ? compactHarnessTranscriptPersistence({ content: joined.content, parts: joined.parts })
     : buildAssistantPersistenceFromSteps(steps, summary)
   const resultSummary = sanitize(result.snapshot.resultSummary ?? '')
   if (resultSummary && !transcript.content.includes(resultSummary)) {

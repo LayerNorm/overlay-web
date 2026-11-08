@@ -279,3 +279,47 @@ test('a tool attempt in a text-only progress phase contributes no public work ro
     content: [call], toolCalls: [call], toolResults: [] } as never, new Set(['create_note']), { textOnly: true }))
     .toEqual({ content: '', parts: [] })
 })
+
+test('a step cut off at its output cap is flagged and keeps the whitespace it stopped on', () => {
+  const text = '22. The Thames Barrier.\n'
+  const cut = publicHarnessStepPersistence({
+    stepNumber: 0, text, finishReason: 'length', reasoning: [], toolCalls: [], toolResults: [],
+    content: [{ type: 'text', text }],
+  } as never, new Set())
+  expect(cut).toEqual({ content: text, parts: [{ type: 'text', text }], outputLimitReached: true })
+  const finished = publicHarnessStepPersistence({
+    stepNumber: 0, text, finishReason: 'stop', reasoning: [], toolCalls: [], toolResults: [],
+    content: [{ type: 'text', text }],
+  } as never, new Set())
+  expect(finished.outputLimitReached).toBeUndefined()
+  expect(finished.content).toBe('22. The Thames Barrier.')
+})
+
+test('the saved transcript and final delivery continue a cut-off list as one block', async () => {
+  const cut = '22. The Thames Barrier.\n23'
+  const continued = '. The Tagus estuary barrier.\n24. The Maeslantkering.'
+  const pageReader = vi.fn(async () => ({
+    steps: [
+      { receiptId: 'model:1', sequence: 1, stepNumber: 0, persistence: { content: continued, parts: [{ type: 'text', text: continued }] } },
+      { receiptId: 'model:0', sequence: 0, stepNumber: 0, persistence: { content: cut, parts: [{ type: 'text', text: cut }], outputLimitReached: true } },
+    ],
+    cursor: '', isDone: true,
+  }))
+  const window = await readSettledHarnessTranscript({ actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' }, pageReader as never)
+  expect(window.persistence.content).toBe(`${cut}${continued}`)
+  expect(window.persistence.parts).toEqual([{ type: 'text', text: `${cut}${continued}` }])
+
+  // The settled journal ends mid-output; the not-yet-journaled live step continues it.
+  const cutWindow = { ...window, steps: window.steps.slice(0, 1),
+    persistence: { content: cut, parts: [{ type: 'text', text: cut }] }, newestSequence: 0, oldestSequence: 0 }
+  const result = {
+    outcome: 'finished',
+    snapshot: { runId: 'personal:run', status: 'completed', evidence: [], usage: { inputTokens: 0, outputTokens: 0, costMicros: 0 } },
+    messages: [],
+    steps: [{ stepNumber: 0, text: continued, finishReason: 'stop', content: [{ type: 'text', text: continued }], toolCalls: [], toolResults: [] }],
+    stepReceiptIds: ['model:1'],
+  } as unknown as HarnessExecutionResult
+  const delivery = buildPersonalHarnessDelivery(result, undefined, new Set(), cutWindow)
+  expect(delivery.content).toBe(`${cut}${continued}`)
+  expect(delivery.parts.filter(part => part.type === 'text').map(part => part.text)).toEqual([`${cut}${continued}`])
+})

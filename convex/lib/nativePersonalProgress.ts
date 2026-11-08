@@ -5,6 +5,7 @@ import type { HarnessTranscriptPersistence } from '../../packages/overlay-agent-
 import { ACTIVE_AGENT_RUN_STATUSES } from '@/shared/agents/agent-run'
 import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snapshot'
 import { withTranscriptPartIds } from '@/shared/chat/transcript-part-identity'
+import { joinStepTranscripts } from '@/shared/chat/step-text-join'
 
 const ACTIVE = new Set<string>(ACTIVE_AGENT_RUN_STATUSES)
 type Metadata = Pick<HarnessSnapshot, 'workflowRunId' | 'status' | 'policy' | 'executionGeneration'>
@@ -74,13 +75,13 @@ export async function projectNativePersonalProgress(
   ))
   const earlier = rows.length > 25 ? '[Earlier progress is available in the full trace]' : ''
   const controls = (target.message.parts ?? []).filter(part => part.type.startsWith('data-native-agent-'))
+  const joined = joinStepTranscripts([
+    ...(earlier ? [{ content: earlier, parts: [{ type: 'text', text: earlier, id: JSON.stringify([run.runId, 'earlier']) }] }] : []),
+    ...steps,
+  ])
   const persistence = withTranscriptPartIds(run.runId, 'checkpoint', compactTranscriptSnapshot({
-    content: [earlier, ...steps.map(step => step.content)].filter(Boolean).join('\n\n'),
-    parts: [
-      ...(earlier ? [{ type: 'text', text: earlier, id: JSON.stringify([run.runId, 'earlier']) }] : []),
-      ...steps.flatMap(step => step.parts),
-      ...controls,
-    ],
+    content: joined.content,
+    parts: [...joined.parts, ...controls],
   }))
   await ctx.db.patch(target.message._id, {
     content: persistence.content,

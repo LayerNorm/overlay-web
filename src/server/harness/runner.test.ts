@@ -8,7 +8,7 @@ import * as state from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts, HarnessRunnerCheckpoint } from './ports'
 import { buildHarnessStepInstructions } from './context'
 import { getLanguageModel } from '@/server/ai/model-runtime'
-import { runOverlayHarness } from './runner'
+import { HARNESS_CUT_OFF_CONTINUATION_MESSAGE, runOverlayHarness } from './runner'
 import { harnessToolResultEvidence } from './tool-evidence'
 import type { HarnessToolExecutionOptions } from './tool-approvals'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
@@ -755,6 +755,26 @@ test('an output-token limit continues the partial response instead of marking an
   expect(JSON.stringify(provider.doStreamCalls[1].prompt)).toContain('reached its output limit, not task completion')
   expect(JSON.stringify(provider.doStreamCalls[1].prompt)).toContain('The first part')
   expect(f.receipts.size).toBe(2)
+})
+
+test('a continuation after an output-limit cut resumes the saved partial response, not an excerpt of its opening', async () => {
+  const f = fixture(false)
+  const partial = Array.from({ length: 116 }, (_, item) => `${item + 1}. Item ${item + 1} with a description of its present status`).join('\n')
+    + '\n117. Item 117 with a description of its Present status'
+  const provider = model(index => index === 0 ? partial : ' and the rest.', ['length', 'stop'])
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  const prompt = provider.doStreamCalls[1].prompt
+  const system = JSON.stringify(prompt.find(message => message.role === 'system'))
+  // The authoritative working state names where the response really ends.
+  expect(system).toContain('117. Item 117 with a description of its Present status')
+  expect(system).not.toContain('1. Item 1 with')
+  // The saved partial output is the last assistant turn, followed only by the resume request.
+  const conversation = prompt.filter(message => message.role !== 'system')
+  const lastAssistant = conversation.findLast(message => message.role === 'assistant')
+  expect(JSON.stringify(lastAssistant?.content)).toContain(JSON.stringify(partial).slice(1, -1))
+  expect(conversation.at(-2)).toBe(lastAssistant)
+  expect(JSON.stringify(conversation.at(-1))).toContain(HARNESS_CUT_OFF_CONTINUATION_MESSAGE)
 })
 
 test.each(['content-filter', 'error', 'other'] as const)('a provider %s finish cannot become successful completion', async finishReason => {

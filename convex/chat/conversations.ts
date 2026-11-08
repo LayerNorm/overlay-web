@@ -1,6 +1,7 @@
 import { hydrateRemoteMessages, deleteRemoteMessageText } from '../lib/remoteMessageText'
 import { cleanupTerminalPublicStreams } from '../lib/publicStreamRead'
 import { readActivePublicStreams, readRetainedPublicStream } from '../lib/publicStreamRead'
+import { appendStepParts, joinStepText } from '@/shared/chat/step-text-join'
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { ACTIVE_AGENT_RUN_STATUSES as CANONICAL_ACTIVE_AGENT_RUN_STATUSES } from '../../src/shared/agents/agent-run'
@@ -1261,21 +1262,22 @@ export const failAgentRun = mutation({
           settledParts: args.failureTranscript.parts,
         })
         : undefined
-      const parts = (merged?.parts ?? message.parts ?? []).filter((part) =>
+      const settledParts = (merged?.parts ?? message.parts ?? []).filter((part) =>
         part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'
         && part.type !== NATIVE_AGENT_ERROR_PART)
-      if (active && activeText) parts.push({
+      const activeContinues = active?.continuesPrevious === true
+      const parts = active && activeText ? appendStepParts(settledParts, [{
         type: 'text',
         id: transcriptPartIdentity(active.runId, active.receiptId, 0, active.executionGeneration),
         text: activeText,
-      })
+      }], activeContinues) as typeof settledParts : settledParts
       if (isNative) {
         parts.push({ type: NATIVE_AGENT_ERROR_PART, data: {
           ...args.error, message: nativeAgentErrorMessage(args.error.message), runId: String(run._id), failedAt: now,
         } })
       }
       const baseContent = merged?.content || (isNative ? message.content : message.content || args.errorText)
-      const content = [baseContent, activeText].filter(Boolean).join('\n\n')
+      const content = joinStepText(baseContent, activeText, activeContinues)
       const hasContentPart = parts.some((part) => part.type === 'text')
       await ctx.db.patch(message._id, {
         ...(message.status === 'generating' || message.status === 'error'
@@ -1595,15 +1597,20 @@ export const settleCancelledPublicStream = internalMutation({
       const sentinel = `\n\n${INTERRUPTED_RESPONSE_NOTICE}`
       const activeText = retained ? [retained.text, retained.truncatedMarker].filter(Boolean).join('\n\n') : ''
       const baseParts = message.parts ?? (message.content ? [{ type: 'text', text: message.content }] : [])
+      const retainedContinues = retained?.continuesPrevious === true
+      const baseContent = retainedContinues ? message.content : message.content.trimEnd()
       await ctx.db.patch(message._id, {
-        content: `${[message.content.trimEnd(), activeText].filter(Boolean).join('\n\n').trimEnd()}${sentinel}`,
+        content: `${joinStepText(baseContent, activeText, retainedContinues).trimEnd()}${sentinel}`,
         parts: [
-          ...baseParts.filter(part => part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
-          ...(retained && activeText ? [{
-            type: 'text',
-            id: transcriptPartIdentity(retained.runId, retained.receiptId, 0, retained.executionGeneration),
-            text: activeText,
-          }] : []),
+          ...appendStepParts(
+            baseParts.filter(part => part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
+            retained && activeText ? [{
+              type: 'text',
+              id: transcriptPartIdentity(retained.runId, retained.receiptId, 0, retained.executionGeneration),
+              text: activeText,
+            }] : [],
+            retainedContinues,
+          ) as typeof baseParts,
           { type: 'text', text: sentinel.trimStart() },
         ],
         ...(retained ? { publicStreamCheckpoint: {

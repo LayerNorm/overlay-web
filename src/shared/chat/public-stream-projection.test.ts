@@ -90,3 +90,34 @@ test('roomMessageView-shaped rows keep normal and active messages and converge a
     id: 'assistant', content: 'Canonical answer',
   })
 })
+
+test('a stream continuing a cut-off call extends the last text block and restores it afterwards', () => {
+  const cut = '22. The Thames Barrier.\n23'
+  const message = { _id: 'assistant', content: cut, parts: [{ type: 'text', id: 'settled', text: cut }] }
+  const stream = {
+    assistantMessageId: 'assistant', runId: 'run', executionGeneration: 0, receiptId: 'model:1', invocation: 1,
+    sequence: 0, text: '. The Tagus', continuesPrevious: true,
+  }
+  const live = projectActivePublicStreams([message], [stream])
+  expect(live[0]?.content).toBe('22. The Thames Barrier.\n23. The Tagus')
+  expect(live[0]?.parts).toHaveLength(1)
+  expect(live[0]?.parts?.[0]).toMatchObject({ id: 'settled', text: '22. The Thames Barrier.\n23. The Tagus' })
+
+  const more = projectActivePublicStreams(live, [{ ...stream, sequence: 1, text: '. The Tagus barrier.\n24. Next' }])
+  expect(more[0]?.content).toBe('22. The Thames Barrier.\n23. The Tagus barrier.\n24. Next')
+  expect(more[0]?.parts).toHaveLength(1)
+
+  const restored = projectActivePublicStreams(more, [])
+  expect(restored[0]?.content).toBe(cut)
+  expect(restored[0]?.parts).toEqual(message.parts)
+})
+
+test('a stream after a separate call keeps its own block and a blank line', () => {
+  const message = { _id: 'assistant', content: 'Checked.', parts: [{ type: 'text', id: 'settled', text: 'Checked.' }] }
+  const projected = projectActivePublicStreams([message], [{
+    assistantMessageId: 'assistant', runId: 'run', executionGeneration: 0, receiptId: 'model:1', invocation: 1,
+    sequence: 0, text: 'Done.',
+  }])
+  expect(projected[0]?.content).toBe('Checked.\n\nDone.')
+  expect(projected[0]?.parts).toHaveLength(2)
+})
