@@ -29,7 +29,7 @@ function PanelState({ icon, message }: { icon: React.ReactNode; message: string 
 
 type ActivityNotification = Pick<
   WorkspaceNotification,
-  'id' | 'title' | 'body' | 'createdAt' | 'readAt' | 'conversationId' | 'messageId' | 'conversationType' | 'conversationState'
+  'id' | 'workspaceId' | 'title' | 'body' | 'createdAt' | 'readAt' | 'conversationId' | 'messageId' | 'conversationType' | 'conversationState'
 >
 
 function viewForConversationType(conversationType?: string): 'personal' | 'dms' | 'channels' {
@@ -55,7 +55,8 @@ export function ActivityInlinePanel({ onNavigate }: { onNavigate?: () => void })
     onNavigate?.()
     if (!item.conversationId) return
     if (item.conversationState === 'archived') {
-      const workspaceId = readWorkspaceIdFromPath(pathname)
+      // The chat lives in the notification's workspace; handle-based routes carry no id to read.
+      const workspaceId = item.workspaceId || readWorkspaceIdFromPath(pathname)
       const archivedBase = workspaceId
         ? buildWorkspaceHref(workspaceId, '/app/archived')
         : '/app/archived'
