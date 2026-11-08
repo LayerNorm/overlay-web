@@ -86,7 +86,7 @@
   to { transform: translateY(calc(-100% - 8px)); visibility: hidden; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .sl .headline-reel[data-animated] .headline-face { animation: none; }
+  .sl .headline-reel[data-animated] .headline-face[data-active] { animation: none; }
 }
 .sl .hero .backed { display: inline-block; margin-bottom: 26px; font-family: var(--sl-sans); font-size: 17px; line-height: 1; letter-spacing: 0; color: var(--sl-muted); transition: color .15s; }
 .sl .hero .backed span { font-family: var(--font-lusitana), Georgia, serif; color: var(--sl-text); font-size: 24px; margin-left: 2px; }
