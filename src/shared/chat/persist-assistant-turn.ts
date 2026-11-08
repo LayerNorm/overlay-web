@@ -245,7 +245,9 @@ export function compactAssistantPersistenceForConvex(input: {
     ? `${omittedPrefix}${input.content.slice(-(MAX_PERSISTED_ASSISTANT_CONTENT_CHARS - omittedPrefix.length))}`
     : input.content
   const { candidates, selected, answer, previousOmissions } = selectAssistantPartsForPersistence(input.parts)
-  const answerChars = answer ? Math.min(MAX_PERSISTED_TEXT_PART_CHARS, String(answer.text).length) : 0
+  // The answer may span several model calls joined into one text part, so it can use
+  // the whole part-text budget; other text parts keep the per-part cap.
+  const answerChars = answer ? Math.min(MAX_PERSISTED_PART_TEXT_TOTAL_CHARS, String(answer.text).length) : 0
   const parts: Array<Record<string, unknown>> = []
   let remainingPartTextChars = MAX_PERSISTED_PART_TEXT_TOTAL_CHARS - answerChars
 

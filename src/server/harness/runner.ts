@@ -181,7 +181,7 @@ async function shouldRecoverModelInvocation(
 }
 
 
-export const HARNESS_CUT_OFF_CONTINUATION_MESSAGE = 'Your previous message stopped at the output limit. Continue it from the exact character where it stopped, even mid-word or mid-sentence. Output only the continuation: no preamble, acknowledgement or restart, and do not repeat anything already written.'
+export const HARNESS_CUT_OFF_CONTINUATION_MESSAGE = 'Your previous message stopped at the output limit. Continue it from the exact character where it stopped, even mid-word or mid-sentence. If it stopped after a complete word, begin with the space or punctuation that comes next. Output only the continuation: no preamble, acknowledgement or restart, and do not repeat anything already written.'
 
 const STAGNATION_RECOVERY_START = 2
 const STAGNATION_PAUSE_AFTER = 6

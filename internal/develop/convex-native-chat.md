@@ -213,6 +213,14 @@ by a user message asking to continue from the exact character where it stopped.
 The working state's `unverifiedNarrative` names the response's real ending
 (`cutOffResponseNarrative`), never its opening excerpt, because the model treats
 the working state as authoritative and would resume from where that excerpt ends.
+The continuation instruction asks the model to start with the next space or
+punctuation when the cut fell after a complete word; models otherwise often drop
+the leading space and run two words together.
+
+`compactAssistantPersistenceForConvex` lets the final answer text part use the whole
+180,000-character part-text budget (other text parts keep the 80,000 cap), because
+continued calls are joined into one part and a single 32,000-token call can exceed
+80,000 characters.
 
 Per-call output limits come from `harnessOutputLimits` in
 `src/server/harness/model-ports.ts`. Personal chat and workspace agents request
