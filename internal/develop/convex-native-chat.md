@@ -181,7 +181,10 @@ each segment is at most 8 KiB UTF-8 and visible text is capped at 160,000
 UTF-16 code units without splitting a surrogate pair. Truncation is explicit.
 Settling a transcript step atomically writes its checkpoint identity
 `(runId, generation, receiptId, invocation)` and retires that invocation's
-active segments. Finalize, failure and cancellation paths preserve safe partial
+active segments. Every enrolled chat kind must settle through this projection
+(personal and owner-only workspace-scope chats, automations, rooms and work);
+a kind it skips keeps live text on screen beside the legacy progress copy.
+Finalize, failure and cancellation paths preserve safe partial
 output where needed, mark the canonical message terminal, and perform bounded
 cleanup; active rows are not retained as a second transcript.
 

@@ -158,17 +158,16 @@ async function resolveAutomationSourceGrant(
   context: Pick<PersonalChatWorkToolingContext,
     'accountAllowedToolIds' | 'accountAllowedConnectorIds' | 'integrationToolIds'>,
 ): Promise<AutomationSourceGrant> {
+  // Integration tools (the connected-app router tools) are admitted with every turn
+  // that may use integrations, whether or not any connector is connected yet. The
+  // refreshed grant must name them the same way, or every such run reads as revoked
+  // before its first model call. Revocation stays enforced: the caller drops them
+  // when the connector grant changes, and capability checks still apply.
   if (!automation.agentId) {
-    // Without a bound agent the automation acts with the owner's own grants: the
-    // account tools plus the connected-app tools of the connectors it may use,
-    // exactly what admission gave it. Leaving the connected-app tools out made
-    // every such run look revoked before the first model call. Connector
-    // revocation is still checked by the caller against the current grants.
-    const allowedConnectorIds = context.accountAllowedConnectorIds ?? []
     return { approvalMode: 'ask', allowedToolIds: [
       ...(context.accountAllowedToolIds ?? []),
-      ...(allowedConnectorIds.length ? context.integrationToolIds ?? [] : []),
-    ], allowedConnectorIds }
+      ...(context.integrationToolIds ?? []),
+    ], allowedConnectorIds: context.accountAllowedConnectorIds ?? [] }
   }
   const agent = await agentService.get({
     actorUserId: access.actorUserId, workspaceId: access.workspaceId, agentId: automation.agentId,
@@ -179,12 +178,13 @@ async function resolveAutomationSourceGrant(
   const grant = resolveAgentGrant({
     agentId: automation.agentId, allowedToolIds: agent.allowedToolIds, isDefaultMaster: agent.isDefault === true,
   })
-  const allowedConnectorIds = grant.capabilities.has('integrations') ? context.accountAllowedConnectorIds ?? [] : []
+  const integrations = grant.capabilities.has('integrations')
+  const allowedConnectorIds = integrations ? context.accountAllowedConnectorIds ?? [] : []
   return {
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask',
     allowedToolIds: [
       ...(context.accountAllowedToolIds ?? []).filter(id => grant.overlayToolIds.includes(id)),
-      ...(allowedConnectorIds.length ? context.integrationToolIds ?? [] : []),
+      ...(integrations ? context.integrationToolIds ?? [] : []),
     ],
     allowedConnectorIds,
   }

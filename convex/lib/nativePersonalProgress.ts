@@ -26,6 +26,10 @@ async function nativeDelivery(ctx: MutationCtx, run: Doc<'harnessRuns'>, metadat
     || !message || message.role !== 'assistant' || message.status !== 'generating' || message.deletedAt !== undefined
     || [user, message].some(row => row.conversationId !== delivery.conversationId || row.turnId !== delivery.turnId)
     || (message.nativeRunId !== undefined && message.nativeRunId !== delivery._id)) return null
+  // Versioned runs settle every step here, writing the checkpoint that retires the step's
+  // live stream. A chat this skips would keep its live text on screen next to the step text
+  // the legacy progress writer saves, so every enrolled chat kind must be accepted:
+  // personal and workspace-scope chats (both owner-only), automations, rooms and work.
   if (metadata.policy.publicStreamVersion === 1) {
     if (delivery.mode === 'room' || delivery.mode === 'work') {
       if (!delivery.agentPrincipalId || message.authorKind !== 'agent'
@@ -37,7 +41,7 @@ async function nativeDelivery(ctx: MutationCtx, run: Doc<'harnessRuns'>, metadat
         const automation = await ctx.db.query('automations')
           .withIndex('by_conversationId_deletedAt', q => q.eq('conversationId', conversation._id).eq('deletedAt', undefined)).first()
         if (!automation) return null
-      } else if ((conversation.scope ?? 'personal') !== 'personal'
+      } else if (!['personal', 'workspace'].includes(conversation.scope ?? 'personal')
         || (conversation.conversationType ?? 'personal') !== 'personal' || conversation.agentId
         || conversation.externalPlatform || conversation.surfaceBindingId) return null
     }

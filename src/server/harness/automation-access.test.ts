@@ -5,12 +5,13 @@ import type { PersonalHarnessAccess } from './personal-access'
 
 const mocks = vi.hoisted(() => ({
   run: vi.fn(), automation: vi.fn(), workspace: vi.fn(), conversation: vi.fn(), agentRun: vi.fn(), agent: vi.fn(),
+  capabilities: ['integrations'],
 }))
 vi.mock('server-only', () => ({}))
 vi.mock('@/server/agents/agent-tooling', () => ({
   resolveAgentGrant: ({ allowedToolIds }: { allowedToolIds: string[] }) => ({
     overlayToolIds: allowedToolIds,
-    capabilities: new Set(['integrations']),
+    capabilities: new Set(mocks.capabilities),
   }),
 }))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
@@ -40,6 +41,7 @@ const access: PersonalHarnessAccess = {
 
 beforeEach(() => {
   vi.resetAllMocks()
+  mocks.capabilities = ['integrations']
   mocks.run.mockResolvedValue({ automation, run })
   mocks.workspace.mockResolvedValue({ workspace: { id: 'workspace' }, principal: { id: 'principal' } })
   mocks.conversation.mockResolvedValue({ userId: 'user', workspaceId: 'workspace', conversationType: 'personal' })
@@ -92,19 +94,27 @@ test('post-wait refresh rejects cancelled runs and intersects a revoked agent gr
   await expect(refreshAutomationHarnessSource(access, context)).rejects.toBeInstanceOf(FatalError)
 })
 
-test('an automation without an agent keeps its connected-app tools, and loses them with its connectors', async () => {
-  mocks.run.mockResolvedValue({ automation: { ...automation, agentId: undefined }, run })
+test('the refreshed grant names the connected-app router tools exactly as admission did', async () => {
   const context = {
     accountAllowedToolIds: ['read_file'],
-    accountAllowedConnectorIds: ['gmail'],
-    integrationToolIds: ['GMAIL_SEND_EMAIL'],
+    accountAllowedConnectorIds: [],
+    integrationToolIds: ['COMPOSIO_SEARCH_TOOLS'],
     turnId: 'automation-run:run',
   }
-  const refreshed = await refreshAutomationHarnessSource(access, context as never)
-  expect(refreshed).toEqual({ approvalMode: 'ask', allowedToolIds: ['read_file', 'GMAIL_SEND_EMAIL'], allowedConnectorIds: ['gmail'] })
+  // Without a bound agent: the owner's tools, router tools included even before any app is connected.
+  mocks.run.mockResolvedValue({ automation: { ...automation, agentId: undefined }, run })
+  expect(await refreshAutomationHarnessSource(access, context as never)).toEqual({
+    approvalMode: 'ask', allowedToolIds: ['read_file', 'COMPOSIO_SEARCH_TOOLS'], allowedConnectorIds: [],
+  })
   expect(mocks.agent).not.toHaveBeenCalled()
-  const noConnectors = await refreshAutomationHarnessSource(access, { ...context, accountAllowedConnectorIds: [] } as never)
-  expect(noConnectors.allowedToolIds).toEqual(['read_file'])
+  // With an agent that may use integrations: the same, intersected with its overlay tools.
+  mocks.run.mockResolvedValue({ automation, run })
+  expect((await refreshAutomationHarnessSource(access, context as never)).allowedToolIds)
+    .toEqual(['read_file', 'COMPOSIO_SEARCH_TOOLS'])
+  // With an agent that may not: no integration tools and no connectors.
+  mocks.capabilities = []
+  expect(await refreshAutomationHarnessSource(access, { ...context, accountAllowedConnectorIds: ['gmail'] } as never))
+    .toEqual({ approvalMode: 'ask', allowedToolIds: ['read_file'], allowedConnectorIds: [] })
 })
 
 test('scheduler admission requires enabled state and exact scheduler owner', async () => {

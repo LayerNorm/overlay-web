@@ -10,7 +10,11 @@ const secret = 'unified-streaming-test-secret'
 beforeEach(() => vi.stubEnv('INTERNAL_API_SECRET', secret))
 afterEach(() => vi.unstubAllEnvs())
 
-async function seedWritableStream(convex: ReturnType<typeof convexTest>, runId = 'personal:stream-run') {
+async function seedWritableStream(
+  convex: ReturnType<typeof convexTest>,
+  runId = 'personal:stream-run',
+  conversationScope?: 'personal' | 'workspace',
+) {
   const now = Date.now()
   const workspaceId = `personal:${runId}:workspace`
   await convex.run(async ctx => {
@@ -30,7 +34,7 @@ async function seedWritableStream(convex: ReturnType<typeof convexTest>, runId =
   const conversationId = await convex.run(ctx => ctx.db.insert('conversations', {
     userId: 'owner', title: 'Stream test', lastModified: now, createdAt: now, updatedAt: now,
     lastMode: 'act', askModelIds: ['fixture/model'], actModelId: 'fixture/model',
-    workspaceId, conversationType: 'personal',
+    workspaceId, conversationType: 'personal', ...(conversationScope ? { scope: conversationScope } : {}),
   }))
   const messageIds = await convex.run(async ctx => {
     const base = {
@@ -362,4 +366,36 @@ test('personal failure and cancellation retain active text and retire stream row
   expect(await cancelled.run(ctx => ctx.db.query('harnessPublicStreams')
     .withIndex('by_runId', q => q.eq('runId', cancelStream.runId)).unique())).toBeNull()
 
+})
+
+test('a workspace-scope chat settles its steps into a checkpoint, so live and settled text never show together', async () => {
+  const convex = convexTest(schema, modules)
+  const stream = await seedWritableStream(convex, 'personal:workspace-scope', 'workspace')
+  await convex.mutation(mutation('appendPublicStream'), appendArgs(stream, 0, 'Before the tool.'))
+  await convex.mutation(mutation('apply'), {
+    actorUserId: stream.actorUserId, runId: stream.runId, workflowRunId: stream.workflowRunId,
+    executionGeneration: 0, operationId: 'receipt', expectedRevision: stream.revision,
+    operation: { type: 'record_receipt', receipt: {
+      id: 'model:0', modelId: 'fixture/model', provider: 'fixture', inputTokens: 1, outputTokens: 1,
+      reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000,
+      costMicros: 1, costSource: 'provider',
+    } },
+    serverSecret: secret,
+  })
+  await convex.mutation(mutation('writeTranscriptStep'), {
+    actorUserId: stream.actorUserId, runId: stream.runId, workflowRunId: stream.workflowRunId,
+    receiptId: 'model:0', stepNumber: 0,
+    persistence: { content: 'Before the tool.', parts: [] },
+    serverSecret: secret,
+  })
+  const settled = await convex.run(async ctx => ({
+    message: await ctx.db.get(stream.assistantMessageId),
+    active: await ctx.db.query('harnessPublicStreams').withIndex('by_runId', q => q.eq('runId', stream.runId)).unique(),
+  }))
+  expect(settled.message?.content).toBe('Before the tool.')
+  expect(settled.message?.publicStreamCheckpoint).toEqual({
+    runId: stream.runId, executionGeneration: 0, receiptId: 'model:0', invocation: 0,
+  })
+  expect(settled.message?.nativeProgressSequence).toBe(0)
+  expect(settled.active).toBeNull()
 })
