@@ -45,6 +45,8 @@ export function createHarnessModelPorts(input: {
     receiptId: string
     purpose: HarnessModelPurpose
     publicStreamVersion?: 1
+    /** This response call continues text the previous call stopped at its output cap. */
+    continuesPrevious?: boolean
     options: LanguageModelV4CallOptions
   }) => Promise<PreparedHarnessModel>
   contextBudgetTokens?: number
@@ -53,6 +55,9 @@ export function createHarnessModelPorts(input: {
   const publicProgressReceipts = new Map<string, boolean>()
   const { reference, prepare } = input
   let activeToolNames = new Set<string>()
+  // Whether the last call with public output stopped at its output cap. Unknown until
+  // this segment records a step; a handed-off segment starts from the runner's flag.
+  let lastOutputCutOff: boolean | undefined
   // Catalog limits are fixed for a model, so read them once per run.
   const limitsByModel = new Map<string, Awaited<ReturnType<typeof readHarnessModelLimits>>>()
   async function modelLimits(modelId: string) {
@@ -177,6 +182,7 @@ export function createHarnessModelPorts(input: {
         receiptId: request.receiptId,
         purpose: 'response',
         publicStreamVersion: request.state.policy.publicStreamVersion,
+        ...((lastOutputCutOff ?? request.instructionContext.truncatedResponse) ? { continuesPrevious: true } : {}),
         options: {
           ...request.settings,
           maxOutputTokens: responseMaxOutputTokens,
@@ -212,8 +218,9 @@ export function createHarnessModelPorts(input: {
         throw new FatalError('Model usage has no corresponding prepared dispatch.')
       }
       await settle(step, receiptId, prepared)
-      await writeSettledHarnessTranscriptStep(reference, receiptId, step.stepNumber,
-        publicHarnessStepPersistence(step, activeToolNames, { textOnly: publicProgressReceipts.get(receiptId) === true }))
+      const persistence = publicHarnessStepPersistence(step, activeToolNames, { textOnly: publicProgressReceipts.get(receiptId) === true })
+      await writeSettledHarnessTranscriptStep(reference, receiptId, step.stepNumber, persistence)
+      if (persistence.content || persistence.parts.length) lastOutputCutOff = persistence.outputLimitReached === true
       preparedCalls.delete(receiptId)
       publicProgressReceipts.delete(receiptId)
     },

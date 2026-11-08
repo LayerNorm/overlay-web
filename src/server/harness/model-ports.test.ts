@@ -23,6 +23,9 @@ vi.mock('./resource-boundary', () => ({
   waitForHarnessModelResources: vi.fn((_reference, _cost, read) => read()),
 }))
 vi.mock('./settle-model-step', () => ({ settleHarnessModelUsage: vi.fn() }))
+vi.mock('./harness-transcript', async importOriginal => ({
+  ...await importOriginal<typeof import('./harness-transcript')>(), writeSettledHarnessTranscriptStep: vi.fn(),
+}))
 vi.mock('./artifact-steps', () => ({
   identifyHarnessArtifact: mocks.identifyArtifact,
   storeHarnessArtifact: mocks.storeArtifact,
@@ -608,4 +611,40 @@ test('response preparation failures escape without an artifact-unavailable block
   expect(mocks.apply.mock.calls.some(([, operationId, operation]) => (
     operationId === 'artifact-unavailable:response:prepare-sentinel' && operation.type === 'block'
   ))).toBe(false)
+})
+
+test('a response call after one cut off at its output cap is prepared as a continuation', async () => {
+  const state = { ...createHarnessSnapshot({
+    runId: 'run', goal: 'Write the long list.', constraints: [], policy: {
+      actorUserId: 'user', allowedToolIds: [], requiresPlan: false,
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxParallelChildren: 0, maxDepth: 0,
+    },
+  }, Date.now()), status: 'running' as const }
+  const prepare = vi.fn(async ({ modelId }: { modelId: string }) => ({
+    model: { modelId, credentialOwnerId: 'user' } as HarnessModelReference,
+    options: {} as never, contextWindow: 128_000, estimatedCostMicros: 0,
+  }))
+  mocks.limits.mockResolvedValue({ contextWindow: 128_000, maxOutputTokens: 4_096 })
+  mocks.compact.mockImplementation(async ({ messages }) => ({ messages, didCompact: false, summaryFailed: false, fitsBudget: true }))
+  const request = (receiptId: string, truncatedResponse = false) => ({
+    receiptId, state, messages: [], toolNames: [], toolDefinitions: [], settings: {},
+    instructionContext: { instructions: 'Write.', continuation: true, truncatedResponse, finalAnswerRequired: false },
+  })
+  const step = (text: string, finishReason: string) => ({
+    stepNumber: 0, text, finishReason, reasoning: [], toolCalls: [], toolResults: [], content: [{ type: 'text', text }],
+    usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0 }, outputTokenDetails: { reasoningTokens: 0 } }, providerMetadata: {}, response: { modelId: 'fixture/model' },
+  }) as never
+  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  await ports.prepareModel(request('model:0'))
+  await ports.recordModelStep(step('22. The Thames Barrier.\n23', 'length'), 'model:0')
+  await ports.prepareModel(request('model:1', true))
+  await ports.recordModelStep(step('. The Tagus estuary barrier.', 'stop'), 'model:1')
+  await ports.prepareModel(request('model:2', true))
+  expect(prepare.mock.calls.map(([item]) => (item as { continuesPrevious?: boolean }).continuesPrevious))
+    .toEqual([undefined, true, undefined])
+
+  // A segment handed off right after a cut-off call starts from the runner's flag.
+  const handedOff = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  await handedOff.prepareModel(request('model:3', true))
+  expect((prepare.mock.calls.at(-1)![0] as { continuesPrevious?: boolean }).continuesPrevious).toBe(true)
 })

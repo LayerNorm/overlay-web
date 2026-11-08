@@ -198,8 +198,11 @@ transcript step and keeps the whitespace it stopped on; the next call's text the
 joins it directly and extends the same text part, so a cut-off Markdown list stays
 one list. The settled checkpoint, final delivery, legacy progress copy, failure
 and cancellation settlement all use this rule, and the active-stream readers
-return `continuesPrevious: true` so the live projection joins the same way. Work
-(a tool call) between the calls still starts a new block. Steps saved before the
+return `continuesPrevious: true` so the live projection joins the same way. Workspace-agent
+and room deliveries that stream straight into the message get the same rule: the
+model ports pass `continuesPrevious` into native preparation, which sets
+`continuesPreviousOutput` on the dispatch so the delivery stream skips its
+paragraph break. Work (a tool call) between the calls still starts a new block. Steps saved before the
 flag existed keep the blank-line join.
 
 The native personal Act request remains pending until the durable root's
