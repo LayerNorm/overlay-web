@@ -254,7 +254,6 @@ test('a room send acknowledgement cannot clear a newer draft or a reopened scope
 
 test('nested replies clear immediately and restore only an unchanged failed draft', async (t) => {
   browser(t)
-  t.mock.method(overlayAppClient.conversations, 'threadFollow', async () => ({ following: false }))
   const hook = await mount(t, useThreadPanel, { conversationId: 'room', room: idleRoom, setRoomPanel: noop })
   await act(async () => { hook.value.setThreadRootId('a'); hook.value.setThreadInput('original') })
   const saved = deferred<RoomSendResult>()
@@ -278,7 +277,6 @@ test('nested replies clear immediately and restore only an unchanged failed draf
 
 test('late nested acknowledgements and failures preserve newer or reopened thread drafts', async (t) => {
   browser(t)
-  t.mock.method(overlayAppClient.conversations, 'threadFollow', async () => ({ following: false }))
   const hook = await mount(t, useThreadPanel, { conversationId: 'room', room: idleRoom, setRoomPanel: noop })
   await act(async () => { hook.value.setThreadRootId('a'); hook.value.setThreadInput('original') })
   for (const accepted of [true, false]) {

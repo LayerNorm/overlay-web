@@ -8,6 +8,8 @@ import { WorkspaceServiceError } from '@/server/workspaces/WorkspaceService'
 const WORKSPACE = 'workspace_acme'
 const OWNER = 'user_owner'
 const MEMBER = 'user_member'
+const ADMIN = 'user_admin'
+const ADMIN_PRINCIPAL = 'principal_admin'
 const OWNER_PRINCIPAL = 'principal_owner'
 const MEMBER_PRINCIPAL = 'principal_member'
 
@@ -33,6 +35,8 @@ function createService(options: {
   const mappings = new Map<string, Record<string, unknown>>()
   const suspended: string[] = []
   const limitChecks: string[] = []
+  const workspaceReads: Array<{ workspaceId: string; limit?: number }> = []
+  const pageReads: Array<{ workspaceId: string; numItems: number }> = []
   const service = new WorkspaceGovernanceService({
     audit: {
       async append(row: Omit<AuditRow, 'id' | 'createdAt'>) {
@@ -40,8 +44,36 @@ function createService(options: {
         audit.push(record)
         return record
       },
+      // The customer web has no operator-wide audit read; production throws.
       async list() {
+        throw new Error('Operator audit reads require the standalone admin console')
+      },
+      async listForWorkspace({ workspaceId, fromRecordedAt, limit }: {
+        workspaceId: string
+        fromRecordedAt?: number
+        limit?: number
+      }) {
+        workspaceReads.push({ workspaceId, limit })
         return audit
+          .filter((row) => row.metadata.workspaceId === workspaceId)
+          .filter((row) => fromRecordedAt === undefined || row.createdAt >= fromRecordedAt)
+          .sort((a, b) => b.createdAt - a.createdAt)
+          .slice(0, limit)
+      },
+      async pageForWorkspace({ workspaceId, fromRecordedAt, cursor, numItems }: {
+        workspaceId: string
+        fromRecordedAt?: number
+        cursor: string | null
+        numItems: number
+      }) {
+        pageReads.push({ workspaceId, numItems })
+        const scoped = audit
+          .filter((row) => row.metadata.workspaceId === workspaceId)
+          .filter((row) => fromRecordedAt === undefined || row.createdAt >= fromRecordedAt)
+          .sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
+        const start = cursor === null ? 0 : Number(cursor)
+        const end = start + numItems
+        return { events: scoped.slice(start, end), isDone: end >= scoped.length, continueCursor: String(end) }
       },
     } as never,
     rateLimiter: {
@@ -118,6 +150,13 @@ function createService(options: {
             membership: { role: 'owner', status: 'active' },
           }
         }
+        if (actorUserId === ADMIN) {
+          return {
+            workspace: { id: WORKSPACE },
+            principal: { id: ADMIN_PRINCIPAL },
+            membership: { role: 'admin', status: 'active' },
+          }
+        }
         if (actorUserId === MEMBER) {
           return {
             workspace: { id: WORKSPACE },
@@ -151,7 +190,7 @@ function createService(options: {
     id: () => 'export_1',
     now: () => 9_000,
   })
-  return { service, audit, exports, mappings, suspended, limitChecks }
+  return { service, audit, exports, mappings, suspended, limitChecks, workspaceReads, pageReads }
 }
 
 function auditRow(overrides: Partial<AuditRow> = {}): AuditRow {
@@ -219,6 +258,62 @@ test('audit export reconciles with membership and grant history', async () => {
   // Every exported event carries the workspace it belongs to, so an operator can
   // reconcile the export against workspace state without guessing.
   for (const event of events) assert.equal(event.metadata.workspaceId, WORKSPACE)
+})
+
+test('an export larger than one page reads every page instead of the newest rows', async () => {
+  const rows = Array.from({ length: 1_201 }, (_, index) => auditRow({ id: `e${String(index).padStart(5, '0')}`, createdAt: 1_000 + index }))
+  const { service, pageReads } = createService({ audit: rows })
+  const { record, events, complete, nextFromRecordedAt } = await service.exportAudit({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    limit: 2_000,
+  })
+  assert.equal(events.length, 1_201)
+  assert.equal(events[0]!.id, 'e00000', 'the oldest event must not be dropped')
+  assert.equal(complete, true)
+  assert.equal(nextFromRecordedAt, undefined)
+  assert.equal(record.toRecordedAt, 9_000)
+  assert.equal(pageReads.length > 1, true)
+})
+
+test('a truncated export ends on a whole millisecond and resumes without gaps or repeats', async () => {
+  const rows = [
+    auditRow({ id: 'a', createdAt: 1_000 }),
+    auditRow({ id: 'b', createdAt: 2_000 }),
+    auditRow({ id: 'c1', createdAt: 3_000 }),
+    auditRow({ id: 'c2', createdAt: 3_000 }),
+    auditRow({ id: 'd', createdAt: 4_000 }),
+  ]
+  const { service } = createService({ audit: rows })
+  const first = await service.exportAudit({ actorUserId: OWNER, workspaceId: WORKSPACE, limit: 3 })
+  assert.deepEqual(first.events.map((event) => event.id), ['a', 'b'])
+  assert.equal(first.complete, false)
+  assert.equal(first.record.toRecordedAt, 2_999)
+  assert.equal(first.nextFromRecordedAt, 3_000)
+  const second = await service.exportAudit({
+    actorUserId: OWNER,
+    workspaceId: WORKSPACE,
+    fromRecordedAt: first.nextFromRecordedAt,
+    limit: 3,
+  })
+  assert.deepEqual(second.events.map((event) => event.id), ['c1', 'c2', 'd'])
+  assert.equal(second.complete, true)
+  assert.equal(second.record.toRecordedAt, 9_000)
+})
+
+test('more events than the limit in one millisecond are all returned, never skipped', async () => {
+  const rows = [
+    auditRow({ id: 's1', createdAt: 1_000 }),
+    auditRow({ id: 's2', createdAt: 1_000 }),
+    auditRow({ id: 's3', createdAt: 1_000 }),
+    auditRow({ id: 'later', createdAt: 2_000 }),
+  ]
+  const { service } = createService({ audit: rows })
+  const result = await service.exportAudit({ actorUserId: OWNER, workspaceId: WORKSPACE, limit: 2 })
+  assert.deepEqual(result.events.map((event) => event.id), ['s1', 's2', 's3'])
+  assert.equal(result.complete, false)
+  assert.equal(result.record.toRecordedAt, 1_000)
+  assert.equal(result.nextFromRecordedAt, 1_001)
 })
 
 test('an export can resume from a watermark', async () => {
@@ -348,8 +443,26 @@ test('metrics report denials, invitation failures, and provider parity', async (
   const metrics = await service.collectMetrics({ actorUserId: OWNER, workspaceId: WORKSPACE })
   assert.equal(metrics.authorizationDenials, 1)
   assert.equal(metrics.invitationFailures, 1)
-  assert.deepEqual(metrics.providerParity, { provider: 'convex', requiresConvexClient: true })
   assert.equal(metrics.workspaceId, WORKSPACE)
+})
+
+test('metrics read only this workspace through the scoped audit query for owners and admins', async () => {
+  // Regression: metrics used the operator-wide `audit.list`, which the customer
+  // web rejects, so every owner got a 500 from the governance route.
+  for (const actorUserId of [OWNER, ADMIN]) {
+    const { service, workspaceReads } = createService({
+      audit: [
+        auditRow({ id: 'd1', outcome: 'denied' }),
+        auditRow({ id: 'd2', outcome: 'denied', action: 'workspace.grant' }),
+        auditRow({ id: 'i1', action: 'workspace.invitation.accept', outcome: 'failure' }),
+        auditRow({ id: 'rival', outcome: 'denied', metadata: { workspaceId: 'workspace_rival' } }),
+      ],
+    })
+    const metrics = await service.collectMetrics({ actorUserId, workspaceId: WORKSPACE })
+    assert.equal(metrics.authorizationDenials, 2)
+    assert.equal(metrics.invitationFailures, 1)
+    assert.deepEqual(workspaceReads, [{ workspaceId: WORKSPACE, limit: 500 }])
+  }
 })
 
 test('platform actor resolution maps a linked chat identity to its principal', async () => {

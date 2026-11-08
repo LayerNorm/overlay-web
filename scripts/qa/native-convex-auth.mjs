@@ -20,7 +20,7 @@ try {
   const mode = (await stat(storageState)).mode
   if (mode & 0o077) throw new Error('Storage state must be private')
   client = await request.newContext({ baseURL: origin.origin, storageState })
-  const response = await client.get('/api/auth/convex-token?native=1', { maxRedirects: 0 })
+  const response = await client.get('/api/auth/convex-token', { maxRedirects: 0 })
   if (!response.ok()) throw new Error('Native token unavailable')
   const { token, userId } = await response.json()
   if (typeof token !== 'string' || !token || typeof userId !== 'string' || !userId) throw new Error('Missing native identity')

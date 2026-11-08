@@ -3,7 +3,6 @@ import test from 'node:test'
 import { NextRequest } from 'next/server'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import type { AppDataCapabilities } from '@/server/app-data/capabilities'
 import { deriveOverlayCapabilities } from '@overlay/app-core'
 
 const previousEnv = {
@@ -27,7 +26,6 @@ test.after(() => {
   else process.env.MCP_CREDENTIAL_ENCRYPTION_KEY = previousEnv.encryptionKey
 })
 
-const capabilities = { provider: 'convex' } as unknown as AppDataCapabilities
 
 function routeContext(parsedJson: Record<string, unknown>): AppApiRouteContext {
   return {
@@ -37,7 +35,6 @@ function routeContext(parsedJson: Record<string, unknown>): AppApiRouteContext {
     parsedFormData: null,
     parsedJson,
     parsedQuery: {},
-    appDataCapabilities: capabilities,
     requestFingerprint: 'fp',
     requestIdempotencyKey: 'key',
     workspace: {

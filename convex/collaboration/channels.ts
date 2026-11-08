@@ -235,11 +235,6 @@ export async function listReactionsFor(ctx: QueryCtx, args: ObjectType<typeof li
   return groupReactions(rows, actor.principalId)
 }
 
-export const listReactions = query({
-  args: listReactionsArgs,
-  handler: async (ctx, args) => await listReactionsFor(ctx, args),
-})
-
 const setReactionArgs = {
     actorUserId: v.string(), conversationId: v.id('conversations'), emoji: v.string(),
     enabled: v.boolean(), messageId: v.id('conversationMessages'), workspaceId: v.string(),
@@ -324,11 +319,6 @@ export async function listPinsFor(ctx: QueryCtx, args: ObjectType<typeof listPin
   }))
 }
 
-export const listPins = query({
-  args: listPinsArgs,
-  handler: async (ctx, args) => await listPinsFor(ctx, args),
-})
-
 const setPinnedArgs = {
     actorUserId: v.string(), conversationId: v.id('conversations'), messageId: v.id('conversationMessages'),
     pinned: v.boolean(), workspaceId: v.string(), serverSecret: v.optional(v.string()),
@@ -389,11 +379,6 @@ export async function listSavedMessagesFor(ctx: QueryCtx, args: ObjectType<typeo
     principalId: row.principalId, createdAt: row.createdAt,
   }))
 }
-
-export const listSavedMessages = query({
-  args: listSavedMessagesArgs,
-  handler: async (ctx, args) => await listSavedMessagesFor(ctx, args),
-})
 
 const setSavedArgs = {
     actorUserId: v.string(), conversationId: v.id('conversations'), messageId: v.id('conversationMessages'),

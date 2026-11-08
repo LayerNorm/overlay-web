@@ -141,6 +141,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
             shellRightPanelWidth,
           },
         )}
+        readOnlyFooter={props.readOnlyFooter}
       />
       </RunPlanContext.Provider>
       </QuestionnaireComposerProvider>

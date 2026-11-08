@@ -194,12 +194,10 @@ async function handleScopedBffRoute(
     await emitMetric(response)
     return response
   }
-  let appDataCapabilities
   let idempotencyRepository
   let serverContext!: ReturnType<typeof getOverlayServerContext>
   try {
     serverContext = getOverlayServerContext()
-    appDataCapabilities = serverContext.appDataCapabilities
     idempotencyRepository = serverContext.appData.repositories.idempotency
   } catch (error) {
     const response = runtimeConfigErrorResponse(error)
@@ -301,7 +299,6 @@ async function handleScopedBffRoute(
     parsedJson: parsedInput.parsedJson,
     parsedFormData: parsedInput.parsedFormData,
     capabilities,
-    appDataCapabilities,
     requestFingerprint: await fingerprintApiRequest(request),
     requestIdempotencyKey: request.headers.get('idempotency-key')?.trim() || null,
   }
@@ -342,7 +339,6 @@ async function handleScopedBffRoute(
 
   const invokeService = async () => await withObservabilityContext(
       contextForRequest(request, {
-        provider: appDataCapabilities.provider,
         tenantId: auth.organizationId,
       }),
       async () => {

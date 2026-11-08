@@ -1,0 +1,374 @@
+{
+  "account.desktopLinkResponse": [
+    "src/app/app/account/account-handoffs.ts"
+  ],
+  "agentEnvironments.approve": [
+    "src/features/agents/components/use-byo-connection.ts",
+    "src/features/settings/components/AgentEnvironmentSettings.tsx"
+  ],
+  "agentEnvironments.createEnrollment": [
+    "src/features/agents/components/use-byo-connection.ts"
+  ],
+  "agentEnvironments.disableBindings": [
+    "src/features/agents/components/use-agent-editor-actions.ts"
+  ],
+  "agentEnvironments.revoke": [
+    "src/features/settings/components/AgentEnvironmentSettings.tsx"
+  ],
+  "agentEnvironments.updateRoots": [
+    "src/features/settings/components/AgentEnvironmentSettings.tsx"
+  ],
+  "agentEnvironments.upsertBinding": [
+    "src/app/_components/onboarding/OnboardingTools.tsx",
+    "src/features/agents/components/use-agent-editor-actions.ts"
+  ],
+  "agents.archive": [
+    "src/features/agents/components/use-agent-editor-actions.ts"
+  ],
+  "agents.create": [
+    "src/app/_components/onboarding/OnboardingConversation.tsx",
+    "src/app/_components/onboarding/OnboardingTools.tsx",
+    "src/features/agents/components/NewAgentDialog.tsx",
+    "src/features/agents/components/use-agent-editor-actions.ts"
+  ],
+  "agents.deleteArchived": [
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "agents.deleteThread": [
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "agents.restore": [
+    "src/features/agents/components/use-agent-editor-actions.ts",
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "agents.setThreadArchived": [
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "agents.update": [
+    "src/features/agents/components/ConnectedAgentSettings.tsx",
+    "src/features/agents/components/use-agent-computer.ts",
+    "src/features/agents/components/use-agent-editor-actions.ts",
+    "src/features/work/components/OrganizationAgentDetails.tsx"
+  ],
+  "automations.createResponse": [
+    "src/features/chat/components/chat/useAutomationDetail.ts"
+  ],
+  "automations.deleteResponse": [
+    "src/features/automations/components/AutomationsInlinePanel.tsx",
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "automations.parseDeleteResponse": [
+    "src/features/automations/components/AutomationsInlinePanel.tsx",
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "automations.runDurableResponse": [
+    "src/features/chat/components/chat-interface/AutomationEditor.tsx"
+  ],
+  "automations.updateResponse": [
+    "src/features/automations/components/AutomationsInlinePanel.tsx",
+    "src/features/chat/components/chat-interface/AutomationEditor.tsx",
+    "src/features/chat/components/chat/useAutomationDetail.ts"
+  ],
+  "chat.generateImageResponse": [
+    "src/features/chat/components/chat/chatMediaGeneration.ts"
+  ],
+  "chat.generateTitleResponse": [
+    "src/features/chat/lib/generate-title.ts"
+  ],
+  "chat.generateVideoResponse": [
+    "src/features/chat/components/chat/chatMediaGeneration.ts"
+  ],
+  "cloudAgents.remove": [
+    "src/features/agents/components/use-agent-editor-actions.ts"
+  ],
+  "computers.control": [
+    "src/features/agents/components/use-agent-computer.ts",
+    "src/features/settings/components/ComputerSettings.tsx"
+  ],
+  "computers.destroy": [
+    "src/features/agents/components/use-agent-computer.ts",
+    "src/features/agents/components/use-agent-editor-actions.ts",
+    "src/features/settings/components/ComputerSettings.tsx"
+  ],
+  "computers.openDesktop": [
+    "src/features/agents/components/use-agent-computer.ts",
+    "src/features/agents/components/use-agent-sidebar-computer.ts",
+    "src/features/settings/components/ComputerSettings.tsx"
+  ],
+  "computers.provision": [
+    "src/features/agents/components/NewAgentDialog.tsx",
+    "src/features/agents/components/use-agent-editor-actions.ts",
+    "src/features/settings/components/ComputerSettings.tsx"
+  ],
+  "computers.start": [
+    "src/features/agents/components/use-agent-computer.ts",
+    "src/features/settings/components/ComputerSettings.tsx"
+  ],
+  "computers.stop": [
+    "src/features/agents/components/use-agent-computer.ts",
+    "src/features/settings/components/ComputerSettings.tsx"
+  ],
+  "conversations.addMessage": [
+    "src/features/chat/components/DirectMessageExperience.hooks.ts"
+  ],
+  "conversations.addParticipant": [
+    "src/features/chat/components/NewDirectMessageDialog.tsx"
+  ],
+  "conversations.controlRemoteQueue": [
+    "src/features/chat/components/DirectMessageExperience.hooks.ts"
+  ],
+  "conversations.createResponse": [
+    "src/features/chat/components/chat/chat-send-create.ts"
+  ],
+  "conversations.createWorkspaceChannel": [
+    "src/features/chat/components/NewChannelDialog.tsx",
+    "src/features/chat/components/PersonalMentionConversionPrompt.tsx"
+  ],
+  "conversations.createWorkspaceDirectMessage": [
+    "src/features/agents/lib/agent-chat.ts",
+    "src/features/chat/components/NewDirectMessageDialog.tsx",
+    "src/features/chat/components/PersonalMentionConversionPrompt.tsx"
+  ],
+  "conversations.deleteResponse": [
+    "src/features/chat/components/DirectMessageExperience.hooks.ts",
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "conversations.participants": [
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "conversations.removeParticipant": [
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "conversations.reportMessage": [
+    "src/features/chat/components/DirectMessageExperience.hooks.ts"
+  ],
+  "conversations.resolveRemoteRequest": [
+    "src/features/chat/components/DirectMessageExperience.hooks.ts"
+  ],
+  "conversations.stopResponse": [
+    "src/features/chat/components/DirectMessageExperience.hooks.ts",
+    "src/features/chat/components/chat/useChatStopController.ts"
+  ],
+  "conversations.submitRunApproval": [
+    "src/features/chat/components/chat/native-work-command-actions.ts",
+    "src/features/chat/components/chat/useWorkApproval.tsx",
+    "src/features/chat/components/collaboration/NativeAgentApprovalCard.tsx"
+  ],
+  "conversations.submitRunInput": [
+    "src/features/chat/components/chat/RunInputRequest.tsx"
+  ],
+  "conversations.updateParticipantState": [
+    "src/features/chat/components/ChatInlinePanel.tsx",
+    "src/features/chat/components/DirectMessageExperience.hooks.ts",
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "conversations.updateResponse": [
+    "src/features/chat/components/ChatInlinePanel.tsx",
+    "src/features/chat/components/DirectMessageExperience.hooks.ts"
+  ],
+  "files.contentResponse": [
+    "src/features/chat/components/chat/useChatPanels.ts"
+  ],
+  "files.createResponse": [
+    "src/features/knowledge/adapters/webKnowledgeFilePort.ts"
+  ],
+  "files.deleteResponse": [
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "files.ingestDocumentResponse": [
+    "src/features/chat/components/useChatAttachments.ts",
+    "src/features/knowledge/adapters/webKnowledgeFilePort.ts"
+  ],
+  "files.shareResponse": [
+    "src/features/files/components/FileShareMenu.tsx"
+  ],
+  "files.updateResponse": [
+    "src/features/knowledge/components/KnowledgeView.tsx"
+  ],
+  "files.uploadUrlResponse": [
+    "src/features/knowledge/adapters/webKnowledgeFilePort.ts"
+  ],
+  "integrations.connectResponse": [
+    "src/app/_components/onboarding/OnboardingTools.tsx",
+    "src/features/chat/components/chat/useGeneratedUiConnectorActions.ts",
+    "src/features/integrations/components/IntegrationsView.tsx",
+    "src/features/workspaces/components/SlackImportPanel.tsx"
+  ],
+  "integrations.disconnectResponse": [
+    "src/features/integrations/components/IntegrationsView.tsx"
+  ],
+  "integrations.get": [
+    "src/app/_components/onboarding/OnboardingTools.tsx",
+    "src/features/chat/components/chat/useGeneratedUiConnectorActions.ts",
+    "src/features/integrations/components/IntegrationsView.tsx"
+  ],
+  "integrations.getResponse": [
+    "src/components/mentions/mention-search.ts",
+    "src/features/integrations/components/IntegrationsDialog.tsx"
+  ],
+  "mcpAccess.authorize": [
+    "src/app/oauth/authorize/AuthorizeClient.tsx"
+  ],
+  "mcpAccess.createToken": [
+    "src/features/settings/components/McpTokenDialog.tsx"
+  ],
+  "mcpAccess.describeClient": [
+    "src/app/oauth/authorize/AuthorizeClient.tsx"
+  ],
+  "mcpAccess.revoke": [
+    "src/features/settings/components/ConnectedAppsSettings.tsx"
+  ],
+  "mcpServers.createResponse": [
+    "src/features/integrations/components/McpServersView.tsx"
+  ],
+  "mcpServers.deleteResponse": [
+    "src/features/integrations/components/McpServersView.tsx",
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "mcpServers.disconnectOAuthResponse": [
+    "src/features/integrations/components/McpServersView.tsx"
+  ],
+  "mcpServers.startOAuthResponse": [
+    "src/features/integrations/components/McpServersView.tsx"
+  ],
+  "mcpServers.testResponse": [
+    "src/features/integrations/components/McpServersView.tsx"
+  ],
+  "mcpServers.updateResponse": [
+    "src/features/integrations/components/McpServersView.tsx"
+  ],
+  "memory.create": [
+    "src/app/_components/onboarding/OnboardingConversation.tsx"
+  ],
+  "memory.createResponse": [
+    "src/features/knowledge/components/MemoriesView.tsx"
+  ],
+  "memory.deleteResponse": [
+    "src/features/agents/components/AgentEditorForm.tsx",
+    "src/features/knowledge/components/MemoriesView.tsx"
+  ],
+  "notes.create": [
+    "src/features/notebook/components/NotebookEditor.tsx"
+  ],
+  "notes.createResponse": [
+    "src/components/layout/sidebar/useAppSidebarActions.ts"
+  ],
+  "notes.deleteResponse": [
+    "src/features/notebook/components/NotebookEditor.tsx",
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "notes.notebookAgentResponse": [
+    "src/features/notebook/components/NotebookEditor.tsx"
+  ],
+  "notes.updateResponse": [
+    "src/features/notebook/components/NotebookEditor.tsx"
+  ],
+  "providerAccounts.connect": [
+    "src/components/agents/AgentAccountDialog.tsx"
+  ],
+  "providerAccounts.pollCodexSignIn": [
+    "src/components/agents/AgentAccountDialog.tsx"
+  ],
+  "providerAccounts.reconnect": [
+    "src/components/agents/AgentAccountDialog.tsx"
+  ],
+  "providerAccounts.remove": [
+    "src/features/settings/components/AgentAccountSettings.tsx"
+  ],
+  "providerAccounts.startCodexSignIn": [
+    "src/components/agents/AgentAccountDialog.tsx"
+  ],
+  "scope.archive": [
+    "src/hooks/use-scope-item-actions.ts"
+  ],
+  "scope.move": [
+    "src/hooks/use-scope-item-actions.ts"
+  ],
+  "scope.restore": [
+    "src/features/settings/lib/archived-actions.ts",
+    "src/hooks/use-scope-item-actions.ts"
+  ],
+  "settings.updateResponse": [
+    "src/components/providers/AppSettingsProvider.tsx"
+  ],
+  "sharing.get": [
+    "src/components/share/ShareDialog.tsx"
+  ],
+  "sharing.grant": [
+    "src/components/share/ShareDialog.tsx"
+  ],
+  "sharing.impact": [
+    "src/components/share/ShareDialog.tsx"
+  ],
+  "sharing.revoke": [
+    "src/components/share/ShareDialog.tsx"
+  ],
+  "skills.createResponse": [
+    "src/features/chat/components/chat/useDraftReviewActions.ts"
+  ],
+  "skills.deleteResponse": [
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "surfaces.createBinding": [
+    "src/features/agents/components/use-agent-surfaces.ts"
+  ],
+  "surfaces.listChannels": [
+    "src/features/agents/components/use-agent-surfaces.ts"
+  ],
+  "surfaces.removeBinding": [
+    "src/features/agents/components/use-agent-surfaces.ts"
+  ],
+  "webhooks.createResponse": [
+    "src/features/settings/components/WebhookSettings.tsx"
+  ],
+  "webhooks.deleteResponse": [
+    "src/features/settings/components/WebhookSettings.tsx"
+  ],
+  "webhooks.parseCreateResponse": [
+    "src/features/settings/components/WebhookSettings.tsx"
+  ],
+  "webhooks.parseRotateSecretResponse": [
+    "src/features/settings/components/WebhookSettings.tsx"
+  ],
+  "webhooks.redriveResponse": [
+    "src/features/settings/components/WebhookSettings.tsx"
+  ],
+  "webhooks.rotateSecretResponse": [
+    "src/features/settings/components/WebhookSettings.tsx"
+  ],
+  "webhooks.updateResponse": [
+    "src/features/settings/components/WebhookSettings.tsx"
+  ],
+  "work.create": [
+    "src/app/_components/onboarding/OnboardingConversation.tsx",
+    "src/features/work/components/WorkDataProvider.tsx"
+  ],
+  "work.remove": [
+    "src/features/settings/lib/archived-actions.ts"
+  ],
+  "work.update": [
+    "src/app/_components/onboarding/OnboardingConversation.tsx",
+    "src/features/work/components/WorkDataProvider.tsx"
+  ],
+  "workspaces.activate": [
+    "src/features/account/components/AccountWorkspaces.tsx"
+  ],
+  "workspaces.createBillingCheckout": [
+    "src/app/_components/onboarding/OnboardingPayment.tsx"
+  ],
+  "workspaces.initializeBilling": [
+    "src/app/_components/onboarding/OnboardingPayment.tsx"
+  ],
+  "workspaces.invite": [
+    "src/app/_components/onboarding/OnboardingConversation.tsx",
+    "src/components/share/ShareDialog.tsx",
+    "src/features/chat/components/NewDirectMessageDialog.tsx",
+    "src/features/workspaces/components/SlackImportPanel.tsx"
+  ],
+  "workspaces.list": [
+    "src/app/oauth/authorize/AuthorizeClient.tsx"
+  ],
+  "workspaces.verifyBillingCheckout": [
+    "src/app/_components/onboarding/OnboardingPayment.tsx"
+  ]
+}

@@ -20,33 +20,6 @@ import { transcriptPartIdentity } from '../../src/shared/chat/transcript-part-id
 
 type CollaborationCtx = (Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>) & { auth?: QueryCtx['auth'] }
 
-const notificationFilterValidator = v.union(
-  v.literal('all'),
-  v.literal('unread'),
-  v.literal('mentions'),
-  v.literal('threads'),
-  v.literal('reactions'),
-)
-
-const notificationValidator = v.object({
-  id: v.string(),
-  workspaceId: v.string(),
-  recipientPrincipalId: v.string(),
-  type: v.union(v.literal('mention'), v.literal('thread'), v.literal('message'), v.literal('reaction'), v.literal('participant')),
-  conversationId: v.id('conversations'),
-  messageId: v.optional(v.id('conversationMessages')),
-  actorPrincipalId: v.string(),
-  threadRootMessageId: v.optional(v.id('conversationMessages')),
-  eventSequence: v.optional(v.number()),
-  mentionScope: v.optional(v.union(v.literal('direct'), v.literal('channel'), v.literal('here'))),
-  title: v.string(),
-  body: v.optional(v.string()),
-  createdAt: v.number(),
-  readAt: v.optional(v.number()),
-  conversationType: v.optional(v.union(v.literal('personal'), v.literal('dm'), v.literal('channel'))),
-  conversationState: v.optional(v.union(v.literal('archived'), v.literal('deleted'))),
-})
-
 /**
  * Room functions trust one of three proofs: the server secret, the legacy browser token, or
  * native Convex identity. `native` is set only by `nativeRoomActor` below, never from client
@@ -1358,9 +1331,28 @@ export const createDirectMessage = mutation({
           q.eq('conversationId', existing._id).eq('principalId', actor.principalId)
         ))
         .unique()
-      if (actorParticipant?.archivedAt) {
-        const now = Date.now()
-        await ctx.db.patch(actorParticipant._id, { archivedAt: undefined, updatedAt: now })
+      // Starting a DM you archived, left or were removed from reopens it for you; otherwise it would hand back a
+      // room you cannot read.
+      const now = Date.now()
+      if (!actorParticipant) {
+        await ctx.db.insert('conversationParticipants', {
+          conversationId: existing._id,
+          workspaceId: args.workspaceId,
+          principalId: actor.principalId,
+          principalType: 'human',
+          role: 'member',
+          status: 'active',
+          notificationLevel: 'all',
+          joinedAt: now,
+          updatedAt: now,
+          lastReadAt: now,
+        })
+      } else if (actorParticipant.status !== 'active' || actorParticipant.archivedAt) {
+        await ctx.db.patch(actorParticipant._id, {
+          status: 'active', archivedAt: undefined, removedAt: undefined, updatedAt: now,
+        })
+      }
+      if (!actorParticipant || actorParticipant.status !== 'active' || actorParticipant.archivedAt) {
         await recordConversationEvent(ctx, {
           conversationId: existing._id,
           workspaceId: args.workspaceId,
@@ -1823,11 +1815,6 @@ export async function upsertPresenceFor(ctx: MutationCtx, args: ObjectType<typeo
   }
 }
 
-export const upsertPresence = mutation({
-  args: upsertPresenceArgs,
-  handler: async (ctx, args) => await upsertPresenceFor(ctx, args),
-})
-
 const listPresenceArgs = {
     actorUserId: v.string(),
     conversationId: v.id('conversations'),
@@ -1839,11 +1826,6 @@ export async function listPresenceFor(ctx: QueryCtx, args: ObjectType<typeof lis
   await requireConversationAccess(ctx, args)
   return await computePresence(ctx, args.conversationId, args.workspaceId)
 }
-
-export const listPresence = query({
-  args: listPresenceArgs,
-  handler: async (ctx, args) => await listPresenceFor(ctx, args),
-})
 
 async function computePresence(
   ctx: CollaborationCtx,
@@ -2213,19 +2195,6 @@ export async function listNotificationRows(
   }))
 }
 
-export const listNotifications = query({
-  args: {
-    actorUserId: v.string(),
-    filter: v.optional(notificationFilterValidator),
-    limit: v.optional(v.number()),
-    unreadOnly: v.optional(v.boolean()),
-    workspaceId: v.string(),
-    serverSecret: v.optional(v.string()),
-  },
-  returns: v.array(notificationValidator),
-  handler: listNotificationRows,
-})
-
 const setThreadFollowArgs = {
     actorUserId: v.string(),
     conversationId: v.id('conversations'),
@@ -2261,11 +2230,6 @@ export async function setThreadFollowFor(ctx: MutationCtx, args: ObjectType<type
   return false
 }
 
-export const setThreadFollow = mutation({
-  args: setThreadFollowArgs,
-  handler: async (ctx, args) => await setThreadFollowFor(ctx, args),
-})
-
 const listThreadFollowsArgs = {
     actorUserId: v.string(),
     conversationId: v.id('conversations'),
@@ -2291,71 +2255,6 @@ export async function listThreadFollowsFor(ctx: QueryCtx, args: ObjectType<typeo
     }))
 }
 
-export const listThreadFollows = query({
-  args: listThreadFollowsArgs,
-  handler: async (ctx, args) => await listThreadFollowsFor(ctx, args),
-})
-
-const defaultNotificationPreferences = {
-  dmMessages: 'activity' as const,
-  mentions: 'banner' as const,
-  threadReplies: 'activity' as const,
-  reactions: 'activity' as const,
-  channelMessages: 'activity' as const,
-}
-
-export const getNotificationPreferences = query({
-  args: { actorUserId: v.string(), workspaceId: v.string(), serverSecret: v.optional(v.string()) },
-  handler: async (ctx, args) => {
-    const access = await requireActor(ctx, args)
-    const row = await ctx.db.query('workspaceNotificationPreferences')
-      .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', access.principalId))
-      .unique()
-    return row ? {
-      dmMessages: row.dmMessages,
-      mentions: row.mentions,
-      threadReplies: row.threadReplies,
-      reactions: row.reactions,
-      channelMessages: row.channelMessages,
-    } : defaultNotificationPreferences
-  },
-})
-
-export const updateNotificationPreferences = mutation({
-  args: {
-    actorUserId: v.string(), workspaceId: v.string(), serverSecret: v.optional(v.string()),
-    dmMessages: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
-    mentions: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
-    threadReplies: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
-    reactions: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
-    channelMessages: v.optional(v.union(v.literal('activity'), v.literal('banner'), v.literal('off'))),
-  },
-  handler: async (ctx, args) => {
-    const access = await requireActor(ctx, args)
-    const existing = await ctx.db.query('workspaceNotificationPreferences')
-      .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', args.workspaceId).eq('principalId', access.principalId))
-      .unique()
-    const next = {
-      dmMessages: args.dmMessages ?? existing?.dmMessages ?? defaultNotificationPreferences.dmMessages,
-      mentions: args.mentions ?? existing?.mentions ?? defaultNotificationPreferences.mentions,
-      threadReplies: args.threadReplies ?? existing?.threadReplies ?? defaultNotificationPreferences.threadReplies,
-      reactions: args.reactions ?? existing?.reactions ?? defaultNotificationPreferences.reactions,
-      channelMessages: args.channelMessages ?? existing?.channelMessages ?? defaultNotificationPreferences.channelMessages,
-    }
-    if (existing) {
-      await ctx.db.patch(existing._id, { ...next, updatedAt: Date.now() })
-    } else {
-      await ctx.db.insert('workspaceNotificationPreferences', {
-        workspaceId: args.workspaceId,
-        principalId: access.principalId,
-        ...next,
-        updatedAt: Date.now(),
-      })
-    }
-    return next
-  },
-})
-
 const markNotificationsReadArgs = {
     actorUserId: v.string(),
     conversationId: v.optional(v.id('conversations')),
@@ -2380,11 +2279,6 @@ export async function markNotificationsReadFor(ctx: MutationCtx, args: ObjectTyp
   await Promise.all(unread.map((row) => ctx.db.patch(row._id, { readAt })))
   return unread.length
 }
-
-export const markNotificationsRead = mutation({
-  args: markNotificationsReadArgs,
-  handler: async (ctx, args) => await markNotificationsReadFor(ctx, args),
-})
 
 export async function editRoomMessage(
   ctx: MutationCtx,

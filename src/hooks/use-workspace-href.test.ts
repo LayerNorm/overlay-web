@@ -33,3 +33,16 @@ test('workspace hrefs use a confirmed routing handle', () => {
     '/w/team/personal/chat?view=personal',
   )
 })
+
+test('archived chat links name their workspace so a full page load opens them there', () => {
+  const href = (workspace: WorkspaceSummary) => buildWorkspaceHrefForContext({
+    workspaceId: workspace.id,
+    href: '/app/archived?id=chat-1',
+    currentScope: 'workspace',
+    target: null,
+    workspaces: [workspace],
+    activeWorkspace: workspace,
+  })
+  assert.equal(href({ ...baseWorkspace, routingHandle: 'team' }), '/w/team/archived?id=chat-1')
+  assert.equal(href(baseWorkspace), '/app/w/workspace-1/archived?id=chat-1')
+})

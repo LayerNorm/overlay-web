@@ -128,9 +128,9 @@ import type * as lib_agentDriveRetiredObjects from "../lib/agentDriveRetiredObje
 import type * as lib_agentDriveUploadSchema from "../lib/agentDriveUploadSchema.js";
 import type * as lib_agentMcpCallSchema from "../lib/agentMcpCallSchema.js";
 import type * as lib_appCallback from "../lib/appCallback.js";
+import type * as lib_auditWorkspace from "../lib/auditWorkspace.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_authDebug from "../lib/authDebug.js";
-import type * as lib_browserConvexToken from "../lib/browserConvexToken.js";
 import type * as lib_connectedAgentPolicyProjection from "../lib/connectedAgentPolicyProjection.js";
 import type * as lib_gatewayCatalogPricing from "../lib/gatewayCatalogPricing.js";
 import type * as lib_gatewayCredits from "../lib/gatewayCredits.js";
@@ -173,6 +173,7 @@ import type * as lib_workspaceHandles from "../lib/workspaceHandles.js";
 import type * as lib_workspaceMembership from "../lib/workspaceMembership.js";
 import type * as mcp_grants from "../mcp/grants.js";
 import type * as migrations_backfillAgentThreads from "../migrations/backfillAgentThreads.js";
+import type * as migrations_backfillAuditWorkspaceIds from "../migrations/backfillAuditWorkspaceIds.js";
 import type * as migrations_backfillAutomationConversations from "../migrations/backfillAutomationConversations.js";
 import type * as migrations_backfillWorkspaceIds from "../migrations/backfillWorkspaceIds.js";
 import type * as migrations_doubleSidebar from "../migrations/doubleSidebar.js";
@@ -335,9 +336,9 @@ declare const fullApi: ApiFromModules<{
   "lib/agentDriveUploadSchema": typeof lib_agentDriveUploadSchema;
   "lib/agentMcpCallSchema": typeof lib_agentMcpCallSchema;
   "lib/appCallback": typeof lib_appCallback;
+  "lib/auditWorkspace": typeof lib_auditWorkspace;
   "lib/auth": typeof lib_auth;
   "lib/authDebug": typeof lib_authDebug;
-  "lib/browserConvexToken": typeof lib_browserConvexToken;
   "lib/connectedAgentPolicyProjection": typeof lib_connectedAgentPolicyProjection;
   "lib/gatewayCatalogPricing": typeof lib_gatewayCatalogPricing;
   "lib/gatewayCredits": typeof lib_gatewayCredits;
@@ -380,6 +381,7 @@ declare const fullApi: ApiFromModules<{
   "lib/workspaceMembership": typeof lib_workspaceMembership;
   "mcp/grants": typeof mcp_grants;
   "migrations/backfillAgentThreads": typeof migrations_backfillAgentThreads;
+  "migrations/backfillAuditWorkspaceIds": typeof migrations_backfillAuditWorkspaceIds;
   "migrations/backfillAutomationConversations": typeof migrations_backfillAutomationConversations;
   "migrations/backfillWorkspaceIds": typeof migrations_backfillWorkspaceIds;
   "migrations/doubleSidebar": typeof migrations_doubleSidebar;

@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { NextRequest } from 'next/server'
 import { DEFAULT_OVERLAY_CAPABILITIES } from '@overlay/app-core/capabilities'
-import { CONVEX_APP_DATA_CAPABILITIES } from '@/server/app-data/capabilities'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import type { ConversationListRow } from '@/server/conversations/ActConversationRepository'
 import type { AgentRun } from '@/shared/agents/agent-run'
@@ -18,7 +17,7 @@ const run: AgentRun = { id: 'run', conversationId: 'conversation', turnId: 'turn
 const context: AppApiRouteContext = {
   params: Promise.resolve({}), auth: { userId: 'owner', accessToken: 'test', authType: 'session' },
   parsedQuery: {}, parsedJson: {}, parsedFormData: null, capabilities: DEFAULT_OVERLAY_CAPABILITIES,
-  appDataCapabilities: CONVEX_APP_DATA_CAPABILITIES, requestFingerprint: 'test', requestIdempotencyKey: null,
+  requestFingerprint: 'test', requestIdempotencyKey: null,
   workspace: {
     workspace: { id: 'workspace', kind: 'personal', name: 'QA', slug: 'qa', status: 'active', createdAt: 1, updatedAt: 1 },
     principal: { id: 'owner', userId: 'owner', workspaceId: 'workspace', type: 'human', displayName: 'QA', createdAt: 1, updatedAt: 1 },

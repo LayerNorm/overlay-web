@@ -67,6 +67,8 @@ export type ChatExperienceViewProps = {
   draftReviewProps: React.ComponentProps<typeof DraftReviewModal>
   attachmentPreviewProps: React.ComponentProps<typeof AttachmentPreviewDialog>
   upgradeModelDialogProps: React.ComponentProps<typeof UpgradeModelDialog>
+  /** Shown instead of the composer; archived chats use it in place of the thread-safety notice. */
+  readOnlyFooter?: React.ReactNode
 }
 
 export function ChatExperienceView({
@@ -82,6 +84,7 @@ export function ChatExperienceView({
   draftReviewProps,
   attachmentPreviewProps,
   upgradeModelDialogProps,
+  readOnlyFooter,
 }: ChatExperienceViewProps) {
   const modelControlsInComposer = Boolean(composerProps) && !headerProps.hasAutomationContext
   return (
@@ -129,7 +132,7 @@ export function ChatExperienceView({
             )}
 
             {messageListProps && <ChatMessageList {...messageListProps} />}
-            {composerProps && (
+            {composerProps && (readOnlyFooter ?? (
               // Sending stays blocked while checking; replacing the composer would only make it flicker.
               nativeThreadSafety.readOnly && nativeThreadSafety.status !== 'checking' ? (
                 <NativeThreadReadOnlyFooter safety={nativeThreadSafety} onNewThread={onNewNativeThread} />
@@ -141,7 +144,7 @@ export function ChatExperienceView({
                   : composerProps.surface}
               />
               )
-            )}
+            ))}
           </AppScreenBody>
 
           <DraftReviewModal {...draftReviewProps} />

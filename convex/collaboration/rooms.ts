@@ -46,6 +46,17 @@ async function readableRoom(ctx: QueryCtx, args: { workspaceId: string; conversa
   }
 }
 
+/** A readable room's type and scope, so a chat link can be routed to the right view. Null without access. */
+export const scope = query({
+  args: roomArgs,
+  handler: async (ctx, args) => {
+    const room = await readableRoom(ctx, args)
+    if (!room) return null
+    const conversationType = room.conversation.conversationType === 'channel' ? 'channel' as const : 'dm' as const
+    return { conversationType, scope: room.conversation.scope === 'personal' ? 'personal' as const : 'workspace' as const }
+  },
+})
+
 /**
  * Whether new messages may be posted to this conversation or one of its threads, live. Send still
  * enforces it on the server; this lets the composer reflect it without a request per open or focus.

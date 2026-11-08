@@ -4,15 +4,8 @@ import type {
   ChannelSummary,
   ConversationParticipant,
   ConversationParticipantStateInput,
-  ConversationPin,
-  ConversationPresence,
-  ConversationSavedMessage,
-  ConversationThreadFollow,
   DirectMessageCreateInput,
   DirectMessageSummary,
-  MessageReaction,
-  WorkspaceNotification,
-  WorkspaceNotificationFilter,
 } from '@overlay/workspace-contracts'
 import type { HttpContext } from '../shared/http'
 import type { MutationRequestInit } from '../shared/mutation'
@@ -268,30 +261,6 @@ export class ConversationsClient {
   // destructures (e.g. `{ notifications }`, `{ participants, currentPrincipalId }`).
   // ---------------------------------------------------------------------------
 
-  notifications(
-    params: { filter?: WorkspaceNotificationFilter; unreadOnly?: boolean; limit?: number },
-    init?: RequestInit,
-  ) {
-    return this.http.json<{ notifications: WorkspaceNotification[] }>(
-      this.http.appendQuery('/api/v1/conversations/notifications', params as QueryParams | undefined),
-      init,
-    )
-  }
-
-  markNotificationsRead(notificationIds: string[], init?: MutationRequestInit) {
-    return this.http.json<{ updated: number }>(
-      '/api/v1/conversations/notifications',
-      this.http.jsonRequest({ notificationIds }, { ...init, method: 'PATCH' }),
-    )
-  }
-
-  markConversationNotificationsRead(conversationId: string, init?: MutationRequestInit) {
-    return this.http.json<{ updated: number }>(
-      '/api/v1/conversations/notifications',
-      this.http.jsonRequest({ conversationId }, { ...init, method: 'PATCH' }),
-    )
-  }
-
   participants(conversationId: string, init?: RequestInit) {
     return this.http.json<{ participants: ConversationParticipant[]; currentPrincipalId: string }>(
       `/api/v1/conversations/${encodeURIComponent(conversationId)}/participants`,
@@ -324,66 +293,6 @@ export class ConversationsClient {
     )
   }
 
-  presence(conversationId: string, init?: RequestInit) {
-    return this.http.json<{ presence: ConversationPresence[] }>(
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/presence`,
-      init,
-    )
-  }
-
-  reactions(conversationId: string, init?: RequestInit) {
-    return this.http.json<{ reactions: MessageReaction[] }>(
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/reactions`,
-      init,
-    )
-  }
-
-  setReaction(
-    conversationId: string,
-    body: { messageId: string; emoji: string; enabled: boolean },
-    init?: MutationRequestInit,
-  ) {
-    return this.http.json<{ reactions: MessageReaction[] }>(
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/reactions`,
-      this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
-    )
-  }
-
-  pins(conversationId: string, init?: RequestInit) {
-    return this.http.json<{ pins: ConversationPin[] }>(
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/pins`,
-      init,
-    )
-  }
-
-  setPinned(
-    conversationId: string,
-    body: { messageId: string; pinned: boolean },
-    init?: MutationRequestInit,
-  ) {
-    return this.http.json<{ pinned: boolean }>(
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/pins`,
-      this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
-    )
-  }
-
-  savedMessages(init?: RequestInit) {
-    return this.http.json<{ savedMessages: ConversationSavedMessage[] }>(
-      '/api/v1/conversations/saved-messages',
-      init,
-    )
-  }
-
-  setSaved(
-    body: { conversationId: string; messageId: string; saved: boolean },
-    init?: MutationRequestInit,
-  ) {
-    return this.http.json<{ saved: boolean }>(
-      '/api/v1/conversations/saved-messages',
-      this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
-    )
-  }
-
   reportMessage(
     conversationId: string,
     body: { messageId?: string; reason: string; note?: string },
@@ -392,13 +301,6 @@ export class ConversationsClient {
     return this.http.json<{ recorded: boolean }>(
       `/api/v1/conversations/${encodeURIComponent(conversationId)}/reports`,
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
-    )
-  }
-
-  channels(init?: RequestInit) {
-    return this.http.json<{ channels: ChannelSummary[] }>(
-      '/api/v1/conversations/channels',
-      init,
     )
   }
 
@@ -436,56 +338,4 @@ export class ConversationsClient {
     return this.createDirectMessage(body, { ...init, headers })
   }
 
-  updatePresence(
-    conversationId: string,
-    body: { status: 'online' | 'away' | 'offline'; sessionId?: string; typing?: boolean },
-    init?: MutationRequestInit,
-  ) {
-    return this.http.json<{ presence: ConversationPresence }>(
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/presence`,
-      this.http.jsonRequest(body, { ...init, method: 'PATCH' }),
-    )
-  }
-
-  threadFollow(conversationId: string, threadRootMessageId: string, init?: RequestInit) {
-    return this.http.json<{ following: boolean; follows: ConversationThreadFollow[] }>(
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/threads/${encodeURIComponent(threadRootMessageId)}/follow`,
-      init,
-    )
-  }
-
-  setThreadFollow(
-    conversationId: string,
-    threadRootMessageId: string,
-    followed: boolean,
-    init?: MutationRequestInit,
-  ) {
-    return this.http.json<{ followed: boolean }>(
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/threads/${encodeURIComponent(threadRootMessageId)}/follow`,
-      this.http.jsonRequest({ followed }, { ...init, method: 'PATCH' }),
-    )
-  }
-
-  editCollaborativeMessage(
-    conversationId: string,
-    messageId: string,
-    content: string,
-    init?: MutationRequestInit,
-  ) {
-    return this.http.json<{ updated: boolean }>(
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
-      this.http.jsonRequest({ content }, { ...init, method: 'PATCH' }),
-    )
-  }
-
-  deleteCollaborativeMessage(
-    conversationId: string,
-    messageId: string,
-    init?: MutationRequestInit,
-  ) {
-    return this.http.json<{ deleted: boolean }>(
-      `/api/v1/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}`,
-      this.http.jsonRequest(undefined, { ...init, method: 'DELETE' }),
-    )
-  }
 }

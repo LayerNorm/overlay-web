@@ -2,17 +2,10 @@ import 'server-only'
 
 import type {
   ChannelSummary,
-  ConversationPin,
   ConversationParticipant,
-  ConversationPresence,
-  ConversationSavedMessage,
   DirectMessageSummary,
   MessageReaction,
   WorkspaceChatSearchResult,
-  WorkspaceNotification,
-  WorkspaceNotificationFilter,
-  WorkspaceNotificationPreferences,
-  ConversationThreadFollow,
 } from '@overlay/workspace-contracts'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
@@ -450,33 +443,6 @@ implements ConversationCollaborationRepository {
     ) ?? { conversationsDeleted: 0, participantsRemoved: 0 }
   }
 
-  async upsertPresence(args: {
-    actorUserId: string
-    conversationId?: string
-    sessionId?: string
-    status: 'online' | 'away' | 'offline'
-    typing?: boolean
-    workspaceId: string
-  }) {
-    return await convex.mutation<ConversationPresence>('collaboration/directMessages:upsertPresence', {
-      ...args,
-      conversationId: args.conversationId as Id<'conversations'> | undefined,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true }) as ConversationPresence
-  }
-
-  async listPresence(args: {
-    actorUserId: string
-    conversationId: string
-    workspaceId: string
-  }) {
-    return await convex.query<ConversationPresence[]>('collaboration/directMessages:listPresence', {
-      ...args,
-      conversationId: args.conversationId as Id<'conversations'>,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true }) ?? []
-  }
-
   async recordMessageActivity(args: {
     actorUserId: string
     body?: string
@@ -495,22 +461,6 @@ implements ConversationCollaborationRepository {
     }, { throwOnError: true })
   }
 
-  async editMessage(args: {
-    actorUserId: string
-    content: string
-    conversationId: string
-    messageId: string
-    workspaceId: string
-  }) {
-    await requireNativeThreadCompatibilityBackend(args.actorUserId)
-    return await convex.mutation<boolean>('collaboration/directMessages:editMessage', {
-      ...args,
-      conversationId: args.conversationId as Id<'conversations'>,
-      messageId: args.messageId as Id<'conversationMessages'>,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true }) ?? false
-  }
-
   async deleteMessage(args: {
     actorUserId: string
     conversationId: string
@@ -524,18 +474,6 @@ implements ConversationCollaborationRepository {
       messageId: args.messageId as Id<'conversationMessages'>,
       serverSecret: this.serverSecret,
     }, { throwOnError: true }) ?? false
-  }
-
-  async listReactions(args: {
-    actorUserId: string
-    conversationId: string
-    workspaceId: string
-  }) {
-    return await convex.query<MessageReaction[]>('collaboration/channels:listReactions', {
-      ...args,
-      conversationId: args.conversationId as Id<'conversations'>,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true }) ?? []
   }
 
   async setReaction(args: {
@@ -554,18 +492,6 @@ implements ConversationCollaborationRepository {
     }, { throwOnError: true }) ?? []
   }
 
-  async listPins(args: {
-    actorUserId: string
-    conversationId: string
-    workspaceId: string
-  }) {
-    return await convex.query<ConversationPin[]>('collaboration/channels:listPins', {
-      ...args,
-      conversationId: args.conversationId as Id<'conversations'>,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true }) ?? []
-  }
-
   async setPinned(args: {
     actorUserId: string
     conversationId: string
@@ -579,13 +505,6 @@ implements ConversationCollaborationRepository {
       messageId: args.messageId as Id<'conversationMessages'>,
       serverSecret: this.serverSecret,
     }, { throwOnError: true }) ?? false
-  }
-
-  async listSavedMessages(args: { actorUserId: string; workspaceId: string }) {
-    return await convex.query<ConversationSavedMessage[]>('collaboration/channels:listSavedMessages', {
-      ...args,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true }) ?? []
   }
 
   async setSaved(args: {
@@ -615,83 +534,4 @@ implements ConversationCollaborationRepository {
     }, { throwOnError: true }) ?? []
   }
 
-  async listNotifications(args: {
-    actorUserId: string
-    filter?: WorkspaceNotificationFilter
-    limit?: number
-    unreadOnly?: boolean
-    workspaceId: string
-  }) {
-    return await convex.query<WorkspaceNotification[]>('collaboration/directMessages:listNotifications', {
-      ...args,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true }) ?? []
-  }
-
-  async markNotificationsRead(args: {
-    actorUserId: string
-    conversationId?: string
-    notificationIds?: string[]
-    workspaceId: string
-  }) {
-    return await convex.mutation<number>('collaboration/directMessages:markNotificationsRead', {
-      ...args,
-      conversationId: args.conversationId as Id<'conversations'> | undefined,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true }) ?? 0
-  }
-
-  async setThreadFollow(args: {
-    actorUserId: string
-    conversationId: string
-    threadRootMessageId: string
-    followed: boolean
-    workspaceId: string
-  }) {
-    return await convex.mutation<boolean>('collaboration/directMessages:setThreadFollow', {
-      ...args,
-      conversationId: args.conversationId as Id<'conversations'>,
-      threadRootMessageId: args.threadRootMessageId as Id<'conversationMessages'>,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true }) ?? false
-  }
-
-  async listThreadFollows(args: {
-    actorUserId: string
-    conversationId: string
-    threadRootMessageId?: string
-    workspaceId: string
-  }) {
-    return await convex.query<ConversationThreadFollow[]>('collaboration/directMessages:listThreadFollows', {
-      ...args,
-      conversationId: args.conversationId as Id<'conversations'>,
-      threadRootMessageId: args.threadRootMessageId as Id<'conversationMessages'> | undefined,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true }) ?? []
-  }
-
-  async getNotificationPreferences(args: { actorUserId: string; workspaceId: string }) {
-    return await convex.query<WorkspaceNotificationPreferences>('collaboration/directMessages:getNotificationPreferences', {
-      ...args,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true }) ?? {
-      dmMessages: 'activity',
-      mentions: 'banner',
-      threadReplies: 'activity',
-      reactions: 'activity',
-      channelMessages: 'activity',
-    }
-  }
-
-  async updateNotificationPreferences(args: {
-    actorUserId: string
-    workspaceId: string
-    preferences: Partial<WorkspaceNotificationPreferences>
-  }) {
-    return await convex.mutation<WorkspaceNotificationPreferences>('collaboration/directMessages:updateNotificationPreferences', {
-      ...args,
-      ...args.preferences,
-      serverSecret: this.serverSecret,
-    }, { throwOnError: true }) as WorkspaceNotificationPreferences
-  }
 }
