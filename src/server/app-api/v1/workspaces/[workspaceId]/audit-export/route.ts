@@ -6,12 +6,14 @@ import { requiredWorkspaceParam } from '@/server/app-api/v1/workspaces/inputs'
 
 /**
  * Immutable audit export as newline-delimited JSON. Each line is one recorded
- * event; the response is append-only history, never a mutable report.
+ * event; the response is append-only history, never a mutable report. When the
+ * window holds more events than `limit`, `x-overlay-audit-complete` is `false`
+ * and `x-overlay-audit-next-from` is the `from` value for the next request.
  */
 export async function GET(_request: Request, context: AppApiRouteContext) {
   try {
     const workspaceId = requiredWorkspaceParam(await context.params, 'workspaceId')
-    const { record, events } = await getOverlayServerContext().workspaceGovernanceService
+    const { record, events, complete, nextFromRecordedAt } = await getOverlayServerContext().workspaceGovernanceService
       .exportAudit({
         actorUserId: context.auth.userId,
         workspaceId,
@@ -28,6 +30,10 @@ export async function GET(_request: Request, context: AppApiRouteContext) {
         'x-overlay-audit-export-id': record.id,
         'x-overlay-audit-event-count': String(record.eventCount),
         'x-overlay-audit-to': String(record.toRecordedAt),
+        'x-overlay-audit-complete': String(complete),
+        ...(nextFromRecordedAt === undefined
+          ? {}
+          : { 'x-overlay-audit-next-from': String(nextFromRecordedAt) }),
       },
     })
   } catch (error) {

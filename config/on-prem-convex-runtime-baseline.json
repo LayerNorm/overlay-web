@@ -616,6 +616,7 @@
     "convex/knowledge/memories.ts",
     "convex/knowledge/memoryExtractorNode.ts",
     "convex/lib/agentDriveFiles.ts",
+    "convex/migrations/backfillAuditWorkspaceIds.ts",
     "convex/platform/growth.ts",
     "convex/platform/nativePolicy.ts",
     "convex/platform/usage.ts",
