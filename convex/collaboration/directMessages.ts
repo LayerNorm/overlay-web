@@ -1309,9 +1309,28 @@ export const createDirectMessage = mutation({
           q.eq('conversationId', existing._id).eq('principalId', actor.principalId)
         ))
         .unique()
-      if (actorParticipant?.archivedAt) {
-        const now = Date.now()
-        await ctx.db.patch(actorParticipant._id, { archivedAt: undefined, updatedAt: now })
+      // Starting a DM you archived, left or were removed from reopens it for you; otherwise it would hand back a
+      // room you cannot read.
+      const now = Date.now()
+      if (!actorParticipant) {
+        await ctx.db.insert('conversationParticipants', {
+          conversationId: existing._id,
+          workspaceId: args.workspaceId,
+          principalId: actor.principalId,
+          principalType: 'human',
+          role: 'member',
+          status: 'active',
+          notificationLevel: 'all',
+          joinedAt: now,
+          updatedAt: now,
+          lastReadAt: now,
+        })
+      } else if (actorParticipant.status !== 'active' || actorParticipant.archivedAt) {
+        await ctx.db.patch(actorParticipant._id, {
+          status: 'active', archivedAt: undefined, removedAt: undefined, updatedAt: now,
+        })
+      }
+      if (!actorParticipant || actorParticipant.status !== 'active' || actorParticipant.archivedAt) {
         await recordConversationEvent(ctx, {
           conversationId: existing._id,
           workspaceId: args.workspaceId,

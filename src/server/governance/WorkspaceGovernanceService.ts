@@ -45,6 +45,9 @@ export type WorkspaceAuditEvent = {
  * immutable audit export, provider-neutral directory identity, retention, and
  * the operational signals an operator needs to trust a rollout.
  */
+/** Rows read per Convex page while exporting; the query caps a page at 1,000. */
+const AUDIT_EXPORT_PAGE_SIZE = 500
+
 export class WorkspaceGovernanceService {
   constructor(private readonly deps: {
     audit: AuditRepository
@@ -93,24 +96,84 @@ export class WorkspaceGovernanceService {
   }
 
   /**
-   * Immutable audit export for a workspace. Events are read append-only and
-   * filtered to this workspace; the export itself is recorded so an operator can
-   * prove which window was covered.
+   * Immutable audit export for a workspace. Events are read oldest first through
+   * the workspace index, page by page, so a window larger than one page is
+   * never silently cut short. When more events exist than `limit`, the export
+   * stops at a whole-millisecond boundary: `record.toRecordedAt` is the last
+   * millisecond fully covered and `nextFromRecordedAt` resumes exactly after
+   * it, so resuming neither skips nor repeats events.
    */
   async exportAudit(args: {
     actorUserId: string
     workspaceId: string
     fromRecordedAt?: number
     limit?: number
-  }): Promise<{ record: WorkspaceAuditExportRecord; events: WorkspaceAuditEvent[] }> {
+  }): Promise<{
+    record: WorkspaceAuditExportRecord
+    events: WorkspaceAuditEvent[]
+    complete: boolean
+    nextFromRecordedAt?: number
+  }> {
     const access = await this.requireManager(args)
     await this.assertWithinLimits({
       action: 'audit.export',
       scope: { workspaceId: access.workspace.id, principalId: access.principal.id },
     })
     const now = (this.deps.now ?? Date.now)()
-    const rows = await this.deps.audit.list({ limit: args.limit ?? 1_000 })
-    const events = rows
+    const limit = Math.max(1, Math.floor(args.limit ?? 1_000))
+    // Read one row past the limit to learn whether the window is complete.
+    const rows: Awaited<ReturnType<AuditRepository['pageForWorkspace']>>['events'] = []
+    let cursor: string | null = null
+    let isDone = false
+    while (!isDone && rows.length <= limit) {
+      const page = await this.deps.audit.pageForWorkspace({
+        workspaceId: access.workspace.id,
+        fromRecordedAt: args.fromRecordedAt,
+        cursor,
+        numItems: Math.min(AUDIT_EXPORT_PAGE_SIZE, limit + 1 - rows.length),
+      })
+      rows.push(...page.events)
+      isDone = page.isDone
+      cursor = page.continueCursor
+    }
+    let selected = rows.slice(0, limit)
+    let complete = isDone && rows.length <= limit
+    let nextFromRecordedAt: number | undefined
+    let toRecordedAt = now
+    if (!complete) {
+      // Never end an export inside a millisecond: the next export resumes from a
+      // timestamp, so drop the trailing events that share the first omitted
+      // event's millisecond and resume from that millisecond.
+      const boundary = rows[limit]!.createdAt
+      const trimmed = selected.filter((row) => row.createdAt < boundary)
+      if (trimmed.length > 0) {
+        selected = trimmed
+        toRecordedAt = boundary - 1
+        nextFromRecordedAt = boundary
+      } else {
+        // More than `limit` events share one millisecond. Return all of them
+        // rather than skip any; `limit` is a soft bound in this edge case.
+        selected = [...rows]
+        let laterEventExists = false
+        while (!isDone && !laterEventExists) {
+          const page = await this.deps.audit.pageForWorkspace({
+            workspaceId: access.workspace.id,
+            fromRecordedAt: args.fromRecordedAt,
+            cursor,
+            numItems: AUDIT_EXPORT_PAGE_SIZE,
+          })
+          const same = page.events.filter((row) => row.createdAt === boundary)
+          selected.push(...same)
+          laterEventExists = same.length < page.events.length
+          isDone = page.isDone
+          cursor = page.continueCursor
+        }
+        complete = !laterEventExists && isDone
+        toRecordedAt = complete ? now : boundary
+        nextFromRecordedAt = complete ? undefined : boundary + 1
+      }
+    }
+    const events = selected
       .map((row) => ({
         id: row.id,
         action: row.action,
@@ -122,18 +185,17 @@ export class WorkspaceGovernanceService {
         metadata: (row.metadata ?? {}) as Record<string, unknown>,
       }))
       .filter((event) => event.metadata.workspaceId === access.workspace.id)
-      .filter((event) => !args.fromRecordedAt || event.recordedAt >= args.fromRecordedAt)
       .sort((a, b) => a.recordedAt - b.recordedAt || a.id.localeCompare(b.id))
     const record = await this.deps.repository.recordAuditExport({
       id: (this.deps.id ?? randomUUID)(),
       workspaceId: access.workspace.id,
       requestedByPrincipalId: access.principal.id,
       fromRecordedAt: args.fromRecordedAt,
-      toRecordedAt: now,
+      toRecordedAt,
       eventCount: events.length,
       now,
     })
-    return { record, events }
+    return { record, events, complete, ...(nextFromRecordedAt === undefined ? {} : { nextFromRecordedAt }) }
   }
 
   async listAuditExports(args: {
@@ -284,7 +346,7 @@ export class WorkspaceGovernanceService {
       this.deps.metrics?.failedDeliveries(workspaceId) ?? Promise.resolve(0),
       this.deps.metrics?.agentRuns(workspaceId) ?? Promise.resolve({ queued: 0, failed: 0 }),
       this.deps.metrics?.unreadDrift(workspaceId) ?? Promise.resolve(0),
-      this.deps.audit.list({ limit: 500 }),
+      this.deps.audit.listForWorkspace({ workspaceId, limit: 500 }),
     ])
     const workspaceEvents = auditRows.filter((row) => (
       (row.metadata as Record<string, unknown> | undefined)?.workspaceId === workspaceId

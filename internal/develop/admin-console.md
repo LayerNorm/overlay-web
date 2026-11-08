@@ -71,7 +71,7 @@ needs HTTPS: `PORT=3100 npx next dev --experimental-https` inside
   row with a permitted role — writes require `admin`, reads any active
   operator, audit list `admin`/`auditor`, user directory `admin`/`billing_admin`/`support`.
   Every write records its own `auditEvents` row in the same transaction.
-  Customer web retains ordinary permission-check reads, the restricted member initializer and append-only audit on `INTERNAL_API_SECRET`; legacy operator mutations, list endpoints and directory access are removed in Stage 3d.
+  Customer web retains ordinary permission-check reads, the restricted member initializer, append-only audit and workspace-scoped audit reads for governance (`collaboration/workspaces:listWorkspaceAuditEventsByServer` for metrics and `pageWorkspaceAuditEventsByServer` for exports, both on the `by_workspaceId_createdAt` index, authorized by the service as owner/admin) on `INTERNAL_API_SECRET`; legacy operator mutations, list endpoints and directory access are removed in Stage 3d.
 - `src/server/operator.ts` `resolveOperator()` is the single gate (session →
   allowlist → principal row); every API route wraps `adminRoute()` in
   `src/server/guard.ts` which maps it to 401/403 and re-mints the idle cookie.
