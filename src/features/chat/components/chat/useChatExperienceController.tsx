@@ -91,7 +91,8 @@ export type ChatExperienceProps = {
   mode?: 'chat' | 'automate'
   hideHeader?: boolean
   belowEmptyComposer?: React.ReactNode
-
+  /** Replaces the composer (and any thread-safety notice) for a chat that cannot be written to, such as an archived one. */
+  readOnlyFooter?: React.ReactNode
 }
 
 export function useChatExperienceController({

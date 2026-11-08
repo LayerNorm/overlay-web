@@ -40,6 +40,7 @@ import {
 } from '../lib/archived-items'
 import { deleteArchivedItem, restoreArchivedItem, runBulk } from '../lib/archived-actions'
 import { useLiveArchivedItems } from '../lib/use-live-archived'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 
 const KIND_ICONS: Record<ArchivedItemKind, LucideIcon> = {
   chat: MessageSquare,
@@ -83,6 +84,7 @@ function deleteDescription(items: readonly ArchivedItem[]): string {
  */
 export function ArchivedSettings() {
   const workspace = useOptionalWorkspace()
+  const buildWorkspaceHref = useWorkspaceHref()
   const workspaceId = workspace?.switchingWorkspaceId ? null : workspace?.activeWorkspaceId ?? null
   const nativePersonal = usePersonalChat()
   // Live: archives, restores and deletes made anywhere (another tab, another member) show without reloading.
@@ -336,7 +338,7 @@ export function ArchivedSettings() {
                   />
                   <Icon size={15} className="shrink-0 text-(--muted)" aria-hidden />
                   {item.href && item.kind === 'chat' ? (
-                    <Link href={item.href} className="min-w-0 flex-1">{label}</Link>
+                    <Link href={buildWorkspaceHref(item.workspaceId ?? workspaceId, item.href)} className="min-w-0 flex-1">{label}</Link>
                   ) : (
                     <div className="min-w-0 flex-1">{label}</div>
                   )}
