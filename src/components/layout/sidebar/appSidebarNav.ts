@@ -269,6 +269,7 @@ export function resolveNavItemDestination(
     buildWorkspaceHref: (workspaceId: string, href: string) => string
   },
 ): string {
+  if (href === '/app/chat') href = '/app/chat?view=personal&scope=personal'
   return activeWorkspaceId
       ? buildWorkspaceHref(activeWorkspaceId, href)
       : href
@@ -371,11 +372,10 @@ export function selectSidebarNavItem(
     panelKind: SecondaryPanelKind | null
     sidebarCollapsed: boolean
     setSidebarCollapsed: (next: boolean) => void
-    recentChatHref?: (baseHref: string) => Promise<string>
   },
 ) {
   if (gateSidebarNavItem(item, ctx) !== 'ok' || !item.href) return
-  if (ctx.isActive(item)) {
+  if (ctx.isActive(item) && item.href !== '/app/chat') {
     // Clicking the current section re-opens its panel when it is hidden.
     if (ctx.panelKind && ctx.sidebarCollapsed) ctx.setSidebarCollapsed(false)
     return
@@ -390,15 +390,10 @@ function pushNavDestination(
     pathname: string
     router: { push: (href: string) => void }
     setPendingNav: (nav: { href: string; fromPath: string }) => void
-    recentChatHref?: (baseHref: string) => Promise<string>
   },
 ) {
   const destination = ctx.destination(href)
   ctx.setPendingNav({ href: destination, fromPath: ctx.pathname })
-  if (href === '/app/chat' && ctx.recentChatHref) {
-    void ctx.recentChatHref(destination).then((target) => ctx.router.push(target))
-    return
-  }
   ctx.router.push(destination)
 }
 
@@ -418,11 +413,10 @@ export function selectMobileNavItem(
     automationsEnabled: boolean
     openPanel: () => void
     closeDrawer: () => void
-    recentChatHref?: (baseHref: string) => Promise<string>
   },
 ) {
   if (gateSidebarNavItem(item, ctx) !== 'ok' || !item.href) return
-  if (!ctx.isActive(item)) pushNavDestination(item.href, ctx)
+  if (!ctx.isActive(item) || item.href === '/app/chat') pushNavDestination(item.href, ctx)
   // Two-step drawer: destinations with a contextual panel drill into it;
   // everything else navigates and closes.
   if (panelKindForNavItem(item, ctx.automationsEnabled)) ctx.openPanel()
@@ -535,7 +529,6 @@ export function buildPrimaryRailItems({
   navItemDestination,
   navItemActive,
   onSelectItem,
-  recentChatHref,
 }: {
   effectivePendingHref: string | null
   navItems: SidebarNavItem[]
@@ -550,7 +543,6 @@ export function buildPrimaryRailItems({
   navItemDestination: (href: string) => string
   navItemActive: (item: SidebarNavItem) => boolean
   onSelectItem: (item: SidebarNavItem) => void
-  recentChatHref?: (baseHref: string) => Promise<string>
 }): PrimaryRailItem[] {
   const railItems: PrimaryRailItem[] = []
   navItems.forEach((item, navIdx) => {
@@ -599,7 +591,6 @@ export function buildPrimaryRailItems({
         pathname,
         router,
         setPendingNav,
-        recentChatHref,
       }),
     })
   }

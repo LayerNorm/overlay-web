@@ -80,7 +80,8 @@ export function CollaborationRealtimeProvider({ children }: { children: ReactNod
   const result = useQuery(api.collaboration.activity.notifications, args ?? 'skip')
   const notifications = (result as WorkspaceNotification[] | null | undefined) ?? NO_NOTIFICATIONS
 
-  const markRead = useMutation(api.collaboration.activity.markRead).withOptimisticUpdate(markReadOptimistically)
+  const markReadMutation = useMutation(api.collaboration.activity.markRead)
+  const markRead = useMemo(() => markReadMutation.withOptimisticUpdate(markReadOptimistically), [markReadMutation])
   const workspaceId = args?.workspaceId ?? null
   const markNotificationsRead = useCallback((ids: string[]) => {
     if (!workspaceId || ids.length === 0) return

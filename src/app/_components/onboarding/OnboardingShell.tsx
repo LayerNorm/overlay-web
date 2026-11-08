@@ -12,14 +12,14 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@overlay/ui/primitives";
 import { useAuth } from "@/contexts/AuthContext";
 import { useWorkspace } from "@/contexts/WorkspaceContext";
-import type { OnboardingSessionResponse } from "@/shared/onboarding/session";
-import { buildWorkspaceHref } from "@/shared/workspaces/routing";
+import type { OnboardingSession, OnboardingSessionResponse } from "@/shared/onboarding/session";
+import { useWorkspaceHref } from "@/hooks/use-workspace-href";
+import { OnboardingWorkHandoff } from "@/components/providers/OnboardingWorkHandoff";
 import {
   OnboardingConversation,
   OnboardingDots,
 } from "./OnboardingConversation";
 import { OnboardingIntro } from "./OnboardingIntro";
-import { OnboardingTour } from "./OnboardingTour";
 import { requestOnboarding, skipOnboarding } from "./onboarding-client";
 import styles from "./onboarding.module.css";
 
@@ -72,6 +72,7 @@ function AuthenticatedOnboardingShell({
   workspaceId,
 }: ShellProps & { workspaceId: string }) {
   const router = useRouter();
+  const buildWorkspaceHref = useWorkspaceHref();
   const pathname = usePathname();
   const [result, setResult] = useState<OnboardingSessionResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,8 +80,7 @@ function AuthenticatedOnboardingShell({
   const [bypass, setBypass] = useState(false);
   const [intro, setIntro] = useState(false);
   const [active, setActive] = useState(false);
-  const [showWork, setShowWork] = useState(false);
-  const [tour, setTour] = useState(false);
+  const [handoff, setHandoff] = useState<{ taskId: string; session: OnboardingSession } | null>(null);
   const conversation = useRef<HTMLDivElement>(null);
   const dismissIntro = useCallback(() => setIntro(false), []);
   const skip = useCallback(() => {
@@ -88,7 +88,6 @@ function AuthenticatedOnboardingShell({
     void skipOnboarding(workspaceId).then(
       () => {
         setActive(false);
-        setTour(false);
       },
       () => setBypass(true),
     );
@@ -118,25 +117,26 @@ function AuthenticatedOnboardingShell({
     });
     return () => abort.abort();
   }, [workspaceId, retry]);
-  const taskId = result?.session?.taskId;
-  const openWork = useCallback(() => {
+  const openWork = useCallback((taskId = result?.session?.taskId, replace = false) => {
     if (!taskId) return;
-    setShowWork(true);
-    setTour(true);
-    router.push(
-      `${buildWorkspaceHref(workspaceId, "/app/work")}?task=${encodeURIComponent(taskId)}&scope=personal`,
-    );
-  }, [taskId, router, workspaceId]);
-  useEffect(() => {
-    if (!active || !result?.completed || showWork) return;
-    const timer = window.setTimeout(openWork, 1400);
-    return () => window.clearTimeout(timer);
-  }, [active, result?.completed, showWork, openWork]);
+    const href = buildWorkspaceHref(workspaceId, `/app/work?task=${encodeURIComponent(taskId)}&scope=personal`, 'personal');
+    if (replace) router.replace(href);
+    else router.push(href);
+  }, [buildWorkspaceHref, result?.session?.taskId, router, workspaceId]);
+  const finishHandoff = useCallback(() => setHandoff(null), []);
+  const updateResult = (next: OnboardingSessionResponse) => {
+    if (next.completed && next.session?.taskId) {
+      setHandoff({ taskId: next.session.taskId, session: result?.session ?? next.session });
+      setActive(false);
+      openWork(next.session.taskId);
+    }
+    setResult(next);
+  };
   const billingRecovery = pathname?.endsWith('/settings') && result?.session?.step === 'task';
-  const locked = !bypass && !billingRecovery && (!result || (active && !result.completed));
-  const atWork = pathname?.endsWith("/work");
+  const locked = !bypass && !billingRecovery && (!result || (active && !result.completed) || Boolean(handoff));
+  const visibleSession = handoff?.session ?? result?.session;
   const showConversation =
-    !bypass && !billingRecovery && active && result?.session && (!showWork || !atWork);
+    !bypass && !billingRecovery && visibleSession && (active || Boolean(handoff));
   return (
     <>
       <div
@@ -176,34 +176,25 @@ function AuthenticatedOnboardingShell({
               )}
             </div>
           </div>
-        ) : showConversation && result?.session ? (
+        ) : showConversation && visibleSession ? (
           <div
             ref={conversation}
-            className={styles.conversation}
+            className={`${styles.conversation} ${handoff ? "relative z-10 bg-background" : ""}`}
             data-hidden={intro}
-            inert={intro}
+            inert={intro || Boolean(handoff)}
           >
             <OnboardingConversation
-              session={result.session}
-              onChange={setResult}
-              onShowWork={openWork}
+              session={visibleSession}
+              onChange={updateResult}
+              onShowWork={() => openWork()}
               onSkip={skip}
             />
           </div>
-        ) : (
-          children
-        )}
-        {intro && !billingRecovery ? <OnboardingIntro onDone={dismissIntro} /> : null}
-        {tour && atWork && result?.session?.taskId ? (
-          <OnboardingTour
-            workspaceId={workspaceId}
-            taskId={result.session.taskId}
-            onClose={() => {
-              setTour(false);
-              setActive(false);
-            }}
-          />
         ) : null}
+        {(!showConversation && (bypass || result)) || handoff ? <OnboardingWorkHandoff pending={handoff ? { taskId: handoff.taskId, onReady: finishHandoff, onTaskMissing: () => openWork(handoff.taskId, true) } : null}>
+          {children}
+        </OnboardingWorkHandoff> : null}
+        {intro && !billingRecovery ? <OnboardingIntro onDone={dismissIntro} /> : null}
       </main>
     </>
   );
