@@ -1,9 +1,12 @@
 'use client'
 
+import { useMemo } from 'react'
 import { usePaginatedQuery, useQuery } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import { usePersonalChatRouteSelection } from './usePersonalChatRouteSelection'
+import { projectActivePublicStreams } from '@/shared/chat/public-stream-projection'
+import { usePublicStreamMetrics } from './usePublicStreamMetrics'
 
 export {
   canSetPendingTranscript,
@@ -51,6 +54,29 @@ export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, path
   const messages = usePaginatedQuery(api.chat.personal.getMessages,
     canReadMessages ? { workspaceId: workspaceId!, conversationId: conversationId as Id<'conversations'> } : 'skip',
     { initialNumItems: 50 })
+  const generatingMessageIds = messages.results
+    .filter(row => row.message.conversationId === conversationId && row.message.status === 'generating')
+    .slice(0, 50).map(row => row.message._id)
+  // Only subscribe while something is generating: idle chats never depend on the stream query.
+  const activeStreams = useQuery(api.chat.personal.activePublicStreams,
+    canReadMessages && generatingMessageIds.length > 0 ? {
+      workspaceId: workspaceId!,
+      conversationId: conversationId as Id<'conversations'>,
+      messageIds: generatingMessageIds,
+    } : 'skip')
+  usePublicStreamMetrics(activeStreams ?? [])
+  const scopedRows = useMemo(
+    () => messages.results.filter(row => row.message.conversationId === conversationId),
+    [conversationId, messages.results],
+  )
+  const projectedMessages = useMemo(
+    () => projectActivePublicStreams(scopedRows.map(row => row.message), activeStreams ?? []),
+    [activeStreams, scopedRows],
+  )
+  const rows = useMemo(
+    () => scopedRows.map((row, index) => ({ ...row, message: projectedMessages[index]! })),
+    [projectedMessages, scopedRows],
+  )
 
   return {
     selectedConversationId,
@@ -59,7 +85,7 @@ export function usePersonalChatTranscript({ workspaceId, canQuery, canRead, path
     setPendingTranscriptConversation,
     transcript: {
       conversationId: canReadMessages ? conversationId : null,
-      rows: canReadMessages ? messages.results : [],
+      rows: canReadMessages ? rows : [],
       status: transcriptStatus(canRead, canQuery, conversationId, selectedSummary !== undefined,
         summaryInScope, messages.status === 'LoadingFirstPage'),
       queryStatus: messages.status,

@@ -9,6 +9,7 @@ export type HarnessModelReference = {
   credentialOwnerId: string
   sessionId?: string
   purpose?: 'response' | 'summary' | 'verification'
+  publicStreamVersion?: 1
   personal?: PersonalHarnessModelDispatch
   native?: NativeHarnessModelDispatch
 }
@@ -35,6 +36,7 @@ export class HarnessLanguageModel implements LanguageModelV4 {
       credentialOwnerId: model.reference.credentialOwnerId,
       ...(model.reference.sessionId ? { sessionId: model.reference.sessionId } : {}),
       ...(model.reference.purpose ? { purpose: model.reference.purpose } : {}),
+      ...(model.reference.publicStreamVersion === 1 ? { publicStreamVersion: 1 as const } : {}),
       ...(personal ? { personal: {
         access: {
           actorUserId: personal.access.actorUserId, runId: personal.access.runId, workflowRunId: personal.access.workflowRunId,

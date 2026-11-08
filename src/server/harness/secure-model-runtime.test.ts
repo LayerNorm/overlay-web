@@ -6,6 +6,7 @@ import type { HarnessModelReference } from './secure-model'
 import { secureModelDoGenerate, secureModelDoStream } from './secure-model-runtime'
 import { harnessExecutionFailureReason } from './execution-failure'
 
+vi.mock('server-only', () => ({}))
 const mocks = vi.hoisted(() => ({ model: vi.fn(), record: vi.fn(), confirmed: vi.fn() }))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: mocks.model }))
 vi.mock('./model-rejection', () => ({ recordHarnessModelRejection: mocks.record, isConfirmedHarnessModelRejection: mocks.confirmed }))

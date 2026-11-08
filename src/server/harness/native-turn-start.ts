@@ -7,6 +7,7 @@ import { asConversationId } from '@/server/conversations/ActConversationReposito
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { personalHarnessPolicy } from './personal-admission-policy'
+import { recordPublicStreamMetric } from './public-stream-metrics'
 import { buildNativeHarnessWorkflowInput } from './native-workflow-input-builder'
 import type { NativeHarnessWorkflowInput } from './native-workflow-input'
 import { nativeHarnessWorkflow } from '@/server/workflows/native-harness'
@@ -31,7 +32,7 @@ export type NativeTurnStartDependencies = {
   buildInput?: typeof buildNativeHarnessWorkflowInput
   getAgentRun?: (args: { actorUserId: string; conversationId: string; runId: string }) => Promise<AgentRun | null>
   getPaid?: (run: AgentRun, workflowInput: NativeHarnessWorkflowInput) => Promise<boolean>
-  repository?: Pick<ConvexHarnessRepository, 'admit'>
+  repository?: Pick<ConvexHarnessRepository, 'admit' | 'get'>
   getSurfaceExecution?: (rootRunId: string) => ReturnType<ConvexHarnessRepository['getSurfaceExecutionByHarnessRunId']>
   startWorkflow?: (workflow: typeof nativeHarnessWorkflow, args: [NativeHarnessWorkflowInput]) => Promise<unknown>
 }
@@ -146,7 +147,11 @@ export async function prepareNativeHarnessTurn(
   const server = getOverlayServerContext()
   const run = await loadNativeDelivery(input, workflowInput, dependencies, server)
   const paid = await isNativeDeliveryPaid(run, workflowInput, surfaceExecution, dependencies, server)
-  const admitted = await (dependencies.repository ?? repository).admit({
+  const admissionRepository = dependencies.repository ?? repository
+  const existing = admissionRepository.get
+    ? await admissionRepository.get({ actorUserId: workflowInput.access.actorUserId, runId: workflowInput.access.runId })
+    : null
+  const admitted = await admissionRepository.admit({
     runId: workflowInput.access.runId,
     goal: admissionGoal(workflowInput),
     constraints: [],
@@ -157,9 +162,14 @@ export async function prepareNativeHarnessTurn(
       modelId: workflowInput.context.modelId,
       paid,
       createdAt: run.createdAt,
+      existingPolicy: existing?.policy,
     }),
     source: { conversationId: workflowInput.access.conversationId },
     deliveryAgentRunId: workflowInput.access.agentRunId,
+  })
+  if (admitted.policy?.publicStreamVersion === 1) recordPublicStreamMetric({
+    event: 'admission_accepted', runId: workflowInput.access.runId,
+    generation: admitted.executionGeneration ?? 0, modelId: workflowInput.context.modelId,
   })
   if (!assertAdmissionCanStart(admitted, input.expectedSurfaceWorkflowRunId)) return
   return { workflowInput, admitted }

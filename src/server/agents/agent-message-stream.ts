@@ -50,6 +50,7 @@ export type AgentMessageStreamStore = {
 /** A flush costs a write, so text accumulates until one of these trips. */
 export const AGENT_STREAM_FLUSH_INTERVAL_MS = 250
 export const AGENT_STREAM_FLUSH_CHARS = 200
+const MAX_PENDING_PROGRESS_CHARS = 64 * 1024
 /**
  * Convex subscribers re-render from the row patch itself rather than waiting
  * for durable `message.delta` events, so these stay deliberately coarse.
@@ -147,11 +148,17 @@ export function createAgentMessageStream(args: {
   let pendingText = ''
   let pendingParts: Array<Record<string, unknown>> | null = null
   let latestParts: Array<Record<string, unknown>> | null = null
-  let lastFlushAt = 0
+  let lastFlushAt = now()
+  let firstTextFlushScheduled = false
   /** No event has been published yet, so the first flush must publish one. */
   let lastEventAt = Number.NEGATIVE_INFINITY
   /** Serializes writes so deltas cannot be appended out of order. */
   let queue: Promise<void> = Promise.resolve()
+  let inFlightWrite: Promise<void> | null = null
+  let coalescedWrite: { contentDelta: string; parts: Array<Record<string, unknown>> | null } | null = null
+  let flushTimer: ReturnType<typeof setTimeout> | undefined
+  let progressOverflow = false
+  let terminal = false
 
   const enqueue = (work: () => Promise<void>): Promise<void> => {
     queue = queue.then(work, work)
@@ -215,18 +222,43 @@ export function createAgentMessageStream(args: {
   }
 
   const maybeFlush = (flushParts = true): void => {
-    if (disabled) return
+    if (disabled || progressOverflow || terminal) return
     const due = pendingText.length >= AGENT_STREAM_FLUSH_CHARS
-      || (flushParts && pendingParts !== null)
+      || (pendingText.length > 0 && !firstTextFlushScheduled)
       || (pendingText.length > 0 && now() - lastFlushAt >= AGENT_STREAM_FLUSH_INTERVAL_MS)
-    if (!due) return
-    // Detached from the buffer before queueing, so a later finalize cannot
-    // silently swallow a flush that was already committed to.
+      || (flushParts && (pendingParts !== null || coalescedWrite !== null || pendingText.length > 0))
+    if (!due) {
+      if (pendingText && !flushTimer) {
+        flushTimer = setTimeout(() => { flushTimer = undefined; maybeFlush(false) },
+          Math.max(0, AGENT_STREAM_FLUSH_INTERVAL_MS - (now() - lastFlushAt)))
+      }
+      return
+    }
+    if (flushTimer) clearTimeout(flushTimer)
+    flushTimer = undefined
     const contentDelta = pendingText
     const parts = pendingParts
     pendingText = ''
     pendingParts = null
-    void enqueue(() => writePending(contentDelta, parts))
+    if (contentDelta) firstTextFlushScheduled = true
+    const merged = {
+      contentDelta: (coalescedWrite?.contentDelta ?? '') + contentDelta,
+      parts: parts ?? coalescedWrite?.parts ?? null,
+    }
+    if (merged.contentDelta.length > MAX_PENDING_PROGRESS_CHARS) {
+      coalescedWrite = null
+      progressOverflow = true
+      return
+    }
+    coalescedWrite = merged
+    if (inFlightWrite) return
+    const next = coalescedWrite
+    coalescedWrite = null
+    inFlightWrite = enqueue(() => writePending(next.contentDelta, next.parts))
+    void inFlightWrite.finally(() => {
+      inFlightWrite = null
+      if (coalescedWrite && !progressOverflow) maybeFlush(true)
+    })
   }
 
   return {
@@ -236,7 +268,14 @@ export function createAgentMessageStream(args: {
 
     /** Buffers generated text; writes once a flush threshold trips. */
     pushText(delta: string, parts?: Array<Record<string, unknown>>): void {
-      if (disabled || !delta) return
+      if (disabled || terminal || !delta) return
+      if (progressOverflow) return
+      if (pendingText.length + (coalescedWrite?.contentDelta.length ?? 0) + delta.length > MAX_PENDING_PROGRESS_CHARS) {
+        pendingText = ''
+        coalescedWrite = null
+        progressOverflow = true
+        return
+      }
       pendingText += delta
       if (parts) {
         pendingParts = parts
@@ -251,7 +290,7 @@ export function createAgentMessageStream(args: {
      * both rare and the most interesting thing a reader can see.
      */
     pushParts(parts: Array<Record<string, unknown>>): void {
-      if (disabled) return
+      if (disabled || terminal) return
       pendingParts = parts
       latestParts = parts.map((part) => ({ ...part }))
       maybeFlush()
@@ -264,12 +303,31 @@ export function createAgentMessageStream(args: {
      * the step's process exits.
      */
     async flush(): Promise<void> {
-      if (disabled) return
+      if (flushTimer) clearTimeout(flushTimer)
+      flushTimer = undefined
+      if (terminal) {
+        await queue
+        return
+      }
+      if (disabled || progressOverflow) {
+        if (inFlightWrite) await inFlightWrite
+        return
+      }
       const contentDelta = pendingText
       const parts = pendingParts
       pendingText = ''
       pendingParts = null
-      await enqueue(() => writePending(contentDelta, parts))
+      if (contentDelta || parts) {
+        coalescedWrite = {
+          contentDelta: (coalescedWrite?.contentDelta ?? '') + contentDelta,
+          parts: parts ?? coalescedWrite?.parts ?? null,
+        }
+      }
+      if (coalescedWrite && !inFlightWrite) maybeFlush(true)
+      while (inFlightWrite || coalescedWrite) {
+        if (!inFlightWrite) maybeFlush(true)
+        if (inFlightWrite) await inFlightWrite
+      }
     },
 
     /**
@@ -281,8 +339,13 @@ export function createAgentMessageStream(args: {
       parts?: Array<Record<string, unknown>>
       tokens?: { input: number; output: number }
     }): Promise<string | null> {
+      if (terminal) return messageId
+      terminal = true
+      if (flushTimer) clearTimeout(flushTimer)
+      flushTimer = undefined
       pendingText = ''
       pendingParts = null
+      coalescedWrite = null
       await enqueue(async () => {
         if (!messageId || disabled) return
         try {
@@ -314,6 +377,20 @@ export function createAgentMessageStream(args: {
       content?: string
       parts?: Array<Record<string, unknown>>
     }): Promise<void> {
+      if (terminal) return
+      if (flushTimer) clearTimeout(flushTimer)
+      flushTimer = undefined
+      if (progressOverflow) {
+        pendingText = ''
+        pendingParts = null
+        coalescedWrite = null
+      }
+      while (!disabled && !progressOverflow && (inFlightWrite || coalescedWrite || pendingText || pendingParts)) {
+        maybeFlush(true)
+        if (inFlightWrite) await inFlightWrite
+        else if (coalescedWrite || pendingText || pendingParts) await Promise.resolve()
+      }
+      terminal = true
       pendingText = ''
       pendingParts = null
       const parts = result?.parts ?? latestParts
