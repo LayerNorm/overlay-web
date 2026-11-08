@@ -37,5 +37,5 @@ export function compactTranscriptSnapshot(input: HarnessTranscriptPersistence): 
       ...candidates,
     ]
   }
-  return snapshot
+  return input.outputLimitReached ? { ...snapshot, outputLimitReached: true } : snapshot
 }

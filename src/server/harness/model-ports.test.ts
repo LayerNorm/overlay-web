@@ -3,7 +3,7 @@ import { createHarnessSnapshot, type HarnessSnapshot } from '@overlay/agent-runt
 import type { HarnessExecutionReference } from './state-steps'
 import type { HarnessModelReference } from './secure-model'
 import type { PreparedHarnessModel } from './model-ports'
-import { createHarnessModelPorts } from './model-ports'
+import { createHarnessModelPorts, harnessOutputLimits, harnessReasoningSetting } from './model-ports'
 
 const mocks = vi.hoisted(() => ({
   read: vi.fn(), limits: vi.fn(), compact: vi.fn(), wait: vi.fn(), reset: vi.fn(), recovery: vi.fn(), apply: vi.fn(),
@@ -23,6 +23,9 @@ vi.mock('./resource-boundary', () => ({
   waitForHarnessModelResources: vi.fn((_reference, _cost, read) => read()),
 }))
 vi.mock('./settle-model-step', () => ({ settleHarnessModelUsage: vi.fn() }))
+vi.mock('./harness-transcript', async importOriginal => ({
+  ...await importOriginal<typeof import('./harness-transcript')>(), writeSettledHarnessTranscriptStep: vi.fn(),
+}))
 vi.mock('./artifact-steps', () => ({
   identifyHarnessArtifact: mocks.identifyArtifact,
   storeHarnessArtifact: mocks.storeArtifact,
@@ -160,6 +163,50 @@ test('model preparation reuses the boundary state and reads catalog limits once 
   expect(mocks.read).not.toHaveBeenCalled()
   expect(prepare).toHaveBeenCalledTimes(2)
   expect(mocks.compact.mock.calls[0][0].previousSummary).toBe(state.workingSummary)
+})
+
+test('the response output limit uses the model window while compaction keeps its working-budget reserve', () => {
+  // 1M-window model, 32k working budget: the reply can use the requested 32k; compaction reserves 8k.
+  expect(harnessOutputLimits(32_000, 64_000, 32_000, 1_000_000)).toEqual({ maxOutputTokens: 32_000, compactionOutputReserve: 8_000 })
+  // The model's own output maximum still wins.
+  expect(harnessOutputLimits(32_000, 16_000, 32_000, 1_000_000)).toEqual({ maxOutputTokens: 16_000, compactionOutputReserve: 8_000 })
+  // Prompt (at most the working budget) plus output never exceeds the model window.
+  expect(harnessOutputLimits(32_000, 64_000, 32_000, 48_000)).toEqual({ maxOutputTokens: 16_000, compactionOutputReserve: 8_000 })
+  // When the working budget is the whole window, fall back to the quarter reserve.
+  expect(harnessOutputLimits(32_000, 64_000, 32_000, 32_000)).toEqual({ maxOutputTokens: 8_000, compactionOutputReserve: 8_000 })
+  // Unspecified limits keep the 8,192 default.
+  expect(harnessOutputLimits(undefined, null, 128_000, 1_000_000)).toEqual({ maxOutputTokens: 8_192, compactionOutputReserve: 8_192 })
+})
+
+test('a continuation after a thinking-only capped call turns thinking off', () => {
+  const thinkingOnly = { id: 'model:0', outputTokens: 32_000, reasoningTokens: 32_000 }
+  expect(harnessReasoningSetting('anthropic/claude-sonnet-5.5', undefined, true, thinkingOnly)).toBe('none')
+  expect(harnessReasoningSetting('anthropic/claude-sonnet-5.5', 'high', true, { ...thinkingOnly, reasoningTokens: 31_999 })).toBe('none')
+  // A capped call that wrote text keeps the requested reasoning.
+  expect(harnessReasoningSetting('anthropic/claude-sonnet-5.5', 'high', true, { ...thinkingOnly, reasoningTokens: 4_000 })).toBe('high')
+  // Not a continuation of a capped response, or the latest receipt is not a response call.
+  expect(harnessReasoningSetting('anthropic/claude-sonnet-5.5', 'high', false, thinkingOnly)).toBe('high')
+  expect(harnessReasoningSetting('anthropic/claude-sonnet-5.5', 'high', true, { ...thinkingOnly, id: 'summary:model:0:0' })).toBe('high')
+  // A non-reasoning model that wrote nothing is left alone.
+  expect(harnessReasoningSetting('anthropic/claude-haiku-4.5', undefined, true, { id: 'model:0', outputTokens: 0, reasoningTokens: 0 })).toBeUndefined()
+})
+
+test('a large-window model is prepared with the requested output limit, not a quarter of the working budget', async () => {
+  const state = runningState()
+  const prepare = vi.fn(async ({ modelId }: { modelId: string }): Promise<PreparedHarnessModel> => ({
+    model: { modelId, credentialOwnerId: 'user' } as HarnessModelReference,
+    options: {} as never, contextWindow: 1_000_000, estimatedCostMicros: 0,
+  }))
+  mocks.limits.mockResolvedValue({ contextWindow: 1_000_000, maxOutputTokens: 64_000 })
+  mocks.compact.mockImplementation(async ({ messages }) => ({ messages, didCompact: false, summaryFailed: false, fitsBudget: true }))
+  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  const prepared = await ports.prepareModel({
+    receiptId: 'model:0', state, messages: [], toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 32_000 },
+    instructionContext: { instructions: 'Follow the plan.', continuation: false, truncatedResponse: false, finalAnswerRequired: false },
+  })
+  expect(mocks.compact.mock.calls[0][0]).toMatchObject({ contextWindow: 32_000, outputReserveTokens: 8_000 })
+  expect(prepare.mock.calls[0][0].options.maxOutputTokens).toBe(32_000)
+  expect(prepared.settings.maxOutputTokens).toBe(32_000)
 })
 
 test('summary funding denial yields its exact receipt instead of failing or preparing an unfunded response', async () => {
@@ -608,4 +655,40 @@ test('response preparation failures escape without an artifact-unavailable block
   expect(mocks.apply.mock.calls.some(([, operationId, operation]) => (
     operationId === 'artifact-unavailable:response:prepare-sentinel' && operation.type === 'block'
   ))).toBe(false)
+})
+
+test('a response call after one cut off at its output cap is prepared as a continuation', async () => {
+  const state = { ...createHarnessSnapshot({
+    runId: 'run', goal: 'Write the long list.', constraints: [], policy: {
+      actorUserId: 'user', allowedToolIds: [], requiresPlan: false,
+      deadlineAt: Date.now() + 60_000, maxCostMicros: 100, maxParallelChildren: 0, maxDepth: 0,
+    },
+  }, Date.now()), status: 'running' as const }
+  const prepare = vi.fn(async ({ modelId }: { modelId: string }) => ({
+    model: { modelId, credentialOwnerId: 'user' } as HarnessModelReference,
+    options: {} as never, contextWindow: 128_000, estimatedCostMicros: 0,
+  }))
+  mocks.limits.mockResolvedValue({ contextWindow: 128_000, maxOutputTokens: 4_096 })
+  mocks.compact.mockImplementation(async ({ messages }) => ({ messages, didCompact: false, summaryFailed: false, fitsBudget: true }))
+  const request = (receiptId: string, truncatedResponse = false) => ({
+    receiptId, state, messages: [], toolNames: [], toolDefinitions: [], settings: {},
+    instructionContext: { instructions: 'Write.', continuation: true, truncatedResponse, finalAnswerRequired: false },
+  })
+  const step = (text: string, finishReason: string) => ({
+    stepNumber: 0, text, finishReason, reasoning: [], toolCalls: [], toolResults: [], content: [{ type: 'text', text }],
+    usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2, inputTokenDetails: { cacheReadTokens: 0, cacheWriteTokens: 0 }, outputTokenDetails: { reasoningTokens: 0 } }, providerMetadata: {}, response: { modelId: 'fixture/model' },
+  }) as never
+  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  await ports.prepareModel(request('model:0'))
+  await ports.recordModelStep(step('22. The Thames Barrier.\n23', 'length'), 'model:0')
+  await ports.prepareModel(request('model:1', true))
+  await ports.recordModelStep(step('. The Tagus estuary barrier.', 'stop'), 'model:1')
+  await ports.prepareModel(request('model:2', true))
+  expect(prepare.mock.calls.map(([item]) => (item as { continuesPrevious?: boolean }).continuesPrevious))
+    .toEqual([undefined, true, undefined])
+
+  // A segment handed off right after a cut-off call starts from the runner's flag.
+  const handedOff = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  await handedOff.prepareModel(request('model:3', true))
+  expect((prepare.mock.calls.at(-1)![0] as { continuesPrevious?: boolean }).continuesPrevious).toBe(true)
 })

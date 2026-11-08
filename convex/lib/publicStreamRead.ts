@@ -3,6 +3,28 @@ import type { MutationCtx, QueryCtx } from '../_generated/server'
 
 const TRUNCATION_MARKER = '[Additional output omitted]'
 
+/**
+ * Whether the streaming call continues text that the previous settled call stopped
+ * mid-output (it reached its output-token cap), so the reader joins it without a gap.
+ */
+async function continuesSettledOutput(
+  ctx: MutationCtx | QueryCtx,
+  stream: { runId: string; receiptId: string },
+): Promise<boolean> {
+  const sequence = /^model:(\d+)$/.exec(stream.receiptId)?.[1]
+  if (sequence === undefined) return false
+  const rows = await ctx.db.query('harnessTranscriptSteps')
+    .withIndex('by_runId_sequence', q => q.eq('runId', stream.runId).lt('sequence', Number(sequence)))
+    .order('desc').take(10)
+  for (const row of rows) {
+    let step: { content?: unknown; parts?: unknown; outputLimitReached?: unknown }
+    try { step = JSON.parse(row.persistenceJson) as typeof step } catch { return false }
+    const hasOutput = Boolean(step.content) || (Array.isArray(step.parts) && step.parts.length > 0)
+    if (hasOutput) return step.outputLimitReached === true
+  }
+  return false
+}
+
 async function readStreamContent(
   ctx: MutationCtx | QueryCtx,
   stream: { runId: string; workflowRunId: string; executionGeneration: number; receiptId: string },
@@ -90,6 +112,7 @@ export async function readActivePublicStreams(
       assistantMessageId, runId: stream.runId, executionGeneration: stream.executionGeneration,
       receiptId: stream.receiptId, invocation: stream.invocation, sequence: stream.nextSequence - 1, text,
       truncatedMarker: truncated ? TRUNCATION_MARKER : undefined,
+      ...(await continuesSettledOutput(ctx, stream) ? { continuesPrevious: true as const } : {}),
     })
   }
   return output
@@ -121,5 +144,6 @@ export async function readRetainedPublicStream(
   return {
     runId: stream.runId, executionGeneration: stream.executionGeneration, receiptId: stream.receiptId,
     invocation: stream.invocation, text, truncatedMarker: truncated ? TRUNCATION_MARKER : undefined,
+    ...(await continuesSettledOutput(ctx, stream) ? { continuesPrevious: true as const } : {}),
   }
 }

@@ -110,6 +110,8 @@ export type HarnessWaitReference = {
 export type HarnessTranscriptPersistence = {
   content: string
   parts: Array<Record<string, unknown>>
+  /** The model call stopped at its output-token cap; the next call continues its text. */
+  outputLimitReached?: boolean
 }
 
 export type HarnessTranscriptStep = {
