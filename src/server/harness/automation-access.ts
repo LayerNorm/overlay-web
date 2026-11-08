@@ -159,8 +159,16 @@ async function resolveAutomationSourceGrant(
     'accountAllowedToolIds' | 'accountAllowedConnectorIds' | 'integrationToolIds'>,
 ): Promise<AutomationSourceGrant> {
   if (!automation.agentId) {
-    return { approvalMode: 'ask', allowedToolIds: context.accountAllowedToolIds ?? [],
-      allowedConnectorIds: context.accountAllowedConnectorIds ?? [] }
+    // Without a bound agent the automation acts with the owner's own grants: the
+    // account tools plus the connected-app tools of the connectors it may use,
+    // exactly what admission gave it. Leaving the connected-app tools out made
+    // every such run look revoked before the first model call. Connector
+    // revocation is still checked by the caller against the current grants.
+    const allowedConnectorIds = context.accountAllowedConnectorIds ?? []
+    return { approvalMode: 'ask', allowedToolIds: [
+      ...(context.accountAllowedToolIds ?? []),
+      ...(allowedConnectorIds.length ? context.integrationToolIds ?? [] : []),
+    ], allowedConnectorIds }
   }
   const agent = await agentService.get({
     actorUserId: access.actorUserId, workspaceId: access.workspaceId, agentId: automation.agentId,

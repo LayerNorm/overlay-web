@@ -92,6 +92,21 @@ test('post-wait refresh rejects cancelled runs and intersects a revoked agent gr
   await expect(refreshAutomationHarnessSource(access, context)).rejects.toBeInstanceOf(FatalError)
 })
 
+test('an automation without an agent keeps its connected-app tools, and loses them with its connectors', async () => {
+  mocks.run.mockResolvedValue({ automation: { ...automation, agentId: undefined }, run })
+  const context = {
+    accountAllowedToolIds: ['read_file'],
+    accountAllowedConnectorIds: ['gmail'],
+    integrationToolIds: ['GMAIL_SEND_EMAIL'],
+    turnId: 'automation-run:run',
+  }
+  const refreshed = await refreshAutomationHarnessSource(access, context as never)
+  expect(refreshed).toEqual({ approvalMode: 'ask', allowedToolIds: ['read_file', 'GMAIL_SEND_EMAIL'], allowedConnectorIds: ['gmail'] })
+  expect(mocks.agent).not.toHaveBeenCalled()
+  const noConnectors = await refreshAutomationHarnessSource(access, { ...context, accountAllowedConnectorIds: [] } as never)
+  expect(noConnectors.allowedToolIds).toEqual(['read_file'])
+})
+
 test('scheduler admission requires enabled state and exact scheduler owner', async () => {
   mocks.automation.mockResolvedValueOnce({ ...automation, enabled: false, schedulerWorkflowRunId: 'scheduler' })
   await expect(assertAutomationAdmissionSource({
