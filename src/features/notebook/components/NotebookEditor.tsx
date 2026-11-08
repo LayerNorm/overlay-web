@@ -9,11 +9,10 @@ import {
   toRightPanelMode,
   type PanelPresentation,
 } from '@/shared/ui/panel-presentation'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
 import {
   createLocalNotebookNote,
   type CreateNoteResponse,
-  type NoteDoc,
   type UpdateNoteResponse,
 } from '@overlay/app-core'
 import {
@@ -31,7 +30,12 @@ import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
-import { useLiveNote } from '@/hooks/use-file-tree'
+import { noteDocFromFile, useLiveNote } from '@/hooks/use-file-tree'
+import { useConvex } from 'convex/react'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { isConvexIdShape } from '@/components/providers/usePersonalChatTranscript'
+import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
 
 const MarkdownMessage = dynamic(() =>
   import('@overlay/chat-react').then((module) => ({ default: module.MarkdownMessage })),
@@ -50,6 +54,8 @@ export default function NotebookEditor({
   const router = useRouter()
   const searchParams = useSearchParams()
   const buildWorkspaceHref = useWorkspaceHref()
+  const convex = useConvex()
+  const { activeWorkspaceId } = useWorkspace()
   const scope = usePanelScope()
   const models = useMemo(
     () => getModelsByIntelligence()
@@ -77,10 +83,13 @@ export default function NotebookEditor({
   const noteGone = liveNote === null && noteId !== null && seenNoteId === noteId
 
   const repository = useMemo<NotebookEditorRepository>(() => ({
-    get: (noteId, signal) => overlayAppClient.notes.get<NoteDoc>({ noteId }, { signal }).catch((error: unknown) => {
-      if (error instanceof DOMException && error.name === 'AbortError') throw error
-      return null
-    }),
+    async get(noteId, signal) {
+      if (!activeWorkspaceId || !isConvexIdShape(noteId)) return null
+      const file = await convex.query(api.files.browse.get, { workspaceId: activeWorkspaceId, fileId: noteId as Id<'files'> })
+        .catch(() => null)
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError')
+      return file ? noteDocFromFile(file) : null
+    },
     async create() {
       const result = await overlayAppClient.notes.create({ title: 'Untitled', content: '' }) as CreateNoteResponse
       return result.note ?? {
@@ -114,7 +123,7 @@ export default function NotebookEditor({
       const response = await overlayAppClient.notes.deleteResponse({ noteId })
       if (!response.ok) throw new Error('Could not delete note')
     },
-  }), [])
+  }), [activeWorkspaceId, convex])
 
   return (
     <CanonicalNotebookEditor
