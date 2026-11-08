@@ -9,8 +9,9 @@ const MAX_ROWS = 500
  * types only; messages load when a room opens. Null without workspace access.
  */
 export const rooms = query({
-  args: { workspaceId: v.string() },
-  handler: async (ctx, { workspaceId }) => {
+  // `include` adds one archived room by id, so a link to a room older than the newest MAX_ROWS still opens it.
+  args: { workspaceId: v.string(), include: v.optional(v.id('conversations')) },
+  handler: async (ctx, { workspaceId, include }) => {
     let viewer
     try {
       viewer = await requireNativeWorkspace(ctx, workspaceId)
@@ -21,6 +22,12 @@ export const rooms = query({
       .withIndex('by_workspaceId_principalId_status_archivedAt', q =>
         q.eq('workspaceId', workspaceId).eq('principalId', viewer.principal.principalId).eq('status', 'active').gt('archivedAt', 0))
       .order('desc').take(MAX_ROWS)
+    if (include && !participants.some(participant => participant.conversationId === include)) {
+      const extra = await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', q => q.eq('conversationId', include).eq('principalId', viewer.principal.principalId))
+        .unique()
+      if (extra && extra.workspaceId === workspaceId && extra.status === 'active' && extra.archivedAt !== undefined) participants.push(extra)
+    }
     const rows = await Promise.all(participants.map(async participant => {
       const conversation = await ctx.db.get(participant.conversationId)
       const type = conversation?.conversationType

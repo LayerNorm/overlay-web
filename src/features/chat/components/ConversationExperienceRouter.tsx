@@ -6,7 +6,10 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import ChatExperience from './ChatExperience'
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
 import { DirectMessageExperience } from './DirectMessageExperience'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
+import { useConvex } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
+import type { Id } from '../../../../convex/_generated/dataModel'
+import { isConvexIdShape } from '@/components/providers/usePersonalChatTranscript'
 import { resolveSoftChatRoute, type SoftChatRoute } from '@/shared/chat/chat-view-navigation'
 import {
   legacyWorkspaceScopeForRoute,
@@ -106,6 +109,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
 
   })
   const personalChat = usePersonalChat()
+  const convex = useConvex()
   const knownNativeChat = isKnownNativePersonalChat(personalChat, pathScope, conversationId)
   if (knownNativeChat && pathScope && conversationId) markConversationScopeVerified(pathScope, conversationId)
   useEffect(() => {
@@ -115,7 +119,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
       conversationId,
       pathScope,
       pathname,
-      getConversation: (id) => overlayAppClient.conversations.get<ConversationScopeDetail>({ conversationId: id }),
+      getConversation: (id) => readConversationScope(convex, personalChat.workspaceId, id),
       getLocation: () => ({
         pathname: window.location.pathname,
         search: window.location.search,
@@ -125,7 +129,7 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
       replace: (destination) => router.replace(destination),
       setStatus: setScopeRouteStatus,
     })
-  }, [browserSearch, conversationId, knownNativeChat, searchView, pathScope, resourceRouteKey, buildWorkspaceHref, pathname, router])
+  }, [browserSearch, conversationId, convex, knownNativeChat, personalChat.workspaceId, searchView, pathScope, resourceRouteKey, buildWorkspaceHref, pathname, router])
 
   const selectedScope = pathScope ?? legacyWorkspaceScopeForRoute(
     'chat',
@@ -175,4 +179,19 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
       {content}
     </ConversationDetailScopeGate>
   )
+}
+
+/** A chat link's type and scope from Convex: an AI chat the person owns, or a room they belong to. Throws when neither. */
+async function readConversationScope(
+  convex: ReturnType<typeof useConvex>,
+  workspaceId: string | null,
+  id: string,
+): Promise<ConversationScopeDetail> {
+  if (!workspaceId || !isConvexIdShape(id)) throw new Error('Conversation not found')
+  const conversationId = id as Id<'conversations'>
+  const chat = await convex.query(api.chat.personal.getSummary, { workspaceId, conversationId })
+  if (chat) return { conversationType: 'personal', scope: chat.scope }
+  const room = await convex.query(api.collaboration.rooms.scope, { workspaceId, conversationId })
+  if (room) return room
+  throw new Error('Conversation not found')
 }

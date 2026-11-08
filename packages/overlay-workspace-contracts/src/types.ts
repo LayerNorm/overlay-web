@@ -871,7 +871,6 @@ export type WorkspaceOperationalMetrics = {
   authorizationDenials: number
   invitationFailures: number
   unreadDriftConversations: number
-  providerParity: { provider: string; requiresConvexClient: boolean }
 }
 
 export type WorkspaceSharingPolicyResponse = {

@@ -32,7 +32,6 @@ import {
 } from '@/server/config'
 import { isRuntimeConfigSummaryVisible } from '@/shared/config'
 import { getOverlayCapabilities, withWorkspaceExternalAgentCapabilities } from '@/server/capabilities'
-import { deriveAppDataCapabilities, type AppDataCapabilities } from '@/server/app-data/capabilities'
 import { externalAgentLaunchEnabled } from '@/server/agents/external-agent-policy'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import type { BillingEntitlementsRecord } from '@/server/billing/BillingRepository'
@@ -57,7 +56,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
 
     const serverSecret = getInternalApiSecret()
     const browserSession = await getOverlaySession(request)
-    const appDataCapabilities = deriveAppDataCapabilities(runtimeConfig)
     const serverContext = getOverlayServerContext()
     const billingPayer = await serverContext.billingPayerResolver.resolve({
       userId: auth.userId,
@@ -150,7 +148,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
     const appShell = resolveOverlayAppShellConfig(overlayAppConfig, { capabilities })
 
     const response: AppBootstrapResponse & {
-      appDataCapabilities: AppDataCapabilities
       system?: ReturnType<typeof getRedactedOverlayRuntimeConfigSummary>
     } = {
       user,
@@ -173,7 +170,6 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       theme: appShell.theme,
       featureFlags: appShell.appFeatureFlags,
       capabilities,
-      appDataCapabilities,
       destinations: overlayNavigationToDestinations(appShell.navigation, appShell.settingsSections),
       defaults: {
         chatModelId:

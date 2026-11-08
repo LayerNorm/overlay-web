@@ -2,10 +2,9 @@ import 'server-only'
 
 import { NextResponse } from 'next/server'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { repositoryProxy } from '@/server/app-data/errors'
+import { ConvexAutomationRepository } from './ConvexAutomationRepository'
 import { AutomationService, AutomationServiceError } from './AutomationService'
 import { ConfiguredAutomationEntitlementPolicy } from './AutomationEntitlementPolicy'
-import type { AutomationRepository } from './AutomationRepository'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 import { start } from 'workflow/api'
 import { automationScheduleWorkflow } from '@/server/workflows/automation-schedule'
@@ -26,9 +25,7 @@ export const automationService = new AutomationService({
   automationWorkflowStarter: (input) => start(automationScheduleWorkflow, [input]),
   entitlementPolicy,
   lifecycleEvents: () => getOverlayServerContext().lifecycleEvents,
-  repository: repositoryProxy<AutomationRepository>(
-    () => getOverlayServerContext().appData.repositories.automations,
-  ),
+  repository: new ConvexAutomationRepository(),
 })
 
 export function automationErrorResponse(error: unknown, fallback: string) {

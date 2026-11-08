@@ -56,6 +56,6 @@ After configuration:
 | `/api/auth/sso/<connection-id>` | Redirects to the configured IdP |
 | `/api/auth/session` | Returns normalized signed-in or signed-out state |
 | `/api/better-auth/jwks` | Publishes Overlay's JWT verification keys |
-| `/api/auth/convex-token` | Returns an Overlay JWT only when the deployment uses the Convex bridge |
+| `/api/auth/convex-token` | Returns the session's verified identity token so the browser can authenticate to Convex |
 
 Unknown connection IDs and cross-origin post-login redirects must fail closed.

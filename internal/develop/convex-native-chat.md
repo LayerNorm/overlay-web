@@ -116,17 +116,22 @@ timings. This complements, rather than replaces, the query-ready measurement.
 
 | Current path | Consumers / responsibility | Migration constraint |
 | --- | --- | --- |
-| `ConvexAuthProvider`, `convex-token-broker`, `/api/auth/convex-token` | Personal chat controller, DirectMessageExperience, CollaborationRealtimeProvider | Explicit HS256 query token is not a native Convex identity token. Preserve legacy consumers while introducing native auth. |
+| `ConvexAuthProvider`, `native-convex-token-broker`, `/api/auth/convex-token` | Every browser query and mutation | Native identity only. The HS256 query-argument token was removed in CN-35. |
 | `convex/auth.config.ts` | WorkOS custom JWT verification | Native provider config currently covers WorkOS, not every supported Overlay auth mode. |
 | `src/server/auth/providers` and `bootstrap.ts` | WorkOS, OIDC, Better Auth; NoOp is unauthenticated | Preserve application user IDs and supported private deployments. Preview's sandbox login and native session handoff must be tested, not assumed to yield a WorkOS JWT. |
-| `ChatInlinePanel.tsx` | HTTP list, title PATCH, participant archive/restore, local invalidation | Move ordinary personal browser ownership to typed Convex queries/mutations. Keep collaboration behavior until its own migration. |
-| `useLiveConversationSync.ts`, `live-message-patching.ts` | 200-row tail subscription and assistant-only runtime patching; HTTP fallback | CN-05 must own pagination/history and accept remote user turns; adding a subscription alone is not sufficient. |
+| `ChatInlinePanel.tsx`, `ChatArchivedView.tsx` | Chat and room lists, archived-chat reader (`/app/archived?id=`) | Native: `chat/personal:*`, `collaboration/roomList:list` and `collaboration/archive:rooms` (which can `include` a linked archived room by id). No HTTP list reads remain; a malformed `?id=` is treated as not found without querying. |
 | `packages/overlay-api-client/src/chat/conversations-client.ts` | Shared public HTTP client, including native/external consumers | Do not delete public endpoints or the package when one web caller migrates. |
 | `src/server/app-api` and `convex/chat` | Existing session, scope, admission, persistence and run orchestration boundaries | Port authorization and transactional policy, not just transport. Execution/provider calls need not move into Convex. |
 
 Before any endpoint deletion, search every call site again, including desktop,
-mobile, agents, scheduled execution and public SDK consumers. This is the pilot
-inventory, not proof that an endpoint is unused externally.
+mobile, agents, scheduled execution and public SDK consumers.
+
+`npm run check:native-architecture` (CI) enforces this inventory from the browser side. Every browser
+`overlayAppClient.<resource>.<method>` call is listed in `scripts/baselines/browser-http-calls.json`. A new
+browser HTTP call fails until it is native or added on purpose with its server reason in the PR (model runs,
+stop/approval/input, billing, OAuth, email, validated or audited writes, provider calls, file bytes), and a
+call that disappears must leave the baseline (`--update`). The check also rejects the retired provider
+capability names and the HS256 browser token.
 
 Native functions must derive the viewer from verified identity. Test another
 user's resource IDs, missing/revoked membership, workspace switch, logout/account
@@ -179,7 +184,7 @@ chats do not show workspace-filed outputs; workspace and automation chats do.
 | Stop, approval and input response | `conversations/stop`, `run/approval`, `run/input` | They abort provider calls and resume durable workflows; status returns through `getExecution` |
 | Title generation, image and video generation | `generate-*` | Provider calls |
 | Permanent delete of an archived chat | `v1/conversations` DELETE | Moves with unified archive, CN-33 |
-| Retired-thread handoff and room thread safety | `v1/conversations` | Rooms only, removed by CN-08 |
+| Chat-link type and scope check | Convex `chat/personal:getSummary`, then `collaboration/rooms:scope` | Native; a link to a room opened on the personal route moves to the room's view |
 
 Temporary chats are local and unsaved. A failed native operation shows an error and never
 falls back to HTTP. Public `v1/conversations` routes stay for API and agent callers.

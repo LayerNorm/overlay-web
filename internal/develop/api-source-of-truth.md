@@ -59,6 +59,12 @@ The filesystem under `src/app/api/**/route.ts` is authoritative for route existe
 - Keep route behavior backward compatible unless a real bug is found.
 - Prefer parsed typed methods when callers only need data.
 - Add `*Response` methods when callers need status codes, streaming bodies, redirects, or custom error handling.
+- Browser reads and ordinary writes go through native Convex queries and mutations (`ctx.auth` identity). HTTP from the browser is for server work only: model and media runs, stop/approval/input, billing and checkout, OAuth and credentials, email, validation-heavy or audited writes, provider calls and file bytes. `npm run check:native-architecture` (CI, Lint and boundary checks) holds every browser `overlayAppClient.<resource>.<method>` call in `scripts/baselines/browser-http-calls.json`: a new call fails until it is native or deliberately added (with the reason in the PR), and a removed call must leave the baseline. The same check rejects the retired database-provider capability names and the HS256 browser token.
+- Browser HTTP reads that stay on purpose (everything else the browser reads is native):
+  - `integrations.get` / `getResponse` (connected accounts and the connector catalog) and `surfaces.listChannels` ask the integration provider (Composio, Slack); only the provider knows the answer.
+  - `sharing.get` / `sharing.impact` (Share dialog): per-resource-type manager checks and the who-gains-or-loses-access disclosure run in `WorkspaceSharingService` right before the server-checked grant or revoke.
+  - `conversations.participants` (deleting an archived room): a read immediately before the server-audited delete, which decides between leaving the room and deleting it.
+  - `workspaces.list` on the OAuth consent page (`/oauth/authorize`): that page sits outside the app shell and has no Convex client.
 - Stream chat directly through `/api/v1/conversations/act`. Disconnect recovery comes from persisted conversation state; `/api/v1/conversations/stream-auth` and an external replay relay are not public contracts.
 
 Interactive browsing uses the Computer API and `computer_browser` tool on the
@@ -69,8 +75,7 @@ ordinary missing-route response. Historical usage rows remain readable.
 Automation workflow status and SSE reads resolve the workflow ID to its stored
 automation/run and apply the parent resource's scope, current membership and
 active workspace before accessing Workflow SDK data. Direct Convex event
-subscriptions apply the same rule. Unknown or deleted parents fail closed;
-legacy scheduler cancellation requires the owner's exact stored scheduler ID.
+subscriptions apply the same rule. Unknown or deleted parents fail closed.
 Terminal run settlement queues the completion/failure webhook in the same Convex
 transaction. The stable run/event ID deduplicates retries and older emitter calls;
 delivery remains asynchronous through the existing signed, retrying outbox.
@@ -306,7 +311,6 @@ New owner sessions use `flowVersion: 2` and revision-checked name, about, team, 
 - `POST /api/v1/conversations/message` accepts an optional `memoryEnabled` turn preference. Saving an agent-triggering room message opens the durable agent run server-side; the retired browser-held `/api/v1/conversations/agent-reply` path is not a public contract. Hosted and connected turns load bounded workspace memory and room context only when the preference is enabled. The provider-neutral collaboration repository schedules validated human- and agent-message extraction, while Convex enforces room, author, owner, and idempotency rules. Extraction-model context is separately bounded to messages from the target human or exact agent principal; other room participants are not sent to that additional provider call.
 - Convex room transcript append, finalize, failure, and sanitization writes require a linked supported native Harness or connected remote AgentRun. The unowned `startAgentMessage` mutation and unmarked buffered agent posts are retired; native streaming uses the assistant message admitted by `startAgentTurn`, and startup failures are persisted directly as terminal errors. This does not grant tool-effect authority or reconcile uncertain receipts; late tool receipts may still be retained on a completed message without reopening execution.
 - Serialized collaboration messages may include `editedAt` and `editHistory: Array<{ content, editedAt }>`. Convex appends the replaced body before an edit.
-- `PATCH /api/v1/conversations/notifications` accepts either `notificationIds` or `conversationId`. Opening a DM or channel uses `conversationId` so only that room's unread activity is cleared.
 - Browsers read Activity through `collaboration/activity:notifications` and the DM/channel list
   through `collaboration/roomList:list`, both with native identity. Each notification
   carries `conversationType`, so opening one routes without looking the room up. Read state goes
@@ -554,13 +558,6 @@ Convex search indexes have been added to:
 **What stays on HTTP:** connectors come from the integration provider (`/api/v1/integrations`), and the query's `connectorsAllowed` flag says whether to show them. The old `/api/v1/mention-search` route and `search/mentions:searchMentions` are removed.
 
 Relative links in markdown files resolve through `files/browse:children`, which lists one folder at a time under the tree's read rules.
-
-PostgreSQL route classification is explicit for release safety: connected-agent environments and
-bindings are supported. The provider-neutral workspace, agent, room, and conversation APIs are also
-enabled so an authenticated PostgreSQL browser can complete the same connected-agent vertical slice.
-Mention search is degraded to an empty bounded result, while sharing/search surfaces without a
-PostgreSQL repository and the Convex file-ingestion and Slack-import workers remain unavailable.
-PostgreSQL mode must not enter those Convex-only worker paths.
 
 `searchWorkspaceChats` (in `convex/collaboration/channels.ts`) now uses the `conversations.search_title` index for title matching instead of iterating all participant conversations. Message content search is still scan-based but limited to accessible conversations with a reduced message scan window (50 instead of 200).
 

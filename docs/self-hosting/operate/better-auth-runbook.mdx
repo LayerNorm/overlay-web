@@ -142,7 +142,7 @@ Then run the Better Auth flow:
 - The SSO callback creates a Better Auth session cookie.
 - `/api/auth/session` returns `authenticated: true`.
 - `/api/auth/convex-token` returns a JWT.
-- Convex-backed app APIs accept the JWT.
+- The app's live Convex queries load (Convex accepts the JWT natively).
 - Sign out clears the Better Auth session.
 - Account deletion removes Better Auth rows and does not merge with hosted WorkOS accounts.
 

@@ -203,7 +203,7 @@ test('governance panel exposes every workspace policy and its rollout state', ()
   assert.match(html, /180 days/)
 })
 
-test('operational signals appear for managers and reveal provider parity', () => {
+test('operational signals appear for managers', () => {
   const html = renderToStaticMarkup(
     <WorkspaceSharingPolicySection
       state={{
@@ -219,7 +219,6 @@ test('operational signals appear for managers and reveal provider parity', () =>
           authorizationDenials: 5,
           invitationFailures: 6,
           unreadDriftConversations: 7,
-          providerParity: { provider: 'convex', requiresConvexClient: true },
         },
       }}
       onToggle={() => undefined}
@@ -229,8 +228,6 @@ test('operational signals appear for managers and reveal provider parity', () =>
   assert.match(html, /Authorization denials/)
   assert.match(html, /Invitation failures/)
   assert.match(html, /Unread drift/)
-  assert.match(html, /convex/)
-  assert.match(html, /Convex required/)
 
   const withoutMetrics = renderToStaticMarkup(
     <WorkspaceSharingPolicySection state={READY_POLICY} onToggle={() => undefined} />,

@@ -146,6 +146,8 @@ jobs:
         run: npm run check:raw-controls
       - name: Removed chat renderer guard
         run: npm run check:chat-legacy-imports
+      - name: Convex-native architecture guard
+        run: npm run check:native-architecture
       - name: Web complexity ratchet
         run: npm run check:web-complexity
       - name: Audit production dependencies

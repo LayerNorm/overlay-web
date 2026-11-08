@@ -39,7 +39,6 @@ import { useGatewayModelCatalog } from '@/components/providers/useGatewayModelCa
 import { shouldLoadGatewayModelCatalog } from '@/shared/ai/gateway/catalog-access'
 import { useByokModels } from '@/components/providers/useByokModels'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { useGuestGate } from '@/components/providers/GuestGateProvider'
 import { useAuth } from '@/contexts/AuthContext'
 import { useGeneratedUiConnectorActions } from './useGeneratedUiConnectorActions'
@@ -123,7 +122,7 @@ export function useChatExperienceController({
     isAuthLoading: authLoading,
 
   })
-  const { appDataCapabilities, capabilities } = useOverlayCapabilities()
+  const { capabilities } = useOverlayCapabilities()
   const {
     models: gatewayCatalogModels,
     isLoading: gatewayModelsLoading,
@@ -144,7 +143,6 @@ export function useChatExperienceController({
     [byokConnections, gatewayCatalogRevision],
   )
   const billingEnabled = capabilities.billing
-  const titleGenerationEnabled = appDataCapabilities.supportsChatPersistence
   const { startSession, completeSession, setActiveViewer } = useAsyncSessions()
   const activeChatIdRef = useRef<string | null>(null)
   const {
@@ -164,7 +162,6 @@ export function useChatExperienceController({
     nativePersonalEnabled,
     nativePersonalRoute,
   } = useNativePersonalRouteState({
-    activeWorkspaceId,
     authLoading,
     isTemporaryChatRef,
     nativePersonal,
@@ -642,7 +639,6 @@ export function useChatExperienceController({
     activeChatId,
     getNativeSummary: getNativePersonalSummary,
     renameNative: nativePersonal.rename,
-    titleGenerationEnabled,
   })
 
   const recoveredTitleChatIdsRef = useRef(new Set<string>())

@@ -2,7 +2,6 @@ import { expect, test, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { splitUserDisplayText } from '@overlay/chat-core/messages'
 import { DEFAULT_OVERLAY_CAPABILITIES } from '@overlay/app-core/capabilities'
-import { CONVEX_APP_DATA_CAPABILITIES } from '@/server/app-data/capabilities'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { GET } from './route'
 
@@ -19,7 +18,7 @@ vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({ appData
 const context: AppApiRouteContext = {
   params: Promise.resolve({}), auth: { userId: 'owner', accessToken: 'test', authType: 'session' },
   parsedQuery: {}, parsedJson: {}, parsedFormData: null, capabilities: DEFAULT_OVERLAY_CAPABILITIES,
-  appDataCapabilities: CONVEX_APP_DATA_CAPABILITIES, requestFingerprint: 'test', requestIdempotencyKey: null,
+  requestFingerprint: 'test', requestIdempotencyKey: null,
   workspace: {
     workspace: { id: 'workspace', kind: 'personal', name: 'QA', slug: 'qa', status: 'active', createdAt: 1, updatedAt: 1 },
     principal: { id: 'owner', userId: 'owner', workspaceId: 'workspace', type: 'human', displayName: 'QA', createdAt: 1, updatedAt: 1 },
