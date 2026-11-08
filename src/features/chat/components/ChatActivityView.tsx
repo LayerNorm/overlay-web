@@ -80,7 +80,8 @@ export function ChatActivityView({ baseHref = '/app/chat' }: { baseHref?: string
     if (!notification.readAt) markNotificationsRead([notification.id])
     if (!notification.conversationId) return
     if (notification.conversationState === 'archived') {
-      const workspaceId = readWorkspaceIdFromPath(pathname)
+      // The chat lives in the notification's workspace; handle-based routes carry no id to read.
+      const workspaceId = notification.workspaceId || readWorkspaceIdFromPath(pathname)
       const archivedBase = workspaceId
         ? buildWorkspaceHref(workspaceId, '/app/archived')
         : '/app/archived'
