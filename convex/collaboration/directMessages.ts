@@ -16,6 +16,7 @@ import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
 import { cleanupTerminalPublicStreams, readActivePublicStreams } from '../lib/publicStreamRead'
+import { appendStepParts, joinStepText } from '@/shared/chat/step-text-join'
 import { transcriptPartIdentity } from '../../src/shared/chat/transcript-part-identity'
 
 type CollaborationCtx = (Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>) & { auth?: QueryCtx['auth'] }
@@ -1168,9 +1169,10 @@ export const failAgentMessage = mutation({
         text: activeText,
       }
       : undefined
+    const activeContinues = activeStream?.continuesPrevious === true
     await ctx.db.patch(args.messageId, {
-      content: [merged.content, activeText].filter(Boolean).join('\n\n'),
-      parts: activePart ? [...merged.parts, activePart] : merged.parts,
+      content: joinStepText(merged.content, activeText, activeContinues),
+      parts: activePart ? appendStepParts(merged.parts, [activePart], activeContinues) as typeof merged.parts : merged.parts,
       ...(activeStream ? { publicStreamCheckpoint: {
         runId: activeStream.runId, executionGeneration: activeStream.executionGeneration,
         receiptId: activeStream.receiptId, invocation: activeStream.invocation,

@@ -281,7 +281,8 @@ export async function startPersonalHarnessTurn(input: {
       instructions: input.instructions,
       messages: await convertToModelMessages(input.messagesForModel),
       settings: {
-        maxOutputTokens: 8_192,
+        // Per model call; thinking tokens count against it too. Longer replies continue in the next call.
+        maxOutputTokens: 32_000,
         ...(input.rawReasoning && input.rawReasoning !== 'provider-default'
           ? { reasoning: input.rawReasoning as NonNullable<PersonalHarnessWorkflowInput['settings']>['reasoning'] }
           : {}),

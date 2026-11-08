@@ -31,6 +31,17 @@ test('long transcript text budgets reserve space for the latest answer', () => {
   assert.ok(saved.parts.reduce((total, part) => total + String(part.text ?? '').length, 0) < 181_000)
 })
 
+test('a long answer joined from several model calls keeps up to the whole part-text budget', () => {
+  const answer = { type: 'text', text: `${'1. An item that continues across model calls. '.repeat(3_000)}End.` }
+  const saved = compactAssistantPersistenceForConvex({ content: answer.text, parts: [answer] })
+  assert.deepEqual(saved.parts.at(-1), answer)
+  const huge = { type: 'text', text: 'y'.repeat(200_000) }
+  const capped = compactAssistantPersistenceForConvex({ content: 'y', parts: [huge] })
+  const text = String(capped.parts.at(-1)?.text)
+  assert.ok(text.startsWith('y'.repeat(180_000)))
+  assert.ok(text.endsWith('[truncated 20000 chars for storage]'))
+})
+
 test('completion preserves ordered SDK text, reasoning and tool calls across steps', () => {
   const firstCall = { type: 'tool-call', toolCallId: 'list', toolName: 'list_notes', input: {} }
   const secondCall = { type: 'tool-call', toolCallId: 'read', toolName: 'read_note', input: { id: 'note-1' } }

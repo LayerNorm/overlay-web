@@ -11,6 +11,8 @@ export type NativeHarnessModelDispatch = Omit<HarnessModelDispatch, 'access' | '
   memoryEnabled: boolean
   sharedRoom: boolean
   streamToDelivery?: boolean
+  /** The delivery text continues the previous call's cut-off output, so no paragraph break. */
+  continuesPreviousOutput?: boolean
 }
 
 export async function authorizeNativeHarnessModelDispatch(reference: HarnessModelReference, options: LanguageModelV4CallOptions): Promise<void> {
