@@ -12,14 +12,6 @@
   "agentEnvironments.disableBindings": [
     "src/features/agents/components/use-agent-editor-actions.ts"
   ],
-  "agentEnvironments.list": [
-    "src/features/agents/components/use-byo-connection.ts"
-  ],
-  "agentEnvironments.listBindings": [
-    "src/app/_components/onboarding/OnboardingTools.tsx",
-    "src/features/agents/components/use-agent-editor-bootstrap.ts",
-    "src/features/agents/components/use-byo-connection.ts"
-  ],
   "agentEnvironments.revoke": [
     "src/features/settings/components/AgentEnvironmentSettings.tsx"
   ],
@@ -205,6 +197,11 @@
   "integrations.disconnectResponse": [
     "src/features/integrations/components/IntegrationsView.tsx"
   ],
+  "integrations.get": [
+    "src/app/_components/onboarding/OnboardingTools.tsx",
+    "src/features/chat/components/chat/useGeneratedUiConnectorActions.ts",
+    "src/features/integrations/components/IntegrationsView.tsx"
+  ],
   "integrations.getResponse": [
     "src/components/mentions/mention-search.ts",
     "src/features/integrations/components/IntegrationsDialog.tsx"
@@ -269,9 +266,6 @@
   "providerAccounts.connect": [
     "src/components/agents/AgentAccountDialog.tsx"
   ],
-  "providerAccounts.list": [
-    "src/features/settings/components/AgentAccountSettings.tsx"
-  ],
   "providerAccounts.pollCodexSignIn": [
     "src/components/agents/AgentAccountDialog.tsx"
   ],
@@ -314,9 +308,6 @@
   ],
   "skills.deleteResponse": [
     "src/features/settings/lib/archived-actions.ts"
-  ],
-  "subscription.getResponse": [
-    "src/features/agents/components/use-paid-plan.ts"
   ],
   "surfaces.createBinding": [
     "src/features/agents/components/use-agent-surfaces.ts"
