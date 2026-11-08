@@ -676,10 +676,14 @@ export default defineSchema({
     requestId: v.optional(v.string()),
     ipAddress: v.optional(v.string()),
     metadataJson: v.string(),
+    // Copied from `metadata.workspaceId` on append so owners can read their
+    // workspace's events without an operator-wide scan.
+    workspaceId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index('by_eventId', ['eventId'])
     .index('by_actorUserId_createdAt', ['actorUserId', 'createdAt'])
+    .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
     .index('by_createdAt', ['createdAt']),
 
   emailOutbox: defineTable({
