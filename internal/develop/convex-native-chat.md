@@ -184,7 +184,10 @@ Settling a transcript step atomically writes its checkpoint identity
 active segments. Every enrolled chat kind must settle through this projection
 (personal and owner-only workspace-scope chats, automations, rooms and work);
 a kind it skips keeps live text on screen beside the legacy progress copy.
-Finalize, failure and cancellation paths preserve safe partial
+Cancellation never reads the live
+stream rows (that races the executor's writes and fails Stop): `cancelAgentRuns`
+cancels the run, then the scheduled `settleCancelledPublicStream` keeps the
+retained text and retires the rows. Finalize, failure and cancellation paths preserve safe partial
 output where needed, mark the canonical message terminal, and perform bounded
 cleanup; active rows are not retained as a second transcript.
 

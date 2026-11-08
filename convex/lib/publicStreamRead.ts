@@ -94,3 +94,32 @@ export async function readActivePublicStreams(
   }
   return output
 }
+
+/**
+ * The live text a cancelled delivery left behind, for the deferred cancellation step only.
+ * It skips the reader-side liveness checks on purpose: cancellation has already retired the
+ * run, so those checks would hide exactly the text that must be kept. Text a settled
+ * checkpoint already covers is not returned again.
+ */
+export async function readRetainedPublicStream(
+  ctx: MutationCtx,
+  conversationId: Id<'conversations'>,
+  assistantMessageId: Id<'conversationMessages'>,
+) {
+  const message = await ctx.db.get(assistantMessageId)
+  if (!message || message.conversationId !== conversationId) return null
+  const stream = await ctx.db.query('harnessPublicStreams')
+    .withIndex('by_conversation_assistantMessageId', q => q.eq('conversationId', conversationId).eq('assistantMessageId', assistantMessageId))
+    .unique()
+  if (!stream || !stream.active) return null
+  const checkpoint = message.publicStreamCheckpoint
+  if (checkpoint && checkpoint.runId === stream.runId
+    && (checkpoint.executionGeneration > stream.executionGeneration
+      || (checkpoint.executionGeneration === stream.executionGeneration && checkpoint.invocation >= stream.invocation))) return null
+  const { text, truncated } = await readStreamContent(ctx, stream)
+  if (!text && !truncated) return null
+  return {
+    runId: stream.runId, executionGeneration: stream.executionGeneration, receiptId: stream.receiptId,
+    invocation: stream.invocation, text, truncatedMarker: truncated ? TRUNCATION_MARKER : undefined,
+  }
+}

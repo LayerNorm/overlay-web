@@ -1,6 +1,6 @@
 import { hydrateRemoteMessages, deleteRemoteMessageText } from '../lib/remoteMessageText'
 import { cleanupTerminalPublicStreams } from '../lib/publicStreamRead'
-import { readActivePublicStreams } from '../lib/publicStreamRead'
+import { readActivePublicStreams, readRetainedPublicStream } from '../lib/publicStreamRead'
 import { v } from 'convex/values'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 import { ACTIVE_AGENT_RUN_STATUSES as CANONICAL_ACTIVE_AGENT_RUN_STATUSES } from '../../src/shared/agents/agent-run'
@@ -1490,44 +1490,31 @@ export const cancelAgentRuns = mutation({
     const runMessages = await Promise.all(
       activeRuns.map((run) => ctx.db.get(run.assistantMessageId)),
     )
-    const activeStreams = await Promise.all(runMessages.map(async message =>
-      message
-        ? (await readActivePublicStreams(ctx, args.conversationId, [message._id]))[0]
-        : undefined))
+    // Runs on the unified stream keep their live text in rows the executor rewrites several
+    // times a second. Reading them here made this mutation lose every optimistic-concurrency
+    // retry while output was flowing, so Stop failed and the run kept going. Cancel first
+    // without touching those rows (which also makes the executor's next write stale), then
+    // copy the retained text into the message in a follow-up mutation nobody contends with.
+    const streamed = activeRuns.map(run => Boolean(run.harnessRunId
+      && publicStreamVersionOf(harnessRuns.get(run.harnessRunId)) === 1))
     for (const run of activeRuns) {
       if (run.harnessRunId) cancelledHarnessRoots.push(await cancelHarnessDelivery(ctx, run, now, args.serverSecret))
     }
+    const deferredMessageIds: Array<Doc<'conversationMessages'>['_id']> = []
     await Promise.all(activeRuns.flatMap((run, i) => {
       const message = runMessages[i]
       const writes = []
-      if (message?.status === 'generating') {
-        const activeStream = activeStreams[i]
-        const baseContent = activeStream ? message.content : args.partialContent ?? message.content
-        const activeText = activeStream
-          ? [activeStream.text, activeStream.truncatedMarker].filter(Boolean).join('\n\n')
-          : ''
-        const finalContent = `${[baseContent.trimEnd(), activeText].filter(Boolean).join('\n\n').trimEnd()}${sentinel}`
-        const baseParts = activeStream
-          ? message.parts ?? (message.content ? [{ type: 'text', text: message.content }] : [])
-          : args.partialParts?.length ? args.partialParts : message.parts ?? [{ type: 'text', text: baseContent }]
-        const streamPart = activeStream && activeText
-          ? [{
-            type: 'text',
-            id: transcriptPartIdentity(activeStream.runId, activeStream.receiptId, 0, activeStream.executionGeneration),
-            text: activeText,
-          }]
-          : []
+      if (message?.status === 'generating' && streamed[i]) {
+        deferredMessageIds.push(message._id)
+      } else if (message?.status === 'generating') {
+        const baseContent = args.partialContent ?? message.content
+        const baseParts = args.partialParts?.length ? args.partialParts : message.parts ?? [{ type: 'text', text: baseContent }]
         writes.push(ctx.db.patch(message._id, {
-          content: finalContent,
+          content: `${baseContent.trimEnd()}${sentinel}`,
           parts: [
             ...baseParts.filter(part => part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
-            ...streamPart,
             { type: 'text', text: sentinel.trimStart() },
           ],
-          ...(activeStream ? { publicStreamCheckpoint: {
-            runId: activeStream.runId, executionGeneration: activeStream.executionGeneration,
-            receiptId: activeStream.receiptId, invocation: activeStream.invocation,
-          } } : {}),
           status: 'completed',
           updatedAt: now,
         }))
@@ -1559,7 +1546,11 @@ export const cancelAgentRuns = mutation({
       }))
       return writes
     }))
-    await Promise.all(activeRuns.map(run => cleanupTerminalPublicStreams(ctx, run.assistantMessageId)))
+    for (const messageId of deferredMessageIds) {
+      await ctx.scheduler.runAfter(0, internal.chat.conversations.settleCancelledPublicStream, {
+        conversationId: args.conversationId, messageId, cancelledAt: now,
+      })
+    }
     if (activeRuns.length > 0) {
       await ctx.db.patch(args.conversationId, { lastModified: now, updatedAt: now })
     }
@@ -1573,6 +1564,57 @@ export const cancelAgentRuns = mutation({
       remoteRunIds,
       stoppedCount: activeRuns.length + remoteRunIds.length,
     }
+  },
+})
+
+function publicStreamVersionOf(run: CancellationHarnessRun | undefined): number | undefined {
+  if (!run) return undefined
+  try {
+    return (JSON.parse(run.metadataJson) as { policy?: { publicStreamVersion?: number } }).policy?.publicStreamVersion
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Second half of cancelling a unified-stream run: keeps the text that was streaming when the
+ * user stopped, marks the response interrupted and retires the stream rows. Scheduled by
+ * `cancelAgentRuns` after the run is cancelled, so the executor can no longer write.
+ */
+export const settleCancelledPublicStream = internalMutation({
+  args: {
+    conversationId: v.id('conversations'),
+    messageId: v.id('conversationMessages'),
+    cancelledAt: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const message = await ctx.db.get(args.messageId)
+    if (!message || message.conversationId !== args.conversationId) return
+    if (message.status === 'generating') {
+      const retained = await readRetainedPublicStream(ctx, args.conversationId, args.messageId)
+      const sentinel = `\n\n${INTERRUPTED_RESPONSE_NOTICE}`
+      const activeText = retained ? [retained.text, retained.truncatedMarker].filter(Boolean).join('\n\n') : ''
+      const baseParts = message.parts ?? (message.content ? [{ type: 'text', text: message.content }] : [])
+      await ctx.db.patch(message._id, {
+        content: `${[message.content.trimEnd(), activeText].filter(Boolean).join('\n\n').trimEnd()}${sentinel}`,
+        parts: [
+          ...baseParts.filter(part => part.type !== 'data-native-agent-approval' && part.type !== 'data-native-agent-input'),
+          ...(retained && activeText ? [{
+            type: 'text',
+            id: transcriptPartIdentity(retained.runId, retained.receiptId, 0, retained.executionGeneration),
+            text: activeText,
+          }] : []),
+          { type: 'text', text: sentinel.trimStart() },
+        ],
+        ...(retained ? { publicStreamCheckpoint: {
+          runId: retained.runId, executionGeneration: retained.executionGeneration,
+          receiptId: retained.receiptId, invocation: retained.invocation,
+        } } : {}),
+        status: 'completed',
+        updatedAt: args.cancelledAt,
+      })
+    }
+    await cleanupTerminalPublicStreams(ctx, args.messageId)
   },
 })
 

@@ -353,6 +353,7 @@ test('personal failure and cancellation retain active text and retire stream row
   expect(await failed.run(ctx => ctx.db.query('harnessPublicStreams')
     .withIndex('by_runId', q => q.eq('runId', failureStream.runId)).unique())).toBeNull()
 
+  vi.useFakeTimers()
   const cancelled = convexTest(schema, modules)
   const cancelStream = await seedWritableStream(cancelled, 'personal:cancelled')
   await cancelled.mutation(append, appendArgs(cancelStream, 0, 'Stop partial'))
@@ -360,7 +361,17 @@ test('personal failure and cancellation retain active text and retire stream row
     conversationId: cancelStream.conversationId, messageId: cancelStream.assistantMessageId,
     serverSecret: secret, userId: 'owner',
   })
+  // The cancel itself leaves the stream rows alone, so it never races the executor's
+  // writes, and it makes the executor's next write stale.
+  expect(await cancelled.run(ctx => ctx.db.query('harnessPublicStreams')
+    .withIndex('by_runId', q => q.eq('runId', cancelStream.runId)).unique())).not.toBeNull()
+  await expect(cancelled.mutation(append, appendArgs(cancelStream, 1, ' never shown')))
+    .rejects.toThrow('HARNESS_PUBLIC_STREAM_EXECUTION_NOT_OWNED')
+  await cancelled.finishAllScheduledFunctions(vi.runAllTimers)
+  vi.useRealTimers()
   const cancelledMessage = await cancelled.run(ctx => ctx.db.get(cancelStream.assistantMessageId))
+  expect(cancelledMessage?.content).not.toContain('never shown')
+  expect(cancelledMessage?.content).toMatch(/Stop partial[\s\S]*interrupted/i)
   expect(cancelledMessage?.content).toContain('Stop partial')
   expect(cancelledMessage?.status).toBe('completed')
   expect(await cancelled.run(ctx => ctx.db.query('harnessPublicStreams')
