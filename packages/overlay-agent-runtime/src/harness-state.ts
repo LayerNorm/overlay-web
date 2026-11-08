@@ -109,6 +109,7 @@ export type HarnessReceipt = {
 export type HarnessPolicy = {
   /** Public progress and the settled public transcript journal are enabled only for new admissions. */
   publicProgressVersion?: 1
+  publicStreamVersion?: 1
   actorUserId: string
   workspaceId?: string
   resourcePauseVersion?: 1

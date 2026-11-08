@@ -1,10 +1,13 @@
 'use client'
 
 import { useEffect } from 'react'
+import { useMemo } from 'react'
 import { usePaginatedQuery, useQuery } from 'convex/react'
 import { api } from '../../../../../convex/_generated/api'
 import type { Id } from '../../../../../convex/_generated/dataModel'
 import type { RoomMessageRecord } from './room-message-view'
+import { projectActivePublicStreams } from '@/shared/chat/public-stream-projection'
+import { usePublicStreamMetrics } from '@/components/providers/usePublicStreamMetrics'
 
 export type RoomSummary = {
   title: string
@@ -59,18 +62,45 @@ export function ConvexRoomMessageSubscription({
       ? { ...args, messageId: permalinkMessageId as Id<'conversationMessages'> }
       : 'skip',
   )
+  const loadedMessages = useMemo(() => {
+    const seen = new Set<string>()
+    return [...main.results, ...thread.results, ...(permalink ? [permalink] : [])].filter(message => {
+      // Deleted rows stay: the room renders them as tombstones.
+      if ((message.conversationId && message.conversationId !== conversationId) || seen.has(message.id)) return false
+      seen.add(message.id)
+      return true
+    })
+  }, [conversationId, main.results, permalink, thread.results])
+  const activeMessageIds = useMemo(() => {
+    const latestMain = [...main.results].sort((a, b) => b.createdAt - a.createdAt)
+    const candidates = [...thread.results, ...(permalink ? [permalink] : []), ...latestMain]
+    const seen = new Set<string>()
+    return candidates.filter(message => {
+      if ((message.conversationId && message.conversationId !== conversationId) || message.deletedAt !== undefined
+        || message.status !== 'generating' || seen.has(message.id)) return false
+      seen.add(message.id)
+      return true
+    }).slice(0, 50).map(message => message.id as Id<'conversationMessages'>)
+  }, [conversationId, main.results, permalink, thread.results])
+  // Only subscribe while something is generating: idle rooms never depend on the stream query.
+  const activeStreams = useQuery(api.collaboration.rooms.activePublicStreams,
+    room && activeMessageIds.length > 0 ? {
+      ...args,
+      messageIds: activeMessageIds,
+    } : 'skip')
+  usePublicStreamMetrics(activeStreams ?? [])
+  const projectedMessages = useMemo(
+    () => projectActivePublicStreams(loadedMessages, activeStreams ?? []) as RoomMessageRecord[],
+    [activeStreams, loadedMessages],
+  )
 
   useEffect(() => { onRoom(room) }, [onRoom, room])
 
   useEffect(() => {
     if (!room || main.status === 'LoadingFirstPage') return
     // react-doctor-disable-next-line react-doctor/no-pass-data-to-parent
-    onMessages([
-      ...main.results,
-      ...thread.results,
-      ...(permalink ? [permalink] : []),
-    ] as RoomMessageRecord[])
-  }, [main.results, main.status, onMessages, permalink, room, thread.results])
+    onMessages(projectedMessages)
+  }, [main.status, onMessages, projectedMessages, room, conversationId])
 
   const { status, loadMore } = main
   useEffect(() => {
