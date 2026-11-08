@@ -184,7 +184,7 @@ chats do not show workspace-filed outputs; workspace and automation chats do.
 | Stop, approval and input response | `conversations/stop`, `run/approval`, `run/input` | They abort provider calls and resume durable workflows; status returns through `getExecution` |
 | Title generation, image and video generation | `generate-*` | Provider calls |
 | Permanent delete of an archived chat | `v1/conversations` DELETE | Moves with unified archive, CN-33 |
-| Room thread safety lookup | `v1/conversations?conversationId=` | Rooms only; on the browser-call baseline |
+| Chat-link type and scope check | Convex `chat/personal:getSummary`, then `collaboration/rooms:scope` | Native; a link to a room opened on the personal route moves to the room's view |
 
 Temporary chats are local and unsaved. A failed native operation shows an error and never
 falls back to HTTP. Public `v1/conversations` routes stay for API and agent callers.

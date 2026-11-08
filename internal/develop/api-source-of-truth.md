@@ -60,6 +60,11 @@ The filesystem under `src/app/api/**/route.ts` is authoritative for route existe
 - Prefer parsed typed methods when callers only need data.
 - Add `*Response` methods when callers need status codes, streaming bodies, redirects, or custom error handling.
 - Browser reads and ordinary writes go through native Convex queries and mutations (`ctx.auth` identity). HTTP from the browser is for server work only: model and media runs, stop/approval/input, billing and checkout, OAuth and credentials, email, validation-heavy or audited writes, provider calls and file bytes. `npm run check:native-architecture` (CI, Lint and boundary checks) holds every browser `overlayAppClient.<resource>.<method>` call in `scripts/baselines/browser-http-calls.json`: a new call fails until it is native or deliberately added (with the reason in the PR), and a removed call must leave the baseline. The same check rejects the retired database-provider capability names and the HS256 browser token.
+- Browser HTTP reads that stay on purpose (everything else the browser reads is native):
+  - `integrations.get` / `getResponse` (connected accounts and the connector catalog) and `surfaces.listChannels` ask the integration provider (Composio, Slack); only the provider knows the answer.
+  - `sharing.get` / `sharing.impact` (Share dialog): per-resource-type manager checks and the who-gains-or-loses-access disclosure run in `WorkspaceSharingService` right before the server-checked grant or revoke.
+  - `conversations.participants` (deleting an archived room): a read immediately before the server-audited delete, which decides between leaving the room and deleting it.
+  - `workspaces.list` on the OAuth consent page (`/oauth/authorize`): that page sits outside the app shell and has no Convex client.
 - Stream chat directly through `/api/v1/conversations/act`. Disconnect recovery comes from persisted conversation state; `/api/v1/conversations/stream-auth` and an external replay relay are not public contracts.
 
 Interactive browsing uses the Computer API and `computer_browser` tool on the

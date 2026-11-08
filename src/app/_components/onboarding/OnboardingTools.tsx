@@ -9,6 +9,9 @@ import { ByoAgentFields } from '@/features/agents/components/AgentEditorForm'
 import { useByoConnection } from '@/features/agents/components/use-byo-connection'
 import { generatedByoInstructions, workspaceHarnessForByo } from '@/features/agents/lib/byo-agent-setup'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
+import { useConnectedAgentLaunchEnabled } from '@/hooks/use-connections'
+import { useConvex } from 'convex/react'
+import { api } from '../../../../convex/_generated/api'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { byoModelId } from '@/shared/agents/agent-model'
 import { safeHttpUrl } from '@/shared/security/safe-url'
@@ -36,7 +39,8 @@ const AGENTS: { harness: Harness; name: string }[] = [
 function useAvailability(workspaceId: string) {
   const { capabilities } = useOverlayCapabilities()
   const [apps, setApps] = useState<Set<string> | false | null>(capabilities.integrations ? null : false)
-  const [agents, setAgents] = useState<boolean | null>(capabilities.connectedAgents ? null : false)
+  const launch = useConnectedAgentLaunchEnabled(capabilities.connectedAgents ? workspaceId : null)
+  const agents: boolean | null = !capabilities.connectedAgents ? false : launch === undefined ? null : launch === true
   const refreshApps = useCallback(async () => {
     const result = await overlayAppClient.integrations.get<{ connected?: string[] }>(undefined, { headers: { 'x-overlay-workspace-id': workspaceId }, cache: 'no-store' })
     setApps(new Set(result.connected ?? []))
@@ -49,12 +53,6 @@ function useAvailability(workspaceId: string) {
     window.addEventListener('overlay:integrations-changed', reload)
     return () => { window.removeEventListener('focus', reload); window.removeEventListener('overlay:integrations-changed', reload) }
   }, [capabilities.integrations, refreshApps])
-  useEffect(() => {
-    if (!capabilities.connectedAgents) return
-    let alive = true
-    void overlayAppClient.agentEnvironments.listBindings(workspaceId).then(() => { if (alive) setAgents(true) }, () => { if (alive) setAgents(false) })
-    return () => { alive = false }
-  }, [capabilities.connectedAgents, workspaceId])
   return { apps, agents, refreshApps }
 }
 
@@ -142,6 +140,7 @@ function ExternalAgentConnection({ session, harness, onSaved, onClose }: { sessi
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const setAgentType = useCallback(() => {}, [])
+  const convex = useConvex()
   const byo = useByoConnection({ activeWorkspaceId: session.workspaceId,  agent, agentType: 'byo', connectedAgentsEnabled: true, initialAdapterId: harness, setAgentType })
   const save = async () => {
     setBusy(true); setError(null)
@@ -152,8 +151,8 @@ function ExternalAgentConnection({ session, harness, onSaved, onClose }: { sessi
       }, onboardingRequestInit(session, `connect-${byo.adapterId}`))).agent
       setAgent(saved)
       await overlayAppClient.agentEnvironments.upsertBinding(session.workspaceId, { agentId: saved.id, environmentId: byo.environmentId, adapterId: byo.adapterId, workingDirectory: byo.workingDirectory.trim() })
-      const result = await overlayAppClient.agentEnvironments.listBindings(session.workspaceId, saved.id)
-      if (!result.bindings.some((binding) => binding.environmentId === byo.environmentId)) throw new Error('Connection could not be confirmed. Your agent is saved; retry the connection.')
+      const bindings = await convex.query(api.agents.environmentsBrowse.bindings, { workspaceId: session.workspaceId, agentId: saved.id })
+      if (!bindings?.some((binding) => binding.environmentId === byo.environmentId)) throw new Error('Connection could not be confirmed. Your agent is saved; retry the connection.')
       onSaved(saved.id)
     } catch (value) { setError(value instanceof Error ? value.message : 'Could not save this connection.') }
     finally { setBusy(false) }
