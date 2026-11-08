@@ -58,6 +58,8 @@ export function createHarnessModelPorts(input: {
   // Whether the last call with public output stopped at its output cap. Unknown until
   // this segment records a step; a handed-off segment starts from the runner's flag.
   let lastOutputCutOff: boolean | undefined
+  const continuationFields = (truncatedResponse: boolean) =>
+    (lastOutputCutOff ?? truncatedResponse) ? { continuesPrevious: true } : {}
   // Catalog limits are fixed for a model, so read them once per run.
   const limitsByModel = new Map<string, Awaited<ReturnType<typeof readHarnessModelLimits>>>()
   async function modelLimits(modelId: string) {
@@ -182,7 +184,7 @@ export function createHarnessModelPorts(input: {
         receiptId: request.receiptId,
         purpose: 'response',
         publicStreamVersion: request.state.policy.publicStreamVersion,
-        ...((lastOutputCutOff ?? request.instructionContext.truncatedResponse) ? { continuesPrevious: true } : {}),
+        ...continuationFields(request.instructionContext.truncatedResponse),
         options: {
           ...request.settings,
           maxOutputTokens: responseMaxOutputTokens,
