@@ -14,9 +14,9 @@ Use cohesive main-targeted PRs. Keep authorization changes, virtualization, and 
 | --- | --- | --- |
 | 0. Baseline | PR #448 safeguards implemented: strict observations, explicit history loading, active-stream validation, separate counter runs | Baseline tests, script syntax checks and targeted ESLint passed. `npm run typecheck` is blocked by the uninitialized `overlay-desktop` submodule in its transcript-boundary check; live measurements and deterministic streaming fixture remain outstanding |
 | 1. Navigation | Agent opening enters the existing destination before main-thread resolution. Removed the speculative DM/channel resolver after browser QA and caller tracing established that visible room rows already navigate directly; legacy compatibility behavior preserved | Focused scoped navigation, directory-context, agent and transcript tests plus sidebar Vitest, targeted ESLint, shared-isomorphic and on-prem boundary checks passed; current-head Preview QA pending |
-| 2. Transcript loading/cache | Not started | Not tested |
+| 2. Transcript loading/cache | PR #453 starts summary and message reads together behind a backend revision marker; coordinated cache/prefetch and scroll restoration remain pending | 17 focused frontend/backend/route tests, targeted ESLint and full typecheck passed; hosted QA pending |
 | 3. Render isolation | Directory context split from transcript/execution; sidebar, archived views and scope router migrated | Directory-boundary test, targeted ESLint and shared-isomorphic check passed; profiling and broader row/composer work pending |
-| 4. Bootstrap | Not started | Not tested |
+| 4. Bootstrap | PR #452 deduplicates ordinary ambient session reads within each React request; explicit requests and refreshes stay uncached. Remaining workspace bootstrap/provisioning work pending | 11 focused session/refresh/desktop tests, targeted ESLint and full typecheck passed; hosted authentication QA pending |
 | 5. Long histories | Measurement-gated | Not tested |
 | 6A. Routine actions | Not started | Not tested |
 | 6B. Bundles/startup | Analyzer-gated | Not tested |
