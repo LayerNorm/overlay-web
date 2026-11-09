@@ -41,6 +41,13 @@ export function appPath(value) {
   return value
 }
 
+export function fixtureBackendUrl(origin, backend) {
+  if (!perfOrigin(origin).startsWith('https://') || !/^[a-z]+-[a-z]+-[0-9]+$/.test(backend ?? '')) {
+    throw new Error('A verified isolated Preview backend is required')
+  }
+  return `https://${backend}.convex.cloud`
+}
+
 export function positiveInteger(value, fallback, max = 100) {
   const parsed = value === undefined ? fallback : Number(value)
   if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > max) throw new Error('Invalid numeric configuration')
@@ -153,6 +160,9 @@ export function markdownReport(result) {
     }
   }
   const renderSections = Object.entries(result.scenarios).filter(([, data]) => data.renders)
+  for (const [scenario, data] of Object.entries(result.scenarios)) {
+    if (data.workload) lines.push('', `- ${scenario} workload: ${data.workload}`)
+  }
   if (renderSections.length) {
     lines.push('', '## Render counts', '')
     for (const [scenario, data] of renderSections) {

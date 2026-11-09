@@ -21,6 +21,7 @@ import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { chromium } from 'playwright'
 import { measureInteraction } from './realtime-baseline.mjs'
+import { fixtureStarter } from './perf-fixture.mjs'
 import {
   THROTTLE_PROFILES, appPath, frameReport, markdownReport, parseScenarios, perfOrigin,
   positiveInteger, requireObservedInteraction, renderDelta, streamingRenderReport, summarize,
@@ -191,8 +192,14 @@ async function threadSwitch({ browser, origin, storageState, runs, throttleName 
 // ── typing while streaming ─────────────────────────────────────────────────
 async function typingWhileStreaming({ browser, origin, storageState, runs, throttleName }) {
   const chatPath = appPath(required('PERF_STREAM_PATH'))
-  if (env.PERF_ALLOW_SEND !== '1') throw new Error('Sending requires PERF_ALLOW_SEND=1')
-  const prompt = required('PERF_PROMPT')
+  const workload = env.PERF_STREAM_MODE ?? 'live'
+  if (!['fixture', 'live'].includes(workload)) throw new Error('Invalid stream workload')
+  const fixture = workload === 'fixture' ? fixtureStarter({
+    origin, backend: required('PERF_FIXTURE_BACKEND'), deployKey: required('PERF_FIXTURE_DEPLOY_KEY'),
+    allowed: env.PERF_ALLOW_FIXTURE_MUTATIONS, conversationId: new URL(chatPath, origin).searchParams.get('id'),
+  }) : null
+  if (!fixture && env.PERF_ALLOW_SEND !== '1') throw new Error('Sending requires PERF_ALLOW_SEND=1')
+  const prompt = fixture ? null : required('PERF_PROMPT')
   const typed = 'quick brown fox'
   const latencies = []
   const reports = []
@@ -214,12 +221,15 @@ async function typingWhileStreaming({ browser, origin, storageState, runs, throt
       if (await page.locator('[data-text-streaming="true"]').count()) throw new Error('Fixture must start idle')
       const exchanges = page.locator('[data-chat-transcript] [data-exchange-idx]')
       const before = await exchanges.count()
-      await input.click()
-      await page.keyboard.type(prompt)
-      await page.keyboard.press('Enter')
-
-      await page.waitForFunction((count) => document.querySelectorAll('[data-chat-transcript] [data-exchange-idx]').length > count,
-        before, { timeout: TIMEOUT })
+      if (fixture) {
+        await fixture()
+      } else {
+        await input.click()
+        await page.keyboard.type(prompt)
+        await page.keyboard.press('Enter')
+        await page.waitForFunction((count) => document.querySelectorAll('[data-chat-transcript] [data-exchange-idx]').length > count,
+          before, { timeout: TIMEOUT })
+      }
       const streaming = exchanges.last()
       await page.waitForFunction(() => {
         const rows = document.querySelectorAll('[data-chat-transcript] [data-exchange-idx]')
@@ -276,7 +286,7 @@ async function typingWhileStreaming({ browser, origin, storageState, runs, throt
   }
   return {
     metrics: { keystrokeToFrameMs: summarize(latencies) },
-    workload: 'live-model-exploratory-not-a-deterministic-regression-gate',
+    workload: fixture ? 'preview-public-stream-v1-80-paragraphs-150ms' : 'live-model-exploratory-not-a-deterministic-regression-gate',
     samples: latencies,
     renders: renders ? { during: renders, report: reports[0] } : undefined,
   }

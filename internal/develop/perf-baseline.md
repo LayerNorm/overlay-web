@@ -23,11 +23,11 @@ Both are off for normal users.
 ## Running it
 
 1. Build and start production: `npm run build && npm run start` (or use an isolated exact-head PR Preview origin). Independently verify its deployed SHA before setting `PERF_TARGET_REVISION`; the runner records an expectation, not a deployment attestation. `revision` identifies the harness checkout.
-2. Save a signed-in storage state for a QA account, then `chmod 600` it. Never use a personal account with real data.
+2. Save a freshly authenticated storage state for a QA account, then `chmod 600` it. Never use a personal account with real data. Authentication state is not a timeless fixture: replaying an older snapshot can repeatedly reuse an expired access token and rotated refresh credential. Capture it immediately before a series and verify native Convex authentication; do not count a workspace boot gate as readiness. Keep expired-session recovery tests separate from valid-session timings.
 3. Prepare fixtures in that account:
    - Two agent threads (A and B) visible in the sidebar, each with a unique sentinel line of text. Thread B should be long (500+ exchanges) to show transcript cost.
    - A start page where neither thread is open (for example `/app/agents`).
-   - An idle personal chat with no draft, a send-capable composer, and permission to send synthetic prompts. Requires `PERF_ALLOW_SEND=1` and `PERF_PROMPT`. Sends `PERF_RUNS + 1` messages, including a separate counter run excluded from latency samples. The reply must keep producing text throughout typing. Respect paid-model QA policy.
+   - Prefer the deterministic Preview public-stream fixture below. Alternatively, an idle personal chat with no draft and permission to send synthetic prompts requires `PERF_ALLOW_SEND=1` and `PERF_PROMPT`. That exploratory live-model mode sends `PERF_RUNS + 1` messages, including a separate counter run excluded from latency samples. Respect paid-model QA policy.
    - A DM with 1,000+ messages. The runner presses Load older messages until the loaded-message count reaches `PERF_DM_MIN_MESSAGES` (default 1000). Insufficient history fails rather than measuring a short thread.
 4. Run:
 
@@ -49,11 +49,32 @@ Optional: `PERF_SCENARIOS=cold-start,thread-switch`, `PERF_RUNS=5` (default), `P
 
 Additional options: `PERF_TIMEOUT_MS=30000`, `PERF_DM_LOAD_PAGES=40` (maximum pagination operations), `PERF_DM_MIN_MESSAGES=1000`. Positive integer ranges are validated. An empty scenario list is invalid. Supply `PERF_CHAT_SENTINEL` and an existing chat path for cold-start transcript timing; without it that metric is intentionally unavailable.
 
+### Fixed Preview fixtures, without model calls
+
+Follow the exact-head provenance and narrowly scoped credential procedure in [convex-workflow.md](convex-workflow.md). Only after verifying the PR's isolated backend, explicitly invoke internal mutation `dev/performanceQa:init` with `{}` there. Never deploy from a feature branch to shared development or production. The mutation checks `OVERLAY_DEPLOYMENT_ENV=preview` and takes the synthetic owner from the configured Preview identity, not caller-supplied user/workspace IDs.
+
+It reuses the existing Preview QA Team and creates fixed histories: two personal chats with 25 exchanges each, one agent history with 512 exchanges, a 1,000-message DM with variable-height text and 50 same-origin image attachments, and a two-message streaming fixture. Existing histories are not appended or reset by reseeding. Changed/deleted histories fail validation. The normal Preview QA seeder may create its one-time synthetic allowance if the team was never initialized; it never replenishes an existing allowance.
+
+For personal sidebar switching use names `Performance personal-a` and `Performance personal-b`, with sentinels `Performance personal-a final sentinel` and `Performance personal-b final sentinel`. The returned manifest gives IDs for direct routes and the separate agent/DM history checks. A and B are typical histories, not a claim that the long-agent case has been measured.
+
+For typing, configure the returned stream conversation in `PERF_STREAM_PATH` with its `id` query parameter, and set:
+
+```sh
+PERF_STREAM_MODE=fixture
+PERF_ALLOW_FIXTURE_MUTATIONS=1
+PERF_FIXTURE_BACKEND=<verified-pr-backend-name>
+PERF_FIXTURE_DEPLOY_KEY=<securely-bound-scoped-preview-deployment-key>
+```
+
+Bind the key through the secret store/environment; never paste a real value into a command, report, browser or commit. The Node runner alone uses it to call the internal fixture mutation. `PERF_ALLOW_SEND` and `PERF_PROMPT` are not used in fixture mode, and no prompt is submitted through the UI.
+
+Each replay uses the existing two message rows, native public-stream projection, and 80 fixed paragraphs at 150 ms scheduler intervals. It creates no provider request or real workflow/worker. Public delivery/run/segment rows are reused, so transcript/sidebar sizes stay fixed. Only the reserved synthetic stream fixture can be restarted, while idle; generation/sequence fences discard old callbacks. The runner waits for settlement before the next replay. Timing still depends on scheduler and network delivery, so runner variance must be measured before making a timing gate. Do not use fixture Stop/Resume controls as workflow correctness evidence.
+
 ### Interpretation
 
 DOM visibility and frame callbacks are proxies, not proof of painted pixels. Composer observation includes automation/polling overhead. LCP-at-readiness is not final field LCP. A >34 ms interval is a hitch interval, not a count of dropped frames. Thread switches use the runner clock for both click and observation. Route prefetch may warm code even on a first thread visit, so cold means first application visit to B, not guaranteed cold HTTP/CDN caches.
 
-Live-model typing is exploratory, not a deterministic regression gate. A deterministic streaming fixture and measured runner variance must precede blocking timing gates. Render ratios describe the combined typing/streaming window; a separate stream-only test is needed to establish unrelated-render causation. Missing streaming observations, failed switches (including the intermediate A switch) and insufficient history invalidate the entire scenario, not just individual samples.
+Live-model typing is exploratory, not a deterministic regression gate. The fixed public-stream workload removes provider variance, but measured runner variance must still precede blocking timing gates. Render ratios describe the combined typing/streaming window; a separate stream-only test is needed to establish unrelated-render causation. Missing streaming observations, failed switches (including the intermediate A switch) and insufficient history invalidate the entire scenario, not just individual samples.
 
 Results go to `.perf/perf-baseline-<timestamp>.{json,md}` (git-ignored). Paste the Markdown table into the PR or the baseline note.
 

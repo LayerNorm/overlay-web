@@ -1,6 +1,6 @@
 # UI responsiveness implementation plan
 
-Status: Approved for implementation. Baseline tooling exists in PR #448 but has not yet produced an accepted live baseline. Implementation and acceptance are tracked separately below.
+Status: Approved for implementation. An initial exact-head cold-composer series has been captured and shared privately; the full baseline is not yet accepted. Implementation and acceptance are tracked separately below.
 
 ## Goal and constraints
 
@@ -12,11 +12,11 @@ Use cohesive main-targeted PRs. Keep authorization changes, virtualization, and 
 
 | Phase | Implementation | Acceptance |
 | --- | --- | --- |
-| 0. Baseline | PR #448 safeguards implemented: strict observations, explicit history loading, active-stream validation, separate counter runs | Baseline tests, script syntax checks and targeted ESLint passed. `npm run typecheck` is blocked by the uninitialized `overlay-desktop` submodule in its transcript-boundary check; live measurements and deterministic streaming fixture remain outstanding |
-| 1. Navigation | Not started | Not tested |
-| 2. Transcript loading/cache | Not started | Not tested |
-| 3. Render isolation | Not started | Not tested |
-| 4. Bootstrap | Not started | Not tested |
+| 0. Baseline | [PR #448](https://github.com/LayerNorm/overlay-web/pull/448) safeguards implemented: strict observations, explicit history loading, active-stream validation, separate counter runs. Adds Preview-only fixed histories and a repeatable provider-free public stream | Initial cold-composer series shared privately; fixture-library tests 11/11, Convex fixture tests 5/5, script syntax, targeted ESLint and docs health passed. Hosted fixture validation, other scenarios, profiling and accepted live baseline remain pending; expired-session replay failures are not clean-session timing samples |
+| 1. Navigation | [PR #451](https://github.com/LayerNorm/overlay-web/pull/451) opens agents before main-thread resolution. Removed the speculative DM/channel resolver after caller tracing and browser QA showed visible room rows already navigate directly; legacy compatibility behavior preserved | Focused scoped navigation, directory-context, agent and transcript tests plus sidebar Vitest, targeted ESLint, shared-isomorphic and on-prem boundary checks passed; current-head Preview QA pending |
+| 2. Transcript loading/cache | [PR #453](https://github.com/LayerNorm/overlay-web/pull/453) starts summary and message reads together behind a backend revision marker; coordinated cache/prefetch and scroll restoration remain pending | 17 focused frontend/backend/route tests, targeted ESLint and full typecheck passed; hosted QA pending |
+| 3. Render isolation | Directory context split from transcript/execution; sidebar, archived views and scope router migrated | Directory-boundary test, targeted ESLint and shared-isomorphic check passed; profiling and broader row/composer work pending |
+| 4. Bootstrap | [PR #452](https://github.com/LayerNorm/overlay-web/pull/452) deduplicates ordinary ambient session reads within each React request; explicit requests and refreshes stay uncached. Remaining workspace bootstrap/provisioning work pending | 11 focused session/refresh/desktop tests, targeted ESLint and full typecheck passed; hosted authentication QA pending |
 | 5. Long histories | Measurement-gated | Not tested |
 | 6A. Routine actions | Not started | Not tested |
 | 6B. Bundles/startup | Analyzer-gated | Not tested |
@@ -36,7 +36,7 @@ Exit: reproducible commands, valid raw samples, summarized results, and ranked b
 
 ## Phase 1: Immediate navigation
 
-1. Enter the DM/channel view before room lookup completes; resolve the selected conversation inside that view.
+1. Audit reachable DM/channel navigation before changing it. Current visible rows already navigate directly and headers collapse lists; preserve that behavior. Do not add a recent-room resolver to an unused path.
 2. Keep the existing live-agent-thread fast path. Where resolution is necessary, open an existing-pattern pending agent view before resolving/creating the main thread. Never create a placeholder server resource.
 3. Preserve back/forward, deep links, modified clicks, canonical URLs and scope. Late responses cannot override newer navigation. Prevent duplicate creation on remount/retry.
 4. Tie navigation completion to destination readiness. Delay showing busy feedback on fast transitions rather than keeping it visible after completion.

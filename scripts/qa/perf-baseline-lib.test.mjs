@@ -1,9 +1,17 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
-  appPath, frameReport, markdownReport, parseScenarios, percentile, perfOrigin,
+  appPath, fixtureBackendUrl, frameReport, markdownReport, parseScenarios, percentile, perfOrigin,
   positiveInteger, requireObservedInteraction, renderDelta, streamingRenderReport, summarize,
 } from './perf-baseline-lib.mjs'
+
+test('fixture mutations require a Preview origin and an exact deployment name, not an arbitrary URL', () => {
+  assert.equal(fixtureBackendUrl('https://pr-12.preview.getoverlay.io', 'synthetic-fixture-123'), 'https://synthetic-fixture-123.convex.cloud')
+  for (const backend of ['https://example.test', '../other', 'synthetic-fixture-123?key=x', undefined]) {
+    assert.throws(() => fixtureBackendUrl('https://pr-12.preview.getoverlay.io', backend))
+  }
+  assert.throws(() => fixtureBackendUrl('http://localhost:3000', 'synthetic-fixture-123'))
+})
 
 test('only PR previews and loopback production servers are accepted', () => {
   assert.equal(perfOrigin('https://pr-12.preview.getoverlay.io/'), 'https://pr-12.preview.getoverlay.io')

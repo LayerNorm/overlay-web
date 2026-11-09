@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add the phased UI responsiveness plan and opt-in performance baseline tooling. Reject incomplete navigation/streaming samples, verify loaded DM history before scroll measurement, and keep diagnostic payloads out of reports.
+- Add the phased UI responsiveness plan and opt-in performance baseline tooling. Reject incomplete navigation/streaming samples, verify loaded DM history before scroll measurement, and keep diagnostic payloads out of reports. Add Preview-only fixed histories and a repeatable public-stream fixture without model calls.
 
 - Standardize the approved Overlay wordmark and icon across loading, sidebar, email and metadata. The loader fades in the brand, then changes from the tagline to the workspace status with animated eyes. Nested streaming fallbacks keep the brand settled instead of replaying its entrance.
 - Add activity-only sidebar filters for chats, channels, agents and their threads, preserving ordinary rows and using the simple "No activity yet" empty state. Remove the redundant Activity dropdown in favor of the bell.
