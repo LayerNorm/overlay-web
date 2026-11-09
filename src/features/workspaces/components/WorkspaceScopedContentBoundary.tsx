@@ -4,7 +4,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react'
 import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import { WORKSPACE_CHANGED_EVENT, type WorkspaceChangedEventDetail } from '@/shared/workspaces/events'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
-import { usePanelScope } from '@/hooks/use-panel-scope'
+import { usePanelScope, usePanelScopeState } from '@/hooks/use-panel-scope'
 import { parsePanelScope } from '@/shared/workspaces/panel-scope'
 import {
   buildWorkspaceHandleHref,
@@ -144,7 +144,8 @@ type WorkspaceScopedContentGateState = {
   pathname: string
   routeSearch: string
   currentScope: ReturnType<typeof usePanelScope>
-
+  /** False until the remembered scope is read, when the URL names none; content then waits instead of guessing. */
+  scopeKnown: boolean
 }
 
 export function WorkspaceScopedContentGate({
@@ -169,8 +170,9 @@ export function WorkspaceScopedContentGate({
     pathname,
     routeSearch,
     currentScope,
-
+    scopeKnown,
   } = state
+  if (!scopeKnown) return fallback
   if (shouldWaitForWorkspaceContent({
     waitingForNavigation,
     routeTarget,
@@ -224,7 +226,7 @@ export function WorkspaceScopedContentBoundary({
   const pathname = usePathname() ?? ''
   const searchParams = useSearchParams()
   const router = useRouter()
-  const currentScope = usePanelScope()
+  const { scope: currentScope, known: scopeKnown } = usePanelScopeState()
   const { activeWorkspaceId, switchingWorkspaceId, status, resolvedRouteTargetKey, workspaces, activeWorkspace } = useWorkspace()
   const [pendingWorkspaceId, setPendingWorkspaceId] = useState<string | null>(null)
   const routeWorkspaceId = readWorkspaceIdFromPath(pathname)
@@ -234,6 +236,8 @@ export function WorkspaceScopedContentBoundary({
   const currentWorkspace = workspaceForRouteTarget({ routeTarget, workspaces, activeWorkspace })
 
   useEffect(() => {
+    // Redirecting on the hydration render would send a scope-less link to Personal before the remembered scope is read.
+    if (!scopeKnown) return
     const search = searchParams?.toString() ?? ''
     const hash = window.location.hash
     const current = `${pathname}${search ? `?${search}` : ''}${hash}`
@@ -248,7 +252,7 @@ export function WorkspaceScopedContentBoundary({
 
     })
     if (destination && current !== destination) router.replace(destination, { scroll: false })
-  }, [currentScope, currentWorkspace?.routingHandle, descriptor, pathname, router, routeTarget?.kind, routeTarget?.value, searchParams])
+  }, [currentScope, currentWorkspace?.routingHandle, descriptor, pathname, router, routeTarget?.kind, routeTarget?.value, scopeKnown, searchParams])
 
   useEffect(() => {
     function handleWorkspaceChanged(event: Event) {
@@ -280,7 +284,7 @@ export function WorkspaceScopedContentBoundary({
         pathname,
         routeSearch,
         currentScope,
-
+        scopeKnown,
       }}
     >
       {children}

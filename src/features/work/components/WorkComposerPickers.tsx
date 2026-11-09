@@ -13,7 +13,7 @@ import { Avatar } from './work-ui'
 function ComposerPicker({ label, icon, disabled, children }: { label: string; icon: ReactNode; disabled?: boolean; children(close: () => void): ReactNode }) {
   const [open, setOpen] = useState(false)
   return <Popover open={open} onOpenChange={setOpen}>
-    <PopoverTrigger asChild><Button type="button" variant="ghost" size="sm" disabled={disabled} className="h-7 min-w-0 gap-1.5 px-2 text-xs font-normal text-(--muted)">{icon}<span className="max-w-28 truncate">{label}</span></Button></PopoverTrigger>
+    <PopoverTrigger asChild><Button type="button" variant="ghost" size="sm" disabled={disabled} className="h-8 min-w-0 gap-1.5 rounded-lg px-2 text-xs font-normal text-(--muted)">{icon}<span className="max-w-28 truncate">{label}</span></Button></PopoverTrigger>
     <PopoverContent align="start" side="top" className="w-72 max-w-[calc(100vw-2rem)] p-1">{children(() => setOpen(false))}</PopoverContent>
   </Popover>
 }

@@ -1,4 +1,8 @@
-export function createNativeConvexTokenFetcher(userId: string | null, refreshSession: () => Promise<void>) {
+/**
+ * Fetches the Convex token for the signed-in user. `onFailure` runs when no token could be had for that user (network
+ * error, timeout, server error), so the caller can try again: Convex asks a fetcher once and then stays signed out.
+ */
+export function createNativeConvexTokenFetcher(userId: string | null, refreshSession: () => Promise<void>, onFailure?: () => void) {
   const flights = new Map<boolean, Promise<string | null>>()
   return ({ forceRefreshToken }: { forceRefreshToken: boolean }): Promise<string | null> => {
     if (!userId) return Promise.resolve(null)
@@ -17,7 +21,10 @@ export function createNativeConvexTokenFetcher(userId: string | null, refreshSes
       if (data.userId !== userId) return null
       return typeof data.token === 'string' ? data.token.trim() || null : null
     }
-    const request = run().catch(() => null)
+    const request = run().catch(() => null).then((token) => {
+      if (token === null) onFailure?.()
+      return token
+    })
     flights.set(forceRefreshToken, request)
     void request.then(() => { if (flights.get(forceRefreshToken) === request) flights.delete(forceRefreshToken) })
     return request
