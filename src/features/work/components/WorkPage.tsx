@@ -23,7 +23,10 @@ import { WorkPeek } from './WorkPeek'
 import { WorkQuickAdd, type WorkQuickAddHandle } from './WorkQuickAdd'
 import { WorkTimeline } from './WorkTimeline'
 import { PageSubviewTabs } from '@/components/layout/PageSubviewTabs'
-import { WorkAssignmentExecutions } from './WorkAssignmentExecutions'
+import { WorkAssignmentGroup, WorkAssignmentPeek } from './WorkAssignments'
+import { useLiveAssignments } from '../lib/use-live-work'
+import { matchesAssignmentQuery } from '@/shared/work/assignment-state'
+import type { AssignmentExecution } from '@/shared/work/assignment-execution'
 
 function ListSkeleton() {
   return (
@@ -51,6 +54,14 @@ function EmptyState({ title, description, action }: { title: string; description
   )
 }
 
+type AssignmentsSlot = {
+  items: AssignmentExecution[]
+  selectedId: string | null
+  onOpen: (id: string) => void
+  canLoadMore: boolean
+  onLoadMore: () => void
+}
+
 /** What fills the page under the toolbar: a loading state, a message, or the List, Board, or Timeline. */
 function WorkBody({
   view,
@@ -61,6 +72,7 @@ function WorkBody({
   today,
   selectedId,
   onOpen,
+  assignments,
 }: {
   view: WorkView
   scope: PanelScope
@@ -70,6 +82,7 @@ function WorkBody({
   today: string
   selectedId: string | null
   onOpen: (id: string) => void
+  assignments: AssignmentsSlot
 }) {
   const { state, items, byId } = useWorkData()
   if (state === 'loading') return <ListSkeleton />
@@ -81,7 +94,10 @@ function WorkBody({
       />
     )
   }
-  if (items.length === 0) {
+  const assignmentGroup = view === 'list' ? (
+    <WorkAssignmentGroup items={assignments.items} selectedId={assignments.selectedId} onOpen={assignments.onOpen} canLoadMore={assignments.canLoadMore} onLoadMore={assignments.onLoadMore} />
+  ) : null
+  if (items.length === 0 && assignments.items.length === 0) {
     return (
       <EmptyState
         title="No tasks yet"
@@ -89,7 +105,7 @@ function WorkBody({
       />
     )
   }
-  if (visible.length === 0) return filtering ? <EmptyState title="Nothing matches" description="Try another search." /> : null
+  if (visible.length === 0 && assignments.items.length === 0) return filtering ? <EmptyState title="Nothing matches" description="Try another search." /> : null
   if (view === 'board') {
     return (
       <div className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden">
@@ -104,13 +120,19 @@ function WorkBody({
       </div>
     )
   }
-  return <WorkList items={visible} byId={byId} today={today} selectedId={selectedId} onOpen={onOpen} />
+  return (
+    <>
+      <WorkList items={visible} byId={byId} today={today} selectedId={selectedId} onOpen={onOpen} />
+      {assignmentGroup}
+    </>
+  )
 }
 
 function WorkScreen() {
-  const { scope, view, solo } = useWorkRoute()
-  const { taskId, openTask, closeTask } = useWorkUrlState()
+  const { scope, view, solo, listView } = useWorkRoute()
+  const { taskId, assignmentId, openTask, closeTask, openAssignment, closeAssignment } = useWorkUrlState()
   const { state, items, viewer, truncated } = useWorkData()
+  const assignments = useLiveAssignments(listView)
   const [query, setQuery] = useState('')
   const quickAdd = useRef<WorkQuickAddHandle>(null)
   const today = useMemo(() => toWorkDate(new Date()), [])
@@ -119,23 +141,29 @@ function WorkScreen() {
   useHotkeys(requireShortcutHotkey('work.new'), () => quickAdd.current?.focus(), { preventDefault: true })
 
   const visible = useMemo(() => filterWork(items, { filter: 'all', query, viewer }), [items, query, viewer])
+  const assignmentItems = useMemo(() => assignments.results.filter((item) => matchesAssignmentQuery(item, query)), [assignments.results, query])
+  const selectedAssignment = assignmentId ? assignments.results.find((item) => item.assignmentId === assignmentId) : undefined
   const title = WORK_VIEW_LABELS[view]
   const selectedTask = items.find((item) => item.id === taskId)
   const loaded = state === 'ready'
   // The List scrolls the page; the Board and Timeline scroll inside their own area.
-  const pageScrolls = view === 'list' || !loaded || visible.length === 0
+  const pageScrolls = view === 'list' || !loaded || (visible.length === 0 && assignmentItems.length === 0)
 
   return (
     <AppScreenShell
-      rightPanel={taskId ? <WorkPeek key={taskId} taskId={taskId} onClose={closeTask} /> : null}
-      rightPanelOpen={Boolean(taskId)}
+      rightPanel={taskId
+        ? <WorkPeek key={taskId} taskId={taskId} onClose={closeTask} />
+        : assignmentId
+          ? <WorkAssignmentPeek key={assignmentId} assignmentId={assignmentId} items={assignments.results} loading={assignments.status === 'LoadingFirstPage' || assignments.status === 'LoadingMore'} onClose={closeAssignment} />
+          : null}
+      rightPanelOpen={Boolean(taskId || assignmentId)}
       rightPanelWidth={520}
-      onRightPanelClose={closeTask}
-      rightPanelOverlayLabel="Close task"
+      onRightPanelClose={taskId ? closeTask : closeAssignment}
+      rightPanelOverlayLabel={taskId ? 'Close task' : 'Close assignment'}
       header={(
         <AppScreenHeader
-          title={selectedTask?.title ?? title}
-          breadcrumbs={selectedTask ? [{ label: title }] : undefined}
+          title={selectedTask?.title ?? selectedAssignment?.title ?? title}
+          breadcrumbs={selectedTask || selectedAssignment ? [{ label: title }] : undefined}
           tabs={<PageSubviewTabs />}
           metadata={loaded ? <span className="text-xs text-(--muted-light)">{countOpen(items)} open</span> : undefined}
           search={<HeaderSearch value={query} onChange={setQuery} label="Search tasks" placeholder="Search tasks" />}
@@ -161,8 +189,8 @@ function WorkScreen() {
             today={today}
             selectedId={taskId}
             onOpen={openTask}
+            assignments={{ items: assignmentItems, selectedId: assignmentId, onOpen: openAssignment, canLoadMore: assignments.status === 'CanLoadMore', onLoadMore: () => assignments.loadMore(25) }}
           />
-          <WorkAssignmentExecutions query={query} />
         </div>
       </AppScreenBody>
     </AppScreenShell>

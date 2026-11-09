@@ -284,13 +284,18 @@ export async function assignmentExecutionForViewer(ctx: QueryCtx, viewer: Awaite
   }
   const attempt = assignment.currentAttemptId ? await ctx.db.query('agentAssignmentAttempts')
     .withIndex('by_attemptId', q => q.eq('attemptId', assignment.currentAttemptId!)).unique() : null
+  const result = attempt?.resultId ? await ctx.db.get(attempt.resultId) : null
   return {
-    kind: 'agent_assignment', assignmentId: assignment.assignmentId, attemptId: assignment.currentAttemptId,
-    conversationId: child._id, agentId: agent.agentId, agentName: agent.name, title: child.title,
+    kind: 'agent_assignment', assignmentId: assignment.assignmentId, attemptId: assignment.currentAttemptId, attemptOrdinal: attempt?.ordinal,
+    conversationId: child._id, agentId: agent.agentId, agentName: agent.name,
+    agent: { avatarColor: agent.avatarColor, avatarShape: agent.avatarShape, isDefault: agent.isDefault },
+    title: child.title, brief: assignment.brief,
     scope: agentScope(agent), status: await projectedStatus(ctx, assignment),
     disposition: attempt?.disposition, dispositionReason: attempt?.dispositionReason,
+    result: result ? { summary: result.summary, failureReason: result.failureReason } : undefined,
     parent: { conversationId: parent._id, agentId: caller.agentId, title: parent.title, scope: agentScope(caller) },
     origin: await authorizedOrigin(ctx, viewer, workspaceId, child._id),
+    createdAt: assignment.createdAt,
   }
 }
 

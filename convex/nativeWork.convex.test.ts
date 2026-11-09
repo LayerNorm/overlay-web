@@ -84,7 +84,7 @@ async function assignmentFixture() {
 
 test('Work projects assignment executions without creating tasks and requires both conversation ACLs', async () => {
   const data = await assignmentFixture()
-  expect((await data.read()).page).toMatchObject([{ assignmentId: 'assignment', title: 'Specialist result', status: 'queued' }])
+  expect((await data.read()).page).toMatchObject([{ assignmentId: 'assignment', title: 'Specialist result', status: 'queued', brief: 'Do work', agentName: 'specialist', agent: {}, createdAt: 1, parent: { title: 'Outcome' } }])
   expect((await data.read('alice', 'workspace')).page).toHaveLength(1)
   expect((await data.read('alice', 'personal')).page).toEqual([])
   expect((await data.read('bob')).page).toEqual([])
