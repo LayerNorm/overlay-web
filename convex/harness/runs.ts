@@ -2142,16 +2142,30 @@ export const readPublicStreamState = query({
       : null
     const steps = await ctx.db.query('harnessTranscriptSteps').withIndex('by_runId_sequence', q =>
       q.eq('runId', run.runId).gt('sequence', args.afterSequence ?? -1)).order('asc').take(10)
+    const notebookPolicy = metadata.policy.surface?.kind === 'notebook'
     return {
       status: metadata.status,
       workflowRunId: metadata.workflowRunId ?? null,
       executionGeneration: metadata.executionGeneration ?? 0,
       snapshot,
-      transcriptSteps: steps.map(step => ({
-        receiptId: step.receiptId,
-        sequence: step.sequence,
-        executionGeneration: step.executionGeneration ?? 0,
-        persistence: parseJson<HarnessTranscriptPersistence>(step.persistenceJson),
+      transcriptSteps: await Promise.all(steps.map(async step => {
+        const transcriptStep = {
+          receiptId: step.receiptId,
+          sequence: step.sequence,
+          executionGeneration: step.executionGeneration ?? 0,
+          persistence: parseJson<HarnessTranscriptPersistence>(step.persistenceJson),
+        }
+        if (!notebookPolicy || (!step.fullPersistenceStorageId && !step.fullPersistenceDigest)) {
+          return transcriptStep
+        }
+        if (!step.fullPersistenceStorageId || !step.fullPersistenceDigest) {
+          throw new Error('Full Notebook transcript payload is unavailable.')
+        }
+        return {
+          ...transcriptStep,
+          fullPersistenceUrl: await ctx.storage.getUrl(step.fullPersistenceStorageId),
+          fullPersistenceDigest: step.fullPersistenceDigest,
+        }
       })),
       nextSequence: steps.length === 10 ? steps.at(-1)!.sequence : null,
     }

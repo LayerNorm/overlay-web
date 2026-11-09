@@ -1,7 +1,10 @@
 import { createHash } from 'node:crypto'
-import { beforeEach, expect, test, vi } from 'vitest'
+import { gzipSync } from 'node:zlib'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { NextRequest } from 'next/server'
+import type { HarnessTranscriptPersistence } from '@overlay/agent-runtime/harness-store'
 import { notebookRequestDigest } from '@/server/notebook/notebook-agent-identity'
+import { compactTranscriptSnapshot } from '@/server/harness/transcript-snapshot'
 import { POST } from './route'
 
 const mocks = vi.hoisted(() => ({
@@ -170,6 +173,8 @@ beforeEach(() => {
   })
 })
 
+afterEach(() => vi.unstubAllGlobals())
+
 test('reconnect streams the admitted run without persisting or starting another turn', async () => {
   const request = new NextRequest('https://example.test/api/v1/notebook-agent', {
     method: 'POST',
@@ -207,6 +212,103 @@ test('reconnect streams the admitted run without persisting or starting another 
   expect(mocks.persistUserMessage).not.toHaveBeenCalled()
   expect(mocks.startPersonalWorkflow).not.toHaveBeenCalled()
   expect(mocks.startPersonalHarness).not.toHaveBeenCalled()
+})
+
+test('hydrates full Notebook proposals and replays them after their tool-call cursor', async () => {
+  const longLine = 'n'.repeat(5_000)
+  const edit = {
+    id: 'large-edit',
+    description: 'Replace a long line',
+    startLine: 1,
+    endLine: 1,
+    originalLines: ['old'],
+    newLines: [longLine],
+  }
+  const fullPersistence = {
+    content: '',
+    parts: [
+      ...Array.from({ length: 82 }, (_, index) => ({ type: 'text', text: `Prefix ${index}.` })),
+      {
+        type: 'tool-invocation',
+        toolInvocation: {
+          toolCallId: 'proposal-call',
+          toolName: 'propose_edit',
+          toolInput: { start_line: 1, new_content: longLine },
+          state: 'output-available',
+          toolOutput: { success: true, edit },
+        },
+      },
+    ],
+  } as unknown as HarnessTranscriptPersistence
+  const compacted = compactTranscriptSnapshot(fullPersistence)
+  const compactedProposalIndex = compacted.parts.findIndex(part =>
+    (part.toolInvocation as Record<string, unknown> | undefined)?.toolName === 'propose_edit')
+  const fullProposalIndex = fullPersistence.parts.findIndex(part =>
+    (part.toolInvocation as Record<string, unknown> | undefined)?.toolName === 'propose_edit')
+  const compactedInvocation = compacted.parts[compactedProposalIndex]!.toolInvocation as Record<string, unknown>
+  expect(compactedProposalIndex).not.toBe(fullProposalIndex)
+  expect(compactedInvocation.toolOutput).toMatchObject({ truncated: true })
+
+  const serialized = JSON.stringify(fullPersistence)
+  const digest = createHash('sha256').update(serialized).digest('hex')
+  const compressed = Uint8Array.from(gzipSync(serialized))
+  const fetchMock = vi.fn(async () => new Response(compressed.slice().buffer))
+  vi.stubGlobal('fetch', fetchMock)
+  mocks.readPublicStreamState.mockResolvedValue({
+    status: 'completed',
+    nextSequence: null,
+    snapshot: null,
+    transcriptSteps: [{
+      sequence: 0,
+      executionGeneration: 0,
+      persistence: compacted,
+      fullPersistenceUrl: 'https://storage.test/notebook',
+      fullPersistenceDigest: digest,
+    }],
+  })
+
+  const context = {
+    auth: { userId: 'user-1', authType: 'session' },
+    workspace: { workspace: { id: 'workspace-1' }, principal: { id: 'principal-1' } },
+    requestFingerprint: 'fingerprint',
+  } as never
+  const createRequest = (cursor?: string) => new NextRequest('https://example.test/api/v1/notebook-agent', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      noteId: 'note-1',
+      turnId: 'turn-1',
+      runId: 'personal:agent-run-1',
+      ...(cursor ? { cursor } : {}),
+      noteContent: 'source markdown',
+      noteTitle: 'Notes',
+      message: 'Continue the existing turn',
+      modelId: 'test-model',
+    }),
+  })
+
+  const firstResponse = await POST(createRequest(), context)
+  const firstEvents = (await firstResponse.text()).trim().split('\n').map(line => JSON.parse(line))
+  const toolCall = firstEvents.find(event => event.type === 'tool_call')
+  const proposal = firstEvents.find(event => event.type === 'edit_proposal')
+  expect(firstResponse.status).toBe(200)
+  expect(firstEvents.map(event => event.type)).toEqual([
+    'accepted',
+    ...Array.from({ length: 82 }, () => 'text'),
+    'tool_call',
+    'edit_proposal',
+    'done',
+  ])
+  expect(toolCall).toMatchObject({ cursor: `0.${fullProposalIndex * 2}` })
+  expect(proposal).toMatchObject({ cursor: `0.${fullProposalIndex * 2 + 1}`, edit })
+
+  const replayResponse = await POST(createRequest(toolCall.cursor), context)
+  const replayEvents = (await replayResponse.text()).trim().split('\n').map(line => JSON.parse(line))
+  expect(replayEvents.map(event => event.type)).toEqual(['accepted', 'edit_proposal', 'done'])
+  expect(replayEvents.filter(event => event.type === 'edit_proposal')).toEqual([
+    expect.objectContaining({ cursor: `0.${fullProposalIndex * 2 + 1}`, edit }),
+  ])
+  expect(fetchMock).toHaveBeenCalledTimes(2)
 })
 
 test('closes after a stream polling failure without a terminal event', async () => {

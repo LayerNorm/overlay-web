@@ -18,7 +18,10 @@ export type PublicTranscriptPage = {
 }
 
 export async function readPublicTranscriptStep(step: PublicTranscriptPage['steps'][number], signal: AbortSignal) {
-  if (!step.fullPersistenceDigest) return { persistence: step.persistence, legacy: true }
+  if (!step.fullPersistenceDigest) {
+    if (step.fullPersistenceUrl != null) throw new Error('Full transcript payload digest is unavailable.')
+    return { persistence: step.persistence, legacy: true }
+  }
   if (!step.fullPersistenceUrl) throw new Error('Full transcript payload is unavailable.')
   const response = await fetch(step.fullPersistenceUrl, { signal, redirect: 'error', cache: 'no-store' })
   if (!response.ok) throw new Error('Full transcript payload could not be read.')

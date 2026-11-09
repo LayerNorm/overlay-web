@@ -25,6 +25,7 @@ import {
   agentRunService,
 } from '@/server/conversations/http'
 import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
+import { readPublicTranscriptStep } from '@/server/harness/public-transcript'
 import {
   PersonalHarnessAdmissionConflict,
   PersonalHarnessStartPending,
@@ -45,6 +46,7 @@ import { summarizeErrorForLog } from '@/shared/security/safe-log'
 export const maxDuration = 120
 
 const MAX_NOTE_CHARS = 400_000
+const NOTEBOOK_TRANSCRIPT_FETCH_TIMEOUT_MS = 60_000
 const MentionSchema = z.object({
   type: z.string().max(100),
   id: z.string().max(256),
@@ -124,9 +126,13 @@ function createNotebookStream(input: {
             })
             if (!state) throw new Error('Notebook stream is unavailable.')
             for (const step of state.transcriptSteps) {
+              const { persistence } = await readPublicTranscriptStep(
+                step,
+                AbortSignal.any([input.signal, AbortSignal.timeout(NOTEBOOK_TRANSCRIPT_FETCH_TIMEOUT_MS)]),
+              )
               const events = projectNotebookTranscriptStep({
                 runId: input.runId,
-                step,
+                step: { ...step, persistence },
                 afterCursor,
               })
               for (const event of events) emit(event)

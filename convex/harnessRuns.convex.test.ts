@@ -1102,6 +1102,128 @@ describe('durable harness runs', () => {
   })
 })
 
+test('public stream exposes full transcript storage only for Notebook policies', async () => {
+  const convex = convexTest(schema, modules)
+  const workspaceId = 'notebook-transcript-workspace'
+  const now = Date.now()
+  await convex.run(async ctx => {
+    await ctx.db.insert('workspaces', {
+      workspaceId,
+      kind: 'organization',
+      name: 'Notebook transcript test',
+      slug: workspaceId,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    })
+    await ctx.db.insert('workspacePrincipals', {
+      principalId: 'notebook-transcript-principal',
+      workspaceId,
+      type: 'human',
+      userId: 'alice',
+      displayName: 'Alice',
+      createdAt: now,
+      updatedAt: now,
+    })
+    await ctx.db.insert('workspaceMemberships', {
+      membershipId: 'notebook-transcript-membership',
+      workspaceId,
+      principalId: 'notebook-transcript-principal',
+      role: 'member',
+      status: 'active',
+      joinedAt: now,
+      updatedAt: now,
+    })
+  })
+  const conversationId = await seedConversation(convex, 'alice', workspaceId)
+  const deliveryAgentRunId = await convex.run(async ctx => {
+    const base = {
+      conversationId,
+      userId: 'alice',
+      turnId: 'notebook-turn',
+      mode: 'act' as const,
+      contentType: 'text' as const,
+      createdAt: now,
+      updatedAt: now,
+    }
+    const userMessageId = await ctx.db.insert('conversationMessages', {
+      ...base,
+      role: 'user',
+      content: 'Update the note.',
+    })
+    const assistantMessageId = await ctx.db.insert('conversationMessages', {
+      ...base,
+      role: 'assistant',
+      content: '',
+      status: 'generating',
+    })
+    return await ctx.db.insert('conversationAgentRuns', {
+      conversationId,
+      turnId: 'notebook-turn',
+      userId: 'alice',
+      userMessageId,
+      assistantMessageId,
+      mode: 'chat',
+      runner: 'workflow',
+      executionEngine: 'overlay_harness',
+      status: 'queued',
+      createdAt: now,
+      updatedAt: now,
+    })
+  })
+  const notebookInput = {
+    ...admission('notebook-public-stream', conversationId, {
+      workspaceId,
+      publicStreamVersion: 1,
+      surface: {
+        kind: 'notebook' as const,
+        noteId: 'note-1',
+        turnId: 'notebook-turn',
+        requestDigest: 'a'.repeat(64),
+      },
+    }),
+    deliveryAgentRunId,
+  }
+  const ordinaryInput = admission('ordinary-public-stream', conversationId, {
+    workspaceId,
+    publicStreamVersion: 1,
+  })
+  await admit(convex, notebookInput)
+  await admit(convex, ordinaryInput)
+
+  const fullPersistence = 'full Notebook transcript'
+  const fullPersistenceStorageId = await convex.run(ctx => ctx.storage.store(new Blob([fullPersistence])))
+  const fullPersistenceDigest = createHash('sha256').update(fullPersistence).digest('hex')
+  await convex.run(async ctx => {
+    for (const runId of [notebookInput.runId, ordinaryInput.runId]) {
+      await ctx.db.insert('harnessTranscriptSteps', {
+        runId,
+        receiptId: 'model:0',
+        executionGeneration: 0,
+        sequence: 0,
+        stepNumber: 0,
+        persistenceJson: JSON.stringify({ content: 'bounded snapshot', parts: [] }),
+        fullPersistenceStorageId,
+        fullPersistenceDigest,
+        createdAt: now,
+      })
+    }
+  })
+
+  const read = query('readPublicStreamState')
+  const args = { actorUserId: 'alice', afterSequence: -1, serverSecret: secret }
+  const notebookState = await convex.query(read, { ...args, runId: notebookInput.runId })
+  const ordinaryState = await convex.query(read, { ...args, runId: ordinaryInput.runId })
+  expect(notebookState).toMatchObject({
+    transcriptSteps: [{
+      fullPersistenceUrl: expect.any(String),
+      fullPersistenceDigest,
+    }],
+  })
+  expect(ordinaryState.transcriptSteps[0]).not.toHaveProperty('fullPersistenceUrl')
+  expect(ordinaryState.transcriptSteps[0]).not.toHaveProperty('fullPersistenceDigest')
+})
+
 test('message trace retrieval enforces conversation access and reads every page in sequence', async () => {
   const convex = convexTest(schema, modules)
   const workspaceId = 'trace-workspace'
