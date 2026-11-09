@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Document that Vercel blocks production builds for main commits authored with GitHub's private noreply email, and how Integration avoids it, after the #405 merge commit was blocked; this commit also triggers that blocked production deployment.
+
 - Align sidebar activity with native Convex authentication and shared thread visibility checks, removing legacy token arguments, backend-capability gating, and silent query-error fallbacks without changing the sidebar design.
 
 - Render idle sidebar threads as text only, without reserving an empty status-icon slot.
