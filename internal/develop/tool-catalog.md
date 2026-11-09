@@ -105,6 +105,13 @@ Task tools never delete tasks or start an agent run. Agent turns supply activity
 service-authenticated calls, including archive/restore scope requests; other callers cannot choose their event actor. Existing full-toolbox grants
 receive the later-added Tasks group through `LATER_GROUP_MEMBERS`.
 
+**Assigned tasks.** In the thread a Work assignment opened, the assigned agent always gets `get_task`, `update_task` and
+`comment_on_task` (`src/server/agents/assigned-task-tools.ts`), because the assignment message tells it to use them. Agents
+created without the Tasks group (an empty or narrow grant) otherwise could not read the task or report progress. Tools the
+agent's own grant lacks are limited to that one task, and `update_task` then changes only `status` and `blocked`. The task
+is found by `work/workItems:assignedTaskForConversation` (assignee, active, thread, and readable by the person the agent acts
+for); deployment and workspace policy still apply, and calls still go through the Work API as that person.
+
 Agent note/file creation and edits mark `byAgent` through the existing API path;
 Computer binary publication and agent-drive uploads set `createdByAgent` in
 Convex. Growth rollups count their output without human activity credit.

@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Fix agents that could not read the Work task they were assigned. The assignment message tells the agent to read the task with `get_task`, move it to In progress and Review with `update_task`, and comment with `comment_on_task`, but those tools came only from the agent's Tasks permission. An agent created without it (including the Preview QA fixture agents) answered that it could not access the task and never updated it. In the thread the assignment opened, the assigned agent now always gets those three tools, limited to that one task, and without its own Tasks permission it can change only the task's status and blocked flag. Workspace policy and the assigner's Work permissions still apply. Adds tests for the task lookup and the scoping.
+
 - Add a bottom-pinned Work composer with searchable assignees and dependencies, Start/Due dates, context, status and priority. Agent assignments start immediately unless dependencies are unfinished, then start automatically when the last blocker is done.
 
 - Stop a live room read-marker feedback loop that repeatedly fetched the conversation directory during onboarding and could exhaust browser resources before Subscribe reached checkout.
