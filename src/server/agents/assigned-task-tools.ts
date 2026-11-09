@@ -1,8 +1,7 @@
 import 'server-only'
 
 import type { ToolSet } from '@/server/ai/sdk'
-import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
+import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
 
 /**
@@ -24,13 +23,12 @@ export async function findAssignedTaskId(args: {
   workspaceId: string
 }): Promise<string | null> {
   try {
-    return await convex.query<string | null>('work/workItems:assignedTaskForConversation', {
+    return await getOverlayServerContext().appData.repositories.work.assignedTaskIdForConversation({
       userId: args.actorUserId,
       workspaceId: args.workspaceId,
       agentPrincipalId: args.agentPrincipalId,
       conversationId: args.conversationId,
-      serverSecret: getInternalApiSecret(),
-    }, { throwOnError: true }) ?? null
+    })
   } catch (_error) {
     logger.warn('[workspace-agent] assigned task lookup failed', { conversationId: args.conversationId })
     return null
