@@ -1,15 +1,20 @@
 'use client'
-import { unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
+import { unstyledInput } from '@overlay/ui/control-reset'
 
-import { useMemo, useRef, useState, type ReactNode } from 'react'
-import { AlertTriangle, CalendarDays, CircleDot, CornerDownRight, Flag, Undo2, User, UserCheck } from 'lucide-react'
-import { AppScreenSidePanel } from '@overlay/modules-react/shell'
-import { Button, Toggle, Input, Textarea } from '@overlay/ui/primitives'
-import { useAutosizeTextarea } from '@overlay/ui/hooks'
+import { useMemo, useState, type ReactNode } from 'react'
+import { AlertTriangle, ArrowUpRight, CalendarDays, Check, CircleDot, CornerDownRight, Flag, LoaderCircle, MessageSquare, Undo2, User, UserCheck } from 'lucide-react'
+import Link from 'next/link'
+import { AppScreenSidePanel, AppScreenSidePanelActions, AppScreenSidePanelClose, AppScreenSidePanelHeader } from '@overlay/modules-react/shell'
+import { Button, Toggle, Input } from '@overlay/ui/primitives'
 import { type UpdateWorkItemRequest, type WorkItem, type WorkPerson } from '@overlay/app-core'
 import { ScopeItemActions } from '@/components/layout/ScopeItemActions'
 import { validateWorkDates, validateWorkTitle } from '@/shared/work/status'
 import { useEscapeToClose, useScopeFollowsTask, useWorkTask } from '../lib/use-work-task'
+import { useLiveWorkThread } from '../lib/use-live-work'
+import { agentThreadHref } from '@/components/layout/sidebar-nav'
+import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useWorkspaceHref } from '@/hooks/use-workspace-href'
+import { formatAgo } from '@/shared/work/activity'
 import { useOnboardingWorkReady } from '@/components/providers/OnboardingWorkHandoff'
 import { eligibleParents } from '../lib/work-state'
 import { ContextSection, DoneWhenSection, ObjectiveSection, ActivitySection, Section, WaitingOnSection } from './WorkPeekSections'
@@ -62,19 +67,16 @@ function ReviewCard({ item, disabled, onApprove, onRequestChanges }: { item: Wor
   )
 }
 
-/** The title, edited in place: it wraps rather than scrolls, and saves when the field is left. */
+/** The title is the panel header, edited in place; it saves when the field is left. */
 function PeekTitle({ item, editable, onSave }: { item: WorkItem; editable: boolean; onSave: (title: string) => void }) {
   // The title being typed; null means "show the saved one".
   const [draft, setDraft] = useState<string | null>(null)
   const title = draft ?? item.title
-  const field = useRef<HTMLTextAreaElement>(null)
-  useAutosizeTextarea(field, title)
   return (
-    <Textarea
-      ref={field}
+    <Input
       value={title}
-      rows={1}
       aria-label="Title"
+      title={item.title}
       disabled={!editable}
       maxLength={200}
       onChange={(event) => setDraft(event.target.value)}
@@ -87,9 +89,39 @@ function PeekTitle({ item, editable, onSave }: { item: WorkItem; editable: boole
         if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.blur() }
         if (event.key === 'Escape') { event.stopPropagation(); setDraft(null); event.currentTarget.blur() }
       }}
-      className={unstyledTextarea(`mb-3 block w-full resize-none overflow-hidden bg-transparent font-serif text-2xl leading-tight tracking-tight text-(--foreground) outline-none disabled:opacity-100`)}
+      className={unstyledInput(`h-8 min-w-0 flex-1 truncate rounded-lg bg-transparent px-1.5 text-[15px] font-semibold tracking-tight text-(--foreground) outline-none transition-colors hover:bg-(--surface-subtle) focus:bg-(--surface-subtle) disabled:opacity-100 disabled:hover:bg-transparent`)}
     />
   )
+}
+
+/** The agent thread doing the task: its title, whether its turn is still going, and a link into it. */
+function LinkedThreadRow({ item, assignee }: { item: WorkItem; assignee: WorkPerson | null }) {
+  const linked = useLiveWorkThread(item.id, assignee?.type === 'agent' || Boolean(item.assignmentExecution))
+  const { activeWorkspaceId } = useWorkspace()
+  const buildWorkspaceHref = useWorkspaceHref()
+  // "Finished · 3m" is read when the panel opens, like the activity times below it.
+  const [now] = useState(() => Date.now())
+  if (assignee?.type !== 'agent' && !linked) return null
+  let content: ReactNode
+  if (linked === undefined) content = <span className="ui-skeleton-line h-3 w-40 rounded-md" aria-label="Loading thread" />
+  else if (!linked) content = <span className="text-(--muted-light)">{item.blockedBy.length ? 'Starts when dependencies finish' : 'Starts when the agent picks it up'}</span>
+  else if (!linked.visible) content = <span className="text-(--muted)">In the assigner’s thread</span>
+  else {
+    const view = assignee?.agentVisibility === 'creator' ? 'personal' : 'workspace'
+    const href = agentThreadHref(activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents', view) : '/app/agents', linked.agentId, linked.conversationId, view)
+    content = (
+      <Link href={href} className="-ml-2 flex h-7 min-w-0 max-w-full items-center gap-2 rounded-lg px-2 text-(--foreground) transition-colors hover:bg-(--surface-subtle)" data-testid="work-linked-thread">
+        <span className="min-w-0 truncate">{linked.title}</span>
+        <span className="flex shrink-0 items-center gap-1 text-xs text-(--muted)">
+          {linked.state === 'working' ? <><LoaderCircle size={12} className="animate-spin motion-reduce:animate-none" aria-hidden />Working</> : null}
+          {linked.state === 'finished' ? <><Check size={12} aria-hidden />Finished · {formatAgo(linked.updatedAt, now)}</> : null}
+          {linked.state === 'stopped' ? 'Stopped' : null}
+        </span>
+        <ArrowUpRight size={14} className="shrink-0 text-(--muted-light)" aria-hidden />
+      </Link>
+    )
+  }
+  return <PropertyRow icon={<MessageSquare size={13} />} label="Thread">{content}</PropertyRow>
 }
 
 /** Status, owner, reviewer, priority, dates, parent, and the blocked flag. */
@@ -128,6 +160,7 @@ function PeekProperties({ item, editable, save }: { item: WorkItem; editable: bo
           <span className={assignee ? '' : 'text-(--muted-light)'}>{assignee?.displayName ?? 'Assign a person or agent'}</span>
         </OwnerPicker>
       </PropertyRow>
+      <LinkedThreadRow item={item} assignee={assignee} />
       <PropertyRow icon={<UserCheck size={13} />} label="Reviewer">
         <ReviewerPicker
           reviewer={reviewer}
@@ -215,24 +248,27 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
   return (
     <AppScreenSidePanel
       data-testid="work-peek"
-      title={<ParentCrumb item={item} />}
-      onClose={onClose}
-      closeLabel="Close task"
-      actions={(
-        <ScopeItemActions
-          kind="content"
-          resource="work"
-          item={scopedItem}
-          label={item.title}
-          onChanged={(change) => {
-            // The live lists drop an archived task and its subtasks by themselves.
-            if (change.action === 'archive') onClose()
-          }}
-        />
+      header={(
+        <AppScreenSidePanelHeader className="gap-1 pl-5.5">
+          <PeekTitle item={item} editable={editable} onSave={(title) => save({ title })} />
+          <AppScreenSidePanelActions className="gap-0.5">
+            <ScopeItemActions
+              kind="content"
+              resource="work"
+              item={scopedItem}
+              variant="header"
+              label={item.title}
+              onChanged={(change) => {
+                // The live lists drop an archived task and its subtasks by themselves.
+                if (change.action === 'archive') onClose()
+              }}
+            />
+            <AppScreenSidePanelClose label="Close task" onClose={onClose} />
+          </AppScreenSidePanelActions>
+        </AppScreenSidePanelHeader>
       )}
     >
-      <div ref={handoffContent} className="px-7 pb-10 pt-6">
-        <PeekTitle item={item} editable={editable} onSave={(title) => save({ title })} />
+      <div ref={handoffContent} className="px-7 pb-10 pt-2">
         {archived ? (
           <div className="mb-5 flex items-center gap-2 rounded-lg border border-(--border) bg-(--surface-muted) px-3 py-2 text-[13px] text-(--muted)" data-testid="work-archived-note">
             <Undo2 size={14} aria-hidden />
@@ -255,8 +291,3 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
   )
 }
 
-function ParentCrumb({ item }: { item: WorkItem }) {
-  const { byId } = useWorkData()
-  const parent = item.parentId ? byId.get(item.parentId) : undefined
-  return <span className="text-(--muted)">{parent ? parent.title : 'Task'}</span>
-}

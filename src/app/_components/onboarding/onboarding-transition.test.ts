@@ -23,5 +23,5 @@ test('completion navigates without a delayed tour and retains the last composer 
   assert.match(shell, /onReady: finishHandoff/)
   assert.match(conversation, /action\.action === 'finish' \? 0 : 450/)
   assert.match(shell, /handoff \? "relative z-10 bg-background"/)
-  assert.match(work, /useOnboardingWorkReady\(taskId, state === 'error' \|\| \(loaded && !taskId\)\)/)
+  assert.match(work, /useOnboardingWorkReady\(taskId, state === 'error' \|\| state === 'signed_out' \|\| \(loaded && !taskId\)\)/)
 })

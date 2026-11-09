@@ -507,9 +507,9 @@ export function AppScreenSidePanelClose({ label, onClose }: { label: string; onC
       type="button"
       aria-label={label}
       onClick={onClose}
-      className="size-7 rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
+      className="size-8 rounded-lg text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground)"
     >
-      <X size={14} strokeWidth={1.8} />
+      <X size={16} strokeWidth={1.8} />
     </Button>
   )
 }
