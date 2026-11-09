@@ -123,6 +123,7 @@ export interface CanonicalNotebookEditorProps {
   projectName?: string
   repository: NotebookEditorRepository
   runAgent(request: NotebookAgentRequest, signal: AbortSignal): Promise<Response>
+  stopAgent(input: { conversationId: string; turnId: string }): Promise<void>
   models: readonly NotebookEditorModel[]
   initialModelId: string
   onModelChange?(modelId: string): void
@@ -598,6 +599,7 @@ export function CanonicalNotebookEditor({
   projectName,
   repository,
   runAgent,
+  stopAgent,
   models,
   initialModelId,
   onModelChange,
@@ -689,9 +691,11 @@ export function CanonicalNotebookEditor({
 
   const agent = useNotebookAgent({
     runAgent,
+    stopAgent,
     editor,
     activeNote,
     title,
+    titleRef,
     initialModelId,
     flushSaveRef,
     controlledAgentPanelOpen,

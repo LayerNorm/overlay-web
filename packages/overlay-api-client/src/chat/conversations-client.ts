@@ -181,6 +181,7 @@ export class ConversationsClient {
   stopResponse(
     body: {
       conversationId?: string
+      turnId?: string
       messageId?: string
       partialContent?: string
       partialParts?: Array<Record<string, unknown>>

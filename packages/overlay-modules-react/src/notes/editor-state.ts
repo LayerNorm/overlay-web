@@ -43,13 +43,17 @@ import {
   type NoteDoc,
 } from '@overlay/app-core'
 import { noteMarkdownToEditorHtml, toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
+import {
+  followNotebookAgentStream,
+  notebookSnapshotMatches,
+  stopNotebookRunAfterAcceptance,
+} from './notebook-agent-reconnect'
 import type { SlashMenuItem } from './slash-menu'
 import { createSlashMenuItems } from './slash-menu-items'
 import {
   InlineDiffExtension,
   INLINE_DIFF_CSS,
 } from './inline-diff-extension'
-import { noteContentFromEditor } from './editor-content'
 import type {
   NotebookEditorMediaAdapter,
   NotebookEditorMention,
@@ -747,17 +751,31 @@ async function readAgentStream(
   res: Response,
   editor: TiptapEditor | null,
   setAgentItems: React.Dispatch<React.SetStateAction<NotebookAgentUiItem[]>>,
-) {
+  options: {
+    eventIds: Set<string>
+    proposalIds: Set<string>
+    runIdentity: MutableRefObject<{ runId: string; conversationId: string; turnId: string; cursor?: string } | null>
+    frozenMarkdown: string
+    frozenTitle: string
+    currentTitle: () => string
+    currentMarkdown: () => string
+    onAccepted: (identity: { runId: string; conversationId: string; turnId: string }) => Promise<void>
+  },
+): Promise<boolean> {
   const reader = res.body?.getReader()
-  if (!reader) {
-    setAgentItems((prev) => [...prev, { type: 'error', text: 'No response body' }])
-    return
-  }
+  if (!reader) return false
 
   const decoder = new TextDecoder()
   let buffer = ''
+  let terminal = false
   while (true) {
-    const { done, value } = await reader.read()
+    let done: boolean
+    let value: Uint8Array | undefined
+    try {
+      ({ done, value } = await reader.read())
+    } catch {
+      return false
+    }
     if (done) break
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split('\n')
@@ -768,9 +786,45 @@ async function readAgentStream(
       const evt = parseNotebookAgentStreamLine(trimmed)
       if (!evt) continue
 
+      if (evt.type === 'accepted') {
+        const identity = { runId: evt.runId, conversationId: evt.conversationId, turnId: evt.turnId }
+        const current = options.runIdentity.current
+        if (current && (current.runId !== identity.runId || current.conversationId !== identity.conversationId
+          || current.turnId !== identity.turnId)) {
+          throw new Error('Notebook reconnect returned a different run identity.')
+        }
+        options.runIdentity.current = { ...identity, ...(evt.cursor ? { cursor: evt.cursor } : {}) }
+        await options.onAccepted(identity)
+        continue
+      }
+      if (evt.cursor && options.runIdentity.current) {
+        options.runIdentity.current = { ...options.runIdentity.current, cursor: evt.cursor }
+      }
+      if (evt.type === 'done') terminal = true
+      if (evt.eventId) {
+        if (options.eventIds.has(evt.eventId)) continue
+        options.eventIds.add(evt.eventId)
+      }
+
       if (evt.type === 'edit_proposal') {
         const edit = evt.edit
-        if (edit) editor?.chain().focus().addDiffProposal(edit).run()
+        if (edit && !options.proposalIds.has(edit.id)) {
+          options.proposalIds.add(edit.id)
+          const changed = !notebookSnapshotMatches({
+            frozenMarkdown: options.frozenMarkdown,
+            currentMarkdown: options.currentMarkdown(),
+            frozenTitle: options.frozenTitle,
+            currentTitle: options.currentTitle(),
+          })
+          if (changed) {
+            setAgentItems((prev) => [...prev, {
+              type: 'error',
+              text: 'The note changed after this run started. Rerun the request before applying its proposal.',
+            }])
+          } else {
+            editor?.chain().focus().addDiffProposal(edit).run()
+          }
+        }
         continue
       }
 
@@ -778,22 +832,27 @@ async function readAgentStream(
       if (item) setAgentItems((prev) => [...prev, item])
     }
   }
+  return terminal
 }
 
 export function useNotebookAgent({
   runAgent,
+  stopAgent,
   editor,
   activeNote,
   title,
+  titleRef,
   initialModelId,
   flushSaveRef,
   controlledAgentPanelOpen,
   onAgentPanelOpenChange,
 }: {
   runAgent: (request: NotebookAgentRequest, signal: AbortSignal) => Promise<Response>
+  stopAgent: (input: { conversationId: string; turnId: string }) => Promise<void>
   editor: TiptapEditor | null
   activeNote: NotebookNote | null
   title: string
+  titleRef: MutableRefObject<string>
   initialModelId: string
   flushSaveRef: FlushSaveRef
   controlledAgentPanelOpen?: boolean
@@ -810,14 +869,31 @@ export function useNotebookAgent({
   const [selectedModelId, setSelectedModelId] = useState(initialModelId)
   const [showModelPicker, setShowModelPicker] = useState(false)
   const notebookAgentAbortRef = useRef<AbortController | null>(null)
+  const notebookRunIdentityRef = useRef<{ runId: string; conversationId: string; turnId: string; cursor?: string } | null>(null)
+  const stopRequestedRef = useRef(false)
+  const notebookAgentMountedRef = useRef(false)
+  const runInProgressRef = useRef(false)
+  const stopAgentRef = useRef(stopAgent)
+  const seenEventIdsRef = useRef(new Set<string>())
+  const seenProposalIdsRef = useRef(new Set<string>())
   const modelPickerRef = useRef<HTMLDivElement>(null)
   const activeNoteId = activeNote?._id
+  stopAgentRef.current = stopAgent
 
   useEffect(() => {
-    notebookAgentAbortRef.current?.abort()
-    notebookAgentAbortRef.current = null
-    setAgentRunning(false)
-    setAgentItems([])
+    notebookAgentMountedRef.current = true
+    return () => {
+      notebookAgentMountedRef.current = false
+      stopRequestedRef.current = true
+      const controller = notebookAgentAbortRef.current
+      const identity = notebookRunIdentityRef.current
+      if (identity) {
+        void stopAgentRef.current(identity)
+          .catch(() => stopAgentRef.current(identity))
+          .catch(() => undefined)
+          .finally(() => controller?.abort())
+      }
+    }
   }, [activeNoteId])
 
   useEffect(() => {
@@ -853,62 +929,132 @@ export function useNotebookAgent({
   }, [flushSaveRef, onAgentPanelOpenChange])
 
   const stopNotebookAgent = useCallback(() => {
-    notebookAgentAbortRef.current?.abort()
-    notebookAgentAbortRef.current = null
-    setAgentRunning(false)
-  }, [])
+    stopRequestedRef.current = true
+    const identity = notebookRunIdentityRef.current
+    const controller = notebookAgentAbortRef.current
+    if (!identity) return
+    void stopAgent(identity).then(() => {
+      controller?.abort()
+      notebookAgentAbortRef.current = null
+      setAgentRunning(false)
+    }).catch((error) => {
+      setAgentItems((prev) => [...prev, {
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Could not stop the Notebook run.',
+      }])
+    })
+  }, [stopAgent])
 
   const runNotebookAgent = useCallback(async () => {
-    if (!editor || !activeNote || agentRunning) return
+    if (!editor || !activeNote || agentRunning || runInProgressRef.current) return
     const message = agentInput.trim()
     if (!message) return
-    const noteContent = noteContentFromEditor(editor)
-    const modelId = selectedModelId
-
-    setAgentItems((prev) => [...prev, { type: 'user', text: message }])
-    const mentionsForRequest = createNotebookAgentMentions(agentMentionsRef.current)
-    setAgentInput('')
-    setAgentMentions([])
-
+    runInProgressRef.current = true
+    stopRequestedRef.current = false
+    try {
+      await flushSaveRef.current()
+    } catch (error) {
+      runInProgressRef.current = false
+      setAgentItems((prev) => [...prev, {
+        type: 'error',
+        text: error instanceof Error ? error.message : 'Could not save the note before starting.',
+      }])
+      return
+    }
+    if (stopRequestedRef.current) {
+      runInProgressRef.current = false
+      return
+    }
     const ac = new AbortController()
     notebookAgentAbortRef.current = ac
+    notebookRunIdentityRef.current = null
+    seenEventIdsRef.current = new Set()
+    seenProposalIdsRef.current = new Set()
     setAgentRunning(true)
 
     try {
-      const res = await runAgent({
-        noteContent,
-        noteTitle: normalizeNotebookTitle(title),
+      const noteMarkdown = toCanonicalNoteMarkdown(editor.getHTML())
+      const noteTitle = normalizeNotebookTitle(titleRef.current || title)
+      const modelId = selectedModelId
+      const turnId = globalThis.crypto?.randomUUID?.() ?? `notebook-${Date.now()}-${Math.random().toString(36).slice(2)}`
+
+      setAgentItems((prev) => [...prev, { type: 'user', text: message }])
+      const mentionsForRequest = createNotebookAgentMentions(agentMentionsRef.current)
+      setAgentInput('')
+      setAgentMentions([])
+
+      const baseRequest: NotebookAgentRequest = {
+        noteId: activeNote._id,
+        turnId,
+        noteContent: noteMarkdown,
+        noteTitle,
         message,
         modelId,
         mentions: mentionsForRequest.length > 0 ? mentionsForRequest : undefined,
-      }, ac.signal)
-
-      if (!res.ok) {
-        let errText = `Request failed (${res.status})`
+      }
+      const result = await followNotebookAgentStream({
+        request: baseRequest,
+        runAgent,
+        signal: ac.signal,
+        getIdentity: () => notebookRunIdentityRef.current,
+        readStream: (res) => readAgentStream(res, editor, setAgentItems, {
+          eventIds: seenEventIdsRef.current,
+          proposalIds: seenProposalIdsRef.current,
+          runIdentity: notebookRunIdentityRef,
+          frozenMarkdown: noteMarkdown,
+          frozenTitle: noteTitle,
+          currentTitle: () => titleRef.current,
+          currentMarkdown: () => toCanonicalNoteMarkdown(editor.getHTML()),
+          onAccepted: async (identityValue) => {
+            try {
+              await stopNotebookRunAfterAcceptance({
+                identity: identityValue,
+                requested: stopRequestedRef.current,
+                stopAgent,
+                disconnect: () => ac.abort(),
+              })
+            } catch (error) {
+              if (!notebookAgentMountedRef.current) {
+                void stopAgentRef.current(identityValue)
+                  .catch(() => undefined)
+                  .finally(() => ac.abort())
+                return
+              }
+              setAgentItems((prev) => [...prev, {
+                type: 'error',
+                text: error instanceof Error ? error.message : 'Could not stop the Notebook run.',
+              }])
+            }
+          },
+        }),
+      })
+      if (result.status === 'exhausted') {
+        setAgentItems((prev) => [...prev, {
+          type: 'error',
+          text: 'The Notebook stream disconnected repeatedly. Retry the request to continue.',
+        }])
+      } else if (result.status === 'request-error') {
+        let errText = `Request failed (${result.response.status})`
         try {
-          const j = (await res.json()) as { message?: string; error?: string }
+          const j = (await result.response.json()) as { message?: string; error?: string }
           errText = j.message || j.error || errText
         } catch {
-          try {
-            errText = (await res.text()) || errText
-          } catch {
-            /* ignore */
-          }
+          try { errText = (await result.response.text()) || errText } catch { /* ignore */ }
         }
         setAgentItems((prev) => [...prev, { type: 'error', text: errText }])
-        return
       }
-
-      await readAgentStream(res, editor, setAgentItems)
     } catch (e) {
-      if (ac.signal.aborted) return
+      if (ac.signal.aborted || !notebookAgentMountedRef.current) return
       const msg = e instanceof Error ? e.message : String(e)
       setAgentItems((prev) => [...prev, { type: 'error', text: msg }])
     } finally {
       notebookAgentAbortRef.current = null
-      setAgentRunning(false)
+      notebookRunIdentityRef.current = null
+      stopRequestedRef.current = false
+      runInProgressRef.current = false
+      if (notebookAgentMountedRef.current) setAgentRunning(false)
     }
-  }, [activeNote, agentInput, agentRunning, editor, runAgent, selectedModelId, setAgentMentions, title])
+  }, [activeNote, agentInput, agentRunning, editor, runAgent, stopAgent, selectedModelId, setAgentMentions, title, titleRef])
 
   return {
     agentPanelOpen,

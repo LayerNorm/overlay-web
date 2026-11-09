@@ -137,6 +137,13 @@ export default function NotebookEditor({
         credentials: 'same-origin',
         signal,
       })}
+      stopAgent={async ({ conversationId, turnId }) => {
+        const response = await overlayAppClient.conversations.stopResponse(
+          { conversationId, turnId },
+          { credentials: 'same-origin' },
+        )
+        if (!response.ok) throw new Error('Could not stop the Notebook run.')
+      }}
       agentPanelMode={toRightPanelMode(panelPresentation)}
       onAgentPanelModeChange={(mode) => setPanelPresentation(mode === 'docked' ? 'sidebar' : 'floating')}
       models={models}

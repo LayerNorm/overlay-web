@@ -79,6 +79,10 @@ export interface NotebookAgentMention {
 }
 
 export interface NotebookAgentRequest {
+  noteId: string
+  turnId: string
+  runId?: string
+  cursor?: string
   noteContent: string
   noteTitle: string
   message: string
@@ -99,9 +103,10 @@ export interface NotebookEdit {
 }
 
 export type NotebookAgentStreamEvent =
+  | { type: 'accepted'; runId: string; conversationId: string; turnId: string; cursor?: string }
   | { type: 'thinking'; thinking?: string }
-  | { type: 'tool_call'; tool?: string; toolInput?: Record<string, unknown> }
-  | { type: 'edit_proposal'; edit?: NotebookEdit }
-  | { type: 'text'; text?: string }
-  | { type: 'done' }
-  | { type: 'error'; error?: string }
+  | { type: 'tool_call'; tool?: string; toolInput?: Record<string, unknown>; eventId?: string; sequence?: number; cursor?: string }
+  | { type: 'edit_proposal'; edit?: NotebookEdit; eventId?: string; sequence?: number; cursor?: string }
+  | { type: 'text'; text?: string; eventId?: string; sequence?: number; cursor?: string }
+  | { type: 'done'; eventId?: string; sequence?: number; cursor?: string }
+  | { type: 'error'; error?: string; eventId?: string; sequence?: number; cursor?: string }

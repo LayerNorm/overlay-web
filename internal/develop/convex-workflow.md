@@ -459,6 +459,15 @@ Native Overlay room turns always dispatch through the native Harness. There is
 no environment-flag fallback to the retired workspace-agent workflow. Remote
 and external turns retain their connected-agent dispatch and never fall back
 to native execution. Unsupported runtime identities fail closed.
+
+The Notebook editor also uses the personal Harness workflow rather than a
+separate model/tool loop. Admission resolves the owned note and personal
+conversation on the server, freezes the note snapshot, and records its note and
+turn identity in the Harness policy. Reconnect requests reuse that AgentRun and
+may advance a public transcript cursor; the Notebook adapter exposes only
+assistant text, its four allowed tool calls, successful edit proposals, and
+terminal state. Stop targets the admitted conversation turn through the
+existing conversation cancellation path.
 Native Harness named-agent asks/posts use H2 shared-root dispatch; the HTTP
 route continues to refuse Harness callers. Delivery owners persist bounded
 tool-invocation snapshots while tools run, and finalization replaces those

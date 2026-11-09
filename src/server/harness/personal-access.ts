@@ -264,6 +264,7 @@ function buildExecutionContext(
     accountAllowedToolIds: allowedTools,
     accountAllowedConnectorIds: allowedConnectors,
     integrationToolIds: context.integrationToolIds,
+    ...(context.notebook ? { notebook: context.notebook } : {}),
     ...(access.authentication.type === 'automation'
       ? { automationExecution: true, automationId: access.authentication.automationId,
         automationRunId: access.authentication.automationRunId,
@@ -314,6 +315,13 @@ export async function refreshPersonalHarnessAccess(
   if (options.renewLease && !options.renewalMode) throw new FatalError('Invalid lease renewal mode.')
   const repository = new ConvexHarnessRepository()
   const { state, root } = await readCurrentHarnessAuthority(repository, access, toolName, options.renewalMode)
+  if (context.notebook && (root.policy.surface?.kind !== 'notebook'
+    || root.policy.surface.noteId !== context.notebook.noteId
+    || root.policy.surface.turnId !== context.turnId
+    || root.policy.surface.requestDigest !== context.notebook.requestDigest
+    || !state.policy.allowedToolIds.every(id => ['search_knowledge', 'read_note', 'propose_edit', 'finish'].includes(id)))) {
+    throw new FatalError('Notebook harness source or capabilities changed.')
+  }
   const server = getOverlayServerContext()
   let sourceGrant: Awaited<ReturnType<typeof refreshAutomationHarnessSource>> | undefined
   if (access.authentication.type === 'automation') {

@@ -137,6 +137,25 @@ export async function executePersonalChatWorkTool(
 ): Promise<unknown> {
   'use step'
 
+  if (options.context.notebook) {
+    const { executeNotebookHarnessTool } = await import('@/server/notebook/notebook-agent-tools')
+    const context = options.context
+    return await executeNotebookHarnessTool({
+      toolName: context.toolName,
+      value: input,
+      toolCallId: options.toolCallId,
+      context,
+      runId: context.harnessRunId ?? '',
+      toolOptions: {
+        userId: context.userId,
+        workspaceId: context.workspaceId,
+        baseUrl: context.baseUrl,
+        memoryEnabled: context.memoryEnabled,
+        serverSecret: getInternalApiSecret(),
+      },
+    })
+  }
+
   const { agentRunId, automationRunId, harnessRunId, toolName, ...toolingContext } = options.context
   const runNamespace = harnessRunId
     ? `harness-run:${harnessRunId}`
@@ -186,6 +205,8 @@ export async function personalChatWorkToolNeedsApproval(
   },
 ): Promise<boolean> {
   'use step'
+
+  if (options.context.notebook) return false
 
   const { agentRunId: _agentRunId, automationRunId: _automationRunId, toolName, ...toolingContext } = options.context
   const tooling = await reconstructTooling(toolingContext)

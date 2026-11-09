@@ -50,16 +50,27 @@ async function enqueuePersonalHarnessAdmission(
       constraints: [],
       source: { conversationId: workflow.access.conversationId },
       deliveryAgentRunId: agentRun.id,
-      policy: personalHarnessPolicy({
-        actorUserId: workflow.access.actorUserId,
-        workspaceId: workflow.access.workspaceId,
-        allowedToolIds: workflow.definitions.map(definition => definition.name),
-        modelId: workflow.context.effectiveModelId,
-        paid: input.paid,
-        createdAt: agentRun.createdAt,
-        budget: input.budget,
-        existingPolicy: existing?.policy,
-      }),
+      policy: {
+        ...personalHarnessPolicy({
+          actorUserId: workflow.access.actorUserId,
+          workspaceId: workflow.access.workspaceId,
+          allowedToolIds: workflow.definitions.map(definition => definition.name),
+          modelId: workflow.context.effectiveModelId,
+          paid: input.paid,
+          createdAt: agentRun.createdAt,
+          budget: input.budget,
+          existingPolicy: existing?.policy,
+        }),
+        ...(workflow.context.notebook ? {
+          publicStreamVersion: 1 as const,
+          surface: {
+            kind: 'notebook' as const,
+            noteId: workflow.context.notebook.noteId,
+            turnId: workflow.context.turnId,
+            requestDigest: workflow.context.notebook.requestDigest,
+          },
+        } : {}),
+      },
     })
   } catch (cause) {
     if (cause instanceof Error && cause.message.includes('HARNESS_ADMISSION_CONFLICT')) {

@@ -28,12 +28,39 @@ function request(extra: Record<string, unknown> = {}) {
 function dependencies(result: Record<string, unknown>, callbacks: Array<() => Promise<void>>, cleanup = vi.fn()) {
   return {
     conversations: { cancelAgentRuns: vi.fn().mockResolvedValue(result) },
+    getLatestAgentRun: vi.fn(),
     abortToolLoops: vi.fn().mockReturnValue([]),
     recordMetrics: vi.fn().mockResolvedValue(undefined),
     cancelHarnessWorkflows: cleanup,
     schedule: vi.fn((callback: () => Promise<void>) => { callbacks.push(callback) }) as unknown as typeof import('next/server').after,
   }
 }
+
+test('stop resolves the assistant run by the admitted turn identity', async () => {
+  const callbacks: Array<() => Promise<void>> = []
+  const deps = dependencies({
+    cancelledRunIds: ['agent-run'],
+    cancelledWorkflowRunIds: [],
+    cancelledWorkflows: [],
+    cancelledHarnessRoots: [],
+    stoppedCount: 1,
+  }, callbacks)
+  deps.getLatestAgentRun.mockResolvedValue({ assistantMessageId: 'assistant-message' })
+
+  const response = await POST(request({ turnId: 'notebook-turn' }), context, deps)
+
+  expect(response.status).toBe(200)
+  expect(deps.getLatestAgentRun).toHaveBeenCalledWith({
+    conversationId: 'conversation',
+    turnId: 'notebook-turn',
+    userId: 'owner',
+  })
+  expect(deps.conversations.cancelAgentRuns).toHaveBeenCalledWith(expect.objectContaining({
+    conversationId: 'conversation',
+    messageId: 'assistant-message',
+    userId: 'owner',
+  }))
+})
 
 test('stop schedules cleanup only for mutation-returned roots and keeps its response shape', async () => {
   const callbacks: Array<() => Promise<void>> = []

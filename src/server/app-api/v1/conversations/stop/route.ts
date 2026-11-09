@@ -4,7 +4,7 @@ import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getAuthorizedResourceUserId } from '@/server/app-api/bff-context'
 import { abortToolLoopRunIds } from '@/server/conversations/tool-loop-run-registry'
-import { agentRunService } from '@/server/conversations/http'
+import { actConversationRepository, agentRunService } from '@/server/conversations/http'
 import type { Id } from '../../../../../../convex/_generated/dataModel'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { cancelHarnessWorkflow } from '@/server/harness/workflow-cancellation'
@@ -12,6 +12,7 @@ import { cancelPersonalHarnessWorkflows } from '@/server/harness/personal-cancel
 
 type StopRouteDependencies = {
   conversations: Pick<ReturnType<typeof getOverlayServerContext>['appData']['repositories']['conversations'], 'cancelAgentRuns'>
+  getLatestAgentRun?: typeof actConversationRepository.getLatestAgentRun
   controlRemoteTurn?: (input: {
     actorUserId: string
     workspaceId: string
@@ -34,6 +35,7 @@ export async function POST(
   try {
     const body = await request.json() as {
       conversationId?: string
+      turnId?: string
       messageId?: string
       partialContent?: string
       partialParts?: Array<Record<string, unknown>>
@@ -41,6 +43,10 @@ export async function POST(
       userId?: string
     }
 
+    if (body.turnId !== undefined
+      && (typeof body.turnId !== 'string' || !body.turnId.trim() || body.turnId.length > 256)) {
+      return NextResponse.json({ error: 'turnId is invalid' }, { status: 400 })
+    }
     const conversationId = body.conversationId?.trim()
     if (!conversationId) {
       return NextResponse.json(
@@ -52,9 +58,19 @@ export async function POST(
     const server = dependencies ? undefined : getOverlayServerContext()
     const repository = dependencies?.conversations ?? server!.appData.repositories.conversations
     const resourceUserId = getAuthorizedResourceUserId(context)
+    let messageId = body.messageId
+    if (body.turnId) {
+      const agentRun = await (dependencies?.getLatestAgentRun ?? actConversationRepository.getLatestAgentRun)({
+        conversationId: asConversationId(conversationId),
+        turnId: body.turnId,
+        userId: resourceUserId,
+      })
+      if (!agentRun) return NextResponse.json({ error: 'Turn was not found.' }, { status: 404 })
+      messageId = agentRun.assistantMessageId
+    }
     const cancelled = await repository.cancelAgentRuns({
       conversationId: asConversationId(conversationId),
-      ...(body.messageId ? { messageId: body.messageId as Id<'conversationMessages'> } : {}),
+      ...(messageId ? { messageId: messageId as Id<'conversationMessages'> } : {}),
       ...(body.partialContent !== undefined ? { partialContent: body.partialContent } : {}),
       ...(body.partialParts !== undefined ? { partialParts: body.partialParts } : {}),
       userId: resourceUserId,

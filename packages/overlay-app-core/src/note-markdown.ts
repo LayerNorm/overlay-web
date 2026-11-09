@@ -384,3 +384,22 @@ export function noteMarkdownToEditorHtml(markdown: string): string {
   clean.children = clean.children.filter((child) => !(child.type === 'text' && !child.value.trim()))
   return toHtml(clean)
 }
+
+function editorBlockText(node: HastNodes, preserveWhitespace = false): string {
+  if (node.type === 'text') return preserveWhitespace ? node.value : node.value.replace(/[ \t\r\n\f]+/g, ' ')
+  if (node.type === 'element' || node.type === 'root') {
+    const preserve = preserveWhitespace || node.type === 'element' && node.tagName === 'pre'
+    return node.children.map(child => editorBlockText(child, preserve)).join('')
+  }
+  return ''
+}
+
+export function noteMarkdownToEditorText(markdown: string): string {
+  const html = noteMarkdownToEditorHtml(toCanonicalNoteMarkdown(markdown))
+  if (!html) return ''
+  const root = fromHtml(html, { fragment: true })
+  return root.children
+    .filter((child): child is Element => child.type === 'element')
+    .map(editorBlockText)
+    .join('\n')
+}

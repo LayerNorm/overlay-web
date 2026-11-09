@@ -138,6 +138,7 @@ function buildNativeWorkflowInput(
       exposedToolIds: prepared.toolDefinitions.map(definition => definition.name),
       hasTools: prepared.toolDefinitions.length > 0,
       instructions: prepared.agent.instructions,
+      memoryEnabled: args.memoryEnabled,
       isDefaultMaster: Boolean(prepared.agent.isDefault),
     }),
     messages: prepared.turnContext.messages,

@@ -113,6 +113,12 @@ const waitReferenceFields = {
 const policyValidator = v.object({
   actorUserId: v.string(),
   workspaceId: v.optional(v.string()),
+  surface: v.optional(v.object({
+    kind: v.literal('notebook'),
+    noteId: v.string(),
+    turnId: v.string(),
+    requestDigest: v.string(),
+  })),
   resourcePauseVersion: v.optional(v.literal(1)),
   executionPolicyVersion: v.optional(v.literal(2)),
   publicProgressVersion: v.optional(v.literal(1)),
@@ -476,6 +482,13 @@ function assertBoundedAdmission(input: HarnessAdmission) {
   if (input.policy.allowedToolIds.length > MAX_TOOL_IDS
     || input.policy.allowedToolIds.some(id => !id.trim() || id.length > MAX_TOOL_ID_LENGTH)) {
     throw new Error('Harness policy tool ids exceed their bounds.')
+  }
+  if (input.policy.surface?.kind === 'notebook'
+    && (!input.policy.surface.noteId.trim() || input.policy.surface.noteId.length > MAX_ID_LENGTH
+      || !input.policy.surface.turnId.trim() || input.policy.surface.turnId.length > MAX_ID_LENGTH
+      || !/^[a-f0-9]{64}$/.test(input.policy.surface.requestDigest)
+      || !input.deliveryAgentRunId || !input.policy.workspaceId || input.policy.publicStreamVersion !== 1)) {
+    throw new Error('Notebook harness admission identity is incomplete.')
   }
   if (!input.policy.actorUserId.trim()
     || (input.policy.workspaceId !== undefined && !input.policy.workspaceId.trim())

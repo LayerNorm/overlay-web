@@ -1,471 +1,378 @@
-import { logger } from '@/server/observability/logger'
-import { NextRequest } from 'next/server'
-import { getBillingProgrammaticSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
-import { ToolLoopAgent, isStepCount, tool, type ToolSet } from '@/server/ai/sdk'
+import { createHash } from 'node:crypto'
+import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod/v3'
+import type { NotebookAgentStreamEvent } from '@overlay/app-core'
+import { normalizeNotebookTitle } from '@overlay/app-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
-import { getLanguageModel } from '@/server/ai/model-runtime'
+import type { AppApiRouteContext } from '@/server/app-api/bff-context'
+import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
-import {
-  billableBudgetCentsFromProviderUsd,
-  buildInsufficientCreditsPayload,
-  finalizeProviderBudgetReservation,
-  getBudgetTotals,
-  isPaidPlan,
-  markProviderBudgetReconcile,
-  markProviderBudgetStarted,
-  releaseProviderBudgetReservation,
-  reserveProviderBudget,
-} from '@/server/billing/billing-runtime'
-import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
-import { createNotebookTextEmitter } from '@/server/agent/notebook-agent-stream'
-import {
-  DEFAULT_MODEL_ID,
-  isRetiredHostedModelId,
-} from '@/shared/ai/gateway/model-types'
+import { assertUserCanUseByokModel } from '@/server/ai/model-runtime'
+import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getInternalApiBaseUrl } from '@/server/web/app-url'
-import { executeSearchKnowledge } from '@/server/tools/tools/overlay-executes'
-import type { OverlayToolsOptions } from '@/server/tools/tools/types'
-import type { NotebookEdit, NotebookAgentStreamEvent } from '@overlay/app-core'
-import { NOTEBOOK_AGENT_PROMPT } from '@/server/agent/notebook-agent-prompts'
 import { resolveMentionsContext } from '@/server/knowledge/mention-resolver'
+import { buildNotebookAgentInstructions } from '@/server/agent/notebook-agent-prompts'
+import { NoteService } from '@/server/notes'
+import { ConvexNoteRepository } from '@/server/notes/ConvexNoteRepository'
+import { noteMarkdownToEditorText, toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
+import { ensureActConversationId } from '@/server/conversations/ensure-act-conversation'
+import {
+  actConversationRepository,
+  actEntitlementService,
+  actMessagePersistenceService,
+  agentRunService,
+} from '@/server/conversations/http'
+import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepository'
+import {
+  PersonalHarnessAdmissionConflict,
+  PersonalHarnessStartPending,
+  personalHarnessAuthentication,
+  startPersonalHarness,
+} from '@/server/harness/personal-admission'
+import { describeNotebookTools } from '@/server/notebook/notebook-agent-tools'
+import {
+  parseNotebookCursor,
+  parseNotebookSnapshotCursor,
+  projectNotebookTerminal,
+  projectNotebookTranscriptStep,
+} from '@/server/notebook/notebook-agent-stream'
+import { matchesNotebookRunIdentity, notebookRequestDigest } from '@/server/notebook/notebook-agent-identity'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 
 export const maxDuration = 120
 
 const MAX_NOTE_CHARS = 400_000
-
 const MentionSchema = z.object({
-  type: z.string(),
-  id: z.string(),
-  name: z.string(),
-  fileIds: z.array(z.string()).optional(),
+  type: z.string().max(100),
+  id: z.string().max(256),
+  name: z.string().max(200),
+  fileIds: z.array(z.string().max(256)).max(100).optional(),
 })
 
 const BodySchema = z.object({
-  noteContent: z.string(),
-  noteTitle: z.string(),
+  noteId: z.string().min(1).max(256),
+  turnId: z.string().min(1).max(256),
+  runId: z.string().max(256).optional(),
+  cursor: z.string().max(256).optional(),
+  noteContent: z.string().max(MAX_NOTE_CHARS),
+  noteTitle: z.string().max(200),
   message: z.string().min(1).max(32_000),
-  modelId: z.string().optional(),
-  mode: z.enum(['ask', 'write']).optional(), // Deprecated: kept for backward compatibility
-  accessToken: z.string().optional(),
-  userId: z.string().optional(),
-  mentions: z.array(MentionSchema).optional(),
+  modelId: z.string().max(200).optional(),
+  mode: z.enum(['ask', 'write']).optional(),
+  mentions: z.array(MentionSchema).max(100).optional(),
 })
 
-function createNotebookTools(params: {
-  frozenNoteLines: string
-  noteTitle: string
-  emit: (e: NotebookAgentStreamEvent) => void
-  toolOptions: OverlayToolsOptions
-  createEditId: () => string
-}): ToolSet {
-  const { frozenNoteLines, noteTitle, emit, toolOptions, createEditId } = params
-  const tools: ToolSet = {}
+function conversationClientId(input: { userId: string; workspaceId: string; noteId: string; turnId: string }): string {
+  const digest = createHash('sha256')
+    .update(JSON.stringify([input.userId, input.workspaceId, input.noteId, input.turnId]))
+    .digest('hex')
+    .slice(0, 32)
+  return `notebook-agent-${digest}`
+}
 
-  tools.search_knowledge = tool({
-    description:
-      "Search the user's saved knowledge: indexed files and memories. Uses hybrid semantic + keyword retrieval. Call when you need facts that are not already in the note text.",
-    inputSchema: z.object({
-      query: z.string().describe('Search query: keywords or a short natural-language question'),
-      sourceKind: z
-        .enum(['file', 'memory'])
-        .optional()
-        .describe('Limit to files only or memories only (omit to search both)'),
-    }),
-    execute: async (input) => {
+function jsonError(message: string, status: number): NextResponse {
+  return NextResponse.json({ error: message }, { status })
+}
+
+function isTerminal(status: string): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled'
+}
+
+function assertNotebookIdentity(input: Parameters<typeof matchesNotebookRunIdentity>[0]): void {
+  if (!matchesNotebookRunIdentity(input)) {
+    throw new PersonalHarnessAdmissionConflict('Notebook run identity does not match this request.')
+  }
+}
+
+function createNotebookStream(input: {
+  runId: string
+  conversationId: string
+  turnId: string
+  actorUserId: string
+  cursor?: string
+  signal: AbortSignal
+  repository: ConvexHarnessRepository
+}): Response {
+  const encoder = new TextEncoder()
+  let stopped = false
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const emit = (event: NotebookAgentStreamEvent) => {
+        if (!stopped) controller.enqueue(encoder.encode(`${JSON.stringify(event)}\n`))
+      }
       emit({
-        type: 'tool_call',
-        tool: 'search_knowledge',
-        toolInput: input as Record<string, unknown>,
+        type: 'accepted',
+        runId: input.runId,
+        conversationId: input.conversationId,
+        turnId: input.turnId,
+        ...(input.cursor ? { cursor: input.cursor } : {}),
       })
-      return executeSearchKnowledge(toolOptions, input)
+      const cursor = parseNotebookCursor(input.cursor)
+      let afterSequence = cursor ? cursor.sequence - 1 : -1
+      let afterCursor = cursor ?? undefined
+      let active = parseNotebookSnapshotCursor(input.cursor)
+
+      void (async () => {
+        try {
+          while (!stopped && !input.signal.aborted) {
+            const state = await input.repository.readPublicStreamState({
+              actorUserId: input.actorUserId,
+              runId: input.runId,
+              afterSequence,
+            })
+            if (!state) throw new Error('Notebook stream is unavailable.')
+            for (const step of state.transcriptSteps) {
+              const events = projectNotebookTranscriptStep({
+                runId: input.runId,
+                step,
+                afterCursor,
+              })
+              for (const event of events) emit(event)
+              afterSequence = step.sequence
+              afterCursor = undefined
+            }
+            if (state.nextSequence !== null) {
+              afterSequence = Math.max(afterSequence, state.nextSequence)
+              continue
+            }
+            const snapshot = state.snapshot
+            if (snapshot) {
+              const text = [snapshot.text, snapshot.truncatedMarker].filter(Boolean).join('\n\n')
+              const same = active?.generation === snapshot.executionGeneration && active.receiptId === snapshot.receiptId
+              const offset = same ? active.offset : 0
+              if (text.length > offset) {
+                const end = text.length
+                emit({
+                  type: 'text',
+                  text: text.slice(offset),
+                  eventId: `${input.runId}:${snapshot.executionGeneration}:${snapshot.receiptId}:text:${offset}:${end}`,
+                  sequence: state.nextSequence ?? afterSequence + 1,
+                  cursor: `s:${snapshot.executionGeneration}:${snapshot.receiptId}:${end}`,
+                })
+                active = { generation: snapshot.executionGeneration, receiptId: snapshot.receiptId, offset: end }
+              }
+            }
+            if (isTerminal(state.status)) {
+              for (const event of projectNotebookTerminal({ runId: input.runId, status: state.status })) emit(event)
+              controller.close()
+              return
+            }
+            await new Promise(resolve => setTimeout(resolve, 150))
+          }
+          if (!stopped) controller.close()
+        } catch (error) {
+          if (!stopped && !input.signal.aborted) {
+            emit({ type: 'error', error: 'Could not load the Notebook run.' })
+            emit({ type: 'done', eventId: `${input.runId}:terminal:done` })
+            controller.close()
+          }
+        }
+      })()
+      input.signal.addEventListener('abort', () => {
+        stopped = true
+        try { controller.close() } catch { /* stream already closed */ }
+      }, { once: true })
+    },
+    cancel() {
+      stopped = true
     },
   })
-
-  tools.read_note = tool({
-    description: 'Read note title and content with line numbers.',
-    inputSchema: z.object({}),
-    execute: async () => {
-      emit({ type: 'tool_call', tool: 'read_note', toolInput: {} })
-      const title = noteTitle || 'Untitled'
-      const lines = frozenNoteLines.split('\n')
-      const numbered = lines.map((line, index) => `${index + 1}: ${line}`).join('\n')
-      return {
-        title,
-        lineCount: lines.length,
-        content: numbered,
-        isEmpty: lines.length === 0 || (lines.length === 1 && lines[0].trim() === ''),
-      }
-    },
+  return new Response(stream, {
+    headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store' },
   })
-
-  // Always include propose_edit - the LLM decides when to use it based on user intent
-  tools.propose_edit = tool({
-    description:
-      'Propose replacing a line range with new content. User can accept/reject each edit. Only use this when the user explicitly asks to modify the note.',
-    inputSchema: z.object({
-      description: z.string().describe('Short edit label'),
-      start_line: z.number().describe('First line to replace (1-based)'),
-      end_line: z.number().describe('Last line to replace (1-based, inclusive)'),
-      new_content: z.string().describe('Replacement content; empty string deletes lines'),
-    }),
-    execute: async ({ description, start_line, end_line, new_content }) => {
-      emit({
-        type: 'tool_call',
-        tool: 'propose_edit',
-        toolInput: {
-          description,
-          start_line,
-          end_line,
-          new_content:
-            new_content.length > 8000
-              ? `${new_content.slice(0, 8000)}\n[truncated in log]`
-              : new_content,
-        },
-      })
-      const lines = frozenNoteLines.split('\n')
-      const startLine = Math.max(1, Math.round(start_line))
-      const endLine = Math.max(startLine, Math.round(end_line))
-      const originalLines = lines.slice(startLine - 1, endLine)
-      const newLines = new_content === '' ? [] : new_content.split('\n')
-
-      const edit: NotebookEdit = {
-        id: createEditId(),
-        description,
-        startLine,
-        endLine,
-        originalLines,
-        newLines,
-      }
-
-      emit({ type: 'edit_proposal', edit })
-
-      return {
-        success: true as const,
-        editId: edit.id,
-        message: `Edit proposed (lines ${startLine}-${endLine})`,
-      }
-    },
-  })
-
-  tools.finish = tool({
-    description: 'Signal notebook task completion with a summary.',
-    inputSchema: z.object({
-      summary: z.string().describe('One sentence summary'),
-    }),
-    execute: async ({ summary }) => {
-      emit({ type: 'tool_call', tool: 'finish', toolInput: { summary } })
-      if (summary.trim()) {
-        emit({ type: 'text', text: summary })
-      }
-      return { success: true as const, summary }
-    },
-  })
-
-  return tools
 }
 
 export async function POST(request: NextRequest, context: AppApiRouteContext) {
-  let bodyRaw: unknown
   try {
-    bodyRaw = await request.json()
-  } catch (_error) {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
+    const parsed = BodySchema.safeParse(await request.json())
+    if (!parsed.success) return jsonError('Invalid Notebook request.', 400)
+    const body = parsed.data
+    const { auth } = context
+    if (!['session', 'access-token', 'api-key'].includes(auth.authType)) return jsonError('Unauthorized.', 401)
+    if (auth.authType === 'api-key' && !auth.apiKeyId) return jsonError('Unauthorized.', 401)
 
-  const parsed = BodySchema.safeParse(bodyRaw)
-  if (!parsed.success) {
-    return new Response(JSON.stringify({ error: 'Invalid request', details: parsed.error.format() }), {
-      status: 400,
-      headers: { 'Content-Type': 'application/json' },
-    })
-  }
-
-  const { noteContent: rawNoteContent, noteTitle, message, modelId, mentions: rawMentions } = parsed.data
-
-  const { auth } = context
-
-  const userId = auth.userId
-  const workspaceId = context.workspace.workspace.id
-  const mentionedAgent = rawMentions?.find((mention) => mention.type === 'agent')
-  const programmaticSubjectId = getBillingProgrammaticSubjectId(
-    context,
-    mentionedAgent ? `agent:${mentionedAgent.id}` : undefined,
-  )
-  const serverContext = getOverlayServerContext()
-  const generationUsagePolicy = serverContext.generationUsagePolicy
-  const serverSecret = getInternalApiSecret()
-  const entitlements = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId, workspaceId })
-  if (!entitlements) {
-    return new Response(
-      JSON.stringify({
-        error: 'Unauthorized',
-        message: 'Could not verify subscription. Try signing out and back in.',
+    const userId = auth.userId
+    const workspaceId = context.workspace.workspace.id
+    const principalId = context.workspace.principal.id
+    const server = getOverlayServerContext()
+    const [note, noteEditGrant, modelUseGrant] = await Promise.all([
+      new NoteService({ noteRepository: new ConvexNoteRepository() }).getNote({
+        noteId: body.noteId, userId, workspaceId,
       }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } },
-    )
-  }
+      server.authorizationService.checkCapability({ capability: 'notes.edit', userId }),
+      server.authorizationService.checkCapability({ capability: 'models.use', userId }),
+    ])
+    if (!note) return jsonError('Notebook not found or not accessible in this workspace.', 404)
+    if (!noteEditGrant.allowed || !modelUseGrant.allowed) {
+      return jsonError('You are not authorized to use the Notebook agent.', 403)
+    }
+    const noteMarkdownSnapshot = toCanonicalNoteMarkdown(note.content ?? '')
+    if (noteMarkdownSnapshot.length > MAX_NOTE_CHARS) {
+      return jsonError('The note is too large for an agent turn.', 413)
+    }
+    const noteContentSnapshot = noteMarkdownToEditorText(noteMarkdownSnapshot)
+    if (noteContentSnapshot.length > MAX_NOTE_CHARS) {
+      return jsonError('The note is too large for an agent turn.', 413)
+    }
 
-  const requestedModelId = (modelId?.trim() && modelId.trim()) || DEFAULT_MODEL_ID
-  const effectiveModelId = requestedModelId
-  if (isRetiredHostedModelId(effectiveModelId)) {
-    return new Response(JSON.stringify({
-      error: 'model_retired', message: 'This hosted model is retired. Select a paid model to continue.',
-    }), { status: 409, headers: { 'Content-Type': 'application/json' } })
-  }
-  if (!isPaidPlan(entitlements)) {
-    return new Response(JSON.stringify(buildInsufficientCreditsPayload(entitlements, 'Fund this workspace to run a model.')),
-      { status: 402, headers: { 'Content-Type': 'application/json' } })
-  }
-  const budget = getBudgetTotals(entitlements)
-  if (budget.remainingCents <= 0) {
-    const autoTopUp = await generationUsagePolicy.ensureBudgetAvailable({
-      userId,
-      entitlements,
-      minimumRequiredCents: 1,
-      programmaticSubjectId,
-      workspaceId,
+    const modelId = body.modelId?.trim() || DEFAULT_MODEL_ID
+    const gate = await actEntitlementService.gateModelAccess({ effectiveModelId: modelId, userId, workspaceId })
+    if (isByokModelId(modelId)) await assertUserCanUseByokModel(modelId, userId, workspaceId)
+    else if (!(await resolveAuthorizedModelIds({ entitlements: gate.runtimeEntitlements })).chat.has(modelId)) {
+      return jsonError('The selected model is not allowed by server policy.', 403)
+    }
+    const requestDigest = notebookRequestDigest({
+      noteId: body.noteId,
+      turnId: body.turnId,
+      noteMarkdown: body.noteContent,
+      noteTitle: body.noteTitle,
+      message: body.message,
+      modelId,
+      mentions: body.mentions,
     })
-    if (autoTopUp.remainingCents <= 0) {
-      return new Response(
-        JSON.stringify(buildInsufficientCreditsPayload(entitlements, 'No budget remaining. Please top up your workspace.')),
-        { status: 402, headers: { 'Content-Type': 'application/json' } },
-      )
-    }
-  }
+    const memoryGrant = await server.authorizationService.checkCapability({ capability: 'memory.use', userId })
+    const knowledgeGrant = await server.authorizationService.checkCapability({ capability: 'knowledge.read', userId })
+    const searchKnowledge = knowledgeGrant.allowed
+      && (await server.authorizationService.checkCapability({ capability: 'tools.use', userId })).allowed
+    const memoryEnabled = memoryGrant.allowed
 
-  const refreshedEntitlements = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId, workspaceId })
-  if (!refreshedEntitlements) {
-    return new Response(
-      JSON.stringify({ error: 'Unauthorized', message: 'Could not refresh subscription state.' }),
-      { status: 401, headers: { 'Content-Type': 'application/json' } },
-    )
-  }
-  const authorizedModelIds = await resolveAuthorizedModelIds({ entitlements: refreshedEntitlements })
-  if (!authorizedModelIds.chat.has(effectiveModelId)) {
-    return new Response(
-      JSON.stringify({
-        error: 'model_not_allowed',
-        message: `Model ${effectiveModelId} is not allowed by the server model policy.`,
-      }),
-      { status: 403, headers: { 'Content-Type': 'application/json' } },
-    )
-  }
-
-  if (isPaidPlan(refreshedEntitlements)) {
-    const refreshedBudget = getBudgetTotals(refreshedEntitlements)
-    if (refreshedBudget.remainingCents <= 0) {
-      return new Response(
-        JSON.stringify(
-          buildInsufficientCreditsPayload(refreshedEntitlements, 'No budget remaining. Please top up your account.'),
-        ),
-        { status: 402, headers: { 'Content-Type': 'application/json' } },
-      )
-    }
-  }
-
-  const frozenNoteLines =
-    rawNoteContent.length > MAX_NOTE_CHARS
-      ? `${rawNoteContent.slice(0, MAX_NOTE_CHARS)}\n[Note truncated for agent context]`
-      : rawNoteContent
-
-  let budgetReservationId: string | null = null
-  if (isPaidPlan(refreshedEntitlements)) {
-    const estimatedInputTokens = Math.ceil((frozenNoteLines.length + message.length + NOTEBOOK_AGENT_PROMPT.length) / 4) + 2_000
-    const maxOutputTokens = 8_192
-    const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
-      effectiveModelId,
-      estimatedInputTokens,
-      0,
-      maxOutputTokens,
-    )
-    if (estimatedProviderCostUsd === null) {
-      return new Response(
-        JSON.stringify({ error: 'pricing_missing', message: `Model ${effectiveModelId} is not priced for production use.` }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } },
-      )
-    }
-    const reservation = await reserveProviderBudget({
+    const conversationId = await ensureActConversationId({
       userId,
-      entitlements: refreshedEntitlements,
-      idempotencyKey: context.requestIdempotencyKey,
-      providerCostUsd: estimatedProviderCostUsd,
-      kind: 'agent',
-      modelId: effectiveModelId,
-      operationId: 'agent.notebook',
-      programmaticSubjectId,
-      requestFingerprint: context.requestFingerprint,
+      repository: actConversationRepository,
+      conversationClientId: conversationClientId({ userId, workspaceId, noteId: body.noteId, turnId: body.turnId }),
+      scope: 'personal',
       workspaceId,
+      entitlements: gate.runtimeEntitlements,
+      title: 'Notebook Agent',
+      askModelIds: [modelId],
+      actModelId: modelId,
     })
-    if (!reservation.ok) {
-      return new Response(
-        JSON.stringify({ ...reservation.payload, error: reservation.code }),
-        { status: reservation.status, headers: { 'Content-Type': 'application/json' } },
-      )
+    const conversation = await actConversationRepository.getConversationById({ conversationId, userId })
+    if (!conversation || conversation.userId !== userId || conversation.workspaceId !== workspaceId
+      || conversation.conversationType && conversation.conversationType !== 'personal') {
+      return jsonError('Notebook conversation access is no longer valid.', 403)
     }
-    budgetReservationId = reservation.reservationId
-  }
 
-  const forwardCookie = request.headers.get('cookie') ?? undefined
-  const toolOptions: OverlayToolsOptions = {
-    userId,
-    accessToken: auth.accessToken,
-    baseUrl: getInternalApiBaseUrl(request),
-    forwardCookie,
-  }
-
-  const encoder = new TextEncoder()
-  let editSeq = 0
-  const createEditId = () => `edit-${Date.now()}-${editSeq++}`
-
-  const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      const emit = (evt: NotebookAgentStreamEvent) => {
-        controller.enqueue(encoder.encode(`${JSON.stringify(evt)}\n`))
+    const repository = new ConvexHarnessRepository()
+    let agentRun = await actConversationRepository.getLatestAgentRun({ conversationId, turnId: body.turnId, userId })
+    const expectedHarnessRunId = agentRun ? `personal:${agentRun.id}` : null
+    if (agentRun?.harnessRunId && agentRun.harnessRunId !== expectedHarnessRunId) {
+      return jsonError('Notebook run is not accessible.', 403)
+    }
+    let state = expectedHarnessRunId
+      ? await repository.get({ actorUserId: userId, runId: expectedHarnessRunId })
+      : null
+    if (agentRun?.harnessRunId && !state) return jsonError('Notebook run is not accessible.', 403)
+    if (body.runId && (!state || body.runId !== state.runId)) return jsonError('Notebook run identity is invalid.', 409)
+    if (state) {
+      assertNotebookIdentity({
+        state, userId, workspaceId, noteId: body.noteId, turnId: body.turnId,
+        conversationId: String(conversationId), requestDigest, runId: body.runId,
+      })
+    } else {
+      if (toCanonicalNoteMarkdown(body.noteContent) !== noteMarkdownSnapshot
+        || normalizeNotebookTitle(body.noteTitle) !== normalizeNotebookTitle(note.title ?? '')) {
+        return jsonError('The note changed before the agent turn started. Save or reload the note, then retry.', 409)
       }
-
-      try {
-        emit({ type: 'thinking', thinking: 'Analyzing note...' })
-        const model = await getLanguageModel(effectiveModelId, auth.accessToken, userId, { workspaceId })
-        const mentionsContext = await resolveMentionsContext(rawMentions, {
-          userId,
-          serverSecret,
-        })
-        const instructions = NOTEBOOK_AGENT_PROMPT + mentionsContext
-        const emitText = createNotebookTextEmitter((text) => {
-          emit({ type: 'text', text })
-        })
-        const tools = createNotebookTools({
-          frozenNoteLines,
-          noteTitle,
-          emit,
-          toolOptions,
-          createEditId,
-        })
-
-        const agent = new ToolLoopAgent({
-          model,
-          instructions,
-          tools,
-          stopWhen: isStepCount(20),
-          onStepEnd: async ({ text }) => {
-            emitText(text)
-          },
-        })
-
-        const prompt =
-          `Note content:\n\n${frozenNoteLines || '(empty note)'}\n\n---\n\nUser request: ${message}`
-
-        await markProviderBudgetStarted({
-          userId,
-          reservationId: budgetReservationId,
-        })
-        const result = await agent.generate({ prompt })
-
-        emitText(result.text)
-
-	        const usage = result.usage
-	        const totalInputTokens = usage?.inputTokens ?? 0
-	        const totalOutputTokens = usage?.outputTokens ?? 0
-	        const cachedTokens = usage?.inputTokenDetails?.cacheReadTokens ?? 0
-	        const providerCostUsd = await calculateLanguageModelTokenCostOrNull(
-	          effectiveModelId,
-	          totalInputTokens,
-	          cachedTokens,
-	          totalOutputTokens,
-	        )
-	        if (providerCostUsd === null) {
-	          if (budgetReservationId) {
-	            await markProviderBudgetReconcile({
-	              userId,
-	              reservationId: budgetReservationId,
-	              errorMessage: `pricing_missing:${effectiveModelId}`,
-	            }).catch((_error) => undefined)
-	            budgetReservationId = null
-	          }
-	          throw new Error(`pricing_missing:${effectiveModelId}`)
-	        }
-	        const costCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
-
-	        if (costCents > 0 || totalInputTokens > 0 || totalOutputTokens > 0) {
-	          try {
-	            const events = [
-	              {
-	                type: 'agent' as const,
-	                modelId: effectiveModelId,
-	                inputTokens: totalInputTokens,
-	                outputTokens: totalOutputTokens,
-	                cachedTokens,
-	                cost: costCents,
-	                timestamp: Date.now(),
-	              },
-	            ]
-	            if (budgetReservationId) {
-	              await finalizeProviderBudgetReservation({
-	                userId,
-	                reservationId: budgetReservationId,
-	                actualProviderCostUsd: providerCostUsd,
-	                events,
-	              })
-	              budgetReservationId = null
-	            } else {
-	              await serverContext.appData.repositories.usage.recordBatch({
-	                events: events.map((event) => ({
-	                  cachedTokens: event.cachedTokens,
-	                  costCents: event.cost,
-	                  inputTokens: event.inputTokens,
-	                  kind: event.type,
-	                  modelId: event.modelId,
-	                  occurredAt: event.timestamp,
-	                  outputTokens: event.outputTokens,
-	                  providerCostUsd,
-	                })),
-	                operationId: `notebook_${globalThis.crypto.randomUUID()}`,
-	                userId,
-	              })
-	            }
-	          } catch (err) {
-	            logger.error('[notebook-agent] Failed to record usage:', summarizeErrorForLog(err))
-	            if (budgetReservationId) {
-	              await markProviderBudgetReconcile({
-	                userId,
-	                reservationId: budgetReservationId,
-	                errorMessage: summarizeErrorForLog(err),
-	              }).catch((_error) => undefined)
-	              budgetReservationId = null
-	            }
-	          }
-	        }
-
-        emit({ type: 'done' })
-	      } catch (err) {
-	        const msg = err instanceof Error ? err.message : String(err)
-	        logger.error('[notebook-agent]', summarizeErrorForLog(err))
-	        if (budgetReservationId) {
-	          await releaseProviderBudgetReservation({
-	            userId,
-	            reservationId: budgetReservationId,
-	            reason: summarizeErrorForLog(err),
-	          }).catch((_error) => undefined)
-	          budgetReservationId = null
-	        }
-	        emit({ type: 'error', error: msg })
-        emit({ type: 'done' })
-      } finally {
-        controller.close()
+      const frozenContent = noteContentSnapshot
+      const prompt = `Note content:\n\n${frozenContent || '(empty note)'}\n\n---\n\nUser request: ${body.message}`
+      const existingUserMessage = (await actConversationRepository.getRecentMessages({
+        conversationId,
+        userId,
+        limit: 100,
+      })).find(message => message.role === 'user' && message.turnId === body.turnId)
+      if (existingUserMessage && existingUserMessage.content !== prompt) {
+        return jsonError('This Notebook turn was already started with different content. Start a new turn.', 409)
       }
-    },
-  })
-
-  return new Response(stream, {
-    headers: {
-      'Content-Type': 'application/x-ndjson; charset=utf-8',
-      'Cache-Control': 'no-store',
-    },
-  })
+      const userMessageId = agentRun?.userMessageId ?? existingUserMessage?._id
+        ?? await actMessagePersistenceService.persistUserMessage({
+          conversationId,
+          latestUserContent: prompt,
+          latestUserText: prompt,
+          modelId,
+          skip: false,
+          skipMemoryExtraction: true,
+          turnId: body.turnId,
+          userId,
+          mode: 'act',
+        })
+      if (!userMessageId) return jsonError('Notebook request could not be persisted.', 500)
+      agentRun ??= await agentRunService.startPersonalWorkflow({
+        conversationId, modelId, turnId: body.turnId, userId, userMessageId,
+      })
+      if (!agentRun) return jsonError('Notebook run could not be created.', 500)
+      const mentionsContext = await resolveMentionsContext(body.mentions, { userId, serverSecret: getInternalApiSecret() })
+      const allowedToolIds = [
+        ...(searchKnowledge ? ['search_knowledge'] : []),
+        'read_note', 'propose_edit', 'finish',
+      ]
+      const definitions = await describeNotebookTools(searchKnowledge)
+      const toolingContext = {
+        baseUrl: getInternalApiBaseUrl(request),
+        conversationId: String(conversationId),
+        effectiveModelId: modelId,
+        entitlements: gate.runtimeEntitlements,
+        latestUserText: body.message,
+        memoryEnabled,
+        paid: gate.paid,
+        requestFingerprint: context.requestFingerprint,
+        requestedToolIds: allowedToolIds,
+        turnId: body.turnId,
+        userId,
+        workspaceId,
+        accountAllowedToolIds: allowedToolIds,
+        notebook: {
+          kind: 'notebook' as const,
+          noteId: body.noteId,
+          title: note.title || 'Untitled',
+          content: frozenContent,
+          requestDigest,
+        },
+      }
+      const workflow = {
+        access: {
+          actorUserId: userId,
+          runId: `personal:${agentRun.id}`,
+          conversationId: String(conversationId),
+          agentRunId: agentRun.id,
+          workspaceId,
+          principalId,
+          authentication: personalHarnessAuthentication(auth),
+        },
+        context: toolingContext,
+        definitions,
+        instructions: buildNotebookAgentInstructions({
+          availableToolIds: allowedToolIds,
+          mentionsContext,
+          memoryEnabled,
+        }),
+        messages: [{ role: 'user' as const, content: prompt }],
+        delivery: { emitWebhook: false },
+      }
+      if (request.signal.aborted) return jsonError('Notebook request was cancelled before admission.', 499)
+      await startPersonalHarness({ workflow, agentRun, paid: gate.paid, goal: body.message })
+      state = await repository.get({ actorUserId: userId, runId: `personal:${agentRun.id}` })
+      if (!state) return jsonError('Notebook run admission is pending; reconnect with the same turn ID.', 503)
+      assertNotebookIdentity({
+        state, userId, workspaceId, noteId: body.noteId, turnId: body.turnId,
+        conversationId: String(conversationId), requestDigest, runId: body.runId,
+      })
+    }
+    if (!state) return jsonError('Notebook run is unavailable.', 404)
+    return createNotebookStream({
+      runId: state.runId,
+      conversationId: String(conversationId),
+      turnId: body.turnId,
+      actorUserId: userId,
+      cursor: body.cursor,
+      signal: request.signal,
+      repository,
+    })
+  } catch (error) {
+    if (error instanceof PersonalHarnessAdmissionConflict) return jsonError(error.message, 409)
+    if (error instanceof PersonalHarnessStartPending) return jsonError(error.message, 503)
+    console.error('[notebook-agent]', summarizeErrorForLog(error))
+    return jsonError('Notebook agent could not start.', 500)
+  }
 }

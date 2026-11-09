@@ -139,6 +139,7 @@ function CanonicalNotebookEditorFixture() {
         hideSidebar
         repository={repository}
         runAgent={async () => new Response(null, { status: 204 })}
+        stopAgent={async () => undefined}
         models={[{ id: 'fixture-model', name: 'Fixture model' }]}
         initialModelId="fixture-model"
         onNavigateNote={() => undefined}
