@@ -80,7 +80,7 @@ export async function seedPreviewWorkspace(ctx: MutationCtx, { userId, email }: 
     })
     await ctx.db.insert('workspaceAgentDefinitions', {
       agentId, principalId, workspaceId, name: fixture.name,
-      instructions: 'You are a synthetic preview QA assistant. Answer briefly. Do not use external tools.',
+      instructions: 'You are a synthetic preview QA assistant. Answer briefly. Do not use web search or connected apps.',
       harness: 'overlay', modelId: 'openai/gpt-4o-mini', allowedToolIds: [],
       invocationPolicy: 'mention', visibility: fixture.visibility, createdByPrincipalId: fixture.creator,
       avatarColor: 'blue', avatarShape: 'round', teamIds: [], roomCount: 0,

@@ -60,6 +60,14 @@ export class ConvexWorkRepository implements WorkRepository {
     return doc ? mapWorkItemDoc(doc) : null
   }
 
+  async assignedTaskIdForConversation(args: { userId: string; workspaceId: string; agentPrincipalId: string; conversationId: string }): Promise<string | null> {
+    return await convex.query<string | null>('work/workItems:assignedTaskForConversation', {
+      ...this.base(args),
+      agentPrincipalId: args.agentPrincipalId,
+      conversationId: args.conversationId,
+    }, { throwOnError: true }) ?? null
+  }
+
   async context(args: { userId: string; workspaceId: string }): Promise<WorkContext | null> {
     const result = await convex.query<ContextResult | null>('work/workItems:context', this.base(args), { throwOnError: true })
     if (!result) return null

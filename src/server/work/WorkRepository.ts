@@ -16,6 +16,8 @@ type Actor = { userId: string; workspaceId: string; actingAgentPrincipalId?: str
 export interface WorkRepository {
   list(args: Actor & { view?: ResourceView }): Promise<WorkItem[]>
   get(args: Actor & { id: string }): Promise<WorkItem | null>
+  /** The active task whose assignment started this agent in this conversation, when the actor can read it. */
+  assignedTaskIdForConversation(args: Actor & { agentPrincipalId: string; conversationId: string }): Promise<string | null>
   context(args: Actor): Promise<WorkContext | null>
   create(args: Actor & { input: CreateWorkItemRequest }): Promise<WorkItem>
   update(args: Actor & { id: string; input: UpdateWorkItemRequest }): Promise<WorkItem>
