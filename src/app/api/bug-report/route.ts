@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { unstable_rethrow } from 'next/navigation'
-import { resolveAuthenticatedAppUser } from '@/server/auth/app-api-auth'
 import { getOverlayRuntimeConfigSync } from '@/server/config'
 import { createEmailProvider } from '@/server/email/createEmailProvider'
 import { logger } from '@/server/observability/logger'
@@ -22,11 +21,14 @@ export async function POST(request: NextRequest) {
   if (request.headers.get('origin') !== request.nextUrl.origin || request.headers.get('sec-fetch-site') === 'cross-site') {
     return errorResponse('Invalid request origin.', 403)
   }
-  const auth = await resolveAuthenticatedAppUser(request, {})
-  if (!auth || auth.authType !== 'session') return errorResponse('Sign in to report a bug.', 401)
+  const context = getOverlayServerContext()
+  const session = await context.auth.getSession(request)
+  if (!session) return errorResponse('Sign in to report a bug.', 401)
+  const userId = session.user.id
+  const reporterEmail = session.user.email
   const limited = await enforceRateLimits(request, [
     { bucket: 'bug-report:ip', key: getClientIp(request), limit: 10, windowMs: 60 * 60_000 },
-    { bucket: 'bug-report:user', key: auth.userId, limit: 3, windowMs: 60 * 60_000 },
+    { bucket: 'bug-report:user', key: userId, limit: 3, windowMs: 60 * 60_000 },
   ])
   if (limited) return limited
   if (!/^[a-f0-9-]{36}$/i.test(request.headers.get('idempotency-key') ?? '')) return errorResponse('Invalid report request.', 400)
@@ -40,11 +42,11 @@ export async function POST(request: NextRequest) {
   const body = await readBugReportJson(request)
   if (!body) return errorResponse('Invalid bug report.', 400)
   const idempotentRequest = new NextRequest(request.url, { method: 'POST', headers: request.headers, body: JSON.stringify(body) })
-  return handleIdempotentMutation(idempotentRequest, auth.userId, async () => {
+  return handleIdempotentMutation(idempotentRequest, userId, async () => {
   try {
     const description = body.description
     if (typeof description !== 'string' || !description.trim() || description.trim().length > 4000) return errorResponse('Describe the bug in 4,000 characters or fewer.', 400)
-    const upload = typeof body.ticket === 'string' ? verifyBugReportUploadTicket(body.ticket, auth.userId) : null
+    const upload = typeof body.ticket === 'string' ? verifyBugReportUploadTicket(body.ticket, userId) : null
     if (body.ticket && !upload) return errorResponse('Attachments expired. Please choose your files again.', 400)
     const files = upload?.files ?? []
     const id = upload?.id
@@ -73,10 +75,10 @@ export async function POST(request: NextRequest) {
       try {
         const provider = await createEmailProvider(config)
         const result = await provider.send({
-          from: config.email!.from!, to: recipient, replyTo: auth.profile?.email,
+          from: config.email!.from!, to: recipient, replyTo: reporterEmail,
           subject: `Overlay bug report #${issue.number}`,
-          text: `Issue: ${issue.html_url}\nReporter: ${auth.profile?.email ?? auth.userId}\n\n${description.trim()}`,
-          html: `<p><a href="${issue.html_url}">View bug report #${issue.number}</a></p><p>Reporter: ${escapeHtml(auth.profile?.email ?? auth.userId)}</p><pre>${escapeHtml(description.trim())}</pre>`,
+          text: `Issue: ${issue.html_url}\nReporter: ${reporterEmail}\n\n${description.trim()}`,
+          html: `<p><a href="${issue.html_url}">View bug report #${issue.number}</a></p><p>Reporter: ${escapeHtml(reporterEmail)}</p><pre>${escapeHtml(description.trim())}</pre>`,
           idempotencyKey: `bug-report-${issue.number}`,
         })
         emailSent = result.status === 'sent'
@@ -89,5 +91,5 @@ export async function POST(request: NextRequest) {
     logger.error('[bug-report] Submission failed', error)
     return errorResponse('Could not submit the bug report. Please try again.', 502)
   }
-  }, { repository: getOverlayServerContext().appData.repositories.idempotency })
+  }, { repository: context.appData.repositories.idempotency })
 }

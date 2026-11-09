@@ -105,8 +105,8 @@ export function HelpMenu({ collapsed, docsUrl }: { collapsed: boolean; docsUrl: 
     </SidebarMenuItem>
     <Dialog open={dialogOpen} onOpenChange={(open) => { if (!busy) setDialogOpen(open) }}>
       <DialogContent className="max-h-[90dvh] overflow-y-auto sm:max-w-[480px]" onInteractOutside={(event) => { if (busy) event.preventDefault() }}>
-        <DialogHeader>
-          <DialogTitle>Submit a bug</DialogTitle>
+        <DialogHeader className="flex-col items-start gap-2 pr-6">
+          <DialogTitle className="whitespace-normal">Submit a bug</DialogTitle>
           <DialogDescription>Describe what happened. Reports and attachments are visible in the public GitHub repository.</DialogDescription>
         </DialogHeader>
         {result ? <div className="space-y-3 text-sm">

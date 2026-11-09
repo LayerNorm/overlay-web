@@ -4,9 +4,8 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const mocks = vi.hoisted(() => ({ auth: vi.fn(), limit: vi.fn(), send: vi.fn(), head: vi.fn(), presign: vi.fn(), idempotent: vi.fn(), fetch: vi.fn() }))
 vi.mock('server-only', () => ({}))
-vi.mock('@/server/auth/app-api-auth', () => ({ resolveAuthenticatedAppUser: mocks.auth }))
 vi.mock('@/server/security/rate-limit', () => ({ enforceRateLimits: mocks.limit, getClientIp: () => 'test' }))
-vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({ appData: { repositories: { idempotency: {} } } }) }))
+vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({ auth: { getSession: mocks.auth }, appData: { repositories: { idempotency: {} } } }) }))
 vi.mock('@/server/app-api/idempotency', () => ({ handleIdempotentMutation: mocks.idempotent }))
 vi.mock('@/server/config', () => ({ getOverlayRuntimeConfigSync: () => ({ providers: { email: { provider: 'resend' } }, email: { from: 'bugs@overlay.example' } }) }))
 vi.mock('@/server/email/createEmailProvider', () => ({ createEmailProvider: async () => ({ send: mocks.send }) }))
@@ -28,7 +27,7 @@ beforeEach(() => {
   vi.stubEnv('OVERLAY_BUG_REPORT_EMAIL_TO', 'owner@overlay.example')
   vi.stubEnv('OVERLAY_BUG_REPORT_ATTACHMENT_SECRET', 'test-only-attachment-signing-key-32-characters')
   vi.stubGlobal('fetch', mocks.fetch)
-  mocks.auth.mockResolvedValue({ userId: 'user_1', authType: 'session', profile: { email: 'reporter@overlay.example' } })
+  mocks.auth.mockResolvedValue({ user: { id: 'user_1', email: 'reporter@overlay.example' } })
   mocks.limit.mockResolvedValue(null)
   mocks.send.mockResolvedValue({ status: 'sent' })
   mocks.idempotent.mockImplementation((_request, _userId, run) => run())
@@ -37,6 +36,18 @@ beforeEach(() => {
 })
 
 describe('bug report route without real external side effects', () => {
+  it('rejects bearer-only requests to both routes without a browser session', async () => {
+    mocks.auth.mockResolvedValue(null)
+    for (const handler of [POST, prepareUpload]) {
+      const req = request({ description: 'A bug', files: [] })
+      req.headers.set('Authorization', 'Bearer test-only-api-key')
+      expect((await handler(req)).status).toBe(401)
+    }
+    expect(mocks.fetch).not.toHaveBeenCalled()
+    expect(mocks.presign).not.toHaveBeenCalled()
+    expect(mocks.send).not.toHaveBeenCalled()
+  })
+
   it('requires the same origin, a browser session and rate-limit acceptance before side effects', async () => {
     expect((await POST(request({}, 'https://evil.example'))).status).toBe(403)
     mocks.auth.mockResolvedValueOnce(null)
@@ -98,7 +109,7 @@ describe('bug report route without real external side effects', () => {
     mocks.head.mockResolvedValueOnce({ sizeBytes: 100, contentType: 'image/png' })
     expect((await POST(request({ description: 'A bug', ticket }))).status).toBe(201)
     expect(JSON.parse(mocks.fetch.mock.calls[0][1].body).body).toContain(`/api/bug-report/attachment/${id}/0-screen.png?sig=`)
-    mocks.auth.mockResolvedValueOnce({ userId: 'another-user', authType: 'session' })
+    mocks.auth.mockResolvedValueOnce({ user: { id: 'another-user', email: 'other@overlay.example' } })
     expect((await POST(request({ description: 'A bug', ticket }))).status).toBe(400)
   })
 })
