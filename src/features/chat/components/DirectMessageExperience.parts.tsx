@@ -33,6 +33,7 @@ import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { NewDirectMessageDialog } from './NewDirectMessageDialog'
 import { ShareDialog } from '@/components/share/ShareDialog'
 import { RoomMessageItem } from './collaboration/RoomMessageItem'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import {
   roomMessageRowKey,
   toRoomMessageView,
@@ -740,6 +741,7 @@ export function RoomComposer({
   onOpenFilePreview: (name: string, fileIds: string[]) => void | Promise<void>
   guided?: GuidedRoomComposer
 }) {
+  recordRender('RoomComposer')
   useEffect(() => {
     if (guided?.focusRevision) composer.composerRef.current?.focus()
   }, [guided?.focusRevision, composer.composerRef])

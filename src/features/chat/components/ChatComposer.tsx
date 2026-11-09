@@ -19,8 +19,10 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
-import { useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
+import { useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
+import { markComposerReady } from '../lib/realtime-baseline'
 import { MentionInput } from './chat-interface/MentionInput'
 import { AgentSlashMenu } from './chat-interface/AgentSlashMenu'
 import { useAgentSlashMenu } from './chat-interface/useAgentSlashMenu'
@@ -97,6 +99,10 @@ const TOOL_REQUEST_OPTIONS: Array<{
 const TOOL_REQUEST_BY_ID = new Map(TOOL_REQUEST_OPTIONS.map((tool) => [tool.id, tool]))
 
 export function ChatComposer(props: ChatComposerProps) {
+  recordRender('ChatComposer')
+  useEffect(() => {
+    markComposerReady()
+  }, [])
   const viewProps = toComposerViewProps(props)
   useComposerAlertToasts(viewProps.composerNotice ?? null, viewProps.attachmentError ?? null)
   const disabledSend =
