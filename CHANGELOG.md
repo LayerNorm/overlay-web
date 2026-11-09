@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep the composer at the bottom in new chats and new automations, matching tasks and agent threads. The greeting stays centred with suggestions just above the composer, so the input no longer jumps from the middle of the screen to the bottom when you send the first message.
 - Clear a failed or cancelled agent thread's red icon and "failed" count once you open it, the same way a reviewed completion loses its green check. Threads that need your input keep their indicator until answered.
 - Turn on a computer by default when creating an agent in a workspace that has computers, so new agents can use a desktop without an extra step. The toggle still lets you create one without it.
 - Show your first message in a new chat as soon as you press Enter. It used to stay hidden until the server finished creating the conversation.
