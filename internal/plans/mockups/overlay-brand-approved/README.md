@@ -23,8 +23,11 @@ The static assets do not animate. In the loading mockup, only the nested
 ease-in-out, horizontally from center to -95 to +95 font units and back. Reduced
 motion disables it. The O body and wordmark stay fixed.
 
-The full wordmark and standalone icon are the shared visual source for future
-product adoption. This asset pack and mockup do not deploy changes to the app.
+The full wordmark and standalone icon are the shared source for production
+`BrandLockup` and `OverlayMark`. Regenerate SVGs and components with
+`python3 internal/plans/mockups/build-aligned-brand.py` (FontTools and Pillow with
+RAQM required), then run `node internal/plans/mockups/export-brand-pngs.cjs` for
+the PNGs and app raster assets. The mockup itself never submits live reports.
 
 Font outlines are derived from the repository's Libre Baskerville Regular font;
 its license is included as `FONT-LICENSE.txt`.
