@@ -658,6 +658,7 @@ function ChatListRow({
 
 function ChatListBody({
   loading,
+  activityOnly,
   personalUnavailable,
   chatView,
   chats,
@@ -682,6 +683,7 @@ function ChatListBody({
   cancelRename,
 }: {
   loading: boolean
+  activityOnly: boolean
   personalUnavailable: boolean
   chatView: ChatView
   chats: Conversation[]
@@ -712,9 +714,14 @@ function ChatListBody({
       : chatView === 'channels'
         ? chats.filter((chat) => chat.conversationType === 'channel')
         : chats
+  const activeChats = activityOnly ? viewChats.filter((chat) =>
+    sessions[chat._id]?.status === 'streaming' || (nativePersonalIds.has(chat._id)
+      ? Boolean(chat.unread)
+      : Math.max(getUnread(chat._id), collaborationUnread[chat._id] ?? 0) > 0),
+  ) : viewChats
   const filteredChats = searchQuery.trim()
-    ? viewChats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
-    : viewChats
+    ? activeChats.filter((c) => c.title.toLowerCase().includes(searchQuery.toLowerCase()))
+    : activeChats
   const emptyLabel = {
     personal: 'No personal chats yet',
     'workspace-chats': 'No workspace chats yet',
@@ -738,7 +745,8 @@ function ChatListBody({
           <p className="px-2 py-1.5 text-xs text-(--muted-light)">
             {personalUnavailable
               ? 'Personal chats are unavailable'
-              : viewChats.length === 0 ? emptyLabel : 'No results'}
+                : activityOnly && !searchQuery.trim() ? 'No activity yet'
+                : viewChats.length === 0 ? emptyLabel : 'No results'}
           </p>
         </SidebarMenuSubItem>
         {hasMore ? (
@@ -845,12 +853,14 @@ function useChatPanelRoute({
 
 export function ChatInlinePanel({
   searchQuery = '',
+  activityOnly = false,
   onNavigate,
   baseHref = '/app/chat',
   workspaceId,
   view: sectionView,
 }: {
   searchQuery?: string
+  activityOnly?: boolean
   onNavigate?: () => void
   baseHref?: string
   workspaceId?: string | null
@@ -1086,6 +1096,7 @@ export function ChatInlinePanel({
     <>
     <ChatListBody
       loading={listLoading}
+      activityOnly={activityOnly}
       personalUnavailable={listUnavailable}
       chatView={chatView}
       chats={chats}

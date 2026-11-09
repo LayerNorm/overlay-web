@@ -115,7 +115,7 @@ export function AppShellLayout({
   suppressGuestPrompts?: boolean
 }) {
   return (
-    <Suspense fallback={<AppShellLoadingFallback />}>
+    <Suspense fallback={<AppShellLoadingFallback settled />}>
       <AppShellContent
         suppressGuestPrompts={suppressGuestPrompts}
       >

@@ -2,6 +2,10 @@ export type ThreadActivityStatus = 'idle' | 'working' | 'needs_input' | 'ready' 
 
 export type ThreadActivity = { conversationId: string; status: ThreadActivityStatus }
 
+export function hasThreadActivity(status: ThreadActivityStatus): boolean {
+  return status === 'working' || status === 'needs_input' || status === 'ready' || status === 'failed'
+}
+
 export function resolveThreadActivity(
   run: { status: string; completedAt?: number; updatedAt: number } | null,
   participant: { lastReadAt?: number; markedUnreadAt?: number } | null,

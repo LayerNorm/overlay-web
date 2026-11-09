@@ -6,7 +6,7 @@ This is the route-entry-point inventory for the web app. It is intended as a wor
 
 - External-agent setup and new execution require `OVERLAY_FEATURE_EXTERNAL_AGENTS` plus the existing control-plane, remote-run/cloud and workspace rollout gates. The master gate defaults off for the native-Overlay-only launch. Authorized history, cancellation, revocation, machine teardown and host settlement paths remain available without authorizing new starts. Native `/api/v1/computers` uses its own independent capability. See `FEATURES.md` at the repository root and the living Bring Your Own Agents guide for re-enablement.
 
-- Source of truth for route existence: every `src/app/api/**/route.ts` file. The inventory contains 220 route entry points: 40 non-versioned routes and 180 `/api/v1` routes. Test files are not endpoints.
+- Source of truth for route existence: every `src/app/api/**/route.ts` file. The inventory contains 213 route entry points: 42 non-versioned routes and 171 `/api/v1` routes. Test files are not endpoints.
 - Next.js dynamic segments are shown in the same notation as the source: `[id]` and `[...path]`.
 - Most user-facing `/api/v1` requests pass through `src/app/api/v1/_utils/bff.ts`, which authenticates the caller, parses the request, resolves workspace context, applies route policy/idempotency/rate-limit behavior, and delegates to the server implementation. Direct routes and internal callbacks are marked below; the per-route file list names the transport entry point and the implementation or direct service files.
 - `src/server/app-api/v1/**/route.ts` is server-only domain logic, not a second public URL. Where the app route delegates directly to another app route, that is called out explicitly.
@@ -39,6 +39,12 @@ This is the route-entry-point inventory for the web app. It is intended as a wor
 - `GET /api/auth/sso/[provider]` — Starts the configured SSO provider flow and redirects the browser to the provider authorization endpoint. Files: `src/app/api/auth/sso/[provider]/route.ts`; `src/server/auth/actions.ts`; `src/server/capabilities.ts`.
 - `POST /api/auth/verify-email` — Validates an email-verification token and delegates verification to the configured auth provider with rate limiting. Files: `src/app/api/auth/verify-email/route.ts`; `src/server/auth/actions.ts`; `src/server/security/rate-limit.ts`.
 - `GET, POST, PATCH, PUT, DELETE /api/better-auth/[...all]` — Catch-all Better Auth transport adapter for the provider’s own authentication endpoints. Files: `src/app/api/better-auth/[...all]/route.ts`; `src/server/auth/better-auth.ts`.
+
+## Bug reports
+
+- `POST /api/bug-report/upload`: Prepares create-only direct uploads for at most 10 supported attachments and 5 MB total. Requires a same-origin browser session, IP/user rate limits and report configuration. Returns a signed user-bound manifest that expires after 10 minutes. File: `src/app/api/bug-report/upload/route.ts`.
+- `POST /api/bug-report`: Verifies the browser session, origin, rate limits, idempotency key, description and signed attachment manifest before checking stored size/type, creating a public GitHub issue and notifying the configured owner through Resend. Missing configuration fails closed; an email failure does not retry issue creation. File: `src/app/api/bug-report/route.ts`.
+- `GET /api/bug-report/attachment/[id]/[file]`: Verifies the signed object path and stored object before redirecting to a short-lived download URL. Links are public bearer links disclosed in the report dialog, with no-store and no-referrer headers. File: `src/app/api/bug-report/attachment/[id]/[file]/route.ts`.
 
 ## 2. Billing, subscriptions, releases, and billing webhooks
 

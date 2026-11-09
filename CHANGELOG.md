@@ -6,6 +6,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add the phased UI responsiveness plan and opt-in performance baseline tooling. Reject incomplete navigation/streaming samples, verify loaded DM history before scroll measurement, and keep diagnostic payloads out of reports.
 
+- Standardize the approved Overlay wordmark and icon across loading, sidebar, email and metadata. The loader fades in the brand, then changes from the tagline to the workspace status with animated eyes. Nested streaming fallbacks keep the brand settled instead of replaying its entrance.
+- Add activity-only sidebar filters for chats, channels, agents and their threads, preserving ordinary rows and using the simple "No activity yet" empty state. Remove the redundant Activity dropdown in favor of the bell.
+- Add a Help menu with hover, touch and keyboard access to Docs and a bug-report dialog. Signed-in users can send a description and up to 5 MB of attachments to GitHub, with a Resend notification to the configured owner.
+
 - Keep a live agent sentence ahead of the tool it starts. Before the step settled, a newly started tool row briefly appeared above the sentence that introduced it, grouped with the previous tool. Live text now goes before tools the running call has started.
 
 - Fix agent-thread replies showing only the latest sentence while the agent worked. Each model call's text was dropped because the person's message and the agent's reply carry different turn ids. The reply now keeps every step's text in order, between collapsed tool rows, as chat does.

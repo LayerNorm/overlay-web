@@ -68,7 +68,7 @@ export function AppShellSidebar() {
           />
         ),
       }}
-      renderChatPanel={({ onNavigate, view, section }) => (
+      renderChatPanel={({ onNavigate, view, section, activityOnly }) => (
         // Activity is its own route with its own list; only the conversation subviews render the chat list.
         view === 'activity' ? <ActivityInlinePanel onNavigate={onNavigate} />
         : (
@@ -78,6 +78,7 @@ export function AppShellSidebar() {
             baseHref={chatBaseHref}
             workspaceId={activeWorkspaceId}
             view={section ? sectionChatView(view) : undefined}
+            activityOnly={activityOnly}
           />
         )
       )}
@@ -85,12 +86,13 @@ export function AppShellSidebar() {
         <AutomationsInlinePanel onNavigate={onNavigate} />
       )}
       renderWorkSection={({ filter, onNavigate }) => <WorkSidebarSection filter={filter} onNavigate={onNavigate} />}
-      renderAgentsPanel={({ onNavigate }) => (
+      renderAgentsPanel={({ onNavigate, activityOnly }) => (
         <AgentsInlinePanel
           workspaceId={activeWorkspaceId}
           baseHref={activeWorkspaceId ? buildWorkspaceHref(activeWorkspaceId, '/app/agents', agentsView) : undefined}
           view={agentsView}
           onNavigate={onNavigate}
+          activityOnly={activityOnly}
         />
       )}
     />

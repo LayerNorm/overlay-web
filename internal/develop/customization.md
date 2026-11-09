@@ -47,8 +47,42 @@ The default brand mark is the inline SVG O-with-eyes `OverlayMark` from
 `@overlay/ui`, re-exported at `src/components/brand/OverlayMark.tsx`.
 The sidebar renders it whenever `brand.logoSrc` is the default
 `/assets/overlay-logo.png`; custom overrides still render their configured image.
-`BrandLockup` combines the mark with "verlay" in Libre Baskerville Regular to
-read "Overlay". The PNG remains available for lifecycle email and static metadata.
+`BrandLockup` uses one SVG outlined from Libre Baskerville Regular, with the approved
+5% icon enlargement, 3 px extra icon-to-text spacing and 2 px downward O offset at
+40 px display size. It never depends on browser font metrics. The generated
+components and SVG/PNG exports come from `internal/plans/mockups/build-aligned-brand.py`
+and `export-brand-pngs.cjs` in the same directory. The PNG remains available for
+lifecycle email and static metadata; custom white-label overrides are unchanged.
+
+## Help and bug reports
+
+Help opens on hover or click, with Docs and Submit a bug. The authenticated,
+same-origin bug-report routes create issues in the public `LayerNorm/overlay-web`
+repository and notify the owner using the configured Resend provider. Set these
+server-only environment variables before enabling submission:
+
+- `OVERLAY_BUG_REPORT_GITHUB_TOKEN`: a fine-grained token restricted to this repository,
+  with Issues read/write permission. Do not reuse a deployment or personal admin token.
+- `OVERLAY_BUG_REPORT_EMAIL_TO`: the owner's notification address. Existing
+  `OVERLAY_EMAIL_FROM` and Resend configuration are reused.
+- `OVERLAY_BUG_REPORT_ATTACHMENT_SECRET`: a random signing secret of at least 32
+  characters. Keep it stable; rotating it invalidates existing attachment links.
+
+Reports warn that descriptions and attachments are public. Files upload directly
+to the existing object store, with short-lived, create-only signed upload URLs,
+a 5 MB combined cap, a maximum of ten supported files, per-user/IP limits and
+server verification of stored size/type before issue creation. The signed upload
+ticket is bound to the authenticated user and expires after ten minutes. Issue
+links exchange a durable signature for a short-lived storage download URL. Keep
+the object-store CORS configuration compatible with the app's normal direct
+uploads, including the `If-None-Match` header. Files live under `bug-reports/`;
+abandoned uploads can be removed by operators after checking issue references.
+
+Submissions use the existing durable idempotency repository. An email failure
+does not undo the issue or invite a duplicate submission: the dialog shows the
+created issue and notes the missing notification. Missing integration settings
+fail closed without creating an issue. Local automated tests mock GitHub, Resend
+and storage; do not create real issues or send real mail for UI QA.
 
 Chat tool rails, reasoning rows, streaming markers, loading states and notebook
 panels use the same mark. Running markers use `motion="look"`, completed markers

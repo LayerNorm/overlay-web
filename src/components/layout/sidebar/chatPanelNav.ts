@@ -67,7 +67,7 @@ export async function resolveRecentChatHref(
 }
 
 const WORKSPACE_CHATS_ITEM = { id: 'workspace-chats', label: 'Chats', icon: MessageSquare }
-const WORKSPACE_CHAT_IDS = new Set(['dms', 'channels', 'activity'])
+const WORKSPACE_CHAT_IDS = new Set(['dms', 'channels'])
 
 export function buildChatPanelNav({
 
@@ -141,7 +141,7 @@ export function buildChatPanelNav({
   return buildScopedPanelNav({
     scope: chatScope,
     sub: chatScope === 'workspace' ? chatsView : null,
-    // Workspace AI chats, direct messages, channels, and activity are the Workspace scope; personal chats have no sub-rows.
+    // Workspace AI chats, direct messages, and channels have sub-rows; personal chats do not.
     subItems: { workspace: [...([WORKSPACE_CHATS_ITEM]), ...workspaceChatItems] },
     pendingId: effectivePendingSecondaryNavId,
     badges: { workspace: unreadOf('dms') + unreadOf('channels') },

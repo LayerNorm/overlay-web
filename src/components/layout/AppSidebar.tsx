@@ -2,6 +2,7 @@
 
 import NextLink from 'next/link'
 import dynamic from 'next/dynamic'
+import { useState } from 'react'
 import { CircleHelp, Moon, Settings, Sun } from 'lucide-react'
 import { CollapsibleSection } from '@overlay/ui/primitives'
 import { ShellAdapterProvider, SidebarAccountAvatar, SidebarAccountMenu, SidebarAccountProfile, type PrimaryRailItem, type ShellAdapter } from '@overlay/shell-react'
@@ -23,11 +24,21 @@ import { EMPTY_COLLABORATION_NOTIFICATIONS, type AppSidebarProps } from './appSi
 import { WORK_FILTER_LABELS, type WorkFilter } from '@/shared/work/query'
 import type { InlineNavItem } from '@overlay/shell-react'
 import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
+import { HelpMenu } from './sidebar/HelpMenu'
 
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 const WORK_SECTION_ORDER: readonly WorkFilter[] = ['needs-you', 'mine', 'all']
 const WORK_SECTION_ROWS: ReadonlyArray<InlineNavItem> = WORK_SECTION_ORDER.map((id) => ({ id, label: WORK_FILTER_LABELS[id] }))
 const shellAdapter = { Link: NextLink, rememberScope: rememberPanelScope } satisfies ShellAdapter
+
+function useSidebarActivityFilter(panelKind: ReturnType<typeof useAppSidebarState>['routeState']['panelKind']) {
+  const [filters, setFilters] = useState({ chat: false, agents: false })
+  const kind = panelKind === 'chat' || panelKind === 'agents' ? panelKind : null
+  return {
+    activityOnly: kind ? filters[kind] : false,
+    onToggleActivity: kind ? () => setFilters((current) => ({ ...current, [kind]: !current[kind] })) : undefined,
+  }
+}
 
 function renderAccountProfile(
   { user, displayName }: Pick<ReturnType<typeof useAppSidebarState>, 'user' | 'displayName'>,
@@ -101,6 +112,7 @@ export default function AppSidebar({
 
     workspace,
   })
+  const { activityOnly, onToggleActivity } = useSidebarActivityFilter(s.routeState.panelKind)
   const appSettings = useOptionalAppSettings()
   const classicLayout = appSettings?.settings.useSecondarySidebar !== false
   const railExpanded = !classicLayout && !s.sidebarCollapsed
@@ -206,6 +218,7 @@ export default function AppSidebar({
       renderAutomationsPanel={renderAutomationsPanel}
       renderFilesPanel={renderFilesPanel}
       renderAgentsPanel={renderAgentsPanel}
+      activityOnly={activityOnly}
       onNavigate={s.closeMobileDrawer}
     />
   ) : null
@@ -219,6 +232,7 @@ export default function AppSidebar({
         activeWorkspaceId={s.activeWorkspaceId}
         buildWorkspaceHref={s.buildWorkspaceHref}
         renderChatPanel={renderChatPanel}
+        activityOnly={activityOnly}
         onNavigate={s.closeMobileDrawer}
       />
     )
@@ -238,7 +252,7 @@ export default function AppSidebar({
       icon: appSettings.settings.theme === 'dark' ? Sun : Moon,
       onSelect: () => { void appSettings.updateSettings({ theme: appSettings.settings.theme === 'dark' ? 'light' : 'dark' }) },
     }] : []),
-    { id: 'help', label: 'Help', icon: CircleHelp, href: `${MARKETING_DOCS_URL}/help`, onSelect: () => { window.open(`${MARKETING_DOCS_URL}/help`, '_blank', 'noopener,noreferrer') } },
+    { id: 'help', label: 'Help', icon: CircleHelp, onSelect: () => {} },
     { id: 'settings', label: 'Settings', icon: Settings, active: s.routeState.panelKind === 'settings', href: settingsHref, onSelect: () => s.router.push(settingsHref) },
     ...s.railFooterItems,
   ]
@@ -256,7 +270,8 @@ export default function AppSidebar({
     title: s.panelTitle,
     themePreset: appSettings?.settings.theme === 'dark' ? appSettings.settings.darkThemePreset : appSettings?.settings.lightThemePreset,
     items: s.railItems,
-    footerItems: classicLayout ? railFooterItems : s.railFooterItems,
+    footerItems: railFooterItems,
+    helpMenu: <HelpMenu collapsed={classicLayout || s.sidebarCollapsed} docsUrl={`${MARKETING_DOCS_URL}/help`} />,
     panelKind: s.routeState.panelKind,
     panelNav: s.panelNav,
     panelAction: s.panelAction,
@@ -264,6 +279,8 @@ export default function AppSidebar({
     renderSection,
     sectionRows,
     scope: s.routeState.scope,
+    activityOnly,
+    onToggleActivity,
   }
 
   return (

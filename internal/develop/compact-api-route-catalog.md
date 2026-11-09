@@ -1,10 +1,10 @@
 # Compact web API route catalog
 
-A one-line-per-route summary derived from a filesystem audit of every `src/app/api/**/route.ts`. It contains the same 221 routes as the full `api-route-catalog.md` but omits the per-route descriptions and implementation file lists.
+A one-line-per-route summary derived from a filesystem audit of every `src/app/api/**/route.ts`. It contains the same 213 routes as the full `api-route-catalog.md` but omits the per-route descriptions and implementation file lists.
 
-- **Total routes:** 221
-- **Non-versioned routes:** 40
-- **`/api/v1` routes:** 181
+- **Total routes:** 213
+- **Non-versioned routes:** 42
+- **`/api/v1` routes:** 171
 - **Verification status:** 0 missing, 0 stale, 0 HTTP-method mismatches against the route filesystem.
 
 For a description of what each route does and its associated implementation files, see the [full web API route catalog](./api-route-catalog.md).
@@ -36,6 +36,12 @@ For a description of what each route does and its associated implementation file
 - `GET /api/auth/sso/[provider]`
 - `POST /api/auth/verify-email`
 - `DELETE, GET, PATCH, POST, PUT /api/better-auth/[...all]`
+
+## Bug reports
+
+- `POST /api/bug-report/upload`
+- `POST /api/bug-report`
+- `GET /api/bug-report/attachment/[id]/[file]`
 
 ## Billing, subscriptions, releases, webhooks
 

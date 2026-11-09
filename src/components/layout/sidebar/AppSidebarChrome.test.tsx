@@ -123,7 +123,7 @@ test('default sidebar branding uses the accessible O wordmark', () => {
   />)
 
   assert.match(html, /aria-label="Overlay"/)
-  assert.match(html, /brand-lockup-word">verlay</)
+  assert.match(html, /approved-brand/)
   assert.doesNotMatch(html, /<img/)
 })
 
@@ -153,7 +153,7 @@ test('custom white-label images and names survive in both sidebar layouts', () =
     assert.match(html, /customer-logo/)
     assert.match(html, /alt="Acme logo"/)
     assert.match(html, />Acme</)
-    assert.doesNotMatch(html, /brand-lockup-word/)
+    assert.doesNotMatch(html, /approved-brand/)
   }
 })
 
@@ -169,5 +169,5 @@ test('default image with a custom brand name keeps that name', () => {
 
   assert.match(html, />Acme</)
   assert.match(html, /<svg/)
-  assert.doesNotMatch(html, /brand-lockup-word/)
+  assert.doesNotMatch(html, /data-glyph="v"/)
 })
