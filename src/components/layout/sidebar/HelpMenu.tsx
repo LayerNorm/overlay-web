@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useRef, useState, type FormEvent } from 'react'
+import { useEffect, useId, useRef, useState, type FormEvent, type PointerEvent } from 'react'
 import { CircleHelp, FilePlus2, Loader2, Trash2 } from 'lucide-react'
 import {
   Button, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -25,12 +25,17 @@ export function HelpMenu({ collapsed, docsUrl }: { collapsed: boolean; docsUrl: 
   const attachmentsId = useId()
   useEffect(() => () => { if (closeTimer.current) clearTimeout(closeTimer.current) }, [])
 
-  function openMenu() {
+  function changeMenu(open: boolean) {
     if (closeTimer.current) clearTimeout(closeTimer.current)
-    setMenuOpen(true)
+    setMenuOpen(open)
   }
 
-  function scheduleClose() {
+  function openMenu(event: PointerEvent) {
+    if (event.pointerType === 'mouse') changeMenu(true)
+  }
+
+  function scheduleClose(event: PointerEvent) {
+    if (event.pointerType !== 'mouse') return
     if (closeTimer.current) clearTimeout(closeTimer.current)
     closeTimer.current = setTimeout(() => setMenuOpen(false), 180)
   }
@@ -87,9 +92,9 @@ export function HelpMenu({ collapsed, docsUrl }: { collapsed: boolean; docsUrl: 
 
   return <>
     <SidebarMenuItem onPointerEnter={openMenu} onPointerLeave={scheduleClose}>
-      <Popover open={menuOpen} onOpenChange={setMenuOpen}>
+      <Popover open={menuOpen} onOpenChange={changeMenu}>
         <PopoverTrigger asChild>
-          <SidebarMenuButton aria-label="Help" aria-expanded={menuOpen} title={collapsed ? 'Help' : undefined} onClick={openMenu}>
+          <SidebarMenuButton aria-label="Help" aria-expanded={menuOpen} title={collapsed ? 'Help' : undefined}>
             <CircleHelp size={18} aria-hidden />{collapsed ? null : <span>Help</span>}
           </SidebarMenuButton>
         </PopoverTrigger>

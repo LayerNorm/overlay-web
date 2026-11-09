@@ -25,6 +25,7 @@ export default defineConfig({
       'src/server/storage/object-store.test.ts',
       'src/app/api/bug-report/**/*.test.ts',
       'src/components/layout/AppSidebarAgentsPanel.test.tsx',
+      'src/components/layout/sidebar/HelpMenu.test.tsx',
       'src/server/agents/workspace-agent-preparation.test.ts',
       'src/server/app-api/v1/conversations/act/model-candidates.test.ts',
       'src/server/app-api/v1/conversations/act/personal-harness-turn.test.ts',
