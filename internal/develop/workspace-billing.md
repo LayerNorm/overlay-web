@@ -45,6 +45,11 @@ Both are built by the same shared code the routes use: `src/shared/billing/works
 - The refetch after every chat turn. `loadSubscription` now returns the live snapshot and makes no request.
 - The onboarding step's 3-second poll after checkout. It now verifies the session once (again on **Check payment**), and the webhook-confirmed payment arrives live.
 
+**Refused agent turns.** When admission refuses an agent turn for billing, the failed reply names the problem and who can fix it.
+- Sources: `WorkspaceExecutionError` with its `state` and `recovery`, or Convex's bare `workspace_execution_required` from a budget reservation.
+- The reply text comes from `agentStartFailureMessage` in `src/server/app-api/v1/conversations/message/agent-start-failure.ts`.
+- `agentStartFailureReason` stores a short reason as a `data-native-agent-error` part. That replaces the generic "No failure reason is available" line.
+
 Checkout, top-ups, the portal, verification and automatic top-ups still run on the server, because they call Stripe. The summary's itemized usage reads up to the charge cap per refresh. Only the Billing tab and onboarding subscribe to it; the frequent consumers use the light `entitlements` query.
 
 ## Workspace reservation foundation

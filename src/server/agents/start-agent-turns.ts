@@ -3,7 +3,7 @@ import 'server-only'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { logger } from '@/server/observability/logger'
 import { startNativeHarnessTurn } from '@/server/harness/native-turn-start'
-import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
+import { agentStartFailureMessage, agentStartFailureReason } from '@/server/app-api/v1/conversations/message/agent-start-failure'
 import { requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
 import {
   resolveWorkspaceAgentInvocations,
@@ -153,6 +153,7 @@ export async function startWorkspaceAgentTurns(
         clientNonce: invocation.invocationNonce,
         content: failureMessage,
         conversationId: args.conversationId,
+        failure: agentStartFailureReason(error),
         modelId: invocation.modelId,
         threadRootMessageId: args.threadRootMessageId,
         turnId: invocation.turnId,
