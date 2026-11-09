@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Allow generated personal-Chief identities in agent discovery, ask and post requests. The caller-ID limit now matches the target agent-ID limit instead of rejecting valid Chief IDs before authorization and directory lookup.
+
 - Refresh the visible Chief plan when an assignment is accepted or excluded, keeping the delivery and transcript projections aligned with the settled Harness milestone.
 
 - Renew native Chief leases during a blocking child-result read when the conversation projects a child wait but the Harness is still running the read tool. Keep workflow ownership, membership and model-dispatch checks intact.

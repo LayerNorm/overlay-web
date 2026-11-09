@@ -9,7 +9,7 @@ const NO_STORE = { 'Cache-Control': 'no-store' }
 
 // Extra keys are ignored on purpose: tool calls carry their own auth fields alongside these.
 const bodySchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('list'), callerAgentId: z.string().max(80).optional() }),
+  z.object({ action: z.literal('list'), callerAgentId: z.string().max(200).optional() }),
   z.object({
     action: z.literal('ask'),
     agent: z.string().min(1).max(200),
@@ -18,7 +18,7 @@ const bodySchema = z.discriminatedUnion('action', [
     assignmentId: z.string().min(1).max(300).optional(),
     expectedAttemptId: z.string().min(1).max(600).optional(),
     // Absent when an outside app asks for the person; all three are present when an agent asks.
-    callerAgentId: z.string().min(1).max(80).optional(),
+    callerAgentId: z.string().min(1).max(200).optional(),
     callerConversationId: z.string().min(1).max(80).optional(),
     callerTurnId: z.string().min(1).max(300).optional(),
   }),
@@ -27,7 +27,7 @@ const bodySchema = z.discriminatedUnion('action', [
     conversationId: z.string().min(1).max(80),
     text: z.string().min(1).max(8_000),
     mentions: z.array(z.string().min(1).max(200)).max(3).optional(),
-    callerAgentId: z.string().min(1).max(80),
+    callerAgentId: z.string().min(1).max(200),
     callerConversationId: z.string().min(1).max(80),
     callerTurnId: z.string().min(1).max(300),
   }),
