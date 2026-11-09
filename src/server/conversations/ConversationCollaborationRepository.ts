@@ -85,6 +85,8 @@ export interface ConversationCollaborationRepository {
     clientNonce: string
     content: string
     conversationId: string
+    /** Short reason shown on the failed reply. */
+    failure?: { code: string; message: string; retryable: boolean }
     modelId: string
     threadRootMessageId?: string
     turnId: string

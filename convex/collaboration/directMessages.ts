@@ -985,6 +985,7 @@ export const recordAgentStartFailure = mutation({
     clientNonce: v.string(),
     content: v.string(),
     conversationId: v.id('conversations'),
+    failure: v.optional(v.object({ code: v.string(), message: v.string(), retryable: v.boolean() })),
     modelId: v.string(),
     threadRootMessageId: v.optional(v.id('conversationMessages')),
     turnId: v.string(),
@@ -1006,17 +1007,27 @@ export const recordAgentStartFailure = mutation({
     if (existingMessage) {
       await assertNativeThreadWritable(ctx, access.conversation, existingMessage.threadRootMessageId ?? existingMessage._id)
     }
-    const { messageId } = await openAgentMessageRow(ctx, args)
+    const { failure, ...rowArgs } = args
+    const { messageId } = await openAgentMessageRow(ctx, rowArgs)
     const message = await ctx.db.get(messageId)
     if (message?.status !== 'generating') return messageId
     const run = await ctx.db.query('conversationAgentRuns')
       .withIndex('by_assistantMessageId', q => q.eq('assistantMessageId', messageId)).unique()
     if (run) assertSupportedAgentExecution(run)
+    const now = Date.now()
     await ctx.db.patch(messageId, {
       content: args.content,
-      parts: [{ type: 'text', text: args.content }],
+      // The error part carries a short reason, replacing the generic
+      // "No failure reason is available" line under the reply.
+      parts: [
+        { type: 'text', text: args.content },
+        ...(failure ? [{
+          type: 'data-native-agent-error' as const,
+          data: { runId: args.turnId, code: failure.code, message: failure.message.slice(0, 2_000), retryable: failure.retryable, failedAt: now },
+        }] : []),
+      ],
       status: 'error',
-      updatedAt: Date.now(),
+      updatedAt: now,
     })
     await recordConversationEvent(ctx, {
       conversationId: args.conversationId, workspaceId: args.workspaceId,
