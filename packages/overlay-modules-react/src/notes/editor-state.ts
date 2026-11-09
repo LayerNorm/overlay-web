@@ -768,20 +768,75 @@ export function useNoteMutations({
   }
 }
 
+type ReadAgentStreamOptions = {
+  isCurrent: () => boolean
+  appendItem: (item: NotebookAgentUiItem) => void
+  eventIds: Set<string>
+  proposalIds: Set<string>
+  frozenMarkdown: string
+  frozenTitle: string
+  currentTitle: () => string
+  currentMarkdown: () => string
+  onAccepted: () => Promise<void>
+}
+
+type NotebookAgentStreamEvent = NonNullable<ReturnType<typeof parseNotebookAgentStreamLine>>
+
+async function handleAgentStreamEvent(
+  evt: NotebookAgentStreamEvent,
+  run: NotebookAgentRun,
+  options: ReadAgentStreamOptions,
+): Promise<void> {
+  if (evt.type === 'accepted') {
+    const identity = { runId: evt.runId, conversationId: evt.conversationId, turnId: evt.turnId }
+    const current = run.identity
+    if (current && (current.runId !== identity.runId || current.conversationId !== identity.conversationId
+      || current.turnId !== identity.turnId)) {
+      throw new Error('Notebook reconnect returned a different run identity.')
+    }
+    run.identity = { ...identity, ...(evt.cursor ? { cursor: evt.cursor } : current?.cursor ? { cursor: current.cursor } : {}) }
+    await options.onAccepted()
+    return
+  }
+  if ('cursor' in evt && evt.cursor && run.identity) {
+    run.identity = { ...run.identity, cursor: evt.cursor }
+  }
+  if (!options.isCurrent()) return
+  if ('eventId' in evt && evt.eventId) {
+    if (options.eventIds.has(evt.eventId)) return
+    options.eventIds.add(evt.eventId)
+  }
+
+  if (evt.type === 'edit_proposal') {
+    const edit = evt.edit
+    if (edit && !options.proposalIds.has(edit.id)) {
+      options.proposalIds.add(edit.id)
+      const changed = !notebookSnapshotMatches({
+        frozenMarkdown: options.frozenMarkdown,
+        currentMarkdown: options.currentMarkdown(),
+        frozenTitle: options.frozenTitle,
+        currentTitle: options.currentTitle(),
+      })
+      if (changed) {
+        options.appendItem({
+          type: 'error',
+          text: 'The note changed after this run started. Rerun the request before applying its proposal.',
+        })
+      } else {
+        run.editor.chain().focus().addDiffProposal(edit).run()
+      }
+    }
+    return
+  }
+
+  const item = notebookAgentEventToUiItem(evt)
+  if (item) options.appendItem(item)
+}
+
 async function readAgentStream(
   res: Response,
   run: NotebookAgentRun,
-  options: {
-    isCurrent: () => boolean
-    appendItem: (item: NotebookAgentUiItem) => void
-    eventIds: Set<string>
-    proposalIds: Set<string>
-    frozenMarkdown: string
-    frozenTitle: string
-    currentTitle: () => string
-    currentMarkdown: () => string
-    onAccepted: () => Promise<void>
-  },
+  options: ReadAgentStreamOptions,
 ): Promise<boolean> {
   const reader = res.body?.getReader()
   if (!reader) return false
@@ -807,51 +862,8 @@ async function readAgentStream(
       const evt = parseNotebookAgentStreamLine(trimmed)
       if (!evt) continue
 
-      if (evt.type === 'accepted') {
-        const identity = { runId: evt.runId, conversationId: evt.conversationId, turnId: evt.turnId }
-        const current = run.identity
-        if (current && (current.runId !== identity.runId || current.conversationId !== identity.conversationId
-          || current.turnId !== identity.turnId)) {
-          throw new Error('Notebook reconnect returned a different run identity.')
-        }
-        run.identity = { ...identity, ...(evt.cursor ? { cursor: evt.cursor } : current?.cursor ? { cursor: current.cursor } : {}) }
-        await options.onAccepted()
-        continue
-      }
-      if ('cursor' in evt && evt.cursor && run.identity) {
-        run.identity = { ...run.identity, cursor: evt.cursor }
-      }
       if (evt.type === 'done') terminal = true
-      if (!options.isCurrent()) continue
-      if ('eventId' in evt && evt.eventId) {
-        if (options.eventIds.has(evt.eventId)) continue
-        options.eventIds.add(evt.eventId)
-      }
-
-      if (evt.type === 'edit_proposal') {
-        const edit = evt.edit
-        if (edit && !options.proposalIds.has(edit.id)) {
-          options.proposalIds.add(edit.id)
-          const changed = !notebookSnapshotMatches({
-            frozenMarkdown: options.frozenMarkdown,
-            currentMarkdown: options.currentMarkdown(),
-            frozenTitle: options.frozenTitle,
-            currentTitle: options.currentTitle(),
-          })
-          if (changed) {
-            options.appendItem({
-              type: 'error',
-              text: 'The note changed after this run started. Rerun the request before applying its proposal.',
-            })
-          } else {
-            run.editor.chain().focus().addDiffProposal(edit).run()
-          }
-        }
-        continue
-      }
-
-      const item = notebookAgentEventToUiItem(evt)
-      if (item) options.appendItem(item)
+      await handleAgentStreamEvent(evt, run, options)
     }
   }
   return terminal
