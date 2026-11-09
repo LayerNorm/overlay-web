@@ -1,4 +1,27 @@
-import type { NotebookAgentRequest } from '@overlay/app-core'
+import type { NotebookAgentRequest, NotebookEdit } from '@overlay/app-core'
+
+export function resolveNotebookEditorEdit(
+  edit: NotebookEdit,
+  canonicalBlocks: readonly string[],
+  editorBlocks: readonly string[],
+): NotebookEdit | null {
+  let editorIndex = 0
+  let line = 1
+  let startLine: number | undefined
+  let endLine: number | undefined
+  for (const block of canonicalBlocks.length ? canonicalBlocks : ['']) {
+    while (editorBlocks[editorIndex] === '' && block !== '') editorIndex++
+    if (editorBlocks[editorIndex] !== block) return null
+    if (line === edit.startLine) startLine = editorIndex + 1
+    line += block.split('\n').length
+    if (line - 1 === edit.endLine) endLine = editorIndex + 1
+    editorIndex++
+  }
+  if (editorBlocks.slice(editorIndex).some(block => block !== '') || !startLine || !endLine) return null
+  const original = canonicalBlocks.join('\n').split('\n').slice(edit.startLine - 1, edit.endLine)
+  if (JSON.stringify(original) !== JSON.stringify(edit.originalLines)) return null
+  return { ...edit, startLine, endLine }
+}
 
 export type NotebookAgentIdentity = {
   runId: string

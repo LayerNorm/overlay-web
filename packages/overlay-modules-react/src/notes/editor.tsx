@@ -12,7 +12,7 @@ import {
   type Ref,
 } from 'react'
 import { OverlayMark } from '@overlay/ui'
-import { EditorContent } from '@tiptap/react'
+import { EditorContent, useEditorState } from '@tiptap/react'
 import {
   Check,
   ChevronDown,
@@ -249,9 +249,13 @@ function NotebookAssistantHeader({
   onAgentPanelModeChange?: (mode: 'docked' | 'floating') => void
   onToggleAgentPanel: () => Promise<void>
 }) {
+  const pendingDiffCount = useEditorState({
+    editor,
+    selector: ({ editor: currentEditor }) => currentEditor ? getPendingDiffs(currentEditor).length : 0,
+  }) ?? 0
   return (
     <NotebookAgentHeader
-      pendingDiffCount={editor ? getPendingDiffs(editor).length : 0}
+      pendingDiffCount={pendingDiffCount}
       modelPicker={modelPicker}
       presentation={
         onAgentPanelModeChange

@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Align Computer availability, automation persona, memory, generated-UI, citation, and formatting guidance across agent surfaces. Move Notebook onto the durable personal harness with server-frozen note snapshots, stable edit proposals, reconnectable public streaming, and run cancellation.
+- Align Computer availability, automation persona, memory, generated-UI, citation, and formatting guidance across agent surfaces. Move Notebook onto the durable personal harness with server-frozen note snapshots, stable edit proposals, reconnectable public streaming, and run cancellation. Match proposal coordinates to the live editor and invalidate stale proposals; finish with one final answer.
 
 - Keep a live agent sentence ahead of the tool it starts. Before the step settled, a newly started tool row briefly appeared above the sentence that introduced it, grouped with the previous tool. Live text now goes before tools the running call has started.
 

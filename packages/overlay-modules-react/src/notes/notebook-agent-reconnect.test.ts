@@ -6,6 +6,7 @@ import {
   NOTEBOOK_RECONNECT_EXHAUSTED_MESSAGE,
   notebookRunMayUpdate,
   notebookSnapshotMatches,
+  resolveNotebookEditorEdit,
   stopNotebookRunAfterAcceptance,
 } from './notebook-agent-reconnect'
 
@@ -16,6 +17,28 @@ const request: NotebookAgentRequest = {
   noteTitle: 'Notes',
   message: 'Make a proposal',
 }
+
+describe('Notebook editor coordinates', () => {
+  const edit = { id: 'edit', description: 'Replace crates', startLine: 2, endLine: 2,
+    originalLines: ['crates'], newLines: ['updated crates'] }
+
+  test('maps canonical blocks over editor-only empty paragraphs without guessing duplicate text', () => {
+    expect(resolveNotebookEditorEdit(edit, ['crates', 'crates', 'delivery'],
+      ['crates', '', 'crates', '', 'delivery'])).toEqual({ ...edit, startLine: 3, endLine: 3 })
+  })
+
+  test('rejects changed content and ranges that cut through a multiline block', () => {
+    expect(resolveNotebookEditorEdit(edit, ['meeting', 'crates'], ['meeting', '', 'changed'])).toBeNull()
+    expect(resolveNotebookEditorEdit(edit, ['meeting', 'crates\nmore'], ['meeting', 'crates\nmore'])).toBeNull()
+    expect(resolveNotebookEditorEdit({ ...edit, endLine: 3, originalLines: ['crates', 'more'] },
+      ['meeting', 'crates\nmore'], ['meeting', '', 'crates\nmore'])).toMatchObject({ startLine: 3, endLine: 3 })
+  })
+
+  test('maps the empty note to its initial empty editor paragraph', () => {
+    expect(resolveNotebookEditorEdit({ ...edit, startLine: 1, endLine: 1, originalLines: [''] }, [], ['']))
+      .toMatchObject({ startLine: 1, endLine: 1 })
+  })
+})
 
 describe('Notebook stream reconnect', () => {
   test('retries with the same turn and advances the admitted run cursor', async () => {

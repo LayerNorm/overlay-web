@@ -407,12 +407,15 @@ function editorBlockText(node: HastNodes, preserveWhitespace = false): string {
   return ''
 }
 
-export function noteMarkdownToEditorText(markdown: string): string {
+export function noteMarkdownToEditorBlocks(markdown: string): string[] {
   const html = noteMarkdownToEditorHtml(toCanonicalNoteMarkdown(markdown))
-  if (!html) return ''
+  if (!html) return []
   const root = fromHtml(html, { fragment: true })
   return root.children
     .filter((child): child is Element => child.type === 'element')
     .map(child => editorBlockText(child))
-    .join('\n')
+}
+
+export function noteMarkdownToEditorText(markdown: string): string {
+  return noteMarkdownToEditorBlocks(markdown).join('\n')
 }

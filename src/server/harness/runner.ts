@@ -48,6 +48,20 @@ export type HarnessExecutionInput = {
   settings?: HarnessModelSettings
   writable?: WritableStream<ModelCallStreamPart<ToolSet>>
   continuation?: HarnessRunnerCheckpoint
+  completionToolNames?: readonly string[]
+}
+
+function isCompletionStep(step: StepResult<ToolSet> | undefined, names: ReadonlySet<string>): boolean {
+  return Boolean(step?.toolCalls.length === 1 && step.toolResults.some(result => names.has(result.toolName)
+    && result.output && typeof result.output === 'object'
+    && 'success' in result.output && result.output.success === true))
+}
+
+function hasCompletionIssuesBeyondCurrentReceipt(state: HarnessSnapshot, receiptId: string): boolean {
+  const stateForCompletion = state.modelReservation?.id === receiptId
+    ? { ...state, modelReservation: undefined }
+    : state
+  return harnessCompletionIssues(stateForCompletion).length > 0
 }
 
 export type HarnessExecutionResult = {
@@ -335,6 +349,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
   const executionOutcomes = new Map<string, ObservedToolOutcome>(input.continuation?.executionOutcomes)
   const authenticatedDenials = new Map<string, AuthenticatedToolDenial>(input.continuation?.authenticatedDenials)
   const controls = new Set<string>(HARNESS_CONTROL_TOOLS)
+  const completionToolNames = new Set(input.completionToolNames)
   const toolNames = new Set([...Object.keys(input.tools), ...HARNESS_CONTROL_TOOLS])
   assertNoControlToolReplacement(input.tools, controls)
   const acquisition = await acquireHarnessExecution(ports, messages, deliverySteps, executionOutcomes, authenticatedDenials)
@@ -431,7 +446,10 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
       stopWhen: [isLoopFinished(), ({ steps: currentSteps }) => {
         // The SDK checks stop conditions before onStepEnd updates our counters.
         const currentStep = currentSteps.at(-1)
-        if (publicProgressEnabled && !commentaryInvocation && currentStep?.toolCalls.length
+        const completing = isCompletionStep(currentStep, completionToolNames)
+          && !hasCompletionIssuesBeyondCurrentReceipt(observedState, preparedReceiptId)
+        if (completing) publicProgressDue = false
+        if (!completing && publicProgressEnabled && !commentaryInvocation && currentStep?.toolCalls.length
           && !stripTextualToolCalls(currentStep.text ?? '', toolNames).trim()
           && silentToolBatches + 1 >= HARNESS_SILENT_TOOL_BATCHES) publicProgressDue = true
         const progress = harnessProgressFingerprint(observedState)
@@ -484,7 +502,11 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
           if (step.toolCalls.length) commentaryAttemptedTool = true
         } else if (publicProgressEnabled) {
           const publicText = stripTextualToolCalls(step.text ?? '', toolNames).trim()
-          if (step.toolCalls.length) {
+          if (isCompletionStep(step, completionToolNames)
+            && !hasCompletionIssuesBeyondCurrentReceipt(observedState, preparedReceiptId)) {
+            silentToolBatches = 0
+            publicProgressDue = false
+          } else if (step.toolCalls.length) {
             silentToolBatches = publicText ? 0 : silentToolBatches + 1
             if (!publicText && (failedToolResultObserved || silentToolBatches >= HARNESS_SILENT_TOOL_BATCHES)) {
               publicProgressDue = true

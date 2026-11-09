@@ -300,6 +300,51 @@ test('v2 commentary follows three silent tool batches and does not become the fi
   expect(result.steps.some(step => step.text?.includes('Three checks are complete'))).toBe(true)
 })
 
+test('an explicit completion tool skips the third-batch progress interlude and answers once', async () => {
+  const f = fixture(false, ['finish'], { executionPolicyVersion: 2, publicProgressVersion: 1 })
+  const provider = model(index => {
+    if (index < 2) return [call('read', `read-${index}`)]
+    if (index === 2) return [call('finish', 'finished')]
+    return 'The edit is proposed for review.'
+  })
+  const result = await runOverlayHarness({
+    ...input,
+    completionToolNames: ['finish'],
+    tools: {
+      read: tool({ inputSchema: z.object({}), execute: async () => ({ success: true }) }),
+      finish: tool({ inputSchema: z.object({}), execute: async () => ({ success: true }) }),
+    },
+  }, f.ports)
+
+  expect(provider.doStreamCalls).toHaveLength(4)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.steps.filter(step => step.text?.trim()).map(step => step.text)).toEqual(['The edit is proposed for review.'])
+})
+
+test('a failed explicit completion tool preserves progress recovery and the final answer', async () => {
+  const f = fixture(false, ['finish'], { executionPolicyVersion: 2, publicProgressVersion: 1 })
+  const provider = model(index => {
+    if (index < 2) return [call('read', `read-${index}`)]
+    if (index === 2) return [call('finish', 'failed-finish')]
+    if (index === 3) return 'The finish step failed; I am checking recovery.'
+    return 'The task is complete.'
+  })
+  const result = await runOverlayHarness({
+    ...input,
+    completionToolNames: ['finish'],
+    tools: {
+      read: tool({ inputSchema: z.object({}), execute: async () => ({ success: true }) }),
+      finish: tool({ inputSchema: z.object({}), execute: async () => ({ success: false }) }),
+    },
+  }, f.ports)
+
+  expect(provider.doStreamCalls).toHaveLength(5)
+  expect(provider.doStreamCalls[3]?.toolChoice).toEqual({ type: 'none' })
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('The task is complete.')
+  expect(result.steps.some(step => step.text?.includes('The finish step failed'))).toBe(true)
+})
+
 test('an ambiguous write exception settles its step and stops before model retry', async () => {
   const f = fixture(false, [], { executionPolicyVersion: 2, publicProgressVersion: 1 })
   let applied = 0

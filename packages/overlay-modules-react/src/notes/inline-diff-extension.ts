@@ -1112,7 +1112,7 @@ export const InlineDiffExtension = Extension.create({
               | { type: 'clear' }
               | undefined
 
-            if (!meta) return prev
+            if (!meta) return tr.docChanged ? [] : prev
 
             switch (meta.type) {
               case 'add':

@@ -42,13 +42,14 @@ import {
   type NotebookNote,
   type NoteDoc,
 } from '@overlay/app-core'
-import { noteMarkdownToEditorHtml, toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
+import { noteMarkdownToEditorBlocks, noteMarkdownToEditorHtml, toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
 import {
   cancelNotebookRunAfterReconnectExhaustion,
   followNotebookAgentStream,
   NOTEBOOK_RECONNECT_EXHAUSTED_MESSAGE,
   notebookSnapshotMatches,
   notebookRunMayUpdate,
+  resolveNotebookEditorEdit,
   type NotebookAgentIdentity,
 } from './notebook-agent-reconnect'
 import type { SlashMenuItem } from './slash-menu'
@@ -823,7 +824,11 @@ async function handleAgentStreamEvent(
           text: 'The note changed after this run started. Rerun the request before applying its proposal.',
         })
       } else {
-        run.editor.chain().focus().addDiffProposal(edit).run()
+        const editorBlocks: string[] = []
+        run.editor.state.doc.forEach(node => editorBlocks.push(node.textContent))
+        const editorEdit = resolveNotebookEditorEdit(edit, noteMarkdownToEditorBlocks(options.frozenMarkdown), editorBlocks)
+        if (editorEdit) run.editor.chain().focus().addDiffProposal(editorEdit).run()
+        else options.appendItem({ type: 'error', text: 'This proposal could not be safely matched to the editor. No changes were applied.' })
       }
     }
     return
@@ -911,6 +916,10 @@ export function useNotebookAgent({
   const modelPickerRef = useRef<HTMLDivElement>(null)
   activeNoteIdRef.current = activeNoteId
   currentEditorRef.current = editor
+
+  useEffect(() => {
+    editor?.commands.clearAllDiffs()
+  }, [editor, title, activeNoteId])
 
   const isCurrentRun = useCallback((run: NotebookAgentRun) => notebookRunMayUpdate({
     currentNoteId: activeNoteIdRef.current,
