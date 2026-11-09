@@ -85,7 +85,7 @@ function WorkBody({
     return (
       <EmptyState
         title="No tasks yet"
-        description={scope === 'workspace' && !solo ? 'Tasks added to the workspace are shared with its members.' : 'Add a task above. It lands in Todo.'}
+        description={scope === 'workspace' && !solo ? 'Tasks added to the workspace are shared with its members.' : 'Describe a task below. It lands in Todo.'}
       />
     )
   }
