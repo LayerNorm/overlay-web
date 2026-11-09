@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { resolveThreadActivity, summarizeThreadActivity, type ThreadActivityStatus } from './thread-activity'
+import { hasThreadActivity, resolveThreadActivity, summarizeThreadActivity, type ThreadActivityStatus } from './thread-activity'
 
 test('active work and actionable pauses use different indicators', () => {
   for (const status of ['queued', 'running', 'waiting_for_children']) {
@@ -9,6 +9,11 @@ test('active work and actionable pauses use different indicators', () => {
   for (const status of ['waiting_for_input', 'waiting_for_approval', 'waiting_for_authorization', 'waiting_for_resources']) {
     assert.equal(resolveThreadActivity({ status, updatedAt: 20 }, null), 'needs_input')
   }
+})
+
+test('activity filters keep actionable statuses and omit new, reviewed and cancelled threads', () => {
+  for (const status of ['working', 'needs_input', 'ready', 'failed'] as const) assert.equal(hasThreadActivity(status), true)
+  for (const status of ['idle', 'completed', 'cancelled'] as const) assert.equal(hasThreadActivity(status), false)
 })
 
 test('only unread completed responses are ready, including completions after an earlier read', () => {

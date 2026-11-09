@@ -1,6 +1,4 @@
-'use strict'
-
-exports.loadEmailSdk = async function loadEmailSdk() {
+export async function loadEmailSdk() {
   const [core, sesAdapter, smtpAdapter, resendAdapter] = await Promise.all([
     import('@opencoredev/email-sdk'),
     import('@opencoredev/email-sdk/ses'),

@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useRef, useState, type ReactNode, type CSSProperties } from 'react'
-import { ChevronRight, Ellipsis, Loader2, PanelLeft, Search } from 'lucide-react'
+import { Bell, ChevronRight, Ellipsis, Loader2, PanelLeft, Search } from 'lucide-react'
 import {
   Button,
   PanelResizeHandle,
@@ -248,7 +248,7 @@ export function ScopeToggle({
   )
 }
 
-/** Rows under the selected scope (for Chats: Direct messages, Channels, Activity). */
+/** Rows under the selected scope (for Chats: Chats, Direct messages, Channels). */
 export function scopeChildren(nav: SecondaryPanelNav | undefined, scope: PanelScope): ReadonlyArray<InlineNavItem> {
   if (!nav) return []
   const row = nav.items.find((item) => item.id === scope)
@@ -272,6 +272,9 @@ export interface UnifiedSidebarProps {
   /** Sections for a tabs page, whose subviews are header tabs (Work lists its tasks this way). */
   sectionRows?: ReadonlyArray<InlineNavItem>
   onSearch?: (() => void) | null
+  activityOnly?: boolean
+  onToggleActivity?: () => void
+  helpMenu?: ReactNode
   scope: PanelScope
   account: ReactNode
   /** Toggle collapse with Cmd/Ctrl+B. */
@@ -307,7 +310,9 @@ function SidebarHeaderBar({
   collapsed,
   onCollapsedChange,
   onSearch,
-}: Pick<UnifiedSidebarProps, 'brand' | 'collapsed' | 'onCollapsedChange' | 'onSearch'>) {
+  activityOnly,
+  onToggleActivity,
+}: Pick<UnifiedSidebarProps, 'brand' | 'collapsed' | 'onCollapsedChange' | 'onSearch' | 'activityOnly' | 'onToggleActivity'>) {
   return (
     <div className={cn('flex h-14 shrink-0 items-center gap-1 md:h-16', collapsed ? 'justify-center px-2' : 'pl-[22px] pr-3')}>
       {collapsed ? (
@@ -325,6 +330,7 @@ function SidebarHeaderBar({
       ) : (
         <>
           <div className="min-w-0 flex-1">{brand}</div>
+          {onToggleActivity ? <DelayedTooltip label="Show activity only" side="bottom"><Button variant="ghost" type="button" aria-label="Show activity only" aria-pressed={Boolean(activityOnly)} onClick={onToggleActivity} className={unstyledButton('inline-flex size-8 shrink-0 items-center justify-center rounded-md text-(--muted) hover:bg-(--surface-subtle) hover:text-(--foreground) aria-pressed:text-(--foreground) aria-pressed:bg-(--surface-subtle)')}><Bell size={16} aria-hidden /></Button></DelayedTooltip> : null}
           {onSearch ? (
             <DelayedTooltip label="Search (⌘K)" side="bottom">
               <Button
@@ -372,6 +378,9 @@ export function UnifiedSidebar({
   renderSection,
   sectionRows,
   onSearch,
+  activityOnly,
+  onToggleActivity,
+  helpMenu,
   scope,
   account,
   keyboardShortcut = false,
@@ -428,7 +437,7 @@ export function UnifiedSidebar({
       className={cn('border-r-0', collapsed ? 'w-14' : 'w-(--sidebar-resized-width)', className, resizing && 'transition-none')}
     >
       {resizable && !collapsed ? <PanelResizeHandle edge="right" width={width} onResize={setWidth} onResizingChange={setResizing} minWidth={220} maxWidth={420} label="Resize left sidebar" /> : null}
-      <SidebarHeaderBar brand={brand} collapsed={collapsed} onCollapsedChange={onCollapsedChange} onSearch={settingsNav ? null : onSearch} />
+      <SidebarHeaderBar brand={brand} collapsed={collapsed} onCollapsedChange={onCollapsedChange} onSearch={settingsNav ? null : onSearch} activityOnly={activityOnly} onToggleActivity={settingsNav ? undefined : onToggleActivity} />
       {collapsed || settingsNav ? null : <ScopeToggle scope={scope} workspaceLocked={false} onChange={changeScope} />}
       {settingsNav ? (
         <SidebarContent>
@@ -452,7 +461,7 @@ export function UnifiedSidebar({
       <SidebarFooter className="border-t-0">
         {footerItems.length > 0 && !settingsNav ? (
           <SidebarMenu>
-            {footerItems.map((item) => <NavRow key={item.id} item={item} collapsed={collapsed} />)}
+            {footerItems.map((item) => item.id === 'help' && helpMenu ? <Fragment key={item.id}>{helpMenu}</Fragment> : <NavRow key={item.id} item={item} collapsed={collapsed} />)}
           </SidebarMenu>
         ) : null}
         {account}

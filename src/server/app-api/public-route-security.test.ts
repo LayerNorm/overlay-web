@@ -41,6 +41,12 @@ const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/auth/sso/[provider]': ['GET'],
   '/api/auth/verify-email': ['POST'],
   '/api/better-auth/[...all]': [],
+  // Interactive session + same-origin + limits + durable idempotency; GitHub/Resend provider work.
+  '/api/bug-report': ['POST'],
+  // Public capability link limited to one signed attachment key; redirects to short-lived storage URLs.
+  '/api/bug-report/attachment/[id]/[file]': ['GET'],
+  // Interactive session + same-origin + limits; user-bound, expiring upload manifest and constrained URLs.
+  '/api/bug-report/upload': ['POST'],
   '/api/checkout': ['POST'],
   '/api/checkout/verify': ['POST'],
   '/api/convex/[type]': ['POST'],

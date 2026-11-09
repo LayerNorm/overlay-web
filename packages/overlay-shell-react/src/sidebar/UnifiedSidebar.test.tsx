@@ -27,7 +27,6 @@ const chatNav: SecondaryPanelNav = {
       children: [
         { id: 'workspace:dms', label: 'Direct messages', icon: Mail, badgeCount: 2 },
         { id: 'workspace:channels', label: 'Channels', icon: Hash },
-        { id: 'workspace:activity', label: 'Activity', icon: Bell },
       ],
     },
   ],
@@ -61,6 +60,12 @@ test('main pages render as links and Files and Extensions move under More', () =
   assert.doesNotMatch(html, /href="\/app\/tools"/)
   assert.match(html, /aria-label="More"/)
   assert.match(html, />3</)
+})
+
+test('activity is an accessible toggle before search in the alternative shell', () => {
+  const html = render({ activityOnly: true, onToggleActivity: noop })
+  assert.match(html, /aria-label="Show activity only" aria-pressed="true"/)
+  assert.ok(html.indexOf('aria-label="Show activity only"') < html.indexOf('aria-label="Search"'))
 })
 
 test('More groups keep labelled items grouped away from the primary rail', () => {
@@ -102,7 +107,7 @@ test('chat destinations for the selected scope render as sidebar rows', () => {
   const html = render()
   assert.match(html, /Direct messages/)
   assert.match(html, /Channels/)
-  assert.match(html, /Activity/)
+  assert.doesNotMatch(html, />Activity</)
   assert.match(html, /data-active="true"(?:(?!data-active).)*<span[^>]*>Direct messages/s)
 })
 
@@ -113,7 +118,7 @@ test('chat sections each list their own items and headers only open or close', (
   })
   assert.match(html, /list:dms/)
   assert.match(html, /list:channels/)
-  assert.match(html, /list:activity/)
+  assert.doesNotMatch(html, /list:activity|>Activity</)
   assert.doesNotMatch(html, /data-active="true"(?:(?!data-active).)*<span>Direct messages/s)
   assert.match(html, /aria-expanded="true"[^>]*>(?:(?!<\/button>).)*<span[^>]*>Channels/s)
   assert.match(html, /aria-label="New channel"/)
