@@ -188,6 +188,9 @@ Only chat deliveries share one turn id between the person's message and the repl
 agent threads (room and work) give the person's message its own turn id, so the
 projection matches only the reply's turn there. Requiring both once skipped every
 agent-thread reply, which then showed tool rows and only the latest sentence.
+The browser places live stream text before the trailing tool rows that native tool
+progress stores for the running call (they have no part `id`; settled transcript
+parts do), so a sentence stays ahead of the tool it starts.
 Cancellation never reads the live
 stream rows (that races the executor's writes and fails Stop): `cancelAgentRuns`
 cancels the run, then the scheduled `settleCancelledPublicStream` keeps the

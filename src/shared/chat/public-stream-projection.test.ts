@@ -121,3 +121,27 @@ test('a stream after a separate call keeps its own block and a blank line', () =
   expect(projected[0]?.content).toBe('Checked.\n\nDone.')
   expect(projected[0]?.parts).toHaveLength(2)
 })
+
+test('live text goes ahead of the tools its call has started, after the settled steps', () => {
+  const tool = (toolCallId: string, id?: string) => ({
+    type: 'tool-invocation', ...(id ? { id } : {}),
+    toolInvocation: { toolCallId, toolName: 'search_memory', state: id ? 'output-available' : 'input-available' },
+  })
+  const message = {
+    _id: 'assistant', status: 'generating', content: 'First, search memory.',
+    parts: [{ type: 'text', text: 'First, search memory.', id: 'settled-text' }, tool('a', 'settled-tool'), tool('b')],
+  }
+  const stream = { assistantMessageId: 'assistant', runId: 'run', executionGeneration: 0, receiptId: 'model:1', invocation: 1 }
+  const live = projectActivePublicStreams([message], [{ ...stream, sequence: 0, text: 'Now listing your notes.' }])
+  const order = (parts: readonly unknown[] = []) => parts.map(part => {
+    const value = part as { type: string; text?: string; toolInvocation?: { toolCallId: string } }
+    return value.type === 'text' ? value.text : value.toolInvocation?.toolCallId
+  })
+  expect(order(live[0]?.parts)).toEqual(['First, search memory.', 'a', 'Now listing your notes.', 'b'])
+  // A later snapshot replaces the same live part in place.
+  const more = projectActivePublicStreams(live, [{ ...stream, sequence: 1, text: 'Now listing your notes, all of them.' }])
+  expect(order(more[0]?.parts)).toEqual(['First, search memory.', 'a', 'Now listing your notes, all of them.', 'b'])
+  // Before any step settles, the first sentence still precedes its running tool.
+  const first = projectActivePublicStreams([{ ...message, content: '', parts: [tool('a')] }], [{ ...stream, sequence: 0, text: 'First, search memory.' }])
+  expect(order(first[0]?.parts)).toEqual(['First, search memory.', 'a'])
+})
