@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Fix a type error in the agent-thread review and streaming mockup source that failed main's typecheck and production build.
+
 - Add a design mockup, awaiting approval, for two agent-thread changes. A thread loses its check once its result has been reviewed. Agent replies stream as one continuous response, with text and collapsed tool lines in order, as chat does.
 
 - Agent rules now put every new mockup in `internal/plans/mockups/` without asking where it should go. Gitignored `artifacts/` is used only when the owner asks for it.
