@@ -35,7 +35,7 @@ export const init = internalMutation({
     await seedPreviewWorkspace(ctx, owner)
     const personalA = await history(ctx, owner, 'personal-a', 50)
     const personalB = await history(ctx, owner, 'personal-b', 50)
-    const stream = await history(ctx, owner, 'stream', 2)
+    const stream = await history(ctx, owner, 'stream', 50)
     const dm = await history(ctx, owner, 'dm', 1000)
     const agent = await history(ctx, owner, 'agent', 1024)
     return { workspaceId: owner.workspaceId, personalA, personalB, stream, dm, agent }
@@ -56,7 +56,7 @@ async function history(ctx: MutationCtx, owner: ReturnType<typeof identity>, kin
       .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', existing._id)).take(count + 1)
     if (messages.length !== count || messages.some((message, index) => message.deletedAt !== undefined
       || message.clientNonce !== `${clientId}-message-${index}`
-      || (kind !== 'stream' && message.content !== historyText(kind, index, count)))) {
+      || ((kind !== 'stream' || index < count - 1) && message.content !== historyText(kind, index, count)))) {
       throw new Error('Performance fixture history changed; inspect before reuse')
     }
     return existing._id
@@ -137,14 +137,14 @@ async function streamScope(ctx: MutationCtx, conversationId: Id<'conversations'>
     q => q.eq('conversationId', conversationId).eq('principalId', `${owner.workspaceId}-owner`)).unique()
   if (participant?.archivedAt !== undefined) throw new Error('Performance stream fixture is archived')
   const messages = await ctx.db.query('conversationMessages')
-    .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', conversationId)).order('asc').take(3)
-  if (messages.length !== 2 || messages[0]?.role !== 'user' || messages[1]?.role !== 'assistant'
+    .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', conversationId)).order('asc').take(51)
+  if (messages.length !== 50 || messages[48]?.role !== 'user' || messages[49]?.role !== 'assistant'
     || messages.some((message, index) => message.deletedAt !== undefined || message.userId !== owner.userId
       || message.clientNonce !== `${PREFIX}-stream-message-${index}`)) throw new Error('Performance stream history changed')
-  return { ...owner, user: messages[0]!, assistant: messages[1]!, runId: `${PREFIX}:${conversationId}` }
+  return { ...owner, user: messages[48]!, assistant: messages[49]!, runId: `${PREFIX}:${conversationId}` }
 }
 
-/** Reuses two fixed rows so repeat runs have identical transcript and sidebar sizes. */
+/** Replays the last exchange; 24 settled exchanges remain for render-isolation measurements. */
 export const startStreaming = internalMutation({
   args: { conversationId: v.id('conversations') },
   handler: async (ctx, { conversationId }) => {

@@ -30,7 +30,7 @@ test('fixed histories are idempotent; public-stream replay is bounded, repeatabl
   vi.stubEnv('PREVIEW_LOGIN_EMAIL', 'performance@example.test')
   const t = convexTest(schema, modules)
   const fixtures = await t.mutation(init, {})
-  for (const [id, count] of [[fixtures.personalA, 50], [fixtures.personalB, 50], [fixtures.agent, 1024], [fixtures.dm, 1000], [fixtures.stream, 2]] as const) {
+  for (const [id, count] of [[fixtures.personalA, 50], [fixtures.personalB, 50], [fixtures.agent, 1024], [fixtures.dm, 1000], [fixtures.stream, 50]] as const) {
     expect(await t.run(ctx => ctx.db.query('conversationMessages')
       .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', id)).collect())).toHaveLength(count)
   }
@@ -61,5 +61,5 @@ test('fixed histories are idempotent; public-stream replay is bounded, repeatabl
     expect(await t.run(ctx => ctx.db.query(table).collect())).toHaveLength(1)
   }
   expect(await t.run(ctx => ctx.db.query('conversationMessages')
-    .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', fixtures.stream)).collect())).toHaveLength(2)
+    .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', fixtures.stream)).collect())).toHaveLength(50)
 })
