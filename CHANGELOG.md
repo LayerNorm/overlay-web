@@ -6,7 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Explain why an agent turn did not start when the workspace has no paid plan, an unconfirmed payment, a used-up budget or billing that needs attention, and say who can fix it. Previously the reply read "could not start this turn" followed by "No failure reason is available". Every start failure now records a short reason on the failed reply.
 
-- Document that Vercel blocks production builds for main commits authored with GitHub's private noreply email, and how Integration avoids it, after the #405 merge commit was blocked; this commit also triggers that blocked production deployment.
+- Correct the release note on blocked deploys: the BLOCKED Vercel status on a merged commit comes from the intentionally blocked merge-queue branch Preview, not from the commit's author email. Integration now checks that main's own production deployment exists and is ready.
 
 - Align sidebar activity with native Convex authentication and shared thread visibility checks, removing legacy token arguments, backend-capability gating, and silent query-error fallbacks without changing the sidebar design.
 
