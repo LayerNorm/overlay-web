@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add a design mockup, awaiting approval, for two agent-thread changes. A thread loses its check once its result has been reviewed. Agent replies stream as one continuous response, with text and collapsed tool lines in order, as chat does.
+
 - Agent rules now put every new mockup in `internal/plans/mockups/` without asking where it should go. Gitignored `artifacts/` is used only when the owner asks for it.
 
 - Explain why an agent turn did not start when the workspace has no paid plan, an unconfirmed payment, a used-up budget or billing that needs attention, and say who can fix it. Previously the reply read "could not start this turn" followed by "No failure reason is available". Every start failure now records a short reason on the failed reply.
