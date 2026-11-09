@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Agent rules now put every new mockup in `internal/plans/mockups/` without asking where it should go. Gitignored `artifacts/` is used only when the owner asks for it.
+
 - Explain why an agent turn did not start when the workspace has no paid plan, an unconfirmed payment, a used-up budget or billing that needs attention, and say who can fix it. Previously the reply read "could not start this turn" followed by "No failure reason is available". Every start failure now records a short reason on the failed reply.
 
 - Correct the release note on blocked deploys: the BLOCKED Vercel status on a merged commit comes from the intentionally blocked merge-queue branch Preview, not from the commit's author email. Integration now checks that main's own production deployment exists and is ready.
