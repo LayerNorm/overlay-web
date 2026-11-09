@@ -5,6 +5,12 @@ description: "Reproducible realtime baselines, retained consumers, and migration
 
 ## CN-01 baseline protocol
 
+### Parallel transcript reads
+
+Web-first releases keep the old summary-gated request shape until the existing live `platform/uiSettings:mine` query advertises `personalChatParallelReadsRevision: parallel-reads-v1`. The query is already used by account synchronization, so identical subscriptions share Convex's query cache. Older backends never receive the new optional argument during rollout. Once the matching backend is synchronized after web deployment, the marker enables parallel reads. For rollback, revert the frontend optimization while retaining the additive backend argument for already-open clients. Do not remove that contract while cached clients can still send it; newly mounted clients without the marker use the legacy path.
+
+The personal-chat hook requests `getSummary` and the first `getMessages` page together for a well-formed route ID. `getMessages` accepts optional `unavailableAsEmpty: true` for this route bootstrap: authenticated, capable workspace members receive an empty exhausted page for an inaccessible/deleted/non-personal conversation. Authentication, workspace membership and capability failures still reject, and callers omitting the option retain strict rejection. The hook does not expose rows, execution or stream subscriptions until the live summary matches the current conversation and workspace. Parallel loading is independent of the still-planned bounded transcript prefetch/cache.
+
 This harness measures the existing behavior, not a fix. A remote convergence
 failure must remain a failing sample. Do not change an assertion to make the
 baseline pass. CN-02 through CN-05 migrate auth, authorization, personal lists
