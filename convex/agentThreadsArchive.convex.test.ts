@@ -2,6 +2,8 @@ import { beforeAll, describe, expect, test } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
+import type { Id } from './_generated/dataModel'
+import { api } from './_generated/api'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'agent-thread-archive-secret'
@@ -19,6 +21,9 @@ const agentsFn = (name: string, type: 'mutation' | 'query') => makeFunctionRefer
 async function seed() {
   const convex = convexTest(schema, modules)
   await convex.run(async (ctx) => {
+    await ctx.db.insert('workspaces', {
+      workspaceId, kind: 'organization', name: 'Threads', slug: 'threads', status: 'active', createdAt: now, updatedAt: now,
+    })
     for (const [principalId, type, extra] of [
       [humanPrincipal, 'human', { userId }],
       [agentPrincipal, 'agent', { agentId: 'agent-1' }],
@@ -43,6 +48,98 @@ async function seed() {
   const listAgents = () => convex.query(agentsFn('listByServer', 'query'), { serverSecret: secret, workspaceId, includeArchived: true }) as Promise<Array<{ agentId: string; archivedAt?: number }>>
   return { convex, resolveMain, createThread, setArchived, deleteThread, listThreads, listArchived, listAgents }
 }
+
+describe('live agent thread activity', () => {
+  const queryArgs = { workspaceId, agentId: 'agent-1' }
+
+  test('projects the latest run, actionable waits, and viewer-relative reviewed completion', async () => {
+    const t = await seed()
+    const { conversationId: rawId } = await t.resolveMain()
+    const conversationId = rawId as Id<'conversations'>
+    const read = () => t.convex.withIdentity({ subject: userId }).query(api.agents.threads.activity, queryArgs)
+    expect(await read()).toEqual([{ conversationId, status: 'idle' }])
+    const runId = await t.convex.run(async ctx => {
+      const userMessageId = await ctx.db.insert('conversationMessages', {
+        conversationId, userId, turnId: 'turn', role: 'user', mode: 'act', content: 'Task', contentType: 'text', createdAt: now,
+      })
+      const assistantMessageId = await ctx.db.insert('conversationMessages', {
+        conversationId, userId, turnId: 'turn', role: 'assistant', mode: 'act', content: 'Answer', contentType: 'text', createdAt: now,
+      })
+      const run = { conversationId, userId, userMessageId, assistantMessageId,
+        mode: 'room' as const, runner: 'workflow' as const, updatedAt: now }
+      await ctx.db.insert('conversationAgentRuns', { ...run, turnId: 'old', status: 'failed', createdAt: now - 10 })
+      return ctx.db.insert('conversationAgentRuns', { ...run, turnId: 'new', status: 'running', createdAt: now })
+    })
+    expect(await read()).toEqual([{ conversationId, status: 'working' }])
+    await t.convex.run(ctx => ctx.db.patch(runId, { status: 'waiting_for_input' }))
+    expect(await read()).toEqual([{ conversationId, status: 'needs_input' }])
+    await t.convex.run(ctx => ctx.db.patch(runId, { status: 'completed', completedAt: now + 1 }))
+    expect(await read()).toEqual([{ conversationId, status: 'ready' }])
+    await t.convex.run(async ctx => {
+      const participant = await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversationId).eq('principalId', humanPrincipal)).unique()
+      await ctx.db.patch(participant!._id, { lastReadAt: now + 2 })
+    })
+    expect(await read()).toEqual([{ conversationId, status: 'completed' }])
+  })
+
+  test('excludes archived, deleted, automation-owned, and another user’s threads', async () => {
+    const t = await seed()
+    const main = await t.resolveMain()
+    const archived = await t.createThread('Archived')
+    await t.setArchived(archived.conversationId, true)
+    for (const patch of [{ deletedAt: now }, { isAutomation: true }, { userId: 'someone-else' }]) {
+      const thread = await t.createThread('Hidden')
+      await t.convex.run(ctx => ctx.db.patch(thread.conversationId as Id<'conversations'>, patch))
+    }
+    expect(await t.convex.withIdentity({ subject: userId }).query(api.agents.threads.activity, queryArgs))
+      .toEqual([{ conversationId: main.conversationId, status: 'idle' }])
+  })
+
+  test('requires authenticated active membership and respects agent visibility and workspace', async () => {
+    const t = await seed()
+    await t.resolveMain()
+    const read = (overrides = {}) => t.convex.withIdentity({ subject: userId }).query(api.agents.threads.activity, { ...queryArgs, ...overrides })
+    expect(await t.convex.query(api.agents.threads.activity, queryArgs)).toBeNull()
+    expect(await t.convex.withIdentity({ subject: 'outsider' }).query(api.agents.threads.activity, queryArgs)).toBeNull()
+    expect(await read({ workspaceId: 'foreign-workspace' })).toBeNull()
+    await t.convex.run(async ctx => {
+      const agent = await ctx.db.query('workspaceAgentDefinitions').first()
+      await ctx.db.patch(agent!._id, { visibility: 'creator', createdByPrincipalId: 'another-human' })
+    })
+    expect(await read()).toBeNull()
+    await t.convex.run(async ctx => {
+      const agent = await ctx.db.query('workspaceAgentDefinitions').first()
+      await ctx.db.patch(agent!._id, { visibility: 'workspace' })
+      const member = await ctx.db.query('workspaceMemberships')
+        .withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', workspaceId).eq('principalId', humanPrincipal)).unique()
+      await ctx.db.patch(member!._id, { status: 'suspended' })
+    })
+    expect(await read()).toBeNull()
+  })
+
+  test('clears activity when participation or agent access is revoked', async () => {
+    const t = await seed()
+    const { conversationId } = await t.resolveMain()
+    const read = () => t.convex.withIdentity({ subject: userId }).query(api.agents.threads.activity, queryArgs)
+    expect(await read()).toEqual([{ conversationId, status: 'idle' }])
+    const participantId = await t.convex.run(async ctx => {
+      const participant = await ctx.db.query('conversationParticipants')
+        .withIndex('by_conversationId_principalId', q => q.eq('conversationId', conversationId as Id<'conversations'>)
+          .eq('principalId', humanPrincipal)).unique()
+      await ctx.db.patch(participant!._id, { removedAt: now })
+      return participant!._id
+    })
+    expect(await read()).toEqual([])
+    await t.convex.run(ctx => ctx.db.delete(participantId))
+    expect(await read()).toEqual([])
+    await t.convex.run(async ctx => {
+      const agent = await ctx.db.query('workspaceAgentDefinitions').first()
+      await ctx.db.patch(agent!._id, { archivedAt: now })
+    })
+    expect(await read()).toBeNull()
+  })
+})
 
 describe('archiving an agent thread', () => {
   test('lands only the thread in the archive; the agent stays live and is not archived', async () => {

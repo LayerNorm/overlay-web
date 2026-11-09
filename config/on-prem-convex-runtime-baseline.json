@@ -215,6 +215,7 @@
   "browserRuntimeFiles": [
     "src/components/layout/AppSidebarAgentsPanel.tsx",
     "src/components/layout/GlobalSearchDialog.tsx",
+    "src/components/layout/sidebar/AgentThreadActivityProvider.tsx",
     "src/components/layout/sidebar/useAppSidebarState.ts",
     "src/components/mentions/mention-search.ts",
     "src/components/providers/AppClientProviders.tsx",
@@ -402,6 +403,7 @@
     "src/app/share/f/[token]/page.tsx",
     "src/components/layout/AppSidebarAgentsPanel.tsx",
     "src/components/layout/GlobalSearchDialog.tsx",
+    "src/components/layout/sidebar/AgentThreadActivityProvider.tsx",
     "src/components/layout/sidebar/useAppSidebarState.ts",
     "src/components/mentions/mention-search.ts",
     "src/components/providers/AppClientProviders.tsx",

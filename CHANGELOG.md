@@ -4,6 +4,14 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Align sidebar activity with native Convex authentication and shared thread visibility checks, removing legacy token arguments, backend-capability gating, and silent query-error fallbacks without changing the sidebar design.
+
+- Render idle sidebar threads as text only, without reserving an empty status-icon slot.
+
+- Honor the selected single or double sidebar layout in mobile and narrow-screen drawers instead of substituting the older mobile navigator.
+
+- Show live thread status icons beside single-line sidebar titles, preserve the curved thread indentation on desktop and mobile, and summarize working, ready-to-review, and needs-you threads beneath each agent.
+
 - Add the missing `lib/workDependencies` entry to the committed Convex API types (`convex/_generated/api.d.ts`). The Work dependency helper landed without regenerated bindings, so every production backend deploy rewrote the file. Types only; nothing changes at runtime.
 - Fix pages that loaded forever after one failed sign-in token request. Convex asks for its token once, so a single network error, timeout or server error left every live list (Work's tasks and sidebar sections, among others) waiting until a reload. A failed request now retries after 1s, 2s, 4s and so on, capped at 30s, while the person stays signed in. A signed-out Work page shows "Sign in to see your tasks" instead of endless skeletons, and opening a task from the other scope no longer produces a `?scope=personal?task=…` link that dropped the task.
 - Fix the Work page flickering between Personal and Workspace on open. Every part of the app now reads one shared remembered scope, and the page waits for it instead of guessing Personal first, so a link without a scope no longer redirects to Personal, the breadcrumb and sidebar toggle always agree, and the task lists no longer subscribe to the wrong scope and then drop it.
