@@ -100,9 +100,6 @@ const TOOL_REQUEST_BY_ID = new Map(TOOL_REQUEST_OPTIONS.map((tool) => [tool.id, 
 
 export function ChatComposer(props: ChatComposerProps) {
   recordRender('ChatComposer')
-  useEffect(() => {
-    markComposerReady()
-  }, [])
   const viewProps = toComposerViewProps(props)
   useComposerAlertToasts(viewProps.composerNotice ?? null, viewProps.attachmentError ?? null)
   const disabledSend =
@@ -152,6 +149,9 @@ export function ChatComposer(props: ChatComposerProps) {
 }
 
 function ComposerInputCard(props: ComposerViewProps & { disabledSend: boolean }) {
+  useEffect(() => {
+    if (!props.isSendBlocked) markComposerReady()
+  }, [props.isSendBlocked])
   const mixedFileInputRef = useRef<HTMLInputElement | null>(null)
   const mixedFileAccept = `${IMAGE_FILE_ACCEPT},${DOCUMENT_FILE_ACCEPT}`
   const slash = useAgentSlashMenu(props.input, props.onInputChange, props.agentCommands)

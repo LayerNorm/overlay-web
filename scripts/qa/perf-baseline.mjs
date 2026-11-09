@@ -23,11 +23,11 @@ import { chromium } from 'playwright'
 import { measureInteraction } from './realtime-baseline.mjs'
 import {
   THROTTLE_PROFILES, appPath, frameReport, markdownReport, parseScenarios, perfOrigin,
-  renderDelta, streamingRenderReport, summarize,
+  positiveInteger, requireObservedInteraction, renderDelta, streamingRenderReport, summarize,
 } from './perf-baseline-lib.mjs'
 
 const env = process.env
-const TIMEOUT = Number(env.PERF_TIMEOUT_MS ?? 30_000)
+const TIMEOUT = positiveInteger(env.PERF_TIMEOUT_MS, 30_000, 120_000)
 
 function required(name) {
   const value = env[name]
@@ -43,8 +43,16 @@ function gitRevision() {
   }
 }
 
-async function newContext(browser, { storageState, perfFlag = false }) {
+async function newContext(browser, { storageState, origin, perfFlag = false }) {
   const context = await browser.newContext({ storageState, viewport: { width: 1440, height: 1000 } })
+  await context.route('**/*', async route => {
+    const request = route.request()
+    if (request.isNavigationRequest() && new URL(request.url()).origin !== origin) {
+      await route.abort()
+      return
+    }
+    await route.continue()
+  })
   await context.addInitScript((enablePerfCounters) => {
     performance.mark('overlay:baseline:enabled')
     if (enablePerfCounters) window.localStorage.setItem('overlay_perf', '1')
@@ -73,9 +81,10 @@ function assertSameOrigin(page, origin) {
 // ── cold start ──────────────────────────────────────────────────────────────
 async function coldStart({ browser, origin, storageState, runs, throttleName }) {
   const chatPath = appPath(env.PERF_CHAT_PATH ?? '/app/chat')
-  const samples = { ttfb: [], fcp: [], lcp: [], composerReady: [], transcriptPainted: [] }
+  const sentinel = env.PERF_CHAT_SENTINEL
+  const samples = { ttfb: [], fcp: [], lcpAtReadiness: [], composerReady: [], transcriptVisible: [] }
   for (let run = 0; run < runs; run += 1) {
-    const context = await newContext(browser, { storageState })
+    const context = await newContext(browser, { storageState, origin })
     try {
       const page = await context.newPage()
       await throttle(page, throttleName)
@@ -88,26 +97,34 @@ async function coldStart({ browser, origin, storageState, runs, throttleName }) 
       await page.goto(`${origin}${chatPath}`, { waitUntil: 'domcontentloaded' })
       assertSameOrigin(page, origin)
       await waitForMark(page, 'overlay:baseline:composer-ready')
-      // Transcript paint only happens for an existing thread; tolerate its absence on /app/chat.
-      await waitForMark(page, 'overlay:baseline:transcript-painted').catch(() => {})
-      await page.waitForTimeout(500)
+      const input = page.locator('[data-chat-composer] [contenteditable="true"]').first()
+      await input.waitFor({ state: 'visible', timeout: TIMEOUT })
+      if (!await input.isEditable()) throw new Error('Composer is not editable')
+      const composerReady = await page.evaluate(() => performance.now())
+      let transcriptVisible = null
+      if (sentinel) {
+        await page.locator('[data-chat-transcript]').getByText(sentinel, { exact: true }).first()
+          .waitFor({ state: 'visible', timeout: TIMEOUT })
+        transcriptVisible = await page.evaluate(() => performance.now())
+      }
       const timing = await page.evaluate(() => {
         const nav = performance.getEntriesByType('navigation')[0]
         const markAt = (name) => performance.getEntriesByName(name)[0]?.startTime ?? null
         return {
           ttfb: nav ? nav.responseStart : null,
           fcp: performance.getEntriesByName('first-contentful-paint')[0]?.startTime ?? null,
-          lcp: window.__perfLcp || null,
-          composerReady: markAt('overlay:baseline:composer-ready'),
-          transcriptPainted: markAt('overlay:baseline:transcript-painted'),
+          lcpAtReadiness: window.__perfLcp || null,
+          composerMountedReady: markAt('overlay:baseline:composer-ready'),
         }
       })
-      for (const [key, value] of Object.entries(timing)) if (value != null) samples[key].push(value)
+      samples.composerReady.push(composerReady)
+      if (transcriptVisible !== null) samples.transcriptVisible.push(transcriptVisible)
+      for (const key of ['ttfb', 'fcp', 'lcpAtReadiness']) if (timing[key] != null) samples[key].push(timing[key])
     } finally {
       await context.close()
     }
   }
-  return { metrics: Object.fromEntries(Object.entries(samples).map(([key, values]) => [`${key}Ms`, summarize(values)])) }
+  return { samples, metrics: Object.fromEntries(Object.entries(samples).map(([key, values]) => [`${key}Ms`, summarize(values)])) }
 }
 
 // ── thread switch ───────────────────────────────────────────────────────────
@@ -124,24 +141,27 @@ async function threadSwitch({ browser, origin, storageState, runs, throttleName 
   const open = async (page, name, sentinel) => {
     const target = row(page, name)
     await target.waitFor({ state: 'visible', timeout: TIMEOUT })
-    return measureInteraction({
+    if (await target.locator('[aria-current="page"]').count()) throw new Error('Destination already selected')
+    const content = page.locator('[data-chat-transcript]').getByText(sentinel, { exact: true }).first()
+    if (await content.isVisible()) throw new Error('Destination content already visible')
+    return requireObservedInteraction(await measureInteraction({
       stages: ['localFeedback', 'contentVisible'],
       trigger: () => target.getByText(name, { exact: true }).click({ timeout: TIMEOUT }),
       observers: {
         localFeedback: () => target.locator('[aria-current="page"]').waitFor({ state: 'visible', timeout: TIMEOUT }),
-        contentVisible: () => page.getByText(sentinel, { exact: true }).first().waitFor({ state: 'visible', timeout: TIMEOUT }),
+        contentVisible: () => content.waitFor({ state: 'visible', timeout: TIMEOUT }),
       },
-    })
+    }))
   }
   const push = (prefix, sample) => {
-    if (sample.action !== 'completed') return
+    requireObservedInteraction(sample)
     const { localFeedback, contentVisible } = sample.stages
     if (localFeedback.status === 'observed') samples[`${prefix}Feedback`].push(localFeedback.ms)
     if (contentVisible.status === 'observed') samples[`${prefix}Content`].push(contentVisible.ms)
   }
 
   for (let run = 0; run < runs; run += 1) {
-    const context = await newContext(browser, { storageState })
+    const context = await newContext(browser, { storageState, origin })
     try {
       const page = await context.newPage()
       await throttle(page, throttleName)
@@ -171,16 +191,17 @@ async function threadSwitch({ browser, origin, storageState, runs, throttleName 
 // ── typing while streaming ─────────────────────────────────────────────────
 async function typingWhileStreaming({ browser, origin, storageState, runs, throttleName }) {
   const chatPath = appPath(required('PERF_STREAM_PATH'))
-  const prompt = env.PERF_PROMPT ?? 'Write a 600 word essay about the history of the printing press. Use several headings and a bulleted list.'
-  const typed = env.PERF_TYPED_TEXT ?? 'the quick brown fox jumps over the lazy dog'
+  if (env.PERF_ALLOW_SEND !== '1') throw new Error('Sending requires PERF_ALLOW_SEND=1')
+  const prompt = required('PERF_PROMPT')
+  const typed = 'quick brown fox'
   const latencies = []
   const reports = []
   let renders = null
 
-  for (let run = 0; run < runs; run += 1) {
-    // Render counters add a little overhead, so only the first run enables them.
+  for (let run = 0; run <= runs; run += 1) {
+    // A separate counter run never contributes latency samples.
     const perfFlag = run === 0
-    const context = await newContext(browser, { storageState, perfFlag })
+    const context = await newContext(browser, { storageState, origin, perfFlag })
     try {
       const page = await context.newPage()
       await throttle(page, throttleName)
@@ -189,46 +210,74 @@ async function typingWhileStreaming({ browser, origin, storageState, runs, throt
       await waitForMark(page, 'overlay:baseline:composer-ready')
       const input = page.locator('[data-chat-composer] [contenteditable="true"]').first()
       await input.waitFor({ state: 'visible', timeout: TIMEOUT })
+      if ((await input.innerText()).trim()) throw new Error('Fixture must start without a draft')
+      if (await page.locator('[data-text-streaming="true"]').count()) throw new Error('Fixture must start idle')
+      const exchanges = page.locator('[data-chat-transcript] [data-exchange-idx]')
+      const before = await exchanges.count()
       await input.click()
       await page.keyboard.type(prompt)
       await page.keyboard.press('Enter')
 
-      // Streaming has started once a new assistant exchange is rendering text.
-      await page.locator('[data-exchange-idx]').last().waitFor({ state: 'visible', timeout: TIMEOUT })
-      await page.waitForTimeout(1_000)
+      await page.waitForFunction((count) => document.querySelectorAll('[data-chat-transcript] [data-exchange-idx]').length > count,
+        before, { timeout: TIMEOUT })
+      const streaming = exchanges.last()
+      await page.waitForFunction(() => {
+        const rows = document.querySelectorAll('[data-chat-transcript] [data-exchange-idx]')
+        const row = rows[rows.length - 1]
+        return row?.getAttribute('data-text-streaming') === 'true' && row.querySelector('.markdown-content')?.textContent?.trim()
+      }, null, { timeout: TIMEOUT })
+      const initialText = await streaming.locator('.markdown-content').allTextContents()
       if (perfFlag) await page.evaluate(() => window.__overlayPerfDebug?.reset())
 
-      await page.evaluate(() => {
+      await input.evaluate((editor) => {
         window.__perfKeyLatency = []
-        document.addEventListener('keydown', (event) => {
-          const start = event.timeStamp
-          // Next frame after the input handlers ran: approximates keystroke -> paint.
-          requestAnimationFrame(() => setTimeout(() => window.__perfKeyLatency.push(performance.now() - start), 0))
-        }, { capture: true })
+        let start = null
+        editor.addEventListener('keydown', (event) => {
+          if (event.key.length === 1) start = event.timeStamp
+        })
+        editor.addEventListener('input', () => {
+          if (start === null) return
+          const startedAt = start
+          start = null
+          const value = editor.textContent
+          requestAnimationFrame(() => setTimeout(() => {
+            if (editor.textContent === value && document.querySelector('[data-text-streaming="true"]')) {
+              window.__perfKeyLatency.push(performance.now() - startedAt)
+            }
+          }, 0))
+        })
       })
       await input.click()
       for (const char of typed) {
         await page.keyboard.type(char)
         await page.waitForTimeout(80)
       }
-      latencies.push(...await page.evaluate(() => window.__perfKeyLatency))
+      const measured = await page.evaluate(() => window.__perfKeyLatency)
+      if (measured.length !== typed.length || await streaming.getAttribute('data-text-streaming') !== 'true'
+        || JSON.stringify(initialText) === JSON.stringify(await streaming.locator('.markdown-content').allTextContents())) {
+        throw new Error('Text must continue streaming throughout every measured keystroke')
+      }
+      if (!perfFlag) latencies.push(...measured)
 
       if (perfFlag) {
         const snapshot = await page.evaluate(() => window.__overlayPerfDebug?.snapshot() ?? null)
-        if (snapshot) {
-          renders = renderDelta({}, snapshot.renders)
-          reports.push(streamingRenderReport(renders))
-        }
+        if (!snapshot) throw new Error('Render instrumentation unavailable')
+        renders = renderDelta({}, snapshot.renders)
+        if (!(renders['ChatExchange(streaming)'] > 0)) throw new Error('No streaming renders observed')
+        reports.push(streamingRenderReport(renders))
       }
       // Clear the draft so it is not sent; leave the reply to finish on its own.
       await page.keyboard.press('Control+A')
       await page.keyboard.press('Backspace')
+      await page.waitForFunction(() => !document.querySelector('[data-text-streaming="true"]'), null, { timeout: TIMEOUT })
     } finally {
       await context.close()
     }
   }
   return {
     metrics: { keystrokeToFrameMs: summarize(latencies) },
+    workload: 'live-model-exploratory-not-a-deterministic-regression-gate',
+    samples: latencies,
     renders: renders ? { during: renders, report: reports[0] } : undefined,
   }
 }
@@ -236,14 +285,15 @@ async function typingWhileStreaming({ browser, origin, storageState, runs, throt
 // ── DM scroll ──────────────────────────────────────────────────────────────
 async function dmScroll({ browser, origin, storageState, runs, throttleName }) {
   const dmPath = appPath(required('PERF_DM_PATH'))
-  const pages = Number(env.PERF_DM_LOAD_PAGES ?? 5)
+  const pages = positiveInteger(env.PERF_DM_LOAD_PAGES, 40)
+  const requiredMessages = positiveInteger(env.PERF_DM_MIN_MESSAGES, 1000, 10000)
   const fps = []
   const frameP75 = []
   const dropped = []
   const growth = []
 
   for (let run = 0; run < runs; run += 1) {
-    const context = await newContext(browser, { storageState })
+    const context = await newContext(browser, { storageState, origin })
     try {
       const page = await context.newPage()
       await throttle(page, throttleName)
@@ -258,9 +308,20 @@ async function dmScroll({ browser, origin, storageState, runs, throttleName }) {
 
       const domSize = () => page.evaluate(() => ({
         rows: document.querySelectorAll('[id^="room-message-"]').length,
-        nodes: document.getElementsByTagName('*').length,
+        nodes: document.querySelector('[data-chat-transcript]')?.querySelectorAll('*').length ?? 0,
+        loaded: Number(document.querySelector('[data-chat-transcript]')?.getAttribute('data-loaded-message-count') ?? 0),
       }))
       const history = [await domSize()]
+      for (let i = 0; history.at(-1).loaded < requiredMessages && i < pages; i += 1) {
+        const before = history.at(-1).loaded
+        const loadOlder = page.getByRole('button', { name: 'Load older messages', exact: true })
+        await loadOlder.click({ timeout: TIMEOUT })
+        await page.waitForFunction((count) => Number(document.querySelector('[data-chat-transcript]')
+          ?.getAttribute('data-loaded-message-count')) > count, before, { timeout: TIMEOUT })
+        history.push(await domSize())
+      }
+      if (history.at(-1).loaded < requiredMessages) throw new Error('Required DM history was not loaded')
+      await scroller.evaluate(element => { element.scrollTop = element.scrollHeight })
       await page.evaluate(() => {
         window.__perfFrames = []
         window.__perfRecording = true
@@ -271,17 +332,12 @@ async function dmScroll({ browser, origin, storageState, runs, throttleName }) {
         }
         requestAnimationFrame(tick)
       })
-      for (let i = 0; i < pages; i += 1) {
-        const before = history.at(-1).rows
-        for (let step = 0; step < 15; step += 1) {
-          await page.mouse.wheel(0, -600)
-          await page.waitForTimeout(50)
-        }
-        // Wait for an older page to arrive (or give up: history may be fully loaded).
-        await page.waitForFunction((count) => document.querySelectorAll('[id^="room-message-"]').length > count,
-          before, { timeout: 5_000 }).catch(() => {})
-        history.push(await domSize())
+      const scrollStart = await scroller.evaluate(element => element.scrollTop)
+      for (let step = 0; step < 30; step += 1) {
+        await page.mouse.wheel(0, -300)
+        await page.waitForTimeout(50)
       }
+      if (await scroller.evaluate(element => element.scrollTop) >= scrollStart) throw new Error('DM did not scroll')
       const frames = await page.evaluate(() => {
         window.__perfRecording = false
         return window.__perfFrames
@@ -289,7 +345,8 @@ async function dmScroll({ browser, origin, storageState, runs, throttleName }) {
       const report = frameReport(frames)
       if (report.fps != null) fps.push(report.fps)
       if (report.frameP75 != null) frameP75.push(report.frameP75)
-      dropped.push(report.droppedFrames)
+      if (report.frames < 2) throw new Error('No scroll frames recorded')
+      dropped.push(report.hitchIntervals)
       growth.push(history)
     } finally {
       await context.close()
@@ -300,10 +357,12 @@ async function dmScroll({ browser, origin, storageState, runs, throttleName }) {
     metrics: {
       scrollFps: summarize(fps),
       scrollFrameP75Ms: summarize(frameP75),
-      scrollDroppedFrames: summarize(dropped),
+      scrollHitchIntervals: summarize(dropped),
       domNodesPerRow: summarize(last.filter((point) => point.rows).map((point) => point.nodes / point.rows)),
     },
-    domGrowth: last,
+    samples: { fps, frameP75, hitchIntervals: dropped },
+    domGrowth: growth,
+    requiredMessages,
   }
 }
 
@@ -321,7 +380,7 @@ try {
   if ((await stat(storageState)).mode & 0o077) throw new Error('PERF_STORAGE_STATE must be private (chmod 600)')
   const throttleName = env.PERF_THROTTLE ?? 'fast-4g-cpu4x'
   if (!(throttleName in THROTTLE_PROFILES)) throw new Error(`Unknown PERF_THROTTLE: ${throttleName}`)
-  const runs = Math.max(1, Number(env.PERF_RUNS ?? 5))
+  const runs = positiveInteger(env.PERF_RUNS, 5)
   const scenarios = parseScenarios(env.PERF_SCENARIOS)
   const outDir = path.resolve(env.PERF_OUT_DIR ?? '.perf')
 
@@ -331,19 +390,21 @@ try {
   })
   const result = {
     revision: gitRevision(),
+    targetRevision: required('PERF_TARGET_REVISION'),
     originKind: origin.startsWith('http://') ? 'local' : 'preview',
     throttle: throttleName,
     runs,
     capturedAt: new Date().toISOString(),
     scenarios: {},
   }
+  if (!/^[a-f0-9]{40}$/.test(result.targetRevision)) throw new Error('Expected target revision SHA')
   for (const scenario of scenarios) {
     console.error(`[perf-baseline] ${scenario}...`)
     try {
       result.scenarios[scenario] = await RUNNERS[scenario]({ browser, origin, storageState, runs, throttleName })
-    } catch (error) {
+    } catch {
       // Report the failure without page content, URLs or credentials.
-      result.scenarios[scenario] = { error: error instanceof Error ? error.message.split('\n')[0].slice(0, 200) : 'failed' }
+      result.scenarios[scenario] = { error: 'Scenario failed validation; no samples accepted. Check fixture preconditions and configuration.' }
       process.exitCode = 1
     }
   }
@@ -352,8 +413,8 @@ try {
   await writeFile(path.join(outDir, `perf-baseline-${stamp}.json`), `${JSON.stringify(result, null, 2)}\n`)
   await writeFile(path.join(outDir, `perf-baseline-${stamp}.md`), markdownReport(result))
   console.log(markdownReport(result))
-} catch (error) {
-  console.error(`Perf baseline failed: ${error instanceof Error ? error.message.split('\n')[0] : 'unknown error'}`)
+} catch {
+  console.error('Perf baseline failed configuration or setup validation; no private diagnostics emitted.')
   process.exitCode = 1
 } finally {
   await browser?.close()

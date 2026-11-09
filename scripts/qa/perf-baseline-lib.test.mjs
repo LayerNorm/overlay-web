@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   appPath, frameReport, markdownReport, parseScenarios, percentile, perfOrigin,
-  renderDelta, streamingRenderReport, summarize,
+  positiveInteger, requireObservedInteraction, renderDelta, streamingRenderReport, summarize,
 } from './perf-baseline-lib.mjs'
 
 test('only PR previews and loopback production servers are accepted', () => {
@@ -27,6 +27,22 @@ test('scenario selection rejects unknown names', () => {
   assert.equal(parseScenarios(undefined).length, 4)
   assert.deepEqual(parseScenarios('dm-scroll, cold-start'), ['dm-scroll', 'cold-start'])
   assert.throws(() => parseScenarios('cold-start,warp-speed'), /warp-speed/)
+  assert.throws(() => parseScenarios(' , '))
+})
+
+test('measurement configuration cannot silently run zero or unlimited samples', () => {
+  assert.equal(positiveInteger(undefined, 5), 5)
+  assert.equal(positiveInteger('3', 5), 3)
+  for (const value of ['', 'NaN', 'Infinity', '0', '-1', '1.5', '101']) assert.throws(() => positiveInteger(value, 5))
+})
+
+test('failed or missing stages invalidate the whole interaction', () => {
+  const sample = { action: 'completed', stages: { contentVisible: { status: 'observed', ms: 15 } } }
+  assert.equal(requireObservedInteraction(sample), sample)
+  assert.throws(() => requireObservedInteraction({ ...sample, action: 'failed' }))
+  for (const status of ['not-observed', 'invalid-precondition', 'unavailable']) {
+    assert.throws(() => requireObservedInteraction({ action: 'completed', stages: { contentVisible: { status, ms: null } } }))
+  }
 })
 
 test('percentiles use nearest rank and ignore non-finite samples', () => {
@@ -61,7 +77,7 @@ test('streaming report normalizes renders per streamed update', () => {
 test('frame report counts hitches over two 60 Hz frames', () => {
   const report = frameReport([0, 16, 32, 48, 100, 116])
   assert.equal(report.frames, 6)
-  assert.equal(report.droppedFrames, 1)
+  assert.equal(report.hitchIntervals, 1)
   assert.equal(report.frameMax, 52)
   assert.equal(report.fps, 43.1)
   assert.equal(frameReport([1]).fps, null)

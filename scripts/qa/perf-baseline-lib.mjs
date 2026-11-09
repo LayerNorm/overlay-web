@@ -41,9 +41,24 @@ export function appPath(value) {
   return value
 }
 
+export function positiveInteger(value, fallback, max = 100) {
+  const parsed = value === undefined ? fallback : Number(value)
+  if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > max) throw new Error('Invalid numeric configuration')
+  return parsed
+}
+
+export function requireObservedInteraction(sample) {
+  if (sample.action !== 'completed' || Object.values(sample.stages).some(stage =>
+    stage.status !== 'observed' || !Number.isFinite(stage.ms) || stage.ms < 0)) {
+    throw new Error('Interaction did not produce all required observations')
+  }
+  return sample
+}
+
 export function parseScenarios(value) {
   if (!value) return [...SCENARIOS]
   const selected = value.split(',').map((item) => item.trim()).filter(Boolean)
+  if (!selected.length) throw new Error('At least one scenario is required')
   const unknown = selected.filter((item) => !SCENARIOS.includes(item))
   if (unknown.length) throw new Error(`Unknown scenario(s): ${unknown.join(', ')}`)
   return selected
@@ -110,7 +125,7 @@ export function frameReport(timestamps) {
     frameP75: percentile(gaps, 75),
     frameMax: gaps.length ? round(Math.max(...gaps)) : null,
     // A frame over ~2x a 60 Hz budget is a visible hitch.
-    droppedFrames: gaps.filter((gap) => gap > 34).length,
+    hitchIntervals: gaps.filter((gap) => gap > 34).length,
   }
 }
 
@@ -119,6 +134,7 @@ export function markdownReport(result) {
     `# UI perf baseline`,
     '',
     `- Revision: \`${result.revision ?? 'unknown'}\``,
+    `- Expected target revision (verify separately): \`${result.targetRevision ?? 'unknown'}\``,
     `- Origin kind: ${result.originKind}`,
     `- Throttle: ${result.throttle}`,
     `- Runs per scenario: ${result.runs}`,

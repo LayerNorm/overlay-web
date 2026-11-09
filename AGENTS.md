@@ -91,6 +91,7 @@ The `internal/develop/` directory contains living documentation that coding agen
 
 | Doc | When to update |
 | --- | --- |
+| `internal/develop/perf-baseline.md` | Any change to UI performance measurement instruments, fixture prerequisites, or baseline runner semantics. |
 | `internal/develop/Development Workflow.md` | Any change to the shared Builder/Integration instructions, preview QA handoff, or integration order. |
 | `internal/develop/release-workflow.md` | Any change to the preview/main queue/automatic production contract or activation checkpoint. |
 | `internal/develop/agentic-development.md` | Any change to feature worktrees, branch ownership, pull request contracts, integration roles, merge methods, changelog policy, or main-branch workflow. |

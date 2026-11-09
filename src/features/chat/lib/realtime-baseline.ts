@@ -15,11 +15,6 @@ function markBaseline(name: string): void {
 
 export function markPersonalChatQueryReady() {
   markBaseline('overlay:baseline:personal-query-ready')
-  // The transcript data is ready; mark the frame after it is committed and painted.
-  if (!baselineEnabled()) return
-  requestAnimationFrame(() => {
-    requestAnimationFrame(() => markBaseline('overlay:baseline:transcript-painted'))
-  })
 }
 
 /** The chat composer is mounted and accepts input. */

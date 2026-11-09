@@ -29,7 +29,9 @@ for (const route of ROUTES) {
   const [routeGzip, firstLoadGzip] = await measure(true)
   const [routeRaw, firstLoadRaw] = await measure(false)
   // getJsPageSizeInKb returns -1 for routes missing from the manifest.
-  if (firstLoadRaw < 0) continue
+  if ([routeGzip, firstLoadGzip, routeRaw, firstLoadRaw].some(value => !Number.isFinite(value) || value < 0)) {
+    throw new Error(`Missing bundle measurement for ${route}`)
+  }
   rows.push({ route, routeGzip, firstLoadGzip, routeRaw, firstLoadRaw })
 }
 
