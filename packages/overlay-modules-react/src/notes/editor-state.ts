@@ -983,8 +983,8 @@ export function useNotebookAgent({
     run.stopRequested = true
     if (!run.requestStarted) run.controller.abort()
     else if (run.identity) void cancelAdmittedRun(run)
-    activeRunRef.current = null
-  }, [cancelAdmittedRun])
+    finishRun(run)
+  }, [cancelAdmittedRun, finishRun])
 
   useEffect(() => {
     if (controlledAgentPanelOpen === undefined) return
