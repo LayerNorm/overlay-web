@@ -321,22 +321,6 @@ test('recent Workspace chats merge with the canonical route query', async () => 
   assert.equal(await resolveRecentChatHref('/w/team-a/chat', 'personal', async () => null), '/w/team-a/chat')
 })
 
-test('room subviews push immediately without waiting for any conversation lookup', () => {
-  const destinations: string[] = []
-  const nav = buildChatPanelNav({
-    chatsView: 'workspace-chats', effectivePendingSecondaryNavId: null, chatUnreadBadges: {},
-    router: { push: href => { destinations.push(href) } }, activeWorkspaceId: 'workspace-a',
-    buildWorkspaceHref: (_id, href, scope) => buildWorkspaceHandleHref('team-a', href, scope),
-    closeMobileDrawer: () => undefined, beginSecondaryNavigation: () => undefined, solo: false,
-  })
-  nav.onSelect('workspace:dms')
-  nav.onSelect('workspace:channels')
-  assert.deepEqual(destinations, [
-    '/w/team-a/workspace/chat?view=dms&select=recent',
-    '/w/team-a/workspace/chat?view=channels&select=recent',
-  ])
-})
-
 test('Work opens a nav-only panel with List, Board, and Timeline under the scope, and reads the view from the URL', () => {
   const state = routeState('/app/work', 'scope=workspace&view=board')
   assert.equal(state.workOpen, true)

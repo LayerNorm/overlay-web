@@ -6,11 +6,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation'
 import ChatExperience from './ChatExperience'
 import { ChatSurfaceEmptyState } from './ChatSurfaceEmptyState'
 import { DirectMessageExperience } from './DirectMessageExperience'
-import { useConvex, useConvexAuth } from 'convex/react'
-import { toast } from 'sonner'
-import { getLastChatForView } from '@/shared/chat/last-chat-by-view'
-import { startPendingRoomNavigation } from './pending-room-navigation'
-import { useWorkspace } from '@/contexts/WorkspaceContext'
+import { useConvex } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
 import { isConvexIdShape } from '@/components/providers/usePersonalChatTranscript'
@@ -19,8 +15,6 @@ import {
   legacyWorkspaceScopeForRoute,
   normalizeChatViewForScope,
   readWorkspacePathScope,
-  isWorkspaceRouteTargetPending,
-  readWorkspaceRouteTarget,
 } from '@/shared/workspaces/routing'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePersonalChatDirectory } from '@/components/providers/PersonalChatProvider'
@@ -116,29 +110,6 @@ export function ConversationExperienceRouter(props: ComponentProps<typeof ChatEx
   })
   const personalChat = usePersonalChatDirectory()
   const convex = useConvex()
-  const { isAuthenticated } = useConvexAuth()
-  const workspace = useWorkspace()
-  const workspaceReady = workspace.status === 'ready' && !isWorkspaceRouteTargetPending(
-    readWorkspaceRouteTarget(pathname), workspace.resolvedRouteTargetKey,
-  )
-  const pendingSelection = searchParams?.get('select') === 'recent'
-  useEffect(() => {
-    const workspaceId = personalChat.workspaceId
-    if (!pendingSelection || conversationId || !workspaceId || !isAuthenticated || !workspaceReady
-      || (searchView !== 'dms' && searchView !== 'channels')) return
-    if (window.location.pathname !== pathname || window.location.search !== `?${searchParams.toString()}`) return
-    const href = `${window.location.pathname}${window.location.search}${window.location.hash}`
-    return startPendingRoomNavigation({
-      href,
-      storedConversationId: getLastChatForView(workspaceId, searchView),
-      findRooms: async () => (await convex.query(api.collaboration.roomList.list, {
-        workspaceId, kind: searchView === 'dms' ? 'dm' : 'channel',
-      }))?.rooms ?? null,
-      currentHref: () => `${window.location.pathname}${window.location.search}${window.location.hash}`,
-      replace: destination => router.replace(destination),
-      onError: () => toast.error('Could not reopen the recent conversation. Choose one from the sidebar.'),
-    })
-  }, [browserSearch, conversationId, convex, isAuthenticated, pathname, pendingSelection, personalChat.workspaceId, router, searchParams, searchView, workspaceReady])
   const knownNativeChat = isKnownNativePersonalChat(personalChat, pathScope, conversationId)
   if (knownNativeChat && pathScope && conversationId) markConversationScopeVerified(pathScope, conversationId)
   useEffect(() => {

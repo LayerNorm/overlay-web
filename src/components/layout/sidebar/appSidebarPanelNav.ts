@@ -7,7 +7,7 @@ import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
 import { SETTINGS_SECTION_ICONS, type SidebarRouteState } from './appSidebarNav'
 import { buildScopedPanelNav } from './scopedPanelNav'
 import { buildWorkPanelNav } from './workPanelNav'
-import { buildChatPanelNav, type SidebarRouter } from './chatPanelNav'
+import { buildChatPanelNav, type FindRooms, type SidebarRouter } from './chatPanelNav'
 import { withPanelScope, type PanelScope } from '@/shared/workspaces/panel-scope'
 
 function buildFilesPanelNav({
@@ -273,6 +273,7 @@ export function resolveSecondaryPanelNav({
   closeMobileDrawer,
   beginSecondaryNavigation,
   solo,
+  findRooms,
 }: {
   panelKind: SidebarRouteState['panelKind']
 
@@ -291,12 +292,16 @@ export function resolveSecondaryPanelNav({
   beginSecondaryNavigation: (id: string) => void
   /** The workspace is one person: no Personal/Workspace split (see `isSoloWorkspace`). */
   solo: boolean
+  /** The live DM/channel list, for opening the most relevant room when a subview is chosen. */
+  findRooms?: FindRooms
 }): SecondaryPanelNav | undefined {
   if (panelKind === 'chat') {
+    const cumulativeChatUnread = totalUnread + (shouldLoadCollaborationUnread ? collaborationUnread.total : 0)
     const chatUnreadBadges: Record<(typeof chatsInlineItems)[number]['id'], number> = {
       personal: totalUnread,
       dms: shouldLoadCollaborationUnread ? collaborationUnread.dms : 0,
       channels: shouldLoadCollaborationUnread ? collaborationUnread.channels : 0,
+      activity: cumulativeChatUnread,
     }
     return buildChatPanelNav({
 
@@ -309,6 +314,7 @@ export function resolveSecondaryPanelNav({
       closeMobileDrawer,
       beginSecondaryNavigation,
       solo,
+      findRooms,
     })
   }
   if (panelKind === 'files' || panelKind === 'notes') {

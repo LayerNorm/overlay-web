@@ -13,7 +13,7 @@ Use cohesive main-targeted PRs. Keep authorization changes, virtualization, and 
 | Phase | Implementation | Acceptance |
 | --- | --- | --- |
 | 0. Baseline | PR #448 safeguards implemented: strict observations, explicit history loading, active-stream validation, separate counter runs | Baseline tests, script syntax checks and targeted ESLint passed. `npm run typecheck` is blocked by the uninitialized `overlay-desktop` submodule in its transcript-boundary check; live measurements and deterministic streaming fixture remain outstanding |
-| 1. Navigation | DM/channel destination-side resolution and existing pending agent route implemented | 44 focused navigation/sidebar tests and targeted ESLint passed; exact-head Preview QA pending |
+| 1. Navigation | Agent opening enters the existing destination before main-thread resolution. Removed the speculative DM/channel resolver after browser QA and caller tracing established that visible room rows already navigate directly; legacy compatibility behavior preserved | Focused scoped navigation, directory-context, agent and transcript tests plus sidebar Vitest, targeted ESLint, shared-isomorphic and on-prem boundary checks passed; current-head Preview QA pending |
 | 2. Transcript loading/cache | Not started | Not tested |
 | 3. Render isolation | Directory context split from transcript/execution; sidebar, archived views and scope router migrated | Directory-boundary test, targeted ESLint and shared-isomorphic check passed; profiling and broader row/composer work pending |
 | 4. Bootstrap | Not started | Not tested |
@@ -36,13 +36,13 @@ Exit: reproducible commands, valid raw samples, summarized results, and ranked b
 
 ## Phase 1: Immediate navigation
 
-1. Enter the DM/channel view before room lookup completes; resolve the selected conversation inside that view.
+1. Audit the visible DM/channel path before changing it. Browser QA and caller tracing confirmed that current room rows navigate directly, while headers only collapse independent lists. Preserve the legacy compatibility lookup; no new room resolver or UI is needed for these shells.
 2. Keep the existing live-agent-thread fast path. Where resolution is necessary, open an existing-pattern pending agent view before resolving/creating the main thread. Never create a placeholder server resource.
 3. Preserve back/forward, deep links, modified clicks, canonical URLs and scope. Late responses cannot override newer navigation. Prevent duplicate creation on remount/retry.
 4. Tie navigation completion to destination readiness. Delay showing busy feedback on fast transitions rather than keeping it visible after completion.
 5. Preserve shell continuity during ordinary navigation without displaying another workspace's protected content. New visual surfaces require a mockup before implementation.
 
-Implementation notes: room subview clicks push immediately with a transient `select=recent` intent. The mounted destination validates the current workspace, reads the authorized room list and replaces that same history entry. Cleanup and an exact current-URL check suppress late results and errors. Agent clicks use the existing no-thread route when live thread data is absent; its existing destination resolver retains backend idempotency and error/retry UI. No new visual surface is introduced. The standalone navigation-progress provider currently has no `begin` consumers outside its own module, so changing its timers would not improve an observed navigation path; readiness integration remains open pending profiling.
+Implementation notes: the initial `select=recent` resolver was removed after actual browser QA showed it did not correspond to a visible DM/channel selection flow. `PageSections` has independent renderers in both current shells, so its headers collapse rather than calling the legacy subview navigation helper. Agent clicks use the existing no-thread route when live thread data is absent; its existing destination resolver retains backend idempotency and error/retry UI. No new visual surface is introduced. The standalone navigation-progress provider currently has no `begin` consumers outside its own module, so changing its timers would not improve an observed navigation path; readiness integration remains open pending profiling.
 
 Acceptance: immediate feedback, correct latest-click destination, recoverable errors, correct history, no duplicate creation, and no stale workspace content.
 
