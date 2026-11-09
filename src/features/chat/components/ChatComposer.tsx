@@ -134,7 +134,7 @@ export function ChatComposer(props: ChatComposerProps) {
           ) : (
             <ComposerInputCard {...viewProps} disabledSend={disabledSend} />
           )}
-          {viewProps.mode === 'chat' && !viewProps.showCenteredEmptyChat ? (
+          {viewProps.mode === 'chat' ? (
             <p className="mt-2 text-center text-[11px] text-(--muted-light)">
               Overlay can make mistakes. Check important info.
             </p>
