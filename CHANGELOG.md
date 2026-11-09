@@ -4,6 +4,10 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Fix the Work page flickering between Personal and Workspace on open. Every part of the app now reads one shared remembered scope, and the page waits for it instead of guessing Personal first, so a link without a scope no longer redirects to Personal, the breadcrumb and sidebar toggle always agree, and the task lists no longer subscribe to the wrong scope and then drop it.
+- Tidy the Work page: remove the header's New task button (the composer starts tasks), make the task title the task panel's header, size side-panel header buttons at 32px like other headers and line side-panel headers up with the main and sidebar headers, and shrink the Work composer to the same box as chat and agent threads.
+- Link a task to the agent thread doing it: the task panel shows a Thread row with the thread's title and whether it is working, finished or stopped, and opens the thread in one click. A new `work/browse:linkedThread` query serves it only to the member who owns the thread.
+
 - Add a bottom-pinned Work composer with searchable assignees and dependencies, Start/Due dates, context, status and priority. Agent assignments start immediately unless dependencies are unfinished, then start automatically when the last blocker is done.
 
 - Stop a live room read-marker feedback loop that repeatedly fetched the conversation directory during onboarding and could exhaust browser resources before Subscribe reached checkout.

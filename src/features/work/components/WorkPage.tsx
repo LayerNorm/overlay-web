@@ -3,11 +3,11 @@
 import Link from 'next/link'
 import { useMemo, useRef, useState, type ReactNode } from 'react'
 import { useHotkeys } from 'react-hotkeys-hook'
-import { ListChecks, Plus } from 'lucide-react'
+import { ListChecks } from 'lucide-react'
 import type { WorkItem } from '@overlay/app-core'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { AppScreenBody, AppScreenHeader, AppScreenShell } from '@overlay/modules-react/shell'
-import { Button, HeaderSearch } from '@overlay/ui/primitives'
+import { HeaderSearch } from '@overlay/ui/primitives'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { requireShortcutHotkey } from '@/shared/shortcuts/shortcut-registry'
 import { toWorkDate } from '@/shared/work/dates'
@@ -140,12 +140,6 @@ function WorkScreen() {
           tabs={<PageSubviewTabs />}
           metadata={loaded ? <span className="text-xs text-(--muted-light)">{countOpen(items)} open</span> : undefined}
           search={<HeaderSearch value={query} onChange={setQuery} label="Search tasks" placeholder="Search tasks" />}
-          actions={(
-            <Button variant="primary" size="sm" onClick={() => quickAdd.current?.focus()} data-testid="work-new-task">
-              <Plus size={14} aria-hidden />
-              New task
-            </Button>
-          )}
         />
       )}
     >
