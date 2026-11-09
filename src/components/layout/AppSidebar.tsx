@@ -30,6 +30,15 @@ const WORK_SECTION_ORDER: readonly WorkFilter[] = ['needs-you', 'mine', 'all']
 const WORK_SECTION_ROWS: ReadonlyArray<InlineNavItem> = WORK_SECTION_ORDER.map((id) => ({ id, label: WORK_FILTER_LABELS[id] }))
 const shellAdapter = { Link: NextLink, rememberScope: rememberPanelScope } satisfies ShellAdapter
 
+function useSidebarActivityFilter(panelKind: ReturnType<typeof useAppSidebarState>['routeState']['panelKind']) {
+  const [filters, setFilters] = useState({ chat: false, agents: false })
+  const kind = panelKind === 'chat' || panelKind === 'agents' ? panelKind : null
+  return {
+    activityOnly: kind ? filters[kind] : false,
+    onToggleActivity: kind ? () => setFilters((current) => ({ ...current, [kind]: !current[kind] })) : undefined,
+  }
+}
+
 function renderAccountProfile(
   { user, displayName }: Pick<ReturnType<typeof useAppSidebarState>, 'user' | 'displayName'>,
   onAccountClick: () => void,
@@ -101,9 +110,7 @@ export default function AppSidebar({
 
     workspace,
   })
-  const [activityFilters, setActivityFilters] = useState({ chat: false, agents: false })
-  const activityKind = s.routeState.panelKind === 'chat' || s.routeState.panelKind === 'agents' ? s.routeState.panelKind : null
-  const activityOnly = activityKind ? activityFilters[activityKind] : false
+  const { activityOnly, onToggleActivity } = useSidebarActivityFilter(s.routeState.panelKind)
   const appSettings = useOptionalAppSettings()
   const classicLayout = appSettings?.settings.useSecondarySidebar !== false
   const railExpanded = !classicLayout && !s.sidebarCollapsed
@@ -271,7 +278,7 @@ export default function AppSidebar({
     sectionRows,
     scope: s.routeState.scope,
     activityOnly,
-    onToggleActivity: activityKind ? () => setActivityFilters((current) => ({ ...current, [activityKind]: !current[activityKind] })) : undefined,
+    onToggleActivity,
   }
 
   return (

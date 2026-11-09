@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { NextRequest, NextResponse } from 'next/server'
 
@@ -17,7 +18,7 @@ import { createBugReportUploadTicket } from '@/server/storage/bug-report-attachm
 
 function request(body: unknown, origin = 'https://overlay.example') {
   return new NextRequest('https://overlay.example/api/bug-report', {
-    method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json', 'Idempotency-Key': 'a6926951-600c-4482-bc08-3894c2c8f078' }, body: JSON.stringify(body),
+    method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json', 'Idempotency-Key': randomUUID() }, body: JSON.stringify(body),
   })
 }
 
