@@ -61,9 +61,13 @@ function bundleThreadTitle(bundle: AgentBundleMap[string] | undefined, conversat
 
 /** Live thread lists for the agents whose rows are open. Each is its own Convex subscription. */
 function useAgentBundles(workspaceId: string | null, agentIds: readonly string[]) {
-  const queries = useMemo(() => Object.fromEntries(workspaceId
-    ? agentIds.map((agentId) => [agentId, { query: api.agents.threads.bundle, args: { workspaceId, agentId } }])
-    : []), [agentIds, workspaceId])
+  const agentIdsKey = JSON.stringify(agentIds)
+  const queries = useMemo(() => {
+    const ids: string[] = JSON.parse(agentIdsKey)
+    return Object.fromEntries(workspaceId
+      ? ids.map((agentId) => [agentId, { query: api.agents.threads.bundle, args: { workspaceId, agentId } }])
+      : [])
+  }, [agentIdsKey, workspaceId])
   const results = useQueries(queries)
   // A first-message rename names the thread before the saved title arrives.
   const [titleOverrides, setTitleOverrides] = useState<Record<string, string>>({})
