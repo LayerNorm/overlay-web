@@ -2,6 +2,7 @@
 
 import { useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import {
   type OverlaySidebarAction,
   type OverlaySidebarActionKey,
@@ -48,6 +49,7 @@ export function useAppSidebarActions({
     onCloseMobileMenu()
     const view = scope === 'workspace' ? 'workspace-chats' : 'personal'
     const href = buildWorkspaceHref(null, `/app/chat?view=${view}`, scope)
+    beginNavigationIntent(href)
     if (pathname.endsWith('/chat')) {
       router.push(href)
       window.dispatchEvent(new CustomEvent('overlay:chat-route-selected', {
@@ -73,6 +75,7 @@ export function useAppSidebarActions({
       return false
     }
     onCloseMobileMenu()
+    beginNavigationIntent(buildWorkspaceHref(null, '/app/automations', scope))
     router.push(buildWorkspaceHref(null, '/app/automations', scope))
     return true
   }, [buildWorkspaceHref, onCloseMobileMenu, requireAuth, router, scope, user])

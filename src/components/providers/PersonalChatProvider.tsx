@@ -26,6 +26,8 @@ import { useHasConvexClient } from '@/components/providers/ConvexAuthProvider'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { PersonalChatErrorBoundary } from './personal-chat-error-boundary'
 import { usePersonalChatCommands, type PersonalChatCommands } from './usePersonalChatCommands'
+import { PersonalChatDirectoryProvider } from './personal-chat-directory-context'
+export { usePersonalChatDirectory } from './personal-chat-directory-context'
 import {
   isWorkspaceRouteTargetPending,
   legacyWorkspaceScopeForRoute,
@@ -61,7 +63,7 @@ type PersonalChatTranscript = {
 
 type PersonalChatExecution = NativePersonalExecutionState
 
-type PersonalChatContextValue = {
+export type PersonalChatContextValue = {
   available: boolean
   workspaceId: string | null
   viewerUserId: string | null
@@ -138,7 +140,13 @@ const PersonalChatContext = createContext<PersonalChatContextValue>({
   ...unavailableActions,
 })
 
-export function PersonalChatProvider({ children }: { children: ReactNode }) {
+function PersonalChatDirectoryProjection({ children }: { children: ReactNode }) {
+  const value = useContext(PersonalChatContext)
+  return <PersonalChatDirectoryProvider value={value}>{children}</PersonalChatDirectoryProvider>
+}
+
+export function PersonalChatProvider({ children: content }: { children: ReactNode }) {
+  const children = <PersonalChatDirectoryProjection>{content}</PersonalChatDirectoryProjection>
   const hasConvexClient = useHasConvexClient()
   const workspace = useWorkspace()
   const pathname = usePathname()
@@ -440,6 +448,22 @@ function NativePersonalChatProvider({
     [archivedQuery.results, canQueryArchived],
   )
   const visibleSelectedSummary = canQuerySummary ? selectedSummary : undefined
+  const { status: activeQueryStatus, loadMore: loadMoreActive } = activeQuery
+  const { status: archivedQueryStatus, loadMore: loadMoreArchived } = archivedQuery
+  const active = useMemo<PersonalChatList>(() => ({
+    rows: visibleActiveRows,
+    status: activeStatus,
+    hasMore: canQueryActive && (activeQueryStatus === 'CanLoadMore' || activeQueryStatus === 'LoadingMore'),
+    loadingMore: canQueryActive && activeQueryStatus === 'LoadingMore',
+    loadMore: () => { if (canQueryActive) loadMoreActive(30) },
+  }), [visibleActiveRows, activeStatus, canQueryActive, activeQueryStatus, loadMoreActive])
+  const archived = useMemo<PersonalChatList>(() => ({
+    rows: visibleArchivedRows,
+    status: archivedStatus,
+    hasMore: canQueryArchived && (archivedQueryStatus === 'CanLoadMore' || archivedQueryStatus === 'LoadingMore'),
+    loadingMore: canQueryArchived && archivedQueryStatus === 'LoadingMore',
+    loadMore: () => { if (canQueryArchived) loadMoreArchived(30) },
+  }), [visibleArchivedRows, archivedStatus, canQueryArchived, archivedQueryStatus, loadMoreArchived])
   const value = useMemo<PersonalChatContextValue>(() => ({
     available: true,
     workspaceId,
@@ -448,20 +472,8 @@ function NativePersonalChatProvider({
     selectedSummary: visibleSelectedSummary,
     transcript,
     execution,
-    active: {
-      rows: visibleActiveRows,
-      status: activeStatus,
-      hasMore: canQueryActive && (activeQuery.status === 'CanLoadMore' || activeQuery.status === 'LoadingMore'),
-      loadingMore: canQueryActive && activeQuery.status === 'LoadingMore',
-      loadMore: () => { if (canQueryActive) activeQuery.loadMore(30) },
-    },
-    archived: {
-      rows: visibleArchivedRows,
-      status: archivedStatus,
-      hasMore: canQueryArchived && (archivedQuery.status === 'CanLoadMore' || archivedQuery.status === 'LoadingMore'),
-      loadingMore: canQueryArchived && archivedQuery.status === 'LoadingMore',
-      loadMore: () => { if (canQueryArchived) archivedQuery.loadMore(30) },
-    },
+    active,
+    archived,
     rename,
     setArchived,
     setRead,
@@ -475,14 +487,10 @@ function NativePersonalChatProvider({
     findRecentChat,
     setPendingTranscriptConversation,
   }), [
-    activeQuery,
+    active,
     transcript,
     execution,
-    archivedQuery,
-    canQueryActive,
-    canQueryArchived,
-    activeStatus,
-    archivedStatus,
+    archived,
     rename,
     create,
     submit,
@@ -496,8 +504,6 @@ function NativePersonalChatProvider({
     selectedConversationId,
     setArchived,
     setRead,
-    visibleActiveRows,
-    visibleArchivedRows,
     visibleSelectedSummary,
     workspaceId,
     viewerUserId,

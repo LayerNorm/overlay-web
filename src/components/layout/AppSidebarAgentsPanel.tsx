@@ -13,6 +13,7 @@ import {
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { SidebarMenu, SidebarMenuAction, SidebarMenuButton, SidebarMenuItem, SidebarMenuSkeleton, Button, toast } from '@overlay/ui/primitives'
 import { announceArchived } from '@/shared/app/archive-toast'
+import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import { AgentCreature } from '@/components/orb/Creature'
 import { automationHref } from '@overlay/app-core/automations'
 import {
@@ -151,11 +152,9 @@ function useAgentActions({
   sortedAgents: WorkspaceAgentDirectoryItem[]
 }) {
   const router = useRouter()
-  const resolveMainThread = useMutation(api.agents.threads.resolveMain)
   const createAgentThread = useMutation(api.agents.threads.create)
   const setAgentThreadArchived = useMutation(api.agents.threads.setArchived)
   const removeAgentThread = useMutation(api.agents.threads.remove)
-  const [openingAgentId, setOpeningAgentId] = useState<string | null>(null)
   const [openError, setOpenError] = useState<string | null>(null)
   const [creatingThreadFor, setCreatingThreadFor] = useState<string | null>(null)
 
@@ -163,25 +162,21 @@ function useAgentActions({
     setOpenError(null)
   }, [workspaceId])
 
-  const openAgent = useCallback(async (
+  const openAgent = useCallback((
     agent: WorkspaceAgentDirectoryItem,
     navigation: 'push' | 'replace' = 'push',
     /** A thread just archived: the live list may not reflect it yet, so never open it. */
     skipConversationId?: string,
   ) => {
-    if (openingAgentId) return
-    setOpeningAgentId(agent.id)
-    try {
       if (!workspaceId) return
-      // A live thread list opens instantly; otherwise resolve (or create) the main thread once.
+      // The destination already resolves its main thread and owns cancellation/retry.
       const live = bundles[agent.id]
       const thread = (live && typeof live === 'object'
         ? live.threads.find((row) => !row.archivedAt && row.conversationId !== skipConversationId)
         : undefined)
-        ?? await resolveMainThread({ workspaceId, agentId: agent.id })
       rememberAgentOpened(workspaceId, agent.id)
       setOpenError(null)
-      dispatchChatCreated({
+      if (thread) dispatchChatCreated({
         chat: {
           _id: thread.conversationId,
           title: thread.title,
@@ -189,26 +184,29 @@ function useAgentActions({
           conversationType: 'dm',
         },
       })
-      const href = agentThreadHref(baseHref, agent.id, thread.conversationId, view)
+      const href = thread
+        ? agentThreadHref(baseHref, agent.id, thread.conversationId, view)
+        : agentHref(baseHref, agent.id, view)
+      beginNavigationIntent(href)
       if (navigation === 'replace') router.replace(href)
       else router.push(href)
       if (navigation === 'push') onNavigate?.()
-    } finally {
-      setOpeningAgentId(null)
-    }
-  }, [baseHref, bundles, onNavigate, openingAgentId, resolveMainThread, router, view, workspaceId])
+  }, [baseHref, bundles, onNavigate, router, view, workspaceId])
 
   const openThread = useCallback((
     agent: WorkspaceAgentDirectoryItem,
     conversationId: string,
   ) => {
+    const href = agentThreadHref(baseHref, agent.id, conversationId, view)
+    beginNavigationIntent(href)
     rememberAgentOpened(workspaceId, agent.id)
-    router.push(agentThreadHref(baseHref, agent.id, conversationId, view))
+    router.push(href)
     onNavigate?.()
   }, [baseHref, onNavigate, router, view, workspaceId])
 
   const openAutomation = useCallback((automationId: string) => {
     const href = automationHref({ _id: automationId })
+    beginNavigationIntent(buildWorkspaceHref(workspaceId, href, view))
     router.push(buildWorkspaceHref(workspaceId, href, view))
     onNavigate?.()
   }, [buildWorkspaceHref, onNavigate, router, view, workspaceId])
@@ -310,7 +308,7 @@ function useAgentActions({
   }, [activeAgentId, openAgentById, sortedAgents, workspaceId])
 
   return {
-    openingAgentId,
+    openingAgentId: null,
     openError,
     creatingThreadFor,
     openAgentById,

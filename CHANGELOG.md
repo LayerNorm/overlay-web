@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Open DM/channel views and agent destinations before resolving their recent thread, with late-result guards that preserve newer navigation. Separate chat directory subscriptions from active transcript/execution updates so streaming does not notify sidebar and archived-list consumers unnecessarily.
+
 - Standardize the approved Overlay wordmark and icon across loading, sidebar, email and metadata. The loader fades in the brand, then changes from the tagline to the workspace status with animated eyes. Nested streaming fallbacks keep the brand settled instead of replaying its entrance.
 - Add activity-only sidebar filters for chats, channels, agents and their threads, preserving ordinary rows and using the simple "No activity yet" empty state. Remove the redundant Activity dropdown in favor of the bell.
 - Add a Help menu with hover, touch and keyboard access to Docs and a bug-report dialog. Signed-in users can send a description and up to 5 MB of attachments to GitHub, with a Resend notification to the configured owner.

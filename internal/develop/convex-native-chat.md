@@ -5,6 +5,12 @@ description: "Reproducible realtime baselines, retained consumers, and migration
 
 ## CN-01 baseline protocol
 
+### Directory rendering and room navigation
+
+Chat sidebar, archived indexes and route-scope probes consume `usePersonalChatDirectory`, not the transcript/execution context. Keep active/archived list values stable on stream-only updates, and publish genuine list, selection, access and command changes. Disabled and error-boundary paths must provide the same directory context contract.
+
+Room subview navigation enters its scoped destination with `select=recent` before any room lookup. The destination resolves the authorized room list and uses replace, preserving one history entry. Cancel on unmount/workspace changes and verify the full current URL before replacing or reporting an error. Never reuse a remembered ID without finding it in the authorized list. Agent sidebar navigation similarly uses the existing no-thread agent route when its live bundle has no eligible thread; the destination owns main-thread resolution and retry.
+
 This harness measures the existing behavior, not a fix. A remote convergence
 failure must remain a failing sample. Do not change an assertion to make the
 baseline pass. CN-02 through CN-05 migrate auth, authorization, personal lists

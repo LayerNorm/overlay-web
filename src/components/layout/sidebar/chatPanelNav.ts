@@ -1,7 +1,4 @@
 import { MessageSquare } from 'lucide-react'
-import { getLastChatForView } from '@/shared/chat/last-chat-by-view'
-import { selectConversationForView } from '@/shared/chat/chat-view-navigation'
-import type { ChatListConversation } from '@/shared/chat/chat-list-conversation'
 import { chatsInlineItems } from '@/components/layout/sidebar-nav'
 import type { SecondaryPanelNav } from './AppSidebarSecondaryPanel'
 import { mergeHrefSearchParams } from '@/shared/workspaces/routing'
@@ -11,43 +8,6 @@ import type { PanelScope } from '@/shared/workspaces/panel-scope'
 
 export interface SidebarRouter {
   push: (href: string) => void
-}
-
-// Incremented per chats-subview select; an in-flight fetch that resolves after
-// a newer selection is stale and must not steer the route.
-let chatViewNavigationVersion = 0
-
-/** Reads the viewer's live rooms of one kind (the native room list), or null when unavailable. */
-export type FindRooms = (kind: 'dm' | 'channel') => Promise<readonly ChatListConversation[] | null>
-
-async function resolveViewConversationId({
-  view,
-  activeWorkspaceId,
-  navigationVersion,
-  findRooms,
-}: {
-  view: 'dms' | 'channels'
-  activeWorkspaceId: string | null
-  navigationVersion: number
-  findRooms?: FindRooms
-}): Promise<{ stale: boolean; conversationId: string | null }> {
-  try {
-    const rooms = await findRooms?.(view === 'dms' ? 'dm' : 'channel') ?? []
-    if (navigationVersion !== chatViewNavigationVersion) {
-      return { stale: true, conversationId: null }
-    }
-    return {
-      stale: false,
-      conversationId: selectConversationForView(
-        [...rooms],
-        getLastChatForView(activeWorkspaceId, view),
-      )?._id ?? null,
-    }
-  } catch {
-    // Stay in the selected subview with its empty state. Reusing an
-    // unvalidated id here can mix a DM and channel after a failed read.
-    return { stale: false, conversationId: null }
-  }
 }
 
 /** The newest AI chat in the scope, so the Chats nav item reopens where the person left off. */
@@ -80,7 +40,6 @@ export function buildChatPanelNav({
   closeMobileDrawer,
   beginSecondaryNavigation,
   solo,
-  findRooms,
 }: {
 
   chatsView: string
@@ -92,14 +51,13 @@ export function buildChatPanelNav({
   closeMobileDrawer: () => void
   beginSecondaryNavigation: (id: string) => void
   solo: boolean
-  findRooms?: FindRooms
 }): SecondaryPanelNav {
   const chatItems = (chatsInlineItems).map((item) => ({ ...item, badgeCount: chatUnreadBadges[item.id] }))
   const flat: SecondaryPanelNav = {
     items: chatItems,
     activeId: chatsView,
     pendingId: effectivePendingSecondaryNavId,
-    onSelect: async (next) => {
+    onSelect: (next) => {
       closeMobileDrawer()
       if (next === chatsView) return
       beginSecondaryNavigation(next)
@@ -115,22 +73,10 @@ export function buildChatPanelNav({
       const baseHref = activeWorkspaceId
         ? buildWorkspaceHref(activeWorkspaceId, '/app/chat', nextScope)
         : '/app/chat'
-      const navigationVersion = ++chatViewNavigationVersion
-      let conversationId: string | null = null
-      if (next === 'dms' || next === 'channels') {
-        const result = await resolveViewConversationId({
-          view: next,
-          activeWorkspaceId,
-          navigationVersion,
-          findRooms,
-        })
-        if (result.stale) return
-        conversationId = result.conversationId
-      }
       const params = new URLSearchParams()
 
       params.set('view', next)
-      if (conversationId) params.set('id', conversationId)
+      if (next === 'dms' || next === 'channels') params.set('select', 'recent')
       router.push(mergeHrefSearchParams(baseHref, params))
     },
   }
