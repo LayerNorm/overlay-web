@@ -73,6 +73,7 @@ function WorkBody({
 }) {
   const { state, items, byId } = useWorkData()
   if (state === 'loading') return <ListSkeleton />
+  if (state === 'signed_out') return <EmptyState title="Sign in to see your tasks" description="Tasks you and your agents create appear here." />
   if (state === 'error') {
     return (
       <EmptyState
@@ -122,7 +123,7 @@ function WorkScreen() {
   const title = WORK_VIEW_LABELS[view]
   const selectedTask = items.find((item) => item.id === taskId)
   const loaded = state === 'ready'
-  useOnboardingWorkReady(taskId, state === 'error' || (loaded && !taskId))
+  useOnboardingWorkReady(taskId, state === 'error' || state === 'signed_out' || (loaded && !taskId))
   // The List scrolls the page; the Board and Timeline scroll inside their own area.
   const pageScrolls = view === 'list' || !loaded || visible.length === 0
 

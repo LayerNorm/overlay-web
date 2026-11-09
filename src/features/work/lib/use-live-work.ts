@@ -5,6 +5,7 @@ import { useConvexAuth, useMutation, useQuery } from 'convex/react'
 import type { OptimisticLocalStore } from 'convex/browser'
 import type { FunctionArgs } from 'convex/server'
 import type { UpdateWorkItemRequest, WorkContext, WorkEvent, WorkItem } from '@overlay/app-core'
+import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { usePanelScopeState } from '@/hooks/use-panel-scope'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
@@ -23,6 +24,12 @@ function useWorkWorkspace(): string | null {
   const { isAuthenticated, isLoading } = useConvexAuth()
   const { known: scopeKnown } = usePanelScopeState()
   return status === 'ready' && activeWorkspaceId && isAuthenticated && !isLoading && scopeKnown ? activeWorkspaceId : null
+}
+
+/** True once the session is known to be signed out: Work has nothing to load, so it must not wait. */
+export function useWorkSignedOut(): boolean {
+  const { user, isLoading } = useAuth()
+  return !isLoading && !user
 }
 
 /**

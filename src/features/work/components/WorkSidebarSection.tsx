@@ -9,7 +9,7 @@ import { useAuth } from '@/contexts/AuthContext'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { matchesFilter, parseWorkFilter, sortByRank, type WorkFilter, type WorkViewer } from '@/shared/work/query'
 import { useWorkRoute } from '../lib/use-work-route'
-import { useLiveWork } from '../lib/use-live-work'
+import { useLiveWork, useWorkSignedOut } from '../lib/use-live-work'
 import { WORK_TASK_PARAM } from '../lib/use-work-url-state'
 import { StatusIcon } from './work-ui'
 
@@ -28,7 +28,8 @@ const EMPTY_LABEL: Record<WorkFilter, string> = {
 function useSidebarWork(): SidebarWork | null {
   const { listView } = useWorkRoute()
   const { items, context } = useLiveWork(listView)
-  return useMemo(() => (items === undefined ? null : { items: items ?? [], context }), [context, items])
+  const signedOut = useWorkSignedOut()
+  return useMemo(() => (items === undefined && !signedOut ? null : { items: items ?? [], context }), [context, items, signedOut])
 }
 
 /** One Work section in the sidebar (Needs you, Assigned to me, Everything) listing its open tasks. */

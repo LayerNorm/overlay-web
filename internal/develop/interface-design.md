@@ -338,6 +338,9 @@ The Work page (`src/features/work/`) follows the existing patterns and adds a fe
 - **Scope is settled before anything acts on it.** The remembered Personal/Workspace choice is shared by every caller in
   the tab. Until it is read (only the hydration render of a URL without a scope), the content boundary waits instead of
   redirecting and Work queries stay skipped, so a Personal guess never flashes, redirects or opens the wrong list.
+- **Loading never waits silently.** Work's live queries wait for Convex auth. `ConvexAuthProvider` retries a failed
+  token request with backoff (1s doubling to 30s), because Convex asks a fetcher once and otherwise stays signed
+  out. A signed-out session shows a sign-in empty state, not skeletons.
 - **Pickers are small floating menus** (`FloatingMenu`) with a section label, the options, and a check on the current
   one. Status, owner, reviewer, priority and parent all use the same `Picker` in `WorkPickers.tsx`.
 - Owner pickers include usable agents on Personal tasks and hide creator-only agents on Workspace tasks. Agent owners use their creature appearance.

@@ -28,10 +28,36 @@ export function ConvexAuthProvider({ children }: { children: React.ReactNode }) 
   )
 }
 
+const RETRY_BASE_MS = 1_000
+const RETRY_MAX_MS = 30_000
+
+/** Retry delay after `failures` consecutive token failures: 1s, 2s, 4s… capped at 30s. */
+export function convexTokenRetryDelay(failures: number): number {
+  return Math.min(RETRY_BASE_MS * 2 ** Math.max(0, failures - 1), RETRY_MAX_MS)
+}
+
 function useNativeConvexAuth() {
   const { user, isLoading, refreshSession } = useAuth()
   const userId = user?.id ?? null
-  const fetchAccessToken = useMemo(() => createNativeConvexTokenFetcher(userId, refreshSession), [userId, refreshSession])
+  // Convex asks a fetcher for a token once; a failed request would leave every live query signed out (and every
+  // page waiting on one) until a reload. A new fetcher makes Convex ask again, so a failure schedules one.
+  const [retry, setRetry] = useState({ userId, failures: 0, waiting: false })
+  const current = retry.userId === userId ? retry : { userId, failures: 0, waiting: false }
+  const { failures, waiting } = current
+  // One pending retry at a time; a failure while one is waiting changes nothing.
+  useEffect(() => {
+    if (!waiting) return
+    const timer = setTimeout(() => setRetry((state) => ({ userId: state.userId, failures: state.failures + 1, waiting: false })), convexTokenRetryDelay(failures + 1))
+    return () => clearTimeout(timer)
+  }, [waiting, failures])
+  const fetchAccessToken = useMemo(() => createNativeConvexTokenFetcher(userId, refreshSession, () => {
+    setRetry((state) => {
+      if (state.userId !== userId) return { userId, failures: 0, waiting: true }
+      return state.waiting ? state : { ...state, waiting: true }
+    })
+  // A new fetcher after each failure is what makes Convex ask for a token again.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [userId, refreshSession, failures])
   return useMemo(() => ({ isLoading, isAuthenticated: Boolean(userId), fetchAccessToken }), [isLoading, userId, fetchAccessToken])
 }
 
