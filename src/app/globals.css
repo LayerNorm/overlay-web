@@ -166,11 +166,9 @@ body {
 @keyframes appBrandLogoFade {
   from {
     opacity: 0;
-    transform: scale(0.92);
   }
   to {
     opacity: 1;
-    transform: scale(1);
   }
 }
 
@@ -197,37 +195,22 @@ body {
   }
 }
 
-.app-brand-loader-wsline {
-  opacity: 0;
-  animation: appBrandWslineFade 420ms ease-out 560ms forwards;
-}
+.app-brand-loader-wsline { min-height: 21px; justify-content: center; }
 
 .app-brand-loader-lockup {
-  font-size: 24px;
+  font-size: 40px;
+  animation: appBrandLogoFade 700ms ease-out both;
 }
 
-.app-brand-loader-lockup .brand-lockup-mark {
-  position: relative;
-  z-index: 1;
-  background: var(--background);
-  animation: appBrandLogoFade 360ms ease-out both;
-}
-
-.app-brand-loader-lockup .brand-lockup-word {
-  opacity: 1;
-  animation: appBrandWordReveal 440ms ease-out 360ms both;
-}
+.app-brand-loader-tagline { animation: appBrandTagline 2600ms ease both; }
+.app-brand-loader-opening { animation: appBrandWslineFade 400ms ease-out both; }
+@keyframes appBrandTagline { 0%, 20% { opacity: 0; } 40%, 88% { opacity: 1; } 100% { opacity: 0; } }
 
 /* Settled variant: the identical screen with the entrance already played. Every
    gate after the first uses it so the word never re-reveals. */
-.app-brand-loader--steady .brand-lockup-mark,
-.app-brand-loader--steady .brand-lockup-word,
-.app-brand-loader--steady .app-brand-loader-wsline {
+.app-brand-loader--steady .app-brand-loader-lockup,
+.app-brand-loader--steady .app-brand-loader-opening {
   animation: none;
-}
-
-.app-brand-loader--steady .app-brand-loader-wsline {
-  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -235,15 +218,7 @@ body {
     animation: none;
   }
 
-  .app-brand-loader-lockup .brand-lockup-mark,
-  .app-brand-loader-lockup .brand-lockup-word,
-  .app-brand-loader-wsline {
-    animation-duration: 1ms;
-    animation-delay: 0ms;
-  }
-  .app-brand-loader-wsline {
-    opacity: 1;
-  }
+  .app-brand-loader-lockup, .app-brand-loader-tagline, .app-brand-loader-opening { animation: none; }
 }
 
 .temporary-chat-inverse-surface {

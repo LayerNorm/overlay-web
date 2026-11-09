@@ -7,10 +7,10 @@ import { ImageResponse } from 'next/og'
 import { OpengraphMark } from './OpengraphMark'
 
 test('OG mark uses the approved O and eye paths without a lowercase-letter tile', async () => {
-  const svg = await readFile('internal/plans/mockups/overlay-brand/overlay-mark-white.svg', 'utf8')
+  const svg = await readFile('internal/plans/mockups/overlay-brand-approved/overlay-icon-white.svg', 'utf8')
   const html = renderToStaticMarkup(<OpengraphMark />)
   for (const [, path] of svg.matchAll(/ d="([^"]+)"/g)) assert.ok(html.includes(path!))
-  assert.match(html, /viewBox="43 -815 860 860"/)
+  assert.match(html, /data-brand-icon/)
   assert.match(html, /aria-label="Overlay"/)
   assert.doesNotMatch(html, /<rect|<text/)
 })

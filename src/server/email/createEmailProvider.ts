@@ -6,7 +6,7 @@ import type {
   EmailProviderResult,
   TransactionalEmail,
 } from '@/shared/email'
-import { loadEmailSdk } from './email-sdk-loader.cjs'
+import { loadEmailSdk } from './email-sdk-loader.mjs'
 
 export async function createEmailProvider(config: OverlayRuntimeConfig): Promise<EmailProvider> {
   const selected = config.providers.email?.provider ?? config.email?.provider ?? 'none'

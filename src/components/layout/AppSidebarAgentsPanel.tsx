@@ -44,8 +44,9 @@ import { isChief, isPinnedChief, pinChiefs } from '@/shared/agents/chief-identit
 import { agentBelongsToCreatorScope } from '@/shared/agents/last-agent-by-workspace'
 import { useOptionalWorkspace } from '@/contexts/WorkspaceContext'
 import { useAgentExpansion } from './sidebar/useAgentExpansion'
-import { AgentThreadActivityProvider, useAgentThreadActivity } from './sidebar/AgentThreadActivityProvider'
+import { AgentThreadActivityProvider, useAgentActivityMap, useAgentThreadActivity } from './sidebar/AgentThreadActivityProvider'
 import { AgentActivitySummary } from './sidebar/ThreadActivityIndicator'
+import { hasThreadActivity } from '@/shared/agents/thread-activity'
 import { useAgentDirectory } from '@/hooks/use-agent-directory'
 import { useMutation, useQueries } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
@@ -323,6 +324,7 @@ function AgentListRow({
   pinned,
   ownerLabel,
   isExpanded,
+  activityOnly = false,
   isActive,
   anyOpening,
   isOpening,
@@ -341,6 +343,7 @@ function AgentListRow({
   pinned: boolean
   ownerLabel: string
   isExpanded: boolean
+  activityOnly?: boolean
   isActive: boolean
   anyOpening: boolean
   isOpening: boolean
@@ -409,6 +412,7 @@ function AgentListRow({
           agent={agent}
           bundle={bundle}
           activity={activity}
+          activityOnly={activityOnly}
           activeConversationId={activeConversationId}
           onOpenThread={onOpenThread}
           onOpenAutomation={onOpenAutomation}
@@ -420,16 +424,31 @@ function AgentListRow({
   )
 }
 
+function ActivityAgentRow({ agentId, activityOnly, children }: { agentId: string; activityOnly: boolean; children: React.ReactNode }) {
+  const activity = useAgentThreadActivity(agentId)
+  if (activityOnly && !activity?.some((item) => hasThreadActivity(item.status))) return null
+  return <>{children}</>
+}
+
+function AgentActivityEmptyState({ agentIds }: { agentIds: string[] }) {
+  const activity = useAgentActivityMap()
+  if (agentIds.some((id) => activity[id] === undefined)) return null
+  if (agentIds.some((id) => activity[id].some((item) => hasThreadActivity(item.status)))) return null
+  return <SidebarMenuItem><p className="px-2.5 py-2 text-xs text-(--muted-light)">No activity yet</p></SidebarMenuItem>
+}
+
 export function AgentsInlinePanel({
   workspaceId,
   baseHref = '/app/agents',
   view = 'personal',
   onNavigate,
+  activityOnly = false,
 }: {
   workspaceId: string | null
   baseHref?: string
   view?: AgentsPanelView
   onNavigate?: () => void
+  activityOnly?: boolean
 }) {
   const router = useRouter()
   const pathname = usePathname()
@@ -443,8 +462,7 @@ export function AgentsInlinePanel({
   const scopedBaseHref = buildWorkspaceHref(workspaceId, baseHref, view)
 
   const { expanded, toggle: toggleExpanded } = useAgentExpansion(activeAgentId)
-  const expandedIds = useMemo(() => [...expanded], [expanded])
-  const { bundles } = useAgentBundles(workspaceId, expandedIds)
+  const [activityCollapsed, setActivityCollapsed] = useState<Set<string>>(new Set())
   const {
     agents,
     viewerPrincipalId,
@@ -479,6 +497,17 @@ export function AgentsInlinePanel({
     [tabAgents, workspaceId, viewerPrincipalId],
   )
   const activityAgentIds = useMemo(() => sortedAgents.map(agent => agent.id), [sortedAgents])
+  const expandedIds = useMemo(() => activityOnly ? activityAgentIds.filter((id) => !activityCollapsed.has(id)) : [...expanded], [activityOnly, activityAgentIds, activityCollapsed, expanded])
+  const { bundles } = useAgentBundles(workspaceId, expandedIds)
+  function toggleAgent(agentId: string) {
+    if (!activityOnly) { toggleExpanded(agentId); return }
+    setActivityCollapsed((current) => {
+      const next = new Set(current)
+      if (next.has(agentId)) next.delete(agentId)
+      else next.add(agentId)
+      return next
+    })
+  }
 
   const {
     openingAgentId,
@@ -547,11 +576,13 @@ export function AgentsInlinePanel({
         ))
       ) : sortedAgents.length ? (
         sortedAgents.map((agent) => {
-          const isExpanded = expanded.has(agent.id)
+          const isExpanded = activityOnly ? !activityCollapsed.has(agent.id) : expanded.has(agent.id)
           return (
+            <ActivityAgentRow key={agent.id} agentId={agent.id} activityOnly={activityOnly}>
             <AgentListRow
               key={agent.id}
               agent={agent}
+              activityOnly={activityOnly}
               pinned={isPinnedChief(agent, viewerPrincipalId)}
               ownerLabel={agent.agentRole === 'workspace_chief' ? `${workspaceName} · Workspace` : `${agent.createdByDisplayName || 'Member'}${agent.createdByPrincipalId === viewerPrincipalId ? ' · You' : ''}`}
               isExpanded={isExpanded}
@@ -561,7 +592,7 @@ export function AgentsInlinePanel({
               bundle={bundles[agent.id] ?? 'loading'}
               activeConversationId={activeConversationId}
               creatingThread={creatingThreadFor === agent.id}
-              onToggleExpanded={toggleExpanded}
+              onToggleExpanded={toggleAgent}
               onOpenAgent={(target) => void openAgentById(target)}
               onOpenThread={openThread}
               onOpenAutomation={openAutomation}
@@ -573,15 +604,17 @@ export function AgentsInlinePanel({
                 void deleteThread(target, conversationId)
               }}
             />
+            </ActivityAgentRow>
           )
         })
       ) : (
         <SidebarMenuItem>
           <p className="px-2.5 py-2 text-xs text-(--muted-light)">
-            {solo ? 'No agents yet' : view === 'personal' ? 'No personal agents yet' : 'No workspace agents yet'}
+            {activityOnly ? 'No activity yet' : solo ? 'No agents yet' : view === 'personal' ? 'No personal agents yet' : 'No workspace agents yet'}
           </p>
         </SidebarMenuItem>
       )}
+      {activityOnly && sortedAgents.length ? <AgentActivityEmptyState agentIds={activityAgentIds} /> : null}
       {openError ? (
         <SidebarMenuItem>
           <div className="px-2.5 py-2">

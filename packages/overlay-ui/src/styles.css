@@ -243,14 +243,17 @@
 
 .brand-lockup {
   display: inline-flex;
-  align-items: baseline;
-  gap: 0.043em;
-  font-family: 'Libre Baskerville', var(--font-serif, serif);
-  font-weight: 400;
-  letter-spacing: -0.025em;
+  align-items: center;
   line-height: 1;
   white-space: nowrap;
 }
+
+.brand-lockup > svg { display: block; flex: none; }
+.approved-brand { overflow: visible; }
+
+.approved-brand .brand-eyes { transform-box: fill-box; transform-origin: center; }
+.approved-brand--blink .brand-eyes { animation: overlay-mark-blink 6s infinite; }
+.approved-brand--look .brand-eyes { animation: overlay-mark-look 2.4s ease-in-out infinite; }
 
 .brand-lockup-mark {
   display: inline-flex;
@@ -308,6 +311,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .approved-brand .brand-eyes { animation: none; }
   .overlay-mark--look .overlay-mark-eyes,
   .overlay-mark--blink .overlay-mark-eyes {
     animation: none;

@@ -1,5 +1,4 @@
 import {
-  Bell,
   Hash,
   Mail,
   MessageSquare,
@@ -60,5 +59,4 @@ export const chatsInlineItems = [
   { id: 'personal', label: 'Personal', icon: MessageSquare },
   { id: 'dms', label: 'Direct Messages', icon: Mail },
   { id: 'channels', label: 'Channels', icon: Hash },
-  { id: 'activity', label: 'Activity', icon: Bell },
 ] as const

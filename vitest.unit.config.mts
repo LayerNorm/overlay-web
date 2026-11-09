@@ -23,6 +23,7 @@ export default defineConfig({
       'src/server/files/computer-publication-service.test.ts',
       'src/server/files/ArtifactPublicationAuthority.test.ts',
       'src/server/storage/object-store.test.ts',
+      'src/app/api/bug-report/**/*.test.ts',
       'src/server/agents/workspace-agent-preparation.test.ts',
       'src/server/app-api/v1/conversations/act/model-candidates.test.ts',
       'src/server/app-api/v1/conversations/act/personal-harness-turn.test.ts',
