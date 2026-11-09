@@ -169,7 +169,9 @@ export async function POST(
     const resourceUserId = getAuthorizedResourceUserId(context)
     let messageId = body.messageId
     if (body.turnId) {
-      const agentRun = await (dependencies?.getLatestAgentRun ?? actConversationRepository.getLatestAgentRun)({
+      const getLatestAgentRun = dependencies?.getLatestAgentRun
+        ?? actConversationRepository.getLatestAgentRun.bind(actConversationRepository)
+      const agentRun = await getLatestAgentRun({
         conversationId: asConversationId(conversationId),
         turnId: body.turnId,
         userId: resourceUserId,
