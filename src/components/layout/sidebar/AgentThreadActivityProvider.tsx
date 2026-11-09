@@ -11,6 +11,10 @@ export function useAgentThreadActivity(agentId: string) {
   return useContext(ActivityContext)[agentId]
 }
 
+export function useAgentActivityMap() {
+  return useContext(ActivityContext)
+}
+
 type Props = { workspaceId: string | null; agentIds: string[]; children: ReactNode }
 
 export function AgentThreadActivityProvider({ workspaceId, agentIds, children }: Props) {
@@ -23,10 +27,11 @@ export function AgentThreadActivityProvider({ workspaceId, agentIds, children }:
   ), [isAuthenticated, isLoading, workspaceId, agentIds])
   const results = useQueries(queries)
   const activity: Record<string, ThreadActivity[]> = {}
-  for (const agentId of Object.keys(queries)) {
+  for (const agentId of agentIds) {
+    if (!workspaceId) { activity[agentId] = []; continue }
     const result = results[agentId]
     if (result instanceof Error) throw result
-    if (result) activity[agentId] = result
+    if (result !== undefined) activity[agentId] = result ?? []
   }
   return <ActivityContext.Provider value={activity}>{children}</ActivityContext.Provider>
 }

@@ -12,13 +12,14 @@ import type { ThreadActivity, ThreadActivityStatus } from '@/shared/agents/threa
 const agent = { id: 'agent_1', name: 'Overlay' } as WorkspaceAgentDirectoryItem
 const noop = () => undefined
 
-function render(bundle: WorkspaceAgentBundle | 'loading' | 'error', props: { activeConversationId?: string | null; activity?: ThreadActivity[] } = {}) {
+function render(bundle: WorkspaceAgentBundle | 'loading' | 'error', props: { activeConversationId?: string | null; activity?: ThreadActivity[]; activityOnly?: boolean } = {}) {
   return renderToStaticMarkup(
     <AgentThreadRows
       agent={agent}
       bundle={bundle}
       activeConversationId={props.activeConversationId ?? null}
       activity={props.activity}
+      activityOnly={props.activityOnly}
       onOpenThread={noop}
       onOpenAutomation={noop}
       onArchiveThread={noop}
@@ -38,6 +39,18 @@ const bundle = {
     { automationId: 'a_2', name: 'PR sweep', enabled: false, conversationId: null },
   ],
 } as unknown as WorkspaceAgentBundle
+
+test('activity filtering keeps existing rows but removes reviewed, idle and automated rows', () => {
+  const html = render(bundle, { activityOnly: true, activity: [
+    { conversationId: 'c_main', status: 'completed' },
+    { conversationId: 'c_plan', status: 'needs_input' },
+  ] })
+  assert.match(html, /Q4 launch plan/)
+  assert.match(html, /agent-thread-button/)
+  assert.doesNotMatch(html, />Overlay<|Daily digest|PR sweep|Old thread/)
+  assert.equal(html.match(/aria-label="Archive thread"/g)?.length, 1)
+  assert.equal(render(bundle, { activityOnly: true }).includes('agent-thread-button'), false)
+})
 
 test('agent threads expose a scoped tree hook without redundant labels or creation rows', () => {
   const html = render(bundle)

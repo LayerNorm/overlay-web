@@ -11,7 +11,6 @@ const CHAT_VIEWS = [
   { id: 'personal', label: 'Personal' },
   { id: 'dms', label: 'Direct Messages' },
   { id: 'channels', label: 'Channels' },
-  { id: 'activity', label: 'Activity' },
 ]
 
 test('an expanded section lists every visible chat subview without an All shortcut', () => {
@@ -28,7 +27,7 @@ test('an expanded section lists every visible chat subview without an All shortc
   assert.match(html, /id="sidebar-section-app-chat"/)
   assert.deepEqual(
     chatsInlineItems.map((item) => item.id),
-    ['personal', 'dms', 'channels', 'activity'],
+    ['personal', 'dms', 'channels'],
   )
 })
 
@@ -85,15 +84,15 @@ test('a locked subview is inert rather than a dead link', () => {
   assert.match(html, /cursor-default/)
 })
 
-test('activity shows the cumulative unread badge', () => {
+test('chat sections show their unread badge', () => {
   const html = renderToStaticMarkup(
     <InlineNavChildren
-      items={[{ id: 'activity', label: 'Activity', badgeCount: 12 }]}
+      items={[{ id: 'channels', label: 'Channels', badgeCount: 12 }]}
       activeId=""
       onSelect={() => undefined}
     />,
   )
-  assert.match(html, /Activity/)
+  assert.match(html, /Channels/)
   assert.match(html, /9\+/)
   assert.match(html, /aria-label="12 unread"/)
 })

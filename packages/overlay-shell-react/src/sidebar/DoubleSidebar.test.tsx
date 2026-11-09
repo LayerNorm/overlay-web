@@ -55,6 +55,13 @@ test('secondary destinations are behind More; header actions and scope stay in t
   assert.doesNotMatch(render({ items: items.slice(0, 3), panelAction: null }), /aria-label="More"|aria-label="New agent"/)
 })
 
+test('activity is an accessible toggle before search, not a destination', () => {
+  const html = render({ activityOnly: true, onToggleActivity: noop })
+  assert.match(html, /aria-label="Show activity only" aria-pressed="true"/)
+  assert.ok(html.indexOf('aria-label="Show activity only"') < html.indexOf('aria-label="Search agents"'))
+  assert.doesNotMatch(render(), /Show activity only/)
+})
+
 test('active destination toggles without selecting or resetting its current thread', () => {
   const selected: string[] = []
   const collapsed: boolean[] = []
