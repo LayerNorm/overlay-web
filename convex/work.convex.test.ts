@@ -575,6 +575,27 @@ describe('fields, assignees and validation', () => {
     expect(stored.participants.map((participant) => participant.principalId)).toEqual(expect.arrayContaining(['p-alice', 'p-agent']))
   })
 
+  test('an assignment thread resolves to its task for the assigned agent only, while the task is active and readable', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const work = api(convex)
+    const assigned = (userId: string, agentPrincipalId: string, conversationId: string) =>
+      convex.query(q('work/workItems:assignedTaskForConversation'), { ...auth(userId), agentPrincipalId, conversationId }) as Promise<string | null>
+    const task = await work.create('alice', { title: 'Private assignment', scope: 'personal', assigneePrincipalId: 'p-agent' })
+    const prepared = await work.prepareAssignment('alice', task._id, 'p-agent', task.assignmentExecution!.generation, 'Start')
+    const conversationId = prepared!.execution.conversationId!
+
+    expect(await assigned('alice', 'p-agent', conversationId)).toBe(task._id)
+    // Another agent, another thread, or someone who cannot read the personal task get nothing.
+    expect(await assigned('alice', 'p-agent-other', conversationId)).toBeNull()
+    expect(await assigned('alice', 'p-agent', 'other-conversation')).toBeNull()
+    expect(await assigned('bob', 'p-agent', conversationId)).toBeNull()
+    expect(await convex.query(q('work/workItems:assignedTaskForConversation'), { ...auth('alice'), serverSecret: 'wrong', agentPrincipalId: 'p-agent', conversationId })).toBeNull()
+
+    await work.archive('alice', task._id)
+    expect(await assigned('alice', 'p-agent', conversationId)).toBeNull()
+  })
+
   test('stale and archived agent assignments cannot prepare a run', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)

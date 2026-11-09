@@ -378,6 +378,31 @@ export const get = query({
   },
 })
 
+/**
+ * The active task whose assignment started an agent in this conversation, when the caller can read it. Agent tooling
+ * uses it to hand the assigned agent the tools for that one task.
+ */
+export const assignedTaskForConversation = query({
+  args: { ...auth, agentPrincipalId: v.string(), conversationId: v.string() },
+  handler: async (ctx, { userId, workspaceId, accessToken, serverSecret, agentPrincipalId, conversationId }) => {
+    try {
+      await authorize({ userId, accessToken, serverSecret })
+    } catch {
+      return null
+    }
+    const rows = await ctx.db.query('workItems')
+      .withIndex('by_workspaceId_assignee', (q) => q.eq('workspaceId', workspaceId).eq('assigneePrincipalId', agentPrincipalId))
+      .take(WORK_LIMITS.listCap)
+    const row = rows.find((candidate) => candidate.archivedAt === undefined
+      && candidate.assignmentExecution?.assigneePrincipalId === agentPrincipalId
+      && candidate.assignmentExecution.conversationId !== undefined
+      && String(candidate.assignmentExecution.conversationId) === conversationId)
+    if (!row) return null
+    const readable = await getReadableRow(ctx, { row, userId, workspaceId })
+    return readable ? String(readable._id) : null
+  },
+})
+
 /** A parent must be an active task in the same workspace and scope that the caller can see, and must not make a loop. */
 async function assertParent(ctx: MutationCtx, args: { id?: string; parentId: string; workspaceId: string; scope: 'personal' | 'workspace'; userId: string }) {
   const parent = await getReadableRow(ctx, { row: await loadWorkItem(ctx, args.parentId), userId: args.userId, workspaceId: args.workspaceId })

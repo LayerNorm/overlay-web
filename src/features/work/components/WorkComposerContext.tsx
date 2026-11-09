@@ -25,7 +25,7 @@ export function WorkComposerContext({ disabled, onAdd, search }: { disabled?: bo
   }, [link, open, search, text])
   const pick = (context: WorkContextRef) => { onAdd(context); setQuery(''); setOpen(false) }
   return <Popover open={open} onOpenChange={setOpen}>
-    <PopoverTrigger asChild><PromptInputButton aria-label="Add context" disabled={disabled} className="size-8"><Plus size={16} /></PromptInputButton></PopoverTrigger>
+    <PopoverTrigger asChild><PromptInputButton aria-label="Add context" disabled={disabled}><Plus size={16} /></PromptInputButton></PopoverTrigger>
     <PopoverContent align="start" side="top" className="w-72 max-w-[calc(100vw-2rem)] p-1"><Command shouldFilter={false}>
       <CommandInput placeholder="Find a file, note, chat or paste a link" value={query} onValueChange={setQuery} />
       <CommandList><CommandEmpty>{text.length < 2 ? 'Type to search.' : 'No context found.'}</CommandEmpty>

@@ -7,7 +7,7 @@ import { Settings, X } from 'lucide-react'
 import { Button, Textarea } from '@overlay/ui/primitives'
 import { unstyledTextarea } from '@overlay/ui/control-reset'
 import { useAutosizeTextarea } from '@overlay/ui/hooks'
-import { PromptInput, PromptInputBody, PromptInputFooter, PromptInputSubmit } from '@overlay/chat-react'
+import { PromptInput, PromptInputBody, PromptInputButton, PromptInputFooter, PromptInputSubmit } from '@overlay/chat-react'
 import type { CreateWorkItemRequest, WorkContextRef, WorkItem, WorkPerson } from '@overlay/app-core'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import { WORK_LIMITS, WORK_PRIORITIES, WORK_PRIORITY_LABELS } from '@/shared/work/status'
@@ -67,29 +67,28 @@ export const WorkTaskComposerForm = forwardRef<WorkTaskComposerHandle, ComposerP
     }
   }
 
-  return <div className="shrink-0 px-3 pb-3 pt-2 md:px-6 md:pb-5" data-testid="work-task-composer">
-    <div className="rounded-2xl bg-(--surface-subtle)">
-      <div className="flex flex-wrap items-center gap-0.5 px-2 py-1.5">
-        <ComposerAssignee people={people} scope={scope} principalId={principalId} value={draft.assigneePrincipalId} onChange={assigneePrincipalId => patch({ assigneePrincipalId })} disabled={locked} />
-        <ComposerSchedule draft={draft} onChange={patch} disabled={locked} />
-        <ComposerDependencies tasks={tasks} value={draft.blockedBy} onChange={blockedBy => patch({ blockedBy })} disabled={locked} />
-        <Button type="button" variant="ghost" size="icon-sm" className="ml-auto text-(--muted)" aria-label="Task settings" aria-expanded={settingsOpen} disabled={locked} onClick={() => setSettingsOpen(!settingsOpen)}><Settings size={15} /></Button>
-      </div>
-      {settingsOpen ? <div className="grid gap-1 px-3.5 pb-3">
-        <div className="flex flex-wrap items-center gap-1"><span className="w-14 text-xs text-(--muted-light)">Status</span>{(['backlog', 'todo'] as const).map(status => <Button key={status} type="button" size="sm" className="h-7 px-2 text-xs" variant={draft.status === status ? 'secondary' : 'ghost'} aria-pressed={draft.status === status} disabled={locked} onClick={() => patch({ status })}>{status === 'todo' ? 'Todo' : 'Backlog'}</Button>)}</div>
-        <div className="flex flex-wrap items-center gap-1"><span className="w-14 text-xs text-(--muted-light)">Priority</span>{WORK_PRIORITIES.map(priority => <Button key={priority} type="button" size="sm" className="h-7 px-2 text-xs" variant={draft.priority === priority ? 'secondary' : 'ghost'} aria-pressed={draft.priority === priority} disabled={locked} onClick={() => patch({ priority })}>{WORK_PRIORITY_LABELS[priority]}</Button>)}</div>
-      </div> : null}
+  // The same composer box as chat and agent threads: one outlined card, centered at the transcript width.
+  return <div className="shrink-0 px-3 pb-3 sm:px-4 sm:pb-4" data-testid="work-task-composer">
+    <div className="mx-auto w-full min-w-0 max-w-4xl">
       <PromptInput><PromptInputBody>
+        {settingsOpen ? <div className="mb-2 grid gap-1">
+          <div className="flex flex-wrap items-center gap-1"><span className="w-14 text-xs text-(--muted-light)">Status</span>{(['backlog', 'todo'] as const).map(status => <Button key={status} type="button" size="sm" className="h-7 px-2 text-xs" variant={draft.status === status ? 'secondary' : 'ghost'} aria-pressed={draft.status === status} disabled={locked} onClick={() => patch({ status })}>{status === 'todo' ? 'Todo' : 'Backlog'}</Button>)}</div>
+          <div className="flex flex-wrap items-center gap-1"><span className="w-14 text-xs text-(--muted-light)">Priority</span>{WORK_PRIORITIES.map(priority => <Button key={priority} type="button" size="sm" className="h-7 px-2 text-xs" variant={draft.priority === priority ? 'secondary' : 'ghost'} aria-pressed={draft.priority === priority} disabled={locked} onClick={() => patch({ priority })}>{WORK_PRIORITY_LABELS[priority]}</Button>)}</div>
+        </div> : null}
         <Textarea ref={input} rows={1} aria-label="Describe a task" placeholder="Describe a task" value={draft.text} disabled={locked} onChange={event => patch({ text: event.target.value })}
           onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); void submit() } }}
-          className={unstyledTextarea('block max-h-48 min-h-11 w-full resize-none overflow-y-auto bg-transparent px-1 py-1.5 text-sm text-(--foreground) outline-none placeholder:text-(--muted-light)')} />
+          className={unstyledTextarea('block min-h-11 max-h-40 w-full resize-none overflow-y-auto bg-transparent px-0.5 py-1 text-sm leading-6 text-(--foreground) outline-none placeholder:text-(--muted-light)')} />
         {draft.context.length ? <div className="flex flex-wrap gap-1 pt-1">{draft.context.map((context, index) => <Button key={`${context.type}:${context.id}`} type="button" variant="secondary" size="sm" className="h-7 max-w-full text-xs" disabled={locked} aria-label={`Remove ${context.label}`} onClick={() => patch({ context: draft.context.filter((_, i) => i !== index) })}><span className="truncate">{context.label}</span><X size={12} /></Button>)}</div> : null}
-        <PromptInputFooter className="mt-1 flex-wrap">
+        <PromptInputFooter className="flex-wrap">
           <WorkComposerContext search={search} disabled={locked || draft.context.length >= WORK_LIMITS.contextItems} onAdd={context => patch({ context: [...draft.context.filter(item => item.type !== context.type || item.id !== context.id), context] })} />
-          <span className="flex-1" />
+          <ComposerAssignee people={people} scope={scope} principalId={principalId} value={draft.assigneePrincipalId} onChange={assigneePrincipalId => patch({ assigneePrincipalId })} disabled={locked} />
+          <ComposerSchedule draft={draft} onChange={patch} disabled={locked} />
+          <ComposerDependencies tasks={tasks} value={draft.blockedBy} onChange={blockedBy => patch({ blockedBy })} disabled={locked} />
+          <PromptInputButton aria-label="Task settings" aria-expanded={settingsOpen} disabled={locked} onClick={() => setSettingsOpen(!settingsOpen)}><Settings size={15} /></PromptInputButton>
+          <span className="min-w-0 flex-1" />
           {assignee?.type === 'agent' && draft.blockedBy.length ? <span className="text-[11px] text-(--muted-light)">Starts when dependencies finish</span> : null}
           <DesktopComposerControls disabled={locked} onAppendText={text => setDraft(current => ({ ...current, text: [current.text, text].filter(Boolean).join('\n') }))} />
-          <PromptInputSubmit aria-label="Add task" status={busy ? 'submitted' : 'ready'} disabled={locked || !draft.text.trim()} onClick={() => void submit()} className="size-8" />
+          <PromptInputSubmit aria-label="Add task" status={busy ? 'submitted' : 'ready'} disabled={locked || !draft.text.trim()} onClick={() => void submit()} />
         </PromptInputFooter>
         {error ? <p role="alert" className="mt-2 text-xs text-red-600 dark:text-red-400">{error}</p> : null}
       </PromptInputBody></PromptInput>

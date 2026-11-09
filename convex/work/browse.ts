@@ -55,6 +55,41 @@ export const get = query({
   },
 })
 
+const ACTIVE_RUN = new Set(['queued', 'running', 'waiting_for_approval', 'waiting_for_input', 'waiting_for_children', 'waiting_for_resources', 'waiting_for_authorization'])
+
+/**
+ * The agent thread working on a task, live: where it is and whether its latest turn is still going. Only the member
+ * who assigned the task owns that thread, so everyone else gets `{ visible: false }` instead of a link. Null when the
+ * task is hidden or no agent has picked it up.
+ */
+export const linkedThread = query({
+  args: { workspaceId: v.string(), id: v.string() },
+  handler: async (ctx, { workspaceId, id }) => {
+    const viewer = await workViewerOrNull(ctx, workspaceId)
+    if (!viewer) return null
+    const row = await getReadableRow(ctx, { row: await loadWorkItem(ctx, id), userId: viewer.userId, workspaceId })
+    const conversationId = row?.assignmentExecution?.conversationId
+    if (!row || !conversationId) return null
+    const thread = await ctx.db.get(conversationId)
+    if (!thread || thread.deletedAt || !thread.agentId || thread.workspaceId !== workspaceId) return null
+    if (thread.userId !== viewer.userId) return { visible: false as const }
+    const run = await ctx.db.query('conversationAgentRuns')
+      .withIndex('by_conversationId_createdAt', (q) => q.eq('conversationId', conversationId))
+      .order('desc')
+      .first()
+    const failed = row.assignmentExecution?.status === 'failed' || run?.status === 'failed' || run?.status === 'cancelled'
+    const state = failed ? 'stopped' as const : !run || ACTIVE_RUN.has(run.status) ? 'working' as const : 'finished' as const
+    return {
+      visible: true as const,
+      conversationId: String(conversationId),
+      agentId: thread.agentId,
+      title: thread.title,
+      state,
+      updatedAt: run?.updatedAt ?? thread.lastModified,
+    }
+  },
+})
+
 /** Who is asking and who a task can be given to. Null for guests and without Work access. */
 export const context = query({
   args: { workspaceId: v.string() },

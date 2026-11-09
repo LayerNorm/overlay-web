@@ -68,3 +68,22 @@ test('archived chat links name their workspace so a full page load opens them th
   assert.equal(href({ ...baseWorkspace, routingHandle: 'team' }), '/w/team/archived?id=chat-1')
   assert.equal(href(baseWorkspace), '/app/w/workspace-1/archived?id=chat-1')
 })
+
+test('a Work task link moved to its own scope keeps one query string with the task', () => {
+  for (const routingHandle of [undefined, 'team']) {
+    const workspace = { ...baseWorkspace, routingHandle }
+    const href = buildWorkspaceHrefForContext({
+      workspaceId: null,
+      href: '/app/w/workspace-1/work?view=list&task=task-1',
+      scope: 'personal',
+      currentScope: 'workspace',
+      target: { kind: 'id', value: 'workspace-1' },
+      workspaces: [workspace],
+      activeWorkspace: workspace,
+    })
+    assert.equal(href.split('?').length, 2, href)
+    const url = new URL(href, 'https://x.invalid')
+    assert.equal(url.searchParams.get('task'), 'task-1')
+    assert.ok(url.pathname.includes('/personal/') || url.searchParams.get('scope') === 'personal', href)
+  }
+})

@@ -14,6 +14,7 @@ function repository(overrides: Partial<WorkRepository> = {}): WorkRepository {
   return {
     list: async () => [item],
     get: async () => item,
+    assignedTaskIdForConversation: async () => null,
     context: async () => ({ principalId: 'p1', role: 'member', canCreateInWorkspace: true, people: [] }),
     create: async () => item,
     update: async () => item,
