@@ -466,6 +466,7 @@ function RoomMessageAvatar({ message }: { message: RoomMessageView }) {
           agent={{ name: message.authorName, avatarColor: message.authorColor, avatarShape: message.authorShape }}
           size={32}
           animated={message.streaming}
+          working={message.streaming}
         />
       </span>
     )
@@ -777,15 +778,9 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onContro
         generatedUiReadOnly={readOnly}
       />
       {message.remoteDrive ? <RemoteDriveStatus status={message.remoteDrive} /> : null}
+      {/* The avatar beside the name shows activity; no second indicator under the reply. */}
       {message.streaming ? (
-        <div className="flex items-center gap-1 py-1" aria-label={`${message.authorName} is responding`}>
-          {[0, 1, 2].map((dot) => (
-            <span
-              key={dot}
-              className="h-1.5 w-1.5 animate-pulse rounded-full bg-(--muted-light)"
-              style={{ animationDelay: `${dot * 120}ms` }}
-            />
-          ))}
+        <div className="flex items-center gap-1 empty:hidden" role="status" aria-label={`${message.authorName} is responding`}>
           {message.remoteRun?.state !== 'finalizing' ? remoteStatus : null}
         </div>
       ) : null}

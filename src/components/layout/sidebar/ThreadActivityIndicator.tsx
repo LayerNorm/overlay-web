@@ -2,10 +2,11 @@ import { Check, CircleAlert, LoaderCircle, MessageCircleQuestion, Square } from 
 import { DelayedTooltip } from '@overlay/ui/overlays'
 import { THREAD_ACTIVITY_LABELS, summarizeThreadActivity, type ThreadActivity, type ThreadActivityStatus } from '@/shared/agents/thread-activity'
 
-const ICONS = { working: LoaderCircle, needs_input: MessageCircleQuestion, ready: Check, completed: Check, failed: CircleAlert, cancelled: Square }
+const ICONS = { working: LoaderCircle, needs_input: MessageCircleQuestion, ready: Check, failed: CircleAlert, cancelled: Square }
 
 export function ThreadActivityIndicator({ status }: { status?: ThreadActivityStatus }) {
-  if (!status || status === 'idle') return null
+  // A reviewed result is an ordinary thread: only unreviewed results keep the check.
+  if (!status || status === 'idle' || status === 'completed') return null
   const Icon = ICONS[status]
   const label = THREAD_ACTIVITY_LABELS[status]
   return <DelayedTooltip label={label} side="right" className="shrink-0"><span className="agent-thread-status" data-status={status} role="img" aria-label={label}>

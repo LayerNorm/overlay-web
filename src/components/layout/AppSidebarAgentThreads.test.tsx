@@ -80,7 +80,6 @@ test('single-line titles have accessible live status icons without status subtit
   for (const [status, label, icon] of [
     ['working', 'Working', 'lucide-loader-circle'],
     ['ready', 'Ready to review', 'lucide-check'],
-    ['completed', 'Completed', 'lucide-check'],
     ['needs_input', 'Needs you', 'lucide-message-circle-question'],
     ['failed', 'Failed', 'lucide-circle-alert'],
     ['cancelled', 'Cancelled', 'lucide-square'],
@@ -95,7 +94,9 @@ test('single-line titles have accessible live status icons without status subtit
 })
 
 test('threads without activity render text without an empty status icon slot', () => {
-  for (const activity of [undefined, [], [{ conversationId: 'c_plan', status: 'idle' as const }]]) {
+  for (const activity of [undefined, [], [{ conversationId: 'c_plan', status: 'idle' as const }],
+    // A reviewed result reads as an ordinary thread.
+    [{ conversationId: 'c_plan', status: 'completed' as const }]]) {
     const html = render(bundle, { activity })
     assert.match(html, /Q4 launch plan/)
     assert.match(html, /agent-thread-tree/)

@@ -63,7 +63,9 @@ export function AgentThreadRows({
     <SidebarMenu className="agent-thread-tree mb-2.5" aria-label={`${agent.name} threads`}>
       {threads.map((thread) => {
         const active = activeConversationId === thread.conversationId
-        const status = statuses.get(thread.conversationId)
+        // Idle and reviewed threads are plain rows: no icon, and no status in their label.
+        const raw = statuses.get(thread.conversationId)
+        const status = raw === 'idle' || raw === 'completed' ? undefined : raw
         return (
           <SidebarMenuSubItem key={thread.conversationId}>
             <ThreadButton
