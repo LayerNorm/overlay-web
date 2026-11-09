@@ -12,6 +12,16 @@ including which routes were converted, which were intentionally left with
 `Suspense` boundary with `WorkRouteSkeleton`. Scope/search-param hooks stay within
 that boundary; no `instant = false` opt-out is added.
 
+## Boot fallback continuity
+
+Only the outer `/app` layout fallback starts the brand entrance. The nested
+`AppShellLayout` fallback and route-level `InitialAppLoading` use the settled
+loader, including in server-rendered HTML. A streamed Suspense replacement can
+paint before either fallback hydrates, so the client entrance claim alone cannot
+prevent a second fade. Workspace hydration and root-entry handoffs are also
+settled; subsequent route navigation uses ordinary content skeletons once the
+app has painted. Keep these boundaries and their authentication behavior intact.
+
 ## Migration approach
 
 The migration uses Next.js's incremental `instant = false` opt-out path. All

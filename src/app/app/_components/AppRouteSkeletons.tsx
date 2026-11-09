@@ -36,17 +36,17 @@ function PageHeaderSkeleton({ actions = 2 }: { actions?: number }) {
   )
 }
 
-export function AppShellLoadingFallback() {
-  return <InitialAppLoading />
+export function AppShellLoadingFallback({ settled = false }: { settled?: boolean }) {
+  return <InitialAppLoading settled={settled} />
 }
 
-export function InitialAppLoading() {
+export function InitialAppLoading({ settled = true }: { settled?: boolean }) {
   // The brand loader is a boot screen: once the app has rendered real content,
   // route fallbacks show a plain skeleton instead of re-flashing the lockup.
   if (bootAppShown.wasShown()) {
     return <WorkRouteSkeleton />
   }
-  return <AppBootLoader />
+  return <AppBootLoader settled={settled} />
 }
 
 export function ChatRouteSkeleton({ mode = 'chat' }: { mode?: 'chat' | 'automate' }) {
