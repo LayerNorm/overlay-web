@@ -35,6 +35,10 @@ test('route policies are exact and expose typed resource requirements', () => {
     { access: 'authenticated' },
   )
   assert.deepEqual(
+    getAuthorizationRoutePolicy('POST', '/api/v1/notebook-agent'),
+    { access: 'capability', capabilities: ['models.use', 'conversations.edit'] },
+  )
+  assert.deepEqual(
     getAuthorizationRoutePolicy('DELETE', '/api/v1/files'),
     {
       access: 'resource',

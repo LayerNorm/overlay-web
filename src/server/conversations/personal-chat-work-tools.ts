@@ -137,9 +137,10 @@ export async function executePersonalChatWorkTool(
 ): Promise<unknown> {
   'use step'
 
-  if (options.context.notebook) {
+  const notebook = options.context.notebook
+  if (notebook) {
     const { executeNotebookHarnessTool } = await import('@/server/notebook/notebook-agent-tools')
-    const context = options.context
+    const context = { ...options.context, notebook }
     return await executeNotebookHarnessTool({
       toolName: context.toolName,
       value: input,

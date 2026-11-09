@@ -389,7 +389,20 @@ function editorBlockText(node: HastNodes, preserveWhitespace = false): string {
   if (node.type === 'text') return preserveWhitespace ? node.value : node.value.replace(/[ \t\r\n\f]+/g, ' ')
   if (node.type === 'element' || node.type === 'root') {
     const preserve = preserveWhitespace || node.type === 'element' && node.tagName === 'pre'
-    return node.children.map(child => editorBlockText(child, preserve)).join('')
+    const children = node.type === 'element' && ['ul', 'ol'].includes(node.tagName)
+      ? node.children.filter(child => child.type !== 'text' || child.value.trim())
+      : node.children
+    let previousWasBreak = false
+    return children.reduce((text, child) => {
+      if (child.type === 'element' && child.tagName === 'br') {
+        previousWasBreak = true
+        return text.replace(/[ \t\r\n\f]+$/, '')
+      }
+      const childText = editorBlockText(child, preserve)
+      const normalizedText = previousWasBreak ? childText.replace(/^[ \t\r\n\f]+/, '') : childText
+      previousWasBreak = false
+      return text + normalizedText
+    }, '')
   }
   return ''
 }
@@ -400,6 +413,6 @@ export function noteMarkdownToEditorText(markdown: string): string {
   const root = fromHtml(html, { fragment: true })
   return root.children
     .filter((child): child is Element => child.type === 'element')
-    .map(editorBlockText)
+    .map(child => editorBlockText(child))
     .join('\n')
 }

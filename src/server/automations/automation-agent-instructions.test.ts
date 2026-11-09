@@ -1,4 +1,7 @@
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
+
+vi.mock('server-only', () => ({}))
+
 import { buildAutomationAgentInstructions } from './automation-agent-instructions'
 
 describe('automation turn instructions', () => {

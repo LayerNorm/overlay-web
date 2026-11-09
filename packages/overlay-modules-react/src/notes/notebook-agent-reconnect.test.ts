@@ -1,7 +1,10 @@
 import { describe, expect, test, vi } from 'vitest'
 import type { NotebookAgentRequest } from '@overlay/app-core'
 import {
+  cancelNotebookRunAfterReconnectExhaustion,
   followNotebookAgentStream,
+  NOTEBOOK_RECONNECT_EXHAUSTED_MESSAGE,
+  notebookRunMayUpdate,
   notebookSnapshotMatches,
   stopNotebookRunAfterAcceptance,
 } from './notebook-agent-reconnect'
@@ -49,12 +52,14 @@ describe('Notebook stream reconnect', () => {
 
   test('caps reconnect attempts', async () => {
     let calls = 0
+    const requests: NotebookAgentRequest[] = []
     const result = await followNotebookAgentStream({
       request,
       signal: new AbortController().signal,
       getIdentity: () => null,
-      runAgent: async () => {
+      runAgent: async (next) => {
         calls += 1
+        requests.push(next)
         return new Response('')
       },
       readStream: async () => false,
@@ -63,6 +68,24 @@ describe('Notebook stream reconnect', () => {
 
     expect(result).toEqual({ status: 'exhausted' })
     expect(calls).toBe(4)
+    expect(requests.map(next => next.turnId)).toEqual(['turn-1', 'turn-1', 'turn-1', 'turn-1'])
+    expect(requests.every(next => next.runId === undefined)).toBe(true)
+  })
+
+  test('retains the admitted identity when cancellation after retry exhaustion fails', async () => {
+    const run = { identity: { runId: 'run-1', conversationId: 'conversation-1', turnId: 'turn-1' } }
+    const disconnect = vi.fn()
+    const cancelled = await cancelNotebookRunAfterReconnectExhaustion({
+      run,
+      stopAgent: async () => { throw new Error('stop failed') },
+      disconnect,
+    })
+
+    expect(cancelled).toBe(false)
+    expect(run.identity).toEqual({ runId: 'run-1', conversationId: 'conversation-1', turnId: 'turn-1' })
+    expect(disconnect).not.toHaveBeenCalled()
+    expect(NOTEBOOK_RECONNECT_EXHAUSTED_MESSAGE)
+      .toBe('The Notebook stream disconnected repeatedly. Stop this run before starting another request.')
   })
 
   test('cancels an accepted run before disconnecting its observer', async () => {
@@ -99,5 +122,26 @@ describe('Notebook stream reconnect', () => {
     expect(notebookSnapshotMatches(frozen)).toBe(true)
     expect(notebookSnapshotMatches({ ...frozen, currentMarkdown: '# Edited' })).toBe(false)
     expect(notebookSnapshotMatches({ ...frozen, currentTitle: 'Renamed' })).toBe(false)
+  })
+
+  test('a late callback cannot update a different note or a replacement run', () => {
+    expect(notebookRunMayUpdate({
+      currentNoteId: 'note-2',
+      runNoteId: 'note-1',
+      currentToken: 2,
+      runToken: 1,
+    })).toBe(false)
+    expect(notebookRunMayUpdate({
+      currentNoteId: 'note-1',
+      runNoteId: 'note-1',
+      currentToken: 2,
+      runToken: 1,
+    })).toBe(false)
+    expect(notebookRunMayUpdate({
+      currentNoteId: 'note-1',
+      runNoteId: 'note-1',
+      currentToken: 1,
+      runToken: 1,
+    })).toBe(true)
   })
 })

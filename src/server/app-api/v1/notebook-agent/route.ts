@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { NextRequest, NextResponse } from 'next/server'
 import { z } from 'zod/v3'
+import type { Id } from '../../../../../convex/_generated/dataModel'
 import type { NotebookAgentStreamEvent } from '@overlay/app-core'
 import { normalizeNotebookTitle } from '@overlay/app-core'
 import { getOverlayServerContext } from '@/server/bootstrap'
@@ -30,10 +31,11 @@ import {
   personalHarnessAuthentication,
   startPersonalHarness,
 } from '@/server/harness/personal-admission'
+import { isApiKeyChatWriteAllowed } from '@/server/harness/personal-access'
+import { logger } from '@/server/observability/logger'
 import { describeNotebookTools } from '@/server/notebook/notebook-agent-tools'
 import {
   parseNotebookCursor,
-  parseNotebookSnapshotCursor,
   projectNotebookTerminal,
   projectNotebookTranscriptStep,
 } from '@/server/notebook/notebook-agent-stream'
@@ -63,9 +65,9 @@ const BodySchema = z.object({
   mentions: z.array(MentionSchema).max(100).optional(),
 })
 
-function conversationClientId(input: { userId: string; workspaceId: string; noteId: string; turnId: string }): string {
+function conversationClientId(input: { userId: string; workspaceId: string; noteId: string }): string {
   const digest = createHash('sha256')
-    .update(JSON.stringify([input.userId, input.workspaceId, input.noteId, input.turnId]))
+    .update(JSON.stringify([input.userId, input.workspaceId, input.noteId]))
     .digest('hex')
     .slice(0, 32)
   return `notebook-agent-${digest}`
@@ -111,7 +113,6 @@ function createNotebookStream(input: {
       const cursor = parseNotebookCursor(input.cursor)
       let afterSequence = cursor ? cursor.sequence - 1 : -1
       let afterCursor = cursor ?? undefined
-      let active = parseNotebookSnapshotCursor(input.cursor)
 
       void (async () => {
         try {
@@ -136,23 +137,6 @@ function createNotebookStream(input: {
               afterSequence = Math.max(afterSequence, state.nextSequence)
               continue
             }
-            const snapshot = state.snapshot
-            if (snapshot) {
-              const text = [snapshot.text, snapshot.truncatedMarker].filter(Boolean).join('\n\n')
-              const same = active?.generation === snapshot.executionGeneration && active.receiptId === snapshot.receiptId
-              const offset = same ? active.offset : 0
-              if (text.length > offset) {
-                const end = text.length
-                emit({
-                  type: 'text',
-                  text: text.slice(offset),
-                  eventId: `${input.runId}:${snapshot.executionGeneration}:${snapshot.receiptId}:text:${offset}:${end}`,
-                  sequence: state.nextSequence ?? afterSequence + 1,
-                  cursor: `s:${snapshot.executionGeneration}:${snapshot.receiptId}:${end}`,
-                })
-                active = { generation: snapshot.executionGeneration, receiptId: snapshot.receiptId, offset: end }
-              }
-            }
             if (isTerminal(state.status)) {
               for (const event of projectNotebookTerminal({ runId: input.runId, status: state.status })) emit(event)
               controller.close()
@@ -161,17 +145,15 @@ function createNotebookStream(input: {
             await new Promise(resolve => setTimeout(resolve, 150))
           }
           if (!stopped) controller.close()
-        } catch (error) {
+        } catch (_error) {
           if (!stopped && !input.signal.aborted) {
-            emit({ type: 'error', error: 'Could not load the Notebook run.' })
-            emit({ type: 'done', eventId: `${input.runId}:terminal:done` })
             controller.close()
           }
         }
       })()
       input.signal.addEventListener('abort', () => {
         stopped = true
-        try { controller.close() } catch { /* stream already closed */ }
+        try { controller.close() } catch (_error) { /* stream already closed */ }
       }, { once: true })
     },
     cancel() {
@@ -196,15 +178,36 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const workspaceId = context.workspace.workspace.id
     const principalId = context.workspace.principal.id
     const server = getOverlayServerContext()
-    const [note, noteEditGrant, modelUseGrant] = await Promise.all([
+    if (auth.authType === 'api-key'
+      && !(await isApiKeyChatWriteAllowed(userId, auth.apiKeyId!, server))) {
+      return jsonError('Unauthorized.', 401)
+    }
+    const [note, noteEditGrant, modelUseGrant, conversationEditGrant] = await Promise.all([
       new NoteService({ noteRepository: new ConvexNoteRepository() }).getNote({
         noteId: body.noteId, userId, workspaceId,
       }),
       server.authorizationService.checkCapability({ capability: 'notes.edit', userId }),
       server.authorizationService.checkCapability({ capability: 'models.use', userId }),
+      server.authorizationService.checkCapability({ capability: 'conversations.edit', userId }),
     ])
     if (!note) return jsonError('Notebook not found or not accessible in this workspace.', 404)
-    if (!noteEditGrant.allowed || !modelUseGrant.allowed) {
+    const subject = await server.authorizationService.resolveSubject(userId)
+    const noteOwnerUserId = await server.authorizationService.getResourceOwner({
+      resourceId: body.noteId,
+      resourceType: 'note',
+    })
+    const noteResourceEdit = noteOwnerUserId
+      ? await server.authorizationService.checkResolvedResourceAccess({
+        action: 'edit',
+        capability: 'notes.edit',
+        ownerUserId: noteOwnerUserId,
+        resourceId: body.noteId,
+        resourceType: 'note',
+        subject,
+      })
+      : { allowed: false }
+    if (!noteEditGrant.allowed || !noteResourceEdit.allowed || !modelUseGrant.allowed
+      || !conversationEditGrant.allowed) {
       return jsonError('You are not authorized to use the Notebook agent.', 403)
     }
     const noteMarkdownSnapshot = toCanonicalNoteMarkdown(note.content ?? '')
@@ -231,20 +234,27 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       modelId,
       mentions: body.mentions,
     })
-    const memoryGrant = await server.authorizationService.checkCapability({ capability: 'memory.use', userId })
-    const knowledgeGrant = await server.authorizationService.checkCapability({ capability: 'knowledge.read', userId })
-    const searchKnowledge = knowledgeGrant.allowed
-      && (await server.authorizationService.checkCapability({ capability: 'tools.use', userId })).allowed
+    const [memoryGrant, toolsUseGrant] = await Promise.all([
+      server.authorizationService.checkCapability({ capability: 'memory.use', userId }),
+      server.authorizationService.checkCapability({ capability: 'tools.use', userId }),
+    ])
+    const searchKnowledge = toolsUseGrant.allowed
+      && (await server.authorizationService.checkResolvedCatalogResourceAccess({
+        capability: 'tools.use',
+        resourceId: 'search_knowledge',
+        resourceType: 'tool',
+        subject,
+      })).allowed
     const memoryEnabled = memoryGrant.allowed
 
     const conversationId = await ensureActConversationId({
       userId,
       repository: actConversationRepository,
-      conversationClientId: conversationClientId({ userId, workspaceId, noteId: body.noteId, turnId: body.turnId }),
+      conversationClientId: conversationClientId({ userId, workspaceId, noteId: body.noteId }),
       scope: 'personal',
       workspaceId,
       entitlements: gate.runtimeEntitlements,
-      title: 'Notebook Agent',
+      title: `Notebook: ${normalizeNotebookTitle(note.title ?? '')}`,
       askModelIds: [modelId],
       actModelId: modelId,
     })
@@ -255,7 +265,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     const repository = new ConvexHarnessRepository()
-    let agentRun = await actConversationRepository.getLatestAgentRun({ conversationId, turnId: body.turnId, userId })
+    let agentRun = (await actConversationRepository.getLatestAgentRun({ conversationId, turnId: body.turnId, userId })) ?? null
     const expectedHarnessRunId = agentRun ? `personal:${agentRun.id}` : null
     if (agentRun?.harnessRunId && agentRun.harnessRunId !== expectedHarnessRunId) {
       return jsonError('Notebook run is not accessible.', 403)
@@ -266,9 +276,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     if (agentRun?.harnessRunId && !state) return jsonError('Notebook run is not accessible.', 403)
     if (body.runId && (!state || body.runId !== state.runId)) return jsonError('Notebook run identity is invalid.', 409)
     if (state) {
+      if (!agentRun) return jsonError('Notebook run is not accessible.', 403)
       assertNotebookIdentity({
         state, userId, workspaceId, noteId: body.noteId, turnId: body.turnId,
-        conversationId: String(conversationId), requestDigest, runId: body.runId,
+        conversationId: String(conversationId), agentRun, requestDigest, runId: body.runId,
       })
     } else {
       if (toCanonicalNoteMarkdown(body.noteContent) !== noteMarkdownSnapshot
@@ -298,9 +309,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           mode: 'act',
         })
       if (!userMessageId) return jsonError('Notebook request could not be persisted.', 500)
-      agentRun ??= await agentRunService.startPersonalWorkflow({
-        conversationId, modelId, turnId: body.turnId, userId, userMessageId,
-      })
+      agentRun = agentRun ?? (await agentRunService.startPersonalWorkflow({
+        conversationId,
+        modelId,
+        turnId: body.turnId,
+        userId,
+        userMessageId: userMessageId as Id<'conversationMessages'>,
+      })) ?? null
       if (!agentRun) return jsonError('Notebook run could not be created.', 500)
       const mentionsContext = await resolveMentionsContext(body.mentions, { userId, serverSecret: getInternalApiSecret() })
       const allowedToolIds = [
@@ -356,7 +371,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       if (!state) return jsonError('Notebook run admission is pending; reconnect with the same turn ID.', 503)
       assertNotebookIdentity({
         state, userId, workspaceId, noteId: body.noteId, turnId: body.turnId,
-        conversationId: String(conversationId), requestDigest, runId: body.runId,
+        conversationId: String(conversationId), agentRun, requestDigest, runId: body.runId,
       })
     }
     if (!state) return jsonError('Notebook run is unavailable.', 404)
@@ -372,7 +387,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
   } catch (error) {
     if (error instanceof PersonalHarnessAdmissionConflict) return jsonError(error.message, 409)
     if (error instanceof PersonalHarnessStartPending) return jsonError(error.message, 503)
-    console.error('[notebook-agent]', summarizeErrorForLog(error))
+    logger.error('[notebook-agent]', summarizeErrorForLog(error))
     return jsonError('Notebook agent could not start.', 500)
   }
 }

@@ -111,12 +111,19 @@ export async function executeNotebookHarnessTool(input: {
     case 'search_knowledge': {
       const value = objectInput(input.value)
       if (typeof value.query !== 'string' || !input.context.notebook) throw new Error('Invalid knowledge search.')
-      const [knowledgeGrant, toolGrant, memoryGrant] = await Promise.all([
-        server.authorizationService.checkCapability({ capability: 'knowledge.read', userId: input.context.userId }),
+      const [toolGrant, memoryGrant, subject] = await Promise.all([
         server.authorizationService.checkCapability({ capability: 'tools.use', userId: input.context.userId }),
         server.authorizationService.checkCapability({ capability: 'memory.use', userId: input.context.userId }),
+        server.authorizationService.resolveSubject(input.context.userId),
       ])
-      if (!knowledgeGrant.allowed || !toolGrant.allowed) {
+      const catalogGrant = await server.authorizationService.checkResolvedCatalogResourceAccess({
+        capability: 'tools.use',
+        resourceId: 'search_knowledge',
+        resourceType: 'tool',
+        subject,
+      })
+      if (!toolGrant.allowed || !catalogGrant.allowed
+        || !input.context.accountAllowedToolIds?.includes('search_knowledge')) {
         throw new Error('Knowledge search is no longer authorized.')
       }
       return await executeSearchKnowledge({

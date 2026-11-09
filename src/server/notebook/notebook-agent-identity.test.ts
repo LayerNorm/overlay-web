@@ -10,8 +10,7 @@ const requestDigest = notebookRequestDigest({
   modelId: 'test-model',
 })
 const state = {
-  runId: 'harness-run-1',
-  source: { conversationId: 'conversation-1' },
+  runId: 'personal:agent-run-1',
   policy: {
     actorUserId: 'user-1',
     workspaceId: 'workspace-1',
@@ -22,13 +21,19 @@ const state = {
 
 const request = {
   state,
+  agentRun: {
+    id: 'agent-run-1',
+    conversationId: 'conversation-1',
+    userId: 'user-1',
+    turnId: 'turn-1',
+  },
   userId: 'user-1',
   workspaceId: 'workspace-1',
   noteId: 'note-1',
   turnId: 'turn-1',
   conversationId: 'conversation-1',
   requestDigest,
-  runId: 'harness-run-1',
+  runId: 'personal:agent-run-1',
 }
 
 describe('Notebook reconnect identity', () => {

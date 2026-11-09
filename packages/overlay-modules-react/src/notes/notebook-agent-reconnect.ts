@@ -7,6 +7,18 @@ export type NotebookAgentIdentity = {
   cursor?: string
 }
 
+export const NOTEBOOK_RECONNECT_EXHAUSTED_MESSAGE =
+  'The Notebook stream disconnected repeatedly. Stop this run before starting another request.'
+
+export function notebookRunMayUpdate(input: {
+  currentNoteId: string | undefined
+  runNoteId: string
+  currentToken: number | null
+  runToken: number
+}): boolean {
+  return input.currentToken === input.runToken && input.currentNoteId === input.runNoteId
+}
+
 export type NotebookAgentReconnectResult =
   | { status: 'complete' | 'stopped' | 'exhausted' }
   | { status: 'request-error'; response: Response }
@@ -29,6 +41,22 @@ export async function stopNotebookRunAfterAcceptance(input: {
   if (!input.requested) return
   await input.stopAgent(input.identity)
   input.disconnect()
+}
+
+export async function cancelNotebookRunAfterReconnectExhaustion(input: {
+  run: { identity: NotebookAgentIdentity | null }
+  stopAgent: (identity: Pick<NotebookAgentIdentity, 'conversationId' | 'turnId'>) => Promise<void>
+  disconnect: () => void
+}): Promise<boolean> {
+  if (!input.run.identity) return false
+  try {
+    await input.stopAgent(input.run.identity)
+    input.run.identity = null
+    input.disconnect()
+    return true
+  } catch {
+    return false
+  }
 }
 
 export async function followNotebookAgentStream(input: {

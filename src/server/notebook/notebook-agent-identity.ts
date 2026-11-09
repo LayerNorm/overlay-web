@@ -25,6 +25,7 @@ export function notebookRequestDigest(input: {
 
 export function matchesNotebookRunIdentity(input: {
   state: HarnessSnapshot
+  agentRun: { id: string; conversationId: string; userId: string; turnId: string }
   userId: string
   workspaceId: string
   noteId: string
@@ -37,14 +38,16 @@ export function matchesNotebookRunIdentity(input: {
   const surface = state.policy.surface
   const allowedToolIds = state.policy.allowedToolIds
   return (!input.runId || input.runId === state.runId)
+    && state.runId === `personal:${input.agentRun.id}`
+    && input.agentRun.conversationId === input.conversationId
+    && input.agentRun.userId === input.userId
+    && input.agentRun.turnId === input.turnId
     && state.policy.actorUserId === input.userId
     && state.policy.workspaceId === input.workspaceId
     && surface?.kind === 'notebook'
     && surface.noteId === input.noteId
     && surface.turnId === input.turnId
     && surface.requestDigest === input.requestDigest
-    && 'conversationId' in state.source
-    && state.source.conversationId === input.conversationId
     && ['read_note', 'propose_edit', 'finish'].every(id => allowedToolIds.includes(id))
     && allowedToolIds.every(id => ['search_knowledge', 'read_note', 'propose_edit', 'finish'].includes(id))
 }

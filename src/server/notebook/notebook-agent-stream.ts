@@ -17,15 +17,15 @@ function transcriptEvent(
   runId: string,
   generation: number,
   sequence: number,
-  index: number,
+  offset: number,
   value: Record<string, unknown>,
 ): NotebookAgentStreamEvent {
   return {
     ...value,
     type,
-    eventId: `${runId}:${generation}:${sequence}:${index}`,
+    eventId: `${runId}:${generation}:${sequence}:${offset}`,
     sequence,
-    cursor: `${sequence}.${index}`,
+    cursor: `${sequence}.${offset}`,
   } as NotebookAgentStreamEvent
 }
 
@@ -44,10 +44,14 @@ export function projectNotebookTranscriptStep(input: {
   const parts = step.persistence.parts.length
     ? step.persistence.parts
     : step.persistence.content ? [{ type: 'text', text: step.persistence.content }] : []
-  for (const [index, part] of parts.entries()) {
-    if (input.afterCursor?.sequence === step.sequence && index <= input.afterCursor.index) continue
+  for (const [partIndex, part] of parts.entries()) {
+    const offset = partIndex * 2
+    const shouldEmit = (eventOffset: number) =>
+      input.afterCursor?.sequence !== step.sequence || eventOffset > input.afterCursor.index
     if (part.type === 'text' && typeof part.text === 'string' && part.text) {
-      events.push(transcriptEvent('text', runId, step.executionGeneration, step.sequence, index, { text: part.text }))
+      if (shouldEmit(offset)) {
+        events.push(transcriptEvent('text', runId, step.executionGeneration, step.sequence, offset, { text: part.text }))
+      }
       continue
     }
     if (part.type !== 'tool-invocation' || !part.toolInvocation || typeof part.toolInvocation !== 'object') continue
@@ -56,21 +60,25 @@ export function projectNotebookTranscriptStep(input: {
     if (typeof name !== 'string' || !notebookTools.has(name)) continue
     const toolInput = invocation.toolInput && typeof invocation.toolInput === 'object'
       ? invocation.toolInput as Record<string, unknown> : {}
-    events.push(transcriptEvent('tool_call', runId, step.executionGeneration, step.sequence, index, {
-      tool: name,
-      toolInput: boundedToolInput(name, toolInput),
-    }))
+    if (shouldEmit(offset)) {
+      events.push(transcriptEvent('tool_call', runId, step.executionGeneration, step.sequence, offset, {
+        tool: name,
+        toolInput: boundedToolInput(name, toolInput),
+      }))
+    }
     if (name !== 'propose_edit' || invocation.state !== 'output-available'
       || !invocation.toolOutput || typeof invocation.toolOutput !== 'object') continue
     const output = invocation.toolOutput as Record<string, unknown>
     if (output.success !== true || !validEdit(output.edit)) continue
-    events.push({
-      type: 'edit_proposal',
-      edit: output.edit,
-      eventId: `${runId}:${step.executionGeneration}:${step.sequence}:proposal:${output.edit.id}`,
-      sequence: step.sequence,
-      cursor: `${step.sequence}.${index}`,
-    })
+    if (shouldEmit(offset + 1)) {
+      events.push({
+        type: 'edit_proposal',
+        edit: output.edit,
+        eventId: `${runId}:${step.executionGeneration}:${step.sequence}:${offset + 1}`,
+        sequence: step.sequence,
+        cursor: `${step.sequence}.${offset + 1}`,
+      })
+    }
   }
   return events
 }
@@ -83,18 +91,6 @@ export function parseNotebookCursor(cursor: string | undefined): { sequence: num
   const index = Number(match[2])
   if (!Number.isSafeInteger(sequence) || !Number.isSafeInteger(index)) return null
   return { sequence, index }
-}
-
-export function parseNotebookSnapshotCursor(
-  cursor: string | undefined,
-): { generation: number; receiptId: string; offset: number } | null {
-  if (!cursor) return null
-  const match = /^s:(\d+):(model:\d+):(\d+)$/.exec(cursor)
-  if (!match) return null
-  const generation = Number(match[1])
-  const offset = Number(match[3])
-  if (!Number.isSafeInteger(generation) || !Number.isSafeInteger(offset)) return null
-  return { generation, receiptId: match[2]!, offset }
 }
 
 export function projectNotebookTerminal(input: { runId: string; status: string }): NotebookAgentStreamEvent[] {

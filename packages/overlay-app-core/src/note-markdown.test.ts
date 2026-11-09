@@ -90,6 +90,7 @@ test('Markdown snapshot text uses one line per editor block', () => {
   )
   assert.equal(noteMarkdownToEditorText('first\nsecond'), 'first second')
   assert.equal(noteMarkdownToEditorText('line one\\\nline two'), 'line oneline two')
+  assert.equal(noteMarkdownToEditorText('# Heading\n\nfirst\nsecond'), 'Heading\nfirst second')
 })
 
 test('raw HTML in a note is sanitized', () => {
