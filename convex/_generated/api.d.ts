@@ -169,6 +169,7 @@ import type * as lib_scopeMutations from "../lib/scopeMutations.js";
 import type * as lib_staging from "../lib/staging.js";
 import type * as lib_usageMarkup from "../lib/usageMarkup.js";
 import type * as lib_userMessageMetadata from "../lib/userMessageMetadata.js";
+import type * as lib_workDependencies from "../lib/workDependencies.js";
 import type * as lib_workItems from "../lib/workItems.js";
 import type * as lib_workspaceHandles from "../lib/workspaceHandles.js";
 import type * as lib_workspaceMembership from "../lib/workspaceMembership.js";
@@ -378,6 +379,7 @@ declare const fullApi: ApiFromModules<{
   "lib/staging": typeof lib_staging;
   "lib/usageMarkup": typeof lib_usageMarkup;
   "lib/userMessageMetadata": typeof lib_userMessageMetadata;
+  "lib/workDependencies": typeof lib_workDependencies;
   "lib/workItems": typeof lib_workItems;
   "lib/workspaceHandles": typeof lib_workspaceHandles;
   "lib/workspaceMembership": typeof lib_workspaceMembership;
