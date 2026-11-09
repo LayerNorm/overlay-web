@@ -25,7 +25,11 @@ async function nativeDelivery(ctx: MutationCtx, run: Doc<'harnessRuns'>, metadat
     || conversation.workspaceId !== metadata.policy.workspaceId || conversation.deletedAt !== undefined
     || !user || user.role !== 'user' || user.deletedAt !== undefined
     || !message || message.role !== 'assistant' || message.status !== 'generating' || message.deletedAt !== undefined
-    || [user, message].some(row => row.conversationId !== delivery.conversationId || row.turnId !== delivery.turnId)
+    || [user, message].some(row => row.conversationId !== delivery.conversationId)
+    // The reply always carries the delivery's turn. In an agent thread (room or work) the
+    // person's message keeps its own turn id, so only chat deliveries share one turn.
+    || message.turnId !== delivery.turnId
+    || (delivery.mode === 'chat' && user.turnId !== delivery.turnId)
     || (message.nativeRunId !== undefined && message.nativeRunId !== delivery._id)) return null
   // Versioned runs settle every step here, writing the checkpoint that retires the step's
   // live stream. A chat this skips would keep its live text on screen next to the step text

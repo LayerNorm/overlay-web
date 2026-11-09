@@ -4,9 +4,11 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Fix a type error in the agent-thread review and streaming mockup source that failed main's typecheck and production build.
-
-- Add a design mockup, awaiting approval, for two agent-thread changes. A thread loses its check once its result has been reviewed. Agent replies stream as one continuous response, with text and collapsed tool lines in order, as chat does.
+- Fix agent-thread replies showing only the latest sentence while the agent worked. Each model call's text was dropped because the person's message and the agent's reply carry different turn ids. The reply now keeps every step's text in order, between collapsed tool rows, as chat does.
+- Remove the muted check from reviewed agent threads in the sidebar. Only an unreviewed result shows the green check; once opened, the thread reads as an ordinary row.
+- Show one avatar per streaming agent reply. The avatar beside the agent's name moves its eyes while it works, replacing the pulsing dots under the reply.
+- Fix a type error in the agent-thread review and streaming mockup source that failed main's typecheck and the Docker image build.
+- Add the approved design mockup for two agent-thread changes. A thread loses its check once its result has been reviewed. Agent replies stream as one continuous response, with text and collapsed tool lines in order, as chat does.
 
 - Agent rules now put every new mockup in `internal/plans/mockups/` without asking where it should go. Gitignored `artifacts/` is used only when the owner asks for it.
 

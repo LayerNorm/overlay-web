@@ -7,6 +7,11 @@
   animation: creature-blink 5.4s ease-in-out infinite;
 }
 
+/* While the agent works, its eyes look side to side; the avatar is the only activity mark. */
+.look .eyes {
+  animation: creature-look 3.5s ease-in-out infinite;
+}
+
 /* Theme-adaptive body: the wrapper sets --cwf/--cwf-dark from the agent
    color and the document theme picks which fill wins. */
 .bodyWrap {
@@ -32,7 +37,23 @@
   }
 }
 
+@keyframes creature-look {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  30%,
+  45% {
+    transform: translateX(-22%);
+  }
+  65%,
+  80% {
+    transform: translateX(22%);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .look .eyes,
   .blink .eyes {
     animation: none;
   }

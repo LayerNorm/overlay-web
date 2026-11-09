@@ -7,8 +7,8 @@
  * body luminance, and very dark/light bodies adapt per theme so they read on
  * any background.
  *
- * Motion is a periodic blink (transform only, staggered per instance).
- * Lists should pass `animated={false}`.
+ * Motion is a periodic blink (transform only, staggered per instance), or a
+ * side-to-side look while the agent is working. Lists should pass `animated={false}`.
  */
 
 import {
@@ -33,6 +33,8 @@ export type CreatureProps = {
   size?: number
   /** Blink every few seconds. Off in lists and reduced-motion contexts. */
   animated?: boolean
+  /** The agent is working: its eyes look side to side instead of blinking. */
+  working?: boolean
   label?: string
 }
 
@@ -81,6 +83,7 @@ export function Creature({
   color = '#71717a',
   size = 32,
   animated = true,
+  working = false,
   label = 'Agent',
 }: CreatureProps) {
   const resolved = normalizeCreatureShape(shape)
@@ -89,7 +92,7 @@ export function Creature({
     <span
       role="img"
       aria-label={label}
-      className={animated ? styles.blink : undefined}
+      className={working ? styles.look : animated ? styles.blink : undefined}
       style={{ display: 'inline-flex', width: size, height: size, flexShrink: 0 }}
     >
       <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
@@ -122,11 +125,14 @@ export function AgentCreature({
   agent,
   size = 32,
   animated = false,
+  working = false,
   isDefault = false,
 }: {
   agent: { name: string; avatarColor?: string; avatarShape?: string; agentRole?: string }
   size?: number
   animated?: boolean
+  /** The agent is producing a reply: the avatar's eyes look side to side. */
+  working?: boolean
   isDefault?: boolean
 }) {
   if (agent.agentRole === 'workspace_chief' || (isDefault && agent.agentRole !== 'personal_chief')) {
@@ -142,7 +148,7 @@ export function AgentCreature({
         boxSizing: 'border-box',
         color: 'var(--foreground)',
       }}>
-        <OverlayMark size={size * 0.84} motion="blink" label={`${agent.name} avatar`} />
+        <OverlayMark size={size * 0.84} motion={working ? 'look' : 'blink'} label={`${agent.name} avatar`} />
       </span>
     )
   }
@@ -152,6 +158,7 @@ export function AgentCreature({
       color={agentBodyColor(agent.avatarColor)}
       size={size}
       animated={animated}
+      working={working}
       label={`${agent.name} avatar`}
     />
   )
