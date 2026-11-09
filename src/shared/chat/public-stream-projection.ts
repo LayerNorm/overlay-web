@@ -84,6 +84,25 @@ function isTextPart(part: unknown): part is { type: 'text'; text: string } {
     && typeof (part as { text?: unknown }).text === 'string')
 }
 
+function hasPartId(part: unknown): boolean {
+  return Boolean(part && typeof part === 'object' && typeof (part as { id?: unknown }).id === 'string')
+}
+
+/**
+ * Where the live text goes. Tools the running call has started are stored at the
+ * end of the row before its step settles, without the ids settled transcript parts
+ * carry. The live text was written before those calls, so it goes ahead of them.
+ */
+function liveTextIndex(parts: readonly unknown[]): number {
+  let index = parts.length
+  while (index > 0) {
+    const part = parts[index - 1] as { type?: unknown } | undefined
+    if (part?.type !== 'tool-invocation' || hasPartId(part)) break
+    index -= 1
+  }
+  return index
+}
+
 function restoreRenderedProjection<T extends MessageWithParts>(
   message: T,
   priorPart: PublicStreamProjectionPart | undefined,
@@ -129,8 +148,10 @@ function projectMessage<T extends MessageWithParts>(
   const continues = stream.continuesPrevious === true && Boolean(baseContent.trim())
   const separator = !baseContent.trim() || continues ? '' : '\n\n'
   const renderedContent = `${baseContent}${separator}${text}`
+  const settled = baseParts ?? []
+  const insertAt = liveTextIndex(settled)
   // Continued text extends the last text block, so a cut-off Markdown list stays one list.
-  const continuedPart = continues && isTextPart(baseParts?.at(-1)) ? baseParts!.at(-1) as { type: 'text'; text: string } : undefined
+  const continuedPart = continues && isTextPart(settled[insertAt - 1]) ? settled[insertAt - 1] as { type: 'text'; text: string } : undefined
   const part = {
     type: 'text',
     id: continuedPart && 'id' in continuedPart && typeof continuedPart.id === 'string' ? continuedPart.id : projectionId,
@@ -145,7 +166,8 @@ function projectMessage<T extends MessageWithParts>(
     renderedContent,
     ...(continuedPart ? { continuedPart } : {}),
   }
-  const parts = continuedPart ? [...baseParts!.slice(0, -1), part] : [...(baseParts ?? []), part]
+  const before = settled.slice(0, continuedPart ? insertAt - 1 : insertAt)
+  const parts = [...before, part, ...settled.slice(insertAt)]
   return { ...message, content: renderedContent, parts } as T
 }
 

@@ -8,6 +8,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Add activity-only sidebar filters for chats, channels, agents and their threads, preserving ordinary rows and using the simple "No activity yet" empty state. Remove the redundant Activity dropdown in favor of the bell.
 - Add a Help hover menu with Docs and a bug-report dialog. Signed-in users can send a description and up to 5 MB of attachments to GitHub, with a Resend notification to the configured owner.
 
+- Keep a live agent sentence ahead of the tool it starts. Before the step settled, a newly started tool row briefly appeared above the sentence that introduced it, grouped with the previous tool. Live text now goes before tools the running call has started.
+
 - Fix agent-thread replies showing only the latest sentence while the agent worked. Each model call's text was dropped because the person's message and the agent's reply carry different turn ids. The reply now keeps every step's text in order, between collapsed tool rows, as chat does.
 - Remove the muted check from reviewed agent threads in the sidebar. Only an unreviewed result shows the green check; once opened, the thread reads as an ordinary row.
 - Show one avatar per streaming agent reply. The avatar beside the agent's name moves its eyes while it works, replacing the pulsing dots under the reply.
