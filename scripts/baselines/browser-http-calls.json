@@ -147,7 +147,8 @@
   ],
   "conversations.stopResponse": [
     "src/features/chat/components/DirectMessageExperience.hooks.ts",
-    "src/features/chat/components/chat/useChatStopController.ts"
+    "src/features/chat/components/chat/useChatStopController.ts",
+    "src/features/notebook/components/NotebookEditor.tsx"
   ],
   "conversations.submitRunApproval": [
     "src/features/chat/components/chat/native-work-command-actions.ts",
