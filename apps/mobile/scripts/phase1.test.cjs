@@ -20,6 +20,12 @@ function load(file, dependencies = {}, globals = {}) {
 const session = (id = 'user-1', token = 'native-token') => ({ user: { id, email: 'test@example.com' }, accessToken: token, refreshToken: 'refresh-token' })
 const broker = () => load('services/nativeConvexTokenBroker.ts')
 
+test('generated API imports are erased and runtime references only use anyApi', () => {
+  const sentinel = {}
+  const native = load('services/convexApi.ts', { 'convex/server': { anyApi: sentinel } })
+  assert.equal(native.api, sentinel)
+})
+
 test('token broker reads stored token and coalesces requests per mode', async () => {
   let reads = 0
   const fetch = broker().createNativeConvexTokenFetcher('user-1', {

@@ -160,7 +160,7 @@ This is a callsite inventory, including both direct URLs and typed api-client ca
 
 ## Native API portability
 
-An attempted direct import of `../convex/_generated/api` produced 45 TypeScript diagnostics by pulling web backend types and unresolved `@/shared/*` aliases into mobile. Mobile therefore uses the permitted `anyApi` fallback in `services/convexApi.ts`, exposing only typed public references with web-native argument and return shapes. It does not import generated backend modules at runtime. Keep this surface aligned with the corresponding web validators.
+`services/convexApi.ts` uses the web-generated API through a type-only import, so mobile calls are checked against the actual web function arguments and results. Runtime references still use `anyApi`; generated backend modules are not bundled. Mobile TypeScript resolves `@/shared/*` to the web shared directory and skips declaration-file checking. `environment.d.ts` narrows Expo's ambient environment index signature from `any` to string values so imported web helpers retain strict inference.
 
 ## Known backend gap
 

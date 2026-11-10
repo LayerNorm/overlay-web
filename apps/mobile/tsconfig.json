@@ -2,8 +2,10 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
+    "skipLibCheck": true,
     "baseUrl": ".",
     "paths": {
+      "@/shared/*": ["../src/shared/*"],
       "@overlay/api-client": ["../packages/overlay-api-client/src/index.ts"],
       "@overlay/api-client/*": ["../packages/overlay-api-client/src/*"],
       "@overlay/app-core": ["../packages/overlay-app-core/src/index.ts"],
