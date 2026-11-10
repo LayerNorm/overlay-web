@@ -3,7 +3,7 @@
 import { unstyledButton, unstyledInput, unstyledTextarea } from '@overlay/ui/control-reset'
 import { Button, Input, Textarea } from '@overlay/ui/primitives'
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Check,
   ChevronDown,
@@ -28,6 +28,9 @@ import type {
 import { generatedUiDataToPlainText } from '@overlay/chat-core/generated-ui'
 import { FileMarkdown } from '@overlay/modules-react/file-viewer'
 import { ConversationQuestionnaire } from './Questionnaire'
+import type { JsonRenderActions } from './JsonRenderCard'
+
+const JsonRenderCard = lazy(() => import('./JsonRenderCard'))
 
 export type GeneratedUiConnectorActions = {
   canConnect?: (serviceName: string, slug?: string) => boolean
@@ -43,6 +46,7 @@ type GeneratedUiCardProps = {
   readOnly?: boolean
   connectorActions?: GeneratedUiConnectorActions
   onDataChange?: (partId: string, data: GeneratedUiData) => void
+  jsonRenderActions?: JsonRenderActions
 }
 
 function classNames(...items: Array<string | false | null | undefined>): string {
@@ -261,6 +265,7 @@ export function GeneratedUiCard({
   readOnly = false,
   connectorActions,
   onDataChange,
+  jsonRenderActions,
 }: GeneratedUiCardProps) {
   const [data, setData] = useState<GeneratedUiData>(part.data)
   const [editing, setEditing] = useState(false)
@@ -334,7 +339,9 @@ export function GeneratedUiCard({
   }
 
   if (data.kind === 'questionnaire') return <ConversationQuestionnaire requestId={part.id} data={data} readOnly={readOnly || streaming} />
-  if (data.kind === 'json_render') return null
+  if (data.kind === 'json_render') return <Suspense fallback={<p>{data.summary}</p>}>
+    <JsonRenderCard partId={part.id} data={data} readOnly={readOnly || streaming} actions={jsonRenderActions} />
+  </Suspense>
 
   return (
     <div className="message-appear w-full max-w-[min(100%,46rem)] px-1 py-1" aria-busy={streaming}>

@@ -15,7 +15,10 @@ updates. Existing persisted cards need no migration.
 `@overlay/chat-core/generative-ui` owns the isomorphic v1 catalog, prompt helper,
 and validation boundary. Only HTTPS links/actions and HTTPS or exact workspace
 file-content image URLs are valid. Tool admission and json-render rendering are
-not enabled by this contract change.
+not enabled by the contract alone. `GeneratedUiCard` now lazily loads the validated
+json-render registry. Copy/link actions work locally; send/submit and state-change
+callbacks are optional host hooks, with no persistence or thread authorization
+changes yet.
 
 ## CN-01 baseline protocol
 

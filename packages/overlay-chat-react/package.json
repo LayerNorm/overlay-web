@@ -5,6 +5,7 @@
   "license": "AGPL-3.0-only",
   "sideEffects": [
     "./src/styles/chat-surface.css",
+    "./src/styles/json-render.css",
     "./src/styles/overlay-theme.css"
   ],
   "main": "./src/index.ts",
@@ -13,6 +14,7 @@
     ".": "./src/index.ts",
     "./draft-review-modal": "./src/components/DraftReviewModal.tsx",
     "./generated-ui-card": "./src/components/GeneratedUiCard.tsx",
+    "./json-render-card": "./src/components/JsonRenderCard.tsx",
     "./questionnaire": "./src/components/Questionnaire.tsx",
     "./media-slot-output": "./src/components/MediaSlotOutput.tsx",
     "./model-indicators": "./src/components/ModelIndicators.tsx",
@@ -33,6 +35,7 @@
   },
   "dependencies": {
     "@json-render/react": "0.21.4",
+    "recharts": "3.10.1",
     "@overlay/chat-core": "file:../overlay-chat-core",
     "@overlay/modules-react": "file:../overlay-modules-react",
     "@overlay/ui": "file:../overlay-ui",

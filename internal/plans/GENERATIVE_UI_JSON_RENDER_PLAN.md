@@ -152,7 +152,7 @@ Admit `render_ui` wherever `present_generated_ui` is admitted today. Execution s
 - [x] T2. Dependencies: json-render core/react pinned to 0.21.4; Recharts 3.10.1 (published 2026-07-25, newest stable older than seven days, Recharts 3 API used by shadcn). Lockfile regenerated with npm 11.11.0.
 - [x] T3. Isomorphic `@overlay/chat-core/generative-ui` catalog, limits, validation, tool-argument prompt helper, and unit tests reusing approved mockup specs.
 - [x] T4. `json_render` in all persisted/public contracts and normalizers. Existing `updateMessageUiPart` preserves fields. No tool or renderer enabled yet.
-- [ ] T5. `@overlay/ui` Table and Chart (official shadcn), plus the React registry and `JsonRenderCard` with error boundary and summary fallback.
+- [x] T5. Official shadcn Table/Chart and RadioGroup in `@overlay/ui`; all 26 registry components, lazy memoized `JsonRenderCard`, validated rendering, summary fallback and optional action/state hooks. Real-card harness checked in both themes at desktop and 390px; no action persistence yet.
 - [ ] T6. `render_ui` tool, executor, `GENERATED_UI_TOOL_IDS` in persistence, visual sequence, recovery and MCP withholding; tests for persistence and part ordering (text, tool, UI, text).
 - [ ] T7. Prompt generation in `buildHarnessInstructions`; personal instructions updated.
 - [ ] T8. Admission for personal, native agent and automation surfaces; tests that each surface exposes the tool and outside MCP apps do not.

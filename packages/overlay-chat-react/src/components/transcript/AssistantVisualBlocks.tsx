@@ -52,6 +52,7 @@ export interface AssistantVisualBlocksProps {
     options?: AttachmentPreviewOpenOptions,
   ) => void
   generatedUiConnectorActions?: GeneratedUiConnectorActions
+  generatedUiJsonRenderActions?: AssistantSegmentRenderContext['generatedUiJsonRenderActions']
   generatedUiReadOnly?: boolean
   onGeneratedUiChange?: (partId: string, data: GeneratedUiData) => void
 }
@@ -85,6 +86,7 @@ export function AssistantVisualBlocks({
   onCreateAutomationDraft,
   onOpenAttachmentPreview,
   generatedUiConnectorActions,
+  generatedUiJsonRenderActions,
   generatedUiReadOnly,
   onGeneratedUiChange,
   onWorkExpandedChange,
@@ -147,13 +149,14 @@ export function AssistantVisualBlocks({
     onCreateAutomationDraft,
     onOpenAttachmentPreview,
     generatedUiConnectorActions,
+    generatedUiJsonRenderActions,
     generatedUiReadOnly,
     onGeneratedUiChange,
   }), [
     blockKeyPrefix, markdownKeyPrefix, blocks.length, lastTextBlockIndex,
     isStreaming, isTextStreaming, sourceCitations, webSources,
     suppressTypingIndicator, resolveFileHref, toolResourceHrefs, onOpenDraft, onCreateAutomationDraft,
-    onOpenAttachmentPreview, generatedUiConnectorActions, generatedUiReadOnly, onGeneratedUiChange,
+    onOpenAttachmentPreview, generatedUiConnectorActions, generatedUiJsonRenderActions, generatedUiReadOnly, onGeneratedUiChange,
   ])
 
   return (

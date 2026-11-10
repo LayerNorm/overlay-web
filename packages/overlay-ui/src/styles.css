@@ -25,6 +25,7 @@
   --input-placeholder: #a1a1aa;
   --success: #10b981;
   --warning: #f59e0b;
+  --chart-1: #647f9f;
   --danger: #ef4444;
   --overlay-space-0: 0;
   --overlay-space-1: 0.25rem;
@@ -102,6 +103,7 @@
   --input-placeholder: #71717a;
   --success: #34d399;
   --warning: #fbbf24;
+  --chart-1: #6b83a3;
   --danger: #f87171;
 }
 

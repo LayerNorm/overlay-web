@@ -3,6 +3,19 @@ title: "Interface Design"
 description: "Product UI decisions every surface follows: toggles-only controls, one-control-per-row layouts, and editors without save bars."
 ---
 
+## Generated UI cards
+
+`GeneratedUiCard` lazily loads `JsonRenderCard` for the serialized `json_render`
+variant. The shared catalog is revalidated before rendering, and card/element
+boundaries replace invalid or throwing views with their plain summary and
+"Could not display this view". Table, Chart and bound controls use `@overlay/ui`;
+text and cells never enter markdown. Charts use semantic colors, responsive actual
+SVG widths and fixed 11px labels at narrow widths, with animations disabled.
+Copy/link actions work locally. Hosts may pass `generatedUiJsonRenderActions`
+through `ChatExchange` or `AssistantVisualBlocks` for follow-up, submit and state
+hooks. Hooks receive the source part ID so multiple cards remain distinguishable;
+persistence is not implemented by the renderer.
+
 ## Extension cards and dialogs
 
 MCP and Skills use shared Card surfaces with explicit Manage actions and confirmation before deletion. Editors use shared Dialog, Select, Switch and AlertDialog primitives, compact content-width Configuration/Tools tabs and spacing instead of internal dividers. Preserve OAuth connection status, tool policy, scope and existing mutation callbacks. Docked left/right panel resize handles occupy the gutter outside the framed surface; floating panels retain inset handles.

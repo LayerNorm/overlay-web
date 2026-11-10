@@ -21,6 +21,7 @@ import type {
   AttachmentPreviewOpenOptions,
 } from '../AttachmentPreviewShell'
 import type { GeneratedUiConnectorActions } from '../GeneratedUiCard'
+import type { JsonRenderActions } from '../JsonRenderCard'
 import {
   DraftSuggestionCard,
   GatedPaidFeatureCallout,
@@ -70,6 +71,7 @@ export interface AssistantSegmentRenderContext {
     options?: AttachmentPreviewOpenOptions,
   ) => void
   generatedUiConnectorActions?: GeneratedUiConnectorActions
+  generatedUiJsonRenderActions?: JsonRenderActions
   generatedUiReadOnly?: boolean
   onGeneratedUiChange?: (partId: string, data: GeneratedUiData) => void
 }
@@ -288,6 +290,7 @@ function GeneratedUiSegmentItem({ seg, ctx }: SegmentItemProps<'generated-ui'>) 
         part={seg.block.part}
         readOnly={ctx.generatedUiReadOnly}
         connectorActions={ctx.generatedUiConnectorActions}
+        jsonRenderActions={ctx.generatedUiJsonRenderActions}
         onDataChange={ctx.onGeneratedUiChange}
       />
     </Suspense>

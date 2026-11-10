@@ -23,6 +23,7 @@ import type {
   AttachmentPreviewOpenOptions,
 } from '../AttachmentPreviewShell'
 import type { GeneratedUiConnectorActions } from '../GeneratedUiCard'
+import type { JsonRenderActions } from '../JsonRenderCard'
 import { UserMessageBubble } from '../UserMessageBubble'
 import { Message, MessageContent } from '@overlay/ui/ai'
 import { isRunPlanSettled, RunPlan, WorkedForGroup, type RunPlanPhase, type RunPlanStep } from '../exchange'
@@ -103,6 +104,7 @@ export interface ChatExchangeProps {
   userMentions?: Array<{ type: string; id: string; name: string }>
   onContinue?: () => void
   generatedUiConnectorActions?: GeneratedUiConnectorActions
+  generatedUiJsonRenderActions?: JsonRenderActions
   generatedUiReadOnly?: boolean
   onGeneratedUiChange?: (partId: string, data: GeneratedUiData) => void
   presentation?: Partial<ChatTranscriptPresentation>
@@ -155,7 +157,7 @@ export function ChatExchange({
   responseInProgress, status, sourceCitations,
   turnIdForActions, modelLabel, onDeleteTurn, onReply, onBranch, interrupted = false, actionsLocked, isExiting = false, replyThreadMeta, onJumpToReply,
   onOpenDraft, onCreateAutomationDraft, onOpenSources, isSourcesOpenForThis, onRetry, retryDisabled = true, onOpenFilePreview, onOpenAttachmentPreview, userMentions, onContinue,
-  generatedUiConnectorActions, generatedUiReadOnly, onGeneratedUiChange, presentation, onWorkExpandedChange, workDetails,
+  generatedUiConnectorActions, generatedUiJsonRenderActions, generatedUiReadOnly, onGeneratedUiChange, presentation, onWorkExpandedChange, workDetails,
 }: ChatExchangeProps) {
     recordRender(isStreaming ? 'ChatExchange(streaming)' : 'ChatExchange')
     const assistantPlainText = assistantBlocksToPlainText(assistantVisualBlocks)
@@ -192,6 +194,7 @@ export function ChatExchange({
       onCreateAutomationDraft,
       onOpenAttachmentPreview,
       generatedUiConnectorActions,
+      generatedUiJsonRenderActions,
       generatedUiReadOnly,
       onGeneratedUiChange,
     }
