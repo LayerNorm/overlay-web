@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep the Work composer controls on one row in narrow panels, with compact assignee, schedule and dependency icons, accessible labels, tooltips and count badges.
+
 - Fix a cancelled ChatGPT/Codex sign-in staying in the provider list. Removing a subscription connection failed with "Subscription cleanup is pending" when a sign-in check was still running, so the connection was never deleted. That check now hands its lock back as soon as it sees the removal, and removal waits for it (at most a minute) before deleting the stored sign-in data and the connection. This changes Convex subscription mutations.
 - Let people cancel the ChatGPT/Codex sign-in dialog even when cleaning up the pending sign-in fails. Cancel used to show "Could not cancel this connection. Try again before closing." and keep the dialog open; it now closes at once and removes the pending sign-in in the background (fixes #454).
 - Stop shutting down a computer that is being used just because its two-hour session ran out. A long build, an open terminal session or an agent run on a computer used to be stopped about two hours after the last computer action, even while it was busy. The session now keeps extending while the computer is in use (recent activity, an open action or a live run), and a computer stops on its own only when it is idle or the workspace budget is under 2%. A deadline a person sets on an agent task can now be longer than 7 days (the 30-second minimum stays). Docs no longer describe a "24-hour hard cap" on machines.
