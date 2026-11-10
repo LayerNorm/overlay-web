@@ -25,6 +25,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Align Computer availability, automation persona, memory, generated-UI, citation, and formatting guidance across agent surfaces. Move Notebook onto the durable personal harness with server-frozen note snapshots, stable edit proposals, reconnectable public streaming, and run cancellation. Match proposal coordinates to the live editor and invalidate stale proposals; finish with one final answer.
 - Keep Notebook on shared actual-usage billing with the 2% workspace budget gate. Low-budget new turns return the billing error without starting work; reconnecting to an admitted turn still retrieves its output without another charge.
 - Let Notebook recover when the model proposes an invalid line range: return numbered-snapshot guidance instead of terminating the run as an uncertain tool operation. Authorization failures still stop execution.
+- Preserve Notebook final responses and stale-note warnings when stream events arrive together at completion, while continuing to discard late events from a different note.
 
 - Keep a live agent sentence ahead of the tool it starts. Before the step settled, a newly started tool row briefly appeared above the sentence that introduced it, grouped with the previous tool. Live text now goes before tools the running call has started.
 

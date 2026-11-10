@@ -475,6 +475,9 @@ Invalid proposal ranges return a failed tool result with frozen line-count and
 `read_note` guidance, allowing a corrected proposal in the same run. This recovery
 is limited to pure proposal validation; authorization and unexpected tool failures
 still fail closed through the shared Harness.
+Notebook UI events check run ownership when received, before queuing React state
+updates, so completion cannot discard already-accepted final text or stale-snapshot
+warnings. Late callbacks from another note remain excluded.
 Native Harness named-agent asks/posts use H2 shared-root dispatch; the HTTP
 route continues to refuse Harness callers. Delivery owners persist bounded
 tool-invocation snapshots while tools run, and finalization replaces those

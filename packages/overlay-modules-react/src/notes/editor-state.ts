@@ -929,7 +929,8 @@ export function useNotebookAgent({
   }) && currentEditorRef.current === run.editor, [])
 
   const appendRunItem = useCallback((run: NotebookAgentRun, item: NotebookAgentUiItem) => {
-    setAgentItems((prev) => isCurrentRun(run) ? [...prev, item] : prev)
+    if (!isCurrentRun(run)) return
+    setAgentItems((prev) => [...prev, item])
   }, [isCurrentRun])
 
   const finishRun = useCallback((run: NotebookAgentRun) => {
