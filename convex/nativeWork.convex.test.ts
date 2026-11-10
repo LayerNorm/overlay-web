@@ -105,6 +105,23 @@ test('Work projects assignment executions without creating tasks and requires bo
   expect((await data.read()).page).toEqual([])
 })
 
+test('Work projects a cancelled never-launched attempt with its terminal reason', async () => {
+  const data = await assignmentFixture()
+  await data.t.run(async ctx => {
+    const assignment = await ctx.db.query('agentAssignments').withIndex('by_assignmentId', q => q.eq('assignmentId', 'assignment')).unique()
+    await ctx.db.patch(assignment!._id, { currentAttemptId: 'attempt' })
+    await ctx.db.insert('agentAssignmentAttempts', {
+      workspaceId: 'ws', assignmentId: 'assignment', conversationId: data.child, attemptId: 'attempt', ordinal: 1,
+      dispatchKey: 'key', dispatchFingerprint: 'fingerprint', parentRunId: 'parent', rootRunId: 'parent',
+      requesterUserId: 'alice', brief: 'Do work', questionTurnId: 'question', createdAt: 1,
+      cancelledAt: 2, cancellationReason: 'Parent run ended before this assignment started',
+    })
+  })
+  expect((await data.read()).page).toMatchObject([{ status: 'cancelled', result: {
+    failureReason: 'Parent run ended before this assignment started',
+  } }])
+})
+
 test('Work assignment archive is live and origin disappears after connection revocation', async () => {
   const data = await assignmentFixture()
   const connection = await data.t.run(async ctx => {

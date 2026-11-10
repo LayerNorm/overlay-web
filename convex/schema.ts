@@ -1554,6 +1554,7 @@ export default defineSchema({
     assistantMessageId: v.optional(v.id('conversationMessages')), resultId: v.optional(v.id('agentAssignmentResults')),
     disposition: v.optional(v.union(v.literal('accepted'), v.literal('revision_requested'), v.literal('excluded'))),
     dispositionReason: v.optional(v.string()), disposedByRunId: v.optional(v.string()), disposedAt: v.optional(v.number()),
+    cancelledAt: v.optional(v.number()), cancellationReason: v.optional(v.string()),
     createdAt: v.number(),
   }).index('by_attemptId', ['attemptId'])
     .index('by_parentRunId', ['parentRunId'])

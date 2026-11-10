@@ -208,7 +208,7 @@ function agentScope(agent: Doc<'workspaceAgentDefinitions'>): 'workspace' | 'per
 async function projectedStatus(ctx: DbContext, assignment: Doc<'agentAssignments'>) {
   if (assignment.currentAttemptId) {
     const attempt = await ctx.db.query('agentAssignmentAttempts').withIndex('by_attemptId', q => q.eq('attemptId', assignment.currentAttemptId!)).unique()
-    if (!attempt?.deliveryAgentRunId) return 'queued'
+    if (!attempt?.deliveryAgentRunId) return attempt?.cancelledAt !== undefined ? 'cancelled' : 'queued'
     const result = await ctx.db.query('agentAssignmentResults').withIndex('by_attemptId', q => q.eq('attemptId', attempt.attemptId)).unique()
     if (result?.publicationPending) return 'publication_pending'
     const delivery = await ctx.db.get(attempt.deliveryAgentRunId)
@@ -292,7 +292,8 @@ export async function assignmentExecutionForViewer(ctx: QueryCtx, viewer: Awaite
     title: child.title, brief: assignment.brief,
     scope: agentScope(agent), status: await projectedStatus(ctx, assignment),
     disposition: attempt?.disposition, dispositionReason: attempt?.dispositionReason,
-    result: result ? { summary: result.summary, failureReason: result.failureReason } : undefined,
+    result: result ? { summary: result.summary, failureReason: result.failureReason }
+      : attempt?.cancellationReason ? { summary: '', failureReason: attempt.cancellationReason } : undefined,
     parent: { conversationId: parent._id, agentId: caller.agentId, title: parent.title, scope: agentScope(caller) },
     origin: await authorizedOrigin(ctx, viewer, workspaceId, child._id),
     createdAt: assignment.createdAt,

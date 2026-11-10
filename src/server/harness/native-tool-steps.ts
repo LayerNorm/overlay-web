@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { FatalError } from 'workflow'
+import { ConvexError } from 'convex/values'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
 import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
@@ -198,9 +199,18 @@ async function resolveNativeAssignment(access: NativeHarnessAccess, values: Reco
   if (typeof values.assignmentId !== 'string' || typeof values.attemptId !== 'string'
     || !['accept', 'exclude', 'cancel'].includes(String(values.action))
     || (values.reason !== undefined && typeof values.reason !== 'string')) throw new FatalError('Invalid assignment resolution.')
-  const resolution = await repository.resolveAssignment({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
-    parentRunId: access.runId, workflowRunId: access.workflowRunId, executionGeneration: access.executionGeneration ?? 0,
-    assignmentId: values.assignmentId, attemptId: values.attemptId, action: values.action as 'accept' | 'exclude' | 'cancel', reason: values.reason as string | undefined })
+  let resolution: Awaited<ReturnType<ConvexHarnessRepository['resolveAssignment']>>
+  try {
+    resolution = await repository.resolveAssignment({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
+      parentRunId: access.runId, workflowRunId: access.workflowRunId, executionGeneration: access.executionGeneration ?? 0,
+      assignmentId: values.assignmentId, attemptId: values.attemptId, action: values.action as 'accept' | 'exclude' | 'cancel', reason: values.reason as string | undefined })
+  } catch (error) {
+    const feedback = error instanceof ConvexError ? error.data : null
+    if (!feedback || typeof feedback !== 'object' || feedback.code !== 'ASSIGNMENT_RESOLUTION_REJECTED'
+      || typeof feedback.error !== 'string' || typeof feedback.hint !== 'string') throw error
+    return { success: false, code: feedback.code, error: feedback.error, hint: feedback.hint,
+      ...(typeof feedback.currentAttemptId === 'string' ? { currentAttemptId: feedback.currentAttemptId } : {}) }
+  }
   for (const workflowRunId of resolution.workflows) await cancelHarnessWorkflow(workflowRunId)
   if (resolution.cancellationRoot) await cancelPersonalHarnessWorkflows(resolution.cancellationRoot)
   return { assignmentId: resolution.assignmentId, attemptId: resolution.attemptId, disposition: resolution.disposition, reason: resolution.reason }

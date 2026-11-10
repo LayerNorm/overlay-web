@@ -1196,6 +1196,9 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Chief of Staff (pending)
 
+- Return corrective feedback for confirmed assignment-resolution rejections, exposing current attempt IDs only after authorized reads.
+- Mark never-launched assignments cancelled when their parent ends, keeping Work status and open counts accurate.
+
 - Defer assignment launch recovery while its parent Harness run is waiting, preserving retry attempts until the parent is running again.
 
 - Return corrective tool feedback when an agent tries to update a nonexistent plan step, including an empty plan after answering a question, rather than surfacing a fatal workflow error. Ordinary replies still do not require a plan.

@@ -7,6 +7,7 @@ export async function assignmentCompletionIssues(ctx: Pick<QueryCtx, 'db'>, pare
   for (const attempt of attempts) {
     const assignment = await ctx.db.query('agentAssignments').withIndex('by_assignmentId', q => q.eq('assignmentId', attempt.assignmentId)).unique()
     if (assignment?.currentAttemptId !== attempt.attemptId) continue
+    if (attempt.cancelledAt !== undefined && !attempt.childRunId) continue
     if (attempt.disposition === 'excluded' && attempt.dispositionReason?.trim()) continue
     const result = await ctx.db.query('agentAssignmentResults').withIndex('by_attemptId', q => q.eq('attemptId', attempt.attemptId)).unique()
     if (attempt.disposition === 'accepted' && result?.terminal && !result.publicationPending && result.runStatus === 'completed') continue
@@ -22,6 +23,9 @@ export async function cancelPendingAssignmentLaunches(ctx: MutationCtx, parentRu
     await ctx.db.patch(intent._id, { state: 'cancelled', generation: intent.generation + 1, updatedAt: Date.now() })
     const attempt = await ctx.db.query('agentAssignmentAttempts').withIndex('by_attemptId', q => q.eq('attemptId', intent.attemptId)).unique()
     if (!attempt) continue
+    if (!attempt.childRunId && attempt.cancelledAt === undefined) await ctx.db.patch(attempt._id, {
+      cancelledAt: Date.now(), cancellationReason: 'Parent run ended before this assignment started',
+    })
     await cancelPendingAttemptTurns(ctx, attempt)
   }
 }

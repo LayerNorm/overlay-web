@@ -1302,6 +1302,19 @@ test('confirmed safe tool failure envelopes continue without becoming approvals'
   expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('The read was safely declined.')
 })
 
+test('a confirmed malformed assignment handle returns feedback and the run continues', async () => {
+  const f = fixture(false, ['resolve_assignment'])
+  model(index => index === 0 ? [call('resolve_assignment', 'resolve-malformed', { attemptId: 'malformed' })] : 'The assignment handle was rejected safely.')
+  const feedback = { success: false, code: 'ASSIGNMENT_RESOLUTION_REJECTED', error: 'ASSIGNMENT_ATTEMPT_NOT_FOUND',
+    hint: 'Use the current attempt ID.', currentAttemptId: 'attempt:current' }
+  const result = await runOverlayHarness({ ...input, tools: {
+    resolve_assignment: tool({ inputSchema: z.object({ attemptId: z.string() }), execute: async () => feedback }),
+  } }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.diagnostic).toBeUndefined()
+  expect(JSON.stringify(result.steps)).toContain('attempt:current')
+})
+
 test('a recovered stream failure does not persist its partial invocation messages or steps', async () => {
   const f = fixture(false)
   const recover = vi.fn(async (receiptId: string) => {

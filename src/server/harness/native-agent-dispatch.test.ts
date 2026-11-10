@@ -1,4 +1,5 @@
 import { beforeEach, expect, test, vi } from 'vitest'
+import { ConvexError } from 'convex/values'
 
 const mocks = vi.hoisted(() => ({
   refresh: vi.fn(), resolve: vi.fn(), build: vi.fn(), get: vi.fn(), apply: vi.fn(), launch: vi.fn(),
@@ -190,4 +191,21 @@ test('assignment resolution uses trusted execution identity and the existing can
 test.each([{}, { assignmentId: 'assignment', attemptId: 'attempt', action: 'grade' }])('invalid resolutions cannot invoke the repository: %j', async input => {
   await expect(dispatchNativeHarnessAgentRequest(access, context, 'resolve', 'resolve_assignment', input)).rejects.toThrow('Invalid assignment resolution')
   expect(mocks.resolveAssignment).not.toHaveBeenCalled()
+})
+
+test.each([undefined, 'current-attempt'])('confirmed resolution rejection returns corrective feedback with only authorized handles: %s', async currentAttemptId => {
+  const feedback = { code: 'ASSIGNMENT_RESOLUTION_REJECTED', error: 'ASSIGNMENT_ATTEMPT_NOT_FOUND',
+    hint: 'Use the current attempt ID.', ...(currentAttemptId ? { currentAttemptId } : {}) }
+  mocks.resolveAssignment.mockRejectedValue(new ConvexError(feedback))
+  expect(await dispatchNativeHarnessAgentRequest(access, context, 'resolve', 'resolve_assignment', {
+    assignmentId: 'assignment', attemptId: 'malformed', action: 'exclude', reason: 'Superseded',
+  })).toEqual({ success: false, ...feedback })
+  expect(mocks.cancel).not.toHaveBeenCalled()
+})
+
+test('unconfirmed resolution failures retain the uncertain-outcome path', async () => {
+  mocks.resolveAssignment.mockRejectedValue(new Error('Connection interrupted'))
+  await expect(dispatchNativeHarnessAgentRequest(access, context, 'resolve', 'resolve_assignment', {
+    assignmentId: 'assignment', attemptId: 'attempt', action: 'exclude', reason: 'Superseded',
+  })).rejects.toThrow('Connection interrupted')
 })

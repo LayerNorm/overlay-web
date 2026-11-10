@@ -287,6 +287,70 @@ test('Phase 2: recovery reconstructs persisted dispatch identity and ignores sta
   expect(await data.convex.mutation(work, { serverSecret: secret, kind: 'assignment', id: intent._id, generation: 0 })).toBeNull()
 })
 
+test.each([false, true])('resolution rejects unknown attempts without writes and only reveals readable current handles (private=%s)', async privateTarget => {
+  const data = await fixture()
+  await applyOperation(data, data.parentRunId, 'owner', { type: 'claim_execution', workflowRunId: 'coordinator' })
+  const assignment = await data.convex.mutation(createAssignment, args(data))
+  if (privateTarget) await data.convex.run(async ctx => {
+    const target = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', 'target')).unique()
+    await ctx.db.patch(target!._id, { visibility: 'creator', createdByPrincipalId: 'bob' })
+  })
+  const before = await data.convex.run(ctx => ctx.db.query('agentAssignmentAttempts').collect())
+  await expect(resolution(data, { ...assignment, attemptId: 'malformed' }, 'exclude', 'Superseded')).rejects.toMatchObject({
+    data: { code: 'ASSIGNMENT_RESOLUTION_REJECTED', error: 'ASSIGNMENT_ATTEMPT_NOT_FOUND',
+      ...(!privateTarget ? { currentAttemptId: assignment.attemptId } : {}) },
+  })
+  if (privateTarget) {
+    try { await resolution(data, { ...assignment, attemptId: 'malformed' }, 'exclude', 'Superseded') }
+    catch (error) { expect((error as { data: object }).data).not.toHaveProperty('currentAttemptId') }
+  }
+  expect(await data.convex.run(ctx => ctx.db.query('agentAssignmentAttempts').collect())).toEqual(before)
+})
+
+test('failed parents persist cancellation for never-launched attempts and project a terminal assignment', async () => {
+  const data = await fixture()
+  await data.convex.mutation(createAssignment, args(data))
+  await applyOperation(data, data.parentRunId, 'parent-failure', { type: 'terminate', status: 'failed', reason: 'Tool failed' })
+  const alice = data.convex.withIdentity({ subject: 'alice' })
+  expect((await alice.query(forConversation, { workspaceId: 'workspace', conversationId: data.parentConversationId })).assignments).toMatchObject([
+    { status: 'cancelled' },
+  ])
+  expect(await data.convex.query(query('collaboration/assignmentCoordination:issues'), {
+    serverSecret: secret, actorUserId: 'alice', parentRunId: data.parentRunId,
+  })).toEqual([])
+  const first = await data.convex.run(ctx => ctx.db.query('agentAssignmentAttempts').collect())
+  expect(first[0]).toMatchObject({ cancellationReason: 'Parent run ended before this assignment started', cancelledAt: expect.any(Number) })
+  const intent = await data.convex.run(async ctx => (await ctx.db.query('agentAssignmentLaunchIntents').collect())[0]!)
+  expect(intent).toMatchObject({ state: 'cancelled', generation: 1 })
+  await data.convex.mutation(mutation('collaboration/assignmentRecovery:work'), { serverSecret: secret, kind: 'assignment', id: intent._id, generation: intent.generation })
+  expect(await data.convex.run(ctx => ctx.db.query('agentAssignmentAttempts').collect())).toEqual(first)
+})
+
+test('parent failure does not annotate already-bound attempts as never launched', async () => {
+  const data = await fixture()
+  const child = await dispatched(data)
+  await applyOperation(data, data.parentRunId, 'parent-failure', { type: 'terminate', status: 'failed', reason: 'Tool failed' })
+  const attempt = await data.convex.run(ctx => ctx.db.query('agentAssignmentAttempts').withIndex('by_attemptId', q => q.eq('attemptId', child.attemptId)).unique())
+  expect(attempt?.childRunId).toBe(child.childRunId)
+  expect(attempt?.cancelledAt).toBeUndefined()
+  expect(attempt?.cancellationReason).toBeUndefined()
+})
+
+test('stale resolution handles return the authorized current attempt without changing either attempt', async () => {
+  const data = await fixture()
+  await applyOperation(data, data.parentRunId, 'owner', { type: 'claim_execution', workflowRunId: 'coordinator' })
+  const first = await data.convex.mutation(createAssignment, args(data))
+  const revised = await data.convex.mutation(createAssignment, args(data, {
+    toolCallId: 'revision', assignmentId: first.assignmentId, revisionOfAssignmentId: first.assignmentId,
+    expectedAttemptId: first.attemptId,
+  }))
+  const before = await data.convex.run(ctx => ctx.db.query('agentAssignmentAttempts').collect())
+  await expect(resolution(data, first, 'exclude', 'Superseded')).rejects.toMatchObject({ data: {
+    code: 'ASSIGNMENT_RESOLUTION_REJECTED', error: 'ASSIGNMENT_REVISION_CONFLICT', currentAttemptId: revised.attemptId,
+  } })
+  expect(await data.convex.run(ctx => ctx.db.query('agentAssignmentAttempts').collect())).toEqual(before)
+})
+
 test.each(['waiting_for_input', 'waiting_for_approval', 'waiting_for_resources', 'waiting_for_authorization', 'waiting_for_children'])(
   'Phase 2: defers launch recovery for %s without spending retries and selects it after resume', async status => {
     const data = await fixture()
