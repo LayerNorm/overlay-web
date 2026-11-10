@@ -11,6 +11,7 @@ import { useTheme } from '../../hooks/useTheme'
 import { useShellAgents, useShellChats } from '../../hooks/useShellData'
 import { openAgentThread } from '../../services/shellService'
 import { mobileEntryState } from '../../lib/mobileEntryState'
+import { showShellExtensions } from '../../lib/shellNavigation'
 import { AccountSheet } from './AccountSheet'
 import { SidebarView, type SidebarChat } from './SidebarView'
 import { BootScreen, OfflineBanner, WorkspaceGate } from './EntryScreens'
@@ -22,7 +23,7 @@ function ConnectedSidebar({ onAccount }: { onAccount: () => void }) {
   const { theme, isDark } = useTheme()
   const { user } = useAuth()
   const { activeWorkspaceId } = useWorkspace()
-  const { isFeatureEnabled } = useAppSession()
+  const { bootstrap, isFeatureEnabled } = useAppSession()
   const { closeDrawer } = useDrawer()
   const router = useRouter()
   const pathname = usePathname()
@@ -50,7 +51,10 @@ function ConnectedSidebar({ onAccount }: { onAccount: () => void }) {
         (user?.firstName ?? user?.email ?? '?').slice(0, 1).toUpperCase() +
         (user?.lastName?.[0] ?? '').toUpperCase()
       }
-      extensions={isFeatureEnabled('extensions')}
+      extensions={showShellExtensions(
+        bootstrap?.featureFlagRegistry,
+        isFeatureEnabled('extensions'),
+      )}
       agents={agents.agents}
       chats={chats.chats}
       loading={panel === 'agents' ? agents.loading : chats.loading}

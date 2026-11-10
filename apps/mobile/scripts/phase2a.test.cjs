@@ -29,7 +29,18 @@ function load(file, dependencies = {}) {
 }
 
 const entry = load('lib/mobileEntryState.ts').mobileEntryState
+const extensions = load('lib/shellNavigation.ts').showShellExtensions
 const unreadChats = load('lib/sidebarChats.ts').withUnreadActivity
+
+test('Extensions requires an explicit enabled flag and its capability permission', () => {
+  assert.equal(extensions(undefined, true), false)
+  assert.equal(extensions(null, true), false)
+  assert.equal(extensions([], true), false)
+  assert.equal(extensions([{ id: 'agents', enabled: true }], true), false)
+  assert.equal(extensions([{ id: 'extensions', enabled: false }], true), false)
+  assert.equal(extensions([{ id: 'extensions', enabled: true }], false), false)
+  assert.equal(extensions([{ id: 'extensions', enabled: true }], true), true)
+})
 const member = {
   boot: false,
   authLoading: false,
