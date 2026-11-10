@@ -6,6 +6,7 @@ import type { LanguageModel } from '@/server/ai/provider-types'
 import { SubscriptionBridgeClient, SubscriptionBridgeError } from './bridge-client'
 import { createSubscriptionService, type SubscriptionService } from './service'
 import { assertSupportedCodexRequest, assertSupportedSubscriptionRequest, subscriptionStatelessRequest } from './request-validation'
+import { textOnlySubscriptionPrompt } from './text-only-prompt'
 
 const SUBSCRIPTION_RESPONSES_ENDPOINT = 'https://overlay-subscription.invalid/responses'
 const maxRequestBytes = 2_000_000
@@ -387,6 +388,7 @@ export function createSubscriptionLanguageModel(args: {
         }
         return {
           ...params,
+          prompt: textOnlySubscriptionPrompt(params.prompt),
           providerOptions: {
             ...params.providerOptions,
             openai: { ...openaiOptions, store: false },
