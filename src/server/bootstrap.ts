@@ -276,6 +276,12 @@ export function createOverlayServerContext(
     payerResolver: billingPayerResolver,
     getEntitlements: async (billingAccountId) =>
       await appData.repositories.billing.getBillingAccountEntitlementsByServer({ billingAccountId }) as Entitlements | null,
+    ensureBudgetNotLow: async (input) => await generationUsagePolicy.ensureBudgetNotLow({
+      ...input,
+      kind: 'sandbox',
+      modelId: 'sandbox/box',
+      operationId: `computer-admission:${input.workspaceId}:${input.programmaticSubjectId ?? input.userId}`,
+    }),
   })
   computerAdmissionRef.current = computerAdmission
   const computerLimits: ComputerLimits = {
@@ -386,7 +392,7 @@ export function createOverlayServerContext(
       })
     },
     meterSandboxLease: async (lease) => {
-      await managedAgentSandboxBilling.meterLease(lease, { minRemainingCents: 0, idleStop: 'none' })
+      await managedAgentSandboxBilling.meterLease(lease, { idleStop: 'none' })
     },
     settleUsage: async (usage) => {
       if (!usage.userId) return

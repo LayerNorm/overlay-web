@@ -130,7 +130,15 @@ export type ConnectedAgentSandboxMeterCharge = {
 }
 
 export type ConnectedAgentMeterSandboxLeaseResult =
-  | { applied: true; meterVersion: number; remainingCents?: number }
+  | {
+    applied: true
+    meterVersion: number
+    remainingCents?: number
+    /** The workspace now has under 2% of its budget left: stop the machine. */
+    budgetLow?: boolean
+    /** An admin's spend limit for the member or agent is used up: stop the machine. */
+    spendLimitReached?: boolean
+  }
   | { applied: false; reason: 'lease_missing' | 'lease_not_meterable' | 'lease_conflict' | 'insufficient_budget' | 'paid_plan_required'; remainingCents?: number }
 
 export type ComputerMaintenanceClaim = { token: string; kind: 'provision' | 'wake' | 'stop' | 'delete' | 'idle'; expiresAt: number }
@@ -467,9 +475,7 @@ export interface ConnectedAgentRepository {
     meteredAt: number
     payer?: ConnectedAgentSandboxLeasePayer
     charge?: ConnectedAgentSandboxMeterCharge
-    runtimeHoldCents?: number
     providerEvidence?: { usage: Record<string, unknown>; stopped: boolean }
-    minRemainingCents: number
   }): Promise<ConnectedAgentMeterSandboxLeaseResult>
   stopSandboxLease(args: {
     workspaceId: string

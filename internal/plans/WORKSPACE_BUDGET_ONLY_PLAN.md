@@ -1,6 +1,6 @@
 # Workspace budget only
 
-Status: Phases 1–3 done on branch, unit tested (nothing merged).
+Status: Phases 1–4 done on branch, unit tested (nothing merged). Phase 5 not started.
 
 ## Rule
 
@@ -39,7 +39,7 @@ quotes, reserves or holds the cost of a model call or tool call before making it
 | 1 | `workspaceBudgetLow` helper; pre-call gates use it; `recordBatch` returns `budgetLow`; `WORKSPACE_FUNDS` copy says under 2% left | Done on branch (unit tested) |
 | 2 | Harness: delete forecast/quote estimates, model and billing reservations, funding pause, per-task limit, child budget split; stop after a step that leaves the budget low | Done on branch (unit tested). The next dispatch stops the run; gateway cost correction is not yet wired to direct charges. |
 | 3 | Chat, connected agents, automations, tools and media routes: delete holds, charge directly, stop on low | Done on branch (unit tested). `ensureProviderBudgetNotLow` / `chargeProviderUsage` in `billing-runtime.ts`; Convex background work uses `billing/providerBudget:providerBudgetGate` (no top-up from Convex). Automation workflow steps are charged after the run. The notebook agent stops when a step leaves the budget low. Not yet: Preview provider guard does not refuse direct-charge work. |
-| 4 | Computers and machine metering: delete holds, floor and per-run cap | Not started |
+| 4 | Computers and machine metering: delete holds, floor and per-run cap | Done on branch (unit tested). `ComputerAdmission` uses `ensureProviderBudgetNotLow` (2% after a top-up, spend limits); `ComputerBilling.bindPayer` replaces the allocation hold. `meterSandboxLeaseDebitByServer` charges observed usage capped at the balance and returns `budgetLow` / `spendLimitReached`; the Next meter tries one top-up, then stops the machine (`budget_exhausted` / `spend_limit_exceeded`). E2B running time is charged as observed (no 5-minute headroom); Boat charges only counter advances. The dead turn hold (`ManagedAgentSandboxBilling.reserve`), $15 per-run cap, $1 floor and their env vars are deleted. Legacy lease holds are released on their next tick. The Preview guard now stops work from recorded spend after each direct charge. Not yet: a real paid machine run. |
 | 5 | Delete reservation tables, sweeps, reconciliation and docs; production check of a real paid run | Not started |
 
 Untested so far: everything in a real paid run.

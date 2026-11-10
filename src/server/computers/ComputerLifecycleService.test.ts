@@ -8,12 +8,12 @@ import { ComputerLifecycleService } from './ComputerLifecycleService'
 
 const now = 1_800_000_000_000
 
-test('workspace credit rejection precedes Computer provider allocation', async () => {
-  const fixture = lifecycleFixture({ reserveError: new Error('insufficient_credit') })
+test('a payer failure precedes Computer provider allocation', async () => {
+  const fixture = lifecycleFixture({ bindPayerError: new Error('insufficient_credit') })
   await assert.rejects(fixture.service.provision({
     actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1', size: 'default',
   }), /insufficient_credit/)
-  assert.equal(fixture.reserveCalls.length, 1)
+  assert.equal(fixture.bindPayerCalls.length, 1)
   assert.equal(fixture.createCalls.length, 0)
 })
 
@@ -84,17 +84,16 @@ test('an owner-claim response lost before requestedAt retries only after its pro
   assert.equal(typeof fixture.leaseRows.get(leaseId)?.usage.requestedAt, 'number')
 })
 
-test('a definite pre-request failure releases its hold before making allocation retryable', async () => {
+test('a definite pre-request failure makes allocation retryable with no hold to release', async () => {
   const fixture = lifecycleFixture({ failBeforeRequest: true })
   await assert.rejects(fixture.service.provision({
     actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1', size: 'default',
   }), /COMPUTER_ALLOCATION_RECIPE_CONFLICT/)
   assert.equal(fixture.createCalls.length, 0)
-  assert.equal(fixture.releaseReservationCalls.length, 1)
   const computer = await fixture.repository.findByOwner('ws-1', 'user', 'user-1')
   assert.ok(computer)
   const lease = await fixture.leases.getSandboxLease({ workspaceId: 'ws-1', leaseId: `computer:${computer.id}` })
-  assert.equal(lease?.usage.runtimeHoldMicros, 0)
+  assert.equal(lease?.usage.runtimeHoldMicros, undefined)
   assert.equal(lease?.usage.allocationRetryable, true)
 })
 
@@ -140,12 +139,12 @@ test('ambiguous provisioning recovery rechecks admission with the saved session 
 
   assert.equal(outcome.outcome, 'adopted')
   assert.deepEqual(fixture.admissionCalls.map((call) => call.userId), ['session-user'])
-  assert.equal(fixture.reserveCalls.at(-1)?.actorUserId, 'session-user')
+  assert.equal(fixture.bindPayerCalls.at(-1)?.actorUserId, 'session-user')
   assert.equal(fixture.createCalls.length, 2)
 })
 
 test('wake credit rejection never resumes or exposes the Computer', async () => {
-  const fixture = lifecycleFixture({ reserveError: new Error('insufficient_credit') })
+  const fixture = lifecycleFixture({ bindPayerError: new Error('insufficient_credit') })
   const computer = fixture.seedComputer('box-ref-1', 'stopped')
   let operationCalled = false
   await assert.rejects(fixture.service.withOwnerOperation({
@@ -154,7 +153,7 @@ test('wake credit rejection never resumes or exposes the Computer', async () => 
   }), /insufficient_credit/)
   assert.equal(fixture.instances[0].resumes, 0)
   assert.equal(operationCalled, false)
-  assert.equal(fixture.reserveCalls[0]?.computer.id, computer.id)
+  assert.equal(fixture.bindPayerCalls[0]?.computer.id, computer.id)
 })
 
 test('owner operations retry a temporarily unavailable wake claim', async () => {
@@ -204,7 +203,7 @@ for (const kind of ['wake', 'stop', 'idle', 'provision']) {
     assert.equal(fixture.instances[0].deletes, 0)
     assert.equal(fixture.createCalls.length, 0)
     assert.ok(fixture.sequence.indexOf('transition:paused') < fixture.sequence.indexOf('claim:wake'))
-    assert.ok(fixture.sequence.indexOf('meter:stopped') < fixture.sequence.indexOf('reserve'))
+    assert.ok(fixture.sequence.indexOf('meter:stopped') < fixture.sequence.indexOf('bindPayer'))
     assert.equal(fixture.leaseRows.get(leaseId)?.status, 'running')
   })
 }
@@ -278,8 +277,8 @@ test('wake final-meters the stopped session and invalidates old evidence before 
     actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1',
     operation: async () => undefined,
   })
-  assert.ok(fixture.sequence.indexOf('meter:stopped') < fixture.sequence.indexOf('reserve'))
-  assert.ok(fixture.sequence.indexOf('reserve') < fixture.sequence.indexOf('transition:wake_armed'))
+  assert.ok(fixture.sequence.indexOf('meter:stopped') < fixture.sequence.indexOf('bindPayer'))
+  assert.ok(fixture.sequence.indexOf('bindPayer') < fixture.sequence.indexOf('transition:wake_armed'))
   assert.ok(fixture.sequence.indexOf('transition:wake_armed') < fixture.sequence.indexOf('meter:running'))
 })
 
@@ -292,7 +291,7 @@ test('legacy enrollment adopts counters before reserving a wake', async () => {
     operation: async () => undefined,
   })
   assert.equal(fixture.meteredUsageAtCall[0], undefined)
-  assert.ok(fixture.sequence.indexOf('meter:stopped') < fixture.sequence.indexOf('reserve'))
+  assert.ok(fixture.sequence.indexOf('meter:stopped') < fixture.sequence.indexOf('bindPayer'))
   assert.equal(fixture.instances[0]!.stops, 1)
 })
 
@@ -330,7 +329,7 @@ test('a lost provider delete response retries from stopped evidence and settles 
 })
 
 function lifecycleFixture(options: {
-  reserveError?: Error
+  bindPayerError?: Error
   meterError?: Error
   failAfterAllocation?: boolean
   failAfterLeaseCreateOnce?: boolean
@@ -348,9 +347,8 @@ function lifecycleFixture(options: {
   const createCalls: SandboxCreateRequest[] = []
   const sequence: string[] = []
   const meteredUsageAtCall: unknown[] = []
-  const reserveCalls: Array<{ computer: Computer; actorUserId: string }> = []
+  const bindPayerCalls: Array<{ computer: Computer; actorUserId: string }> = []
   const admissionCalls: Array<{ workspaceId: string; userId: string; agentId?: string }> = []
-  const releaseReservationCalls: string[] = []
   const sleepCalls: number[] = []
   const settledFinalSamples = new Set<string>()
   let stoppedMeterCalls = 0
@@ -614,24 +612,18 @@ function lifecycleFixture(options: {
       if (!lease) throw new Error('lease missing')
       return lease
     },
-    async reserve(computer: Computer, actorUserId: string) {
-      sequence.push('reserve')
-      reserveCalls.push({ computer, actorUserId })
-      if (options.reserveError) throw options.reserveError
+    async bindPayer(computer: Computer, actorUserId: string) {
+      sequence.push('bindPayer')
+      bindPayerCalls.push({ computer, actorUserId })
+      if (options.bindPayerError) throw options.bindPayerError
       const leaseId = `computer:${computer.id}`
       const lease = leaseRows.get(leaseId)
       if (lease) leaseRows.set(leaseId, { ...lease, usage: {
-        ...lease.usage, runtimeHoldMicros: 50_000, runtimeHoldPayer: {
+        ...lease.usage, lastPayer: {
           scope: 'workspace', workspaceId: computer.workspaceId, billingAccountId: 'billing-1',
           userId: actorUserId, spendSubjectKind: 'member', spendSubjectId: actorUserId,
         },
       } })
-    },
-    async releaseReservation(computer: Computer) {
-      releaseReservationCalls.push(computer.id)
-      const leaseId = `computer:${computer.id}`
-      const lease = leaseRows.get(leaseId)
-      if (lease) leaseRows.set(leaseId, { ...lease, usage: { ...lease.usage, runtimeHoldMicros: 0 } })
     },
     async meter(computer: Computer, stopped = false) {
       sequence.push(`meter:${stopped ? 'stopped' : 'running'}`)
@@ -689,7 +681,7 @@ function lifecycleFixture(options: {
     return computer
   }
   return {
-    service, repository, leases, createCalls, reserveCalls, releaseReservationCalls, instances, sequence, sleepCalls,
+    service, repository, leases, createCalls, bindPayerCalls, instances, sequence, sleepCalls,
     seedComputer, leaseRows, meteredUsageAtCall, admissionCalls, setNow: (value: number) => { currentNow = value },
     get stoppedMeterCalls() { return stoppedMeterCalls },
     get finalSettlementCount() { return finalSettlementCount },

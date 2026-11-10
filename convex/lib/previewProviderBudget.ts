@@ -30,6 +30,16 @@ export async function previewProviderBudgetAvailable(ctx: MutationCtx, additiona
   return row.spentMicros + reservedMicros + additionalMicros <= budgetMicros()
 }
 
+/**
+ * Preview only: the backend's recorded provider spend (plus any holds left from before holds were removed) has
+ * reached its cap. Direct charges are recorded first, then work stops on this; Production always answers false.
+ */
+export async function previewProviderBudgetSpent(ctx: MutationCtx): Promise<boolean> {
+  if (!isPreviewDeployment()) return false
+  const { row, reservedMicros } = await snapshot(ctx)
+  return row.spentMicros + reservedMicros >= budgetMicros()
+}
+
 /** Settlement is always recorded, including stop/final usage after a limit hit. */
 export async function recordPreviewProviderSpend(ctx: MutationCtx, actualMicros: number): Promise<void> {
   if (!isPreviewDeployment() || actualMicros <= 0) return

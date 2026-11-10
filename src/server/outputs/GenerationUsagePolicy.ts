@@ -9,16 +9,8 @@ import {
   ensurePayerBudgetAvailable,
   ensureProviderBudgetNotLow,
   getPayerEntitlements,
-  finalizeProviderBudgetReservation,
-  markProviderBudgetStarted,
-  markProviderBudgetReconcile,
-  releaseProviderBudgetReservation,
-  reserveProviderBudget,
-  type ProviderSpendKind,
-  type ProviderUsageEvent,
 } from '@/server/billing/billing-runtime'
 
-type ReservationResult = Awaited<ReturnType<typeof reserveProviderBudget>>
 type BudgetCheckArgs = Parameters<typeof ensureProviderBudgetNotLow>[0]
 type BudgetCheckResult = Awaited<ReturnType<typeof ensureProviderBudgetNotLow>>
 type ChargeArgs = Parameters<typeof chargeProviderUsage>[0]
@@ -38,40 +30,6 @@ export interface GenerationUsagePolicy {
   ensureBudgetNotLow(args: BudgetCheckArgs): Promise<BudgetCheckResult>
   /** After a paid call: charges its actual cost directly. `budgetLow` means take no further steps. */
   charge(args: ChargeArgs): Promise<{ budgetLow: boolean }>
-  /** Computers and managed sandboxes only, until their metering stops holding funds. */
-  reserve(args: {
-    entitlements: Entitlements
-    idempotencyKey?: string | null
-    kind: ProviderSpendKind
-    modelId?: string
-    operationId: string
-    providerCostUsd: number
-    requestFingerprint: string
-    userId: string
-    workspaceId?: string
-    programmaticSubjectId?: string
-  }): Promise<ReservationResult>
-  finalize(args: {
-    actualProviderCostUsd: number
-    events?: ProviderUsageEvent[]
-    reservationId: string | null | undefined
-    userId: string
-  }): ReturnType<typeof finalizeProviderBudgetReservation>
-  markStarted(args: {
-    reservationId: string | null | undefined
-    userId: string
-  }): ReturnType<typeof markProviderBudgetStarted>
-  release(args: {
-    providerWorkStarted?: boolean
-    reason?: string
-    reservationId: string | null | undefined
-    userId: string
-  }): ReturnType<typeof releaseProviderBudgetReservation>
-  markForReconcile(args: {
-    errorMessage?: string
-    reservationId: string | null | undefined
-    userId: string
-  }): ReturnType<typeof markProviderBudgetReconcile>
 }
 
 export class UnlimitedGenerationUsagePolicy implements GenerationUsagePolicy {
@@ -99,39 +57,6 @@ export class UnlimitedGenerationUsagePolicy implements GenerationUsagePolicy {
 
   async charge(): Promise<{ budgetLow: boolean }> {
     return { budgetLow: false }
-  }
-
-  async reserve(args: {
-    entitlements: Entitlements
-    idempotencyKey?: string | null
-    kind: ProviderSpendKind
-    modelId?: string
-    operationId: string
-    providerCostUsd: number
-    requestFingerprint: string
-    userId: string
-  }): Promise<ReservationResult> {
-    return {
-      ok: true,
-      billingAccountId: null,
-      reservationId: null,
-      reservedCents: 0,
-      entitlements: args.entitlements,
-    }
-  }
-
-  async finalize(): Promise<{ success: true; skipped: true }> {
-    return { success: true, skipped: true }
-  }
-  async markStarted(): ReturnType<typeof markProviderBudgetStarted> {
-    return { success: true, skipped: true }
-  }
-
-  async release(): ReturnType<typeof releaseProviderBudgetReservation> {
-    return { success: true, skipped: true }
-  }
-  async markForReconcile(): ReturnType<typeof markProviderBudgetReconcile> {
-    return { success: true, skipped: true }
   }
 }
 
@@ -162,58 +87,6 @@ export class BillingGenerationUsagePolicy implements GenerationUsagePolicy {
 
   async charge(args: ChargeArgs): Promise<{ budgetLow: boolean }> {
     return await chargeProviderUsage(args)
-  }
-
-  async reserve(args: {
-    entitlements: Entitlements
-    idempotencyKey?: string | null
-    kind: ProviderSpendKind
-    modelId?: string
-    operationId: string
-    providerCostUsd: number
-    requestFingerprint: string
-    userId: string
-    workspaceId?: string
-    programmaticSubjectId?: string
-  }): Promise<ReservationResult> {
-    return await reserveProviderBudget(args)
-  }
-
-  async finalize(args: {
-    actualProviderCostUsd: number
-    events?: ProviderUsageEvent[]
-    reservationId: string | null | undefined
-    userId: string
-  }): ReturnType<typeof finalizeProviderBudgetReservation> {
-    if (args.reservationId) return await finalizeProviderBudgetReservation(args)
-    return { success: true, skipped: true }
-  }
-
-  async markStarted(args: {
-    reservationId: string | null | undefined
-    userId: string
-  }): ReturnType<typeof markProviderBudgetStarted> {
-    if (!args.reservationId) return { success: true, skipped: true }
-    return await markProviderBudgetStarted(args)
-  }
-
-  async release(args: {
-    providerWorkStarted?: boolean
-    reason?: string
-    reservationId: string | null | undefined
-    userId: string
-  }): ReturnType<typeof releaseProviderBudgetReservation> {
-    if (!args.reservationId) return { success: true, skipped: true }
-    return await releaseProviderBudgetReservation(args)
-  }
-
-  async markForReconcile(args: {
-    errorMessage?: string
-    reservationId: string | null | undefined
-    userId: string
-  }): ReturnType<typeof markProviderBudgetReconcile> {
-    if (!args.reservationId) return { success: true, skipped: true }
-    return await markProviderBudgetReconcile(args)
   }
 }
 

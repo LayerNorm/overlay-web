@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
-import { previewProviderBudgetAvailable, recordPreviewProviderSpend } from './lib/previewProviderBudget'
+import { previewProviderBudgetAvailable, previewProviderBudgetSpent, recordPreviewProviderSpend } from './lib/previewProviderBudget'
 
 const modules = import.meta.glob('./**/*.ts')
 afterEach(() => vi.unstubAllEnvs())
@@ -43,6 +43,16 @@ test('final provider settlement remains recordable above the cap and blocks furt
   expect(await t.run(ctx => previewProviderBudgetAvailable(ctx, 1))).toBe(false)
   const state = await t.run(ctx => ctx.db.query('previewProviderBudget').unique())
   expect(state?.spentMicros).toBe(11_000_000)
+})
+
+test('direct charges stop work once recorded Preview spend reaches the cap; Production never stops for it', async () => {
+  const { t, ids } = await fixture()
+  await t.run(async ctx => { await ctx.db.patch(ids[0], { reservedMicros: 0 }); await ctx.db.patch(ids[1], { reservedMicros: 0 }) })
+  expect(await t.run(ctx => previewProviderBudgetSpent(ctx))).toBe(false)
+  await t.run(ctx => recordPreviewProviderSpend(ctx, 4_000_000))
+  expect(await t.run(ctx => previewProviderBudgetSpent(ctx))).toBe(true)
+  vi.stubEnv('OVERLAY_DEPLOYMENT_ENV', 'production')
+  expect(await t.run(ctx => previewProviderBudgetSpent(ctx))).toBe(false)
 })
 
 test('invalid Preview limits fail closed while Production does not read or write the guard', async () => {

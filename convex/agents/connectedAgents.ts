@@ -19,10 +19,9 @@ import { requireServerSecret } from '../lib/auth'
 import { interruptRemoteAgentToolParts, projectRemoteAgentEvents, resolveRemoteRequestPart, waitingRemoteAgentParts } from '../../src/shared/agents/remote-agent-transcript'
 import { recordAcceptedBatch, recordRejectedBatch, settleInterruptedRemoteRunTools } from '../../src/shared/agents/remote-run-stream-stats'
 import { assertValidElicitationResponse } from '../../src/shared/agents/elicitation-schema'
-import { finalizeWorkspaceLedger, markBudgetReservationReconcile } from '../platform/usage'
+import { finalizeWorkspaceLedger, markBudgetReservationReconcile, workspaceAvailableMicros, workspaceBudgetLowAfterCharge, workspaceRemainingCents } from '../platform/usage'
 import { connectedAgentPolicyProjection } from '../lib/connectedAgentPolicyProjection'
-import { applySandboxSpendLimits, prepareSandboxSpendLimits } from '../lib/sandboxSpendLimits'
-import { previewProviderBudgetAvailable } from '../lib/previewProviderBudget'
+import { chargeSandboxSpendLimits } from '../lib/sandboxSpendLimits'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 
 const anyObject = v.any()
@@ -2473,6 +2472,12 @@ const sandboxLeasePayerValidator = v.object({
   spendSubjectId: v.optional(v.string()),
 })
 
+/**
+ * One meter tick: charges the machine's observed usage since the last tick (capped at what the workspace holds, so a
+ * balance never goes negative) and advances the lease's cursor. Nothing is held or predicted. `budgetLow` says the
+ * workspace now has under 2% of its budget left and `spendLimitReached` that an admin's spend limit for the member or
+ * agent is used up: the caller stops the machine. A hold a lease kept from before holds were removed is released.
+ */
 export const meterSandboxLeaseDebitByServer = mutation({
   args: {
     serverSecret: v.string(), workspaceId: v.string(), leaseId: v.string(), now: v.number(),
@@ -2488,8 +2493,6 @@ export const meterSandboxLeaseDebitByServer = mutation({
       providerCostUsd: v.number(),
       metadata: anyObject,
     })),
-    minRemainingCents: v.number(),
-    runtimeHoldCents: v.optional(v.number()),
     providerEvidence: v.optional(v.object({ usage: anyObject, stopped: v.boolean() })),
   },
   handler: async (ctx, args) => {
@@ -2510,14 +2513,13 @@ export const meterSandboxLeaseDebitByServer = mutation({
     const usage = (lease.usage ?? {}) as Record<string, unknown>
     const meterVersion = typeof usage.meterVersion === 'number' ? usage.meterVersion : 0
     if (meterVersion !== args.expectedMeterVersion) return { applied: false, reason: 'lease_conflict' }
-    const monetaryInputs = [args.minRemainingCents, args.runtimeHoldCents ?? 0, args.charge?.costCents ?? 0, args.charge?.providerCostUsd ?? 0, args.charge?.durationSeconds ?? 0]
+    const monetaryInputs = [args.charge?.costCents ?? 0, args.charge?.providerCostUsd ?? 0, args.charge?.durationSeconds ?? 0]
     if (!monetaryInputs.every((value) => Number.isFinite(value) && value >= 0)
       || !Number.isSafeInteger(Math.round((args.charge?.costCents ?? 0) * 10_000))) {
       throw new Error('sandbox_meter_amount_invalid')
     }
     const previousHoldMicros = typeof usage.runtimeHoldMicros === 'number' ? usage.runtimeHoldMicros : 0
-    const holdMicros = args.runtimeHoldCents === undefined ? previousHoldMicros : Math.round(args.runtimeHoldCents * 10_000)
-    if (![previousHoldMicros, holdMicros].every((value) => Number.isSafeInteger(value) && value >= 0)) throw new Error('sandbox_runtime_hold_invalid')
+    if (!Number.isSafeInteger(previousHoldMicros) || previousHoldMicros < 0) throw new Error('sandbox_runtime_hold_invalid')
     const evidence = args.providerEvidence ? {
       ...args.providerEvidence, providerReference: args.meteredProviderReference, observedAt: args.meteredAt,
     } : usage.lastProviderEvidence
@@ -2527,7 +2529,6 @@ export const meterSandboxLeaseDebitByServer = mutation({
     const nextUsage: Record<string, unknown> = {
       ...usage,
       ...(evidence ? { lastProviderEvidence: evidence } : {}),
-      runtimeHoldMicros: holdMicros,
       meteredUsage: args.meteredUsage,
       meteredAt: args.meteredAt,
       meterVersion: meterVersion + 1,
@@ -2535,19 +2536,13 @@ export const meterSandboxLeaseDebitByServer = mutation({
       ...(args.payer === undefined ? {} : { lastPayer: args.payer }),
     }
     let remainingCents: number | undefined
+    let budgetLow = false
+    let spendLimitReached = false
     const charge = args.charge && args.charge.costCents > 0 ? args.charge : undefined
-    const payer = args.payer
-    if (!payer && (charge || holdMicros > 0 || previousHoldMicros > 0)) {
+    // A legacy hold stays bound to the payer that made it until this tick releases it.
+    const payer = previousHoldMicros > 0 ? usage.runtimeHoldPayer as typeof args.payer : args.payer
+    if (!payer && (charge || previousHoldMicros > 0)) {
       return { applied: false, reason: 'insufficient_budget', remainingCents: 0 }
-    }
-    const heldPayer = usage.runtimeHoldPayer as typeof payer
-    if (previousHoldMicros > 0 && (!heldPayer || !payer
-      || heldPayer.billingAccountId !== payer.billingAccountId
-      || heldPayer.userId !== payer.userId
-      || heldPayer.spendSubjectKind !== payer.spendSubjectKind
-      || heldPayer.spendSubjectId !== payer.spendSubjectId
-      || args.meteredProviderReference !== usage.meteredProviderReference)) {
-      throw new Error('sandbox_runtime_hold_identity_changed')
     }
     if (payer) {
       if (payer.scope === 'workspace') {
@@ -2574,9 +2569,8 @@ export const meterSandboxLeaseDebitByServer = mutation({
           .query('billingAccountSubscriptions')
           .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', billingAccountId))
           .unique()
-        // Without a paid plan, only settle confirmed-stopped usage or release a hold; never extend live runtime.
-        const settlesWithoutRuntime = holdMicros === 0
-          && (args.providerEvidence ? args.providerEvidence.stopped : !charge)
+        // Without a paid plan, only settle confirmed-stopped usage; never keep live runtime going.
+        const settlesWithoutRuntime = args.providerEvidence ? args.providerEvidence.stopped : !charge
         if (subscription?.planKind !== 'paid' && !settlesWithoutRuntime) {
           return { applied: false, reason: 'paid_plan_required' }
         }
@@ -2588,43 +2582,31 @@ export const meterSandboxLeaseDebitByServer = mutation({
           .unique()
         if (!balance) throw new Error('workspace_billing_balance_missing')
         if (previousHoldMicros > balance.reservedMicros) throw new Error('sandbox_runtime_hold_balance_mismatch')
-        const availableMicros = balance.mode === 'unlimited'
-          ? Number.MAX_SAFE_INTEGER
-          : Math.max(0, balance.includedMicros + balance.institutionalGrantMicros + balance.topUpPurchasedMicros - balance.usedMicros - balance.reservedMicros + previousHoldMicros)
-        const chargeMicros = charge ? Math.round(Math.max(0, charge.costCents) * 10_000) : 0
-        const floorMicros = Math.round(Math.max(0, args.minRemainingCents) * 10_000)
-        const settlingHeldUsage = previousHoldMicros > 0 && holdMicros === 0 && chargeMicros <= previousHoldMicros
-        if ((account.status !== 'active' && !settlingHeldUsage) || chargeMicros + holdMicros + floorMicros > availableMicros) {
-          return {
-            applied: false,
-            reason: 'insufficient_budget',
-            remainingCents: Math.round((availableMicros / 10_000) * 100) / 100,
-          }
-        }
-        if (charge || holdMicros > 0 || previousHoldMicros > 0) {
-          // Always allow final settlement/stop. Only new execution headroom can
-          // be refused; an exhausted Preview budget must not hide incurred cost.
-          const extraCommitment = Math.max(0, chargeMicros + holdMicros - previousHoldMicros)
-          if (holdMicros > 0 && !await previewProviderBudgetAvailable(ctx, extraCommitment)) {
-            return { applied: false, reason: 'insufficient_budget', remainingCents: 0 }
-          }
-          const limits = await prepareSandboxSpendLimits(ctx, {
+        // Observed usage is always recorded, capped at what the workspace holds.
+        const chargeMicros = charge
+          ? Math.min(Math.round(Math.max(0, charge.costCents) * 10_000), workspaceAvailableMicros(balance))
+          : 0
+        if (charge || previousHoldMicros > 0) {
+          const limits = await chargeSandboxSpendLimits(ctx, {
             billingAccountId, userId: payer.userId, spendSubjectKind: payer.spendSubjectKind, spendSubjectId: payer.spendSubjectId,
-            usage, previousHoldMicros, chargeMicros, holdMicros, now: args.now,
+            usage, previousHoldMicros, chargeMicros, now: args.now,
           })
-          if (!limits.ok) return { applied: false, reason: 'insufficient_budget', remainingCents: limits.remainingMicros / 10_000 }
-          nextUsage.runtimeHoldLimits = await applySandboxSpendLimits(ctx, { limits: limits.limits, holdMicros, chargeMicros, now: args.now })
+          spendLimitReached = limits.limitReached
           await finalizeWorkspaceLedger(ctx, {
-            actualMicros: chargeMicros, balance, limit: null, reservedMicros: previousHoldMicros, reserveMicros: holdMicros,
+            actualMicros: chargeMicros, balance, limit: null, reservedMicros: previousHoldMicros,
           })
-          nextUsage.runtimeHoldPayer = holdMicros > 0 ? payer : null
-          nextUsage.runtimeHoldLimitId = null
+          if (previousHoldMicros > 0) {
+            nextUsage.runtimeHoldMicros = 0
+            nextUsage.runtimeHoldPayer = null
+            nextUsage.runtimeHoldLimits = []
+            nextUsage.runtimeHoldLimitId = null
+          }
           if (charge) await ctx.db.insert('usageOperations', {
             userId: payer.userId,
             billingAccountId,
             operationId: `sandbox-meter:${args.leaseId}:${meterVersion + 1}`,
             recorded: 1,
-            ...meterUsageFields(charge),
+            ...meterUsageFields({ ...charge, costCents: chargeMicros / 10_000 }),
             sandboxEvidence: {
               category: 'compute', provider: lease.provider,
               providerReference: args.meteredProviderReference ?? lease.providerReference ?? '',
@@ -2634,11 +2616,12 @@ export const meterSandboxLeaseDebitByServer = mutation({
             createdAt: args.now,
           })
         }
-        remainingCents =
-          Math.round(((availableMicros - chargeMicros - holdMicros) / 10_000) * 100) / 100
+        budgetLow = account.status !== 'active' || await workspaceBudgetLowAfterCharge(ctx, balance._id)
+        const after = await ctx.db.get(balance._id)
+        remainingCents = after ? workspaceRemainingCents(after) : 0
       } else {
         // Not a paid workspace: a person's own account has no credit, so metered machine time cannot be paid for.
-        if (holdMicros > 0 || previousHoldMicros > 0 || (charge?.costCents ?? 0) + Math.max(0, args.minRemainingCents) > 0) {
+        if (charge || previousHoldMicros > 0) {
           return { applied: false, reason: 'insufficient_budget', remainingCents: 0 }
         }
         remainingCents = 0
@@ -2646,7 +2629,7 @@ export const meterSandboxLeaseDebitByServer = mutation({
     }
     await ctx.db.patch(lease._id, { usage: nextUsage, updatedAt: args.now })
     return {
-      applied: true, meterVersion: meterVersion + 1,
+      applied: true, meterVersion: meterVersion + 1, budgetLow, spendLimitReached,
       ...(remainingCents === undefined ? {} : { remainingCents }),
     }
   },

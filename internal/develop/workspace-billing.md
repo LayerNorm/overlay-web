@@ -74,7 +74,7 @@ The workspace balance is the only automatic spending limit, plus an optional fix
 - After a successful call, the actual cost (provider receipt, or catalog price times reported usage, or a known per-item price for media) is charged directly with `recordBatch`, keyed by a unique operation id. The charge is capped at what the balance holds, and it counts against the subject's spend limit (`programmaticSubjectId` selects a program's limit). A failed call charges nothing.
 - `recordBatch` returns `budgetLow`. A loop (the notebook agent) stops taking steps when a charge leaves the workspace under 2%.
 
-Explicit BYO inference still requires a workspace that is not under 2%, and charges no Overlay model usage. Computers and managed sandboxes still hold funds until the workspace-budget-only plan's phase 4.
+Explicit BYO inference still requires a workspace that is not under 2%, and charges no Overlay model usage. Computers and managed sandboxes follow the same rule: they start only with at least 2% left (after a top-up), hold nothing, are charged observed usage by the lease meter, and stop when a charge leaves the workspace under 2% or uses up a spend limit (see `billing-holds-and-machine-metering.md`).
 
 The launch coverage gate lives in `src/server/billing/billable-feature-coverage.ts`. Shared conversations/agents, embeddings/search, browser/sandbox, hosted media/transcription, and automation/API provider calls are metered. Each automation run is also charged a flat 20 Workflow Steps at Vercel's rate ($2.50 per 100,000 steps) with the configured usage markup, after the run. Functions, integrations, and MCP tools are bounded to 12 steps per agent turn and 50,000 result characters; file ingestion is bounded to 20 requests per hour and the account storage cap. Keep `npm run check:owner-funded-boundary` and the coverage test passing for every hosted-cost entry point.
 
@@ -166,14 +166,14 @@ whose turn/transcription quota is consumed without provider requests. Explicit
 recovery resets only that workspace's counters; rebuilds preserve the result.
 Use it to verify the denial and recovery paths without consuming real model runs.
 
-A separate Preview provider guard caps metered commitments across all wallets,
+A separate Preview provider guard caps metered spend across all wallets,
 independently of synthetic credits. It defaults to $5 per PR, with an explicit
-acceptance override up to $25. Settled cost is durable and all active wallet
-reservations count; synthetic refills and period rollovers do not reset the guard.
-Actual settlement remains recordable after exhaustion. Direct charges (chat,
-tools, media, background work) count toward the guard, but only new holds
-(computers) are refused by it; refusing direct-charge work in Preview is not yet
-wired. See Billing Holds and Machine Metering for provider-account limits and
+acceptance override up to $25. Settled cost is durable; synthetic refills and
+period rollovers do not reset the guard. Every direct charge and machine meter
+tick is recorded first and then reports `budgetLow` once recorded spend reaches
+the cap, so Preview work stops after the current step and machines stop. The
+check before a call does not read the guard, so one more call can start after
+the cap is reached. Production never reads it. See Billing Holds and Machine Metering for provider-account limits and
 excluded external charges.
 
 Browser interaction is billed through the bound Computer's machine lease and

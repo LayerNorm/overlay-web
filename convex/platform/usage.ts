@@ -1,6 +1,6 @@
 import { v } from 'convex/values'
 import { internal } from '../_generated/api'
-import type { Doc } from '../_generated/dataModel'
+import type { Doc, Id } from '../_generated/dataModel'
 import { mutation, query, internalMutation, internalQuery, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireAccessToken, requireServerSecret, validateServerSecret } from '../lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from '../lib/authDebug'
@@ -9,7 +9,7 @@ import { paidWorkspaceAccountFor } from '../billing/workspacePayer'
 import { workspaceBudgetLow, workspaceExecutionAccess } from '../../src/shared/billing/execution-access'
 import { normalizeUsageReconciliationResolution } from '../../src/shared/billing/usage-reconciliation'
 import { canceledPlanCreditPatch, ensureEmptyBalance, ensurePersonalBillingAccount } from '../billing/accountModel'
-import { previewProviderBudgetAvailable, recordPreviewProviderSpend } from '../lib/previewProviderBudget'
+import { previewProviderBudgetAvailable, previewProviderBudgetSpent, recordPreviewProviderSpend } from '../lib/previewProviderBudget'
 
 const usageReconciliationQueueItemValidator = v.object({
   createdAt: v.number(),
@@ -423,7 +423,7 @@ export const recordBatch = mutation({
  * Charges usage recorded after the fact (no reservation) to a paid workspace's balance, capped at what the balance
  * holds, and records the amount on the usage operation for the itemized usage list.
  */
-function workspaceAvailableMicros(balance: Doc<'billingAccountBalances'>): number {
+export function workspaceAvailableMicros(balance: Doc<'billingAccountBalances'>): number {
   return Math.max(0, balance.includedMicros + balance.institutionalGrantMicros - balance.allowanceUsedMicros)
     + Math.max(0, balance.topUpBalanceMicros)
 }
@@ -457,10 +457,24 @@ async function chargeWorkspaceDirect(ctx: MutationCtx, args: {
       : {}),
     createdAt: Date.now(),
   })
-  const after = await ctx.db.get(balance._id)
-  if (!after || after.mode === 'unlimited') return { budgetLow: false }
+  return { budgetLow: await workspaceBudgetLowAfterCharge(ctx, balance._id) }
+}
+
+/**
+ * Read after a direct charge: the workspace now has under 2% of its budget left (work stops), or on Preview the
+ * backend's provider budget is spent. Unlimited workspaces never stop for budget.
+ */
+export async function workspaceBudgetLowAfterCharge(ctx: MutationCtx, balanceId: Id<'billingAccountBalances'>): Promise<boolean> {
+  if (await previewProviderBudgetSpent(ctx)) return true
+  const after = await ctx.db.get(balanceId)
+  if (!after || after.mode === 'unlimited') return false
   const summary = workspaceBalanceSummary(after)
-  return { budgetLow: workspaceBudgetLow({ remainingCents: summary.budgetRemainingCents, totalCents: summary.budgetTotalCents }) }
+  return workspaceBudgetLow({ remainingCents: summary.budgetRemainingCents, totalCents: summary.budgetTotalCents })
+}
+
+/** What a workspace balance has left, in cents, after holds. */
+export function workspaceRemainingCents(balance: Doc<'billingAccountBalances'>): number {
+  return workspaceBalanceSummary(balance).budgetRemainingCents
 }
 
 export const recordFileBandwidthByServer = mutation({
