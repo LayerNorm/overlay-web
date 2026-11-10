@@ -86,6 +86,7 @@ import type * as computers_computers from "../computers/computers.js";
 import type * as crons from "../crons.js";
 import type * as dev_fundingQa from "../dev/fundingQa.js";
 import type * as dev_nativeThreadQa from "../dev/nativeThreadQa.js";
+import type * as dev_performanceQa from "../dev/performanceQa.js";
 import type * as dev_previewWorkspace from "../dev/previewWorkspace.js";
 import type * as dev_qa from "../dev/qa.js";
 import type * as dev_seed from "../dev/seed.js";
@@ -298,6 +299,7 @@ declare const fullApi: ApiFromModules<{
   crons: typeof crons;
   "dev/fundingQa": typeof dev_fundingQa;
   "dev/nativeThreadQa": typeof dev_nativeThreadQa;
+  "dev/performanceQa": typeof dev_performanceQa;
   "dev/previewWorkspace": typeof dev_previewWorkspace;
   "dev/qa": typeof dev_qa;
   "dev/seed": typeof dev_seed;
