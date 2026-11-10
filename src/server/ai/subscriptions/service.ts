@@ -34,6 +34,8 @@ import {
   type WrittenSecret,
 } from './service-helpers'
 
+const disconnectLeasePollMs = 500
+
 export class SubscriptionService {
   private readonly bridge: SubscriptionBridgeClient
 
@@ -42,6 +44,8 @@ export class SubscriptionService {
     private readonly credentials: ByokCredentialStore = getOverlayServerContext().byokCredentialStore,
     private readonly fetcher: typeof fetch = fetch,
     bridge?: SubscriptionBridgeClient,
+    private readonly sleep: (ms: number) => Promise<void> =
+      (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
   ) {
     this.bridge = bridge ?? new SubscriptionBridgeClient(undefined, undefined, fetcher)
   }
@@ -235,7 +239,13 @@ export class SubscriptionService {
 
   async disconnect(userId: string, connectionId: string): Promise<void> {
     const refs = await this.repository.disconnect({ userId, connectionId })
-    const refsCleaned = await this.cleanupRefs(userId, connectionId, refs)
+    // A sign-in check or refresh that was already running keeps its lease. It
+    // cleans up its own vault write and hands the lease back once it sees the
+    // disconnect, so wait for that instead of failing a person's Cancel.
+    const settled = await this.waitForLeaseToSettle(userId, connectionId)
+    const refsCleaned = await this.cleanupRefs(
+      userId, connectionId, [...new Set([...refs, ...(settled?.cleanupRefs ?? [])])],
+    )
     const pendingWritesCleaned = await this.reconcilePendingWrites(userId, connectionId, { olderThanMs: 0 })
     if (!refsCleaned || !pendingWritesCleaned) {
       throw new Error('Subscription cleanup is pending')
@@ -404,6 +414,18 @@ export class SubscriptionService {
         })
       } catch (_retainError) { /* retain the original failure */ }
     }
+  }
+
+  private async waitForLeaseToSettle(userId: string, connectionId: string) {
+    let state = await this.repository.get({ userId, connectionId }).catch((_error) => null)
+    // Leases last at most a minute, so this wait is bounded by the lease itself.
+    const attempts = Math.ceil(Math.max(0, (state?.leaseUntil ?? 0) - Date.now()) / disconnectLeasePollMs)
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      if (state?.leaseUntil === undefined || state.leaseUntil <= Date.now()) break
+      await this.sleep(disconnectLeasePollMs)
+      state = await this.repository.get({ userId, connectionId }).catch((_error) => state)
+    }
+    return state
   }
 
   private async reconcilePendingWrites(
