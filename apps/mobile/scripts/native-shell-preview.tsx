@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar'
 import * as NavigationBar from 'expo-navigation-bar'
 import { View } from 'react-native'
 import { ShellFixture } from './ShellFixture'
+import { WorkFixture } from './WorkFixture'
 
 void NavigationBar.setVisibilityAsync('hidden')
 
@@ -19,11 +20,14 @@ function NativeShellPreview() {
     GeistSemibold: require('@expo-google-fonts/geist/600SemiBold/Geist_600SemiBold.ttf'),
   })
   const preview = Constants.expoConfig?.extra?.shellPreview
+  const Fixture = ['work-list', 'task-detail', 'new-task'].includes(preview?.screen)
+    ? WorkFixture
+    : ShellFixture
   return (
     <View style={{ flex: 1 }}>
       <StatusBar hidden />
       {loaded ? (
-        <ShellFixture initialScreen={preview?.screen ?? 'boot'} dark={preview?.theme === 'dark'} />
+        <Fixture initialScreen={preview?.screen ?? 'boot'} dark={preview?.theme === 'dark'} />
       ) : null}
     </View>
   )

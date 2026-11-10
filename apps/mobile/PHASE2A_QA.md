@@ -4,9 +4,9 @@ The production shell uses real Convex memberships, agent directories, thread bun
 
 The old onboarding redirect is replaced at launch by membership loading and the no-workspace gate. Existing members go to their saved start destination. Legacy per-screen drawers no longer render; the root drawer also covers detail routes. Empty Projects and Knowledge Base directories were untracked and were removed.
 
-## Open product decision
+## Sign-in decision
 
-The approved sign-in mockup shows an in-app password form. Existing native authentication only supports a hosted PKCE browser session. This slice retains that secure handoff and does not collect an unused password or add a credential endpoint. Owner approval or a separate auth backend decision is still needed for exact sign-in mockup parity.
+The owner approved hosted PKCE with the single continue button. It supports email, Google, Apple and SSO in the browser. The app does not collect passwords or add a credential endpoint.
 
 ## Local checks
 
@@ -87,6 +87,6 @@ python3 -m http.server 8031 --bind 127.0.0.1 --directory /home/ubuntu/mobile-dri
 
 Open `http://127.0.0.1:8031/?screen=agents-drawer&theme=dark`. Web rendering needs the SDK-compatible local `react-dom` version; otherwise this nested checkout resolves the parent web renderer, which has a different React version.
 
-Screenshots and comparison PNGs live in `/home/ubuntu/mobile-drift-audit/phase2a-shell/`. The 40px boot wordmark follows the explicit implementation requirement; the approved static mockup uses a smaller wordmark. Sign-in deliberately differs pending the auth decision above. Other feature content behind sheets/drawers remains a fixture or the existing Phase 1 screen, not a Phase 2b rebuild.
+Screenshots and comparison PNGs live in `/home/ubuntu/mobile-drift-audit/phase2a-shell/`. The 40px boot wordmark follows the explicit implementation requirement; the approved static mockup uses a smaller wordmark. Sign-in uses the approved hosted PKCE flow. Other feature content behind sheets/drawers remains a fixture or the existing Phase 1 screen, not a Phase 2b rebuild.
 
 Verified locally: `npm run check` passed, 40 tests passed, targeted ESLint passed with no warnings, and Android/iOS exports passed. Source maps contain no application Convex backend modules, unresolved alias modules or QA fixture modules. All seven fixture states were captured on Android in both themes and paired with the approved PNGs. Web checks covered both themes, thread collapse/expand, opening the account sheet, changing the selected fixture workspace and the chat action. The actual application separately launched to sign-in in both system themes with no red screen, and disabling emulator Wi-Fi/data caused NetInfo to display the offline banner. Networks were restored afterward. Signed-in backend integration remains unverified.
