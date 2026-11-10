@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import React, { type RefObject } from 'react'
+import React, { useEffect, type RefObject } from 'react'
 import { act, create, type ReactTestRenderer } from 'react-test-renderer'
 import { agentTurnSpacerHeight, useAgentTurnScroll } from './useAgentTurnScroll'
 import type { RoomMessageRecord } from './room-message-view'
@@ -26,8 +26,11 @@ test('new agent exchanges anchor at the top without discarding history or draggi
   })
   let scroll!: ReturnType<typeof useAgentTurnScroll>
   function Harness({ messages, conversationId = 'room' }: { messages: RoomMessageRecord[]; conversationId?: string }) {
-    scroll = useAgentTurnScroll({ enabled: true, conversationId, messages, listRef: { current: list } as unknown as RefObject<HTMLDivElement> })
-    return <div ref={scroll.spacerRef} />
+    const currentScroll = useAgentTurnScroll({ enabled: true, conversationId, messages, listRef: { current: list } as unknown as RefObject<HTMLDivElement> })
+    useEffect(() => {
+      scroll = currentScroll
+    }, [currentScroll])
+    return <div ref={currentScroll.spacerRef} />
   }
   const history: RoomMessageRecord[] = [
     { id: 'old-user', turnId: 'old', authorKind: 'human', content: 'Previous question', createdAt: 1 },

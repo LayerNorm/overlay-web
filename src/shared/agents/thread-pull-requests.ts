@@ -148,7 +148,7 @@ function inputRepository(input: Record<string, unknown>): { owner: string; repo:
   const repo = input.repo
   if (!validSlug(owner, 39) || !validSlug(repo, 100)) return null
   const number = input.pull_number === undefined ? undefined : positivePullRequestNumber(input.pull_number)
-  if (input.pull_number !== undefined && number === null) return null
+  if (number === null) return null
   return { owner, repo, ...(number === undefined ? {} : { number }) }
 }
 
@@ -385,7 +385,7 @@ function operationConfirmsState(
 ): boolean {
   if (state === 'merged') return true
   switch (operation) {
-    case 'merge': return state === 'merged'
+    case 'merge': return false
     case 'close': return state === 'closed'
     case 'reopen': return state === 'open' || state === 'draft'
     case 'draft': return state === 'draft'
