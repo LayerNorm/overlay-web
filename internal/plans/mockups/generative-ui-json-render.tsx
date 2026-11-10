@@ -270,7 +270,7 @@ class PartBoundary extends React.Component<{ summary: string; children: React.Re
 function SpecPart({ value, summary, initialState = {}, readonly = false, onSubmit }: SpecPartProps) {
   return <PartBoundary summary={summary}><StateProvider initialState={initialState}><VisibilityProvider><SpecActions value={value} summary={summary} readonly={readonly} onSubmit={onSubmit}/></VisibilityProvider></StateProvider></PartBoundary>
 }
-function SpecActions({ value, summary, readonly, onSubmit }: SpecPartProps) {
+function SpecActions({ value, summary, readonly, onSubmit }: SpecPartProps & { readonly: boolean }) {
   const store = useStateStore()
   return <FormReadOnly.Provider value={readonly}><ActionProvider handlers={{ submit: () => {
     const form = store.getSnapshot().form as BugForm | undefined
