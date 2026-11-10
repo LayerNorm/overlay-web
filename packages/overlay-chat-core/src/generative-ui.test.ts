@@ -58,11 +58,48 @@ describe('json-render v1 catalog', () => {
     invalid(single('Script', { text: 'no' }), 'type')
     invalid(single('Progress', { value: 101 }), 'value')
     invalid(single('Input', { label: 1 }), 'label')
-    invalid(single('Text', { text: 'safe', dangerouslySetInnerHTML: 'no' }), 'props')
     invalid(single('constructor', {}), 'type')
   })
   it('accepts null optional props', () => {
     expect(validateJsonRenderSpec(single('Card', { title: null, description: null })).ok).toBe(true)
+  })
+  it('normalizes harmless extra component props without mutating the input', () => {
+    for (const [type, props, expected] of [
+      ['Input', { label: 'Title', name: 'title', value: { $bindState: '/form/title' } }, { label: 'Title', value: { $bindState: '/form/title' } }],
+      ['Button', { label: 'Submit', variant: 'default' }, { label: 'Submit' }],
+      ['Text', { text: 'Safe', dangerouslySetInnerHTML: '<script>no</script>' }, { text: 'Safe' }],
+    ] as const) {
+      const input = single(type, props)
+      const result = validateJsonRenderSpec(input)
+      expect(result.ok).toBe(true)
+      if (result.ok) expect(result.spec.elements.root.props).toEqual(expected)
+      expect(input.elements.root.props).toEqual(props)
+    }
+    invalid(single('Input', { label: 'Title', name: 'x'.repeat(4001) }))
+    invalid(single('Input', { label: 'Title', value: { $bindState: '/title', extra: true } }))
+    invalid(single('Button', { label: 'Submit', action: 'delete_everything' }))
+  })
+  it('documents an executable nested-state form and truthful tool outcomes', () => {
+    const prompt = buildGenerativeUiCatalogPrompt()
+    const line = prompt.split('\n').find(line => line.startsWith('Form example: '))!
+    const spec = JSON.parse(line.slice('Form example: '.length))
+    expect(validateJsonRenderSpec(spec)).toEqual({ ok: true, spec })
+    expect(prompt).toContain('Only say a view was displayed after render_ui returns success:true')
+    expect(prompt).toContain('Never claim success after a failed or omitted call')
+    expect(prompt).toContain('its only optional param is label')
+  })
+  it('moves unambiguous container children out of props and checks the resulting graph', () => {
+    const root = { type: 'Card', props: { title: 'Form', children: ['field'] } }
+    const field = { type: 'Input', props: { label: 'Title', value: { $bindState: '/form/title' } } }
+    const spec = { root: 'root', elements: { root, field } }
+    const expected = { root: 'root', elements: { root: { type: 'Card', props: { title: 'Form' }, children: ['field'] }, field } }
+    expect(validateJsonRenderSpec(spec)).toEqual({ ok: true, spec: expected })
+    expect(root.props.children).toEqual(['field'])
+    expect(validateJsonRenderSpec({ ...spec, elements: { ...spec.elements, root: { ...root, children: ['field'] } } }).ok).toBe(true)
+    invalid({ ...spec, elements: { ...spec.elements, root: { ...root, children: [] } } }, 'children')
+    invalid({ ...spec, elements: { ...spec.elements, root: { ...root, props: { children: ['missing'] } } } }, 'children')
+    invalid({ ...spec, elements: { ...spec.elements, root: { ...root, props: { children: [{ type: 'Input' }] } } } }, 'children')
+    invalid({ ...spec, elements: { ...spec.elements, root: { ...root, props: { children: ['root'] } } } }, 'children')
   })
   it('rejects dangling root and child references', () => {
     invalid({ ...single(), root: 'missing' }, 'root')

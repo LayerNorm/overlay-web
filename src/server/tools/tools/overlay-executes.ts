@@ -57,8 +57,8 @@ export async function executeRenderUi(_options: OverlayToolsOptions, input: unkn
   const validated = validateJsonRenderSpec(raw.spec)
   if (!validated.ok) issues.push(...validated.issues.map(issue => ({ path: `spec.${issue.path}`, code: 'invalid_spec', message: issue.message })))
   if (issues.length || !validated.ok) return {
-    success: false as const, code: 'tool_validation_failure', error: 'Invalid generated UI payload.',
-    issues: issues.slice(0, 12), hint: 'Correct the listed fields and retry render_ui with a valid catalog spec. Use ordinary text for short answers and fenced Markdown for code artifacts.',
+    success: false as const, code: 'tool_validation_failure', error: 'Could not display this view. No UI was created.',
+    issues: issues.slice(0, 12), hint: 'Fix the listed issues and call render_ui again with a valid catalog spec. Only claim a view was displayed after success:true. If you cannot fix it, tell the user plainly that you could not display it; never describe an unrendered form as available. Use ordinary text for short answers and fenced Markdown for code artifacts.',
   }
   const generatedUi = {
     version: GENERATED_UI_VERSION, kind: 'json_render' as const, catalogVersion: GENERATIVE_UI_CATALOG_VERSION,

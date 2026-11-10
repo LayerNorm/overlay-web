@@ -159,7 +159,8 @@ export function getDescriptiveToolLabel(
   toolInput?: Record<string, unknown>,
   phase: ToolLabelPhase = 'running',
 ): string {
-  if (GENERATED_UI_TOOL_IDS.has(toolName)) return 'Showing generated UI'
+  if (GENERATED_UI_TOOL_IDS.has(toolName)) return phase === 'error' ? 'Could not display this view'
+    : phase === 'denied' ? 'View not displayed' : 'Showing generated UI'
   // A connected agent (Claude Code, Codex…) names its own actions; show that, not the generic tool name.
   if (toolName === 'remote_action') {
     const title = pickFirstStringFromInput(toolInput, ['title'])

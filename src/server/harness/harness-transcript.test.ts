@@ -4,6 +4,41 @@ vi.mock('server-only', () => ({}))
 vi.mock('./state-steps', () => ({ readHarnessState: vi.fn(), applyHarnessOperation: vi.fn() }))
 import { publicHarnessStepPersistence, readSettledHarnessTranscript, readHarnessTranscriptForDelivery } from './harness-transcript'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
+import { buildNativeHarnessDelivery } from './native-tool-metrics'
+import { buildGenerativeUiCatalogPrompt } from '@overlay/chat-core/generative-ui'
+import { buildAssistantVisualSequence } from '@overlay/chat-core'
+
+test.each(['render_ui', 'present_generated_ui'])('failed %s followed by a successful retry survives personal and native delivery', toolName => {
+  const example = buildGenerativeUiCatalogPrompt().split('\n').find(line => line.startsWith('Form example: '))!
+  const generatedUi = toolName === 'render_ui'
+    ? { version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Bug report', specJson: example.slice('Form example: '.length) }
+    : { version: 1, kind: 'questionnaire', prompt: 'Which QA environment?', multiple: false,
+        choices: [{ id: 'preview', label: 'Preview' }, { id: 'production', label: 'Production' }] }
+  const toolStep = (toolCallId: string, output: unknown) => {
+    const call = { type: 'tool-call', toolCallId, toolName, input: {} }
+    const result = { type: 'tool-result', toolCallId, toolName, output }
+    return { stepNumber: 0, text: '', reasoning: [], content: [call, result], toolCalls: [call], toolResults: [result] }
+  }
+  const steps = [toolStep('failed', { success: false, error: 'Invalid spec', issues: [{ path: 'children' }] }),
+    { stepNumber: 0, text: 'Fixing the spec.', content: [{ type: 'text', text: 'Fixing the spec.' }], reasoning: [], toolCalls: [], toolResults: [] },
+    toolStep('retry', { success: true, id: 'view', generatedUi }),
+    { stepNumber: 0, text: 'The view is ready.', content: [{ type: 'text', text: 'The view is ready.' }], reasoning: [], toolCalls: [], toolResults: [] }]
+  const activeTools = new Set([toolName])
+  const journalSteps = steps.map((step, sequence) => ({ receiptId: `model:${sequence}`, sequence, stepNumber: 0,
+    persistence: publicHarnessStepPersistence(step as never, activeTools) }))
+  const settled = { steps: journalSteps, persistence: { content: 'Fixing the spec.\n\nThe view is ready.',
+    parts: journalSteps.flatMap(step => step.persistence.parts) } }
+  const result = { snapshot: { runId: 'run', status: 'completed', evidence: [], usage: { inputTokens: 1, outputTokens: 1, costMicros: 0 } },
+    steps, messages: [], outcome: 'finished', stepReceiptIds: steps.map((_, i) => `model:${i}`) } as unknown as HarnessExecutionResult
+  for (const transcript of [undefined, settled]) {
+    for (const delivery of [buildPersonalHarnessDelivery(result, undefined, activeTools, transcript), buildNativeHarnessDelivery(result, activeTools, transcript)]) {
+      const blocks = buildAssistantVisualSequence(delivery.parts)
+      expect(blocks.map(block => block.kind)).toEqual(['tool', 'text', 'generated-ui', 'text'])
+      expect(blocks[0]).toMatchObject({ kind: 'tool', state: 'output-error' })
+      expect(blocks[2]).toMatchObject({ kind: 'generated-ui', part: { data: generatedUi } })
+    }
+  }
+})
 
 test('settled public persistence excludes private reasoning and keeps sanitized tool display', () => {
   const persistence = publicHarnessStepPersistence({

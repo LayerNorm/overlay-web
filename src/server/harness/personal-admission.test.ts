@@ -119,6 +119,16 @@ test('admits immutable identity and policy before starting the personal workflow
   expect(mocks.getRun).toHaveBeenCalledWith('winning-workflow')
 })
 
+test('chat runs persisted with ask labels admit both generated UI tools for form requests', async () => {
+  await startPersonalHarness({
+    workflow: { ...workflow, definitions: ['render_ui', 'present_generated_ui'].map(name => ({ name, inputSchema: { type: 'object' }, needsApproval: false })) },
+    agentRun: agentRun({ mode: 'chat' }), paid: true, goal: 'Show a bound bug report form.',
+  })
+  expect(mocks.admit).toHaveBeenCalledWith(expect.objectContaining({
+    policy: expect.objectContaining({ allowedToolIds: ['present_generated_ui', 'render_ui'] }),
+  }))
+})
+
 test('a claimed duplicate returns the canonical workflow without starting another', async () => {
   mocks.admit.mockResolvedValue(snapshot({ workflowRunId: 'canonical-workflow' }))
 

@@ -5,6 +5,10 @@ import { getDescriptiveToolLabel } from './tool-labels'
 test('both generated UI tools use the same logo-free activity label', () => {
   assert.equal(getDescriptiveToolLabel('render_ui'), 'Showing generated UI')
   assert.equal(getDescriptiveToolLabel('render_ui'), getDescriptiveToolLabel('present_generated_ui'))
+  for (const tool of ['render_ui', 'present_generated_ui']) {
+    assert.equal(getDescriptiveToolLabel(tool, {}, 'error'), 'Could not display this view')
+    assert.equal(getDescriptiveToolLabel(tool, {}, 'denied'), 'View not displayed')
+  }
 })
 
 test('MCP tool labels reflect running and terminal lifecycle states', () => {

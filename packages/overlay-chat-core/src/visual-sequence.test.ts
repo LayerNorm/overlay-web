@@ -2,6 +2,22 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { buildAssistantVisualSequence } from './visual-sequence'
 
+test('failed and denied generated UI calls remain visible in persisted and SDK formats', () => {
+  for (const name of ['render_ui', 'present_generated_ui']) {
+    for (const state of ['output-error', 'output-denied', 'output-available']) {
+      const output = state === 'output-available' ? { success: false, error: 'Invalid spec' } : undefined
+      for (const part of [
+        { type: 'tool-invocation', toolInvocation: { toolCallId: 'failed', toolName: name, state, toolOutput: output } },
+        { type: `tool-${name}`, toolCallId: 'failed', state, output },
+      ]) {
+        const blocks = buildAssistantVisualSequence([part])
+        assert.equal(blocks[0]?.kind, 'tool')
+        if (blocks[0]?.kind === 'tool') assert.equal(blocks[0].state, state === 'output-denied' ? state : 'output-error')
+      }
+    }
+  }
+})
+
 test('terminal remote run status resolves stale remote action and terminal visuals', () => {
   const blocks = buildAssistantVisualSequence([
     { type: 'tool-invocation', toolInvocation: {

@@ -21,6 +21,12 @@ function isHarnessControlTool(toolName: string | undefined): boolean {
   return Boolean(toolName?.startsWith('harness_'))
 }
 
+function generatedUiFailureState(output: unknown, state: string | undefined): 'output-error' | 'output-denied' | null {
+  if (state === 'output-denied') return state
+  return state === 'output-error' || (output && typeof output === 'object' && 'success' in output && output.success === false)
+    ? 'output-error' : null
+}
+
 export function buildAssistantVisualSequence(
   parts: unknown[] | undefined,
   options: { terminalState?: TerminalAssistantState } = {},
@@ -78,6 +84,9 @@ export function buildAssistantVisualSequence(
             continue
           }
         }
+        const failure = generatedUiFailureState(inv.toolOutput, inv.state)
+        if (failure) out.push({ kind: 'tool', key: inv.toolCallId || `generated-ui-error-${out.length}`,
+          name: inv.toolName!, state: failure, toolInput: inv.toolInput, toolOutput: inv.toolOutput })
         continue
       }
       out.push({
@@ -123,6 +132,9 @@ export function buildAssistantVisualSequence(
             continue
           }
         }
+        const failure = generatedUiFailureState(part.output, part.state)
+        if (failure) out.push({ kind: 'tool', key: part.toolCallId || `generated-ui-error-${out.length}`,
+          name: toolName, state: failure, toolInput: part.input, toolOutput: part.output })
         continue
       }
       out.push({

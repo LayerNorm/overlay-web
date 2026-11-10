@@ -11,6 +11,7 @@ import { LinkOpenInterceptor } from './LinkOpenInterceptor'
 import { useChatShellPanels } from './chat/useChatShellPanels'
 import type { AttachmentPreview } from './chat/useChatPanels'
 import { buildChatExperienceViewProps } from './chat/chatExperienceViewProps'
+import { chatMessagesForExport } from './chat/chat-export'
 import {
   useChatExperienceController,
   type ChatExperienceProps,
@@ -55,15 +56,7 @@ export default function ChatExperience(props: ChatExperienceProps) {
         className="shrink-0"
         type="chat"
         title={c.isTemporaryChat ? 'Temporary chat' : c.activeChatTitle || c.activeChat?.title || 'New conversation'}
-        content={c.primaryMessages.map((m) => ({
-          role: m.role,
-          content:
-            (m.parts as Array<{ type: string; text?: string }>)
-              ?.filter((p) => p.type === "text")
-              .map((p) => p.text ?? "")
-              .join("\n") ?? "",
-          parts: m.parts as Array<{ type: string; text?: string }>,
-        }))}
+        content={chatMessagesForExport(c.primaryMessages, c.getResponseForExchange, c.getResponsesForExchange)}
         metadata={{
           createdAt: c.activeChat?.createdAt,
           updatedAt: c.activeChat?.updatedAt,
@@ -85,6 +78,8 @@ export default function ChatExperience(props: ChatExperienceProps) {
     c.activeChatTitle,
     c.isTemporaryChat,
     c.primaryMessages,
+    c.getResponseForExchange,
+    c.getResponsesForExchange,
     c.selectedAutomation,
   ])
 

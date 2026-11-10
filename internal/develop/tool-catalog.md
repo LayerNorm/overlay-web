@@ -29,6 +29,14 @@ harnesses describe and reconstruct them through the same pipeline. Run policy an
 `render_ui` takes `{ title?, summary, spec }`. Summary is trimmed and required
 (1000 characters maximum); title is optional (120 characters). The executor validates
 the catalog spec and returns a durable `json_render` part, never model-authored HTML.
+Unknown component props are stripped; type, binding, action, URL and size checks stay
+strict. Container children misplaced in props are moved beside props only when the
+references are unambiguous. Initial form state lives in `spec.state`; controls use
+`$bindState` on `value` or `checked`, and submit reads that state automatically.
+Failed generated-UI calls remain visible as error activity. The model must correct
+the listed issues and retry, or plainly report that no view was displayed; it must
+not claim display without a successful tool result. The admitted catalog prompt
+includes a complete bound bug report form example.
 Copy and HTTPS link actions run locally. Follow-up messages use the existing send
 path in the card's conversation or thread. Bound state saves after 700 ms and flushes
 on unmount. Submission first persists final state and a submission marker, then sends

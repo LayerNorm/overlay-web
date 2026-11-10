@@ -57,7 +57,7 @@ const action = z.discriminatedUnion('action', [
 ])
 
 function component<T extends z.ZodRawShape>(props: T, description: string, children = false) {
-  return { props: z.object(props).strict(), description, slots: children ? ['default'] : [] }
+  return { props: z.object(props), description, slots: children ? ['default'] : [] }
 }
 
 const field = { label: text, value: optional(boundText), placeholder: optional(text) }
@@ -143,12 +143,29 @@ export function buildGenerativeUiCatalogPrompt(): string {
     system: 'Use render_ui for comparisons, structured results, dashboards, or forms when UI is clearer than prose.',
     customRules: [
       'Use one spec per reply unless asked otherwise.',
+      'To show a view, call render_ui. Prose describing a form does not create fields or a submit button. Only say a view was displayed after render_ui returns success:true. If it fails, fix the listed issues and call render_ui again, or plainly say you could not display it. Never claim success after a failed or omitted call.',
       'No emojis. No em or en dashes in generated copy.',
       'Prefer Table over markdown tables for more than four columns.',
       'Never put secrets or tokens in a spec.',
       `Limits: ${GENERATIVE_UI_MAX_SPEC_BYTES} serialized UTF-8 bytes, ${GENERATIVE_UI_MAX_ELEMENTS} elements, depth ${GENERATIVE_UI_MAX_DEPTH}, strings ${GENERATIVE_UI_MAX_STRING_LENGTH} characters.`,
       'Use only copy_text, open_link, send_message, submit. No fetching, internal navigation, connector, billing, or approval actions.',
       'Use {$state:"/path"} to read state and {$bindState:"/path"} for form bindings. URLs must be literal HTTPS; only Image also accepts /api/v1/files/{id}/content.',
+      'Put initial values in spec.state. Bind value for Input, Textarea, Select and RadioGroup; bind checked for Checkbox and Switch. Select and RadioGroup options are strings. Button actions belong in on.press, not props. submit automatically reads the bound state; its only optional param is label. Leaf children arrays may be omitted. Use the documented props; unsupported component props are ignored.',
+      `Form example: ${JSON.stringify({
+        root: 'card',
+        state: { form: { title: '', details: '', severity: 'Medium', reproducible: true, frequency: 'Sometimes' } },
+        elements: {
+          card: { type: 'Card', props: { title: 'Bug report' }, children: ['fields'] },
+          fields: { type: 'Stack', props: { gap: 12 }, children: ['heading', 'title', 'details', 'severity', 'reproducible', 'frequency', 'submit'] },
+          heading: { type: 'Heading', props: { text: 'Report a bug' } },
+          title: { type: 'Input', props: { label: 'Title', placeholder: 'What happened?', value: { $bindState: '/form/title' } } },
+          details: { type: 'Textarea', props: { label: 'Details', placeholder: 'Steps to reproduce', value: { $bindState: '/form/details' } } },
+          severity: { type: 'Select', props: { label: 'Severity', options: ['Low', 'Medium', 'High'], value: { $bindState: '/form/severity' } } },
+          reproducible: { type: 'Checkbox', props: { label: 'Reproducible', checked: { $bindState: '/form/reproducible' } } },
+          frequency: { type: 'RadioGroup', props: { label: 'Frequency', options: ['Always', 'Sometimes'], value: { $bindState: '/form/frequency' } } },
+          submit: { type: 'Button', props: { label: 'Submit bug report' }, on: { press: { action: 'submit', params: { label: 'Bug report' } } } },
+        },
+      })}`,
     ],
   })
 }
@@ -209,8 +226,16 @@ export function validateJsonRenderSpec(value: unknown): JsonRenderSpecValidation
       add(`elements/${id}/type`, `Unknown component: ${element.type}`)
       continue
     }
+    if (definition.slots.length && Object.hasOwn(element.props, 'children')) {
+      const children = z.array(z.string()).safeParse(element.props.children)
+      if (!children.success) add(`elements/${id}/props/children`, 'Children must be an array of element IDs')
+      else if (element.children && JSON.stringify(element.children) !== JSON.stringify(children.data)) {
+        add(`elements/${id}/children`, 'Conflicting children; specify children beside props only')
+      } else element.children = children.data
+    }
     const props = definition.props.safeParse(element.props)
     if (!props.success) for (const issue of props.error.issues) add(`elements/${id}/props/${issue.path.join('/')}`, issue.message)
+    else element.props = props.data
     if (element.on && element.type !== 'Button') add(`elements/${id}/on`, 'Only Button supports actions')
     if (element.children?.length && !definition.slots.length) add(`elements/${id}/children`, 'Component does not accept children')
     for (const child of element.children ?? []) if (!Object.hasOwn(spec.elements, child)) add(`elements/${id}/children`, `Child does not resolve: ${child}`)

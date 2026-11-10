@@ -366,7 +366,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     description: 'Render an Overlay UI view when structured comparisons, results, dashboards, or forms collecting several values are clearer than text. ' +
       'Provide a short plain-text summary and a spec from the admitted component catalog. Never write HTML, CSS, JavaScript or JSON specs in assistant text. ' +
       'Do not use for short answers or code artifacts; return code in fenced Markdown. Prose drafts, emails, connection cards and conversational questionnaires use present_generated_ui instead. ' +
-      'Use one spec per reply unless asked for more, and do not duplicate the view in prose.',
+      'Use one spec per reply unless asked for more, and do not duplicate the view in prose. A view exists only after this tool returns success:true. On failure, fix the issues and call again, or plainly say you could not display it. Never claim a form or view was shown without a successful tool call.',
     inputSchema: z.object({ title: z.string().trim().max(120).optional(), summary: z.string().trim().min(1).max(1000), spec: z.object({}).passthrough() }),
     execute: (input) => executeRenderUi(options, input),
   })

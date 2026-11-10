@@ -47,8 +47,8 @@ test('render_ui recovers from legacy and SDK tool results, never pending or fail
   }
   assert.deepEqual(generatedUiPartFromToolBlock({ kind: 'tool', key: 'ui', name: 'render_ui', state: 'output-available', toolOutput: output })?.data, renderedView)
   assert.equal(generatedUiPartFromToolBlock({ kind: 'tool', key: 'ui', name: 'render_ui', state: 'output-error', toolOutput: { ...output, success: false } }), null)
-  for (const state of ['input-streaming', 'input-available', 'output-error']) {
-    assert.deepEqual(buildAssistantVisualSequence([{ type: 'tool-render_ui', state, input: { summary: 'Pending', spec: {} }, output: { success: false } }]), [])
+  for (const state of ['input-streaming', 'input-available']) {
+    assert.deepEqual(buildAssistantVisualSequence([{ type: 'tool-render_ui', state, input: { summary: 'Pending', spec: {} } }]), [])
   }
 })
 
