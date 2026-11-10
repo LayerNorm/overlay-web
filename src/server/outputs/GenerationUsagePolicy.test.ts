@@ -26,3 +26,12 @@ test('unlimited generation usage policy explicitly permits provider work without
   })
   assert.deepEqual(await policy.finalize(), { success: true, skipped: true })
 })
+
+test('unlimited generation usage policy never refuses and charges nothing', async () => {
+  const policy = new UnlimitedGenerationUsagePolicy(new UnlimitedUsagePolicy())
+  const entitlements = await policy.getEntitlements({ userId: 'user_1' })
+  assert.deepEqual(await policy.ensureBudgetNotLow({
+    entitlements, kind: 'generation', operationId: 'media.generate-image', userId: 'user_1',
+  }), { ok: true, entitlements })
+  assert.deepEqual(await policy.charge(), { budgetLow: false })
+})

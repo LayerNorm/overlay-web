@@ -173,6 +173,8 @@ export interface UsageRepository {
     operationId: string
     userId: string
     workspaceId?: string
+    /** Charges this program's admin spend limit instead of the member's. */
+    programmaticSubjectId?: string
   }): Promise<{ recorded: number; budgetLow: boolean }>
   reconcileExpired(args?: {
     limit?: number

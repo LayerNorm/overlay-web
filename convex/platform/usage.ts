@@ -355,6 +355,8 @@ export const recordBatch = mutation({
     userId: v.string(),
     /** The workspace the usage happened in; defaults to the person's active workspace. */
     workspaceId: v.optional(v.string()),
+    /** Charges this program's admin spend limit instead of the member's. */
+    programmaticSubjectId: v.optional(v.string()),
     operationId: v.optional(v.string()),
     events: v.array(
       v.object({
@@ -379,7 +381,7 @@ export const recordBatch = mutation({
       })
     )
   },
-  handler: async (ctx, { serverSecret, userId, workspaceId, operationId: rawOperationId, events }) => {
+  handler: async (ctx, { serverSecret, userId, workspaceId, programmaticSubjectId, operationId: rawOperationId, events }) => {
     requireServerSecret(serverSecret)
     const operationId = rawOperationId?.trim()
     if (operationId) {
@@ -395,7 +397,9 @@ export const recordBatch = mutation({
     // Plans belong to workspaces: in a workspace with a paid plan the workspace pays, never the person.
     const paidWorkspace = await paidWorkspaceAccountFor(ctx, userId, workspaceId)
     if (paidWorkspace) {
-      const { budgetLow } = await chargeWorkspaceDirect(ctx, { billingAccountId: paidWorkspace.billingAccountId, userId, operationId, events })
+      const { budgetLow } = await chargeWorkspaceDirect(ctx, {
+        billingAccountId: paidWorkspace.billingAccountId, userId, programmaticSubjectId: programmaticSubjectId?.trim() || undefined, operationId, events,
+      })
       return { success: true, eventsProcessed: events.length, recorded: events.length, idempotent: false, budgetLow }
     }
     const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
@@ -427,6 +431,7 @@ function workspaceAvailableMicros(balance: Doc<'billingAccountBalances'>): numbe
 async function chargeWorkspaceDirect(ctx: MutationCtx, args: {
   billingAccountId: string
   userId: string
+  programmaticSubjectId?: string
   operationId: string | undefined
   events: Array<{ type: UsageEvent['type']; modelId?: string; cost: number; inputTokens?: number; outputTokens?: number; durationSeconds?: number }>
 }) {
@@ -436,7 +441,9 @@ async function chargeWorkspaceDirect(ctx: MutationCtx, args: {
   if (chargeMicros > 0) {
     const limit = await ctx.db.query('billingAccountSpendLimits')
       .withIndex('by_account_subject', (q) => q
-        .eq('billingAccountId', args.billingAccountId).eq('subjectKind', 'member').eq('subjectId', args.userId))
+        .eq('billingAccountId', args.billingAccountId)
+        .eq('subjectKind', args.programmaticSubjectId ? 'programmatic' : 'member')
+        .eq('subjectId', args.programmaticSubjectId ?? args.userId))
       .unique()
     await finalizeWorkspaceLedger(ctx, { actualMicros: chargeMicros, balance, limit, reservedMicros: 0 })
   }

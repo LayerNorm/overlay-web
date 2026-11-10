@@ -40,7 +40,7 @@ export async function recordHarnessModelBilling(
     // keeps the cost known at settlement (see WORKSPACE_BUDGET_ONLY_PLAN).
     await server.chatUsagePolicy.recordFinishedUsage({
       userId: reference.actorUserId, workspaceId: state.policy.workspaceId,
-      operationId, modelId: receipt.modelId, reservationId: null,
+      operationId, modelId: receipt.modelId,
       countAsRequest: false, requireRecorded: true,
       inputTokens: receipt.inputTokens, outputTokens: receipt.outputTokens,
       cachedInputTokens: receipt.cacheReadTokens, cacheWriteTokens: receipt.cacheWriteTokens,

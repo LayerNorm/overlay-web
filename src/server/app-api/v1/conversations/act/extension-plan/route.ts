@@ -13,18 +13,9 @@ import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { workspaceBudgetLow, workspaceBudgetStopLineCents } from '@/shared/billing/execution-access'
 import {
-  billableBudgetCentsFromProviderUsd,
   buildInsufficientCreditsPayload,
   canUsePaidBudgetFeatures,
-  finalizeProviderBudgetReservation,
-  getBudgetTotals,
-  isPaidPlan,
-  markProviderBudgetReconcile,
-  markProviderBudgetStarted,
-  releaseProviderBudgetReservation,
-  reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
 
 export const maxDuration = 120
@@ -319,19 +310,21 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    let runtimeEntitlements = entitlements
-    const budget = getBudgetTotals(runtimeEntitlements)
-
-    if (isPaidPlan(runtimeEntitlements) && workspaceBudgetLow(budget)) {
-      const autoTopUp = await generationUsagePolicy.ensureBudgetAvailable({
-        userId: auth.userId,
-        entitlements: runtimeEntitlements,
-        minimumRequiredCents: workspaceBudgetStopLineCents(budget),
-        programmaticSubjectId: billingProgrammaticSubjectId,
-        workspaceId: billingWorkspaceId,
-      })
-      runtimeEntitlements = autoTopUp.entitlements
+    // The only spending check: refuse when the workspace has under 2% left (after a top-up).
+    // The plan is charged its actual cost after the call.
+    const budgetCheck = await generationUsagePolicy.ensureBudgetNotLow({
+      userId: auth.userId,
+      entitlements,
+      kind: 'agent',
+      modelId: effectiveModelId,
+      operationId: 'conversation.extension-plan',
+      programmaticSubjectId: billingProgrammaticSubjectId,
+      workspaceId: billingWorkspaceId,
+    })
+    if (!budgetCheck.ok) {
+      return NextResponse.json({ ...budgetCheck.payload, error: budgetCheck.code }, { status: budgetCheck.status })
     }
+    const runtimeEntitlements = budgetCheck.entitlements
 
     const paid = canUsePaidBudgetFeatures(runtimeEntitlements)
     const authorizedModelIds = await resolveAuthorizedModelIds({ entitlements: runtimeEntitlements })
@@ -405,101 +398,31 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       transcript || 'No prior transcript.',
     ].join('\n')
 
-    const estimatedInputTokens = Math.ceil(prompt.length / 4) + 256
     const maxOutputTokens = 1200
-    let reservationId: string | null = null
-    if (paid) {
-      const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
-        effectiveModelId,
-        estimatedInputTokens,
-        0,
-        maxOutputTokens,
-      )
-      if (estimatedProviderCostUsd === null) {
-        return NextResponse.json(
-          { error: 'pricing_missing', message: `Model ${effectiveModelId} is not priced for production use.` },
-          { status: 400 },
-        )
-      }
-      const reservation = await reserveProviderBudget({
-        userId: auth.userId,
-        entitlements: runtimeEntitlements,
-        idempotencyKey: context.requestIdempotencyKey,
-        providerCostUsd: estimatedProviderCostUsd,
-        kind: 'agent',
-        modelId: effectiveModelId,
-        operationId: 'conversation.extension-plan',
+    // A failed call charges nothing.
+    const result = await generateObject({
+      model,
+      schema: plannerSchema,
+      prompt,
+      temperature: 0.2,
+      maxOutputTokens,
+    })
+
+    const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage
+    const inputTokens = usage?.inputTokens ?? 0
+    const outputTokens = usage?.outputTokens ?? 0
+    const providerCostUsd = await calculateLanguageModelTokenCostOrNull(effectiveModelId, inputTokens, 0, outputTokens)
+    if (providerCostUsd === null) {
+      logger.error('[conversations/act/extension-plan] Missing pricing for a finished call', { modelId: effectiveModelId })
+    } else {
+      await generationUsagePolicy.charge({
+        operationId: `conversation.extension-plan:${globalThis.crypto.randomUUID()}`,
         programmaticSubjectId: billingProgrammaticSubjectId,
-        requestFingerprint: context.requestFingerprint,
+        providerCostUsd,
+        usage: { kind: 'agent', modelId: effectiveModelId, inputTokens, outputTokens, cachedTokens: 0 },
+        userId: auth.userId,
         workspaceId: billingWorkspaceId,
-      })
-      if (!reservation.ok) {
-        return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
-      }
-      reservationId = reservation.reservationId
-    }
-
-    let result: { object: z.infer<typeof plannerSchema>; usage?: { inputTokens?: number; outputTokens?: number } }
-    try {
-      await markProviderBudgetStarted({
-        userId: auth.userId,
-        reservationId,
-      })
-      result = await generateObject({
-        model,
-        schema: plannerSchema,
-        prompt,
-        temperature: 0.2,
-        maxOutputTokens,
-      })
-    } catch (err) {
-      await releaseProviderBudgetReservation({
-        userId: auth.userId,
-        reservationId,
-        reason: err instanceof Error ? err.message : 'extension_planner_failed',
-      }).catch((_error) => undefined)
-      throw err
-    }
-
-    if (reservationId) {
-      const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage
-      const inputTokens = usage?.inputTokens ?? estimatedInputTokens
-      const outputTokens = usage?.outputTokens ?? maxOutputTokens
-      const actualCostUsd = await calculateLanguageModelTokenCostOrNull(
-        effectiveModelId,
-        inputTokens,
-        0,
-        outputTokens,
-      )
-      if (actualCostUsd === null) {
-        await markProviderBudgetReconcile({
-          userId: auth.userId,
-          reservationId,
-          errorMessage: `pricing_missing:${effectiveModelId}`,
-        }).catch((_error) => undefined)
-      } else {
-        const costCents = billableBudgetCentsFromProviderUsd(actualCostUsd)
-        await finalizeProviderBudgetReservation({
-          userId: auth.userId,
-          reservationId,
-          actualProviderCostUsd: actualCostUsd,
-          events: [{
-            type: 'agent',
-            modelId: effectiveModelId,
-            inputTokens,
-            outputTokens,
-            cachedTokens: 0,
-            cost: costCents,
-            timestamp: Date.now(),
-          }],
-        }).catch(async (err) => {
-          await markProviderBudgetReconcile({
-            userId: auth.userId,
-            reservationId,
-            errorMessage: err instanceof Error ? err.message : 'finalize_failed',
-          }).catch((_error) => undefined)
-        })
-      }
+      }).catch((err) => logger.error('[conversations/act/extension-plan] Failed to record usage', err))
     }
 
     return NextResponse.json(result.object)

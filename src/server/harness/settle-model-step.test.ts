@@ -31,14 +31,15 @@ beforeEach(() => {
   vi.resetAllMocks()
   mocks.read.mockResolvedValue(state())
   mocks.resolve.mockResolvedValue({ receipt, providerCostUsd: 0.0001, catalogCostUsd: null })
-  mocks.bill.mockResolvedValue({ finalized: true, reservationId: null })
+  mocks.bill.mockResolvedValue({ recorded: true, budgetLow: false })
 })
 
 test('charges the actual cost directly before releasing the dispatch marker, using original workspace and no extra request', async () => {
   mocks.read.mockResolvedValue({ ...state(), status: 'cancelled' })
   expect(await settleHarnessModelUsage(input)).toEqual(receipt)
   expect(mocks.resolve).toHaveBeenCalledWith(expect.objectContaining({ requestedModelId: 'provider/requested' }))
-  expect(mocks.bill).toHaveBeenCalledWith(expect.objectContaining({ reservationId: null, modelId: 'provider/actual',
+  expect(mocks.bill.mock.calls[0][0]).not.toHaveProperty('reservationId')
+  expect(mocks.bill).toHaveBeenCalledWith(expect.objectContaining({ modelId: 'provider/actual',
     userId: 'user', workspaceId: 'original-workspace', requireRecorded: true, countAsRequest: false, providerCostUsd: 0.0001,
     cachedInputTokens: 50, cacheWriteTokens: 20 }))
   expect(mocks.bill.mock.invocationCallOrder[0]).toBeLessThan(mocks.apply.mock.invocationCallOrder[0])
@@ -83,8 +84,8 @@ test('BYOK writes token audit with unknown external cost but no Overlay charge',
 
 test('catalog settlement charges the catalog cost directly without fabricating an exact provider receipt', async () => {
   mocks.resolve.mockResolvedValue({ receipt: { ...receipt, costSource: 'catalog' }, providerCostUsd: null, catalogCostUsd: 0.0001 })
-  mocks.bill.mockResolvedValue({ finalized: false, reservationId: null })
+  mocks.bill.mockResolvedValue({ recorded: true, budgetLow: false })
   await settleHarnessModelUsage(input)
-  expect(mocks.bill.mock.calls[0][0]).toMatchObject({ catalogCostUsd: 0.0001, reservationId: null })
+  expect(mocks.bill.mock.calls[0][0]).toMatchObject({ catalogCostUsd: 0.0001 })
   expect(mocks.bill.mock.calls[0][0]).not.toHaveProperty('providerCostUsd')
 })

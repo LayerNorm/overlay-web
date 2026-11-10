@@ -291,6 +291,7 @@ export class ConvexUsageRepository implements UsageRepository {
     operationId: string
     userId: string
     workspaceId?: string
+    programmaticSubjectId?: string
   }): Promise<{ recorded: number; budgetLow: boolean }> {
     const result = await convex.mutation<{ recorded?: number; budgetLow?: boolean }>('platform/usage:recordBatch', {
       events: args.events.map(toConvexEvent),
@@ -298,6 +299,7 @@ export class ConvexUsageRepository implements UsageRepository {
       serverSecret: this.serverSecret,
       userId: args.userId,
       workspaceId: args.workspaceId,
+      ...(args.programmaticSubjectId ? { programmaticSubjectId: args.programmaticSubjectId } : {}),
     }, { throwOnError: true })
     if (!result) throw new Error('Failed to record usage batch')
     return { recorded: result.recorded ?? args.events.length, budgetLow: result.budgetLow === true }

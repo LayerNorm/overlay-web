@@ -1,6 +1,6 @@
 # Workspace budget only
 
-Status: Phases 1–2 done on branch (nothing merged).
+Status: Phases 1–3 done on branch, unit tested (nothing merged).
 
 ## Rule
 
@@ -38,7 +38,7 @@ quotes, reserves or holds the cost of a model call or tool call before making it
 | --- | --- | --- |
 | 1 | `workspaceBudgetLow` helper; pre-call gates use it; `recordBatch` returns `budgetLow`; `WORKSPACE_FUNDS` copy says under 2% left | Done on branch (unit tested) |
 | 2 | Harness: delete forecast/quote estimates, model and billing reservations, funding pause, per-task limit, child budget split; stop after a step that leaves the budget low | Done on branch (unit tested). The next dispatch stops the run; gateway cost correction is not yet wired to direct charges. |
-| 3 | Chat, connected agents, automations, tools and media routes: delete holds, charge directly, stop on low | Not started |
+| 3 | Chat, connected agents, automations, tools and media routes: delete holds, charge directly, stop on low | Done on branch (unit tested). `ensureProviderBudgetNotLow` / `chargeProviderUsage` in `billing-runtime.ts`; Convex background work uses `billing/providerBudget:providerBudgetGate` (no top-up from Convex). Automation workflow steps are charged after the run. The notebook agent stops when a step leaves the budget low. Not yet: Preview provider guard does not refuse direct-charge work. |
 | 4 | Computers and machine metering: delete holds, floor and per-run cap | Not started |
 | 5 | Delete reservation tables, sweeps, reconciliation and docs; production check of a real paid run | Not started |
 

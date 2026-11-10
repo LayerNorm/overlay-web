@@ -440,7 +440,7 @@ export class ConnectedAgentControlPlaneService {
       throw controlPlaneError(errors[reason][1], errors[reason][0], `remote_run_${reason}`)
     }
     if (result.terminal && this.dependencies.settleUsage &&
-      (result.terminal.reservationId || result.terminal.sandboxBilling?.reservationId)) {
+      (result.terminal.modelUsageBilling === 'overlay' || result.terminal.sandboxBilling?.reservationId)) {
       await this.settleWithAudit(result.terminal)
     }
     await this.audit(`agent_remote_run.${args.action}`, 'user', args.actorUserId, {
@@ -598,7 +598,7 @@ export class ConnectedAgentControlPlaneService {
     })
     if (this.dependencies.settleUsage) {
       await Promise.all(result.settlements
-        .filter((settlement) => settlement.reservationId || settlement.sandboxBilling?.reservationId)
+        .filter((settlement) => settlement.modelUsageBilling === 'overlay' || settlement.sandboxBilling?.reservationId)
         .map((settlement) => this.settleWithAudit(settlement).catch((_error) => undefined)))
     }
     await Promise.all(result.alerts.map((alert) => {
@@ -945,7 +945,7 @@ export class ConnectedAgentControlPlaneService {
     )
     await this.flagRejectedProviderAccount(auth, session, batch)
     if (result.terminal && this.dependencies.settleUsage &&
-      (result.terminal.reservationId || result.terminal.sandboxBilling?.reservationId)) {
+      (result.terminal.modelUsageBilling === 'overlay' || result.terminal.sandboxBilling?.reservationId)) {
       await this.settleWithAudit(result.terminal)
     }
     if (
