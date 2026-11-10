@@ -3,6 +3,22 @@ title: "Convex-native personal chat"
 description: "Reproducible realtime baselines, retained consumers, and migration security requirements."
 ---
 
+## Workflow transport regression coverage
+
+The pinned Workflow runtime is 5.2.3, with the matching 5.0.6 Vitest plugin.
+This includes upstream HTTP append retry fixes and uses WebSocket stream writes
+by default. `WORKFLOW_STREAMS_TRANSPORT=http` explicitly selects HTTP; existing
+environment overrides still apply. Model retry, authorization, and billing
+reconciliation policies are unchanged. A drain timeout alone does not prove a
+provider rejection or establish whether model usage occurred.
+
+Run `node --test scripts/ci/workflow-stream-transport.test.mjs` for provider-free
+transport coverage. Its credential-free child process sends synthetic bytes only
+to a loopback server. It checks a healthy append, a confirmed 429 retried with the
+complete body exactly once, and a saved-then-500 response that must not replay.
+The test also runs in the tracked `test:all` node-mjs group. It does not reproduce
+an isolated hosted drain timeout or prove that every such timeout has this cause.
+
 ## CN-01 baseline protocol
 
 This harness measures the existing behavior, not a fix. A remote convergence

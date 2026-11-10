@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Update the Workflow runtime and matching test plugin to include upstream stream-transport fixes. Add a provider-free regression check for complete-body retries after confirmed throttling and no replay after an ambiguous server failure; model retry and billing policies remain unchanged.
+
 - Fix agents on a subscription or bring-your-own-key model still stopping with "The task stopped for an unclassified reason" right after taking a computer screenshot. Before each model call, the harness refused any request containing an image unless the model had a known context size, which these models don't report. They cost Overlay nothing to reserve, so their requests now use a size estimate and the run continues. Priced models still need a known context size before sending media.
 - Explain why an agent task stopped when the model provider refused the request, instead of "The task stopped for an unclassified reason". A refused request (HTTP 400, 404 or 413, such as content the model cannot accept) now says to choose a model that supports it or remove the attachment. A rejected account, key, access or billing (HTTP 401, 402 or 403) now says to reconnect or check the provider in Settings. This adds two diagnostic codes to the Convex harness validators.
 - Fix agents on a subscription model (such as a connected Claude account) stopping with "The task stopped for an unclassified reason" after a tool returned an image, for example a screenshot attached to a GitHub issue. Subscriptions accept text only, so the next model request was rejected. The image is now replaced with a note telling the agent it could not see it, and the run continues.
