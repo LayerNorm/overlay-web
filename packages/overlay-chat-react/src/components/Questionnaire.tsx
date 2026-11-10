@@ -5,6 +5,7 @@ import { QuestionnaireSuggestions } from '@overlay/ui/primitives'
 import type { GeneratedQuestionnaireData } from '@overlay/chat-core/generated-ui'
 
 type QuestionnaireComposer = {
+  onSendMessage?: (text: string) => Promise<void>
   value: string
   onChange(value: string): void
   disabled?: boolean
@@ -15,6 +16,11 @@ type QuestionnaireComposer = {
 const ComposerContext = createContext<QuestionnaireComposer | null>(null)
 const noSubscription = () => () => {}
 const emptyDraft = () => ''
+
+export function useGeneratedUiSendMessage() {
+  const composer = useContext(ComposerContext)
+  return composer?.disabled ? undefined : composer?.onSendMessage
+}
 
 export function QuestionnaireComposerProvider({ children, ...composer }: QuestionnaireComposer & { children: ReactNode }) {
   return <ComposerContext.Provider value={composer}>{children}</ComposerContext.Provider>

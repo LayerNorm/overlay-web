@@ -6,6 +6,7 @@ import { assertPersistedSurfaceSource } from '@/server/harness/surface-access'
 import { prepareNativeHarnessTurn } from '@/server/harness/native-turn-start'
 import { surfaceStartFailure } from '@/server/harness/surface-start-failure'
 import { postSlackAgentMessage } from '@/server/surfaces/slack-reply'
+import { generatedUiDeliveryText } from '@overlay/chat-core/generated-ui'
 import { ensureSurfaceConversation } from '@/server/surfaces/surface-conversations'
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -144,7 +145,8 @@ async function postNativeSurfaceResultStep(input: {
       conversationId: current.conversationId as never,
       userId: current.actorUserId,
     })
-    const content = messages.find(message => message._id === current.assistantMessageId)?.content ?? ''
+    const reply = messages.find(message => message._id === current.assistantMessageId)
+    const content = reply ? generatedUiDeliveryText(reply.content, reply.parts) : ''
     if (input.status === 'completed' && !content.trim()) return { status: 'not_attempted' as const }
     attempted = true
     const { getSlackAdapter } = await import(

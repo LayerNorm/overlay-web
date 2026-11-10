@@ -2200,7 +2200,7 @@ export function useDirectMessageRoom({
   })
   const isReadOnlyMessage = (messageId: string) => {
     const message = transcript.messages.find((row) => row.id === messageId)
-    return !canSendToThread(message?.threadRootMessageId ?? messageId)
+    return Boolean(transcript.surfacePlatform) || !canSendToThread(message?.threadRootMessageId ?? messageId)
   }
   const actions = useMessageActions({
     isReadOnlyMessage,

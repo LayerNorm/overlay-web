@@ -156,9 +156,9 @@ Admit `render_ui` wherever `present_generated_ui` is admitted today. Execution s
 - [x] T6. `render_ui`, raw-input validation and shared `GENERATED_UI_TOOL_IDS` for persistence, ordering, recovery, labels and MCP withholding; success/failure tests.
 - [x] T7. Admission-gated catalog prompt appended after the stable harness prefix; personal instructions distinguish prose from structured UI.
 - [x] T8. Same conversation-local builder admission for personal, native agent and automation surfaces; generic authorization unchanged, both generated-UI tools withheld from outside and connected-agent MCP clients.
-- [ ] T9. Actions and persisted state, including thread authorization.
-- [ ] T10. Slack and email summary fallback.
-- [ ] T11. Docs (`internal/develop/tool-catalog.md`) and CHANGELOG `## Unreleased`.
+- [x] T9. Conversation/thread follow-ups, debounced state with unmount flush, guarded persisted submissions and json-render-only member authorization. Draft permissions unchanged.
+- [x] T10. Slack and automation reply projections use bold title and summary. No assistant-reply email transport exists; lifecycle notifications remain unchanged and the shared delivery helper is available for future reply email.
+- [x] T11. Tool catalog, persistence docs and consolidated CHANGELOG entry.
 - [ ] T12. Preview QA (below), then hand the PR to Integration.
 
 ## QA checklist

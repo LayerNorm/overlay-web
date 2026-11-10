@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { FatalError } from 'workflow'
+import { generatedUiDeliveryText } from '@overlay/chat-core/generated-ui'
 import { automationService } from '@/server/automations/http'
 import {
   ensureAutomationConversation,
@@ -71,7 +72,8 @@ async function readAutomationDeliveryStep(input: {
     }),
   ])
   if (!run || run.id !== input.agentRunId || run.userId !== input.userId) return ''
-  return messages.find(message => message.role === 'assistant' && message.turnId === run.turnId)?.content ?? ''
+  const reply = messages.find(message => message.role === 'assistant' && message.turnId === run.turnId)
+  return reply ? generatedUiDeliveryText(reply.content, reply.parts) : ''
 }
 
 async function reconcileAutomationHarnessTerminalStep(input: {

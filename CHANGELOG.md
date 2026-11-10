@@ -4,7 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add the versioned, isomorphic generated UI catalog and validation boundary, pinned json-render and chart dependencies, and a serialized `json_render` message contract. Cards render through a lazy-loaded registry with responsive charts, bound controls and a quiet summary fallback. Personal, agent and automation turns can use the validated `render_ui` tool with an admission-gated catalog prompt; both generated-UI tools stay withheld from MCP clients. Action persistence remains disabled until the next implementation step.
+- Chats, agent threads and automation conversations can show interactive comparisons, dashboards and forms. Form edits are saved, and submitting posts a readable response and locks the card.
+  - The validated `render_ui` catalog uses lazy-loaded shared components, bounded serialized state, admission-gated prompts and summary fallbacks for non-React delivery. Generated-UI tools remain withheld from MCP clients; existing draft permissions are unchanged.
 
 - Performance measurements retain slow keystrokes that share a browser frame during streaming, rather than rejecting them when another character arrives before the frame is observed.
 ||||||| f8ea73ed7

@@ -1,14 +1,16 @@
 'use client'
 
-import { Component, memo, useLayoutEffect, useMemo, useRef, type ReactNode } from 'react'
+import { Component, memo, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { ActionProvider, Renderer, StateProvider, VisibilityProvider, useStateStore } from '@json-render/react'
 import type { GeneratedJsonRenderData } from '@overlay/chat-core/generated-ui'
 import { GENERATIVE_UI_CATALOG_VERSION, validateJsonRenderSpec } from '@overlay/chat-core/generative-ui'
 import { JsonRenderFailure, JsonRenderReadOnly, jsonRenderRegistry } from './json-render-registry'
 import '../styles/json-render.css'
+import { useGeneratedUiSendMessage } from './Questionnaire'
 
 export type JsonRenderStateChange = { path: string; value: unknown }
 export type JsonRenderActions = {
+  onDataChange?: (partId: string, data: GeneratedJsonRenderData) => void | Promise<void>
   onSendMessage?: (text: string, partId: string) => void | Promise<void>
   onSubmit?: (state: Record<string, unknown>, label: string | undefined, partId: string) => void | Promise<void>
   onStateChange?: (changes: JsonRenderStateChange[], partId: string) => void
@@ -18,6 +20,22 @@ export type JsonRenderCardProps = {
   data: GeneratedJsonRenderData
   readOnly?: boolean
   actions?: JsonRenderActions
+  onDataChange?: (partId: string, data: GeneratedJsonRenderData) => void | Promise<void>
+}
+
+export function formatJsonRenderSubmission(state: Record<string, unknown>, label?: string): string {
+  const lines: string[] = []
+  function visit(value: unknown, path: string) {
+    if (value && typeof value === 'object') {
+      for (const [key, item] of Object.entries(value)) {
+        const words = key.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/[_-]/g, ' ')
+        const name = words.charAt(0).toUpperCase() + words.slice(1)
+        visit(item, path ? `${path} / ${name}` : name)
+      }
+    } else lines.push(`${path}: ${typeof value === 'boolean' ? value ? 'Yes' : 'No' : value == null ? '(empty)' : String(value)}`)
+  }
+  visit(state, '')
+  return [label?.trim() || 'Form submitted', ...lines].join('\n')
 }
 
 function Fallback({ summary }: { summary: string }) {
@@ -54,7 +72,55 @@ function CardActions({ partId, actions, readOnly, children }: { partId: string; 
   return <ActionProvider handlers={handlers}>{children}</ActionProvider>
 }
 
-function JsonRenderCardView({ partId, data, readOnly = false, actions }: JsonRenderCardProps) {
+function JsonRenderCardView({ partId, data, readOnly = false, actions, onDataChange = actions?.onDataChange }: JsonRenderCardProps) {
+  const composerSend = useGeneratedUiSendMessage()
+  const [submitted, setSubmitted] = useState(false)
+  const [error, setError] = useState<string>()
+  const pending = useRef<GeneratedJsonRenderData | null>(null)
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const busy = useRef(false)
+  const writeTail = useRef(Promise.resolve())
+  const latest = useRef({ data, readOnly, onDataChange, actions, composerSend })
+  useLayoutEffect(() => { latest.current = { data, readOnly, onDataChange, actions, composerSend } })
+  const persist = useMemo(() => (next: GeneratedJsonRenderData) => {
+    const save = latest.current.onDataChange
+    writeTail.current = writeTail.current.catch(() => {}).then(async () => { await save?.(partId, next) })
+    return writeTail.current
+  }, [partId])
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current)
+    if (pending.current && !latest.current.readOnly) void persist(pending.current).catch(() => {})
+  }, [persist])
+  const boundActions = useMemo<JsonRenderActions>(() => ({
+    onSendMessage: async (text, id) => {
+      const current = latest.current
+      if (current.readOnly || current.data.submittedAt !== undefined || busy.current) return
+      const send = current.actions?.onSendMessage ?? current.composerSend
+      if (!send) return
+      busy.current = true
+      try { await send(text, id); setError(undefined) } catch { setError('Could not send this message. Try sending it from the composer.') } finally { busy.current = false }
+    },
+    onStateChange: (changes, id) => latest.current.actions?.onStateChange?.(changes, id),
+    onSubmit: async (state, label, id) => {
+      const current = latest.current
+      if (current.readOnly || current.data.submittedAt !== undefined || busy.current) return
+      const send = current.actions?.onSendMessage ?? current.composerSend
+      if (!current.onDataChange || (!send && !current.actions?.onSubmit)) return
+      busy.current = true
+      setSubmitted(true)
+      if (timer.current) clearTimeout(timer.current)
+      pending.current = null
+      let saved = false
+      try {
+        await persist({ ...current.data, stateJson: JSON.stringify(state), submittedAt: Date.now() })
+        saved = true
+        if (current.actions?.onSubmit) await current.actions.onSubmit(state, label, id)
+        else await send!(formatJsonRenderSubmission(state, label), id)
+        setError(undefined)
+      } catch { setError(saved ? 'Your values were saved, but the message could not be sent. Send your response from the composer.' : 'Could not save this response. Please try again.') }
+      finally { if (!saved) { busy.current = false; setSubmitted(false) } }
+    },
+  }), [persist])
   const parsed = useMemo(() => {
     try { return validateJsonRenderSpec(JSON.parse(data.specJson)) } catch { return null }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- Different transcript parts need independent parse caches.
@@ -68,22 +134,46 @@ function JsonRenderCardView({ partId, data, readOnly = false, actions }: JsonRen
     // eslint-disable-next-line react-hooks/exhaustive-deps -- Different transcript parts need independent state seeds.
   }, [partId, data.stateJson])
   if (data.catalogVersion !== GENERATIVE_UI_CATALOG_VERSION || !parsed?.ok || state === null) return <Fallback summary={data.summary} />
-  const locked = readOnly || data.submittedAt !== undefined
+  const locked = readOnly || submitted || data.submittedAt !== undefined
   return <JsonRenderBoundary key={`${partId}:${data.specJson}`} summary={data.summary}>
     <div className="json-render-part">
       <JsonRenderReadOnly.Provider value={locked}>
-        <StateProvider key={`${partId}:${data.specJson}`} initialState={state ?? parsed.spec.state ?? {}} onStateChange={(changes) => actions?.onStateChange?.(changes, partId)}>
-          <VisibilityProvider><CardActions partId={partId} actions={actions} readOnly={locked}><Renderer spec={parsed.spec} registry={jsonRenderRegistry} /></CardActions></VisibilityProvider>
+        <StateProvider key={`${partId}:${data.specJson}`} initialState={state ?? parsed.spec.state ?? {}} onStateChange={(changes) => boundActions.onStateChange?.(changes, partId)}>
+          <StatePersistence onChange={(snapshot) => {
+            if (locked || !onDataChange) return
+            pending.current = { ...data, stateJson: JSON.stringify(snapshot) }
+            if (timer.current) clearTimeout(timer.current)
+            timer.current = setTimeout(() => {
+              const next = pending.current
+              pending.current = null
+              if (next && !latest.current.readOnly) void persist(next).then(() => setError(undefined)).catch(() => setError('Could not save this view.'))
+            }, 700)
+          }} />
+          <VisibilityProvider><CardActions partId={partId} actions={onDataChange ? boundActions : actions} readOnly={locked}><Renderer spec={parsed.spec} registry={jsonRenderRegistry} /></CardActions></VisibilityProvider>
         </StateProvider>
+        {error ? <p role="alert" className="text-sm text-muted-foreground">{error}</p> : null}
       </JsonRenderReadOnly.Provider>
     </div>
   </JsonRenderBoundary>
 }
 
 export const JsonRenderCard = memo(JsonRenderCardView, (previous, next) =>
-  previous.partId === next.partId && previous.readOnly === next.readOnly && previous.actions === next.actions
+  previous.partId === next.partId && previous.readOnly === next.readOnly && previous.actions === next.actions && previous.onDataChange === next.onDataChange
   && previous.data.catalogVersion === next.data.catalogVersion && previous.data.specJson === next.data.specJson
   && previous.data.stateJson === next.data.stateJson && previous.data.submittedAt === next.data.submittedAt
   && previous.data.summary === next.data.summary && previous.data.title === next.data.title)
 
 export default JsonRenderCard
+
+function StatePersistence({ onChange }: { onChange: (state: Record<string, unknown>) => void }) {
+  const { state, getSnapshot } = useStateStore()
+  const callback = useRef(onChange)
+  const previous = useRef(state)
+  useLayoutEffect(() => { callback.current = onChange })
+  useLayoutEffect(() => {
+    if (previous.current === state) return
+    previous.current = state
+    callback.current(getSnapshot())
+  }, [state, getSnapshot])
+  return null
+}

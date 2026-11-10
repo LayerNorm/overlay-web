@@ -3,6 +3,7 @@ import { harnessDiagnosticForFailure } from '@/server/harness/harness-diagnostic
 import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 import { readHarnessTranscriptForDelivery } from '@/server/harness/harness-transcript'
 import { createHook, FatalError, getWorkflowMetadata, getWritable } from 'workflow'
+import { generatedUiDeliveryText } from '@overlay/chat-core/generated-ui'
 import { start } from 'workflow/api'
 import type { ModelCallStreamPart } from '@ai-sdk/workflow'
 import type { ToolSet } from 'ai'
@@ -255,7 +256,7 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
       delivery.content = content
       delivery.parts = [{ type: 'text', text: content }]
     }
-    replyText = delivery.content
+    replyText = generatedUiDeliveryText(delivery.content, delivery.parts)
     await finishPersonalHarnessDelivery(access, delivery, { emitWebhook: input.delivery?.emitWebhook ?? false, turnId: input.context.turnId })
   } else {
     await notifyHarnessAncestors(access)

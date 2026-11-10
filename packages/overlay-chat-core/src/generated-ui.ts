@@ -4,6 +4,38 @@ export const GENERATED_UI_DATA_TYPE = 'overlay.generated_ui' as const
 export const GENERATED_UI_VERSION = 1 as const
 export const GENERATED_UI_TOOL_IDS: ReadonlySet<string> = new Set(['present_generated_ui', 'render_ui'])
 
+export function mergeJsonRenderState(current: GeneratedJsonRenderData, next: GeneratedJsonRenderData): GeneratedJsonRenderData {
+  if (current.specJson !== next.specJson || current.summary !== next.summary || current.title !== next.title
+    || current.catalogVersion !== next.catalogVersion) throw new Error('Generated UI content cannot be changed')
+  if (current.submittedAt !== undefined) {
+    if (current.stateJson === next.stateJson && current.submittedAt === next.submittedAt) return current
+    throw new Error('This form has already been submitted')
+  }
+  if (next.stateJson !== undefined) {
+    if (new TextEncoder().encode(next.stateJson).byteLength > 65_536) throw new Error('Form state is too large')
+    const state: unknown = JSON.parse(next.stateJson)
+    if (!state || typeof state !== 'object' || Array.isArray(state)) throw new Error('Invalid form state')
+  }
+  if (next.submittedAt !== undefined && (!Number.isFinite(next.submittedAt) || next.submittedAt < 0)) throw new Error('Invalid submission time')
+  return { ...current, stateJson: next.stateJson, submittedAt: next.submittedAt }
+}
+
+export function generatedUiDeliveryText(content: string, parts?: readonly unknown[]): string {
+  const cards = (parts ?? []).filter(isGeneratedUiPart).filter(part => part.data.kind === 'json_render')
+  if (!cards.length) return content
+  const rendered = (parts ?? []).flatMap(part => {
+    if (isGeneratedUiPart(part) && part.data.kind === 'json_render') {
+      const { title, summary } = part.data
+      const heading = title ? `**${title.replace(/[\\*_`<>]/g, '\\$&')}**\n` : ''
+      return [`${heading}${summary}`]
+    }
+    if (isGeneratedUiPart(part)) return [generatedUiDataToPlainText(part.data)]
+    const text = part as { type?: string; text?: unknown }
+    return text?.type === 'text' && typeof text.text === 'string' ? [text.text] : []
+  })
+  return rendered.join('\n\n')
+}
+
 export type GeneratedUiKind = 'draft.text' | 'draft.email' | 'connector.connect' | 'questionnaire' | 'json_render'
 
 export type GeneratedJsonRenderData = {

@@ -4,6 +4,7 @@ import { logger } from '@/server/observability/logger'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import type { SlackAdapter } from '@chat-adapter/slack'
 import { degradeSlackConnectionByTeam, isSlackTokenRevokedError } from './slack-lifecycle'
+import { generatedUiDeliveryText } from '@overlay/chat-core/generated-ui'
 
 // Slack rejects messages over ~40k chars; keep well under with headroom for
 // markdown expansion.
@@ -22,7 +23,8 @@ export function truncateForSlack(text: string): string {
  * Slack's 12k `markdown_text` cap fall back to legacy mrkdwn in `text`.
  * The SDK loads dynamically so workflow bundles never resolve it (chat.ts).
  */
-export async function slackReplyPayload(markdown: string): Promise<{ markdown_text: string } | { text: string }> {
+export async function slackReplyPayload(markdown: string, parts?: readonly unknown[]): Promise<{ markdown_text: string } | { text: string }> {
+  markdown = generatedUiDeliveryText(markdown, parts)
   const { SlackFormatConverter } = await import('@chat-adapter/slack')
   const converter = new SlackFormatConverter()
   if (markdown.length <= SLACK_MARKDOWN_TEXT_CHAR_LIMIT) {

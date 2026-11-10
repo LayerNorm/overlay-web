@@ -2,6 +2,16 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { FatalError } from 'workflow'
 import { runAutomationAgentTurn } from '@/server/workflows/automation-agent-turn'
 import * as automationWorkflow from '@/server/workflows/automation-agent-turn'
+import { readAutomationDeliveryStep } from '@/server/workflows/automation-harness-steps'
+
+test('automation reply text projects card titles and summaries, never form values', async () => {
+  mocks.getMessages.mockResolvedValueOnce([{ role: 'assistant', turnId: 'automation-run:run', content: 'Lead', parts: [
+    { type: 'text', text: 'Lead' }, { type: 'data', dataType: 'overlay.generated_ui', id: 'card', data: {
+      version: 1, kind: 'json_render', catalogVersion: 1, title: 'Report', summary: '42 tasks', specJson: '{}', stateJson: '{"private":"value"}',
+    } },
+  ] }])
+  expect(await readAutomationDeliveryStep({ conversationId: 'conversation', agentRunId: 'delivery', userId: 'user' })).toBe('Lead\n\n**Report**\n42 tasks')
+})
 
 const mocks = vi.hoisted(() => ({
   ready: vi.fn(), getAppSettings: vi.fn(), assertSource: vi.fn(), ensureConversation: vi.fn(),

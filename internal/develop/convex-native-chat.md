@@ -19,9 +19,14 @@ returning a serialized generated-UI payload; successful results persist and reco
 through the same ordered part pipeline as typed cards. Both tools are conversation-local
 and withheld from external and connected-agent MCP clients. The catalog prompt is
 appended after the stable harness prefix only when the tool is admitted.
-`GeneratedUiCard` lazily loads the validated json-render registry. Copy/link actions work locally; send/submit and state-change
-callbacks are optional host hooks, with no persistence or thread authorization
-changes yet.
+`GeneratedUiCard` lazily loads the validated json-render registry. Copy/link actions
+work locally; send/submit use the existing conversation or thread send path. State
+saves after 700 ms and flushes on unmount via the existing generated-UI mutations.
+`updateMessageUiPart` grants active room members access only to existing json-render
+state, while native personal chats use `personal.setGeneratedUi`. Both enforce
+immutable specs, bounded JSON object state and immutable submitted cards. Existing
+draft-card ownership is unchanged. Read-only, archived and external threads disable
+editing. Slack and automation delivery project title/summary only, never form state.
 
 ## CN-01 baseline protocol
 

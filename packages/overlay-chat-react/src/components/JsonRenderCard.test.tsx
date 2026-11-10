@@ -6,12 +6,109 @@ import { runInNewContext } from 'node:vm'
 import React, { act, type ReactElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import type { GeneratedJsonRenderData } from '@overlay/chat-core/generated-ui'
-import { JsonRenderCard } from './JsonRenderCard'
+import { JsonRenderCard, formatJsonRenderSubmission } from './JsonRenderCard'
+import { QuestionnaireComposerProvider } from './Questionnaire'
 import { jsonRenderRegistry, protectJsonRenderComponent } from './json-render-registry'
 
 type TestNode = { type: unknown; props: Record<string, unknown>; findAll(predicate: (node: TestNode) => boolean): TestNode[] }
 type TestRenderer = { root: TestNode; update(element: ReactElement): void; unmount(): void; toJSON(): unknown }
 const { create } = createRequire(import.meta.url)('react-test-renderer') as { create(element: ReactElement): TestRenderer }
+
+test('form follow-ups are readable label and value lines, including empty and nested values', () => {
+  assert.equal(formatJsonRenderSubmission({ title: 'Bug', includeLogs: true, severity: null, details: { steps: 'Open app' } }, 'Report'),
+    'Report\nTitle: Bug\nInclude Logs: Yes\nSeverity: (empty)\nDetails / Steps: Open app')
+  assert.equal(formatJsonRenderSubmission({}), 'Form submitted')
+})
+
+test('bound state saves after 700ms and flushes the last snapshot on unmount', async t => {
+  t.mock.method(console, 'error', () => {})
+  t.mock.timers.enable({ apis: ['setTimeout'] })
+  const saved: GeneratedJsonRenderData[] = []
+  let renderer!: TestRenderer
+  const spec = single('Input', { label: 'Title', value: { $bindState: '/title' } })
+  await act(async () => { renderer = create(<JsonRenderCard partId="edit" data={data(spec)} onDataChange={(_id, next) => { saved.push(next) }} />) })
+  const change = async (value: string) => act(async () => {
+    const input = renderer.root.findAll(node => node.type === 'input')[0]
+    ;(input.props.onChange as (event: unknown) => void)({ target: { value } })
+  })
+  await change('First')
+  await act(async () => { t.mock.timers.tick(699) })
+  assert.equal(saved.length, 0)
+  await act(async () => { t.mock.timers.tick(1) })
+  assert.equal(saved[0].stateJson, '{"title":"First"}')
+  await change('Final')
+  await act(async () => renderer.unmount())
+  assert.equal(saved.length, 2)
+  assert.equal(saved[1].stateJson, '{"title":"Final"}')
+})
+
+test('submit claims persisted final state once, sends readable values and remains locked after reload', async t => {
+  t.mock.method(console, 'error', () => {})
+  const saved: GeneratedJsonRenderData[] = []
+  const sent: string[] = []
+  const spec = single('Button', { label: 'Submit' }, { press: { action: 'submit', params: { label: 'Bug report' } } })
+  const value = data(spec, { stateJson: '{"title":"Broken sidebar","logs":true}' })
+  let renderer!: TestRenderer
+  await act(async () => { renderer = create(<JsonRenderCard partId="submit" data={value} onDataChange={(_id, next) => { saved.push(next) }} actions={{ onSendMessage: text => { sent.push(text) } }} />) })
+  const click = () => (renderer.root.findAll(node => node.type === 'button')[0].props.onClick as () => void)()
+  await act(async () => { click(); click() })
+  assert.equal(saved.length, 1)
+  assert.ok(saved[0].submittedAt)
+  assert.deepEqual(sent, ['Bug report\nTitle: Broken sidebar\nLogs: Yes'])
+  assert.equal(renderer.root.findAll(node => node.type === 'button')[0].props.disabled, true)
+  await act(async () => renderer.unmount())
+  const html = renderToStaticMarkup(<JsonRenderCard partId="submit" data={saved[0]} />)
+  assert.ok(html.includes('disabled=""'))
+})
+
+test('failed persistence blocks submission and read-only cards never save or send', async t => {
+  t.mock.method(console, 'error', () => {})
+  let sends = 0
+  let saves = 0
+  const spec = single('Button', { label: 'Submit' }, { press: { action: 'submit' } })
+  let renderer!: TestRenderer
+  const props = { partId: 'failed', data: data(spec), onDataChange: async () => { saves++; throw new Error('denied') }, actions: { onSendMessage: () => { sends++ } } }
+  await act(async () => { renderer = create(<JsonRenderCard {...props} />) })
+  await act(async () => { (renderer.root.findAll(node => node.type === 'button')[0].props.onClick as () => void)() })
+  assert.equal(saves, 1)
+  assert.equal(sends, 0)
+  assert.equal(renderer.root.findAll(node => node.type === 'button')[0].props.disabled, false)
+  assert.equal(renderer.root.findAll(node => node.props.role === 'alert').length, 1)
+  await act(async () => renderer.update(<JsonRenderCard {...props} readOnly />))
+  await act(async () => { (renderer.root.findAll(node => node.type === 'button')[0].props.onClick as () => void)() })
+  assert.equal(saves, 1)
+  await act(async () => renderer.unmount())
+})
+
+test('personal send_message uses the existing composer context without submitting the card', async t => {
+  t.mock.method(console, 'error', () => {})
+  const sent: string[] = []
+  const saved: unknown[] = []
+  const spec = single('Button', { label: 'Continue' }, { press: { action: 'send_message', params: { text: 'Compare seats' } } })
+  let renderer!: TestRenderer
+  await act(async () => { renderer = create(<QuestionnaireComposerProvider value="Unsent draft" onChange={() => {}} onSendMessage={async text => { sent.push(text) }}>
+    <JsonRenderCard partId="send" data={data(spec)} onDataChange={(_id, next) => { saved.push(next) }} />
+  </QuestionnaireComposerProvider>) })
+  await act(async () => { (renderer.root.findAll(node => node.type === 'button')[0].props.onClick as () => void)() })
+  assert.deepEqual(sent, ['Compare seats'])
+  assert.deepEqual(saved, [])
+  await act(async () => renderer.unmount())
+})
+
+test('a send failure after successful submission stays locked and never automatically resends', async t => {
+  t.mock.method(console, 'error', () => {})
+  let sends = 0
+  const spec = single('Button', { label: 'Submit' }, { press: { action: 'submit' } })
+  let renderer!: TestRenderer
+  await act(async () => { renderer = create(<JsonRenderCard partId="send-failed" data={data(spec)} onDataChange={() => {}} actions={{ onSendMessage: async () => { sends++; throw new Error('offline') } }} />) })
+  const click = () => (renderer.root.findAll(node => node.type === 'button')[0].props.onClick as () => void)()
+  await act(async () => { click() })
+  await act(async () => { click() })
+  assert.equal(sends, 1)
+  assert.equal(renderer.root.findAll(node => node.type === 'button')[0].props.disabled, true)
+  assert.ok(JSON.stringify(renderer.toJSON()).includes('values were saved'))
+  await act(async () => renderer.unmount())
+})
 const source = readFileSync(new URL('../../../../internal/plans/mockups/generative-ui-json-render.tsx', import.meta.url), 'utf8')
 const start = source.indexOf('const plans = spec(')
 const end = source.indexOf('function ResponsiveChart', start)

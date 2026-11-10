@@ -340,7 +340,7 @@ export function GeneratedUiCard({
 
   if (data.kind === 'questionnaire') return <ConversationQuestionnaire requestId={part.id} data={data} readOnly={readOnly || streaming} />
   if (data.kind === 'json_render') return <Suspense fallback={<p>{data.summary}</p>}>
-    <JsonRenderCard partId={part.id} data={data} readOnly={readOnly || streaming} actions={jsonRenderActions} />
+    <JsonRenderCard key={part.id} partId={part.id} data={data} readOnly={readOnly || streaming} actions={jsonRenderActions} onDataChange={onDataChange} />
   </Suspense>
 
   return (

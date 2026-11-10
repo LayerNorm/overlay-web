@@ -26,6 +26,22 @@ harnesses describe and reconstruct them through the same pipeline. Run policy an
 `authorized-tools` still enforce execution; MCP adapters withhold both tools via
 `GENERATED_UI_TOOL_IDS` from `@overlay/chat-core/generated-ui`.
 
+`render_ui` takes `{ title?, summary, spec }`. Summary is trimmed and required
+(1000 characters maximum); title is optional (120 characters). The executor validates
+the catalog spec and returns a durable `json_render` part, never model-authored HTML.
+Copy and HTTPS link actions run locally. Follow-up messages use the existing send
+path in the card's conversation or thread. Bound state saves after 700 ms and flushes
+on unmount. Submission first persists final state and a submission marker, then sends
+readable label/value lines; duplicate submits are blocked and reloaded cards stay locked.
+If sending fails after the marker is saved, the card remains locked and asks the person
+to send their response from the composer, avoiding an automatic duplicate send.
+Only json-render state gets member-post authorization in writable workspace threads;
+members cannot replace a spec, change draft cards, or edit submitted state. Slack and
+automation reply-text projections use bold titles and summaries, not specs or state.
+There is no assistant-reply email transport currently; lifecycle emails contain event
+notifications, not agent output. Future reply-email consumers should use
+`generatedUiDeliveryText` from `@overlay/chat-core/generated-ui`.
+
 Not tool ids but granted as capabilities:
 
 - **Web** (paid): `web_search`, `deep_search`, `web_fetch`. On the free plan they exist as stubs that answer "needs a paid plan".

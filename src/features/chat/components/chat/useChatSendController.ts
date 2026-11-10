@@ -365,15 +365,16 @@ export function useChatSendController({
     completeSession(chatId, active)
   }, [completeSession, createNewChat, pendingFirstSendRef, tryActivatePendingFirstSend])
 
-  const handleSend = useCallback(async () => {
+  const handleSend = useCallback(async (textOverride?: string) => {
     if (nativeThreadReadOnly) return
     if (!userId && !authUser) {
       try { sessionStorage.setItem('overlay:guest-draft', inputRef.current) } catch { /* ignore */ }
       requireAuth('send')
       return
     }
-    const replyCtxSnapshot = replyContext
-    const submittedInput = inputRef.current
+    const replyCtxSnapshot = textOverride === undefined ? replyContext : null
+    const composerInput = inputRef.current
+    const submittedInput = textOverride ?? composerInput
     const submittedComposerState = latestComposerStateRef.current
     const snapshot = buildSubmittedComposerSnapshot({
       selectedModels,
@@ -381,9 +382,9 @@ export function useChatSendController({
       activeChatTitle,
       selectedImageModels,
       selectedVideoModels,
-      attachedImages,
-      pendingChatDocuments,
-      mentions,
+      attachedImages: textOverride === undefined ? attachedImages : [],
+      pendingChatDocuments: textOverride === undefined ? pendingChatDocuments : [],
+      mentions: textOverride === undefined ? mentions : [],
       isTemporaryChat,
       mode,
       selectedToolIds,
@@ -391,6 +392,7 @@ export function useChatSendController({
       text: submittedInput.trim(),
     })
     const clearSubmittedComposer = () => {
+      if (textOverride !== undefined) return
       textareaRef.current?.clear()
       setInput('')
       setMentions([])
@@ -402,7 +404,7 @@ export function useChatSendController({
     }
     if (isActiveLoading) return
 
-    const sendValidationError = getSendValidationError(snapshot, effectiveGenType)
+    const sendValidationError = getSendValidationError(snapshot, textOverride === undefined ? effectiveGenType : null)
     if (sendValidationError === 'uploading-documents') {
       setAttachmentError('Wait for documents to finish indexing.')
       return
@@ -441,7 +443,7 @@ export function useChatSendController({
       return !isCurrentSendScope()
       || activeChatIdRef.current !== originalChatId
       || isTemporaryChatRef.current !== originalTemporary
-      || inputRef.current !== submittedInput
+      || inputRef.current !== composerInput
       || latestComposerStateRef.current !== submittedComposerState
     }
     if (!writable || sendIntentChanged()) return
@@ -462,6 +464,7 @@ export function useChatSendController({
       if (!isCurrentSendScope() || activeChatIdRef.current !== originalChatId) return
       setIsOptimisticLoading(false)
       setComposerNotice('Could not save your message. Retry to send it.')
+      if (textOverride !== undefined) return
       const currentComposer = latestComposerStateRef.current
       if (
         inputRef.current === ''
@@ -478,7 +481,7 @@ export function useChatSendController({
       }
     }
 
-    if (effectiveGenType === 'image' || effectiveGenType === 'video') {
+    if (textOverride === undefined && (effectiveGenType === 'image' || effectiveGenType === 'video')) {
       clearSubmittedComposer()
       try {
         await sendMediaTurn({
@@ -561,8 +564,10 @@ export function useChatSendController({
         startSession,
         updateRuntimeUiState,
       })
+      return isCurrentSendScope()
     } catch {
       restoreFailedSubmission()
+      return false
     }
   }, [
     addAssistantNote,
