@@ -86,7 +86,7 @@ test('subscription choices show one Kimi and SVG logos', () => {
       ...provider, enabled: true,
     })) },
     login: null, connected: null, error: null, busy: false, stopped: false, selectionLocked: false,
-    start: async () => {}, completeCallback: async () => {}, close: async () => {},
+    start: async () => {}, completeCallback: async () => {}, close: () => {},
   }
   const render = (connection?: ByokConnectionRow) => renderToStaticMarkup(
     <ProviderChoicePanel flow={flow} connection={connection} providerId={connection?.subscriptionProvider ?? ''} onProviderChange={() => {}} />,
