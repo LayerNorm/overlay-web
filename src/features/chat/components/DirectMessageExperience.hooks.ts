@@ -84,6 +84,7 @@ import {
   type NativeThreadSafetyStatus,
 } from '@/shared/chat/native-thread-safety'
 import { buildTextTurnPayload } from './chat/chat-send-body-builders'
+import { roomScrollReadKey } from './room-scroll-read-key'
 import { createHandoffConversation } from './chat/chat-send-create'
 
 export type OptimisticMessage = RoomMessageRecord
@@ -185,13 +186,16 @@ export function useReadMarkers({
   const [newMessageCount, setNewMessageCount] = useState(0)
   const unreadBoundaryInitializedRef = useRef(false)
   const readMarkInFlightRef = useRef(false)
+  /** Transcript state last marked read from scrolling; later scrolls over it add nothing. */
+  const scrollReadKeyRef = useRef<string | null>(null)
 
   const clearCollaborationNotifications = useCallback(() => {
     markConversationRead(conversationId)
   }, [conversationId, markConversationRead])
 
-  const markVisibleRead = useCallback(async () => {
+  const markVisibleRead = useCallback(async (scrollReadKey?: string) => {
     if (document.visibilityState !== 'visible') return
+    if (scrollReadKey !== undefined && scrollReadKey === scrollReadKeyRef.current) return
     if (readMarkInFlightRef.current) return
     readMarkInFlightRef.current = true
     try {
@@ -200,6 +204,7 @@ export function useReadMarkers({
       // badges stuck after the user switched into a DM or channel.
       if (!roomArgs) return
       await updateMyState({ ...roomArgs, markRead: true })
+      scrollReadKeyRef.current = scrollReadKey ?? null
       setUnreadBoundarySequence(null)
       setNewMessageCount(0)
       clearCollaborationNotifications()
@@ -278,7 +283,7 @@ export function useRoomTranscript({
 
 
   agentResponding: string | null
-  markVisibleRead: () => Promise<void>
+  markVisibleRead: (scrollReadKey?: string) => Promise<void>
   setNewMessageCount: Dispatch<SetStateAction<number>>
 }) {
   const [messages, setMessages] = useState<OptimisticMessage[]>(
@@ -406,8 +411,8 @@ export function useRoomTranscript({
       setStickToBottom(distanceFromBottom <= 96)
       if (node.scrollTop <= 120 && hasMoreMessages) void loadOlderMessages()
     }
-    void markVisibleRead()
-  }, [hasMoreMessages, loadOlderMessages, markVisibleRead])
+    void markVisibleRead(roomScrollReadKey(conversationId, messagesRef.current))
+  }, [conversationId, hasMoreMessages, loadOlderMessages, markVisibleRead])
 
   return {
     messages,
@@ -1653,7 +1658,7 @@ export function useMessageNavigation({
   listRef: RefObject<HTMLDivElement | null>
   messagesRef: RefObject<OptimisticMessage[]>
   setStickToBottom: Dispatch<SetStateAction<boolean>>
-  markVisibleRead: () => Promise<void>
+  markVisibleRead: (scrollReadKey?: string) => Promise<void>
   setNewMessageCount: Dispatch<SetStateAction<number>>
   setThreadRootId: Dispatch<SetStateAction<string | null>>
   setRoomPanel: Dispatch<SetStateAction<RoomPanelKind | null>>
