@@ -37,7 +37,7 @@ const access = {
 const context = { modelId: 'model', memoryEnabled: true, sharedRoom: true, requestFingerprint: 'fingerprint' }
 const parent = {
   runId: access.runId, rootRunId: access.runId, workflowRunId: access.workflowRunId, policy: {
-    actorUserId: access.actorUserId, workspaceId: access.workspaceId, allowedToolIds: ['read_file'], maxCostMicros: 100,
+    actorUserId: access.actorUserId, workspaceId: access.workspaceId, allowedToolIds: ['read_file'], maxCostMicros: 0,
   }, usage: { costMicros: 0 }, children: [], revision: 1,
 }
 const invocation = {
@@ -94,7 +94,7 @@ test('native ask uses trusted caller, forces async delivery, intersects tools, a
   const operation = mocks.apply.mock.calls[0]![0].operation
   expect(mocks.apply.mock.calls[0]![0].operationId).toBe('named-child:tool-call:target')
   expect(operation.child).toMatchObject({
-    id: 'workspace:target-run', stepId: 'ask:tool-call:target', allowedToolIds: ['read_file'], maxCostMicros: 50,
+    id: 'workspace:target-run', stepId: 'ask:tool-call:target', allowedToolIds: ['read_file'], maxCostMicros: 0,
   })
   await expect(mocks.build.mock.results[0]!.value).resolves.toMatchObject({ context: { memoryEnabled: false } })
   expect(mocks.launch).toHaveBeenCalledWith(access, expect.objectContaining({
@@ -102,7 +102,7 @@ test('native ask uses trusted caller, forces async delivery, intersects tools, a
   }), 'workspace:target-run')
 })
 
-test('native ask splits the remaining budget across three targets while preserving a parent share', async () => {
+test('native ask gives every target the same workspace budget with no per-child split', async () => {
   const invocations = ['one', 'two', 'three'].map(agentId => ({
     ...invocation, agentId, agentName: `Target ${agentId}`, agentPrincipalId: `${agentId}-principal`,
     invocationNonce: `nonce-${agentId}`, turnId: `turn-${agentId}`, modelId: 'paid/model',
@@ -122,15 +122,7 @@ test('native ask splits the remaining budget across three targets while preservi
   await dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
     agent: 'Targets', message: 'inspect this', wait: true,
   })
-  expect(mocks.apply.mock.calls.map(([args]) => args.operation.child.maxCostMicros)).toEqual([25, 25, 25])
-})
-
-test('native routes reserve child budget', async () => {
-  mocks.resolve.mockResolvedValueOnce([{ ...invocation, modelId: 'deepseek/deepseek-v4-flash-0731' }])
-  await dispatchNativeHarnessAgentRequest(access, context, 'tool-call', 'ask_agent', {
-    agent: 'Target', message: 'inspect this', wait: true,
-  })
-  expect(mocks.apply.mock.calls[0]![0].operation.child.maxCostMicros).toBe(50)
+  expect(mocks.apply.mock.calls.map(([args]) => args.operation.child.maxCostMicros)).toEqual([0, 0, 0])
 })
 
 test('a descendant dispatch uses the original root workflow for surface preparation', async () => {

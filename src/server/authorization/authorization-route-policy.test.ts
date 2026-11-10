@@ -31,7 +31,7 @@ test('route policies are exact and expose typed resource requirements', () => {
     resource: { action: 'view', optional: true, type: 'file' },
   })
   assert.deepEqual(
-    getAuthorizationRoutePolicy('POST', '/api/v1/conversations/run/resources'),
+    getAuthorizationRoutePolicy('POST', '/api/v1/agents/agent_1/restore'),
     { access: 'authenticated' },
   )
   assert.deepEqual(

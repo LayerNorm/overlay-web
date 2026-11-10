@@ -19,11 +19,11 @@ const observation = { modelId: 'provider/actual', provider: 'provider', inputTok
   reasoningTokens: 2, cacheReadTokens: 50, cacheWriteTokens: 20 }
 const receipt: HarnessReceipt = { ...observation, id: 'model:0', contextWindow: 100_000, costMicros: 100, costSource: 'provider' }
 const input = { reference, receiptId: 'model:0', observation, contextWindow: 100_000 }
-const state = (billingReservationId: string | null = 'billing', modelId = 'provider/requested', maxCostMicros = 100) => ({
+const state = (modelId = 'provider/requested') => ({
   ...bindHarnessModelDispatch(reserveHarnessModel(createHarnessSnapshot({ runId: 'root', goal: 'Work', constraints: [], policy: {
-    actorUserId: 'user', workspaceId: 'original-workspace', requiresPlan: false, allowedToolIds: [], maxCostMicros: 1_000,
+    actorUserId: 'user', workspaceId: 'original-workspace', requiresPlan: false, allowedToolIds: [], maxCostMicros: 0,
     deadlineAt: 10_000, maxDepth: 1, maxParallelChildren: 2,
-  } }, 1), 'model:0', maxCostMicros, 1), 'model:0', { modelId, billingReservationId }, 1),
+  } }, 1), 'model:0', 0, 1), 'model:0', { modelId, billingReservationId: null }, 1),
   workflowRunId: 'workflow',
 })
 
@@ -31,14 +31,16 @@ beforeEach(() => {
   vi.resetAllMocks()
   mocks.read.mockResolvedValue(state())
   mocks.resolve.mockResolvedValue({ receipt, providerCostUsd: 0.0001, catalogCostUsd: null })
-  mocks.bill.mockResolvedValue({ finalized: true, reservationId: null })
+  mocks.bill.mockResolvedValue({ recorded: true, budgetLow: false })
 })
 
-test('settles billing before releasing the harness hold, using original workspace and no extra request', async () => {
-  mocks.read.mockResolvedValue({ ...state(), status: 'cancelled' })
+test.each([undefined, { kind: 'notebook' as const, noteId: 'note', turnId: 'turn', requestDigest: 'digest' }])(
+  'charges the actual cost directly before releasing the dispatch marker for surface %j', async (surface) => {
+  mocks.read.mockResolvedValue({ ...state(), policy: { ...state().policy, surface }, status: 'cancelled' })
   expect(await settleHarnessModelUsage(input)).toEqual(receipt)
   expect(mocks.resolve).toHaveBeenCalledWith(expect.objectContaining({ requestedModelId: 'provider/requested' }))
-  expect(mocks.bill).toHaveBeenCalledWith(expect.objectContaining({ reservationId: 'billing', modelId: 'provider/actual',
+  expect(mocks.bill.mock.calls[0][0]).not.toHaveProperty('reservationId')
+  expect(mocks.bill).toHaveBeenCalledWith(expect.objectContaining({ modelId: 'provider/actual',
     userId: 'user', workspaceId: 'original-workspace', requireRecorded: true, countAsRequest: false, providerCostUsd: 0.0001,
     cachedInputTokens: 50, cacheWriteTokens: 20 }))
   expect(mocks.bill.mock.invocationCallOrder[0]).toBeLessThan(mocks.apply.mock.invocationCallOrder[0])
@@ -49,19 +51,17 @@ test('settles billing before releasing the harness hold, using original workspac
   expect(mocks.resolve).toHaveBeenCalledTimes(1)
 })
 
-test('failed billing, unfinalized reservations and invalid receipts leave the harness hold untouched', async () => {
+test('failed billing and invalid receipts leave the dispatch marker untouched', async () => {
   mocks.bill.mockRejectedValueOnce(new Error('billing unavailable'))
   await expect(settleHarnessModelUsage(input)).rejects.toThrow(/unavailable/)
-  mocks.bill.mockResolvedValueOnce({ finalized: false, reservationId: 'billing' })
-  await expect(settleHarnessModelUsage(input)).rejects.toThrow(/reconciliation/)
   mocks.resolve.mockResolvedValueOnce({ receipt: { ...receipt, cacheReadTokens: 101 }, providerCostUsd: 0.0001, catalogCostUsd: null })
   await expect(settleHarnessModelUsage(input)).rejects.toThrow(/Cached tokens/)
-  expect(mocks.bill).toHaveBeenCalledTimes(2)
+  expect(mocks.bill).toHaveBeenCalledTimes(1)
   expect(mocks.apply).not.toHaveBeenCalled()
 })
 
 test('rejects mismatched execution ownership or an unbound model hold before charging', async () => {
-  for (const value of [null, { ...state(), workflowRunId: 'other' }, { ...state(), modelReservation: { id: 'model:0', maxCostMicros: 100 } }]) {
+  for (const value of [null, { ...state(), workflowRunId: 'other' }, { ...state(), modelReservation: { id: 'model:0', maxCostMicros: 0 } }]) {
     mocks.read.mockResolvedValueOnce(value)
     await expect(settleHarnessModelUsage(input)).rejects.toThrow()
   }
@@ -70,7 +70,7 @@ test('rejects mismatched execution ownership or an unbound model hold before cha
 })
 
 test('BYOK writes token audit with unknown external cost but no Overlay charge', async () => {
-  mocks.read.mockResolvedValue(state(null, 'byok/connection/model'))
+  mocks.read.mockResolvedValue(state('byok/connection/model'))
   const external: HarnessReceipt = { ...receipt, costMicros: 0, costSource: 'external', externalCostMicros: null }
   mocks.resolve.mockResolvedValue({ receipt: external, providerCostUsd: null, catalogCostUsd: null })
   await settleHarnessModelUsage(input)
@@ -83,11 +83,10 @@ test('BYOK writes token audit with unknown external cost but no Overlay charge',
   expect(mocks.apply).toHaveBeenCalledTimes(1)
 })
 
-test('catalog settlement carries the original quote without fabricating an exact provider receipt', async () => {
-  mocks.read.mockResolvedValue(state(null))
+test('catalog settlement charges the catalog cost directly without fabricating an exact provider receipt', async () => {
   mocks.resolve.mockResolvedValue({ receipt: { ...receipt, costSource: 'catalog' }, providerCostUsd: null, catalogCostUsd: 0.0001 })
-  mocks.bill.mockResolvedValue({ finalized: false, reservationId: null })
+  mocks.bill.mockResolvedValue({ recorded: true, budgetLow: false })
   await settleHarnessModelUsage(input)
-  expect(mocks.bill.mock.calls[0][0]).toMatchObject({ catalogCostUsd: 0.0001, reservationId: null })
+  expect(mocks.bill.mock.calls[0][0]).toMatchObject({ catalogCostUsd: 0.0001 })
   expect(mocks.bill.mock.calls[0][0]).not.toHaveProperty('providerCostUsd')
 })

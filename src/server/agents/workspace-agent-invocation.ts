@@ -37,15 +37,8 @@ export function permissionModeForConnectedHarness(
 }
 
 /**
- * A durable turn is no longer bounded by the request that started it, so the
- * cap can be what the work needs rather than what a response could hold. Reasoning
- * models spend thinking tokens from the same per-call limit, so leave room for both.
- */
-const MAX_OUTPUT_TOKENS_AGENT = 32_000
-
-/**
- * Each mentioned agent gets its own budget reservation and its own durable
- * run, so an uncapped mass-mention is a cost amplifier.
+ * Each mentioned agent gets its own durable run, so an uncapped mass-mention
+ * is a cost amplifier.
  */
 const MAX_AGENTS_PER_MESSAGE = 5
 
@@ -290,8 +283,8 @@ export async function resolveWorkspaceAgentInvocations(args: {
   }
   // Cap the number of agents that can be invoked per message to prevent
   // cost amplification from mass-mentioning agents. Each agent gets its own
-  // budget reservation, so without a cap a user could mention many agents
-  // and consume significant tokens in a single message.
+  // run, so without a cap a user could mention many agents and consume
+  // significant tokens in a single message.
   if (principalIds.length > MAX_AGENTS_PER_MESSAGE) {
     logger.warn('[workspace-agent] too many agents mentioned, capping', {
       conversationId: args.conversationId,
@@ -556,31 +549,18 @@ export async function startRemoteWorkspaceAgentTurn(args: {
   })
   if (!entitlements) throw new WorkspaceAgentInvocationError('not_entitled')
   const policy = connectedAgentPolicyFor(entitlements)
-  const overlayModelUsage = args.invocation.remoteTarget.modelUsageBilling === 'overlay'
-  if (!overlayModelUsage) {
-    await requireExecution({
-      userId: args.actorUserId,
-      workspaceId: args.workspaceId,
-      checkBudget: true,
-    })
-  }
-  const reservation = overlayModelUsage
-    ? await server.chatUsagePolicy.reserveForAttempt({
-        entitlements,
-        estimatedInputTokens: Math.max(1, Math.ceil(remotePrompt.length / 4)),
-        idempotencyKey: args.invocation.invocationNonce,
-        maxOutputTokens: MAX_OUTPUT_TOKENS_AGENT,
-        modelId: args.invocation.modelId,
-        operationId: `workspace-agent:${args.invocation.turnId}`,
-        paid: true,
-        requestFingerprint,
-        userId: args.actorUserId,
-        workspaceId: args.workspaceId,
-        programmaticSubjectId: `agent:${args.invocation.agentId}`,
-      })
-    : { ok: true as const, reservationId: null }
-  if (!reservation.ok) throw new WorkspaceAgentInvocationError(
-    reservation.failure.statusCode === 402 ? 'usage_limited' : 'not_entitled',
+  // Before the run: refuse only when the workspace has under 2% left. Overlay-billed model use is charged
+  // from the run's reported tokens when it ends; nothing is held now.
+  const budget = await server.chatUsagePolicy.ensureBudgetNotLow({
+    entitlements,
+    modelId: args.invocation.modelId,
+    operationId: `workspace-agent:${args.invocation.turnId}`,
+    userId: args.actorUserId,
+    workspaceId: args.workspaceId,
+    programmaticSubjectId: `agent:${args.invocation.agentId}`,
+  })
+  if (!budget.ok) throw new WorkspaceAgentInvocationError(
+    budget.failure.statusCode === 402 ? 'usage_limited' : 'not_entitled',
   )
   const now = Date.now()
   const runId = `agent_run_${randomUUID()}`
@@ -609,7 +589,7 @@ export async function startRemoteWorkspaceAgentTurn(args: {
       memoryEnabled: args.memoryEnabled,
       prompt: remotePrompt,
       queueExpiresAt: now + CONNECTED_AGENT_INTERACTIVE_QUEUE_MS,
-      reservationId: reservation.reservationId,
+      reservationId: null,
       runId,
       sessionId: remoteSessionId,
       startPayload: {
@@ -661,7 +641,6 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         runId: started.runId,
         commandId: started.commandId,
         remoteSessionId,
-        reservationId: reservation.reservationId,
         eventCursor: 0,
       },
     }).catch((error) => logger.warn('[remote-agent-run] dispatch audit deferred', { runId: started.runId, error }))
@@ -669,11 +648,6 @@ export async function startRemoteWorkspaceAgentTurn(args: {
     await ensureRemoteRunCoordinator(started.runId).catch((error) => logger.warn('[remote-agent-run] start deferred', { runId: started.runId, error }))
     return started
   } catch (error) {
-    await server.chatUsagePolicy.releaseReservation({
-      reason: 'remote_agent_dispatch_failed',
-      reservationId: reservation.reservationId,
-      userId: args.actorUserId,
-    }).catch((_error) => undefined)
     await server.auditService.record({
       action: 'agent_remote_run.dispatch_failed',
       actorType: 'user',
@@ -687,7 +661,6 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         environmentId: args.invocation.remoteTarget.environmentId,
         runId,
         remoteSessionId,
-        reservationId: reservation.reservationId,
         errorCode: error instanceof Error ? error.message.slice(0, 160) : 'remote_agent_dispatch_failed',
       },
     }).catch((_auditError) => undefined)

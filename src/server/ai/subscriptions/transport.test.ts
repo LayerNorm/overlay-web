@@ -271,3 +271,38 @@ test('SDK function tools keep optional arguments non-strict unless strict was ex
     assert.equal(sent.tools[0]?.strict, strict ?? false)
   }
 })
+
+test('an image returned by a tool reaches a subscription as a text note instead of failing the request', async () => {
+  let requestBody: Record<string, unknown> | undefined
+  let bridgeCalls = 0
+  const model = modelWithFetch(async (_input, init) => {
+    bridgeCalls += 1
+    requestBody = JSON.parse(String(init?.body)) as Record<string, unknown>
+    return new Response(`data: ${JSON.stringify({ type: 'response.completed', response: responseBody })}\n\n`)
+  }, 'account-model', 'claude')
+  const result = await generateText({
+    model, maxRetries: 0,
+    tools: { fetch_url: { inputSchema: jsonSchema({ type: 'object', properties: {} }) } },
+    messages: [
+      { role: 'user', content: [
+        { type: 'text', text: 'Fix the issue in this screenshot' },
+        { type: 'file', data: new Uint8Array([1, 2, 3]), mediaType: 'image/png' },
+      ] },
+      { role: 'assistant', content: [
+        { type: 'tool-call', toolCallId: 'call-1', toolName: 'fetch_url', input: {} },
+      ] },
+      { role: 'tool', content: [
+        { type: 'tool-result', toolCallId: 'call-1', toolName: 'fetch_url', output: { type: 'content', value: [
+          { type: 'text', text: 'Fetched the screenshot.' },
+          { type: 'file-data', data: 'AQID', mediaType: 'image/png' },
+        ] } },
+      ] },
+    ],
+  })
+  assert.equal(result.text, 'fixture response')
+  assert.equal(bridgeCalls, 1)
+  const sent = JSON.stringify(requestBody?.request)
+  assert.doesNotMatch(sent, /input_image|image_url|AQID/)
+  assert.match(sent, /Fetched the screenshot\./)
+  assert.match(sent, /An image \(image\/png\) was omitted: this model connection accepts text only/)
+})

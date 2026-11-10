@@ -91,58 +91,29 @@ async function generateTitleWithModel({
 }): Promise<string | null> {
   const { auth } = context
   const modelId = TITLE_MODEL_ID
-  const reservation = await chatUsagePolicy.reserveForAttempt({
+  const check = await chatUsagePolicy.ensureBudgetNotLow({
     entitlements,
-    estimatedInputTokens,
-    idempotencyKey: context.requestIdempotencyKey,
-    maxOutputTokens: MAX_OUTPUT_TOKENS,
     modelId,
     operationId: 'chat.generate-title',
-    paid: true,
-    requestFingerprint: context.requestFingerprint,
     programmaticSubjectId,
     userId: auth.userId,
     workspaceId,
   })
-  if (!reservation.ok) return null
+  if (!check.ok) return null
 
-  let result: Awaited<ReturnType<typeof generateText>>
-  let started = false
-  try {
-    abortSignal.throwIfAborted()
-    const languageModel = await getLanguageModel(modelId, auth.accessToken, auth.userId, { workspaceId })
-    abortSignal.throwIfAborted()
-    await chatUsagePolicy.markReservationStarted({
-      userId: auth.userId,
-      reservationId: reservation.reservationId,
-    })
-    started = true
-    result = await generateText({
-      abortSignal,
-      model: languageModel,
-      instructions: TITLE_INSTRUCTIONS,
-      temperature: 0.2,
-      maxOutputTokens: MAX_OUTPUT_TOKENS,
-      maxRetries: 0,
-      prompt,
-    })
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : 'title_generation_failed'
-    if (started) {
-      await chatUsagePolicy.markReservationForReconcile({
-        userId: auth.userId,
-        reservationId: reservation.reservationId,
-        errorMessage: reason,
-      })
-    } else {
-      await chatUsagePolicy.releaseReservation({
-        userId: auth.userId,
-        reservationId: reservation.reservationId,
-        reason,
-      })
-    }
-    throw error
-  }
+  abortSignal.throwIfAborted()
+  const languageModel = await getLanguageModel(modelId, auth.accessToken, auth.userId, { workspaceId })
+  abortSignal.throwIfAborted()
+  // A failed call charges nothing.
+  const result = await generateText({
+    abortSignal,
+    model: languageModel,
+    instructions: TITLE_INSTRUCTIONS,
+    temperature: 0.2,
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
+    maxRetries: 0,
+    prompt,
+  })
 
   const sanitizedTitle = sanitizeChatTitle(extractTitle(result.text ?? ''), FALLBACK_TITLE)
   if (sanitizedTitle === FALLBACK_TITLE) {
@@ -158,17 +129,12 @@ async function generateTitleWithModel({
   await chatUsagePolicy.recordFinishedUsage({
     inputTokens: usage?.inputTokens ?? estimatedInputTokens,
     modelId,
+    operationId: `chat.generate-title:${globalThis.crypto.randomUUID()}`,
     outputTokens: usage?.outputTokens ?? MAX_OUTPUT_TOKENS,
-    reservationId: reservation.reservationId,
+    programmaticSubjectId,
     userId: auth.userId,
-  }).catch(async (error) => {
-    logger.error('[ChatTitle][server] Failed to record usage', error)
-    await chatUsagePolicy.markReservationForReconcile({
-      userId: auth.userId,
-      reservationId: reservation.reservationId,
-      errorMessage: error instanceof Error ? error.message : 'usage_record_failed',
-    }).catch((_error) => undefined)
-  })
+    workspaceId,
+  }).catch((error) => logger.error('[ChatTitle][server] Failed to record usage', error))
 
   return sanitizedTitle === FALLBACK_TITLE ? null : sanitizedTitle
 }

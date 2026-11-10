@@ -3,10 +3,8 @@ import 'server-only'
 import type { AgentSandboxLease } from '@overlay/workspace-contracts'
 import type { SandboxInstance, SandboxLifecycleState, SandboxRuntime, SandboxUsage } from '@overlay/sandbox-runtime'
 import type { BoxSandboxRuntime } from '@overlay/sandbox-runtime/box'
-import type { Entitlements } from '@/shared/app/app-contracts'
 import type { GenerationUsagePolicy } from '@/server/outputs/GenerationUsagePolicy'
 import { billableBudgetCentsFromProviderUsd, resolveBillingPayer } from '@/server/billing/billing-runtime'
-import { configuredUsageMarkupBasisPoints } from '@/server/env/usage-markup'
 import { logger } from '@/server/observability/logger'
 import {
   reportSandboxAlert as reportSandboxAlertDefault,
@@ -15,7 +13,6 @@ import {
 } from '@/server/observability/sandbox-alerts'
 import type {
   ConnectedAgentRepository,
-  ConnectedAgentSandboxBilling,
   ConnectedAgentSandboxLeasePayer,
   RemoteAgentUsageSettlement,
 } from './ConnectedAgentRepository'
@@ -24,9 +21,6 @@ import { E2B_COMPUTE_PRICE, meterExecutionUsage, type ExecutionMeterCursor } fro
 import { BOAT_COMPUTE_PRICE, meterBoatUsage, SANDBOX_RUNTIME_FENCE_MS, type BoatMeterCursor } from './sandbox-boat-accounting'
 
 const DEFAULT_RESOURCES = { diskGiB: 10, memoryGiB: 4, vcpus: 2 }
-const DEFAULT_LOW_BALANCE_CUTOFF_CENTS = 100
-const DEFAULT_BOOTSTRAP_COVERAGE_MS = 10 * 60_000
-const DEFAULT_BOOTSTRAP_EGRESS_BYTES = 1 << 30
 const DEFAULT_METER_LEASE_LIMIT = 100
 const CLEANUP_RETRY_BASE_MS = 60_000
 const CLEANUP_RETRY_MAX_MS = 30 * 60_000
@@ -70,7 +64,17 @@ export type ManagedSandboxMeterTick = {
 }
 
 export type ManagedSandboxMeterResult =
-  | { applied: true; chargedCents?: number; chargedUsd?: number; remainingCents?: number; usage: SandboxUsage }
+  | {
+    applied: true
+    chargedCents?: number
+    chargedUsd?: number
+    remainingCents?: number
+    /** The workspace has under 2% of its budget left after this charge. */
+    budgetLow?: boolean
+    /** An admin's spend limit for the member or agent is used up. */
+    spendLimitReached?: boolean
+    usage: SandboxUsage
+  }
   | { applied: false; reason: string; remainingCents?: number }
 
 export class ManagedAgentSandboxBilling {
@@ -89,113 +93,8 @@ export class ManagedAgentSandboxBilling {
     (this.dependencies.reportSandboxAlert ?? reportSandboxAlertDefault)(type, context)
   }
 
-  // A turn's upfront hold is only a bootstrap: enough to cover the low-balance
-  // floor plus a short worst-case coverage window. Real usage is debited by
-  // the per-lease meter (`meterLeases`), which runs on a cron tick and keeps a
-  // cumulative usage cursor on the lease itself.
-  async reserve(args: {
-    agentId: string
-    entitlements: Entitlements
-    environmentId: string
-    idempotencyKey: string
-    operationId: string
-    requestFingerprint: string
-    userId: string
-    workspaceId: string
-    /** The turn may run this long; the idle meter will not stop the machine before then. */
-    activeForMs?: number
-  }): Promise<ConnectedAgentSandboxBilling> {
-    const lease = await this.dependencies.repository.getActiveSandboxLease({
-      workspaceId: args.workspaceId,
-      environmentId: args.environmentId,
-    })
-    if (!lease?.providerReference || lease.status !== 'running') throw new Error('MANAGED_SANDBOX_LEASE_UNAVAILABLE')
-    const runtime = this.runtime(lease.provider)
-    // The lease's sandbox may be gone (idle expiry, reset, provider reclaim) —
-    // the turn's acquire step recreates it and repoints this same lease. A
-    // dead instance still bills correctly: the recreated sandbox starts at
-    // zero usage, so an empty baseline meters its full lifetime. The baseline
-    // read must not resume an idle-stopped sandbox — the acquire step owns
-    // resumption.
-    const baselineUsage = await runtime.reconnect(lease.providerReference, { resume: false })
-      .then(async (instance) => await instance.usage())
-      .catch((error) => {
-        logger.warn('[managed-harness] sandbox baseline unavailable — treating as fresh', {
-          environmentId: args.environmentId,
-          error: error instanceof Error ? error.message : String(error),
-          workspaceId: args.workspaceId,
-        })
-        return {} as SandboxUsage
-      })
-    const resources = sandboxResources(lease.usage)
-    const coverageUsd = sandboxReservationCostUsd({
-      provider: lease.provider,
-      resources,
-      maxRunTimeMs: sandboxBootstrapCoverageMs(),
-      maxSandboxEgressBytes: sandboxBootstrapEgressBytes(),
-    })
-    if (coverageUsd > sandboxProviderCostLimitUsd()) {
-      throw new ManagedAgentSandboxBudgetError(503, 'sandbox_provider_cost_limit')
-    }
-    // policy.reserve applies the markup to providerCostUsd, so express the
-    // bootstrap hold (coverage + low-balance floor) as a provider-cost value.
-    const bootstrapCents = billableBudgetCentsFromProviderUsd(coverageUsd) + sandboxLowBalanceCutoffCents()
-    const reservation = await this.dependencies.policy.reserve({
-      entitlements: args.entitlements,
-      idempotencyKey: args.idempotencyKey,
-      kind: 'sandbox',
-      modelId: `sandbox/${lease.provider}`,
-      operationId: args.operationId,
-      providerCostUsd: bootstrapCents / (100 * (1 + configuredUsageMarkupBasisPoints() / 10_000)),
-      requestFingerprint: args.requestFingerprint,
-      programmaticSubjectId: `agent:${args.agentId}`,
-      userId: args.userId,
-      workspaceId: args.workspaceId,
-    })
-    if (!reservation.ok) throw new ManagedAgentSandboxBudgetError(reservation.status, reservation.code)
-    // Persist the billing payer on the lease so the periodic meter debits the
-    // same wallet between turns and during approval waits. Best effort: the
-    // meter falls back to resolving the environment approver.
-    const payer = await resolveBillingPayer({
-      programmaticSubjectId: `agent:${args.agentId}`,
-      userId: args.userId,
-      workspaceId: args.workspaceId,
-    }).then((resolved) => sandboxLeasePayer(resolved, args.userId)).catch((_error) => undefined)
-    const activityAt = this.now()
-    await this.dependencies.repository.patchSandboxLeaseUsage({
-      workspaceId: args.workspaceId,
-      leaseId: lease.id,
-      // A starting turn is activity, and the machine stays up for its whole run.
-      // A starting turn cancels the idle timer (a null token makes any pending check stale); the turn's end sets a new one.
-      patch: { ...(payer ? { lastPayer: payer } : {}), lastActiveAt: activityAt, activeUntil: activityAt + Math.max(0, args.activeForMs ?? 0), idleToken: null, idleCheckAt: null },
-      now: this.now(),
-    }).catch((error) => {
-      logger.warn('[managed-harness] sandbox lease payer write failed', {
-        environmentId: args.environmentId,
-        error: error instanceof Error ? error.message : String(error),
-      })
-    })
-    return {
-      baselineUsage: serializableUsage(baselineUsage),
-      leaseId: lease.id,
-      provider: lease.provider,
-      providerReference: lease.providerReference,
-      reservationId: reservation.reservationId,
-      resources,
-      startedAt: this.now(),
-    }
-  }
-
-  async release(args: { billing?: ConnectedAgentSandboxBilling; userId: string; reason: string }) {
-    await this.dependencies.policy.release({
-      reservationId: args.billing?.reservationId,
-      userId: args.userId,
-      reason: args.reason,
-    })
-  }
-
   // Periodic driver: meter every active lease and reap leases whose stop was
-  // requested (low balance, environment revocation) or whose cleanup failed.
+  // requested (budget under 2%, environment revocation) or whose cleanup failed.
   async meterLeases(args?: { limit?: number }): Promise<{ disabled?: boolean; ticks: ManagedSandboxMeterTick[] }> {
     if (sandboxMeterDisabled()) return { disabled: true, ticks: [] }
     const limit = Math.max(1, Math.min(1_000, args?.limit ?? sandboxMeterLeaseLimit()))
@@ -317,7 +216,7 @@ export class ManagedAgentSandboxBilling {
   // never metered adopts its current counters as the cursor (no charge) —
   // billing starts from the first metered read, and freshly provisioned leases
   // seed an empty cursor so their full lifetime is billed.
-  async meterLease(lease: AgentSandboxLease, options?: { minRemainingCents?: number; idleStop?: 'timer' | 'sweep' | 'none' }): Promise<ManagedSandboxMeterResult> {
+  async meterLease(lease: AgentSandboxLease, options?: { idleStop?: 'timer' | 'sweep' | 'none' }): Promise<ManagedSandboxMeterResult> {
     const now = this.now()
     let effectiveLease = lease
     let usage = lease.usage ?? {}
@@ -449,7 +348,6 @@ export class ManagedAgentSandboxBilling {
           meteredUsage: baseline,
           meteredProviderReference: activeReference,
           meteredAt: now,
-          minRemainingCents: Math.max(0, options?.minRemainingCents ?? sandboxLowBalanceCutoffCents()),
         })
         if (!bumped.applied) return bumped
         return { applied: true, usage: {} }
@@ -495,11 +393,8 @@ export class ManagedAgentSandboxBilling {
       usage: delta,
     }) : 0
     const costCents = chargeEnabled ? billableBudgetCentsFromProviderUsd(providerCostUsd) : 0
-    const runtimeHoldCents = executionMeter
-      ? billableBudgetCentsFromProviderUsd(executionMeter.pendingComputeUsd + executionMeter.headroomComputeUsd)
-      : boatMeter ? billableBudgetCentsFromProviderUsd(boatMeter.holdUsd) : undefined
     const payer = await this.resolveLeasePayer(effectiveLease)
-    if ((costCents > 0 || (runtimeHoldCents ?? 0) > 0) && !payer) {
+    if (costCents > 0 && !payer) {
       logger.warn('Managed sandbox meter skipped — no billing payer resolved', {
         environmentId: effectiveLease.environmentId,
         leaseId: effectiveLease.id,
@@ -531,7 +426,6 @@ export class ManagedAgentSandboxBilling {
       meteredUsage: cursorUsage,
       meteredProviderReference: activeReference,
       meteredAt: now,
-      ...(runtimeHoldCents === undefined ? {} : { runtimeHoldCents }),
       providerEvidence: { usage: serializableUsage(currentUsage), stopped: stoppedConfirmed },
       ...(payer ? { payer } : {}),
       ...(costCents > 0 ? {
@@ -554,14 +448,13 @@ export class ManagedAgentSandboxBilling {
               pricing: executionPrice,
               executions: currentUsage.executions?.filter((sample) => {
                 const previous = (baseline.executionCursor as ExecutionMeterCursor | undefined)?.[sample.id]
-                return sample.complete && !previous?.complete && sample.wallTimeMs > (previous?.settledWallTimeMs ?? 0)
+                return !previous?.complete && sample.wallTimeMs > (previous?.settledWallTimeMs ?? 0)
               }),
               computeOnly: true,
             } : {}),
           },
         },
       } : {}),
-      minRemainingCents: Math.max(0, options?.minRemainingCents ?? sandboxLowBalanceCutoffCents()),
     })
     if (!result.applied) return result
     if (boatMeter?.stalled) {
@@ -578,9 +471,12 @@ export class ManagedAgentSandboxBilling {
       usage: currentUsage,
       ...(costCents > 0 ? { chargedCents: costCents, chargedUsd: providerCostUsd } : {}),
       ...(result.remainingCents === undefined ? {} : { remainingCents: result.remainingCents }),
+      ...(result.budgetLow ? { budgetLow: true } : {}),
+      ...(result.spendLimitReached ? { spendLimitReached: true } : {}),
     }
   }
 
+  /** A run ended: its final meter tick charges observed usage since the last tick, then the idle window starts. */
   async settle(settlement: RemoteAgentUsageSettlement): Promise<void> {
     const billing = settlement.sandboxBilling
     if (!billing || !settlement.userId) return
@@ -588,137 +484,74 @@ export class ManagedAgentSandboxBilling {
       workspaceId: settlement.workspaceId,
       leaseId: billing.leaseId,
     }).catch((_error) => null)
-    if (lease && hasMeterCursor(lease.usage)) {
-      try {
-        // Turn end is just the final meter tick: bill usage since the last
-        // periodic read, then release the bootstrap hold.
-        // A run just ended: bill it, but do not idle-stop here (the idle window starts now, via the timer set below).
-        const tick = await this.meterLeaseWithRetry(lease, { minRemainingCents: 0, idleStop: 'none' })
-        if (!tick.applied && ['insufficient_budget', 'paid_plan_required'].includes(tick.reason)) {
-          await this.killLease(lease, tick.reason === 'paid_plan_required' ? tick.reason : 'budget_exhausted').catch((_error) => undefined)
-        }
-        if (billing.reservationId) {
-          await this.dependencies.policy.release({
-            reservationId: billing.reservationId,
-            userId: settlement.userId,
-            reason: 'sandbox_metered',
-          })
-          await this.dependencies.repository.markSandboxSettlementComplete({
-            workspaceId: settlement.workspaceId,
-            reservationId: billing.reservationId,
-            settledAt: this.now(),
-          }).catch((_error) => false)
-        }
-        await this.dependencies.repository.patchSandboxLeaseUsage({
-          workspaceId: settlement.workspaceId,
-          leaseId: billing.leaseId,
-          patch: {
-            lastActiveAt: this.now(),
-            activeUntil: 0,
-            lastSettlement: {
-              agentId: settlement.agentId,
-              environmentId: settlement.environmentId,
-              runId: settlement.runId,
-              reservationId: billing.reservationId,
-              providerCostUsd: tick.applied ? tick.chargedUsd ?? 0 : 0,
-              settledAt: this.now(),
-            },
-          },
-          now: this.now(),
-          // The run is over: the machine stops one idle window from now unless something else starts first.
-          idleCheckInMs: idleWindowMs(lease.usage),
-        })
-        return
-      } catch (error) {
-        await this.dependencies.policy.markForReconcile({
-          reservationId: billing.reservationId,
-          userId: settlement.userId,
-          errorMessage: error instanceof Error ? `managed_sandbox_settlement:${error.message}` : 'managed_sandbox_settlement_failed',
-        }).catch((_error) => undefined)
-        throw error
-      }
-    }
-    if (!billing.reservationId) return
-    try {
-      const runtime = this.runtime(billing.provider)
-      // The lease's providerReference may have been repointed mid-turn when
-      // the acquire step recreated an expired sandbox — settle against the
-      // lease's current reference, not the dispatch-time snapshot. The read
-      // must not resume an idle-stopped sandbox.
-      const providerReference = lease?.providerReference ?? billing.providerReference
-      const instance = await runtime.reconnect(providerReference, { resume: false })
-      const currentUsage = await instance.usage()
-      const usage = usageDelta(billing.baselineUsage, currentUsage, this.now() - billing.startedAt)
-      const providerCostUsd = sandboxCostUsd({ provider: billing.provider, resources: billing.resources, usage })
-      if (providerCostUsd >= providerSpendAlertThresholdUsd()) {
-        logger.warn('Connected-agent sandbox provider spend alert', {
-          workspaceId: settlement.workspaceId,
+    // A lease that was never metered adopts its counters on its first tick; there is nothing to settle yet.
+    if (!lease || !hasMeterCursor(lease.usage)) return
+    // A run just ended: bill it, but do not idle-stop here (the idle window starts now, via the timer set below).
+    const tick = await this.meterLeaseWithRetry(lease, { idleStop: 'none' })
+    const stop = await this.budgetStopReason(lease, tick)
+    if (stop) await this.killLease(lease, stop).catch((_error) => undefined)
+    await this.dependencies.repository.patchSandboxLeaseUsage({
+      workspaceId: settlement.workspaceId,
+      leaseId: billing.leaseId,
+      patch: {
+        lastActiveAt: this.now(),
+        activeUntil: 0,
+        lastSettlement: {
           agentId: settlement.agentId,
           environmentId: settlement.environmentId,
           runId: settlement.runId,
-          providerReference: billing.providerReference,
-          reservationId: billing.reservationId,
-          providerCostUsd,
-        })
-      }
-      await this.dependencies.policy.finalize({
-        actualProviderCostUsd: providerCostUsd,
-        events: [{
-          type: 'sandbox',
-          modelId: `sandbox/${billing.provider}`,
-          cost: billableBudgetCentsFromProviderUsd(providerCostUsd),
-          durationSeconds: (usage.wallTimeMs ?? 0) / 1_000,
-          timestamp: this.now(),
-        }],
-        reservationId: billing.reservationId,
-        userId: settlement.userId,
-      })
-      // Seed the meter cursor at the charged-through snapshot so a later
-      // periodic tick does not double-bill this turn's usage.
-      const updatedLease = await this.dependencies.repository.patchSandboxLeaseUsage({
-        workspaceId: settlement.workspaceId,
-        leaseId: billing.leaseId,
-        patch: {
-          lastActiveAt: this.now(),
-          activeUntil: 0,
-          meteredUsage: serializableUsage(currentUsage),
-          meteredProviderReference: providerReference,
-          meteredAt: this.now(),
-          lastSettlement: {
-            agentId: settlement.agentId,
-            environmentId: settlement.environmentId,
-            runId: settlement.runId,
-            reservationId: billing.reservationId,
-            providerCostUsd,
-            wallTimeMs: usage.wallTimeMs ?? 0,
-            activeCpuTimeMs: usage.activeCpuTimeMs ?? 0,
-            egressBytes: usage.egressBytes ?? 0,
-            settledAt: this.now(),
-          },
+          providerCostUsd: tick.applied ? tick.chargedUsd ?? 0 : 0,
+          settledAt: this.now(),
         },
-        now: this.now(),
+      },
+      now: this.now(),
+      // The run is over: the machine stops one idle window from now unless something else starts first.
+      idleCheckInMs: idleWindowMs(lease.usage),
+    })
+  }
+
+  /**
+   * Why a metered machine must stop, if it must. A refused charge (no paid plan, nobody to pay) stops it. A charge
+   * that leaves an admin spend limit used up stops it. A charge that leaves the workspace under 2% of its budget
+   * first tries one automatic top-up to the 2% line (this runs on the Next server); only if that fails does it stop.
+   */
+  private async budgetStopReason(lease: AgentSandboxLease, result: ManagedSandboxMeterResult): Promise<string | undefined> {
+    if (!result.applied) {
+      if (result.reason === 'paid_plan_required') return 'paid_plan_required'
+      return result.reason === 'insufficient_budget' ? 'budget_exhausted' : undefined
+    }
+    if (result.spendLimitReached) return 'spend_limit_exceeded'
+    if (!result.budgetLow) return undefined
+    return await this.budgetRecovered(lease) ? undefined : 'budget_exhausted'
+  }
+
+  /** One automatic top-up attempt for the lease's payer; true when the workspace is back at or above 2%. */
+  private async budgetRecovered(lease: AgentSandboxLease): Promise<boolean> {
+    const payer = await this.resolveLeasePayer(lease).catch((_error) => undefined)
+    if (!payer || payer.scope !== 'workspace' || !payer.workspaceId) return false
+    try {
+      const programmaticSubjectId = payer.spendSubjectKind === 'programmatic' ? payer.spendSubjectId : undefined
+      const entitlements = await this.dependencies.policy.getEntitlements({
+        userId: payer.userId, workspaceId: payer.workspaceId, ...(programmaticSubjectId ? { programmaticSubjectId } : {}),
       })
-      if (!updatedLease) throw new Error('MANAGED_SANDBOX_LEASE_MISSING')
-      const marked = await this.dependencies.repository.markSandboxSettlementComplete({
-        workspaceId: settlement.workspaceId,
-        reservationId: billing.reservationId,
-        settledAt: this.now(),
+      if (!entitlements) return false
+      const check = await this.dependencies.policy.ensureBudgetNotLow({
+        entitlements,
+        kind: 'sandbox',
+        modelId: `sandbox/${lease.provider}`,
+        operationId: `sandbox-meter-topup:${lease.id}`,
+        userId: payer.userId,
+        workspaceId: payer.workspaceId,
+        ...(programmaticSubjectId ? { programmaticSubjectId } : {}),
       })
-      // Managed-harness turns never create a settlement marker — only remote
-      // (ACP) turns do — so a missing marker is expected, not an error.
-      if (!marked) {
-        logger.info('Connected-agent sandbox settlement marker absent', {
-          reservationId: billing.reservationId,
-          workspaceId: settlement.workspaceId,
-        })
-      }
+      return check.ok
     } catch (error) {
-      await this.dependencies.policy.markForReconcile({
-        reservationId: billing.reservationId,
-        userId: settlement.userId,
-        errorMessage: error instanceof Error ? `managed_sandbox_settlement:${error.message}` : 'managed_sandbox_settlement_failed',
-      }).catch((_error) => undefined)
-      throw error
+      logger.warn('Managed sandbox budget top-up check failed', {
+        error: error instanceof Error ? error.message : String(error),
+        leaseId: lease.id,
+        workspaceId: lease.workspaceId,
+      })
+      return false
     }
   }
 
@@ -762,25 +595,19 @@ export class ManagedAgentSandboxBilling {
     lease: AgentSandboxLease,
     result: ManagedSandboxMeterResult,
   ): Promise<ManagedSandboxMeterTick> {
+    const stop = await this.budgetStopReason(lease, result)
+    if (stop) {
+      const tick = await this.killLease(lease, stop)
+      return lease.computerId
+        ? tick
+        : { leaseId: lease.id, outcome: 'killed', reason: stop, remainingCents: result.remainingCents }
+    }
     if (!result.applied) {
-      if (['insufficient_budget', 'paid_plan_required'].includes(result.reason)) {
-        const reason = result.reason === 'paid_plan_required' ? result.reason : 'budget_exhausted'
-        const tick = await this.killLease(lease, reason)
-        return lease.computerId
-          ? tick
-          : { leaseId: lease.id, outcome: 'killed', reason, remainingCents: result.remainingCents }
-      }
       return {
         leaseId: lease.id,
         outcome: result.reason === 'lease_conflict' ? 'conflict' : 'skipped',
         reason: result.reason,
       }
-    }
-    if (result.remainingCents !== undefined && result.remainingCents < sandboxLowBalanceCutoffCents()) {
-      const tick = await this.killLease(lease, 'low_balance')
-      return lease.computerId
-        ? tick
-        : { leaseId: lease.id, outcome: 'killed', reason: 'low_balance', remainingCents: result.remainingCents }
     }
     return {
       leaseId: lease.id,
@@ -883,9 +710,8 @@ export class ManagedAgentSandboxBilling {
       }
       // Sandbox already gone — fall through to the final tick and release.
     }
-    // A stopped lease gets one final charge-free-of-floor tick so tail usage
-    // is still billed before the provider sandbox is deleted.
-    const finalMeter = await this.meterLeaseWithRetry({ ...lease, status: 'stopping' }, { minRemainingCents: 0 })
+    // A stopped lease gets one final tick so tail usage is still billed before the provider sandbox is deleted.
+    const finalMeter = await this.meterLeaseWithRetry({ ...lease, status: 'stopping' })
       .catch((_error) => ({ applied: false as const, reason: 'usage_unavailable' as const }))
     if (!finalMeter.applied) {
       const attempts = lease.cleanupAttempts + 1
@@ -912,7 +738,7 @@ export class ManagedAgentSandboxBilling {
     }
   }
 
-  async meterLeaseWithRetry(lease: AgentSandboxLease, options?: { minRemainingCents?: number; idleStop?: 'timer' | 'sweep' | 'none' }): Promise<ManagedSandboxMeterResult> {
+  async meterLeaseWithRetry(lease: AgentSandboxLease, options?: { idleStop?: 'timer' | 'sweep' | 'none' }): Promise<ManagedSandboxMeterResult> {
     const first = await this.meterLease(lease, options)
     if (first.applied || first.reason !== 'lease_conflict') return first
     const fresh = await this.dependencies.repository.getSandboxLease({
@@ -923,7 +749,7 @@ export class ManagedAgentSandboxBilling {
   }
 
   private async resolveLeasePayer(lease: AgentSandboxLease): Promise<ConnectedAgentSandboxLeasePayer | undefined> {
-    const payer = finiteNumber(lease.usage?.runtimeHoldMicros) > 0 ? lease.usage?.runtimeHoldPayer : lease.usage?.lastPayer
+    const payer = lease.usage?.lastPayer
     if (payer && typeof payer === 'object') {
       const value = payer as Record<string, unknown>
       if ((value.scope === 'personal' || value.scope === 'workspace') && typeof value.userId === 'string' && value.userId) {
@@ -998,19 +824,6 @@ export class ManagedAgentSandboxBilling {
   private now() { return this.dependencies.now?.() ?? Date.now() }
 }
 
-/** Largest provider cost one run may reserve before it is refused. */
-export function sandboxProviderCostLimitUsd() {
-  const configured = Number(process.env.OVERLAY_SANDBOX_MAX_PROVIDER_COST_USD_PER_RUN?.trim())
-  return Number.isFinite(configured) && configured > 0 ? configured : 15
-}
-
-export class ManagedAgentSandboxBudgetError extends Error {
-  constructor(readonly statusCode: number, readonly code: string) {
-    super(code)
-    this.name = 'ManagedAgentSandboxBudgetError'
-  }
-}
-
 const E2B_USD_PER_VCPU_SECOND = 0.000014
 const E2B_USD_PER_GIB_SECOND = 0.0000045
 
@@ -1035,23 +848,6 @@ export function sandboxCostUsd(args: {
     return (wallTimeMs / 1_000) * (args.resources.vcpus * E2B_USD_PER_VCPU_SECOND + args.resources.memoryGiB * E2B_USD_PER_GIB_SECOND)
   }
   throw new Error(`MANAGED_SANDBOX_PROVIDER_UNPRICED:${args.provider}`)
-}
-
-function sandboxReservationCostUsd(args: {
-  maxRunTimeMs: number
-  maxSandboxEgressBytes: number
-  provider: string
-  resources: { diskGiB: number; memoryGiB: number; vcpus: number }
-}) {
-  return sandboxCostUsd({
-    provider: args.provider,
-    resources: args.resources,
-    usage: {
-      activeCpuTimeMs: args.maxRunTimeMs * args.resources.vcpus,
-      egressBytes: args.maxSandboxEgressBytes,
-      wallTimeMs: args.maxRunTimeMs,
-    },
-  })
 }
 
 function sandboxLeasePayer(
@@ -1167,19 +963,6 @@ function cleanupRetryDelayMs(attempts: number) {
   return Math.min(CLEANUP_RETRY_BASE_MS * 2 ** Math.max(0, attempts - 1), CLEANUP_RETRY_MAX_MS)
 }
 
-/**
- * The least remaining credit a machine can start with: the meter stops any machine whose payer is at or below
- * the low-balance floor, so a machine started under it would be deleted within a minute.
- */
-export function minimumBudgetToStartMachineCents(): number {
-  return sandboxLowBalanceCutoffCents() + 1
-}
-
-export function sandboxLowBalanceCutoffCents() {
-  const configured = Number(process.env.OVERLAY_SANDBOX_LOW_BALANCE_CUTOFF_CENTS)
-  return Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_LOW_BALANCE_CUTOFF_CENTS
-}
-
 async function mapConcurrent<T, R>(values: T[], concurrency: number, worker: (value: T) => Promise<R>): Promise<R[]> {
   const results: R[] = []
   let cursor = 0
@@ -1195,16 +978,6 @@ async function mapConcurrent<T, R>(values: T[], concurrency: number, worker: (va
   return results
 }
 
-function sandboxBootstrapCoverageMs() {
-  const configured = Number(process.env.OVERLAY_SANDBOX_BOOTSTRAP_COVERAGE_MS)
-  return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_BOOTSTRAP_COVERAGE_MS
-}
-
-function sandboxBootstrapEgressBytes() {
-  const configured = Number(process.env.OVERLAY_SANDBOX_BOOTSTRAP_EGRESS_BYTES)
-  return Number.isFinite(configured) && configured >= 0 ? configured : DEFAULT_BOOTSTRAP_EGRESS_BYTES
-}
-
 function sandboxMeterLeaseLimit() {
   const configured = Number(process.env.OVERLAY_SANDBOX_METER_LEASE_LIMIT)
   return Number.isFinite(configured) && configured > 0 ? configured : DEFAULT_METER_LEASE_LIMIT
@@ -1212,11 +985,6 @@ function sandboxMeterLeaseLimit() {
 
 function sandboxMeterDisabled() {
   return process.env.OVERLAY_SANDBOX_METER_DISABLED === 'true'
-}
-
-function providerSpendAlertThresholdUsd() {
-  const configured = Number(process.env.OVERLAY_SANDBOX_PROVIDER_SPEND_ALERT_USD)
-  return Number.isFinite(configured) && configured > 0 ? configured : 10
 }
 
 const DEFAULT_BOX_SECONDS_PER_DOLLAR = 100_000

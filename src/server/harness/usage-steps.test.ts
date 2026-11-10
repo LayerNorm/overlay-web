@@ -19,11 +19,11 @@ const input = {
 }
 beforeEach(() => { vi.clearAllMocks() })
 
-test('a known price settles immediately and leaves the exact cost for later', async () => {
+test('a known price settles immediately at catalog pricing', async () => {
   mocks.price.mockResolvedValue(0.002)
   const resolved = await resolveHarnessModelUsage(input)
   expect(mocks.generation).not.toHaveBeenCalled()
-  expect(resolved).toMatchObject({ providerCostUsd: null, catalogCostUsd: 0.002, correctionGenerationId: 'gen-1',
+  expect(resolved).toMatchObject({ providerCostUsd: null, catalogCostUsd: 0.002,
     receipt: { costMicros: 2_000, costSource: 'catalog' } })
 })
 
@@ -32,7 +32,6 @@ test('an unknown price still waits for the exact cost', async () => {
   mocks.generation.mockResolvedValue({ id: 'gen-1', model: 'provider/model', providerName: 'provider', isByok: false, totalCost: 0.003 })
   const resolved = await resolveHarnessModelUsage(input)
   expect(resolved).toMatchObject({ providerCostUsd: 0.003, catalogCostUsd: null, receipt: { costSource: 'provider' } })
-  expect(resolved.correctionGenerationId).toBeUndefined()
 })
 
 test('bring-your-own-key calls never look up a price', async () => {

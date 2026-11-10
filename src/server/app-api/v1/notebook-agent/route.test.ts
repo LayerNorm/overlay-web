@@ -6,6 +6,7 @@ import type { HarnessTranscriptPersistence } from '@overlay/agent-runtime/harnes
 import { notebookRequestDigest } from '@/server/notebook/notebook-agent-identity'
 import { compactTranscriptSnapshot } from '@/server/harness/transcript-snapshot'
 import { POST } from './route'
+import { ActConversationServiceError } from '@/server/conversations/ActEntitlementService'
 
 const mocks = vi.hoisted(() => ({
   note: null as unknown,
@@ -19,6 +20,7 @@ const mocks = vi.hoisted(() => ({
   resolveSubject: vi.fn(),
   apiKeyAllowed: vi.fn(),
   gateModelAccess: vi.fn(),
+  gateModelPolicy: vi.fn(),
   getConversationById: vi.fn(),
   getLatestAgentRun: vi.fn(),
   getRecentMessages: vi.fn(),
@@ -32,9 +34,13 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('server-only', () => ({}))
-vi.mock('@overlay/app-core', () => ({
-  normalizeNotebookTitle: (value: string) => value.trim() || 'Untitled',
-}))
+vi.mock('@overlay/app-core', async (importOriginal) => {
+  const actual = await importOriginal()
+  return {
+    ...actual,
+    normalizeNotebookTitle: (value: string) => value.trim() || 'Untitled',
+  }
+})
 vi.mock('@overlay/app-core/note-markdown', () => ({
   noteMarkdownToEditorText: (value: string) => value,
   toCanonicalNoteMarkdown: (value: string) => value,
@@ -85,7 +91,7 @@ vi.mock('@/server/conversations/http', () => ({
     getLatestAgentRun: mocks.getLatestAgentRun,
     getRecentMessages: mocks.getRecentMessages,
   },
-  actEntitlementService: { gateModelAccess: mocks.gateModelAccess },
+  actEntitlementService: { gateModelAccess: mocks.gateModelAccess, gateModelPolicy: mocks.gateModelPolicy },
   actMessagePersistenceService: { persistUserMessage: mocks.persistUserMessage },
   agentRunService: { startPersonalWorkflow: mocks.startPersonalWorkflow },
 }))
@@ -146,6 +152,7 @@ beforeEach(() => {
   mocks.resolveSubject.mockResolvedValue({ userId: 'user-1' })
   mocks.apiKeyAllowed.mockResolvedValue(true)
   mocks.gateModelAccess.mockResolvedValue({ paid: true, runtimeEntitlements: {} })
+  mocks.gateModelPolicy.mockResolvedValue({ paid: true, runtimeEntitlements: {} })
   mocks.getConversationById.mockResolvedValue(mocks.conversation)
   mocks.getLatestAgentRun.mockResolvedValue(mocks.agentRun)
   mocks.getRecentMessages.mockResolvedValue([])
@@ -176,6 +183,7 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals())
 
 test('reconnect streams the admitted run without persisting or starting another turn', async () => {
+  mocks.gateModelAccess.mockRejectedValue(new ActConversationServiceError({ error: 'insufficient_budget' }, 402))
   const request = new NextRequest('https://example.test/api/v1/notebook-agent', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -209,6 +217,30 @@ test('reconnect streams the admitted run without persisting or starting another 
   expect(events.filter(event => event.type === 'text')).toEqual([
     expect.objectContaining({ type: 'text', text: 'Settled response.' }),
   ])
+  expect(mocks.persistUserMessage).not.toHaveBeenCalled()
+  expect(mocks.startPersonalWorkflow).not.toHaveBeenCalled()
+  expect(mocks.startPersonalHarness).not.toHaveBeenCalled()
+  expect(mocks.gateModelAccess).not.toHaveBeenCalled()
+  expect(mocks.gateModelPolicy).toHaveBeenCalledWith({ effectiveModelId: 'test-model', userId: 'user-1', workspaceId: 'workspace-1' })
+})
+
+test('low-budget admission returns the shared 402 without allocating a paid turn', async () => {
+  mocks.agentRun = null
+  mocks.getLatestAgentRun.mockResolvedValue(null)
+  mocks.repositoryGet.mockResolvedValue(null)
+  mocks.gateModelAccess.mockRejectedValue(new ActConversationServiceError({ error: 'insufficient_budget', message: 'The workspace budget is under 2%.' }, 402))
+  const response = await POST(new NextRequest('https://example.test/api/v1/notebook-agent', {
+    method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ noteId: 'note-1', turnId: 'new-turn', noteContent: 'source markdown',
+      noteTitle: 'Notes', message: 'Edit the note', modelId: 'test-model' }),
+  }), {
+    auth: { userId: 'user-1', authType: 'session' },
+    workspace: { workspace: { id: 'workspace-1' }, principal: { id: 'principal-1' } },
+    requestFingerprint: 'fingerprint',
+  } as never)
+  expect(response.status).toBe(402)
+  expect(await response.json()).toMatchObject({ error: 'insufficient_budget' })
+  expect(mocks.gateModelAccess).toHaveBeenCalledWith({ effectiveModelId: 'test-model', userId: 'user-1', workspaceId: 'workspace-1' })
   expect(mocks.persistUserMessage).not.toHaveBeenCalled()
   expect(mocks.startPersonalWorkflow).not.toHaveBeenCalled()
   expect(mocks.startPersonalHarness).not.toHaveBeenCalled()

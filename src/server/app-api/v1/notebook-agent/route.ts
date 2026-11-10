@@ -17,6 +17,7 @@ import { NoteService } from '@/server/notes'
 import { ConvexNoteRepository } from '@/server/notes/ConvexNoteRepository'
 import { noteMarkdownToEditorText, toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
 import { ensureActConversationId } from '@/server/conversations/ensure-act-conversation'
+import { ActConversationServiceError } from '@/server/conversations/ActEntitlementService'
 import {
   actConversationRepository,
   actEntitlementService,
@@ -190,7 +191,7 @@ async function authorizeNotebookModel(
   gate: Awaited<ReturnType<typeof actEntitlementService.gateModelAccess>>
 }>> {
   const modelId = body.modelId?.trim() || DEFAULT_MODEL_ID
-  const gate = await actEntitlementService.gateModelAccess({
+  const gate = await actEntitlementService.gateModelPolicy({
     effectiveModelId: modelId, userId: access.userId, workspaceId: access.workspaceId,
   })
   if (isByokModelId(modelId)) {
@@ -303,7 +304,6 @@ async function startNotebookRun(input: {
   noteMarkdownSnapshot: string
   noteContentSnapshot: string
   modelId: string
-  gate: Awaited<ReturnType<typeof actEntitlementService.gateModelAccess>>
   requestDigest: string
   searchKnowledge: boolean
   memoryEnabled: boolean
@@ -315,6 +315,9 @@ async function startNotebookRun(input: {
     || normalizeNotebookTitle(input.body.noteTitle) !== normalizeNotebookTitle(input.note.title ?? '')) {
     return notebookRouteResponse(jsonError('The note changed before the agent turn started. Save or reload the note, then retry.', 409))
   }
+  const gate = await actEntitlementService.gateModelAccess({
+    effectiveModelId: input.modelId, userId: input.access.userId, workspaceId: input.access.workspaceId,
+  })
   const prompt = `Note content:\n\n${input.noteContentSnapshot || '(empty note)'}\n\n---\n\nUser request: ${input.body.message}`
   const existingUserMessage = (await actConversationRepository.getRecentMessages({
     conversationId: input.conversationId,
@@ -359,10 +362,10 @@ async function startNotebookRun(input: {
     baseUrl: getInternalApiBaseUrl(input.request),
     conversationId: String(input.conversationId),
     effectiveModelId: input.modelId,
-    entitlements: input.gate.runtimeEntitlements,
+    entitlements: gate.runtimeEntitlements,
     latestUserText: input.body.message,
     memoryEnabled: input.memoryEnabled,
-    paid: input.gate.paid,
+    paid: gate.paid,
     requestFingerprint: input.context.requestFingerprint,
     requestedToolIds: allowedToolIds,
     turnId: input.body.turnId,
@@ -400,7 +403,7 @@ async function startNotebookRun(input: {
   if (input.request.signal.aborted) {
     return notebookRouteResponse(jsonError('Notebook request was cancelled before admission.', 499))
   }
-  await startPersonalHarness({ workflow, agentRun, paid: input.gate.paid, goal: input.body.message })
+  await startPersonalHarness({ workflow, agentRun, paid: gate.paid, goal: input.body.message })
   const state = await input.repository.get({ actorUserId: input.access.userId, runId: `personal:${agentRun.id}` })
   if (!state) return notebookRouteResponse(jsonError('Notebook run admission is pending; reconnect with the same turn ID.', 503))
   assertNotebookIdentity({
@@ -458,7 +461,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         noteMarkdownSnapshot,
         noteContentSnapshot,
         modelId,
-        gate,
         requestDigest,
         searchKnowledge,
         memoryEnabled,
@@ -480,6 +482,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       repository,
     })
   } catch (error) {
+    if (error instanceof ActConversationServiceError) return NextResponse.json(error.payload, { status: error.statusCode })
     if (error instanceof PersonalHarnessAdmissionConflict) return jsonError(error.message, 409)
     if (error instanceof PersonalHarnessStartPending) return jsonError(error.message, 503)
     logger.error('[notebook-agent]', summarizeErrorForLog(error))

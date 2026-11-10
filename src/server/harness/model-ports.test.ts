@@ -131,7 +131,6 @@ test('historical free-router rejection receipts do not recover or dispatch anoth
       model: {} as HarnessModelReference,
       options: { prompt: [] },
       contextWindow: null,
-      estimatedCostMicros: 0,
     }),
   })
 
@@ -148,7 +147,7 @@ test('model preparation reuses the boundary state and reads catalog limits once 
   }, Date.now()), status: 'running' as const }
   const prepare = vi.fn(async ({ modelId }: { modelId: string }) => ({
     model: { modelId, credentialOwnerId: 'user' } as HarnessModelReference,
-    options: {} as never, contextWindow: 128_000, estimatedCostMicros: 0,
+    options: {} as never, contextWindow: 128_000,
   }))
   mocks.limits.mockResolvedValue({ contextWindow: 128_000, maxOutputTokens: 4_096 })
   mocks.compact.mockImplementation(async ({ messages }) => ({ messages, didCompact: false, summaryFailed: false, fitsBudget: true }))
@@ -195,7 +194,7 @@ test('a large-window model is prepared with the requested output limit, not a qu
   const state = runningState()
   const prepare = vi.fn(async ({ modelId }: { modelId: string }): Promise<PreparedHarnessModel> => ({
     model: { modelId, credentialOwnerId: 'user' } as HarnessModelReference,
-    options: {} as never, contextWindow: 1_000_000, estimatedCostMicros: 0,
+    options: {} as never, contextWindow: 1_000_000,
   }))
   mocks.limits.mockResolvedValue({ contextWindow: 1_000_000, maxOutputTokens: 64_000 })
   mocks.compact.mockImplementation(async ({ messages }) => ({ messages, didCompact: false, summaryFailed: false, fitsBudget: true }))
@@ -207,25 +206,6 @@ test('a large-window model is prepared with the requested output limit, not a qu
   expect(mocks.compact.mock.calls[0][0]).toMatchObject({ contextWindow: 32_000, outputReserveTokens: 8_000 })
   expect(prepare.mock.calls[0][0].options.maxOutputTokens).toBe(32_000)
   expect(prepared.settings.maxOutputTokens).toBe(32_000)
-})
-
-test('summary funding denial yields its exact receipt instead of failing or preparing an unfunded response', async () => {
-  const state = createHarnessSnapshot({ runId: 'run', goal: 'Continue the same task.', constraints: [], policy: {
-    actorUserId: 'user', workspaceId: 'workspace', executionPolicyVersion: 2, spendingMode: 'workspace',
-    allowedToolIds: [], requiresPlan: false, deadlineAt: Date.now() + 60_000,
-    maxCostMicros: 0, maxParallelChildren: 0, maxDepth: 0,
-  } }, Date.now())
-  mocks.limits.mockResolvedValue({ contextWindow: 128_000, maxOutputTokens: 4_096 })
-  mocks.compact.mockResolvedValue({ messages: [], didCompact: false, summaryFailed: true, fitsBudget: false })
-  mocks.read.mockResolvedValue({ ...state, status: 'waiting_for_resources', resourcePause: {
-    reason: 'disabled', receiptId: 'summary:model:0:0', requiredCents: 1, availableCents: 0.5,
-  } })
-  const prepare = vi.fn()
-  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
-  await expect(ports.prepareModel({ receiptId: 'model:0', state, messages: [], toolNames: [], toolDefinitions: [],
-    settings: {}, instructionContext: { instructions: 'Continue.', continuation: true, truncatedResponse: false },
-  })).rejects.toThrow('HARNESS_SAFE_RESOURCE_PAUSE:summary:model:0:0')
-  expect(prepare).not.toHaveBeenCalled()
 })
 
 test('an aborted zero-cost summary retains its hold without invented settlement or retry', async () => {
@@ -277,7 +257,6 @@ test('an aborted zero-cost summary retains its hold without invented settlement 
       model: {} as HarnessModelReference,
       options: { prompt: [] },
       contextWindow: 32_000,
-      estimatedCostMicros: 0,
     }
   })
   const ports = createHarnessModelPorts({
@@ -344,7 +323,6 @@ test('an unsettled billed summary hold survives pause and resumes only after its
       model: {} as HarnessModelReference,
       options: { prompt: [] },
       contextWindow: 32_000,
-      estimatedCostMicros: 500,
     }
   })
   const ports = createHarnessModelPorts({
@@ -448,7 +426,6 @@ test('an interrupted summary resumes through prepareModel with its canonical cyc
       model: {} as HarnessModelReference,
       options: { prompt: [] },
       contextWindow: 32_000,
-      estimatedCostMicros: 0,
     }
   })
   const ports = createHarnessModelPorts({
@@ -514,16 +491,15 @@ test('settled summary failures cannot dispatch beyond the two total attempts', a
       cacheWriteTokens: 0, contextWindow: 32_000, costMicros: 1, costSource: 'catalog' } }
     throw new Error('summary provider failed after measured settlement')
   })
-  const prepare = vi.fn(async (request: {
+  const prepare = vi.fn<(request: {
     modelId: string
     receiptId: string
     purpose: 'response' | 'summary' | 'verification'
     options: import('@ai-sdk/provider').LanguageModelV4CallOptions
-  }): Promise<PreparedHarnessModel> => ({
+  }) => Promise<PreparedHarnessModel>>(async () => ({
     model: {} as HarnessModelReference,
     options: { prompt: [] },
     contextWindow: 32_000,
-    estimatedCostMicros: request.purpose === 'summary' ? 0 : 0,
   }))
   const ports = createHarnessModelPorts({
     reference, modelId: 'openrouter/free', contextBudgetTokens: 16_000, prepare,
@@ -560,7 +536,7 @@ test('a reopened media artifact is reused when a later tool result prepares the 
   mocks.read.mockResolvedValue(runningState())
   mocks.readArtifactMetadata.mockResolvedValue(metadata)
   const prepare = vi.fn(async (): Promise<PreparedHarnessModel> => ({
-    model: {} as HarnessModelReference, options: { prompt: [] }, contextWindow: 32_000, estimatedCostMicros: 0,
+    model: {} as HarnessModelReference, options: { prompt: [] }, contextWindow: 32_000,
   }))
   const ports = createHarnessModelPorts({ reference, modelId: 'openrouter/free', prepare })
   const encoded = Buffer.from(new Uint8Array([0, 1, 255])).toString('base64')
@@ -637,7 +613,6 @@ test('response preparation failures escape without an artifact-unavailable block
       model: {} as HarnessModelReference,
       options: { prompt: [] },
       contextWindow: 32_000,
-      estimatedCostMicros: 0,
     }
   })
   const ports = createHarnessModelPorts({ reference, modelId: 'openrouter/free', prepare })
@@ -666,7 +641,7 @@ test('a response call after one cut off at its output cap is prepared as a conti
   }, Date.now()), status: 'running' as const }
   const prepare = vi.fn(async ({ modelId }: { modelId: string }) => ({
     model: { modelId, credentialOwnerId: 'user' } as HarnessModelReference,
-    options: {} as never, contextWindow: 128_000, estimatedCostMicros: 0,
+    options: {} as never, contextWindow: 128_000,
   }))
   mocks.limits.mockResolvedValue({ contextWindow: 128_000, maxOutputTokens: 4_096 })
   mocks.compact.mockImplementation(async ({ messages }) => ({ messages, didCompact: false, summaryFailed: false, fitsBudget: true }))

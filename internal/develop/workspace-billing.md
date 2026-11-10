@@ -1,6 +1,6 @@
 # Workspace billing internals
 
-Maintainer notes for workspace billing: billing accounts, reservations, the activation gate and reconciliation. Moved from the public API guide on 2026-10-22; the public guide is `docs/developer/api/guides/billing.mdx`.
+Maintainer notes for workspace billing: billing accounts, the 2% check, direct charges and the retired holds. Moved from the public API guide on 2026-10-22; the public guide is `docs/developer/api/guides/billing.mdx`.
 
 Billing state comes from Stripe webhook processing and Convex-backed entitlement state.
 
@@ -46,13 +46,13 @@ Both are built by the same shared code the routes use: `src/shared/billing/works
 - The onboarding step's 3-second poll after checkout. It now verifies the session once (again on **Check payment**), and the webhook-confirmed payment arrives live.
 
 **Refused agent turns.** When admission refuses an agent turn for billing, the failed reply names the problem and who can fix it.
-- Sources: `WorkspaceExecutionError` with its `state` and `recovery`, or Convex's bare `workspace_execution_required` from a budget reservation.
+- Sources: `WorkspaceExecutionError` with its `state` and `recovery`, or Convex's bare `workspace_execution_required`.
 - The reply text comes from `agentStartFailureMessage` in `src/server/app-api/v1/conversations/message/agent-start-failure.ts`.
 - `agentStartFailureReason` stores a short reason as a `data-native-agent-error` part. That replaces the generic "No failure reason is available" line.
 
 Checkout, top-ups, the portal, verification and automatic top-ups still run on the server, because they call Stripe. The summary's itemized usage reads up to the charge cap per refresh. Only the Billing tab and onboarding subscribe to it; the frequent consumers use the light `entitlements` query.
 
-## Workspace reservation foundation
+## Workspace execution foundation
 
 Hosted execution requires a workspace wallet with an active account, a paid subscription in its current verified period, and available funds. A missing wallet or unpaid account never falls back to a member's personal payer or free inference. Workspace setup, manual drafts, history, and export remain available before payment. Billing-disabled self-hosted deployments explicitly bypass paid admission and may retain personal bookkeeping. A workspace whose paid wallet is suspended or mismatched fails closed. Every hosted-cost entry point supplies its resource workspace. Shared human actions use a `member` subject, while agents, automations, knowledge indexing, and API keys use a stable `programmatic` subject.
 
@@ -66,11 +66,17 @@ The Billing settings tab shows the month's credit and top-up balance, the itemiz
 
 Billing settings presents uninitialized and initialized-but-unpaid workspaces as Free. Upgrade opens a dialog for the monthly amount and legal acceptance; Continue to payment initializes the wallet if needed, then starts Stripe checkout. The paid billing overview appears only after the workspace has a paid subscription or a top-up balance.
 
-Workspace reservations use the account-keyed balance and optionally a fixed-period subject limit. Subjects are either `member` for human-attributed spend or `programmatic` for shared agents, automations, and service callers. Reservation creation locks the workspace balance and subject limit in one transaction. Finalize, release, expiry, and evidence-based reconciliation update the workspace balance and subject counters together. Wallet creation grants no credits; funding remains an explicit later operation.
+The workspace balance is the only automatic spending limit, plus an optional fixed-period subject limit an admin sets. Subjects are either `member` for human-attributed spend or `programmatic` for shared agents, automations, and service callers. Wallet creation grants no credits; funding remains an explicit later operation.
 
-New execution admission checks the paid current period and available wallet funds before starting work. Already-created matching holds are replayed before new-spend admission, and settlement, release, and reconciliation remain available after admission closes. Explicit BYO inference still requires a funded workspace, but creates no Overlay model-usage reservation.
+**Check before, charge after.** Model calls, tools, media, transcription, connected agents, automations, embeddings and memory work never estimate, reserve or hold what a call will cost:
 
-The launch coverage gate lives in `src/server/billing/billable-feature-coverage.ts`. Shared conversations/agents, embeddings/search, browser/sandbox, hosted media/transcription, and automation/API provider calls are metered. Workflow runs additionally charge a conservative 20-step estimate at Vercel's Workflow Steps rate ($2.50 per 100,000 steps) with the configured usage markup. Functions, integrations, and MCP tools are bounded to 12 steps per agent turn and 50,000 result characters; file ingestion is bounded to 20 requests per hour and the account storage cap. Keep `npm run check:owner-funded-boundary` and the coverage test passing for every hosted-cost entry point.
+- Before a paid call, `ensureProviderBudgetNotLow` (`src/server/billing/billing-runtime.ts`) reads the real balance. Under 2% left, it tries one automatic top-up to the 2% line (`workspaceBudgetStopLineCents`) and refuses with `402 insufficient_budget` only if the workspace is still under 2%. It also refuses when the subject's spend limit is used up. Convex background work (embeddings, memory extraction, memory profiles) uses `billing/providerBudget:providerBudgetGate`, which applies the same check without a top-up.
+- After a successful call, the actual cost (provider receipt, or catalog price times reported usage, or a known per-item price for media) is charged directly with `recordBatch`, keyed by a unique operation id. The charge is capped at what the balance holds, and it counts against the subject's spend limit (`programmaticSubjectId` selects a program's limit). A failed call charges nothing.
+- `recordBatch` returns `budgetLow`. Notebook uses the shared durable Harness: each dispatch refreshes the actual balance and refuses the next model call if it remains under 2% after the top-up attempt. Actual usage is settled once through the Harness billing steps, not charged again by the Notebook route. New-turn admission preserves billing HTTP errors; authorized reconnects only observe the admitted run and do not require a new spending admission.
+
+Explicit BYO inference still requires a workspace that is not under 2%, and charges no Overlay model usage. Computers and managed sandboxes follow the same rule: they start only with at least 2% left (after a top-up), hold nothing, are charged observed usage by the lease meter, and stop when a charge leaves the workspace under 2% or uses up a spend limit (see `billing-holds-and-machine-metering.md`).
+
+The launch coverage gate lives in `src/server/billing/billable-feature-coverage.ts`. Shared conversations/agents, embeddings/search, browser/sandbox, hosted media/transcription, and automation/API provider calls are metered. Each automation run is also charged a flat 20 Workflow Steps at Vercel's rate ($2.50 per 100,000 steps) with the configured usage markup, after the run. Functions, integrations, and MCP tools are bounded to 12 steps per agent turn and 50,000 result characters; file ingestion is bounded to 20 requests per hour and the account storage cap. Keep `npm run check:owner-funded-boundary` and the coverage test passing for every hosted-cost entry point.
 
 The workspace billing contract runs against Convex:
 
@@ -78,35 +84,25 @@ The workspace billing contract runs against Convex:
 npm run test:workspace-billing-contract:convex
 ```
 
-The contract covers empty-wallet hard stops, concurrent account/member limits, account/workspace spoof rejection, removed-member denial, allowance/top-up separation, actual-cost margin reporting, and reconciliation SLA visibility. The Stripe webhook suite separately proves duplicate event no-ops and stale-event ordering.
+The contract covers removed-member payer denial. The 2% check, direct charges, spend limits and the hold release are covered by unit and Convex tests (`billing-runtime.test.ts`, `provider-budget-check.test.ts`, `convex/retireHolds.convex.test.ts`). The Stripe webhook suite separately proves duplicate event no-ops and stale-event ordering.
 
 ## Release verification
 
 Workspace billing is always on; the retired wallet activation stages are not a
 release lane. Validate billing changes in the PR's isolated Preview, including
-shared credit admission, zero-credit hard stops and reservation reconciliation.
+shared credit admission, the 2% stop and direct charges.
 Follow the authoritative Development Workflow for integration. Customer Convex
 synchronization runs only from clean canonical main after matching production
 web is live; never deploy it from a feature worktree.
 
-## Reservation reconciliation
+## Retired holds
 
-The usage ledger automatically releases expired reservations only when provider work never started. Provider-started reservations are quarantined until authoritative evidence establishes whether to finalize the measured cost or release the reservation.
-Harness model reservations are an exception when Gateway usage stays unavailable: after about ten minutes of 404 retries, observed tokens settle at catalog pricing when a rate exists. Non-404 lookup failures and unknown catalog rates remain quarantined.
-An operator can record late authoritative provider costs on an already released, provider-started reservation with internal `billing/releasedProviderCosts:recordInternal`. It requires the exact deployment URL, account, model, integer microdollar cost, token count and receipt evidence. Exact repeats are idempotent; conflicting evidence fails closed. This records an absorbed expense without changing the release audit, wallet, subject limits or customer charge. The operational report includes those expenses alongside finalized reservation costs, so released failures cannot inflate reported margin. Retain the exact provider receipt privately; the ledger uses microdollar precision.
+Nothing reserves or holds money before a call, and nothing reconciles a hold afterwards. The reservation engine, its expiry and stale-hold crons, the reconciliation queue and audit script (`billing:audit:reconciliation`), the released-cost recorder, the operational margin report and the harness exact-cost correction are deleted. Holds left from before were released, never charged, by `billing/retireHolds:releaseRetiredHoldsInternal` (see `billing-holds-and-machine-metering.md`, "Retired holds"). The `budgetReservations` table keeps its history until a later change deletes it.
 
-Approval-paused SDK steps settle their known model usage before suspension.
+Approval-paused SDK steps charge their known model usage before suspension.
 WorkflowAgent returns these steps through its end callback without a step-end
-callback; the Harness deduplicates callbacks by invocation step number, advances
-the receipt identity once, and reserves any later compaction/inference separately.
-
-Inspect the development queue without mutating it:
-
-```bash
-npm run billing:audit:reconciliation
-```
-
-The audit defaults to the development Convex deployment. Production inspection requires an explicit `--target=prod --allow-prod=true` invocation of the underlying script. Resolution is server-only, requires a non-empty evidence source, evidence reference, and reason, and is idempotent for exact replays. A conflicting second resolution fails closed.
+callback; the Harness deduplicates callbacks by invocation step number and advances
+the receipt identity once.
 
 ## Post-plan maintenance queue
 
@@ -115,12 +111,10 @@ The audit defaults to the development Convex deployment. Production inspection r
 
 ## Workspace-funded continuation
 
-Versioned Harness tasks reserve each next call against the workspace wallet instead
-of receiving a synthetic lifetime cap. Funding shortfalls pause the same task;
-continuation rechecks current membership, paid admission and execution ownership.
-A typed payment-verification-pending result may keep an already owned funding
-wait paused; it cannot renew a lease or admit a model/tool call. Other billing
-errors and ownership changes remain fail-closed.
+Versioned Harness tasks have no lifetime cap and never pause for funding. Before
+each model call the dispatch reads the real workspace balance; under 2% it tries one
+automatic top-up to the 2% line and otherwise ends the run with `WORKSPACE_FUNDS`.
+Continuation rechecks current membership, paid admission and execution ownership.
 BYO credentials do not bypass workspace admission. The selected model is retained;
 no budget failure recovers through a free or alternate model.
 
@@ -135,8 +129,8 @@ included credit, configured markup and subscriptions remain unchanged.
 Paid and Computer fixtures compose through the comma-separated Preview fixture
 setting. Internal `dev/qa:recover` accepts only the configured QA identity's known
 fixtures on Preview, with an idempotent request ID and audited recovery. Paid
-refill accepts only synthetic active plans and preserves consumed spend, live
-reservations and provider billing history. Free recovery resets only recent QA
+refill accepts only synthetic active plans and preserves consumed spend and
+provider billing history. Free recovery resets only recent QA
 turn/transcription counters. It is separate from normal seeding and never funds
 a provider account. Test actual Stripe checkout/events separately from fixtures.
 
@@ -159,12 +153,15 @@ whose turn/transcription quota is consumed without provider requests. Explicit
 recovery resets only that workspace's counters; rebuilds preserve the result.
 Use it to verify the denial and recovery paths without consuming real model runs.
 
-A separate Preview provider guard caps metered commitments across all wallets,
+A separate Preview provider guard caps metered spend across all wallets,
 independently of synthetic credits. It defaults to $5 per PR, with an explicit
-acceptance override up to $25. Settled cost is durable and all active wallet
-reservations count; synthetic refills and period rollovers do not reset the guard.
-Actual settlement remains recordable after exhaustion. See Billing Holds and
-Machine Metering for provider-account limits and excluded external charges.
+acceptance override up to $25. Settled cost is durable; synthetic refills and
+period rollovers do not reset the guard. Every direct charge and machine meter
+tick is recorded first and then reports `budgetLow` once recorded spend reaches
+the cap, so Preview work stops after the current step and machines stop. The
+check before a call does not read the guard, so one more call can start after
+the cap is reached. Production never reads it. See Billing Holds and Machine Metering for provider-account limits and
+excluded external charges.
 
 Browser interaction is billed through the bound Computer's machine lease and
 ordinary model usage. The separate browser-task provider and charge path are
@@ -172,7 +169,8 @@ retired; historical browser-task ledger rows remain visible.
 
 Hosted transcription uses the shared quota policy: absent or zero legacy seconds
 limits do not block a credit-funded paid workspace. Positive seconds caps, paid
-plan admission and provider budget reservation/finalization remain enforced.
+plan admission, the 2% check and the direct charge of the reported duration
+remain enforced.
 
 The owner-funded boundary guard follows the current Act orchestration, Harness
 model dispatch and Convex knowledge payer path. It also rejects retired Postgres
@@ -193,10 +191,10 @@ Before releasing this contract, set and read back the same value in Vercel Previ
 and Production, the shared Convex Preview configuration and matching backends.
 Configure local engineer-owned Next/Convex environments too. Unit runners use an
 explicit test fixture. Do not change the rate independently during active billed
-work: reservations and final settlement must use the same policy. A future rate
-change requires a coordinated rollout with in-flight reservations settled first.
+work: the check and the charge must use the same policy. A future rate
+change requires a coordinated rollout of Next and Convex.
 
-Background memory extraction settles SDK-reported token usage on structured-output
-validation failures using the same pricing and finalizer as successful calls.
-Invalid output is never stored. Missing/invalid usage, unknown pricing and failed
-settlement retain reconciliation rather than assuming zero provider cost.
+Background memory extraction charges SDK-reported token usage on structured-output
+validation failures using the same pricing as successful calls.
+Invalid output is never stored. A call with missing usage or unknown pricing charges
+nothing and logs the gap.

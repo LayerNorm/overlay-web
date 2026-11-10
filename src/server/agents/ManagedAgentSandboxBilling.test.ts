@@ -10,7 +10,7 @@ import {
 import type { SandboxAlertContext, SandboxAlertType } from '@/server/observability/sandbox-alerts'
 import { E2B_COMPUTE_PRICE } from './sandbox-execution-accounting'
 
-test('execution metering settles completed E2B time and reserves resumed time with actual resources', async () => {
+test('execution metering charges observed E2B time with actual resources and holds nothing', async () => {
   const calls: Array<Record<string, unknown>> = []
   const first = { id: 'sandbox-reference:0', startedAt: 0, wallTimeMs: 30_000, complete: false, resources: { vcpus: 2, memoryGiB: 0.5 } }
   const lease = leaseFixture({
@@ -38,10 +38,11 @@ test('execution metering settles completed E2B time and reserves resumed time wi
   })
   await service.meterLease(lease, { idleStop: 'none' })
   const charge = calls[0]?.charge as { providerCostUsd: number; durationSeconds: number }
-  assert.equal(charge.durationSeconds, 60)
-  assert.ok(Math.abs(charge.providerCostUsd - 0.001815) < 1e-12)
-  const holdCents = calls[0]?.runtimeHoldCents as number
-  assert.ok(holdCents >= 0.00968 * 125)
+  // 60s of the finished generation plus 20s observed on the running one, at their actual allocation.
+  assert.equal(charge.durationSeconds, 80)
+  assert.ok(Math.abs(charge.providerCostUsd - (0.001815 + 0.000605)) < 1e-12)
+  assert.equal('runtimeHoldCents' in calls[0]!, false)
+  assert.equal('minRemainingCents' in calls[0]!, false)
   assert.equal(calls[0]?.expectedMeterVersion, 1)
 })
 
@@ -73,7 +74,7 @@ test('authoritative weighted Boat seconds are never replaced by unweighted wall-
   assert.equal((calls[0]?.meteredUsage as { wallTimeMs: number }).wallTimeMs, 30_000)
 })
 
-test('only a successfully reserved runtime tick renews the provider safety fence', async () => {
+test('only a successfully charged runtime tick renews the provider safety fence', async () => {
   const renewals: number[] = []
   let applied = true
   const lease = leaseFixture({ provider: 'e2b', reservedUntil: 1_000_000, usage: {
@@ -305,50 +306,7 @@ test('final stopped evidence settles after the provider resource disappears', as
   const result = await service.meterLease(lease, { idleStop: 'none' })
   assert.equal(result.applied, true)
   assert.ok(Math.abs((calls[0]?.charge as { providerCostUsd: number }).providerCostUsd - 0.001815) < 1e-12)
-  assert.equal(calls[0]?.runtimeHoldCents, 0)
-})
-
-test('reserve holds a bootstrap reservation and records the payer on the lease', async () => {
-  const reservationArgs: Array<Record<string, unknown>> = []
-  const usagePatches: Array<Record<string, unknown>> = []
-  const policy = {
-    reserve: async (args: Record<string, unknown>) => {
-      reservationArgs.push(args)
-      return { ok: true as const, billingAccountId: 'billing', reservationId: 'sandbox-reservation', reservedCents: 10, entitlements: {} }
-    },
-  }
-  const service = new ManagedAgentSandboxBilling({
-    now: () => 5_000,
-    policy: policy as never,
-    repository: {
-      environmentHasActiveRuns: async () => false,
-      getActiveSandboxLease: async () => leaseFixture({
-        usage: { resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 }, meteredUsage: {}, meterVersion: 0 },
-      }),
-      patchSandboxLeaseUsage: async (args: { patch: Record<string, unknown> }) => {
-        usagePatches.push(args.patch)
-        return leaseFixture({})
-      },
-    } as never,
-    runtime: () => runtimeWithUsage(() => ({ wallTimeMs: 1_000, activeCpuTimeMs: 500 })),
-  })
-  const billing = await service.reserve({
-    agentId: 'agent', entitlements: {} as never, environmentId: 'environment',
-    idempotencyKey: 'turn:sandbox', operationId: 'sandbox:run',
-    requestFingerprint: 'fingerprint', userId: 'user', workspaceId: 'workspace',
-  })
-  assert.equal(reservationArgs[0]?.kind, 'sandbox')
-  assert.equal(reservationArgs[0]?.programmaticSubjectId, 'agent:agent')
-  // The hold is markup(coverage) + the $1 low-balance floor — a few dollars,
-  // not the ~$15 worst-case 24h reservation.
-  const providerCostUsd = reservationArgs[0]?.providerCostUsd as number
-  assert.equal(providerCostUsd > 0.8 && providerCostUsd < 2.5, true)
-  assert.equal(billing.leaseId, 'lease')
-  // The payer write is best-effort: resolving needs the app context, which is
-  // absent under test — either zero or one patch, never a throw.
-  assert.equal(usagePatches.length <= 1, true)
-  // A starting turn cancels the machine's idle timer.
-  if (usagePatches[0]) assert.equal(usagePatches[0].idleToken, null)
+  assert.equal('runtimeHoldCents' in calls[0]!, false)
 })
 
 test('meterLease debits the usage delta against the lease cursor', async () => {
@@ -392,7 +350,7 @@ test('meterLease debits the usage delta against the lease cursor', async () => {
   assert.equal(meteredUsage.wallTimeMs, usage.wallTimeMs)
   assert.equal((meteredUsage.boatCursor as { billableSeconds: number }).billableSeconds, 130)
   assert.equal(call.meteredProviderReference, 'sandbox-reference')
-  assert.equal(call.minRemainingCents, 100)
+  assert.equal('minRemainingCents' in call, false)
   const charge = call.charge as { costCents: number; providerCostUsd: number; durationSeconds: number }
   // Delta: 70s wall + 30s CPU since the cursor.
   assert.equal(charge.durationSeconds, 70)
@@ -514,14 +472,14 @@ for (const [declined, expected] of [['insufficient_budget', 'budget_exhausted'],
   assert.equal(released.at(-1)?.status, 'cleanup_failed', 'Unsettled final cost retains the resource reference for reconciliation')
 })
 
-test('meterLeases kills a lease when remaining balance falls under the floor', async () => {
+function stoppedBoatLeaseService(meterResult: Record<string, unknown>, policy: Record<string, unknown> = {}) {
   const lease = leaseFixture({
     reservedUntil: 1_000_000,
     usage: {
       meteredUsage: { wallTimeMs: 0 },
       meteredProviderReference: 'sandbox-reference',
       meterVersion: 0,
-      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+      lastPayer: { scope: 'workspace', userId: 'user', workspaceId: 'workspace', billingAccountId: 'billing' },
     },
   })
   const runtime: SandboxRuntime = {
@@ -538,22 +496,88 @@ test('meterLeases kills a lease when remaining balance falls under the floor', a
   const stopReasons: string[] = []
   const service = new ManagedAgentSandboxBilling({
     now: () => 190_000,
-    policy: {} as never,
+    policy: policy as never,
     repository: {
       patchSandboxLeaseUsage: async () => null,
       environmentHasActiveRuns: async () => false,
       listSandboxLeases: async (args: { statuses: string[] }) => args.statuses.includes('running') ? [lease] : [],
       getSandboxLease: async () => lease,
-      meterSandboxLease: async () => ({ applied: true as const, meterVersion: 1, remainingCents: 42 }),
+      meterSandboxLease: async () => meterResult,
       stopSandboxLease: async (args: { reason: string }) => { stopReasons.push(args.reason); return { ...lease, status: 'stopping' as const } },
       updateSandboxLease: async () => lease,
     } as never,
     runtime: () => runtime,
   })
+  return { service, stopReasons }
+}
+
+test('a charge that leaves the workspace under 2% stops the machine when the top-up fails', async () => {
+  const checks: Array<Record<string, unknown>> = []
+  const { service, stopReasons } = stoppedBoatLeaseService(
+    { applied: true, meterVersion: 1, remainingCents: 42, budgetLow: true },
+    {
+      getEntitlements: async () => ({ planKind: 'paid' }),
+      ensureBudgetNotLow: async (args: Record<string, unknown>) => { checks.push(args); return { ok: false, status: 402, code: 'insufficient_budget', payload: {} } },
+    },
+  )
   const { ticks } = await service.meterLeases()
   assert.equal(ticks[0]?.outcome, 'killed')
-  assert.equal(ticks[0]?.reason, 'low_balance')
-  assert.deepEqual(stopReasons, ['low_balance'])
+  assert.equal(ticks[0]?.reason, 'budget_exhausted')
+  assert.deepEqual(stopReasons, ['budget_exhausted'])
+  assert.equal(checks[0]?.workspaceId, 'workspace')
+  assert.equal(checks[0]?.kind, 'sandbox')
+})
+
+test('a charge that leaves the workspace under 2% keeps the machine when the top-up succeeds', async () => {
+  const { service, stopReasons } = stoppedBoatLeaseService(
+    { applied: true, meterVersion: 1, remainingCents: 42, budgetLow: true },
+    { getEntitlements: async () => ({ planKind: 'paid' }), ensureBudgetNotLow: async () => ({ ok: true, entitlements: {} }) },
+  )
+  const { ticks } = await service.meterLeases()
+  assert.notEqual(ticks[0]?.outcome, 'killed')
+  assert.deepEqual(stopReasons, [])
+})
+
+test('a low remaining balance alone no longer stops a machine: there is no fixed-cent floor', async () => {
+  const { service, stopReasons } = stoppedBoatLeaseService({ applied: true, meterVersion: 1, remainingCents: 42 })
+  const { ticks } = await service.meterLeases()
+  assert.notEqual(ticks[0]?.outcome, 'killed')
+  assert.deepEqual(stopReasons, [])
+})
+
+test('a charge that uses up an admin spend limit stops the machine', async () => {
+  const { service, stopReasons } = stoppedBoatLeaseService({ applied: true, meterVersion: 1, remainingCents: 5_000, spendLimitReached: true })
+  const { ticks } = await service.meterLeases()
+  assert.equal(ticks[0]?.reason, 'spend_limit_exceeded')
+  assert.deepEqual(stopReasons, ['spend_limit_exceeded'])
+})
+
+test('a machine has no per-run provider cost cap', async () => {
+  const billingModule = await import('./ManagedAgentSandboxBilling')
+  assert.equal('sandboxProviderCostLimitUsd' in billingModule, false)
+  assert.equal('ManagedAgentSandboxBudgetError' in billingModule, false)
+  assert.equal('sandboxLowBalanceCutoffCents' in billingModule, false)
+  // A long, expensive observed span is charged in full; nothing refuses it for its size.
+  const calls: Array<Record<string, unknown>> = []
+  const lease = leaseFixture({ provider: 'box', usage: {
+    meteredUsage: { ...boatUsage(0), boatCursor: boatCursor(0, 0, 0) },
+    meteredProviderReference: 'sandbox-reference', meteredAt: 0, meterVersion: 1,
+    lastPayer: { scope: 'workspace', userId: 'user', workspaceId: 'workspace', billingAccountId: 'billing' },
+  } })
+  const hours = 48 * 3_600_000
+  const expensive = { wallTimeMs: hours, providerMetrics: { ...boatUsage(hours).providerMetrics, reportedUsd: 40 } }
+  const service = new ManagedAgentSandboxBilling({
+    now: () => hours, policy: {} as never,
+    runtime: () => ({ ...runtimeWithUsage(() => expensive), provider: 'box' }),
+    repository: {
+      patchSandboxLeaseUsage: async () => null,
+      environmentHasActiveRuns: async () => true,
+      meterSandboxLease: async (input: Record<string, unknown>) => { calls.push(input); return { applied: true, meterVersion: 2 } },
+    } as never,
+  })
+  const result = await service.meterLease(lease, { idleStop: 'none' })
+  assert.equal(result.applied, true)
+  assert.equal((calls[0]?.charge as { providerCostUsd: number }).providerCostUsd, 40)
 })
 
 test('cleanup requires stopped-state proof before final metering and deletion', async () => {
@@ -803,29 +827,31 @@ test('Computer cleanup failures from killLease emit cleanup alerts', async () =>
   assert.equal(alerts[0]?.context.computerId, 'computer-1')
 })
 
-test('metered settle runs a final tick, releases the bootstrap hold, and tolerates a missing marker', async () => {
-  const released: Array<Record<string, unknown>> = []
+function settleHarness(meterResult: Record<string, unknown>) {
   const patches: Array<Record<string, unknown>> = []
   const idleChecks: number[] = []
+  const stopReasons: string[] = []
   const lease = leaseFixture({
     usage: {
       meteredUsage: { wallTimeMs: 60_000 },
       meteredProviderReference: 'sandbox-reference',
       meterVersion: 5,
-      lastPayer: { scope: 'personal', userId: 'user', billingAccountId: 'billing' },
+      lastPayer: { scope: 'workspace', userId: 'user', workspaceId: 'workspace', billingAccountId: 'billing' },
     },
   })
   const service = new ManagedAgentSandboxBilling({
     now: () => 190_000,
+    // Settling never touches a reservation: a policy call other than the top-up check would throw.
     policy: {
-      release: async (args: Record<string, unknown>) => { released.push(args); return { success: true as const } },
-      markForReconcile: async () => { throw new Error('must not reconcile') },
+      getEntitlements: async () => ({ planKind: 'paid' }),
+      ensureBudgetNotLow: async () => ({ ok: false, status: 402, code: 'insufficient_budget', payload: {} }),
     } as never,
     repository: {
       environmentHasActiveRuns: async () => false,
       getSandboxLease: async () => lease,
-      meterSandboxLease: async () => ({ applied: true as const, meterVersion: 6, remainingCents: 800 }),
-      markSandboxSettlementComplete: async () => false,
+      meterSandboxLease: async () => meterResult,
+      stopSandboxLease: async (args: { reason: string }) => { stopReasons.push(args.reason); return { ...lease, status: 'stopping' as const } },
+      updateSandboxLease: async () => lease,
       patchSandboxLeaseUsage: async (args: { patch: Record<string, unknown>; idleCheckInMs?: number }) => {
         patches.push(args.patch)
         if (args.idleCheckInMs !== undefined) idleChecks.push(args.idleCheckInMs)
@@ -834,116 +860,33 @@ test('metered settle runs a final tick, releases the bootstrap hold, and tolerat
     } as never,
     runtime: () => runtimeWithUsage(() => ({ wallTimeMs: 90_000 })),
   })
-  await service.settle({
+  const settle = () => service.settle({
     agentId: 'agent', environmentId: 'environment',
     inputTokens: 0, modelId: 'openrouter/free', modelUsageBilling: 'byok', operationId: 'op',
     outcome: 'completed', outputTokens: 0, reservationId: null, runId: 'run', userId: 'user',
     workspaceId: 'workspace',
     sandboxBilling: {
       baselineUsage: {}, leaseId: 'lease', provider: 'box', providerReference: 'sandbox-reference',
-      reservationId: 'sandbox-reservation', resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 }, startedAt: 60_000,
+      reservationId: null, resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 }, startedAt: 60_000,
     },
   })
-  assert.deepEqual(released, [{ reservationId: 'sandbox-reservation', userId: 'user', reason: 'sandbox_metered' }])
+  return { settle, patches, idleChecks, stopReasons }
+}
+
+test('metered settle runs a final tick with no hold to release and starts the idle window', async () => {
+  const { settle, patches, idleChecks, stopReasons } = settleHarness({ applied: true, meterVersion: 6, remainingCents: 800 })
+  await settle()
   // The run's end starts the machine's idle timer for one full window.
   assert.deepEqual(idleChecks, [600_000])
+  assert.deepEqual(stopReasons, [])
   assert.equal(typeof (patches[0]?.lastSettlement as Record<string, unknown>)?.providerCostUsd, 'number')
+  assert.equal('reservationId' in (patches[0]?.lastSettlement as Record<string, unknown>), false)
 })
 
-test('managed sandbox settlement failure marks its reservation for reconciliation', async () => {
-  let reconciled = ''
-  const service = new ManagedAgentSandboxBilling({
-    policy: {
-      markForReconcile: async (args: { reservationId?: string | null }) => {
-        reconciled = args.reservationId ?? ''
-        return { success: true as const }
-      },
-    } as never,
-    repository: {
-      patchSandboxLeaseUsage: async () => null,
-      environmentHasActiveRuns: async () => false,
-      getSandboxLease: async () => null,
-    } as never,
-    runtime: () => { throw new Error('provider unavailable') },
-  })
-  await assert.rejects(() => service.settle({
-    agentId: 'agent', environmentId: 'environment',
-    inputTokens: 0, modelId: 'openrouter/free', modelUsageBilling: 'byok', operationId: 'op',
-    outcome: 'timeout', outputTokens: 0, reservationId: null, runId: 'run', userId: 'user',
-    workspaceId: 'workspace', sandboxBilling: {
-      baselineUsage: {}, leaseId: 'lease', provider: 'box', providerReference: 'sandbox', reservationId: 'sandbox-reservation',
-      resources: { vcpus: 2, memoryGiB: 4, diskGiB: 20 }, startedAt: Date.now(),
-    },
-  }), /provider unavailable/)
-  assert.equal(reconciled, 'sandbox-reservation')
-})
-
-test('legacy settle follows a repointed lease and seeds the meter cursor', async () => {
-  // Reset/expiry leaves the lease running but its providerReference dead; the
-  // turn's acquire step recreates the sandbox and repoints the same lease.
-  const reconnects: string[] = []
-  const runtime: SandboxRuntime = {
-    provider: 'box', capabilities: {} as never,
-    create: async () => { throw new Error('unreachable') },
-    reconnect: async (reference: string) => {
-      reconnects.push(reference)
-      if (reference === 'destroyed-sandbox') throw new Error('404 Named sandbox not found')
-      return { usage: async () => boatUsage(60_000) } as SandboxInstance
-    },
-    restore: async () => { throw new Error('unreachable') },
-    deleteSnapshot: async () => undefined,
-  }
-  const usageEvents: Array<Record<string, unknown>> = []
-  const patches: Array<Record<string, unknown>> = []
-  const repository = {
-    getActiveSandboxLease: async () => leaseFixture({ providerReference: 'destroyed-sandbox' }),
-    getSandboxLease: async () => leaseFixture({ providerReference: 'recreated-sandbox' }),
-    patchSandboxLeaseUsage: async (args: { patch: Record<string, unknown> }) => {
-      patches.push(args.patch)
-      return leaseFixture({ providerReference: 'recreated-sandbox' })
-    },
-    markSandboxSettlementComplete: async () => true,
-  }
-  const service = new ManagedAgentSandboxBilling({
-    now: () => 5_000,
-    policy: {
-      reserve: async () => ({ ok: true as const, billingAccountId: 'billing', reservationId: 'sandbox-reservation', reservedCents: 10, entitlements: {} }),
-      markStarted: async () => ({ success: true as const }),
-      release: async () => ({ success: true as const }),
-      markForReconcile: async () => ({ success: true as const }),
-      finalize: async (args: { events?: Array<Record<string, unknown>> }) => {
-        usageEvents.push(...(args.events ?? []))
-        return { success: true as const }
-      },
-    } as never,
-    repository: repository as never,
-    runtime: () => runtime,
-  })
-  const billing = await service.reserve({
-    agentId: 'agent', entitlements: {} as never, environmentId: 'environment',
-    idempotencyKey: 'turn:sandbox', operationId: 'sandbox:run',
-    requestFingerprint: 'fingerprint', userId: 'user', workspaceId: 'workspace',
-  })
-  assert.equal(billing.providerReference, 'destroyed-sandbox')
-  assert.deepEqual(billing.baselineUsage, {})
-  await service.settle({
-    agentId: 'agent', environmentId: 'environment',
-    inputTokens: 0, modelId: 'openrouter/free', modelUsageBilling: 'byok', operationId: 'op',
-    outcome: 'completed', outputTokens: 0, reservationId: null, runId: 'run', userId: 'user',
-    workspaceId: 'workspace', sandboxBilling: billing,
-  })
-  // reserve reconnected to the dead ref once (baseline attempt); settle must
-  // have reconnected to the recreated ref, never the dead snapshot.
-  assert.deepEqual(reconnects, ['destroyed-sandbox', 'recreated-sandbox'])
-  assert.equal(usageEvents.length, 1)
-  assert.equal(usageEvents[0]?.type, 'sandbox')
-  // reserve marks the turn as activity; settle seeds the meter cursor and ends it.
-  assert.equal(patches[0]?.lastActiveAt, 5_000)
-  assert.equal(patches.at(-1)?.activeUntil, 0)
-  const settledUsage = patches.at(-1)?.meteredUsage as Record<string, unknown>
-  assert.equal(settledUsage.wallTimeMs, 60_000)
-  assert.equal((settledUsage.providerMetrics as { authoritativeCounter: boolean }).authoritativeCounter, true)
-  assert.equal(patches.at(-1)?.meteredProviderReference, 'recreated-sandbox')
+test('a final run charge that leaves the workspace under 2% stops the machine', async () => {
+  const { settle, stopReasons } = settleHarness({ applied: true, meterVersion: 6, remainingCents: 1, budgetLow: true })
+  await settle()
+  assert.deepEqual(stopReasons, ['budget_exhausted'])
 })
 
 test('meterLease stops a lease whose authoritative provider counter is stalled', async () => {
@@ -1000,7 +943,7 @@ test('meterLease stops a lease whose authoritative provider counter is stalled',
   assert.deepEqual(reconnectOptions, [{ resume: false }])
   const call = meterCalls[0]!
   assert.equal(call.charge, undefined)
-  assert.ok(Number(call.runtimeHoldCents) > 0)
+  assert.equal('runtimeHoldCents' in call, false)
   assert.equal((call.meteredUsage as { wallTimeMs: number }).wallTimeMs, 60_000)
   assert.equal(stoppedLeases[0]?.reason, 'provider_usage_stalled')
 })
@@ -1211,9 +1154,8 @@ test('reaped leases stop the sandbox before the final usage read and delete', as
   assert.equal(ticks[0]?.outcome, 'released')
   // stop → final meter read → delete: usage is captured before teardown.
   assert.deepEqual(events, ['stop', 'meter', 'delete'])
-  // The final tick is charge-free-of-floor: a low-balance wallet still pays
-  // the tail usage it already consumed.
-  assert.equal(meterCalls[0]?.minRemainingCents, 0)
+  // The final tick has no floor to clear: a low-balance wallet still pays the tail usage it already consumed.
+  assert.equal('minRemainingCents' in meterCalls[0]!, false)
 })
 
 test('provider pricing uses provider-native runtime dimensions', () => {
@@ -1343,7 +1285,7 @@ function boatCursor(billableSeconds: number, dollars: number, advancedAt: number
   return {
     billableSeconds, dollars, advancedAt,
     price: { secondsPerDollar: 100_000, billingMultiplier: 1 },
-    running: true, pendingBillingMultiplier: 1,
+    running: true,
   }
 }
 

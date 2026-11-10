@@ -466,8 +466,11 @@ conversation on the server, freezes the note snapshot, and records its note and
 turn identity in the Harness policy. Reconnect requests reuse that AgentRun and
 may advance a public transcript cursor; the Notebook adapter exposes only
 assistant text, its four allowed tool calls, successful edit proposals, and
-terminal state. Stop targets the admitted conversation turn through the
-existing conversation cancellation path.
+terminal state. New turns check the shared workspace budget at admission and
+each model dispatch, with actual usage charged only by Harness settlement.
+Reconnect checks policy and access without another spending admission, so
+previously admitted output remains readable when the balance is low. Stop
+targets the admitted conversation turn through the existing cancellation path.
 Native Harness named-agent asks/posts use H2 shared-root dispatch; the HTTP
 route continues to refuse Harness callers. Delivery owners persist bounded
 tool-invocation snapshots while tools run, and finalization replaces those
@@ -612,16 +615,14 @@ An output-token limit continues the partial response instead of completing the
 task. Filtered, errored or otherwise unfinished provider returns cannot be
 reported as successful completion; usage is still settled.
 
-Model dispatch holds a durable `reserve_model` authorization with the same ID as
-its eventual usage receipt. Child admission cannot spend that held amount while
-the SDK executes returned tools, before `onStepEnd` supplies usage. Only the
-matching receipt replaces the hold with actual spend; cancellation does not
-erase an unresolved liability. Ambiguous provider failures require reconciliation
-before another call or child-budget release. Automatic SDK model retries are
-disabled so one authorization cannot silently fund multiple uncertain attempts.
-The adapter must reserve an upper bound for the dispatched prompt and output,
-not an average predicted cost. These holds enforce the run budget; billing-account
-reservations and settlement remain separate adapter responsibilities.
+Model dispatch uses a durable `reserve_model` marker with the same ID as its
+eventual usage receipt and `maxCostMicros: 0`. It tracks execution ownership,
+not reserved money. The real workspace balance is checked immediately before
+dispatch, with one automatic top-up attempt if below 2%. Only a matching receipt
+clears the marker; cancellation does not erase usage already incurred. Ambiguous
+provider failures remain unresolved rather than allowing duplicate inference.
+Automatic SDK model retries are disabled. Neither parent nor child runs reserve
+estimated spend or enforce an estimate-based per-run budget.
 
 `captureHarnessModelUsage` allowlists token counts and routing references before
 usage crosses a durable step boundary. `resolveHarnessModelUsage` resolves Gateway
@@ -630,8 +631,8 @@ ingestion retries the lookup, never inference. Without a generation reference,
 catalog-derived costs are explicitly marked estimates. Unknown pricing requires
 reconciliation. BYOK contributes no Overlay-funded inference cost but records
 external cost as unknown, not zero. Known external cost and unpriced external
-calls roll up separately through child joins. The run's spending authorization
-bounds Overlay-funded inference, not the user's external provider account.
+calls roll up separately through child joins. The spending mode distinguishes
+workspace-funded inference from external inference and non-spending work.
 
 `admitHarnessRequestUsage` consumes the root's request allowance with a stable
 operation ID before inference. Personal runs perform it inside
@@ -646,7 +647,7 @@ and BYOK retain their existing exemptions. Internal model receipts set the
 server-only `countAsRequest: false` while retaining all cost and token accounting.
 Durable accounting binds the workspace explicitly so a tab switch cannot move
 usage to another workspace. `requireRecorded: true` prevents a caller from
-advancing after a failed write or a reservation that still needs reconciliation.
+advancing after a failed usage write or unresolved pricing.
 
 `personal-tools.ts` reconstructs personal Chat tools inside authorized durable
 steps. `personal-access.ts` refreshes workspace membership, principal identity,
@@ -657,11 +658,11 @@ ID while retaining the delivery AgentRun ID. The personal adapter requires
 interactive approval policy and cannot stand in for an agent or automation
 principal. Personal chat, automations and Slack entrypoints use these adapters.
 
-Before provider dispatch, `bind_model_dispatch` associates the held model call
-with its selected model and billing reservation (explicitly `null` for calls
-without an account hold). That identity is immutable and survives cancellation.
+Before provider dispatch, `bind_model_dispatch` associates the model marker
+with its selected model and `billingReservationId: null`. That identity is
+immutable and survives cancellation.
 It is a settlement reference, not evidence that a provider was called or finished.
-Only the matching usage receipt clears the model hold; dispatch binding does not
+Only the matching usage receipt clears the model marker; dispatch binding does not
 release any budget or authorize automatic provider retries.
 
 `settleHarnessModelUsage` orchestrates separate durable receipt-lookup, account
@@ -671,23 +672,23 @@ quote even if the account write succeeds before the harness write fails. Billing
 uses the persisted dispatch binding and original workspace, accepts late usage
 after cancellation, and never counts internal calls as additional requests. BYOK
 writes a token audit with unknown external cost, without an Overlay charge. A
-failed account write leaves the harness hold unresolved. Production entrypoints
+failed account write leaves the harness marker unresolved. Production entrypoints
 use these settlement steps through the Harness workflows.
 
 Personal `HarnessLanguageModel` references can carry an allowlisted dispatch
 reference, without credentials or persisted entitlements. Inside the provider
-step it refreshes access, checks prepared token limits and a fresh conservative
-catalog forecast, reserves account funds, atomically claims dispatch, and marks
-the account hold started. A replayed claim cannot redispatch even for free/BYOK
-calls. Provider failures retain the hold for reconciliation. Routing fallbacks
+step it refreshes access, checks prepared token limits and the real workspace
+balance, then atomically claims dispatch without an account hold. A replayed
+claim cannot redispatch even for free/BYOK calls. Provider failures retain the
+execution marker. Routing fallbacks
 must be selected and authorized during preparation, not hidden in provider
 options. Provider-executed tools and unpriced cache configurations fail closed.
 Text input estimates include byte/protocol overhead; media uses the known model
-context limit. These are spending forecasts, not provider token measurements.
+context limit. These are context-size estimates, not spending forecasts or provider token measurements.
 Personal permission refresh uses `gateModelPolicy`, which checks the current
-subscription and ZDR policy without topping up or requiring unreserved funds.
-A model hold must not disable authorized tools while the SDK executes them.
-Each model or billable tool operation still reserves its own spend before use.
+subscription and ZDR policy without topping up or requiring another spending
+admission. Each model or billable tool operation checks its current workspace
+budget before use and records actual usage afterwards.
 
 `createPersonalHarnessExecutionPorts` connects state ownership, root request
 admission, tool reauthorization, model preparation and usage settlement. Surface
@@ -721,8 +722,8 @@ Harness billing adapters can supply `cachedInputTokens`, `cacheWriteTokens` and
 an exact, server-validated `providerCostUsd` to `recordFinishedUsage`. A receipt
 takes precedence over catalog estimates, including a verified zero-cost receipt.
 Without one, pricing separates uncached input, cache reads, cache writes and
-output. Missing cache-write pricing remains unknown and triggers reservation
-reconciliation rather than a fabricated zero-cost charge. Existing callers keep
+output. Missing cache-write pricing remains unknown and blocks settlement
+rather than producing a fabricated zero-cost charge. Existing callers keep
 their uncached behavior until they supply these fields; BYOK external charges
 must not be inferred from Overlay's zero billing for user-owned credentials.
 
@@ -760,22 +761,25 @@ browser APIs.
 
 ### Long-running Harness lifecycle
 
-New Harness admissions without an explicit legacy spend override use execution policy
-version 2. Its payer mode remains independent: workspace-funded paid runs reserve each
-Overlay dispatch atomically, while BYOK and non-Overlay-funded runs do not route through
-Overlay billing. Existing explicit spend limits and durations remain task limits;
-otherwise the persisted deadline is a renewable execution lease. Lease renewal is
+Every new Harness admission uses execution policy version 2 with `maxCostMicros: 0`; there
+is no per-task or per-child spending limit. Workspace-funded paid runs never estimate,
+reserve or hold a model call's cost: before each dispatch the provider step reads the real
+workspace balance and refuses only when less than 2% of the budget is left after an auto
+top-up attempt (the run fails with `WORKSPACE_FUNDS`). After the call the actual cost is
+charged directly. `reserve_model` remains only as a zero-cost marker so a bound dispatch is
+never resent. BYOK and non-Overlay-funded runs do not route through Overlay billing. An
+explicit duration remains a task deadline; otherwise the persisted deadline is a renewable
+execution lease. Lease renewal is
 authority-only and must revalidate the current source, membership, model/tool scope,
 delivery ownership, workflow owner, generation, and ancestors. It cannot expand access.
 
-Workspace funding denials are persisted as `waiting_for_resources` with bounded reasons,
-required and available amounts, and the reserved amount only when authoritative. Otherwise
-the projection explicitly reports that the reserved amount is unavailable. These amounts
-retain fractional cents from the billing ledger; they are not Stripe payment amounts.
-Workspace-funded budget rejections never fall back to another model, including when
-persisting the funding pause fails. Legacy routing behavior remains unchanged. The workflow
-polls on a durable 60-second sleep and rechecks authority and current funding before
-resuming the same task. Auto top-up remains opt-in:
+Runs no longer pause for funding or ask for more resources. The funding pause, its
+`pause_for_funding`/`resume_funding` operations, the version 1 resource-request system
+(`model_spend`/`time` grants, `harness/runs:pauseForResources`/`grantResources`/`consumeResourceGrant`,
+`POST /api/v1/conversations/run/resources`) and the `resourcePauseVersion` admission flag are deleted.
+Only stored data keeps validating: the `waiting_for_resources` status, `TASK_SPEND_LIMIT`,
+`conversationAgentRuns.resourceRequest`/`fundingPause` and the `harnessResourceRequests` table.
+A legacy run left in `waiting_for_resources` cannot resume; it can still be cancelled. Auto top-up remains opt-in:
 enabled setting, explicit consent, valid payment method, active paid subscription, and
 monthly ceiling are required. Pending claims reserve the ceiling account-wide; uncertain
 Stripe outcomes remain unresolved rather than receiving a new idempotency identity.

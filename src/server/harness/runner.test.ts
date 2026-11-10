@@ -92,7 +92,7 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = [], option
     authorizeTool: vi.fn(async () => undefined),
     renewLease: async () => {},
     prepareModel: async request => ({ messages: request.messages, instructions: buildHarnessStepInstructions(current, request.instructionContext),
-      activeToolNames: request.toolNames, estimatedCostMicros: 0 }),
+      activeToolNames: request.toolNames }),
     recordModelStep: async (step, id) => {
       sdkSteps.push(step.stepNumber)
       expect(receipts.has(id)).toBe(false)
@@ -431,45 +431,6 @@ test('runner finalizes a settled answer when its authorization expires after the
   }
 })
 
-test('resource waits gate a quoted response and resume only after previous tool usage has settled', async () => {
-  const f = fixture(false)
-  Object.assign((await f.ports.read()).policy, { resourcePauseVersion: 1, maxDepth: 0, maxParallelChildren: 0, maxCostMicros: 0 })
-  const prepare = f.ports.prepareModel
-  f.ports.prepareModel = async request => ({ ...await prepare(request), estimatedCostMicros: 1 })
-  let spendingGrants = 0
-  let timeGrants = 0
-  const execute = vi.fn(async () => 'Records read.')
-  const provider = model(index => index === 0 ? [call('read', 'read-once')] : 'The work is complete.')
-  f.ports.waitForResources = async cost => {
-    const current = await f.ports.read()
-    expect(current.modelReservation).toBeUndefined()
-    if (current.policy.deadlineAt <= Date.now()) {
-      expect(f.receipts.size).toBe(1)
-      expect(execute).toHaveBeenCalledOnce()
-      expect(current.evidence.some(item => item.id === 'tool:read-once')).toBe(true)
-      current.policy.deadlineAt = Date.now() + 60_000
-      timeGrants++
-    }
-    if (cost > current.policy.maxCostMicros) {
-      expect(provider.doStreamCalls).toHaveLength(0)
-      current.policy.maxCostMicros = cost
-      spendingGrants++
-    }
-    return current
-  }
-  const record = f.ports.recordModelStep
-  f.ports.recordModelStep = async (step, receiptId) => {
-    await record(step, receiptId)
-    if (f.receipts.size === 1) (await f.ports.read()).policy.deadlineAt = 0
-  }
-  const result = await runOverlayHarness({ ...input, tools: { read: tool({ inputSchema: z.object({}), execute }) } }, f.ports)
-  expect(result.snapshot.status).toBe('completed')
-  expect(provider.doStreamCalls).toHaveLength(2)
-  expect(execute).toHaveBeenCalledOnce()
-  expect(spendingGrants).toBe(1)
-  expect(timeGrants).toBe(1)
-})
-
 test('runner requests a real answer when prose precedes a trailing textual tool call', async () => {
   const f = fixture(false)
   const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'
@@ -537,7 +498,6 @@ test('runner asks for a final answer after tool-call text completes the plan', a
       messages: request.messages,
       instructions: buildHarnessStepInstructions(current, request.instructionContext),
       activeToolNames: request.toolNames,
-      estimatedCostMicros: 0,
     }
   }
   const finalAnswer = 'The sum is 42.'
@@ -716,7 +676,7 @@ test('the real SDK runs beyond twenty tool calls and continues after early sign-
       await f.ports.apply('context-summary', { type: 'checkpoint', summary: 'Preserve the original constraints after compaction.' })
     }
     return { messages: request.messages, instructions: buildHarnessStepInstructions(await f.ports.read(), request.instructionContext),
-      activeToolNames: request.toolNames, estimatedCostMicros: 0 }
+      activeToolNames: request.toolNames }
   }
   let reads = 0
   const provider = model(index => {
@@ -836,9 +796,9 @@ test.each(['content-filter', 'error', 'other'] as const)('a provider %s finish c
   expect(f.receipts.size).toBe(1)
 })
 
-test('the model reservation remains held while its returned tools execute', async () => {
+test('the zero-cost dispatch marker remains while its returned tools execute', async () => {
   const f = fixture()
-  f.ports.prepareModel = async request => ({ messages: request.messages, activeToolNames: request.toolNames, estimatedCostMicros: 60 })
+  f.ports.prepareModel = async request => ({ messages: request.messages, activeToolNames: request.toolNames })
   model(index => {
     if (index === 0) return [call('harness_set_plan', 'plan', { steps: plan })]
     if (index === 1) return [call('read', 'read')]
@@ -847,10 +807,7 @@ test('the model reservation remains held while its returned tools execute', asyn
   })
   const execute = vi.fn(async () => {
     const current = await f.ports.read()
-    expect(current.modelReservation).toEqual({ id: 'model:1', maxCostMicros: 60 })
-    expect(() => state.admitHarnessChild(current, {
-      id: 'child', stepId: 'work', allowedToolIds: ['read'], maxCostMicros: 50, costMicros: 0, status: 'running', evidenceRefs: [],
-    }, Date.now())).toThrow(/spending/)
+    expect(current.modelReservation).toEqual({ id: 'model:1', maxCostMicros: 0 })
     return 'Read source.'
   })
   const result = await runOverlayHarness({ ...input, tools: { read: tool({ inputSchema: z.object({}), execute }) } }, f.ports)
@@ -1084,17 +1041,15 @@ test('provider failure takes precedence over waiting for children', async () => 
   expect(provider.doStreamCalls).toHaveLength(1)
 })
 
-test('budget refusal happens before contacting the model', async () => {
-  const f = fixture()
-  const provider = model(() => 'Must not run')
-  f.ports.prepareModel = async args => ({ messages: args.messages, activeToolNames: [], estimatedCostMicros: 101 })
+test('settled spending above the old per-task allowance never blocks the next call', async () => {
+  const f = fixture(false)
+  const provider = model(() => 'Done.')
+  ;(await f.ports.read()).usage.costMicros = 1_000_000
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
-  expect(result.snapshot.blocker?.kind).toBe('budget')
-  expect(result.snapshot.diagnostic).toMatchObject({
-    code: 'TASK_SPEND_LIMIT', stage: 'model', retryability: 'user_action',
-  })
-  expect(result.snapshot.blocker?.question).toContain('per-task limit, not your workspace credit balance')
-  expect(provider.doStreamCalls).toHaveLength(0)
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.blocker).toBeUndefined()
+  expect(result.snapshot.diagnostic).toBeUndefined()
+  expect(provider.doStreamCalls).toHaveLength(1)
 })
 
 test('deadline refusal identifies the time limit without claiming workspace credits ran out', async () => {
@@ -1221,7 +1176,6 @@ test('schema-invalid executable tool calls continue with the SDK error result', 
       messages: request.messages,
       instructions: buildHarnessStepInstructions(current, request.instructionContext),
       activeToolNames: request.toolNames,
-      estimatedCostMicros: 0,
     }
   }
   const provider = model(index => answerSegment
@@ -1254,7 +1208,6 @@ test('confirmed safe tool failure envelopes continue without becoming approvals'
       messages: request.messages,
       instructions: buildHarnessStepInstructions(current, request.instructionContext),
       activeToolNames: request.toolNames,
-      estimatedCostMicros: 0,
     }
   }
   const provider = model(index => answerSegment

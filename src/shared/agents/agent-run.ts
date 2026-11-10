@@ -2,8 +2,6 @@ import type { HarnessDiagnostic } from '@overlay/agent-runtime/harness-diagnosti
 import type { RemoteRunLiveness } from './remote-run-liveness'
 import type { RemoteRunState } from './remote-run'
 import type { RemoteRunStreamStats } from './remote-run-stream-stats'
-import type { HarnessResourceDeliveryProjection } from '@overlay/agent-runtime/harness-resource'
-import type { HarnessFundingPause } from '@overlay/agent-runtime/harness-state'
 import type { HarnessAuthorizationPause } from '@overlay/agent-runtime/harness-state'
 
 /**
@@ -86,8 +84,6 @@ export type AgentRunMetrics = {
   staleDetectedAt?: number
 }
 
-export type AgentRunResourceRequest = HarnessResourceDeliveryProjection
-
 export type AgentRun = {
   /** Only remote runs select the versioned lifecycle; personal Work mode is unchanged. */
   remoteLifecycle?: RemoteRunState
@@ -121,8 +117,6 @@ export type AgentRun = {
   approval?: AgentRunApproval
   inputRequest?: { token: string; requestedAt: number; question: string }
   plan?: Array<{ id: string; title: string; status: string }>
-  resourceRequest?: AgentRunResourceRequest
-  fundingPause?: HarnessFundingPause
   authorizationPause?: HarnessAuthorizationPause
   metrics?: AgentRunMetrics
   /** Connected-agent transport counters; remote runs only. */

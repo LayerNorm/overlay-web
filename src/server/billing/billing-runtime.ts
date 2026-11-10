@@ -1,8 +1,7 @@
 import 'server-only'
 
-import { createHash } from 'node:crypto'
 import type { Entitlements } from '@/shared/app/app-contracts'
-import type { UsageEvent, UsageRepository } from '@/server/usage'
+import type { UsageRepository } from '@/server/usage'
 import {
   applyMarkupToCents,
   applyMarkupToDollars,
@@ -11,6 +10,8 @@ import { configuredUsageMarkupBasisPoints } from '@/server/env/usage-markup'
 import { ensureWorkspaceBudgetAvailable } from '@/server/billing/workspace-budget'
 import { logSecurityEvent } from '@/server/observability/security-events'
 import { hashOperationalIdentifier } from '@/server/security/operational-key-hash'
+import { workspaceBudgetLow, workspaceBudgetStopLineCents } from '@/shared/billing/execution-access'
+import type { BillingAccountSpendLimitRecord } from '@/shared/billing/billing-payer'
 import { requireWorkspaceExecution } from './WorkspaceExecutionPolicy'
 import type { BillingRepository } from './BillingRepository'
 import {
@@ -46,208 +47,151 @@ export type ProviderSpendKind =
   | 'generation'
   | 'sandbox'
 
-export type ProviderUsageEvent = {
-  type: ProviderSpendKind
-  modelId?: string
-  inputTokens?: number
-  outputTokens?: number
-  cachedTokens?: number
-  countAsRequest?: boolean
-  providerCostUsd?: number
-  cost: number
-  durationSeconds?: number
-  timestamp: number
+export type ProviderBudgetRefusal = {
+  ok: false
+  status: 402
+  code: 'insufficient_budget'
+  payload: Record<string, unknown>
 }
 
-export function createBudgetReservationId(prefix = 'provider'): string {
-  return `${prefix}_${globalThis.crypto.randomUUID()}`
+const BUDGET_LOW_MESSAGE = 'Your workspace has less than 2% of its budget left. Add budget or enable auto top-up before running this request.'
+const SPEND_LIMIT_MESSAGE = 'Your spending limit in this workspace is used up. Ask a workspace admin to raise it.'
+
+function spendLimitReached(limit: BillingAccountSpendLimitRecord, now = Date.now()): boolean {
+  if (now < limit.periodStart || now >= limit.periodEnd) return true
+  return limit.usedCents + limit.reservedCents >= limit.limitCents
 }
 
-export function createRequestBoundBudgetReservationId(params: {
-  discriminator?: string
-  idempotencyKey: string
-  operationId: string
-  requestFingerprint: string
-  userId: string
-  payerDiscriminator?: string
-}): string {
-  const digest = createHash('sha256')
-    .update([
-      'overlay-usage-reservation:v1',
-      params.userId,
-      params.payerDiscriminator ?? '',
-      params.operationId,
-      params.idempotencyKey,
-      params.requestFingerprint,
-      params.discriminator ?? '',
-    ].join('\n'))
-    .digest('hex')
-  return `usage_${digest}`
-}
-
-export async function reserveProviderBudget(params: {
+/**
+ * The only check before a paid call. It reads the payer's real balance and refuses only when less than 2% of the
+ * budget is left after one automatic top-up to the 2% line, or when an admin's spend limit for this member or program
+ * is used up. It never estimates, reserves or holds what the call will cost: charge the actual cost afterwards with
+ * `chargeProviderUsage`.
+ */
+export async function ensureProviderBudgetNotLow(params: {
   userId: string
   entitlements: Entitlements
-  idempotencyKey?: string | null
-  providerCostUsd: number
   kind: ProviderSpendKind
   modelId?: string
   operationId: string
-  requestFingerprint: string
-  reservationId?: string
-  requireExecution?: typeof requireWorkspaceExecution
   workspaceId?: string
   programmaticSubjectId?: string
-}) {
+  requireExecution?: typeof requireWorkspaceExecution
+}): Promise<{ ok: true; entitlements: Entitlements } | ProviderBudgetRefusal> {
   const execution = await (params.requireExecution ?? requireWorkspaceExecution)({
     userId: params.userId,
     workspaceId: params.workspaceId,
     checkBudget: false,
   })
-  const reservedCents = billableBudgetCentsFromProviderUsd(params.providerCostUsd)
-  if (!execution.billingEnabled || reservedCents <= 0) {
-    return {
-      ok: true,
-      billingAccountId: null,
-      reservationId: null,
-      reservedCents: 0,
-      entitlements: params.entitlements,
-    } as const
-  }
+  if (!execution.billingEnabled) return { ok: true, entitlements: params.entitlements }
 
-  const payerContext = await resolveProviderBillingContext(params)
-  const budget = payerContext.payer.scope === 'workspace'
-    ? await ensureWorkspaceBudgetAvailable({
-        billingAccountId: payerContext.payer.billingAccountId,
-        entitlements: payerContext.entitlements,
-        minimumRequiredCents: Math.max(1, Math.ceil(reservedCents)),
-        userId: params.userId,
-        workspaceId: payerContext.payer.workspaceId,
-      }, {
-        billingEnabled: billingCapabilityEnabled,
-        remainingCents: (entitlements) => getBudgetTotals(entitlements).remainingCents,
-        repository: billingRepository,
-      })
-    : await ensureBudgetAvailable({
-        userId: params.userId,
-        entitlements: payerContext.entitlements,
-        minimumRequiredCents: Math.max(1, Math.ceil(reservedCents)),
-      })
-
-  if (!isPaidPlan(budget.entitlements) || budget.remainingCents + 0.000001 < reservedCents) {
+  const { entitlements, payer } = await resolveProviderBillingContext(params)
+  const totals = getBudgetTotals(entitlements)
+  const budget = !workspaceBudgetLow(totals)
+    ? { entitlements }
+    : payer.scope === 'workspace'
+      ? await ensureWorkspaceBudgetAvailable({
+          billingAccountId: payer.billingAccountId,
+          entitlements,
+          minimumRequiredCents: workspaceBudgetStopLineCents(totals),
+          userId: params.userId,
+          workspaceId: payer.workspaceId,
+        }, {
+          billingEnabled: billingCapabilityEnabled,
+          remainingCents: (current) => getBudgetTotals(current).remainingCents,
+          repository: billingRepository,
+        })
+      : await ensureBudgetAvailable({
+          userId: params.userId,
+          entitlements,
+          minimumRequiredCents: workspaceBudgetStopLineCents(totals),
+        })
+  const after = getBudgetTotals(budget.entitlements)
+  if (!isPaidPlan(budget.entitlements) || workspaceBudgetLow(after)) {
     logBudgetSecurityEvent('owner_funded_budget_declined', params, {
-      requiredCents: reservedCents,
-      remainingCents: budget.remainingCents,
+      remainingCents: after.remainingCents,
+      totalCents: after.totalCents,
     })
     return {
       ok: false,
       status: 402,
       code: 'insufficient_budget',
       payload: {
-        ...buildInsufficientCreditsPayload(
-        budget.entitlements,
-        'Your Overlay budget is exhausted. Add budget or enable auto top-up before running this request.',
-        ),
-        ...(payerContext.payer.scope === 'workspace' ? {
+        ...buildInsufficientCreditsPayload(budget.entitlements, BUDGET_LOW_MESSAGE),
+        ...(payer.scope === 'workspace' ? {
           resourceStatus: {
             reason: 'autoTopUpStatus' in budget ? budget.autoTopUpStatus : 'pending',
-            requiredCents: 'requiredCents' in budget ? budget.requiredCents : Math.max(1, Math.ceil(reservedCents)),
-            remainingCents: budget.remainingCents,
-            ...('autoTopUpReason' in budget && budget.autoTopUpReason
-              ? { topUpReason: budget.autoTopUpReason } : {}),
+            requiredCents: workspaceBudgetStopLineCents(after),
+            remainingCents: after.remainingCents,
+            ...('autoTopUpReason' in budget && budget.autoTopUpReason ? { topUpReason: budget.autoTopUpReason } : {}),
           },
         } : {}),
       },
-    } as const
+    }
   }
 
-  const reservationId = params.reservationId ?? (
-    params.idempotencyKey
-      ? createRequestBoundBudgetReservationId({
-          discriminator: `${params.kind}:${params.modelId ?? ''}`,
-          payerDiscriminator: payerContext.payer.billingAccountId,
-          idempotencyKey: params.idempotencyKey,
-          operationId: params.operationId,
-          requestFingerprint: params.requestFingerprint,
-          userId: params.userId,
-        })
-      : createBudgetReservationId(params.kind)
-  )
-  let result
-  try {
-    const repository = await usageRepository()
-    const payer = payerContext.payer
-    result = payer.scope === 'workspace'
-      ? await repository.reserveWorkspace({
-          kind: params.kind,
-          modelId: params.modelId,
-          operationId: params.operationId,
-          payer,
-          requestFingerprint: params.requestFingerprint,
-          reservationId,
-          reservedCents,
-          userId: params.userId,
-        })
-      : await repository.reserve({
-      entitlements: budget.entitlements,
-      kind: params.kind,
-      modelId: params.modelId,
-      operationId: params.operationId,
-      requestFingerprint: params.requestFingerprint,
-      reservationId,
-      reservedCents,
-      userId: params.userId,
+  if (payer.scope === 'workspace') {
+    const limit = await (await billingRepository()).getBillingAccountSpendLimitByServer({
+      billingAccountId: payer.billingAccountId,
+      subject: payer.subject,
     })
-  } catch (error) {
-    logBudgetSecurityEvent('usage_reservation_integrity_failure', params, {
-      reason: safeReservationErrorCode(error),
-    }, 'error')
-    throw error
-  }
-  if (!result.ok) {
-    logBudgetSecurityEvent('owner_funded_budget_declined', params, {
-      requiredCents: result.requiredCents,
-      remainingCents: result.remainingCents,
-    })
-    return {
-      ok: false,
-      status: 402,
-      code: 'insufficient_budget',
-      payload: {
-        ...buildInsufficientCreditsPayload(
-        result.entitlements,
-        'Your Overlay budget is exhausted. Add budget or enable auto top-up before running this request.',
-        ),
-        resourceStatus: {
-          reason: 'insufficient_budget',
-          requiredCents: result.requiredCents,
-          remainingCents: result.remainingCents,
+    if (limit && spendLimitReached(limit)) {
+      logBudgetSecurityEvent('owner_funded_budget_declined', params, { reason: 'spend_limit_exceeded' })
+      return {
+        ok: false,
+        status: 402,
+        code: 'insufficient_budget',
+        payload: {
+          ...buildInsufficientCreditsPayload(budget.entitlements, SPEND_LIMIT_MESSAGE),
+          resourceStatus: {
+            reason: 'spend_limit_exceeded',
+            remainingCents: Math.max(0, limit.limitCents - limit.usedCents - limit.reservedCents),
+          },
         },
-      },
-    } as const
+      }
+    }
   }
-  if (result.replayed || result.status !== 'reserved') {
-    logBudgetSecurityEvent('usage_reservation_replay_blocked', params, {
-      reservationStatus: result.status,
-    })
-    return {
-      ok: false,
-      status: 409,
-      code: 'usage_reservation_replay',
-      payload: {
-        error: 'usage_reservation_replay',
-        message: 'This owner-funded operation was already reserved. Retry with a new Idempotency-Key.',
-      },
-    } as const
-  }
+  return { ok: true, entitlements: budget.entitlements }
+}
 
-  return {
-    ok: true,
-    billingAccountId: payerContext.payer.billingAccountId,
-    reservationId,
-    reservedCents,
-    entitlements: budget.entitlements,
-  } as const
+/**
+ * Charges the actual cost of a finished paid call directly (no reservation). The operation id makes the charge
+ * idempotent, so it must be unique per call. `budgetLow` says the payer now has less than 2% left: a loop stops there.
+ */
+export async function chargeProviderUsage(params: {
+  userId: string
+  workspaceId?: string
+  programmaticSubjectId?: string
+  operationId: string
+  providerCostUsd: number
+  usage: {
+    kind: ProviderSpendKind
+    modelId?: string
+    inputTokens?: number
+    outputTokens?: number
+    cachedTokens?: number
+    countAsRequest?: boolean
+    durationSeconds?: number
+  }
+}): Promise<{ budgetLow: boolean }> {
+  if (!Number.isFinite(params.providerCostUsd) || params.providerCostUsd < 0) {
+    throw new Error('Invalid provider cost.')
+  }
+  const { kind, ...usage } = params.usage
+  const result = await (await usageRepository()).recordBatch({
+    userId: params.userId,
+    ...(params.workspaceId ? { workspaceId: params.workspaceId } : {}),
+    ...(params.programmaticSubjectId ? { programmaticSubjectId: params.programmaticSubjectId } : {}),
+    operationId: params.operationId,
+    events: [{
+      ...usage,
+      kind,
+      costCents: billableBudgetCentsFromProviderUsd(params.providerCostUsd),
+      providerCostUsd: params.providerCostUsd,
+      occurredAt: Date.now(),
+    }],
+  })
+  return { budgetLow: result.budgetLow }
 }
 
 export async function getPayerEntitlements(params: {
@@ -362,93 +306,6 @@ function logBudgetSecurityEvent(
   }, level)
 }
 
-function safeReservationErrorCode(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error)
-  if (/reservation_parameter_mismatch|reused with different parameters/.test(message)) {
-    return 'reservation_parameter_mismatch'
-  }
-  if (/reservation_user_mismatch/.test(message)) return 'reservation_user_mismatch'
-  if (/insufficient_budget|paid plan required/.test(message)) return 'insufficient_budget'
-  return 'reservation_backend_error'
-}
-
-export async function finalizeProviderBudgetReservation(params: {
-  userId: string
-  reservationId: string | null | undefined
-  actualProviderCostUsd: number
-  events?: ProviderUsageEvent[]
-}) {
-  if (!params.reservationId) return { success: true, skipped: true } as const
-  const actualCents = billableBudgetCentsFromProviderUsd(params.actualProviderCostUsd)
-  return await (await usageRepository()).finalize({
-    actualCostCents: actualCents,
-    events: params.events?.map(toUsageEvent),
-    reservationId: params.reservationId,
-    userId: params.userId,
-  })
-}
-
-/** Replaces a settled estimate with the exact provider cost. Applies at most once. */
-export async function correctProviderBudgetReservationCost(params: {
-  userId: string
-  reservationId: string
-  actualProviderCostUsd: number
-}) {
-  return await (await usageRepository()).correctFinalizedCost({
-    actualCostCents: billableBudgetCentsFromProviderUsd(params.actualProviderCostUsd),
-    providerCostUsd: params.actualProviderCostUsd,
-    reservationId: params.reservationId,
-    userId: params.userId,
-  })
-}
-
-export async function markProviderBudgetStarted(params: {
-  userId: string
-  reservationId: string | null | undefined
-}) {
-  if (!params.reservationId) return { success: true, skipped: true } as const
-  const result = await (await usageRepository()).markStarted({
-    reservationId: params.reservationId,
-    userId: params.userId,
-  })
-  if (result.status !== 'reserved') {
-    throw new Error(`usage_reservation_not_startable:${result.status}`)
-  }
-  return result
-}
-
-export async function releaseProviderBudgetReservation(params: {
-  userId: string
-  reservationId: string | null | undefined
-  providerWorkStarted?: boolean
-  reason?: string
-}) {
-  if (!params.reservationId) return { success: true, skipped: true } as const
-  return await (await usageRepository()).release({
-    providerWorkStarted: params.providerWorkStarted,
-    reason: params.reason,
-    reservationId: params.reservationId,
-    userId: params.userId,
-  })
-}
-
-export async function markProviderBudgetReconcile(params: {
-  userId: string
-  reservationId: string | null | undefined
-  errorMessage?: string
-}) {
-  if (!params.reservationId) return { success: true, skipped: true } as const
-  return await (await usageRepository()).markForReconcile({
-    errorMessage: params.errorMessage,
-    reservationId: params.reservationId,
-    userId: params.userId,
-  })
-}
-
-export async function refreshEntitlementsForUser(userId: string): Promise<Entitlements | null> {
-  return await (await usageRepository()).getEntitlements({ userId })
-}
-
 async function usageRepository(): Promise<UsageRepository> {
   const { getOverlayServerContext } = await import('@/server/bootstrap')
   return getOverlayServerContext().appData.repositories.usage
@@ -462,19 +319,4 @@ async function billingRepository() {
 async function billingCapabilityEnabled(): Promise<boolean> {
   const { getOverlayCapabilities } = await import('@/server/capabilities')
   return (await getOverlayCapabilities()).billing
-}
-
-function toUsageEvent(event: ProviderUsageEvent): UsageEvent {
-  return {
-    cachedTokens: event.cachedTokens,
-    countAsRequest: event.countAsRequest,
-    providerCostUsd: event.providerCostUsd,
-    costCents: event.cost,
-    durationSeconds: event.durationSeconds,
-    inputTokens: event.inputTokens,
-    kind: event.type,
-    modelId: event.modelId,
-    occurredAt: event.timestamp,
-    outputTokens: event.outputTokens,
-  }
 }

@@ -2,23 +2,25 @@ import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { desktopWebShellViolations } from './desktop-web-shell-boundary.mjs'
 
+// Every owner-funded call checks the workspace budget (refusing only under 2%) before the provider call and charges
+// the actual cost directly afterwards. Nothing is estimated or held.
 const rules = [
-  ['src/server/harness/model-dispatch.ts', 'reserveProviderBudget', 'markProviderBudgetStarted'],
-  ['src/server/app-api/v1/conversations/act/extension-plan/route.ts', 'reserveProviderBudget', 'markProviderBudgetStarted'],
-  ['src/server/app-api/v1/generate-title/route.ts', 'reserveForAttempt', 'markReservationStarted'],
-  ['src/server/app-api/v1/generate-tab-group-label/route.ts', 'reserveProviderBudget', 'markProviderBudgetStarted'],
-  ['src/server/app-api/v1/chat-suggestions/route.ts', 'generationUsagePolicy.reserve', 'generationUsagePolicy.markStarted'],
-  ['src/server/app-api/v1/generate-image/route.ts', 'generationUsagePolicy.reserve', 'generationUsagePolicy.markStarted'],
-  ['src/server/app-api/v1/generate-video/route.ts', 'generationUsagePolicy.reserve', 'generationUsagePolicy.markStarted'],
-  ['src/server/app-api/v1/notebook-agent/route.ts', 'reserveProviderBudget', 'markProviderBudgetStarted'],
-  ['src/server/app-api/v1/transcribe/route.ts', 'generationUsagePolicy.reserve', 'generationUsagePolicy.markStarted'],
+  ['src/server/harness/model-dispatch.ts', 'assertWorkspaceBudgetNotLow', 'workspaceBudgetLow'],
+  ['src/server/app-api/v1/conversations/act/extension-plan/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
+  ['src/server/app-api/v1/generate-title/route.ts', 'chatUsagePolicy.ensureBudgetNotLow', 'chatUsagePolicy.recordFinishedUsage'],
+  ['src/server/app-api/v1/generate-tab-group-label/route.ts', 'ensureProviderBudgetNotLow', 'chargeProviderUsage'],
+  ['src/server/app-api/v1/chat-suggestions/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
+  ['src/server/app-api/v1/generate-image/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
+  ['src/server/app-api/v1/generate-video/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
+  ['src/server/app-api/v1/notebook-agent/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
+  ['src/server/app-api/v1/transcribe/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
 ]
 
 const failures = []
-for (const [file, reservationMarker, startMarker] of rules) {
+for (const [file, checkMarker, chargeMarker] of rules) {
   const source = readFileSync(file, 'utf8')
-  if (!source.includes(reservationMarker)) failures.push(`${file}: missing ${reservationMarker}`)
-  if (!source.includes(startMarker)) failures.push(`${file}: missing ${startMarker}`)
+  if (!source.includes(checkMarker)) failures.push(`${file}: missing ${checkMarker}`)
+  if (!source.includes(chargeMarker)) failures.push(`${file}: missing ${chargeMarker}`)
   if (!source.includes('workspaceId')) failures.push(`${file}: missing workspace payer context`)
 }
 
@@ -58,15 +60,23 @@ const convexKnowledge = readFileSync('convex/knowledge/knowledge.ts', 'utf8')
 if (!knowledgeRoute.includes('requestIdempotencyKey') || !knowledgeRoute.includes('requestFingerprint')) {
   failures.push('Knowledge search does not bind embedding spend to the API request identity')
 }
-if (!knowledgeRepository.includes('resolveBillingPayer') || !knowledgeRepository.includes('billingAccountId') || !knowledgeRepository.includes('...providerBilling')) {
-  failures.push('Convex knowledge search bypasses the workspace payer and provider billing context')
+if (!knowledgeRepository.includes('...providerBilling') || !knowledgeRepository.includes('billingUserId')) {
+  failures.push('Convex knowledge search bypasses the provider billing context')
 }
 if (
-  !convexKnowledge.includes('markBudgetReservationStartedByServer') ||
-  !convexKnowledge.includes('provider_operation_already_reserved') ||
-  !convexKnowledge.includes('reserveWorkspaceBudgetByServer')
+  !convexKnowledge.includes('checkProviderBudget') ||
+  !convexKnowledge.includes('chargeProviderUsageDirect') ||
+  !convexKnowledge.includes('provider_operation_already_charged')
 ) {
-  failures.push('Convex knowledge providers do not enforce workspace reservation, provider-start, and replay lifecycle')
+  failures.push('Convex knowledge providers do not enforce the workspace budget check, direct charge and replay guard')
+}
+
+// Holds are retired: no backend code may create a budget reservation again (tests may insert historical rows).
+for (const path of nativeSources('convex')) {
+  if (path.includes('_generated') || path.endsWith('.test.ts')) continue
+  if (/insert\(\s*['"]budgetReservations['"]/.test(readFileSync(path, 'utf8'))) {
+    failures.push(`${path}: creates a budget reservation; paid calls charge directly after the call`)
+  }
 }
 
 const workspaceAgent = readFileSync('src/server/agents/workspace-agent-invocation.ts', 'utf8')

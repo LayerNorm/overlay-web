@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { createHash } from 'node:crypto'
 import type { ModelMessage, UIMessage } from 'ai'
 import type { CapabilityCheck } from '@overlay/app-core'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
@@ -13,9 +14,7 @@ import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
-import { meterAutomationWorkflowRun } from '@/server/billing/automation-workflow-billing'
 import { resolveBillingPayer } from '@/server/billing/billing-runtime'
-import { providerRequestFingerprint } from '@/server/billing/ServerProviderUsageMeter'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { describePersonalChatWorkTools } from '@/server/conversations/personal-chat-work-tools'
 import {
@@ -147,7 +146,6 @@ export type AutomationAgentTurnPlan = {
   messages: ModelMessage[]
   paid: boolean
   providerOptions?: Record<string, Record<string, unknown>>
-  reservationId: string | null
   userMessageId: string
   principalId: string
   sourceCitations?: SourceCitationMap
@@ -322,7 +320,11 @@ async function createOwnedAutomationConversation(
  * surface turns bill to `surface:<platform>:<bindingId>`, automations to the
  * automation (or run).
  */
-function turnBillingKeys(input: AutomationAgentTurnInput) {
+function turnRequestFingerprint(value: unknown): string {
+  return createHash('sha256').update(JSON.stringify(value)).digest('hex')
+}
+
+export function turnBillingKeys(input: AutomationAgentTurnInput) {
   const surface = input.surface
   if (surface) {
     return {
@@ -429,7 +431,7 @@ export async function prepareAutomationAgentTurn(
 
   const surface = input.surface
   const { billingProgrammaticSubjectId, requestIdempotencyKey, operationIdPrefix } = turnBillingKeys(input)
-  const requestFingerprint = providerRequestFingerprint({
+  const requestFingerprint = turnRequestFingerprint({
     automationId: input.automationId,
     runId: input.runId,
     turnId: input.turnId,
@@ -442,28 +444,6 @@ export async function prepareAutomationAgentTurn(
     userId,
     workspaceId: billingWorkspaceId,
   })
-
-  // Automation workflow metering is per automation run. Surface model calls
-  // are billed by the Harness provider dispatch, not a turn-wide reservation.
-  if (!surface) {
-    const workflowMeter = await meterAutomationWorkflowRun({
-      entitlements: runtimeEntitlements,
-      idempotencyKey: requestIdempotencyKey,
-      programmaticSubjectId: billingProgrammaticSubjectId,
-      requestFingerprint,
-      userId,
-      workspaceId: billingWorkspaceId,
-    })
-    if (!workflowMeter.ok) {
-      throw new AutomationTurnError(
-        typeof workflowMeter.payload?.message === 'string'
-          ? workflowMeter.payload.message
-          : 'Automation workflow metering was denied.',
-        workflowMeter.status,
-        workflowMeter.payload,
-      )
-    }
-  }
 
   const [resolvedBillingPayer, authorizedModelIds] = await Promise.all([
     resolveBillingPayer({
@@ -580,10 +560,8 @@ export async function prepareAutomationAgentTurn(
       userId,
       accessToken: undefined,
       entitlements: runtimeEntitlements,
-      idempotencyKey: requestIdempotencyKey,
       operationId: `${operationIdPrefix}.media-intent`,
       programmaticSubjectId: billingProgrammaticSubjectId,
-      requestFingerprint,
       workspaceId: billingWorkspaceId,
     })
   })()
@@ -628,69 +606,33 @@ export async function prepareAutomationAgentTurn(
     accessToken: undefined,
     conversationId: cid,
     workspaceId: billingWorkspaceId,
+    // The budget was checked when the turn was admitted; the summary is charged its actual cost after.
     generateSummaryText: async ({ prompt, targetSummaryTokens }) => {
-      const estimatedInputTokens = Math.ceil(prompt.length / 4) + 64
-      const summaryReservation = await actUsageBudgetService.reserveForAttempt({
-        entitlements: runtimeEntitlements,
-        estimatedInputTokens,
-        idempotencyKey: requestIdempotencyKey,
-        maxOutputTokens: targetSummaryTokens,
+      const summaryModel = await getLanguageModel(summaryModelId, undefined, userId, {
+        workspaceId: billingWorkspaceId,
+      })
+      const isSubscription = await isSubscriptionModelForUser(
+        summaryModelId,
+        userId,
+        billingWorkspaceId,
+      )
+      const summaryResult = await generateText({
+        model: summaryModel,
+        ...summaryGenerationOptions({ prompt, targetSummaryTokens, isSubscription }),
+      })
+      const summaryUsage = (summaryResult as unknown as {
+        usage?: { inputTokens?: number; outputTokens?: number }
+      }).usage
+      await actUsageBudgetService.recordFinishedUsage({
+        inputTokens: summaryUsage?.inputTokens ?? 0,
         modelId: summaryModelId,
-        operationId: `${operationIdPrefix}.context-summary`,
-        paid,
-        requestFingerprint,
+        operationId: `${operationIdPrefix}.context-summary:${globalThis.crypto.randomUUID()}`,
+        outputTokens: summaryUsage?.outputTokens ?? 0,
+        programmaticSubjectId: billingProgrammaticSubjectId,
         userId,
         workspaceId: billingWorkspaceId,
-        programmaticSubjectId: billingProgrammaticSubjectId,
       })
-      if (!summaryReservation.ok) {
-        throw new Error(String(summaryReservation.failure.payload.error ?? 'context_summary_budget_denied'))
-      }
-      let providerWorkStarted = false
-      try {
-        await actUsageBudgetService.markReservationStarted({
-          reservationId: summaryReservation.reservationId,
-          userId,
-        })
-        providerWorkStarted = true
-        const summaryModel = await getLanguageModel(summaryModelId, undefined, userId, {
-          workspaceId: billingWorkspaceId,
-        })
-        const isSubscription = await isSubscriptionModelForUser(
-          summaryModelId,
-          userId,
-          billingWorkspaceId,
-        )
-        const summaryResult = await generateText({
-          model: summaryModel,
-          ...summaryGenerationOptions({ prompt, targetSummaryTokens, isSubscription }),
-        })
-        const summaryUsage = (summaryResult as unknown as {
-          usage?: { inputTokens?: number; outputTokens?: number }
-        }).usage
-        await actUsageBudgetService.recordFinishedUsage({
-          inputTokens: summaryUsage?.inputTokens ?? estimatedInputTokens,
-          modelId: summaryModelId,
-          outputTokens: summaryUsage?.outputTokens ?? targetSummaryTokens,
-          reservationId: summaryReservation.reservationId,
-          userId,
-        })
-        return summaryResult.text.trim()
-      } catch (error) {
-        await actUsageBudgetService.releaseReservation({
-          reason: error instanceof Error ? error.message : 'context_summary_provider_failed',
-          reservationId: summaryReservation.reservationId,
-          userId,
-        }).catch((_releaseError) => undefined)
-        if (providerWorkStarted && summaryReservation.reservationId) {
-          await actUsageBudgetService.markReservationForReconcile({
-            errorMessage: error instanceof Error ? error.message : 'context_summary_provider_failed',
-            reservationId: summaryReservation.reservationId,
-            userId,
-          }).catch((_reconcileError) => undefined)
-        }
-        throw error
-      }
+      return summaryResult.text.trim()
     },
     messages: messagesForModel,
     targetModelId: effectiveModelId,
@@ -845,7 +787,6 @@ export async function prepareAutomationAgentTurn(
     ...(modelSupportsZeroDataRetention(effectiveModelId)
       ? { providerOptions: { gateway: { zeroDataRetention: true } } }
       : {}),
-    reservationId: null,
     userMessageId: String(userMessageId),
     principalId: workspaceAccess.principal.id,
     sourceCitations: sourceCitationMap,

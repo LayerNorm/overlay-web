@@ -6,7 +6,6 @@ import {
   calculateGatewayImageCostOrNull,
   calculateGatewayLanguageTokenCostOrNull,
   calculateGatewayVideoCostOrNull,
-  IMAGE_GENERATION_RESERVATION_USAGE,
 } from '@/shared/ai/gateway/model-pricing'
 
 test('language pricing uses Gateway per-token rates', () => {
@@ -56,7 +55,7 @@ test('media and embedding calculators use Gateway fields', () => {
   assert.equal(calculateGatewayEmbeddingCostOrNull({ input: '0.00000002' }, 1_000), 0.00002)
 })
 
-test('image pricing supports Gateway token rates and requires measured or reserved usage', () => {
+test('image pricing supports Gateway token rates and requires measured usage', () => {
   const pricing = {
     input: '0.000005',
     output: '0.000032',
@@ -69,11 +68,6 @@ test('image pricing supports Gateway token rates and requires measured or reserv
     }),
     0.012528,
   )
-  assert.ok(
-    (calculateGatewayImageCostOrNull(
-      'openai/gpt-image-1.5',
-      pricing,
-      IMAGE_GENERATION_RESERVATION_USAGE,
-    ) ?? 0) > 0,
-  )
+  // A zero-usage probe only tells whether the model can be charged.
+  assert.equal(calculateGatewayImageCostOrNull('openai/gpt-image-1.5', pricing, { inputTokens: 0, outputTokens: 0 }), 0)
 })

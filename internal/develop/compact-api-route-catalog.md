@@ -159,7 +159,6 @@ For a description of what each route does and its associated implementation file
 - `DELETE, GET, PATCH, POST /api/v1/conversations`
 - `POST /api/v1/conversations/run/approval`
 - `POST /api/v1/conversations/run/input`
-- `POST /api/v1/conversations/run/resources`
 - `POST /api/v1/conversations/run/metrics-event`
 - `GET /api/v1/conversations/run/metrics`
 - `GET /api/v1/conversations/run/remote/artifacts/[artifactId]`
