@@ -121,6 +121,12 @@ release leases and preserve valid credentials and saved selections. Device sign-
 continues polling after retryable errors until completion or authorization expiry;
 terminal failures stop the flow. Definite
 credential rejection and uncertain rotation outcomes remain fail-closed.
+Cancelling sign-in always closes the dialog at once. Deleting the pending
+connection runs afterwards as a best effort (a 404 counts as done), and a
+sign-in that finishes starting after Cancel is deleted instead of shown. If
+cleanup fails (for example `disconnect` reports "Subscription cleanup is
+pending" while a device poll is still settling), the pending connection stays
+in the provider list until it is removed there.
 
 Catalog reconciliation removes selections only when a successful catalog
 update proves a selected model is no longer present. Temporary inference
