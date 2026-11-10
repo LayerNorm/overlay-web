@@ -86,6 +86,13 @@ settings:
 
 ### Notes on choices
 
+- Slack installation and channel management are workspace-admin/owner operations.
+  Channel bindings target the server-resolved workspace Chief; specialist bindings
+  remain stored for migration but do not route messages. Only public, non-shared
+  channels are eligible; DMs, private channels and Slack Connect are disabled.
+  The bindings API is workspace-scoped (omit `agentId` on GET/POST).
+  Disconnect with `DELETE /api/v1/surfaces/connections?connectionId=…`.
+
 - **`agent_view`** — Slack's native agent surface: per-message threads, Working
   indicator, native stop button, session titles. New Slack apps can only use
   `agent_view` (legacy `assistant_view` deprecated Aug 2026). Enabled on the

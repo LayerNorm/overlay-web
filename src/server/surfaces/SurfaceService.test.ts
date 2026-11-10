@@ -48,6 +48,7 @@ function agent(overrides: Partial<WorkspaceAgentDirectoryItem> = {}): WorkspaceA
     name: 'Scout',
     instructions: 'Be helpful.',
     harness: 'overlay',
+    agentRole: 'workspace_chief',
     modelId: 'openrouter/free',
     allowedToolIds: [],
     invocationPolicy: 'mention',
@@ -73,6 +74,7 @@ function serviceWith(args: {
   } as unknown as SurfaceRepository
   const agents = {
     get: async () => args.agent ?? null,
+    list: async () => args.agent ? [args.agent] : [],
   } as unknown as WorkspaceAgentRepository
   return new SurfaceService({
     repository,
@@ -130,10 +132,10 @@ const memberActor = {
   workspaceRole: 'member' as const,
 }
 
-test('canBindAgent is true for members on workspace agents', async () => {
+test('canBindAgent is true for admins on the workspace Chief', async () => {
   const service = serviceWith({ agent: agent() })
   assert.equal(await service.canBindAgent({
-    actor: memberActor, workspaceId: 'workspace_1', agentId: 'agent_1',
+    actor: { ...memberActor, workspaceRole: 'admin' }, workspaceId: 'workspace_1', agentId: 'agent_1',
   }), true)
 })
 
@@ -151,11 +153,11 @@ test('canBindAgent is false for guests and non-creators of personal agents', asy
   assert.equal(await personal.canBindAgent({
     actor: memberActor, workspaceId: 'workspace_1', agentId: 'agent_1',
   }), false)
-  // Personal agent, actor IS the creator.
+  // Personal ownership does not grant Slack management.
   assert.equal(await personal.canBindAgent({
     actor: { ...memberActor, principalId: 'principal_creator_1' },
     workspaceId: 'workspace_1', agentId: 'agent_1',
-  }), true)
+  }), false)
   // Missing agent — a miss must not turn into a thrown error for the UI.
   assert.equal(await serviceWith({ agent: null }).canBindAgent({
     actor: memberActor, workspaceId: 'workspace_1', agentId: 'agent_1',
@@ -247,11 +249,11 @@ test('degradeConnectionByTeam no-ops for unknown teams and missing ids', async (
   assert.equal(updates.length, 0)
 })
 
-test('several agents can share a channel; the same agent cannot bind twice', async () => {
+test('only an admin can bind the server-resolved Chief to an eligible channel', async () => {
   const rows: SurfaceBinding[] = []
   const agents: Record<string, WorkspaceAgentDirectoryItem> = {
     agent_1: agent({ id: 'agent_1', name: 'PR agent' }),
-    agent_2: agent({ id: 'agent_2', name: 'Product Agent' }),
+    agent_2: agent({ id: 'agent_2', name: 'Product Agent', agentRole: 'agent' }),
   }
   const repository = {
     getConnection: async () => connection(),
@@ -263,24 +265,45 @@ test('several agents can share a channel; the same agent cannot bind twice', asy
   let nextId = 0
   const service = new SurfaceService({
     repository,
-    agents: { get: async ({ agentId }: { agentId: string }) => agents[agentId] ?? null } as unknown as WorkspaceAgentRepository,
-    channelLister: async () => [],
+    agents: {
+      get: async ({ agentId }: { agentId: string }) => agents[agentId] ?? null,
+      list: async () => Object.values(agents),
+    } as unknown as WorkspaceAgentRepository,
+    channelLister: async () => [{ id: 'C1', name: 'general', isMember: true }],
     resolvePrincipal: async (principalId) => ({ id: principalId, userId: 'user_creator' }) as never,
     id: () => `id_${++nextId}`,
   })
-  const bind = (agentId: string) => service.createBinding({
-    actor: memberActor,
+  const bind = (agentId?: string, channelId = 'C1', actor = { ...memberActor, workspaceRole: 'admin' as const }) => service.createBinding({
+    actor,
     workspaceId: 'workspace_1',
     agentId,
     connectionId: 'surface_connection_1',
-    channelId: 'C1',
+    channelId,
     channelName: 'general',
   })
 
-  await bind('agent_1')
-  await bind('agent_2')
+  await assert.rejects(service.createBinding({ actor: memberActor, workspaceId: 'workspace_1', connectionId: 'surface_connection_1', channelId: 'C1' }), /admin or owner/)
+  await assert.rejects(bind('agent_2'), /Only the workspace Chief/)
+  for (const channelId of ['D1', 'G1', 'Cshared']) await assert.rejects(bind(undefined, channelId), /Only public, non-shared/)
+  await bind()
   await assert.rejects(bind('agent_1'), /already connected to the agent/)
 
   const inbound = await service.resolveInboundBindings({ platform: 'slack', externalTeamId: 'T1', channelId: 'C1' })
-  assert.deepEqual(inbound.map(({ agent: bound }) => bound.name), ['PR agent', 'Product Agent'])
+  assert.deepEqual(inbound.map(({ agent: bound }) => bound.name), ['PR agent'])
+  rows.push(binding({ id: 'legacy', agentId: 'agent_2' }))
+  assert.equal((await service.resolveInboundBindings({ platform: 'slack', externalTeamId: 'T1', channelId: 'C1' })).length, 1)
+})
+
+test('legacy specialist bindings never route and non-admins cannot manage connections or channels', async () => {
+  const service = serviceWith({ connection: connection(), binding: binding(), agent: agent({ agentRole: 'agent' }) })
+  assert.deepEqual(await service.resolveInboundBindings({ platform: 'slack', externalTeamId: 'T1', channelId: 'C1' }), [])
+  for (const workspaceRole of ['member', 'guest'] as const) {
+    const actor = { ...memberActor, workspaceRole }
+    assert.throws(() => service.requireManager(actor), /admin or owner/)
+    await assert.rejects(service.requireBindableAgent({ actor, workspaceId: 'workspace_1', agentId: 'agent_1' }), /admin or owner/)
+    await assert.rejects(service.removeBinding({ actor, workspaceId: 'workspace_1', bindingId: 'legacy' }), /admin or owner/)
+    await assert.rejects(service.disconnect({ actor, workspaceId: 'workspace_1', connectionId: 'connection' }), /admin or owner/)
+    await assert.rejects(service.registerConnection({ actor, workspaceId: 'workspace_1', platform: 'slack', externalTeamId: 'T1', installedByUserId: actor.userId }), /admin or owner/)
+    await assert.rejects(service.listChannels({ actor, workspaceId: 'workspace_1', connectionId: 'connection', adapter: {} }), /admin or owner/)
+  }
 })

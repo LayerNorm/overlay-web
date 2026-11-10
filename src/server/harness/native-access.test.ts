@@ -177,7 +177,7 @@ const surfaceExecution = {
 const surfaceSource = {
   binding: { id: 'binding', connectionId: 'connection', channelId: 'channel', agentId: 'agent', status: 'active' },
   connection: { id: 'connection', platform: 'slack', externalTeamId: 'team', workspaceId: 'workspace', status: 'active' },
-  agent: { id: 'agent', principalId: 'agent-principal', harness: 'overlay', allowedToolIds: [], permissionMode: 'ask' },
+  agent: { id: 'agent', agentRole: 'workspace_chief', principalId: 'agent-principal', harness: 'overlay', allowedToolIds: [], permissionMode: 'ask' },
   creatorUserId: 'human',
   creatorPrincipalId: 'human-principal',
 }

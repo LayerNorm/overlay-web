@@ -11,7 +11,6 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
  * different account.
  */
 export interface SlackConnectState {
-  agentId: string
   workspaceId: string
   userId: string
   returnTo?: string
@@ -67,7 +66,9 @@ export function slackAuthorizeUrl(args: {
 
 export function sealSlackConnectState(state: SlackConnectState): string {
   const payload = Buffer.from(JSON.stringify({
-    ...state,
+    workspaceId: state.workspaceId,
+    userId: state.userId,
+    returnTo: sanitizeReturnTo(state.returnTo),
     expiresAt: Date.now() + STATE_TTL_MS,
   })).toString('base64url')
   const signature = createHmac('sha256', signingKey())
@@ -91,10 +92,9 @@ export function openSlackConnectState(value: string | null | undefined): SlackCo
   try {
     const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as
       SlackConnectState & { expiresAt?: number }
-    if (!parsed.agentId || !parsed.workspaceId || !parsed.userId) return null
+    if (!parsed.workspaceId || !parsed.userId || 'agentId' in parsed) return null
     if (!parsed.expiresAt || parsed.expiresAt < Date.now()) return null
     return {
-      agentId: parsed.agentId,
       workspaceId: parsed.workspaceId,
       userId: parsed.userId,
       returnTo: parsed.returnTo,

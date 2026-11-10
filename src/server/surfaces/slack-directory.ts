@@ -4,6 +4,7 @@ import type { SurfaceConnection } from '@overlay/workspace-contracts'
 import type { SlackAdapter } from '@chat-adapter/slack'
 import { degradeSlackConnectionByTeam, isSlackTokenRevokedError } from './slack-lifecycle'
 import { SurfaceServiceError, type SurfaceChannelOption } from './SurfaceService'
+import { isSupportedSlackChannel } from '@/shared/surfaces/slack-channel-policy'
 
 /**
  * Lists the channels a connected Slack workspace exposes for binding. Runs
@@ -38,18 +39,20 @@ export async function listSlackChannels(
     return await adapter.withBotToken(
       installation.botToken,
       async () => {
-        const result = await adapter.webClient.conversations.list({
-          types: 'public_channel,private_channel',
-          exclude_archived: true,
-          limit: 200,
-        })
-        return (result.channels ?? [])
-          .filter((channel) => channel.id && channel.name)
-          .map((channel) => ({
-            id: channel.id!,
-            name: channel.name!,
-            isMember: channel.is_member === true,
-          }))
+        const channels: SurfaceChannelOption[] = []
+        let cursor: string | undefined
+        do {
+          const result = await adapter.webClient.conversations.list({
+            types: 'public_channel', exclude_archived: true, limit: 200, cursor,
+          })
+          for (const channel of result.channels ?? []) {
+            if (channel.id && channel.name && isSupportedSlackChannel(channel)) {
+              channels.push({ id: channel.id, name: channel.name, isMember: channel.is_member === true })
+            }
+          }
+          cursor = result.response_metadata?.next_cursor || undefined
+        } while (cursor)
+        return channels
       },
       { installationId: connection.externalTeamId },
     )
@@ -67,4 +70,13 @@ export async function listSlackChannels(
     }
     throw error
   }
+}
+
+export async function isSlackChannelEnabledAudience(adapter: SlackAdapter, teamId: string, channelId: string): Promise<boolean> {
+  const installation = await adapter.getInstallation(teamId)
+  if (!installation?.botToken) return false
+  return await adapter.withBotToken(installation.botToken, async () => {
+    const result = await adapter.webClient.conversations.info({ channel: channelId })
+    return isSupportedSlackChannel(result.channel)
+  }, { installationId: teamId })
 }

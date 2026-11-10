@@ -12,7 +12,7 @@ vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
 vi.mock('@/server/conversations/ActConversationRepository', () => ({ asConversationId: (id: string) => id }))
 
 const execution: SurfaceTurnExecution = {
-  turnId: 'surface:slack:binding:message',
+  turnId: 'surface:slack:team:channel:message',
   workflowRunId: 'workflow',
   actorUserId: 'user',
   workspaceId: 'workspace',
@@ -38,7 +38,7 @@ const execution: SurfaceTurnExecution = {
 const source = {
   binding: { id: 'binding', connectionId: 'connection', channelId: 'channel', agentId: 'agent', status: 'active' },
   connection: { id: 'connection', platform: 'slack', externalTeamId: 'team', workspaceId: 'workspace', status: 'active' },
-  agent: { id: 'agent', principalId: 'agent-principal', harness: 'overlay', allowedToolIds: ['read_file'], permissionMode: 'ask' },
+  agent: { id: 'agent', agentRole: 'workspace_chief', principalId: 'agent-principal', harness: 'overlay', allowedToolIds: ['read_file'], permissionMode: 'ask' },
   creatorUserId: 'user',
   creatorPrincipalId: 'principal',
 }
@@ -135,4 +135,15 @@ test('persisted source rejects mismatched actor, assistant, run, or workflow own
   await expect(assertPersistedSurfaceSource(execution, 'workflow')).rejects.toThrow('delivery ownership')
   mocks.run.mockResolvedValueOnce({ ...run, workflowRunId: 'foreign-workflow' })
   await expect(assertPersistedSurfaceSource(execution, 'workflow')).rejects.toThrow('delivery ownership')
+})
+
+test('a specialist source is rejected even if its binding is active', async () => {
+  mocks.bindings.mockResolvedValueOnce([{ ...source, agent: { ...source.agent, agentRole: 'agent' } }])
+  await expect(assertPersistedSurfaceSource(execution, 'workflow')).rejects.toThrow('authorization')
+})
+
+test('persisted Chief turns retain their legacy identity while new turns use the binding-independent identity', async () => {
+  const legacy = { ...execution, turnId: 'surface:slack:binding:message' }
+  mocks.run.mockResolvedValueOnce({ ...run, turnId: legacy.turnId })
+  await expect(assertPersistedSurfaceSource(legacy, 'workflow')).resolves.toMatchObject({ run: { turnId: legacy.turnId } })
 })

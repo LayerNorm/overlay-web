@@ -34,6 +34,7 @@ test('surface admission claims an authentic native room delivery and projects/re
     await ctx.db.insert('workspacePrincipals', { principalId: 'agent-principal', workspaceId: 'ws', type: 'agent',
       agentId: 'agent', displayName: 'Agent', createdAt: now, updatedAt: now })
     await ctx.db.insert('workspaceAgentDefinitions', { agentId: 'agent', workspaceId: 'ws', principalId: 'agent-principal',
+      agentRole: 'workspace_chief',
       name: 'Agent', instructions: '', harness: 'overlay', modelId: 'openrouter/free', allowedToolIds: [],
       invocationPolicy: 'mention', createdByPrincipalId: 'human', createdAt: now, updatedAt: now })
     await ctx.db.insert('surfaceConnections', { id: 'connection', workspaceId: 'ws', platform: 'slack',
@@ -52,7 +53,7 @@ test('surface admission claims an authentic native room delivery and projects/re
     return { conversationId }
   })
   const begin = {
-    serverSecret: secret, turnId: 'surface:slack:binding:message', workflowRunId: 'workflow',
+    serverSecret: secret, turnId: 'surface:slack:team:channel:message', workflowRunId: 'workflow',
     actorUserId: 'user', workspaceId: 'ws', creatorPrincipalId: 'human', agentId: 'agent',
     agentPrincipalId: 'agent-principal', platform: 'slack' as const, teamId: 'team', channelId: 'channel',
     threadId: 'thread', messageId: 'message', bindingId: 'binding', connectionId: 'connection',
@@ -77,6 +78,44 @@ test('surface admission claims an authentic native room delivery and projects/re
   })
   expect(duplicate.owner).toBe('foreign')
   expect((await convex.mutation(mutation('surfaces/surfaceExecutions:beginSurfaceTurn'), begin)).owner).toBe('same')
+  await convex.run(async ctx => {
+    const binding = await ctx.db.query('surfaceBindings').withIndex('by_entityId', q => q.eq('id', 'binding')).unique()
+    await ctx.db.patch(binding!._id, { status: 'removed' })
+    await ctx.db.insert('surfaceBindings', { id: 'rebound', connectionId: 'connection', agentId: 'agent', channelId: 'channel',
+      status: 'active', createdByUserId: 'user', createdAt: now, updatedAt: now })
+    await ctx.db.patch(fixture.conversationId, { surfaceBindingId: 'rebound' })
+  })
+  const rebound = await convex.mutation(mutation('surfaces/surfaceExecutions:beginSurfaceTurn'), {
+    ...begin, bindingId: 'rebound', workflowRunId: 'rebound-workflow',
+  })
+  expect(rebound.owner).toBe('foreign')
+  expect(rebound.execution.harnessRunId).toBe(execution.harnessRunId)
+  await convex.run(async ctx => {
+    const stored = await ctx.db.query('surfaceTurnExecutions').withIndex('by_turnId', q => q.eq('turnId', begin.turnId)).unique()
+    await ctx.db.patch(stored!._id, { turnId: 'surface:slack:binding:message' })
+  })
+  const legacyRebound = await convex.mutation(mutation('surfaces/surfaceExecutions:beginSurfaceTurn'), {
+    ...begin, bindingId: 'rebound', workflowRunId: 'legacy-rebound-workflow',
+  })
+  expect(legacyRebound.owner).toBe('foreign')
+  expect(legacyRebound.execution.harnessRunId).toBe(execution.harnessRunId)
+  await convex.run(async ctx => {
+    expect(await ctx.db.query('surfaceTurnExecutions').collect()).toHaveLength(1)
+    const binding = await ctx.db.query('surfaceBindings').withIndex('by_entityId', q => q.eq('id', 'rebound')).unique()
+    await ctx.db.patch(binding!._id, { status: 'removed' })
+    const original = await ctx.db.query('surfaceBindings').withIndex('by_entityId', q => q.eq('id', 'binding')).unique()
+    await ctx.db.patch(original!._id, { status: 'active' })
+    const stored = await ctx.db.query('surfaceTurnExecutions').withIndex('by_turnId', q => q.eq('turnId', 'surface:slack:binding:message')).unique()
+    await ctx.db.patch(stored!._id, { turnId: begin.turnId })
+    await ctx.db.patch(fixture.conversationId, { surfaceBindingId: 'binding' })
+    const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', 'agent')).unique()
+    await ctx.db.patch(agent!._id, { agentRole: 'agent' })
+  })
+  await expect(convex.mutation(mutation('surfaces/surfaceExecutions:beginSurfaceTurn'), begin)).rejects.toThrow('authority changed')
+  await convex.run(async ctx => {
+    const agent = await ctx.db.query('workspaceAgentDefinitions').withIndex('by_agentId', q => q.eq('agentId', 'agent')).unique()
+    await ctx.db.patch(agent!._id, { agentRole: 'workspace_chief' })
+  })
   const unowned = await convex.mutation(mutation('collaboration/directMessages:startAgentTurn'), {
     actorUserId: 'user', agentId: 'agent', authorPrincipalId: 'agent-principal',
     initiatorPrincipalId: 'human', clientNonce: 'unowned-assistant',
@@ -110,7 +149,7 @@ test('surface admission claims an authentic native room delivery and projects/re
   expect(admission.runId).toBe(execution.harnessRunId)
   const failure = { code: 'SURFACE_AUTHORIZATION_CHANGED', message: 'Surface workspace authority changed.', retryable: false }
   const failedBegin = await convex.mutation(mutation('surfaces/surfaceExecutions:beginSurfaceTurn'), {
-    ...begin, turnId: 'surface:slack:binding:failed-message', messageId: 'failed-message',
+    ...begin, turnId: 'surface:slack:team:channel:failed-message', messageId: 'failed-message',
   })
   const failedExecution = failedBegin.execution
   await convex.mutation(mutation('harness/runs:admit'), {
@@ -250,10 +289,10 @@ test('surface admission claims an authentic native room delivery and projects/re
     await ctx.db.patch(execution.agentRunId as never, { runner: 'tool_loop', executionEngine: undefined })
   })
   await expect(convex.mutation(mutation('surfaces/surfaceExecutions:beginSurfaceTurn'), {
-    ...begin, turnId: 'surface:slack:binding:retired-message', messageId: 'retired-message',
+    ...begin, turnId: 'surface:slack:team:channel:retired-message', messageId: 'retired-message',
   })).rejects.toThrow('native_runner_retired')
   await convex.run(async ctx => {
     const messages = await ctx.db.query('conversationMessages').collect()
-    expect(messages.some(message => message.turnId === 'surface:slack:binding:retired-message')).toBe(false)
+    expect(messages.some(message => message.turnId === 'surface:slack:team:channel:retired-message')).toBe(false)
   })
 })

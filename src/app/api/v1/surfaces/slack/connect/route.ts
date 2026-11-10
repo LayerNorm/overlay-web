@@ -54,9 +54,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(signIn.toString(), { headers: NO_STORE })
   }
 
-  const agentId = params.get('agentId')?.trim()
-  if (!agentId) return failure(returnTo, 'missing_agent')
-
   if (!slackConfigured()) {
     logger.warn('[surfaces] Slack connect requested without Slack env configured')
     return failure(returnTo, 'slack_not_configured')
@@ -68,18 +65,13 @@ export async function GET(request: NextRequest) {
       session.user.id,
       params.get('workspaceId')?.trim() || undefined,
     )
-    await serverContext.surfaceService.requireBindableAgent({
-      actor: {
-        userId: session.user.id,
-        principalId: access.principal.id,
-        workspaceRole: access.membership.role,
-      },
-      workspaceId: access.workspace.id,
-      agentId,
+    serverContext.surfaceService.requireManager({
+      userId: session.user.id,
+      principalId: access.principal.id,
+      workspaceRole: access.membership.role,
     })
 
     const state = sealSlackConnectState({
-      agentId,
       workspaceId: access.workspace.id,
       userId: session.user.id,
       returnTo,

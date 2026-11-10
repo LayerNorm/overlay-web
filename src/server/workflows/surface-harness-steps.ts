@@ -12,6 +12,7 @@ import { surfaceHarnessTurnId, type SurfaceHarnessAuthentication } from '@/serve
 import type { SurfaceAgentTurnInput } from './surface-agent-turn'
 import type { SurfaceTurnContext } from '@/server/automations/automation-turn-runner'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { resolveSurfaceRequester } from '@/server/surfaces/surface-requester'
 
 type SurfaceSource = Awaited<ReturnType<ReturnType<typeof getOverlayServerContext>['surfaceService']['resolveInboundBindings']>> extends Array<infer Item>
   ? Item
@@ -23,6 +24,7 @@ function sourceSurfaceContext(
   workflowRunId: string,
 ): { authority: SurfaceHarnessAuthentication; turnInput: SurfaceAgentTurnInput } {
   const inbound = input.surface
+  const requester = resolveSurfaceRequester(source)
   const authority: SurfaceHarnessAuthentication = {
     type: 'surface',
     platform: 'slack',
@@ -34,7 +36,7 @@ function sourceSurfaceContext(
     messageId: inbound.messageId,
     agentId: source.agent.id,
     agentPrincipalId: source.agent.principalId!,
-    creatorPrincipalId: source.creatorPrincipalId,
+    creatorPrincipalId: requester.principalId,
     originWorkflowRunId: workflowRunId,
   }
   const surface: SurfaceTurnContext = {
@@ -47,13 +49,13 @@ function sourceSurfaceContext(
     agentAllowedToolIds: source.agent.allowedToolIds,
     agentIsDefault: source.agent.isDefault === true,
     agentPermissionMode: source.agent.permissionMode === 'auto' ? 'auto' : 'ask',
-    creatorPrincipalId: source.creatorPrincipalId,
+    creatorPrincipalId: requester.principalId,
   }
   return {
     authority,
     turnInput: {
       ...input,
-      userId: source.creatorUserId,
+      userId: requester.userId,
       name: source.agent.name,
       modelId: source.agent.modelId ?? DEFAULT_MODEL_ID,
       workspaceId: source.connection.workspaceId,

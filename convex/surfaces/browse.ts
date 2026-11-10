@@ -1,12 +1,13 @@
 import { v } from 'convex/values'
+import { canManageWorkspace } from '@overlay/workspace-contracts'
 import { query } from '../_generated/server'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { canSee } from '../agents/directory'
 
 /**
  * An agent's surface connections and channel bindings, live, as the server's surface rules allow: the agent must be
- * visible and not archived; bindings are scoped to the workspace's connections; `canBind` is false for guests and,
- * on a creator-only agent, for everyone but its creator. Bot tokens live elsewhere and never appear here.
+ * visible and not archived; bindings are scoped to the workspace's connections. Only workspace managers can
+ * bind the workspace Chief. Bot tokens live elsewhere and never appear here.
  */
 export const forAgent = query({
   args: { workspaceId: v.string(), agentId: v.string() },
@@ -24,7 +25,7 @@ export const forAgent = query({
     const bindings = (await ctx.db.query('surfaceBindings').withIndex('by_agentId', q => q.eq('agentId', agentId)).collect())
       .filter(binding => connectionIds.has(binding.connectionId))
     const role = viewer.membership.role
-    const canBind = role !== 'guest' && (agent.visibility !== 'creator' || agent.createdByPrincipalId === viewer.principal.principalId)
+    const canBind = canManageWorkspace(role) && agent.agentRole === 'workspace_chief' && agent.harness === 'overlay'
     return {
       connections: connections.map(connection => ({
         id: connection.id,

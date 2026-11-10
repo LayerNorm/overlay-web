@@ -12,7 +12,9 @@ import type {
   WorkspacePrincipal,
 } from '@overlay/workspace-contracts'
 import type { WorkspaceAgentRepository } from '@/server/agents/WorkspaceAgentRepository'
-import { canCreateAgent, canSeeAgent } from '@/server/agents/WorkspaceAgentService'
+import { canManageWorkspace } from '@overlay/workspace-contracts'
+import { canSeeAgent } from '@/server/agents/WorkspaceAgentService'
+import { logger } from '@/server/observability/logger'
 import type { SurfaceRepository } from './SurfaceRepository'
 
 export class SurfaceServiceError extends Error {
@@ -39,9 +41,7 @@ export type SurfaceActor = {
 export type { SurfaceChannelOption } from '@overlay/workspace-contracts'
 
 /**
- * Platform channel directory — resolves the channels a bound agent can answer
- * in. Implemented per platform (Slack conversations.list via the Chat SDK
- * adapter); injected so the service stays platform-neutral.
+ * Trusted platform directory of eligible channels, excluding unsupported audiences.
  */
 export type SurfaceChannelLister = (
   connection: SurfaceConnection,
@@ -106,10 +106,12 @@ export class SurfaceService {
   }
 
   async listChannels(args: {
+    actor: SurfaceActor
     workspaceId: string
     connectionId: string
     adapter: unknown
   }): Promise<SurfaceChannelOption[]> {
+    this.requireManager(args.actor)
     const connection = await this.requireWorkspaceConnection(args)
     return await this.channelLister(connection, args.adapter)
   }
@@ -117,12 +119,17 @@ export class SurfaceService {
   async createBinding(args: {
     actor: SurfaceActor
     workspaceId: string
-    agentId: string
+    agentId?: string
     connectionId: string
     channelId: string
     channelName?: string | null
+    adapter?: unknown
   }): Promise<SurfaceBinding> {
-    await this.requireBindableAgent(args)
+    this.requireManager(args.actor)
+    const chief = await this.resolveWorkspaceChief(args.workspaceId)
+    if (args.agentId !== undefined && args.agentId !== chief.id) {
+      throw new SurfaceServiceError('forbidden', 'Only the workspace Chief can be bound to Slack')
+    }
     const connection = await this.requireWorkspaceConnection(args)
     if (connection.status !== 'active') {
       throw new SurfaceServiceError('conflict', 'Reconnect the surface before adding channels')
@@ -131,10 +138,10 @@ export class SurfaceService {
     if (!channelId) {
       throw new SurfaceServiceError('validation', 'channelId is required')
     }
-    // Several agents may share a channel (people address one by name); only a
-    // duplicate binding of the same agent conflicts.
+    const channel = (await this.channelLister(connection, args.adapter)).find(row => row.id === channelId)
+    if (!channel) throw new SurfaceServiceError('validation', 'Only public, non-shared Slack channels can be enabled')
     const existing = (await this.repository.listBindingsByChannel(connection.id, channelId))
-      .find((row) => row.agentId === args.agentId && row.status === 'active')
+      .find((row) => row.agentId === chief.id && row.status === 'active')
     if (existing) {
       throw new SurfaceServiceError('conflict', 'This channel is already connected to the agent')
     }
@@ -142,9 +149,9 @@ export class SurfaceService {
     return await this.repository.createBinding({
       id: `surface_binding_${this.id()}`,
       connectionId: connection.id,
-      agentId: args.agentId,
+      agentId: chief.id,
       channelId,
-      channelName: args.channelName?.trim() || null,
+      channelName: channel.name,
       status: 'active',
       createdByUserId: args.actor.userId,
       createdAt: now,
@@ -157,19 +164,13 @@ export class SurfaceService {
     workspaceId: string
     bindingId: string
   }): Promise<SurfaceBinding> {
+    this.requireManager(args.actor)
     const binding = await this.repository.getBinding(args.bindingId)
     if (!binding) throw new SurfaceServiceError('not_found', 'Surface binding not found')
     const connection = await this.repository.getConnection(binding.connectionId)
     if (!connection || connection.workspaceId !== args.workspaceId) {
       throw new SurfaceServiceError('not_found', 'Surface binding not found')
     }
-    // Removing needs the same authority as binding: the agent must be one the
-    // actor could connect in the first place.
-    await this.requireBindableAgent({
-      actor: args.actor,
-      workspaceId: args.workspaceId,
-      agentId: binding.agentId,
-    })
     return await this.repository.updateBinding(binding.id, {
       status: 'removed',
       updatedAt: this.now(),
@@ -183,6 +184,7 @@ export class SurfaceService {
    * webhook routing can never fork between two customers.
    */
   async registerConnection(args: {
+    actor: SurfaceActor
     workspaceId: string
     platform: SurfacePlatform
     externalTeamId: string
@@ -191,6 +193,8 @@ export class SurfaceService {
     botUserId?: string | null
     installedByUserId: string
   }): Promise<SurfaceConnection> {
+    this.requireManager(args.actor)
+    if (args.actor.userId !== args.installedByUserId) throw new SurfaceServiceError('forbidden', 'Installer identity changed')
     const existing = await this.repository.findConnectionByTeam(args.platform, args.externalTeamId)
     if (existing && existing.workspaceId !== args.workspaceId) {
       throw new SurfaceServiceError(
@@ -243,13 +247,6 @@ export class SurfaceService {
     return true
   }
 
-  /**
-   * Webhook routing: platform team + channel → live connection → every active
-   * binding → bound agent → creator identity. Several agents may share a
-   * channel; the caller picks one (routeSurfaceMessage). Misses drop out, so
-   * removed bindings, uninstalled workspaces, and archived agents all yield
-   * an empty list and inbound handlers no-op quietly.
-   */
   async resolveInboundBindings(args: {
     platform: SurfacePlatform
     externalTeamId: string
@@ -267,7 +264,13 @@ export class SurfaceService {
         agentId: binding.agentId,
         workspaceId: connection.workspaceId,
       })
-      if (!agent || agent.archivedAt) return null
+      if (!agent || agent.workspaceId !== connection.workspaceId || agent.archivedAt
+        || agent.agentRole !== 'workspace_chief' || agent.harness !== 'overlay') {
+        logger.info('[surfaces/slack] inbound binding ignored', {
+          code: 'not_workspace_chief', workspaceId: connection.workspaceId, bindingId: binding.id, channelId: args.channelId,
+        })
+        return null
+      }
       const principal = await this.resolvePrincipal(agent.createdByPrincipalId)
       if (!principal?.userId) return null
       return {
@@ -282,26 +285,37 @@ export class SurfaceService {
   }
 
 
-  /**
-   * Binding gate: the actor must be able to see the agent (existence check is
-   * inside), must not be a guest, and creator-only agents can only be connected
-   * by their creator.
-   */
   async requireBindableAgent(args: {
     actor: SurfaceActor
     workspaceId: string
     agentId: string
   }): Promise<void> {
+    this.requireManager(args.actor)
     const agent = await this.requireVisibleAgent(args)
-    if (!canCreateAgent(args.actor.workspaceRole)) {
-      throw new SurfaceServiceError('forbidden', 'Guests cannot connect agents to surfaces')
+    if (agent.agentRole !== 'workspace_chief' || agent.harness !== 'overlay') {
+      throw new SurfaceServiceError('forbidden', 'Only the workspace Chief can be bound to Slack')
     }
-    if (agent.visibility === 'creator' && agent.createdByPrincipalId !== args.actor.principalId) {
-      throw new SurfaceServiceError(
-        'forbidden',
-        'Only the creator can connect a personal agent to a surface',
-      )
+  }
+
+  requireManager(actor: SurfaceActor): void {
+    if (!canManageWorkspace(actor.workspaceRole)) {
+      throw new SurfaceServiceError('forbidden', 'Workspace admin or owner required to manage Slack')
     }
+  }
+
+  async resolveWorkspaceChief(workspaceId: string): Promise<WorkspaceAgentDirectoryItem> {
+    const chiefs = (await this.agents.list({ workspaceId })).filter(agent => (
+      agent.workspaceId === workspaceId && agent.agentRole === 'workspace_chief'
+        && !agent.archivedAt && agent.harness === 'overlay' && agent.principalId
+    ))
+    if (chiefs.length !== 1) throw new SurfaceServiceError('conflict', 'Workspace Chief is unavailable')
+    return chiefs[0]
+  }
+
+  async disconnect(args: { actor: SurfaceActor; workspaceId: string; connectionId: string }): Promise<SurfaceConnection> {
+    this.requireManager(args.actor)
+    const connection = await this.requireWorkspaceConnection(args)
+    return await this.repository.updateConnection(connection.id, { status: 'uninstalled', updatedAt: this.now() })
   }
 
   /**

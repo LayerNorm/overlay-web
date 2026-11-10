@@ -4,6 +4,7 @@ import { FatalError } from 'workflow'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { surfaceHarnessTurnId, type SurfaceHarnessIdentity } from './surface-authority'
+import { isPersistedSlackTurnIdentity } from '@/shared/surfaces/surface-turn-identity'
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 
 type ServerContext = ReturnType<typeof getOverlayServerContext>
@@ -21,7 +22,7 @@ function assertSourceBinding(source: SurfaceSource | undefined, input: {
     || source.connection.id !== expected.connectionId || source.connection.workspaceId !== input.workspaceId
     || source.binding.connectionId !== expected.connectionId || source.binding.channelId !== expected.channelId
     || source.binding.agentId !== expected.agentId || source.agent.id !== expected.agentId
-    || source.agent.harness !== 'overlay' || source.agent.archivedAt || !source.agent.principalId
+    || source.agent.harness !== 'overlay' || source.agent.agentRole !== 'workspace_chief' || source.agent.archivedAt || !source.agent.principalId
     || source.creatorUserId !== input.actorUserId
     || (expected.agentPrincipalId && source.agent.principalId !== expected.agentPrincipalId)
     || (expected.creatorPrincipalId && source.creatorPrincipalId !== expected.creatorPrincipalId)) {
@@ -75,7 +76,7 @@ export async function assertPersistedSurfaceSource(
   execution: SurfaceTurnExecution,
   expectedWorkflowRunId?: string,
 ) {
-  if (execution.platform !== 'slack' || execution.turnId !== `surface:slack:${execution.bindingId}:${execution.messageId}`
+  if (execution.platform !== 'slack' || !isPersistedSlackTurnIdentity(execution)
     || execution.harnessRunId !== `workspace:${execution.agentRunId}`
     || (expectedWorkflowRunId && execution.workflowRunId !== expectedWorkflowRunId)) {
     throw new FatalError('Persisted surface execution identity changed.')
@@ -88,7 +89,7 @@ export async function assertPersistedSurfaceSource(
   }
   const source = await assertSurfaceAdmissionSource({
     actorUserId: execution.actorUserId, workspaceId: execution.workspaceId,
-    turnId: execution.turnId, surface: identity,
+    turnId: surfaceHarnessTurnId(identity), surface: identity,
   })
   if (source.agent.principalId !== execution.agentPrincipalId
     || source.creatorPrincipalId !== execution.creatorPrincipalId) {

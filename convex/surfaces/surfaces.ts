@@ -145,9 +145,13 @@ export const createBinding = mutation({
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    // Several agents can share a channel; the key is (connection, channel,
-    // agent). A re-bind of a removed row reactivates it instead of creating a
-    // duplicate.
+    const connection = await ctx.db.query('surfaceConnections')
+      .withIndex('by_entityId', q => q.eq('id', args.connectionId)).unique()
+    const agent = await ctx.db.query('workspaceAgentDefinitions')
+      .withIndex('by_agentId', q => q.eq('agentId', args.agentId)).unique()
+    if (!connection || connection.status !== 'active' || !agent || agent.archivedAt
+      || agent.workspaceId !== connection.workspaceId || agent.agentRole !== 'workspace_chief'
+      || agent.harness !== 'overlay') throw new Error('Only the workspace Chief can be bound to Slack')
     const existing = (await ctx.db
       .query('surfaceBindings')
       .withIndex('by_connectionId_channelId', (q) => q

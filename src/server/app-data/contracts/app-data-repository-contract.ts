@@ -16,6 +16,8 @@ import type { MemoryRepository } from '@/server/memory'
 import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
 import type { ComputerRepository } from '@/server/computers/ComputerRepository'
 import type { SurfaceRepository } from '@/server/surfaces/SurfaceRepository'
+import type { WorkspaceRepository } from '@/server/workspaces/WorkspaceRepository'
+import type { WorkspaceAgentRepository } from '@/server/agents/WorkspaceAgentRepository'
 import { agentMemoryOwnerId } from '@/shared/agents/agent-memory'
 
 export interface AppDataRepositoryContractBackend {
@@ -24,6 +26,8 @@ export interface AppDataRepositoryContractBackend {
   computers: ComputerRepository
   conversations: ActConversationRepository
   surfaces: SurfaceRepository
+  workspaces: WorkspaceRepository
+  workspaceAgents: WorkspaceAgentRepository
   deleteAccount: (userId: string) => Promise<AccountDeletionResult>
   files: FileRepository
   memories: MemoryRepository
@@ -851,6 +855,12 @@ export async function runAppDataRepositoryContractSuite(
       const surfaces = backend.surfaces
       const workspaceId = `contract_surfaces_ws_${randomUUID()}`
       const now = Date.now()
+      const access = await backend.workspaces.createOrganization({
+        workspaceId, ownerPrincipalId: `principal_${randomUUID()}`, actorUserId: userId,
+        ownerDisplayName: 'Contract owner', name: 'Surface contract', slug: `surface-${randomUUID()}`, now,
+      })
+      await backend.workspaceAgents.ensureChiefs({ workspaceId, actorUserId: userId, actorPrincipalId: access.principal.id, now })
+      const chief = (await backend.workspaceAgents.list({ workspaceId })).find(agent => agent.agentRole === 'workspace_chief')!
       const connection = await surfaces.upsertConnection({
         id: `surface_connection_${randomUUID()}`,
         workspaceId,
@@ -906,7 +916,7 @@ export async function runAppDataRepositoryContractSuite(
       const binding = await surfaces.createBinding({
         id: `surface_binding_${randomUUID()}`,
         connectionId: connection.id,
-        agentId: `contract_agent_${randomUUID()}`,
+        agentId: chief.id,
         channelId: 'C123',
         channelName: 'fundraising',
         status: 'active',
@@ -928,12 +938,11 @@ export async function runAppDataRepositoryContractSuite(
         [binding.id],
       )
 
-      // One binding row per channel: a second create against an active binding
-      // returns it unchanged rather than rebinding the channel.
+      // Repeating the Chief binding reuses its row.
       const duplicate = await surfaces.createBinding({
         id: `surface_binding_${randomUUID()}`,
         connectionId: connection.id,
-        agentId: `contract_agent_${randomUUID()}`,
+        agentId: chief.id,
         channelId: 'C123',
         channelName: null,
         status: 'active',
@@ -944,14 +953,13 @@ export async function runAppDataRepositoryContractSuite(
       assert.equal(duplicate.id, binding.id)
       assert.equal(duplicate.agentId, binding.agentId)
 
-      // Removal is non-destructive; re-binding the same channel reactivates the
-      // row onto the new agent.
+      // Removal is non-destructive; re-binding reactivates the Chief's row.
       const removed = await surfaces.updateBinding(binding.id, {
         status: 'removed',
         updatedAt: now + 6,
       })
       assert.equal(removed.status, 'removed')
-      const reboundAgentId = `contract_agent_${randomUUID()}`
+      const reboundAgentId = chief.id
       const rebound = await surfaces.createBinding({
         id: `surface_binding_${randomUUID()}`,
         connectionId: connection.id,

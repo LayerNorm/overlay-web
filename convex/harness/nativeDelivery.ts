@@ -1,4 +1,5 @@
 import type { Doc } from '../_generated/dataModel'
+import { isPersistedSlackTurnIdentity } from '@/shared/surfaces/surface-turn-identity'
 import type { QueryCtx } from '../_generated/server'
 import { requireAgentAuthor } from '../collaboration/directMessages'
 import type { HarnessAdmission, HarnessSource } from '../../packages/overlay-agent-runtime/src/harness-store'
@@ -27,7 +28,7 @@ async function assertPreboundSurfaceDelivery(
     && execution.turnId === delivery.turnId
     && execution.userMessageId === delivery.userMessageId
     && execution.assistantMessageId === delivery.assistantMessageId
-    && execution.turnId === `surface:slack:${execution.bindingId}:${execution.messageId}`
+    && isPersistedSlackTurnIdentity(execution)
     && conversation.createdByPrincipalId === execution.creatorPrincipalId
     && conversation.externalPlatform === execution.platform
     && conversation.externalChannelId === execution.channelId

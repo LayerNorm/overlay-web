@@ -3,6 +3,7 @@ import { mutation, query } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { startAgentTurnInTransaction } from '../collaboration/directMessages'
 import { failUnclaimedNativeHarnessInTransaction } from '../harness/runs'
+import { slackSurfaceTurnId } from '@/shared/surfaces/surface-turn-identity'
 
 export const beginSurfaceTurn = mutation({
   args: {
@@ -33,7 +34,7 @@ export const beginSurfaceTurn = mutation({
   },
   handler: async (ctx, args) => {
     requireServerSecret(args.serverSecret)
-    if (args.turnId !== `surface:slack:${args.bindingId}:${args.messageId}` || !args.workflowRunId) {
+    if (args.turnId !== slackSurfaceTurnId(args) || !args.workflowRunId) {
       throw new Error('Invalid surface turn identity')
     }
 
@@ -50,7 +51,7 @@ export const beginSurfaceTurn = mutation({
       || !binding || binding.status !== 'active' || binding.connectionId !== connection.id
       || binding.agentId !== args.agentId || binding.channelId !== args.channelId
       || !agent || agent.workspaceId !== args.workspaceId || agent.archivedAt
-      || agent.harness !== 'overlay' || agent.principalId !== args.agentPrincipalId
+      || agent.harness !== 'overlay' || agent.agentRole !== 'workspace_chief' || agent.principalId !== args.agentPrincipalId
       || agent.createdByPrincipalId !== args.creatorPrincipalId
       || !creator || creator.type !== 'human' || creator.archivedAt
       || creator.workspaceId !== args.workspaceId || creator.userId !== args.actorUserId
@@ -64,20 +65,27 @@ export const beginSurfaceTurn = mutation({
     }
 
     const identity = args
-    const existing = await ctx.db.query('surfaceTurnExecutions')
+    let existing = await ctx.db.query('surfaceTurnExecutions')
       .withIndex('by_turnId', q => q.eq('turnId', args.turnId))
       .unique()
+    if (!existing) {
+      const bindings = await ctx.db.query('surfaceBindings')
+        .withIndex('by_connectionId_channelId', q => q.eq('connectionId', args.connectionId).eq('channelId', args.channelId)).collect()
+      const legacy = await Promise.all(bindings.map(row => ctx.db.query('surfaceTurnExecutions')
+        .withIndex('by_turnId', q => q.eq('turnId', `surface:slack:${row.id}:${args.messageId}`)).unique()))
+      existing = legacy.find(row => row !== null) ?? null
+    }
     if (existing) {
       if (existing.actorUserId !== identity.actorUserId || existing.workspaceId !== identity.workspaceId
         || existing.creatorPrincipalId !== identity.creatorPrincipalId || existing.agentId !== identity.agentId
         || existing.agentPrincipalId !== identity.agentPrincipalId || existing.platform !== identity.platform
         || existing.teamId !== identity.teamId || existing.channelId !== identity.channelId
         || existing.threadId !== identity.threadId || existing.messageId !== identity.messageId
-        || existing.bindingId !== identity.bindingId || existing.connectionId !== identity.connectionId
-        || existing.conversationId !== args.conversationId) {
+        || existing.connectionId !== identity.connectionId) {
         throw new Error('Surface turn identity is already owned by a different source')
       }
-      return { owner: existing.workflowRunId === args.workflowRunId ? 'same' as const : 'foreign' as const, execution: existing }
+      return { owner: existing.workflowRunId === args.workflowRunId && existing.bindingId === args.bindingId
+        && existing.conversationId === args.conversationId ? 'same' as const : 'foreign' as const, execution: existing }
     }
 
     const userMessageQuery = await ctx.db.query('conversationMessages')

@@ -1,3 +1,5 @@
+import { slackSurfaceTurnId } from '@/shared/surfaces/surface-turn-identity'
+
 export type SurfaceHarnessIdentity = {
   platform: string
   bindingId: string
@@ -19,6 +21,6 @@ export type SurfaceHarnessAuthentication = SurfaceHarnessIdentity & {
   originWorkflowRunId: string
 }
 
-export function surfaceHarnessTurnId(source: Pick<SurfaceHarnessIdentity, 'bindingId' | 'messageId'>): string {
-  return `surface:slack:${source.bindingId}:${source.messageId}`
+export function surfaceHarnessTurnId(source: Pick<SurfaceHarnessIdentity, 'teamId' | 'channelId' | 'messageId'>): string {
+  return slackSurfaceTurnId(source)
 }

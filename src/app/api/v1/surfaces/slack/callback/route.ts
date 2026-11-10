@@ -64,27 +64,24 @@ export async function GET(request: NextRequest) {
 
   try {
     const serverContext = getOverlayServerContext()
-    // Membership and bind permission are re-checked: the agent or the actor's
-    // role may have changed while the user was on Slack's consent screen.
+    // Recheck the administrator's membership after Slack consent.
     const access = await serverContext.workspaceService.resolveActiveWorkspace(
       state.userId,
       state.workspaceId,
     )
-    await serverContext.surfaceService.requireBindableAgent({
-      actor: {
-        userId: state.userId,
-        principalId: access.principal.id,
-        workspaceRole: access.membership.role,
-      },
-      workspaceId: access.workspace.id,
-      agentId: state.agentId,
-    })
+    const actor = {
+      userId: state.userId,
+      principalId: access.principal.id,
+      workspaceRole: access.membership.role,
+    }
+    serverContext.surfaceService.requireManager(actor)
 
     const result = await (await getSlackAdapter()).handleOAuthCallback(request, {
       redirectUri: slackOAuthRedirectUri(getBaseUrl()),
     })
 
     await serverContext.surfaceService.registerConnection({
+      actor,
       workspaceId: state.workspaceId,
       platform: 'slack',
       externalTeamId: result.teamId,
@@ -98,7 +95,7 @@ export async function GET(request: NextRequest) {
       actorType: 'user',
       actorUserId: state.userId,
       ipAddress: getClientIp(request),
-      metadata: { agentId: state.agentId, teamId: result.teamId },
+      metadata: { workspaceId: state.workspaceId, teamId: result.teamId },
       outcome: 'success',
       resourceId: state.workspaceId,
       resourceType: 'workspace',
@@ -109,7 +106,7 @@ export async function GET(request: NextRequest) {
     })
 
     return NextResponse.redirect(
-      surfaceUrl(returnTo, { surfaceConnected: 'slack', agentId: state.agentId }),
+      surfaceUrl(returnTo, { surfaceConnected: 'slack' }),
       { headers: NO_STORE },
     )
   } catch (error) {
