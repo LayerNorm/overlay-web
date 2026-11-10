@@ -7,16 +7,14 @@ afterEach(() => vi.unstubAllEnvs())
 const input = { actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: ['write', 'read', 'read'],
   modelId: 'fixture/model', paid: true, createdAt: 1_000 }
 
-test('new admissions use v2 lifecycle while only Overlay-funded paid runs use workspace spending', () => {
+test('every admission uses v2 with no per-task spending limit; only Overlay-funded paid runs use the workspace budget', () => {
   expect(personalHarnessPolicy(input)).toEqual({ actorUserId: 'user', workspaceId: 'workspace',
     publicProgressVersion: 1, executionPolicyVersion: 2, spendingMode: 'workspace', allowedToolIds: ['read', 'write'], requiresPlan: false,
-    deadlineAt: 86_401_000, maxCostMicros: 0, maxParallelChildren: 3, maxDepth: 2 })
+    deadlineAt: 86_401_000, maxCostMicros: 0, maxParallelChildren: 16, maxDepth: 5 })
   expect(personalHarnessPolicy({ ...input, paid: false }))
     .toMatchObject({ publicProgressVersion: 1, executionPolicyVersion: 2, spendingMode: 'none', maxCostMicros: 0 })
   expect(personalHarnessPolicy({ ...input, modelId: 'byok/key/model' }))
     .toMatchObject({ publicProgressVersion: 1, executionPolicyVersion: 2, spendingMode: 'external', maxCostMicros: 0 })
-  expect(personalHarnessPolicy({ ...input, budget: { maxProviderCostUsd: 0.125, durationMs: 60_000 } }))
-    .toMatchObject({ maxCostMicros: 125_000, deadlineAt: 61_000 })
   expect(personalHarnessPolicy({ ...input, budget: { durationMs: 60_000 } }))
     .toMatchObject({ executionPolicyVersion: 2, deadlineAt: 86_401_000, taskDeadlineAt: 61_000 })
 })
@@ -42,10 +40,13 @@ test('unified stream enrollment is exact and immutable for an admitted root', ()
 })
 
 test('invalid budgets fail closed', () => {
-  for (const maxProviderCostUsd of [-1, NaN, Infinity, 101]) {
-    expect(() => personalHarnessPolicy({ ...input, budget: { maxProviderCostUsd } })).toThrow('budget')
-  }
-  for (const durationMs of [0, 30_000.5, Infinity, 8 * 86_400_000]) {
+  for (const durationMs of [0, 29_999, 30_000.5, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
     expect(() => personalHarnessPolicy({ ...input, budget: { durationMs } })).toThrow('budget')
   }
+})
+
+test('a deadline the person sets has no upper bound', () => {
+  const tenDays = 10 * 86_400_000
+  expect(personalHarnessPolicy({ ...input, budget: { durationMs: tenDays } }))
+    .toMatchObject({ taskDeadlineAt: 1_000 + tenDays })
 })

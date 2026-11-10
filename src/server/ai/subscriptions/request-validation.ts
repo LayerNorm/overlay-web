@@ -1,7 +1,9 @@
 import 'server-only'
 
-const nonTextTypes = new Set([
-  'input_image', 'image', 'audio', 'input_audio', 'output_audio', 'video',
+// Text and `input_image` parts are accepted: every pinned bridge translator converts
+// images. Audio, video, other files and hosted tools are still refused.
+const unsupportedTypes = new Set([
+  'image', 'image_url', 'audio', 'input_audio', 'output_audio', 'video',
   'input_video', 'file', 'input_file', 'computer', 'browser', 'file_search',
   'web_search', 'code_interpreter', 'image_generation', 'mcp',
 ])
@@ -11,9 +13,9 @@ export function assertSupportedSubscriptionRequest(body: Record<string, unknown>
   if (body.zero_data_retention === true || body.zeroDataRetention === true || body.zdr === true) {
     throw new Error('This subscription service does not guarantee zero data retention')
   }
-  inspectInputTextOnly(body.input)
+  inspectInput(body.input)
   if (Array.isArray(body.modalities) && body.modalities.some((item) => item !== 'text')) {
-    throw new Error('This subscription service supports text-only requests')
+    throw new Error('This subscription service returns text only')
   }
   validateTools(body)
   for (const option of [
@@ -28,22 +30,27 @@ export function assertSupportedSubscriptionRequest(body: Record<string, unknown>
   }
 }
 
-function inspectInputTextOnly(value: unknown): void {
+function inspectInput(value: unknown): void {
   if (Array.isArray(value)) {
-    for (const item of value) inspectInputTextOnly(item)
+    for (const item of value) inspectInput(item)
     return
   }
   if (!value || typeof value !== 'object') return
   const item = value as Record<string, unknown>
-  if (typeof item.type === 'string' && nonTextTypes.has(item.type)) {
-    throw new Error('This subscription service supports text-only requests')
+  if (typeof item.type === 'string' && unsupportedTypes.has(item.type)) {
+    throw new Error(unsupportedMedia)
   }
-  if (['image_url', 'input_image', 'input_audio', 'audio_url', 'video_url', 'input_file']
-      .some((key) => key in item)) {
-    throw new Error('This subscription service supports text-only requests')
+  // Images must be inline data or a URL; a stored provider file id needs server state.
+  if (item.type === 'input_image' && (typeof item.image_url !== 'string' || !item.image_url || 'file_id' in item)) {
+    throw new Error(unsupportedMedia)
   }
-  if (Array.isArray(item.content)) inspectInputTextOnly(item.content)
+  if (['input_audio', 'audio_url', 'video_url', 'input_file'].some((key) => key in item)) {
+    throw new Error(unsupportedMedia)
+  }
+  if (Array.isArray(item.content)) inspectInput(item.content)
 }
+
+const unsupportedMedia = 'This subscription service supports text and image requests only'
 
 function toolName(value: unknown): value is string {
   return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value)

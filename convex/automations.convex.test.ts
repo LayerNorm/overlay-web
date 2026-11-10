@@ -100,3 +100,45 @@ test('terminal settlement atomically refuses foreign owner or turn and preserves
     error: 'Approval was denied.',
   })
 })
+
+test('a long-running automation run is never failed by age; only a never-started run expires after a day', async () => {
+  const { convex, automationId, runId } = await createRun('running')
+  const claim = makeFunctionReference<'mutation'>('automations/automations:claimDueRuns')
+  const now = Date.now()
+  const hour = 60 * 60_000
+  await convex.run(async ctx => {
+    await ctx.db.insert('billingAccounts', { billingAccountId: 'paid', workspaceId: 'workspace', scope: 'workspace',
+      status: 'active', pricingVersion: 'markup_25_v1', markupBasisPoints: 2500, createdAt: now, updatedAt: now })
+    await ctx.db.insert('billingAccountSubscriptions', { billingAccountId: 'paid', provider: 'stripe', planKind: 'paid',
+      planVersion: 'variable_v2', planAmountCents: 2000, markupBasisPoints: 2500, status: 'active',
+      autoTopUpEnabled: false, autoTopUpAmountCents: 0, createdAt: now, updatedAt: now })
+    await ctx.db.patch(automationId, { enabled: true, nextRunAt: now - 1_000 })
+    await ctx.db.patch(runId, { startedAt: now - 6 * hour, createdAt: now - 6 * hour })
+  })
+  // Six hours into a run: the next due tick is skipped and the run keeps going.
+  expect(await convex.mutation(claim, { now })).toEqual([])
+  expect(await convex.run(ctx => ctx.db.get(runId))).toMatchObject({ status: 'running' })
+  expect(await convex.run(ctx => ctx.db.get(automationId))).toMatchObject({ enabled: true })
+
+  const queuedId = await convex.run(async ctx => {
+    await ctx.db.patch(runId, { status: 'completed', completedAt: now })
+    await ctx.db.patch(automationId, { nextRunAt: now - 1_000 })
+    return await ctx.db.insert('automationRuns', {
+      automationId, userId: 'alice', status: 'queued', scheduledFor: now - 2 * hour,
+      createdAt: now - 2 * hour, updatedAt: now - 2 * hour,
+    })
+  })
+  // Two hours queued is not lost yet.
+  expect(await convex.mutation(claim, { now })).toEqual([])
+  expect(await convex.run(ctx => ctx.db.get(queuedId))).toMatchObject({ status: 'queued' })
+
+  await convex.run(async ctx => {
+    await ctx.db.patch(automationId, { nextRunAt: now - 1_000 })
+    await ctx.db.patch(queuedId, { createdAt: now - 25 * hour })
+  })
+  // A run that never started within a day expires, and the due run is claimed.
+  expect(await convex.mutation(claim, { now })).toHaveLength(1)
+  expect(await convex.run(ctx => ctx.db.get(queuedId))).toMatchObject({
+    status: 'failed', error: 'Automation run expired before execution could start.',
+  })
+})

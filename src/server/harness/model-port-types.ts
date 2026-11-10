@@ -5,7 +5,9 @@ export type PreparedHarnessModel = {
   model: HarnessModelReference
   options: LanguageModelV4CallOptions
   contextWindow: number | null
-  estimatedCostMicros: number
 }
 
 export type HarnessModelPurpose = 'response' | 'summary' | 'verification'
+
+/** Output tokens per call when neither the request nor the catalog names a maximum. */
+export const DEFAULT_MAX_OUTPUT_TOKENS = 32_000

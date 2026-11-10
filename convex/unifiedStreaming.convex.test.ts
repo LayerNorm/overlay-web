@@ -76,7 +76,7 @@ async function seedWritableStream(
     type: 'claim_execution', workflowRunId, generation: 0,
   })
   result = await apply('reserve', result.snapshot.revision, {
-    type: 'reserve_model', id: 'model:0', maxCostMicros: 1_000,
+    type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
   })
   result = await apply('dispatch', result.snapshot.revision, {
     type: 'bind_model_dispatch', id: 'model:0', modelId: 'fixture/model', billingReservationId: 'billing',
@@ -446,7 +446,7 @@ test('a call cut off at its output cap continues the same Markdown list, live an
     content: cut, parts: [{ type: 'text', text: cut }], outputLimitReached: true,
   })
   let revision = (await settled.apply('reserve:1', settled.revision, {
-    type: 'reserve_model', id: 'model:1', maxCostMicros: 100,
+    type: 'reserve_model', id: 'model:1', maxCostMicros: 0,
   })).snapshot.revision
   revision = (await settled.apply('dispatch:1', revision, {
     type: 'bind_model_dispatch', id: 'model:1', modelId: 'fixture/model', billingReservationId: 'billing',
@@ -469,7 +469,7 @@ test('separate calls keep a blank line between their text, and the live reader d
     content: 'Checking the files.', parts: [{ type: 'text', text: 'Checking the files.' }],
   })
   let revision = (await settled.apply('reserve:1', settled.revision, {
-    type: 'reserve_model', id: 'model:1', maxCostMicros: 100,
+    type: 'reserve_model', id: 'model:1', maxCostMicros: 0,
   })).snapshot.revision
   revision = (await settled.apply('dispatch:1', revision, {
     type: 'bind_model_dispatch', id: 'model:1', modelId: 'fixture/model', billingReservationId: 'billing',

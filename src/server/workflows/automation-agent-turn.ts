@@ -15,6 +15,7 @@ import { assertAutomationAdmissionSource } from '@/server/harness/automation-acc
 import {
   admitAutomationHarnessStep,
   admitAutomationSourceStep,
+  chargeAutomationWorkflowRunStep,
   ensureConversationStep,
   readAutomationDeliveryStep,
   reconcileAutomationHarnessTerminalStep,
@@ -298,7 +299,10 @@ export async function runAutomationAgentTurn(
       terminalReason: claim.admitted.terminalReason,
     })
   }
-  return await runAdmittedAutomationHarness(
+  const result = await runAdmittedAutomationHarness(
     input, workflowRunId, prepared.turnInput, prepared.plan, claim,
   )
+  // Workflow steps are charged after the run, never held before it.
+  if (result.status !== 'already_running') await chargeAutomationWorkflowRunStep(prepared.turnInput)
+  return result
 }

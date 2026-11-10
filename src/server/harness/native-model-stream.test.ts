@@ -20,7 +20,7 @@ const reference: HarnessModelReference = { modelId: 'openrouter/free', credentia
     principalId: 'human-principal', agentId: 'agent', agentPrincipalId: 'agent-principal', conversationId: 'room',
     agentRunId: 'delivery', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn' },
   receiptId: 'model:0', memoryEnabled: false, sharedRoom: true, requestFingerprint: 'request', streamToDelivery: true,
-  inputTokenBudget: 2_000, maxOutputTokens: 100, contextWindow: null,
+  maxOutputTokens: 100, contextWindow: null,
 } }
 const message = { _id: 'answer', turnId: 'turn', authorKind: 'agent', authorPrincipalId: 'agent-principal', status: 'generating', content: '', parts: [] }
 const finish: LanguageModelV4StreamPart = { type: 'finish', finishReason: { unified: 'stop', raw: 'stop' }, usage: {

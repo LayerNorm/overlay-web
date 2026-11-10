@@ -17,11 +17,6 @@ import type {
 import type { HarnessEvidence, HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessArtifactMetadata } from './artifact-context'
 import type { HarnessRunnerCheckpoint } from './ports'
-import type {
-  HarnessConsumeResourceGrantInput, HarnessGrantResourcesInput, HarnessResourceConsumeResult,
-  HarnessResourceGrantReceipt, HarnessResourcePauseInput, HarnessResourceRequestRecord,
-  HarnessResourceRequestReference,
-} from '@overlay/agent-runtime/harness-resource'
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 import type { ActivePublicStreamSnapshot } from '@/shared/chat/public-stream-projection'
 import { ConvexHttpClient } from 'convex/browser'
@@ -449,36 +444,6 @@ export class ConvexHarnessRepository implements HarnessRepository {
     }, { throwOnError: true })
     if (!waits) throw new Error('Harness pending wait query returned no result.')
     return waits
-  }
-
-  async pauseForResources(input: HarnessResourcePauseInput): Promise<HarnessResourceRequestRecord> {
-    const request = await convex.mutation<HarnessResourceRequestRecord>('harness/runs:pauseForResources', {
-      ...input, serverSecret: this.serverSecret,
-    }, { throwOnError: true })
-    if (!request) throw new Error('Harness resource pause returned no request.')
-    return request
-  }
-
-  async getResourceRequest(input: HarnessResourceRequestReference): Promise<HarnessResourceRequestRecord | null> {
-    return await convex.query<HarnessResourceRequestRecord | null>('harness/runs:getResourceRequest', {
-      ...input, serverSecret: this.serverSecret,
-    }, { throwOnError: true })
-  }
-
-  async grantResources(input: HarnessGrantResourcesInput): Promise<HarnessResourceGrantReceipt> {
-    const receipt = await convex.mutation<HarnessResourceGrantReceipt>('harness/runs:grantResources', {
-      ...input, serverSecret: this.serverSecret,
-    }, { throwOnError: true })
-    if (!receipt) throw new Error('Harness resource grant returned no receipt.')
-    return receipt
-  }
-
-  async consumeResourceGrant(input: HarnessConsumeResourceGrantInput): Promise<HarnessResourceConsumeResult> {
-    const result = await convex.mutation<HarnessResourceConsumeResult>('harness/runs:consumeResourceGrant', {
-      ...input, serverSecret: this.serverSecret,
-    }, { throwOnError: true })
-    if (!result) throw new Error('Harness resource consumption returned no result.')
-    return result
   }
 
   async listDeliveryWorkflowRuns(input: {

@@ -37,7 +37,7 @@ test('fresh Preview runs the same scheduled jobs as Production without a second 
   const production = JSON.parse((await import('./crons')).default.export())
   expect(preview).toEqual(production)
   expect(Object.keys(preview)).toContain('automation scheduler')
-  expect(Object.keys(preview)).toContain('usage reservation reconciliation')
+  expect(Object.keys(preview)).toContain('outbound webhook delivery')
 })
 
 test('preview seed refuses every non-preview deployment before writing', async () => {

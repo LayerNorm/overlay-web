@@ -53,7 +53,7 @@ export class HarnessLanguageModel implements LanguageModelV4 {
           integrationToolIds: [...personal.automationContext.integrationToolIds],
         } } : {}),
         ...(personal.billingProgrammaticSubjectId ? { billingProgrammaticSubjectId: personal.billingProgrammaticSubjectId } : {}),
-        inputTokenBudget: personal.inputTokenBudget, maxOutputTokens: personal.maxOutputTokens, contextWindow: personal.contextWindow,
+        maxOutputTokens: personal.maxOutputTokens, contextWindow: personal.contextWindow,
       } } : {}),
       ...(native ? { native: {
         access: {
@@ -67,7 +67,7 @@ export class HarnessLanguageModel implements LanguageModelV4 {
         receiptId: native.receiptId, memoryEnabled: native.memoryEnabled, sharedRoom: native.sharedRoom,
         ...(native.streamToDelivery === true ? { streamToDelivery: true } : {}),
         ...(native.continuesPreviousOutput === true ? { continuesPreviousOutput: true } : {}),
-        requestFingerprint: native.requestFingerprint, inputTokenBudget: native.inputTokenBudget,
+        requestFingerprint: native.requestFingerprint,
         maxOutputTokens: native.maxOutputTokens, contextWindow: native.contextWindow,
       } } : {}),
     }

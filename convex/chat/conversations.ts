@@ -353,7 +353,8 @@ async function getLinkedAutomationConversationIds(
 type MessageDoc = Doc<'conversationMessages'>
 type MessagePart = NonNullable<MessageDoc['parts']>[number]
 type MessageParts = NonNullable<MessageDoc['parts']>
-const MAX_HISTORY_TOOL_VALUE_CHARS = 1000
+// Earlier tool inputs and outputs a model reads back; the model context window is the real bound.
+const MAX_HISTORY_TOOL_VALUE_CHARS = 20_000
 
 function sameMessageVariant(
   message: MessageDoc,
@@ -922,32 +923,7 @@ export const addMessage = mutation({
 
 	    if (args.role === 'user' && args.skipMemoryExtraction !== true) {
 	      try {
-	        const today = new Date().toISOString().split('T')[0]
-	        let dailyUsage = await ctx.db
-	          .query('dailyUsage')
-	          .withIndex('by_userId_date', (q) => q.eq('userId', args.userId).eq('date', today))
-	          .first()
-	        if (!dailyUsage) {
-	          const dailyUsageId = await ctx.db.insert('dailyUsage', {
-	            userId: args.userId,
-	            date: today,
-	            askCount: 0,
-	            agentCount: 0,
-	            writeCount: 0,
-	            transcriptionSeconds: 0,
-	            memoryExtractionCount: 0,
-	          })
-	          dailyUsage = await ctx.db.get(dailyUsageId)
-	        }
-	        if ((dailyUsage?.memoryExtractionCount ?? 0) >= 120) {
-	          return msgId
-	        }
-	        if (dailyUsage) {
-	          await ctx.db.patch(dailyUsage._id, {
-	            memoryExtractionCount: (dailyUsage.memoryExtractionCount ?? 0) + 1,
-	          })
-	        }
-
+	        // No daily count: extraction is charged to the workspace budget like other work.
 	        await ctx.scheduler.runAfter(0, internal.knowledge.memoryExtractorNode.extractFromTurn, {
 	          billingAccountId: args.billingAccountId,
 	          billingActorUserId: args.billingActorUserId,

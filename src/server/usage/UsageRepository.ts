@@ -1,11 +1,6 @@
 import 'server-only'
 
 import type { Entitlements } from '@/shared/app/app-contracts'
-import type {
-  UsageReconciliationEvidence,
-  UsageReconciliationResolution,
-} from '@/shared/billing/usage-reconciliation'
-import type { ResolvedBillingPayer } from '@/shared/billing/billing-payer'
 
 export type UsageSpendKind =
   | 'ask'
@@ -15,13 +10,6 @@ export type UsageSpendKind =
   | 'transcription'
   | 'generation'
   | 'sandbox'
-
-export type UsageReservationStatus =
-  | 'reserved'
-  | 'finalized'
-  | 'released'
-  | 'reconcile_required'
-  | 'expired'
 
 export type UsageEvent = {
   cachedTokens?: number
@@ -39,143 +27,15 @@ export type UsageEvent = {
   providerCostUsd?: number
 }
 
-export type UsageReservationResult =
-  | {
-      ok: true
-      entitlements: Entitlements
-      replayed: boolean
-      reservationId: string | null
-      reservedCents: number
-      status: UsageReservationStatus
-    }
-  | {
-      ok: false
-      code: 'insufficient_budget' | 'spend_limit_exceeded'
-      entitlements: Entitlements
-      remainingCents: number
-      requiredCents: number
-    }
-
-export type UsageReconciliationQueueItem = {
-  createdAt: number
-  errorMessage?: string
-  kind: UsageSpendKind
-  modelId?: string
-  providerWorkCompleted: boolean
-  providerWorkStarted: boolean
-  reconciliationAttempts: number
-  reconciliationLastAttemptAt?: number
-  reservationId: string
-  reservedCents: number
-  updatedAt: number
-  userId: string
-}
-
-export type UsageReconciliationSweepResult = {
-  oldestReconciliationUpdatedAt?: number
-  pendingReconciliation: number
-  reconcileRequired: number
-  reconciliationQueueTruncated: boolean
-  released: number
-}
-
-export type BillingUsageOperationalReport = {
-  actualProviderCostCents: number
-  costCoveragePercent: number
-  meteredReservations: number
-  oldestReconciliationAgeMs: number
-  periodEnd: number
-  periodStart: number
-  realizedMarginPercent: number | null
-  retailCostCents: number
-  retailCredits: number
-  staleReconciliationReservations: number
-  reconciliationReservations: number
-}
-
+/** Usage is charged after each paid call; nothing is reserved or held before it. */
 export interface UsageRepository {
-  getBillingAccountOperationalReport(args: {
-    billingAccountId: string
-    now?: number
-    periodStart: number
-    reconciliationSlaMs: number
-  }): Promise<BillingUsageOperationalReport>
   getEntitlements(args: { userId: string }): Promise<Entitlements | null>
-  reserve(args: {
-    entitlements: Entitlements
-    expiresAt?: number
-    kind: UsageSpendKind
-    metadata?: Record<string, unknown>
-    modelId?: string
-    operationId: string
-    requestFingerprint: string
-    reservationId: string
-    reservedCents: number
-    userId: string
-  }): Promise<UsageReservationResult>
-  reserveWorkspace(args: {
-    expiresAt?: number
-    kind: UsageSpendKind
-    metadata?: Record<string, unknown>
-    modelId?: string
-    operationId: string
-    payer: ResolvedBillingPayer & { scope: 'workspace' }
-    requestFingerprint: string
-    reservationId: string
-    reservedCents: number
-    userId: string
-  }): Promise<UsageReservationResult>
-  finalize(args: {
-    actualCostCents: number
-    events?: UsageEvent[]
-    reservationId: string
-    userId: string
-  }): Promise<{ status: UsageReservationStatus }>
-  correctFinalizedCost(args: {
-    actualCostCents: number
-    providerCostUsd: number
-    reservationId: string
-    userId: string
-  }): Promise<{ status: 'corrected' | 'already_corrected' | 'skipped' }>
-  markStarted(args: {
-    reservationId: string
-    userId: string
-  }): Promise<{ status: UsageReservationStatus }>
-  release(args: {
-    providerWorkStarted?: boolean
-    reason?: string
-    reservationId: string
-    userId: string
-  }): Promise<{ status: UsageReservationStatus }>
-  markForReconcile(args: {
-    errorMessage?: string
-    reservationId: string
-    userId: string
-  }): Promise<{ status: UsageReservationStatus }>
-  listReconciliationQueue(args?: {
-    limit?: number
-    updatedBefore?: number
-    userId?: string
-  }): Promise<UsageReconciliationQueueItem[]>
-  resolveReconciliation(args: {
-    actualCostCents?: number
-    evidence: UsageReconciliationEvidence
-    reservationId: string
-    resolution: UsageReconciliationResolution
-    userId: string
-  }): Promise<{
-    finalizedCents?: number
-    idempotent: boolean
-    status: Extract<UsageReservationStatus, 'finalized' | 'released'>
-  }>
   recordBatch(args: {
     events: UsageEvent[]
     operationId: string
     userId: string
     workspaceId?: string
-  }): Promise<{ recorded: number }>
-  reconcileExpired(args?: {
-    limit?: number
-    now?: number
-  }): Promise<UsageReconciliationSweepResult>
+    /** Charges this program's admin spend limit instead of the member's. */
+    programmaticSubjectId?: string
+  }): Promise<{ recorded: number; budgetLow: boolean }>
 }

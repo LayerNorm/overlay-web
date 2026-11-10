@@ -53,7 +53,7 @@ export function initialNewAgentDraft(): NewAgentDraft {
     instructions: '',
     avatarShape: 'hexagon',
     avatarColor: '#14b8a6',
-    computer: false,
+    computer: true,
     computerSize: 'default',
     visibility: 'creator',
     modelId: NEW_AGENT_DEFAULT_MODEL_ID,

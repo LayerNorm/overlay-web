@@ -67,7 +67,7 @@ export const BILLABLE_FEATURE_COVERAGE: readonly BillableFeatureCoverage[] = [
   {
     category: 'functions_integrations_and_mcp',
     enforcement: [
-      'src/server/harness/model-dispatch.ts#reserveProviderBudget',
+      'src/server/harness/model-dispatch.ts#assertWorkspaceBudgetNotLow',
       'src/server/harness/request-usage-step.ts#admitHarnessRequestUsage',
     ],
     id: 'native-harness-execution',

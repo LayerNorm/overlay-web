@@ -21,7 +21,7 @@ import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 const mocks = vi.hoisted(() => ({
   getLanguageModel: vi.fn(),
   getLatestAgentRun: vi.fn(),
-  reserveForAttempt: vi.fn(),
+  ensureBudgetNotLow: vi.fn(),
   executeNativeHarnessTool: vi.fn(),
   nativeHarnessToolNeedsApproval: vi.fn(),
   refreshNativeHarnessAccess: vi.fn(),
@@ -58,7 +58,7 @@ vi.mock('@/server/bootstrap', () => ({
         },
       },
     },
-    chatUsagePolicy: { reserveForAttempt: mocks.reserveForAttempt },
+    chatUsagePolicy: { ensureBudgetNotLow: mocks.ensureBudgetNotLow },
   }),
 }))
 vi.mock('@/server/conversations/ActConversationRepository', () => ({ asConversationId: (id: string) => id }))
@@ -197,7 +197,6 @@ function harnessFixture(options: { allowedToolIds?: string[]; requiresPlan?: boo
       messages: request.messages,
       instructions: request.instructions,
       activeToolNames: request.toolNames.filter(name => current.policy.allowedToolIds.includes(name)),
-      estimatedCostMicros: 0,
     }),
     recordModelStep: async (step, id) => {
       calls.push({ kind: 'model' })
@@ -277,7 +276,7 @@ function agent(id: string, name: string, extra: Partial<WorkspaceAgentDirectoryI
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.getLatestAgentRun.mockResolvedValue(null)
-  mocks.reserveForAttempt.mockResolvedValue({ ok: true, reservationId: 'reservation' })
+  mocks.ensureBudgetNotLow.mockResolvedValue({ ok: true })
   mocks.nativeHarnessToolNeedsApproval.mockResolvedValue(false)
   mocks.executeNativeHarnessTool.mockResolvedValue({ success: true, value: 'read' })
   mocks.refreshNativeHarnessAccess.mockResolvedValue({ agent: { id: 'agent', principalId: 'agent-principal' } })
@@ -383,11 +382,12 @@ it('Grants — offered tools are intersected with policy and disallowed model ca
       return 'ok'
     },
   })
-  model(() => [{ name: 'write_file', id: 'write-1' }])
+  // Lack of progress no longer pauses a run, so the model gives up on the refused tool and answers.
+  const provider = model(index => index < 4 ? [{ name: 'write_file', id: `write-${index}` }] : 'I cannot write files here.')
   const result = await fixture.run(tools)
-  expect(result.outcome).toBe('blocked')
   expect(executed).toEqual([])
-  expect(fixture.read().status).not.toBe('completed')
+  expect(provider.doStreamCalls.length).toBeGreaterThanOrEqual(5)
+  expect(result.snapshot.evidence.some(item => item.source.includes('write_file') && item.verdict === 'observed')).toBe(false)
 })
 
 it('Approval — durable decisions match tool identity and input, execute once, and reject replay', async () => {
@@ -584,8 +584,6 @@ it('Lineage — depth, cycles, and external targets are refused before dispatch'
     directory: async () => directory,
     claimBudget: async () => ({ ok: true }),
     releaseBudget: async () => undefined,
-    recordReply: async () => undefined,
-    listReplies: async () => [],
     startTurns: async () => [{ agentId: 'target', turnId: 'target-turn' }],
   })
   await expect(service.ask({
