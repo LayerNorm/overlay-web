@@ -57,6 +57,40 @@ test('extracts lifecycle states and deduplicates repository names case-insensiti
   assert.equal(associations!.find(item => item.number === 1)?.title, 'Updated title')
 })
 
+test('recognizes Composio PR slugs with object and JSON data envelopes', () => {
+  for (const serialize of [false, true]) {
+    const envelope = (data: Record<string, unknown>, successful = true) => ({
+      data: serialize ? JSON.stringify(data) : data,
+      successful,
+      error: successful ? null : 'Tool not found',
+    })
+    const input = { owner: 'acme', repo: 'widgets', pull_number: 11 }
+    const create = toolPart('create', 'GITHUB_CREATE_A_PULL_REQUEST', { ...input, draft: true },
+      envelope(pullRequest(11, 'acme', 'widgets', 'open', { draft: true })))
+    const draft = reduceThreadPullRequests(undefined, [], [create], 100)!
+    assert.equal(draft[0]?.state, 'draft')
+    const update = toolPart('update', 'call_mcp_tool', {
+      toolName: 'GITHUB_UPDATE_A_PULL_REQUEST', arguments: input,
+    }, { structuredContent: envelope(pullRequest(11, 'acme', 'widgets', 'closed')) })
+    const closed = reduceThreadPullRequests(draft, [create], [create, update], 200)!
+    assert.equal(closed[0]?.state, 'closed')
+    const merge = toolPart('merge', 'COMPOSIO_MULTI_EXECUTE_TOOL', {
+      tools: [{ tool_slug: 'GITHUB_MERGE_A_PULL_REQUEST', arguments: input }],
+    }, { data: { results: [{
+      tool_slug: 'GITHUB_MERGE_A_PULL_REQUEST', response: envelope({ merged: true }),
+    }] } })
+    assert.equal(reduceThreadPullRequests(closed, [], [merge], 300)?.[0]?.state, 'merged')
+    const read = toolPart('read', 'GITHUB_GET_A_PULL_REQUEST', input, envelope(pullRequest(11)))
+    assert.equal(reduceThreadPullRequests(undefined, [], [read], 100), undefined)
+    assert.equal(reduceThreadPullRequests(undefined, [], [toolPart('failed',
+      'GITHUB_CREATE_A_PULL_REQUEST', input, envelope(pullRequest(11), false))], 100), undefined)
+    for (const data of ['', 'not JSON', JSON.stringify('https://github.com/acme/widgets/pull/11')]) {
+      assert.equal(reduceThreadPullRequests(undefined, [], [toolPart('empty',
+        'GITHUB_CREATE_A_PULL_REQUEST', input, { data, successful: true, error: null })], 100), undefined)
+    }
+  }
+})
+
 test('read-only tools never create an association but can refresh an existing pull request', () => {
   const create = toolPart('create', 'GITHUB_CREATE_A_PULL_REQUEST', { owner: 'acme', repo: 'widgets' },
     pullRequest(11))

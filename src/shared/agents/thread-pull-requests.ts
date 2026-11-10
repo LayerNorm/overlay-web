@@ -156,7 +156,10 @@ function pullRequestObjects(value: unknown, depth = 0): Record<string, unknown>[
   const out: Record<string, unknown>[] = []
   for (const key of RESPONSE_WRAPPERS) {
     if (Object.prototype.hasOwnProperty.call(value, key)) {
-      out.push(...pullRequestObjects(value[key], depth + 1))
+      const payload = key === 'data' && typeof value[key] === 'string'
+        ? jsonTextPayload(value[key])
+        : value[key]
+      out.push(...pullRequestObjects(payload, depth + 1))
       if (out.length >= MAX_BATCH_TOOLS) break
     }
   }
