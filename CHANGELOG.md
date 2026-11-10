@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Show Jump to latest whenever messages remain below the visible conversation, even with no unread messages or while an agent turn is anchored. Jumping releases the turn anchor and scrolls to the bottom.
+
 - Record last-observed GitHub pull-request associations from successful, server-authorized agent tool results and include them in authenticated workspace-thread projections.
 
 - Align agent-thread progress icons beneath the agent avatar and remove curved indentation. Show linked GitHub pull requests only in sidebar threads, with lifecycle icons and last-observed details from successful integration actions. Keep response loading dots beneath the agent name only until the first displayed token. Start new agent exchanges near the viewport top without removing scrollable history. Center Help with the other rail controls and move Work task settings into a popover that does not expand the composer.

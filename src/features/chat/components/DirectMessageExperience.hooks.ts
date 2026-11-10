@@ -1,6 +1,7 @@
 'use client'
 
 import { useAgentDirectory as useLiveAgentDirectory } from '@/hooks/use-agent-directory'
+import { useTranscriptHasContentBelow } from './collaboration/useTranscriptHasContentBelow'
 import { useConvex, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
@@ -302,6 +303,8 @@ export function useRoomTranscript({
   const [stickToBottom, setStickToBottom] = useState(true)
   const listRef = useRef<HTMLDivElement>(null)
   const turnScroll = useAgentTurnScroll({ enabled: anchorAgentTurns, conversationId, messages, listRef })
+  const { spacerRef: turnSpacerRef } = turnScroll
+  const hasContentBelow = useTranscriptHasContentBelow(listRef, turnSpacerRef)
   /** Latest messages for callbacks that must not close over a stale render. */
   const messagesRef = useRef<OptimisticMessage[]>(messages)
   useEffect(() => {
@@ -424,7 +427,8 @@ export function useRoomTranscript({
     setConversationTitle,
     surfacePlatform,
     listRef,
-    turnSpacerRef: turnScroll.spacerRef,
+    turnSpacerRef,
+    hasContentBelow,
     releaseTurnAnchor: turnScroll.release,
     messagesRef,
     stickToBottom,
