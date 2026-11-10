@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ByokConnectionRow } from '@/shared/ai/gateway/byok-model-conversion'
+import { ACTIVE_WORKSPACE_HEADER } from '@/shared/workspaces/constants'
 import { subscriptionAuthorizationBody, subscriptionRequest, type SubscriptionAuthorization, type SubscriptionAvailability, type SubscriptionProgress, type SubscriptionScope } from './subscription-connection-client'
 
 export function shouldStopSubscriptionFlow(progress: SubscriptionProgress): boolean {
@@ -11,6 +12,24 @@ export function shouldStopSubscriptionFlow(progress: SubscriptionProgress): bool
 
 export function shouldPollSubscriptionAuthorization(authorization: SubscriptionAuthorization['authorization']): boolean {
   return authorization.callbackRequired !== true
+}
+
+/**
+ * Best-effort cleanup of an abandoned sign-in. Cancelling must never trap the
+ * user in the dialog, so failures are swallowed; the pending connection can be
+ * removed later from the provider list.
+ */
+export async function cancelPendingSubscription(connectionId: string, workspaceId?: string): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/v1/providers/connections?connectionId=${encodeURIComponent(connectionId)}`, {
+      method: 'DELETE',
+      cache: 'no-store',
+      headers: workspaceId ? { [ACTIVE_WORKSPACE_HEADER]: workspaceId } : {},
+    })
+    return response.ok || response.status === 404
+  } catch {
+    return false
+  }
 }
 
 export function useSubscriptionConnection({ connection, scope = 'personal', workspaceId, onConnected, onClose }: {
@@ -105,6 +124,11 @@ export function useSubscriptionConnection({ connection, scope = 'personal', work
     requestKey.current ??= crypto.randomUUID()
     try {
       const next = await subscriptionRequest<SubscriptionAuthorization>(subscriptionAuthorizationBody(providerId, scope, pendingId.current), { method: 'POST', idempotencyKey: requestKey.current, workspaceId })
+      if (closing.current) {
+        // The user cancelled while sign-in was starting; discard it quietly.
+        void cancelPendingSubscription(next.connectionId, workspaceId).then(() => connectedCallback.current())
+        return
+      }
       pendingId.current = next.connectionId
       setLogin(next); setStopped(false); setConnected(null)
       requestKey.current = null
@@ -122,18 +146,16 @@ export function useSubscriptionConnection({ connection, scope = 'personal', work
     finally { working.current = false; setBusy(false) }
   }
 
-  const close = async () => {
-    if (working.current) return
-    working.current = true; closing.current = true; setBusy(true)
-    try {
-      if (login && !connected) {
-        const response = await fetch(`/api/v1/providers/connections?connectionId=${encodeURIComponent(login.connectionId)}`, { method: 'DELETE' })
-        if (!response.ok) throw new Error('Could not cancel this connection. Try again before closing.')
-        await connectedCallback.current()
-      }
-      onClose()
-    } catch (value) { closing.current = false; setError(value instanceof Error ? value.message : 'Could not cancel sign-in.') }
-    finally { working.current = false; setBusy(false) }
+  const close = () => {
+    if (closing.current) return
+    closing.current = true
+    const abandoned = login && !connected ? login.connectionId : null
+    // Close immediately. Cleanup runs in the background so a slow or failed
+    // DELETE can never leave the user stuck in the dialog (issue #454).
+    onClose()
+    if (abandoned) {
+      void cancelPendingSubscription(abandoned, workspaceId).then(() => connectedCallback.current())
+    }
   }
 
   return { availability, login, connected, error, busy, stopped, selectionLocked: Boolean(pendingId.current || requestKey.current), start, completeCallback, close }
