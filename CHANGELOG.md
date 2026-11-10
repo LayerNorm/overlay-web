@@ -1196,6 +1196,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Chief of Staff (pending)
 
+- Show Work's existing no-results message when a search matches neither tasks nor agent assignments, including assignment-only workspaces.
+
 - Return corrective feedback for confirmed assignment-resolution rejections, exposing current attempt IDs only after authorized reads.
 - Mark never-launched assignments cancelled when their parent ends, keeping Work status and open counts accurate.
 

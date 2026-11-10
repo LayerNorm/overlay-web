@@ -16,7 +16,7 @@ import { WORK_LIMITS } from '@/shared/work/status'
 import { WORK_VIEW_LABELS, type WorkView } from '@/shared/work/views'
 import { useWorkRoute } from '../lib/use-work-route'
 import { useWorkUrlState } from '../lib/use-work-url-state'
-import { useWorkData, WorkDataProvider } from './WorkDataProvider'
+import { useWorkData, WorkDataProvider, type WorkData } from './WorkDataProvider'
 import { WorkBoard } from './WorkBoard'
 import { WorkList } from './WorkList'
 import { WorkPeek } from './WorkPeek'
@@ -64,7 +64,8 @@ type AssignmentsSlot = {
 }
 
 /** What fills the page under the toolbar: a loading state, a message, or the List, Board, or Timeline. */
-function WorkBody({
+export function WorkBody({
+  data,
   view,
   scope,
   solo,
@@ -75,6 +76,7 @@ function WorkBody({
   onOpen,
   assignments,
 }: {
+  data: Pick<WorkData, 'state' | 'items' | 'byId'>
   view: WorkView
   scope: PanelScope
   solo: boolean
@@ -85,7 +87,7 @@ function WorkBody({
   onOpen: (id: string) => void
   assignments: AssignmentsSlot
 }) {
-  const { state, items, byId } = useWorkData()
+  const { state, items, byId } = data
   if (state === 'loading') return <ListSkeleton />
   if (state === 'signed_out') return <EmptyState title="Sign in to see your tasks" description="Tasks you and your agents create appear here." />
   if (state === 'error') {
@@ -99,7 +101,7 @@ function WorkBody({
   const assignmentGroup = view === 'list' ? (
     <WorkAssignmentGroup items={assignments.items} selectedId={assignments.selectedId} onOpen={assignments.onOpen} canLoadMore={assignments.canLoadMore} onLoadMore={assignments.onLoadMore} />
   ) : null
-  if (items.length === 0 && assignments.items.length === 0) {
+  if (!filtering && items.length === 0 && assignments.items.length === 0) {
     return (
       <EmptyState
         title="No tasks yet"
@@ -133,7 +135,7 @@ function WorkBody({
 function WorkScreen() {
   const { scope, view, solo, listView } = useWorkRoute()
   const { taskId, assignmentId, openTask, closeTask, openAssignment, closeAssignment } = useWorkUrlState()
-  const { state, items, viewer, truncated } = useWorkData()
+  const { state, items, byId, viewer, truncated } = useWorkData()
   const assignments = useLiveAssignments(listView)
   const [query, setQuery] = useState('')
   const quickAdd = useRef<WorkTaskComposerHandle>(null)
@@ -177,6 +179,7 @@ function WorkScreen() {
         {truncated ? <p className="mx-6 mt-3 shrink-0 text-xs text-(--muted)" role="note">Showing the first {WORK_LIMITS.listCap.toLocaleString('en-US')} tasks. Archive finished work to see the rest.</p> : null}
         <div className={`flex min-h-0 flex-1 flex-col ${pageScrolls ? 'overflow-auto' : 'overflow-hidden'}`}>
           <WorkBody
+            data={{ state, items, byId }}
             view={view}
             scope={scope}
             solo={solo}
