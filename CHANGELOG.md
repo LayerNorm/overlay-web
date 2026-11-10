@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Scrolling a DM or channel marks it read once per transcript state instead of sending a read mutation on every scroll event, which re-rendered every loaded message. New messages, a different room, returning to the tab and jumping to latest still mark read.
 - Reuse the room-message time formatter instead of rebuilding locale formatting state for every row render in long DMs and channels. Keep the existing time labels and invalid-date fallback.
+- Commit the generated Convex function index entry for the Preview-only performance fixtures (`dev/performanceQa`) that PR 448 added, so production deploys no longer leave that file changed, and remove a duplicated older changelog entry for the native deployment-feature projection.
+- Keep unchanged completed personal-chat messages stable during streamed updates, while refreshing message actions, permissions and live plans when they change.
 - Add an opt-in, Preview-only completed code-block fixture for first-use syntax-highlighting checks, without model execution or changes to existing histories.
 - Load the syntax-highlighting engine only when a supported code block needs it, instead of including it in the initial app JavaScript. Keep code readable while highlighting loads and preserve streamed highlighting state.
 - Performance measurements retain slow keystrokes that share a browser frame during streaming, rather than rejecting them when another character arrives before the frame is observed.
@@ -203,8 +205,6 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Keep native personal-chat title synchronization field-scoped so live summary updates cannot reset model selection and repeatedly trigger metadata saves that exhaust the shared API rate limit.
 
 - Add a server-controlled, fail-closed deployment-feature projection for native Convex domains. Policies are backend-bound, refreshed from the actual web configuration, fenced against stale callbacks (including delayed publication) and expired reactively; browser calls cannot publish policy. Existing conversation CRUD remains independent of deployment-feature mappings. Privileged agent Computer/credential cleanup stays server-owned.
-
-- Add a server-controlled, fail-closed deployment-feature projection for native Convex domains. Policies are backend-bound, refreshed from the actual web configuration, fenced against stale callbacks and expired reactively; browser calls cannot publish policy. Existing conversation CRUD remains independent of deployment-feature mappings. Privileged agent Computer/credential cleanup stays server-owned.
 
 - Move browser personal-chat list, title, archive/restore and basic unread ownership to native Convex with additive indexes and no backfill. Persisted `conversations.read` / `conversations.edit` capabilities are enforced even when the legacy BFF is in observe mode; native calls accept no caller policy flags or operator bypass. Optimistic writes rebase by row, bounded pages may be empty while filtered results remain, and verified-user writes are capped at 300 per 10 minutes because native calls have no BFF IP context. Legacy HTTP remains for native-off installations and non-pilot workspace chats, DMs, channels and other resources; transcript/history/streaming and deletion retain their existing server boundaries. Roll back web ownership first and leave backend fields/indexes in place.
 
