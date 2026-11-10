@@ -4,6 +4,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Add the versioned, isomorphic generated UI catalog and validation boundary, pinned json-render and chart dependencies, and a serialized `json_render` message contract. Tool admission and rendering remain disabled until the next implementation steps.
+
 - Performance measurements retain slow keystrokes that share a browser frame during streaming, rather than rejecting them when another character arrives before the frame is observed.
 ||||||| f8ea73ed7
 - Keep the Work composer controls on one row in narrow panels, with compact assignee, schedule and dependency icons, accessible labels, tooltips and count badges.

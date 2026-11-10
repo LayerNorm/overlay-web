@@ -148,10 +148,10 @@ Admit `render_ui` wherever `present_generated_ui` is admitted today. Execution s
 
 ## Tasks (single PR)
 
-- [ ] T1. Mockup: every v1 catalog component rendered from real specs inside the approved workspace shell (`internal/plans/mockups/`), both themes, desktop and 390px. Approval before T5 styling is final.
-- [ ] T2. Dependencies: json-render packages (version per the cooldown rule), lockfile regenerated.
-- [ ] T3. Catalog in `overlay-chat-core`, limits, validation helper, unit tests (valid specs, unknown component, oversize, depth, bad link scheme, `$`-prefixed state paths round-trip through `specJson`).
-- [ ] T4. Contract: `json_render` variant in schema, conversations validator and app-core contracts; `updateMessageUiPart` accepts it.
+- [x] T1. Approved mockup: real specs in the workspace shell, both themes, desktop and 390px. Responsive SVG chart until T5.
+- [x] T2. Dependencies: json-render core/react pinned to 0.21.4; Recharts 3.10.1 (published 2026-07-25, newest stable older than seven days, Recharts 3 API used by shadcn). Lockfile regenerated with npm 11.11.0.
+- [x] T3. Isomorphic `@overlay/chat-core/generative-ui` catalog, limits, validation, tool-argument prompt helper, and unit tests reusing approved mockup specs.
+- [x] T4. `json_render` in all persisted/public contracts and normalizers. Existing `updateMessageUiPart` preserves fields. No tool or renderer enabled yet.
 - [ ] T5. `@overlay/ui` Table and Chart (official shadcn), plus the React registry and `JsonRenderCard` with error boundary and summary fallback.
 - [ ] T6. `render_ui` tool, executor, `GENERATED_UI_TOOL_IDS` in persistence, visual sequence, recovery and MCP withholding; tests for persistence and part ordering (text, tool, UI, text).
 - [ ] T7. Prompt generation in `buildHarnessInstructions`; personal instructions updated.

@@ -17,6 +17,10 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
 - `apps/admin/**` holds the standalone operator console (see `internal/develop/admin-console.md`): its own Next.js app, WorkOS sign-in, session cookie, and a single `convex-admin` module that reaches the `admin/console:*` Convex functions with `ADMIN_API_SECRET`. `apps/admin` may not import `src/**` and `src/**` may not import it back.
 - `scripts/` is split by purpose: `scripts/ci/` (checks, boundary rules, baselines consumers), `scripts/release/` (hosted build wrappers and trusted PR preview lifecycle control), `scripts/qa/` (smoke tests, rehearsal/readiness harnesses), `scripts/db/` (migrations, backfills, ops), `scripts/lib/` (shared script helpers). `scripts/dev-setup.sh` stays at root. The retired staging ignore-build script is removed; `overlay-landing` uses native Git deployment and the hosted build wrapper.
 - `packages/overlay-app-core/**` holds shared cross-surface contracts and UI settings types.
+- `@overlay/chat-core/generative-ui` owns the isomorphic generated UI catalog, limits,
+  validation, and tool-argument prompt helper. Persist specs and edited state as JSON
+  strings in the versioned `json_render` message contract; the catalog imports no React
+  or server modules. Tool execution and React rendering are separate consumers.
 - `packages/overlay-api-client/**` holds typed transport wrappers for `/api/v1/**`.
 - `packages/overlay-ui/**` holds the shared presentation primitives (buttons, inputs, dialogs,
   and the list-page system: `Tile`/`TileGrid`/`TileIcon`/`TileSkeleton`/`CreateTile` for grid

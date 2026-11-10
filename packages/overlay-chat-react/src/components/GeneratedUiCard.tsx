@@ -334,6 +334,7 @@ export function GeneratedUiCard({
   }
 
   if (data.kind === 'questionnaire') return <ConversationQuestionnaire requestId={part.id} data={data} readOnly={readOnly || streaming} />
+  if (data.kind === 'json_render') return null
 
   return (
     <div className="message-appear w-full max-w-[min(100%,46rem)] px-1 py-1" aria-busy={streaming}>

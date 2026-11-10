@@ -3,7 +3,18 @@ import { safeHttpUrl } from './sources'
 export const GENERATED_UI_DATA_TYPE = 'overlay.generated_ui' as const
 export const GENERATED_UI_VERSION = 1 as const
 
-export type GeneratedUiKind = 'draft.text' | 'draft.email' | 'connector.connect' | 'questionnaire'
+export type GeneratedUiKind = 'draft.text' | 'draft.email' | 'connector.connect' | 'questionnaire' | 'json_render'
+
+export type GeneratedJsonRenderData = {
+  version: typeof GENERATED_UI_VERSION
+  kind: 'json_render'
+  catalogVersion: number
+  summary: string
+  title?: string
+  specJson: string
+  stateJson?: string
+  submittedAt?: number
+}
 
 export type GeneratedQuestionnaireData = {
   version: typeof GENERATED_UI_VERSION
@@ -51,6 +62,7 @@ export type GeneratedConnectorData = {
 }
 
 export type GeneratedUiData =
+  | GeneratedJsonRenderData
   | GeneratedTextDraftData
   | GeneratedEmailDraftData
   | GeneratedConnectorData
@@ -179,10 +191,27 @@ function normalizeConnector(record: Record<string, unknown>): GeneratedConnector
   }
 }
 
+function normalizeJsonRender(record: Record<string, unknown>): GeneratedJsonRenderData | null {
+  if (typeof record.catalogVersion !== 'number' || !Number.isFinite(record.catalogVersion)
+    || typeof record.summary !== 'string' || !record.summary.trim()
+    || typeof record.specJson !== 'string' || !record.specJson.trim()
+    || (record.title !== undefined && typeof record.title !== 'string')
+    || (record.stateJson !== undefined && typeof record.stateJson !== 'string')
+    || (record.submittedAt !== undefined && (typeof record.submittedAt !== 'number' || !Number.isFinite(record.submittedAt)))) return null
+  return {
+    version: GENERATED_UI_VERSION, kind: 'json_render', catalogVersion: record.catalogVersion,
+    summary: record.summary, specJson: record.specJson,
+    ...(record.title !== undefined ? { title: record.title as string } : {}),
+    ...(record.stateJson !== undefined ? { stateJson: record.stateJson as string } : {}),
+    ...(record.submittedAt !== undefined ? { submittedAt: record.submittedAt as number } : {}),
+  }
+}
+
 export function normalizeGeneratedUiData(value: unknown): GeneratedUiData | null {
   const record = asRecord(value)
   if (!record || record.version !== GENERATED_UI_VERSION) return null
   switch (record.kind) {
+    case 'json_render': return normalizeJsonRender(record)
     case 'questionnaire': return normalizeQuestionnaire(record)
     case 'draft.text': return normalizeTextDraft(record)
     case 'draft.email': return normalizeEmailDraft(record)
@@ -304,6 +333,7 @@ export function isGeneratedUiPart(value: unknown): value is GeneratedUiPart {
 }
 
 export function generatedUiDataToPlainText(data: GeneratedUiData): string {
+  if (data.kind === 'json_render') return data.summary
   if (data.kind === 'questionnaire') return [data.prompt, ...data.choices.map((choice) => choice.label)].join('\n')
   if (data.kind === 'draft.text') {
     return [data.title, data.body].filter(Boolean).join('\n\n')

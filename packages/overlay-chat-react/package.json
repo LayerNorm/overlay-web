@@ -32,6 +32,7 @@
     "test": "TSX_TSCONFIG_PATH=tsconfig.json node --require ../../scripts/ci/register-style-noop.cjs --require ../../scripts/ci/register-react.cjs --import tsx --test 'src/**/*.test.tsx' 'src/**/*.test.ts'"
   },
   "dependencies": {
+    "@json-render/react": "0.21.4",
     "@overlay/chat-core": "file:../overlay-chat-core",
     "@overlay/modules-react": "file:../overlay-modules-react",
     "@overlay/ui": "file:../overlay-ui",

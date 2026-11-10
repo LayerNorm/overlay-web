@@ -34,6 +34,16 @@ const generatedUiVariant = v.object({
 export const generatedUiData = v.union(
   v.object({
     version: v.literal(1),
+    kind: v.literal('json_render'),
+    catalogVersion: v.number(),
+    summary: v.string(),
+    title: v.optional(v.string()),
+    specJson: v.string(),
+    stateJson: v.optional(v.string()),
+    submittedAt: v.optional(v.number()),
+  }),
+  v.object({
+    version: v.literal(1),
     kind: v.literal('draft.text'),
     title: v.optional(v.string()),
     body: v.string(),

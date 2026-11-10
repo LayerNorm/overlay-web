@@ -3,6 +3,20 @@ title: "Convex-native personal chat"
 description: "Reproducible realtime baselines, retained consumers, and migration security requirements."
 ---
 
+## Generated UI persistence
+
+The message-part unions in `convex/schema.ts`, `convex/chat/conversations.ts`, and
+`@overlay/app-core` accept `json_render` alongside the existing typed cards.
+Its `specJson` and optional `stateJson` are serialized strings so `$state` and
+`$bindState` keys never reach Convex object-field validation. Preserve these strings
+and `catalogVersion`, `summary`, `title`, and `submittedAt` during normalization and
+updates. Existing persisted cards need no migration.
+
+`@overlay/chat-core/generative-ui` owns the isomorphic v1 catalog, prompt helper,
+and validation boundary. Only HTTPS links/actions and HTTPS or exact workspace
+file-content image URLs are valid. Tool admission and json-render rendering are
+not enabled by this contract change.
+
 ## CN-01 baseline protocol
 
 This harness measures the existing behavior, not a fix. A remote convergence
