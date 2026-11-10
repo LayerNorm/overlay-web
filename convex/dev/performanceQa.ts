@@ -12,9 +12,19 @@ const INTERVAL_MS = 150
 const MODEL = 'openrouter/free'
 const streamText = (step: number) => Array.from({ length: step }, (_, index) =>
   `Synthetic stream paragraph ${index + 1}. This deterministic text does not call a model.\n\n`).join('')
-const historyText = (kind: string, index: number, count: number) => index === count - 1
-  ? `Performance ${kind} final sentinel`
-  : `Synthetic ${kind} message ${index + 1}.\n\n${'Variable-height benchmark paragraph.\n\n'.repeat(1 + index % 7)}`
+const codeText = [
+  'Syntax QA sentinel. Synthetic content, no model execution.', '',
+  '```javascript', 'const label = "<tag> & \\"quoted\\"";', 'console.log(label);', '```', '',
+  '```python', 'def show():', '    return \'<tag> & "python"\'', '```', '',
+  '```overlay-qa-unknown', 'unknown<&> "unchanged"', '```', '',
+  '```text', 'plain<&> "text"', '```',
+].join('\n')
+const historyText = (kind: string, index: number, count: number) => {
+  if (kind === 'code') return index === 0 ? 'Synthetic syntax-highlighting fixture.' : codeText
+  return index === count - 1
+    ? `Performance ${kind} final sentinel`
+    : `Synthetic ${kind} message ${index + 1}.\n\n${'Variable-height benchmark paragraph.\n\n'.repeat(1 + index % 7)}`
+}
 const tickReference = makeFunctionReference<'mutation', {
   conversationId: Id<'conversations'>; generation: number; step: number
 }>('dev/performanceQa:tick')
@@ -42,6 +52,27 @@ export const init = internalMutation({
   },
 })
 
+/** Separate opt-in fixture: no existing histories, workspace roles or funds are changed. */
+export const initCode = internalMutation({
+  args: {},
+  handler: async ctx => {
+    const owner = identity()
+    const principalId = `${owner.workspaceId}-owner`
+    const [workspace, principal, membership] = await Promise.all([
+      ctx.db.query('workspaces').withIndex('by_workspaceId', q => q.eq('workspaceId', owner.workspaceId)).unique(),
+      ctx.db.query('workspacePrincipals').withIndex('by_principalId', q => q.eq('principalId', principalId)).unique(),
+      ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId',
+        q => q.eq('workspaceId', owner.workspaceId).eq('principalId', principalId)).unique(),
+    ])
+    if (workspace?.status !== 'active' || principal?.userId !== owner.userId
+      || principal.workspaceId !== owner.workspaceId || principal.type !== 'human'
+      || membership?.status !== 'active' || membership.role !== 'owner') {
+      throw new Error('Code fixture requires the existing active QA owner and workspace')
+    }
+    return { workspaceId: owner.workspaceId, conversationId: await history(ctx, owner, 'code', 2) }
+  },
+})
+
 async function history(ctx: MutationCtx, owner: ReturnType<typeof identity>, kind: string, count: number) {
   const clientId = `${PREFIX}-${kind}`
   const existing = await ctx.db.query('conversations')
@@ -49,13 +80,16 @@ async function history(ctx: MutationCtx, owner: ReturnType<typeof identity>, kin
   if (existing) {
     const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId',
       q => q.eq('conversationId', existing._id).eq('principalId', `${owner.workspaceId}-owner`)).unique()
-    if (existing.workspaceId !== owner.workspaceId || existing.deletedAt !== undefined || participant?.archivedAt !== undefined) {
+    if (existing.workspaceId !== owner.workspaceId || existing.deletedAt !== undefined || participant?.archivedAt !== undefined
+      || (kind === 'code' && existing.conversationType !== 'personal')) {
       throw new Error('Performance fixture changed; inspect before reuse')
     }
     const messages = await ctx.db.query('conversationMessages')
       .withIndex('by_conversationId_createdAt', q => q.eq('conversationId', existing._id)).take(count + 1)
     if (messages.length !== count || messages.some((message, index) => message.deletedAt !== undefined
       || message.clientNonce !== `${clientId}-message-${index}`
+      || (kind === 'code' && (message.status !== 'completed' || message.contentType !== 'text'
+        || message.role !== (index === 0 ? 'user' : 'assistant')))
       || ((kind !== 'stream' || index < count - 1) && message.content !== historyText(kind, index, count)))) {
       throw new Error('Performance fixture history changed; inspect before reuse')
     }
