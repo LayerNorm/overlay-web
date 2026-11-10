@@ -237,6 +237,19 @@ function NotebookModelPicker({
   )
 }
 
+/** Accepting changes only updates diff state, not the document, so count from every editor transaction. */
+function usePendingDiffCount(editor: TiptapEditor): number {
+  const [count, setCount] = useState(() => (editor ? getPendingDiffs(editor).length : 0))
+  useEffect(() => {
+    if (!editor) return
+    const update = () => setCount(getPendingDiffs(editor).length)
+    update()
+    editor.on('transaction', update)
+    return () => { editor.off('transaction', update) }
+  }, [editor])
+  return count
+}
+
 function NotebookAssistantHeader({
   editor,
   modelPicker,
@@ -250,9 +263,10 @@ function NotebookAssistantHeader({
   onAgentPanelModeChange?: (mode: 'docked' | 'floating') => void
   onToggleAgentPanel: () => Promise<void>
 }) {
+  const pendingDiffCount = usePendingDiffCount(editor)
   return (
     <NotebookAgentHeader
-      pendingDiffCount={editor ? getPendingDiffs(editor).length : 0}
+      pendingDiffCount={pendingDiffCount}
       modelPicker={modelPicker}
       presentation={
         onAgentPanelModeChange
