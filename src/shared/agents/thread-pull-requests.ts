@@ -1,14 +1,9 @@
 import type { WorkspaceThreadPullRequest } from '@overlay/workspace-contracts'
+import { isRecord, MAX_ARRAY_ITEMS, MAX_TEXT_LENGTH, safeStableStringify } from './thread-pull-request-json'
 
 const MAX_PARTS = 256
 const MAX_BATCH_TOOLS = 32
 const MAX_PULL_REQUESTS = 20
-const MAX_FINGERPRINT_LENGTH = 64_000
-const MAX_TEXT_LENGTH = 16_384
-const MAX_OBJECT_KEYS = 128
-const MAX_ARRAY_ITEMS = 64
-const MAX_JSON_DEPTH = 10
-const MAX_JSON_NODES = 2_000
 const MAX_RESPONSE_DEPTH = 6
 
 type PullRequestOperation = 'create' | 'update' | 'merge' | 'close' | 'reopen' | 'draft' | 'ready' | 'read'
@@ -50,52 +45,6 @@ const GITHUB_PULL_REQUEST_TOOLS: Record<string, PullRequestOperation> = {
   GITHUB_MARK_PULL_REQUEST_READY_FOR_REVIEW: 'ready',
   GITHUB_MARK_A_PULL_REQUEST_READY_FOR_REVIEW: 'ready',
   GITHUB_GET_A_PULL_REQUEST: 'read',
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value)
-}
-
-function safeStableStringify(value: unknown): string | null {
-  let nodes = 0
-  const seen = new WeakSet<object>()
-
-  const visit = (current: unknown, depth: number): unknown => {
-    nodes += 1
-    if (nodes > MAX_JSON_NODES || depth > MAX_JSON_DEPTH) throw new Error('JSON limit exceeded')
-    if (typeof current === 'string') {
-      if (current.length > MAX_TEXT_LENGTH) throw new Error('String limit exceeded')
-      return current
-    }
-    if (current === null || typeof current === 'boolean' || typeof current === 'number') {
-      return current
-    }
-    if (Array.isArray(current)) {
-      if (current.length > MAX_ARRAY_ITEMS || seen.has(current)) throw new Error('Array limit exceeded')
-      seen.add(current)
-      const result = current.map(item => visit(item, depth + 1))
-      seen.delete(current)
-      return result
-    }
-    if (!isRecord(current) || seen.has(current)) throw new Error('Object limit exceeded')
-    const keys = Object.keys(current).sort()
-    if (keys.length > MAX_OBJECT_KEYS) throw new Error('Object key limit exceeded')
-    seen.add(current)
-    const result: Record<string, unknown> = {}
-    for (const key of keys) {
-      if (key.length > 256) throw new Error('Key limit exceeded')
-      result[key] = visit(current[key], depth + 1)
-    }
-    seen.delete(current)
-    return result
-  }
-
-  try {
-    const serialized = JSON.stringify(visit(value, 0))
-    return typeof serialized === 'string' && serialized.length <= MAX_FINGERPRINT_LENGTH ? serialized : null
-  } catch {
-    return null
-  }
 }
 
 function completedToolCalls(parts: unknown): Map<string, CompletedToolCall> {
@@ -294,6 +243,36 @@ function batchResults(output: unknown): unknown[] {
   return out.slice(0, MAX_BATCH_TOOLS)
 }
 
+function matchingBatchInputIndex(
+  requests: BatchToolInput[],
+  result: Record<string, unknown>,
+  resultIndex: number,
+  resultCount: number,
+  toolName: string,
+  matchedInputIndexes: Set<number>,
+): number | undefined {
+  const availableIndexes = requests.flatMap((request, index) => (
+    request?.toolName === toolName && !matchedInputIndexes.has(index) ? [index] : []
+  ))
+  const resultArguments = isRecord(result.arguments) ? safeStableStringify(result.arguments) : null
+  const positionalRequest = requests[resultIndex]
+  if (positionalRequest?.toolName === toolName && !matchedInputIndexes.has(resultIndex)) {
+    const positionalArgumentsMatch = resultArguments !== null
+      && safeStableStringify(positionalRequest.toolInput) === resultArguments
+    const positionalIsUnambiguous = availableIndexes.length === 1 || requests.length === resultCount
+    if ((resultArguments === null && positionalIsUnambiguous) || positionalArgumentsMatch) {
+      return resultIndex
+    }
+  }
+  if (resultArguments !== null) {
+    const argumentMatches = availableIndexes.filter(index => (
+      safeStableStringify(requests[index]?.toolInput) === resultArguments
+    ))
+    return argumentMatches.length === 1 ? argumentMatches[0] : undefined
+  }
+  return availableIndexes.length === 1 ? availableIndexes[0] : undefined
+}
+
 function matchedBatchRequests(call: CompletedToolCall): ToolRequestWithOutput[] {
   const wrapperName = call.toolName.toUpperCase()
   if (wrapperName !== 'COMPOSIO_MULTI_EXECUTE_TOOL'
@@ -308,29 +287,9 @@ function matchedBatchRequests(call: CompletedToolCall): ToolRequestWithOutput[] 
     const resultName = result.tool_slug ?? result.toolName ?? result.tool_name
     const matched = githubToolSlug(resultName)
     if (!matched) continue
-    const availableIndexes = requests.flatMap((request, index) => (
-      request?.toolName === matched.toolName && !matchedInputIndexes.has(index) ? [index] : []
-    ))
-    const resultArguments = isRecord(result.arguments) ? safeStableStringify(result.arguments) : null
-    let inputIndex: number | undefined
-    const positionalRequest = requests[resultIndex]
-    if (positionalRequest?.toolName === matched.toolName && !matchedInputIndexes.has(resultIndex)) {
-      const positionalArgumentsMatch = resultArguments !== null
-        && safeStableStringify(positionalRequest.toolInput) === resultArguments
-      const positionalIsUnambiguous = availableIndexes.length === 1
-        || requests.length === results.length
-      if ((resultArguments === null && positionalIsUnambiguous) || positionalArgumentsMatch) {
-        inputIndex = resultIndex
-      }
-    }
-    if (inputIndex === undefined && resultArguments !== null) {
-      const argumentMatches = availableIndexes.filter(index => (
-        safeStableStringify(requests[index]?.toolInput) === resultArguments
-      ))
-      if (argumentMatches.length === 1) inputIndex = argumentMatches[0]
-    } else if (inputIndex === undefined && availableIndexes.length === 1) {
-      inputIndex = availableIndexes[0]
-    }
+    const inputIndex = matchingBatchInputIndex(
+      requests, result, resultIndex, results.length, matched.toolName, matchedInputIndexes,
+    )
     if (inputIndex === undefined) continue
     const request = requests[inputIndex]
     if (!request) continue
@@ -394,13 +353,10 @@ function operationConfirmsState(
   }
 }
 
-function observationFrom(
+function observationIdentity(
   response: Record<string, unknown>,
   request: ToolRequest,
-): PullRequestObservation | null {
-  const state = stateFrom(response)
-  if (!state || !operationConfirmsState(request.operation, state)) return null
-
+): { owner: string; repo: string; number: number; url: string } | null {
   const inputRepo = inputRepository(request.toolInput)
   const hasResponseUrl = Object.prototype.hasOwnProperty.call(response, 'html_url')
     || Object.prototype.hasOwnProperty.call(response, 'url')
@@ -423,6 +379,17 @@ function observationFrom(
     if (!identity) return null
   }
 
+  return identity
+}
+
+function observationFrom(
+  response: Record<string, unknown>,
+  request: ToolRequest,
+): PullRequestObservation | null {
+  const state = stateFrom(response)
+  if (!state || !operationConfirmsState(request.operation, state)) return null
+  const identity = observationIdentity(response, request)
+  if (!identity) return null
   const title = typeof response.title === 'string' && response.title.trim().length > 0
     && response.title.length <= 512
     ? response.title.trim()
@@ -476,6 +443,38 @@ function sameAssociation(
     && left.observedAt === right.observedAt && left.updatedAt === right.updatedAt
 }
 
+type PullRequestChange = { observation: PullRequestObservation; operation: PullRequestOperation }
+
+function newPullRequestChanges(previousParts: unknown, nextParts: unknown): PullRequestChange[] {
+  const before = completedToolCalls(previousParts)
+  const after = completedToolCalls(nextParts)
+  const changes: PullRequestChange[] = []
+  for (const [toolCallId, call] of after) {
+    if (before.get(toolCallId)?.fingerprint === call.fingerprint) continue
+    for (const request of requestForCall(call)) {
+      for (const payload of mcpPayloads(request.toolOutput)) {
+        for (const observation of findPullRequestObservations(payload, request)) {
+          changes.push({ observation, operation: request.operation })
+        }
+      }
+    }
+  }
+  return changes
+}
+
+function canApplyObservation(
+  { observation, operation }: PullRequestChange,
+  previous: WorkspaceThreadPullRequest | undefined,
+  wasAssociated: boolean,
+): boolean {
+  if (operation === 'read' && !wasAssociated) return false
+  if (previous?.state === 'merged' && observation.state !== 'merged') return false
+  if (!observation.title && !previous && operation !== 'merge') return false
+  if (previous && observation.updatedAt !== undefined && previous.updatedAt !== undefined
+    && observation.updatedAt < previous.updatedAt) return false
+  return true
+}
+
 /**
  * Projects newly completed, structured GitHub pull-request tool evidence onto a
  * conversation's existing associations. Replayed tool parts never refresh the
@@ -487,8 +486,6 @@ export function reduceThreadPullRequests(
   nextParts: unknown,
   observedAt: number,
 ): WorkspaceThreadPullRequest[] | undefined {
-  const before = completedToolCalls(previousParts)
-  const after = completedToolCalls(nextParts)
   const associations = new Map<string, WorkspaceThreadPullRequest>()
   for (const association of existing ?? []) {
     if (!validExistingAssociation(association)) continue
@@ -498,17 +495,7 @@ export function reduceThreadPullRequests(
   }
 
   const existingKeys = new Set(associations.keys())
-  const changes: Array<{ observation: PullRequestObservation; operation: PullRequestOperation }> = []
-  for (const [toolCallId, call] of after) {
-    if (before.get(toolCallId)?.fingerprint === call.fingerprint) continue
-    for (const request of requestForCall(call)) {
-      for (const payload of mcpPayloads(request.toolOutput)) {
-        for (const observation of findPullRequestObservations(payload, request)) {
-          changes.push({ observation, operation: request.operation })
-        }
-      }
-    }
-  }
+  const changes = newPullRequestChanges(previousParts, nextParts)
   if (changes.length === 0 || !Number.isFinite(observedAt) || observedAt <= 0) {
     return existing as WorkspaceThreadPullRequest[] | undefined
   }
@@ -517,11 +504,7 @@ export function reduceThreadPullRequests(
   for (const { observation, operation } of changes) {
     const key = associationKey(observation)
     const previous = associations.get(key)
-    if (operation === 'read' && !existingKeys.has(key)) continue
-    if (previous?.state === 'merged' && observation.state !== 'merged') continue
-    if (!observation.title && !previous && operation !== 'merge') continue
-    if (previous && observation.updatedAt !== undefined && previous.updatedAt !== undefined
-      && observation.updatedAt < previous.updatedAt) continue
+    if (!canApplyObservation({ observation, operation }, previous, existingKeys.has(key))) continue
     const title = observation.title ?? previous?.title ?? `Pull request #${observation.number}`
     const association: WorkspaceThreadPullRequest = {
       owner: observation.owner,
