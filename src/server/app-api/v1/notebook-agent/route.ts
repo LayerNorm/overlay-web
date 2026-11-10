@@ -8,15 +8,8 @@ import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
 import {
-  billableBudgetCentsFromProviderUsd,
   buildInsufficientCreditsPayload,
-  finalizeProviderBudgetReservation,
-  getBudgetTotals,
   isPaidPlan,
-  markProviderBudgetReconcile,
-  markProviderBudgetStarted,
-  releaseProviderBudgetReservation,
-  reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import { createNotebookTextEmitter } from '@/server/agent/notebook-agent-stream'
@@ -222,21 +215,22 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     return new Response(JSON.stringify(buildInsufficientCreditsPayload(entitlements, 'Fund this workspace to run a model.')),
       { status: 402, headers: { 'Content-Type': 'application/json' } })
   }
-  const budget = getBudgetTotals(entitlements)
-  if (budget.remainingCents <= 0) {
-    const autoTopUp = await generationUsagePolicy.ensureBudgetAvailable({
-      userId,
-      entitlements,
-      minimumRequiredCents: 1,
-      programmaticSubjectId,
-      workspaceId,
-    })
-    if (autoTopUp.remainingCents <= 0) {
-      return new Response(
-        JSON.stringify(buildInsufficientCreditsPayload(entitlements, 'No budget remaining. Please top up your workspace.')),
-        { status: 402, headers: { 'Content-Type': 'application/json' } },
-      )
-    }
+  // The only spending check: refuse when the workspace has under 2% left (after a top-up). Each step of the
+  // loop is charged its actual cost as it ends; the loop stops once the workspace drops under 2%.
+  const budgetCheck = await generationUsagePolicy.ensureBudgetNotLow({
+    userId,
+    entitlements,
+    kind: 'agent',
+    modelId: effectiveModelId,
+    operationId: 'agent.notebook',
+    programmaticSubjectId,
+    workspaceId,
+  })
+  if (!budgetCheck.ok) {
+    return new Response(
+      JSON.stringify({ ...budgetCheck.payload, error: budgetCheck.code }),
+      { status: budgetCheck.status, headers: { 'Content-Type': 'application/json' } },
+    )
   }
 
   const refreshedEntitlements = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId, workspaceId })
@@ -257,59 +251,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     )
   }
 
-  if (isPaidPlan(refreshedEntitlements)) {
-    const refreshedBudget = getBudgetTotals(refreshedEntitlements)
-    if (refreshedBudget.remainingCents <= 0) {
-      return new Response(
-        JSON.stringify(
-          buildInsufficientCreditsPayload(refreshedEntitlements, 'No budget remaining. Please top up your account.'),
-        ),
-        { status: 402, headers: { 'Content-Type': 'application/json' } },
-      )
-    }
-  }
-
   const frozenNoteLines =
     rawNoteContent.length > MAX_NOTE_CHARS
       ? `${rawNoteContent.slice(0, MAX_NOTE_CHARS)}\n[Note truncated for agent context]`
       : rawNoteContent
-
-  let budgetReservationId: string | null = null
-  if (isPaidPlan(refreshedEntitlements)) {
-    const estimatedInputTokens = Math.ceil((frozenNoteLines.length + message.length + NOTEBOOK_AGENT_PROMPT.length) / 4) + 2_000
-    const maxOutputTokens = 8_192
-    const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
-      effectiveModelId,
-      estimatedInputTokens,
-      0,
-      maxOutputTokens,
-    )
-    if (estimatedProviderCostUsd === null) {
-      return new Response(
-        JSON.stringify({ error: 'pricing_missing', message: `Model ${effectiveModelId} is not priced for production use.` }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } },
-      )
-    }
-    const reservation = await reserveProviderBudget({
-      userId,
-      entitlements: refreshedEntitlements,
-      idempotencyKey: context.requestIdempotencyKey,
-      providerCostUsd: estimatedProviderCostUsd,
-      kind: 'agent',
-      modelId: effectiveModelId,
-      operationId: 'agent.notebook',
-      programmaticSubjectId,
-      requestFingerprint: context.requestFingerprint,
-      workspaceId,
-    })
-    if (!reservation.ok) {
-      return new Response(
-        JSON.stringify({ ...reservation.payload, error: reservation.code }),
-        { status: reservation.status, headers: { 'Content-Type': 'application/json' } },
-      )
-    }
-    budgetReservationId = reservation.reservationId
-  }
 
   const forwardCookie = request.headers.get('cookie') ?? undefined
   const toolOptions: OverlayToolsOptions = {
@@ -348,112 +293,35 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           createEditId,
         })
 
+        let stopForBudget = false
         const agent = new ToolLoopAgent({
           model,
           instructions,
           tools,
-          stopWhen: isStepCount(20),
-          onStepEnd: async ({ text }) => {
+          stopWhen: [isStepCount(20), () => stopForBudget],
+          onStepEnd: async ({ text, usage }) => {
             emitText(text)
+            const charged = await chargeNotebookStep({
+              generationUsagePolicy, modelId: effectiveModelId, programmaticSubjectId, usage, userId, workspaceId,
+            })
+            if (charged.stop) stopForBudget = true
           },
         })
 
         const prompt =
           `Note content:\n\n${frozenNoteLines || '(empty note)'}\n\n---\n\nUser request: ${message}`
 
-        await markProviderBudgetStarted({
-          userId,
-          reservationId: budgetReservationId,
-        })
         const result = await agent.generate({ prompt })
 
         emitText(result.text)
-
-	        const usage = result.usage
-	        const totalInputTokens = usage?.inputTokens ?? 0
-	        const totalOutputTokens = usage?.outputTokens ?? 0
-	        const cachedTokens = usage?.inputTokenDetails?.cacheReadTokens ?? 0
-	        const providerCostUsd = await calculateLanguageModelTokenCostOrNull(
-	          effectiveModelId,
-	          totalInputTokens,
-	          cachedTokens,
-	          totalOutputTokens,
-	        )
-	        if (providerCostUsd === null) {
-	          if (budgetReservationId) {
-	            await markProviderBudgetReconcile({
-	              userId,
-	              reservationId: budgetReservationId,
-	              errorMessage: `pricing_missing:${effectiveModelId}`,
-	            }).catch((_error) => undefined)
-	            budgetReservationId = null
-	          }
-	          throw new Error(`pricing_missing:${effectiveModelId}`)
-	        }
-	        const costCents = billableBudgetCentsFromProviderUsd(providerCostUsd)
-
-	        if (costCents > 0 || totalInputTokens > 0 || totalOutputTokens > 0) {
-	          try {
-	            const events = [
-	              {
-	                type: 'agent' as const,
-	                modelId: effectiveModelId,
-	                inputTokens: totalInputTokens,
-	                outputTokens: totalOutputTokens,
-	                cachedTokens,
-	                cost: costCents,
-	                timestamp: Date.now(),
-	              },
-	            ]
-	            if (budgetReservationId) {
-	              await finalizeProviderBudgetReservation({
-	                userId,
-	                reservationId: budgetReservationId,
-	                actualProviderCostUsd: providerCostUsd,
-	                events,
-	              })
-	              budgetReservationId = null
-	            } else {
-	              await serverContext.appData.repositories.usage.recordBatch({
-	                events: events.map((event) => ({
-	                  cachedTokens: event.cachedTokens,
-	                  costCents: event.cost,
-	                  inputTokens: event.inputTokens,
-	                  kind: event.type,
-	                  modelId: event.modelId,
-	                  occurredAt: event.timestamp,
-	                  outputTokens: event.outputTokens,
-	                  providerCostUsd,
-	                })),
-	                operationId: `notebook_${globalThis.crypto.randomUUID()}`,
-	                userId,
-	              })
-	            }
-	          } catch (err) {
-	            logger.error('[notebook-agent] Failed to record usage:', summarizeErrorForLog(err))
-	            if (budgetReservationId) {
-	              await markProviderBudgetReconcile({
-	                userId,
-	                reservationId: budgetReservationId,
-	                errorMessage: summarizeErrorForLog(err),
-	              }).catch((_error) => undefined)
-	              budgetReservationId = null
-	            }
-	          }
-	        }
+        if (stopForBudget) {
+          emit({ type: 'error', error: 'Stopped: less than 2% of the workspace budget is left.' })
+        }
 
         emit({ type: 'done' })
 	      } catch (err) {
 	        const msg = err instanceof Error ? err.message : String(err)
 	        logger.error('[notebook-agent]', summarizeErrorForLog(err))
-	        if (budgetReservationId) {
-	          await releaseProviderBudgetReservation({
-	            userId,
-	            reservationId: budgetReservationId,
-	            reason: summarizeErrorForLog(err),
-	          }).catch((_error) => undefined)
-	          budgetReservationId = null
-	        }
 	        emit({ type: 'error', error: msg })
         emit({ type: 'done' })
       } finally {
@@ -468,4 +336,41 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       'Cache-Control': 'no-store',
     },
   })
+}
+
+/**
+ * Charges one finished step its actual cost. The loop stops when the workspace is now under 2%, or when the
+ * step cannot be priced (it could not be charged).
+ */
+async function chargeNotebookStep(args: {
+  generationUsagePolicy: ReturnType<typeof getOverlayServerContext>['generationUsagePolicy']
+  modelId: string
+  programmaticSubjectId?: string
+  usage: { inputTokens?: number; outputTokens?: number; inputTokenDetails?: { cacheReadTokens?: number } } | undefined
+  userId: string
+  workspaceId: string
+}): Promise<{ stop: boolean }> {
+  const inputTokens = args.usage?.inputTokens ?? 0
+  const outputTokens = args.usage?.outputTokens ?? 0
+  const cachedTokens = args.usage?.inputTokenDetails?.cacheReadTokens ?? 0
+  if (inputTokens <= 0 && outputTokens <= 0) return { stop: false }
+  const providerCostUsd = await calculateLanguageModelTokenCostOrNull(args.modelId, inputTokens, cachedTokens, outputTokens)
+  if (providerCostUsd === null) {
+    logger.error('[notebook-agent] Missing pricing for a finished step; stopping', { modelId: args.modelId })
+    return { stop: true }
+  }
+  try {
+    const { budgetLow } = await args.generationUsagePolicy.charge({
+      operationId: `notebook_${globalThis.crypto.randomUUID()}`,
+      programmaticSubjectId: args.programmaticSubjectId,
+      providerCostUsd,
+      usage: { kind: 'agent', modelId: args.modelId, inputTokens, outputTokens, cachedTokens },
+      userId: args.userId,
+      workspaceId: args.workspaceId,
+    })
+    return { stop: budgetLow }
+  } catch (err) {
+    logger.error('[notebook-agent] Failed to record usage:', summarizeErrorForLog(err))
+    return { stop: true }
+  }
 }

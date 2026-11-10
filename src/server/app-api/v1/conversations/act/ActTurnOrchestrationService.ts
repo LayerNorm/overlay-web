@@ -421,10 +421,8 @@ export async function executeActTurn(
         userId,
         accessToken,
         entitlements: runtimeEntitlements,
-        idempotencyKey: context.requestIdempotencyKey,
         operationId: 'conversation.act.media-intent',
         programmaticSubjectId: billingProgrammaticSubjectId,
-        requestFingerprint: context.requestFingerprint,
         workspaceId: billingWorkspaceId,
       })
     })()
@@ -552,7 +550,6 @@ export async function executeActTurn(
         agentRun: personalAgentRun,
         auth,
         budget: {
-          maxProviderCostUsd: harnessBudget?.maxProviderCostUsd,
           durationMs: harnessBudget?.durationMs
             ?? (actAbortTimeoutMs !== undefined
               ? resolveActAbortTimeoutMs({ requestedTimeoutMs: actAbortTimeoutMs })

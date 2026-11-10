@@ -21,7 +21,7 @@ import type { WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 const mocks = vi.hoisted(() => ({
   getLanguageModel: vi.fn(),
   getLatestAgentRun: vi.fn(),
-  reserveForAttempt: vi.fn(),
+  ensureBudgetNotLow: vi.fn(),
   executeNativeHarnessTool: vi.fn(),
   nativeHarnessToolNeedsApproval: vi.fn(),
   refreshNativeHarnessAccess: vi.fn(),
@@ -58,7 +58,7 @@ vi.mock('@/server/bootstrap', () => ({
         },
       },
     },
-    chatUsagePolicy: { reserveForAttempt: mocks.reserveForAttempt },
+    chatUsagePolicy: { ensureBudgetNotLow: mocks.ensureBudgetNotLow },
   }),
 }))
 vi.mock('@/server/conversations/ActConversationRepository', () => ({ asConversationId: (id: string) => id }))
@@ -197,7 +197,6 @@ function harnessFixture(options: { allowedToolIds?: string[]; requiresPlan?: boo
       messages: request.messages,
       instructions: request.instructions,
       activeToolNames: request.toolNames.filter(name => current.policy.allowedToolIds.includes(name)),
-      estimatedCostMicros: 0,
     }),
     recordModelStep: async (step, id) => {
       calls.push({ kind: 'model' })
@@ -277,7 +276,7 @@ function agent(id: string, name: string, extra: Partial<WorkspaceAgentDirectoryI
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.getLatestAgentRun.mockResolvedValue(null)
-  mocks.reserveForAttempt.mockResolvedValue({ ok: true, reservationId: 'reservation' })
+  mocks.ensureBudgetNotLow.mockResolvedValue({ ok: true })
   mocks.nativeHarnessToolNeedsApproval.mockResolvedValue(false)
   mocks.executeNativeHarnessTool.mockResolvedValue({ success: true, value: 'read' })
   mocks.refreshNativeHarnessAccess.mockResolvedValue({ agent: { id: 'agent', principalId: 'agent-principal' } })

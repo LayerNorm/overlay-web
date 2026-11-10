@@ -186,9 +186,6 @@ export function createHarnessModelPorts(input: {
       let responseMaxOutputTokens = maxOutputTokens
       if (compacted.summaryFailed || !compacted.fitsBudget) {
         state = await readHarnessState(reference)
-        if (state.status === 'waiting_for_resources' && state.resourcePause?.receiptId) {
-          throw new HarnessYield(state.resourcePause.receiptId)
-        }
         if (state.compaction?.status === 'awaiting_reconciliation'
           || state.modelReservation?.id.startsWith('summary:')) throw new HarnessYield()
         const fallbackInstructions = buildHarnessStepInstructions(state, request.instructionContext)
@@ -250,7 +247,6 @@ export function createHarnessModelPorts(input: {
         messages,
         instructions,
         activeToolNames: request.toolNames,
-        estimatedCostMicros: prepared.estimatedCostMicros,
         model: prepared.model,
         settings: {
           ...request.settings,

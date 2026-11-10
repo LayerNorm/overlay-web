@@ -39,7 +39,7 @@ export function agentStartFailureClass(error: unknown): AgentStartFailureClass {
 const BILLING_CAUSE: Record<BillingState, string> = {
   subscription_required: "this workspace doesn't have a paid plan",
   payment_pending: "this workspace's payment hasn't been confirmed yet",
-  budget_exhausted: "this workspace's usage budget is used up",
+  budget_exhausted: "this workspace has less than 2% of its usage budget left",
   billing_suspended: "this workspace's billing needs attention",
 }
 

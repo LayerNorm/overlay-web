@@ -1,20 +1,22 @@
 import 'server-only'
 
 import type { Computer } from '@overlay/workspace-contracts'
-import type { SandboxUsage } from '@overlay/sandbox-runtime'
 import type { BillingPayerResolver } from '@/server/billing/BillingPayerResolver'
-import { billableBudgetCentsFromProviderUsd } from '@/server/billing/billing-runtime'
 import type { ConnectedAgentRepository, ConnectedAgentSandboxLeasePayer } from '@/server/agents/ConnectedAgentRepository'
-import { ManagedAgentSandboxBilling, sandboxLowBalanceCutoffCents } from '@/server/agents/ManagedAgentSandboxBilling'
-import { boatAllocationHoldUsd } from '@/server/agents/sandbox-boat-accounting'
+import type { ManagedAgentSandboxBilling } from '@/server/agents/ManagedAgentSandboxBilling'
+import { EXECUTION_ACCESS_MESSAGES } from '@/shared/billing/execution-access'
 import { ComputerServiceError } from './ComputerService'
 
 export const computerLeaseId = (computerId: string) => `computer:${computerId}`
-const SIZE_VCPUS = { small: 2, default: 4, large: 8 } as const
 
+/**
+ * A computer is never paid for in advance. Admission (`ComputerAdmission`) checks that the workspace has at least 2%
+ * of its budget left; the lease meter then charges observed Boat usage and stops the computer when a charge leaves
+ * the workspace under 2% or uses up an admin spend limit.
+ */
 export class ComputerBilling {
   constructor(private readonly dependencies: {
-    repository: Pick<ConnectedAgentRepository, 'getSandboxLease' | 'meterSandboxLease'>
+    repository: Pick<ConnectedAgentRepository, 'getSandboxLease' | 'patchSandboxLeaseUsage'>
     payerResolver: Pick<BillingPayerResolver, 'resolve'>
     meter: Pick<ManagedAgentSandboxBilling, 'meterLeaseWithRetry'>
     now?: () => number
@@ -40,79 +42,29 @@ export class ComputerBilling {
     return lease
   }
 
-  /** The lifecycle coordinator must hold maintenance ownership before calling this. */
-  async reserve(computer: Computer, actorUserId: string, stoppedUsage?: SandboxUsage): Promise<void> {
+  /**
+   * Records who pays for the session about to start (the member, or `agent:<ownerId>` for an agent's computer) so the
+   * meter charges them. Nothing is held. The lifecycle coordinator must hold maintenance ownership before calling this.
+   */
+  async bindPayer(computer: Computer, actorUserId: string): Promise<void> {
     if (computer.provider !== 'box') throw new Error('COMPUTER_PROVIDER_ACCOUNTING_UNSUPPORTED')
-    if (computer.providerRef && stoppedUsage?.providerMetrics?.running !== false) throw new Error('COMPUTER_RESERVATION_REQUIRES_STOPPED_USAGE')
-    const quotedCents = billableBudgetCentsFromProviderUsd(boatAllocationHoldUsd(SIZE_VCPUS[computer.size], stoppedUsage))
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const lease = await this.lease(computer)
-      const usage = lease.usage ?? {}
-      const previousHoldMicros = typeof usage.runtimeHoldMicros === 'number' ? usage.runtimeHoldMicros : 0
-      if (!Number.isSafeInteger(previousHoldMicros) || previousHoldMicros < 0) throw new Error('COMPUTER_RUNTIME_HOLD_INVALID')
-      const payer = previousHoldMicros > 0
-        ? usage.runtimeHoldPayer as ConnectedAgentSandboxLeasePayer | undefined
-        : await this.payer(computer, actorUserId)
-      if (!payer) throw new Error('COMPUTER_RUNTIME_HOLD_PAYER_MISSING')
-      const now = (this.dependencies.now ?? Date.now)()
-      const result = await this.dependencies.repository.meterSandboxLease({
-        workspaceId: computer.workspaceId, leaseId: lease.id, now,
-        expectedMeterVersion: typeof usage.meterVersion === 'number' ? usage.meterVersion : 0,
-        meteredUsage: usage.meteredUsage && typeof usage.meteredUsage === 'object' ? usage.meteredUsage as Record<string, unknown> : {},
-        meteredAt: now,
-        meteredProviderReference: lease.providerReference,
-        runtimeHoldCents: Math.max(quotedCents, previousHoldMicros / 10_000),
-        minRemainingCents: sandboxLowBalanceCutoffCents(), payer,
-      })
-      if (result.applied) return
-      if (result.reason !== 'lease_conflict') throw new ComputerServiceError('insufficient_credit', 'Workspace or member credit cannot cover this computer.', 402)
-    }
-    throw new ComputerServiceError('provider_error', 'The computer is busy. Try again.', 409)
-  }
-
-  async releaseReservation(computer: Computer): Promise<void> {
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      const lease = await this.lease(computer)
-      const usage = lease.usage ?? {}
-      if (computer.providerRef || lease.providerReference
-        || typeof usage.requestedAt === 'number'
-        || typeof usage.allocationKey === 'string'
-        || typeof usage.allocationRecipe === 'string'
-        || typeof usage.meteredProviderReference === 'string') {
-        throw new Error('COMPUTER_ALLOCATION_REQUIRES_RECONCILIATION')
-      }
-      const previousHoldMicros = typeof usage.runtimeHoldMicros === 'number' ? usage.runtimeHoldMicros : 0
-      if (!Number.isSafeInteger(previousHoldMicros) || previousHoldMicros < 0) {
-        throw new Error('COMPUTER_RUNTIME_HOLD_INVALID')
-      }
-      if (previousHoldMicros === 0) return
-      const payer = usage.runtimeHoldPayer as ConnectedAgentSandboxLeasePayer | undefined
-      if (!payer) throw new Error('COMPUTER_RUNTIME_HOLD_PAYER_MISSING')
-      const now = (this.dependencies.now ?? Date.now)()
-      const result = await this.dependencies.repository.meterSandboxLease({
-        workspaceId: computer.workspaceId,
-        leaseId: lease.id,
-        now,
-        expectedMeterVersion: typeof usage.meterVersion === 'number' ? usage.meterVersion : 0,
-        meteredUsage: usage.meteredUsage && typeof usage.meteredUsage === 'object'
-          ? usage.meteredUsage as Record<string, unknown>
-          : {},
-        meteredAt: typeof usage.meteredAt === 'number' ? usage.meteredAt : now,
-        meteredProviderReference: lease.providerReference,
-        runtimeHoldCents: 0,
-        minRemainingCents: 0,
-        payer,
-      })
-      if (result.applied) return
-      if (result.reason !== 'lease_conflict') throw new Error('COMPUTER_RESERVATION_RELEASE_FAILED')
-    }
-    throw new Error('COMPUTER_RESERVATION_RELEASE_CONFLICT')
-  }
-
-  async meter(computer: Computer, stopped = false): Promise<void> {
-    const result = await this.dependencies.meter.meterLeaseWithRetry(await this.lease(computer), {
-      idleStop: 'none', minRemainingCents: stopped ? 0 : sandboxLowBalanceCutoffCents(),
+    const payer = await this.payer(computer, actorUserId)
+    const lease = await this.lease(computer)
+    const patched = await this.dependencies.repository.patchSandboxLeaseUsage({
+      workspaceId: computer.workspaceId, leaseId: lease.id, patch: { lastPayer: payer },
+      now: (this.dependencies.now ?? Date.now)(),
     })
+    if (!patched) throw new Error('COMPUTER_LEASE_MISSING')
+  }
+
+  /** Charges observed usage. A running computer whose charge leaves the budget under 2% is refused here. */
+  async meter(computer: Computer, stopped = false): Promise<void> {
+    const result = await this.dependencies.meter.meterLeaseWithRetry(await this.lease(computer), { idleStop: 'none' })
     if (!result.applied) throw new ComputerServiceError('provider_error', 'Computer usage could not be reconciled.', 503)
+    if (stopped) return
+    if (result.spendLimitReached) {
+      throw new ComputerServiceError('insufficient_credit', 'Your spending limit in this workspace is used up. Ask a workspace admin to raise it.', 402)
+    }
+    if (result.budgetLow) throw new ComputerServiceError('insufficient_credit', EXECUTION_ACCESS_MESSAGES.budget_exhausted, 402)
   }
 }

@@ -31,7 +31,7 @@ test('drive starts require rollout, host capability and opt-in, and never target
   }
 })
 
-test('direct Cloud-kind dispatch rejects before room context, memory, or credit reservation', async () => {
+test('direct Cloud-kind dispatch rejects before room context, memory, or the budget check', async () => {
   let admissionChecked = false
   await assert.rejects(
     startRemoteWorkspaceAgentTurn({
@@ -59,7 +59,7 @@ test('direct Cloud-kind dispatch rejects before room context, memory, or credit 
   const sideEffectsStart = start.indexOf('const server = getOverlayServerContext()')
   assert.ok(guard >= 0)
   assert.ok(sideEffectsStart > guard)
-  for (const sideEffect of ['getOverlayServerContext()', 'loadRoomTurnContext(args)', 'buildAgentTurnContext({', 'reserveForAttempt({']) {
+  for (const sideEffect of ['getOverlayServerContext()', 'loadRoomTurnContext(args)', 'buildAgentTurnContext({', 'ensureBudgetNotLow({']) {
     assert.ok(start.indexOf(sideEffect) > guard, `${sideEffect} must run after the retired-target guard`)
   }
   assert.match(start.slice(guard, sideEffectsStart), /hosted_runtime_retired/)

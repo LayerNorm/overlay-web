@@ -1,9 +1,7 @@
-import { pendingHarnessPaymentVerification } from './funding-admission'
 import type { HarnessExecutionPorts } from './ports'
 import { createNativeHarnessModelPorts } from './native-model-ports'
 import { refreshNativeHarnessAccess, type NativeHarnessAccess, type NativeHarnessContext } from './native-access'
 import { createHarnessExecutionPorts, type HarnessSurfacePorts } from './execution-ports'
-import { ensurePayerBudgetAvailable } from '@/server/billing/billing-runtime'
 
 export async function authorizeNativeHarnessExecution(
   access: NativeHarnessAccess, context: NativeHarnessContext, toolName?: string, options: { renewLease?: boolean } = {},
@@ -14,29 +12,7 @@ export async function authorizeNativeHarnessExecution(
 
 export async function renewNativeHarnessWait(access: NativeHarnessAccess, context: NativeHarnessContext): Promise<void> {
   'use step'
-  try {
-    await refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true, renewLease: true })
-  } catch (error) {
-    if (!await pendingHarnessPaymentVerification(error, access)) throw error
-  }
-}
-
-export async function checkNativeHarnessFunding(access: NativeHarnessAccess, context: NativeHarnessContext, requiredCents: number) {
-  'use step'
-  let authority
-  try {
-    authority = await refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true })
-  } catch (error) {
-    if (await pendingHarnessPaymentVerification(error, access)) return false
-    throw error
-  }
-  if (!authority.paid) return false
-  const budget = await ensurePayerBudgetAvailable({
-    entitlements: authority.entitlements, minimumRequiredCents: requiredCents,
-    userId: access.actorUserId, workspaceId: access.workspaceId,
-    programmaticSubjectId: authority.billingProgrammaticSubjectId,
-  })
-  return budget.remainingCents >= requiredCents
+  await refreshNativeHarnessAccess(access, context, undefined, { renewalMode: true, renewLease: true })
 }
 
 export function createNativeHarnessExecutionPorts(

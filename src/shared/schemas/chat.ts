@@ -77,25 +77,6 @@ export const AgentRunInputRequest = z.object({
   text: z.string().trim().min(1).max(32_000),
 }).strict()
 
-export const AgentRunResourceGrant = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('model_spend'),
-    newMaxCostMicros: z.number().int().safe().min(0).max(100_000_000),
-  }),
-  z.object({
-    kind: z.literal('time'),
-    durationMs: z.union([z.literal(3_600_000), z.literal(86_400_000), z.literal(604_800_000)]),
-  }),
-])
-
-export const AgentRunResourceRequest = z.object({
-  conversationId: z.string().min(1).max(256),
-  agentRunId: z.string().min(1).max(256),
-  token: z.string().min(1).max(256),
-  policyRevision: z.number().int().safe().nonnegative(),
-  grant: AgentRunResourceGrant,
-}).strict()
-
 export const AgentRunMetricEventRequest = z.object({
   conversationId: z.string().min(1),
   agentRunId: z.string().min(1),
@@ -143,7 +124,6 @@ export const ActConversationRequest = z.object({
   memoryEnabled: z.boolean().optional(),
   actAbortTimeoutMs: z.number().finite().positive().optional(),
   harnessBudget: z.object({
-    maxProviderCostUsd: z.number().finite().min(0).max(100).optional(),
     durationMs: z.number().int().min(30_000).max(7 * 24 * 60 * 60 * 1_000).optional(),
   }).optional(),
   mentions: z.array(z.object({

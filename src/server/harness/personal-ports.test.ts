@@ -11,7 +11,6 @@ import { createPersonalHarnessModelPorts } from './personal-model-ports'
 import { createHarnessModelPorts } from './model-ports'
 import { HarnessYield } from './model-recovery'
 import { runOverlayHarness } from './runner'
-import { estimateHarnessInputTokens } from './model-forecast'
 
 const mocks = vi.hoisted(() => ({ read: vi.fn(), apply: vi.fn(), claim: vi.fn(), refresh: vi.fn(), catalog: vi.fn(),
   model: vi.fn(), authorize: vi.fn(), settle: vi.fn(), admit: vi.fn(),
@@ -76,22 +75,19 @@ function preparedHarnessModel(modelId: string, receiptId: string, options: Langu
         receiptId,
         memoryEnabled: true,
         requestFingerprint: 'request',
-        inputTokenBudget: contextWindow,
         maxOutputTokens: options.maxOutputTokens ?? 0,
         contextWindow,
       },
     },
     options: { ...options, providerOptions: { gateway: { zeroDataRetention: true } } },
     contextWindow,
-    estimatedCostMicros: 100,
   }
 }
 
 test('shared model preparation delegates surface authority without requiring personal context', async () => {
   const reference = { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' }
   const prepare = vi.fn(async ({ modelId, options }) => ({
-    model: { modelId, credentialOwnerId: 'user' }, options, contextWindow: 64_000, estimatedCostMicros: 100,
-  }))
+    model: { modelId, credentialOwnerId: 'user' }, options, contextWindow: 64_000 }))
   const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
   const result = await ports.prepareModel({
     receiptId: 'model:0', state: current,
@@ -104,7 +100,7 @@ test('shared model preparation delegates surface authority without requiring per
     options: expect.objectContaining({ maxOutputTokens: 100, tools: [], prompt: expect.any(Array) }),
   })
   expect(result.model).toEqual({ modelId: 'fixture/model', credentialOwnerId: 'user' })
-  expect(result.estimatedCostMicros).toBe(100)
+  expect(result).not.toHaveProperty('estimatedCostMicros')
   expect(mocks.refresh).not.toHaveBeenCalled()
 })
 
@@ -140,7 +136,7 @@ beforeEach(() => {
   vi.resetAllMocks()
   mocks.sleep.mockResolvedValue(undefined)
   current = state.claimHarnessExecution(state.createHarnessSnapshot({ runId: 'run', goal: 'Check observations', constraints: ['Do not publish'], policy: {
-    actorUserId: 'user', workspaceId: 'workspace', requiresPlan: false, allowedToolIds: [], maxCostMicros: 1_000_000,
+    actorUserId: 'user', workspaceId: 'workspace', requiresPlan: false, allowedToolIds: [], maxCostMicros: 0,
     deadlineAt: Date.now() + 60_000, maxDepth: 1, maxParallelChildren: 2,
   } }, Date.now()), 'workflow', Date.now())
   mocks.claim.mockResolvedValue(true)
@@ -159,12 +155,11 @@ beforeEach(() => {
     return current
   })
   mocks.authorize.mockImplementation(async (reference, options) => {
-    expect(estimateHarnessInputTokens(options, reference.personal.contextWindow)).toBeLessThanOrEqual(reference.personal.inputTokenBudget)
     expect(options.maxOutputTokens).toBe(reference.personal.maxOutputTokens)
     expect(options.providerOptions.gateway.zeroDataRetention).toBe(true)
     expect(current.modelReservation?.id).toBe(reference.personal.receiptId)
     current = state.bindHarnessModelDispatch(current, reference.personal.receiptId, {
-      modelId: reference.modelId, billingReservationId: reference.modelId === 'openrouter/free' ? null : 'billing',
+      modelId: reference.modelId, billingReservationId: null,
     }, Date.now())
   })
   mocks.settle.mockImplementation(async ({ receiptId, observation, contextWindow }) => {
@@ -302,42 +297,30 @@ test('settled empty summaries retry with durable backoff before compacting or di
   expect(mocks.admit).toHaveBeenCalledOnce()
 })
 
-test('provider-variable compaction settles actual usage before reserving the response', async () => {
-  const modelId = 'fixture/provider-priced-compaction'
+test('compaction settles each summary call at its actual cost before the response call, holding nothing', async () => {
   const model = provider()
-  mocks.catalog.mockResolvedValue({ gatewayId: modelId, type: 'language', contextWindow: 64_000, maxTokens: 1_000,
-    pricing: { input: '0.0000000001', output: '0.0000000001', varies_by_provider: true } })
-  const endpoint = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ data: {
-    id: modelId, endpoints: [{ pricing: { prompt: '0.000002', completion: '0.000008' } }],
-  } })))
   const settled: { id: string; reserved: number; actual: number }[] = []
   mocks.settle.mockImplementation(async ({ receiptId, observation, contextWindow }) => {
     const reserved = current.modelReservation!.maxCostMicros
     const actual = observation.inputTokens * 2 + observation.outputTokens * 8
     expect(current.modelReservation?.id).toBe(receiptId)
-    expect(reserved).toBeGreaterThanOrEqual(actual)
     current = state.recordHarnessReceipt(current, { ...observation, id: receiptId, contextWindow,
       costMicros: actual, costSource: 'provider' }, Date.now())
     settled.push({ id: receiptId, reserved, actual })
     return current.latestReceipt
   })
-  try {
-    const ports = createPersonalHarnessExecutionPorts({ access, context: { ...context, effectiveModelId: modelId },
-      contextBudgetTokens: 8_192 }, surface)
-    const result = await runOverlayHarness({ ...execution, model: { ...execution.model, modelId }, messages: history() }, ports)
-    expect(result.snapshot.status).toBe('completed')
-    expect(settled.length).toBeGreaterThan(1)
-    expect(settled.slice(0, -1).every(receipt => receipt.id.startsWith('summary:model:0:'))).toBe(true)
-    expect(settled.at(-1)?.id).toBe('model:0')
-    expect(settled).toHaveLength(model.doStreamCalls.length)
-    expect(result.snapshot.usage.costMicros).toBe(settled.reduce((sum, receipt) => sum + receipt.actual, 0))
-    expect(result.snapshot.modelReservation).toBeUndefined()
-    expect(result.snapshot.workingSummary).toContain('Do not publish')
-    expect(endpoint).toHaveBeenCalledOnce()
-    expect(mocks.admit).toHaveBeenCalledOnce()
-  } finally {
-    endpoint.mockRestore()
-  }
+  const ports = createPersonalHarnessExecutionPorts({ access, context, contextBudgetTokens: 8_192 }, surface)
+  const result = await runOverlayHarness({ ...execution, messages: history() }, ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(settled.length).toBeGreaterThan(1)
+  expect(settled.every(receipt => receipt.reserved === 0)).toBe(true)
+  expect(settled.slice(0, -1).every(receipt => receipt.id.startsWith('summary:model:0:'))).toBe(true)
+  expect(settled.at(-1)?.id).toBe('model:0')
+  expect(settled).toHaveLength(model.doStreamCalls.length)
+  expect(result.snapshot.usage.costMicros).toBe(settled.reduce((sum, receipt) => sum + receipt.actual, 0))
+  expect(result.snapshot.modelReservation).toBeUndefined()
+  expect(result.snapshot.workingSummary).toContain('Do not publish')
+  expect(mocks.admit).toHaveBeenCalledOnce()
 })
 
 test('summary calls reserve reasoning headroom while the prompt retains the summary target', async () => {
@@ -421,7 +404,6 @@ test('an interrupted zero-cost summary preserves its hold and cannot dispatch th
   mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })
   const prepare = vi.fn(async ({ modelId, receiptId, options }) => ({
     ...preparedHarnessModel(modelId, receiptId, options, 128_000),
-    estimatedCostMicros: 0,
   }))
   const originalMessages = compactableHistory()
   const ports = createHarnessModelPorts({
@@ -436,35 +418,6 @@ test('an interrupted zero-cost summary preserves its hold and cannot dispatch th
     toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 512 },
   })).rejects.toBeInstanceOf(HarnessYield)
   expect(current.modelReservation).toBeDefined()
-  expect(mocks.settle).not.toHaveBeenCalled()
-  expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(0)
-  expect(model.doStreamCalls).toHaveLength(1)
-})
-
-test('a mismatched overlay-free summary hold pauses without fabricating a zero-cost receipt', async () => {
-  const model = provider('stop', true)
-  mocks.catalog.mockResolvedValue({ type: 'language', contextWindow: 128_000, maxTokens: 8_192 })
-  const prepare = vi.fn(async ({ modelId, receiptId, options }) => ({
-    ...preparedHarnessModel(modelId, receiptId, options, 128_000),
-    estimatedCostMicros: 0,
-  }))
-  const originalMessages = compactableHistory()
-  const ports = createHarnessModelPorts({
-    reference: { actorUserId: 'user', runId: 'run', workflowRunId: 'workflow' },
-    modelId: 'overlay-free',
-    contextBudgetTokens: 8_192,
-    prepare,
-  })
-  await expect(ports.prepareModel({
-    receiptId: 'model:free-summary-fallback', state: current, messages: originalMessages,
-    instructionContext: { instructions: execution.instructions, continuation: false, truncatedResponse: false },
-    toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 512 },
-  })).rejects.toBeInstanceOf(HarnessYield)
-  expect(current.modelReservation).toMatchObject({
-    id: expect.stringMatching(/^summary:model:free-summary-fallback:/), maxCostMicros: 0,
-    dispatch: { modelId: 'overlay-free', billingReservationId: 'billing' },
-  })
-  expect(current.latestReceipt).toBeUndefined()
   expect(mocks.settle).not.toHaveBeenCalled()
   expect(prepare.mock.calls.filter(([request]) => request.purpose === 'response')).toHaveLength(0)
   expect(model.doStreamCalls).toHaveLength(1)

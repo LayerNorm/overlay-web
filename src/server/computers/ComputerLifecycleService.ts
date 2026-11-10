@@ -139,7 +139,7 @@ export class ComputerLifecycleService {
   }): Promise<Computer> {
     const { computer, leaseId, actorUserId, token } = args
     try {
-      await this.dependencies.billing.reserve(computer, actorUserId)
+      await this.dependencies.billing.bindPayer(computer, actorUserId)
       const runtime = this.requireRuntime('box')
       const allocation = await this.prepareAllocation(computer, leaseId, token)
       const instance = await runtime.create({
@@ -202,12 +202,6 @@ export class ComputerLifecycleService {
       || typeof usage.meteredProviderReference === 'string'
       || Boolean(computer.providerRef || lease.providerReference)
     if (!allocationStarted) {
-      try {
-        await this.dependencies.billing.releaseReservation(computer)
-      } catch (error) {
-        await this.markProvisionCleanupFailed(computer, leaseId, token, null)
-        throw error
-      }
       await this.dependencies.leases.transitionComputerLifecycle?.({
         workspaceId: computer.workspaceId, computerId: computer.id, leaseId, token,
         transition: 'cancelled', expectedProviderReference: null,
@@ -288,9 +282,8 @@ export class ComputerLifecycleService {
       const instance = await runtime.reconnect(computer.providerRef!, { resume: false })
       const status = await instance.status()
       if (status === 'stopped' || status === 'archived') {
-        const stoppedUsage = await instance.usage()
         await this.dependencies.billing.meter(computer, true)
-        await this.dependencies.billing.reserve(computer, args.actorUserId, stoppedUsage)
+        await this.dependencies.billing.bindPayer(computer, args.actorUserId)
         const armed = await this.dependencies.leases.transitionComputerLifecycle?.({
           workspaceId: computer.workspaceId, computerId: computer.id, leaseId: lease.id, token: wakeToken,
           transition: 'wake_armed', expectedProviderReference: computer.providerRef,
@@ -375,8 +368,6 @@ export class ComputerLifecycleService {
             throw new Error('COMPUTER_STOP_EVIDENCE_MISSING')
           }
           finalMeter = true
-        } else {
-          await this.dependencies.billing.releaseReservation(current)
         }
       }
       if (finalMeter) await this.dependencies.billing.meter(current, true)
