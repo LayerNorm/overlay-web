@@ -111,13 +111,8 @@ function confirmedModelPause(
 ): boolean {
   const ownerMatches = state.workflowRunId === executionOwner
     && (state.executionGeneration ?? 0) === executionGeneration
-  return ownerMatches && (
-    (state.status === 'waiting_for_resources'
-      && state.resourcePause?.receiptId === receiptId
-      && state.latestReceipt?.id === receiptId)
-    || (receiptId.startsWith('model:')
-      && state.status === 'waiting_for_input' && state.blocker?.kind === 'budget')
-  )
+  return ownerMatches && receiptId.startsWith('model:')
+    && state.status === 'waiting_for_input' && state.blocker?.kind === 'budget'
 }
 
 function activeModelTools(

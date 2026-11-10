@@ -241,9 +241,7 @@ conservative defaults rather than silently becoming zero.
 
 Workspace Stripe ownership is account-keyed, never admin-keyed. Owners and admins may initialize the account and open checkout, top-up, verification, and portal flows, but Stripe metadata and durable subscription state bind to `billingAccountId` plus `workspaceId`; `userId` is retained only as the initiating actor. The Convex Stripe webhook preserves the personal metadata path, deduplicates event IDs, and rejects stale subscription state with `providerEventCreatedAt`.
 
-Usage reservations have an evidence-gated recovery path. Work that expires before a provider starts is released automatically. Work that may have reached a provider is quarantined as `reconcile_required`; it must be finalized or released with a durable provider or internal-operation evidence reference. The five-minute Convex cron exposes queue depth and oldest age but never guesses an ambiguous charge.
-
-Finalized usage preserves retail cost and actual provider cost independently. `UsageRepository.getBillingAccountOperationalReport` reports retail credits, actual cost, realized margin, cost coverage, reconcile queue depth, and the count older than the 15-minute response SLA. The workspace billing UI exposes this only to owners and admins.
+Paid usage is never estimated or held before a call. Each paid call checks the workspace balance first (refusing only when less than 2% of the budget is left, after one automatic top-up attempt) and charges the actual cost afterwards through `UsageRepository.recordBatch`, keyed by a unique operation id. The `budgetReservations` table holds only historical rows; `convex/billing/retireHolds.ts` released the holds left from before this change.
 
 Important code:
 
@@ -263,12 +261,10 @@ Important code:
 - `convex/billing/accountSubscriptions.ts`
 - `convex/billing/spendLimits.ts`
 - `convex/platform/usage.ts`
-- `src/shared/billing/usage-reconciliation.ts`
 - `src/server/usage/UsageRepository.ts`
-- `scripts/qa/usage-reconciliation-audit.ts`
 
 Personal account plans and their verification script are retired. Billing QA
-targets workspace plans, balances, and holds through
+targets workspace plans, balances, and payer resolution through
 `src/server/app-data/contracts/convex-workspace-billing-provider-contract.test.ts`.
 
 ## Storage

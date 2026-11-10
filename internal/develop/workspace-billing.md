@@ -1,6 +1,6 @@
 # Workspace billing internals
 
-Maintainer notes for workspace billing: billing accounts, reservations, the activation gate and reconciliation. Moved from the public API guide on 2026-10-22; the public guide is `docs/developer/api/guides/billing.mdx`.
+Maintainer notes for workspace billing: billing accounts, the 2% check, direct charges and the retired holds. Moved from the public API guide on 2026-10-22; the public guide is `docs/developer/api/guides/billing.mdx`.
 
 Billing state comes from Stripe webhook processing and Convex-backed entitlement state.
 
@@ -52,7 +52,7 @@ Both are built by the same shared code the routes use: `src/shared/billing/works
 
 Checkout, top-ups, the portal, verification and automatic top-ups still run on the server, because they call Stripe. The summary's itemized usage reads up to the charge cap per refresh. Only the Billing tab and onboarding subscribe to it; the frequent consumers use the light `entitlements` query.
 
-## Workspace reservation foundation
+## Workspace execution foundation
 
 Hosted execution requires a workspace wallet with an active account, a paid subscription in its current verified period, and available funds. A missing wallet or unpaid account never falls back to a member's personal payer or free inference. Workspace setup, manual drafts, history, and export remain available before payment. Billing-disabled self-hosted deployments explicitly bypass paid admission and may retain personal bookkeeping. A workspace whose paid wallet is suspended or mismatched fails closed. Every hosted-cost entry point supplies its resource workspace. Shared human actions use a `member` subject, while agents, automations, knowledge indexing, and API keys use a stable `programmatic` subject.
 
@@ -84,7 +84,7 @@ The workspace billing contract runs against Convex:
 npm run test:workspace-billing-contract:convex
 ```
 
-The contract covers empty-wallet hard stops, concurrent account/member limits, account/workspace spoof rejection, removed-member denial, allowance/top-up separation, actual-cost margin reporting, and reconciliation SLA visibility. The Stripe webhook suite separately proves duplicate event no-ops and stale-event ordering.
+The contract covers removed-member payer denial. The 2% check, direct charges, spend limits and the hold release are covered by unit and Convex tests (`billing-runtime.test.ts`, `provider-budget-check.test.ts`, `convex/retireHolds.convex.test.ts`). The Stripe webhook suite separately proves duplicate event no-ops and stale-event ordering.
 
 ## Release verification
 
@@ -95,25 +95,14 @@ Follow the authoritative Development Workflow for integration. Customer Convex
 synchronization runs only from clean canonical main after matching production
 web is live; never deploy it from a feature worktree.
 
-## Reservation reconciliation
+## Retired holds
 
-Only computers, managed sandboxes and reservations created before the workspace-budget-only change still use this path.
-The usage ledger automatically releases expired reservations only when provider work never started. Provider-started reservations are quarantined until authoritative evidence establishes whether to finalize the measured cost or release the reservation.
-Harness model reservations are an exception when Gateway usage stays unavailable: after about ten minutes of 404 retries, observed tokens settle at catalog pricing when a rate exists. Non-404 lookup failures and unknown catalog rates remain quarantined.
-An operator can record late authoritative provider costs on an already released, provider-started reservation with internal `billing/releasedProviderCosts:recordInternal`. It requires the exact deployment URL, account, model, integer microdollar cost, token count and receipt evidence. Exact repeats are idempotent; conflicting evidence fails closed. This records an absorbed expense without changing the release audit, wallet, subject limits or customer charge. The operational report includes those expenses alongside finalized reservation costs, so released failures cannot inflate reported margin. Retain the exact provider receipt privately; the ledger uses microdollar precision.
+Nothing reserves or holds money before a call, and nothing reconciles a hold afterwards. The reservation engine, its expiry and stale-hold crons, the reconciliation queue and audit script (`billing:audit:reconciliation`), the released-cost recorder, the operational margin report and the harness exact-cost correction are deleted. Holds left from before were released, never charged, by `billing/retireHolds:releaseRetiredHoldsInternal` (see `billing-holds-and-machine-metering.md`, "Retired holds"). The `budgetReservations` table keeps its history until a later change deletes it.
 
-Approval-paused SDK steps settle their known model usage before suspension.
+Approval-paused SDK steps charge their known model usage before suspension.
 WorkflowAgent returns these steps through its end callback without a step-end
-callback; the Harness deduplicates callbacks by invocation step number, advances
-the receipt identity once, and reserves any later compaction/inference separately.
-
-Inspect the development queue without mutating it:
-
-```bash
-npm run billing:audit:reconciliation
-```
-
-The audit defaults to the development Convex deployment. Production inspection requires an explicit `--target=prod --allow-prod=true` invocation of the underlying script. Resolution is server-only, requires a non-empty evidence source, evidence reference, and reason, and is idempotent for exact replays. A conflicting second resolution fails closed.
+callback; the Harness deduplicates callbacks by invocation step number and advances
+the receipt identity once.
 
 ## Post-plan maintenance queue
 
@@ -122,12 +111,10 @@ The audit defaults to the development Convex deployment. Production inspection r
 
 ## Workspace-funded continuation
 
-Versioned Harness tasks reserve each next call against the workspace wallet instead
-of receiving a synthetic lifetime cap. Funding shortfalls pause the same task;
-continuation rechecks current membership, paid admission and execution ownership.
-A typed payment-verification-pending result may keep an already owned funding
-wait paused; it cannot renew a lease or admit a model/tool call. Other billing
-errors and ownership changes remain fail-closed.
+Versioned Harness tasks have no lifetime cap and never pause for funding. Before
+each model call the dispatch reads the real workspace balance; under 2% it tries one
+automatic top-up to the 2% line and otherwise ends the run with `WORKSPACE_FUNDS`.
+Continuation rechecks current membership, paid admission and execution ownership.
 BYO credentials do not bypass workspace admission. The selected model is retained;
 no budget failure recovers through a free or alternate model.
 
@@ -142,8 +129,8 @@ included credit, configured markup and subscriptions remain unchanged.
 Paid and Computer fixtures compose through the comma-separated Preview fixture
 setting. Internal `dev/qa:recover` accepts only the configured QA identity's known
 fixtures on Preview, with an idempotent request ID and audited recovery. Paid
-refill accepts only synthetic active plans and preserves consumed spend, live
-reservations and provider billing history. Free recovery resets only recent QA
+refill accepts only synthetic active plans and preserves consumed spend and
+provider billing history. Free recovery resets only recent QA
 turn/transcription counters. It is separate from normal seeding and never funds
 a provider account. Test actual Stripe checkout/events separately from fixtures.
 
@@ -204,10 +191,10 @@ Before releasing this contract, set and read back the same value in Vercel Previ
 and Production, the shared Convex Preview configuration and matching backends.
 Configure local engineer-owned Next/Convex environments too. Unit runners use an
 explicit test fixture. Do not change the rate independently during active billed
-work: reservations and final settlement must use the same policy. A future rate
-change requires a coordinated rollout with in-flight reservations settled first.
+work: the check and the charge must use the same policy. A future rate
+change requires a coordinated rollout of Next and Convex.
 
-Background memory extraction settles SDK-reported token usage on structured-output
-validation failures using the same pricing and finalizer as successful calls.
-Invalid output is never stored. Missing/invalid usage, unknown pricing and failed
-settlement retain reconciliation rather than assuming zero provider cost.
+Background memory extraction charges SDK-reported token usage on structured-output
+validation failures using the same pricing as successful calls.
+Invalid output is never stored. A call with missing usage or unknown pricing charges
+nothing and logs the gap.

@@ -12,7 +12,6 @@ import {
   recordHarnessVerification,
   setHarnessCompaction,
   pauseHarnessForAuthorization,
-  pauseHarnessForFunding, resumeHarnessFunding,
 } from './harness-state'
 import { createHarnessDiagnostic } from './harness-diagnostic'
 
@@ -129,25 +128,6 @@ test('final verification is bound to current plan and evidence progress', () => 
   assert.throws(() => recordHarnessVerification(state, { ...verification, evidenceIds: ['other'] }, now), /does not match/)
 })
 
-test('workspace funding pauses preserve fractional cents and resume the same task', () => {
-  const initial = make()
-  const state = { ...initial, policy: { ...initial.policy, executionPolicyVersion: 2 as const, spendingMode: 'workspace' as const } }
-  const pause = { reason: 'disabled' as const, receiptId: 'model:0', requiredCents: 38.96, availableCents: 0.98, reservedCents: 0.02 }
-  const paused = pauseHarnessForFunding(state, pause, now)
-  assert.equal(paused.status, 'waiting_for_resources')
-  assert.deepEqual(paused.resourcePause, pause)
-  const resumed = resumeHarnessFunding(paused, now + 1)
-  assert.equal(resumed.runId, state.runId)
-  assert.equal(resumed.status, 'running')
-  assert.equal(resumed.resourcePause, undefined)
-  for (const field of ['requiredCents', 'availableCents', 'reservedCents'] as const) {
-    for (const invalid of [-1, NaN, Infinity, Number.MAX_SAFE_INTEGER]) {
-      assert.throws(() => pauseHarnessForFunding(state, { ...pause, [field]: invalid }, now), /Invalid workspace funding pause/)
-    }
-  }
-  assert.throws(() => pauseHarnessForFunding(state, { ...pause, requiredCents: 0 }, now), /Invalid workspace funding pause/)
-})
-
 test('historical route rejection receipts do not grant route-recovery state', () => {
   const state = recordHarnessReceipt(make(), {
     id: 'model:legacy',
@@ -167,10 +147,10 @@ test('historical route rejection receipts do not grant route-recovery state', ()
   assert.equal(state.modelRecovery, undefined)
 })
 
-test('generic block and resume cannot bypass a resource pause', () => {
-  const paused = { ...make(), status: 'waiting_for_resources' as const, resourceRequestToken: 'resource-token' }
-  assert.throws(() => resumeHarness(paused, now), /resource pause/)
-  assert.throws(() => blockHarness(paused, { kind: 'input', question: 'Continue?' }, now), /resource pause/)
+test('a legacy run waiting for resources cannot be resumed or blocked', () => {
+  const paused = { ...make(), status: 'waiting_for_resources' as const }
+  assert.throws(() => resumeHarness(paused, now), /waiting for resources/)
+  assert.throws(() => blockHarness(paused, { kind: 'input', question: 'Continue?' }, now), /waiting for resources/)
 })
 
 test('explicit task-deadline pause is persisted, nonterminal, and cannot resume through ordinary input', () => {
@@ -367,7 +347,7 @@ test('expired authorization cannot bypass completion blockers or unresolved hold
   assert.equal(finishHarness(make(), at).status, 'completed')
   const blocked = blockHarness(running, { kind: 'input', question: 'Which result?' }, now)
   assert.throws(() => finishHarness(blocked, at), /blocker/)
-  assert.throws(() => finishHarness({ ...running, status: 'waiting_for_resources', resourceRequestToken: 'pending' }, at), /not running/)
+  assert.throws(() => finishHarness({ ...running, status: 'waiting_for_resources' }, at), /not running/)
   assert.throws(() => finishHarness({ ...running, children: [child('pending', 'step', 0)] }, at), /Child work/)
   for (const status of ['completed', 'failed', 'cancelled'] as const) {
     assert.throws(() => finishHarness({ ...running, status }, at), /terminal/)

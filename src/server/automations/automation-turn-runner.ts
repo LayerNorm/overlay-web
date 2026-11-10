@@ -146,7 +146,6 @@ export type AutomationAgentTurnPlan = {
   messages: ModelMessage[]
   paid: boolean
   providerOptions?: Record<string, Record<string, unknown>>
-  reservationId: string | null
   userMessageId: string
   principalId: string
   sourceCitations?: SourceCitationMap
@@ -787,7 +786,6 @@ export async function prepareAutomationAgentTurn(
     ...(modelSupportsZeroDataRetention(effectiveModelId)
       ? { providerOptions: { gateway: { zeroDataRetention: true } } }
       : {}),
-    reservationId: null,
     userMessageId: String(userMessageId),
     principalId: workspaceAccess.principal.id,
     sourceCitations: sourceCitationMap,

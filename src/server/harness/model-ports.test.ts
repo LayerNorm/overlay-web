@@ -208,25 +208,6 @@ test('a large-window model is prepared with the requested output limit, not a qu
   expect(prepared.settings.maxOutputTokens).toBe(32_000)
 })
 
-test('summary funding denial yields its exact receipt instead of failing or preparing an unfunded response', async () => {
-  const state = createHarnessSnapshot({ runId: 'run', goal: 'Continue the same task.', constraints: [], policy: {
-    actorUserId: 'user', workspaceId: 'workspace', executionPolicyVersion: 2, spendingMode: 'workspace',
-    allowedToolIds: [], requiresPlan: false, deadlineAt: Date.now() + 60_000,
-    maxCostMicros: 0, maxParallelChildren: 0, maxDepth: 0,
-  } }, Date.now())
-  mocks.limits.mockResolvedValue({ contextWindow: 128_000, maxOutputTokens: 4_096 })
-  mocks.compact.mockResolvedValue({ messages: [], didCompact: false, summaryFailed: true, fitsBudget: false })
-  mocks.read.mockResolvedValue({ ...state, status: 'waiting_for_resources', resourcePause: {
-    reason: 'disabled', receiptId: 'summary:model:0:0', requiredCents: 1, availableCents: 0.5,
-  } })
-  const prepare = vi.fn()
-  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
-  await expect(ports.prepareModel({ receiptId: 'model:0', state, messages: [], toolNames: [], toolDefinitions: [],
-    settings: {}, instructionContext: { instructions: 'Continue.', continuation: true, truncatedResponse: false },
-  })).rejects.toThrow('HARNESS_SAFE_RESOURCE_PAUSE:summary:model:0:0')
-  expect(prepare).not.toHaveBeenCalled()
-})
-
 test('an aborted zero-cost summary retains its hold without invented settlement or retry', async () => {
   let current: HarnessSnapshot = {
     ...runningState(),

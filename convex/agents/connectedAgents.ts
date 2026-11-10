@@ -19,7 +19,7 @@ import { requireServerSecret } from '../lib/auth'
 import { interruptRemoteAgentToolParts, projectRemoteAgentEvents, resolveRemoteRequestPart, waitingRemoteAgentParts } from '../../src/shared/agents/remote-agent-transcript'
 import { recordAcceptedBatch, recordRejectedBatch, settleInterruptedRemoteRunTools } from '../../src/shared/agents/remote-run-stream-stats'
 import { assertValidElicitationResponse } from '../../src/shared/agents/elicitation-schema'
-import { finalizeWorkspaceLedger, markBudgetReservationReconcile, workspaceAvailableMicros, workspaceBudgetLowAfterCharge, workspaceRemainingCents } from '../platform/usage'
+import { finalizeWorkspaceLedger, workspaceAvailableMicros, workspaceBudgetLowAfterCharge, workspaceRemainingCents } from '../platform/usage'
 import { connectedAgentPolicyProjection } from '../lib/connectedAgentPolicyProjection'
 import { chargeSandboxSpendLimits } from '../lib/sandboxSpendLimits'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
@@ -326,7 +326,8 @@ export const startRemoteAgentTurnByServer = mutation({
     maxConcurrentRuns: v.number(), maxRunTimeMs: v.number(), prompt: v.string(), queueExpiresAt: v.number(),
     memoryEnabled: v.optional(v.boolean()),
     lifecycleVersion: v.optional(v.literal(2)),
-    reservationId: v.union(v.string(), v.null()), runId: v.string(), sessionId: v.string(),
+    // Ignored: nothing is held before a run any more. Optional so older web servers that still send null keep working.
+    reservationId: v.optional(v.union(v.string(), v.null())), runId: v.string(), sessionId: v.string(),
     sandboxBilling: v.optional(anyObject),
     startPayload: anyObject, threadRootMessageId: v.optional(v.id('conversationMessages')),
     turnId: v.string(), userMessageId: v.id('conversationMessages'), workspaceId: v.string(), now: v.number(),
@@ -543,7 +544,7 @@ export const startRemoteAgentTurnByServer = mutation({
       ...(lifecycle ? { attemptId: args.sessionId, executionGeneration: 1, hardDeadlineAt: lifecycle.hardDeadlineAt, claimDeadlineAt: args.queueExpiresAt } : {}),
       sessionId: args.sessionId, workspaceId: args.workspaceId, environmentId: args.environmentId,
       bindingId: args.bindingId, runId: args.runId, status: 'starting', commandCursor: 0, eventCursor: 0,
-      capabilitySnapshot: { ...environment.capabilities, billing: { reservationId: args.reservationId,
+      capabilitySnapshot: { ...environment.capabilities, billing: {
         agentId: args.agentId, conversationId: args.conversationId, environmentId: args.environmentId,
         memoryEnabled: args.memoryEnabled !== false, messageId, modelId: args.modelId,
         modelUsageBilling: args.modelUsageBilling, runId: args.runId, turnId: args.turnId, userId: args.actorUserId,
@@ -554,21 +555,6 @@ export const startRemoteAgentTurnByServer = mutation({
         startPayload: checkpointPayload },
       createdAt: args.now, updatedAt: args.now,
     })
-    if (args.sandboxBilling && typeof args.sandboxBilling.reservationId === 'string') {
-      if (typeof args.sandboxBilling.leaseId !== 'string' || !args.sandboxBilling.leaseId) {
-        throw new Error('MANAGED_SANDBOX_BILLING_INVALID')
-      }
-      await ctx.db.insert('agentSandboxSettlements', {
-        reservationId: args.sandboxBilling.reservationId,
-        workspaceId: args.workspaceId,
-        environmentId: args.environmentId,
-        runId: args.runId,
-        leaseId: args.sandboxBilling.leaseId,
-        status: 'pending',
-        createdAt: args.now,
-        updatedAt: args.now,
-      })
-    }
     const latest = await ctx.db
       .query('agentRunCommands')
       .withIndex('by_environmentId_sequence', (q) =>
@@ -582,12 +568,6 @@ export const startRemoteAgentTurnByServer = mutation({
       payload: args.startPayload, status: lifecycle ? 'coordinator_pending' : 'pending',
       ...(lifecycle ? { attemptId: args.sessionId, executionGeneration: 1 } : {}), createdAt: args.now, updatedAt: args.now,
     })
-    if (lifecycle) for (const reservationId of [args.reservationId, args.sandboxBilling?.reservationId]) {
-      if (typeof reservationId !== 'string') continue
-      const reservation = await ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', reservationId)).unique()
-      if (!reservation || reservation.userId !== args.actorUserId || reservation.status !== 'reserved') throw new Error('AGENT_REMOTE_FUNDING_UNAVAILABLE')
-      await ctx.db.patch(reservation._id, { remoteRunId: args.runId })
-    }
     if (lifecycle) await ctx.db.insert('agentRemoteRunIntents', {
       intentId: `start:${args.runId}:1`, runId: args.runId, kind: 'start', revision: 0,
       status: 'pending', createdAt: args.now, updatedAt: args.now,
@@ -1708,48 +1688,6 @@ export const pruneEventRateWindowsInternal = internalMutation({
       .withIndex('by_windowStartedAt', q => q.lt('windowStartedAt', cutoff)).take(1_000)
     await Promise.all(rows.map((row) => ctx.db.delete(row._id)))
     return { deleted: rows.length }
-  },
-})
-
-export const listPendingSandboxSettlementsByServer = query({
-  args: { serverSecret: v.string(), limit: v.number() },
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    const limit = Math.max(1, Math.min(100, Math.floor(args.limit)))
-    const markers = await ctx.db
-      .query('agentSandboxSettlements')
-      .withIndex('by_status_updatedAt', (q) => q.eq('status', 'pending'))
-      .take(limit)
-    const settlements = (await Promise.all(markers.map(async (marker) => {
-      const session = await currentRemoteAttempt(ctx, marker.runId)
-      if (!session || !['completed', 'failed', 'cancelled'].includes(session.status)) return null
-      const run = await ctx.db.query('conversationAgentRuns')
-        .withIndex('by_externalRunId', q => q.eq('externalRunId', marker.runId)).unique()
-      const message = run ? await ctx.db.get(run.assistantMessageId) : null
-      return terminalBilling(
-        session.capabilitySnapshot,
-        message?.tokens,
-        terminalOutcome(session.status),
-      )
-    }))).filter((settlement) => settlement !== null)
-    return settlements
-  },
-})
-
-export const markSandboxSettlementCompleteByServer = mutation({
-  args: { serverSecret: v.string(), workspaceId: v.string(), reservationId: v.string(), settledAt: v.number() },
-  handler: async (ctx, args) => {
-    requireServerSecret(args.serverSecret)
-    const marker = await ctx.db
-      .query('agentSandboxSettlements')
-      .withIndex('by_reservationId', (q) =>
-        q.eq('reservationId', args.reservationId),
-      )
-      .unique()
-    if (!marker || marker.workspaceId !== args.workspaceId) return false
-    if (marker.status === 'settled') return true
-    await ctx.db.patch(marker._id, { status: 'settled', settledAt: args.settledAt, updatedAt: args.settledAt })
-    return true
   },
 })
 
@@ -3495,7 +3433,6 @@ function terminalBilling(
     operationId: typeof billing.operationId === 'string' ? billing.operationId : 'remote-agent',
     outcome,
     outputTokens: typeof tokens.output === 'number' ? tokens.output : 0,
-    reservationId: typeof billing.reservationId === 'string' ? billing.reservationId : null,
     runId: typeof billing.runId === 'string' ? billing.runId : '',
     sandboxBilling:
       snapshot.sandboxBilling && typeof snapshot.sandboxBilling === 'object'
@@ -3611,7 +3548,6 @@ async function sweepRemoteRuns(
       environmentId: session.environmentId,
       runId: run.externalRunId,
       remoteSessionId: session.sessionId,
-      ...(settlement.reservationId ? { reservationId: settlement.reservationId } : {}),
       eventCursor: session.eventCursor,
     }]
     for (const command of commands) if (
@@ -3625,13 +3561,6 @@ async function sweepRemoteRuns(
         code: 'approval_age', workspaceId: request.workspaceId, environmentId: session.environmentId,
         runId: request.runId, remoteSessionId: request.remoteSessionId,
         eventCursor: session.eventCursor, ageMs: args.now - request.requestedAt,
-      })
-    }
-    if (args.settleBilling && settlement.reservationId && settlement.userId) {
-      await markBudgetReservationReconcile(ctx, {
-        userId: settlement.userId,
-        reservationId: settlement.reservationId,
-        errorMessage: `remote_agent_${settlement.outcome}`,
       })
     }
     return { runId: run.externalRunId, settlement, runAlerts }

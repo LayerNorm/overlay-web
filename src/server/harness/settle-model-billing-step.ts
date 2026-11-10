@@ -35,9 +35,8 @@ export async function recordHarnessModelBilling(
       }],
     })
   } else {
-    // Charged directly at its actual cost; nothing was reserved before the call.
-    // A gateway cost correction needs a reservation to adjust, so a direct charge
-    // keeps the cost known at settlement (see WORKSPACE_BUDGET_ONLY_PLAN).
+    // Charged directly at the cost known at settlement (provider receipt, else catalog
+    // pricing); nothing was reserved before the call and nothing corrects it later.
     await server.chatUsagePolicy.recordFinishedUsage({
       userId: reference.actorUserId, workspaceId: state.policy.workspaceId,
       operationId, modelId: receipt.modelId,

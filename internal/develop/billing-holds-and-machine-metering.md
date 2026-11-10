@@ -1,6 +1,6 @@
 # Credit, holds, and agent-machine billing
 
-How displayed credit relates to execution admission, reservations, settlement and shared sandbox lease metering. Historical Cloud-agent billing notes are retained only as records; hosted third-party launches are retired.
+How displayed credit relates to execution admission, direct charges and shared sandbox lease metering. Historical Cloud-agent billing notes are retained only as records; hosted third-party launches are retired.
 
 ## Two separate accounts
 
@@ -9,51 +9,33 @@ How displayed credit relates to execution admission, reservations, settlement an
 
 Everything below is about Overlay credit.
 
-Harness catalog estimates settle promptly; late exact provider costs correct them once. Additional charges use only unreserved wallet credit within the original payer's current spend-limit period. A billing renewal prevents old corrections from changing the new wallet, and a refund never reduces a different spend-limit period. Full provider cost remains recorded even when a correction cannot be charged.
+Every paid call is charged once, after it finishes, at the cost known then (provider receipt, or catalog price times reported usage). Nothing corrects a charge later. A charge is capped at what the balance holds, so balances never go negative.
 
 ## Remaining credit
 
 `remaining = allowance + top-ups − spend − holds`.
 
-A **hold** (a `budgetReservations` row in `reserved` or `reconcile_required`, or a lease's legacy `runtimeHoldMicros`) is credit set aside before a provider call. Nothing creates new holds any more: chat, connected agents, automations, tools (web search, deep search, web fetch), media, transcription, the agent gateway, embeddings, memory work, computers and managed sandboxes refuse only when the workspace has under 2% left, then charge the actual cost directly (see `workspace-billing.md`, "Check before, charge after"). Holds left from before still settle or release through their existing paths until the workspace-budget-only plan's phase 5 removes them. The sidebar bar and `allowancePercentUsed` show spend only, so while holds exist the bar reads lower than the credit that is actually left. `GET /api/v1/subscription` returns both `budgetUsedCents` and `budgetRemainingCents`; if `total − used ≠ remaining`, holds are outstanding.
+Nothing creates holds any more: chat, connected agents, automations, tools (web search, deep search, web fetch), media, transcription, the agent gateway, embeddings, memory work, computers and managed sandboxes refuse only when the workspace has under 2% left, then charge the actual cost directly (see `workspace-billing.md`, "Check before, charge after"). Holds left from before the change (`budgetReservations` rows in `reserved` or `reconcile_required`, and a lease's legacy `runtimeHoldMicros`) are released, never charged, by the one-time `billing/retireHolds:releaseRetiredHoldsInternal` migration (see "Retired holds" below). Until it has run, `GET /api/v1/subscription` can show `total − used ≠ remaining`.
 
 Connected-agent runs billed to Overlay pass the 2% check when dispatched and hold nothing. When the run ends, whatever its outcome, its reported tokens are charged once under the run's operation id (`workspace-agent:<turnId>`); a run that used no tokens charges nothing. Transcript finalization is a separate workflow step.
-Harness model calls settle immediately from catalog pricing using observed token counts, so a run never waits for gateway usage. `harnessCostCorrectionWorkflow` then retries gateway 404s for about ten minutes and replaces the estimate with the exact cost through `correctFinalizedBudgetReservationCostByServer`, which charges or refunds the difference once and never charges more than the account holds. If the exact cost never arrives, the estimate stands. Calls with no catalog rate still wait for gateway usage before settling. Non-404 lookup failures and missing catalog rates remain unresolved for reconciliation.
+Harness model calls settle immediately from catalog pricing using observed token counts, so a run never waits for gateway usage. Calls with no catalog rate wait (about ten minutes of gateway 404 retries) for the exact gateway cost before settling. The former exact-cost correction workflow is deleted: it adjusted a reservation, and charges are now final. The actual charge comes from provider receipts or catalog rates times reported usage, with the usage markup.
 
-Model admission no longer prices a call before making it. The former reservation ceiling (maximum Gateway endpoint rates for `varies_by_provider` models) is deleted; the actual charge still comes from provider receipts or catalog rates times reported usage, with the usage markup.
+Failed, interrupted or malformed responses cannot invent zero-usage receipts. Harness summaries, acknowledgments and progress updates use the selected model and the same direct charge. Transcript storage follows settlement; a storage outage must not drop incurred usage or trigger another work action. An ambiguous thrown tool invocation stops subsequent actions and requires outcome reconciliation. None of these paths bypass paid-workspace admission or switch to a free model.
 
-Harness cancellation and failure retain provider-started or uncertain model holds until authoritative usage settles them. Historical retired-route receipts do not authorize new inference or synthetic zero-usage settlement.
+## Retired holds
 
-Harness summaries use their own metered dispatch. Runs already in progress can still hold a final-answer verification reservation until they finish, so its settlement stays until those runs are gone.
-Failed, interrupted or malformed responses cannot invent zero-usage receipts or
-release paid, BYO or unknown holds. Retain full history and pause until provider
-settlement; retry compaction at most once. Funding pauses preserve the selected
-model and pending response. All calls use the configured usage markup.
+The reservation engine (reserve, start, finalize, release, reconcile, the five-minute expiry sweep, the hourly stale-hold sweep, the reconciliation queue and audit script, the released-cost recorder and the operational margin report) is deleted. `convex/billing/retireHolds.ts` releases what it left behind, in bounded batches, without charging anything:
 
-Harness public acknowledgment and progress updates use the selected model and
-normal receipt-backed reservation/settlement. Transcript storage follows settlement;
-a storage outage must not release incurred usage or trigger another work action.
-An ambiguous thrown tool invocation stops subsequent actions and requires outcome
-reconciliation. Unknown model usage retains its reservation. None of these paths
-bypass paid-workspace admission or switch to a free model.
+- every `budgetReservations` row still `reserved` or `reconcile_required` becomes `released` with reason `holds_retired`; a workspace hold is subtracted from `billingAccountBalances.reservedMicros` and the matching spend limit's `reservedMicros` (never below 0). Personal holds had no balance behind them, so only the row changes.
+- every machine lease with a legacy `runtimeHoldMicros` has it released from the balance and the member/agent spend limits, and cleared. Running leases would release it on their next meter tick anyway; stopped leases are never metered again, so the migration covers all leases.
 
-## Reconciling held credit
-
-Use the internal reconciliation audit to identify provider-started holds requiring
-authoritative cost evidence. Retain financial and customer-specific audit records
-in private operator storage. Failed structured-output generation, write conflicts,
-missing provider receipts and underestimated reservations can all leave a hold
-requiring reconciliation; failure alone does not establish zero provider cost.
-
-### Late provider evidence after release
-
-A released hold is not evidence that the provider incurred no cost. Preserve the customer release and its reconciliation audit; do not release it again or reopen it to debit the wallet. The internal `billing/releasedProviderCosts:recordInternal` operation records receipt-backed provider cost and tokens once, with target/account/model guards and conflicting-replay rejection. It changes no monetary balance or subject limit. The operational report includes this absorbed cost even though the customer charge remains zero. Keep detailed receipts and exact-cost reconciliation in private operator storage.
+It is idempotent and schedules itself until done. The `budgetReservations` table stays (with its finalized history, still read by the itemized usage list and growth analytics) until a later change deletes it after the migration has run in production and no open row remains.
 
 ## Machines and credit
 
 Persistent Computers enforce admission in `ComputerService`, including desktop and tool-driven wakes. `ComputerAdmission` requires a payer whose scope and ID match the workspace and a paid plan, then runs the same check as every paid call (`ensureProviderBudgetNotLow`): the workspace must have at least 2% of its budget left after one automatic top-up to the 2% line, and the admin spend limit for the member (or `agent:<ownerId>`) must not be used up. There is no fixed-cent start floor and nothing is held. Personal paid credit cannot unlock a free workspace. Stop and delete remain available after downgrade or credit exhaustion. Each Computer has a deterministic `computer:<id>` lease created atomically with its owner claim; before allocation or wake, `ComputerBilling.bindPayer` records the member who starts the session (and the agent subject for agent Computers) as the lease's `lastPayer`, so the meter charges them. Boat's weighted counters remain authoritative. Idle, budget, and session-expiry stops pause the provider and retain its disk and Computer row; only explicit deletion removes them, after confirmed stop and final settlement.
 
-Hosted third-party Cloud-agent allocation, workflow wakes, and stopped-execution recovery are retired. Existing usage still settles through the shared lease meter and reaper; confirmed-stopped usage may settle and unused holds may be released. Native Computers and supported sandbox leases retain their own admission and lifecycle rules.
+Hosted third-party Cloud-agent allocation, workflow wakes, and stopped-execution recovery are retired. Existing usage still settles through the shared lease meter and reaper. Native Computers and supported sandbox leases retain their own admission and lifecycle rules.
 
 Historical Cloud Agent provisioning records retain allocation keys and provider references for cleanup. The operations reconcile route reclaims stale setup attempts without a matching lease, retains retry state when deletion fails, and never resumes a machine.
 
@@ -88,18 +70,18 @@ When the meter kills a disposable environment lease (`budget_exhausted`, `spend_
 
 A Stripe subscription deletion switches the workspace to Free and disables
 automatic top-ups even after paid usage. The balance retains only enough included
-funding for already-used credit and outstanding reservations, after grants and
+funding for already-used credit and any legacy holds, after grants and
 purchased top-ups. It removes unused plan credit while preserving ledger history
 and existing holds; cancellation does not reset a billing period or grant a new
 paid allowance. Ordinary active-plan reductions still reject insufficient funding.
 
 The release checkout drill found that zeroing the allowance previously rejected
 700 micros of used credit, leaving the app paid after Stripe canceled. Regression
-coverage exercises internal/server updates, reservations, grants/top-ups, normal
+coverage exercises internal/server updates, released holds, grants/top-ups, normal
 downgrades and older provider events. Acceptance checks the actual subscription
 and balance, in addition to webhook receipt; an event row alone is insufficient.
 
-Canceled-plan funding also shrinks when holds are released or settled below their estimate. The ledger retains only consumed spend and remaining reservations; a finished hold cannot restore unused paid credit. Active paid accounts retain their normal allowance.
+Canceled-plan funding also shrinks when the retirement migration releases a legacy hold. The ledger retains only consumed spend; a released hold cannot restore unused paid credit. Active paid accounts retain their normal allowance.
 
 ## Durable remote tasks
 
@@ -142,30 +124,24 @@ fixture list. The trusted Preview QA Recovery workflow invokes `dev/qa:recover`
 for explicit synthetic refills without a VM deploy key. It preserves spend and
 holds and cannot raise the real provider cap; rebuilds never refill it.
 
-V2 remote tasks bind reservations to the logical run through `remoteRunId`.
-Expired/stale-hold policy preserves a task's hold while execution or terminal
-settlement is unresolved. The original hard deadline still triggers stop; it cannot
-release unknown consumed credit without usage/termination evidence. Recovery cannot reset that deadline, revive a settled
-reservation, reset spend, or reset cumulative machine metering baselines. A new
-billable task requires a new idempotent reservation boundary. Cancellation stays
+V2 remote tasks hold nothing. They pass the 2% check when dispatched and charge reported tokens once when they end, whatever the outcome (a cancelled run is charged the tokens it used). The original hard deadline still triggers stop. Recovery cannot reset that deadline, reset spend, or reset cumulative machine metering baselines. Cancellation stays
 requested until host stop is confirmed; finalization intents retry usage/ordinary
 idle cleanup with the existing ledger idempotency keys after terminal ingestion.
 Machine time continues during human approval waits and pending stop delivery.
 The lifecycle coordinator retries cloud stop-proof checks on its durable timer
 while cancelling. A delivered notification does not finish this responsibility:
 its first check may precede the healthy-host grace period. Only provider/host
-stop proof closes the run and releases its reservation.
+stop proof closes the run.
 
 A lifecycle-v2 cancellation timeout is not evidence that a disconnected BYO process
-stopped. Keep the run and reservation unresolved until host stop/provider isolation
-is confirmed; elapsed time must not trigger terminal settlement or release its hold.
+stopped. Keep the run unresolved until host stop/provider isolation is confirmed.
 
 ### Aggregate Preview provider guard
 
 `OVERLAY_PREVIEW_PROVIDER_BUDGET_CENTS` caps a PR backend's metered spend
 across all wallets (default $5; bounded at $25 for explicitly approved acceptance).
 Every direct charge adds to a durable consumed-spend counter that fixture refills
-and billing-period resets cannot erase. Once recorded spend (plus any legacy holds)
+and billing-period resets cannot erase. Once recorded spend (plus any legacy holds not yet released)
 reaches the cap, every direct charge and machine meter tick reports `budgetLow`, so
 the work stops after the current step and machines are stopped. Charges are always
 recorded first, so costs cannot disappear or strand a machine. Production never
@@ -179,5 +155,5 @@ matching Convex backend; see [Workspace billing](workspace-billing.md#usage-mark
 Computer usage uses this same configured rate.
 
 Memory extraction validation failures with complete non-negative integer SDK token
-usage follow normal priced settlement. Provider-started failures without measured
-usage remain quarantined; failed output is not itself proof of zero cost.
+usage are charged like successful calls. Failures without measured usage charge
+nothing; failed output is not itself proof of zero cost.

@@ -5,7 +5,7 @@ import test from 'node:test'
 
 import {
   canUsePaidBudgetFeatures,
-  reserveProviderBudget,
+  ensureProviderBudgetNotLow,
   billableBudgetCentsFromProviderUsd,
   billableBudgetCentsFromProviderCents,
 } from './billing-runtime'
@@ -55,35 +55,31 @@ test('paid plans with exhausted budget have no execution privileges', () => {
   assert.equal(entitlements.overlayStorageBytesLimit, 10_000_000_000)
 })
 
-test('provider reservations check execution policy before the zero-cost fast path', async () => {
-  const input = {
-    userId: 'user_1',
-    entitlements: {
-      tier: 'free' as const,
-      planKind: 'free' as const,
-      creditsUsed: 0,
-      creditsTotal: 0,
-      budgetUsedCents: 0,
-      budgetTotalCents: 0,
-      budgetRemainingCents: 0,
-    },
-    providerCostUsd: 0,
-    kind: 'ask' as const,
-    operationId: 'operation_1',
-    requestFingerprint: 'fingerprint_1',
-    requireExecution: async () => {
-      throw new WorkspaceExecutionError({ state: 'subscription_required', canExecute: false }, true)
-    },
-  }
-
+test('the 2% check applies execution policy before anything else', async () => {
   await assert.rejects(
-    reserveProviderBudget(input),
+    ensureProviderBudgetNotLow({
+      userId: 'user_1',
+      entitlements: {
+        tier: 'free' as const,
+        planKind: 'free' as const,
+        creditsUsed: 0,
+        creditsTotal: 0,
+        budgetUsedCents: 0,
+        budgetTotalCents: 0,
+        budgetRemainingCents: 0,
+      },
+      kind: 'ask' as const,
+      operationId: 'operation_1',
+      requireExecution: async () => {
+        throw new WorkspaceExecutionError({ state: 'subscription_required', canExecute: false }, true)
+      },
+    }),
     (error: unknown) => error instanceof WorkspaceExecutionError && error.statusCode === 402,
   )
 })
 
-test('billing-disabled provider requests return without creating a reservation', async () => {
-  const result = await reserveProviderBudget({
+test('billing-disabled provider requests pass the 2% check without reading a balance', async () => {
+  const result = await ensureProviderBudgetNotLow({
     userId: 'user_1',
     entitlements: {
       tier: 'free',
@@ -94,16 +90,12 @@ test('billing-disabled provider requests return without creating a reservation',
       budgetTotalCents: 0,
       budgetRemainingCents: 0,
     },
-    providerCostUsd: 1,
     kind: 'ask',
     operationId: 'operation_1',
-    requestFingerprint: 'fingerprint_1',
     requireExecution: async () => ({ billingEnabled: false }) as never,
   })
 
   assert.equal(result.ok, true)
-  assert.equal(result.reservationId, null)
-  assert.equal(result.reservedCents, 0)
 })
 
 test('auto top-up is skipped when the billing capability is disabled', async (t) => {

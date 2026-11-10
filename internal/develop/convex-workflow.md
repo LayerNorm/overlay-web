@@ -763,11 +763,13 @@ execution lease. Lease renewal is
 authority-only and must revalidate the current source, membership, model/tool scope,
 delivery ownership, workflow owner, generation, and ancestors. It cannot expand access.
 
-Runs no longer pause for funding. The `waiting_for_resources` funding pause, its
-`pause_for_funding`/`resume_funding` operations and `TASK_SPEND_LIMIT` remain in Convex
-validators only so stored rows still validate; nothing produces them. The version 1
-resource-request system (`model_spend`/`time` grants) is likewise never admitted and is
-scheduled for deletion. Auto top-up remains opt-in:
+Runs no longer pause for funding or ask for more resources. The funding pause, its
+`pause_for_funding`/`resume_funding` operations, the version 1 resource-request system
+(`model_spend`/`time` grants, `harness/runs:pauseForResources`/`grantResources`/`consumeResourceGrant`,
+`POST /api/v1/conversations/run/resources`) and the `resourcePauseVersion` admission flag are deleted.
+Only stored data keeps validating: the `waiting_for_resources` status, `TASK_SPEND_LIMIT`,
+`conversationAgentRuns.resourceRequest`/`fundingPause` and the `harnessResourceRequests` table.
+A legacy run left in `waiting_for_resources` cannot resume; it can still be cancelled. Auto top-up remains opt-in:
 enabled setting, explicit consent, valid payment method, active paid subscription, and
 monthly ceiling are required. Pending claims reserve the ceiling account-wide; uncertain
 Stripe outcomes remain unresolved rather than receiving a new idempotency identity.

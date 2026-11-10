@@ -71,6 +71,14 @@ if (
   failures.push('Convex knowledge providers do not enforce the workspace budget check, direct charge and replay guard')
 }
 
+// Holds are retired: no backend code may create a budget reservation again (tests may insert historical rows).
+for (const path of nativeSources('convex')) {
+  if (path.includes('_generated') || path.endsWith('.test.ts')) continue
+  if (/insert\(\s*['"]budgetReservations['"]/.test(readFileSync(path, 'utf8'))) {
+    failures.push(`${path}: creates a budget reservation; paid calls charge directly after the call`)
+  }
+}
+
 const workspaceAgent = readFileSync('src/server/agents/workspace-agent-invocation.ts', 'utf8')
 if (!workspaceAgent.includes('programmaticSubjectId') || !workspaceAgent.includes('workspaceId')) {
   failures.push('Shared agent invocation does not resolve the workspace programmatic payer')
