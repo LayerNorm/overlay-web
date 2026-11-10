@@ -31,7 +31,8 @@ import (
 )
 
 const (
-	maxBodyBytes = 2 << 20
+	// A 32 MiB inference request (several images) plus its credential envelope.
+	maxBodyBytes = 33 << 20
 	backendName  = "cliproxyapi"
 	providerName = "codex"
 )

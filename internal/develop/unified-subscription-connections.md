@@ -144,15 +144,20 @@ JSON for `generateText`. Cancellation, response/event size limits, and safe
 typed errors are enforced at the boundary. There is no timeout after an
 upstream inference stream has connected.
 
-Subscription requests are text-only. Before validation, the subscription model
-replaces every image or file part (user attachments, assistant files and tool
-results such as a fetched screenshot) with a short note telling the model it
-could not see that file (`text-only-prompt.ts`). Otherwise one tool image in the
-history would make every later request in the run fail validation.
-Harness model preparation reserves a priced model's full context window for a
-request with media and refuses media when that window is unknown. BYOK and
-subscription models are unpriced and usually have no catalog window, so their
-media requests use the byte estimate instead (`model-quote.ts`).
+Subscription requests accept text and images (`input_image` with inline data or a
+URL; a stored provider file id is refused). Every pinned bridge translator converts
+images: Claude and Devin translate them, and Codex, xAI, Meta and Kimi receive
+Responses input directly; whether a given model can see images is the provider's
+call. Audio, video, other files and hosted tools are still refused. Before
+validation, the subscription model replaces each non-image file part (user
+attachments, assistant files and tool results such as a fetched PDF) with a short
+note telling the model it could not see that file (`unsupported-files-prompt.ts`).
+Otherwise one such file in the history would make every later request in the run
+fail validation. A request body may be up to 32 MiB; the bridge accepts 33 MiB to
+leave room for the credential envelope.
+Harness model preparation never estimates a request's size or cost, so media
+requests proceed whether or not the catalog knows the model's context window
+(`model-call-options.ts`).
 
 Only the enumerated reconnect, rate-limit, model-unavailable, and temporary
 failure codes are surfaced with actionable messages. Provider response text,

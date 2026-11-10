@@ -435,11 +435,11 @@ test('act assistant persistence writes one final message and emits completion', 
   }])
 })
 
-test('act usage budget service never charges BYOK attempts', async () => {
+test('act usage budget service never checks or charges BYOK attempts', async () => {
   const service = new ActUsageBudgetService({ repository: repository() })
   const modelId = 'byok/connection_1/vendor/model-a'
 
-  assert.deepEqual(await service.reserveForAttempt({
+  assert.deepEqual(await service.ensureBudgetNotLow({
     entitlements: {
       tier: 'pro',
       planKind: 'paid',
@@ -449,22 +449,17 @@ test('act usage budget service never charges BYOK attempts', async () => {
       budgetTotalCents: 10_000,
       budgetRemainingCents: 10_000,
     },
-    estimatedInputTokens: 1000,
-    maxOutputTokens: 1000,
     modelId,
     operationId: 'conversation.act',
-    paid: true,
-    requestFingerprint: 'byok-attempt',
     userId: 'user_1',
-  }), { ok: true, reservationId: null })
+  }), { ok: true })
 
   assert.deepEqual(await service.recordFinishedUsage({
     inputTokens: 100,
     modelId,
     outputTokens: 50,
-    reservationId: null,
     userId: 'user_1',
-  }), { finalized: false, reservationId: null })
+  }), { recorded: false, budgetLow: false })
 })
 
 test('unlimited usage policy exposes explicit paid entitlements and no-op accounting', async () => {
@@ -474,21 +469,11 @@ test('unlimited usage policy exposes explicit paid entitlements and no-op accoun
   assert.equal(entitlements.planKind, 'paid')
   assert.equal(entitlements.tier, 'max')
   assert.equal((entitlements.budgetRemainingCents ?? 0) > 1_000_000_000, true)
-  assert.deepEqual(await policy.reserveForAttempt({
-    entitlements,
-    estimatedInputTokens: 1000,
-    maxOutputTokens: 1000,
-    modelId: 'claude-sonnet-4-6',
-    operationId: 'conversation.act',
-    paid: true,
-    requestFingerprint: 'unlimited-attempt',
-    userId: 'user_1',
-  }), { ok: true, reservationId: null })
+  assert.deepEqual(await policy.ensureBudgetNotLow(), { ok: true })
   assert.deepEqual(await policy.recordFinishedUsage({
     inputTokens: 12,
     modelId: 'claude-sonnet-4-6',
     outputTokens: 24,
-    reservationId: null,
     userId: 'user_1',
-  }), { finalized: false, reservationId: null })
+  }), { recorded: false, budgetLow: false })
 })

@@ -35,7 +35,7 @@ export class WorkspaceExecutionPolicy {
     ]) : [null, null]
     return {
       billingEnabled,
-      access: workspaceExecutionAccess({ billingEnabled, accountStatus: account?.status, subscription, remainingCents: entitlements?.budgetRemainingCents ?? 0, checkBudget: args.checkBudget }),
+      access: workspaceExecutionAccess({ billingEnabled, accountStatus: account?.status, subscription, remainingCents: entitlements?.budgetRemainingCents ?? 0, totalCents: entitlements?.budgetTotalCents, checkBudget: args.checkBudget }),
       canManage,
       workspaceId: workspace.workspace.id,
     }

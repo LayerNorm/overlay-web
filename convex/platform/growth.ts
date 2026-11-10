@@ -335,8 +335,9 @@ const STEPS: Step[] = [
     }
     return page
   },
-  // Billed spend matches billing's own totals (billing/usageTotals): finalized
-  // reservations, plus usage operations that carry their own charge.
+  // Billed spend matches billing's own totals (billing/usageTotals): usage operations
+  // that carry their own charge, plus historical finalized reservations (nothing
+  // creates reservations any more; read until the table is deleted).
   async ({ ctx, day, cursor, counts }) => {
     const { start, end } = dayRange(day)
     const page = await ctx.db.query('budgetReservations')

@@ -1532,13 +1532,6 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
-      "file": "src/app/api/v1/conversations/run/resources/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 6,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
       "file": "src/app/api/v1/conversations/run/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 6,

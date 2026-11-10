@@ -2,14 +2,14 @@ import { publicHarnessStepPersistence, writeSettledHarnessTranscriptStep } from 
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
-import { compactHarnessPrompt, estimateContextTokens, FALLBACK_CONTEXT_WINDOW } from '@/server/chat/context-compaction-core'
+import { compactHarnessPrompt, estimateContextTokens } from '@/server/chat/context-compaction-core'
 import { isKimiK3ModelId } from '@/shared/ai/gateway/model-types'
 import { buildHarnessStepInstructions } from './context'
 import { prepareHarnessArtifactPrompt } from './artifact-prompt'
 import { createHarnessCompactionPort } from './compaction-port'
 import { captureHarnessModelUsage } from './model-usage'
 import type { HarnessExecutionPorts, HarnessModelSettings } from './ports'
-import type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
+import { DEFAULT_MAX_OUTPUT_TOKENS, type HarnessModelPurpose, type PreparedHarnessModel } from './model-port-types'
 import { readHarnessModelLimits } from './model-preparation'
 import { settleHarnessModelUsage } from './settle-model-step'
 import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference } from './state-steps'
@@ -37,17 +37,21 @@ function recordPreparationMetricIfEligible(
   })
 }
 
-const DEFAULT_MAX_OUTPUT_TOKENS = 8_192
+/**
+ * Context window assumed for a model the catalog does not describe (bring-your-own
+ * keys, subscriptions). Generous on purpose: the provider rejects a real overflow,
+ * and compaction still runs once the prompt approaches this size.
+ */
+export const UNKNOWN_MODEL_CONTEXT_WINDOW = 200_000
 
 /**
  * Output limits for one harness model call.
  *
- * Compaction keeps the prompt inside the working-context budget and reserves a
- * quarter of that budget for output. The response itself is bounded by the
- * model's real context window, not by that reserve: once the prompt is compacted,
- * everything between the working budget and the model window is free for output.
- * Tying the response to the reserve capped every call at 8,000 tokens with the
- * 32,000-token budget, which reasoning models could spend entirely on thinking.
+ * Compaction keeps the prompt inside the working context and reserves up to a
+ * quarter of it for output. By default the working context is the model's whole
+ * context window, so the reserve is the output room. A smaller working context
+ * (tests, the Preview QA hook) leaves everything between it and the model window
+ * free for output.
  */
 export function harnessOutputLimits(
   requested: number | undefined,
@@ -115,8 +119,10 @@ export function createHarnessModelPorts(input: {
     if (!limits) limitsByModel.set(modelId, limits = await readHarnessModelLimits(modelId))
     return limits
   }
-  const contextBudgetTokens = input.contextBudgetTokens ?? 32_000
-  if (!Number.isSafeInteger(contextBudgetTokens) || contextBudgetTokens < 1_024) throw new Error('Invalid harness working-context budget.')
+  if (input.contextBudgetTokens !== undefined
+    && (!Number.isSafeInteger(input.contextBudgetTokens) || input.contextBudgetTokens < 1_024)) {
+    throw new Error('Invalid harness working-context budget.')
+  }
 
   async function settle(step: ModelStep, receiptId: string, prepared: PreparedHarnessModel) {
     await settleHarnessModelUsage({
@@ -147,8 +153,11 @@ export function createHarnessModelPorts(input: {
       publicProgressReceipts.set(request.receiptId, request.instructionContext.publicProgress === true)
       activeToolNames = new Set(request.toolNames)
       const limits = await modelLimits(input.modelId)
-      const modelContextWindow = limits.contextWindow ?? FALLBACK_CONTEXT_WINDOW
-      const contextWindow = Math.min(input.contextBudgetTokens ?? limits.previewContextBudgetTokens ?? contextBudgetTokens, modelContextWindow)
+      const modelContextWindow = limits.contextWindow ?? UNKNOWN_MODEL_CONTEXT_WINDOW
+      // The working context is the model's real window; compaction runs only as the
+      // prompt approaches it. Callers and the Preview QA hook may choose a smaller one.
+      const contextWindow = Math.min(
+        input.contextBudgetTokens ?? limits.previewContextBudgetTokens ?? modelContextWindow, modelContextWindow)
       const { maxOutputTokens, compactionOutputReserve } = harnessOutputLimits(
         request.settings.maxOutputTokens, limits.maxOutputTokens, contextWindow, modelContextWindow)
       let state = request.state
@@ -186,15 +195,12 @@ export function createHarnessModelPorts(input: {
       let responseMaxOutputTokens = maxOutputTokens
       if (compacted.summaryFailed || !compacted.fitsBudget) {
         state = await readHarnessState(reference)
-        if (state.status === 'waiting_for_resources' && state.resourcePause?.receiptId) {
-          throw new HarnessYield(state.resourcePause.receiptId)
-        }
         if (state.compaction?.status === 'awaiting_reconciliation'
           || state.modelReservation?.id.startsWith('summary:')) throw new HarnessYield()
         const fallbackInstructions = buildHarnessStepInstructions(state, request.instructionContext)
         const fallbackMessages = promptMessages.filter(message => message.role !== 'system')
-        const fallbackMaxOutputTokens = Math.min(request.settings.maxOutputTokens ?? 8_192,
-          limits.maxOutputTokens ?? 8_192, Math.max(1, Math.floor(modelContextWindow / 4)))
+        const fallbackMaxOutputTokens = Math.min(request.settings.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS,
+          limits.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, Math.max(1, Math.floor(modelContextWindow / 4)))
         const fallbackFixedOverheadTokens = estimateContextTokens(fallbackInstructions)
           + estimateContextTokens(request.toolDefinitions)
         const fallbackMessageTokens = estimateHarnessPromptTokens(fallbackMessages)
@@ -250,7 +256,6 @@ export function createHarnessModelPorts(input: {
         messages,
         instructions,
         activeToolNames: request.toolNames,
-        estimatedCostMicros: prepared.estimatedCostMicros,
         model: prepared.model,
         settings: {
           ...request.settings,

@@ -48,7 +48,6 @@ export type ApplyRemoteEventsResult =
         operationId: string
         outputTokens: number
         outcome: 'completed' | 'failed' | 'cancelled' | 'timeout'
-        reservationId: string | null
         runId: string
         sandboxBilling: ConnectedAgentSandboxBilling | null
         userId: string
@@ -107,7 +106,6 @@ export type ConnectedAgentSandboxBilling = {
   leaseId: string
   provider: string
   providerReference: string
-  reservationId: string | null
   resources: { diskGiB: number; memoryGiB: number; vcpus: number }
   startedAt: number
 }
@@ -130,7 +128,15 @@ export type ConnectedAgentSandboxMeterCharge = {
 }
 
 export type ConnectedAgentMeterSandboxLeaseResult =
-  | { applied: true; meterVersion: number; remainingCents?: number }
+  | {
+    applied: true
+    meterVersion: number
+    remainingCents?: number
+    /** The workspace now has under 2% of its budget left: stop the machine. */
+    budgetLow?: boolean
+    /** An admin's spend limit for the member or agent is used up: stop the machine. */
+    spendLimitReached?: boolean
+  }
   | { applied: false; reason: 'lease_missing' | 'lease_not_meterable' | 'lease_conflict' | 'insufficient_budget' | 'paid_plan_required'; remainingCents?: number }
 
 export type ComputerMaintenanceClaim = { token: string; kind: 'provision' | 'wake' | 'stop' | 'delete' | 'idle'; expiresAt: number }
@@ -156,7 +162,8 @@ export type ConnectedAgentStartRemoteTurn = {
   memoryEnabled?: boolean
   prompt: string
   queueExpiresAt: number
-  reservationId: string | null
+  /** Always null: nothing is held before a run. Still sent because Convex backends before the hold removal require it. */
+  reservationId: null
   sandboxBilling?: ConnectedAgentSandboxBilling
   runId: string
   sessionId: string
@@ -360,12 +367,6 @@ export interface ConnectedAgentRepository {
     /** Fail this cloud environment's active runs now (its machine is being paused or restarted). */
     abandonEnvironmentId?: string
   }): Promise<ConnectedAgentSweepResult>
-  listPendingSandboxSettlements(args: { limit: number }): Promise<RemoteAgentUsageSettlement[]>
-  markSandboxSettlementComplete(args: {
-    workspaceId: string
-    reservationId: string
-    settledAt: number
-  }): Promise<boolean>
   createSandboxLease(input: ConnectedAgentCreateSandboxLease): Promise<AgentSandboxLease>
   getSandboxLease(args: { workspaceId: string; leaseId: string }): Promise<AgentSandboxLease | null>
   getActiveSandboxLease(args: { workspaceId: string; environmentId: string }): Promise<AgentSandboxLease | null>
@@ -467,9 +468,7 @@ export interface ConnectedAgentRepository {
     meteredAt: number
     payer?: ConnectedAgentSandboxLeasePayer
     charge?: ConnectedAgentSandboxMeterCharge
-    runtimeHoldCents?: number
     providerEvidence?: { usage: Record<string, unknown>; stopped: boolean }
-    minRemainingCents: number
   }): Promise<ConnectedAgentMeterSandboxLeaseResult>
   stopSandboxLease(args: {
     workspaceId: string

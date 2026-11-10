@@ -272,7 +272,7 @@ test('SDK function tools keep optional arguments non-strict unless strict was ex
   }
 })
 
-test('an image returned by a tool reaches a subscription as a text note instead of failing the request', async () => {
+test('user and tool images reach a subscription as images; other files become text notes', async () => {
   let requestBody: Record<string, unknown> | undefined
   let bridgeCalls = 0
   const model = modelWithFetch(async (_input, init) => {
@@ -287,6 +287,7 @@ test('an image returned by a tool reaches a subscription as a text note instead 
       { role: 'user', content: [
         { type: 'text', text: 'Fix the issue in this screenshot' },
         { type: 'file', data: new Uint8Array([1, 2, 3]), mediaType: 'image/png' },
+        { type: 'file', data: new Uint8Array([4, 5, 6]), mediaType: 'application/pdf' },
       ] },
       { role: 'assistant', content: [
         { type: 'tool-call', toolCallId: 'call-1', toolName: 'fetch_url', input: {} },
@@ -294,7 +295,7 @@ test('an image returned by a tool reaches a subscription as a text note instead 
       { role: 'tool', content: [
         { type: 'tool-result', toolCallId: 'call-1', toolName: 'fetch_url', output: { type: 'content', value: [
           { type: 'text', text: 'Fetched the screenshot.' },
-          { type: 'file-data', data: 'AQID', mediaType: 'image/png' },
+          { type: 'file-data', data: 'BwgJ', mediaType: 'image/png' },
         ] } },
       ] },
     ],
@@ -302,7 +303,9 @@ test('an image returned by a tool reaches a subscription as a text note instead 
   assert.equal(result.text, 'fixture response')
   assert.equal(bridgeCalls, 1)
   const sent = JSON.stringify(requestBody?.request)
-  assert.doesNotMatch(sent, /input_image|image_url|AQID/)
+  assert.match(sent, /input_image/)
+  assert.match(sent, /data:image\/png;base64,AQID/)
+  assert.match(sent, /data:image\/png;base64,BwgJ/)
   assert.match(sent, /Fetched the screenshot\./)
-  assert.match(sent, /An image \(image\/png\) was omitted: this model connection accepts text only/)
+  assert.match(sent, /A file \(application\/pdf\) was omitted: this model connection accepts only text and images/)
 })

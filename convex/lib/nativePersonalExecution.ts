@@ -22,8 +22,6 @@ export function publicPersonalRun(run: Doc<'conversationAgentRuns'>) {
     approval: run.approval,
     inputRequest: run.inputRequest,
     plan: run.plan,
-    resourceRequest: run.resourceRequest,
-    fundingPause: run.fundingPause,
     authorizationPause: run.authorizationPause,
     terminalError: run.terminalError ? {
       code: run.terminalError.code,

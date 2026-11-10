@@ -135,7 +135,6 @@ test('a known catalog price settles without waiting on the gateway', async () =>
     receipt: { costSource: 'catalog', costMicros: 710, inputTokens: 1_000, outputTokens: 100 },
     providerCostUsd: null,
     catalogCostUsd: 0.00071,
-    correctionGenerationId: 'gen_fixture',
   })
   expect(mocks.generation).not.toHaveBeenCalled()
   expect(mocks.pricing).toHaveBeenCalledWith('provider/actual', 1_000, 600, 100, 200)

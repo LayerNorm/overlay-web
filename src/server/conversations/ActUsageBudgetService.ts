@@ -2,16 +2,16 @@ import 'server-only'
 
 import {
   BillingBackedActUsagePolicy,
+  type ActBudgetCheckResult,
   type ActBudgetFailure,
-  type ActBudgetReservationResult,
   type ActUsagePolicy,
 } from './ActUsagePolicy'
 import type { ActConversationRepository } from './ActConversationRepository'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 
 export type {
+  ActBudgetCheckResult,
   ActBudgetFailure,
-  ActBudgetReservationResult,
 }
 
 export class ActUsageBudgetService {
@@ -26,29 +26,15 @@ export class ActUsageBudgetService {
     })
   }
 
-  reserveForAttempt(...args: Parameters<ActUsagePolicy['reserveForAttempt']>) {
-    if (isByokModelId(args[0].modelId)) {
-      return Promise.resolve({ ok: true as const, reservationId: null })
-    }
-    return this.policy.reserveForAttempt(...args)
+  ensureBudgetNotLow(...args: Parameters<ActUsagePolicy['ensureBudgetNotLow']>): Promise<ActBudgetCheckResult> {
+    if (isByokModelId(args[0].modelId)) return Promise.resolve({ ok: true })
+    return this.policy.ensureBudgetNotLow(...args)
   }
 
   recordFinishedUsage(...args: Parameters<ActUsagePolicy['recordFinishedUsage']>) {
     if (isByokModelId(args[0].modelId)) {
-      return Promise.resolve({ finalized: false, reservationId: null })
+      return Promise.resolve({ recorded: false, budgetLow: false })
     }
     return this.policy.recordFinishedUsage(...args)
-  }
-
-  markReservationStarted(...args: Parameters<ActUsagePolicy['markReservationStarted']>) {
-    return this.policy.markReservationStarted(...args)
-  }
-
-  releaseReservation(...args: Parameters<ActUsagePolicy['releaseReservation']>) {
-    return this.policy.releaseReservation(...args)
-  }
-
-  markReservationForReconcile(...args: Parameters<ActUsagePolicy['markReservationForReconcile']>) {
-    return this.policy.markReservationForReconcile(...args)
   }
 }

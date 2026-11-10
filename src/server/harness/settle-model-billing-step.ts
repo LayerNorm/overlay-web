@@ -4,7 +4,6 @@ import { createHash } from 'node:crypto'
 import { FatalError } from 'workflow'
 import { validateHarnessReceipt } from '@overlay/agent-runtime/harness-state'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { logger } from '@/server/observability/logger'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import type { HarnessExecutionReference } from './state-steps'
 import type { resolveHarnessModelUsage } from './usage-steps'
@@ -15,7 +14,7 @@ export async function recordHarnessModelBilling(
 ): Promise<string> {
   'use step'
 
-  const { receipt, providerCostUsd, catalogCostUsd, correctionGenerationId } = resolved
+  const { receipt, providerCostUsd, catalogCostUsd } = resolved
   validateHarnessReceipt(receipt)
   const operationId = `harness-model:${createHash('sha256').update(JSON.stringify([reference.runId, receipt.id])).digest('hex')}`
   const state = await new ConvexHarnessRepository().get({ actorUserId: reference.actorUserId, runId: reference.runId })
@@ -25,7 +24,6 @@ export async function recordHarnessModelBilling(
   if (state.modelReservation?.id !== receipt.id || !dispatch) throw new FatalError('Harness model settlement has no matching dispatch.')
   const server = getOverlayServerContext()
   if (receipt.costSource === 'external') {
-    if (dispatch.billingReservationId !== null) throw new FatalError('External inference cannot settle an Overlay billing reservation.')
     await server.appData.repositories.usage.recordBatch({
       userId: reference.actorUserId, workspaceId: state.policy.workspaceId, operationId,
       events: [{
@@ -37,30 +35,17 @@ export async function recordHarnessModelBilling(
       }],
     })
   } else {
-    const result = await server.chatUsagePolicy.recordFinishedUsage({
+    // Charged directly at the cost known at settlement (provider receipt, else catalog
+    // pricing); nothing was reserved before the call and nothing corrects it later.
+    await server.chatUsagePolicy.recordFinishedUsage({
       userId: reference.actorUserId, workspaceId: state.policy.workspaceId,
-      operationId, modelId: receipt.modelId, reservationId: dispatch.billingReservationId,
+      operationId, modelId: receipt.modelId,
       countAsRequest: false, requireRecorded: true,
       inputTokens: receipt.inputTokens, outputTokens: receipt.outputTokens,
       cachedInputTokens: receipt.cacheReadTokens, cacheWriteTokens: receipt.cacheWriteTokens,
       ...(providerCostUsd !== null ? { providerCostUsd } : {}),
       ...(catalogCostUsd !== null ? { catalogCostUsd } : {}),
     })
-    if (dispatch.billingReservationId !== null && !result.finalized) {
-      throw new FatalError('Harness model billing is awaiting reconciliation.')
-    }
-    if (correctionGenerationId && dispatch.billingReservationId !== null) {
-      // The estimate is already charged, so a failed start only leaves it uncorrected.
-      const { startHarnessCostCorrection } = await import('@/server/workflows/harness-cost-correction')
-      await startHarnessCostCorrection({
-        actorUserId: reference.actorUserId, generationId: correctionGenerationId,
-        reservationId: dispatch.billingReservationId,
-      }).catch((error: unknown) => {
-        logger.warn('[harness] cost correction could not start', {
-          runId: reference.runId, error: error instanceof Error ? error.message : String(error),
-        })
-      })
-    }
   }
   return operationId
 }

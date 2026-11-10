@@ -703,29 +703,7 @@ export const enqueueMemoryExtraction = mutation({
       ) throw new Error('MEMORY_EXTRACTION_OWNER_MISMATCH')
     }
 
-    const today = new Date().toISOString().split('T')[0]
-    let dailyUsage = await ctx.db.query('dailyUsage')
-      .withIndex('by_userId_date', (q) => q.eq('userId', args.actorUserId).eq('date', today))
-      .first()
-    if (!dailyUsage) {
-      const dailyUsageId = await ctx.db.insert('dailyUsage', {
-        userId: args.actorUserId,
-        date: today,
-        askCount: 0,
-        agentCount: 0,
-        writeCount: 0,
-        transcriptionSeconds: 0,
-        memoryExtractionCount: 0,
-      })
-      dailyUsage = await ctx.db.get(dailyUsageId)
-    }
-    if ((dailyUsage?.memoryExtractionCount ?? 0) >= 120) return
-    if (dailyUsage) {
-      await ctx.db.patch(dailyUsage._id, {
-        memoryExtractionCount: (dailyUsage.memoryExtractionCount ?? 0) + 1,
-      })
-    }
-
+    // No daily count: extraction is charged to the workspace budget like other work.
     await ctx.scheduler.runAfter(0, internal.knowledge.memoryExtractorNode.extractFromTurn, {
       billingActorUserId: args.actorUserId,
       conversationId: args.conversationId,

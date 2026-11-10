@@ -1,3 +1,5 @@
+// Legacy: the harness resource-request system was removed. These validators remain only so already-stored
+// conversationAgentRuns.resourceRequest values keep validating; nothing writes them any more.
 import { v } from 'convex/values'
 
 export const harnessResourceGrantValidator = v.union(
