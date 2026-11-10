@@ -4,6 +4,8 @@ import { Stack, router } from 'expo-router'
 import { StatusBar } from 'expo-status-bar'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { useFonts } from 'expo-font'
+import { DrawerProvider } from '../contexts/DrawerContext'
+import { AppShell } from '../components/shell/AppShell'
 import { ThemeProvider, useTheme } from '../hooks/useTheme'
 import { AuthProvider, useAuth } from '../contexts/AuthContext'
 import { AppSessionProvider } from '../contexts/AppSessionContext'
@@ -208,6 +210,12 @@ function RootLayoutNav(): React.ReactElement {
 export default function RootLayout(): React.ReactElement {
   const [fontsLoaded] = useFonts({
     // eslint-disable-next-line @typescript-eslint/no-require-imports
+    Geist: require('@expo-google-fonts/geist/400Regular/Geist_400Regular.ttf'),
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    GeistMedium: require('@expo-google-fonts/geist/500Medium/Geist_500Medium.ttf'),
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    GeistSemibold: require('@expo-google-fonts/geist/600SemiBold/Geist_600SemiBold.ttf'),
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
     LibreBaskerville: require('../assets/fonts/libre-baskerville/static/LibreBaskerville-Regular.ttf'),
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     'LibreBaskerville-Italic': require('../assets/fonts/libre-baskerville/static/LibreBaskerville-Italic.ttf'),
@@ -228,11 +236,15 @@ export default function RootLayout(): React.ReactElement {
       <AuthProvider>
         <ThemeProvider>
           <ConvexAuthProvider>
-          <AppSessionProvider>
-            <WorkspaceProvider>
-              <RootLayoutNav />
-            </WorkspaceProvider>
-          </AppSessionProvider>
+            <AppSessionProvider>
+              <WorkspaceProvider>
+                <DrawerProvider>
+                  <AppShell>
+                    <RootLayoutNav />
+                  </AppShell>
+                </DrawerProvider>
+              </WorkspaceProvider>
+            </AppSessionProvider>
           </ConvexAuthProvider>
         </ThemeProvider>
       </AuthProvider>

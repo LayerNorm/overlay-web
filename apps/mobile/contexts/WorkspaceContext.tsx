@@ -26,11 +26,7 @@ type WorkspaceContextValue = {
   /** Effective workspace id scopes requests via x-overlay-workspace-id. */
   activeWorkspaceId: string | null
   activeWorkspace: WorkspaceSummary | null
-  /**
-   * Workspaces/multi-tenant capability from bootstrap. When false the
-   * provider skips the workspaces request entirely — single-tenant installs
-   * behave exactly as before.
-   */
+  /** Native membership reads are required even for single-workspace accounts. */
   workspacesEnabled: boolean
   isLoading: boolean
   isSwitching: boolean
@@ -61,16 +57,14 @@ export function WorkspaceProvider({
 }): React.ReactElement {
   const { isAuthenticated, isLoading: authLoading } = useAuth()
   const nativeReady = useNativeDataReady()
-  const { capabilities, isLoading: sessionLoading, refresh: refreshSession } = useAppSession()
+  const { isLoading: sessionLoading, refresh: refreshSession } = useAppSession()
   const [workspaces, setWorkspaces] = useState<WorkspaceSummary[]>([])
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null)
-  const [isLoading, setIsLoading] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const [isSwitching, setIsSwitching] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Until bootstrap lands we can't know whether multi-tenant is enabled;
-  // once it does, `multiTenant` gates the workspaces request.
-  const workspacesEnabled = sessionLoading || capabilities.multiTenant
+  const workspacesEnabled = true
 
   const applyActiveWorkspace = useCallback((workspaceId: string | null) => {
     setActiveWorkspaceId(workspaceId)
@@ -101,6 +95,7 @@ export function WorkspaceProvider({
     return subscribeWorkspaces(({ workspaces: list, activeWorkspaceId: serverActiveId }) => {
       setWorkspaces(list)
       setIsLoading(false)
+      setError(null)
       applyActiveWorkspace(resolveActiveWorkspaceId(list, serverActiveId))
     })
   }, [nativeReady, workspacesEnabled, applyActiveWorkspace])
@@ -136,6 +131,7 @@ export function WorkspaceProvider({
     }
     if (!isAuthenticated) {
       setWorkspaces([])
+      setIsLoading(true)
       setActiveWorkspaceId(null)
       setError(null)
       applyWorkspaceLocally(null)

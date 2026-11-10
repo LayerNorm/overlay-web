@@ -17,7 +17,7 @@ export async function queryAllPages<A extends Record<string, unknown>, T>(query:
   } while (true)
 }
 
-export function subscribeAllPages<A extends Record<string, unknown>, T>(query: Query<A, T>, args: A, onValue: (rows: T[]) => void): () => void {
+export function subscribeAllPages<A extends Record<string, unknown>, T>(query: Query<A, T>, args: A, onValue: (rows: T[]) => void, onError?: (error: unknown) => void): () => void {
   let active = true
   const pages = new Map<number, { cursor: string | null; rows: T[]; stop: () => void }>()
   const dropAfter = (index: number) => {
@@ -36,7 +36,7 @@ export function subscribeAllPages<A extends Record<string, unknown>, T>(query: Q
       if (result.isDone || pages.get(index + 1)?.cursor !== result.continueCursor) dropAfter(index)
       onValue([...pages.values()].flatMap(value => value.rows))
       if (!result.isDone && result.continueCursor !== cursor && !pages.has(index + 1)) watch(index + 1, result.continueCursor)
-    })
+    }, onError)
   }
   watch(0, null)
   return () => { active = false; for (const page of pages.values()) page.stop(); pages.clear() }

@@ -11,10 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native'
-import { BlurView } from 'expo-blur'
-import { LinearGradient } from 'expo-linear-gradient'
-import MaskedView from '@react-native-masked-view/masked-view'
 import { Feather } from '@expo/vector-icons'
+import { PanelLeft } from 'lucide-react-native'
 import type { Theme } from '../../constants/theme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { useDrawer } from '../../contexts/DrawerContext'
@@ -87,16 +85,6 @@ export function TopBarIconButton({
   // The drawer menu button is dead chrome when the sidebar is permanent.
   if (isSidebarPermanent && icon === 'menu') return null
   return (
-    <GlassSurface
-      interactive
-      style={[
-        styles.iconButton,
-        {
-          backgroundColor: theme.glassBg,
-          borderColor: theme.glassBorder,
-        },
-      ]}
-    >
       <TouchableOpacity
         onPress={onPress}
         activeOpacity={0.82}
@@ -105,84 +93,25 @@ export function TopBarIconButton({
         accessibilityLabel={accessibilityLabel ?? ICON_A11Y_LABELS[icon] ?? icon}
         accessibilityState={{ selected: active }}
       >
-        <Feather name={icon} size={16} color={active ? theme.text : theme.textSecondary} />
+        {icon === 'menu' ? <PanelLeft size={17} strokeWidth={1.7} color={theme.foreground} /> : <Feather name={icon} size={16} color={active ? theme.text : theme.textSecondary} />}
       </TouchableOpacity>
-    </GlassSurface>
   )
 }
 
-/**
- * Shared chrome: frosted header band + top row (menu / back, center, trailing).
- * Used by Chat, Notes, Knowledge, and knowledge detail screens.
- */
-export function MainScreenHeader({
-  isDark,
-  topInset,
-  blurHeight,
-  leftSlot,
-  centerSlot,
-  rightSlot,
-}: {
+export function MainScreenHeader({ theme, topInset, leftSlot, centerSlot, rightSlot }: {
   theme: Theme
   isDark: boolean
   topInset: number
-  /** Total height of the blur band from the top of the screen */
   blurHeight?: number
   leftSlot?: React.ReactNode
   centerSlot: React.ReactNode
   rightSlot?: React.ReactNode
 }): React.ReactElement {
-  const bandH = blurHeight ?? topInset + 58
-
-  return (
-    <>
-      {/* Frosted glass header that fades to fully transparent at the bottom.
-          MaskedView applies a vertical linear-gradient alpha mask to a uniform
-          BlurView + tint, so blur strength tapers smoothly to zero — no hard
-          edge or visible cut-off line. */}
-      <MaskedView
-        style={[styles.mainHeaderBlur, { height: bandH }]}
-        pointerEvents="none"
-        maskElement={
-          <LinearGradient
-            colors={[
-              'rgba(0,0,0,1)',
-              'rgba(0,0,0,1)',
-              'rgba(0,0,0,0.98)',
-              'rgba(0,0,0,0.92)',
-              'rgba(0,0,0,0.82)',
-              'rgba(0,0,0,0.65)',
-              'rgba(0,0,0,0.42)',
-              'rgba(0,0,0,0.2)',
-              'rgba(0,0,0,0.05)',
-              'rgba(0,0,0,0)',
-            ]}
-            locations={[0, 0.45, 0.55, 0.65, 0.72, 0.8, 0.87, 0.93, 0.97, 1]}
-            style={{ flex: 1 }}
-          />
-        }
-      >
-        <BlurView
-          intensity={15}
-          tint={isDark ? 'dark' : 'light'}
-          style={StyleSheet.absoluteFillObject}
-        />
-        <View
-          style={[
-            StyleSheet.absoluteFillObject,
-            {
-              backgroundColor: isDark ? 'rgba(0,0,0,0.25)' : 'rgba(255,255,255,0.35)',
-            },
-          ]}
-        />
-      </MaskedView>
-      <View style={[styles.mainHeaderRow, { top: topInset + 6 }]}>
-        <View style={styles.mainHeaderSide}>{leftSlot ?? <View style={{ width: 44 }} />}</View>
-        <View style={styles.mainHeaderCenter}>{centerSlot}</View>
-        <View style={styles.mainHeaderSide}>{rightSlot ?? <View style={{ width: 44 }} />}</View>
-      </View>
-    </>
-  )
+  return <View style={{ position: 'absolute', top: 0, left: 0, right: 0, paddingTop: topInset, backgroundColor: theme.background, zIndex: 10 }}>
+    <View style={{ minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+      {leftSlot}<View style={{ flex: 1 }}>{centerSlot}</View>{rightSlot}
+    </View>
+  </View>
 }
 
 export function PageHeader({
