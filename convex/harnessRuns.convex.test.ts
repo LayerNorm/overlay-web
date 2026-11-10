@@ -1028,6 +1028,48 @@ describe('durable harness runs', () => {
     expect(persisted.operations).toHaveLength(0)
   })
 
+  test('stores an oversized transcript step as a shortened copy instead of failing the run', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('transcript-oversized', await seedConversation(convex))
+    let state = await admit(convex, input)
+    state = (await apply(convex, input, 'claim-large', state.revision, {
+      type: 'claim_execution', workflowRunId: 'workflow-large',
+    })).snapshot
+    state = (await apply(convex, input, 'reserve-large', state.revision, {
+      type: 'reserve_model', id: 'model:0', maxCostMicros: 0,
+    })).snapshot
+    await apply(convex, input, 'settle-large', state.revision, {
+      type: 'record_receipt', receipt: {
+        id: 'model:0', modelId: 'fixture/model', provider: 'fixture', inputTokens: 1, outputTokens: 1,
+        reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, contextWindow: 32_000, costMicros: 1,
+      },
+    })
+    const fullPersistenceStorageId = await convex.run(ctx => ctx.storage.store(new Blob(['full transcript'])))
+    const args = {
+      actorUserId: input.policy.actorUserId, runId: input.runId, workflowRunId: 'workflow-large',
+      receiptId: 'model:0', stepNumber: 0,
+      // Over 160,000 characters, more than 81 parts and well over 256 KiB encoded.
+      persistence: {
+        content: '界'.repeat(200_000),
+        parts: Array.from({ length: 120 }, (_, i) => ({
+          type: 'tool-invocation',
+          toolInvocation: { toolCallId: `call-${i}`, toolName: 'lookup', toolOutput: '界'.repeat(20_000) },
+        })),
+      },
+      fullPersistenceStorageId,
+      fullPersistenceDigest: createHash('sha256').update('full transcript').digest('hex'),
+      serverSecret: secret,
+    }
+    const write = mutation('writeTranscriptStep')
+    expect(await convex.mutation(write, args)).toEqual({ persisted: true })
+    // A replay of the same oversized step matches the shortened stored copy.
+    expect(await convex.mutation(write, args)).toEqual({ persisted: false })
+    const row = await convex.run(ctx => ctx.db.query('harnessTranscriptSteps')
+      .withIndex('by_runId_receiptId', q => q.eq('runId', input.runId).eq('receiptId', 'model:0')).unique())
+    expect(new TextEncoder().encode(row!.persistenceJson).byteLength).toBeLessThanOrEqual(240 * 1024)
+    expect(row!.fullPersistenceStorageId).toBe(fullPersistenceStorageId)
+  })
+
   test('writes bounded settled transcript rows idempotently and rejects conflicting replay', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('transcript-journal', await seedConversation(convex))

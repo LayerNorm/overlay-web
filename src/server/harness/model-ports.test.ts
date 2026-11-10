@@ -173,8 +173,8 @@ test('the response output limit uses the model window while compaction keeps its
   expect(harnessOutputLimits(32_000, 64_000, 32_000, 48_000)).toEqual({ maxOutputTokens: 16_000, compactionOutputReserve: 8_000 })
   // When the working budget is the whole window, fall back to the quarter reserve.
   expect(harnessOutputLimits(32_000, 64_000, 32_000, 32_000)).toEqual({ maxOutputTokens: 8_000, compactionOutputReserve: 8_000 })
-  // Unspecified limits keep the 8,192 default.
-  expect(harnessOutputLimits(undefined, null, 128_000, 1_000_000)).toEqual({ maxOutputTokens: 8_192, compactionOutputReserve: 8_192 })
+  // Unspecified limits use the 32,000 default.
+  expect(harnessOutputLimits(undefined, null, 128_000, 1_000_000)).toEqual({ maxOutputTokens: 32_000, compactionOutputReserve: 32_000 })
 })
 
 test('a continuation after a thinking-only capped call turns thinking off', () => {
@@ -203,9 +203,27 @@ test('a large-window model is prepared with the requested output limit, not a qu
     receiptId: 'model:0', state, messages: [], toolNames: [], toolDefinitions: [], settings: { maxOutputTokens: 32_000 },
     instructionContext: { instructions: 'Follow the plan.', continuation: false, truncatedResponse: false, finalAnswerRequired: false },
   })
-  expect(mocks.compact.mock.calls[0][0]).toMatchObject({ contextWindow: 32_000, outputReserveTokens: 8_000 })
+  // The working context is the model's whole window, not a fixed 32,000-token budget.
+  expect(mocks.compact.mock.calls[0][0]).toMatchObject({ contextWindow: 1_000_000, outputReserveTokens: 32_000 })
   expect(prepare.mock.calls[0][0].options.maxOutputTokens).toBe(32_000)
   expect(prepared.settings.maxOutputTokens).toBe(32_000)
+})
+
+test('a model with no catalog window works in a generous 200,000-token context with 32,000 output tokens', async () => {
+  const state = runningState()
+  const prepare = vi.fn(async ({ modelId }: { modelId: string }): Promise<PreparedHarnessModel> => ({
+    model: { modelId, credentialOwnerId: 'user' } as HarnessModelReference,
+    options: {} as never, contextWindow: null,
+  }))
+  mocks.limits.mockResolvedValue({ contextWindow: null, maxOutputTokens: null })
+  mocks.compact.mockImplementation(async ({ messages }) => ({ messages, didCompact: false, summaryFailed: false, fitsBudget: true }))
+  const ports = createHarnessModelPorts({ reference, modelId: 'fixture/model', prepare })
+  await ports.prepareModel({
+    receiptId: 'model:0', state, messages: [], toolNames: [], toolDefinitions: [], settings: {},
+    instructionContext: { instructions: 'Follow the plan.', continuation: false, truncatedResponse: false, finalAnswerRequired: false },
+  })
+  expect(mocks.compact.mock.calls[0][0]).toMatchObject({ contextWindow: 200_000, outputReserveTokens: 32_000 })
+  expect(prepare.mock.calls[0][0].options.maxOutputTokens).toBe(32_000)
 })
 
 test('an aborted zero-cost summary retains its hold without invented settlement or retry', async () => {

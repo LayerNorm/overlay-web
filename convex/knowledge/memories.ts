@@ -257,7 +257,6 @@ export const add = mutation({
     })
     await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, {
       memoryId,
-      trustedInternal: validateServerSecret(args.serverSecret),
     })
     return memoryId
   },
@@ -319,7 +318,6 @@ export const update = mutation({
     await ctx.db.patch(memoryId, patch)
     await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, {
       memoryId,
-      trustedInternal: validateServerSecret(serverSecret),
     })
   },
 })
@@ -457,7 +455,6 @@ export const supersede = mutation({
     await Promise.all(oldChunks.map((chunk) => ctx.db.patch(chunk._id, { superseded: true })))
     await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.reindexMemoryInternal, {
       memoryId: newId,
-      trustedInternal: validateServerSecret(args.serverSecret),
     })
     return newId
   },

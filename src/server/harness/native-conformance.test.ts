@@ -382,11 +382,12 @@ it('Grants — offered tools are intersected with policy and disallowed model ca
       return 'ok'
     },
   })
-  model(() => [{ name: 'write_file', id: 'write-1' }])
+  // Lack of progress no longer pauses a run, so the model gives up on the refused tool and answers.
+  const provider = model(index => index < 4 ? [{ name: 'write_file', id: `write-${index}` }] : 'I cannot write files here.')
   const result = await fixture.run(tools)
-  expect(result.outcome).toBe('blocked')
   expect(executed).toEqual([])
-  expect(fixture.read().status).not.toBe('completed')
+  expect(provider.doStreamCalls.length).toBeGreaterThanOrEqual(5)
+  expect(result.snapshot.evidence.some(item => item.source.includes('write_file') && item.verdict === 'observed')).toBe(false)
 })
 
 it('Approval — durable decisions match tool identity and input, execute once, and reject replay', async () => {
@@ -583,8 +584,6 @@ it('Lineage — depth, cycles, and external targets are refused before dispatch'
     directory: async () => directory,
     claimBudget: async () => ({ ok: true }),
     releaseBudget: async () => undefined,
-    recordReply: async () => undefined,
-    listReplies: async () => [],
     startTurns: async () => [{ agentId: 'target', turnId: 'target-turn' }],
   })
   await expect(service.ask({

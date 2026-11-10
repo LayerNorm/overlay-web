@@ -16,3 +16,10 @@ test('connected-agent limits increase monotonically across free, paid, and max p
   assert.equal(free.maxConcurrentRuns, 1)
   assert.equal(free.maxSandboxEgressBytes, 0)
 })
+
+test('paid connected-agent runs are not stopped after a day; free runs keep their 30-minute limit', () => {
+  const day = 24 * 60 * 60_000
+  assert.ok(connectedAgentPolicyFor({ planKind: 'paid', tier: 'pro' }).maxRunTimeMs >= 30 * day)
+  assert.ok(connectedAgentPolicyFor({ planKind: 'paid', tier: 'max' }).maxRunTimeMs >= 30 * day)
+  assert.equal(connectedAgentPolicyFor({ planKind: 'free', tier: 'free' }).maxRunTimeMs, 30 * 60_000)
+})

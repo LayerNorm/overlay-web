@@ -2,6 +2,7 @@ import { z } from 'zod/v3'
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
+import { MAX_COMMAND_BYTES } from '@layernorm/overlay-agent-bridge-protocol'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import { externalAgentLaunchEnabled, isExternalAgentInvocation } from './external-agent-policy'
 import type { ModelMessage } from 'ai'
@@ -38,7 +39,7 @@ export function permissionModeForConnectedHarness(
  * Each mentioned agent gets its own durable run, so an uncapped mass-mention
  * is a cost amplifier.
  */
-const MAX_AGENTS_PER_MESSAGE = 5
+const MAX_AGENTS_PER_MESSAGE = 20
 
 export const WORKSPACE_AGENT_INVOCATION_REASON_CODES = [
   'room_access_denied',
@@ -148,7 +149,8 @@ export type WorkspaceAgentInvocation = {
 }
 
 const CONNECTED_AGENT_ONLINE_WITHIN_MS = 45_000
-export const CONNECTED_AGENT_INTERACTIVE_QUEUE_MS = 2 * 60_000
+/** How long a connected agent's machine has to pick up a new turn before it is reported as not started. */
+export const CONNECTED_AGENT_INTERACTIVE_QUEUE_MS = 15 * 60_000
 
 /**
  * Everything a room turn reads about the room. Loaded fresh per turn rather
@@ -390,13 +392,35 @@ export async function resolveWorkspaceAgentInvocations(args: {
   return invocations
 }
 
-const REMOTE_CONTEXT_MESSAGE_CHARS = 2_000
-const REMOTE_CONTEXT_TOTAL_CHARS = 80_000
+const REMOTE_CONTEXT_MESSAGE_CHARS = 50_000
+/**
+ * The start command carries this prompt, and installed agent hosts refuse a command over the
+ * protocol's MAX_COMMAND_BYTES (128 KiB). The context gets what is left after the person's own
+ * message and about 16 KiB for the rest of the command.
+ */
+const REMOTE_COMMAND_BYTES = MAX_COMMAND_BYTES
+const REMOTE_COMMAND_OVERHEAD_BYTES = 16 * 1024
+const REMOTE_CONTEXT_MIN_BYTES = 4 * 1024
 
 function remoteContextPrefix(text: string, limit: number): string {
   const prefix = text.slice(0, limit)
   const last = prefix.charCodeAt(prefix.length - 1)
   return last >= 0xd800 && last <= 0xdbff ? prefix.slice(0, -1) : prefix
+}
+
+const utf8 = new TextEncoder()
+
+/** The longest prefix of `text` within `maxBytes` UTF-8 bytes, never splitting a character. */
+function remoteContextBytePrefix(text: string, maxBytes: number): string {
+  if (utf8.encode(text).byteLength <= maxBytes) return text
+  let low = 0
+  let high = Math.min(text.length, maxBytes)
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2)
+    if (utf8.encode(remoteContextPrefix(text, mid)).byteLength <= maxBytes) low = mid
+    else high = mid - 1
+  }
+  return remoteContextPrefix(text, low)
 }
 
 /**
@@ -429,8 +453,10 @@ export function buildRemoteAgentPrompt(args: {
     history ? `RECENT_ROOM_HISTORY_BEGIN\n${history}\nRECENT_ROOM_HISTORY_END` : '',
     'OVERLAY_CONTEXT_END',
   ].filter(Boolean).join('\n\n')
-  const boundedContext = envelope.length > REMOTE_CONTEXT_TOTAL_CHARS
-    ? `${remoteContextPrefix(envelope, REMOTE_CONTEXT_TOTAL_CHARS)}\n[Overlay context truncated]`
+  const contextBytes = Math.max(REMOTE_CONTEXT_MIN_BYTES,
+    REMOTE_COMMAND_BYTES - REMOTE_COMMAND_OVERHEAD_BYTES - utf8.encode(args.prompt).byteLength)
+  const boundedContext = utf8.encode(envelope).byteLength > contextBytes
+    ? `${remoteContextBytePrefix(envelope, contextBytes)}\n[Overlay context truncated]`
     : envelope
   return `${boundedContext}\n\nRESPONSE_STYLE: ${AGENT_CLOSING_SUMMARY_INSTRUCTION}\n\nCURRENT_USER_MESSAGE_BEGIN\n${args.prompt}\nCURRENT_USER_MESSAGE_END`
 }

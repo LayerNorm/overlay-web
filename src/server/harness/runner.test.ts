@@ -151,6 +151,16 @@ function fixture(requiresPlan = true, extraAllowedToolIds: string[] = [], option
   }
 }
 
+/** Nothing stops a run for lack of progress, so tests that loop end it like a person cancelling. */
+function cancelAfterFirstCheckpoint(f: ReturnType<typeof fixture>) {
+  const apply = f.ports.apply
+  f.ports.apply = async (operationId, operation) => {
+    const next = await apply(operationId, operation)
+    if (operation.type !== 'checkpoint') return next
+    return apply(`cancel:${operationId}`, { type: 'terminate', status: 'cancelled', reason: 'Cancelled by the person.' })
+  }
+}
+
 test('V2 approval rollover checkpoints pending requests and resumes without replaying the tool', async () => {
   const clock = vi.spyOn(Date, 'now')
   let now = Date.now()
@@ -490,14 +500,16 @@ test('runner requests a real answer after a protocol-only final segment', async 
     .toContain('Reply to the person now in plain text')
 })
 
-test('runner recovers with a trusted instruction before pausing after six unchanged segments', async () => {
+test('runner gives a recovery hint and never pauses when segments make no progress', async () => {
   const f = fixture(false)
   const protocol = '[[{"name":"harness_set_plan","parameters":{}}]'
-  const provider = model(() => protocol)
+  const provider = model(index => index < 8 ? protocol : 'The answer is 6.')
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
-  expect(result.outcome).toBe('blocked')
-  expect(result.snapshot.blocker?.kind).toBe('stuck')
-  expect(provider.doStreamCalls).toHaveLength(6)
+  expect(result.outcome).toBe('finished')
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.blocker).toBeUndefined()
+  expect(result.snapshot.resultSummary).toBe('The answer is 6.')
+  expect(provider.doStreamCalls).toHaveLength(9)
   expect(JSON.stringify(provider.doStreamCalls[1]?.prompt))
     .toContain('Reply to the person now in plain text')
   expect(JSON.stringify(provider.doStreamCalls[2]?.prompt))
@@ -532,6 +544,7 @@ test('runner checkpoint summary falls back to sanitized step text', async () => 
   const f = fixture()
   const protocol = '<tool_call>harness_update_step<arg_key>id</arg_key><arg_value>step1</arg_value><arg_key>status</arg_key><arg_value>done</arg_value></tool_call>'
   model(() => `The capital of France is Paris.\n\n${protocol}`)
+  cancelAfterFirstCheckpoint(f)
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
   expect(JSON.parse(result.snapshot.workingSummary ?? '{}')).toMatchObject({
     goal: 'Read the requested records',
@@ -677,6 +690,12 @@ test('stuck waits resume the same root run after a real reply', async () => {
   const f = fixture()
   let waits = 0
   let marked = false
+  // A stuck blocker now only comes from outside the runner (for example, history
+  // that no longer fits the provider window); simulate one at the first checkpoint.
+  const applyOperation = f.ports.apply
+  f.ports.apply = async (operationId, operation) => operation.type === 'checkpoint' && !waits
+    ? applyOperation(operationId, { type: 'block', blocker: { kind: 'stuck', question: 'What should I try next?' } })
+    : applyOperation(operationId, operation)
   const provider = model(index => {
     if (index === 0) return [call('harness_set_plan', 'plan', { steps: plan })]
     if (!waits) return 'No meaningful progress yet.'
@@ -1050,15 +1069,18 @@ test('an outstanding model reservation is not reported as a budget blocker', asy
   expect(provider.doStreamCalls).toHaveLength(0)
 })
 
-test('repeated returns with an unfinished plan become an explicit blocker, not success', async () => {
+test('repeated returns with an unfinished plan are never success and never pause the run', async () => {
   const f = fixture()
   const provider = model(index => index === 0
     ? [call('harness_set_plan', 'plan', { steps: plan })]
-    : 'Done, without actually finishing the plan.')
+    : index < 9 ? 'Done, without actually finishing the plan.'
+      : index === 9 ? [call('harness_update_step', 'complete', { id: 'work', status: 'done' })]
+        : 'The plan is finished.')
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
-  expect(result.outcome).toBe('blocked')
-  expect(result.snapshot.blocker?.kind).toBe('stuck')
-  expect(JSON.stringify(provider.doStreamCalls.at(-1)?.prompt)).toContain('Recovery attempt')
+  expect(result.snapshot.blocker).toBeUndefined()
+  expect(result.snapshot.status).toBe('completed')
+  expect(result.snapshot.resultSummary).toBe('The plan is finished.')
+  expect(provider.doStreamCalls.some(call => JSON.stringify(call.prompt).includes('Recovery attempt'))).toBe(true)
 })
 
 test('a plan step is done when the model marks it done', async () => {
@@ -1112,6 +1134,7 @@ test('FatalError from a control tool execution is returned as model-visible erro
     : index === 1
       ? [call('harness_update_step', 'reject-update', { id: 'work', status: 'done' })]
       : 'The update was rejected and the milestone remains open.')
+  cancelAfterFirstCheckpoint(f)
 
   const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
 

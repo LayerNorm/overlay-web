@@ -112,8 +112,6 @@ export function harnessDiagnosticForFailure(
     code = 'TOOL_OUTCOME_UNKNOWN'
   } else if (stage === 'tool' && snapshot.evidence.some(item => item.kind === 'tool_result' && item.verdict === 'failed')) {
     code = 'TOOL_FAILED'
-  } else if (snapshot.blocker?.kind === 'stuck') {
-    code = 'STAGNATION'
   }
   // Durable Workflow transport strips SDK prototypes. Match authored descriptions
   // and stable SDK names, never expose a raw provider message or nested payload.

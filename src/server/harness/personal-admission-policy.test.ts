@@ -10,7 +10,7 @@ const input = { actorUserId: 'user', workspaceId: 'workspace', allowedToolIds: [
 test('every admission uses v2 with no per-task spending limit; only Overlay-funded paid runs use the workspace budget', () => {
   expect(personalHarnessPolicy(input)).toEqual({ actorUserId: 'user', workspaceId: 'workspace',
     publicProgressVersion: 1, executionPolicyVersion: 2, spendingMode: 'workspace', allowedToolIds: ['read', 'write'], requiresPlan: false,
-    deadlineAt: 86_401_000, maxCostMicros: 0, maxParallelChildren: 3, maxDepth: 2 })
+    deadlineAt: 86_401_000, maxCostMicros: 0, maxParallelChildren: 16, maxDepth: 5 })
   expect(personalHarnessPolicy({ ...input, paid: false }))
     .toMatchObject({ publicProgressVersion: 1, executionPolicyVersion: 2, spendingMode: 'none', maxCostMicros: 0 })
   expect(personalHarnessPolicy({ ...input, modelId: 'byok/key/model' }))

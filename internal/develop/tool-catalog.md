@@ -24,7 +24,7 @@ Not tool ids but granted as capabilities:
 
 - **Web** (paid): `web_search`, `deep_search`, `web_fetch`. On the free plan they exist as stubs that answer "needs a paid plan".
 - **Connected apps** (`integrations`): the connector provider's meta-tools (Composio: search tools, execute tools, manage connections), named by the provider at run time. They act through the person's connected accounts, and, when the workspace has linked its own accounts, a `workspace_`-prefixed copy acts through those.
-- **Your MCP servers** (`mcp`): `search_mcp_tools` and `call_mcp_tool`, which stand in for every tool on every MCP server the person connected. A server's policy can require approval per tool.
+- **Your MCP servers** (`mcp`): `search_mcp_tools` and `call_mcp_tool`, which stand in for every tool on every MCP server the person connected. A server's policy can require approval per tool. A result is shortened only past 400,000 characters; agent runs keep a large result as a private artifact the agent can page.
 
 Interactive browsing runs inside the bound Computer through `computer_browser` and
 `computer_open_url`, with the same workspace admission, machine billing, visible

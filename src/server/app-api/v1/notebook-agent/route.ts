@@ -298,7 +298,8 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
           model,
           instructions,
           tools,
-          stopWhen: [isStepCount(20), () => stopForBudget],
+          // The workspace budget stops real spending; the step count only ends a runaway tool loop.
+          stopWhen: [isStepCount(200), () => stopForBudget],
           onStepEnd: async ({ text, usage }) => {
             emitText(text)
             const charged = await chargeNotebookStep({
