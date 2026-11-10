@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   sanitize: vi.fn((value: unknown) => value),
   server: {
     appData: { repositories: { conversations: {} } },
-    chatUsagePolicy: { reserveForAttempt: vi.fn() },
+    chatUsagePolicy: { ensureBudgetNotLow: vi.fn() },
   },
 }))
 
@@ -78,7 +78,7 @@ test('shared preparation uses the selected model and grants without reserving us
     inputSchema: { type: 'object', properties: { path: { type: 'string' } } },
   })])
   expect(prepared.toolDefinitions[0]).not.toHaveProperty('execute')
-  expect(mocks.server.chatUsagePolicy.reserveForAttempt).not.toHaveBeenCalled()
+  expect(mocks.server.chatUsagePolicy.ensureBudgetNotLow).not.toHaveBeenCalled()
 })
 
 test('agent preparation admits only its configured model', async () => {

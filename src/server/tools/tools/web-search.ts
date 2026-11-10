@@ -4,8 +4,6 @@ import { tool } from 'ai'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
 import { getGatewayModelId } from '@/server/ai/gateway/gateway-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { providerRequestFingerprint } from '@/server/billing/ServerProviderUsageMeter'
-import { billableBudgetCentsFromProviderUsd } from '@/server/billing/billing-runtime'
 import { logger } from '@/server/observability/logger'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import { searchTinyfishDeep } from './web-search-deep'
@@ -49,7 +47,6 @@ const TINYFISH_FETCH_URL = 'https://api.fetch.tinyfish.ai'
 
 /** Flat per-provider-call price billed to the user — provider cost to us is ~$0. */
 const WEB_SEARCH_REQUEST_USD = 0.005
-const WEB_SEARCH_MAX_RESERVE_USD = 0.05
 const ELO_TIMEOUT_MS = 35_000
 const TINYFISH_TIMEOUT_MS = 60_000
 const MAX_PROVIDER_RETRIES = 2
@@ -58,7 +55,6 @@ const WEB_FETCH_DEFAULT_MAX_CHARS_PER_PAGE = 20_000
 export type WebSearchBillingContext = {
   entitlements: Entitlements
   programmaticSubjectId?: string
-  requestFingerprint: string
   userId: string
   workspaceId?: string
 }
@@ -262,70 +258,34 @@ async function postTinyfishFetch(body: Record<string, unknown>): Promise<unknown
   return res.json()
 }
 
-async function reserveWebSearch(params: {
-  billingContext: WebSearchBillingContext | undefined
-  input: unknown
-  toolName: 'web_search' | 'deep_search' | 'web_fetch'
-}) {
-  if (!params.billingContext) throw new Error('web_search_billing_context_required')
-  const policy = getOverlayServerContext().generationUsagePolicy
-  const operationId = `websearch.${params.toolName}:${globalThis.crypto.randomUUID()}`
-  const reservation = await policy.reserve({
-    entitlements: params.billingContext.entitlements,
-    idempotencyKey: operationId,
+type WebSearchToolName = 'web_search' | 'deep_search' | 'web_fetch'
+
+/** Refuses only when the workspace has under 2% left; nothing is held for the search. */
+async function checkWebSearchBudget(billingContext: WebSearchBillingContext | undefined, toolName: WebSearchToolName) {
+  if (!billingContext) throw new Error('web_search_billing_context_required')
+  const check = await getOverlayServerContext().generationUsagePolicy.ensureBudgetNotLow({
+    entitlements: billingContext.entitlements,
     kind: 'generation',
-    modelId: `search-tool/${params.toolName}`,
-    operationId,
-    providerCostUsd: WEB_SEARCH_MAX_RESERVE_USD,
-    requestFingerprint: providerRequestFingerprint({
-      parent: params.billingContext.requestFingerprint,
-      input: params.input,
-    }),
-    programmaticSubjectId: params.billingContext.programmaticSubjectId,
-    userId: params.billingContext.userId,
-    workspaceId: params.billingContext.workspaceId,
+    modelId: `search-tool/${toolName}`,
+    operationId: `websearch.${toolName}`,
+    programmaticSubjectId: billingContext.programmaticSubjectId,
+    userId: billingContext.userId,
+    workspaceId: billingContext.workspaceId,
   })
-  if (!reservation.ok) throw new Error(reservation.code)
-  await policy.markStarted({
-    reservationId: reservation.reservationId,
-    userId: params.billingContext.userId,
-  })
-  return { policy, reservationId: reservation.reservationId }
+  if (!check.ok) throw new Error(check.code)
+  return billingContext
 }
 
-async function finalizeWebSearch(params: {
-  billingContext: WebSearchBillingContext
-  meter: Awaited<ReturnType<typeof reserveWebSearch>>
-  providerCalls: number
-  toolName: 'web_search' | 'deep_search' | 'web_fetch'
-}) {
-  const actualProviderCostUsd = Math.max(1, params.providerCalls) * WEB_SEARCH_REQUEST_USD
-  await params.meter.policy.finalize({
-    actualProviderCostUsd,
-    events: [{
-      type: 'generation',
-      modelId: `search-tool/${params.toolName}`,
-      inputTokens: 0,
-      outputTokens: 0,
-      cachedTokens: 0,
-      cost: billableBudgetCentsFromProviderUsd(actualProviderCostUsd),
-      timestamp: Date.now(),
-    }],
-    reservationId: params.meter.reservationId,
-    userId: params.billingContext.userId,
+/** Charges the flat per-provider-call price after the search succeeds. A failed search charges nothing. */
+async function chargeWebSearch(billingContext: WebSearchBillingContext, providerCalls: number, toolName: WebSearchToolName) {
+  await getOverlayServerContext().generationUsagePolicy.charge({
+    operationId: `websearch.${toolName}:${globalThis.crypto.randomUUID()}`,
+    programmaticSubjectId: billingContext.programmaticSubjectId,
+    providerCostUsd: Math.max(1, providerCalls) * WEB_SEARCH_REQUEST_USD,
+    usage: { kind: 'generation', modelId: `search-tool/${toolName}`, inputTokens: 0, outputTokens: 0, cachedTokens: 0 },
+    userId: billingContext.userId,
+    workspaceId: billingContext.workspaceId,
   })
-}
-
-async function reconcileWebSearch(
-  meter: Awaited<ReturnType<typeof reserveWebSearch>>,
-  billingContext: WebSearchBillingContext | undefined,
-  error: unknown,
-) {
-  await meter.policy.markForReconcile({
-    errorMessage: error instanceof Error ? error.message : 'web_search_failed',
-    reservationId: meter.reservationId,
-    userId: billingContext!.userId,
-  }).catch((_error) => undefined)
 }
 
 export async function executeDeepSearch(
@@ -337,15 +297,10 @@ export async function executeDeepSearch(
   if (chatModelId) {
     try { clientModelId = getGatewayModelId(chatModelId) } catch (_error) { clientModelId = undefined }
   }
-  const meter = await reserveWebSearch({ billingContext, input, toolName: 'deep_search' })
-  try {
-    const { output, providerCalls } = await searchDeepWithFallback(input, clientModelId)
-    await finalizeWebSearch({ billingContext: billingContext!, meter, providerCalls, toolName: 'deep_search' })
-    return output
-  } catch (error) {
-    await reconcileWebSearch(meter, billingContext, error)
-    throw error
-  }
+  const billing = await checkWebSearchBudget(billingContext, 'deep_search')
+  const { output, providerCalls } = await searchDeepWithFallback(input, clientModelId)
+  await chargeWebSearch(billing, providerCalls, 'deep_search')
+  return output
 }
 
 async function executeWebSearch(
@@ -354,55 +309,45 @@ async function executeWebSearch(
   chatModelId?: string,
 ): Promise<unknown> {
   const queries = Array.isArray(input.query) ? input.query.slice(0, 5) : [input.query]
-  const meter = await reserveWebSearch({ billingContext, input, toolName: 'web_search' })
-  try {
-    const outputs = await Promise.all(
-      queries.map((q) => searchWebWithFallback(q, input)),
-    )
-    const merged = mergeSearchOutputs(queries, outputs)
-    const fallbackPlan = buildExactEntityFallbackPlan(queries, input.country)
-    let output: unknown = merged
-    if (fallbackPlan) {
-      const filtered = filterExactEntityResults(merged, fallbackPlan)
-      try {
-        const fallbackOutput = await executeDeepSearch({
-          objective: fallbackPlan.objective,
-          searchQueries: fallbackPlan.searchQueries,
-          effort: 'standard',
-          maxResults: input.maxResults ?? 10,
-        }, billingContext, chatModelId)
-        output = mergeExactEntityFallbackResults(merged, fallbackOutput, fallbackPlan)
-        if (output === merged) output = filtered
-      } catch (error) {
-        logger.warn('[web-search] exact entity deep fallback failed', {
-          entity: fallbackPlan.label,
-          error: error instanceof Error ? error.message : String(error),
-        })
-        output = filtered
-      }
+  const billing = await checkWebSearchBudget(billingContext, 'web_search')
+  const outputs = await Promise.all(
+    queries.map((q) => searchWebWithFallback(q, input)),
+  )
+  const merged = mergeSearchOutputs(queries, outputs)
+  const fallbackPlan = buildExactEntityFallbackPlan(queries, input.country)
+  let output: unknown = merged
+  if (fallbackPlan) {
+    const filtered = filterExactEntityResults(merged, fallbackPlan)
+    try {
+      const fallbackOutput = await executeDeepSearch({
+        objective: fallbackPlan.objective,
+        searchQueries: fallbackPlan.searchQueries,
+        effort: 'standard',
+        maxResults: input.maxResults ?? 10,
+      }, billingContext, chatModelId)
+      output = mergeExactEntityFallbackResults(merged, fallbackOutput, fallbackPlan)
+      if (output === merged) output = filtered
+    } catch (error) {
+      logger.warn('[web-search] exact entity deep fallback failed', {
+        entity: fallbackPlan.label,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      output = filtered
     }
-    await finalizeWebSearch({ billingContext: billingContext!, meter, providerCalls: queries.length, toolName: 'web_search' })
-    return output
-  } catch (error) {
-    await reconcileWebSearch(meter, billingContext, error)
-    throw error
   }
+  await chargeWebSearch(billing, queries.length, 'web_search')
+  return output
 }
 
 async function executeWebFetch(
   input: WebFetchInput,
   billingContext?: WebSearchBillingContext,
 ): Promise<unknown> {
-  const meter = await reserveWebSearch({ billingContext, input, toolName: 'web_fetch' })
-  try {
-    const output = await postTinyfishFetch(buildTinyfishRequestBody(input))
-    const capped = capFetchText(output, input.maxCharsPerPage ?? WEB_FETCH_DEFAULT_MAX_CHARS_PER_PAGE)
-    await finalizeWebSearch({ billingContext: billingContext!, meter, providerCalls: 1, toolName: 'web_fetch' })
-    return capped
-  } catch (error) {
-    await reconcileWebSearch(meter, billingContext, error)
-    throw error
-  }
+  const billing = await checkWebSearchBudget(billingContext, 'web_fetch')
+  const output = await postTinyfishFetch(buildTinyfishRequestBody(input))
+  const capped = capFetchText(output, input.maxCharsPerPage ?? WEB_FETCH_DEFAULT_MAX_CHARS_PER_PAGE)
+  await chargeWebSearch(billing, 1, 'web_fetch')
+  return capped
 }
 
 export async function getWebSearchTool(

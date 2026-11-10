@@ -5,7 +5,6 @@ import 'server-only'
 // review it when provider pricing changes.
 export const GROQ_WHISPER_TURBO_USD_PER_HOUR = 0.04
 export const GROQ_TRANSCRIPTION_MINIMUM_BILLABLE_SECONDS = 10
-export const MAX_RESERVED_TRANSCRIPTION_SECONDS = 24 * 60 * 60
 
 export type GroqVerboseTranscription = {
   duration?: unknown

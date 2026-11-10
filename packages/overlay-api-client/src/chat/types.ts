@@ -1,10 +1,6 @@
 import type { RemoteRunLiveness } from '@overlay/workspace-contracts'
 import type { ConversationMessage, ConversationSummary } from '@overlay/app-core'
 import type { PaginationQuery } from '../shared/types'
-import type {
-  HarnessResourceDeliveryProjection,
-} from '@overlay/agent-runtime/harness-resource'
-import type { HarnessFundingPause } from '@overlay/agent-runtime/harness-state'
 import type { HarnessAuthorizationPause } from '@overlay/agent-runtime/harness-state'
 
 export interface ConversationQuery extends PaginationQuery {
@@ -81,8 +77,6 @@ export interface ConversationMessageRequest {
 
 export type ActConversationRequest = Record<string, unknown>
 
-export type AgentRunResourceRequest = HarnessResourceDeliveryProjection
-
 export type AgentRunResource = {
   id: string
   conversationId: string
@@ -117,8 +111,6 @@ export type AgentRunResource = {
   }
   inputRequest?: { token: string; requestedAt: number; question: string }
   plan?: Array<{ id: string; title: string; status: string }>
-  resourceRequest?: AgentRunResourceRequest
-  fundingPause?: HarnessFundingPause
   authorizationPause?: HarnessAuthorizationPause
   approval?: {
     token: string

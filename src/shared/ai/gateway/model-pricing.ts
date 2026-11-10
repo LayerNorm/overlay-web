@@ -23,14 +23,6 @@ export type GatewayImageTokenUsage = {
   outputTokens: number | undefined
 }
 
-// Image providers with token pricing do not expose the final token count until
-// generation completes. Reserve enough for a high-detail image, then finalize
-// against the provider-reported usage.
-export const IMAGE_GENERATION_RESERVATION_USAGE: GatewayImageTokenUsage = {
-  inputTokens: 8_192,
-  outputTokens: 8_192,
-}
-
 function parsePrice(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value !== 'string' || value.trim() === '') return null

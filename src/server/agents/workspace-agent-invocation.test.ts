@@ -31,7 +31,7 @@ test('drive starts require rollout, host capability and opt-in, and never target
   }
 })
 
-test('direct Cloud-kind dispatch rejects before room context, memory, or credit reservation', async () => {
+test('direct Cloud-kind dispatch rejects before room context, memory, or the budget check', async () => {
   let admissionChecked = false
   await assert.rejects(
     startRemoteWorkspaceAgentTurn({
@@ -59,7 +59,7 @@ test('direct Cloud-kind dispatch rejects before room context, memory, or credit 
   const sideEffectsStart = start.indexOf('const server = getOverlayServerContext()')
   assert.ok(guard >= 0)
   assert.ok(sideEffectsStart > guard)
-  for (const sideEffect of ['getOverlayServerContext()', 'loadRoomTurnContext(args)', 'buildAgentTurnContext({', 'reserveForAttempt({']) {
+  for (const sideEffect of ['getOverlayServerContext()', 'loadRoomTurnContext(args)', 'buildAgentTurnContext({', 'ensureBudgetNotLow({']) {
     assert.ok(start.indexOf(sideEffect) > guard, `${sideEffect} must run after the retired-target guard`)
   }
   assert.match(start.slice(guard, sideEffectsStart), /hosted_runtime_retired/)
@@ -228,12 +228,21 @@ test('connected agents receive bounded memory and room context without confusing
   assert.match(prompt, /CURRENT_USER_MESSAGE_BEGIN\nWhat should we verify next\?\nCURRENT_USER_MESSAGE_END/)
 
   const oversized = buildRemoteAgentPrompt({
-    contextBlock: 'x'.repeat(100_000),
+    contextBlock: 'x'.repeat(200_000),
     messages: [],
     prompt: 'The current request must survive truncation.',
   })
   assert.match(oversized, /\[Overlay context truncated\]/)
   assert.match(oversized, /The current request must survive truncation/)
+  // The start command must stay within what installed agent hosts accept.
+  assert.ok(new TextEncoder().encode(oversized).byteLength <= 120 * 1024)
+
+  // Room history keeps far more than the former 2,000 characters per message.
+  const long = buildRemoteAgentPrompt({
+    contextBlock: '', prompt: 'Next?', messages: [{ role: 'assistant', content: 'r'.repeat(40_000) }],
+  })
+  assert.ok(long.includes('r'.repeat(40_000)))
+  assert.doesNotMatch(long, /Overlay context truncated/)
 })
 
 test('room memory ingestion is owner-scoped and gated by the message toggle', async () => {
@@ -270,22 +279,19 @@ test('room memory ingestion is owner-scoped and gated by the message toggle', as
 test('remote history truncation cannot break the next turn after an emoji reply', () => {
   const prompt = buildRemoteAgentPrompt({
     contextBlock: '',
-    messages: [{ role: 'assistant', content: 'a'.repeat(1999) + '🙂' + 'tail'.repeat(300000) }],
+    messages: [{ role: 'assistant', content: 'a'.repeat(49_999) + '🙂' + 'tail'.repeat(300000) }],
     prompt: 'Continue the task',
   })
   assert.equal(prompt.isWellFormed(), true)
-  assert.ok(prompt.includes('a'.repeat(1999)))
+  assert.ok(prompt.includes('a'.repeat(49_999)))
   assert.ok(prompt.includes('CURRENT_USER_MESSAGE_BEGIN\nContinue the task\nCURRENT_USER_MESSAGE_END'))
 })
 
-test('the total remote context limit preserves complete Unicode characters', () => {
-  const empty = buildRemoteAgentPrompt({ contextBlock: '', messages: [], prompt: 'Continue' })
-  const prefixLength = empty.indexOf('OVERLAY_CONTEXT_END')
-  // The nonempty block replaces the end marker after the same envelope prefix.
-  const contextStart = prefixLength
-  const contextBlock = 'a'.repeat(79999 - contextStart) + '🙂' + 'b'.repeat(100)
+test('the total remote context limit counts UTF-8 bytes and preserves complete Unicode characters', () => {
+  const contextBlock = '🙂'.repeat(60_000)
   const prompt = buildRemoteAgentPrompt({ contextBlock, messages: [], prompt: 'Continue' })
   assert.equal(prompt.isWellFormed(), true)
   assert.match(prompt, /Overlay context truncated/)
+  assert.ok(new TextEncoder().encode(prompt).byteLength <= 120 * 1024)
   assert.match(prompt, /CURRENT_USER_MESSAGE_BEGIN\nContinue\nCURRENT_USER_MESSAGE_END/)
 })

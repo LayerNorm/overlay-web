@@ -29,8 +29,6 @@ export function toNativePersonalRun(run: NonNullable<NativePersonalExecutionStat
     approval: run.approval,
     inputRequest: run.inputRequest,
     plan: run.plan,
-    resourceRequest: run.resourceRequest,
-    fundingPause: run.fundingPause,
     authorizationPause: run.authorizationPause,
     metrics: run.metrics,
   }

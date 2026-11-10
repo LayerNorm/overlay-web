@@ -4,12 +4,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getBillingProgrammaticSubjectId, getTrustedAutomationBillingSubjectId, type AppApiRouteContext } from '@/server/app-api/bff-context'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { getServerProviderKey } from '@/server/ai/gateway/server-provider-keys'
+import { isPaidPlan } from '@/server/billing/billing-runtime'
 import {
-  billableBudgetCentsFromProviderUsd,
-  isPaidPlan,
-} from '@/server/billing/billing-runtime'
-import {
-  MAX_RESERVED_TRANSCRIPTION_SECONDS,
   transcriptionProviderCostUsd,
   trustedTranscriptionDurationSeconds,
   type GroqVerboseTranscription,
@@ -56,23 +52,17 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     const groqApiKey = await getServerProviderKey('groq')
 
     if (groqApiKey) {
-      const reservation = await serverContext.generationUsagePolicy.reserve({
+      const check = await serverContext.generationUsagePolicy.ensureBudgetNotLow({
         entitlements,
-        idempotencyKey: context.requestIdempotencyKey,
         kind: 'transcription',
         modelId: TRANSCRIPTION_MODEL,
         operationId: 'audio.transcribe',
         programmaticSubjectId,
-        providerCostUsd: transcriptionProviderCostUsd(MAX_RESERVED_TRANSCRIPTION_SECONDS),
-        requestFingerprint: context.requestFingerprint,
         userId: auth.userId,
         workspaceId,
       })
-      if (!reservation.ok) {
-        return NextResponse.json(
-          { ...reservation.payload, error: reservation.code },
-          { status: reservation.status },
-        )
+      if (!check.ok) {
+        return NextResponse.json({ ...check.payload, error: check.code }, { status: check.status })
       }
 
       // Preserve the original filename (e.g. audio.m4a) so Groq picks the right
@@ -87,36 +77,16 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
         groqFormData.append('prompt', prompt)
       }
 
-      let groqResponse: Response
-      try {
-        await serverContext.generationUsagePolicy.markStarted({
-          reservationId: reservation.reservationId,
-          userId: auth.userId,
-        })
-        groqResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${groqApiKey}` },
-          body: groqFormData,
-        })
-      } catch (error) {
-        await serverContext.generationUsagePolicy.release({
-          providerWorkStarted: true,
-          reason: error instanceof Error ? error.message : 'transcription_provider_failed',
-          reservationId: reservation.reservationId,
-          userId: auth.userId,
-        }).catch((_error) => undefined)
-        throw error
-      }
+      // A failed call charges nothing; a finished one is charged for the audio the provider reports.
+      const groqResponse = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${groqApiKey}` },
+        body: groqFormData,
+      })
 
       if (!groqResponse.ok) {
         const err = await groqResponse.text()
         logger.error('[Transcribe] Groq error:', err)
-        await serverContext.generationUsagePolicy.release({
-          providerWorkStarted: true,
-          reason: `groq_http_${groqResponse.status}`,
-          reservationId: reservation.reservationId,
-          userId: auth.userId,
-        }).catch((_error) => undefined)
         return NextResponse.json(
           { error: 'Groq transcription failed. Check GROQ_API_KEY and audio codec support.' },
           { status: 500 }
@@ -126,36 +96,17 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       const data = await groqResponse.json() as GroqVerboseTranscription
       const durationSeconds = trustedTranscriptionDurationSeconds(data)
       if (durationSeconds === null) {
-        await serverContext.generationUsagePolicy.markForReconcile({
-          errorMessage: 'groq_response_missing_duration',
-          reservationId: reservation.reservationId,
-          userId: auth.userId,
-        }).catch((_error) => undefined)
+        logger.error('[Transcribe] Groq response is missing its duration; nothing was charged')
         return NextResponse.json({ error: 'Transcription provider returned incomplete usage metadata.' }, { status: 502 })
       }
-      const actualProviderCostUsd = transcriptionProviderCostUsd(durationSeconds)
-      const costCents = billableBudgetCentsFromProviderUsd(actualProviderCostUsd)
-      try {
-        await serverContext.generationUsagePolicy.finalize({
-          actualProviderCostUsd,
-          events: [{
-            type: 'transcription',
-            modelId: TRANSCRIPTION_MODEL,
-            cost: costCents,
-            durationSeconds,
-            timestamp: Date.now(),
-          }],
-          reservationId: reservation.reservationId,
-          userId: auth.userId,
-        })
-      } catch (error) {
-        await serverContext.generationUsagePolicy.markForReconcile({
-          errorMessage: error instanceof Error ? error.message : 'transcription_finalize_failed',
-          reservationId: reservation.reservationId,
-          userId: auth.userId,
-        }).catch((_error) => undefined)
-        throw error
-      }
+      await serverContext.generationUsagePolicy.charge({
+        operationId: `audio.transcribe:${globalThis.crypto.randomUUID()}`,
+        programmaticSubjectId,
+        providerCostUsd: transcriptionProviderCostUsd(durationSeconds),
+        usage: { kind: 'transcription', modelId: TRANSCRIPTION_MODEL, durationSeconds },
+        userId: auth.userId,
+        workspaceId,
+      })
       return NextResponse.json({ text: typeof data.text === 'string' ? data.text : '' })
     }
 

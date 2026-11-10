@@ -4,7 +4,7 @@ import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
 import type { ConnectedAgentContractRepository } from '../src/shared/agents/connected-agent-repository-contract'
 import { verifyConnectedAgentRepositoryContract } from '../src/shared/agents/connected-agent-repository-contract'
-import { prepareSandboxSpendLimits } from './lib/sandboxSpendLimits'
+import { chargeSandboxSpendLimits } from './lib/sandboxSpendLimits'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'connected-agent-contract-secret'
@@ -12,7 +12,7 @@ const secret = 'connected-agent-contract-secret'
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
 describe('Convex connected-agent provider contract', () => {
-  test('runtime holds reserve workspace and subject credit, then settle only authoritative execution cost', async () => {
+  test('observed machine usage is charged with no hold, capped at the balance, and reports budget low and spend limits', async () => {
     const convex = convexTest(schema, modules)
     const workspaceId = 'runtime_workspace'
     const payer = { scope: 'workspace', billingAccountId: 'runtime_wallet', userId: 'user', workspaceId, spendSubjectKind: 'programmatic', spendSubjectId: 'agent:a1' }
@@ -27,56 +27,89 @@ describe('Convex connected-agent provider contract', () => {
         billingAccountId: 'runtime_wallet', workspaceId, scope: 'workspace', status: 'active', pricingVersion: 'markup_25_v1', markupBasisPoints: 2_500, createdAt: 1, updatedAt: 1,
       })
       await ctx.db.insert('billingAccountSubscriptions', subscriptionRow('runtime_wallet'))
+      // $10 budget: the 2% stop line is 20 cents.
       const balance = await ctx.db.insert('billingAccountBalances', {
         billingAccountId: 'runtime_wallet', mode: 'budgeted', includedMicros: 10_000_000, institutionalGrantMicros: 0, allowanceUsedMicros: 0,
-        topUpPurchasedMicros: 0, topUpBalanceMicros: 0, usedMicros: 0, reservedMicros: 500_000, version: 1, createdAt: 1, updatedAt: 1,
+        topUpPurchasedMicros: 0, topUpBalanceMicros: 0, usedMicros: 0, reservedMicros: 0, version: 1, createdAt: 1, updatedAt: 1,
       })
       const limit = await ctx.db.insert('billingAccountSpendLimits', {
-        billingAccountId: 'runtime_wallet', subjectKind: 'programmatic', subjectId: 'agent:a1', limitMicros: 5_000_000,
-        usedMicros: 0, reservedMicros: 200_000, periodStart: 0, periodEnd: 1_000_000, version: 1, createdAt: 1, updatedAt: 1,
+        billingAccountId: 'runtime_wallet', subjectKind: 'programmatic', subjectId: 'agent:a1', limitMicros: 50_000_000,
+        usedMicros: 0, reservedMicros: 0, periodStart: 0, periodEnd: 1_000_000, version: 1, createdAt: 1, updatedAt: 1,
       })
       const member = await ctx.db.insert('billingAccountSpendLimits', {
-        billingAccountId: 'runtime_wallet', subjectKind: 'member', subjectId: 'user', limitMicros: 6_000_000,
-        usedMicros: 0, reservedMicros: 100_000, periodStart: 0, periodEnd: 1_000_000, version: 1, createdAt: 1, updatedAt: 1,
+        billingAccountId: 'runtime_wallet', subjectKind: 'member', subjectId: 'user', limitMicros: 60_000_000,
+        usedMicros: 0, reservedMicros: 0, periodStart: 0, periodEnd: 1_000_000, version: 1, createdAt: 1, updatedAt: 1,
       })
       return { balance, limit, member }
     })
-    const tick = (version: number, holdCents: number, costCents = 0, overrides = {}) => call('meterSandboxLeaseDebitByServer', {
+    const tick = (version: number, costCents: number, overrides = {}) => call('meterSandboxLeaseDebitByServer', {
       workspaceId, leaseId: 'runtime_lease', now: version + 10, meteredAt: version + 10,
       expectedMeterVersion: version, meteredProviderReference: 'sandbox', meteredUsage: { wallTimeMs: version * 1_000 },
-      payer, runtimeHoldCents: holdCents, minRemainingCents: 0,
-      ...(costCents ? { charge: { costCents, providerCostUsd: costCents / 125, durationSeconds: 1, modelId: 'sandbox/e2b', metadata: {} } } : {}),
+      payer,
+      charge: { costCents, providerCostUsd: costCents / 125, durationSeconds: 1, modelId: 'sandbox/e2b', metadata: {} },
       ...overrides,
     })
-    expect(await tick(0, 200)).toMatchObject({ applied: true, remainingCents: 750, meterVersion: 1 })
-    expect(await tick(0, 200)).toMatchObject({ applied: false, reason: 'lease_conflict' })
-    expect(await tick(1, 300)).toMatchObject({ applied: true, remainingCents: 650, meterVersion: 2 })
+    expect(await tick(0, 100)).toMatchObject({ applied: true, remainingCents: 900, meterVersion: 1, budgetLow: false, spendLimitReached: false })
+    expect(await tick(0, 100)).toMatchObject({ applied: false, reason: 'lease_conflict' })
+    await convex.run(async (ctx) => { await ctx.db.patch(ids.member, { limitMicros: 1_500_000 }) })
+    // An admin spend limit is enforced when charging: the usage is recorded and the caller stops the machine.
+    expect(await tick(1, 50)).toMatchObject({ applied: true, remainingCents: 850, spendLimitReached: true, budgetLow: false })
+    await convex.run(async (ctx) => { await ctx.db.patch(ids.member, { limitMicros: 60_000_000 }) })
+    // A charge that leaves under 2% (15 of 1000 cents) is applied and reports budgetLow.
+    expect(await tick(2, 835)).toMatchObject({ applied: true, remainingCents: 15, budgetLow: true, spendLimitReached: false })
+    // Overshoot: the charge is capped at what is left and the balance never goes negative.
+    expect(await tick(3, 500)).toMatchObject({ applied: true, remainingCents: 0, budgetLow: true, meterVersion: 4 })
     await convex.run(async (ctx) => {
-      expect(await ctx.db.get(ids.member)).toMatchObject({ usedMicros: 0, reservedMicros: 3_100_000 })
-      await ctx.db.patch(ids.member, { limitMicros: 3_500_000 })
-    })
-    expect(await tick(2, 400)).toMatchObject({ applied: false, reason: 'insufficient_budget', remainingCents: 340 })
-    await convex.run(async (ctx) => { await ctx.db.patch(ids.member, { limitMicros: 6_000_000 }) })
-    await expect(tick(2, 300, 0, { payer: { ...payer, spendSubjectId: 'agent:other' } })).rejects.toThrow('sandbox_runtime_hold_identity_changed')
-    await expect(tick(2, 300, 0, { payer: { ...payer, userId: 'another-member' } })).rejects.toThrow('sandbox_runtime_hold_identity_changed')
-    expect(await tick(2, 600, 0, { providerEvidence: { usage: { finalSeconds: 5 }, stopped: true } }))
-      .toMatchObject({ applied: false, reason: 'insufficient_budget', remainingCents: 480 })
-    await convex.run(async (ctx) => {
-      expect(await ctx.db.get(ids.balance)).toMatchObject({ usedMicros: 0, reservedMicros: 3_500_000 })
-      expect(await ctx.db.get(ids.limit)).toMatchObject({ usedMicros: 0, reservedMicros: 3_200_000 })
-      const lease = await ctx.db.query('agentSandboxLeases').withIndex('by_leaseId', (q) => q.eq('leaseId', 'runtime_lease')).unique()
-      expect(lease?.usage).toMatchObject({ meterVersion: 2, lastProviderEvidence: { usage: { finalSeconds: 5 }, stopped: true, providerReference: 'sandbox' } })
-    })
-    expect(await tick(2, 50, 100)).toMatchObject({ applied: true, remainingCents: 800, meterVersion: 3 })
-    await convex.run(async (ctx) => { await ctx.db.patch(ids.member, { limitMicros: 1 }) })
-    expect(await tick(3, 0, 20)).toMatchObject({ applied: true, remainingCents: 830, meterVersion: 4 })
-    await convex.run(async (ctx) => {
-      expect(await ctx.db.get(ids.balance)).toMatchObject({ usedMicros: 1_200_000, allowanceUsedMicros: 1_200_000, reservedMicros: 500_000 })
-      expect(await ctx.db.get(ids.limit)).toMatchObject({ usedMicros: 1_200_000, reservedMicros: 200_000 })
-      expect(await ctx.db.get(ids.member)).toMatchObject({ usedMicros: 1_200_000, reservedMicros: 100_000 })
+      expect(await ctx.db.get(ids.balance)).toMatchObject({ usedMicros: 10_000_000, allowanceUsedMicros: 10_000_000, reservedMicros: 0 })
+      expect(await ctx.db.get(ids.limit)).toMatchObject({ usedMicros: 10_000_000, reservedMicros: 0 })
+      expect(await ctx.db.get(ids.member)).toMatchObject({ usedMicros: 10_000_000, reservedMicros: 0 })
       const operations = await ctx.db.query('usageOperations').collect()
-      expect(operations).toHaveLength(2)
+      expect(operations).toHaveLength(4)
       expect(operations[0]?.sandboxEvidence).toMatchObject({ category: 'compute', provider: 'e2b', providerCostUsd: 0.8, pricingVersion: 'markup_25_v1' })
+      expect(operations[3]).toMatchObject({ cents: 15 })
+      const lease = await ctx.db.query('agentSandboxLeases').withIndex('by_leaseId', (q) => q.eq('leaseId', 'runtime_lease')).unique()
+      expect((lease?.usage as Record<string, unknown>).runtimeHoldMicros).toBeUndefined()
+    })
+  })
+
+  test('a hold a lease kept from before holds were removed is released on its next tick', async () => {
+    const convex = convexTest(schema, modules)
+    const workspaceId = 'legacy_workspace'
+    const payer = { scope: 'workspace', billingAccountId: 'legacy_wallet', userId: 'user', workspaceId, spendSubjectKind: 'member', spendSubjectId: 'user' }
+    const call = (name: string, args: Record<string, unknown>) => convex.mutation(reference(name), { ...args, serverSecret: secret })
+    await call('createEnvironmentByServer', { id: 'legacy_env', workspaceId, kind: 'managed', name: 'Legacy', status: 'online', capabilities: {}, now: 1 })
+    const ids = await convex.run(async (ctx) => {
+      await ctx.db.insert('billingAccounts', {
+        billingAccountId: 'legacy_wallet', workspaceId, scope: 'workspace', status: 'active', pricingVersion: 'markup_25_v1', markupBasisPoints: 2_500, createdAt: 1, updatedAt: 1,
+      })
+      await ctx.db.insert('billingAccountSubscriptions', subscriptionRow('legacy_wallet'))
+      const balance = await ctx.db.insert('billingAccountBalances', {
+        billingAccountId: 'legacy_wallet', mode: 'budgeted', includedMicros: 10_000_000, institutionalGrantMicros: 0, allowanceUsedMicros: 0,
+        topUpPurchasedMicros: 0, topUpBalanceMicros: 0, usedMicros: 0, reservedMicros: 300_000, version: 1, createdAt: 1, updatedAt: 1,
+      })
+      const member = await ctx.db.insert('billingAccountSpendLimits', {
+        billingAccountId: 'legacy_wallet', subjectKind: 'member', subjectId: 'user', limitMicros: 6_000_000,
+        usedMicros: 0, reservedMicros: 300_000, periodStart: 0, periodEnd: 1_000_000, version: 1, createdAt: 1, updatedAt: 1,
+      })
+      return { balance, member }
+    })
+    await call('createSandboxLeaseByServer', {
+      id: 'legacy_lease', workspaceId, environmentId: 'legacy_env', provider: 'box', providerReference: 'sandbox', status: 'running', reservedUntil: 1_000_000,
+      usage: {
+        meteredUsage: {}, meterVersion: 0, lastPayer: payer, runtimeHoldMicros: 300_000, runtimeHoldPayer: payer,
+        runtimeHoldLimits: [{ id: ids.member, periodStart: 0 }],
+      }, cleanupAttempts: 0, now: 1,
+    })
+    expect(await call('meterSandboxLeaseDebitByServer', {
+      workspaceId, leaseId: 'legacy_lease', now: 10, meteredAt: 10, expectedMeterVersion: 0,
+      meteredProviderReference: 'sandbox', meteredUsage: {}, payer,
+      charge: { costCents: 10, providerCostUsd: 0.08, durationSeconds: 1, modelId: 'sandbox/box', metadata: {} },
+    })).toMatchObject({ applied: true, remainingCents: 990, budgetLow: false })
+    await convex.run(async (ctx) => {
+      expect(await ctx.db.get(ids.balance)).toMatchObject({ usedMicros: 100_000, reservedMicros: 0 })
+      expect(await ctx.db.get(ids.member)).toMatchObject({ usedMicros: 100_000, reservedMicros: 0 })
+      const lease = await ctx.db.query('agentSandboxLeases').withIndex('by_leaseId', (q) => q.eq('leaseId', 'legacy_lease')).unique()
+      expect(lease?.usage).toMatchObject({ runtimeHoldMicros: 0, runtimeHoldPayer: null })
     })
   })
 
@@ -103,29 +136,28 @@ describe('Convex connected-agent provider contract', () => {
     const charge = { costCents: 50, providerCostUsd: 0.4, durationSeconds: 60, modelId: 'sandbox/box', metadata: {} }
     const tick = (overrides: Record<string, unknown>) => call('meterSandboxLeaseDebitByServer', {
       workspaceId, leaseId: 'downgrade_lease', now: 10, meteredAt: 10, expectedMeterVersion: 0,
-      meteredProviderReference: 'sandbox', meteredUsage: { wallTimeMs: 60_000 }, payer, minRemainingCents: 0, ...overrides,
+      meteredProviderReference: 'sandbox', meteredUsage: { wallTimeMs: 60_000 }, payer, ...overrides,
     })
     expect(await tick({ charge, providerEvidence: { usage: {}, stopped: false } })).toMatchObject({ applied: false, reason: 'paid_plan_required' })
-    expect(await tick({ runtimeHoldCents: 10, providerEvidence: { usage: {}, stopped: true } })).toMatchObject({ applied: false, reason: 'paid_plan_required' })
     expect(await tick({ charge, providerEvidence: { usage: {}, stopped: true } })).toMatchObject({ applied: true, meterVersion: 1, remainingCents: 950 })
     await convex.run(async (ctx) => {
       expect(await ctx.db.query('usageOperations').collect()).toHaveLength(1)
     })
   })
 
-  test('a previous-period runtime hold cannot consume another reservation after limit rollover', async () => {
+  test('a previous-period legacy hold is not released from a new spend-limit period', async () => {
     const convex = convexTest(schema, modules)
     await convex.run(async (ctx) => {
       const limit = await ctx.db.insert('billingAccountSpendLimits', {
         billingAccountId: 'wallet', subjectKind: 'member', subjectId: 'user', limitMicros: 600,
         usedMicros: 100, reservedMicros: 200, periodStart: 100, periodEnd: 1_000, version: 2, createdAt: 1, updatedAt: 100,
       })
-      const result = await prepareSandboxSpendLimits(ctx, {
+      const result = await chargeSandboxSpendLimits(ctx, {
         billingAccountId: 'wallet', userId: 'user', now: 200,
         usage: { runtimeHoldLimits: [{ id: limit, periodStart: 0 }] },
-        previousHoldMicros: 500, holdMicros: 350, chargeMicros: 0,
+        previousHoldMicros: 500, chargeMicros: 0,
       })
-      expect(result).toEqual({ ok: false, remainingMicros: 300 })
+      expect(result).toEqual({ limitReached: false })
       expect(await ctx.db.get(limit)).toMatchObject({ usedMicros: 100, reservedMicros: 200 })
     })
   })
@@ -338,7 +370,7 @@ describe('Convex connected-agent provider contract', () => {
       })
     })
 
-    // Tick 1: 60s→130s of wall time billed at $2 with the $1 floor — applied.
+    // Tick 1: 60s→130s of wall time billed at $2 — applied, nothing held, no floor.
     const first = await call<{ applied: boolean; meterVersion: number; remainingCents?: number }>(
       'meterSandboxLeaseDebitByServer', {
         workspaceId, leaseId: 'meter_lease', now: 200,
@@ -351,9 +383,8 @@ describe('Convex connected-agent provider contract', () => {
           workspaceId, spendSubjectKind: 'programmatic', spendSubjectId: 'agent:a1',
         },
         charge: { costCents: 200, durationSeconds: 70, modelId: 'sandbox/vercel', providerCostUsd: 1.6, metadata: {} },
-        minRemainingCents: 100,
       })
-    expect(first).toMatchObject({ applied: true, meterVersion: 1, remainingCents: 800 })
+    expect(first).toMatchObject({ applied: true, meterVersion: 1, remainingCents: 800, budgetLow: false })
 
     // A retried tick replays with a stale cursor version — conflict, no double charge.
     const replay = await call<{ applied: boolean; reason?: string }>(
@@ -364,26 +395,8 @@ describe('Convex connected-agent provider contract', () => {
         meteredProviderReference: 'sandbox-1',
         meteredAt: 201,
         charge: { costCents: 200, durationSeconds: 70, modelId: 'sandbox/vercel', providerCostUsd: 1.6, metadata: {} },
-        minRemainingCents: 100,
       })
     expect(replay).toMatchObject({ applied: false, reason: 'lease_conflict' })
-
-    // Tick 2: charge + $9 floor exceeds the $8 remaining — declined, nothing billed.
-    const declined = await call<{ applied: boolean; reason?: string; remainingCents?: number }>(
-      'meterSandboxLeaseDebitByServer', {
-        workspaceId, leaseId: 'meter_lease', now: 300,
-        expectedMeterVersion: 1,
-        meteredUsage: { wallTimeMs: 200_000 },
-        meteredProviderReference: 'sandbox-1',
-        meteredAt: 300,
-        payer: {
-          scope: 'workspace', billingAccountId: 'billing_meter', userId: 'user_meter',
-          workspaceId, spendSubjectKind: 'programmatic', spendSubjectId: 'agent:a1',
-        },
-        charge: { costCents: 100, durationSeconds: 70, modelId: 'sandbox/vercel', providerCostUsd: 0.8, metadata: {} },
-        minRemainingCents: 900,
-      })
-    expect(declined).toMatchObject({ applied: false, reason: 'insufficient_budget', remainingCents: 800 })
 
     const limitId = await convex.run(async (ctx) => {
       await ctx.db.insert('billingAccounts', {
@@ -404,7 +417,7 @@ describe('Convex connected-agent provider contract', () => {
     const nextTick = {
       workspaceId, leaseId: 'meter_lease', now: 301, expectedMeterVersion: 1,
       meteredUsage: { wallTimeMs: 200_000 }, meteredAt: 301,
-      meteredProviderReference: 'sandbox-1', minRemainingCents: 0,
+      meteredProviderReference: 'sandbox-1',
       charge: { costCents: 1, durationSeconds: 1, modelId: 'sandbox/box', providerCostUsd: 0.008, metadata: {} },
     }
     await expect(call('meterSandboxLeaseDebitByServer', {
@@ -413,8 +426,9 @@ describe('Convex connected-agent provider contract', () => {
     const limited = await call('meterSandboxLeaseDebitByServer', {
       ...nextTick, payer: { scope: 'workspace', billingAccountId: 'billing_meter', userId: 'user_meter', workspaceId, spendSubjectKind: 'programmatic', spendSubjectId: 'agent:a1' },
     })
-    expect(limited).toMatchObject({ applied: false, reason: 'insufficient_budget', remainingCents: 0 })
-    expect(await read('getSandboxLeaseByServer', { workspaceId, leaseId: 'meter_lease' })).toMatchObject({ usage: { meterVersion: 1 } })
+    // The used-up agent limit is enforced when charging: the observed cent is recorded and the machine must stop.
+    expect(limited).toMatchObject({ applied: true, meterVersion: 2, spendLimitReached: true, remainingCents: 799 })
+    expect(await read('getSandboxLeaseByServer', { workspaceId, leaseId: 'meter_lease' })).toMatchObject({ usage: { meterVersion: 2 } })
     await convex.run(async (ctx) => {
       const foreign = await ctx.db.query('billingAccountBalances').withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', 'foreign_wallet')).unique()
       expect(foreign?.usedMicros).toBe(0)
@@ -423,16 +437,15 @@ describe('Convex connected-agent provider contract', () => {
 
     // Stop the lease: status flips to stopping, still meterable for the tail.
     const stopped = await call<{ status: string }>('stopSandboxLeaseByServer', {
-      workspaceId, leaseId: 'meter_lease', reason: 'low_balance', now: 400,
+      workspaceId, leaseId: 'meter_lease', reason: 'budget_exhausted', now: 400,
     })
     expect(stopped.status).toBe('stopping')
 
-    // Final tick on a stopping lease with no floor: bills the tail and still
-    // reports the remaining balance.
+    // Final tick on a stopping lease: bills the tail and still reports the remaining balance.
     const final = await call<{ applied: boolean; meterVersion: number; remainingCents?: number }>(
       'meterSandboxLeaseDebitByServer', {
         workspaceId, leaseId: 'meter_lease', now: 500,
-        expectedMeterVersion: 1,
+        expectedMeterVersion: 2,
         meteredUsage: { wallTimeMs: 200_000 },
         meteredProviderReference: 'sandbox-1',
         meteredAt: 500,
@@ -441,14 +454,13 @@ describe('Convex connected-agent provider contract', () => {
           workspaceId, spendSubjectKind: 'programmatic', spendSubjectId: 'agent:a1',
         },
         charge: { costCents: 100, durationSeconds: 70, modelId: 'sandbox/vercel', providerCostUsd: 0.8, metadata: {} },
-        minRemainingCents: 0,
       })
-    expect(final).toMatchObject({ applied: true, meterVersion: 2, remainingCents: 700 })
+    expect(final).toMatchObject({ applied: true, meterVersion: 3, remainingCents: 699 })
 
     const lease = await read<{ status: string; usage: { meterVersion: number; meteredUsage: { wallTimeMs: number } } }>(
       'getSandboxLeaseByServer', { workspaceId, leaseId: 'meter_lease' })
     expect(lease.status).toBe('stopping')
-    expect(lease.usage.meterVersion).toBe(2)
+    expect(lease.usage.meterVersion).toBe(3)
     expect(lease.usage.meteredUsage.wallTimeMs).toBe(200_000)
   })
 })

@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { refreshNativeHarnessAccess, type NativeHarnessAccess, type NativeHarnessContext } from './native-access'
-import { quoteHarnessModel } from './model-quote'
+import { prepareHarnessModelCallOptions } from './model-call-options'
 import type { HarnessModelPurpose, PreparedHarnessModel } from './model-ports'
 
 export async function prepareNativeHarnessModel(input: {
@@ -17,7 +17,7 @@ export async function prepareNativeHarnessModel(input: {
   'use step'
 
   const context = await refreshNativeHarnessAccess(input.access, input.context, undefined, { renewalMode: true, renewLease: true })
-  const { options, contextWindow, estimatedCostMicros, inputTokenBudget, maxOutputTokens } = await quoteHarnessModel({
+  const { options, contextWindow, maxOutputTokens } = await prepareHarnessModelCallOptions({
     modelId: input.context.modelId, requiresZeroDataRetention: context.requiresZeroDataRetention, options: input.options,
   })
   const access = input.access
@@ -40,9 +40,9 @@ export async function prepareNativeHarnessModel(input: {
         ...(input.purpose === 'response' && access.runId === `workspace:${access.agentRunId}` ? {
           streamToDelivery: true, ...(input.continuesPrevious ? { continuesPreviousOutput: true } : {}),
         } : {}),
-        requestFingerprint: input.context.requestFingerprint, inputTokenBudget, maxOutputTokens, contextWindow,
+        requestFingerprint: input.context.requestFingerprint, maxOutputTokens, contextWindow,
       },
     },
-    options, contextWindow, estimatedCostMicros,
+    options, contextWindow,
   }
 }

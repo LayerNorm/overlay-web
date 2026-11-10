@@ -128,7 +128,7 @@ action parts into that one assistant message in the same transaction. Session st
 harness session ID; completion, failure, and cancellation settle the session, run, message,
 command, token metrics, and existing conversation event exactly once. Duplicate terminal batches
 return the existing acknowledgement and never append a second transcript row. Interactive offline
-mentions have a two-minute claim window and visibly render `Waiting for <environment>` with Cancel
+mentions have a 15-minute claim window and visibly render `Waiting for <environment>` with Cancel
 and Retry; expired leases cannot be claimed.
 
 Agent DMs and channels use the same per-message memory policy for hosted and connected agents.
@@ -136,6 +136,10 @@ Memory defaults on only when an agent participates in the room; the composer swi
 recall and extraction for that turn. An invoked agent receives bounded workspace memory, hybrid
 retrieval, the participant roster, and recent role-tagged room history. ACP transports this context
 inside a delimited, size-bounded prompt envelope so existing protocol-v1 hosts remain compatible.
+Each room message keeps up to 50,000 characters. The envelope as a whole is bounded in UTF-8 bytes,
+not characters: installed hosts refuse a start command over the protocol's 128 KiB
+`MAX_COMMAND_BYTES`, so the context gets what is left after the person's message and about 16 KiB
+for the rest of the command. One message may invoke up to 20 agents.
 
 ACP session surfaces pass through to the composer when an agent advertises them. The host forwards
 `available_commands_update` as a `commands_update` bridge event; the shared projection stores it as
@@ -223,7 +227,9 @@ snapshots and persistence, network policy, broker-owned credential references, i
 timeouts, usage, capability flags, and an explicitly operator-only raw SDK handle. Box is the
 Overlay Cloud adapter, and an E2B adapter is implemented for self-hosting. Provider SDK objects and references are never public response fields.
 The lease meter (`ManagedAgentSandboxBilling`) bills a lease from provider-reported usage and
-enforces the idle window and the 24-hour hard cap; Box has no idle timer, so idle-stop is ours.
+enforces the idle window; Box has no idle timer, so idle-stop is ours. There is no hard runtime cap
+on a Computer that is in use: its session window (`reservedUntil`) rolls forward while it is busy
+(see `billing-holds-and-machine-metering.md`, "Computer sessions").
 
 Hosted third-party runtimes in Overlay Cloud are retired. Legacy bindings remain readable but
 cannot start, resume, or recover work; Overlay never falls back to native execution for them.
@@ -271,8 +277,10 @@ Phase 8 uses one entitlement-derived policy for both persistence providers. Envi
 rechecks the enrollment-time environment ceiling atomically; remote dispatch atomically enforces
 workspace concurrency and one active run per managed environment. Hard run deadlines cap lease
 renewal. Event uploads use per-environment minute windows, and artifact creation reserves workspace
-bytes before issuing an object-store URL. Free, paid, and max plans also bound idle time, sandbox
-egress, and managed runtime; the existing billing ledger remains the monthly-spend gate.
+bytes before issuing an object-store URL. Free, paid, and max plans also bound idle time and sandbox
+egress; the workspace budget is the only spending limit. Free runs stop after 30 minutes. Paid
+and max runs have no run-time limit: their hard deadline is 30 days, kept only because the host
+protocol, per-run MCP token and drive receipts need a finite deadline.
 
 Host-side BYOK model tokens remain observable but never become Overlay model usage. User-owned
 local/VPS hosts do not create a sandbox reservation. Historical Cloud sandbox reservations remain
@@ -1197,7 +1205,7 @@ Drive hydration reuses authenticated snapshot download grants across same-execut
 Lifecycle-v2 starts request `metadata.overlayPreparation: 1` on delivery. Supporting
 hosts emit fenced `session_preparing` receipts while credentials, drive hydration
 and provider initialization are pending. These renew a 90-second preparation lease
-without reporting a live provider or extending the task deadline. The two-minute
+without reporting a live provider or extending the task deadline. The 15-minute
 claim window applies only until receipt; a lost preparation lease requires attention
 and cannot be revived by a late receipt. Older hosts ignore the request, and newer
 hosts send no preparation event to servers that did not request it. Starting work

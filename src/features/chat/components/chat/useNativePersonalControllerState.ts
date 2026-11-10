@@ -33,6 +33,22 @@ export function isNativePendingFirstTurn(
   )
 }
 
+/** Whether the active runtime's pending-turn journal belongs to the conversation on screen. */
+export function nativeJournalInScope(
+  activeChatId: string | null,
+  pendingRunConversationId: string | null,
+  selectedConversationId: string | null,
+  nativePendingFirst: boolean,
+): boolean {
+  if (selectedConversationId) {
+    return activeChatId === selectedConversationId
+      || (nativePendingFirst && pendingRunConversationId === selectedConversationId)
+  }
+  // A new chat's first turn is journaled in the empty runtime before the server creates the conversation, so it shows
+  // as soon as Enter is pressed. Opening a new chat resets that runtime, so nothing stale can appear here.
+  return nativePendingFirst || !activeChatId
+}
+
 export function useNativePersonalSafetyScope({
   activeChatId,
   chatWorkspaceId,
@@ -113,11 +129,8 @@ export function useNativePersonalControllerState({
   nativeScopeSynchronized: boolean
   nativeThreadSafety: ReturnType<typeof useNativeThreadSafety>
 }) {
-  const nativeJournalScopeMatches = nativePersonalRoute && (
-    nativePersonal.selectedConversationId
-      ? activeChatId === nativePersonal.selectedConversationId
-        || (nativePendingFirst && pendingRunConversationId === nativePersonal.selectedConversationId)
-      : nativePendingFirst || (!activeChatId && Boolean(pendingRunConversationId))
+  const nativeJournalScopeMatches = nativePersonalRoute && nativeJournalInScope(
+    activeChatId, pendingRunConversationId, nativePersonal.selectedConversationId, nativePendingFirst,
   )
   const nativeJournal = useMemo(() => nativeJournalScopeMatches
     ? nativePendingTurnsForScope(

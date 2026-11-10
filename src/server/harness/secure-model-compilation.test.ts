@@ -16,7 +16,6 @@ test.each([
   ['native-child-steps.ts', ['admitNativeHarnessChild']],
   ['native-delivery-steps.ts', ['attachNativeHarnessDelivery',
     'projectNativeHarnessWait', 'finishNativeHarnessDelivery']],
-  ['resource-wait-steps.ts', ['createHarnessResourceToken', 'publishHarnessResourceWait', 'consumeHarnessResourceWait']],
 ] as const)('compiled %s exposes only durable server steps', async (filename, exports) => {
   const path = fileURLToPath(new URL(`./${filename}`, import.meta.url))
   const source = await readFile(path, 'utf8')
@@ -101,7 +100,7 @@ test.each([false, true])('compiled workflow can load and dispatch the credential
       agentRunId: 'delivery', userMessageId: 'question', assistantMessageId: 'answer', turnId: 'turn',
       executionGeneration: 7 },
     receiptId: 'model:0', memoryEnabled: true, sharedRoom: false, requestFingerprint: 'request',
-    inputTokenBudget: 1_000, maxOutputTokens: 100, contextWindow: 10_000,
+    maxOutputTokens: 100, contextWindow: 10_000,
   } } : {}) }
   const model = new compiledModule.exports.HarnessLanguageModel(reference)
   const options = { prompt: [] }

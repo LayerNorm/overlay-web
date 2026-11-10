@@ -42,16 +42,14 @@ export async function POST(request: Request) {
           return { scanned: 0, live: 0, unowned: [], truncated: false, failed: true }
         })
       : Promise.resolve({ skipped: true })
-    const [supervised, reconciliation, meter, lifecycle, cloudReclaimResult, providerInventoryResult] = await Promise.all([
+    const [supervised, meter, lifecycle, cloudReclaimResult, providerInventoryResult] = await Promise.all([
       controlPlane.sweepRemoteRuns(),
-      controlPlane.reconcileSandboxSettlements(100),
       server.managedAgentSandboxBilling.meterLeases(),
       dispatchRemoteRunIntents(),
       cloudReclaim,
       providerInventory,
     ])
     return NextResponse.json({
-      reconciliation,
       lifecycle,
       cloudReclaim: cloudReclaimResult,
       providerInventory: providerInventoryResult,
