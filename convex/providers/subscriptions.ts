@@ -113,6 +113,26 @@ function assertLease(
   }
 }
 
+/**
+ * An operation fenced out by a disconnect has already deleted its own vault
+ * write. Its final release or fail call hands the lease back so the person's
+ * disconnect can finish without waiting for the lease to expire.
+ */
+async function releaseDisconnectedLease(
+  ctx: MutationCtx,
+  state: Doc<'providerSubscriptionStates'>,
+  leaseToken: string,
+): Promise<boolean> {
+  if (state.phase !== 'disconnected' || !state.leaseToken || state.leaseToken !== leaseToken) return false
+  await ctx.db.patch(state._id, {
+    leaseToken: undefined,
+    leaseUntil: undefined,
+    leaseOperation: undefined,
+    updatedAt: Date.now(),
+  })
+  return true
+}
+
 function cleanupStatus(refs: string[]) {
   return refs.length ? 'pending' as const : 'clean' as const
 }
@@ -453,6 +473,7 @@ export const releasePendingPoll = mutation({
     requireServerSecret(args.serverSecret)
     const state = await loadState(ctx, args.connectionId)
     if (!state || state.userId !== args.userId) throw new Error('Subscription connection not found')
+    if (await releaseDisconnectedLease(ctx, state, args.leaseToken)) return null
     await loadConnection(ctx, args.connectionId, args.userId, state.providerId)
     assertLease(state, args.leaseToken, args.generation, args.revision, 'poll')
     const now = Date.now()
@@ -530,6 +551,7 @@ export const releaseRefresh = mutation({
     requireServerSecret(args.serverSecret)
     const state = await loadState(ctx, args.connectionId)
     if (!state || state.userId !== args.userId) throw new Error('Subscription connection not found')
+    if (await releaseDisconnectedLease(ctx, state, args.leaseToken)) return null
     assertLease(state, args.leaseToken, args.generation, args.revision, 'refresh')
     await ctx.db.patch(state._id, {
       revision: state.revision + 1,
@@ -656,6 +678,7 @@ export const releaseDiscovery = mutation({
     requireServerSecret(args.serverSecret)
     const state = await loadState(ctx, args.connectionId)
     if (!state || state.userId !== args.userId) throw new Error('Subscription connection not found')
+    if (await releaseDisconnectedLease(ctx, state, args.leaseToken)) return null
     await loadConnection(ctx, args.connectionId, args.userId, state.providerId)
     assertLease(state, args.leaseToken, args.generation, args.revision, 'discovery')
     await ctx.db.patch(state._id, {
@@ -747,6 +770,7 @@ export const failClosed = mutation({
     requireServerSecret(args.serverSecret)
     const state = await loadState(ctx, args.connectionId)
     if (!state || state.userId !== args.userId) throw new Error('Subscription connection not found')
+    if (await releaseDisconnectedLease(ctx, state, args.leaseToken)) return state.cleanupRefs
     const connection = await loadConnection(ctx, args.connectionId, args.userId, state.providerId)
     assertLease(state, args.leaseToken, args.generation, args.revision)
     await markNeedsReconnect(ctx, state, Date.now())
@@ -793,7 +817,10 @@ export const disconnect = mutation({
       revision,
       phase: 'disconnected' as const,
       // Keep cleanup authority while an already-running vault write may finish.
+      // The token lets that operation hand the lease back once it has cleaned up.
       leaseUntil: state?.leaseUntil,
+      leaseToken: state?.leaseToken,
+      leaseOperation: state?.leaseOperation,
       cleanupRefs,
       cleanupStatus: cleanupStatus(cleanupRefs),
       ...(state?.pendingWrites ? { pendingWrites: state.pendingWrites } : {}),
