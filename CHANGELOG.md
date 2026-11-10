@@ -6,6 +6,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Record the 36 approved mobile app mockups and launch plan. Mobile will sign in to existing workspaces, use live shared data, and leave purchases and desktop-only setup on the web at launch. Fix a web-only import in shared packages that blocked mobile bundling, and check that mobile's shared dependencies stay portable.
 
+- Add an opt-in, Preview-only completed code-block fixture for first-use syntax-highlighting checks, without model execution or changes to existing histories.
+- Load the syntax-highlighting engine only when a supported code block needs it, instead of including it in the initial app JavaScript. Keep code readable while highlighting loads and preserve streamed highlighting state.
 - Performance measurements retain slow keystrokes that share a browser frame during streaming, rather than rejecting them when another character arrives before the frame is observed.
 - Keep the Work composer controls on one row in narrow panels, with compact assignee, schedule and dependency icons, accessible labels, tooltips and count badges.
 

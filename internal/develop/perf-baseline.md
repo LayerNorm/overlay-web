@@ -102,6 +102,12 @@ Both scripts read `analyze/entrypoints.json`, emitted from the actual client Web
 
 `perf:bundle` reports sizes and fails if expected route measurements are unavailable. Missing or ambiguous routes, unsupported manifests and missing files fail closed. Both `--dist-dir=value` and `--dist-dir value` are supported. Budgets stay in `scripts/ci/bundle-budgets.json`; thresholds are not silently raised by the compatibility repair. Use the analyzer's import graph to justify splitting and validate the affected first-use UI separately. Turbopack analysis is not a substitute for this app's production Webpack build.
 
+## Provider-free syntax first-use fixture
+
+On an explicitly verified, isolated Preview backend, the internal `dev/performanceQa:initCode` mutation creates one separate personal conversation with two completed messages for the configured QA owner. It requires the existing active QA workspace and owner membership; it does not bootstrap or repair them. The fixed assistant text includes JavaScript, Python, unsupported-language and plaintext fences with punctuation/indentation sentinels for rendering and Copy checks.
+
+The fixture is opt-in and idempotent. Changed content is rejected rather than overwritten. It neither modifies the measured histories nor schedules work, starts execution records, calls providers, changes roles or adjusts funds. Use the existing scoped Preview credential procedure, never an ambient shared backend or production key. A static completed fixture does not establish streaming or Workflow acceptance.
+
 ## React Profiler traces
 
 Record these three by hand in a production build with profiling (`next build --profile`) and save the exports next to the baseline note:
