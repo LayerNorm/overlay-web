@@ -3,6 +3,7 @@ import { mutation, query } from '../_generated/server'
 import type { Doc, Id } from '../_generated/dataModel'
 import type { MutationCtx, QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
+import { threadPullRequestValidator } from '../lib/threadPullRequests'
 import { DEFAULT_MODEL_ID } from '../../src/shared/ai/gateway/model-types'
 
 type Ctx = Pick<QueryCtx, 'db'> | Pick<MutationCtx, 'db'>
@@ -13,6 +14,7 @@ const threadView = v.object({
   lastModified: v.number(),
   createdAt: v.number(),
   archivedAt: v.optional(v.number()),
+  pullRequests: v.optional(v.array(threadPullRequestValidator)),
   isMain: v.boolean(),
 })
 
@@ -386,6 +388,7 @@ export async function listAgentThreads(ctx: Ctx, args: { workspaceId: string; ag
     lastModified: thread.lastModified,
     createdAt: thread.createdAt,
     archivedAt,
+    ...(thread.pullRequests?.length ? { pullRequests: thread.pullRequests } : {}),
     isMain: thread._id === mainThreadId,
   }))
   return views.sort((a, b) => b.lastModified - a.lastModified)

@@ -1,0 +1,189 @@
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { convexTest } from 'convex-test'
+import { makeFunctionReference } from 'convex/server'
+import schema from './schema'
+
+const modules = import.meta.glob('./**/*.ts')
+const secret = 'agent-thread-pull-request-test-secret'
+const bundle = makeFunctionReference<'query'>('agents/threads:bundle')
+const resolveMain = makeFunctionReference<'mutation'>('agents/threads:resolveMain')
+const completeTool = makeFunctionReference<'mutation'>('collaboration/directMessages:completeAgentToolInvocation')
+
+beforeEach(() => vi.stubEnv('INTERNAL_API_SECRET', secret))
+afterEach(() => vi.unstubAllEnvs())
+
+async function fixture() {
+  const t = convexTest(schema, modules)
+  await t.run(async ctx => {
+    await ctx.db.insert('workspaces', {
+      workspaceId: 'ws', kind: 'organization', name: 'QA', slug: 'qa', status: 'active',
+      createdAt: 1, updatedAt: 1,
+    })
+    for (const userId of ['alice', 'bob']) {
+      await ctx.db.insert('workspacePrincipals', {
+        workspaceId: 'ws', principalId: `p-${userId}`, userId, type: 'human',
+        displayName: userId, createdAt: 1, updatedAt: 1,
+      })
+      await ctx.db.insert('workspaceMemberships', {
+        workspaceId: 'ws', principalId: `p-${userId}`, membershipId: `m-${userId}`,
+        role: 'member', status: 'active', joinedAt: 1, updatedAt: 1,
+      })
+    }
+    await ctx.db.insert('workspacePrincipals', {
+      workspaceId: 'ws', principalId: 'ap-shared', agentId: 'shared', type: 'agent',
+      displayName: 'Shared', createdAt: 1, updatedAt: 1,
+    })
+    await ctx.db.insert('workspaceAgentDefinitions', {
+      agentId: 'shared', workspaceId: 'ws', principalId: 'ap-shared', name: 'Shared',
+      instructions: 'Help.', harness: 'overlay', modelId: 'model', allowedToolIds: [],
+      invocationPolicy: 'mention', visibility: 'workspace', createdByPrincipalId: 'p-alice',
+      createdAt: 1, updatedAt: 1,
+    } as never)
+  })
+  return { t, as: (subject: string) => t.withIdentity({ subject }) }
+}
+
+test('server-authorized agent tool output appears only in the caller-owned thread bundle', async () => {
+  const { t, as } = await fixture()
+  const shared = { workspaceId: 'ws', agentId: 'shared' }
+  await as('alice').mutation(resolveMain, shared)
+  const initialAliceBundle = await as('alice').query(bundle, shared) as {
+    threads: Array<{ conversationId: string }>
+  }
+  const aliceConversationId = initialAliceBundle.threads[0]!.conversationId
+  const messageId = await t.run(ctx => ctx.db.insert('conversationMessages', {
+    conversationId: aliceConversationId as never,
+    userId: 'alice',
+    authorKind: 'agent',
+    authorPrincipalId: 'ap-shared',
+    turnId: 'turn-1',
+    role: 'assistant',
+    mode: 'act',
+    content: '',
+    contentType: 'text',
+    status: 'generating',
+    parts: [{
+      type: 'tool-invocation',
+      toolInvocation: {
+        toolCallId: 'github-create',
+        toolName: 'call_mcp_tool',
+        state: 'input-available',
+        toolInput: {
+          toolName: 'GITHUB_CREATE_A_PULL_REQUEST',
+          arguments: { owner: 'LayerNorm', repo: 'overlay-web' },
+        },
+      },
+    }],
+    createdAt: 2,
+    updatedAt: 2,
+  }))
+
+  await t.mutation(completeTool, {
+    actorUserId: 'alice',
+    authorPrincipalId: 'ap-shared',
+    conversationId: aliceConversationId as never,
+    messageId,
+    turnId: 'turn-1',
+    workspaceId: 'ws',
+    toolCallId: 'github-create',
+    toolName: 'call_mcp_tool',
+    state: 'output-available',
+    output: {
+      structuredContent: {
+        number: 42,
+        html_url: 'https://github.com/LayerNorm/overlay-web/pull/42',
+        title: 'Backend PR association',
+        state: 'open',
+        draft: false,
+        updated_at: '2026-10-20T12:00:00Z',
+      },
+    },
+    serverSecret: secret,
+  })
+
+  const aliceBundle = await as('alice').query(bundle, shared) as {
+    threads: Array<{ conversationId: string; pullRequests?: Array<Record<string, unknown>> }>
+  }
+  expect(aliceBundle.threads.find(thread => thread.conversationId === aliceConversationId)?.pullRequests)
+    .toMatchObject([{
+      owner: 'LayerNorm',
+      repo: 'overlay-web',
+      number: 42,
+      title: 'Backend PR association',
+      url: 'https://github.com/LayerNorm/overlay-web/pull/42',
+      state: 'open',
+    }])
+
+  await expect(t.mutation(completeTool, {
+    actorUserId: 'bob',
+    authorPrincipalId: 'ap-shared',
+    conversationId: aliceConversationId as never,
+    messageId,
+    turnId: 'turn-1',
+    workspaceId: 'ws',
+    toolCallId: 'github-create',
+    toolName: 'call_mcp_tool',
+    state: 'output-available',
+    output: { structuredContent: { merged: true } },
+    serverSecret: secret,
+  })).rejects.toThrow()
+
+  const bobThread = await as('bob').mutation(resolveMain, shared) as { conversationId: string }
+  const bobBundle = await as('bob').query(bundle, shared) as {
+    threads: Array<{ conversationId: string; pullRequests?: unknown[] }>
+  }
+  expect(bobBundle.threads).toMatchObject([{ conversationId: bobThread.conversationId }])
+  expect(bobBundle.threads[0]?.pullRequests).toBeUndefined()
+
+  const forgedMessageId = await t.run(ctx => ctx.db.insert('conversationMessages', {
+    conversationId: aliceConversationId as never,
+    userId: 'alice',
+    authorKind: 'agent',
+    authorPrincipalId: 'ap-shared',
+    turnId: 'forged-turn',
+    role: 'assistant',
+    mode: 'act',
+    content: '',
+    contentType: 'text',
+    status: 'generating',
+    parts: [{
+      type: 'tool-invocation',
+      toolInvocation: {
+        toolCallId: 'forged',
+        toolName: 'call_mcp_tool',
+        state: 'input-available',
+        toolInput: {
+          toolName: 'GITHUB_CREATE_A_PULL_REQUEST',
+          arguments: { owner: 'acme', repo: 'forged' },
+        },
+      },
+    }],
+    createdAt: 3,
+    updatedAt: 3,
+  }))
+  await as('alice').mutation(completeTool, {
+    actorUserId: 'alice',
+    authorPrincipalId: 'ap-shared',
+    conversationId: aliceConversationId as never,
+    messageId: forgedMessageId,
+    turnId: 'forged-turn',
+    workspaceId: 'ws',
+    toolCallId: 'forged',
+    toolName: 'call_mcp_tool',
+    state: 'output-available',
+    output: {
+      structuredContent: {
+        number: 99,
+        html_url: 'https://github.com/acme/forged/pull/99',
+        title: 'Forged result',
+        state: 'open',
+      },
+    },
+  })
+
+  const conversation = await t.run(ctx => ctx.db.get(aliceConversationId as never))
+  expect(conversation?.pullRequests?.map(item => item.number)).toEqual([42])
+  const forgedMessage = await t.run(ctx => ctx.db.get(forgedMessageId))
+  expect((forgedMessage?.parts?.[0] as { toolInvocation?: { state?: string } })?.toolInvocation?.state)
+    .toBe('output-available')
+})
