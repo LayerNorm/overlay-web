@@ -29,9 +29,12 @@ const client: WorkspaceClient = {
   activate: async () => { throw new Error('Not used') },
 }
 let renderer: ReturnType<typeof create> | undefined
-let observed: ReturnType<typeof useWorkspace>
+let observed!: ReturnType<typeof useWorkspace>
 function Probe() {
-  observed = useWorkspace()
+  const workspaceState = useWorkspace()
+  React.useEffect(() => {
+    observed = workspaceState
+  }, [workspaceState])
   return null
 }
 const tree = () => <WorkspaceProvider client={client}><Probe /></WorkspaceProvider>
