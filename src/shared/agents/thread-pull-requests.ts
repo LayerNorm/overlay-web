@@ -224,8 +224,8 @@ function jsonTextPayload(text: unknown): unknown | null {
   }
 }
 
-function mcpPayloads(output: unknown): unknown[] {
-  if (!isRecord(output) || output.isError === true) return []
+function mcpPayloads(output: unknown, allowPartialFailures = false): unknown[] {
+  if (!isRecord(output) || output.isError === true || (!allowPartialFailures && isFailure(output))) return []
   const out: unknown[] = []
   if (Object.prototype.hasOwnProperty.call(output, 'structuredContent')) {
     out.push(output.structuredContent)
@@ -287,7 +287,7 @@ function batchResults(output: unknown): unknown[] {
       if (out.length >= MAX_BATCH_TOOLS) return
     }
   }
-  for (const payload of mcpPayloads(output)) {
+  for (const payload of mcpPayloads(output, true)) {
     visit(payload, 0)
     if (out.length >= MAX_BATCH_TOOLS) break
   }
@@ -518,6 +518,7 @@ export function reduceThreadPullRequests(
     const key = associationKey(observation)
     const previous = associations.get(key)
     if (operation === 'read' && !existingKeys.has(key)) continue
+    if (previous?.state === 'merged' && observation.state !== 'merged') continue
     if (!observation.title && !previous && operation !== 'merge') continue
     if (previous && observation.updatedAt !== undefined && previous.updatedAt !== undefined
       && observation.updatedAt < previous.updatedAt) continue

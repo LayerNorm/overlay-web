@@ -159,6 +159,43 @@ test('uses authoritative merge input when the successful response only says merg
   assert.equal(withExistingTitle?.[0]?.title, 'Pull request 51')
 })
 
+test('merged associations remain terminal after a minimal merge and stale reads', () => {
+  const initial = toolPart('create-before-minimal-merge', 'GITHUB_CREATE_A_PULL_REQUEST', {
+    owner: 'acme',
+    repo: 'terminal',
+  }, pullRequest(52, 'acme', 'terminal', 'open', {
+    updated_at: '2026-10-20T12:00:00Z',
+  }))
+  const merge = toolPart('minimal-merge-terminal', 'GITHUB_MERGE_A_PULL_REQUEST', {
+    owner: 'acme',
+    repo: 'terminal',
+    pull_number: 52,
+  }, { merged: true })
+  const beforeMerge = reduceThreadPullRequests(undefined, [], [initial], 100)!
+  const merged = reduceThreadPullRequests(beforeMerge, [initial], [initial, merge], 200)!
+  assert.equal(merged[0]?.state, 'merged')
+
+  const staleObservations = [
+    pullRequest(52, 'acme', 'terminal', 'open', { updated_at: '2026-10-20T12:00:00Z' }),
+    pullRequest(52, 'acme', 'terminal', 'open', { draft: true, updated_at: '2026-10-20T12:00:00Z' }),
+    pullRequest(52, 'acme', 'terminal', 'closed', { updated_at: '2026-10-20T12:00:00Z' }),
+  ]
+  for (const [index, response] of staleObservations.entries()) {
+    const staleRead = toolPart(`stale-after-merge-${index}`, 'call_mcp_tool', {
+      toolName: 'GITHUB_GET_A_PULL_REQUEST',
+      arguments: { owner: 'acme', repo: 'terminal', pull_number: 52 },
+    }, { structuredContent: response })
+    const afterRead = reduceThreadPullRequests(
+      merged,
+      [initial, merge],
+      [initial, merge, staleRead],
+      300 + index,
+    )!
+    assert.equal(afterRead[0]?.state, 'merged')
+    assert.equal(afterRead[0]?.observedAt, 200)
+  }
+})
+
 test('matches each Composio batch result to its tool and ignores only failed entries', () => {
   const batch = toolPart('batch', 'COMPOSIO_MULTI_EXECUTE_TOOL', {
     tools: [
@@ -218,6 +255,41 @@ test('matches each Composio batch result to its tool and ignores only failed ent
     }],
   })
   assert.equal(reduceThreadPullRequests(undefined, [], [workspaceBatch], 100)?.[0]?.state, 'merged')
+})
+
+test('outer failures reject nested direct and MCP results without rejecting successful batch entries', () => {
+  const parts = [
+    toolPart('direct-success-false', 'GITHUB_CREATE_A_PULL_REQUEST', {}, {
+      success: false,
+      structuredContent: pullRequest(31),
+    }),
+    toolPart('direct-successful-false', 'GITHUB_CREATE_A_PULL_REQUEST', {}, {
+      successful: false,
+      content: [{ type: 'text', text: JSON.stringify(pullRequest(32)) }],
+    }),
+    toolPart('mcp-successful-false', 'call_mcp_tool', {
+      toolName: 'GITHUB_CREATE_A_PULL_REQUEST',
+      arguments: {},
+    }, {
+      successful: false,
+      content: [{ type: 'text', text: JSON.stringify(pullRequest(33)) }],
+    }),
+    toolPart('mcp-denied', 'call_mcp_tool', {
+      toolName: 'GITHUB_CREATE_A_PULL_REQUEST',
+      arguments: {},
+    }, {
+      denied: true,
+      structuredContent: pullRequest(34),
+    }),
+    toolPart('mcp-error', 'call_mcp_tool', {
+      toolName: 'GITHUB_CREATE_A_PULL_REQUEST',
+      arguments: {},
+    }, {
+      error: { message: 'Not authorized' },
+      content: [{ type: 'text', text: JSON.stringify(pullRequest(35)) }],
+    }),
+  ]
+  assert.equal(reduceThreadPullRequests(undefined, [], parts, 100), undefined)
 })
 
 test('replays do not refresh timestamps and older GitHub snapshots do not regress state', () => {

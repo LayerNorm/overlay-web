@@ -161,7 +161,7 @@ test('server-authorized agent tool output appears only in the caller-owned threa
     createdAt: 3,
     updatedAt: 3,
   }))
-  await as('alice').mutation(completeTool, {
+  await expect(as('alice').mutation(completeTool, {
     actorUserId: 'alice',
     authorPrincipalId: 'ap-shared',
     conversationId: aliceConversationId as never,
@@ -179,11 +179,11 @@ test('server-authorized agent tool output appears only in the caller-owned threa
         state: 'open',
       },
     },
-  })
+  })).rejects.toThrow('Unauthorized')
 
   const conversation = await t.run(ctx => ctx.db.get(aliceConversationId as never))
   expect(conversation?.pullRequests?.map(item => item.number)).toEqual([42])
   const forgedMessage = await t.run(ctx => ctx.db.get(forgedMessageId))
   expect((forgedMessage?.parts?.[0] as { toolInvocation?: { state?: string } })?.toolInvocation?.state)
-    .toBe('output-available')
+    .toBe('input-available')
 })

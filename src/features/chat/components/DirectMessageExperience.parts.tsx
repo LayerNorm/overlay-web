@@ -493,6 +493,7 @@ export function RoomTranscript({
     loadingOlderMessages,
     loadOlderMessages,
     loading,
+    turnSpacerRef,
   } = transcript
   const { newMessageCount } = readMarkers
   const { jumpToLatest: onJumpToLatest } = navigation
@@ -579,7 +580,7 @@ export function RoomTranscript({
             })
           )}
           {footer}
-          <div ref={transcript.turnSpacerRef} aria-hidden className="shrink-0" />
+          <div ref={turnSpacerRef} aria-hidden className="shrink-0" />
         </div>
       </div>
     </div>
