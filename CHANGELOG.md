@@ -5,6 +5,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 ## Unreleased
 
 - Keep unchanged completed personal-chat messages stable during streamed updates, while refreshing message actions, permissions and live plans when they change.
+- Add an opt-in, Preview-only completed code-block fixture for first-use syntax-highlighting checks, without model execution or changes to existing histories.
+- Load the syntax-highlighting engine only when a supported code block needs it, instead of including it in the initial app JavaScript. Keep code readable while highlighting loads and preserve streamed highlighting state.
 - Performance measurements retain slow keystrokes that share a browser frame during streaming, rather than rejecting them when another character arrives before the frame is observed.
 ||||||| f8ea73ed7
 - Keep the Work composer controls on one row in narrow panels, with compact assignee, schedule and dependency icons, accessible labels, tooltips and count badges.
