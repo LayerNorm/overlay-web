@@ -24,7 +24,7 @@ ChatGPT, Claude, Cursor and other MCP clients at the Everything level get `list_
 ## Lineage and limits (`src/shared/agents/agent-lineage.ts`)
 
 - Lineage = root turn (the person's message), hop, and the chain of agent ids. It lives on the question message (`data-agent-lineage`); only an agent-authored message is trusted to carry one, and a person's message parts are restricted to text and files, so a lineage cannot be forged.
-- **Hop limit 10**, **no self-asks**, **no cycles** (an agent already in the chain cannot be asked), **50 questions per turn**, **200 per person's message** across the whole chain (`agentAskCounters`, claimed atomically in Convex before anything is posted and given back if delivery fails). **Posts**: 50 per turn, 200 per request. These counts only stop a runaway chain; there is no per-chain token or spending limit. The workspace budget is the only spending limit (each asked agent's turn is charged and stops under 2%). Each refusal is a plain tool error the agent can relay.
+- **Hop limit 10**, **no self-asks**, **no cycles** (an agent already in the chain cannot be asked), **50 questions per turn**, **50 posts per turn**, and **200 of each per person's message** across the whole chain (`agentAskCounters`, claimed atomically in Convex before anything is posted and given back if delivery fails). Up to 20 agents can be mentioned in one post. These counts only stop a runaway chain: the former 500,000-token chain cap and pre-call cost holds are removed. Workspace-owned model calls use actual usage accounting against the workspace budget; each turn stops when the budget is under 2%. Named subagent work supports up to 16 concurrent subagents and 5 levels. Each refusal is a plain tool error the agent can relay.
 - Visibility: only agents the person can see (`WorkspaceAgentService.list`) can be asked.
 
 ## UI
@@ -53,4 +53,8 @@ separate parent milestone, while ordinary delegated milestones still require
 the parent to complete them with evidence. Stop cancels active same-user named
 descendants across their own conversations, deepest-first, and returns each
 delivery's workflow cleanup descriptor. If an ancestor already terminated,
-its subtree counts are not released a second time.
+its subtree counts are not released a second time. Assignment identity,
+idempotent launch, attempt history and persisted results remain tied to the
+requester and shared root; acceptance, revision or reasoned exclusion are
+coordination dispositions, not replacements for child execution status. A
+parent cannot finalize while assignment issues or live child execution remain.

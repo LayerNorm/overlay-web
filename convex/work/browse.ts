@@ -1,4 +1,5 @@
 import { v } from 'convex/values'
+import { paginationOptsValidator } from 'convex/server'
 import { mutation, query, type QueryCtx } from '../_generated/server'
 import { requireNativeWorkspace } from '../lib/nativeViewer'
 import { requireNativeCapability } from '../lib/nativeCapabilities'
@@ -7,6 +8,8 @@ import { loadWorkItem } from '../lib/workItems'
 import { createWorkFor, listWorkFor, moveWorkFor, updateWorkFor, workContextFor } from './workItems'
 import { addWorkCommentFor, listWorkEventsFor } from './workItemEvents'
 import { workEventView, workItemView } from '../../src/shared/work/projection'
+import { assignmentExecutionForViewer } from '../collaboration/agentAssignments'
+import type { AssignmentExecution } from '../../src/shared/work/assignment-execution'
 
 const doneWhenArg = v.array(v.object({ text: v.string(), checked: v.boolean() }))
 const contextArg = v.array(v.object({
@@ -41,6 +44,27 @@ export const list = query({
     const viewer = await workViewerOrNull(ctx, workspaceId)
     if (!viewer) return null
     return (await listWorkFor(ctx, { userId: viewer.userId, workspaceId, view })).map(workItemView)
+  },
+})
+
+export const assignments = query({
+  args: { workspaceId: v.string(), view: v.optional(v.union(v.literal('personal'), v.literal('workspace'))), paginationOpts: paginationOptsValidator },
+  handler: async (ctx, { workspaceId, view, paginationOpts }) => {
+    const viewer = await workViewerOrNull(ctx, workspaceId)
+    if (!viewer) return { page: [], isDone: true, continueCursor: '' }
+    try { await requireNativeCapability(ctx, viewer.userId, 'conversations.read') }
+    catch { return { page: [], isDone: true, continueCursor: '' } }
+    const batch = await ctx.db.query('agentAssignments').withIndex('by_workspaceId_createdAt', q => q.eq('workspaceId', workspaceId))
+      .order('desc').paginate(paginationOpts)
+    const page: AssignmentExecution[] = []
+    for (const assignment of batch.page) {
+      const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q =>
+        q.eq('conversationId', assignment.conversationId).eq('principalId', viewer.principal.principalId)).unique()
+      if (participant?.archivedAt !== undefined) continue
+      const execution = await assignmentExecutionForViewer(ctx, viewer, assignment)
+      if (execution && (!view || execution.scope === view)) page.push(execution)
+    }
+    return { ...batch, page }
   },
 })
 

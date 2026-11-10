@@ -88,7 +88,6 @@ test('threads that are loading show placeholders; a failed load says so', () => 
   assert.match(loading, /aria-label="Loading Overlay threads"/)
   assert.match(render('error'), /Could not load threads/)
 })
-
 test('single-line titles have accessible live status icons without status subtitles', () => {
   for (const [status, label, icon] of [
     ['working', 'Working', 'lucide-loader-circle'],

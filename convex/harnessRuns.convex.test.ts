@@ -128,6 +128,15 @@ function oneStep(id: string) {
 }
 
 describe('durable harness runs', () => {
+  test('admits a personal conversation run without a workspace restriction', async () => {
+    const convex = convexTest(schema, modules)
+    const input = admission('personal-no-workspace', await seedConversation(convex))
+    await expect(admit(convex, input)).resolves.toMatchObject({ runId: input.runId })
+    const stored = await convex.run(ctx => ctx.db.query('harnessRuns')
+      .withIndex('by_runId', q => q.eq('runId', input.runId)).unique())
+    expect(stored?.sharedRoomRestriction).toBe(false)
+  })
+
   test('persists completed work after authorization expires without authorizing more work', async () => {
     const convex = convexTest(schema, modules)
     const input = admission('late-completion', await seedConversation(convex), { requiresPlan: false })

@@ -19,24 +19,12 @@ import type { HarnessArtifactMetadata } from './artifact-context'
 import type { HarnessRunnerCheckpoint } from './ports'
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 import type { ActivePublicStreamSnapshot } from '@/shared/chat/public-stream-projection'
-import { ConvexHttpClient } from 'convex/browser'
 import { api } from '../../../convex/_generated/api'
-import { deploymentEnv } from '@/server/env/deployment-env'
-import { resolveConvexUrl } from '@/server/database/convex-url'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
-import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import { requireNativeThreadCompatibilityBackend } from '@/server/conversations/native-thread-compatibility-backend'
+import { artifactClient, ConvexHarnessAssignments } from './ConvexHarnessAssignments'
 
-function artifactClient() {
-  const { url, invalid } = resolveConvexUrl(deploymentEnv())
-  if (!url || invalid) throw new Error('Harness artifact storage is unavailable.')
-  return new ConvexHttpClient(url, { logger: false, skipConvexDeploymentUrlCheck: true })
-}
-
-export class ConvexHarnessRepository implements HarnessRepository {
-  private get serverSecret(): string {
-    return getInternalApiSecret()
-  }
+export class ConvexHarnessRepository extends ConvexHarnessAssignments implements HarnessRepository {
 
   async storeContextArtifact(input: {
     actorUserId: string
@@ -164,6 +152,24 @@ export class ConvexHarnessRepository implements HarnessRepository {
       actorUserId: input.actorUserId, runId: input.runId,
       serverSecret: this.serverSecret,
     }, { throwOnError: true })
+  }
+
+  async refreshRoomContextRestrictions(input: { actorUserId: string; runId: string }): Promise<{ inheritedSharedRoom: boolean }> {
+    const restrictions = await convex.mutation<{ inheritedSharedRoom: boolean }>('harness/runs:refreshRoomContextRestrictions', {
+      ...input,
+      serverSecret: this.serverSecret,
+    })
+    if (!restrictions) throw new Error('Harness room restrictions are unavailable.')
+    return restrictions
+  }
+
+  async resolveConversationRoomRestrictions(input: { actorUserId: string; workspaceId: string; conversationId: string }): Promise<{ inheritedSharedRoom: boolean }> {
+    const restrictions = await convex.mutation<{ inheritedSharedRoom: boolean }>('harness/runs:resolveConversationRoomRestrictions', {
+      ...input,
+      serverSecret: this.serverSecret,
+    }, { throwOnError: true })
+    if (!restrictions) throw new Error('Conversation room restrictions are unavailable.')
+    return restrictions
   }
 
   async writeTranscriptStep(input: {

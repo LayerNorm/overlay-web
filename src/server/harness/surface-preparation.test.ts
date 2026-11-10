@@ -20,6 +20,7 @@ vi.mock('./native-workflow-input-builder', () => ({ buildNativeHarnessWorkflowIn
 vi.mock('./ConvexHarnessRepository', () => ({
   ConvexHarnessRepository: class {
     admit = mocks.admit
+    acquireNativeTurn = vi.fn(async () => true)
     getSurfaceExecutionByHarnessRunId = mocks.getSurface
   },
 }))

@@ -3,7 +3,7 @@ import test from 'node:test'
 import { hasThreadActivity, resolveThreadActivity, summarizeThreadActivity, type ThreadActivityStatus } from './thread-activity'
 
 test('active work and actionable pauses use different indicators', () => {
-  for (const status of ['queued', 'running', 'waiting_for_children']) {
+  for (const status of ['queued', 'publication_pending', 'running', 'waiting_for_children']) {
     assert.equal(resolveThreadActivity({ status, updatedAt: 20 }, null), 'working')
   }
   for (const status of ['waiting_for_input', 'waiting_for_approval', 'waiting_for_authorization', 'waiting_for_resources']) {

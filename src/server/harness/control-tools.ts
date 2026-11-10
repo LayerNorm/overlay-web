@@ -7,6 +7,22 @@ import { HARNESS_STEP_VALIDATION, isHarnessStepValidation } from './step-validat
 
 const id = z.string().min(1).max(256)
 
+const childReadInput = z.object({ childRunId: id.optional(), assignmentId: id.optional() })
+  .refine(input => Boolean(input.childRunId) !== Boolean(input.assignmentId), 'Pass exactly one of childRunId or assignmentId.')
+
+async function resolveChildRead(ports: HarnessExecutionPorts, input: z.infer<typeof childReadInput>) {
+  if (Boolean(input.childRunId) === Boolean(input.assignmentId)) return { feedback: {
+    success: false, error: 'Pass exactly one of childRunId or assignmentId.', hint: 'Use assignmentId when recovering an assignment without its child handle.',
+  } }
+  if (input.childRunId) return { childRunId: input.childRunId }
+  const assignment = await ports.readAssignmentChild?.(input.assignmentId!)
+  if (!assignment) return { feedback: { success: false, error: 'Assignment is unavailable to this run.', hint: 'Use an assignmentId from your authorized assignment obligations.' } }
+  if (assignment.childRunId) return { childRunId: assignment.childRunId }
+  if (assignment.launchPending) return { feedback: { status: 'launch_pending', ...assignment,
+    hint: 'Read again shortly using assignmentId. Launch is pending; this does not mean no child will launch. Do not guess a child ID.' } }
+  return { feedback: { status: 'launch_unavailable', ...assignment, hint: 'No child is bound and launch is not pending. Review the assignment before resolving it.' } }
+}
+
 const runQuestion = z.object({
   prompt: z.string().min(1).max(300).describe('The question, written for the person reading it'),
   description: z.string().max(300).optional().describe('Why it matters, or what the answer changes'),
@@ -27,6 +43,11 @@ function artifactIdentity(metadata: HarnessArtifactReadResult['metadata']): stri
 }
 
 function rejectedStepUpdate(error: string, state: HarnessSnapshot, stepId: string) {
+  if (error === HARNESS_STEP_VALIDATION.unknownStep) {
+    return { success: false, error, currentStepIds: state.plan.map(step => step.id), hint: state.plan.length
+      ? 'Use an existing step ID, or revise the plan with harness_set_plan before updating it.'
+      : 'There is no plan to update. Continue the requested work or answer directly if it is complete. Create a plan only if the remaining work needs one.' }
+  }
   if (error !== HARNESS_STEP_VALIDATION.dependencies) return { success: false, error }
   const step = state.plan.find(candidate => candidate.id === stepId)
   const pendingDependencyIds = step?.dependsOn.filter(dependencyId => {
@@ -71,7 +92,7 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       },
     }),
     harness_update_step: tool({
-      description: 'Set a plan step to running when you start it and done when you finish it. Marking a step done means the work is finished.',
+      description: 'Update an existing plan step by its ID: running when you start it, done when finished. Marking a step done means the work is finished. Simple replies and resuming after user input do not require creating or updating a plan.',
       inputSchema: z.object({
         id,
         status: z.enum(['pending', 'running', 'blocked', 'done', 'skipped']),
@@ -158,20 +179,29 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       execute: async (input, { toolCallId }) => ports.delegate(input, toolCallId),
     }),
     harness_read_child: tool({
-      description: 'Join an admitted child, waiting durably if it is still working. Start independent children before joining them. ',
-      inputSchema: z.object({ childRunId: id }),
-      execute: async ({ childRunId }, { toolCallId }) => {
+      description: 'Read an assignment by assignmentId, or join an admitted child by childRunId. Pass exactly one. Bound children wait durably while working; assignments awaiting launch return launch_pending so you can read again shortly. Start independent children before joining them.',
+      inputSchema: childReadInput,
+      execute: async (input, { toolCallId }) => {
+        const resolved = await resolveChildRead(ports, input)
+        if (resolved.feedback) return resolved.feedback
+        const childRunId = resolved.childRunId!
         const parent = await ports.read()
-        if (!parent.children.some(child => child.id === childRunId)) throw new Error('This run did not delegate that child.')
+        if (!parent.children.some(child => child.id === childRunId)) return { success: false, error: 'Unknown child handle for this run.',
+          childRunIds: parent.children.map(child => child.id), hint: 'Use an actual childRunId, or use assignmentId from your assignment obligations. A missing child handle does not mean launch will not occur.' }
         let child = await ports.readChild(childRunId)
         if (child.parentRunId !== parent.runId || child.rootRunId !== parent.rootRunId) throw new Error('Invalid child lineage.')
-        if (!['completed', 'failed', 'cancelled'].includes(child.status)) {
+        let assignment = await ports.readAssignmentResult?.(childRunId)
+        if (!['completed', 'failed', 'cancelled'].includes(child.status) && !assignment?.blocker) {
           await ports.waitForChildren([childRunId])
           child = await ports.readChild(childRunId)
           if (child.parentRunId !== parent.runId || child.rootRunId !== parent.rootRunId) throw new Error('Invalid child lineage.')
+          assignment = await ports.readAssignmentResult?.(childRunId)
         }
-        const result = { status: child.status, summary: child.resultSummary ?? child.workingSummary, evidence: child.evidence, blocker: child.blocker }
-        if (child.status !== 'completed') return result
+        const result = { status: assignment?.runStatus ?? child.status, summary: assignment?.summary ?? child.resultSummary ?? child.workingSummary,
+          evidence: child.evidence, blocker: assignment?.blocker ?? child.blocker,
+          ...(assignment ? { assignment, reply: assignment.reply, publicationPending: assignment.state === 'publication_pending' } : {}) }
+        if (assignment && assignment.state !== 'ready') return result
+        if (result.status !== 'completed') return result
         await ports.apply(`settle-child:${child.runId}:${child.revision}`, { type: 'settle_child', childRunId })
         const evidenceRef = `child-result:${toolCallId}`
         await ports.apply(`control:${toolCallId}`, { type: 'record_evidence', evidence: {

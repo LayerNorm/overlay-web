@@ -15,6 +15,7 @@ import { agentMemoryOwnerId } from '../../src/shared/agents/agent-memory'
 import { stripTextualToolCalls, stripTextualToolCallsFromParts } from '../../src/shared/ai/textual-tool-calls'
 import { resolveIdentityDisplayName, versionedIdentityUrl } from '../../src/shared/workspaces/identity-resolution'
 import { mergeHarnessFailureTranscript } from '../lib/harnessFailureTranscript'
+import { enqueueNativeTurn } from './nativeTurnQueue'
 import { cleanupTerminalPublicStreams, readActivePublicStreams } from '../lib/publicStreamRead'
 import { appendStepParts, joinStepText } from '@/shared/chat/step-text-join'
 import { transcriptPartIdentity } from '../../src/shared/chat/transcript-part-identity'
@@ -912,6 +913,7 @@ export async function startAgentTurnInTransaction(
   if (args.harnessRunIdPrefix) {
     await ctx.db.patch(runId, { harnessRunId: `${args.harnessRunIdPrefix}${runId}` })
   }
+  await enqueueNativeTurn(ctx, (await ctx.db.get(runId))!)
   return { messageId, resumed, runId }
 }
 

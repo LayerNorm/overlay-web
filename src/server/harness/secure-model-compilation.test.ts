@@ -14,8 +14,10 @@ test.each([
   ['native-tool-steps.ts', ['nativeHarnessToolNeedsApproval', 'executeNativeHarnessTool', 'dispatchNativeHarnessAgentRequest']],
   ['native-named-child-launch.ts', ['startNativeHarnessNamedChild']],
   ['native-child-steps.ts', ['admitNativeHarnessChild']],
+  ['native-assignment-steps.ts', ['readNativeAssignmentIssues', 'readNativeAssignmentChild']],
+  ['native-recovery-steps.ts', ['readNativeRecoveryWork', 'executeNativeRecoveryWork', 'acknowledgeNativeRecoveryWork']],
   ['native-delivery-steps.ts', ['attachNativeHarnessDelivery',
-    'projectNativeHarnessWait', 'finishNativeHarnessDelivery']],
+    'projectNativeHarnessWait', 'finishNativeHarnessDelivery', 'readNativeAssignmentResult', 'settleNativeAssignmentResult']],
 ] as const)('compiled %s exposes only durable server steps', async (filename, exports) => {
   const path = fileURLToPath(new URL(`./${filename}`, import.meta.url))
   const source = await readFile(path, 'utf8')

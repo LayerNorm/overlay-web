@@ -1195,6 +1195,42 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Alternate the homepage headline with “Give your agents a workspace.” every five seconds using an upward rolling transition. Both headlines retain colorful section links, the surrounding layout stays fixed, and reduced-motion preferences disable the rolling animation.
 
+### Chief of Staff (pending)
+
+- Let the Chief read recovered assignments by assignment ID, with explicit pending-launch feedback and labeled attempt, child-run and conversation handles instead of guessing whether recovery started.
+
+- Route assignment parent backlinks to the authorized conversation's actual channel, agent thread, or chat instead of always opening the caller agent.
+
+- Show Work's existing no-results message when a search matches neither tasks nor agent assignments, including assignment-only workspaces.
+
+- Return corrective feedback for confirmed assignment-resolution rejections, exposing current attempt IDs only after authorized reads.
+- Mark never-launched assignments cancelled when their parent ends, keeping Work status and open counts accurate.
+
+- Defer assignment launch recovery while its parent Harness run is waiting, preserving retry attempts until the parent is running again.
+
+- Return corrective tool feedback when an agent tries to update a nonexistent plan step, including an empty plan after answering a question, rather than surfacing a fatal workflow error. Ordinary replies still do not require a plan.
+
+- Keep Harness assignment, recovery and native turn-queue repository operations in a server-only base class without changing their authorization or persistence behavior.
+
+- Allow generated personal-Chief identities in agent discovery, ask and post requests. The caller-ID limit now matches the target agent-ID limit instead of rejecting valid Chief IDs before authorization and directory lookup.
+
+- Refresh the visible Chief plan when an assignment is accepted or excluded, keeping the delivery and transcript projections aligned with the settled Harness milestone.
+
+- Renew native Chief leases during a blocking child-result read when the conversation projects a child wait but the Harness is still running the read tool. Keep workflow ownership, membership and model-dispatch checks intact.
+
+- Keep room read-marker callbacks stable across live renders so idle chat views stop resubmitting read mutations. Convex's pending-write navigation protection and the notes editor's unsaved-change protection remain enabled.
+
+- Show authorized Chief assignment executions in the Work list as an Agent assignments group of read-only rows drawn like tasks (status glyph, Needs you/Failed/Cancelled tags, parent, agent avatar), with a side panel for the brief, result, reasons and links to the assignment and Chief threads, and as one-line rows under Everything and Needs you in the Work sidebar. They do not create tasks; archived or inaccessible threads are omitted, and linked Slack conversations stay read-only until verified cross-surface delivery is available.
+
+- Coordinate Chief assignments with explicit acceptance or reasoned exclusion/cancellation, parent cancellation propagation, durable native-turn queues and duplicate-safe launch recovery. Current-run finalization waits for published, resolved assignment results without adding a verifier or compulsory plan.
+
+- Keep Chief assignment revisions in one isolated thread with immutable per-attempt run handles, persisted publication-aware results and full authorized reply reads. Canonical Slack thread links survive agent rebinding and expose origin only to authorized viewers. Slack requester linking and revocation remain specified for Phase 4, not enabled here.
+
+- Keep delegated reply reads available while the Chief consolidates completed assignments, and refresh expanded agent thread lists when live thread membership changes.
+
+- Add isolated, idempotent Chief agent assignments with ACL-filtered navigation and execution status projections; preserve shared-source resource restrictions across assignment children and native refreshes.
+
+
 ## 2026-10-13 — Release workflow migration
 
 - Complete the release workflow migration: isolated PR previews without a paid custom suffix, native main merge queue, on-demand exact-main candidates, manual web-first production promotion, and verified rollback/restoration. Production release `bee84a33a2d4` passed authenticated smoke; automatic staging Stripe checkout/cancellation and browser storage acceptance passed.

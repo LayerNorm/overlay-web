@@ -15,6 +15,18 @@ beforeEach(() => {
   mocks.query.mockResolvedValue([])
   mocks.mutation.mockResolvedValue({})
 })
+
+test('assignment reads and settlement serialize only persisted-result authority and handles', async () => {
+  const repository = new ConvexHarnessRepository()
+  const args = { actorUserId: 'user', workspaceId: 'workspace', parentRunId: 'parent', childRunId: 'child' }
+  mocks.query.mockResolvedValueOnce({ reply: 'Complete final reply' })
+  expect(await repository.readAssignmentResult(args)).toEqual({ reply: 'Complete final reply' })
+  expect(mocks.query).toHaveBeenLastCalledWith('collaboration/assignmentResults:read', { ...args, serverSecret: 'fixture-secret' }, { throwOnError: true })
+  await repository.settleAssignmentResult('child')
+  expect(mocks.mutation).toHaveBeenLastCalledWith('collaboration/assignmentResults:settle', { childRunId: 'child', serverSecret: 'fixture-secret' }, { throwOnError: true })
+  mocks.query.mockResolvedValueOnce(null)
+  expect(await repository.readSettledAssignmentArtifact({ actorUserId: 'user', workspaceId: 'workspace', attemptId: 'attempt', artifactId: 'missing' })).toBeNull()
+})
 afterEach(() => vi.unstubAllGlobals())
 
 test('journal uploads complete public data while storing only a bounded delivery snapshot', async () => {

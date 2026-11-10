@@ -8,6 +8,7 @@ import {
   Sparkles,
 } from 'lucide-react'
 import { buildWorkspaceHandleHref, mergeHrefSearchParams, readWorkspaceRouteDescriptor } from '@/shared/workspaces/routing'
+import type { AssignmentExecution } from '@/shared/work/assignment-execution'
 
 export const resourceRowClass =
   'flex h-8 w-full items-center gap-2 rounded-md px-2.5 text-left text-xs text-(--muted) transition-colors hover:bg-(--surface-subtle) hover:text-(--foreground)'
@@ -47,6 +48,16 @@ export function agentThreadHref(
   return agentDestination(baseHref, params, view)
 }
 
+
+export function assignmentThreadHref(target: Pick<AssignmentExecution['parent'], 'agentId' | 'conversationId' | 'conversationType' | 'scope'>): string {
+  if (target.agentId && (!target.conversationType || target.conversationType === 'dm')) {
+    return agentThreadHref('/app/agents', target.agentId, target.conversationId, target.scope)
+  }
+  const view = target.conversationType === 'channel' ? 'channels' : target.conversationType === 'dm' ? 'dms'
+    : target.scope === 'workspace' ? 'workspace-chats' : 'personal'
+  const scope = view === 'channels' || view === 'dms' ? 'workspace' : target.scope
+  return mergeHrefSearchParams('/app/chat', new URLSearchParams({ view, id: target.conversationId, scope }))
+}
 
 export const toolsInlineItems = [
   { id: 'connectors', label: 'Connectors', icon: Plug },

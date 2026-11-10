@@ -290,4 +290,3 @@ export function WorkPeek({ taskId, onClose }: { taskId: string; onClose: () => v
     </AppScreenSidePanel>
   )
 }
-

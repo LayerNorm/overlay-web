@@ -20,6 +20,7 @@ import { AGENT_MCP_TOKEN_SLACK_MS, mintAgentMcpToken } from '@/server/agents/age
 import { getAgentFacingBaseUrl } from '@/server/web/app-url'
 import { ensureRemoteRunCoordinator } from './remote-agent-run-dispatcher'
 import { requireWorkspaceExecution } from '@/server/billing/WorkspaceExecutionPolicy'
+import { chiefOrchestrationInstructions } from './chief-orchestration'
 
 export function shouldPrepareConnectedAgentDrive(input: {
   enabled: boolean; environmentKind: string; optedIn: boolean; capabilities: unknown
@@ -703,6 +704,7 @@ export async function startRemoteWorkspaceAgentTurn(args: {
  */
 export function buildAgentSystemPrompt(args: {
   agentName: string
+  agentRole?: Parameters<typeof chiefOrchestrationInstructions>[0]
   contextBlock: string
   exposedToolIds: readonly string[]
   hasTools: boolean
@@ -716,8 +718,9 @@ export function buildAgentSystemPrompt(args: {
   return [
     `You are ${args.agentName}, a named AI teammate in an Overlay workspace.`,
     args.instructions,
+    chiefOrchestrationInstructions(args.agentRole),
     args.isDefaultMaster
-      ? 'You are the default Overlay master workspace agent with full access to workspace context, files, notes, automations, skills, and tools.'
+      ? 'You are the default Overlay workspace agent. Use only the context, files, skills and tools authorized for this run and its audience.'
       : 'Respond as this agent, not as a generic assistant.',
     args.hasTools
       ? [

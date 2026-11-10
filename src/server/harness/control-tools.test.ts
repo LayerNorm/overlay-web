@@ -44,6 +44,89 @@ function noPlanState() {
   }, Date.now())
 }
 
+test('a blocked assignment returns its truthful blocker without joining indefinitely or recording success', async () => {
+  const f = fixture()
+  f.readChild.mockResolvedValue({ ...f.child, status: 'waiting_for_input' })
+  f.ports.readAssignmentResult = async () => ({ assignmentId: 'assignment', attemptId: 'attempt', conversationId: 'room',
+    turnId: 'reply', superseded: false, terminal: false, state: 'working', runStatus: 'waiting_for_input', summary: '',
+    blocker: { kind: 'input', question: 'Need a decision' }, artifactRefs: [] })
+  expect(await createHarnessControlTools(f.ports).harness_read_child.execute!({ childRunId: 'child' }, { toolCallId: 'blocked', messages: [] }))
+    .toMatchObject({ status: 'waiting_for_input', blocker: { question: 'Need a decision' } })
+  expect(f.waitForChildren).not.toHaveBeenCalled()
+  expect(f.apply).not.toHaveBeenCalled()
+})
+
+test('assignment reads survive pending launch and join the recovered child once bound', async () => {
+  const f = fixture()
+  const lookup = vi.fn(async () => ({ assignmentId: 'assignment', attemptId: 'attempt', conversationId: 'room', launchPending: true }))
+  f.ports.readAssignmentChild = lookup
+  const read = createHarnessControlTools(f.ports).harness_read_child
+  expect(await read.execute!({ assignmentId: 'assignment' }, { toolCallId: 'pending', messages: [] }))
+    .toMatchObject({ status: 'launch_pending', attemptId: 'attempt', hint: expect.stringContaining('Read again') })
+  expect(f.readChild).not.toHaveBeenCalled()
+  expect(f.waitForChildren).not.toHaveBeenCalled()
+  f.ports.readAssignmentChild = async () => ({ assignmentId: 'assignment', attemptId: 'attempt', conversationId: 'room', childRunId: 'child', launchPending: false })
+  f.readChild.mockResolvedValueOnce({ ...f.child, status: 'running' })
+  expect(await read.execute!({ assignmentId: 'assignment' }, { toolCallId: 'bound', messages: [] }))
+    .toMatchObject({ status: 'completed' })
+  expect(f.waitForChildren).toHaveBeenCalledWith(['child'])
+  expect(f.readChild).toHaveBeenCalledWith('child')
+})
+
+test('unknown assignments and invalid child handles give corrective feedback without disclosing assignments', async () => {
+  const f = fixture()
+  f.ports.readAssignmentChild = async () => null
+  const read = createHarnessControlTools(f.ports).harness_read_child
+  expect(await read.execute!({ assignmentId: 'private' }, { toolCallId: 'private', messages: [] }))
+    .toEqual({ success: false, error: 'Assignment is unavailable to this run.', hint: expect.any(String) })
+  expect(await read.execute!({ childRunId: 'guessed' }, { toolCallId: 'guessed', messages: [] }))
+    .toMatchObject({ success: false, childRunIds: ['child'], hint: expect.stringContaining('assignmentId') })
+  expect(f.readChild).not.toHaveBeenCalled()
+  expect(f.apply).not.toHaveBeenCalled()
+})
+
+test('assignment lookup failures remain errors and reads require exactly one handle', async () => {
+  const f = fixture()
+  const read = createHarnessControlTools(f.ports).harness_read_child
+  expect(await read.execute!({}, { toolCallId: 'empty', messages: [] })).toMatchObject({ success: false })
+  expect(await read.execute!({ assignmentId: 'assignment', childRunId: 'child' }, { toolCallId: 'both', messages: [] }))
+    .toMatchObject({ success: false })
+  f.ports.readAssignmentChild = async () => { throw new Error('Transport unavailable') }
+  await expect(read.execute!({ assignmentId: 'assignment' }, { toolCallId: 'transport', messages: [] })).rejects.toThrow('Transport unavailable')
+  f.setParent(noPlanState())
+  expect(await read.execute!({ childRunId: 'missing' }, { toolCallId: 'no-children', messages: [] }))
+    .toMatchObject({ success: false, childRunIds: [] })
+  f.ports.readAssignmentChild = async () => ({ assignmentId: 'assignment', attemptId: 'attempt', conversationId: 'room', launchPending: false })
+  expect(await read.execute!({ assignmentId: 'assignment' }, { toolCallId: 'unavailable', messages: [] }))
+    .toMatchObject({ status: 'launch_unavailable' })
+})
+
+test('assignment child reads return the canonical full reply and never settle publication-pending results', async () => {
+  const f = fixture()
+  const reply = 'Full final reply. '.repeat(2500)
+  const readAssignmentResult = vi.fn(async () => ({ assignmentId: 'assignment', attemptId: 'attempt',
+    conversationId: 'room', turnId: 'reply-turn', superseded: false, terminal: true,
+    state: 'ready' as const, runStatus: 'completed', summary: 'Short summary', reply, artifactRefs: [] }))
+  f.ports.readAssignmentResult = readAssignmentResult
+  const result = await createHarnessControlTools(f.ports).harness_read_child.execute!(
+    { childRunId: 'child' }, { toolCallId: 'read-assignment', messages: [] },
+  )
+  expect(result).toMatchObject({ reply, assignment: { reply, attemptId: 'attempt' } })
+  expect(readAssignmentResult).toHaveBeenCalledWith('child')
+  f.apply.mockClear()
+  f.ports.readAssignmentResult = vi.fn(async () => ({ ...await readAssignmentResult(), state: 'publication_pending', reply: undefined }))
+  const pending = await createHarnessControlTools(f.ports).harness_read_child.execute!(
+    { childRunId: 'child' }, { toolCallId: 'read-pending', messages: [] },
+  )
+  expect(pending).toMatchObject({ publicationPending: true })
+  expect(f.apply).not.toHaveBeenCalled()
+  f.ports.readAssignmentResult = vi.fn(async () => ({ ...await readAssignmentResult(), runStatus: 'failed', failureReason: 'Delivery failed' }))
+  expect(await createHarnessControlTools(f.ports).harness_read_child.execute!(
+    { childRunId: 'child' }, { toolCallId: 'failed-delivery', messages: [] },
+  )).toMatchObject({ status: 'failed', reply })
+  expect(f.apply).not.toHaveBeenCalled()
+})
+
 test('plan steps need only an id and a title', async () => {
   const f = fixture()
   const apply = vi.fn<HarnessExecutionPorts['apply']>(async () => f.ports.read())
@@ -121,6 +204,23 @@ test('a backend that still requires evidence returns its rejection to the model'
     { id: 'work', status: 'done' }, { toolCallId: 'old-backend', messages: [] },
   )
   expect(result).toEqual({ success: false, error: 'Completion requires evidence.' })
+})
+
+test.each([false, true])('unknown step IDs return corrective guidance without changing the plan (empty: %s)', async empty => {
+  const f = fixture()
+  if (empty) f.setParent(noPlanState())
+  const before = await f.ports.read()
+  const result = await createHarnessControlTools(f.ports).harness_update_step.execute!(
+    { id: 'invented-step', status: 'done' }, { toolCallId: 'unknown-step', messages: [] },
+  )
+
+  expect(result).toEqual({
+    success: false, error: 'Unknown milestone.', currentStepIds: empty ? [] : ['work'],
+    hint: empty
+      ? 'There is no plan to update. Continue the requested work or answer directly if it is complete. Create a plan only if the remaining work needs one.'
+      : 'Use an existing step ID, or revise the plan with harness_set_plan before updating it.',
+  })
+  expect(await f.ports.read()).toBe(before)
 })
 
 test('dependency rejection returns unresolved dependency IDs and a completion hint', async () => {

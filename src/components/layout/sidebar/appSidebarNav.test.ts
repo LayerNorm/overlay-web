@@ -1,10 +1,30 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { resolveNavItemDestination, resolveSidebarRouteState, selectMobileNavItem, selectSidebarNavItem, SETTINGS_SECTION_ICONS, signOutToLanding, type SidebarNavItem } from './appSidebarNav'
-import { agentHref, agentThreadHref } from '@/components/layout/sidebar-nav'
+import { agentHref, agentThreadHref, assignmentThreadHref } from '@/components/layout/sidebar-nav'
 import { resolveWorkspaceSurface } from '@/shared/workspaces/routing'
 import { MessageSquare } from 'lucide-react'
 import { selectDoubleSidebarItem } from '../../../../packages/overlay-shell-react/src/sidebar/DoubleSidebar'
+
+test('assignment thread destinations follow actual parent kind and preserve agent scopes', () => {
+  const cases = [
+    { conversationType: 'channel', agentId: 'chief', scope: 'workspace', path: '/app/chat', view: 'channels' },
+    { conversationType: 'dm', agentId: 'chief', scope: 'workspace', path: '/app/agents' },
+    { conversationType: 'dm', agentId: 'personal-chief', scope: 'personal', path: '/app/agents' },
+    { conversationType: 'dm', scope: 'workspace', path: '/app/chat', view: 'dms' },
+    { conversationType: 'personal', agentId: 'chief', scope: 'personal', path: '/app/chat', view: 'personal' },
+    { conversationType: 'personal', scope: 'workspace', path: '/app/chat', view: 'workspace-chats' },
+    { agentId: 'legacy-chief', scope: 'personal', path: '/app/agents' },
+  ] as const
+  for (const target of cases) {
+    const url = new URL(assignmentThreadHref({ ...target, conversationId: 'parent ?&=' }), 'https://example.test')
+    assert.equal(url.pathname, target.path)
+    assert.equal(url.searchParams.get('id'), 'parent ?&=')
+    assert.equal(url.searchParams.get('scope'), target.scope)
+    assert.equal(url.searchParams.get('view'), 'view' in target ? target.view : null)
+    assert.equal(url.searchParams.get('agent'), target.path === '/app/agents' && 'agentId' in target ? target.agentId : null)
+  }
+})
 
 test('Chats destinations always select a personal draft, including without a workspace', () => {
   for (const activeWorkspaceId of [null, 'team-a']) {

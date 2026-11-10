@@ -686,7 +686,7 @@ export function RoomSidePanel({
 }
 
 export function surfaceReadOnlyNotice(surfacePlatform: string): string {
-  return `Mirrored from ${surfacePlatform === 'slack' ? 'Slack' : surfacePlatform} — reply in the original thread.`
+  return `Mirrored from ${surfacePlatform === 'slack' ? 'Slack' : surfacePlatform}. Read-only here; reply in the original thread.`
 }
 
 /** Stands in for the composer: surface-mirrored rooms are read-only in Overlay. */

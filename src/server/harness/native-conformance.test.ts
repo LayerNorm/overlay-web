@@ -573,6 +573,7 @@ it('Lineage — depth, cycles, and external targets are refused before dispatch'
   const directory = [agent('caller', 'Caller'), agent('target', 'Target')]
   const service = new AgentAskService({
     collaboration: {
+      readAgentAssignmentResult: async () => null,
       listMessages: async () => [{ _id: 'trigger', authorKind: 'human', turnId: 'human-turn' }] as never,
       createDirectMessage: async () => ({ conversationId: 'room' }) as never,
       addAgentMessage: async () => 'message',

@@ -47,6 +47,7 @@ export const INTERNAL_TOOL_IDS = new Set<string>([
   'list_agents',
   'ask_agent',
   'read_agent_reply',
+  'resolve_assignment',
   'post_message',
 ])
 

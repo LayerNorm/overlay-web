@@ -95,6 +95,15 @@ function assertNativeDeliveryIdentity(access: NativeHarnessAccess, run: AgentRun
   }
 }
 
+function nativeDeliveryWaitAllowsRenewal(state: HarnessSnapshot, run: AgentRun): boolean {
+  if (['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status)) {
+    return run.status === state.status
+  }
+  // A blocking child-read tool projects a wait while its parent remains running.
+  return state.status === 'running' && state.children.some(child => child.status === 'running')
+    && ['waiting_for_children', 'waiting_for_input', 'waiting_for_approval'].includes(run.status)
+}
+
 function nativeDeliveryIsCurrent(
   access: NativeHarnessAccess,
   state: HarnessSnapshot,
@@ -109,9 +118,7 @@ function nativeDeliveryIsCurrent(
     && Boolean(deliveryOwner) && run.harnessRunId === delivery.runId && run.workflowRunId === deliveryOwner
     && (run.status === 'running' || (state.runId !== delivery.runId
       && ['waiting_for_input', 'waiting_for_approval', 'waiting_for_children', 'waiting_for_resources'].includes(run.status))
-      || (renewalMode && state.runId === delivery.runId
-        && ['waiting_for_resources', 'waiting_for_input', 'waiting_for_approval', 'waiting_for_children'].includes(state.status)
-        && run.status === state.status)
+      || (renewalMode && state.runId === delivery.runId && nativeDeliveryWaitAllowsRenewal(state, run))
       || (cancelledToolProgress && run.status === 'cancelled'))
 }
 
@@ -218,6 +225,7 @@ function assertRoomIdentity(
   context: NativeHarnessContext,
   room: NativeRoomTurnContext,
   humanPrincipalId: string,
+  inheritedSharedRoom: boolean,
 ) {
   const agent = room.directory.agents.find(candidate => candidate.id === access.agentId)
   if (!agent || agent.archivedAt || agent.harness !== 'overlay' || agent.principalId !== access.agentPrincipalId
@@ -228,7 +236,7 @@ function assertRoomIdentity(
   const human = room.participants.some(participant => participant.principalId === humanPrincipalId && participant.principalType === 'human')
   const author = room.participants.some(participant => participant.principalId === access.agentPrincipalId && participant.principalType === 'agent')
   if (!human || !author) throw new FatalError('Native room participation was revoked.')
-  const shared = isSharedRoom({
+  const shared = inheritedSharedRoom || isSharedRoom({
     conversationType: room.conversationType,
     channelVisibility: (room.conversation as { channelVisibility?: string | null }).channelVisibility,
     humanParticipants: room.participants.filter(participant => participant.principalType === 'human').length,
@@ -284,17 +292,18 @@ export async function refreshNativeHarnessAccess(
     }
     await assertPersistedSurfaceSource(surfaceExecution, root.workflowRunId)
   }
-  const [room, workspace, run] = await Promise.all([
+  const [room, workspace, run, roomRestrictions] = await Promise.all([
     loadRoomTurnContext({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
       conversationId: access.conversationId, messageId: access.userMessageId }),
     server.workspaceService.resolveActiveWorkspace(access.actorUserId, access.workspaceId),
     server.appData.repositories.conversations.getLatestAgentRun({
       conversationId: asConversationId(access.conversationId), userId: access.actorUserId, agentRunId: access.agentRunId,
     }),
+    new ConvexHarnessRepository().refreshRoomContextRestrictions({ actorUserId: access.actorUserId, runId: access.runId }),
   ])
   const humanPrincipalId = await resolveHumanPrincipalId(access, state, workspace, room)
   assertNativeDelivery(access, state, delivery, run, allowCancelledToolProgress, options.renewalMode === true)
-  const agent = assertRoomIdentity(access, context, room, humanPrincipalId)
+  const agent = assertRoomIdentity(access, context, room, humanPrincipalId, roomRestrictions.inheritedSharedRoom)
   await assertNativeCapabilities(access, context, toolName)
   const billingProgrammaticSubjectId = surfaceExecution
     ? `surface:slack:${surfaceExecution.bindingId}`

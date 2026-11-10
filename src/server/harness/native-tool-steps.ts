@@ -1,14 +1,19 @@
 import 'server-only'
 
 import { FatalError } from 'workflow'
+import { ConvexError } from 'convex/values'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { buildWorkspaceAgentTooling, type WorkspaceAgentToolingResult } from '@/server/agents/agent-tooling'
 import { resolveWorkspaceAgentInvocations } from '@/server/agents/workspace-agent-invocation'
+import { nativeAgentAssignmentContext } from '@/server/agents/agent-asks/native-assignment-context'
+import { parseByoModelId } from '@/shared/agents/agent-model'
 import { agentStartFailureMessage } from '@/server/app-api/v1/conversations/message/agent-start-failure'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { buildNativeHarnessWorkflowInput } from './native-workflow-input-builder'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
 import { startNativeHarnessNamedChild } from './native-named-child-launch'
+import { cancelHarnessWorkflow } from './workflow-cancellation'
+import { cancelPersonalHarnessWorkflows } from './personal-cancellation'
 import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
 import { refreshNativeHarnessAccess, type NativeHarnessAccess } from './native-access'
 import { logger } from '@/server/observability/logger'
@@ -60,6 +65,7 @@ async function freshTooling(call: NativeToolCall) {
   const tooling = await buildWorkspaceAgentTooling({
     actorUserId: call.access.actorUserId, agentPrincipalId: call.access.agentPrincipalId,
     conversationId: call.access.conversationId, effectiveModelId: call.context.modelId,
+    inheritedSharedRoom: call.context.sharedRoom,
     entitlements: authority.entitlements, paid: authority.paid,
     grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask', computerApprovalContext: 'work',
@@ -189,6 +195,33 @@ export async function executeNativeHarnessTool(call: NativeToolCall, approved: b
 
 executeNativeHarnessTool.maxRetries = 0
 
+async function resolveNativeAssignment(access: NativeHarnessAccess, values: Record<string, unknown>, repository: ConvexHarnessRepository) {
+  if (typeof values.assignmentId !== 'string' || typeof values.attemptId !== 'string'
+    || !['accept', 'exclude', 'cancel'].includes(String(values.action))
+    || (values.reason !== undefined && typeof values.reason !== 'string')) throw new FatalError('Invalid assignment resolution.')
+  let resolution: Awaited<ReturnType<ConvexHarnessRepository['resolveAssignment']>>
+  try {
+    resolution = await repository.resolveAssignment({ actorUserId: access.actorUserId, workspaceId: access.workspaceId,
+      parentRunId: access.runId, workflowRunId: access.workflowRunId, executionGeneration: access.executionGeneration ?? 0,
+      assignmentId: values.assignmentId, attemptId: values.attemptId, action: values.action as 'accept' | 'exclude' | 'cancel', reason: values.reason as string | undefined })
+  } catch (error) {
+    const feedback = error instanceof ConvexError ? error.data : null
+    if (!feedback || typeof feedback !== 'object' || feedback.code !== 'ASSIGNMENT_RESOLUTION_REJECTED'
+      || typeof feedback.error !== 'string' || typeof feedback.hint !== 'string') throw error
+    return { success: false, code: feedback.code, error: feedback.error, hint: feedback.hint,
+      ...(typeof feedback.currentAttemptId === 'string' ? { currentAttemptId: feedback.currentAttemptId } : {}) }
+  }
+  for (const workflowRunId of resolution.workflows) await cancelHarnessWorkflow(workflowRunId)
+  if (resolution.cancellationRoot) await cancelPersonalHarnessWorkflows(resolution.cancellationRoot)
+  return { assignmentId: resolution.assignmentId, attemptId: resolution.attemptId, disposition: resolution.disposition, reason: resolution.reason }
+}
+
+function assertNativeAgentRequest(toolCallId: string, toolName: string) {
+  if (!toolCallId || toolCallId.length > 256 || !['ask_agent', 'post_message', 'resolve_assignment'].includes(toolName)) {
+    throw new FatalError('Invalid native agent request.')
+  }
+}
+
 export async function dispatchNativeHarnessAgentRequest(
   access: NativeHarnessToolsInput['access'],
   context: NativeHarnessToolsInput['context'],
@@ -197,14 +230,15 @@ export async function dispatchNativeHarnessAgentRequest(
   input: unknown,
 ): Promise<unknown> {
   'use step'
-  if (!toolCallId || toolCallId.length > 256 || !['ask_agent', 'post_message'].includes(toolName)) {
-    throw new FatalError('Invalid native agent request.')
-  }
+  assertNativeAgentRequest(toolCallId, toolName)
   await refreshNativeHarnessAccess(access, context, toolName)
   const values = input && typeof input === 'object' && !Array.isArray(input)
     ? input as Record<string, unknown> : {}
   const server = getOverlayServerContext()
   const repository = new ConvexHarnessRepository()
+  if (toolName === 'resolve_assignment') {
+    return await resolveNativeAssignment(access, values, repository)
+  }
   const childRunIds: string[] = []
   const startTurns = async (args: {
     actorUserId: string
@@ -241,6 +275,7 @@ export async function dispatchNativeHarnessAgentRequest(
           workspaceId: args.workspaceId,
           conversationId: args.conversationId,
           runId: turn.runId,
+          parentRunId: parent.runId,
           memoryEnabled: false,
           surfaceRootRunId: parent.rootRunId,
           expectedSurfaceWorkflowRunId,
@@ -318,10 +353,51 @@ export async function dispatchNativeHarnessAgentRequest(
   }
   if (toolName === 'ask_agent') {
     if (typeof values.agent !== 'string' || typeof values.message !== 'string') throw new FatalError('Invalid ask_agent input.')
+    if ((values.assignmentId !== undefined && typeof values.assignmentId !== 'string')
+      || (values.expectedAttemptId !== undefined && typeof values.expectedAttemptId !== 'string')) throw new FatalError('Invalid assignment revision input.')
     const target = values.agent
     const message = values.message
+    const directory = await server.workspaceAgentService.list({
+      actorUserId: access.actorUserId,
+      workspaceId: access.workspaceId,
+    })
+    const normalizedTarget = target.trim().toLocaleLowerCase()
+    const targetAgent = directory.agents.find(agent => agent.id === target.trim()
+      || agent.name.trim().toLocaleLowerCase() === normalizedTarget)
+    if (targetAgent) {
+      const [remoteTarget, bindings] = await Promise.all([
+        server.appData.repositories.connectedAgents.findInvocationTarget({
+          workspaceId: access.workspaceId,
+          agentId: targetAgent.id,
+          now: Date.now(),
+          onlineWithinMs: 45_000,
+        }),
+        server.appData.repositories.connectedAgents.listBindings({
+          workspaceId: access.workspaceId,
+          agentId: targetAgent.id,
+        }),
+      ])
+      if (targetAgent.harness !== 'overlay' || parseByoModelId(targetAgent.modelId) !== null
+        || remoteTarget || bindings.length > 0) {
+        throw new FatalError("External agents can't be asked from this run yet.")
+      }
+    }
+    const parent = await loadNativeParentRun(repository, access)
     return executeWithNativeHarnessToolProgress(progressCall, async () => ({
-      ...await server.agentAsks.ask({ ...actor, target, message, wait: false }),
+      ...await server.agentAsks.ask({
+        ...actor,
+        target,
+        message,
+        assignmentId: typeof values.assignmentId === 'string' ? values.assignmentId : undefined,
+        expectedAttemptId: typeof values.expectedAttemptId === 'string' ? values.expectedAttemptId : undefined,
+        wait: false,
+        nativeAssignment: nativeAgentAssignmentContext({
+          parentConversationId: access.conversationId,
+          parentRunId: access.runId,
+          rootRunId: parent.rootRunId,
+          toolCallId,
+        }),
+      }),
       childRunIds,
     }))
   }

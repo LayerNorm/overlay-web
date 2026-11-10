@@ -72,6 +72,7 @@ export const OVERLAY_TOOL_IDS = [
   'list_agents',
   'ask_agent',
   'read_agent_reply',
+  'resolve_assignment',
   'post_message',
   ...COMPUTER_TOOL_IDS,
   ...GENERATION_TOOL_IDS,

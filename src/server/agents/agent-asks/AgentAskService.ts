@@ -19,6 +19,9 @@ import {
 import type { ConversationMessageRow } from '@/server/conversations/ActConversationRepository'
 import type { ConversationCollaborationRepository } from '@/server/conversations/ConversationCollaborationRepository'
 import type { AgentRun } from '@/shared/agents/agent-run'
+import { parseByoModelId } from '@/shared/agents/agent-model'
+import type { NativeAgentAssignmentContext } from './native-assignment-context'
+import type { AssignmentResultView } from '@/shared/agents/assignment-result'
 import {
   HARNESS_DISPATCH_REQUIRED_CODE,
   HARNESS_DISPATCH_REQUIRED_MESSAGE,
@@ -38,7 +41,7 @@ export class AgentAskError extends Error {
 }
 
 type Collaboration = Pick<ConversationCollaborationRepository,
-  'createDirectMessage' | 'addAgentMessage' | 'addMessage' | 'listMessages' | 'listParticipants' | 'getAccessibleConversation'>
+  'createDirectMessage' | 'createAgentAssignment' | 'readAgentAssignmentResult' | 'addAgentMessage' | 'addMessage' | 'listMessages' | 'listParticipants' | 'getAccessibleConversation'>
 
 export type AgentAskStatus = 'completed' | 'working' | 'failed'
 export type AgentAskResult = {
@@ -47,6 +50,9 @@ export type AgentAskResult = {
   /** Where the asked agent answers, to read it later with `read`. */
   conversationId: string
   turnId: string
+  assignmentId?: string
+  attemptId?: string
+  result?: AssignmentResultView
   reply?: string
   error?: string
 }
@@ -57,9 +63,17 @@ type StartTurns = (args: {
   initiatorPrincipalId: string; prompt: string; turnId: string; workspaceId: string
 }) => Promise<Array<{ agentId: string; turnId: string }>>
 
-type BudgetClaim = { ok: true } | { ok: false; reason: 'budget' | 'turn_limit' }
+type BudgetClaim = { ok: true; alreadyClaimed?: boolean } | { ok: false; reason: 'budget' | 'turn_limit' }
 type Caller = { agentId: string; conversationId: string; turnId: string }
 type Person = { actorUserId: string; actorPrincipalId: string; workspaceId: string }
+
+function assertAssignmentContext(args: { nativeAssignment?: NativeAgentAssignmentContext; caller?: Caller; assignmentId?: string }, target: WorkspaceAgentDirectoryItem) {
+  if (args.nativeAssignment && (target.harness !== 'overlay' || parseByoModelId(target.modelId) !== null)) {
+    throw new AgentAskError("External agents can't be asked from this run yet.", 409, 'native_external_agent_unsupported')
+  }
+  if (args.nativeAssignment && !args.caller) throw new AgentAskError('Native assignment identity is missing.', 400, 'invalid_assignment')
+  if (args.assignmentId && !args.nativeAssignment) throw new AgentAskError('Revisions require a native assignment context.', 409, 'native_assignment_required')
+}
 
 /**
  * Agents asking agents. The question is posted as a message by the asking agent into a conversation of the person,
@@ -79,9 +93,9 @@ export class AgentAskService {
     /** The agents the person can see, which is also who they can ask. */
     directory: (actorUserId: string, workspaceId: string) => Promise<WorkspaceAgentDirectoryItem[]>
     /** Takes one question from the request's and the turn's budgets. */
-    claimBudget: (args: { workspaceId: string; rootKey: string; turnKey: string; maxRoot: number; maxTurn: number }) => Promise<BudgetClaim>
+    claimBudget: (args: { workspaceId: string; rootKey: string; turnKey: string; maxRoot: number; maxTurn: number; dispatchId?: string }) => Promise<BudgetClaim>
     /** Gives back a question taken by `claimBudget` when it could not be asked. */
-    releaseBudget: (args: { workspaceId: string; rootKey: string; turnKey: string }) => Promise<void>
+    releaseBudget: (args: { workspaceId: string; rootKey: string; turnKey: string; dispatchId?: string }) => Promise<void>
     /** Remembers a reply a request's question started, and lists them, to add up what a chain has used. */
     /** Starts the addressed agents' turns for a message; returns the turns it opened. */
     startTurns: StartTurns
@@ -105,6 +119,9 @@ export class AgentAskService {
   async ask(args: Person & {
     /** The asking agent and the turn it is in; absent for an outside app asking for the person. */
     caller?: Caller
+    nativeAssignment?: NativeAgentAssignmentContext
+    assignmentId?: string
+    expectedAttemptId?: string
     target: string
     message: string
     wait: boolean
@@ -115,6 +132,7 @@ export class AgentAskService {
     const visible = await this.visibleAgents(args)
     const target = this.findAgent(visible, args.target)
     if (!target) throw new AgentAskError(`No agent called "${args.target.trim()}" that you can ask. Use list_agents to see who is available.`, 404, 'agent_not_found')
+    assertAssignmentContext(args, target)
     if (!args.caller) return await this.askAsPerson({ ...args, message, target })
 
     const { caller, lineage } = await this.callerLineage(args, visible, args.caller)
@@ -124,27 +142,62 @@ export class AgentAskService {
     })
     if (!next.ok) throw new AgentAskError(ASK_REFUSAL_MESSAGE[next.refusal], 409, `ask_${next.refusal}`)
     const keys = { workspaceId: args.workspaceId, rootKey: `root:${lineage.rootTurnId}`, turnKey: `turn:${args.caller.turnId}` }
-    const claim = await this.dependencies.claimBudget({ ...keys, maxRoot: MAX_AGENT_ASKS_PER_ROOT, maxTurn: MAX_AGENT_ASKS_PER_TURN })
+    const dispatchId = args.nativeAssignment?.idempotencyKey
+    const claim = await this.dependencies.claimBudget({
+      ...keys, ...(dispatchId ? { dispatchId } : {}),
+      maxRoot: MAX_AGENT_ASKS_PER_ROOT, maxTurn: MAX_AGENT_ASKS_PER_TURN,
+    })
     if (!claim.ok) throw new AgentAskError(ASK_REFUSAL_MESSAGE[claim.reason], 429, `ask_${claim.reason}`)
+    let assignmentCreated = false
     try {
-      const room = await this.dependencies.collaboration.createDirectMessage({
-        actorUserId: args.actorUserId,
-        workspaceId: args.workspaceId,
-        principalIds: [args.actorPrincipalId, caller.principalId, target.principalId],
-        title: `${caller.name} & ${target.name}`,
-      })
       const content = `Asked by ${caller.name}: ${message}`
-      const questionTurnId = `ask_${createHash('sha256').update(`${args.caller.turnId}:${target.id}:${message}`).digest('hex').slice(0, 24)}`
+      const dispatchAssignmentId = args.nativeAssignment
+        ? `assignment_${createHash('sha256').update(`${args.nativeAssignment.parentRunId}\0${args.nativeAssignment.toolCallId}\0${target.id}`).digest('hex')}`
+        : undefined
+      const assignmentId = args.assignmentId ?? dispatchAssignmentId
+      const questionTurnId = dispatchAssignmentId
+        ? `ask_${createHash('sha256').update(dispatchAssignmentId).digest('hex').slice(0, 24)}`
+        : `ask_${createHash('sha256').update(`${args.caller.turnId}:${target.id}:${message}`).digest('hex').slice(0, 24)}`
+      const room = args.nativeAssignment && assignmentId
+        ? await this.dependencies.collaboration.createAgentAssignment({
+            workspaceId: args.workspaceId,
+            requesterUserId: args.actorUserId,
+            assignmentId,
+            idempotencyKey: args.nativeAssignment.idempotencyKey,
+            toolCallId: args.nativeAssignment.toolCallId,
+            parentConversationId: args.nativeAssignment.parentConversationId,
+            parentRunId: args.nativeAssignment.parentRunId,
+            rootRunId: args.nativeAssignment.rootRunId,
+            callerAgentId: caller.id,
+            assignedAgentId: target.id,
+            brief: message,
+            questionTurnId,
+            revisionOfAssignmentId: args.assignmentId,
+            expectedAttemptId: args.expectedAttemptId,
+          })
+        : await this.dependencies.collaboration.createDirectMessage({
+            actorUserId: args.actorUserId,
+            workspaceId: args.workspaceId,
+            principalIds: [args.actorPrincipalId, caller.principalId, target.principalId],
+            title: `${caller.name} & ${target.name}`,
+          })
+      assignmentCreated = Boolean(args.nativeAssignment)
       const posted = await this.postAsAgent({
         person: args, caller, conversationId: room.conversationId, content, turnId: questionTurnId, lineage: next.lineage,
         mentions: [target], startTurns: args.startTurns,
       })
       const turn = posted.turns.find((candidate) => candidate.agentId === target.id)
       if (!turn) throw new AgentAskError(`${target.name} could not be reached.`, 502, 'agent_unreachable')
-      return await this.finishAsk({ person: args, agent: target.name, conversationId: room.conversationId, turnId: turn.turnId, wait: args.wait })
+      const result = await this.finishAsk({
+        person: args, agent: target.name, conversationId: room.conversationId, turnId: turn.turnId, wait: args.wait,
+      })
+      return assignmentId ? { ...result, assignmentId, ...('attemptId' in room ? { attemptId: room.attemptId } : {}) } : result
     } catch (error) {
       // Nothing reached the other agent, so the question is not spent.
-      await this.dependencies.releaseBudget(keys).catch((_releaseError) => undefined)
+      if (!dispatchId || (claim.alreadyClaimed !== true && !assignmentCreated)) {
+        await this.dependencies.releaseBudget({ ...keys, ...(dispatchId ? { dispatchId } : {}) })
+          .catch((_releaseError) => undefined)
+      }
       throw error
     }
   }
@@ -232,6 +285,14 @@ export class AgentAskService {
       actorUserId: args.actorUserId, conversationId: args.conversationId, workspaceId: args.workspaceId,
     })
     if (!accessible) throw new AgentAskError('That conversation was not found.', 404, 'not_found')
+    const assignment = await this.dependencies.collaboration.readAgentAssignmentResult(args)
+    if (assignment) {
+      const status = assignment.state !== 'ready' ? 'working' : assignment.runStatus === 'completed' ? 'completed' : 'failed'
+      return { status, agent: 'The agent', conversationId: args.conversationId, turnId: args.turnId,
+        assignmentId: assignment.assignmentId, attemptId: assignment.attemptId, result: assignment,
+        ...(assignment.state === 'ready' ? { reply: assignment.reply } : {}),
+        ...(status === 'failed' ? { error: assignment.failureReason ?? 'Assignment failed.' } : {}) }
+    }
     const reply = await this.findReply(args)
     return this.resultFrom(reply, { agent: 'The agent', conversationId: args.conversationId, turnId: args.turnId })
   }
@@ -391,9 +452,8 @@ export class AgentAskService {
     const now = this.dependencies.now ?? Date.now
     const sleep = this.dependencies.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
     const deadline = now() + (this.dependencies.waitMs ?? REPLY_WAIT_MS)
-    const handle = { agent: args.agent, conversationId: args.conversationId, turnId: args.turnId }
     for (;;) {
-      const result = this.resultFrom(await this.findReply(args), handle)
+      const result = { ...await this.read(args), agent: args.agent }
       if (result.status !== 'working' || now() >= deadline) return result
       await sleep(REPLY_POLL_MS)
     }

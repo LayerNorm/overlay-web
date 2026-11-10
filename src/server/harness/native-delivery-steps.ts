@@ -21,6 +21,17 @@ import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnos
 
 type Delivery = ReturnType<typeof buildPersonalHarnessDelivery>
 
+export async function readNativeAssignmentResult(access: NativeHarnessAccess, childRunId: string) {
+  'use step'
+  return await new ConvexHarnessRepository().readAssignmentResult({ actorUserId: access.actorUserId,
+    workspaceId: access.workspaceId, parentRunId: access.runId, childRunId })
+}
+
+export async function settleNativeAssignmentResult(access: NativeHarnessAccess) {
+  'use step'
+  await new ConvexHarnessRepository().settleAssignmentResult(access.runId)
+}
+
 function assertNativeDeliveryOwnership(
   access: NativeHarnessAccess,
   state: Awaited<ReturnType<ConvexHarnessRepository['get']>>,

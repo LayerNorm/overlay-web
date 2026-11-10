@@ -31,4 +31,15 @@ describe('Convex agent ask budgets', () => {
       serverSecret: 'wrong', workspaceId, rootKey: 'a', turnKey: 'b', maxRoot: 1, maxTurn: 1, now,
     })).rejects.toThrow()
   })
+  test('a trusted native dispatch replay reuses its persisted claim at the budget boundary', async () => {
+    const convex = convexTest(schema, modules)
+    const claim = (dispatchId: string) => convex.mutation(mutation('claimAgentAskByServer'), {
+      serverSecret: secret, workspaceId, rootKey: 'root:native', turnKey: 'turn:native',
+      dispatchId, maxRoot: 1, maxTurn: 1, now,
+    })
+    expect(await claim('dispatch:one')).toEqual({ ok: true, alreadyClaimed: false })
+    expect(await claim('dispatch:one')).toEqual({ ok: true, alreadyClaimed: true })
+    expect(await claim('dispatch:two')).toEqual({ ok: false, reason: 'budget' })
+  })
+
 })

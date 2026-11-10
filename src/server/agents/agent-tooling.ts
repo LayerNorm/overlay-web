@@ -161,6 +161,7 @@ export async function buildWorkspaceAgentTooling(args: {
   agentPrincipalId: string
   conversationId: string
   effectiveModelId: string
+  inheritedSharedRoom?: boolean
   entitlements: Entitlements
   grant: WorkspaceAgentToolGrant
   /** Stable per-turn key so a retried turn does not repeat side effects. */
@@ -174,7 +175,7 @@ export async function buildWorkspaceAgentTooling(args: {
 }): Promise<WorkspaceAgentToolingResult> {
   const { capabilities, overlayToolIds } = resolveAgentGrant(args.grant)
   // The room rule: in a room others can read, the summoner's private reach is withheld (see `prepareActTooling`).
-  const [sharedRoom, assignedTaskId] = await Promise.all([
+  const [localSharedRoom, assignedTaskId] = await Promise.all([
     resolveSharedRoom({
       actorUserId: args.actorUserId,
       conversationId: args.conversationId,
@@ -187,6 +188,7 @@ export async function buildWorkspaceAgentTooling(args: {
       workspaceId: args.workspaceId,
     }),
   ])
+  const sharedRoom = Boolean(args.inheritedSharedRoom || localSharedRoom)
   // An assigned task's thread carries the tools to work that task, scoped to it below.
   const assignmentToolIds = assignedTaskId ? assignedTaskToolIdsToAdd(overlayToolIds) : []
   const tooling = await prepareActTooling({

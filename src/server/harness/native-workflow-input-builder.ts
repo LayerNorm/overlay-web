@@ -19,6 +19,7 @@ type NativeInputArgs = {
   conversationId: string
   runId: string
   memoryEnabled: boolean
+  parentRunId?: string
   threadRootMessageId?: string
   surfaceRootRunId?: string
   expectedSurfaceWorkflowRunId?: string
@@ -61,6 +62,7 @@ async function prepareNativeRoomInputs(
   args: NativeInputArgs,
   run: AgentRun,
   execution: SurfaceTurnExecution | null,
+  inheritedSharedRoom: boolean,
 ): Promise<PreparedWorkspaceInputs> {
   const isSurfaceRoot = execution?.agentRunId === run.id
   return await prepareWorkspaceAgentInputs({
@@ -71,6 +73,7 @@ async function prepareNativeRoomInputs(
     memoryEnabled: args.memoryEnabled,
     workspaceId: args.workspaceId,
     includeAutoRetrieval: false,
+    inheritedSharedRoom,
     ...(execution ? {
       ...(isSurfaceRoot ? {
         turnIdOverride: execution.turnId,
@@ -101,9 +104,10 @@ function buildNativeWorkflowInput(
   run: AgentRun,
   surfaceExecution: SurfaceTurnExecution | null,
   prepared: PreparedWorkspaceInputs,
+  inheritedSharedRoom: boolean,
 ): NativeHarnessWorkflowInput {
   const room = prepared.room
-  const sharedRoom = isSharedRoom({
+  const sharedRoom = inheritedSharedRoom || isSharedRoom({
     conversationType: room.conversationType,
     channelVisibility: (room.conversation as { channelVisibility?: string | null }).channelVisibility,
     humanParticipants: room.participants.filter(participant => participant.principalType === 'human').length,
@@ -132,6 +136,7 @@ function buildNativeWorkflowInput(
     definitions: prepared.toolDefinitions,
     instructions: buildAgentSystemPrompt({
       agentName: prepared.agent.name,
+      agentRole: prepared.agent.agentRole,
       contextBlock: surfaceExecution
         ? `This request arrived through Slack in the channel bound to this agent. Treat the imported user message as the complete task request. Do not promise that Slack replies will resume an Overlay input or approval wait.\n\n${prepared.turnContext.contextBlock}`
         : prepared.turnContext.contextBlock,
@@ -153,8 +158,21 @@ export async function buildNativeHarnessWorkflowInput(args: NativeInputArgs): Pr
     userId: args.actorUserId,
   })
   assertNativeRunIdentity(run, args)
-  const surfaceExecution = await loadSurfaceExecution(args, run)
-  const prepared = await prepareNativeRoomInputs(args, run, surfaceExecution)
+  const repository = new ConvexHarnessRepository()
+  const restrictionLookup = args.parentRunId || run.harnessRunId
+    ? repository.refreshRoomContextRestrictions({
+      actorUserId: args.actorUserId,
+      runId: args.parentRunId ?? run.harnessRunId!,
+    })
+    : repository.resolveConversationRoomRestrictions({
+      actorUserId: args.actorUserId, workspaceId: args.workspaceId, conversationId: args.conversationId,
+    })
+  const [surfaceExecution, roomRestrictions] = await Promise.all([
+    loadSurfaceExecution(args, run),
+    restrictionLookup,
+  ])
+  const inheritedSharedRoom = roomRestrictions.inheritedSharedRoom
+  const prepared = await prepareNativeRoomInputs(args, run, surfaceExecution, inheritedSharedRoom)
   assertPreparedRoomIdentity(args, run, prepared)
-  return buildNativeWorkflowInput(args, run, surfaceExecution, prepared)
+  return buildNativeWorkflowInput(args, run, surfaceExecution, prepared, inheritedSharedRoom)
 }

@@ -58,6 +58,98 @@ async function fixture(options: { workFeature?: boolean } = {}) {
 
 const titles = (items: unknown) => (items as Item[]).map(item => item.title)
 
+async function assignmentFixture() {
+  const data = await fixture()
+  const assignment = await data.t.run(async ctx => {
+    const role = await ctx.db.query('authorizationRoles').withIndex('by_roleId', q => q.eq('roleId', 'worker')).unique()
+    await ctx.db.patch(role!._id, { capabilities: ['work.use', 'conversations.read'] })
+    for (const agentId of ['chief', 'specialist']) await ctx.db.insert('workspaceAgentDefinitions', {
+      agentId, workspaceId: 'ws', principalId: agentId, name: agentId, instructions: '', harness: 'overlay',
+      modelId: 'openrouter/free', allowedToolIds: [], invocationPolicy: 'mention', createdByPrincipalId: 'p-alice', createdAt: 1, updatedAt: 1,
+    })
+    const parent = await ctx.db.insert('conversations', { userId: 'alice', workspaceId: 'ws', conversationType: 'dm', title: 'Outcome', lastModified: 1, createdAt: 1, lastMode: 'act', askModelIds: [], actModelId: 'openrouter/free' })
+    const child = await ctx.db.insert('conversations', { userId: 'alice', workspaceId: 'ws', conversationType: 'dm', title: 'Specialist result', lastModified: 1, createdAt: 1, lastMode: 'act', askModelIds: [], actModelId: 'openrouter/free' })
+    for (const conversationId of [parent, child]) await ctx.db.insert('conversationParticipants', {
+      conversationId, workspaceId: 'ws', principalId: 'p-alice', principalType: 'human', role: 'member', status: 'active', notificationLevel: 'all', joinedAt: 1, updatedAt: 1,
+    })
+    await ctx.db.insert('agentAssignments', { workspaceId: 'ws', assignmentId: 'assignment', idempotencyKey: 'key', parentConversationId: parent,
+      parentRunId: 'parent', rootRunId: 'parent', callerAgentId: 'chief', assignedAgentId: 'specialist', requesterUserId: 'alice', conversationId: child,
+      brief: 'Do work', questionTurnId: 'question', createdAt: 1 })
+    return { parent, child }
+  })
+  const read = (userId = 'alice', view: 'personal' | 'workspace' = 'workspace') => data.as(userId).query(makeFunctionReference<'query'>('work/browse:assignments'), {
+    workspaceId: 'ws', view, paginationOpts: { numItems: 25, cursor: null },
+  }) as Promise<{ page: Array<{ assignmentId: string; title: string; origin?: { channelName?: string }; status: string }> }>
+  return { ...data, ...assignment, read }
+}
+
+test('Work projects assignment executions without creating tasks and requires both conversation ACLs', async () => {
+  const data = await assignmentFixture()
+  expect((await data.read()).page).toMatchObject([{ assignmentId: 'assignment', title: 'Specialist result', status: 'queued', brief: 'Do work', agentName: 'specialist', agent: {}, createdAt: 1, parent: { title: 'Outcome' } }])
+  expect((await data.read('alice', 'workspace')).page).toHaveLength(1)
+  expect((await data.read('alice', 'personal')).page).toEqual([])
+  expect((await data.read('bob')).page).toEqual([])
+  expect((await data.read('carol')).page).toEqual([])
+  expect(await data.t.run(ctx => ctx.db.query('workItems').collect())).toHaveLength(4)
+  await data.t.run(async ctx => {
+    const parent = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', data.parent).eq('principalId', 'p-alice')).unique()
+    await ctx.db.patch(parent!._id, { status: 'removed' })
+  })
+  expect((await data.read()).page).toEqual([])
+  await data.t.run(async ctx => {
+    const parent = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', data.parent).eq('principalId', 'p-alice')).unique()
+    await ctx.db.patch(parent!._id, { status: 'active' })
+    const child = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', data.child).eq('principalId', 'p-alice')).unique()
+    await ctx.db.delete(child!._id)
+  })
+  expect((await data.read()).page).toEqual([])
+})
+
+test('Work projects a cancelled never-launched attempt with its terminal reason', async () => {
+  const data = await assignmentFixture()
+  await data.t.run(async ctx => {
+    const assignment = await ctx.db.query('agentAssignments').withIndex('by_assignmentId', q => q.eq('assignmentId', 'assignment')).unique()
+    await ctx.db.patch(assignment!._id, { currentAttemptId: 'attempt' })
+    await ctx.db.insert('agentAssignmentAttempts', {
+      workspaceId: 'ws', assignmentId: 'assignment', conversationId: data.child, attemptId: 'attempt', ordinal: 1,
+      dispatchKey: 'key', dispatchFingerprint: 'fingerprint', parentRunId: 'parent', rootRunId: 'parent',
+      requesterUserId: 'alice', brief: 'Do work', questionTurnId: 'question', createdAt: 1,
+      cancelledAt: 2, cancellationReason: 'Parent run ended before this assignment started',
+    })
+  })
+  expect((await data.read()).page).toMatchObject([{ status: 'cancelled', result: {
+    failureReason: 'Parent run ended before this assignment started',
+  } }])
+})
+
+test.each(['channel', 'dm', 'personal'] as const)('Work projects the authorized parent conversation kind: %s', async conversationType => {
+  const data = await assignmentFixture()
+  await data.t.run(ctx => ctx.db.patch(data.parent, { conversationType }))
+  expect((await data.read()).page).toMatchObject([{ parent: {
+    conversationId: data.parent, conversationType, scope: conversationType === 'personal' ? 'personal' : 'workspace',
+  } }])
+  expect((await data.read('bob')).page).toEqual([])
+})
+
+test('Work assignment archive is live and origin disappears after connection revocation', async () => {
+  const data = await assignmentFixture()
+  const connection = await data.t.run(async ctx => {
+    const id = await ctx.db.insert('surfaceConnections', { id: 'connection', workspaceId: 'ws', platform: 'slack', externalTeamId: 'team',
+      externalTeamName: 'QA', status: 'active', createdAt: 1, updatedAt: 1, installedByUserId: 'alice' })
+    await ctx.db.insert('surfaceThreadLinks', { workspaceId: 'ws', platform: 'slack', connectionId: 'connection', externalTeamId: 'team',
+      channelId: 'channel', threadId: 'thread', conversationId: data.parent, channelName: 'launch', originalBindingId: 'binding', createdAt: 1, updatedAt: 1 })
+    return id
+  })
+  expect((await data.read()).page[0]?.origin?.channelName).toBe('launch')
+  await data.t.run(ctx => ctx.db.patch(connection, { status: 'uninstalled' }))
+  expect((await data.read()).page[0]?.origin).toBeUndefined()
+  await data.t.run(async ctx => {
+    const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', data.child).eq('principalId', 'p-alice')).unique()
+    await ctx.db.patch(participant!._id, { archivedAt: 1 })
+  })
+  expect((await data.read()).page).toEqual([])
+})
+
 test('members with Work see their tasks in board order and shared ones, as client task views', async () => {
   const { as, ids } = await fixture()
   const items = await as('alice').query(fn.list, { workspaceId: 'ws', view: 'personal' }) as Item[]

@@ -287,6 +287,11 @@ export default defineSchema({
     replies: v.optional(v.array(v.object({ conversationId: v.string(), turnId: v.string() }))),
   }).index('by_workspaceId_key', ['workspaceId', 'key']),
 
+  agentAskDispatchClaims: defineTable({
+    workspaceId: v.string(), dispatchId: v.string(), rootKey: v.string(), turnKey: v.string(),
+    state: v.union(v.literal('claimed'), v.literal('released')), updatedAt: v.number(),
+  }).index('by_workspaceId_dispatchId', ['workspaceId', 'dispatchId']),
+
   agentProfiles: defineTable({
     workspaceId: v.string(),
     agentId: v.string(),
@@ -1510,6 +1515,91 @@ export default defineSchema({
     .index('by_runner_status_leaseExpiresAt', ['runner', 'status', 'leaseExpiresAt'])
     .index('by_assistantMessageId', ['assistantMessageId'])
     .index('by_turn_variant', ['conversationId', 'turnId', 'variantIndex']),
+
+  agentAssignments: defineTable({
+    workspaceId: v.string(),
+    assignmentId: v.string(),
+    idempotencyKey: v.string(),
+    parentConversationId: v.id('conversations'),
+    parentRunId: v.string(),
+    rootRunId: v.string(),
+    callerAgentId: v.string(),
+    assignedAgentId: v.string(),
+    requesterUserId: v.string(),
+    conversationId: v.id('conversations'),
+    brief: v.string(),
+    questionTurnId: v.string(),
+    currentAttemptId: v.optional(v.string()),
+    coordinationRevision: v.optional(v.number()),
+    expectedDeliverable: v.optional(v.string()),
+    contextRefs: v.optional(v.array(v.object({ type: v.string(), id: v.string() }))),
+    dependsOnAssignmentIds: v.optional(v.array(v.string())),
+    authorityPolicyVersion: v.optional(v.number()),
+    updatedAt: v.optional(v.number()),
+    createdAt: v.number(),
+  })
+    .index('by_workspaceId_createdAt', ['workspaceId', 'createdAt'])
+    .index('by_workspaceId_idempotencyKey', ['workspaceId', 'idempotencyKey'])
+    .index('by_assignmentId', ['assignmentId'])
+    .index('by_parentConversationId', ['parentConversationId'])
+    .index('by_conversationId', ['conversationId']),
+
+  agentAssignmentAttempts: defineTable({
+    workspaceId: v.string(), assignmentId: v.string(), conversationId: v.id('conversations'),
+    attemptId: v.string(), ordinal: v.number(), dispatchKey: v.string(), dispatchFingerprint: v.string(),
+    expectedAttemptId: v.optional(v.string()), parentRunId: v.string(), rootRunId: v.string(),
+    requesterUserId: v.string(), brief: v.string(), questionTurnId: v.string(),
+    questionMessageId: v.optional(v.id('conversationMessages')), replyTurnId: v.optional(v.string()),
+    deliveryAgentRunId: v.optional(v.id('conversationAgentRuns')), childRunId: v.optional(v.string()),
+    assistantMessageId: v.optional(v.id('conversationMessages')), resultId: v.optional(v.id('agentAssignmentResults')),
+    disposition: v.optional(v.union(v.literal('accepted'), v.literal('revision_requested'), v.literal('excluded'))),
+    dispositionReason: v.optional(v.string()), disposedByRunId: v.optional(v.string()), disposedAt: v.optional(v.number()),
+    cancelledAt: v.optional(v.number()), cancellationReason: v.optional(v.string()),
+    createdAt: v.number(),
+  }).index('by_attemptId', ['attemptId'])
+    .index('by_parentRunId', ['parentRunId'])
+    .index('by_workspaceId_dispatchKey', ['workspaceId', 'dispatchKey'])
+    .index('by_assignmentId_ordinal', ['assignmentId', 'ordinal'])
+    .index('by_childRunId', ['childRunId'])
+    .index('by_conversationId_replyTurnId', ['conversationId', 'replyTurnId'])
+    .index('by_conversationId_questionTurnId', ['conversationId', 'questionTurnId']),
+
+  agentAssignmentResults: defineTable({
+    workspaceId: v.string(), assignmentId: v.string(), attemptId: v.string(), childRunId: v.string(),
+    deliveryAgentRunId: v.id('conversationAgentRuns'), sourceRevision: v.number(), runStatus: v.string(),
+    terminal: v.boolean(), publicationPending: v.boolean(), blocker: v.optional(v.any()), summary: v.string(),
+    finalReplyMessageId: v.optional(v.id('conversationMessages')), replyTurnId: v.string(),
+    replyDigest: v.optional(v.string()),
+    artifactRefs: v.array(v.string()), toolResultRefs: v.array(v.string()),
+    failureReason: v.optional(v.string()), usageRef: v.string(), createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_attemptId', ['attemptId']).index('by_childRunId', ['childRunId']),
+
+  surfaceThreadLinks: defineTable({
+    workspaceId: v.string(), platform: v.literal('slack'), connectionId: v.string(), externalTeamId: v.string(),
+    channelId: v.string(), threadId: v.string(), conversationId: v.id('conversations'),
+    channelName: v.optional(v.string()), originalBindingId: v.string(), createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_external_thread', ['platform', 'connectionId', 'externalTeamId', 'channelId', 'threadId'])
+    .index('by_conversationId', ['conversationId']),
+
+  agentAssignmentLaunchIntents: defineTable({
+    attemptId: v.string(), parentRunId: v.string(), generation: v.number(),
+    state: v.union(v.literal('pending'), v.literal('launched'), v.literal('settled'), v.literal('cancelled')),
+    winnerWorkflowRunId: v.optional(v.string()), attempts: v.number(), nextAttemptAt: v.number(),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_attemptId', ['attemptId']).index('by_parentRunId', ['parentRunId'])
+    .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt']),
+
+  agentConversationTurnQueue: defineTable({
+    conversationId: v.id('conversations'), deliveryAgentRunId: v.id('conversationAgentRuns'),
+    requesterUserId: v.string(), workspaceId: v.string(), attemptId: v.optional(v.string()),
+    authorityPolicyVersion: v.number(), agentId: v.string(), initiatorPrincipalId: v.string(),
+    memoryEnabled: v.optional(v.boolean()),
+    state: v.union(v.literal('pending'), v.literal('claimed'), v.literal('settled'), v.literal('cancelled')),
+    generation: v.number(), winnerWorkflowRunId: v.optional(v.string()), attempts: v.number(), nextAttemptAt: v.number(),
+    createdAt: v.number(), updatedAt: v.number(),
+  }).index('by_deliveryAgentRunId', ['deliveryAgentRunId'])
+    .index('by_conversationId_state', ['conversationId', 'state', 'createdAt'])
+    .index('by_state_nextAttemptAt', ['state', 'nextAttemptAt']),
 
   conversationMessages: defineTable({
     conversationId: v.id('conversations'),
@@ -3010,6 +3100,7 @@ export default defineSchema({
     runId: v.string(),
     actorUserId: v.string(),
     rootRunId: v.string(),
+    sharedRoomRestriction: v.optional(v.boolean()),
     deliveryAgentRunId: v.optional(v.string()),
     parentRunId: v.optional(v.string()),
     activeDescendantCount: v.number(),

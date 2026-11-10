@@ -64,7 +64,7 @@ export async function startNativeHarnessNamedChild(
   parent: NativeHarnessAccess,
   input: NativeHarnessWorkflowInput,
   childRunId: string,
-): Promise<string> {
+): Promise<string | null> {
   'use step'
   const repository = new ConvexHarnessRepository()
   const parentState = await repository.get(parent)
@@ -78,6 +78,7 @@ export async function startNativeHarnessNamedChild(
     userId: access.actorUserId,
   }) as AgentRun | null
   assertDeliveryIdentity(run, child, access, childRunId)
+  if (!await repository.acquireNativeTurn({ actorUserId: access.actorUserId, deliveryAgentRunId: access.agentRunId })) return null
   if (run.workflowRunId) return run.workflowRunId
   if (child.workflowRunId) throw new FatalError('Native named-child delivery identity changed.')
   const { nativeHarnessWorkflow } = await import('@/server/workflows/native-harness')

@@ -8,7 +8,7 @@ import { createHarnessWaitPorts } from '@/server/harness/waits'
 import { admitNativeHarnessChild } from '@/server/harness/native-child-steps'
 import { buildNativeHarnessDelivery } from '@/server/harness/native-tool-metrics'
 import {
-  attachNativeHarnessDelivery, finishNativeHarnessDelivery, projectNativeHarnessWait,
+  attachNativeHarnessDelivery, finishNativeHarnessDelivery, projectNativeHarnessWait, readNativeAssignmentResult, settleNativeAssignmentResult,
 } from '@/server/harness/native-delivery-steps'
 import { notifyHarnessAncestors, readHarnessChild } from '@/server/harness/personal-wait-steps'
 import { harnessWakeToken } from '@/server/harness/wait-token'
@@ -22,6 +22,7 @@ import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
 import { handoffHarnessContinuation } from '@/server/harness/harness-continuations'
 import type { NativeHarnessAccess } from '@/server/harness/native-access'
 import type { NativeHarnessWorkflowInput } from '@/server/harness/native-workflow-input'
+import { readNativeAssignmentChild, readNativeAssignmentIssues } from '@/server/harness/native-assignment-steps'
 import {
   isHarnessTaskDeadlineExpired,
   isTerminalHarnessStatus,
@@ -86,6 +87,9 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
         projectWait: projection => projectNativeHarnessWait(access, projection),
       }),
       readChild: childRunId => readHarnessChild(access, childRunId),
+      readAssignmentResult: childRunId => readNativeAssignmentResult(access, childRunId),
+      readAssignmentIssues: () => readNativeAssignmentIssues(access),
+      readAssignmentChild: assignmentId => readNativeAssignmentChild(access, assignmentId),
       continueExecution: checkpoint => handoffHarnessContinuation({
         reference: access, workflowKind: 'native',
         checkpoint,
@@ -152,6 +156,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     const journal = await readHarnessTranscriptForDelivery(access, result)
     const delivery = buildNativeHarnessDelivery(result, activeToolNames, journal)
     await finishNativeHarnessDelivery(access, delivery, { memoryEnabled: input.context.memoryEnabled }, activeToolNames)
+    await settleNativeAssignmentResult(access)
   }
   if (initial.parentRunId) await notifyHarnessAncestors(access)
   return { runId: result.snapshot.runId, status: result.snapshot.status }

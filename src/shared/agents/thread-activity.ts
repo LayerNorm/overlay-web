@@ -17,6 +17,7 @@ export function resolveThreadActivity(
     case 'waiting_for_resources':
     case 'waiting_for_authorization': return 'needs_input'
     case 'queued':
+    case 'publication_pending':
     case 'running':
     case 'waiting_for_children': return 'working'
     // A finished run stays active until someone opens the thread after it ended (or marks it unread). Once reviewed,

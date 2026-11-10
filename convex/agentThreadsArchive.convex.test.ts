@@ -46,7 +46,8 @@ async function seed() {
   const listThreads = () => convex.query(threads('listThreadsByServer', 'query'), base) as Promise<Array<{ conversationId: string; archivedAt?: number; isMain: boolean }>>
   const listArchived = () => convex.query(threads('listArchivedThreadsByServer', 'query'), { serverSecret: secret, workspaceId, userId }) as Promise<Array<{ conversationId: string; agentId: string; agentArchived: boolean }>>
   const listAgents = () => convex.query(agentsFn('listByServer', 'query'), { serverSecret: secret, workspaceId, includeArchived: true }) as Promise<Array<{ agentId: string; archivedAt?: number }>>
-  return { convex, resolveMain, createThread, setArchived, deleteThread, listThreads, listArchived, listAgents }
+  const asUser = (subject = userId) => convex.withIdentity({ subject })
+  return { convex, asUser, resolveMain, createThread, setArchived, deleteThread, listThreads, listArchived, listAgents }
 }
 
 describe('live agent thread activity', () => {
@@ -103,6 +104,8 @@ describe('live agent thread activity', () => {
     expect(await t.convex.query(api.agents.threads.activity, queryArgs)).toBeNull()
     expect(await t.convex.withIdentity({ subject: 'outsider' }).query(api.agents.threads.activity, queryArgs)).toBeNull()
     expect(await read({ workspaceId: 'foreign-workspace' })).toBeNull()
+    await expect(t.convex.withIdentity({ subject: userId }).query(api.agents.threads.activity,
+      { ...queryArgs, userId: 'another-user' } as never)).rejects.toThrow()
     await t.convex.run(async ctx => {
       const agent = await ctx.db.query('workspaceAgentDefinitions').first()
       await ctx.db.patch(agent!._id, { visibility: 'creator', createdByPrincipalId: 'another-human' })
@@ -140,7 +143,6 @@ describe('live agent thread activity', () => {
     expect(await read()).toBeNull()
   })
 })
-
 describe('archiving an agent thread', () => {
   test('lands only the thread in the archive; the agent stays live and is not archived', async () => {
     const t = await seed()
