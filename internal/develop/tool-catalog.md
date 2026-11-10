@@ -44,7 +44,9 @@ readable label/value lines; duplicate submits are blocked and reloaded cards sta
 If sending fails after the marker is saved, the card remains locked and asks the person
 to send their response from the composer, avoiding an automatic duplicate send.
 Only json-render state gets member-post authorization in writable workspace threads;
-members cannot replace a spec, change draft cards, or edit submitted state. Slack and
+room card saves use native Convex identity through `collaboration/rooms:updateMessageUiPart`
+and the same immutable-content and bounded-state merge helper as personal card saves.
+Members cannot replace a spec, change draft cards, or edit submitted state. Slack and
 automation reply-text projections use bold titles and summaries, not specs or state.
 There is no assistant-reply email transport currently; lifecycle emails contain event
 notifications, not agent output. Future reply-email consumers should use

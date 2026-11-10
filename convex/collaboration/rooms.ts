@@ -4,7 +4,9 @@ import { mutation, query } from '../_generated/server'
 import type { QueryCtx } from '../_generated/server'
 import type { Id } from '../_generated/dataModel'
 import { hydrateRemoteMessage, hydrateRemoteMessages } from '../lib/remoteMessageText'
-import { nativeThreadCompatibility } from '../lib/nativeThreadCompatibility'
+import { assertNativeThreadWritable, nativeThreadCompatibility } from '../lib/nativeThreadCompatibility'
+import { generatedUiData } from '../chat/conversations'
+import { isGeneratedUiPart, mergeJsonRenderState } from '../../packages/overlay-chat-core/src/generated-ui'
 import {
   addParticipantFor,
   deleteRoomMessage,
@@ -201,6 +203,32 @@ export const state = query({
 })
 
 const messageArgs = { ...roomArgs, messageId: v.id('conversationMessages') }
+
+export const updateMessageUiPart = mutation({
+  args: { ...messageArgs, partId: v.string(), data: generatedUiData },
+  handler: async (ctx, args) => {
+    const actor = await nativeRoomActor(ctx, args.workspaceId)
+    const access = await requireConversationAccess(ctx, { ...actor, conversationId: args.conversationId })
+    const conversation = access.conversation
+    if ((conversation.conversationType !== 'dm' && conversation.conversationType !== 'channel')
+      || conversation.externalPlatform || access.participant?.archivedAt !== undefined) throw new Error('Unauthorized')
+    const message = await ctx.db.get(args.messageId)
+    if (!message || message.conversationId !== args.conversationId || message.role !== 'assistant' || message.deletedAt) {
+      throw new Error('Message not found')
+    }
+    await assertNativeThreadWritable(ctx, conversation, message.threadRootMessageId ?? message._id)
+    const parts = message.parts ?? []
+    const target = parts.find(part => isGeneratedUiPart(part) && part.id === args.partId)
+    if (!target || !isGeneratedUiPart(target)) throw new Error('Generated UI part not found')
+    if (target.data.kind !== 'json_render' || args.data.kind !== 'json_render') throw new Error('Generated UI content cannot be changed')
+    const data = mergeJsonRenderState(target.data, args.data)
+    if (data === target.data) return { success: true }
+    const now = Date.now()
+    await ctx.db.patch(message._id, { parts: parts.map(part => part === target ? { ...part, data } : part), updatedAt: now })
+    await ctx.db.patch(conversation._id, { lastModified: now, updatedAt: now })
+    return { success: true }
+  },
+})
 
 export const setReaction = mutation({
   args: { ...messageArgs, emoji: v.string(), enabled: v.boolean() },

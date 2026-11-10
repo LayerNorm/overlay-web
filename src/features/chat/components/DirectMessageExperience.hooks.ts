@@ -4,6 +4,7 @@ import { useAgentDirectory as useLiveAgentDirectory } from '@/hooks/use-agent-di
 import { useConvex, useMutation } from 'convex/react'
 import { api } from '../../../../convex/_generated/api'
 import type { Id } from '../../../../convex/_generated/dataModel'
+import type { GeneratedUiData } from '@overlay/chat-core/generated-ui'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import type { RoomPaging, RoomSummary } from './collaboration/ConvexRoomMessageSubscription'
 import { useRoomState, type RoomStateApi } from './collaboration/useRoomState'
@@ -1541,6 +1542,7 @@ export function useMessageActions({
   const { activeWorkspaceId } = useWorkspace()
   const editRoomMessage = useMutation(api.collaboration.rooms.editMessage)
   const deleteRoomMessage = useMutation(api.collaboration.rooms.deleteMessage)
+  const updateRoomUiPart = useMutation(api.collaboration.rooms.updateMessageUiPart)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editingContent, setEditingContent] = useState('')
 
@@ -1597,6 +1599,13 @@ export function useMessageActions({
       .catch(() => toast.error('Could not save the message.'))
   }
 
+  async function saveGeneratedUiPart(messageId: string, partId: string, data: GeneratedUiData) {
+    if (isReadOnlyMessage?.(messageId)) throw new Error('This thread is read-only')
+    if (!activeWorkspaceId || data.kind !== 'json_render') throw new Error('Could not save this view')
+    await updateRoomUiPart({ workspaceId: activeWorkspaceId, conversationId: conversationId as Id<'conversations'>,
+      messageId: messageId as Id<'conversationMessages'>, partId, data })
+  }
+
   async function saveEdit(messageId: string) {
     if (isReadOnlyMessage?.(messageId)) return
     const content = editingContent.trim()
@@ -1635,6 +1644,7 @@ export function useMessageActions({
     togglePinned,
     reportMessage,
     toggleSaved,
+    saveGeneratedUiPart,
     saveEdit,
     deleteMessage,
   }
@@ -1929,6 +1939,7 @@ export type RoomMessageContext = {
   setEditingContent: Dispatch<SetStateAction<string>>
   setEditingId: Dispatch<SetStateAction<string | null>>
   saveEdit: (messageId: string) => Promise<void>
+  saveGeneratedUiPart: (messageId: string, partId: string, data: GeneratedUiData) => Promise<void>
   deleteMessage: (messageId: string) => Promise<void>
   reportMessage: (messageId: string) => Promise<void>
   toggleReaction: (messageId: string, emoji: string) => Promise<void>
@@ -2010,6 +2021,7 @@ export function buildRoomMessageContext({
     setEditingContent: actions.setEditingContent,
     setEditingId: actions.setEditingId,
     saveEdit: actions.saveEdit,
+    saveGeneratedUiPart: actions.saveGeneratedUiPart,
     deleteMessage: actions.deleteMessage,
     reportMessage: actions.reportMessage,
     toggleReaction: actions.toggleReaction,

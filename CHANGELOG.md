@@ -8,6 +8,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
   - The validated `render_ui` catalog uses lazy-loaded shared components, bounded serialized state, admission-gated prompts and summary fallbacks for non-React delivery. Generated-UI tools remain withheld from MCP clients; existing draft permissions are unchanged.
   - Generated forms tolerate unused component props and unambiguous misplaced child references. Failed generated views leave visible error activity; models receive explicit retry guidance and a complete bound-form example before claiming a view is displayed.
   - Chat Markdown exports include native assistant replies and generated-view titles and summaries, never serialized UI specs or bound form values.
+  - Agent-thread form edits use a native authenticated Convex mutation, with room membership, archived/read-only thread checks and the shared immutable-content and bounded-state protections. Personal and automation saves are unchanged.
 
 - Commit the generated Convex function index entry for the Preview-only performance fixtures (`dev/performanceQa`) that PR 448 added, so production deploys no longer leave that file changed, and remove a duplicated older changelog entry for the native deployment-feature projection.
 - Keep unchanged completed personal-chat messages stable during streamed updates, while refreshing message actions, permissions and live plans when they change.
