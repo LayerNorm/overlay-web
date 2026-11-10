@@ -98,8 +98,12 @@ Older hosts retain the legacy retry flow until upgraded.
 - **Everything**: write, plus automations, connected apps, your MCP servers, image and video, asking agents. Never agent editing or computers.
 
 Task tools use the Work API and its existing permissions. `update_task` sends fields, status and scope in one
-transaction; its optional revision is checked by Convex before any write. Conflicts require another read.
+transaction; its optional revision is checked by Convex before any write. Conflicts return the current task,
+revision and instructions to review newer edits before retrying, or to call `get_task` if the read failed.
 Comments also advance the task revision monotonically, so a same-tick comment cannot revive a stale write.
+`comment_on_task` reads back the task and returns its new revision for the next update. A failed readback
+does not turn a saved comment into a failure: the agent is told to read the task, not post a duplicate comment.
+Agents should serialize comments and updates on the same task; revision guards are never bypassed on retry.
 All Work mutations, including scope/archive/restore, require server authentication at the Convex boundary.
 Task tools never delete tasks or start an agent run. Agent turns supply activity attribution only through
 service-authenticated calls, including archive/restore scope requests; other callers cannot choose their event actor. Existing full-toolbox grants
