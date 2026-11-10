@@ -37,6 +37,7 @@ import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvid
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { roomMessageDomId } from './room-message-view'
 import { roomMessageTime } from './room-message-time'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import type { DriveSyncStatus } from '@layernorm/overlay-agent-bridge-protocol'
 import { RemoteDriveStatus, useSavedDriveLinkResolver } from './RemoteDriveStatus'
 import { RemoteRunTrace } from './RemoteRunTrace'
@@ -309,6 +310,7 @@ export function RoomMessageItem({
   remoteStatus,
   hideToolbar = false,
 }: RoomMessageItemProps) {
+  recordRender('RoomMessageItem')
   const { mine } = message
   const isAgent =
     message.authorKind === 'agent' || message.authorKind === 'model'
