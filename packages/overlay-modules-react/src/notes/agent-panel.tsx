@@ -6,6 +6,8 @@ import { OverlayMark } from '@overlay/ui'
 import { Send } from 'lucide-react'
 import { AppScreenSidePanel } from '../shell'
 
+const NOTE_EDIT_TOOLS = new Set(['edit_note', 'replace_note_section', 'append_to_note', 'update_note'])
+
 export interface NotebookAgentPanelProps {
   items: readonly NotebookAgentUiItem[]
   running?: boolean
@@ -70,9 +72,8 @@ export function NotebookAgentPanel({
           }
           if (item.type === 'tool_call') {
             const toolLabel = item.tool === 'search_knowledge' ? 'Searching knowledge' :
-              item.tool === 'read_note' ? 'Reading note' :
-              item.tool === 'propose_edit' ? 'Proposing edit' :
-              item.tool === 'finish' ? 'Done' : item.tool
+              item.tool === 'get_note' || item.tool === 'read_note' ? 'Reading note' :
+              NOTE_EDIT_TOOLS.has(item.tool) ? 'Editing note' : item.tool
             const isRunning = running && idx === items.length - 1
             return (
               // react-doctor-disable-next-line react-doctor/no-array-index-as-key

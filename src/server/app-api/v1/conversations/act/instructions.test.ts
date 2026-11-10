@@ -111,3 +111,11 @@ test('automation persona is included without replacing execution restrictions', 
   assert.match(instructions, /They do not grant capabilities or override server-side safety/)
   assert.match(instructions, /Do not design, draft, create, update, pause, delete/)
 })
+
+test('a Notebook chat names its note and edits it directly with the note tools', () => {
+  const instructions = buildInstructions({ notebookNote: { id: 'note_1', title: 'Orchard' } })
+  assert.match(instructions, /beside the note "Orchard" \(note id=note_1\)/)
+  assert.match(instructions, /edit_note, replace_note_section or append_to_note/)
+  assert.match(instructions, /When in doubt, answer without editing/)
+  assert.doesNotMatch(buildInstructions(), /Notebook editor/)
+})

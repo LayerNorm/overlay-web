@@ -1,5 +1,6 @@
 import { HIGH_RISK_TOOL_AUTHORIZATION_NOTE } from '@/server/tools/tools/exposure-policy'
 import type { ChatToolRequestId } from '@/shared/chat/tool-requests'
+import { notebookChatNote } from '@/server/agent/notebook-agent-prompts'
 import { agentFormattingNote, agentPersonaNote, computerCapabilityNote, generatedUiNote, knowledgeNote } from '@/server/agent/shared-agent-instructions'
 
 type ActMode = 'chat' | 'automate'
@@ -30,6 +31,7 @@ export function buildActAgentInstructions(params: {
   automationExecution?: boolean
   automationMode?: boolean
   agentPersona?: { name: string; instructions: string }
+  notebookNote?: { id: string; title: string }
 }): string {
   const notes = buildActInstructionNotes(params)
   return (
@@ -39,6 +41,7 @@ export function buildActAgentInstructions(params: {
     notes.agentTaskBehavior +
     (params.userSystemPromptExtension ? `\n\n${params.userSystemPromptExtension}` : '')
   ) +
+    (params.notebookNote ? notebookChatNote(params.notebookNote) : '') +
     params.skillsContext +
     params.mentionsContext +
     generatedUiNote(new Set(params.availableToolIds)) +

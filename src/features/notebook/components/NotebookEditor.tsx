@@ -9,10 +9,11 @@ import {
   toRightPanelMode,
   type PanelPresentation,
 } from '@/shared/ui/panel-presentation'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import {
   createLocalNotebookNote,
   type CreateNoteResponse,
+  type NotebookAgentRequest,
   type UpdateNoteResponse,
 } from '@overlay/app-core'
 import {
@@ -31,10 +32,11 @@ import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 import { useWorkspaceHref } from '@/hooks/use-workspace-href'
 import { usePanelScope } from '@/hooks/use-panel-scope'
 import { noteDocFromFile, useLiveNote } from '@/hooks/use-file-tree'
-import { useConvex } from 'convex/react'
+import { useConvex, useMutation } from 'convex/react'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { isConvexIdShape } from '@/components/providers/usePersonalChatTranscript'
 import { api } from '../../../../convex/_generated/api'
+import { notebookChatClientId, runNotebookChatTurn } from '../lib/notebook-chat-turn'
 import type { Id } from '../../../../convex/_generated/dataModel'
 
 const MarkdownMessage = dynamic(() =>
@@ -74,6 +76,25 @@ export default function NotebookEditor({
     setPanelPresentationState(presentation)
     storePanelPresentation(presentation)
   }, [])
+
+  const createPersonalChat = useMutation(api.chat.personal.create)
+  const noteChatIdsRef = useRef(new Map<string, string>())
+  const ensureNoteChat = useCallback(async (request: NotebookAgentRequest) => {
+    const known = noteChatIdsRef.current.get(request.noteId)
+    if (known) return known
+    if (!activeWorkspaceId) throw new Error('Choose a workspace to use the note assistant.')
+    const modelId = request.modelId ?? initialModelId
+    const conversationId = await createPersonalChat({
+      workspaceId: activeWorkspaceId,
+      clientId: notebookChatClientId(request.noteId),
+      title: request.noteTitle || 'Untitled',
+      askModelIds: [modelId],
+      actModelId: modelId,
+      lastMode: 'act',
+    })
+    noteChatIdsRef.current.set(request.noteId, conversationId)
+    return conversationId
+  }, [activeWorkspaceId, createPersonalChat, initialModelId])
 
   const noteId = searchParams?.get('id') ?? null
   const liveNote = useLiveNote(noteId)
@@ -133,10 +154,7 @@ export default function NotebookEditor({
       hideSidebar={hideSidebar}
       projectName={projectName}
       repository={repository}
-      runAgent={(request, signal) => overlayAppClient.notes.notebookAgentResponse(request, {
-        credentials: 'same-origin',
-        signal,
-      })}
+      runAgent={(request, signal) => runNotebookChatTurn({ request, signal, ensureConversation: ensureNoteChat })}
       agentPanelMode={toRightPanelMode(panelPresentation)}
       onAgentPanelModeChange={(mode) => setPanelPresentation(mode === 'docked' ? 'sidebar' : 'floating')}
       models={models}

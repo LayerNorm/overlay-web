@@ -6,6 +6,7 @@ import { Button, Textarea } from '@overlay/ui/primitives'
 import { unstyledButton, unstyledTextarea } from '@overlay/ui/control-reset'
 import {
   useEffect,
+  useRef,
   useState,
   useCallback,
   type ReactNode,
@@ -43,6 +44,7 @@ import {
   useNoteMutations,
   useSlashMenu,
   useSlashMenuState,
+  type NotebookAgentReview,
 } from './editor-state'
 
 export interface NotebookEditorMention {
@@ -641,6 +643,7 @@ export function CanonicalNotebookEditor({
   } = lifecycle
 
   const slashState = useSlashMenuState()
+  const agentReviewRef = useRef<NotebookAgentReview | null>(null)
   const { editor } = useNotebookEditor({
     lifecycleController,
     activeNoteRef,
@@ -664,6 +667,7 @@ export function CanonicalNotebookEditor({
     setTitle,
     hydratingEditorRef,
     editor,
+    agentReviewRef,
   })
 
   useEditorRequests({ editor, focusRequest, externalInsertion })
@@ -688,6 +692,7 @@ export function CanonicalNotebookEditor({
   })
 
   const agent = useNotebookAgent({
+    agentReviewRef,
     runAgent,
     editor,
     activeNote,
