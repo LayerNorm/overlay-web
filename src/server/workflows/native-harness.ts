@@ -22,7 +22,7 @@ import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
 import { handoffHarnessContinuation } from '@/server/harness/harness-continuations'
 import type { NativeHarnessAccess } from '@/server/harness/native-access'
 import type { NativeHarnessWorkflowInput } from '@/server/harness/native-workflow-input'
-import { readNativeAssignmentIssues } from '@/server/harness/native-assignment-steps'
+import { readNativeAssignmentChild, readNativeAssignmentIssues } from '@/server/harness/native-assignment-steps'
 import {
   isHarnessTaskDeadlineExpired,
   isTerminalHarnessStatus,
@@ -89,6 +89,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
       readChild: childRunId => readHarnessChild(access, childRunId),
       readAssignmentResult: childRunId => readNativeAssignmentResult(access, childRunId),
       readAssignmentIssues: () => readNativeAssignmentIssues(access),
+      readAssignmentChild: assignmentId => readNativeAssignmentChild(access, assignmentId),
       continueExecution: checkpoint => handoffHarnessContinuation({
         reference: access, workflowKind: 'native',
         checkpoint,

@@ -7,6 +7,22 @@ import { HARNESS_STEP_VALIDATION, isHarnessStepValidation } from './step-validat
 
 const id = z.string().min(1).max(256)
 
+const childReadInput = z.object({ childRunId: id.optional(), assignmentId: id.optional() })
+  .refine(input => Boolean(input.childRunId) !== Boolean(input.assignmentId), 'Pass exactly one of childRunId or assignmentId.')
+
+async function resolveChildRead(ports: HarnessExecutionPorts, input: z.infer<typeof childReadInput>) {
+  if (Boolean(input.childRunId) === Boolean(input.assignmentId)) return { feedback: {
+    success: false, error: 'Pass exactly one of childRunId or assignmentId.', hint: 'Use assignmentId when recovering an assignment without its child handle.',
+  } }
+  if (input.childRunId) return { childRunId: input.childRunId }
+  const assignment = await ports.readAssignmentChild?.(input.assignmentId!)
+  if (!assignment) return { feedback: { success: false, error: 'Assignment is unavailable to this run.', hint: 'Use an assignmentId from your authorized assignment obligations.' } }
+  if (assignment.childRunId) return { childRunId: assignment.childRunId }
+  if (assignment.launchPending) return { feedback: { status: 'launch_pending', ...assignment,
+    hint: 'Read again shortly using assignmentId. Launch is pending; this does not mean no child will launch. Do not guess a child ID.' } }
+  return { feedback: { status: 'launch_unavailable', ...assignment, hint: 'No child is bound and launch is not pending. Review the assignment before resolving it.' } }
+}
+
 const runQuestion = z.object({
   prompt: z.string().min(1).max(300).describe('The question, written for the person reading it'),
   description: z.string().max(300).optional().describe('Why it matters, or what the answer changes'),
@@ -163,11 +179,15 @@ export function createHarnessControlTools(ports: HarnessExecutionPorts) {
       execute: async (input, { toolCallId }) => ports.delegate(input, toolCallId),
     }),
     harness_read_child: tool({
-      description: 'Join an admitted child, waiting durably if it is still working. Start independent children before joining them. ',
-      inputSchema: z.object({ childRunId: id }),
-      execute: async ({ childRunId }, { toolCallId }) => {
+      description: 'Read an assignment by assignmentId, or join an admitted child by childRunId. Pass exactly one. Bound children wait durably while working; assignments awaiting launch return launch_pending so you can read again shortly. Start independent children before joining them.',
+      inputSchema: childReadInput,
+      execute: async (input, { toolCallId }) => {
+        const resolved = await resolveChildRead(ports, input)
+        if (resolved.feedback) return resolved.feedback
+        const childRunId = resolved.childRunId!
         const parent = await ports.read()
-        if (!parent.children.some(child => child.id === childRunId)) throw new Error('This run did not delegate that child.')
+        if (!parent.children.some(child => child.id === childRunId)) return { success: false, error: 'Unknown child handle for this run.',
+          childRunIds: parent.children.map(child => child.id), hint: 'Use an actual childRunId, or use assignmentId from your assignment obligations. A missing child handle does not mean launch will not occur.' }
         let child = await ports.readChild(childRunId)
         if (child.parentRunId !== parent.runId || child.rootRunId !== parent.rootRunId) throw new Error('Invalid child lineage.')
         let assignment = await ports.readAssignmentResult?.(childRunId)

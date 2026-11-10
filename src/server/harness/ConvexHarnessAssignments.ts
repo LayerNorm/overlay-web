@@ -7,7 +7,7 @@ import { resolveConvexUrl } from '@/server/database/convex-url'
 import { lazyConvex as convex } from '@/server/database/lazy-convex'
 import { getInternalApiSecret } from '@/server/shared/internal-api-secret'
 import type { HarnessArtifactMetadata } from './artifact-context'
-import type { AssignmentResultView } from '@/shared/agents/assignment-result'
+import type { AssignmentChildHandle, AssignmentResultView } from '@/shared/agents/assignment-result'
 import type { AssignmentCancellationRoot, NativeRecoveryRequest, NativeRecoveryWork } from '@/shared/agents/assignment-recovery'
 
 export function artifactClient() {
@@ -37,6 +37,10 @@ export class ConvexHarnessAssignments {
     const issues = await convex.query<string[]>('collaboration/assignmentCoordination:issues', { ...input, serverSecret: this.serverSecret }, { throwOnError: true })
     if (!issues) throw new Error('Assignment obligations are unavailable.')
     return issues
+  }
+
+  async readAssignmentChild(input: { actorUserId: string; workspaceId: string; parentRunId: string; assignmentId: string }) {
+    return await convex.query<AssignmentChildHandle | null>('collaboration/assignmentResults:currentChild', { ...input, serverSecret: this.serverSecret }, { throwOnError: true })
   }
 
   async resolveAssignment(input: { actorUserId: string; workspaceId: string; parentRunId: string; workflowRunId: string;

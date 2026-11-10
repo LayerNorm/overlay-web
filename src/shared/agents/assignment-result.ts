@@ -1,3 +1,11 @@
+export type AssignmentChildHandle = {
+  assignmentId: string
+  attemptId: string
+  conversationId: string
+  childRunId?: string
+  launchPending: boolean
+}
+
 export type AssignmentResultView = {
   assignmentId: string
   attemptId: string

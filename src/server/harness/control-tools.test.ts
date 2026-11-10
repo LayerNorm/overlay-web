@@ -56,6 +56,51 @@ test('a blocked assignment returns its truthful blocker without joining indefini
   expect(f.apply).not.toHaveBeenCalled()
 })
 
+test('assignment reads survive pending launch and join the recovered child once bound', async () => {
+  const f = fixture()
+  const lookup = vi.fn(async () => ({ assignmentId: 'assignment', attemptId: 'attempt', conversationId: 'room', launchPending: true }))
+  f.ports.readAssignmentChild = lookup
+  const read = createHarnessControlTools(f.ports).harness_read_child
+  expect(await read.execute!({ assignmentId: 'assignment' }, { toolCallId: 'pending', messages: [] }))
+    .toMatchObject({ status: 'launch_pending', attemptId: 'attempt', hint: expect.stringContaining('Read again') })
+  expect(f.readChild).not.toHaveBeenCalled()
+  expect(f.waitForChildren).not.toHaveBeenCalled()
+  f.ports.readAssignmentChild = async () => ({ assignmentId: 'assignment', attemptId: 'attempt', conversationId: 'room', childRunId: 'child', launchPending: false })
+  f.readChild.mockResolvedValueOnce({ ...f.child, status: 'running' })
+  expect(await read.execute!({ assignmentId: 'assignment' }, { toolCallId: 'bound', messages: [] }))
+    .toMatchObject({ status: 'completed' })
+  expect(f.waitForChildren).toHaveBeenCalledWith(['child'])
+  expect(f.readChild).toHaveBeenCalledWith('child')
+})
+
+test('unknown assignments and invalid child handles give corrective feedback without disclosing assignments', async () => {
+  const f = fixture()
+  f.ports.readAssignmentChild = async () => null
+  const read = createHarnessControlTools(f.ports).harness_read_child
+  expect(await read.execute!({ assignmentId: 'private' }, { toolCallId: 'private', messages: [] }))
+    .toEqual({ success: false, error: 'Assignment is unavailable to this run.', hint: expect.any(String) })
+  expect(await read.execute!({ childRunId: 'guessed' }, { toolCallId: 'guessed', messages: [] }))
+    .toMatchObject({ success: false, childRunIds: ['child'], hint: expect.stringContaining('assignmentId') })
+  expect(f.readChild).not.toHaveBeenCalled()
+  expect(f.apply).not.toHaveBeenCalled()
+})
+
+test('assignment lookup failures remain errors and reads require exactly one handle', async () => {
+  const f = fixture()
+  const read = createHarnessControlTools(f.ports).harness_read_child
+  expect(await read.execute!({}, { toolCallId: 'empty', messages: [] })).toMatchObject({ success: false })
+  expect(await read.execute!({ assignmentId: 'assignment', childRunId: 'child' }, { toolCallId: 'both', messages: [] }))
+    .toMatchObject({ success: false })
+  f.ports.readAssignmentChild = async () => { throw new Error('Transport unavailable') }
+  await expect(read.execute!({ assignmentId: 'assignment' }, { toolCallId: 'transport', messages: [] })).rejects.toThrow('Transport unavailable')
+  f.setParent(noPlanState())
+  expect(await read.execute!({ childRunId: 'missing' }, { toolCallId: 'no-children', messages: [] }))
+    .toMatchObject({ success: false, childRunIds: [] })
+  f.ports.readAssignmentChild = async () => ({ assignmentId: 'assignment', attemptId: 'attempt', conversationId: 'room', launchPending: false })
+  expect(await read.execute!({ assignmentId: 'assignment' }, { toolCallId: 'unavailable', messages: [] }))
+    .toMatchObject({ status: 'launch_unavailable' })
+})
+
 test('assignment child reads return the canonical full reply and never settle publication-pending results', async () => {
   const f = fixture()
   const reply = 'Full final reply. '.repeat(2500)

@@ -11,7 +11,10 @@ export async function assignmentCompletionIssues(ctx: Pick<QueryCtx, 'db'>, pare
     if (attempt.disposition === 'excluded' && attempt.dispositionReason?.trim()) continue
     const result = await ctx.db.query('agentAssignmentResults').withIndex('by_attemptId', q => q.eq('attemptId', attempt.attemptId)).unique()
     if (attempt.disposition === 'accepted' && result?.terminal && !result.publicationPending && result.runStatus === 'completed') continue
-    issues.push(`${attempt.assignmentId} (${attempt.attemptId}): ${result?.runStatus ?? 'queued'}${result?.publicationPending ? ', publication pending' : ''}; read the result, then accept, revise, or exclude with a reason.`)
+    const intent = await ctx.db.query('agentAssignmentLaunchIntents').withIndex('by_attemptId', q => q.eq('attemptId', attempt.attemptId)).unique()
+    const launchState = attempt.childRunId ? result?.terminal ? 'child settled' : 'child running'
+      : intent?.state === 'pending' ? 'launch pending (does not mean no child will launch; read again shortly)' : 'launch unavailable'
+    issues.push(`assignmentId: ${attempt.assignmentId}; current attemptId: ${attempt.attemptId}; ${launchState}; child conversationId: ${attempt.conversationId}${attempt.childRunId ? `; child runId: ${attempt.childRunId}` : ''}; result: ${result?.runStatus ?? 'not yet available'}${result?.publicationPending ? ', publication pending' : ''}; use harness_read_child with assignmentId to read or join, then accept, revise, or exclude with a reason.`)
   }
   return issues
 }

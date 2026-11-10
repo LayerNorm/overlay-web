@@ -1197,6 +1197,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Chief of Staff (pending)
 
+- Let the Chief read recovered assignments by assignment ID, with explicit pending-launch feedback and labeled attempt, child-run and conversation handles instead of guessing whether recovery started.
+
 - Route assignment parent backlinks to the authorized conversation's actual channel, agent thread, or chat instead of always opening the caller agent.
 
 - Show Work's existing no-results message when a search matches neither tasks nor agent assignments, including assignment-only workspaces.

@@ -16,6 +16,35 @@ const preAdmissionRestrictions = mutation('harness/runs:resolveConversationRoomR
 
 beforeAll(() => { process.env.INTERNAL_API_SECRET = secret })
 
+test('recovered assignments expose labeled handles before and after child admission', async () => {
+  const data = await fixture()
+  const assignment = await data.convex.mutation(createAssignment, args(data))
+  const lookup = query('collaboration/assignmentResults:currentChild')
+  const actor = { serverSecret: secret, actorUserId: 'alice', workspaceId: 'workspace', parentRunId: data.parentRunId }
+  const read = () => data.convex.query(lookup, { ...actor, assignmentId: assignment.assignmentId })
+  expect(await read()).toEqual({ assignmentId: assignment.assignmentId, attemptId: assignment.attemptId,
+    conversationId: assignment.conversationId, launchPending: true })
+  const issues = () => data.convex.run(ctx => assignmentCompletionIssues(ctx, data.parentRunId))
+  expect((await issues())[0]).toContain(`current attemptId: ${assignment.attemptId}`)
+  expect((await issues())[0]).toContain('launch pending')
+  expect((await issues())[0]).toContain('does not mean no child will launch')
+  expect(await data.convex.query(lookup, { ...actor, assignmentId: 'missing' })).toBeNull()
+  expect(await data.convex.query(lookup, { ...actor, actorUserId: 'charlie', assignmentId: assignment.assignmentId })).toBeNull()
+  const child = await dispatched(data)
+  expect(await read()).toMatchObject({ childRunId: child.childRunId, launchPending: false })
+  expect((await issues())[0]).toContain(`child runId: ${child.childRunId}`)
+  expect((await issues())[0]).toContain(`child conversationId: ${child.conversationId}`)
+  expect((await issues())[0]).toContain('child running')
+  await childState(data, child, 'completed', true, 'RECOVERY_OK')
+  expect((await issues())[0]).toContain('child settled')
+  expect(await data.convex.query(lookup, { ...actor, parentRunId: 'other-parent', assignmentId: assignment.assignmentId })).toBeNull()
+  await data.convex.run(async ctx => {
+    const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', child.conversationId).eq('principalId', 'alice')).unique()
+    await ctx.db.patch(participant!._id, { status: 'removed' })
+  })
+  expect(await read()).toBeNull()
+})
+
 async function fixture(v2 = false) {
   const convex = convexTest(schema, modules)
   const seeded = await convex.run(async ctx => {

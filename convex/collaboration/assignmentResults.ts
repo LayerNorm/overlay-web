@@ -1,6 +1,6 @@
 import { v } from 'convex/values'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
-import type { AssignmentResultView } from '../../src/shared/agents/assignment-result'
+import type { AssignmentChildHandle, AssignmentResultView } from '../../src/shared/agents/assignment-result'
 import type { Doc } from '../_generated/dataModel'
 import { mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
@@ -152,6 +152,29 @@ export async function authorizeAssignmentAttempt(ctx: QueryCtx, args: { serverSe
   }
   return assignment
 }
+
+export const currentChild = query({
+  args: { serverSecret: v.string(), actorUserId: v.string(), workspaceId: v.string(), parentRunId: v.string(), assignmentId: v.string() },
+  handler: async (ctx, args): Promise<AssignmentChildHandle | null> => {
+    requireServerSecret(args.serverSecret)
+    const parent = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', args.parentRunId)).unique()
+    if (!parent || parent.actorUserId !== args.actorUserId || JSON.parse(parent.metadataJson).policy.workspaceId !== args.workspaceId) return null
+    const assignment = await ctx.db.query('agentAssignments').withIndex('by_assignmentId', q => q.eq('assignmentId', args.assignmentId)).unique()
+    if (!assignment?.currentAttemptId) return null
+    const attemptId = assignment.currentAttemptId
+    const attempt = await ctx.db.query('agentAssignmentAttempts').withIndex('by_attemptId', q => q.eq('attemptId', attemptId)).unique()
+    if (!attempt || attempt.assignmentId !== assignment.assignmentId || attempt.parentRunId !== parent.runId || attempt.rootRunId !== parent.rootRunId) return null
+    try {
+      await authorizeAssignmentAttempt(ctx, args, attempt)
+    } catch (error) {
+      if (error instanceof Error && ['ASSIGNMENT_ACCESS_DENIED', 'ASSIGNMENT_LINEAGE_DENIED', 'CONVERSATION_ACCESS_DENIED', 'WORKSPACE_ACCESS_DENIED'].includes(error.message)) return null
+      throw error
+    }
+    const intent = await ctx.db.query('agentAssignmentLaunchIntents').withIndex('by_attemptId', q => q.eq('attemptId', attempt.attemptId)).unique()
+    return { assignmentId: assignment.assignmentId, attemptId: attempt.attemptId, conversationId: attempt.conversationId,
+      childRunId: attempt.childRunId, launchPending: !attempt.childRunId && intent?.state === 'pending' }
+  },
+})
 
 export const read = query({
   args: { serverSecret: v.string(), actorUserId: v.string(), workspaceId: v.string(),
