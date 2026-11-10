@@ -529,6 +529,7 @@
     "src/server/files/FileService.ts",
     "src/server/files/FileServicePayloads.ts",
     "src/server/files/http.ts",
+    "src/server/harness/ConvexHarnessAssignments.ts",
     "src/server/harness/ConvexHarnessRepository.ts",
     "src/server/harness/artifact-steps.ts",
     "src/server/harness/delivery-wait-projection.ts",
