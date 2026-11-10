@@ -64,10 +64,8 @@ export function harnessDiagnosticForFailure(
   if (message === 'The authorized run deadline is exhausted.'
     || message === 'Harness deadline reached while waiting.') {
     code = 'TASK_DEADLINE'
-  } else if (message === 'The authorized spending budget is exhausted.') {
-    code = 'TASK_SPEND_LIMIT'
-  } else if (stage === 'model'
-    && /^Model budget reservation declined: (?:insufficient_credits|insufficient_budget)$/.test(message)) {
+  } else if (stage === 'model' && (message === 'The workspace budget is under 2%.'
+    || /^Model budget reservation declined: (?:insufficient_credits|insufficient_budget)$/.test(message))) {
     code = 'WORKSPACE_FUNDS'
   } else if (error instanceof HarnessPersistenceError || value.code === 'HARNESS_PERSISTENCE_FAILED') {
     code = 'PERSISTENCE_FAILED'
@@ -114,8 +112,6 @@ export function harnessDiagnosticForFailure(
     code = 'TOOL_OUTCOME_UNKNOWN'
   } else if (stage === 'tool' && snapshot.evidence.some(item => item.kind === 'tool_result' && item.verdict === 'failed')) {
     code = 'TOOL_FAILED'
-  } else if (snapshot.blocker?.kind === 'stuck') {
-    code = 'STAGNATION'
   }
   // Durable Workflow transport strips SDK prototypes. Match authored descriptions
   // and stable SDK names, never expose a raw provider message or nested payload.

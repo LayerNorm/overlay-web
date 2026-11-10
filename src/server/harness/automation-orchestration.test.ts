@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   ready: vi.fn(), getAppSettings: vi.fn(), assertSource: vi.fn(), ensureConversation: vi.fn(),
   markRunStarted: vi.fn(), prepare: vi.fn(), startAgentRun: vi.fn(), admit: vi.fn(),
   harnessWorkflow: vi.fn(), getRun: vi.fn(), settleRun: vi.fn(), getLatestAgentRun: vi.fn(),
-  getMessages: vi.fn(), readHarness: vi.fn(), sleep: vi.fn(),
+  getMessages: vi.fn(), readHarness: vi.fn(), sleep: vi.fn(), chargeWorkflow: vi.fn(),
 }))
 
 vi.mock('server-only', () => ({}))
@@ -40,7 +40,12 @@ vi.mock('@/server/automations/automation-turn-runner', () => ({
   AutomationTurnError: class AutomationTurnError extends Error { statusCode = 400 },
   ensureAutomationConversation: mocks.ensureConversation,
   prepareAutomationAgentTurn: mocks.prepare,
+  turnBillingKeys: (input: { automationId?: string; runId?: string; turnId: string }) => ({
+    billingProgrammaticSubjectId: `automation:${input.automationId}`,
+    requestIdempotencyKey: `automation:${input.runId}:${input.turnId}`,
+  }),
 }))
+vi.mock('@/server/billing/automation-workflow-billing', () => ({ chargeAutomationWorkflowRun: mocks.chargeWorkflow }))
 vi.mock('@/server/harness/ConvexHarnessRepository', () => ({
   ConvexHarnessRepository: class { admit = mocks.admit; get = mocks.readHarness },
 }))
@@ -121,6 +126,12 @@ test('closeStream:false automation follows a continued task to persisted termina
   expect(mocks.settleRun).toHaveBeenCalledWith(expect.objectContaining({
     expectedWorkflowRunId: 'workflow', status: 'completed', expectedTurnId: 'automation-run:run',
   }))
+  // Workflow steps are charged once, after the run; nothing was held before it.
+  expect(mocks.chargeWorkflow).toHaveBeenCalledTimes(1)
+  expect(mocks.chargeWorkflow).toHaveBeenCalledWith(expect.objectContaining({
+    userId: 'user', workspaceId: 'workspace', idempotencyKey: expect.stringContaining('automation-run:run'),
+  }))
+  expect(mocks.chargeWorkflow.mock.invocationCallOrder[0]).toBeGreaterThan(mocks.harnessWorkflow.mock.invocationCallOrder[0]!)
 })
 
 test('readiness fails before conversation, user-message, AgentRun, or Harness admission', async () => {

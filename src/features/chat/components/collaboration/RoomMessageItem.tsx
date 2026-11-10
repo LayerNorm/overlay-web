@@ -33,7 +33,6 @@ import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Avatar, AvatarFallback, AvatarImage, Button, Input, Select, Textarea, Toggle } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
 import { AgentCreature } from '@/components/orb/Creature'
-import { MAX_AGENT_HOPS } from '@/shared/agents/agent-lineage'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { unstyledButton } from '@overlay/ui/control-reset'
 import { roomMessageDomId } from './room-message-view'
@@ -744,7 +743,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onContro
     <>
       {message.askedBy ? (
         <p className="mb-1 text-[11px] text-(--muted)">
-          Agent question · step {message.askedBy.hop} of {MAX_AGENT_HOPS}
+          Agent question · step {message.askedBy.hop}
           {message.askedBy.parentConversationId ? (
             <>
               {' · '}

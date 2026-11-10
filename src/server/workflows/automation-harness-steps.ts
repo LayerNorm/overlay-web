@@ -4,8 +4,10 @@ import { FatalError } from 'workflow'
 import { automationService } from '@/server/automations/http'
 import {
   ensureAutomationConversation,
+  turnBillingKeys,
   type AutomationAgentTurnInput,
 } from '@/server/automations/automation-turn-runner'
+import { chargeAutomationWorkflowRun } from '@/server/billing/automation-workflow-billing'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { agentRunService } from '@/server/conversations/http'
 import { isHarnessBackendReady } from '@/server/harness/backend-readiness'
@@ -237,6 +239,18 @@ async function admitAutomationHarnessStep(input: {
   return admitted
 }
 
+/** Charges the run's flat workflow-step price after it ran; nothing was held before. */
+async function chargeAutomationWorkflowRunStep(input: AutomationAgentTurnInput & { workspaceId: string }): Promise<void> {
+  'use step'
+  const { billingProgrammaticSubjectId, requestIdempotencyKey } = turnBillingKeys(input)
+  await chargeAutomationWorkflowRun({
+    idempotencyKey: requestIdempotencyKey,
+    programmaticSubjectId: billingProgrammaticSubjectId,
+    userId: input.userId,
+    workspaceId: input.workspaceId,
+  })
+}
+
 /**
  * Safety-net status check for the scheduling loop — reads the automation row
  * directly instead of the old self-HTTP call.
@@ -261,6 +275,7 @@ export async function checkAutomationEnabled(input: {
 export {
   admitAutomationHarnessStep,
   admitAutomationSourceStep,
+  chargeAutomationWorkflowRunStep,
   ensureConversationStep,
   readAutomationDeliveryStep,
   reconcileAutomationHarnessTerminalStep,

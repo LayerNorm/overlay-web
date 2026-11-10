@@ -5,14 +5,8 @@ import { generateObject } from '@/server/ai/sdk'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import type { Entitlements } from '@/shared/app/app-contracts'
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
-import {
-  billableBudgetCentsFromProviderUsd,
-  finalizeProviderBudgetReservation,
-  markProviderBudgetReconcile,
-  markProviderBudgetStarted,
-  releaseProviderBudgetReservation,
-  reserveProviderBudget,
-} from '@/server/billing/billing-runtime'
+import { chargeProviderUsage, ensureProviderBudgetNotLow } from '@/server/billing/billing-runtime'
+import { logger } from '@/server/observability/logger'
 
 const MEDIA_INTENT_MODEL = 'openai/gpt-oss-20b'
 const MAX_MEDIA_INTENT_INPUT_CHARS = 1_200
@@ -49,10 +43,8 @@ export async function classifyMediaToolIntentForTurn(params: {
   userId: string
   accessToken?: string
   entitlements: Entitlements
-  idempotencyKey?: string | null
   operationId: string
   programmaticSubjectId?: string
-  requestFingerprint: string
   workspaceId?: string
 }): Promise<MediaToolIntent> {
   const text = params.userText?.trim()
@@ -71,35 +63,19 @@ export async function classifyMediaToolIntentForTurn(params: {
     `User message:\n${text.slice(0, MAX_MEDIA_INTENT_INPUT_CHARS)}`,
   ].join('\n')
 
-  const estimatedInputTokens = Math.ceil(prompt.length / 4) + 80
-  const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
-    MEDIA_INTENT_MODEL,
-    estimatedInputTokens,
-    0,
-    MEDIA_INTENT_OUTPUT_TOKENS,
-  )
-  if (estimatedProviderCostUsd === null) return null
-
-  const reservation = await reserveProviderBudget({
+  const check = await ensureProviderBudgetNotLow({
     userId: params.userId,
     entitlements: params.entitlements,
-    idempotencyKey: params.idempotencyKey,
-    providerCostUsd: estimatedProviderCostUsd,
     kind: 'generation',
     modelId: MEDIA_INTENT_MODEL,
     operationId: params.operationId,
     programmaticSubjectId: params.programmaticSubjectId,
-    requestFingerprint: params.requestFingerprint,
     workspaceId: params.workspaceId,
   })
-  if (!reservation.ok) return null
+  if (!check.ok) return null
 
   try {
     const model = await getLanguageModel(MEDIA_INTENT_MODEL, params.accessToken, params.userId)
-    await markProviderBudgetStarted({
-      userId: params.userId,
-      reservationId: reservation.reservationId,
-    })
     const result = await generateObject({
       model,
       schema: mediaIntentSchema,
@@ -111,48 +87,26 @@ export async function classifyMediaToolIntentForTurn(params: {
     })
 
     const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage
-    const inputTokens = usage?.inputTokens ?? estimatedInputTokens
-    const outputTokens = usage?.outputTokens ?? MEDIA_INTENT_OUTPUT_TOKENS
-    const actualProviderCostUsd = await calculateLanguageModelTokenCostOrNull(MEDIA_INTENT_MODEL, inputTokens, 0, outputTokens)
-    if (actualProviderCostUsd === null) {
-      await markProviderBudgetReconcile({
-        userId: params.userId,
-        reservationId: reservation.reservationId,
-        errorMessage: `pricing_missing:${MEDIA_INTENT_MODEL}`,
-      }).catch((_error) => undefined)
+    const inputTokens = usage?.inputTokens ?? 0
+    const outputTokens = usage?.outputTokens ?? 0
+    const providerCostUsd = await calculateLanguageModelTokenCostOrNull(MEDIA_INTENT_MODEL, inputTokens, 0, outputTokens)
+    if (providerCostUsd === null) {
+      logger.error('[media-intent] Missing pricing for completed classifier call', { modelId: MEDIA_INTENT_MODEL })
     } else {
-      const costCents = billableBudgetCentsFromProviderUsd(actualProviderCostUsd)
-      await finalizeProviderBudgetReservation({
+      await chargeProviderUsage({
         userId: params.userId,
-        reservationId: reservation.reservationId,
-        actualProviderCostUsd,
-        events: [{
-          type: 'generation',
-          modelId: MEDIA_INTENT_MODEL,
-          inputTokens,
-          outputTokens,
-          cachedTokens: 0,
-          cost: costCents,
-          timestamp: Date.now(),
-        }],
-      }).catch(async (error) => {
-        await markProviderBudgetReconcile({
-          userId: params.userId,
-          reservationId: reservation.reservationId,
-          errorMessage: error instanceof Error ? error.message : 'media_intent_finalize_failed',
-        }).catch((_error) => undefined)
-      })
+        workspaceId: params.workspaceId,
+        programmaticSubjectId: params.programmaticSubjectId,
+        operationId: `${params.operationId}:${globalThis.crypto.randomUUID()}`,
+        providerCostUsd,
+        usage: { kind: 'generation', modelId: MEDIA_INTENT_MODEL, inputTokens, outputTokens, cachedTokens: 0 },
+      }).catch((error) => logger.error('[media-intent] Failed to record usage', error))
     }
 
     const { intent, confidence } = result.object
     if (confidence < 0.7) return null
     return intent === 'image' || intent === 'video' ? intent : null
-  } catch (error) {
-    await releaseProviderBudgetReservation({
-      userId: params.userId,
-      reservationId: reservation.reservationId,
-      reason: error instanceof Error ? error.message : 'media_intent_classifier_failed',
-    }).catch((_error) => undefined)
+  } catch (_error) {
     return null
   }
 }

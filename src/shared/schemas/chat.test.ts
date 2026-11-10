@@ -19,3 +19,10 @@ test('accepts legacy desktop and mobile slot fields without validating them', ()
   assert.equal(parsed.multiModelSlotIndex, 2)
   assert.equal(parsed.multiModelTotal, 4)
 })
+
+test('a person-set harness deadline keeps its 30-second minimum and has no upper bound', () => {
+  const tenDays = 10 * 24 * 60 * 60 * 1_000
+  assert.equal(ActConversationRequest.parse({ harnessBudget: { durationMs: tenDays } }).harnessBudget?.durationMs, tenDays)
+  assert.equal(ActConversationRequest.safeParse({ harnessBudget: { durationMs: 29_999 } }).success, false)
+  assert.equal(ActConversationRequest.safeParse({ harnessBudget: { durationMs: 60_000.5 } }).success, false)
+})

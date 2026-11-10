@@ -95,7 +95,7 @@ test('admits immutable identity and policy before starting the personal workflow
     agentRun: agentRun(),
     paid: true,
     goal: '  Read the source.  ',
-    budget: { maxProviderCostUsd: 0.25, durationMs: 60_000 },
+    budget: { durationMs: 60_000 },
     onAdmitted,
   })
 
@@ -108,8 +108,10 @@ test('admits immutable identity and policy before starting the personal workflow
       actorUserId: 'user',
       workspaceId: 'workspace',
       allowedToolIds: ['read'],
-      deadlineAt: 1_700_000_060_000,
-      maxCostMicros: 250_000,
+      executionPolicyVersion: 2,
+      spendingMode: 'workspace',
+      taskDeadlineAt: 1_700_000_060_000,
+      maxCostMicros: 0,
     }),
   }))
   expect(onAdmitted).toHaveBeenCalledOnce()

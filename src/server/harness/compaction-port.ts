@@ -11,8 +11,7 @@ import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference
 import { readHarnessModelLimits } from './model-preparation'
 import { HarnessYield } from './model-recovery'
 import { waitForHarnessModelRecovery } from './model-recovery'
-import { waitForHarnessModelResources } from './resource-boundary'
-import type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
+import { DEFAULT_MAX_OUTPUT_TOKENS, type HarnessModelPurpose, type PreparedHarnessModel } from './model-port-types'
 
 type ModelStep = Parameters<HarnessExecutionPorts['recordModelStep']>[0]
 
@@ -124,11 +123,10 @@ async function rejectAlreadySettledSummary(
   throw new Error('The previous summary attempt already settled without a usable output.')
 }
 
-async function waitForSummaryResources(
+async function readSummaryState(
   reference: HarnessExecutionReference,
 ): Promise<HarnessSnapshot> {
-  const state = await waitForHarnessModelResources(reference, 0, () => readHarnessState(reference))
-  if (state.policy.resourcePauseVersion === 1 && state.status !== 'running') throw new HarnessYield()
+  const state = await readHarnessState(reference)
   assertSummaryRunnable(reference, state)
   if (state.modelReservation) throw new HarnessYield()
   return state
@@ -149,7 +147,7 @@ async function invokeSummary(
   modelId: string,
   limits: Awaited<ReturnType<typeof readHarnessModelLimits>>,
 ): Promise<string> {
-  const maxOutputTokens = Math.min(limits.maxOutputTokens ?? 8_192, attempt.targetSummaryTokens + 2_048)
+  const maxOutputTokens = Math.min(limits.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, attempt.targetSummaryTokens + 2_048)
   const instructions = harnessSummaryInstructions(attempt.targetSummaryTokens)
   const prepared = await dependencies.prepare({
     modelId,
@@ -161,7 +159,7 @@ async function invokeSummary(
     },
   })
   await applyHarnessOperation(dependencies.reference, `reserve:${attempt.receiptId}`, {
-    type: 'reserve_model', id: attempt.receiptId, maxCostMicros: prepared.estimatedCostMicros,
+    type: 'reserve_model', id: attempt.receiptId, maxCostMicros: 0,
   })
   const agent = new WorkflowAgent({
     model: new HarnessLanguageModel(prepared.model), instructions, tools: {}, stopWhen: isLoopFinished(), maxRetries: 0,
@@ -258,7 +256,7 @@ export function createHarnessCompactionPort(dependencies: CompactionDependencies
     await pollExistingSummaryHold(dependencies.reference, state, attempt, attempt.cycleId, attempt.retryCount)
     if (state.modelReservation) throw new HarnessYield()
     await rejectAlreadySettledSummary(dependencies.reference, state, attempt)
-    state = await waitForSummaryResources(dependencies.reference)
+    state = await readSummaryState(dependencies.reference)
     await applyHarnessOperation(dependencies.reference, `compaction-start:${attempt.receiptId}`, {
       type: 'set_compaction',
       compaction: {

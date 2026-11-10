@@ -32,7 +32,7 @@ test('billing refusals say which billing problem stopped the agent and who can f
     agentStartFailureMessage('Overlay', refusal('subscription_required', 'billing')),
     "Overlay can't start because this workspace doesn't have a paid plan. Open Workspace Billing to fix this, then send this message again.",
   )
-  assert.match(agentStartFailureMessage('Overlay', refusal('budget_exhausted', 'contact_owner')), /usage budget is used up\. Ask a workspace owner/)
+  assert.match(agentStartFailureMessage('Overlay', refusal('budget_exhausted', 'contact_owner')), /has less than 2% of its usage budget left\. Ask a workspace owner/)
   assert.deepEqual(agentStartFailureReason(refusal('payment_pending', 'billing')), {
     code: 'payment_pending', message: 'Payment not confirmed yet.', retryable: false,
   })

@@ -30,17 +30,13 @@ const run = {
   createdAt: 10,
   updatedAt: 11,
   plan: [{ id: 'step', title: 'Inspect', status: 'in_progress' }],
-  fundingPause: { reason: 'budget_exceeded' as const, requiredCents: 10, availableCents: 0, reservedCents: 0 },
   authorizationPause: { reason: 'task_deadline_expired' as const, deadlineAt: 20, pausedAt: 21 },
-  resourceRequest: { request: { token: 'resource-token' }, awaitingReceipt: true },
 }
 
 test('native lifecycle mapping preserves public controls while omitting private workflow identities', () => {
   const projected = toNativePersonalRun(run as never)
   assert.deepEqual(projected?.plan, run.plan)
-  assert.deepEqual(projected?.fundingPause, run.fundingPause)
   assert.deepEqual(projected?.authorizationPause, run.authorizationPause)
-  assert.deepEqual(projected?.resourceRequest, run.resourceRequest)
   assert.equal('workflowRunId' in (projected ?? {}), false)
   assert.equal('harnessRunId' in (projected ?? {}), false)
 })

@@ -8,7 +8,7 @@ const make = (requiresPlan = true) => createHarnessSnapshot({
   runId: 'fixture-run', goal: 'Check the requested document', constraints: ['Do not publish it'],
   policy: {
     actorUserId: 'fixture-user', allowedToolIds: ['read'], requiresPlan,
-    deadlineAt: 10_000, maxCostMicros: 100, maxParallelChildren: 2, maxDepth: 2,
+    deadlineAt: 10_000, maxCostMicros: 0, maxParallelChildren: 2, maxDepth: 2,
   },
 }, 1_000)
 
@@ -76,7 +76,7 @@ test('keeps the cacheable instruction prefix separate from changing working stat
   expect(prefix).not.toContain(state.goal)
   expect(context.goal).toBe(state.goal)
   expect(context.constraints).toEqual(state.constraints)
-  expect(context.budget.remainingCostMicros).toBe(100)
+  expect(context.budget).not.toHaveProperty('remainingCostMicros')
   expect(context).not.toHaveProperty('policy')
   expect(context).not.toHaveProperty('usage')
   const planned = replaceHarnessPlan(state, [{

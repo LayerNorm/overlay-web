@@ -7,7 +7,6 @@ import {
 import { isLoopFinished, type ModelMessage, type StepResult, type ToolSet } from 'ai'
 import {
   assertHarnessRunnable,
-  HarnessBudgetExceededError,
   HarnessDeadlineExceededError,
   harnessCompletionIssues,
   hasRunnableHarnessMilestones,
@@ -15,7 +14,7 @@ import {
 } from '@overlay/agent-runtime/harness-state'
 import { createHarnessAuthorizedTools } from './authorized-tools'
 import {
-  buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessStuckQuestion,
+  buildHarnessInstructions, buildHarnessStepInstructions,
   HARNESS_CONTROL_TOOLS, harnessProgressFingerprint, hasPendingHarnessAnswer,
 } from './context'
 import { buildHarnessCheckpoint } from './continuity'
@@ -112,13 +111,8 @@ function confirmedModelPause(
 ): boolean {
   const ownerMatches = state.workflowRunId === executionOwner
     && (state.executionGeneration ?? 0) === executionGeneration
-  return ownerMatches && (
-    (state.status === 'waiting_for_resources'
-      && state.resourcePause?.receiptId === receiptId
-      && state.latestReceipt?.id === receiptId)
-    || (receiptId.startsWith('model:')
-      && state.status === 'waiting_for_input' && state.blocker?.kind === 'budget')
-  )
+  return ownerMatches && receiptId.startsWith('model:')
+    && state.status === 'waiting_for_input' && state.blocker?.kind === 'budget'
 }
 
 function activeModelTools(
@@ -138,9 +132,6 @@ function assertPreparedModelAuthority(
   prepared: Awaited<ReturnType<HarnessExecutionPorts['prepareModel']>>,
   credentialOwnerId: string,
 ): void {
-  if (!Number.isSafeInteger(prepared.estimatedCostMicros) || prepared.estimatedCostMicros < 0) {
-    throw new Error('Invalid model cost reservation.')
-  }
   if (prepared.model && prepared.model.credentialOwnerId !== credentialOwnerId) {
     throw new Error('Model routing cannot change the credential owner.')
   }
@@ -183,8 +174,10 @@ async function shouldRecoverModelInvocation(
 
 export const HARNESS_CUT_OFF_CONTINUATION_MESSAGE = 'Your previous message stopped at the output limit. Continue it from the exact character where it stopped, even mid-word or mid-sentence. If it stopped after a complete word, begin with the space or punctuation that comes next. Output only the continuation: no preamble, acknowledgement or restart, and do not repeat anything already written.'
 
+// After this many checkpoints without plan or evidence progress, the next call gets a
+// recovery hint. Nothing pauses or stops a run for lack of progress: the workspace
+// budget is the only automatic limit.
 const STAGNATION_RECOVERY_START = 2
-const STAGNATION_PAUSE_AFTER = 6
 
 type InvocationContinuation =
   | { kind: 'finished'; snapshot: HarnessSnapshot }
@@ -214,21 +207,6 @@ async function finishOrCheckpointInvocation(
     return { kind: 'finished', snapshot: completed }
   }
   const nextStagnantSegments = harnessProgressFingerprint(state) === before ? stagnantSegments + 1 : 0
-  if (nextStagnantSegments >= STAGNATION_PAUSE_AFTER) {
-    const operationId = `stuck:${segment}`
-    await ports.apply(`stuck:${segment}`, {
-      type: 'block',
-      blocker: { kind: 'stuck', question: buildHarnessStuckQuestion(state) },
-      diagnostic: createHarnessDiagnostic({
-        diagnosticId: stableHarnessDiagnosticId(state.runId, operationId, state.revision),
-        code: 'STAGNATION',
-        stage: 'model',
-        operationId,
-        occurredAt: Date.now(),
-      }),
-    })
-    return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
-  }
   await ports.apply(`checkpoint:${segment}`, {
     type: 'checkpoint',
     summary: JSON.stringify(buildHarnessCheckpoint(state)),
@@ -286,30 +264,26 @@ async function authorizeModelBoundary(
   state: HarnessSnapshot,
   ports: HarnessExecutionPorts,
   operationId: string,
-  estimatedCostMicros = 0,
   renew = true,
 ): Promise<HarnessSnapshot> {
   if (renew && state.policy.executionPolicyVersion === 2) {
     await ports.renewLease()
     state = await ports.read()
   }
-  if (state.policy.resourcePauseVersion === 1) {
-    if (!ports.waitForResources) throw new Error('This workflow does not support resource waits.')
-    state = await ports.waitForResources(estimatedCostMicros)
-  } else if (state.status === 'running') {
+  // Only an explicit deadline stops a run here. Spending is checked against the
+  // real workspace balance at dispatch, never against an estimate of the call.
+  if (state.status === 'running') {
     try {
-      assertHarnessRunnable(state, Date.now(), estimatedCostMicros)
+      assertHarnessRunnable(state, Date.now())
     } catch (error) {
-      if (!(error instanceof HarnessBudgetExceededError) && !(error instanceof HarnessDeadlineExceededError)) throw error
+      if (!(error instanceof HarnessDeadlineExceededError)) throw error
       const diagnostic = createHarnessDiagnostic({
         diagnosticId: stableHarnessDiagnosticId(state.runId, operationId, state.revision),
-        code: error instanceof HarnessDeadlineExceededError ? 'TASK_DEADLINE' : 'TASK_SPEND_LIMIT',
-        stage: 'model', operationId, occurredAt: Date.now(),
+        code: 'TASK_DEADLINE', stage: 'model', operationId, occurredAt: Date.now(),
       })
       await ports.apply(operationId, {
-        type: 'block', blocker: { kind: 'budget', question: error instanceof HarnessDeadlineExceededError
-          ? 'This task reached its authorized run deadline. Review the saved work before starting another task.'
-          : 'This task reached its per-task limit, not your workspace credit balance. Review the saved work before increasing the limit.' },
+        type: 'block', blocker: { kind: 'budget',
+          question: 'This task reached its authorized run deadline. Review the saved work before starting another task.' },
         diagnostic,
       })
       throw new HarnessYield(`model:${operationId.split(':').at(-1)}`)
@@ -447,7 +421,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         recoveryMessages = prompt.filter(message => message.role !== 'system')
         recoverySteps = [...settledSteps]
         // Authority and the lease are renewed once, just before the call is reserved.
-        let current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`, 0, false)
+        let current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`, false)
         const instructionContext = {
           instructions,
           publicProgress: commentaryInvocation,
@@ -462,9 +436,9 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
         const prepared = await ports.prepareModel({ receiptId, state: current, messages: prompt, instructionContext,
           toolNames: Object.keys(tools), toolDefinitions, settings: input.settings ?? {} })
         assertPreparedModelAuthority(prepared, input.model.credentialOwnerId)
-        current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`, prepared.estimatedCostMicros)
+        current = await authorizeModelBoundary(await ports.read(), ports, `budget:${segment}:${modelCall}`)
         const complete = harnessCompletionIssues(current).length === 0 && current.plan.length > 0
-        current = await ports.apply(`reserve:${receiptId}`, { type: 'reserve_model', id: receiptId, maxCostMicros: prepared.estimatedCostMicros })
+        current = await ports.apply(`reserve:${receiptId}`, { type: 'reserve_model', id: receiptId, maxCostMicros: 0 })
         observedState = current
         const activeTools = activeModelTools(current, prepared.activeToolNames, tools, controls, complete)
         const pendingAnswerControls = complete && activeTools.length > 0

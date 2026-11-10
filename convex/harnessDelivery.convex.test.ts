@@ -486,7 +486,7 @@ describe('personal harness delivery binding', () => {
       steps: [{ id: 'delegate', title: 'Delegate', dependsOn: [], acceptanceCriteria: ['Complete it.'], requiresVerification: false }],
     })
     const reserved = await apply(convex, input, 'reserve', planned.snapshot.revision, {
-      type: 'reserve_model', id: 'late-receipt', maxCostMicros: 600,
+      type: 'reserve_model', id: 'late-receipt', maxCostMicros: 0,
     })
     const childInput = { ...input, runId: 'cancel-child' }
     const childAdmission = await apply(convex, input, 'child-admission', reserved.snapshot.revision, {
@@ -560,7 +560,7 @@ describe('personal harness delivery binding', () => {
       })
       const reservationId = `summary:${scenario.runId}`
       const reserved = await apply(convex, input, 'reserve-summary', claimed.snapshot.revision, {
-        type: 'reserve_model', id: reservationId, maxCostMicros: scenario.maxCostMicros,
+        type: 'reserve_model', id: reservationId, maxCostMicros: 0,
       })
       await apply(convex, input, 'dispatch-summary', reserved.snapshot.revision, {
         type: 'bind_model_dispatch', id: reservationId,
@@ -572,7 +572,7 @@ describe('personal harness delivery binding', () => {
       expect(root?.status).toBe('cancelled')
       expect(root?.modelReservation).toMatchObject({
         id: reservationId,
-        maxCostMicros: scenario.maxCostMicros,
+        maxCostMicros: 0,
         dispatch: {
           modelId: scenario.modelId,
           billingReservationId: scenario.billingReservationId,

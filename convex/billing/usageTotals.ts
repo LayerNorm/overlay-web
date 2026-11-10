@@ -16,8 +16,9 @@ const totalValidator = v.object({
 })
 
 /**
- * The itemized usage list for a workspace billing account: every charge settled since `periodStart` (finalized
- * reservations, plus usage operations that record their own amount), added up per resource.
+ * The itemized usage list for a workspace billing account: every charge settled since `periodStart` (usage
+ * operations that record their own amount, plus reservations finalized before holds were removed), added up per
+ * resource.
  */
 export const usageTotalsByServer = query({
   args: { billingAccountId: v.string(), periodStart: v.number(), serverSecret: v.string() },
@@ -36,8 +37,8 @@ export async function usageTotalsFor(ctx: Pick<QueryCtx, 'db'>, args: { billingA
       .eq('status', 'finalized')
       .gte('createdAt', args.periodStart))
     .take(MAX_CHARGES + 1)
-  // Charges that skip reservations (the machine-time meter, batch-recorded usage) carry their amount on the
-  // usage operation instead.
+  // Every charge now carries its amount on its usage operation. Finalized reservations are historical (nothing
+  // creates them any more); they are read until the budgetReservations table is deleted.
   const operations = await ctx.db.query('usageOperations')
     .withIndex('by_billingAccountId_createdAt', (q) => q
       .eq('billingAccountId', args.billingAccountId)

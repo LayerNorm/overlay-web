@@ -1,4 +1,3 @@
-import { FatalError, sleep } from 'workflow'
 import type { WorkflowAgentStreamResult } from '@ai-sdk/workflow'
 import type { ModelMessage, ToolSet } from 'ai'
 import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
@@ -19,64 +18,18 @@ export function isTerminal(state: HarnessSnapshot) {
   return ['completed', 'failed', 'cancelled'].includes(state.status)
 }
 
-function isFatalHarnessWaitError(error: unknown): boolean {
-  return error instanceof FatalError || Boolean(error && typeof error === 'object'
-    && (error as { name?: unknown }).name === 'FatalError')
-}
-
 export async function handleWaitingState(
   state: HarnessSnapshot,
   messages: ModelMessage[],
   ports: HarnessExecutionPorts,
   invocation: number,
 ): Promise<WaitingStateOutcome | null> {
-  if (state.status === 'waiting_for_resources' && state.resourcePause) {
-    return handleFundingWait(state, messages, ports, invocation)
-  }
-  if (state.status === 'waiting_for_resources' && state.policy.resourcePauseVersion === 1 && ports.waitForResources) {
-    await ports.waitForResources(0)
-    return { kind: 'restart', messages, invocation, resetStagnation: false }
-  }
   if (state.status === 'waiting_for_children') {
     return handleChildrenWait(state, messages, ports, invocation)
   }
   if (state.status === 'running') return null
   if (state.blocker?.kind !== 'input' && state.blocker?.kind !== 'stuck') return { kind: 'blocked', snapshot: state }
   return handleInputWait(state, messages, ports, invocation)
-}
-
-async function handleFundingWait(
-  state: HarnessSnapshot,
-  messages: ModelMessage[],
-  ports: HarnessExecutionPorts,
-  invocation: number,
-): Promise<WaitingStateOutcome> {
-  if (state.policy.executionPolicyVersion !== 2 || state.policy.spendingMode !== 'workspace') {
-    return { kind: 'blocked', snapshot: state }
-  }
-  try {
-    if (ports.waitForFunding) await ports.waitForFunding()
-    else await sleep('60s')
-  } catch (error) {
-    if (isFatalHarnessWaitError(error)) throw error
-    await sleep('60s')
-    return { kind: 'restart', messages, invocation, resetStagnation: false }
-  }
-  const current = await ports.read()
-  if (isTerminal(current) || current.status !== 'waiting_for_resources' || !current.resourcePause) {
-    return { kind: 'restart', messages, invocation, resetStagnation: false }
-  }
-  let funded = false
-  try {
-    funded = Boolean(ports.checkFunding && await ports.checkFunding(current.resourcePause.requiredCents))
-  } catch (error) {
-    if (isFatalHarnessWaitError(error)) throw error
-    return { kind: 'restart', messages, invocation, resetStagnation: false }
-  }
-  if (!funded) return { kind: 'restart', messages, invocation, resetStagnation: false }
-  await ports.renewLease()
-  await ports.apply(`resume-funding:${current.resourcePause.receiptId}`, { type: 'resume_funding' })
-  return { kind: 'restart', messages, invocation, resetStagnation: false }
 }
 
 async function handleChildrenWait(

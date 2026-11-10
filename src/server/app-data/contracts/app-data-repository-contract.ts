@@ -637,28 +637,23 @@ export async function runAppDataRepositoryContractSuite(
       assert.equal(await backend.files.getFile({ fileId: outputId, userId }), null)
     })
 
-    await t.test(`${backend.name}: usage policy has explicit reservation/accounting behavior`, async () => {
+    await t.test(`${backend.name}: usage policy checks the budget and charges after, without holds`, async () => {
       const entitlements = await backend.usagePolicy.getEntitlements({ userId })
       assert.ok(entitlements)
-      const reservation = await backend.usagePolicy.reserveForAttempt({
+      const check = await backend.usagePolicy.ensureBudgetNotLow({
         entitlements,
-        estimatedInputTokens: 100,
-        maxOutputTokens: 100,
         modelId: 'openrouter/free',
         operationId: 'contract.free-model',
-        paid: false,
-        requestFingerprint: `${backend.name}:free-model`,
         userId,
       })
-      assert.deepEqual(reservation, { ok: true, reservationId: null })
+      assert.deepEqual(check, { ok: true })
       const finished = await backend.usagePolicy.recordFinishedUsage({
         inputTokens: 0,
         modelId: 'openrouter/free',
         outputTokens: 0,
-        reservationId: null,
         userId,
       })
-      assert.deepEqual(finished, { finalized: false, reservationId: null })
+      assert.deepEqual(finished, { recorded: false, budgetLow: false })
     })
 
     await t.test(`${backend.name}: memories preserve provider-neutral CRUD and user isolation`, async () => {

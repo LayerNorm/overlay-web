@@ -23,7 +23,7 @@ export async function admitNativeStart(ctx: MutationCtx, run: Doc<'conversationA
     || !Number.isSafeInteger(input.now) || input.now < run.createdAt || input.now >= state.hardDeadlineAt || execution.data.attemptId !== state.currentAttemptId
     || execution.data.generation !== state.executionGeneration || request.data.commandId !== session.restorationCommandId
     || request.data.remoteSessionId !== restoration.data.nativeRestoration.nativeSessionId
-    || !await nativeRecoveryIsAuthorized(ctx, run, session, snapshot.data)) throw Error('AGENT_NATIVE_START_NOT_ADMITTED')
+    || !await nativeRecoveryIsAuthorized(ctx, run, session)) throw Error('AGENT_NATIVE_START_NOT_ADMITTED')
   const command = await ctx.db.query('agentRunCommands').withIndex('by_commandId', q => q.eq('commandId', request.data.commandId)).unique()
   if (!command || command.status !== 'claimed' || !matchesNativeRestoration(state, session, command)
     || input.now < command.createdAt) throw Error('AGENT_NATIVE_START_NOT_ADMITTED')

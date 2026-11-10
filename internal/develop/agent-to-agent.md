@@ -7,7 +7,7 @@ An agent can ask another agent in the workspace for help and read its answer. It
 - `list_agents`: the agents the person can see, except the caller.
 - `ask_agent(agent, message, wait?)`: `agent` is an id or exact name. With `wait` (default) it returns the reply, or a handle (`conversationId`, `turnId`) if the agent is still working after about 80 seconds. The message must stand alone: the asked agent does not see the asker's conversation.
 - `read_agent_reply(conversationId, turnId)`: the reply to an earlier ask that was still working.
-- `post_message(conversationId, text, mentions?)`: post into a channel or group chat the person can see and the agent is part of, optionally mentioning up to 3 agents who are in it; they answer there. It does not wait. A mention is a question: the same chain limits and budgets apply, and the message carries the lineage. A post that mentions nobody starts nothing. Refused for a personal chat, a conversation the person cannot see, a room the agent is not in, or a mention of someone not in the room.
+- `post_message(conversationId, text, mentions?)`: post into a channel or group chat the person can see and the agent is part of, optionally mentioning up to 20 agents who are in it; they answer there. It does not wait. A mention is a question: the same chain limits and budgets apply, and the message carries the lineage. A post that mentions nobody starts nothing. Refused for a personal chat, a conversation the person cannot see, a room the agent is not in, or a mention of someone not in the room.
 
 All four call one route, `POST /api/v1/agent-asks` (`list`, `ask`, `post`, `read`), through `executeListAgents` / `executeAskAgent` / `executePostMessage` / `executeReadAgentReply`. Registered in `OVERLAY_TOOL_IDS`, the `agent_chat` group, and (for `post_message` only) the outside-app withheld list. The route's actions and the boundary schema's action list are tied by a test. Agents that hold the whole toolbox (automations, video, browser) read as holding these too (`LATER_GROUP_MEMBERS`); narrower grants do not get them.
 
@@ -24,12 +24,12 @@ ChatGPT, Claude, Cursor and other MCP clients at the Everything level get `list_
 ## Lineage and limits (`src/shared/agents/agent-lineage.ts`)
 
 - Lineage = root turn (the person's message), hop, and the chain of agent ids. It lives on the question message (`data-agent-lineage`); only an agent-authored message is trusted to carry one, and a person's message parts are restricted to text and files, so a lineage cannot be forged.
-- **Hop limit 3**, **no self-asks**, **no cycles** (an agent already in the chain cannot be asked), **3 questions per turn**, **12 per person's message** across the whole chain (`agentAskCounters`, claimed atomically in Convex before anything is posted and given back if delivery fails). **Posts**: 5 per turn, 20 per request. **Spend**: a chain whose asked agents have already used 500,000 tokens (input plus output of their replies, added up from the replies each request recorded) cannot ask again (`MAX_CHAIN_TOKENS`); counts alone do not bound cost, and tokens are what every provider reports. BYOM agents report tokens too. Each refusal is a plain tool error the agent can relay.
+- **Hop limit 10**, **no self-asks**, **no cycles** (an agent already in the chain cannot be asked), **50 questions per turn**, **200 per person's message** across the whole chain (`agentAskCounters`, claimed atomically in Convex before anything is posted and given back if delivery fails). **Posts**: 50 per turn, 200 per request. These counts only stop a runaway chain; there is no per-chain token or spending limit. The workspace budget is the only spending limit (each asked agent's turn is charged and stops under 2%). Each refusal is a plain tool error the agent can relay.
 - Visibility: only agents the person can see (`WorkspaceAgentService.list`) can be asked.
 
 ## UI
 
-The question shows "Agent question · step N of 3 · see where it came from" in the room view; the link goes to the conversation the asking turn was running in (`parentConversationId` in the lineage). A link to a direct message or channel with no view (such as that one) used to open it in the personal-chat renderer; `ConversationExperienceRouter` now probes the conversation's participants and moves the route to `view=dms` or `view=channels`.
+The question shows "Agent question · step N · see where it came from" in the room view; the link goes to the conversation the asking turn was running in (`parentConversationId` in the lineage). A link to a direct message or channel with no view (such as that one) used to open it in the personal-chat renderer; `ConversationExperienceRouter` now probes the conversation's participants and moves the route to `view=dms` or `view=channels`.
 
 ## Verified on production (2026-10-03)
 
@@ -41,7 +41,7 @@ The question shows "Agent question · step N of 3 · see where it came from" in 
 
 ## Not built yet
 
-A spend limit in money rather than tokens (the usage ledger is per turn and not yet summed per chain), and posting into a conversation the agent is not already part of (an agent must be a participant today).
+Posting into a conversation the agent is not already part of (an agent must be a participant today).
 
 Native Harness `ask_agent` and `post_message` requests use shared-root
 named-child dispatch for Overlay agents; external and remote agents remain
