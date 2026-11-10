@@ -144,6 +144,12 @@ JSON for `generateText`. Cancellation, response/event size limits, and safe
 typed errors are enforced at the boundary. There is no timeout after an
 upstream inference stream has connected.
 
+Subscription requests are text-only. Before validation, the subscription model
+replaces every image or file part (user attachments, assistant files and tool
+results such as a fetched screenshot) with a short note telling the model it
+could not see that file (`text-only-prompt.ts`). Otherwise one tool image in the
+history would make every later request in the run fail validation.
+
 Only the enumerated reconnect, rate-limit, model-unavailable, and temporary
 failure codes are surfaced with actionable messages. Provider response text,
 credentials, and raw errors are not returned or logged. Ordinary API-key and
