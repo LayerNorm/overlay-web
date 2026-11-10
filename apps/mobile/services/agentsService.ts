@@ -91,17 +91,6 @@ export async function createAgentEnrollment(
   )
 }
 
-export async function createManagedEnvironment(
-  workspaceId: string,
-  adapterId?: 'codex' | 'claude-code',
-): Promise<AgentEnvironmentResource> {
-  const { environment } = await mobileOverlayAppClient.agentEnvironments.createManaged(
-    workspaceId,
-    adapterId ? { adapterId } : undefined,
-  )
-  return environment
-}
-
 export async function approveAgentEnvironment(
   workspaceId: string,
   environmentId: string,

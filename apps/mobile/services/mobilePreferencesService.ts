@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage'
 import { Directory, Paths } from 'expo-file-system'
 
 export type AppearanceMode = 'light' | 'dark' | 'auto'
-export type StartDestination = 'last-used' | 'chat' | 'agents' | 'voice' | 'projects' | 'knowledge'
+export type StartDestination = 'last-used' | 'chat' | 'agents' | 'voice' | 'work' | 'files'
 export type TranscriptionRetentionDays = 7 | 30 | 90 | 365 | 0
 
 export interface MobilePreferences {
@@ -53,8 +53,8 @@ function normalizePreferences(value: unknown): MobilePreferences {
       candidate.startDestination === 'chat' ||
       candidate.startDestination === 'agents' ||
       candidate.startDestination === 'voice' ||
-      candidate.startDestination === 'projects' ||
-      candidate.startDestination === 'knowledge'
+      candidate.startDestination === 'work' ||
+      candidate.startDestination === 'files'
         ? candidate.startDestination
         : DEFAULT_MOBILE_PREFERENCES.startDestination,
     transcriptionRetentionDays:

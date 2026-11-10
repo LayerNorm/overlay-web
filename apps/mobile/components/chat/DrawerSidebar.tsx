@@ -33,7 +33,7 @@ import { GlassSurface } from '../ui/GlassSurface'
 import { ChatActionsSheet } from './ChatActionsSheet'
 import { NewDirectMessageSheet } from './NewDirectMessageSheet'
 import { NewChannelSheet } from './NewChannelSheet'
-import { fetchNotifications } from '../../services/collaborationService'
+import { COLLABORATION_NATIVE_READY, fetchNotifications } from '../../services/collaborationService'
 import { loadChatsMetaByView, type ChatListView } from '../../services/chatStorage'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 
@@ -53,9 +53,7 @@ const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
 /**
  * Route matching for drawer nav items. Routes may carry a `?tab=` qualifier
- * (e.g. Files → knowledge?tab=files); a qualified route only matches when the
- * current tab param equals it, and the unqualified knowledge route defers to
- * the qualified one so both don't highlight at once.
+ * A qualified route only matches when the current tab param equals it.
  */
 function isMobileRouteActive(
   route: string,
@@ -77,24 +75,9 @@ function isMobileRouteActive(
   if (queryPart?.startsWith('tab=')) {
     return queryPart.slice(4) === activeTab
   }
-  if (segment === 'knowledge' && activeTab === 'files') {
-    return false
-  }
   return true
 }
 
-interface KnowledgeSubItem {
-  label: string
-  icon: React.ComponentProps<typeof Feather>['name']
-  route: string
-}
-
-const KNOWLEDGE_SUBITEMS: KnowledgeSubItem[] = [
-  { label: 'Memories', icon: 'cpu', route: '/(tabs)/knowledge?tab=memories' },
-  { label: 'Files', icon: 'folder', route: '/(tabs)/knowledge?tab=files' },
-  { label: 'Outputs', icon: 'file-text', route: '/(tabs)/knowledge?tab=outputs' },
-  { label: 'Bases', icon: 'database', route: '/(tabs)/knowledge?tab=bases' },
-]
 
 export function DrawerSidebar({
   theme,
@@ -328,7 +311,6 @@ function DrawerContent({
   const { user } = useAuth()
   const { destinations, featureFlags, capabilities, isFeatureEnabled } = useAppSession()
   const { activeWorkspaceId } = useWorkspace()
-  const [knowledgeExpanded, setKnowledgeExpanded] = useState(false)
   const [actionsChat, setActionsChat] = useState<ChatMeta | null>(null)
   const [chatFilter, setChatFilter] = useState<ChatListFilter>('all')
   const [collabChats, setCollabChats] = useState<ChatMeta[]>([])
@@ -341,6 +323,7 @@ function DrawerContent({
   // Unread badges = unread collaboration notifications per conversation —
   // same derivation as the web sidebar (`collaborationUnread`).
   const refreshUnread = useCallback(() => {
+    if (!COLLABORATION_NATIVE_READY) return
     void fetchNotifications('unread', { unreadOnly: true, limit: 100 })
       .then((items) => {
         const counts: Record<string, number> = {}
@@ -410,8 +393,6 @@ function DrawerContent({
     return isMobileRouteActive(route, pathname, activeTabParam, { isChatActive, isNotesActive })
   }
 
-  const isKnowledgeActive = pathname.startsWith('/knowledge') || pathname.includes('/(tabs)/knowledge')
-
   const navigateToLastNote = useCallback(async () => {
     try {
       const lastNoteId = await AsyncStorage.getItem('overlay:last-note-id')
@@ -446,22 +427,11 @@ function DrawerContent({
     if (!item.route) return
     if (item.id === 'notes') {
       void navigateToLastNote()
-    } else if (item.id === 'knowledge') {
-      setKnowledgeExpanded((expanded) => !expanded)
     } else {
       navigate(item.route)
     }
   }, [navigateToLastNote, navigate])
 
-  const handleKnowledgeSubItemPress = useCallback(async (subItem: KnowledgeSubItem) => {
-    const viewName = subItem.label.toLowerCase()
-    try {
-      await AsyncStorage.setItem('overlay:last-knowledge-view', viewName)
-    } catch {
-      // ignore
-    }
-    navigate(subItem.route)
-  }, [navigate])
 
   const handleLongPressChat = useCallback((chat: ChatMeta) => {
     setActionsChat(chat)
@@ -509,14 +479,13 @@ function DrawerContent({
         <View style={styles.navSection}>
           {navItems.map((item) => {
             const disabled = !item.route
-            const isKnowledgeItem = item.id === 'knowledge'
             const active = item.route ? isRouteActive(item.route) : false
             return (
               <View key={item.id}>
                 <TouchableOpacity
                   style={[
                     styles.navItem,
-                    (active || (isKnowledgeItem && isKnowledgeActive)) && {
+                    active && {
                       backgroundColor: theme.surfaceSubtle,
                     },
                     disabled && styles.navItemDisabled,
@@ -529,7 +498,7 @@ function DrawerContent({
                     sfSymbol={item.sfSymbol}
                     featherIcon={item.featherIcon}
                     size={18}
-                    color={disabled ? theme.mutedLight : active || (isKnowledgeItem && isKnowledgeActive) ? theme.text : theme.muted}
+                    color={disabled ? theme.mutedLight : active ? theme.text : theme.muted}
                   />
                   <Text
                     style={[
@@ -537,7 +506,7 @@ function DrawerContent({
                       {
                         color: disabled
                           ? theme.mutedLight
-                          : active || (isKnowledgeItem && isKnowledgeActive)
+                          : active
                             ? theme.text
                             : theme.muted,
                       },
@@ -555,48 +524,8 @@ function DrawerContent({
                       </Text>
                     </View>
                   ) : null}
-                  {isKnowledgeItem ? (
-                    <Feather
-                      name={knowledgeExpanded ? 'chevron-up' : 'chevron-down'}
-                      size={16}
-                      color={theme.muted}
-                    />
-                  ) : null}
                 </TouchableOpacity>
 
-                {isKnowledgeItem && knowledgeExpanded ? (
-                  <View style={styles.subItemsContainer}>
-                    {KNOWLEDGE_SUBITEMS.map((subItem) => {
-                      const isActive = pathname.includes(subItem.route.replace('/(tabs)', ''))
-                      return (
-                        <TouchableOpacity
-                          key={subItem.label}
-                          style={[
-                            styles.subItem,
-                            isActive && { backgroundColor: theme.surfaceSubtle },
-                          ]}
-                          activeOpacity={0.65}
-                          onPress={() => handleKnowledgeSubItemPress(subItem)}
-                        >
-                          <Feather
-                            name={subItem.icon}
-                            size={16}
-                            color={isActive ? theme.text : theme.muted}
-                            style={styles.subItemIcon}
-                          />
-                          <Text
-                            style={[
-                              styles.subItemLabel,
-                              { color: isActive ? theme.text : theme.muted },
-                            ]}
-                          >
-                            {subItem.label}
-                          </Text>
-                        </TouchableOpacity>
-                      )
-                    })}
-                  </View>
-                ) : null}
               </View>
             )
           })}

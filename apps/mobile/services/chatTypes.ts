@@ -12,7 +12,7 @@ import type {
 export type ChatModel = ServerChatModel
 
 /** Mirrors `MentionItem` in web `src/shared/knowledge/mention-types.ts`. */
-export type ChatMentionType = 'file' | 'knowledge' | 'connector' | 'automation' | 'skill' | 'mcp' | 'chat' | 'person' | 'agent'
+export type ChatMentionType = 'file' | 'connector' | 'automation' | 'skill' | 'mcp' | 'chat' | 'person' | 'agent'
 
 export interface ChatMentionItem {
   type: ChatMentionType
@@ -85,7 +85,6 @@ export interface ChatMeta {
   createdAt: number
   updatedAt: number
   lastMessage?: string
-  projectId?: string
   lastMode?: ChatMode
   askModelIds?: string[]
   actModelId?: string

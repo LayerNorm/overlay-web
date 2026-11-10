@@ -588,21 +588,6 @@ function AssistantSegmentView({
         </View>
       )
     }
-    case 'browser':
-      return (
-        <View style={{ marginTop: 8, marginBottom: 8 }}>
-          <ToolCallRow
-            tool={{
-              toolCallId: segment.block.key,
-              toolName: segment.block.name,
-              state: segment.block.state,
-              toolInput: segment.block.toolInput,
-              toolOutput: segment.block.toolOutput,
-            }}
-            theme={theme}
-          />
-        </View>
-      )
     case 'file':
       return (
         <View style={{ marginTop: 8 }}>

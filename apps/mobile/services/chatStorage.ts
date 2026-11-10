@@ -151,7 +151,6 @@ function mapConversationSummary(summary: ConversationSummary): ChatMeta {
     createdAt: summary.createdAt,
     updatedAt: summary.updatedAt,
     lastMessage: undefined,
-    projectId: summary.projectId,
     lastMode: summary.lastMode,
     askModelIds: summary.askModelIds,
     actModelId: summary.actModelId,
@@ -161,10 +160,8 @@ function mapConversationSummary(summary: ConversationSummary): ChatMeta {
   }
 }
 
-export async function loadChatsMeta(projectId?: string): Promise<ChatMeta[]> {
-  const summaries = await appJson<ConversationSummary[]>('/api/v1/conversations', {
-    query: { projectId: projectId || undefined },
-  })
+export async function loadChatsMeta(): Promise<ChatMeta[]> {
+  const summaries = await appJson<ConversationSummary[]>('/api/v1/conversations')
   return summaries
     .map(mapConversationSummary)
     .sort((a, b) => b.updatedAt - a.updatedAt)
@@ -207,7 +204,6 @@ export async function saveChat(chat: Chat): Promise<void> {
       askModelIds: chat.askModelIds,
       actModelId: chat.actModelId || chat.modelId,
       lastMode: chat.lastMode,
-      projectId: chat.projectId,
     },
   })
 }
@@ -273,7 +269,7 @@ export async function updateChatMessages(_id: string, _messages: Message[]): Pro
 
 export async function createNewChat(
   modelId?: string,
-  options: { projectId?: string; title?: string; clientId?: string } = {},
+  options: { title?: string; clientId?: string } = {},
 ): Promise<Chat> {
   const clientId = options.clientId ?? generateChatId()
   const response = await appJson<{
@@ -287,7 +283,6 @@ export async function createNewChat(
       askModelIds: modelId ? [modelId] : undefined,
       actModelId: modelId,
       lastMode: 'act',
-      projectId: options.projectId,
     },
   })
 

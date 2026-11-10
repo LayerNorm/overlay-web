@@ -83,8 +83,8 @@ const START_DESTINATIONS: { label: string; value: StartDestination }[] = [
   { label: 'Chat', value: 'chat' },
   { label: 'Agents', value: 'agents' },
   { label: 'Voice', value: 'voice' },
-  { label: 'Projects', value: 'projects' },
-  { label: 'Knowledge', value: 'knowledge' },
+  { label: 'Work', value: 'work' },
+  { label: 'Files', value: 'files' },
 ]
 
 const RETENTION_OPTIONS: { label: string; value: TranscriptionRetentionDays }[] = [
@@ -118,6 +118,7 @@ export default function SettingsScreen(): React.ReactElement {
     imageModels,
     videoModels,
     featureFlags,
+    isFeatureEnabled,
     defaults,
     error: sessionError,
   } = useAppSession()
@@ -555,13 +556,7 @@ export default function SettingsScreen(): React.ReactElement {
                 value={preferences.hapticsEnabled}
                 onValueChange={(hapticsEnabled) => { void updatePreferences({ hapticsEnabled }) }}
               />
-              <ToggleRow
-                theme={theme}
-                title="In-app notifications"
-                detail="Show banners for new activity while the app is open."
-                value={preferences.notificationBannersEnabled}
-                onValueChange={(notificationBannersEnabled) => { void updatePreferences({ notificationBannersEnabled }) }}
-              />
+              {/* Convex-native in Phase 1: notification preferences. */}
               <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>Transcription retention</Text>
               <SegmentedControl
                 theme={theme}
@@ -580,8 +575,8 @@ export default function SettingsScreen(): React.ReactElement {
             </SettingsSection>
 
             <SettingsSection theme={theme} title="Data & Privacy" icon="shield">
-              <ActionRow theme={theme} icon="database" title="Manage knowledge" detail="Files, memories, and outputs." onPress={() => router.push('/(tabs)/knowledge')} />
-              <ActionRow theme={theme} icon="bookmark" title="Manage memories" detail="Review, edit, and delete saved memories." onPress={() => router.push('/(tabs)/knowledge?tab=memories')} />
+              <ActionRow theme={theme} icon="database" title="Files" detail="Files, notes, and outputs." onPress={() => router.push('/(tabs)/files')} />
+              <ActionRow theme={theme} icon="bookmark" title="Manage memories" detail="Review, edit, and delete saved memories." onPress={() => router.push('/memories')} />
               <ActionRow theme={theme} icon="trash" title="Clear local caches" detail="Bootstrap, settings cache, and downloaded files." onPress={handleClearCaches} destructive />
               <ActionRow theme={theme} icon="key" title="Clear auth handoff residue" detail="Remove pending PKCE handoff without signing out." onPress={() => { void clearPkceVerifier() }} />
               <ActionRow theme={theme} icon="external-link" title="Privacy policy" detail="Open Overlay privacy policy." onPress={() => { void Linking.openURL('https://www.getoverlay.io/privacy') }} />
@@ -590,8 +585,7 @@ export default function SettingsScreen(): React.ReactElement {
             </SettingsSection>
 
             <SettingsSection theme={theme} title="Extensions & Integrations" icon="grid">
-              <ActionRow theme={theme} icon="tool" title="Manage extensions" detail={featureFlags.canUseExtensions ? 'Integrations, skills, and MCPs.' : 'Unavailable on this account.'} onPress={() => router.push('/(tabs)/tools')} />
-              <ActionRow theme={theme} icon="folder" title="Manage projects" detail={featureFlags.canUseProjects ? 'Project chats, notes, files, and skills.' : 'Unavailable on this account.'} onPress={() => router.push('/(tabs)/projects')} />
+              {isFeatureEnabled('extensions') && <ActionRow theme={theme} icon="tool" title="Manage extensions" detail={featureFlags.canUseExtensions ? 'Integrations, skills, and MCPs.' : 'Unavailable on this account.'} onPress={() => router.push('/(tabs)/tools')} />}
               <ActionRow theme={theme} icon="zap" title="Manage automations" detail={featureFlags.canUseAutomations ? 'Scheduled backend workflows.' : 'Unavailable on this account.'} onPress={() => router.push('/(tabs)/automations')} />
             </SettingsSection>
 

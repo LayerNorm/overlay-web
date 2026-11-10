@@ -169,7 +169,7 @@ function createSyntheticModel(modelId?: string | null): ChatModel | null {
 }
 
 
-function createDraftChat(modelId?: string, projectId?: string): Chat {
+function createDraftChat(modelId?: string): Chat {
   const now = Date.now()
   return {
     id: generateChatId(),
@@ -181,7 +181,6 @@ function createDraftChat(modelId?: string, projectId?: string): Chat {
     actModelId: modelId,
     modelId,
     messages: [],
-    projectId,
   }
 }
 
@@ -351,13 +350,9 @@ function getNextTitle(currentTitle: string, inputValue: string): string {
 
 export function ChatScreen({
   conversationId,
-  projectId,
-  projectName,
   routeKind,
 }: {
   conversationId?: string
-  projectId?: string
-  projectName?: string
   routeKind: 'tab' | 'detail'
 }): React.ReactElement {
   const router = useRouter()
@@ -467,12 +462,12 @@ export function ChatScreen({
   }, [openDrawer])
 
   const refreshHistory = useCallback(async () => {
-    const nextHistory = await loadChatsMeta(projectId).catch(() => null)
+    const nextHistory = await loadChatsMeta().catch(() => null)
     if (nextHistory) {
       setHistory(nextHistory)
     }
     return nextHistory ?? []
-  }, [projectId])
+  }, [])
 
   const syncConversationMeta = useCallback(
     async (overrides: Partial<Chat> = {}) => {
@@ -569,7 +564,7 @@ export function ChatScreen({
       // Create a client-side draft only. The server-side conversation is
       // created lazily on the first user message (via chatStream), so
       // merely navigating to the Chat tab never produces an empty chat.
-      const created: Chat = createDraftChat(modelId, projectId)
+      const created: Chat = createDraftChat(modelId)
 
       chatRef.current = created
       setActiveChatId(created.id)
@@ -597,15 +592,13 @@ export function ChatScreen({
           pathname: '/chat/[id]',
           params: {
             id: created.id,
-            ...(projectId ? { projectId } : {}),
-            ...(projectName ? { projectName } : {}),
           },
         })
       }
 
       return created
     },
-    [entitlements?.tier, projectId, projectName, router, uiSettings.defaultActModelId],
+    [entitlements?.tier, router, uiSettings.defaultActModelId],
   )
 
   useEffect(() => {
@@ -670,7 +663,7 @@ export function ChatScreen({
         if (isMounted) {
           const models = await resolveModels().catch(() => [])
           const preferred = await resolvePreferredModel(models)
-          const draft = createDraftChat(preferred?.id ?? models[0]?.id, projectId)
+          const draft = createDraftChat(preferred?.id ?? models[0]?.id)
           chatRef.current = draft
           setActiveChatId(draft.id)
           setChatTitle(draft.title)
@@ -695,7 +688,6 @@ export function ChatScreen({
     createConversation,
     entitlements?.tier,
     hydrateConversation,
-    projectId,
     routeKind,
     uiSettings.defaultActModelId,
   ])
@@ -821,8 +813,6 @@ export function ChatScreen({
           pathname: '/chat/[id]',
           params: {
             id: chatId,
-            ...(projectId ? { projectId } : {}),
-            ...(projectName ? { projectName } : {}),
           },
         })
         return
@@ -831,7 +821,7 @@ export function ChatScreen({
       abortRef.current = true
       await hydrateConversation(chatId, availableModels, { switching: true })
     },
-    [availableModels, hydrateConversation, projectId, projectName, routeKind, router],
+    [availableModels, hydrateConversation, routeKind, router],
   )
 
   const startFreshConversation = useCallback(async () => {
@@ -840,15 +830,13 @@ export function ChatScreen({
         pathname: '/chat/[id]',
         params: {
           id: 'new',
-          ...(projectId ? { projectId } : {}),
-          ...(projectName ? { projectName } : {}),
         },
       })
       return
     }
 
     await createConversation(availableModels)
-  }, [availableModels, createConversation, projectId, projectName, routeKind, router])
+  }, [availableModels, createConversation, routeKind, router])
 
   // Draft chats are client-side only until the first send. Mirrors web's
   // PENDING_FIRST_CHAT_ID flow: POST /conversations with the draft's id as
@@ -859,7 +847,6 @@ export function ChatScreen({
       if (!chat.id.startsWith('chat-') || chat.clientId) return chat
       const created = await createNewChat(selectedModel?.id ?? chat.modelId, {
         clientId: chat.id,
-        projectId: chat.projectId,
         title: chat.title,
       })
       const next: Chat = { ...chat, id: created.id, clientId: created.clientId ?? chat.id }
@@ -1286,20 +1273,17 @@ export function ChatScreen({
     const stillDraft = sendChat.id.startsWith('chat-')
     scrollToBottom()
 
-    const knowledgeMentions = sentMentions.filter((m) => m.type === 'knowledge')
     try {
       console.log('[ChatScreen] send: conversationId=%s modelId=%s baseUrl=%s temp=%s', sendChat.id, selectedModel.id, AUTH_BASE_URL, isTemporary)
       for await (const chunk of chatStream(selectedModel.id, buildApiMessages(userMessageList), {
         conversationId: isTemporary || stillDraft ? undefined : sendChat.id,
         conversationClientId: isTemporary || !stillDraft ? undefined : sendChat.id,
-        projectId: isTemporary ? undefined : projectId,
         turnId: assistantId,
         temporaryChat: isTemporary || undefined,
         requestMode,
         requestedToolIds: selectedToolIds.length > 0 ? selectedToolIds : undefined,
         memoryEnabled: isTemporary ? false : memoryEnabled,
         mentions: sentMentions.length > 0 ? sentMentions.map(mentionToRequestBody) : undefined,
-        knowledgeBaseIds: knowledgeMentions.length > 0 ? knowledgeMentions.map((m) => m.id) : undefined,
         replyContextForModel: sentReply?.bodyForModel,
         indexedFileNames: indexedFileNames.length > 0 ? indexedFileNames : undefined,
         indexedAttachments: indexedAttachments.length > 0 ? indexedAttachments : undefined,
@@ -1353,7 +1337,6 @@ export function ChatScreen({
     mentions,
     messages,
     pendingDocuments,
-    projectId,
     refreshHistory,
     replyContext,
     requestMode,
@@ -1382,7 +1365,6 @@ export function ChatScreen({
           description: state.draft.description,
           instructions: state.draft.instructions,
           enabled: true,
-          ...(projectId ? { projectId } : {}),
         })
         setDraftModal(null)
         Alert.alert('Skill saved', `${state.draft.name} is now available in Extensions.`)
@@ -1397,7 +1379,7 @@ export function ChatScreen({
     } finally {
       setDraftSaving(false)
     }
-  }, [projectId, sendPresetMessage])
+  }, [sendPresetMessage])
 
   const sortedModels = useMemo(() => availableModels, [availableModels])
 

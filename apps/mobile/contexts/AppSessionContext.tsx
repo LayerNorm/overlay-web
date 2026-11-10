@@ -65,7 +65,6 @@ type AppSessionContextValue = {
 const DEFAULT_FEATURE_FLAGS: AppFeatureFlags = {
   canUseVoiceTranscription: true,
   canUseKnowledge: true,
-  canUseProjects: true,
   canUseAutomations: true,
   canUseExtensions: true,
 }

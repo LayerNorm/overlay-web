@@ -92,8 +92,7 @@ interface ComposerProps {
   inputRef?: React.RefObject<TextInput | null>
 
   // ── Room (collaboration) variant ──────────────────────────────────────────
-  /** Custom mention search — rooms pass participant lookup instead of the
-   *  global `/mention-search` endpoint. Defaults to `searchMentions`. */
+  /** Rooms provide participant lookup; global mentions return in Phase 1. */
   mentionProvider?: (query: string) => Promise<ChatMentionItem[]>
   /**
    * `'chip'` (default) turns a picked mention into a removable chip and strips

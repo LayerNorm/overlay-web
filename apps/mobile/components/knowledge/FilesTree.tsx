@@ -328,7 +328,7 @@ export function FilesTree({
     if (file.type === 'folder') {
       toggleExpand(file._id)
     } else {
-      router.push(`/knowledge/file/${encodeURIComponent(file._id)}`)
+      router.push(`/files/file/${encodeURIComponent(file._id)}`)
     }
   }
 

@@ -5,6 +5,38 @@ phase; each lists the current mobile behavior and what owner input would change.
 
 ## Remaining work
 
+### Web-only at launch (decided 2026-11-10, build on mobile later)
+
+Launch scope: sign in to existing workspaces only, Convex-native data, no
+purchasing in the app. These web surfaces are intentionally missing from the
+mobile launch and stay reachable on getoverlay.io.
+
+- [ ] **In-app purchases** (Apple IAP / Google Play Billing) funding the same
+  workspace credits, plus mobile sign-up and paid-first onboarding. Add only
+  if mobile becomes an acquisition channel.
+- [ ] **Computers desktop viewer**: live desktop, takeover and control. Mobile
+  shows status only and links to web.
+- [ ] **Extensions host** and extension cards (feature-flagged on web).
+- [ ] **Admin and governance**: workspace governance metrics, policies editor,
+  audit export, roles.
+- [ ] **Slack import** and Slack surface bindings setup.
+- [ ] **Webhooks** management.
+- [ ] **MCP server setup and OAuth** (adding, testing and authorizing MCP
+  servers). Mobile uses already connected servers only.
+- [ ] **Agent machine enrollment beyond copy-a-command**: environment roots,
+  credentials, full environment settings.
+- [ ] **Billing management**: checkout, top-ups, auto top-up, portal. Mobile
+  billing is read-only.
+
+
+### Phase 0 retirement notes
+
+Projects and Knowledge Bases are obsolete and removed. Historical items below
+about their screens, sharing, mentions, or project scoping are no longer planned.
+Collaboration notifications, reactions, pins, presence, saved messages, follows,
+message editing/deletion, workspace search and mentions are deferred to Convex-native
+subscriptions in Phase 1. Do not restore the retired HTTP endpoints.
+
 ### Deferred web-side changes (plan §9 — owner approval required)
 
 These need `overlay-landing` edits and were explicitly held out of every
@@ -325,7 +357,7 @@ mobile phase. Mobile groundwork for each is already committed.
   `/(tabs)/chat`. `overlay://invitations/<id>` and pasted web invite paths
   deep-link there via `handleDeepLink`.
 
-## Phase 5 — Knowledge bases & files depth
+## Phase 5 — Knowledge bases (OBSOLETE) & files depth
 
 ### 33. KB sharing uses the dedicated grants model, not unified /shares
 - `KnowledgeBaseScreen` mounts `KbShareSheet` (user/group/role principals,
@@ -337,7 +369,7 @@ mobile phase. Mobile groundwork for each is already committed.
 - KB share icon is always visible (authz surface, not workspace-gated);
   single-tenant deployments get an empty directory, matching web.
 
-### 34. KnowledgeBaseScreen — `knowledge_base` → `/knowledge-base/[id]`
+### 34. OBSOLETE: KnowledgeBaseScreen — `knowledge_base` → `/knowledge-base/[id]`
 - Sources tab: include/exclude checkbox + long-press toggle, tap → source
   detail sheet (extraction preview via `diagnostics?sourceId=`, re-fetch
   for external kinds, retry for failed, remove). "Add source" offers file
@@ -373,7 +405,7 @@ mobile phase. Mobile groundwork for each is already committed.
   the real list payload — if the server does send share state, thread it
   through to pre-fill.
 
-### 36. Outputs + projects depth
+### 36. Outputs + projects depth (Projects OBSOLETE)
 - Output detail: share icon → ShareSheet with `resource: null` — public
   link only (`outputs` PATCH), grant sections hidden for null resources.
 - Project detail `…` actions sheet replaces the icon cluster: Share,

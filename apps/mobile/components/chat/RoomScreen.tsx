@@ -51,6 +51,7 @@ import {
   fetchRoomParticipants,
   fetchRoomPins,
   fetchRoomPresence,
+  COLLABORATION_NATIVE_READY,
   fetchRoomReactions,
   fetchSavedMessages,
   fetchThreadFollow,
@@ -256,8 +257,7 @@ export function RoomScreen({
     [conversationId, isThread, threadRootMessageId],
   )
 
-  // Focus + interval polling — the React Native realtime strategy (Convex RN
-  // is the documented stretch; polling keeps parity without a new dep).
+  // Convex-native in Phase 1: replace transcript polling with subscriptions.
   useFocusEffect(
     useCallback(() => {
       setState((current) => ({ ...current, loading: true }))
@@ -269,7 +269,7 @@ export function RoomScreen({
 
   // Thread follow state.
   useEffect(() => {
-    if (!threadRootMessageId) return
+    if (!COLLABORATION_NATIVE_READY || !threadRootMessageId) return
     void fetchThreadFollow(conversationId, threadRootMessageId)
       .then(({ following: value }) => {
         if (mountedRef.current) setFollowing(value)
@@ -280,6 +280,7 @@ export function RoomScreen({
   // Presence heartbeat while the room is open.
   useFocusEffect(
     useCallback(() => {
+      if (!COLLABORATION_NATIVE_READY) return
       const beat = () =>
         void sendRoomPresence(conversationId, {
           status: 'online',
@@ -457,7 +458,7 @@ export function RoomScreen({
     (value: string) => {
       setInput(value)
       const now = Date.now()
-      if (now - lastTypingSentAt.current > TYPING_THROTTLE_MS) {
+      if (COLLABORATION_NATIVE_READY && now - lastTypingSentAt.current > TYPING_THROTTLE_MS) {
         lastTypingSentAt.current = now
         void sendRoomPresence(conversationId, {
           status: 'online',
@@ -622,6 +623,7 @@ export function RoomScreen({
 
   const handleToggleReaction = useCallback(
     (messageId: string, emoji: string) => {
+      if (!COLLABORATION_NATIVE_READY) return
       const current = state.reactions[messageId]?.find((reaction) => reaction.emoji === emoji)
       const enabled = !(current?.reactedByCurrentPrincipal ?? false)
       void setRoomReaction(conversationId, messageId, emoji, enabled)
@@ -637,6 +639,7 @@ export function RoomScreen({
 
   const handleTogglePin = useCallback(
     (messageId: string) => {
+      if (!COLLABORATION_NATIVE_READY) return
       const pinned = !state.pinnedIds.has(messageId)
       setState((prev) => {
         const next = new Set(prev.pinnedIds)
@@ -651,6 +654,7 @@ export function RoomScreen({
 
   const handleToggleSaved = useCallback(
     (messageId: string) => {
+      if (!COLLABORATION_NATIVE_READY) return
       const saved = !state.savedIds.has(messageId)
       setState((prev) => {
         const next = new Set(prev.savedIds)
@@ -665,6 +669,7 @@ export function RoomScreen({
 
   const handleDeleteMessage = useCallback(
     (messageId: string) => {
+      if (!COLLABORATION_NATIVE_READY) return
       Alert.alert('Delete message', 'Remove this message for everyone?', [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -703,6 +708,7 @@ export function RoomScreen({
 
   const handleStartEdit = useCallback(
     (view: RoomMessageView) => {
+      if (!COLLABORATION_NATIVE_READY) return
       setEditingMessageId(view.id)
       setInput(view.text)
       inputRef.current?.focus()
@@ -730,7 +736,7 @@ export function RoomScreen({
   )
 
   const handleToggleFollow = useCallback(() => {
-    if (!threadRootMessageId) return
+    if (!COLLABORATION_NATIVE_READY || !threadRootMessageId) return
     const next = !following
     setFollowing(next)
     void setThreadFollowed(conversationId, threadRootMessageId, next).catch(() => {
@@ -887,7 +893,7 @@ export function RoomScreen({
         }
         rightSlot={
           <View style={styles.headerActions}>
-            {isThread ? (
+            {isThread && COLLABORATION_NATIVE_READY ? (
               <TopBarIconButton
                 theme={theme}
                 icon={following ? 'bell' : 'bell-off'}
@@ -1051,7 +1057,7 @@ export function RoomScreen({
       >
         {actionsMessage ? (
           <View>
-            {!actionsMessage.deletedAt ? (
+            {COLLABORATION_NATIVE_READY && !actionsMessage.deletedAt ? (
               <View style={styles.quickReactionsRow}>
                 {REACTION_EMOJIS.map((emoji) => (
                   <TouchableOpacity
@@ -1114,7 +1120,7 @@ export function RoomScreen({
                 />
               ) : null}
             </Section>
-            {!actionsMessage.deletedAt && actionsMessage.delivery !== 'failed' ? (
+            {COLLABORATION_NATIVE_READY && !actionsMessage.deletedAt && actionsMessage.delivery !== 'failed' ? (
               <Section theme={theme}>
                 <ListRow
                   theme={theme}

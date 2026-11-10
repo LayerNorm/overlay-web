@@ -1,8 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { StyleSheet, Text, TouchableOpacity, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { useLocalSearchParams } from 'expo-router'
-import AsyncStorage from '@react-native-async-storage/async-storage'
+import { useLocalSearchParams, useRouter } from 'expo-router'
 import { Feather } from '@expo/vector-icons'
 import { useTheme } from '../../hooks/useTheme'
 import { useDrawer } from '../../contexts/DrawerContext'
@@ -14,10 +13,9 @@ import { BottomSheet, MainScreenHeader, TopBarIconButton } from '../ui/AppChrome
 import { MemoriesList } from './MemoriesList'
 import { FilesTree } from './FilesTree'
 import { OutputsGallery } from './OutputsGallery'
-import { KnowledgeBasesList } from './KnowledgeBasesList'
 
-type KnowledgeTab = 'memories' | 'files' | 'outputs' | 'bases'
-type KnowledgeHeaderAction =
+type FilesTab = 'memories' | 'files' | 'outputs'
+type FilesHeaderAction =
   | 'new'
   | 'import'
   | 'selectMemories'
@@ -30,56 +28,35 @@ type KnowledgeHeaderAction =
   | 'outputVideo'
   | 'outputFiles'
 
-const TITLES: Record<KnowledgeTab, string> = {
+const TITLES: Record<FilesTab, string> = {
   memories: 'Memories',
   files: 'Files',
   outputs: 'Outputs',
-  bases: 'Knowledge bases',
 }
 
-export function KnowledgeScreen(): React.ReactElement {
+export function FilesScreen({ memoriesOnly = false }: { memoriesOnly?: boolean } = {}): React.ReactElement {
+  const router = useRouter()
   const { theme, isDark } = useTheme()
   const insets = useSafeAreaInsets()
   const { openDrawer } = useDrawer()
-  const { isFeatureEnabled, featureFlags } = useAppSession()
-  const knowledgeEnabled = isFeatureEnabled('knowledge') && featureFlags.canUseKnowledge
+  const { capabilities, isFeatureEnabled } = useAppSession()
+  const resourceEnabled = memoriesOnly
+    ? capabilities.memory && isFeatureEnabled('knowledge')
+    : capabilities.files
   const { tab } = useLocalSearchParams<{ tab?: string }>()
-  const routeTab: KnowledgeTab | null =
-    tab === 'memories' || tab === 'files' || tab === 'outputs' || tab === 'bases' ? tab : null
-  const [storedTab, setStoredTab] = useState<KnowledgeTab>('memories')
-  const activeTab = routeTab ?? storedTab
+  const activeTab: FilesTab = memoriesOnly ? 'memories' : tab === 'outputs' ? 'outputs' : 'files'
   const [menuOpen, setMenuOpen] = useState(false)
-  const [actionRequest, setActionRequest] = useState<{ type: KnowledgeHeaderAction; nonce: number } | null>(null)
+  const [actionRequest, setActionRequest] = useState<{ type: FilesHeaderAction; nonce: number } | null>(null)
   const actionNonceRef = useRef(0)
 
-  useEffect(() => {
-    if (routeTab) {
-      void AsyncStorage.setItem('overlay:last-knowledge-view', routeTab).catch(() => {})
-      return
-    }
-
-    void AsyncStorage.getItem('overlay:last-knowledge-view')
-      .then((lastView) => {
-        if (
-          lastView === 'memories' ||
-          lastView === 'files' ||
-          lastView === 'outputs' ||
-          lastView === 'bases'
-        ) {
-          setStoredTab(lastView)
-        }
-      })
-      .catch(() => {})
-  }, [routeTab])
-
-  function requestAction(type: KnowledgeHeaderAction): void {
+  function requestAction(type: FilesHeaderAction): void {
     setMenuOpen(false)
     actionNonceRef.current += 1
     setActionRequest({ type, nonce: actionNonceRef.current })
   }
 
   const menuItems: Array<{
-    key: KnowledgeHeaderAction
+    key: FilesHeaderAction
     label: string
     icon: keyof typeof Feather.glyphMap
   }> =
@@ -96,9 +73,7 @@ export function KnowledgeScreen(): React.ReactElement {
             { key: 'uploadFolder', label: 'Upload Folder', icon: 'folder-plus' },
             { key: 'selectFiles', label: 'Select', icon: 'check-square' },
           ]
-        : activeTab === 'bases'
-          ? []
-          : [
+        : [
             { key: 'outputAll', label: 'All', icon: 'grid' },
             { key: 'outputImage', label: 'Image', icon: 'image' },
             { key: 'outputVideo', label: 'Video', icon: 'film' },
@@ -106,8 +81,8 @@ export function KnowledgeScreen(): React.ReactElement {
             { key: 'selectOutputs', label: 'Select', icon: 'check-square' },
           ]
 
-  if (!knowledgeEnabled) {
-    return <FeatureGate title="Knowledge is turned off" />
+  if (!resourceEnabled) {
+    return <FeatureGate title="This resource is turned off" />
   }
 
   return (
@@ -134,11 +109,7 @@ export function KnowledgeScreen(): React.ReactElement {
             <Text style={[styles.headerTitle, { color: theme.text }]}>{TITLES[activeTab]}</Text>
           }
           rightSlot={
-            activeTab === 'bases' ? (
-              <View style={styles.headerSpacer} />
-            ) : (
-              <TopBarIconButton theme={theme} icon="more-horizontal" onPress={() => setMenuOpen(true)} />
-            )
+            <TopBarIconButton theme={theme} icon="more-horizontal" onPress={() => setMenuOpen(true)} />
           }
         />
         <View style={styles.screenPadding}>
@@ -152,11 +123,20 @@ export function KnowledgeScreen(): React.ReactElement {
             {activeTab === 'outputs' && (
               <OutputsGallery headerAction={actionRequest} hideInlineToolbar topInset={insets.top + 58} />
             )}
-            {activeTab === 'bases' && <KnowledgeBasesList topInset={insets.top + 58} />}
           </View>
         </View>
         <BottomSheet theme={theme} visible={menuOpen} onClose={() => setMenuOpen(false)} title={TITLES[activeTab]}>
           <View style={styles.menuList}>
+            {!memoriesOnly ? (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuOpen(false); router.push('/(tabs)/notes') }}>
+                <Text style={{ color: theme.text }}>Notes</Text>
+              </TouchableOpacity>
+            ) : null}
+            {!memoriesOnly ? (
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setMenuOpen(false); router.push(activeTab === 'outputs' ? '/(tabs)/files' : '/(tabs)/files?tab=outputs') }}>
+                <Text style={{ color: theme.text }}>{activeTab === 'outputs' ? 'Files' : 'Outputs'}</Text>
+              </TouchableOpacity>
+            ) : null}
             {menuItems.map((item) => (
               <TouchableOpacity key={item.key} onPress={() => requestAction(item.key)} style={styles.menuItem}>
                 <Feather name={item.icon} size={18} color={theme.textSecondary} />

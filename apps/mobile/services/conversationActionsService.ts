@@ -98,57 +98,13 @@ export async function fetchChatSuggestions(): Promise<string[]> {
 }
 
 // ---------------------------------------------------------------------------
-// Mention search — `GET /api/v1/mention-search?q=` returns top-K per category.
-// Response shape mirrors `searchMentions` in web `mention-search.ts`.
+// Mention suggestions are deferred until native subscriptions are available.
 // ---------------------------------------------------------------------------
 
-interface MentionSearchResponse {
-  conversations?: Array<{ _id: string; title: string }>
-  files?: Array<{ _id: string; name?: string; kind?: string; mimeType?: string }>
-  notes?: Array<{ _id: string; title?: string }>
-  automations?: Array<{ _id: string; name?: string; description?: string }>
-  skills?: Array<{ _id: string; name: string; description?: string }>
-  mcpServers?: Array<{ _id: string; name: string; description?: string }>
-}
 
 export async function searchMentions(query: string): Promise<ChatMentionItem[]> {
-  const trimmed = query.trim()
-  if (!trimmed) return []
-  const data = await appJson<MentionSearchResponse>('/api/v1/mention-search', {
-    query: { q: trimmed },
-  }).catch(() => null)
-  if (!data) return []
-
-  const items: ChatMentionItem[] = []
-  for (const file of data.files ?? []) {
-    items.push({
-      type: 'file',
-      id: file._id,
-      name: file.name || 'Untitled',
-      description: file.kind || file.mimeType || 'file',
-    })
-  }
-  for (const note of data.notes ?? []) {
-    items.push({ type: 'file', id: note._id, name: note.title || 'Untitled', description: 'note' })
-  }
-  for (const chat of data.conversations ?? []) {
-    items.push({ type: 'chat', id: chat._id, name: chat.title || 'Chat', description: 'chat' })
-  }
-  for (const automation of data.automations ?? []) {
-    items.push({
-      type: 'automation',
-      id: automation._id,
-      name: automation.name || 'Automation',
-      description: automation.description || 'automation',
-    })
-  }
-  for (const skill of data.skills ?? []) {
-    items.push({ type: 'skill', id: skill._id, name: skill.name, description: skill.description })
-  }
-  for (const mcp of data.mcpServers ?? []) {
-    items.push({ type: 'mcp', id: mcp._id, name: mcp.name, description: mcp.description })
-  }
-  return items
+  // Convex-native in Phase 1
+  return []
 }
 
 // ---------------------------------------------------------------------------

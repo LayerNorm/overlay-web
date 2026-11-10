@@ -223,7 +223,7 @@ export function OutputsGallery({
   }
 
   function openOutput(output: OutputSummary) {
-    router.push(`/knowledge/output/${encodeURIComponent(output._id)}`)
+    router.push(`/files/output/${encodeURIComponent(output._id)}`)
   }
 
   const listHeader = (

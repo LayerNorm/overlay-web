@@ -29,6 +29,9 @@ import { appJson } from './appApi'
 import { mobileOverlayAppClient } from './overlayClient'
 import type { RoomMessageRecord } from '../lib/roomMessages'
 
+// Convex-native in Phase 1
+export const COLLABORATION_NATIVE_READY = false
+
 // ---------------------------------------------------------------------------
 // Room transcript — `GET /conversations?conversationId&messages` with the
 // collaboration query flags web uses (mainOnly/threadRootMessageId/before).
@@ -124,11 +127,13 @@ export async function editRoomMessage(
   messageId: string,
   content: string,
 ): Promise<void> {
-  await mobileOverlayAppClient.conversations.editCollaborativeMessage(conversationId, messageId, content)
+  // Convex-native in Phase 1
+  throw new Error('This collaboration feature is unavailable until Phase 1.')
 }
 
 export async function deleteRoomMessage(conversationId: string, messageId: string): Promise<void> {
-  await mobileOverlayAppClient.conversations.deleteCollaborativeMessage(conversationId, messageId)
+  // Convex-native in Phase 1
+  throw new Error('This collaboration feature is unavailable until Phase 1.')
 }
 
 // ---------------------------------------------------------------------------
@@ -163,15 +168,16 @@ export async function updateRoomParticipantState(
 }
 
 export async function fetchRoomPresence(conversationId: string): Promise<ConversationPresence[]> {
-  const { presence } = await mobileOverlayAppClient.conversations.presence(conversationId)
-  return presence
+  // Convex-native in Phase 1
+  return []
 }
 
 export async function sendRoomPresence(
   conversationId: string,
   body: { status: 'online' | 'away' | 'offline'; sessionId?: string; typing?: boolean },
 ): Promise<void> {
-  await mobileOverlayAppClient.conversations.updatePresence(conversationId, body)
+  // Convex-native in Phase 1
+  throw new Error('This collaboration feature is unavailable until Phase 1.')
 }
 
 // ---------------------------------------------------------------------------
@@ -179,8 +185,8 @@ export async function sendRoomPresence(
 // ---------------------------------------------------------------------------
 
 export async function fetchRoomReactions(conversationId: string): Promise<MessageReaction[]> {
-  const { reactions } = await mobileOverlayAppClient.conversations.reactions(conversationId)
-  return reactions
+  // Convex-native in Phase 1
+  return []
 }
 
 export async function setRoomReaction(
@@ -189,17 +195,13 @@ export async function setRoomReaction(
   emoji: string,
   enabled: boolean,
 ): Promise<MessageReaction[]> {
-  const { reactions } = await mobileOverlayAppClient.conversations.setReaction(conversationId, {
-    messageId,
-    emoji,
-    enabled,
-  })
-  return reactions
+  // Convex-native in Phase 1
+  throw new Error('This collaboration feature is unavailable until Phase 1.')
 }
 
 export async function fetchRoomPins(conversationId: string): Promise<ConversationPin[]> {
-  const { pins } = await mobileOverlayAppClient.conversations.pins(conversationId)
-  return pins
+  // Convex-native in Phase 1
+  return []
 }
 
 export async function setRoomPinned(
@@ -207,12 +209,13 @@ export async function setRoomPinned(
   messageId: string,
   pinned: boolean,
 ): Promise<void> {
-  await mobileOverlayAppClient.conversations.setPinned(conversationId, { messageId, pinned })
+  // Convex-native in Phase 1
+  throw new Error('This collaboration feature is unavailable until Phase 1.')
 }
 
 export async function fetchSavedMessages(): Promise<ConversationSavedMessage[]> {
-  const { savedMessages } = await mobileOverlayAppClient.conversations.savedMessages()
-  return savedMessages
+  // Convex-native in Phase 1
+  return []
 }
 
 export async function setMessageSaved(
@@ -220,7 +223,8 @@ export async function setMessageSaved(
   messageId: string,
   saved: boolean,
 ): Promise<void> {
-  await mobileOverlayAppClient.conversations.setSaved({ conversationId, messageId, saved })
+  // Convex-native in Phase 1
+  throw new Error('This collaboration feature is unavailable until Phase 1.')
 }
 
 export async function reportRoomMessage(
@@ -238,7 +242,8 @@ export async function fetchThreadFollow(
   conversationId: string,
   threadRootMessageId: string,
 ): Promise<{ following: boolean; follows: ConversationThreadFollow[] }> {
-  return mobileOverlayAppClient.conversations.threadFollow(conversationId, threadRootMessageId)
+  // Convex-native in Phase 1
+  return { following: false, follows: [] }
 }
 
 export async function setThreadFollowed(
@@ -246,7 +251,8 @@ export async function setThreadFollowed(
   threadRootMessageId: string,
   followed: boolean,
 ): Promise<void> {
-  await mobileOverlayAppClient.conversations.setThreadFollow(conversationId, threadRootMessageId, followed)
+  // Convex-native in Phase 1
+  throw new Error('This collaboration feature is unavailable until Phase 1.')
 }
 
 // ---------------------------------------------------------------------------
@@ -254,8 +260,8 @@ export async function setThreadFollowed(
 // ---------------------------------------------------------------------------
 
 export async function listChannels(): Promise<ChannelSummary[]> {
-  const { channels } = await mobileOverlayAppClient.conversations.channels()
-  return channels
+  // Convex-native in Phase 1
+  return []
 }
 
 export async function createChannel(
@@ -322,39 +328,31 @@ export async function fetchNotifications(
   filter: WorkspaceNotificationFilter = 'all',
   options: { unreadOnly?: boolean; limit?: number } = {},
 ): Promise<WorkspaceNotification[]> {
-  const { notifications } = await mobileOverlayAppClient.conversations.notifications({
-    filter,
-    unreadOnly: options.unreadOnly,
-    limit: options.limit ?? 100,
-  })
-  return notifications
+  // Convex-native in Phase 1
+  return []
 }
 
 export async function markNotificationsRead(notificationIds: string[]): Promise<void> {
-  if (notificationIds.length === 0) return
-  await mobileOverlayAppClient.conversations.markNotificationsRead(notificationIds)
+  // Convex-native in Phase 1
+  throw new Error('This collaboration feature is unavailable until Phase 1.')
 }
 
 export async function markConversationNotificationsRead(conversationId: string): Promise<void> {
-  await mobileOverlayAppClient.conversations.markConversationNotificationsRead(conversationId)
+  // Convex-native in Phase 1
+  throw new Error('This collaboration feature is unavailable until Phase 1.')
 }
 
-// Notification preferences — no typed client surface yet; same BFF route.
+// Notification preferences
 export async function fetchNotificationPreferences(): Promise<WorkspaceNotificationPreferences> {
-  const data = await appJson<{ preferences: WorkspaceNotificationPreferences }>(
-    '/api/v1/conversations/notification-preferences',
-  )
-  return data.preferences
+  // Convex-native in Phase 1
+  throw new Error('This collaboration feature is unavailable until Phase 1.')
 }
 
 export async function updateNotificationPreferences(
   preferences: Partial<WorkspaceNotificationPreferences>,
 ): Promise<WorkspaceNotificationPreferences> {
-  const data = await appJson<{ preferences: WorkspaceNotificationPreferences }>(
-    '/api/v1/conversations/notification-preferences',
-    { method: 'PATCH', json: preferences },
-  )
-  return data.preferences
+  // Convex-native in Phase 1
+  throw new Error('This collaboration feature is unavailable until Phase 1.')
 }
 
 export type { WorkspaceManagementResponse }

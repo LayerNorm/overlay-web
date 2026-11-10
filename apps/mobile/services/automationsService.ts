@@ -18,7 +18,6 @@ export async function createAutomation(input: {
   enabled?: boolean
   schedule: AutomationSchedule
   timezone?: string
-  projectId?: string
   modelId?: string
   concurrencyPolicy?: 'skip' | 'queue'
 }): Promise<{ success: boolean; id: string }> {
@@ -37,7 +36,6 @@ export async function updateAutomation(
     enabled?: boolean
     schedule?: AutomationSchedule
     timezone?: string
-    projectId?: string
     modelId?: string
     concurrencyPolicy?: 'skip' | 'queue'
   },

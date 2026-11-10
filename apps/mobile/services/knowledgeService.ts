@@ -1,6 +1,27 @@
 import { appJson, appRequest } from './appApi'
 import type { KnowledgeFile, MemoryRow, OutputSummary } from '@overlay/app-core'
 
+export interface KnowledgeSearchChunk {
+  sourceId: string
+  sourceKind: 'file' | 'memory' | 'message'
+  chunkIndex: number
+  score: number
+  text: string
+  title?: string
+}
+
+export async function searchKnowledge(
+  query: string,
+  sourceKind: 'file' | 'memory',
+): Promise<{ chunks: KnowledgeSearchChunk[] }> {
+  const trimmed = query.trim()
+  if (!trimmed) return { chunks: [] }
+  return appJson('/api/v1/knowledge/search', {
+    method: 'POST',
+    json: { query: trimmed, sourceKind },
+  })
+}
+
 // ── Memories ──
 export async function listMemories(): Promise<MemoryRow[]> {
   return appJson<MemoryRow[]>('/api/v1/memory')
@@ -8,14 +29,12 @@ export async function listMemories(): Promise<MemoryRow[]> {
 
 export async function createMemory(
   content: string,
-  options: { projectId?: string } = {},
 ): Promise<void> {
   await appJson('/api/v1/memory', {
     method: 'POST',
     json: {
       content,
       source: 'manual',
-      projectId: options.projectId,
     },
   })
 }
@@ -39,10 +58,8 @@ export async function bulkDeleteMemories(memoryIds: string[]): Promise<void> {
 }
 
 // ── Files ──
-export async function listKnowledgeFiles(projectId?: string): Promise<KnowledgeFile[]> {
-  return appJson<KnowledgeFile[]>('/api/v1/files', {
-    query: { projectId: projectId || undefined },
-  })
+export async function listKnowledgeFiles(): Promise<KnowledgeFile[]> {
+  return appJson<KnowledgeFile[]>('/api/v1/files')
 }
 
 export async function getKnowledgeFile(fileId: string): Promise<KnowledgeFile> {
@@ -60,7 +77,7 @@ export async function getKnowledgeFileContent(fileId: string): Promise<string> {
 }
 
 export async function createKnowledgeFile(
-  input: { name: string; content?: string; projectId?: string; parentId?: string | null },
+  input: { name: string; content?: string; parentId?: string | null },
 ): Promise<{ id: string }> {
   return appJson<{ id: string }>('/api/v1/files', {
     method: 'POST',
@@ -68,21 +85,19 @@ export async function createKnowledgeFile(
       name: input.name,
       type: 'file',
       content: input.content || '',
-      projectId: input.projectId,
       parentId: input.parentId ?? undefined,
     },
   })
 }
 
 export async function createKnowledgeFolder(
-  input: { name: string; projectId?: string; parentId?: string | null },
+  input: { name: string; parentId?: string | null },
 ): Promise<{ id: string }> {
   return appJson<{ id: string }>('/api/v1/files', {
     method: 'POST',
     json: {
       name: input.name,
       type: 'folder',
-      projectId: input.projectId,
       parentId: input.parentId ?? undefined,
     },
   })
@@ -169,7 +184,7 @@ export async function uploadToR2(presignedUrl: string, body: ArrayBuffer | Uint8
 }
 
 export async function createFileWithStorage(
-  input: { name: string; r2Key: string; sizeBytes: number; parentId?: string | null; projectId?: string },
+  input: { name: string; r2Key: string; sizeBytes: number; parentId?: string | null },
 ): Promise<{ id: string }> {
   return appJson<{ id: string }>('/api/v1/files', {
     method: 'POST',
@@ -179,7 +194,6 @@ export async function createFileWithStorage(
       r2Key: input.r2Key,
       sizeBytes: input.sizeBytes,
       parentId: input.parentId ?? undefined,
-      projectId: input.projectId,
     },
   })
 }

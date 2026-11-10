@@ -4,11 +4,11 @@ import { useAuth } from '../contexts/AuthContext'
 import { loadMobilePreferences, type StartDestination } from '../services/mobilePreferencesService'
 import { needsOnboarding } from '../services/onboardingService'
 
-function destinationPath(destination: StartDestination): '/(tabs)/chat' | '/(tabs)/agents' | '/(tabs)/voice' | '/(tabs)/projects' | '/(tabs)/knowledge' {
+function destinationPath(destination: StartDestination): '/(tabs)/chat' | '/(tabs)/agents' | '/(tabs)/voice' | '/(tabs)/files' | '/(tabs)/work' {
   if (destination === 'agents') return '/(tabs)/agents'
+  if (destination === 'work') return '/(tabs)/work'
+  if (destination === 'files') return '/(tabs)/files'
   if (destination === 'voice') return '/(tabs)/voice'
-  if (destination === 'projects') return '/(tabs)/projects'
-  if (destination === 'knowledge') return '/(tabs)/knowledge'
   return '/(tabs)/chat'
 }
 

@@ -23,15 +23,13 @@ function mapNoteMeta(note: NoteDoc): NoteMeta {
   }
 }
 
-export async function loadNotesIndex(projectId?: string): Promise<NoteMeta[]> {
-  const notes = await appJson<NoteDoc[]>('/api/v1/notes', {
-    query: { projectId: projectId || undefined },
-  })
+export async function loadNotesIndex(): Promise<NoteMeta[]> {
+  const notes = await appJson<NoteDoc[]>('/api/v1/notes')
   return notes.map(mapNoteMeta).sort((a, b) => b.updatedAt - a.updatedAt)
 }
 
 export async function createNote(
-  initial?: Partial<Note> & { projectId?: string },
+  initial?: Partial<Note>,
 ): Promise<Note> {
   const response = await appJson<{ id: string; note: NoteDoc }>('/api/v1/notes', {
     method: 'POST',
@@ -39,7 +37,6 @@ export async function createNote(
       title: initial?.title || 'Untitled',
       content: initial?.content || '<p></p>',
       tags: [],
-      projectId: initial?.projectId,
     },
   })
   return mapNote(response.note)

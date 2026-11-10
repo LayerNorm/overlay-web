@@ -26,11 +26,6 @@ export const BUILT_IN_BYO_HARNESSES = [
     label: 'Claude Code',
     description: 'Run Anthropic Claude Code through the Agent Client Protocol.',
   },
-  {
-    id: 'hermes',
-    label: 'Hermes',
-    description: 'Run Hermes 0.20.6 or newer through its official Agent Client Protocol server.',
-  },
 ] as const satisfies ReadonlyArray<{
   id: BuiltInUserOwnedAcpAdapterId
   label: string
@@ -55,7 +50,7 @@ export type AcpAdapterCapability = {
 export function acpAdaptersForEnvironment(environment: AgentEnvironmentResource): AcpAdapterCapability[] {
   if (!Array.isArray(environment.capabilities.adapters)) return []
   return (environment.capabilities.adapters as Array<Record<string, unknown>>).flatMap((adapter) => (
-    adapter.protocol === 'acp' && typeof adapter.id === 'string'
+    adapter.protocol === 'acp' && typeof adapter.id === 'string' && adapter.id !== 'hermes'
       ? [{
           id: adapter.id,
           label: typeof adapter.displayName === 'string' ? adapter.displayName : adapter.id,

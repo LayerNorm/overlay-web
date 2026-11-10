@@ -142,7 +142,7 @@ function AgentBlocks({ view, theme, markdownStyles }: {
 }) {
   const segments = useMemo(() => buildAssistantVisualSegments(view.blocks), [view.blocks])
   const toolCount = segments.reduce(
-    (count, seg) => count + (seg.kind === 'tools' ? seg.items.length : seg.kind === 'browser' ? 1 : 0),
+    (count, seg) => count + (seg.kind === 'tools' ? seg.items.length : 0),
     0,
   )
 

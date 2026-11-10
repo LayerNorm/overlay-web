@@ -133,8 +133,6 @@ const POLICY_TOGGLES: Array<{
 const SHARED_KIND_ICONS: Record<string, React.ComponentProps<typeof Feather>['name']> = {
   conversation: 'message-circle',
   file: 'file-text',
-  project: 'layers',
-  knowledge_base: 'book-open',
   automation: 'zap',
   agent: 'cpu',
 }
@@ -448,13 +446,7 @@ export function WorkspaceScreen(): React.ReactElement {
           router.push({ pathname: '/chat/[id]', params: { id: item.id } })
           break
         case 'file':
-          router.push('/(tabs)/knowledge?tab=files')
-          break
-        case 'knowledge_base':
-          router.push('/(tabs)/knowledge')
-          break
-        case 'project':
-          router.push('/(tabs)/projects')
+          router.push('/(tabs)/files')
           break
         case 'automation':
           router.push('/(tabs)/automations')
@@ -715,16 +707,7 @@ export function WorkspaceScreen(): React.ReactElement {
     const allowance = Math.min(100, Math.max(0, billing.credits.allowancePercentUsed))
     return (
       <View>
-        {!billing.rollout.eligible ? (
-          <View style={[styles.policyCard, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}>
-            <View style={styles.policyBody}>
-              <Text style={[styles.policyLabel, { color: theme.text }]}>Controlled rollout</Text>
-              <Text style={[styles.policyDescription, { color: theme.textSecondary }]}>
-                {`Workspace wallets are not enabled for this workspace yet (stage: ${billing.rollout.stage}).`}
-              </Text>
-            </View>
-          </View>
-        ) : !billing.initialized ? (
+        {!billing.initialized ? (
           <View style={[styles.policyCard, { borderColor: theme.border, backgroundColor: theme.surfaceElevated }]}>
             <View style={styles.policyBody}>
               <Text style={[styles.policyLabel, { color: theme.text }]}>Workspace wallet not set up</Text>

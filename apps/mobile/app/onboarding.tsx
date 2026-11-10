@@ -7,9 +7,9 @@ import { loadMobilePreferences, type StartDestination } from '../services/mobile
 
 function destinationPath(destination: StartDestination): string {
   if (destination === 'agents') return '/(tabs)/agents'
+  if (destination === 'work') return '/(tabs)/work'
+  if (destination === 'files') return '/(tabs)/files'
   if (destination === 'voice') return '/(tabs)/voice'
-  if (destination === 'projects') return '/(tabs)/projects'
-  if (destination === 'knowledge') return '/(tabs)/knowledge'
   return '/(tabs)/chat'
 }
 

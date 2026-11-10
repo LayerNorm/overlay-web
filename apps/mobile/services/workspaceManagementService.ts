@@ -33,7 +33,7 @@ import { mobileOverlayAppClient } from './overlayClient'
 /** Mirrors `WorkspaceSharedResource` in @overlay/api-client (not re-exported
  *  by the package index). */
 export type WorkspaceSharedResource = {
-  kind: 'conversation' | 'file' | 'project' | 'knowledge_base' | 'automation' | 'agent'
+  kind: 'conversation' | 'file' | 'automation' | 'agent'
   id: string
   title: string
   snippet?: string

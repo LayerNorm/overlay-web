@@ -186,14 +186,6 @@ function RootLayoutNav(): React.ReactElement {
           }}
         />
         <Stack.Screen
-          name="knowledge-base/[id]"
-          options={{
-            headerShown: false,
-            presentation: 'card',
-            animation: 'slide_from_right',
-          }}
-        />
-        <Stack.Screen
           name="search"
           options={{
             presentation: 'card',

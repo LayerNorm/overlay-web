@@ -22,13 +22,12 @@ interface ChatMessage {
 }
 
 /** Mirrors `ChatToolRequestId` in web `src/shared/chat/tool-requests.ts`. */
-export type ChatToolRequestId = 'web_search' | 'memory' | 'sandbox' | 'browser'
+export type ChatToolRequestId = 'web_search' | 'memory' | 'sandbox'
 
 export const CHAT_TOOL_REQUEST_IDS: readonly ChatToolRequestId[] = [
   'web_search',
   'memory',
   'sandbox',
-  'browser',
 ]
 
 export interface StreamChunk {
@@ -62,7 +61,6 @@ interface ChatStreamOptions {
   conversationId?: string
   /** Client-side draft id sent for first-turn persistence (web `conversationClientId`). */
   conversationClientId?: string
-  projectId?: string
   turnId?: string
   variantIndex?: number
   indexedFileNames?: string[]
@@ -74,7 +72,6 @@ interface ChatStreamOptions {
   requestedToolIds?: ChatToolRequestId[]
   memoryEnabled?: boolean
   mentions?: Array<{ type: string; id: string; name: string; fileIds?: string[] }>
-  knowledgeBaseIds?: string[]
   replyContextForModel?: string
 }
 
@@ -205,7 +202,6 @@ export async function* chatStream(
         body.askModelIds = [modelId]
         body.actModelId = modelId
       }
-      if (options.projectId) body.projectId = options.projectId
     }
     if (options.indexedFileNames && options.indexedFileNames.length > 0) {
       body.indexedFileNames = options.indexedFileNames
@@ -219,9 +215,6 @@ export async function* chatStream(
     }
     if (options.mentions && options.mentions.length > 0) {
       body.mentions = options.mentions
-    }
-    if (options.knowledgeBaseIds && options.knowledgeBaseIds.length > 0) {
-      body.knowledgeBaseIds = options.knowledgeBaseIds
     }
     if (options.replyContextForModel) {
       body.replyContextForModel = options.replyContextForModel
