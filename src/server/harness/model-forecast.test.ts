@@ -95,12 +95,19 @@ test('unknown or negative prices fail closed, retired models are refused, and BY
   await expect(forecastHarnessModelCost({ ...request, inputTokenBudget: -1 })).rejects.toThrow(/limits/)
 })
 
-test('text forecasts include byte and protocol overhead, while media requires a known context limit', () => {
+test('text forecasts include byte and protocol overhead, and media reserves a known context limit', () => {
   const options: LanguageModelV4CallOptions = { prompt: [{ role: 'user', content: [{ type: 'text', text: 'Hello 世界' }] }] }
   expect(estimateHarnessInputTokens(options, null)).toBeGreaterThan(1_024 + Buffer.byteLength(JSON.stringify(options)))
   const media: LanguageModelV4CallOptions = { prompt: [{ role: 'user', content: [{ type: 'file', data: new URL('https://example.com/image.png'), mediaType: 'image/png' }] }] }
   expect(estimateHarnessInputTokens(media, 10_000)).toBe(10_000)
-  expect(() => estimateHarnessInputTokens(media, null)).toThrow(/context limit/)
+  expect(estimateHarnessInputTokens(media, null)).toBeGreaterThan(1_024 + Buffer.byteLength(JSON.stringify(media)))
+  const screenshot: LanguageModelV4CallOptions = { prompt: [{ role: 'tool', content: [{
+    type: 'tool-result', toolCallId: 'c1', toolName: 'computer_screenshot', output: { type: 'content', value: [
+      { type: 'text', text: 'Screenshot captured.' },
+      { type: 'file', data: { type: 'data', data: new Uint8Array(4_096) }, mediaType: 'image/png' },
+    ] },
+  }] }] }
+  expect(estimateHarnessInputTokens(screenshot, null)).toBeGreaterThan(4_096)
 })
 
 test('only priced ephemeral cache configurations are accepted across all breakpoints', () => {

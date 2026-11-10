@@ -4,7 +4,8 @@ import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
 import { getGatewayCatalogModel } from '@/server/ai/gateway/gateway-catalog'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
-import { estimateHarnessInputTokens, forecastHarnessModelCost, hasHarnessCacheWrites } from './model-forecast'
+import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
+import { estimateHarnessInputTokens, forecastHarnessModelCost, harnessPromptHasMedia, hasHarnessCacheWrites } from './model-forecast'
 
 // Quote inside a server step after compiling the exact prompt and tool schemas.
 // Dispatch reauthorizes and claims its account reservation before inference.
@@ -37,6 +38,11 @@ export async function quoteHarnessModel(input: {
       ...input.options.providerOptions,
       gateway: { ...input.options.providerOptions?.gateway, zeroDataRetention: true },
     } } : {}),
+  }
+  // A priced model must reserve its full window for media. BYOK and subscription models cost
+  // Overlay nothing and often have no catalog limit, so their media requests use the byte estimate.
+  if (contextWindow === null && !isByokModelId(input.modelId) && harnessPromptHasMedia(options)) {
+    throw new FatalError('Media inference requires a known context limit.')
   }
   const inputTokenBudget = estimateHarnessInputTokens(options, contextWindow)
   const estimatedCostMicros = await forecastHarnessModelCost({

@@ -108,13 +108,15 @@ test('rejects unauthenticated, unsupported, unpriced and oversized dispatches be
   await expect(preparePersonalHarnessModel(input)).rejects.toThrow(/pricing/)
 })
 
-test('unknown BYOK context stays unknown, and media is refused without a known bound', async () => {
+test('unknown BYOK context stays unknown, and unpriced media uses the byte estimate', async () => {
   mocks.catalog.mockResolvedValue(null)
   const external = { ...input, context: { ...context, effectiveModelId: 'byok/connection/model' } }
   const prepared = await preparePersonalHarnessModel(external)
   expect(prepared.contextWindow).toBeNull()
   expect(prepared.estimatedCostMicros).toBe(0)
-  await expect(preparePersonalHarnessModel({ ...external, options: { ...input.options, prompt: [{ role: 'user', content: [
+  const media = await preparePersonalHarnessModel({ ...external, options: { ...input.options, prompt: [{ role: 'user', content: [
     { type: 'file', data: new URL('https://example.test/image.png'), mediaType: 'image/png' },
-  ] }] } })).rejects.toThrow(/known context limit/)
+  ] }] } })
+  expect(media.contextWindow).toBeNull()
+  expect(media.estimatedCostMicros).toBe(0)
 })

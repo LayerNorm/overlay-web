@@ -12,13 +12,17 @@ function positiveInteger(value: number) {
   if (!Number.isSafeInteger(value) || value <= 0) throw new FatalError('Model limits must be positive integers.')
 }
 
+export function harnessPromptHasMedia(options: LanguageModelV4CallOptions): boolean {
+  return options.prompt.some(message => Array.isArray(message.content) && message.content.some(part =>
+    part.type === 'file' || (part.type === 'tool-result' && part.output.type === 'content')))
+}
+
 export function estimateHarnessInputTokens(options: LanguageModelV4CallOptions, contextWindow: number | null): number {
   const prompt = JSON.stringify({ prompt: options.prompt, tools: options.tools })
   const bytes = Buffer.byteLength(prompt, 'utf8')
-  const hasMedia = options.prompt.some(message => Array.isArray(message.content) && message.content.some(part =>
-    part.type === 'file' || (part.type === 'tool-result' && part.output.type === 'content')))
-  if (hasMedia) {
-    if (contextWindow === null) throw new FatalError('Media inference requires a known context limit.')
+  // Media token cost is not proportional to bytes, so a known limit reserves the whole window.
+  // Without one (unpriced BYOK and subscription models only; see quoteHarnessModel), fall back to bytes.
+  if (contextWindow !== null && harnessPromptHasMedia(options)) {
     positiveInteger(contextWindow)
     return contextWindow
   }
