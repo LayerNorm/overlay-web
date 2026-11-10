@@ -16,7 +16,7 @@
 //   PERF_ORIGIN=http://localhost:3000 PERF_STORAGE_STATE=.perf/state.json \
 //   PERF_CHAT_PATH=/app/chat PERF_THREAD_A=... PERF_THREAD_B=... PERF_THREAD_B_SENTINEL=... \
 //   PERF_DM_PATH=/app/chat?... npm run perf:baseline
-import { mkdir, stat, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, stat, writeFile } from 'node:fs/promises'
 import { execFileSync } from 'node:child_process'
 import path from 'node:path'
 import { chromium } from 'playwright'
@@ -73,6 +73,16 @@ async function throttle(page, profileName) {
   await cdp.send('Emulation.setCPUThrottlingRate', { rate: profile.cpuRate })
   await cdp.send('Network.enable')
   await cdp.send('Network.emulateNetworkConditions', profile.network)
+}
+
+// Persist rotated session cookies so later contexts do not replay a consumed refresh token.
+async function closeContext(context, storageState) {
+  try {
+    await context.storageState({ path: storageState })
+    await chmod(storageState, 0o600)
+  } finally {
+    await context.close()
+  }
 }
 
 async function waitForMark(page, name) {
@@ -144,7 +154,7 @@ async function coldStart({ browser, origin, storageState, runs, throttleName }) 
       if (transcriptVisible !== null) samples.transcriptVisible.push(transcriptVisible)
       for (const key of ['ttfb', 'fcp', 'lcpAtReadiness']) if (timing[key] != null) samples[key].push(timing[key])
     } finally {
-      await context.close()
+      await closeContext(context, storageState)
     }
   }
   return { samples, metrics: Object.fromEntries(Object.entries(samples).map(([key, values]) => [`${key}Ms`, summarize(values)])) }
@@ -203,7 +213,7 @@ async function threadSwitch({ browser, origin, storageState, runs, throttleName 
       push('warm', await open(page, nameB, sentinelB))
       assertSameOrigin(page, origin)
     } finally {
-      await context.close()
+      await closeContext(context, storageState)
     }
   }
   return {
@@ -332,7 +342,7 @@ async function typingWhileStreaming({ browser, origin, storageState, runs, throt
       await page.keyboard.press('Backspace')
       await page.waitForFunction(() => !document.querySelector('[data-text-streaming="true"]'), null, { timeout: TIMEOUT })
     } finally {
-      await context.close()
+      await closeContext(context, storageState)
     }
   }
   return {
@@ -416,7 +426,7 @@ async function dmScroll({ browser, origin, storageState, runs, throttleName }) {
       dropped.push(report.hitchIntervals)
       growth.push(history)
     } finally {
-      await context.close()
+      await closeContext(context, storageState)
     }
   }
   const last = growth.at(-1) ?? []
