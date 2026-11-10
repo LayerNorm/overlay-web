@@ -31,6 +31,7 @@ import type { NotebookEdit, NotebookAgentStreamEvent } from '@overlay/app-core'
 import { NOTEBOOK_AGENT_PROMPT } from '@/server/agent/notebook-agent-prompts'
 import { resolveMentionsContext } from '@/server/knowledge/mention-resolver'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
+import { workspaceBudgetLow, workspaceBudgetShortfallCents } from '@/shared/billing/execution-access'
 
 export const maxDuration = 120
 
@@ -223,17 +224,17 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       { status: 402, headers: { 'Content-Type': 'application/json' } })
   }
   const budget = getBudgetTotals(entitlements)
-  if (budget.remainingCents <= 0) {
+  if (workspaceBudgetLow(budget)) {
     const autoTopUp = await generationUsagePolicy.ensureBudgetAvailable({
       userId,
       entitlements,
-      minimumRequiredCents: 1,
+      minimumRequiredCents: workspaceBudgetShortfallCents(budget),
       programmaticSubjectId,
       workspaceId,
     })
-    if (autoTopUp.remainingCents <= 0) {
+    if (workspaceBudgetLow(getBudgetTotals(autoTopUp.entitlements))) {
       return new Response(
-        JSON.stringify(buildInsufficientCreditsPayload(entitlements, 'No budget remaining. Please top up your workspace.')),
+        JSON.stringify(buildInsufficientCreditsPayload(entitlements, 'Less than 2% of the workspace budget is left. Please top up your workspace.')),
         { status: 402, headers: { 'Content-Type': 'application/json' } },
       )
     }
@@ -259,10 +260,10 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
 
   if (isPaidPlan(refreshedEntitlements)) {
     const refreshedBudget = getBudgetTotals(refreshedEntitlements)
-    if (refreshedBudget.remainingCents <= 0) {
+    if (workspaceBudgetLow(refreshedBudget)) {
       return new Response(
         JSON.stringify(
-          buildInsufficientCreditsPayload(refreshedEntitlements, 'No budget remaining. Please top up your account.'),
+          buildInsufficientCreditsPayload(refreshedEntitlements, 'Less than 2% of the workspace budget is left. Please top up your account.'),
         ),
         { status: 402, headers: { 'Content-Type': 'application/json' } },
       )

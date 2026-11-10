@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { workspaceExecutionAccess } from './execution-access.ts'
+import { workspaceBudgetLow, workspaceBudgetShortfallCents, workspaceExecutionAccess } from './execution-access.ts'
 
 const funded = {
   billingEnabled: true, accountStatus: 'active', remainingCents: 800, now: 100,
@@ -32,4 +32,16 @@ test('new work needs budget but an existing hold does not revoke eligibility', (
 
 test('billing-disabled administrators retain explicit execution policy', () => {
   assert.equal(workspaceExecutionAccess({ billingEnabled: false, remainingCents: 0 }).state, 'ready')
+})
+
+test('work stops once less than 2% of the workspace budget is left, using the real balance', () => {
+  assert.equal(workspaceBudgetLow({ remainingCents: 2_000, totalCents: 100_000 }), false)
+  assert.equal(workspaceBudgetLow({ remainingCents: 1_999, totalCents: 100_000 }), true)
+  assert.equal(workspaceBudgetLow({ remainingCents: 0, totalCents: 0 }), true)
+  assert.equal(workspaceBudgetLow({ remainingCents: 5 }), false)
+  assert.equal(workspaceExecutionAccess({ ...funded, remainingCents: 19, totalCents: 1_000 }).state, 'budget_exhausted')
+  assert.equal(workspaceExecutionAccess({ ...funded, remainingCents: 20, totalCents: 1_000 }).state, 'ready')
+  assert.equal(workspaceExecutionAccess({ ...funded, remainingCents: 19, totalCents: 1_000, checkBudget: false }).state, 'ready')
+  assert.equal(workspaceBudgetShortfallCents({ remainingCents: 500, totalCents: 100_000 }), 1_500)
+  assert.equal(workspaceBudgetShortfallCents({ remainingCents: 0, totalCents: 0 }), 1)
 })

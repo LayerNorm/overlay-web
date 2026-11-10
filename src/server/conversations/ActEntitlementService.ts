@@ -11,6 +11,7 @@ import {
   WorkspaceExecutionError,
 } from '@/server/billing/WorkspaceExecutionPolicy'
 import type { AppSettings, Entitlements } from '@/shared/app/app-contracts'
+import { workspaceBudgetLow, workspaceBudgetShortfallCents } from '@/shared/billing/execution-access'
 import type { ActConversationRepository } from './ActConversationRepository'
 import type { ActUsagePolicy } from './ActUsagePolicy'
 
@@ -61,11 +62,12 @@ export class ActEntitlementService {
     const { appSettings, billingEnabled, entitlements } = await this.authorizeModel(args)
     let runtimeEntitlements = entitlements
 
-    if (billingEnabled && getBudgetTotals(runtimeEntitlements).remainingCents <= 0) {
+    const totals = getBudgetTotals(runtimeEntitlements)
+    if (billingEnabled && workspaceBudgetLow({ remainingCents: totals.remainingCents, totalCents: totals.totalCents })) {
       const autoTopUp = await ensurePayerBudgetAvailable({
         userId: args.userId,
         entitlements: runtimeEntitlements,
-        minimumRequiredCents: 1,
+        minimumRequiredCents: workspaceBudgetShortfallCents({ remainingCents: totals.remainingCents, totalCents: totals.totalCents }),
         programmaticSubjectId: args.programmaticSubjectId,
         workspaceId: args.workspaceId,
       })

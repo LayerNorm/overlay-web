@@ -173,7 +173,7 @@ export interface UsageRepository {
     operationId: string
     userId: string
     workspaceId?: string
-  }): Promise<{ recorded: number }>
+  }): Promise<{ recorded: number; budgetLow: boolean }>
   reconcileExpired(args?: {
     limit?: number
     now?: number

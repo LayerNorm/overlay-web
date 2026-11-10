@@ -6,7 +6,7 @@ import { requireAccessToken, requireServerSecret, validateServerSecret } from '.
 import { logAuthDebug, summarizeJwtForLog } from '../lib/authDebug'
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForUser } from '../files/lib/storageQuota'
 import { paidWorkspaceAccountFor } from '../billing/workspacePayer'
-import { workspaceExecutionAccess } from '../../src/shared/billing/execution-access'
+import { workspaceBudgetLow, workspaceExecutionAccess } from '../../src/shared/billing/execution-access'
 import { normalizeUsageReconciliationResolution } from '../../src/shared/billing/usage-reconciliation'
 import { canceledPlanCreditPatch, ensureEmptyBalance, ensurePersonalBillingAccount } from '../billing/accountModel'
 import { previewProviderBudgetAvailable, recordPreviewProviderSpend } from '../lib/previewProviderBudget'
@@ -395,8 +395,8 @@ export const recordBatch = mutation({
     // Plans belong to workspaces: in a workspace with a paid plan the workspace pays, never the person.
     const paidWorkspace = await paidWorkspaceAccountFor(ctx, userId, workspaceId)
     if (paidWorkspace) {
-      await chargeWorkspaceDirect(ctx, { billingAccountId: paidWorkspace.billingAccountId, userId, operationId, events })
-      return { success: true, eventsProcessed: events.length, recorded: events.length, idempotent: false }
+      const { budgetLow } = await chargeWorkspaceDirect(ctx, { billingAccountId: paidWorkspace.billingAccountId, userId, operationId, events })
+      return { success: true, eventsProcessed: events.length, recorded: events.length, idempotent: false, budgetLow }
     }
     const billingAccount = await ensurePersonalBillingAccount(ctx, userId)
     const result = await applyUsageEvents(ctx, userId, events)
@@ -450,6 +450,10 @@ async function chargeWorkspaceDirect(ctx: MutationCtx, args: {
       : {}),
     createdAt: Date.now(),
   })
+  const after = await ctx.db.get(balance._id)
+  if (!after || after.mode === 'unlimited') return { budgetLow: false }
+  const summary = workspaceBalanceSummary(after)
+  return { budgetLow: workspaceBudgetLow({ remainingCents: summary.budgetRemainingCents, totalCents: summary.budgetTotalCents }) }
 }
 
 export const recordFileBandwidthByServer = mutation({
@@ -616,6 +620,7 @@ export const reserveWorkspaceBudgetByServer = mutation({
       accountStatus: account.status,
       subscription,
       remainingCents: availableMicros / 10_000,
+      totalCents: (balance.includedMicros + balance.institutionalGrantMicros + balance.topUpPurchasedMicros) / 10_000,
       now,
     })
     if (!access.canExecute) throw new Error(`workspace_execution_${access.state}`)
