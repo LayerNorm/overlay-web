@@ -19,6 +19,7 @@ import { signOutToLanding } from './sidebar/appSidebarNav'
 import { rememberPanelScope } from '@/hooks/use-panel-scope'
 import { useOptionalAppSettings } from '@/components/providers/AppSettingsProvider'
 import { useAppSidebarState } from './sidebar/useAppSidebarState'
+import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { EMPTY_COLLABORATION_NOTIFICATIONS, type AppSidebarProps } from './appSidebarTypes'
 import { WORK_FILTER_LABELS, type WorkFilter } from '@/shared/work/query'
 import type { InlineNavItem } from '@overlay/shell-react'
@@ -105,6 +106,7 @@ export default function AppSidebar({
   renderWorkSection,
   workspace,
 }: AppSidebarProps) {
+  recordRender('AppSidebar')
   const s = useAppSidebarState({
     collaborationNotifications,
 
