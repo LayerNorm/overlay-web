@@ -9,7 +9,7 @@ import { OverlayMark } from '../../../packages/overlay-ui/src/components/orb/Ove
 import { SidebarMenu, SidebarMenuSubItem, SidebarMenuSubButton } from '../../../packages/overlay-ui/src/components/ui/sidebar'
 
 
-import { Renderer, StateProvider, VisibilityProvider, ActionProvider, useBoundProp, useStateStore, type ComponentRegistry } from '@json-render/react'
+import { Renderer, StateProvider, VisibilityProvider, ActionProvider, useBoundProp, useStateStore, type ComponentRegistry, type ComponentRenderProps } from '@json-render/react'
 import type { Spec } from '@json-render/core'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../../../packages/overlay-ui/src/components/ui/card'
 import { Badge } from '../../../packages/overlay-ui/src/components/ui/badge'
@@ -157,7 +157,9 @@ function App() {
     </div><Toaster theme={dark ? 'dark' : 'light'} visibleToasts={3} />
   </>
 }
-type Node = { type: string; props: Record<string, any>; children?: string[]; on?: Record<string, any> }
+type Node = Spec['elements'][string]
+type BugForm = { title: string; severity: string; steps: string; logs: boolean }
+type SpecPartProps = { value: Spec; summary: string; initialState?: Record<string, unknown>; readonly?: boolean; onSubmit?: (form: BugForm) => void }
 function spec(elements: Record<string, Node>): Spec { return { root: 'root', elements } as Spec }
 const plans = spec({
   root: { type: 'Card', props: { title: 'Plans for your team', description: 'Monthly billing · illustrative pricing' }, children: ['table'] },
@@ -206,7 +208,7 @@ const catalog = spec({
   detailHeading: { type: 'Heading', props: { text: 'Pilot acceptance' } },
   detailText: { type: 'Text', props: { variant: 'muted', text: 'Review task completion, credit usage, and feedback with the pilot group before November 20.' } },
 })
-function ResponsiveChart({ element: { props: p } }: any) {
+function ResponsiveChart({ element: { props: p } }: ComponentRenderProps<{ title: string; description: string; values: number[]; labels: string[] }>) {
   const container = React.useRef<HTMLDivElement>(null)
   const [width, setWidth] = React.useState(640)
   React.useLayoutEffect(() => {
@@ -226,7 +228,7 @@ function ResponsiveChart({ element: { props: p } }: any) {
   })}</svg></div></CardContent></Card>
 }
 const FormReadOnly = React.createContext(false)
-function BoundField({ element, bindings }: any) {
+function BoundField({ element, bindings }: ComponentRenderProps<{ label: string; checked?: boolean; value?: string; options: string[]; placeholder?: string }>) {
   const p = element.props
   const readonly = React.useContext(FormReadOnly)
   const boolean = element.type === 'Checkbox' || element.type === 'Switch'
@@ -236,7 +238,7 @@ function BoundField({ element, bindings }: any) {
     const Control = element.type === 'Checkbox' ? Checkbox : Switch
     return <label className="gen-check" htmlFor={id}><Control id={id} checked={!!value} onCheckedChange={setValue} disabled={readonly} />{p.label}</label>
   }
-  return <div className="gen-field"><label htmlFor={id}>{p.label}</label>{element.type === 'Select' ? <Select value={value ?? ''} onValueChange={setValue} disabled={readonly}><SelectTrigger id={id} className="w-full"><SelectValue placeholder="Choose severity" /></SelectTrigger><SelectContent>{p.options.map((v: string) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select> : element.type === 'Textarea' ? <Textarea id={id} value={value ?? ''} onChange={e => setValue(e.target.value)} readOnly={readonly} placeholder={p.placeholder} rows={3} /> : <Input id={id} value={value ?? ''} onChange={e => setValue(e.target.value)} readOnly={readonly} placeholder={p.placeholder} />}</div>
+  return <div className="gen-field"><label htmlFor={id}>{p.label}</label>{element.type === 'Select' ? <Select value={(value as string) ?? ''} onValueChange={setValue} disabled={readonly}><SelectTrigger id={id} className="w-full"><SelectValue placeholder="Choose severity" /></SelectTrigger><SelectContent>{p.options.map((v: string) => <SelectItem key={v} value={v}>{v}</SelectItem>)}</SelectContent></Select> : element.type === 'Textarea' ? <Textarea id={id} value={(value as string) ?? ''} onChange={e => setValue(e.target.value)} readOnly={readonly} placeholder={p.placeholder} rows={3} /> : <Input id={id} value={(value as string) ?? ''} onChange={e => setValue(e.target.value)} readOnly={readonly} placeholder={p.placeholder} />}</div>
 }
 const registry: ComponentRegistry = {
   Stack: ({ element: { props: p }, children }) => <div className={'gen-stack ' + (p.direction === 'horizontal' ? 'horizontal' : '')} style={{ gap: p.gap ?? 16 }}>{children}</div>,
@@ -250,7 +252,7 @@ const registry: ComponentRegistry = {
   Table: ({ element: { props: p } }) => <div data-slot="table-container" className="relative w-full overflow-x-auto"><table data-slot="table" className="w-full caption-bottom text-sm"><caption className="mt-4 text-sm text-muted-foreground">{p.caption}</caption><thead data-slot="table-header" className="[&_tr]:border-b"><tr className="border-b transition-colors hover:bg-muted/50">{p.columns.map((c: string) => <th key={c} className="h-10 px-2 text-left align-middle font-medium whitespace-nowrap">{c}</th>)}</tr></thead><tbody data-slot="table-body" className="[&_tr:last-child]:border-0">{p.rows.map((row: string[]) => <tr key={row[0]} className="border-b transition-colors hover:bg-muted/50">{row.map((cell, i) => <td key={i} className="p-2 align-middle whitespace-nowrap">{cell}{i === 0 && cell === p.current && <Badge className="current-badge">Current</Badge>}</td>)}</tr>)}</tbody></table></div>,
   Chart: ResponsiveChart,
   Alert: ({ element: { props: p } }) => <Alert className={'gen-alert '+p.variant}><TriangleAlert size={16}/><AlertDescription>{p.text}</AlertDescription></Alert>,
-  KeyValue: ({ element: { props: p } }) => <dl className="gen-facts">{p.items.map((item: any) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>,
+  KeyValue: ({ element: { props: p } }) => <dl className="gen-facts">{p.items.map((item: { label: string; value: string }) => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>,
   Progress: ({ element: { props: p } }) => <div className="gen-stack"><div className="gen-split"><span>{p.label}</span><span className="gen-muted">{p.value}%</span></div><Progress value={p.value} aria-label={p.label}/></div>,
   Avatar: ({ element: { props: p } }) => <div className="gen-owner"><Avatar><AvatarFallback>{p.initials}</AvatarFallback></Avatar><div>{p.name}<p className="gen-muted">{p.caption}</p></div></div>,
   Tabs: ({ element: { props: p }, children }) => <Tabs defaultValue={p.labels[0]}><TabsList>{p.labels.map((v: string) => <TabsTrigger key={v} value={v}>{v}</TabsTrigger>)}</TabsList>{React.Children.toArray(children).map((child, i) => <TabsContent key={p.labels[i]} value={p.labels[i]} className="gen-tab-content">{child}</TabsContent>)}</Tabs>,
@@ -265,24 +267,24 @@ class PartBoundary extends React.Component<{ summary: string; children: React.Re
   static getDerivedStateFromError() { return { failed: true } }
   render() { return this.state.failed ? <div><p>{this.props.summary}</p><p className="gen-fallback">Could not display this view</p></div> : this.props.children }
 }
-function SpecPart({ value, summary, initialState = {}, readonly = false, onSubmit }: any) {
+function SpecPart({ value, summary, initialState = {}, readonly = false, onSubmit }: SpecPartProps) {
   return <PartBoundary summary={summary}><StateProvider initialState={initialState}><VisibilityProvider><SpecActions value={value} summary={summary} readonly={readonly} onSubmit={onSubmit}/></VisibilityProvider></StateProvider></PartBoundary>
 }
-function SpecActions({ value, summary, readonly, onSubmit }: any) {
+function SpecActions({ value, summary, readonly, onSubmit }: SpecPartProps) {
   const store = useStateStore()
   return <FormReadOnly.Provider value={readonly}><ActionProvider handlers={{ submit: () => {
-    const form = store.getSnapshot().form as any
+    const form = store.getSnapshot().form as BugForm | undefined
     if (!form?.title?.trim() || !form?.steps?.trim()) { toast('Add a title and steps to reproduce.'); return }
     onSubmit?.(structuredClone(form))
   } }}><Renderer spec={value} registry={registry} fallback={() => <div><p>{summary}</p><p className="gen-fallback">Could not display this view</p></div>}/></ActionProvider></FormReadOnly.Provider>
 }
 const submittedExample = { title: 'Thread search loses focus', severity: 'Medium', steps: '1. Open an agent thread.\n2. Search for a message.\n3. Type a second search term.', logs: true }
-function FollowUp({ form }: any) { return <div className="user-message form-followup">Submit bug report<br/>Title: {form.title}<br/>Severity: {form.severity}<br/>Steps to reproduce:<br/>{form.steps}<br/>Include recent logs: {form.logs ? 'Yes' : 'No'}</div> }
-function Reply({ user, lead, children, index }: any) {
+function FollowUp({ form }: { form: BugForm }) { return <div className="user-message form-followup">Submit bug report<br/>Title: {form.title}<br/>Severity: {form.severity}<br/>Steps to reproduce:<br/>{form.steps}<br/>Include recent logs: {form.logs ? 'Yes' : 'No'}</div> }
+function Reply({ user, lead, children, index }: { user: string; lead: string; children: React.ReactNode; index: number }) {
   return <section className="gen-exchange" data-section={index}><div className="user-message">{user}</div><div className="assistant-label"><Avatar className="research-avatar"><AvatarFallback>R</AvatarFallback></Avatar><strong>Research</strong><span className="message-time">4:{40+index} PM</span></div><p className="gen-lead">{lead}</p><div className="gen-part">{children}</div><div className="gen-toolbar"><Button variant="ghost" size="icon-xs" aria-label="Copy response" onClick={() => { navigator.clipboard.writeText(lead); toast('Response copied') }}><Copy size={14}/></Button><Button variant="ghost" size="icon-xs" aria-label="Good response" onClick={() => toast('Feedback recorded')}><ThumbsUp size={14}/></Button><Button variant="ghost" size="icon-xs" aria-label="Poor response" onClick={() => toast('Feedback recorded')}><ThumbsDown size={14}/></Button></div></section>
 }
 function GenerativeTranscript() {
-  const [submitted, setSubmitted] = React.useState<any>(null)
+  const [submitted, setSubmitted] = React.useState<BugForm | null>(null)
   return <div className="messages generative-transcript">
     <Reply index={1} user="Compare our three plans for the team." lead="Here is how the three plans compare for your team."><SpecPart value={plans} summary="Team is $99 per month for 10 seats, 10 agents, and 3 computers."/><p className="gen-after">Team gives you room to grow without moving to Business yet.</p></Reply>
     <Reply index={2} user="How did agents do last week?" lead="Agents completed 42 tasks last week, up 12% from the week before."><SpecPart value={performance} summary="42 tasks completed, 1,284 credits used, median run time 6m 40s."/></Reply>
