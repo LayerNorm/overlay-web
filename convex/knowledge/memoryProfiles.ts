@@ -14,9 +14,10 @@ import { generateText } from 'ai'
 import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { internalAction } from '../_generated/server'
 import { v } from 'convex/values'
-import { api, internal } from '../_generated/api'
+import { internal } from '../_generated/api'
 import { calculateGatewayLanguageModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { applyMarkupToDollars } from '../lib/usageMarkup'
+import { chargeProviderUsageDirect, checkProviderBudget } from '../lib/providerBudgetCharge'
 import { normalizeOpenAiCompatibleBaseUrl } from '../../src/shared/ai/gateway/openai-compatible-base-url'
 
 // Keep in sync with memoryProfileStore.PROFILE_MEMORY_LIMIT — a node-runtime
@@ -70,10 +71,8 @@ export const compileInternal = internalAction({
   args: {
     ownerId: v.string(),
     workspaceId: v.optional(v.string()),
+    /** Pays from the workspace's paid account, charged after the call. */
     billingActorUserId: v.optional(v.string()),
-    /** The workspace billing account to charge, when the workspace is the payer. */
-    billingAccountId: v.optional(v.string()),
-    isPaid: v.optional(v.boolean()),
     force: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<CompileResult> => {
@@ -94,7 +93,6 @@ export const compileInternal = internalAction({
     const modelId = configuredModelId || 'google/gemini-2.5-flash-lite'
     const serverSecret = getServerSecretForBackground()
     const billingUserId = args.billingActorUserId?.trim() || args.ownerId
-    const workspaceBillingAccountId = args.workspaceId ? args.billingAccountId?.trim() || undefined : undefined
 
     const memoryLines = memories
       .map((m) => {
@@ -105,113 +103,44 @@ export const compileInternal = internalAction({
       .join('\n')
     const prompt = `Memories (newest first):\n${memoryLines}`
 
-    const estimatedInputTokens = Math.ceil((PROFILE_SYSTEM_PROMPT.length + prompt.length) / 4)
-    const estimatedCostUsd = await calculateGatewayLanguageModelCostOrNull(ctx, modelId, estimatedInputTokens, 0, 800)
-    if (estimatedCostUsd === null) return { compiled: false, reason: 'pricing_missing' }
-
+    // Before the call: the 2% workspace check (nothing is held). After it: a direct charge of the actual cost.
+    if (!serverSecret) return { compiled: false, reason: 'background_budget_exhausted' }
     const requestFingerprint = createHash('sha256')
       .update(`profile:${args.ownerId}:${args.workspaceId ?? ''}:${memoryLines.length}:${memories[0]?.updatedAt ?? 0}`)
       .digest('hex')
-    const reservationId = estimatedCostUsd > 0
-      ? `mprof_${createHash('sha256').update(`${billingUserId}:${requestFingerprint}`).digest('hex').slice(0, 40)}`
-      : null
-
-    if (reservationId && serverSecret) {
-      try {
-        const reservedCents = applyMarkupToDollars({ providerCostUsd: estimatedCostUsd })
-        const reservation = workspaceBillingAccountId
-          ? await ctx.runMutation(api.platform.usage.reserveWorkspaceBudgetByServer, {
-              billingAccountId: workspaceBillingAccountId,
-              serverSecret,
-              userId: billingUserId,
-              workspaceId: args.workspaceId!,
-              spendSubjectId: billingUserId,
-              spendSubjectKind: 'member',
-              reservationId,
-              kind: 'generation',
-              modelId,
-              operationId: 'knowledge.compile-memory-profile',
-              requestFingerprint,
-              reservedCents,
-            })
-          : await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
-              serverSecret,
-              userId: billingUserId,
-              reservationId,
-              kind: 'generation',
-              modelId,
-              operationId: 'knowledge.compile-memory-profile',
-              requestFingerprint,
-              reservedCents,
-            })
-        if (reservation.idempotent || reservation.status !== 'reserved') {
-          return { compiled: false, reason: 'already_processed' }
-        }
-      } catch {
-        return { compiled: false, reason: 'background_budget_exhausted' }
-      }
-    }
+    const operationId = `mprof_${createHash('sha256').update(`${billingUserId}:${requestFingerprint}`).digest('hex').slice(0, 40)}`
+    const budget = await checkProviderBudget(ctx, { userId: billingUserId, workspaceId: args.workspaceId, operationId })
+    if (budget.alreadyCharged) return { compiled: false, reason: 'already_processed' }
+    if (!budget.allowed) return { compiled: false, reason: 'background_budget_exhausted' }
 
     // Plain text, not a structured object: the profile is one string, and asking for JSON made some models fail the
-    // schema check on every run (each failure left a hold to reconcile, and the stale profile retried every turn).
+    // schema check on every run (and the stale profile retried every turn).
     let result: { text: string; usage?: { inputTokens?: number; outputTokens?: number } }
     try {
-      if (reservationId && serverSecret) {
-        await ctx.runMutation(api.platform.usage.markBudgetReservationStartedByServer, {
-          serverSecret,
-          userId: billingUserId,
-          reservationId,
-        })
-      }
       result = await generateText({
         model: getCompilerModel(modelId),
         system: PROFILE_SYSTEM_PROMPT,
         messages: [{ role: 'user', content: prompt }],
         maxOutputTokens: 800,
       })
-    } catch (err) {
-      if (reservationId && serverSecret) {
-        await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
-          serverSecret,
-          userId: billingUserId,
-          reservationId,
-          errorMessage: err instanceof Error ? err.message : 'profile_compile_failed',
-        }).catch(() => {})
-      }
+    } catch (_err) {
       return { compiled: false, reason: 'error' }
     }
 
-    if (reservationId && serverSecret) {
-      const usage = result.usage
-      const inputTokens = usage?.inputTokens ?? estimatedInputTokens
-      const outputTokens = usage?.outputTokens ?? 800
-      const actualCostUsd = await calculateGatewayLanguageModelCostOrNull(ctx, modelId, inputTokens, 0, outputTokens)
-      if (actualCostUsd === null) {
-        await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
-          serverSecret,
-          userId: billingUserId,
-          reservationId,
-          errorMessage: `pricing_missing:${modelId}`,
-        }).catch(() => {})
-      } else {
-        const costCents = applyMarkupToDollars({ providerCostUsd: actualCostUsd })
-        await ctx.runMutation(api.platform.usage.finalizeBudgetReservationByServer, {
-          serverSecret,
-          userId: billingUserId,
-          reservationId,
-          actualCents: costCents,
-          events: [{
-            type: 'generation',
-            modelId,
-            inputTokens,
-            outputTokens,
-            cachedTokens: 0,
-            providerCostUsd: actualCostUsd,
-            cost: costCents,
-            timestamp: Date.now(),
-          }],
-        }).catch(() => {})
-      }
+    const inputTokens = result.usage?.inputTokens ?? 0
+    const outputTokens = result.usage?.outputTokens ?? 0
+    const providerCostUsd = await calculateGatewayLanguageModelCostOrNull(ctx, modelId, inputTokens, 0, outputTokens)
+    if (providerCostUsd === null) {
+      console.error('[memoryProfiles] missing pricing; nothing was charged', modelId)
+    } else {
+      await chargeProviderUsageDirect(ctx, {
+        serverSecret,
+        userId: billingUserId,
+        workspaceId: args.workspaceId,
+        operationId,
+        costCents: applyMarkupToDollars({ providerCostUsd }),
+        event: { type: 'generation', modelId, inputTokens, outputTokens, providerCostUsd },
+      }).catch((err) => console.error('[memoryProfiles] charge failed', err))
     }
 
     const content = stripFences(result.text).slice(0, MAX_PROFILE_CHARS)

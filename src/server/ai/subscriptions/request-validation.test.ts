@@ -2,9 +2,25 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { assertSupportedCodexRequest, assertSupportedSubscriptionRequest } from './request-validation'
 
-test('rejects media, hosted tools, ZDR, and unsupported semantic options', () => {
+test('accepts inline and URL images in messages', () => {
+  for (const imageUrl of ['https://example.test/a.png', 'data:image/png;base64,AQID']) {
+    for (const provider of [assertSupportedCodexRequest, assertSupportedSubscriptionRequest]) {
+      assert.doesNotThrow(() => provider({
+        model: 'm',
+        input: [{ role: 'user', content: [
+          { type: 'input_text', text: 'What is in this picture?' },
+          { type: 'input_image', image_url: imageUrl },
+        ] }],
+      }, 'm'))
+    }
+  }
+})
+
+test('rejects other media, stored image ids, hosted tools, ZDR, and unsupported semantic options', () => {
   for (const body of [
-    { model: 'm', input: [{ type: 'input_image', image_url: 'https://example.test/a.png' }] },
+    { model: 'm', input: [{ type: 'input_file', file_data: 'data:application/pdf;base64,AQID' }] },
+    { model: 'm', input: [{ type: 'input_audio', input_audio: { data: 'AQID', format: 'wav' } }] },
+    { model: 'm', input: [{ type: 'input_image', file_id: 'file-1' }] },
     { model: 'm', tools: [{ type: 'web_search' }] },
     { model: 'm', zero_data_retention: true },
   ]) {
@@ -33,8 +49,8 @@ test('validates tool schemas without mistaking property names for media input', 
   }, 'm'))
   assert.throws(() => assertSupportedCodexRequest({
     model: 'm',
-    input: [{ type: 'input_image', image_url: 'https://example.test/a.png' }],
-  }, 'm'), /text-only/)
+    input: [{ role: 'user', content: [{ type: 'input_file', file_data: 'data:application/pdf;base64,AQID' }] }],
+  }, 'm'), /text and image requests only/)
   assert.throws(() => assertSupportedCodexRequest({ model: 'other' }, 'm'), /model mismatch/)
 })
 

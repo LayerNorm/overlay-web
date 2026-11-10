@@ -94,20 +94,6 @@ crons.interval(
 )
 
 crons.interval(
-  'usage reservation reconciliation',
-  { minutes: 5 },
-  internal.platform.usage.reconcileExpiredBudgetReservationsInternal,
-  {},
-)
-
-crons.interval(
-  'stale usage hold settlement',
-  { hours: 1 },
-  internal.platform.usage.settleStaleBudgetReservationsInternal,
-  {},
-)
-
-crons.interval(
   'outbound webhook delivery',
   { minutes: 1 },
   internal.webhooks.deliveryRunner.runMinuteTick,

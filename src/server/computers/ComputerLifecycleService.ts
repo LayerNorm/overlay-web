@@ -9,6 +9,7 @@ import type {
 import type { Computer, ComputerOwnerType } from '@overlay/workspace-contracts'
 import type { AgentSandboxLease } from '@overlay/workspace-contracts'
 import type { ConnectedAgentRepository } from '@/server/agents/ConnectedAgentRepository'
+import { COMPUTER_SESSION_MS } from '@/server/agents/sandbox-boat-accounting'
 import {
   adoptLegacyComputer,
   createComputerRecipe,
@@ -20,7 +21,6 @@ import { ComputerBilling } from './ComputerBilling'
 import { claimComputerMaintenanceWithRetry } from './ComputerMaintenanceClaim'
 import type { ComputerLeaseSeed, ComputerRepository } from './ComputerRepository'
 
-const SESSION_MS = 2 * 60 * 60_000
 const MAINTENANCE_MS = 6 * 60_000
 const ACTIVITY_GRACE_MS = 60_000
 
@@ -79,7 +79,7 @@ export class ComputerLifecycleService {
       id: `computer:${id}`, workspaceId: args.workspaceId, computerId: id, provider: computer.provider,
       providerReference: computer.providerRef ?? undefined,
       status: existing?.providerRef ? (existing.status === 'stopped' ? 'paused' : 'running') : 'reserved',
-      reservedUntil: now + SESSION_MS,
+      reservedUntil: now + COMPUTER_SESSION_MS,
       usage: existing?.providerRef
         ? { computerLifecycle: { adoptionPending: true } }
         : {
@@ -139,7 +139,7 @@ export class ComputerLifecycleService {
   }): Promise<Computer> {
     const { computer, leaseId, actorUserId, token } = args
     try {
-      await this.dependencies.billing.reserve(computer, actorUserId)
+      await this.dependencies.billing.bindPayer(computer, actorUserId)
       const runtime = this.requireRuntime('box')
       const allocation = await this.prepareAllocation(computer, leaseId, token)
       const instance = await runtime.create({
@@ -153,7 +153,7 @@ export class ComputerLifecycleService {
           if (!bound || !bound.canContinue) throw new Error('COMPUTER_ALLOCATION_CANCELLED')
         },
       })
-      const reservedUntil = this.now() + SESSION_MS
+      const reservedUntil = this.now() + COMPUTER_SESSION_MS
       const armed = await this.dependencies.leases.transitionComputerLifecycle?.({
         workspaceId: computer.workspaceId, computerId: computer.id, leaseId, token,
         transition: 'session_armed', expectedProviderReference: instance.reference,
@@ -181,7 +181,7 @@ export class ComputerLifecycleService {
     const storedLease = await this.dependencies.billing.lease(computer)
     const recipe = typeof storedLease.usage.allocationRecipe === 'string'
       ? storedLease.usage.allocationRecipe
-      : JSON.stringify(createComputerRecipe(computer, SESSION_MS))
+      : JSON.stringify(createComputerRecipe(computer, COMPUTER_SESSION_MS))
     const prepared = await this.dependencies.leases.prepareComputerAllocation?.({
       workspaceId: computer.workspaceId, leaseId,
       allocationKey, allocationRecipe: recipe, maintenanceToken: token, now: this.now(),
@@ -202,12 +202,6 @@ export class ComputerLifecycleService {
       || typeof usage.meteredProviderReference === 'string'
       || Boolean(computer.providerRef || lease.providerReference)
     if (!allocationStarted) {
-      try {
-        await this.dependencies.billing.releaseReservation(computer)
-      } catch (error) {
-        await this.markProvisionCleanupFailed(computer, leaseId, token, null)
-        throw error
-      }
       await this.dependencies.leases.transitionComputerLifecycle?.({
         workspaceId: computer.workspaceId, computerId: computer.id, leaseId, token,
         transition: 'cancelled', expectedProviderReference: null,
@@ -280,7 +274,7 @@ export class ComputerLifecycleService {
     const activityToken = this.newId()
     const actionDeadline = Math.min(10 * 60_000, Math.max(1, args.actionDeadlineMs ?? 2 * 60_000))
     const activityExpiresAt = this.now() + actionDeadline + ACTIVITY_GRACE_MS
-    const reservedUntil = this.now() + SESSION_MS
+    const reservedUntil = this.now() + COMPUTER_SESSION_MS
     let wakeArmed = false
     let resumeMayHaveOccurred = false
     try {
@@ -288,9 +282,8 @@ export class ComputerLifecycleService {
       const instance = await runtime.reconnect(computer.providerRef!, { resume: false })
       const status = await instance.status()
       if (status === 'stopped' || status === 'archived') {
-        const stoppedUsage = await instance.usage()
         await this.dependencies.billing.meter(computer, true)
-        await this.dependencies.billing.reserve(computer, args.actorUserId, stoppedUsage)
+        await this.dependencies.billing.bindPayer(computer, args.actorUserId)
         const armed = await this.dependencies.leases.transitionComputerLifecycle?.({
           workspaceId: computer.workspaceId, computerId: computer.id, leaseId: lease.id, token: wakeToken,
           transition: 'wake_armed', expectedProviderReference: computer.providerRef,
@@ -375,8 +368,6 @@ export class ComputerLifecycleService {
             throw new Error('COMPUTER_STOP_EVIDENCE_MISSING')
           }
           finalMeter = true
-        } else {
-          await this.dependencies.billing.releaseReservation(current)
         }
       }
       if (finalMeter) await this.dependencies.billing.meter(current, true)

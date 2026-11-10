@@ -17,12 +17,32 @@ export type ExecutionSubscription = {
   paidPeriodEnd?: number
 }
 
+/** Work stops once less than this fraction of the workspace budget is left. */
+export const WORKSPACE_BUDGET_STOP_FRACTION = 0.02
+
+/**
+ * The only automatic spending limit: the real balance, read before work and after every paid call.
+ * Never an estimate of what the next call will cost.
+ */
+export function workspaceBudgetLow(input: { remainingCents: number; totalCents?: number }): boolean {
+  if (!Number.isFinite(input.remainingCents) || input.remainingCents <= 0) return true
+  const total = input.totalCents
+  if (total === undefined || !Number.isFinite(total) || total <= 0) return false
+  return input.remainingCents < total * WORKSPACE_BUDGET_STOP_FRACTION
+}
+
+/** The balance a workspace needs to keep working: 2% of its budget (at least one cent). Top-ups refill to this line. */
+export function workspaceBudgetStopLineCents(input: { totalCents?: number }): number {
+  return Math.max(1, Math.ceil((input.totalCents ?? 0) * WORKSPACE_BUDGET_STOP_FRACTION))
+}
+
 /** Eligibility is independent of reservations; only admission of new work checks available funds. */
 export function workspaceExecutionAccess(input: {
   billingEnabled: boolean
   accountStatus?: string
   subscription?: ExecutionSubscription | null
   remainingCents: number
+  totalCents?: number
   checkBudget?: boolean
   now?: number
 }): WorkspaceExecutionAccess {
@@ -41,7 +61,7 @@ export function workspaceExecutionAccess(input: {
     || subscription.paidPeriodStart! > now
     || subscription.paidPeriodEnd! <= now
     || subscription.paidPeriodEnd! <= subscription.paidPeriodStart!) return access('payment_pending')
-  if (input.checkBudget !== false && (!Number.isFinite(input.remainingCents) || input.remainingCents <= 0)) {
+  if (input.checkBudget !== false && workspaceBudgetLow(input)) {
     return access('budget_exhausted')
   }
   return access('ready')
@@ -51,6 +71,6 @@ export const EXECUTION_ACCESS_MESSAGES: Record<WorkspaceExecutionState, string> 
   subscription_required: 'Subscribe to this workspace before starting work.',
   payment_pending: 'Your payment has not been confirmed yet. Your draft is saved.',
   ready: 'Your task is ready when you are.',
-  budget_exhausted: 'Your workspace budget is exhausted. Add usage before starting more work.',
+  budget_exhausted: 'Your workspace has less than 2% of its budget left. Add usage before starting more work.',
   billing_suspended: 'Workspace billing needs attention before work can continue.',
 }

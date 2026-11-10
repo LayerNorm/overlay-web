@@ -2,6 +2,7 @@ import { z } from 'zod/v3'
 import 'server-only'
 
 import { randomUUID } from 'node:crypto'
+import { MAX_COMMAND_BYTES } from '@layernorm/overlay-agent-bridge-protocol'
 import { parseByoModelId } from '@/shared/agents/agent-model'
 import { externalAgentLaunchEnabled, isExternalAgentInvocation } from './external-agent-policy'
 import type { ModelMessage } from 'ai'
@@ -35,17 +36,10 @@ export function permissionModeForConnectedHarness(
 }
 
 /**
- * A durable turn is no longer bounded by the request that started it, so the
- * cap can be what the work needs rather than what a response could hold. Reasoning
- * models spend thinking tokens from the same per-call limit, so leave room for both.
+ * Each mentioned agent gets its own durable run, so an uncapped mass-mention
+ * is a cost amplifier.
  */
-const MAX_OUTPUT_TOKENS_AGENT = 32_000
-
-/**
- * Each mentioned agent gets its own budget reservation and its own durable
- * run, so an uncapped mass-mention is a cost amplifier.
- */
-const MAX_AGENTS_PER_MESSAGE = 5
+const MAX_AGENTS_PER_MESSAGE = 20
 
 export const WORKSPACE_AGENT_INVOCATION_REASON_CODES = [
   'room_access_denied',
@@ -155,7 +149,8 @@ export type WorkspaceAgentInvocation = {
 }
 
 const CONNECTED_AGENT_ONLINE_WITHIN_MS = 45_000
-export const CONNECTED_AGENT_INTERACTIVE_QUEUE_MS = 2 * 60_000
+/** How long a connected agent's machine has to pick up a new turn before it is reported as not started. */
+export const CONNECTED_AGENT_INTERACTIVE_QUEUE_MS = 15 * 60_000
 
 /**
  * Everything a room turn reads about the room. Loaded fresh per turn rather
@@ -288,8 +283,8 @@ export async function resolveWorkspaceAgentInvocations(args: {
   }
   // Cap the number of agents that can be invoked per message to prevent
   // cost amplification from mass-mentioning agents. Each agent gets its own
-  // budget reservation, so without a cap a user could mention many agents
-  // and consume significant tokens in a single message.
+  // run, so without a cap a user could mention many agents and consume
+  // significant tokens in a single message.
   if (principalIds.length > MAX_AGENTS_PER_MESSAGE) {
     logger.warn('[workspace-agent] too many agents mentioned, capping', {
       conversationId: args.conversationId,
@@ -397,13 +392,35 @@ export async function resolveWorkspaceAgentInvocations(args: {
   return invocations
 }
 
-const REMOTE_CONTEXT_MESSAGE_CHARS = 2_000
-const REMOTE_CONTEXT_TOTAL_CHARS = 80_000
+const REMOTE_CONTEXT_MESSAGE_CHARS = 50_000
+/**
+ * The start command carries this prompt, and installed agent hosts refuse a command over the
+ * protocol's MAX_COMMAND_BYTES (128 KiB). The context gets what is left after the person's own
+ * message and about 16 KiB for the rest of the command.
+ */
+const REMOTE_COMMAND_BYTES = MAX_COMMAND_BYTES
+const REMOTE_COMMAND_OVERHEAD_BYTES = 16 * 1024
+const REMOTE_CONTEXT_MIN_BYTES = 4 * 1024
 
 function remoteContextPrefix(text: string, limit: number): string {
   const prefix = text.slice(0, limit)
   const last = prefix.charCodeAt(prefix.length - 1)
   return last >= 0xd800 && last <= 0xdbff ? prefix.slice(0, -1) : prefix
+}
+
+const utf8 = new TextEncoder()
+
+/** The longest prefix of `text` within `maxBytes` UTF-8 bytes, never splitting a character. */
+function remoteContextBytePrefix(text: string, maxBytes: number): string {
+  if (utf8.encode(text).byteLength <= maxBytes) return text
+  let low = 0
+  let high = Math.min(text.length, maxBytes)
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2)
+    if (utf8.encode(remoteContextPrefix(text, mid)).byteLength <= maxBytes) low = mid
+    else high = mid - 1
+  }
+  return remoteContextPrefix(text, low)
 }
 
 /**
@@ -436,8 +453,10 @@ export function buildRemoteAgentPrompt(args: {
     history ? `RECENT_ROOM_HISTORY_BEGIN\n${history}\nRECENT_ROOM_HISTORY_END` : '',
     'OVERLAY_CONTEXT_END',
   ].filter(Boolean).join('\n\n')
-  const boundedContext = envelope.length > REMOTE_CONTEXT_TOTAL_CHARS
-    ? `${remoteContextPrefix(envelope, REMOTE_CONTEXT_TOTAL_CHARS)}\n[Overlay context truncated]`
+  const contextBytes = Math.max(REMOTE_CONTEXT_MIN_BYTES,
+    REMOTE_COMMAND_BYTES - REMOTE_COMMAND_OVERHEAD_BYTES - utf8.encode(args.prompt).byteLength)
+  const boundedContext = utf8.encode(envelope).byteLength > contextBytes
+    ? `${remoteContextBytePrefix(envelope, contextBytes)}\n[Overlay context truncated]`
     : envelope
   return `${boundedContext}\n\nRESPONSE_STYLE: ${AGENT_CLOSING_SUMMARY_INSTRUCTION}\n\nCURRENT_USER_MESSAGE_BEGIN\n${args.prompt}\nCURRENT_USER_MESSAGE_END`
 }
@@ -554,31 +573,18 @@ export async function startRemoteWorkspaceAgentTurn(args: {
   })
   if (!entitlements) throw new WorkspaceAgentInvocationError('not_entitled')
   const policy = connectedAgentPolicyFor(entitlements)
-  const overlayModelUsage = args.invocation.remoteTarget.modelUsageBilling === 'overlay'
-  if (!overlayModelUsage) {
-    await requireExecution({
-      userId: args.actorUserId,
-      workspaceId: args.workspaceId,
-      checkBudget: true,
-    })
-  }
-  const reservation = overlayModelUsage
-    ? await server.chatUsagePolicy.reserveForAttempt({
-        entitlements,
-        estimatedInputTokens: Math.max(1, Math.ceil(remotePrompt.length / 4)),
-        idempotencyKey: args.invocation.invocationNonce,
-        maxOutputTokens: MAX_OUTPUT_TOKENS_AGENT,
-        modelId: args.invocation.modelId,
-        operationId: `workspace-agent:${args.invocation.turnId}`,
-        paid: true,
-        requestFingerprint,
-        userId: args.actorUserId,
-        workspaceId: args.workspaceId,
-        programmaticSubjectId: `agent:${args.invocation.agentId}`,
-      })
-    : { ok: true as const, reservationId: null }
-  if (!reservation.ok) throw new WorkspaceAgentInvocationError(
-    reservation.failure.statusCode === 402 ? 'usage_limited' : 'not_entitled',
+  // Before the run: refuse only when the workspace has under 2% left. Overlay-billed model use is charged
+  // from the run's reported tokens when it ends; nothing is held now.
+  const budget = await server.chatUsagePolicy.ensureBudgetNotLow({
+    entitlements,
+    modelId: args.invocation.modelId,
+    operationId: `workspace-agent:${args.invocation.turnId}`,
+    userId: args.actorUserId,
+    workspaceId: args.workspaceId,
+    programmaticSubjectId: `agent:${args.invocation.agentId}`,
+  })
+  if (!budget.ok) throw new WorkspaceAgentInvocationError(
+    budget.failure.statusCode === 402 ? 'usage_limited' : 'not_entitled',
   )
   const now = Date.now()
   const runId = `agent_run_${randomUUID()}`
@@ -607,7 +613,7 @@ export async function startRemoteWorkspaceAgentTurn(args: {
       memoryEnabled: args.memoryEnabled,
       prompt: remotePrompt,
       queueExpiresAt: now + CONNECTED_AGENT_INTERACTIVE_QUEUE_MS,
-      reservationId: reservation.reservationId,
+      reservationId: null,
       runId,
       sessionId: remoteSessionId,
       startPayload: {
@@ -659,7 +665,6 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         runId: started.runId,
         commandId: started.commandId,
         remoteSessionId,
-        reservationId: reservation.reservationId,
         eventCursor: 0,
       },
     }).catch((error) => logger.warn('[remote-agent-run] dispatch audit deferred', { runId: started.runId, error }))
@@ -667,11 +672,6 @@ export async function startRemoteWorkspaceAgentTurn(args: {
     await ensureRemoteRunCoordinator(started.runId).catch((error) => logger.warn('[remote-agent-run] start deferred', { runId: started.runId, error }))
     return started
   } catch (error) {
-    await server.chatUsagePolicy.releaseReservation({
-      reason: 'remote_agent_dispatch_failed',
-      reservationId: reservation.reservationId,
-      userId: args.actorUserId,
-    }).catch((_error) => undefined)
     await server.auditService.record({
       action: 'agent_remote_run.dispatch_failed',
       actorType: 'user',
@@ -685,7 +685,6 @@ export async function startRemoteWorkspaceAgentTurn(args: {
         environmentId: args.invocation.remoteTarget.environmentId,
         runId,
         remoteSessionId,
-        reservationId: reservation.reservationId,
         errorCode: error instanceof Error ? error.message.slice(0, 160) : 'remote_agent_dispatch_failed',
       },
     }).catch((_auditError) => undefined)

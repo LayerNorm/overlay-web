@@ -92,6 +92,7 @@ export function composeWorkspaceBillingSummary(args: {
       accountStatus: account.status,
       subscription: plan,
       remainingCents,
+      totalCents: balance?.budgetTotalCents,
       now: args.now,
     }),
     pricingVersion: account.pricingVersion as WorkspaceBillingSummaryResponse['pricingVersion'],

@@ -22,6 +22,11 @@ are represented as non-expiring only when upstream supplies that credential
 form. No raw-token paste, localhost callback listener, cross-domain fallback,
 or background refresh is used.
 
+Inference accepts text and `input_image` parts for every provider (Codex receives
+Responses input directly; the pinned translators convert images for the others).
+Audio, video, other files and hosted tools are refused. Request bodies may be up to
+33 MiB: the web limit is 32 MiB plus room for the credential envelope.
+
 The internal `/internal/v1/authorize`, `/poll`, `/complete`, `/refresh`,
 `/models`, and `/infer` endpoints are intended only for the bound Overlay web
 service. Do not add public rewrites for this service. Model lists come from the

@@ -58,7 +58,11 @@ type AutomationPolicyCtx = MutationCtx | QueryCtx
 const DEFAULT_SCHEDULE = SHARED_DEFAULT_SCHEDULE
 const MIN_INTERVAL_MINUTES = SHARED_MIN_INTERVAL_MINUTES
 const MAX_ENABLED_AUTOMATIONS = 25
-const STALE_AUTOMATION_RUN_MS = 15 * 60_000
+/**
+ * A queued run that never started within a day is treated as lost. Running runs are
+ * never failed by age: their durable workflow settles them, however long the work takes.
+ */
+const UNSTARTED_AUTOMATION_RUN_EXPIRY_MS = 24 * 60 * 60_000
 /**
  * Per-user cap for claimDueRuns. Prevents a single user with many due
  * automations from monopolizing the per-tick batch and starving other users.
@@ -848,7 +852,7 @@ async function hasQueuedOrRunningRun(ctx: MutationCtx, automationId: Id<'automat
     .first()
   if (queued) {
     const queuedAt = queued.createdAt ?? queued.updatedAt ?? queued.scheduledFor
-    if (now - queuedAt <= STALE_AUTOMATION_RUN_MS) return true
+    if (now - queuedAt <= UNSTARTED_AUTOMATION_RUN_EXPIRY_MS) return true
     await ctx.db.patch(queued._id, {
       status: 'failed',
       completedAt: now,
@@ -860,20 +864,7 @@ async function hasQueuedOrRunningRun(ctx: MutationCtx, automationId: Id<'automat
     .query('automationRuns')
     .withIndex('by_automationId_status', (q) => q.eq('automationId', automationId).eq('status', 'running'))
     .first()
-  if (!running) return false
-  const startedAt = running.startedAt ?? running.updatedAt ?? running.createdAt
-  if (now - startedAt <= STALE_AUTOMATION_RUN_MS) return true
-  await ctx.db.patch(running._id, {
-    status: 'failed',
-    completedAt: now,
-    error: 'Automation run timed out before completion.',
-    updatedAt: now,
-  })
-  await ctx.db.patch(automationId, {
-    lastError: 'Previous automation run timed out before completion.',
-    updatedAt: now,
-  })
-  return false
+  return Boolean(running)
 }
 
 export const claimDueRuns = internalMutation({

@@ -14,8 +14,6 @@ type HarnessModelUsageResolution = {
   receipt: HarnessReceipt
   providerCostUsd: number | null
   catalogCostUsd: number | null
-  /** Set when settling from an estimate, so the exact cost can correct it later. */
-  correctionGenerationId?: string
 }
 
 type HarnessReceiptBase = Omit<HarnessReceipt, 'costMicros' | 'costSource' | 'externalCostMicros'>
@@ -62,11 +60,9 @@ export async function resolveHarnessModelUsage(input: {
     }
   }
   // Gateway usage takes seconds to appear, so a run never waits for it when a
-  // catalog price exists. The exact cost corrects this estimate in the background.
+  // catalog price exists: the call is charged at catalog pricing.
   const estimate = await catalogEstimate(observation)
-  if (estimate !== null) {
-    return { ...catalogUsage(estimate, base), ...(generationId ? { correctionGenerationId: generationId } : {}) }
-  }
+  if (estimate !== null) return catalogUsage(estimate, base)
   if (generationId) {
     const gateway = await getOrCreateGateway()
     let generation: Awaited<ReturnType<typeof gateway.getGenerationInfo>>

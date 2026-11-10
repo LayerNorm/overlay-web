@@ -1,6 +1,7 @@
 import type { Entitlements } from '@/shared/app/app-contracts'
 import { getTopUpPreferenceSnapshot } from '@/shared/billing/app-subscription'
 import { centsToDollarAmount } from '@/shared/billing/billing-pricing'
+import { workspaceBudgetLow } from '@/shared/billing/execution-access'
 
 export function isPaidPlan(entitlements: Pick<Entitlements, 'tier' | 'planKind'>): boolean {
   if (entitlements.planKind) return entitlements.planKind === 'paid'
@@ -30,7 +31,8 @@ export function canUsePaidBudgetFeatures(entitlements: Pick<
   Entitlements,
   'tier' | 'planKind' | 'creditsUsed' | 'creditsTotal' | 'budgetUsedCents' | 'budgetTotalCents' | 'budgetRemainingCents'
 >): boolean {
-  return isPaidPlan(entitlements) && getBudgetTotals(entitlements).remainingCents > 0
+  const { remainingCents, totalCents } = getBudgetTotals(entitlements)
+  return isPaidPlan(entitlements) && !workspaceBudgetLow({ remainingCents, totalCents })
 }
 
 export async function ensureBudgetAvailable(params: {

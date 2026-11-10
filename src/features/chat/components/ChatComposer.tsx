@@ -108,18 +108,25 @@ export function ChatComposer(props: ChatComposerProps) {
     <>
       <div
         className={`flex min-h-0 flex-col ${
-          viewProps.showCenteredEmptyChat ? 'min-h-0 flex-1 md:justify-center' : 'shrink-0'
-        } ${!viewProps.showCenteredEmptyChat ? 'px-3 pb-3 sm:px-4 sm:pb-4' : 'px-4 pb-4 max-md:pb-[max(1rem,env(safe-area-inset-bottom))]'}`}
+          viewProps.showCenteredEmptyChat ? 'min-h-0 flex-1' : 'shrink-0'
+        } px-3 pb-3 sm:px-4 sm:pb-4 ${viewProps.showCenteredEmptyChat ? 'max-md:pb-[max(1rem,env(safe-area-inset-bottom))]' : ''}`}
       >
-        <ChatEmptyHero visible={viewProps.showCenteredEmptyChat} greetingLine={viewProps.greetingLine} />
+        {/* A new chat or automation keeps the composer where it stays once the conversation starts: the greeting (and
+            any automation intro) is centred in the free space, suggestions sit just above the composer. */}
+        <ChatEmptyHero visible={viewProps.showCenteredEmptyChat} greetingLine={viewProps.greetingLine}>
+          {viewProps.belowEmptyComposer}
+        </ChatEmptyHero>
+        <ChatEmptyState
+          visible={viewProps.showCenteredEmptyChat}
+          mode={viewProps.mode}
+          onEmptySuggestion={viewProps.onEmptySuggestion}
+          onAutomateSuggestion={viewProps.onAutomateSuggestion}
+        />
         <div
           data-chat-composer
           data-centered={viewProps.showCenteredEmptyChat}
-          className={`mx-auto w-full min-w-0 shrink-0 transition-[max-width] duration-780 ease-[cubic-bezier(0.16,1,0.3,1)] max-md:order-3 ${
-            viewProps.showCenteredEmptyChat ? 'max-w-xl' : 'max-w-4xl'
-          }`}
+          className="mx-auto w-full max-w-4xl min-w-0 shrink-0"
         >
-          {viewProps.mode === 'chat' && !viewProps.showCenteredEmptyChat ? null : null}
           {viewProps.beforeComposerContent}
           {viewProps.billingPromptContent}
           {viewProps.isSendBlocked && !viewProps.isActiveLoading && viewProps.blockedComposerContent ? (
@@ -127,19 +134,12 @@ export function ChatComposer(props: ChatComposerProps) {
           ) : (
             <ComposerInputCard {...viewProps} disabledSend={disabledSend} />
           )}
-          {viewProps.mode === 'chat' && !viewProps.showCenteredEmptyChat ? (
+          {viewProps.mode === 'chat' ? (
             <p className="mt-2 text-center text-[11px] text-(--muted-light)">
               Overlay can make mistakes. Check important info.
             </p>
           ) : null}
         </div>
-        <ChatEmptyState
-          visible={viewProps.showCenteredEmptyChat}
-          mode={viewProps.mode}
-          belowComposer={viewProps.belowEmptyComposer}
-          onEmptySuggestion={viewProps.onEmptySuggestion}
-          onAutomateSuggestion={viewProps.onAutomateSuggestion}
-        />
       </div>
     </>
   )

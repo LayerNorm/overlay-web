@@ -21,10 +21,6 @@ import type {
   CreateConversationResponse,
   UpdateConversationRequest,
 } from './types'
-import type {
-  HarnessResourceGrant,
-  HarnessResourceGrantReceipt,
-} from '@overlay/agent-runtime/harness-resource'
 
 export class ConversationsClient {
   constructor(private readonly http: HttpContext) {}
@@ -237,19 +233,6 @@ export class ConversationsClient {
   }, init?: MutationRequestInit) {
     return this.http.json<{ success: boolean }>(
       '/api/v1/conversations/run/input',
-      this.http.jsonRequest(body, { ...init, method: 'POST' }),
-    )
-  }
-
-  grantRunResources(body: {
-    conversationId: string
-    agentRunId: string
-    token: string
-    policyRevision: number
-    grant: HarnessResourceGrant
-  }, init?: MutationRequestInit) {
-    return this.http.json<{ receipt: HarnessResourceGrantReceipt }>(
-      '/api/v1/conversations/run/resources',
       this.http.jsonRequest(body, { ...init, method: 'POST' }),
     )
   }

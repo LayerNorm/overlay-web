@@ -72,8 +72,8 @@ test('verified provider status and exact task policy failures use authored safe 
     .toBe('TASK_DEADLINE')
   expect(harnessDiagnosticForFailure('root', snapshot(), new Error('Harness deadline reached while waiting.'), 'model').code)
     .toBe('TASK_DEADLINE')
-  expect(harnessDiagnosticForFailure('root', snapshot(), new Error('The authorized spending budget is exhausted.'), 'model').code)
-    .toBe('TASK_SPEND_LIMIT')
+  expect(harnessDiagnosticForFailure('root', snapshot(), new Error('The workspace budget is under 2%.'), 'model').code)
+    .toBe('WORKSPACE_FUNDS')
   expect(harnessDiagnosticForFailure('root', snapshot(), new Error('Model budget reservation declined: insufficient_budget'), 'model').code)
     .toBe('WORKSPACE_FUNDS')
   expect(harnessDiagnosticForFailure('root', snapshot(), new Error('Model budget reservation declined: insufficient_credits'), 'model').code)
@@ -154,4 +154,23 @@ test('diagnostic IDs are stable short correlations, not raw operation arguments'
   expect(first).toMatch(/^hd_[a-z0-9]+$/)
   expect(first).toBe(stableHarnessDiagnosticId('root', 'model:7', 4))
   expect(first).not.toContain('model:7')
+})
+
+test.each([
+  [400, 'PROVIDER_REQUEST_INVALID'],
+  [404, 'PROVIDER_REQUEST_INVALID'],
+  [413, 'PROVIDER_REQUEST_INVALID'],
+  [401, 'PROVIDER_ACCOUNT'],
+  [402, 'PROVIDER_ACCOUNT'],
+  [403, 'PROVIDER_ACCOUNT'],
+] as const)('a provider HTTP %i rejection is %s, typed or after transport strips the prototype', (statusCode, code) => {
+  const apiError = new APICallError({
+    message: 'This subscription service supports text-only requests',
+    url: 'https://provider.invalid', requestBodyValues: {}, statusCode,
+  })
+  const typed = harnessDiagnosticForFailure('root', snapshot(), apiError, 'model')
+  expect(typed).toMatchObject({ code, retryability: 'user_action' })
+  expect(harnessDiagnosticTerminalError(typed).message).not.toContain('text-only')
+  const stripped = { name: 'AI_APICallError', message: apiError.message, statusCode }
+  expect(harnessDiagnosticForFailure('root', snapshot(), { name: 'WorkflowError', cause: stripped }, 'model').code).toBe(code)
 })
