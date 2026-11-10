@@ -155,3 +155,22 @@ test('diagnostic IDs are stable short correlations, not raw operation arguments'
   expect(first).toBe(stableHarnessDiagnosticId('root', 'model:7', 4))
   expect(first).not.toContain('model:7')
 })
+
+test.each([
+  [400, 'PROVIDER_REQUEST_INVALID'],
+  [404, 'PROVIDER_REQUEST_INVALID'],
+  [413, 'PROVIDER_REQUEST_INVALID'],
+  [401, 'PROVIDER_ACCOUNT'],
+  [402, 'PROVIDER_ACCOUNT'],
+  [403, 'PROVIDER_ACCOUNT'],
+] as const)('a provider HTTP %i rejection is %s, typed or after transport strips the prototype', (statusCode, code) => {
+  const apiError = new APICallError({
+    message: 'This subscription service supports text-only requests',
+    url: 'https://provider.invalid', requestBodyValues: {}, statusCode,
+  })
+  const typed = harnessDiagnosticForFailure('root', snapshot(), apiError, 'model')
+  expect(typed).toMatchObject({ code, retryability: 'user_action' })
+  expect(harnessDiagnosticTerminalError(typed).message).not.toContain('text-only')
+  const stripped = { name: 'AI_APICallError', message: apiError.message, statusCode }
+  expect(harnessDiagnosticForFailure('root', snapshot(), { name: 'WorkflowError', cause: stripped }, 'model').code).toBe(code)
+})

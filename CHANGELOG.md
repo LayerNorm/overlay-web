@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Explain why an agent task stopped when the model provider refused the request, instead of "The task stopped for an unclassified reason". A refused request (HTTP 400, 404 or 413, such as content the model cannot accept) now says to choose a model that supports it or remove the attachment. A rejected account, key, access or billing (HTTP 401, 402 or 403) now says to reconnect or check the provider in Settings. This adds two diagnostic codes to the Convex harness validators.
 - Add the phased UI responsiveness plan and opt-in performance baseline tooling. Reject incomplete navigation/streaming samples, verify loaded DM history before scroll measurement, and keep diagnostic payloads out of reports. Add Preview-only fixed histories and a repeatable public-stream fixture without model calls.
 - Fix agents on a subscription model (such as a connected Claude account) stopping with "The task stopped for an unclassified reason" after a tool returned an image, for example a screenshot attached to a GitHub issue. Subscriptions accept text only, so the next model request was rejected. The image is now replaced with a note telling the agent it could not see it, and the run continues.
 - Keep the composer at the bottom in new chats and new automations, matching tasks and agent threads. The greeting stays centred with suggestions just above the composer, so the input no longer jumps from the middle of the screen to the bottom when you send the first message.
