@@ -536,13 +536,21 @@ html[data-desktop] :is(button, input, textarea, select, a, [role="button"]) { -w
 html:has([data-desktop-panel]), html:has([data-desktop-panel]) body, html:has([data-desktop-panel]) [data-app-shell] { background: transparent; }
 
 /* Skip layout and paint for off-screen room messages in long transcripts.
-   Hovered, focused or popover-owning rows stay uncontained so their floating
-   toolbar and anchored pickers are not clipped by paint containment. */
+   The clip margin keeps the floating toolbar (-top-3) visible on hover, so
+   moving the pointer across rows while scrolling does not toggle containment.
+   Focused or popover-owning rows stay uncontained so pickers are not clipped. */
 [data-room-message] {
   content-visibility: auto;
   contain-intrinsic-size: auto 6rem;
+  overflow-clip-margin: 1rem;
 }
 
-[data-room-message]:is(:hover, :focus-within, :has([role='dialog'])) {
+[data-room-message]:is(:focus-within, :has([role='dialog'])) {
   content-visibility: visible;
+}
+
+@supports not (overflow-clip-margin: 1rem) {
+  [data-room-message]:hover {
+    content-visibility: visible;
+  }
 }
