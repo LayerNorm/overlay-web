@@ -270,7 +270,7 @@ into the transcript. These controls are authenticated and workspace-scoped throu
 object deletion from the BFF without moving object-store credentials into Convex.
 The same internal-secret boundary protects
 `POST /api/v1/agent-environments/operations/reconcile`: the Convex scheduler keeps run supervision
-durable while the BFF performs provider-credentialed sandbox settlement retries. PostgreSQL runs
+durable while the BFF performs provider-credentialed machine metering and cleanup. PostgreSQL runs
 the equivalent work through its application-data maintenance scheduler.
 
 ## Cross-Surface Adoption

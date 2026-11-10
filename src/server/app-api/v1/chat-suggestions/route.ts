@@ -11,10 +11,6 @@ import { getOverlayServerContext } from '@/server/bootstrap'
 import type { ChatSuggestionRepository } from '@/server/chat-suggestions/ChatSuggestionRepository'
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
-import {
-  billableBudgetCentsFromProviderUsd,
-} from '@/server/billing/billing-runtime'
-import { providerRequestFingerprint } from '@/server/billing/ServerProviderUsageMeter'
 
 function utcDateKey(): string {
   return new Date().toISOString().slice(0, 10)
@@ -96,119 +92,49 @@ async function generateStartersWithLLM(args: {
 
 Reply with ONLY valid JSON (no markdown fences) in this exact shape:
 {"prompts":["...","...","...","..."]}`
-  const estimatedInputTokens = Math.ceil(prompt.length / 4) + 32
   const maxOutputTokens = 700
-  const estimatedProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
-    DEFAULT_MODEL_ID,
-    estimatedInputTokens,
-    0,
-    maxOutputTokens,
-  )
-  if (estimatedProviderCostUsd === null) return null
-  const operationId = `chat.suggestions:${args.day}`
-  const requestFingerprint = providerRequestFingerprint({
-    day: args.day,
-    operationId: 'chat.suggestions',
-    userId: args.userId,
-  })
-  const reservation = await server.generationUsagePolicy.reserve({
+  const check = await server.generationUsagePolicy.ensureBudgetNotLow({
     entitlements,
-    idempotencyKey: operationId,
     kind: 'generation',
     modelId: DEFAULT_MODEL_ID,
     operationId: 'chat.suggestions',
-    providerCostUsd: estimatedProviderCostUsd,
-    requestFingerprint,
     programmaticSubjectId: args.programmaticSubjectId,
     userId: args.userId,
     workspaceId: args.workspaceId,
   })
-  if (!reservation.ok) return null
+  if (!check.ok) return null
 
-  let providerWorkStarted = false
-  let result: Awaited<ReturnType<typeof generateText>>
-  try {
-    await server.generationUsagePolicy.markStarted({
-      reservationId: reservation.reservationId,
-      userId: args.userId,
-    })
-    providerWorkStarted = true
-    result = await generateText({
-      model,
-      temperature: 0.88,
-      maxOutputTokens,
-      prompt,
-    })
-  } catch (error) {
-    await server.generationUsagePolicy.release({
-      providerWorkStarted,
-      reason: error instanceof Error ? error.message : 'chat_suggestions_provider_failed',
-      reservationId: reservation.reservationId,
-      userId: args.userId,
-    }).catch((_releaseError) => undefined)
-    throw error
-  }
+  // A failed call charges nothing.
+  const result = await generateText({
+    model,
+    temperature: 0.88,
+    maxOutputTokens,
+    prompt,
+  })
 
   const usage = (result as unknown as {
     usage?: { inputTokens?: number; outputTokens?: number }
   }).usage
-  const inputTokens = usage?.inputTokens ?? estimatedInputTokens
-  const outputTokens = usage?.outputTokens ?? maxOutputTokens
-  const actualProviderCostUsd = await calculateLanguageModelTokenCostOrNull(
+  const inputTokens = usage?.inputTokens ?? 0
+  const outputTokens = usage?.outputTokens ?? 0
+  const providerCostUsd = await calculateLanguageModelTokenCostOrNull(
     DEFAULT_MODEL_ID,
     inputTokens,
     0,
     outputTokens,
   )
-  if (actualProviderCostUsd === null) {
-    await server.generationUsagePolicy.markForReconcile({
-      errorMessage: `pricing_missing:${DEFAULT_MODEL_ID}`,
-      reservationId: reservation.reservationId,
-      userId: args.userId,
-    }).catch((_reconcileError) => undefined)
+  if (providerCostUsd === null) {
+    logger.error('[chat-suggestions] Missing pricing for completed provider call', { modelId: DEFAULT_MODEL_ID })
     return null
   }
-  const costCents = billableBudgetCentsFromProviderUsd(actualProviderCostUsd)
-  if (reservation.reservationId) {
-    try {
-      await server.generationUsagePolicy.finalize({
-        actualProviderCostUsd,
-        events: [{
-          type: 'generation',
-          modelId: DEFAULT_MODEL_ID,
-          inputTokens,
-          outputTokens,
-          cachedTokens: 0,
-          cost: costCents,
-          timestamp: Date.now(),
-        }],
-        reservationId: reservation.reservationId,
-        userId: args.userId,
-      })
-    } catch (error) {
-      await server.generationUsagePolicy.markForReconcile({
-        errorMessage: error instanceof Error ? error.message : 'chat_suggestions_finalize_failed',
-        reservationId: reservation.reservationId,
-        userId: args.userId,
-      }).catch((_reconcileError) => undefined)
-      throw error
-    }
-  } else {
-    await server.appData.repositories.usage.recordBatch({
-      events: [{
-        cachedTokens: 0,
-        costCents,
-        inputTokens,
-        kind: 'generation',
-        modelId: DEFAULT_MODEL_ID,
-        occurredAt: Date.now(),
-        outputTokens,
-        providerCostUsd: actualProviderCostUsd,
-      }],
-      operationId,
-      userId: args.userId,
-    })
-  }
+  await server.generationUsagePolicy.charge({
+    operationId: `chat.suggestions:${args.day}:${globalThis.crypto.randomUUID()}`,
+    programmaticSubjectId: args.programmaticSubjectId,
+    providerCostUsd,
+    usage: { kind: 'generation', modelId: DEFAULT_MODEL_ID, inputTokens, outputTokens, cachedTokens: 0 },
+    userId: args.userId,
+    workspaceId: args.workspaceId,
+  })
 
   const raw = result.text.trim()
   const jsonStr = raw

@@ -4,15 +4,17 @@ import type { LanguageModelV4CallOptions } from '@ai-sdk/provider'
 import { FatalError } from 'workflow'
 import { getGatewayCatalogModel } from '@/server/ai/gateway/gateway-catalog'
 import { modelSupportsZeroDataRetention } from '@/shared/ai/gateway/model-data'
-import { estimateHarnessInputTokens, forecastHarnessModelCost, hasHarnessCacheWrites } from './model-forecast'
+import { isRetiredHostedModelId } from '@/shared/ai/gateway/model-types'
 
-// Quote inside a server step after compiling the exact prompt and tool schemas.
-// Dispatch reauthorizes and claims its account reservation before inference.
-export async function quoteHarnessModel(input: {
+// Runs inside a server step after compiling the exact prompt and tool schemas.
+// It never estimates cost: the workspace budget is checked at dispatch and the
+// actual cost is charged afterwards.
+export async function prepareHarnessModelCallOptions(input: {
   modelId: string
   requiresZeroDataRetention?: boolean
   options: LanguageModelV4CallOptions
 }) {
+  if (isRetiredHostedModelId(input.modelId)) throw new FatalError('This hosted model is retired.')
   const maxOutputTokens = input.options.maxOutputTokens
   if (!Number.isSafeInteger(maxOutputTokens) || maxOutputTokens! <= 0) {
     throw new FatalError('A positive model output limit is required before dispatch.')
@@ -28,6 +30,7 @@ export async function quoteHarnessModel(input: {
   const catalog = await getGatewayCatalogModel(input.modelId)
   const contextWindow = catalog?.type === 'language' && Number.isSafeInteger(catalog.contextWindow) && catalog.contextWindow! > 0
     ? catalog.contextWindow! : null
+  // The provider's own hard output limit, not a spending estimate.
   if (catalog?.maxTokens !== undefined && (!Number.isSafeInteger(catalog.maxTokens) || catalog.maxTokens <= 0 || maxOutputTokens! > catalog.maxTokens)) {
     throw new FatalError('The output limit exceeds the selected model capacity.')
   }
@@ -38,10 +41,5 @@ export async function quoteHarnessModel(input: {
       gateway: { ...input.options.providerOptions?.gateway, zeroDataRetention: true },
     } } : {}),
   }
-  const inputTokenBudget = estimateHarnessInputTokens(options, contextWindow)
-  const estimatedCostMicros = await forecastHarnessModelCost({
-    modelId: input.modelId, inputTokenBudget, maxOutputTokens: maxOutputTokens!,
-    cacheWrites: hasHarnessCacheWrites(options),
-  })
-  return { options, contextWindow, estimatedCostMicros, inputTokenBudget, maxOutputTokens: maxOutputTokens! }
+  return { options, contextWindow, maxOutputTokens: maxOutputTokens! }
 }

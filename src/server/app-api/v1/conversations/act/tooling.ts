@@ -263,7 +263,6 @@ export async function prepareActTooling(params: {
       ? getWebSearchTool(params.effectiveModelId, {
           entitlements: params.entitlements,
           programmaticSubjectId: params.billingProgrammaticSubjectId,
-          requestFingerprint: params.requestFingerprint,
           userId: params.userId,
           workspaceId: params.workspaceId,
         })
@@ -272,7 +271,6 @@ export async function prepareActTooling(params: {
       ? getDeepSearchTool(params.effectiveModelId, {
           entitlements: params.entitlements,
           programmaticSubjectId: params.billingProgrammaticSubjectId,
-          requestFingerprint: params.requestFingerprint,
           userId: params.userId,
           workspaceId: params.workspaceId,
         })
@@ -281,7 +279,6 @@ export async function prepareActTooling(params: {
       ? getWebFetchTool({
           entitlements: params.entitlements,
           programmaticSubjectId: params.billingProgrammaticSubjectId,
-          requestFingerprint: params.requestFingerprint,
           userId: params.userId,
           workspaceId: params.workspaceId,
         })

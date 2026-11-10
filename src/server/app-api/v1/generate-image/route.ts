@@ -10,7 +10,6 @@ import { outputService } from '@/server/outputs/http'
 import { getGatewayImageModel } from '@/server/ai/model-runtime'
 import { IMAGE_MODELS } from '@/shared/ai/gateway/model-data'
 import { calculateImageModelCostOrNull } from '@/server/ai/gateway/live-model-pricing'
-import { IMAGE_GENERATION_RESERVATION_USAGE } from '@/shared/ai/gateway/model-pricing'
 import { uploadBuffer, keyForOutput } from '@/server/storage/object-store'
 import { checkGlobalR2Budget, R2GlobalBudgetError } from '@/server/storage/r2-budget'
 import { deleteObject } from '@/server/storage/object-store'
@@ -20,6 +19,9 @@ import {
   getBudgetTotals,
   isPaidPlan,
 } from '@/server/billing/billing-runtime'
+
+// Whether a model can be charged at all. It is not an estimate of what a call will cost.
+const PRICED_PROBE_USAGE = { inputTokens: 0, outputTokens: 0 }
 
 export const maxDuration = 120
 
@@ -88,16 +90,13 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       : IMAGE_MODELS.map((m) => m.id).filter((candidateId) =>
           authorizedModelIds.image.has(candidateId),
         )
-    const priceEntries = await Promise.all(
-      priorityList.map(async (candidateId) => [
-        candidateId,
-        await calculateImageModelCostOrNull(candidateId, IMAGE_GENERATION_RESERVATION_USAGE),
-      ] as const),
+    const pricedEntries = await Promise.all(
+      priorityList.map(async (candidateId) =>
+        [candidateId, await calculateImageModelCostOrNull(candidateId, PRICED_PROBE_USAGE) !== null] as const),
     )
-    const priceByModelId = new Map(priceEntries)
     const pricedPriorityList = generationUsagePolicy.mode === 'unlimited'
       ? priorityList
-      : priorityList.filter((candidateId) => priceByModelId.get(candidateId) !== null)
+      : pricedEntries.filter(([, priced]) => priced).map(([candidateId]) => candidateId)
     if (pricedPriorityList.length === 0) {
       return NextResponse.json(
         { error: 'pricing_missing', message: 'Image generation is temporarily unavailable because model pricing is missing.' },
@@ -111,33 +110,25 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    const maxProviderCostUsd = Math.max(...pricedPriorityList.map((candidateId) => priceByModelId.get(candidateId) ?? 0))
-    const reservation = await generationUsagePolicy.reserve({
+    const check = await generationUsagePolicy.ensureBudgetNotLow({
       userId: auth.userId,
       entitlements: currentEntitlements,
-      idempotencyKey: context.requestIdempotencyKey,
-      providerCostUsd: maxProviderCostUsd,
       kind: 'generation',
       modelId: modelId ?? 'image-fallback',
       operationId: 'media.generate-image',
       programmaticSubjectId,
-      requestFingerprint: context.requestFingerprint,
       workspaceId,
     })
-    if (!reservation.ok) {
-      return NextResponse.json({ ...reservation.payload, error: reservation.code }, { status: reservation.status })
+    if (!check.ok) {
+      return NextResponse.json({ ...check.payload, error: check.code }, { status: check.status })
     }
-    currentEntitlements = reservation.entitlements
+    currentEntitlements = check.entitlements
 
     let lastError: Error | null = null
     let usedModelId: string | null = null
     let imageBase64: string | null = null
     let imageUsage: { inputTokens: number | undefined; outputTokens: number | undefined } | null = null
 
-    await generationUsagePolicy.markStarted({
-      userId: auth.userId,
-      reservationId: reservation.reservationId,
-    })
     for (const tryModelId of pricedPriorityList) {
       try {
         const imageModel = await getGatewayImageModel(tryModelId, auth.accessToken || undefined)
@@ -163,98 +154,44 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       }
     }
 
+    // A failed generation charges nothing.
     if (!imageBase64 || !usedModelId) {
       const errMsg = lastError?.message ?? 'Unknown error'
       logger.error('[GenerateImage] Generation failed. Last error:', errMsg)
-      await generationUsagePolicy.release({
-        userId: auth.userId,
-        reservationId: reservation.reservationId,
-        reason: errMsg,
-      }).catch((releaseError) => logger.error('[GenerateImage] Failed to release budget reservation:', releaseError))
       return NextResponse.json(
         { error: 'generation_failed', message: `Image generation failed: ${errMsg}` },
         { status: 500 }
       )
     }
 
-    const dataUrl = `data:image/png;base64,${imageBase64}`
+    // Charged its actual cost once the image is delivered; an image that cannot be delivered charges nothing.
     const finalModelId = usedModelId
-
-    const recordUsage = async () => {
-      const measuredCost = imageUsage
-        ? await calculateImageModelCostOrNull(finalModelId, imageUsage)
-        : null
-      const costDollars = generationUsagePolicy.mode === 'unlimited'
-        ? measuredCost ?? priceByModelId.get(finalModelId) ?? 0
-        : measuredCost
+    const chargeDeliveredImage = async () => {
+      const costDollars = await calculateImageModelCostOrNull(finalModelId, imageUsage ?? undefined)
       if (costDollars === null) {
-        await generationUsagePolicy.markForReconcile({
-          userId: auth.userId,
-          reservationId: reservation.reservationId,
-          errorMessage: `pricing_missing:${finalModelId}`,
-        }).catch((reconcileError) => logger.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
-        return NextResponse.json(
-          { error: 'pricing_missing', message: `Image model ${finalModelId} is not priced for production use.` },
-          { status: 500 },
-        )
+        logger.error(`[GenerateImage] No price for the finished image from ${finalModelId}; nothing was charged`)
+        return
       }
-      const costCents = billableBudgetCentsFromProviderUsd(costDollars)
-      // Validate that the actual cost does not exceed the reserved amount by more
-      // than a small tolerance. If it does (e.g. pricing changed between reservation
-      // and finalization), mark for manual reconciliation instead of overcharging.
-      if (costDollars > maxProviderCostUsd * 1.1) {
-        logger.warn(`[GenerateImage] ⚠️  Actual cost $${costDollars.toFixed(4)} exceeds reserved max $${maxProviderCostUsd.toFixed(4)} by >10% — marking for reconcile`)
-        await generationUsagePolicy.markForReconcile({
-          userId: auth.userId,
-          reservationId: reservation.reservationId,
-          errorMessage: `cost_exceeds_reservation:actual=${costDollars},reserved=${maxProviderCostUsd}`,
-        }).catch((reconcileError) => logger.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
-        // Still finalize with the reserved amount to avoid overcharging
-      }
-      logger.info(`[GenerateImage] 💰 Cost: model=${finalModelId} | provider=$${costDollars.toFixed(4)} billed=${costCents}¢`)
-      if (costCents > 0 || reservation.reservationId) {
-        try {
-          const recordResult = await generationUsagePolicy.finalize({
-            userId: auth.userId,
-            reservationId: reservation.reservationId,
-            actualProviderCostUsd: costDollars,
-            events: [{
-              type: 'generation',
-              modelId: finalModelId,
-              inputTokens: imageUsage?.inputTokens ?? 0,
-              outputTokens: imageUsage?.outputTokens ?? 0,
-              cachedTokens: 0,
-              cost: costCents,
-              timestamp: Date.now(),
-            }],
-          })
-          if (recordResult) {
-            const updated = await generationUsagePolicy.getEntitlements({ programmaticSubjectId, userId: auth.userId, workspaceId })
-            if (updated) {
-              const totalCents = updated.creditsTotal * 100
-              const usedPct = totalCents > 0 ? ((updated.creditsUsed / totalCents) * 100).toFixed(2) : '0.00'
-              logger.info(`[GenerateImage] ✅ Usage recorded | new state: ${updated.creditsUsed}¢ / ${totalCents}¢ (${usedPct}% used, $${((totalCents - updated.creditsUsed) / 100).toFixed(4)} remaining)`)
-            }
-          } else {
-            logger.error(`[GenerateImage] ❌ finalizeProviderBudgetReservation returned null — check server logs for Convex error`)
-          }
-        } catch (recordError) {
-          logger.error('[GenerateImage] Failed to finalize budget reservation:', recordError)
-          await generationUsagePolicy.markForReconcile({
-            userId: auth.userId,
-            reservationId: reservation.reservationId,
-            errorMessage: recordError instanceof Error ? recordError.message : 'finalize_failed',
-          }).catch((reconcileError) => logger.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
-        }
-      } else {
-        logger.info(`[GenerateImage] ⚠️  Cost is 0¢ for model=${finalModelId} — usage not recorded`)
-      }
-      return null
+      logger.info(`[GenerateImage] Cost: model=${finalModelId} | provider=$${costDollars.toFixed(4)} billed=${billableBudgetCentsFromProviderUsd(costDollars)}c`)
+      await generationUsagePolicy.charge({
+        userId: auth.userId,
+        workspaceId,
+        programmaticSubjectId,
+        operationId: `media.generate-image:${globalThis.crypto.randomUUID()}`,
+        providerCostUsd: costDollars,
+        usage: {
+          kind: 'generation',
+          modelId: finalModelId,
+          inputTokens: imageUsage?.inputTokens ?? 0,
+          outputTokens: imageUsage?.outputTokens ?? 0,
+          cachedTokens: 0,
+        },
+      }).catch((recordError) => logger.error('[GenerateImage] Failed to record usage:', recordError))
     }
 
+    const dataUrl = `data:image/png;base64,${imageBase64}`
     if (temporaryChat === true) {
-      const usageError = await recordUsage()
-      if (usageError) return usageError
+      await chargeDeliveredImage()
       return NextResponse.json({ outputId: null, url: dataUrl, modelUsed: finalModelId, temporary: true })
     }
 
@@ -264,11 +201,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     try {
       const imageBuffer = Buffer.from(imageBase64!, 'base64')
       if ((currentEntitlements.overlayStorageBytesUsed ?? 0) + imageBuffer.length > (currentEntitlements.overlayStorageBytesLimit ?? 0)) {
-        await generationUsagePolicy.markForReconcile({
-          userId: auth.userId,
-          reservationId: reservation.reservationId,
-          errorMessage: 'storage_limit_exceeded_after_generation',
-        }).catch((reconcileError) => logger.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
         return NextResponse.json(
           { error: 'storage_limit_exceeded', message: 'Not enough Overlay storage remaining for this image.' },
           { status: 403 },
@@ -311,11 +243,6 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       })
     } catch (err) {
       logger.error('[GenerateImage] Failed to save output:', err)
-      await generationUsagePolicy.markForReconcile({
-        userId: auth.userId,
-        reservationId: reservation.reservationId,
-        errorMessage: err instanceof Error ? err.message : 'Failed to save generated image',
-      }).catch((reconcileError) => logger.error('[GenerateImage] Failed to mark reservation for reconcile:', reconcileError))
       if (uploadedR2Key) {
         await deleteObject(uploadedR2Key).catch((_error) => undefined)
       }
@@ -346,10 +273,7 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       )
     }
 
-    // ── Usage tracking ────────────────────────────────────────────────────────
-    const usageError = await recordUsage()
-    if (usageError) return usageError
-
+    await chargeDeliveredImage()
     return NextResponse.json({ outputId, url: dataUrl, modelUsed: finalModelId })
   } catch (error) {
     return handleRouteError(error, {

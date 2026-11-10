@@ -1,7 +1,7 @@
 import type { HarnessPolicy } from '@overlay/agent-runtime/harness-state'
 import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 
-export type PersonalHarnessBudget = { maxProviderCostUsd?: number; durationMs?: number }
+export type PersonalHarnessBudget = { durationMs?: number }
 
 const DAY_MS = 24 * 60 * 60 * 1_000
 
@@ -34,35 +34,28 @@ export function personalHarnessPolicy(input: {
   budget?: PersonalHarnessBudget
   existingPolicy?: HarnessPolicy | null
 }): HarnessPolicy {
-  const hasExplicitSpendCap = input.budget?.maxProviderCostUsd !== undefined
-  const maxProviderCostUsd = input.budget?.maxProviderCostUsd ?? 0
   const durationMs = input.budget?.durationMs ?? DAY_MS
-  if (!Number.isFinite(maxProviderCostUsd) || maxProviderCostUsd < 0 || maxProviderCostUsd > 100
-    || !Number.isSafeInteger(durationMs) || durationMs < 30_000 || durationMs > 7 * DAY_MS
+  if (!Number.isSafeInteger(durationMs) || durationMs < 30_000
     || !Number.isSafeInteger(input.createdAt) || input.createdAt < 0) {
     throw new Error('Invalid personal harness budget.')
   }
   const byok = isByokModelId(input.modelId)
-  const workspaceFunded = input.paid && !byok && !hasExplicitSpendCap
-  const versioned = !hasExplicitSpendCap
   const publicStreamVersion = selectPublicStreamVersion(input.existingPolicy, input.workspaceId)
   return {
     publicProgressVersion: 1,
     ...(publicStreamVersion === 1 ? { publicStreamVersion: 1 as const } : {}),
     actorUserId: input.actorUserId,
     workspaceId: input.workspaceId,
-    ...(versioned ? {
-      executionPolicyVersion: 2 as const,
-      spendingMode: workspaceFunded ? 'workspace' as const : byok ? 'external' as const : 'none' as const,
-    } : {}),
+    executionPolicyVersion: 2,
+    spendingMode: input.paid && !byok ? 'workspace' : byok ? 'external' : 'none',
     allowedToolIds: [...new Set(input.allowedToolIds)].sort(),
     requiresPlan: false,
-    deadlineAt: input.createdAt + (versioned ? DAY_MS : durationMs),
-    ...(versioned && input.budget?.durationMs !== undefined
-      ? { taskDeadlineAt: input.createdAt + durationMs } : {}),
-    maxCostMicros: versioned ? 0
-      : input.paid && !byok ? Math.floor(maxProviderCostUsd * 1_000_000) : 0,
-    maxParallelChildren: 3,
-    maxDepth: 2,
+    deadlineAt: input.createdAt + DAY_MS,
+    // Only a deadline the person set explicitly; there is no per-task spending limit.
+    ...(input.budget?.durationMs !== undefined ? { taskDeadlineAt: input.createdAt + durationMs } : {}),
+    maxCostMicros: 0,
+    // Sub-agents share the workspace budget; these only bound runaway fan-out and nesting.
+    maxParallelChildren: 16,
+    maxDepth: 5,
   }
 }

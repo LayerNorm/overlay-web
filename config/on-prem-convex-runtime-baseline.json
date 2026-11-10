@@ -119,7 +119,6 @@
     "src/app/api/v1/conversations/run/remote/artifacts/[artifactId]/route.ts",
     "src/app/api/v1/conversations/run/remote/request/route.ts",
     "src/app/api/v1/conversations/run/remote/route.ts",
-    "src/app/api/v1/conversations/run/resources/route.ts",
     "src/app/api/v1/conversations/run/route.ts",
     "src/app/api/v1/conversations/share/route.ts",
     "src/app/api/v1/conversations/stop/route.ts",
@@ -363,11 +362,6 @@
       "target": "(internal as any).imports.slackRunner.runMinuteTick"
     },
     {
-      "cadence": "{ hours: 1 }",
-      "name": "stale usage hold settlement",
-      "target": "internal.platform.usage.settleStaleBudgetReservationsInternal"
-    },
-    {
       "cadence": "{ minutes: 15 }",
       "name": "surface chat state expiry sweep",
       "target": "(internal as any).surfaces.chatState.pruneExpired"
@@ -381,11 +375,6 @@
       "cadence": "{ minutes: 1 }",
       "name": "transactional email delivery",
       "target": "internal.email.deliveryRunner.runMinuteTick"
-    },
-    {
-      "cadence": "{ minutes: 5 }",
-      "name": "usage reservation reconciliation",
-      "target": "internal.platform.usage.reconcileExpiredBudgetReservationsInternal"
     },
     {
       "cadence": "{ seconds: 10 }",
@@ -490,7 +479,6 @@
     "src/server/app-api/v1/conversations/act/personal-harness-turn.ts",
     "src/server/app-api/v1/conversations/run/approval/route.ts",
     "src/server/app-api/v1/conversations/run/input/route.ts",
-    "src/server/app-api/v1/conversations/run/resources/route.ts",
     "src/server/app-api/v1/conversations/trace/route.ts",
     "src/server/app-api/v1/imports/slack/route.ts",
     "src/server/app-api/v1/notes/route.ts",
@@ -541,7 +529,6 @@
     "src/server/harness/ConvexHarnessRepository.ts",
     "src/server/harness/artifact-steps.ts",
     "src/server/harness/delivery-wait-projection.ts",
-    "src/server/harness/funding-admission.ts",
     "src/server/harness/harness-continuations.ts",
     "src/server/harness/harness-transcript.ts",
     "src/server/harness/model-dispatch.ts",
@@ -561,7 +548,6 @@
     "src/server/harness/personal-wait-steps.ts",
     "src/server/harness/public-stream-publisher.ts",
     "src/server/harness/request-usage.ts",
-    "src/server/harness/resource-wait-steps.ts",
     "src/server/harness/settle-model-billing-step.ts",
     "src/server/harness/state-steps.ts",
     "src/server/idempotency/ConvexIdempotencyRepository.ts",
@@ -615,6 +601,7 @@
     "convex/agents/mcpCalls.ts",
     "convex/automations/automationRunner.ts",
     "convex/automations/automations.ts",
+    "convex/billing/retireHolds.ts",
     "convex/chat/conversations.ts",
     "convex/chat/personal.ts",
     "convex/collaboration/directMessages.ts",
@@ -631,7 +618,6 @@
     "convex/migrations/backfillAuditWorkspaceIds.ts",
     "convex/platform/growth.ts",
     "convex/platform/nativePolicy.ts",
-    "convex/platform/usage.ts",
     "convex/webhooks/deliveryRunner.ts",
     "convex/work/workItems.ts"
   ]

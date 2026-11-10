@@ -9,6 +9,7 @@ import { generateObject, NoObjectGeneratedError, type FlexibleSchema } from "ai"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { calculateGatewayLanguageModelCostOrNull } from '../lib/gatewayCatalogPricing'
 import { applyMarkupToDollars } from '../lib/usageMarkup'
+import { chargeProviderUsageDirect, checkProviderBudget } from '../lib/providerBudgetCharge'
 import { normalizeOpenAiCompatibleBaseUrl } from "../../src/shared/ai/gateway/openai-compatible-base-url";
 import {
   AGENT_MEMORY_EXTRACTION_SYSTEM_PROMPT,
@@ -146,7 +147,6 @@ export const extractFromTurn = internalAction({
       // Plans belong to workspaces: only a workspace on a paid plan is paid (an account is never paid). `isPaid` is
       // accepted from jobs scheduled before this change and ignored.
       void isPaid;
-      const paid = Boolean(resolvedBillingAccountId);
       const configuredModelId = process.env.OVERLAY_MEMORY_EXTRACTION_MODEL_ID?.trim();
       const modelId = configuredModelId || "google/gemini-2.5-flash-lite";
       const model = getExtractorModel(modelId);
@@ -155,10 +155,12 @@ export const extractFromTurn = internalAction({
       const resolvedSpendSubjectId = billingSpendSubjectId?.trim() || billingUserId;
       const resolvedSpendSubjectKind = billingSpendSubjectKind ?? "member";
 
+      const programmaticSubjectId = resolvedSpendSubjectKind === "programmatic" ? resolvedSpendSubjectId : undefined;
+
       /**
-       * reserve → markStarted → generateObject → finalize/reconcile. Used for
-       * the extraction call and each dedup-decision call; the fingerprint is
-       * per-operation so a retried candidate loop cannot double-charge.
+       * Budget check (under 2% refuses; nothing is held) → generateObject → direct charge of the actual cost.
+       * Used for the extraction call and each dedup-decision call; the operation id is per-operation so a retried
+       * candidate loop cannot double-charge or redo charged work.
        */
       const runBilledGeneration = async <T>(opts: {
         operationId: string;
@@ -173,106 +175,48 @@ export const extractFromTurn = internalAction({
         | { status: "unavailable"; reason: string }
         | { status: "error" }
       > => {
-        const estimatedInputTokens = Math.ceil((opts.systemPrompt.length + opts.prompt.length) / 4);
-        const estimatedCostUsd = await calculateGatewayLanguageModelCostOrNull(ctx, modelId, estimatedInputTokens, 0, opts.maxOutputTokens);
-        if (estimatedCostUsd === null) return { status: "unavailable", reason: "pricing_missing" };
-        if (paid && !serverSecret) return { status: "unavailable", reason: "background_budget_exhausted" };
-
+        if (!serverSecret) return { status: "unavailable", reason: "background_budget_exhausted" };
         const requestFingerprint = createHash("sha256")
           .update(`${conversationId}:${turnId}:${opts.fingerprintSeed}`)
           .digest("hex");
-        const reservationId = estimatedCostUsd > 0
-          ? `memory_${createHash("sha256")
-              .update(`${billingUserId}:${resolvedBillingAccountId ?? "personal"}:${opts.operationId}:${requestFingerprint}`)
-              .digest("hex")
-              .slice(0, 40)}`
-          : null;
-        if (reservationId && serverSecret) {
-          try {
-            const reservation = resolvedBillingAccountId
-              ? await ctx.runMutation(api.platform.usage.reserveWorkspaceBudgetByServer, {
-                  billingAccountId: resolvedBillingAccountId,
-                  serverSecret,
-                  userId: billingUserId,
-                  workspaceId: workspaceId!,
-                  spendSubjectId: resolvedSpendSubjectId,
-                  spendSubjectKind: resolvedSpendSubjectKind,
-                  reservationId,
-                  kind: "generation",
-                  modelId,
-                  operationId: opts.operationId,
-                  requestFingerprint,
-                  reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
-                })
-              : await ctx.runMutation(api.platform.usage.reserveBudgetByServer, {
-                  serverSecret,
-                  userId: billingUserId,
-                  reservationId,
-                  kind: "generation",
-                  modelId,
-                  operationId: opts.operationId,
-                  requestFingerprint,
-                  reservedCents: applyMarkupToDollars({ providerCostUsd: estimatedCostUsd }),
-                });
-            if (reservation.idempotent || reservation.status !== "reserved") {
-              return { status: "already_processed" };
-            }
-          } catch (err) {
-            console.warn("[memoryExtractorNode] budget reservation skipped generation", opts.operationId, err);
-            return { status: "unavailable", reason: "background_budget_exhausted" };
-          }
-        }
+        const chargeOperationId = `memory_${createHash("sha256")
+          .update(`${billingUserId}:${resolvedBillingAccountId ?? "personal"}:${opts.operationId}:${requestFingerprint}`)
+          .digest("hex")
+          .slice(0, 40)}`;
+        const budget = await checkProviderBudget(ctx, {
+          userId: billingUserId, workspaceId, programmaticSubjectId, operationId: chargeOperationId,
+        });
+        if (budget.alreadyCharged) return { status: "already_processed" };
+        if (!budget.allowed) return { status: "unavailable", reason: "background_budget_exhausted" };
 
-        const settleUsage = async (usage: { inputTokens?: number; outputTokens?: number } | undefined) => {
-          if (reservationId && serverSecret) {
-            const inputTokens = usage?.inputTokens ?? estimatedInputTokens;
-            const outputTokens = usage?.outputTokens ?? opts.maxOutputTokens;
-            const actualCostUsd = await calculateGatewayLanguageModelCostOrNull(ctx, modelId, inputTokens, 0, outputTokens);
-            if (actualCostUsd === null) {
-              await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
-                serverSecret,
-                userId: billingUserId,
-                reservationId,
-                errorMessage: `pricing_missing:${modelId}`,
-              }).catch(() => {});
-            } else {
-              const costCents = applyMarkupToDollars({ providerCostUsd: actualCostUsd });
-              await ctx.runMutation(api.platform.usage.finalizeBudgetReservationByServer, {
-                serverSecret,
-                userId: billingUserId,
-                reservationId,
-                actualCents: costCents,
-                events: [{
-                  type: "generation",
-                  modelId,
-                  inputTokens,
-                  outputTokens,
-                  cachedTokens: 0,
-                  providerCostUsd: actualCostUsd,
-                  cost: costCents,
-                  timestamp: Date.now(),
-                }],
-              }).catch(async (err) => {
-                await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
-                  serverSecret,
-                  userId: billingUserId,
-                  reservationId,
-                  errorMessage: err instanceof Error ? err.message : "finalize_failed",
-                }).catch(() => {});
-              });
-            }
+        // Charges what the provider reported; a call with no reported usage charges nothing.
+        const chargeUsage = async (usage: { inputTokens: number; outputTokens: number }) => {
+          const providerCostUsd = await calculateGatewayLanguageModelCostOrNull(ctx, modelId, usage.inputTokens, 0, usage.outputTokens);
+          if (providerCostUsd === null) {
+            console.error("[memoryExtractorNode] missing pricing; nothing was charged", modelId);
+            return;
           }
+          await chargeProviderUsageDirect(ctx, {
+            serverSecret,
+            userId: billingUserId,
+            workspaceId,
+            programmaticSubjectId,
+            operationId: chargeOperationId,
+            costCents: applyMarkupToDollars({ providerCostUsd }),
+            event: { type: "generation", modelId, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, providerCostUsd },
+          });
+        };
+        const measuredUsage = (usage: { inputTokens?: number; outputTokens?: number } | undefined) => {
+          const inputTokens = usage?.inputTokens;
+          const outputTokens = usage?.outputTokens;
+          return typeof inputTokens === "number" && Number.isSafeInteger(inputTokens) && inputTokens >= 0
+            && typeof outputTokens === "number" && Number.isSafeInteger(outputTokens) && outputTokens >= 0
+            ? { inputTokens, outputTokens }
+            : null;
         };
 
         let result: { object: T; usage?: { inputTokens?: number; outputTokens?: number } };
         try {
-          if (reservationId && serverSecret) {
-            await ctx.runMutation(api.platform.usage.markBudgetReservationStartedByServer, {
-              serverSecret,
-              userId: billingUserId,
-              reservationId,
-            });
-          }
           result = (await generateObject({
             model,
             // erased to FlexibleSchema — a generic zod param breaks InferSchema
@@ -282,30 +226,16 @@ export const extractFromTurn = internalAction({
             maxOutputTokens: opts.maxOutputTokens,
           })) as { object: T; usage?: { inputTokens?: number; outputTokens?: number } };
         } catch (err) {
-          const usage = NoObjectGeneratedError.isInstance(err) ? err.usage : undefined;
-          const inputTokens = usage?.inputTokens;
-          const outputTokens = usage?.outputTokens;
-          // Schema rejection happens after inference. Bill observed usage exactly as
+          // Schema rejection happens after inference. Charge observed usage exactly as
           // a successful response; never accept the invalid object as a memory.
-          const measured = typeof inputTokens === "number" && Number.isSafeInteger(inputTokens) && inputTokens >= 0
-            && typeof outputTokens === "number" && Number.isSafeInteger(outputTokens) && outputTokens >= 0;
-          let handledUsage = false;
-          if (measured) {
-            try { await settleUsage({ inputTokens, outputTokens }); handledUsage = true; } catch { /* Reconcile below. */ }
-          }
-          if (!handledUsage && reservationId && serverSecret) {
-            await ctx.runMutation(api.platform.usage.markBudgetReservationReconcileByServer, {
-              serverSecret,
-              userId: billingUserId,
-              reservationId,
-              errorMessage: err instanceof Error ? err.message : "memory_extraction_failed",
-            }).catch(() => {});
-          }
+          const usage = measuredUsage(NoObjectGeneratedError.isInstance(err) ? err.usage : undefined);
+          if (usage) await chargeUsage(usage).catch((chargeErr) => console.error("[memoryExtractorNode] charge failed", chargeErr));
           console.error("[memoryExtractorNode] generation failed", opts.operationId, err);
           return { status: "error" };
         }
 
-        await settleUsage(result.usage);
+        await chargeUsage(measuredUsage(result.usage) ?? { inputTokens: 0, outputTokens: 0 })
+          .catch((chargeErr) => console.error("[memoryExtractorNode] charge failed", chargeErr));
         return { status: "ok", object: result.object };
       };
 
@@ -404,9 +334,8 @@ export const extractFromTurn = internalAction({
             const dedupeSearch = (await ctx.runAction(api.knowledge.knowledge.hybridSearch, {
               userId: ownerId,
               billingUserId,
-              billingAccountId: resolvedBillingAccountId,
-              spendSubjectId: resolvedSpendSubjectId,
-              spendSubjectKind: resolvedSpendSubjectKind,
+              billingWorkspaceId: workspaceId,
+              ...(programmaticSubjectId ? { programmaticSubjectId } : {}),
               serverSecret,
               idempotencyKey: `dedupe_${createHash("sha256").update(`${ownerId}:${turnId}:${normalized}`).digest("hex").slice(0, 40)}`,
               operationId: "memory.dedupe-search",
@@ -550,8 +479,6 @@ export const extractFromTurn = internalAction({
           ownerId,
           workspaceId,
           billingActorUserId: billingUserId,
-          billingAccountId: resolvedBillingAccountId,
-          isPaid: paid,
         });
       }
 

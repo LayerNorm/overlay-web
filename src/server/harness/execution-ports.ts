@@ -2,13 +2,12 @@ import type { HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import type { HarnessExecutionPorts } from './ports'
 import { admitHarnessRequestUsage } from './request-usage-step'
 import { createHarnessStatePorts } from './state-ports'
-import { waitForHarnessModelResources } from './resource-boundary'
 import type { HarnessExecutionReference } from './state-steps'
 import { readHarnessArtifactData, readHarnessArtifactMetadata } from './artifact-steps'
 import { readHarnessArtifactMedia, readHarnessArtifactText } from './artifact-context'
 
 export type HarnessSurfacePorts = Pick<HarnessExecutionPorts,
-  'recordToolResult' | 'delegate' | 'readChild' | 'waitForChildren' | 'waitForInput' | 'waitForApproval' | 'waitForFunding' | 'checkFunding'>
+  'recordToolResult' | 'delegate' | 'readChild' | 'waitForChildren' | 'waitForInput' | 'waitForApproval'>
   & Partial<Pick<HarnessExecutionPorts, 'continueExecution'>>
 
 export function createHarnessExecutionPorts(input: {
@@ -38,10 +37,6 @@ export function createHarnessExecutionPorts(input: {
     continueExecution: input.surface.continueExecution ?? (async () => {
       throw new Error('HARNESS_CONTINUATION_NOT_CONFIGURED')
     }),
-    waitForResources: async requiredCostMicros => {
-      await input.authorize()
-      return waitForHarnessModelResources(input.reference, requiredCostMicros, state.read)
-    },
     waitForChildren: async childRunIds => {
       await input.authorize()
       return input.surface.waitForChildren(childRunIds)

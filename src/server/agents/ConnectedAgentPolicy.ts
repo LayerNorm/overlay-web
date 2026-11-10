@@ -20,13 +20,19 @@ export type ConnectedAgentPolicyLimits = {
 }
 
 const GIB = 1024 * 1024 * 1024
+/**
+ * Paid runs have no run-time limit: the workspace budget, the idle stop and the run's
+ * health lease end work. The host protocol and per-run credentials still need a finite
+ * deadline, so paid runs get one far beyond any real run instead of 24 hours.
+ */
+const PAID_RUN_CREDENTIAL_LIFETIME_MS = 30 * 24 * 60 * 60_000
 
 /** Product limits are centralized so Convex and PostgreSQL receive identical values. */
 export function connectedAgentPolicyFor(entitlements: Pick<Entitlements, 'planKind' | 'tier'>): ConnectedAgentPolicyLimits {
   if (entitlements.tier === 'max') return {
     maxEnvironments: 100,
     maxConcurrentRuns: 100,
-    maxRunTimeMs: 24 * 60 * 60_000,
+    maxRunTimeMs: PAID_RUN_CREDENTIAL_LIFETIME_MS,
     maxEventsPerMinute: 50_000,
     maxArtifactBytes: 100 * GIB,
     maxIdleDurationMs: 60 * 60_000,
@@ -35,7 +41,7 @@ export function connectedAgentPolicyFor(entitlements: Pick<Entitlements, 'planKi
   if (entitlements.planKind === 'paid' || entitlements.tier !== 'free') return {
     maxEnvironments: 10,
     maxConcurrentRuns: 10,
-    maxRunTimeMs: 24 * 60 * 60_000,
+    maxRunTimeMs: PAID_RUN_CREDENTIAL_LIFETIME_MS,
     maxEventsPerMinute: 10_000,
     maxArtifactBytes: 10 * GIB,
     maxIdleDurationMs: 15 * 60_000,

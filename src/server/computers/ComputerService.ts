@@ -261,9 +261,11 @@ export class ComputerService {
   private async admit(actor: ComputerActor, workspaceId: string, ownerType: ComputerOwnerType, ownerId: string) {
     let execution
     try {
+      // The budget is checked by `assertCanRun`, which first tries an automatic top-up.
       execution = await (this.dependencies.requireExecution ?? requireWorkspaceExecution)({
         userId: actor.userId,
         workspaceId,
+        checkBudget: false,
       })
     } catch (error) {
       if (error instanceof WorkspaceExecutionError) {

@@ -30,7 +30,7 @@ export function stableHarnessDiagnosticId(runId: string, operationId: string, re
 const descriptions: Record<HarnessDiagnosticCode, Pick<HarnessDiagnostic, 'safeMessage' | 'nextAction' | 'retryability'>> = {
   TASK_DEADLINE: { safeMessage: 'This task reached its explicit time limit.', nextAction: 'Review the saved work and start a new task with a longer limit.', retryability: 'user_action' },
   TASK_SPEND_LIMIT: { safeMessage: 'This task reached its explicit model-spend limit, not its workspace credit limit.', nextAction: 'Review the saved work and increase the task spending limit before continuing.', retryability: 'user_action' },
-  WORKSPACE_FUNDS: { safeMessage: 'The workspace could not fund the next model request.', nextAction: 'Check the workspace credit balance and spending controls before continuing.', retryability: 'user_action' },
+  WORKSPACE_FUNDS: { safeMessage: 'The workspace has less than 2% of its budget left, so this task stopped.', nextAction: 'Add usage to the workspace, then ask the agent to continue.', retryability: 'user_action' },
   PROVIDER_TIMEOUT: { safeMessage: 'The model provider did not respond in time.', nextAction: 'Review the saved work before retrying the request.', retryability: 'user_action' },
   PROVIDER_RATE_LIMIT: { safeMessage: 'The model provider temporarily limited requests.', nextAction: 'Wait before retrying, or select another available model.', retryability: 'user_action' },
   PROVIDER_REJECTED: { safeMessage: 'The model provider blocked this response with its content filter. Any partial response is incomplete.', nextAction: 'Review the request before trying again.', retryability: 'user_action' },
