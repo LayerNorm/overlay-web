@@ -127,6 +127,11 @@ test('thread pull requests expose lifecycle icons without stealing the thread ac
   assert.match(html, /lucide-git-pull-request-draft/)
   assert.match(html, /lucide-git-merge/)
   assert.equal(html.match(/aria-label="Archive thread"/g)?.length, 1)
+  assert.match(html, /<div class="mr-14 shrink-0"><button[^>]*aria-label="Pull requests:/)
+  assert.doesNotMatch(html, /(?:md:mr-|group-(?:hover|focus-within)\/menu-sub-item:mr-)/)
+  assert.match(html, /flex-1 truncate/)
+  assert.match(html, /group-focus-within\/menu-sub-item:opacity-100/)
+  assert.equal(html.match(/aria-label="Delete thread"/g)?.length, 1)
 })
 
 test('agent subtitles retain working and ready counts and preserve the chief fallback', () => {

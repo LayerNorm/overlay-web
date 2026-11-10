@@ -82,7 +82,7 @@ export function AgentThreadRows({
               <span className="agent-thread-icon"><ThreadActivityIndicator status={status} /></span>
               <span className="flex-1 truncate">{thread.title}</span>
             </ThreadButton>
-            {thread.pullRequests?.length ? <div className="mr-14 shrink-0 md:mr-1 md:group-hover/menu-sub-item:mr-14 md:group-focus-within/menu-sub-item:mr-14">
+            {thread.pullRequests?.length ? <div className="mr-14 shrink-0">
               <ThreadPullRequests pullRequests={thread.pullRequests} />
             </div> : null}
             <SidebarMenuAction
