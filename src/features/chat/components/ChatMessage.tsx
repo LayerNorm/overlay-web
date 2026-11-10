@@ -138,7 +138,7 @@ function isSourcesOpenForMessage(message: UIMessage, sourcesPanel: TextChatMessa
   return !!turnId && sourcesPanel?.turnId === turnId
 }
 
-export function areTextChatMessagePropsEqual(prev: PlannedTextChatMessageProps, next: PlannedTextChatMessageProps): boolean {
+function sameRowInputs(prev: PlannedTextChatMessageProps, next: PlannedTextChatMessageProps): boolean {
   if (prev.message !== next.message || prev.exchangeIndex !== next.exchangeIndex) return false
   if (prev.latestExchangeIndex !== next.latestExchangeIndex) return false
   if (prev.isActiveLoading !== next.isActiveLoading) return false
@@ -151,11 +151,11 @@ export function areTextChatMessagePropsEqual(prev: PlannedTextChatMessageProps, 
   if (prev.generatedUiConnectorActions !== next.generatedUiConnectorActions) return false
   if (actionProps.some(key => prev[key] !== next[key])) return false
   if (presentationProps.some(key => prev.presentation?.[key] !== next.presentation?.[key])) return false
-  if (!next.canonicalTranscript && prev.getResponseForExchange !== next.getResponseForExchange) return false
+  return next.canonicalTranscript || prev.getResponseForExchange === next.getResponseForExchange
+}
 
+function sameExchangeState(prev: PlannedTextChatMessageProps, next: PlannedTextChatMessageProps): boolean {
   const exchangeIndex = next.exchangeIndex
-  if (exchangeIndex === next.latestExchangeIndex) return false
-
   if (prev.exchangeModes[exchangeIndex] !== next.exchangeModes[exchangeIndex]) return false
   if (!sameStringArray(prev.exchangeModels[exchangeIndex], next.exchangeModels[exchangeIndex])) return false
   if (!sameStringArray(prev.selectedModels, next.selectedModels)) return false
@@ -166,12 +166,14 @@ export function areTextChatMessagePropsEqual(prev: PlannedTextChatMessageProps, 
     assistantSnapshotKey(prev.primaryMessages, exchangeIndex)
     !== assistantSnapshotKey(next.primaryMessages, exchangeIndex)
   ) return false
-  if (
-    assistantSnapshotKey(prev.actChat.messages as UIMessage[], exchangeIndex)
-    !== assistantSnapshotKey(next.actChat.messages as UIMessage[], exchangeIndex)
-  ) return false
+  return assistantSnapshotKey(prev.actChat.messages as UIMessage[], exchangeIndex)
+    === assistantSnapshotKey(next.actChat.messages as UIMessage[], exchangeIndex)
+}
 
-  return true
+export function areTextChatMessagePropsEqual(prev: PlannedTextChatMessageProps, next: PlannedTextChatMessageProps): boolean {
+  if (!sameRowInputs(prev, next)) return false
+  if (next.exchangeIndex === next.latestExchangeIndex) return false
+  return sameExchangeState(prev, next)
 }
 
 function resolveStreamSelection(props: TextChatMessageProps) {
