@@ -35,6 +35,13 @@ both themes.
 Production components and styles are the source of truth; the standalone
 mockup's simulated task behavior is not a production contract.
 
+## Approved mobile app reference
+
+[mobile-app.html](mobile-app.html) is the owner-approved reference for all 36
+mobile app screens. It renders fixed 390x844 phones inline, supports light and
+dark themes, and preserves the production DoubleSidebar drawer. Rebuild with
+`node internal/plans/mockups/build-mobile-app.cjs`.
+
 ## Other retained previews
 
 Brand, landing, pricing, account, onboarding, diagnostic, and isolated component
