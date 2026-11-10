@@ -287,6 +287,50 @@ test('Phase 2: recovery reconstructs persisted dispatch identity and ignores sta
   expect(await data.convex.mutation(work, { serverSecret: secret, kind: 'assignment', id: intent._id, generation: 0 })).toBeNull()
 })
 
+test.each(['waiting_for_input', 'waiting_for_approval', 'waiting_for_resources', 'waiting_for_authorization', 'waiting_for_children'])(
+  'Phase 2: defers launch recovery for %s without spending retries and selects it after resume', async status => {
+    const data = await fixture()
+    await applyOperation(data, data.parentRunId, 'owner', { type: 'claim_execution', workflowRunId: 'coordinator' })
+    await data.convex.mutation(createAssignment, args(data))
+    const intent = await data.convex.run(async ctx => {
+      const parent = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', data.parentRunId)).unique()
+      await ctx.db.patch(parent!._id, { metadataJson: JSON.stringify({ ...JSON.parse(parent!.metadataJson), status }) })
+      return (await ctx.db.query('agentAssignmentLaunchIntents').collect())[0]!
+    })
+    const request = { kind: 'assignment' as const, id: intent._id, generation: intent.generation }
+    const listDue = query('collaboration/assignmentRecovery:listDue')
+    const work = mutation('collaboration/assignmentRecovery:work')
+    const noteAttempt = mutation('collaboration/assignmentRecovery:noteAttempt')
+    const now = intent.nextAttemptAt
+    expect(await data.convex.query(listDue, { now: now - 1 })).toEqual([])
+    expect(await data.convex.query(listDue, { now })).not.toContainEqual(request)
+    expect(await data.convex.mutation(work, { serverSecret: secret, ...request })).toBeNull()
+    await data.convex.mutation(noteAttempt, request)
+    expect(await data.convex.run(ctx => ctx.db.get(intent._id))).toEqual(intent)
+    await data.convex.run(async ctx => {
+      const parent = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', data.parentRunId)).unique()
+      await ctx.db.patch(parent!._id, { metadataJson: JSON.stringify({ ...JSON.parse(parent!.metadataJson), status: 'running' }) })
+    })
+    expect(await data.convex.query(listDue, { now })).toContainEqual(request)
+    expect(await data.convex.mutation(work, { serverSecret: secret, ...request })).toMatchObject({ kind: 'assignment', parentRunId: data.parentRunId })
+    await data.convex.mutation(noteAttempt, request)
+    expect(await data.convex.run(ctx => ctx.db.get(intent._id))).toMatchObject({ attempts: intent.attempts + 1 })
+  },
+)
+
+test.each(['completed', 'failed', 'cancelled'])('Phase 2: terminal %s parents still receive launch cancellation recovery', async status => {
+  const data = await fixture()
+  await data.convex.mutation(createAssignment, args(data))
+  const intent = await data.convex.run(async ctx => {
+    const parent = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', data.parentRunId)).unique()
+    await ctx.db.patch(parent!._id, { metadataJson: JSON.stringify({ ...JSON.parse(parent!.metadataJson), status }) })
+    return (await ctx.db.query('agentAssignmentLaunchIntents').collect())[0]!
+  })
+  const request = { kind: 'assignment' as const, id: intent._id, generation: intent.generation }
+  expect(await data.convex.query(query('collaboration/assignmentRecovery:listDue'), { now: intent.nextAttemptAt })).toContainEqual(request)
+  expect(await data.convex.mutation(mutation('collaboration/assignmentRecovery:work'), { serverSecret: secret, ...request })).toMatchObject({ kind: 'cancel' })
+})
+
 test('Phase 2: queued assignment follow-ups retain each requester and resume only after publication', async () => {
   const data = await fixture()
   const first = await dispatched(data)

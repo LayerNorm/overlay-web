@@ -1196,6 +1196,8 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ### Chief of Staff (pending)
 
+- Defer assignment launch recovery while its parent Harness run is waiting, preserving retry attempts until the parent is running again.
+
 - Return corrective tool feedback when an agent tries to update a nonexistent plan step, including an empty plan after answering a question, rather than surfacing a fatal workflow error. Ordinary replies still do not require a plan.
 
 - Keep Harness assignment, recovery and native turn-queue repository operations in a server-only base class without changing their authorization or persistence behavior.

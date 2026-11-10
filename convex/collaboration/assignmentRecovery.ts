@@ -1,5 +1,5 @@
 import { v } from 'convex/values'
-import { internalMutation, internalQuery, mutation, type MutationCtx } from '../_generated/server'
+import { internalMutation, internalQuery, mutation, type MutationCtx, type QueryCtx } from '../_generated/server'
 import type { Doc } from '../_generated/dataModel'
 import { requireServerSecret } from '../lib/auth'
 import { settleAssignmentAttempt } from './assignmentResults'
@@ -8,6 +8,14 @@ import { cancelPendingAssignmentLaunches, cancelPendingAttemptTurns } from './as
 import type { NativeRecoveryRequest, NativeRecoveryWork } from '../../src/shared/agents/assignment-recovery'
 
 const terminal = (status: string) => ['completed', 'failed', 'cancelled'].includes(status)
+
+async function launchDeferred(ctx: QueryCtx, intent: Doc<'agentAssignmentLaunchIntents'>): Promise<boolean> {
+  if (intent.state !== 'pending') return false
+  const parent = await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', intent.parentRunId)).unique()
+  if (!parent) return false
+  const { status } = JSON.parse(parent.metadataJson)
+  return !terminal(status) && status !== 'running'
+}
 
 async function publicationWork(ctx: MutationCtx, delivery: Doc<'conversationAgentRuns'>): Promise<NativeRecoveryWork | null> {
   const run = delivery.harnessRunId ? await ctx.db.query('harnessRuns').withIndex('by_runId', q => q.eq('runId', delivery.harnessRunId!)).unique() : null
@@ -59,7 +67,7 @@ async function assignmentWork(ctx: MutationCtx, intent: Doc<'agentAssignmentLaun
       if (child && JSON.parse(child.metadataJson).workflowRunId) return null
     }
   }
-  if (intent.state !== 'pending' || !metadata.workflowRunId || metadata.status === 'waiting_for_authorization') return null
+  if (intent.state !== 'pending' || !metadata.workflowRunId || metadata.status !== 'running') return null
   const assignment = await ctx.db.query('agentAssignments').withIndex('by_assignmentId', q => q.eq('assignmentId', attempt.assignmentId)).unique()
   const source = JSON.parse(parent.sourceJson)
   if (!assignment || !parent.deliveryAgentRunId || source.conversationId !== assignment.parentConversationId) return null
@@ -111,8 +119,13 @@ export const listDue = internalQuery({
   handler: async (ctx, args): Promise<NativeRecoveryRequest[]> => {
     const requests: Array<NativeRecoveryRequest & { nextAttemptAt: number }> = []
     for (const state of ['pending', 'launched', 'cancelled'] as const) {
-      const items = await ctx.db.query('agentAssignmentLaunchIntents').withIndex('by_state_nextAttemptAt', q => q.eq('state', state).lte('nextAttemptAt', args.now)).take(25)
-      requests.push(...items.map(item => ({ kind: 'assignment' as const, id: item._id, generation: item.generation, nextAttemptAt: item.nextAttemptAt })))
+      const items = ctx.db.query('agentAssignmentLaunchIntents').withIndex('by_state_nextAttemptAt', q => q.eq('state', state).lte('nextAttemptAt', args.now))
+      let selected = 0
+      for await (const item of items) {
+        if (await launchDeferred(ctx, item)) continue
+        requests.push({ kind: 'assignment', id: item._id, generation: item.generation, nextAttemptAt: item.nextAttemptAt })
+        if (++selected === 25) break
+      }
     }
     for (const state of ['pending', 'claimed'] as const) {
       const items = await ctx.db.query('agentConversationTurnQueue').withIndex('by_state_nextAttemptAt', q => q.eq('state', state).lte('nextAttemptAt', args.now)).take(25)
@@ -128,6 +141,7 @@ export const noteAttempt = internalMutation({
     const id = args.kind === 'assignment' ? ctx.db.normalizeId('agentAssignmentLaunchIntents', args.id) : ctx.db.normalizeId('agentConversationTurnQueue', args.id)
     const item = id ? await ctx.db.get(id) : null
     if (!item || item.generation !== args.generation) return
+    if ('parentRunId' in item && await launchDeferred(ctx, item)) return
     await ctx.db.patch(item._id, { attempts: item.attempts + 1,
       nextAttemptAt: Date.now() + Math.min(15 * 60_000, 1000 * 2 ** Math.min(item.attempts, 9)), updatedAt: Date.now() })
   },
