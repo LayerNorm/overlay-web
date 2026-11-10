@@ -1,9 +1,52 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { runInNewContext } from 'node:vm'
 import {
   appPath, fixtureBackendUrl, frameReport, markdownReport, parseScenarios, percentile, perfOrigin,
-  positiveInteger, requireObservedInteraction, renderDelta, streamingRenderReport, summarize,
+  positiveInteger, requireObservedInteraction, renderDelta, streamingRenderReport, summarize, installKeystrokeObserver,
 } from './perf-baseline-lib.mjs'
+
+function keystrokeObserver() {
+  const listeners = {}
+  const frames = []
+  const window = {}
+  const editor = { textContent: '', isConnected: true, addEventListener: (name, callback) => { listeners[name] = callback } }
+  const document = { querySelector: () => ({}) }
+  runInNewContext(`(${installKeystrokeObserver.toString()})(editor)`, {
+    editor, window, document, performance: { now: () => 50 },
+    requestAnimationFrame: callback => frames.push(callback), setTimeout: callback => callback(),
+  })
+  return { editor, window, document, frames, type(key, timeStamp) {
+    listeners.keydown({ key, timeStamp })
+    editor.textContent += key
+    listeners.input()
+  } }
+}
+
+test('coalesced keystrokes retain every latency instead of dropping slow frames', () => {
+  const observer = keystrokeObserver()
+  observer.type('a', 10)
+  observer.type('b', 20)
+  observer.frames.forEach(frame => frame())
+  assert.deepEqual(Array.from(observer.window.__perfKeyLatency), [40, 30])
+  assert.equal(observer.window.__perfKeyDiagnostics.coalesced, 1)
+  assert.equal(observer.window.__perfKeyDiagnostics.rejected, 0)
+})
+
+test('changed text, detached editors and settled streams never count as observed input', () => {
+  for (const invalidate of [
+    observer => { observer.editor.textContent = 'replacement' },
+    observer => { observer.editor.isConnected = false },
+    observer => { observer.document.querySelector = () => null },
+  ]) {
+    const observer = keystrokeObserver()
+    observer.type('a', 10)
+    invalidate(observer)
+    observer.frames.forEach(frame => frame())
+    assert.equal(observer.window.__perfKeyLatency.length, 0)
+    assert.equal(observer.window.__perfKeyDiagnostics.rejected, 1)
+  }
+})
 
 test('fixture mutations require a Preview origin and an exact deployment name, not an arbitrary URL', () => {
   assert.equal(fixtureBackendUrl('https://pr-12.preview.getoverlay.io', 'synthetic-fixture-123'), 'https://synthetic-fixture-123.convex.cloud')

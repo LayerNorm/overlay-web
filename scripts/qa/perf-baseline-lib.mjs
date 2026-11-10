@@ -1,3 +1,32 @@
+export function installKeystrokeObserver(editor) {
+  window.__perfKeyLatency = []
+  window.__perfKeyDiagnostics = { inputs: 0, frames: 0, coalesced: 0, rejected: 0 }
+  let start = null
+  editor.addEventListener('keydown', event => {
+    if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) start = event.timeStamp
+  })
+  editor.addEventListener('input', () => {
+    if (start === null) return
+    window.__perfKeyDiagnostics.inputs += 1
+    const startedAt = start
+    start = null
+    const value = editor.textContent ?? ''
+    requestAnimationFrame(() => setTimeout(() => {
+      const diagnostic = window.__perfKeyDiagnostics
+      diagnostic.frames += 1
+      const current = editor.textContent ?? ''
+      // Later keystrokes may share this frame; the earlier prefix is still visible.
+      if (!editor.isConnected || !value || !current.startsWith(value)
+          || !document.querySelector('[data-text-streaming="true"]')) {
+        diagnostic.rejected += 1
+        return
+      }
+      if (current !== value) diagnostic.coalesced += 1
+      window.__perfKeyLatency.push(performance.now() - startedAt)
+    }, 0))
+  })
+}
+
 // Pure helpers for scripts/qa/perf-baseline.mjs. Kept free of Playwright so they
 // can be unit tested (perf-baseline-lib.test.mjs).
 
