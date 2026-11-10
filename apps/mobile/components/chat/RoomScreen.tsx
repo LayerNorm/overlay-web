@@ -36,6 +36,7 @@ import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import {
   compareRoomMessageRecords,
+  channelComposerPlaceholder,
   dayLabel,
   isGroupedWithPrevious,
   isSameDay,
@@ -73,11 +74,12 @@ import { uploadDocument } from '../../services/aiService'
 import type { ChatMentionItem } from '../../services/chatTypes'
 import { Composer, type ComposerReplyContext, type PendingDocument } from './Composer'
 import { RoomMessageItem } from './RoomMessageItem'
+import { RoomMessageActions } from './RoomMessageActions'
+import { ChatHeader, ChatSheet } from './ChatViews'
+import { useDrawer } from '../../contexts/DrawerContext'
 import {
   BottomSheet,
   EmptyState,
-  MainScreenHeader,
-  TopBarIconButton,
 } from '../ui/AppChrome'
 import { Badge, ListRow, Section } from '../ui/primitives'
 import { FeatureGate } from '../ui/FeatureGate'
@@ -85,7 +87,6 @@ import { NewDirectMessageSheet } from './NewDirectMessageSheet'
 
 const PRESENCE_HEARTBEAT_MS = 25_000
 const TYPING_THROTTLE_MS = 2_500
-const REACTION_EMOJIS = ['👍', '❤️', '😂', '🎉', '😮', '🙏']
 
 interface RoomState {
   title: string
@@ -150,9 +151,10 @@ export function RoomScreen({
   conversationType: 'dm' | 'channel'
   threadRootMessageId?: string
 }): React.ReactElement {
-  const { theme, isDark } = useTheme()
+  const { theme } = useTheme()
   const insets = useSafeAreaInsets()
   const router = useRouter()
+  const { openDrawer } = useDrawer()
   const { capabilities, isFeatureEnabled } = useAppSession()
   const { activeWorkspaceId } = useWorkspace()
   const nativeReady = useNativeDataReady()
@@ -759,7 +761,7 @@ export function RoomScreen({
         params: { id: messageId, conversation: conversationId, type: conversationType },
       })
     },
-    [router, conversationId],
+    [router, conversationId, conversationType],
   )
 
   const handleToggleFollow = useCallback(() => {
@@ -888,49 +890,7 @@ export function RoomScreen({
 
   return (
     <View style={[styles.screen, { backgroundColor: theme.background }]}>
-      <MainScreenHeader
-        theme={theme}
-        isDark={isDark}
-        topInset={insets.top}
-        blurHeight={insets.top + 58}
-        leftSlot={
-          <TopBarIconButton theme={theme} icon="chevron-left" onPress={() => router.back()} />
-        }
-        centerSlot={
-          <TouchableOpacity
-            activeOpacity={0.8}
-            onPress={() => setParticipantsOpen(true)}
-            style={styles.headerCenter}
-          >
-            <View style={styles.headerTitleRow}>
-              {conversationType === 'channel' ? (
-                <Feather name="hash" size={15} color={theme.textSecondary} />
-              ) : null}
-              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
-                {state.title || (conversationType === 'channel' ? 'Channel' : 'Direct message')}
-              </Text>
-            </View>
-            {headerSubtitle ? (
-              <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]} numberOfLines={1}>
-                {headerSubtitle}
-              </Text>
-            ) : null}
-          </TouchableOpacity>
-        }
-        rightSlot={
-          <View style={styles.headerActions}>
-            {isThread && COLLABORATION_NATIVE_READY ? (
-              <TopBarIconButton
-                theme={theme}
-                icon={following ? 'bell' : 'bell-off'}
-                active={following}
-                onPress={handleToggleFollow}
-              />
-            ) : null}
-            <TopBarIconButton theme={theme} icon="more-horizontal" onPress={() => setMoreOpen(true)} />
-          </View>
-        }
-      />
+      <ChatHeader theme={theme} subtitle={headerSubtitle} title={isThread ? 'Thread' : conversationType === 'channel' ? '#' + state.title.replace(/^#/, '') : state.title || 'Direct message'} topInset={insets.top} onDrawer={openDrawer} onBack={isThread ? () => router.back() : undefined} onOptions={() => setMoreOpen(true)} />
 
       <KeyboardAvoidingView
         style={styles.body}
@@ -972,6 +932,7 @@ export function RoomScreen({
             }}
             ListHeaderComponent={
               <View>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', paddingHorizontal: 18, paddingVertical: 16 }}><Feather name={isThread ? 'message-square' : conversationType === 'channel' ? 'hash' : 'users'} size={15} color={theme.textSecondary} /><Text style={{ color: theme.text, fontSize: 13, fontFamily: 'GeistSemibold' }}>{isThread ? 'Thread' : state.title.replace(/^#/, '') || 'Conversation'}</Text></View>
                 {isThread && rootMessage ? (
                   <View style={[styles.rootMessageWrap, { borderBottomColor: theme.border }]}>
                     <RoomMessageItem
@@ -1031,7 +992,7 @@ export function RoomScreen({
               isThread
                 ? 'Reply in thread'
                 : conversationType === 'channel'
-                  ? `Message ${state.title ? `#${state.title.replace(/^#/, '')}` : 'channel'}`
+                    ? channelComposerPlaceholder(state.title)
                   : 'Message'
             }
             imageBase64={imageBase64}
@@ -1075,135 +1036,26 @@ export function RoomScreen({
       </KeyboardAvoidingView>
 
       {/* Long-press message actions */}
-      <BottomSheet
+<ChatSheet
         theme={theme}
         visible={actionsMessage !== null}
         onClose={() => setActionsMessage(null)}
-        title="Message"
+        title="Message actions"
       >
-        {actionsMessage ? (
-          <View>
-            {COLLABORATION_NATIVE_READY && !actionsMessage.deletedAt ? (
-              <View style={styles.quickReactionsRow}>
-                {REACTION_EMOJIS.map((emoji) => (
-                  <TouchableOpacity
-                    key={emoji}
-                    activeOpacity={0.7}
-                    onPress={() => {
-                      handleToggleReaction(actionsMessage.id, emoji)
-                      setActionsMessage(null)
-                    }}
-                    style={[styles.quickReactionChip, { backgroundColor: theme.surfaceSubtle }]}
-                  >
-                    <Text style={styles.quickReactionEmoji}>{emoji}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            ) : null}
-            <Section theme={theme}>
-              {actionsMessage.delivery === 'failed' ? (
-                <ListRow
-                  theme={theme}
-                  icon="refresh-cw"
-                  title="Retry send"
-                  onPress={() => {
-                    handleRetryMessage(actionsMessage)
-                    setActionsMessage(null)
-                  }}
-                />
-              ) : null}
-              {!actionsMessage.deletedAt && actionsMessage.delivery !== 'failed' ? (
-                <ListRow
-                  theme={theme}
-                  icon="corner-up-left"
-                  title="Reply"
-                  onPress={() => {
-                    handleQuoteReply(actionsMessage)
-                    setActionsMessage(null)
-                  }}
-                />
-              ) : null}
-              {!actionsMessage.deletedAt && !isThread ? (
-                <ListRow
-                  theme={theme}
-                  icon="message-square"
-                  title="Reply in thread"
-                  onPress={() => {
-                    openThread(actionsMessage.id)
-                    setActionsMessage(null)
-                  }}
-                />
-              ) : null}
-              {!actionsMessage.deletedAt ? (
-                <ListRow
-                  theme={theme}
-                  icon="copy"
-                  title="Copy text"
-                  onPress={() => {
-                    void Clipboard.setStringAsync(actionsMessage.text)
-                    setActionsMessage(null)
-                  }}
-                />
-              ) : null}
-            </Section>
-            {COLLABORATION_NATIVE_READY && !actionsMessage.deletedAt && actionsMessage.delivery !== 'failed' ? (
-              <Section theme={theme}>
-                <ListRow
-                  theme={theme}
-                  icon="map-pin"
-                  title={state.pinnedIds.has(actionsMessage.id) ? 'Unpin message' : 'Pin message'}
-                  onPress={() => {
-                    handleTogglePin(actionsMessage.id)
-                    setActionsMessage(null)
-                  }}
-                />
-                <ListRow
-                  theme={theme}
-                  icon="bookmark"
-                  title={state.savedIds.has(actionsMessage.id) ? 'Remove from saved' : 'Save message'}
-                  onPress={() => {
-                    handleToggleSaved(actionsMessage.id)
-                    setActionsMessage(null)
-                  }}
-                />
-                {actionsMessage.mine ? (
-                  <ListRow
-                    theme={theme}
-                    icon="edit-2"
-                    title="Edit message"
-                    onPress={() => {
-                      handleStartEdit(actionsMessage)
-                      setActionsMessage(null)
-                    }}
-                  />
-                ) : null}
-                {actionsMessage.mine ? (
-                  <ListRow
-                    theme={theme}
-                    icon="trash-2"
-                    title="Delete message"
-                    destructive
-                    onPress={() => {
-                      handleDeleteMessage(actionsMessage.id)
-                      setActionsMessage(null)
-                    }}
-                  />
-                ) : (
-                  <ListRow
-                    theme={theme}
-                    icon="flag"
-                    title="Report message"
-                    onPress={() => {
-                      handleReportMessage(actionsMessage)
-                      setActionsMessage(null)
-                    }}
-                  />
-                )}
-              </Section>
-            ) : null}
-          </View>
-        ) : null}
-      </BottomSheet>
+        {actionsMessage ? <RoomMessageActions theme={theme} mine={actionsMessage.mine} deleted={Boolean(actionsMessage.deletedAt)} failed={actionsMessage.delivery === 'failed'} pinned={state.pinnedIds.has(actionsMessage.id)} saved={state.savedIds.has(actionsMessage.id)} onReact={emoji => { handleToggleReaction(actionsMessage.id, emoji); setActionsMessage(null) }} onAction={action => {
+          const message = actionsMessage
+          if (action === 'thread') { if (isThread) inputRef.current?.focus(); else openThread(message.id) }
+          else if (action === 'reply') handleQuoteReply(message)
+          else if (action === 'pin') handleTogglePin(message.id)
+          else if (action === 'save') handleToggleSaved(message.id)
+          else if (action === 'copy') void Clipboard.setStringAsync(message.text)
+          else if (action === 'retry') handleRetryMessage(message)
+          else if (action === 'edit' && message.mine) handleStartEdit(message)
+          else if (action === 'delete' && message.mine) handleDeleteMessage(message.id)
+          else if (action === 'report' && !message.mine) handleReportMessage(message)
+          setActionsMessage(null)
+        }} /> : null}
+      </ChatSheet>
 
       {/* Room actions */}
       <BottomSheet
@@ -1213,6 +1065,7 @@ export function RoomScreen({
         title={state.title || (conversationType === 'channel' ? 'Channel' : 'Conversation')}
       >
         <Section theme={theme}>
+          {isThread ? <ListRow theme={theme} icon={following ? 'bell' : 'bell-off'} title={following ? 'Unfollow thread' : 'Follow thread'} onPress={handleToggleFollow} /> : null}
           <ListRow
             theme={theme}
             icon="users"

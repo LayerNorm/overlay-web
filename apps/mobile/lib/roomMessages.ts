@@ -15,6 +15,10 @@ import {
 
 export type RoomAuthorKind = 'human' | 'agent' | 'model' | 'system'
 
+export function channelComposerPlaceholder(name: string): string {
+  return `Message #${name.trim().replace(/^#+/, '') || '…'}`
+}
+
 export type RoomMessagePart = {
   type?: string
   text?: string

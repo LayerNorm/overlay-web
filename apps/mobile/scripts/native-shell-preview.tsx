@@ -8,6 +8,7 @@ import { View } from 'react-native'
 import { ShellFixture } from './ShellFixture'
 import { WorkFixture } from './WorkFixture'
 import { AgentFixture } from './AgentFixture'
+import { ChatFixture } from './ChatFixture'
 
 void NavigationBar.setVisibilityAsync('hidden')
 
@@ -25,6 +26,8 @@ function NativeShellPreview() {
     ? WorkFixture
     : ['agent-stream', 'agent-approval', 'agent-details', 'agent-editor'].includes(preview?.screen)
       ? AgentFixture
+    : ['personal-new', 'personal-stream', 'model-picker', 'channel-room', 'message-thread'].includes(preview?.screen)
+      ? ChatFixture
     : ShellFixture
   return (
     <View style={{ flex: 1 }}>

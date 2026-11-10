@@ -291,6 +291,8 @@ export function BottomSheet({
   onClose,
   title,
   headerAction,
+  solid = false,
+  tall = false,
   children,
 }: {
   theme: Theme
@@ -298,6 +300,8 @@ export function BottomSheet({
   onClose: () => void
   title: string
   headerAction?: React.ReactNode
+  solid?: boolean
+  tall?: boolean
   children: React.ReactNode
 }): React.ReactElement {
   const translateY = useMemo(() => new Animated.Value(500), [])
@@ -384,19 +388,20 @@ export function BottomSheet({
           style={[
             styles.sheet,
             {
-              backgroundColor: theme.glassBg,
+              backgroundColor: solid ? theme.surface : theme.glassBg,
+              maxHeight: tall ? '92%' : '78%',
               transform: [{ translateY: animatedTranslateY }],
             },
           ]}
         >
-          <GlassSurface style={StyleSheet.absoluteFillObject} />
+          {solid ? null : <GlassSurface style={StyleSheet.absoluteFillObject} />}
           {/* Draggable handle area */}
           <View {...panResponder.panHandlers} style={styles.dragHandleArea}>
             <View style={styles.sheetHandleWrap}>
               <View style={[styles.sheetHandle, { backgroundColor: theme.border }]} />
             </View>
             <View style={styles.sheetHeader}>
-              <Text style={[styles.sheetTitle, { color: theme.text }]}>{title}</Text>
+              <Text style={[styles.sheetTitle, { color: theme.text }, solid ? { fontFamily: 'GeistSemibold', fontSize: 18 } : null]}>{title}</Text>
               {headerAction ? <View style={styles.sheetHeaderActions}>{headerAction}</View> : null}
             </View>
           </View>

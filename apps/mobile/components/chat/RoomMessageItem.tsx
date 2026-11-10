@@ -348,8 +348,7 @@ export const RoomMessageItem = React.memo(function RoomMessageItem({
             {metaRow}
           </View>
         ) : null}
-        {body}
-        {attachmentsRow}
+        <View style={{ backgroundColor: theme.surfaceSubtle, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}>{body}{attachmentsRow}</View>
         {grouped ? metaRow : null}
         {reactionsRow}
         {threadRow}

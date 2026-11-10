@@ -1,10 +1,8 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   Keyboard,
   PanResponder,
   Platform,
@@ -41,16 +39,20 @@ import {
   setPersonalChatRead,
   setLastOpenedChatId,
 } from '../../services/chatStorage'
-import { chatStream, DEFAULT_CHAT_MODEL_ID, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, stopConversation, uploadDocument, type StreamChunk, type IndexedAttachment, type ChatToolRequestId } from '../../services/aiService'
+import { chatStream, getAvailableModels, getLastSelectedModelId, setLastSelectedModelId, stopConversation, uploadDocument, type StreamChunk, type IndexedAttachment, type ChatToolRequestId } from '../../services/aiService'
 import {
-  fetchChatSuggestions,
-  fetchCurrentRun,
   generateImage,
   generateVideo,
   submitRunApproval,
 } from '../../services/conversationActionsService'
 import { mentionToRequestBody } from '../../lib/chatMentions'
-import type { AgentRunResource } from '@overlay/api-client'
+import { submitPersonalTurn, watchPersonalExecution, type PersonalRun, type PersonalTurn } from '../../services/personalChatService'
+import { getRequestWorkspaceId } from '../../services/appApi'
+import { useFavoriteModels } from '../../hooks/useFavoriteModels'
+import { resolveAutoModel, sortChatModels } from '../../lib/chatModels'
+import { ModelPicker } from './ModelPicker'
+import { ChatHeader, ChatSheet, EmptyPersonalChat } from './ChatViews'
+import { appendPersonalBlock } from '../../lib/personalStream'
 import { useTheme } from '../../hooks/useTheme'
 import { borderRadius, fontSize, spacing } from '../../constants/theme'
 import { MessageBubble } from './MessageBubble'
@@ -62,13 +64,9 @@ import type { DraftModalState } from '@overlay/chat-core'
 import { DrawerSidebar } from './DrawerSidebar'
 import { ScreenWithDrawer } from '../ui/ScreenWithDrawer'
 import { FeatureGate } from '../ui/FeatureGate'
-import {
-  BottomSheet,
-  MainScreenHeader,
-  TopBarIconButton,
-} from '../ui/AppChrome'
 import { useDrawer } from '../../contexts/DrawerContext'
 import { FloatingSearchBar } from '../ui/FloatingSearchBar'
+import { ListRow, Section } from '../ui/primitives'
 import { AUTH_BASE_URL } from '../../services/appConfig'
 import { useAppSession } from '../../contexts/AppSessionContext'
 import { UpgradePrompt } from '../auth/UpgradePrompt'
@@ -77,100 +75,9 @@ import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
 import { useWorkspace } from '../../contexts/WorkspaceContext'
 import * as DocumentPicker from 'expo-document-picker'
 
-const OVERLAY_LOGO = require('../../assets/overlay-logo.png')
 
-// Provider logo mapping (PNG so React Native Image can render them)
-const PROVIDER_LOGOS: Record<string, ReturnType<typeof require>> = {
-  openai: require('../../assets/model-logos/openai.png'),
-  anthropic: require('../../assets/model-logos/anthropic.png'),
-  xai: require('../../assets/model-logos/xai.png'),
-  deepseek: require('../../assets/model-logos/deepseek.png'),
-  groq: require('../../assets/model-logos/groq.png'),
-  nvidia: require('../../assets/model-logos/nvidia.png'),
-  openrouter: require('../../assets/model-logos/openrouter.png'),
-  meta: require('../../assets/model-logos/meta.png'),
-  mistral: require('../../assets/model-logos/mistral.png'),
-  google: require('../../assets/model-logos/google.png'),
-  minimax: require('../../assets/model-logos/minimax-color.png'),
-  moonshotai: require('../../assets/model-logos/moonshot.png'),
-  zai: require('../../assets/model-logos/zai-actual.png'),
-  alibaba: require('../../assets/model-logos/qwen.png'),
-}
-
-function getProviderLogo(provider: string): ReturnType<typeof require> | null {
-  if (provider.toLowerCase() === 'google') {
-    return PROVIDER_LOGOS.google
-  }
-  return PROVIDER_LOGOS[provider.toLowerCase()] ?? null
-}
-
-function sanitizeModelProvider(model: ChatModel): ChatModel {
-  const id = model.id.toLowerCase()
-  let provider = model.provider
-  if (id.includes('anthropic') || id.includes('claude')) provider = 'anthropic'
-  else if (id.includes('openai') || id.includes('gpt')) provider = 'openai'
-  else if (id.includes('gemini') || id.includes('google')) provider = 'google'
-  else if (id.includes('grok')) provider = 'xai'
-  else if (id.includes('deepseek')) provider = 'deepseek'
-  else if (id.includes('meta') || id.includes('llama')) provider = 'meta'
-  else if (id.includes('mistral')) provider = 'mistral'
-  else if (id.includes('groq')) provider = 'groq'
-  else if (id.includes('nvidia') || id.includes('nemotron')) provider = 'nvidia'
-  else if (id.includes('kimi')) provider = 'moonshotai'
-  else if (id.includes('minimax')) provider = 'minimax'
-  else if (id.includes('glm')) provider = 'zai'
-  else if (id.includes('qwen')) provider = 'alibaba'
-  return { ...model, provider }
-}
-
-async function applyLocalModelMetrics(models: ChatModel[]): Promise<ChatModel[]> {
-  const localModels = await getAvailableModels()
-  const localById = new Map(localModels.map((model) => [model.id, model]))
-  return models.map((model) => {
-    const local = localById.get(model.id)
-    if (!local) return sanitizeModelProvider(model)
-    return sanitizeModelProvider({
-      ...model,
-      intelligence: local.intelligence,
-      cost: local.cost,
-      speedTier: local.speedTier,
-      pricePer1mTokens: local.pricePer1mTokens,
-      medianOutputTokensPerSecond: local.medianOutputTokensPerSecond,
-    })
-  })
-}
-
-function createSyntheticModel(modelId?: string | null): ChatModel | null {
-  if (!modelId) {
-    return null
-  }
-
-  let provider = 'openrouter'
-  if (modelId.includes('deepseek')) provider = 'deepseek'
-  else if (modelId.includes('kimi')) provider = 'moonshotai'
-  else if (modelId.includes('minimax')) provider = 'minimax'
-  else if (modelId.includes('glm')) provider = 'zai'
-  else if (modelId.includes('qwen')) provider = 'alibaba'
-  else if (modelId.includes('anthropic') || modelId.includes('claude')) provider = 'anthropic'
-  else if (modelId.includes('openai') || modelId.includes('gpt')) provider = 'openai'
-  else if (modelId.includes('gemini') || modelId.includes('google')) provider = 'google'
-  else if (modelId.includes('grok')) provider = 'xai'
-  else if (modelId.includes('meta') || modelId.includes('llama')) provider = 'meta'
-  else if (modelId.includes('mistral')) provider = 'mistral'
-  else if (modelId.includes('groq')) provider = 'groq'
-  else if (modelId.includes('nvidia') || modelId.includes('nemotron')) provider = 'nvidia'
-
-  return {
-    id: modelId,
-    name: modelId === DEFAULT_CHAT_MODEL_ID ? 'Free: Kimi K2 Thinking' : modelId,
-    provider,
-    intelligence: 3,
-    cost: 0,
-    speedTier: 2,
-    supportsVision: true,
-    supportsReasoning: true,
-    supportsSearch: true,
-  }
+async function orderedChatModels(models: ChatModel[]): Promise<ChatModel[]> {
+  return sortChatModels(models)
 }
 
 
@@ -238,6 +145,7 @@ function applyStreamChunk(
 ): Message[] {
   return messages.map((message) => {
     if (message.id !== assistantId) return message
+    message = { ...message, blocks: appendPersonalBlock(message.blocks ?? [], chunk) }
 
     const response = message.responses?.[0] || {
       modelId: selectedModel.id,
@@ -329,21 +237,6 @@ function buildApiMessages(messages: Message[]) {
   }))
 }
 
-function getModelDescription(model: ChatModel): string {
-  if (model.cost === 0) return 'Fast and free'
-  if (model.intelligence >= 50) return 'Most capable for ambitious work'
-  if (model.intelligence >= 40) return 'Powerful and versatile'
-  if (model.speedTier >= 3 && model.cost <= 1) return 'Fast & efficient'
-  if (model.intelligence <= 15) return 'Fastest for quick answers'
-  return 'Efficient for everyday tasks'
-}
-
-function getTimeGreeting(): string {
-  const hour = new Date().getHours()
-  if (hour < 12) return 'morning'
-  if (hour < 17) return 'afternoon'
-  return 'evening'
-}
 
 function getNextTitle(currentTitle: string, inputValue: string): string {
   if (currentTitle === 'New Chat' && inputValue.trim()) {
@@ -364,7 +257,9 @@ export function ChatScreen({
   const { theme, isDark } = useTheme()
   const { openDrawer, drawerVisible } = useDrawer()
   const { entitlements, chatModels, imageModels, videoModels, uiSettings, capabilities } = useAppSession()
-  const { isAuthenticated, isLoading: isAuthLoading } = useAuth()
+  const { isAuthenticated, isLoading: isAuthLoading, user } = useAuth()
+  const { favoriteIds, toggleFavorite } = useFavoriteModels(user?.id)
+  const [autoSelected, setAutoSelected] = useState(true)
   const nativeReady = useNativeDataReady()
   const { activeWorkspaceId } = useWorkspace()
   const insets = useSafeAreaInsets()
@@ -375,7 +270,6 @@ export function ChatScreen({
   const [imageBase64, setImageBase64] = useState<string | null>(null)
   const [selectedModel, setSelectedModel] = useState<ChatModel | null>(null)
   const [availableModels, setAvailableModels] = useState<ChatModel[]>([])
-  const [activeModality, setActiveModality] = useState<'text' | 'image' | 'video'>('text')
   const [isLoading, setIsLoading] = useState(true)
   const [isSwitchingChat, setIsSwitchingChat] = useState(false)
   const [isSending, setIsSending] = useState(false)
@@ -385,7 +279,6 @@ export function ChatScreen({
   const [keyboardHeight, setKeyboardHeight] = useState(0)
   const [pendingDocuments, setPendingDocuments] = useState<PendingDocument[]>([])
   const [attachmentError, setAttachmentError] = useState<string | null>(null)
-  const [expandedModelId, setExpandedModelId] = useState<string | null>(null)
 
   // ── Phase 2 composer state ────────────────────────────────────────────────
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
@@ -398,16 +291,18 @@ export function ChatScreen({
   const [generationKind, setGenerationKind] = useState<'image' | 'video' | null>(null)
   const [selectedImageModelId, setSelectedImageModelId] = useState<string | null>(null)
   const [selectedVideoModelId, setSelectedVideoModelId] = useState<string | null>(null)
-  const [suggestions, setSuggestions] = useState<string[]>([])
-  const [currentRun, setCurrentRun] = useState<AgentRunResource | null>(null)
+  const [execution, setExecution] = useState<{ workspaceId: string; run: PersonalRun } | null>(null)
+  const currentRun = execution?.workspaceId === activeWorkspaceId && execution.run?.conversationId === activeChatId ? execution.run : null
   const [approvalSubmitting, setApprovalSubmitting] = useState(false)
   const [actionsChat, setActionsChat] = useState<ChatMeta | null>(null)
+  const [optionsOpen, setOptionsOpen] = useState(false)
   const [showingCachedCopy, setShowingCachedCopy] = useState(false)
 
   const chatRef = useRef<Chat | null>(null)
   const flatListRef = useRef<FlatList<Message>>(null)
   const textInputRef = useRef<TextInput>(null)
   const abortRef = useRef(false)
+  const pendingTurn = useRef<{ conversationId: string; signature: string; turnId: string } | null>(null)
   const hasAutoScrolledRef = useRef(false)
   const handleSendRef = useRef<() => Promise<void>>(async () => {})
   const [draftModal, setDraftModal] = useState<DraftModalState | null>(null)
@@ -537,16 +432,16 @@ export function ChatScreen({
         setMentions([])
         setReplyContext(null)
         setGenerationKind(null)
-        setCurrentRun(null)
+        setExecution(null)
         await setLastOpenedChatId(chat.id)
 
         const preferredModelId = chat.actModelId || chat.askModelIds?.[0] || chat.modelId
         const nextSelected =
           models.find((model) => model.id === preferredModelId) ||
-          createSyntheticModel(preferredModelId) ||
           models[0] ||
           null
         setSelectedModel(nextSelected)
+        setAutoSelected(false)
         return true
       } finally {
         if (options.switching) {
@@ -583,10 +478,10 @@ export function ChatScreen({
       setPendingDocuments([])
       setAttachmentError(null)
       setGenerationKind(null)
-      setCurrentRun(null)
+      setExecution(null)
+      setAutoSelected(true)
       setSelectedModel(
         models.find((model) => model.id === created.modelId) ||
-          createSyntheticModel(created.modelId) ||
           models[0] ||
           null,
       )
@@ -616,6 +511,16 @@ export function ChatScreen({
     setActiveChatId(null)
     setMessages([])
     setChatTitle('New chat')
+    abortRef.current = true
+    pendingTurn.current = null
+    setExecution(null)
+    setIsSending(false)
+    setInputValue('')
+    setImageBase64(null)
+    setPendingDocuments([])
+    setMentions([])
+    setReplyContext(null)
+    setAttachmentError(null)
   }, [activeWorkspaceId])
 
   useEffect(() => {
@@ -628,7 +533,7 @@ export function ChatScreen({
     }
 
     async function resolveModels(): Promise<ChatModel[]> {
-      if (chatModels.length > 0) return applyLocalModelMetrics(chatModels)
+      if (chatModels.length > 0) return orderedChatModels(chatModels)
       return getAvailableModels()
     }
 
@@ -686,7 +591,7 @@ export function ChatScreen({
           setActiveChatId(draft.id)
           setChatTitle(draft.title)
           setMessages([])
-          setSelectedModel(preferred ?? models[0] ?? createSyntheticModel(draft.modelId))
+          setSelectedModel(preferred ?? models[0] ?? null)
         }
       } finally {
         if (isMounted) {
@@ -715,7 +620,7 @@ export function ChatScreen({
   useEffect(() => {
     let isMounted = true
     if (chatModels.length > 0) {
-      void applyLocalModelMetrics(chatModels).then((models) => {
+      void orderedChatModels(chatModels).then((models) => {
         if (isMounted) setAvailableModels(models)
       })
     }
@@ -775,37 +680,15 @@ export function ChatScreen({
     })
   }, [nativeReady, activeWorkspaceId, activeChatId, isTemporary, isSending])
 
-  // ── Agent run lifecycle ───────────────────────────────────────────────────
-  // The server runs each act turn as an AgentRunResource; `currentRun` is the
-  // source of truth for queued/running/waiting_for_approval/failed state.
-  // Poll fast while a run is active, slow otherwise (web uses a Convex
-  // subscription + adaptive REST fallback; mobile polls REST only — Phase 3
-  // may add realtime).
   useEffect(() => {
-    if (!activeChatId || isTemporary) {
-      setCurrentRun(null)
-      return
-    }
-    let cancelled = false
-    const poll = async () => {
-      const run = await fetchCurrentRun(activeChatId).catch(() => null)
-      if (!cancelled) setCurrentRun(run)
-    }
-    void poll()
-    const active = currentRun && ['queued', 'running', 'waiting_for_approval'].includes(currentRun.status)
-    const interval = setInterval(() => void poll(), isSending || active ? 2_000 : 15_000)
-    return () => {
-      cancelled = true
-      clearInterval(interval)
-    }
-  }, [activeChatId, isTemporary, isSending, currentRun?.status])
-
-  // ── Empty-chat suggestions — `/api/v1/chat-suggestions` (4 prompts/day) ────
-  useEffect(() => {
-    if (messages.length === 0 && isAuthenticated && !isTemporary) {
-      void fetchChatSuggestions().then(setSuggestions)
-    }
-  }, [messages.length, isAuthenticated, isTemporary])
+    if (!nativeReady || !activeWorkspaceId || !activeChatId || !/^[0-9a-z]{20,40}$/.test(activeChatId) || isTemporary) return
+    let active = true
+    try {
+      const stop = watchPersonalExecution(activeWorkspaceId, activeChatId, run => { if (active) setExecution({ workspaceId: activeWorkspaceId, run }) }, error => { if (active) setAttachmentError(String(error)) })
+      return () => { active = false; stop() }
+    } catch (error) { void Promise.resolve().then(() => { if (active) setAttachmentError(String(error)) }) }
+    return () => { active = false }
+  }, [nativeReady, activeWorkspaceId, activeChatId, isTemporary])
 
   const handleSubmitApproval = useCallback(
     async (approved: boolean) => {
@@ -819,8 +702,6 @@ export function ChatScreen({
           token: run.approval.token,
           approved,
         })
-        const next = await fetchCurrentRun(activeChatId).catch(() => null)
-        setCurrentRun(next)
       } catch (error) {
         Alert.alert('Could not submit approval', error instanceof Error ? error.message : 'Try again.')
       } finally {
@@ -875,11 +756,13 @@ export function ChatScreen({
   const ensureServerConversation = useCallback(
     async (chat: Chat): Promise<Chat> => {
       if (!chat.id.startsWith('chat-') || chat.clientId) return chat
+      const workspaceId = getRequestWorkspaceId()
       const created = await createNewChat(selectedModel?.id ?? chat.modelId, {
         clientId: chat.id,
         title: chat.title,
       })
       const next: Chat = { ...chat, id: created.id, clientId: created.clientId ?? chat.id }
+      if (getRequestWorkspaceId() !== workspaceId || chatRef.current?.id !== chat.id) throw new Error('Chat changed. Reopen it to send.')
       chatRef.current = next
       setActiveChatId(next.id)
       await saveChat(next).catch(() => {})
@@ -891,19 +774,16 @@ export function ChatScreen({
 
   const handleStopGeneration = useCallback(async () => {
     abortRef.current = true
+    pendingTurn.current = null
     setIsSending(false)
     const activeChat = chatRef.current
-    const messageId = [...messages]
-      .reverse()
-      .find((message) => message.role === 'assistant' && message.responses?.some((response) => response.isLoading))
-      ?.id
+    const workspaceId = getRequestWorkspaceId()
     if (!activeChat?.id) return
     try {
-      await stopConversation(activeChat.id, messageId)
-    } catch {
-      // Local abort still stops the mobile stream if the server already finished.
-    }
-  }, [messages])
+      if (!isTemporary) await stopConversation(activeChat.id)
+      if (chatRef.current?.id === activeChat.id && getRequestWorkspaceId() === workspaceId) setMessages(current => current.map(message => ({ ...message, responses: message.responses?.map(response => ({ ...response, isLoading: false })) })))
+    } catch { setAttachmentError('Could not stop. The response may still be running.') }
+  }, [isTemporary])
 
   const pickImage = useCallback(async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
@@ -990,7 +870,8 @@ export function ChatScreen({
   const handleMediaSend = useCallback(
     async (kind: 'image' | 'video') => {
       const activeChat = chatRef.current
-      if (!activeChat || isSending) return
+      const mediaWorkspaceId = getRequestWorkspaceId()
+      if (!activeChat || isSending || messages.some(message => message.responses?.some(response => response.isLoading))) return
       const modelId = kind === 'image'
         ? (selectedImageModelId ?? imageModels[0]?.id)
         : (selectedVideoModelId ?? videoModels[0]?.id)
@@ -1005,12 +886,15 @@ export function ChatScreen({
       setIsSending(true)
       setAttachmentError(null)
 
-      const turnId = generateMessageId()
+      const signature = JSON.stringify([mediaWorkspaceId, kind, modelId, inputValue, imageBase64, replyContext])
+      const turnId = pendingTurn.current?.conversationId === activeChat.id && pendingTurn.current.signature === signature ? pendingTurn.current.turnId : generateMessageId()
+      pendingTurn.current = { conversationId: activeChat.id, signature, turnId }
       const promptText = replyContext?.bodyForModel
         ? `${inputValue.trim()}\n\n---\n[User is replying in thread to prior content]\n${replyContext.bodyForModel}`
         : inputValue.trim()
       const userMessage: Message = {
         id: generateMessageId(),
+        turnId,
         role: 'user',
         content: inputValue.trim(),
         timestamp: Date.now(),
@@ -1019,7 +903,7 @@ export function ChatScreen({
         replyToTurnId: replyContext?.replyToTurnId,
         replySnippet: replyContext?.snippet,
       }
-      const assistantId = generateMessageId()
+      const assistantId = turnId
       const generating: Message = {
         id: assistantId,
         turnId,
@@ -1037,7 +921,7 @@ export function ChatScreen({
         ],
         mode: 'act',
       }
-      setMessages((current) => [...current, userMessage, generating])
+      setMessages((current) => [...current.filter(message => message.turnId !== turnId), userMessage, generating])
       setInputValue('')
       setImageBase64(null)
       setReplyContext(null)
@@ -1050,9 +934,24 @@ export function ChatScreen({
       if (!isTemporary) {
         sendChat = await ensureServerConversation(activeChat).catch(() => activeChat)
       }
-      const sendConversationId = sendChat.id.startsWith('chat-') ? undefined : sendChat.id
+      let sendConversationId = sendChat.id.startsWith('chat-') ? undefined : sendChat.id
+      if (getRequestWorkspaceId() !== mediaWorkspaceId || chatRef.current?.id !== sendChat.id) {
+        if (pendingTurn.current?.turnId === turnId) { pendingTurn.current = null; setIsSending(false) }
+        return
+      }
+      if (pendingTurn.current?.turnId === turnId) pendingTurn.current.conversationId = sendChat.id
+      let mediaFailed = false
 
       try {
+        if (!isTemporary) {
+          const result = await submitPersonalTurn({ conversationId: sendConversationId as PersonalTurn['conversationId'], clientId: sendConversationId ? undefined : sendChat.id, turnId, modelId, mode: 'act', contentType: kind, parts: [...(imageBase64 ? [{ type: 'file' as const, url: imageBase64, mediaType: imageBase64.match(/^data:([^;]+);/)?.[1] ?? 'image/jpeg' }] : []), { type: 'text', text: inputValue.trim() }], replyToTurnId: replyContext?.replyToTurnId, replySnippet: replyContext?.snippet }, mediaWorkspaceId ?? undefined)
+          sendConversationId = result.conversationId
+          sendChat = { ...sendChat, id: result.conversationId }
+          chatRef.current = sendChat
+          setActiveChatId(sendChat.id)
+          if (pendingTurn.current?.turnId === turnId) pendingTurn.current.conversationId = sendChat.id
+        }
+        if (getRequestWorkspaceId() !== mediaWorkspaceId || chatRef.current?.id !== sendChat.id || pendingTurn.current?.turnId !== turnId) return
         const result = kind === 'image'
           ? await generateImage({
               prompt: promptText,
@@ -1070,6 +969,7 @@ export function ChatScreen({
               turnId,
               imageUrl: imageBase64 ?? undefined,
             })
+        if (getRequestWorkspaceId() !== mediaWorkspaceId || chatRef.current?.id !== sendChat.id || pendingTurn.current?.turnId !== turnId) return
         setMessages((current) =>
           current.map((m) =>
             m.id === assistantId
@@ -1088,6 +988,12 @@ export function ChatScreen({
           ),
         )
       } catch (error) {
+        if (getRequestWorkspaceId() !== mediaWorkspaceId || chatRef.current?.id !== sendChat.id) return
+        mediaFailed = true
+        setGenerationKind(kind)
+        setInputValue(inputValue)
+        setImageBase64(imageBase64)
+        setReplyContext(replyContext)
         const message = error instanceof Error ? error.message : 'Generation failed'
         setMessages((current) =>
           current.map((m) =>
@@ -1112,12 +1018,15 @@ export function ChatScreen({
           ),
         )
       } finally {
-        setIsSending(false)
+        if (getRequestWorkspaceId() === mediaWorkspaceId && pendingTurn.current?.turnId === turnId) setIsSending(false)
       }
 
-      if (!isTemporary) {
+      if (mediaFailed || pendingTurn.current?.turnId !== turnId) return
+      pendingTurn.current = null
+
+      if (!isTemporary && getRequestWorkspaceId() === mediaWorkspaceId) {
         const refreshed = await loadChat(sendChat.id)
-        if (refreshed) {
+        if (refreshed && !pendingTurn.current && chatRef.current?.id === sendChat.id && getRequestWorkspaceId() === mediaWorkspaceId) {
           chatRef.current = refreshed
           setChatTitle(refreshed.title)
           setMessages(refreshed.messages)
@@ -1130,6 +1039,7 @@ export function ChatScreen({
       ensureServerConversation,
       imageBase64,
       imageModels,
+      messages,
       inputValue,
       isSending,
       isTemporary,
@@ -1137,7 +1047,6 @@ export function ChatScreen({
       replyContext,
       scrollToBottom,
       selectedImageModelId,
-      selectedModel,
       selectedVideoModelId,
       videoModels,
     ],
@@ -1202,7 +1111,8 @@ export function ChatScreen({
 
     const activeChat = chatRef.current
     const hasReadyDocs = pendingDocuments.some((d) => d.status === 'ready')
-    if ((!inputValue.trim() && !imageBase64 && !hasReadyDocs) || !selectedModel || !activeChat || isSending) {
+    const workspaceAtSend = getRequestWorkspaceId()
+    if ((!inputValue.trim() && !imageBase64 && !hasReadyDocs) || !activeChat || isSending || messages.some(message => message.responses?.some(response => response.isLoading))) {
       return
     }
 
@@ -1219,6 +1129,7 @@ export function ChatScreen({
       await handleMediaSend(generationKind)
       return
     }
+    if (!selectedModel) { setAttachmentError('No text model is available on this account.'); return }
 
     hapticImpact()
     textInputRef.current?.blur()
@@ -1236,8 +1147,12 @@ export function ChatScreen({
       fileContext = `\n\n[Indexed documents: ${indexedFileNames.join(', ')}]`
     }
 
+    const signature = JSON.stringify([workspaceAtSend, inputValue, imageBase64, selectedModel.id, requestMode, indexedAttachments, mentions, replyContext])
+    const assistantId = pendingTurn.current?.conversationId === activeChat.id && pendingTurn.current.signature === signature ? pendingTurn.current.turnId : generateMessageId()
+    pendingTurn.current = { conversationId: activeChat.id, signature, turnId: assistantId }
     const userMessage: Message = {
       id: generateMessageId(),
+      turnId: assistantId,
       role: 'user',
       content: inputValue.trim() + fileContext,
       timestamp: Date.now(),
@@ -1249,8 +1164,7 @@ export function ChatScreen({
     }
 
     const nextTitle = getNextTitle(chatTitle, inputValue.trim() || indexedFileNames[0] || '')
-    const userMessageList = [...messages, userMessage]
-    const assistantId = generateMessageId()
+    const userMessageList = [...messages.filter(message => message.turnId !== assistantId), userMessage]
     const placeholderAssistant: Message = {
       id: assistantId,
       turnId: assistantId,
@@ -1288,6 +1202,10 @@ export function ChatScreen({
     let sendChat = activeChat
     if (!isTemporary) {
       sendChat = await ensureServerConversation(activeChat).catch(() => activeChat)
+      if (getRequestWorkspaceId() !== workspaceAtSend || chatRef.current?.id !== sendChat.id) {
+        if (pendingTurn.current?.turnId === assistantId) { pendingTurn.current = null; setIsSending(false) }
+        return
+      }
       try {
         await syncConversationMeta({
           title: nextTitle,
@@ -1301,11 +1219,14 @@ export function ChatScreen({
       }
     }
     const stillDraft = sendChat.id.startsWith('chat-')
+    if (pendingTurn.current?.turnId === assistantId) pendingTurn.current.conversationId = sendChat.id
+    let failed = false
     scrollToBottom()
 
     try {
       console.log('[ChatScreen] send: conversationId=%s modelId=%s baseUrl=%s temp=%s', sendChat.id, selectedModel.id, AUTH_BASE_URL, isTemporary)
       for await (const chunk of chatStream(selectedModel.id, buildApiMessages(userMessageList), {
+        workspaceId: workspaceAtSend ?? undefined,
         conversationId: isTemporary || stillDraft ? undefined : sendChat.id,
         conversationClientId: isTemporary || !stillDraft ? undefined : sendChat.id,
         turnId: assistantId,
@@ -1318,10 +1239,18 @@ export function ChatScreen({
         indexedFileNames: indexedFileNames.length > 0 ? indexedFileNames : undefined,
         indexedAttachments: indexedAttachments.length > 0 ? indexedAttachments : undefined,
       })) {
-        if (abortRef.current) break
+        if (abortRef.current || getRequestWorkspaceId() !== workspaceAtSend || chatRef.current?.id !== sendChat.id || pendingTurn.current?.turnId !== assistantId) break
+        if (chunk.type === 'start' && chunk.metadata && typeof chunk.metadata === 'object' && 'conversationId' in chunk.metadata && typeof chunk.metadata.conversationId === 'string') {
+          sendChat = { ...sendChat, id: chunk.metadata.conversationId }
+          chatRef.current = sendChat
+          setActiveChatId(sendChat.id)
+          if (pendingTurn.current?.turnId === assistantId) pendingTurn.current.conversationId = sendChat.id
+        }
+        if (chunk.type === 'error') failed = true
         setMessages((current) => applyStreamChunk(current, assistantId, selectedModel, chunk))
       }
     } catch (error) {
+      failed = true
       console.error('[ChatScreen] send failed:', error)
       setMessages((current) =>
         applyStreamChunk(current, assistantId, selectedModel, {
@@ -1330,12 +1259,24 @@ export function ChatScreen({
         }),
       )
     } finally {
-      setIsSending(false)
+      if (getRequestWorkspaceId() === workspaceAtSend && pendingTurn.current?.turnId === assistantId) setIsSending(false)
     }
+
+    if (getRequestWorkspaceId() !== workspaceAtSend || chatRef.current?.id !== sendChat.id || pendingTurn.current?.turnId !== assistantId) return
+    if (failed) {
+      setInputValue(inputValue)
+      setImageBase64(imageBase64)
+      setPendingDocuments(readyDocs)
+      setMentions(sentMentions)
+      setReplyContext(sentReply)
+      setAttachmentError('Could not send. Your draft is ready to retry.')
+      return
+    }
+    pendingTurn.current = null
 
     if (!isTemporary) {
       const refreshed = await loadChat(sendChat.id)
-      if (refreshed) {
+      if (refreshed && !pendingTurn.current && getRequestWorkspaceId() === workspaceAtSend && chatRef.current?.id === sendChat.id) {
         chatRef.current = refreshed
         setChatTitle(refreshed.title)
         setMessages(refreshed.messages)
@@ -1454,80 +1395,7 @@ export function ChatScreen({
     >
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <View style={styles.screenPadding} {...swipeDownPanResponder.panHandlers}>
-          <MainScreenHeader
-            theme={theme}
-            isDark={isDark}
-            topInset={insets.top}
-            blurHeight={insets.top + 60}
-            leftSlot={
-              routeKind !== 'detail' ? (
-                <TopBarIconButton theme={theme} icon="menu" onPress={handleOpenDrawer} />
-              ) : (
-                <View style={{ width: 44 }} />
-              )
-            }
-            centerSlot={
-              <View style={styles.centerSlotRow}>
-                <TouchableOpacity
-                  activeOpacity={0.82}
-                  onPress={() => setModelPickerVisible(true)}
-                  style={styles.floatingModelPill}
-                >
-                  {isSwitchingChat ? (
-                    <ActivityIndicator size="small" color={theme.textSecondary} />
-                  ) : null}
-                  <Text style={[styles.topBarModelName, { color: theme.text }]} numberOfLines={1}>
-                    {selectedModel?.name ?? 'Select model'}
-                  </Text>
-                  <Feather name="chevron-down" size={14} color={theme.textSecondary} />
-                </TouchableOpacity>
-                {isTemporary ? (
-                  <View style={[styles.tempBadge, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
-                    <Feather name="eye-off" size={10} color={theme.textSecondary} />
-                    <Text style={[styles.tempBadgeText, { color: theme.textSecondary }]}>Temp</Text>
-                  </View>
-                ) : null}
-              </View>
-            }
-            rightSlot={
-              <View style={styles.rightSlotRow}>
-                <TopBarIconButton
-                  theme={theme}
-                  icon={isTemporary ? 'eye-off' : 'eye'}
-                  onPress={() => {
-                    setIsTemporary((current) => !current)
-                    hapticImpact()
-                  }}
-                />
-                <TopBarIconButton
-                  theme={theme}
-                  icon="more-horizontal"
-                  onPress={() => {
-                    const current = chatRef.current
-                    if (!current) return
-                    setActionsChat({
-                      id: current.id,
-                      title: chatTitle,
-                      createdAt: current.createdAt,
-                      updatedAt: current.updatedAt,
-                      lastMode: current.lastMode,
-                      askModelIds: current.askModelIds,
-                      actModelId: current.actModelId,
-                      clientId: current.clientId,
-                      conversationType: current.conversationType,
-                    })
-                  }}
-                />
-                <TopBarIconButton
-                  theme={theme}
-                  icon="plus"
-                  onPress={() => {
-                    void startFreshConversation()
-                  }}
-                />
-              </View>
-            }
-          />
+          <ChatHeader theme={theme} busy={isSwitchingChat} title={chatTitle || 'New chat'} topInset={insets.top} onDrawer={handleOpenDrawer} onNew={() => void startFreshConversation()} onOptions={() => setOptionsOpen(true)} />
 
           <View style={styles.threadSurface}>
             {showingCachedCopy ? (
@@ -1550,31 +1418,7 @@ export function ChatScreen({
               </View>
             ) : null}
             {messages.length === 0 ? (
-              <View style={styles.emptySurface}>
-                <Image source={OVERLAY_LOGO} style={styles.overlayLogo} resizeMode="contain" alt="Overlay logo" />
-                <Text style={[styles.emptyTitle, { color: theme.text }]}>
-                  {'How can I help you this ' + getTimeGreeting() + '?'}
-                </Text>
-                {suggestions.length > 0 && !isTemporary ? (
-                  <View style={styles.suggestionsWrap}>
-                    {suggestions.map((prompt) => (
-                      <TouchableOpacity
-                        key={prompt}
-                        activeOpacity={0.75}
-                        style={[styles.suggestionChip, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}
-                        onPress={() => {
-                          setInputValue(prompt)
-                          textInputRef.current?.focus()
-                        }}
-                      >
-                        <Text style={[styles.suggestionChipText, { color: theme.text }]} numberOfLines={2}>
-                          {prompt}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                ) : null}
-              </View>
+              <EmptyPersonalChat theme={theme} onSuggest={text => { setInputValue(text); textInputRef.current?.focus() }} />
             ) : (
               <FlatList
                 ref={flatListRef}
@@ -1658,17 +1502,18 @@ export function ChatScreen({
             ) : null}
             <Composer
               theme={theme}
+              modelLabel={generationKind === 'image' ? imageModels.find(model => model.id === selectedImageModelId)?.name ?? 'Image' : generationKind === 'video' ? videoModels.find(model => model.id === selectedVideoModelId)?.name ?? 'Video' : autoSelected ? 'Auto' : selectedModel?.name}
+              onModel={() => setModelPickerVisible(true)}
               inputValue={inputValue}
               onChangeInput={setInputValue}
               onSend={() => void handleSend()}
               onStop={() => void handleStopGeneration()}
-              isSending={isSending}
+              isSending={isSending || messages.some(message => message.responses?.some(response => response.isLoading))}
               isTemporary={isTemporary}
               capabilities={capabilities}
               imageBase64={imageBase64}
               onClearImage={() => setImageBase64(null)}
               onPickImage={() => {
-                setActiveModality('image')
                 void pickImage()
               }}
               onPickCamera={() => void pickImageFromCamera()}
@@ -1702,135 +1547,26 @@ export function ChatScreen({
           </View>
         </View>
 
-      <BottomSheet
-        theme={theme}
-        visible={modelPickerVisible}
-        onClose={() => {
-          setModelPickerVisible(false)
-          setExpandedModelId(null)
-        }}
-        title="Choose model"
-      >
-        <View style={styles.modelList}>
-          {sortedModels.map((model, index) => {
-            const isSelected = selectedModel?.id === model.id
-            const isLast = index === sortedModels.length - 1
-            const isFreeTier = entitlements?.tier === 'free'
-            const isPremium = model.cost > 0
-            const isLocked = isFreeTier && isPremium
-            const isExpanded = expandedModelId === model.id
-            return (
-              <React.Fragment key={model.id}>
-                <TouchableOpacity
-                  onPress={() => {
-                    if (isLocked) {
-                      setModelPickerVisible(false)
-                      setUpgradeVisible(true)
-                      return
-                    }
-                    void handleModelSelect(model)
-                  }}
-                  activeOpacity={isLocked ? 0.4 : 0.7}
-                  style={[styles.modelRow, isLocked && styles.modelRowLocked]}
-                >
-                  <View style={styles.modelRowLeft}>
-                    {getProviderLogo(model.provider) ? (
-                      <View style={[styles.logoContainer, isLocked && styles.lockedOpacity]}>
-                        <Image
-                          source={getProviderLogo(model.provider)}
-                          style={styles.providerLogo}
-                          resizeMode="contain"
-                          alt={`${model.provider} logo`}
-                        />
-                      </View>
-                    ) : (
-                      <View style={[styles.logoContainer, { backgroundColor: theme.surfaceElevated }, isLocked && styles.lockedOpacity]}>
-                        <Text style={[styles.providerInitial, { color: theme.textSecondary }]}>
-                          {model.provider.charAt(0).toUpperCase()}
-                        </Text>
-                      </View>
-                    )}
-                    <View style={[styles.modelRowContent, isLocked && styles.lockedOpacity]}>
-                      <Text style={[styles.modelRowTitle, { color: theme.text }]}>
-                        {model.name}
-                      </Text>
-                      <Text style={[styles.modelRowDesc, { color: theme.textSecondary }]}>
-                        {isLocked ? 'Upgrade to unlock' : getModelDescription(model)}
-                      </Text>
-                    </View>
-                  </View>
-                  <View style={styles.modelRowRight}>
-                    {isLocked ? (
-                      <Feather name="lock" size={14} color={theme.mutedLight} />
-                    ) : isSelected ? (
-                      <Feather name="check" size={18} color={theme.text} />
-                    ) : null}
-                    <TouchableOpacity
-                      activeOpacity={0.7}
-                      onPress={(e) => {
-                        e.stopPropagation()
-                        setExpandedModelId(isExpanded ? null : model.id)
-                      }}
-                      style={styles.chevronButton}
-                    >
-                      <Feather
-                        name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                        size={16}
-                        color={theme.textSecondary}
-                      />
-                    </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-                {isExpanded && (
-                  <View style={[styles.metricsContainer, { backgroundColor: theme.surfaceSubtle }]}>
-                    <View style={styles.metricRow}>
-                      <View style={styles.metricLabelGroup}>
-                        <Feather name="activity" size={13} color={theme.textSecondary} />
-                        <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
-                          Intelligence
-                        </Text>
-                      </View>
-                      <Text style={[styles.metricValue, { color: theme.text }]}>
-                        {Math.round(model.intelligence)}
-                      </Text>
-                    </View>
-                    <View style={styles.metricRow}>
-                      <View style={styles.metricLabelGroup}>
-                        <Feather name="dollar-sign" size={13} color={theme.textSecondary} />
-                        <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
-                          Cost
-                        </Text>
-                      </View>
-                      <Text style={[styles.metricValue, { color: theme.text }]}>
-                        {model.cost === 0 ? 'Free' : `$${(model.pricePer1mTokens ?? model.cost).toFixed(2)}/M`}
-                      </Text>
-                    </View>
-                    <View style={styles.metricRow}>
-                      <View style={styles.metricLabelGroup}>
-                        <Feather name="zap" size={13} color={theme.textSecondary} />
-                        <Text style={[styles.metricLabel, { color: theme.textSecondary }]}>
-                          Speed
-                        </Text>
-                      </View>
-                      <Text style={[styles.metricValue, { color: theme.text }]}>
-                        {model.medianOutputTokensPerSecond ? `${Math.round(model.medianOutputTokensPerSecond)} t/s` : 'N/A'}
-                      </Text>
-                    </View>
-                  </View>
-                )}
-                {!isLast && (
-                  <View style={[styles.modelSeparator, { backgroundColor: theme.border }]} />
-                )}
-              </React.Fragment>
-            )
-          })}
-          <View style={styles.attributionContainer}>
-            <Text style={[styles.attributionText, { color: theme.textSecondary }]}>
-              Intelligence data via Artificial Analysis
-            </Text>
-          </View>
-        </View>
-      </BottomSheet>
+      <ChatSheet theme={theme} visible={modelPickerVisible} onClose={() => setModelPickerVisible(false)} modelPicker title="Choose a model">
+        <ModelPicker theme={theme} models={sortedModels} imageModels={imageModels} videoModels={videoModels} selectedId={generationKind === 'image' ? selectedImageModelId ?? undefined : generationKind === 'video' ? selectedVideoModelId ?? undefined : selectedModel?.id} favoriteIds={favoriteIds} onFavorite={toggleFavorite} autoSelected={autoSelected} mode={generationKind ?? 'text'} isLocked={model => entitlements?.tier === 'free' && (model.cost ?? 0) > 0} onAuto={() => {
+          const model = resolveAutoModel(availableModels.filter(model => entitlements?.tier !== 'free' || model.cost === 0), uiSettings.defaultActModelId)
+          if (!model) { setModelPickerVisible(false); setAttachmentError('No text model is available on this account.'); return }
+          if (model) { setGenerationKind(null); setAutoSelected(true); void handleModelSelect(model).catch(error => setAttachmentError(String(error))) }
+        }} onSelect={(mode, id) => {
+          if (mode !== 'text') { handleSelectGeneration(mode, id); setModelPickerVisible(false); return }
+          const model = availableModels.find(model => model.id === id)
+          if (!model) return
+          if (entitlements?.tier === 'free' && model.cost > 0) { setModelPickerVisible(false); setUpgradeVisible(true); return }
+          setAutoSelected(false); setGenerationKind(null); void handleModelSelect(model).catch(error => setAttachmentError(String(error)))
+        }} />
+      </ChatSheet>
+
+      <ChatSheet theme={theme} visible={optionsOpen} onClose={() => setOptionsOpen(false)} title="Chat options">
+        <Section theme={theme}>
+          <ListRow theme={theme} icon="shield" title="Temporary chat" subtitle={isTemporary ? 'On. Nothing from this chat is saved.' : 'Off'} onPress={isSending || messages.some(message => message.responses?.some(response => response.isLoading)) ? undefined : () => { setIsTemporary(value => !value); setOptionsOpen(false) }} />
+          {history.some(chat => chat.id === activeChatId) ? <ListRow theme={theme} icon="more-horizontal" title="Conversation actions" onPress={() => { setOptionsOpen(false); setActionsChat(history.find(chat => chat.id === activeChatId) ?? null) }} /> : null}
+        </Section>
+      </ChatSheet>
 
       <UpgradePrompt
         visible={upgradeVisible}

@@ -1,7 +1,11 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { appRequest, appXhrStreamSse } from './appApi'
+import { appRequest, appXhrStreamSse, getRequestWorkspaceId } from './appApi'
 import type { ChatModel } from './chatTypes'
 import { AUTH_BASE_URL } from './appConfig'
+import { getAppBootstrap } from './bootstrapService'
+import { sortChatModels } from '../lib/chatModels'
+import { submitPersonalTurn, type PersonalTurn } from './personalChatService'
+import { convexWorkspaceId } from './convexClient'
 
 const LAST_SELECTED_MODEL_KEY = 'overlay-last-selected-model-id'
 
@@ -58,6 +62,7 @@ export interface IndexedAttachment {
 }
 
 interface ChatStreamOptions {
+  workspaceId?: string
   conversationId?: string
   /** Client-side draft id sent for first-turn persistence (web `conversationClientId`). */
   conversationClientId?: string
@@ -103,49 +108,8 @@ type UiMessageChunk =
 
 export const DEFAULT_CHAT_MODEL_ID = 'claude-sonnet-4-6'
 
-const AVAILABLE_CHAT_MODELS: ChatModel[] = [
-  // Google Models
-  { id: 'gemini-3.1-pro-preview', name: 'Gemini 3.1 Pro', provider: 'google', description: 'Most capable', intelligence: 57.2, cost: 3, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 4.5, medianOutputTokensPerSecond: 119.867 },
-  { id: 'gemini-3-flash-preview', name: 'Gemini 3 Flash', provider: 'google', description: 'Fast & efficient', intelligence: 20.6, cost: 1, speedTier: 3, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0.85, medianOutputTokensPerSecond: 186.767 },
-  { id: 'google/gemma-4-26b-a4b-it', name: 'Gemma 4 26B A4B', provider: 'google', description: 'Efficient open model', intelligence: 18.8, cost: 1, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0.537, medianOutputTokensPerSecond: 50.262 },
-
-  // OpenAI Models
-  { id: 'gpt-5.4', name: 'GPT-5.4', provider: 'openai', description: 'Powerful', intelligence: 56.8, cost: 3, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 5.625, medianOutputTokensPerSecond: 75.645 },
-  { id: 'openai/gpt-5.4-mini', name: 'GPT-5.4 Mini', provider: 'openai', description: 'Compact', intelligence: 13.8, cost: 1, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0.138, medianOutputTokensPerSecond: 120.344 },
-  { id: 'gpt-4.1-2025-04-14', name: 'GPT-4.1', provider: 'openai', description: 'Reliable', intelligence: 17.3, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 4.375, medianOutputTokensPerSecond: 121.61 },
-
-  // Anthropic Models
-  { id: 'anthropic/claude-opus-4.7', name: 'Claude Opus 4.7', provider: 'anthropic', description: 'Most capable', intelligence: 57.3, cost: 3, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 10.938, medianOutputTokensPerSecond: 55.247 },
-  { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', provider: 'anthropic', description: 'Best balance', intelligence: 44.4, cost: 3, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 6.563, medianOutputTokensPerSecond: 53.877 },
-  { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', provider: 'anthropic', description: 'Fast & light', intelligence: 31.1, cost: 2, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 2.188, medianOutputTokensPerSecond: 102.293 },
-
-  // xAI Models
-  { id: 'xai/grok-4.20-reasoning', name: 'Grok 4.20', provider: 'xai', description: 'Flagship reasoning', intelligence: 49.3, cost: 3, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 3.0, medianOutputTokensPerSecond: 98.293 },
-
-  // Other frontier / open models
-  { id: 'deepseek/deepseek-v4-pro', name: 'DeepSeek V4 Pro', provider: 'deepseek', description: 'Flagship reasoning', intelligence: 51.5, cost: 2, speedTier: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 2.175, medianOutputTokensPerSecond: 34.389 },
-  { id: 'deepseek/deepseek-v4-flash', name: 'DeepSeek V4 Flash', provider: 'deepseek', description: 'Fast reasoning', intelligence: 46.5, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0.175, medianOutputTokensPerSecond: 72.385 },
-  { id: 'minimax/minimax-m2.7', name: 'MiniMax M2.7', provider: 'minimax', description: 'Strong agentic coding', intelligence: 49.6, cost: 1, speedTier: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0.525, medianOutputTokensPerSecond: 46.283 },
-  { id: 'moonshotai/kimi-k2.6', name: 'Kimi K2.6', provider: 'moonshotai', description: 'Multimodal long-context', intelligence: 46.8, cost: 2, speedTier: 1, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 1.136, medianOutputTokensPerSecond: 48.829 },
-  { id: 'z-ai/glm-5.1', name: 'GLM 5.1', provider: 'zai', description: 'Long-horizon coding', intelligence: 42.1, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 1.0, medianOutputTokensPerSecond: 90.037 },
-  { id: 'alibaba/qwen3.6-plus', name: 'Qwen 3.6 Plus', provider: 'alibaba', description: 'Agentic coding', intelligence: 50.0, cost: 2, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 1.125, medianOutputTokensPerSecond: 52.674 },
-
-  // Groq Models
-  { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B', provider: 'groq', description: 'Open weights', intelligence: 33.3, cost: 1, speedTier: 3, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0.262, medianOutputTokensPerSecond: 244.453 },
-
-  // NVIDIA Gateway — internal-only title / summarization model (not shown in dropdown)
-  { id: 'nvidia/nemotron-nano-9b-v2', name: 'Nemotron Nano 9B', provider: 'nvidia', description: 'Ultra-cheap summarization & tool-calling', intelligence: 13.2, cost: 1, speedTier: 2, supportsVision: false, supportsReasoning: false, supportsSearch: false, pricePer1mTokens: 0.086, medianOutputTokensPerSecond: 132.545 },
-
-  // OpenRouter (free) — only the auto router
-  { id: 'openrouter/free', name: 'Free Router', provider: 'openrouter', description: 'Auto-selects a free model', intelligence: 25.0, cost: 0, speedTier: 2, supportsVision: true, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 100.0 },
-
-  // NVIDIA NIM — explicit free catalog rows use NIM directly.
-  { id: 'deepseek-ai/deepseek-v3.2', name: 'Free: DeepSeek V3.2', provider: 'nvidia', description: 'Free model', intelligence: 27.1, cost: 0, speedTier: 1, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 0 },
-  { id: 'moonshotai/kimi-k2-thinking', name: 'Free: Kimi K2 Thinking', provider: 'nvidia', description: 'Free model', intelligence: 40.9, cost: 0, speedTier: 2, supportsVision: false, supportsReasoning: true, supportsSearch: false, pricePer1mTokens: 0, medianOutputTokensPerSecond: 117.231 },
-]
-
 export async function getAvailableModels(): Promise<ChatModel[]> {
-  return AVAILABLE_CHAT_MODELS
+  return sortChatModels((await getAppBootstrap()).chatModels)
 }
 
 export async function getModelById(modelId: string): Promise<ChatModel | undefined> {
@@ -220,8 +184,30 @@ export async function* chatStream(
       body.replyContextForModel = options.replyContextForModel
     }
 
+    const workspaceId = options.workspaceId ?? convexWorkspaceId()
+    if (getRequestWorkspaceId() !== workspaceId) throw new Error('Workspace changed. Reopen this chat.')
+    if (!options.temporaryChat) {
+      const user = messages.findLast(message => message.role === 'user')
+      if (!user || !options.turnId) throw new Error('This message could not be submitted.')
+      const parts: PersonalTurn['parts'] = [
+        ...(user.imageData ? [{ type: 'file' as const, url: user.imageData, mediaType: user.imageData.match(/^data:([^;]+);/)?.[1] ?? 'image/jpeg' }] : []),
+        { type: 'text', text: user.content },
+      ]
+      const submitted = await submitPersonalTurn({
+        conversationId: options.conversationId as PersonalTurn['conversationId'], clientId: options.conversationClientId,
+        turnId: options.turnId, modelId, mode: 'act', contentType: 'text', parts,
+        attachmentNames: options.indexedFileNames,
+        userMetadata: { indexedAttachments: options.indexedAttachments, mentions: options.mentions as NonNullable<PersonalTurn['userMetadata']>['mentions'] },
+        replyToTurnId: user.replyToTurnId, replySnippet: user.replySnippet,
+      }, workspaceId)
+      body.conversationId = submitted.conversationId
+      delete body.conversationClientId
+      yield { type: 'start', content: '', metadata: { conversationId: submitted.conversationId } }
+    }
+
     for await (const chunk of appXhrStreamSse<UiMessageChunk>('/api/v1/conversations/act', {
       method: 'POST',
+      headers: { 'x-overlay-workspace-id': workspaceId },
       json: body,
     })) {
       switch (chunk.type) {

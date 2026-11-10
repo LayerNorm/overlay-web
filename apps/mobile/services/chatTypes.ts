@@ -73,6 +73,7 @@ export interface Message {
    * messages until the post-send reload lands.
    */
   blocks?: AssistantVisualBlock[]
+  blocksAreComplete?: boolean
   transcriptSources?: ChatTranscriptSourceView[]
   mentions?: ChatMentionItem[]
   /** True while the message is still being generated locally. */

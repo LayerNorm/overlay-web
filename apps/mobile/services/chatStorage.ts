@@ -8,6 +8,7 @@ import { appRequest } from './appApi'
 import type { FunctionReturnType } from 'convex/server'
 import { projectActivePublicStreams, type ActivePublicStreamSnapshot } from '../../src/shared/chat/public-stream-projection'
 import { queryAllPages, subscribeAllPages } from './convexPagination'
+import { completeMarkdown } from '../lib/agentThread'
 import {
   generateChatId,
   type Chat,
@@ -84,9 +85,11 @@ function toMessageContent(parts: ConversationMessage['parts']): string {
     .join('')
 }
 
-function mapConversationMessageToMessage(message: ConversationMessage & { createdAt?: number; content?: string }): Message {
-  const parts = message.parts ?? []
-  const text = toMessageContent(parts) || message.content || ''
+function mapConversationMessageToMessage(message: ConversationMessage & { createdAt?: number; content?: string; status?: string }): Message {
+  const rawParts = message.parts ?? []
+  const lastDisplay = rawParts.findLastIndex(part => ['text', 'reasoning', 'tool-invocation'].includes(part.type))
+  const parts = rawParts.map((part, index) => index === lastDisplay && part.type === 'text' ? { ...part, text: completeMarkdown(part.text ?? '', message.status === 'generating') } : part)
+  const text = toMessageContent(rawParts) || message.content || ''
   const generatedFiles = parts
     .filter(
       (part): part is Extract<ConversationMessage['parts'][number], { type: 'file' }> =>
@@ -116,9 +119,11 @@ function mapConversationMessageToMessage(message: ConversationMessage & { create
   return {
     id: message.id,
     blocks,
+    blocksAreComplete: true,
     transcriptSources: sources,
     turnId: message.turnId,
     role: message.role,
+    isStreaming: message.status === 'generating',
     content: text,
     timestamp: message.createdAt ?? Date.now(),
     selectedModelId: message.model,
@@ -130,7 +135,7 @@ function mapConversationMessageToMessage(message: ConversationMessage & { create
               modelName: message.routedModelId || message.model || 'Overlay',
               provider: 'overlay',
               content: text,
-              isLoading: false,
+              isLoading: message.status === 'generating',
             },
           ]
         : undefined,

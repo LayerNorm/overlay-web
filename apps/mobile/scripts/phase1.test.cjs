@@ -206,6 +206,7 @@ function fixture() {
   const projection = load('../src/shared/chat/public-stream-projection.ts', { './transcript-part-identity': load('../src/shared/chat/transcript-part-identity.ts') })
   const service = load('services/collaborationService.ts', { './overlayClient': { mobileOverlayAppClient: {} }, './convexClient': convex, '../../src/shared/chat/public-stream-projection': projection })
   const personal = () => load('services/chatStorage.ts', {
+    '../lib/agentThread': load('lib/agentThread.ts', { '@overlay/chat-core': {}, '../../src/shared/agents/native-agent-approval': {}, '../../src/shared/agents/native-agent-input': {}, '../../src/shared/agents/run-questions': {} }),
     '@react-native-async-storage/async-storage': { default: { getItem: async () => null, setItem: async () => {} } },
     '@overlay/chat-core': { normalizeTranscriptAssistantParts: () => ({ blocks: [], sources: [] }) },
     './convexClient': convex,
