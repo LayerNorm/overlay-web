@@ -227,7 +227,9 @@ snapshots and persistence, network policy, broker-owned credential references, i
 timeouts, usage, capability flags, and an explicitly operator-only raw SDK handle. Box is the
 Overlay Cloud adapter, and an E2B adapter is implemented for self-hosting. Provider SDK objects and references are never public response fields.
 The lease meter (`ManagedAgentSandboxBilling`) bills a lease from provider-reported usage and
-enforces the idle window and the 24-hour hard cap; Box has no idle timer, so idle-stop is ours.
+enforces the idle window; Box has no idle timer, so idle-stop is ours. There is no hard runtime cap
+on a Computer that is in use: its session window (`reservedUntil`) rolls forward while it is busy
+(see `billing-holds-and-machine-metering.md`, "Computer sessions").
 
 Hosted third-party runtimes in Overlay Cloud are retired. Legacy bindings remain readable but
 cannot start, resume, or recover work; Overlay never falls back to native execution for them.

@@ -2,6 +2,11 @@ import type { SandboxUsage } from '@overlay/sandbox-runtime'
 
 export const BOAT_COMPUTE_PRICE = { version: 'boat-list-2026-10-20', secondsPerDollar: 100_000 } as const
 export const SANDBOX_RUNTIME_FENCE_MS = 4 * 60_000
+/**
+ * A Computer session's rolling window (the lease's reservedUntil). It bounds provider runtime renewal; it never stops
+ * a Computer that is in use, because the meter pushes it forward while the idle check says the Computer is not idle.
+ */
+export const COMPUTER_SESSION_MS = 2 * 60 * 60_000
 const COUNTER_STALL_MS = 2 * 60_000
 
 type BoatPrice = { secondsPerDollar: number; billingMultiplier: number }

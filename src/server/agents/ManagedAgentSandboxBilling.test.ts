@@ -800,7 +800,7 @@ test('pre-delete stop failures alert as stop failures and cleanup failures', asy
   assert.deepEqual(alerts.map(({ type }) => type), ['stop_failed', 'cleanup_failed'])
 })
 
-test('Computer cleanup failures from killLease emit cleanup alerts', async () => {
+test('Computer idle-stop cleanup failures emit cleanup alerts', async () => {
   const alerts: Array<{ type: SandboxAlertType; context: SandboxAlertContext }> = []
   const lease = leaseFixture({
     provider: 'e2b',
@@ -811,9 +811,7 @@ test('Computer cleanup failures from killLease emit cleanup alerts', async () =>
   const service = new ManagedAgentSandboxBilling({
     now: () => 2_000,
     policy: {} as never,
-    computerLeaseHandler: async (_lease, reason) => reason === 'idle_check'
-      ? { leaseId: lease.id, outcome: 'skipped', reason: 'computer_active' }
-      : { leaseId: lease.id, outcome: 'cleanup_failed', reason: 'computer_stop_failed' },
+    computerLeaseHandler: async () => ({ leaseId: lease.id, outcome: 'cleanup_failed', reason: 'computer_stop_failed' }),
     repository: {
       listSandboxLeases: async (args: { statuses: string[] }) =>
         args.statuses.includes('running') ? [lease] : [],
@@ -825,6 +823,86 @@ test('Computer cleanup failures from killLease emit cleanup alerts', async () =>
   assert.equal(ticks[0]?.outcome, 'cleanup_failed')
   assert.deepEqual(alerts.map(({ type }) => type), ['cleanup_failed'])
   assert.equal(alerts[0]?.context.computerId, 'computer-1')
+})
+
+function computerSessionHarness(idleCheckReason: string, reservedUntil: number) {
+  const now = 10 * 60 * 60_000
+  const renewals: number[] = []
+  const updates: Array<Record<string, unknown>> = []
+  const handlerCalls: string[] = []
+  let lease = leaseFixture({
+    provider: 'box', computerId: 'computer-1', id: 'computer:computer-1', status: 'running', reservedUntil,
+    usage: {
+      meteredAt: now - 60_000, meteredUsage: {}, meteredProviderReference: 'sandbox-reference', meterVersion: 0,
+      lastPayer: { scope: 'workspace', userId: 'user', workspaceId: 'workspace', billingAccountId: 'billing' },
+    },
+  })
+  const usage = boatUsage(300_000)
+  const runtime = {
+    ...runtimeWithUsage(() => usage),
+    reconnect: async () => ({
+      status: async () => 'running' as const,
+      usage: async () => usage,
+      renewRuntime: async (ms: number) => { renewals.push(ms) },
+    }) as SandboxInstance,
+  }
+  let claimed = false
+  let meterCalls = 0
+  const service = new ManagedAgentSandboxBilling({
+    now: () => now, policy: {} as never, runtime: () => runtime,
+    computerLeaseHandler: async (_lease, reason) => {
+      handlerCalls.push(reason ?? '')
+      return reason === 'idle_check' && idleCheckReason !== 'idle_check'
+        ? { leaseId: lease.id, outcome: 'adopted', reason: idleCheckReason }
+        : { leaseId: lease.id, outcome: 'killed', reason }
+    },
+    repository: {
+      claimSandboxLeases: async () => {
+        if (claimed) return { leases: [], deferred: false }
+        claimed = true
+        return { leases: [lease], deferred: false }
+      },
+      getSandboxLease: async () => lease,
+      finishSandboxLeaseClaim: async () => true,
+      updateSandboxLease: async (args: Record<string, unknown>) => {
+        updates.push(args)
+        lease = { ...lease, reservedUntil: args.reservedUntil as number }
+        return lease
+      },
+      meterSandboxLease: async () => { meterCalls += 1; return { applied: true, meterVersion: 1 } },
+    } as never,
+  })
+  return { service, now, renewals, updates, handlerCalls, get meterCalls() { return meterCalls } }
+}
+
+for (const reason of ['computer_has_live_run', 'computer_active', 'computer_not_idle']) {
+  test(`a Computer past its session window that is in use (${reason}) keeps running and its session rolls forward`, async () => {
+    const harness = computerSessionHarness(reason, 60_000)
+    const { ticks } = await harness.service.meterLeases()
+    assert.notEqual(ticks[0]?.outcome, 'killed')
+    assert.deepEqual(harness.handlerCalls, ['idle_check'])
+    assert.deepEqual(harness.updates.map(({ reservedUntil }) => reservedUntil), [harness.now + 2 * 60 * 60_000])
+    assert.equal(harness.meterCalls, 1)
+    assert.deepEqual(harness.renewals, [240_000])
+  })
+}
+
+test('a Computer in use with most of its session left is metered without a session write', async () => {
+  const harness = computerSessionHarness('computer_has_live_run', 10 * 60 * 60_000 + 90 * 60_000)
+  await harness.service.meterLeases()
+  assert.deepEqual(harness.updates, [])
+  assert.equal(harness.meterCalls, 1)
+  assert.deepEqual(harness.renewals, [240_000])
+})
+
+test('an idle Computer past its session window still stops through the idle check', async () => {
+  const harness = computerSessionHarness('idle_check', 60_000)
+  const { ticks } = await harness.service.meterLeases()
+  assert.equal(ticks[0]?.outcome, 'killed')
+  assert.equal(ticks[0]?.reason, 'idle_check')
+  assert.deepEqual(harness.handlerCalls, ['idle_check'])
+  assert.deepEqual(harness.updates, [])
+  assert.equal(harness.meterCalls, 0)
 })
 
 function settleHarness(meterResult: Record<string, unknown>) {

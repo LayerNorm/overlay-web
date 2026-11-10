@@ -40,7 +40,13 @@ test('unified stream enrollment is exact and immutable for an admitted root', ()
 })
 
 test('invalid budgets fail closed', () => {
-  for (const durationMs of [0, 30_000.5, Infinity, 8 * 86_400_000]) {
+  for (const durationMs of [0, 29_999, 30_000.5, Infinity, Number.MAX_SAFE_INTEGER + 1]) {
     expect(() => personalHarnessPolicy({ ...input, budget: { durationMs } })).toThrow('budget')
   }
+})
+
+test('a deadline the person sets has no upper bound', () => {
+  const tenDays = 10 * 86_400_000
+  expect(personalHarnessPolicy({ ...input, budget: { durationMs: tenDays } }))
+    .toMatchObject({ taskDeadlineAt: 1_000 + tenDays })
 })

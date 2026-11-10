@@ -35,7 +35,7 @@ export function personalHarnessPolicy(input: {
   existingPolicy?: HarnessPolicy | null
 }): HarnessPolicy {
   const durationMs = input.budget?.durationMs ?? DAY_MS
-  if (!Number.isSafeInteger(durationMs) || durationMs < 30_000 || durationMs > 7 * DAY_MS
+  if (!Number.isSafeInteger(durationMs) || durationMs < 30_000
     || !Number.isSafeInteger(input.createdAt) || input.createdAt < 0) {
     throw new Error('Invalid personal harness budget.')
   }
