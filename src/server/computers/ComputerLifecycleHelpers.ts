@@ -223,8 +223,8 @@ async function handleComputerCleanup(
   dependencies: ComputerLeaseHandlerDependencies,
 ) {
   const stopReason = reason ?? (maintenance?.kind === 'delete' ? 'delete_retry' : 'cleanup_retry')
-  const hardExpiry = lease.status === 'running' && typeof lease.reservedUntil === 'number' && lease.reservedUntil <= now
-  const wantsIdle = ['cleanup_retry', 'idle_check'].includes(stopReason) && !maintenance && !hardExpiry
+  // Session expiry (reservedUntil) never overrides the idle check: a Computer in use keeps running.
+  const wantsIdle = ['cleanup_retry', 'idle_check'].includes(stopReason) && !maintenance
   if (wantsIdle) {
     const idleOutcome = await idleCleanupOutcome(lease, computer, lifecycle, now, dependencies)
     if (idleOutcome) return idleOutcome
@@ -232,7 +232,7 @@ async function handleComputerCleanup(
   const deletion = maintenance?.kind === 'delete'
   try {
     await dependencies.stop(computer, computer.createdBy, deletion, wantsIdle)
-    return { leaseId: lease.id, outcome: 'killed' as const, reason: hardExpiry ? 'lease_expired' : (reason ?? 'idle_timeout') }
+    return { leaseId: lease.id, outcome: 'killed' as const, reason: reason ?? 'idle_timeout' }
   } catch (error) {
     if (error instanceof Error && error.message === 'COMPUTER_MAINTENANCE_IN_PROGRESS' && wantsIdle) {
       return { leaseId: lease.id, outcome: 'adopted' as const, reason: 'computer_active' }

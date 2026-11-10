@@ -9,6 +9,7 @@ import type {
 import type { Computer, ComputerOwnerType } from '@overlay/workspace-contracts'
 import type { AgentSandboxLease } from '@overlay/workspace-contracts'
 import type { ConnectedAgentRepository } from '@/server/agents/ConnectedAgentRepository'
+import { COMPUTER_SESSION_MS } from '@/server/agents/sandbox-boat-accounting'
 import {
   adoptLegacyComputer,
   createComputerRecipe,
@@ -20,7 +21,6 @@ import { ComputerBilling } from './ComputerBilling'
 import { claimComputerMaintenanceWithRetry } from './ComputerMaintenanceClaim'
 import type { ComputerLeaseSeed, ComputerRepository } from './ComputerRepository'
 
-const SESSION_MS = 2 * 60 * 60_000
 const MAINTENANCE_MS = 6 * 60_000
 const ACTIVITY_GRACE_MS = 60_000
 
@@ -79,7 +79,7 @@ export class ComputerLifecycleService {
       id: `computer:${id}`, workspaceId: args.workspaceId, computerId: id, provider: computer.provider,
       providerReference: computer.providerRef ?? undefined,
       status: existing?.providerRef ? (existing.status === 'stopped' ? 'paused' : 'running') : 'reserved',
-      reservedUntil: now + SESSION_MS,
+      reservedUntil: now + COMPUTER_SESSION_MS,
       usage: existing?.providerRef
         ? { computerLifecycle: { adoptionPending: true } }
         : {
@@ -153,7 +153,7 @@ export class ComputerLifecycleService {
           if (!bound || !bound.canContinue) throw new Error('COMPUTER_ALLOCATION_CANCELLED')
         },
       })
-      const reservedUntil = this.now() + SESSION_MS
+      const reservedUntil = this.now() + COMPUTER_SESSION_MS
       const armed = await this.dependencies.leases.transitionComputerLifecycle?.({
         workspaceId: computer.workspaceId, computerId: computer.id, leaseId, token,
         transition: 'session_armed', expectedProviderReference: instance.reference,
@@ -181,7 +181,7 @@ export class ComputerLifecycleService {
     const storedLease = await this.dependencies.billing.lease(computer)
     const recipe = typeof storedLease.usage.allocationRecipe === 'string'
       ? storedLease.usage.allocationRecipe
-      : JSON.stringify(createComputerRecipe(computer, SESSION_MS))
+      : JSON.stringify(createComputerRecipe(computer, COMPUTER_SESSION_MS))
     const prepared = await this.dependencies.leases.prepareComputerAllocation?.({
       workspaceId: computer.workspaceId, leaseId,
       allocationKey, allocationRecipe: recipe, maintenanceToken: token, now: this.now(),
@@ -274,7 +274,7 @@ export class ComputerLifecycleService {
     const activityToken = this.newId()
     const actionDeadline = Math.min(10 * 60_000, Math.max(1, args.actionDeadlineMs ?? 2 * 60_000))
     const activityExpiresAt = this.now() + actionDeadline + ACTIVITY_GRACE_MS
-    const reservedUntil = this.now() + SESSION_MS
+    const reservedUntil = this.now() + COMPUTER_SESSION_MS
     let wakeArmed = false
     let resumeMayHaveOccurred = false
     try {

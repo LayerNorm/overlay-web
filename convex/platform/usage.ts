@@ -48,23 +48,6 @@ function roundCreditAmount(value: number): number {
   return Math.round(value * 10_000) / 10_000
 }
 
-async function getDailyUsageForPatch(ctx: MutationCtx, userId: string, date: string) {
-  const existing = await ctx.db
-    .query('dailyUsage')
-    .withIndex('by_userId_date', (q) => q.eq('userId', userId).eq('date', date))
-    .first()
-  if (existing) return existing
-  const id = await ctx.db.insert('dailyUsage', {
-    userId,
-    date,
-    askCount: 0,
-    agentCount: 0,
-    writeCount: 0,
-    transcriptionSeconds: 0,
-  })
-  return await ctx.db.get(id)
-}
-
 type EntitlementCtx = QueryCtx | MutationCtx
 
 /** Personal setup/storage has no execution allowance. Workspace funding is resolved separately. */
@@ -520,37 +503,6 @@ function usageQuantities(events: Array<{ inputTokens?: number; outputTokens?: nu
   const seconds = events.reduce((sum, event) => sum + Math.max(0, event.durationSeconds ?? 0), 0)
   return { ...(tokens > 0 ? { usageTokens: tokens } : {}), ...(seconds > 0 ? { usageSeconds: seconds } : {}) }
 }
-
-export const tryReserveBackgroundWorkInternal = internalMutation({
-  args: {
-    userId: v.string(),
-    kind: v.union(v.literal('memory_extraction'), v.literal('indexing')),
-    chunkCount: v.optional(v.number()),
-    bytes: v.optional(v.number()),
-  },
-  handler: async (ctx, { userId, kind, chunkCount, bytes }) => {
-    const today = new Date().toISOString().split('T')[0]
-    const dailyUsage = await getDailyUsageForPatch(ctx, userId, today)
-    if (!dailyUsage) return { allowed: false, reason: 'daily_usage_unavailable' }
-
-    if (kind === 'memory_extraction') {
-      const nextCount = (dailyUsage.memoryExtractionCount ?? 0) + 1
-      if (nextCount > 120) return { allowed: false, reason: 'memory_extraction_cap' }
-      await ctx.db.patch(dailyUsage._id, { memoryExtractionCount: nextCount })
-      return { allowed: true, reason: 'ok' }
-    }
-
-    const nextChunks = (dailyUsage.indexingChunks ?? 0) + Math.max(0, Math.ceil(chunkCount ?? 0))
-    const nextBytes = (dailyUsage.indexingBytes ?? 0) + Math.max(0, Math.ceil(bytes ?? 0))
-    if (nextChunks > 200) return { allowed: false, reason: 'indexing_chunk_cap' }
-    if (nextBytes > 5 * 1024 * 1024) return { allowed: false, reason: 'indexing_byte_cap' }
-    await ctx.db.patch(dailyUsage._id, {
-      indexingChunks: nextChunks,
-      indexingBytes: nextBytes,
-    })
-    return { allowed: true, reason: 'ok' }
-  },
-})
 
 // Reset token usage for new billing period — internal only (audit log housekeeping)
 export const resetTokenUsage = internalMutation({

@@ -231,13 +231,20 @@ continued calls are joined into one part and a single 32,000-token call can exce
 
 Per-call output limits come from `harnessOutputLimits` in
 `src/server/harness/model-ports.ts`. Personal chat and workspace agents request
-32,000 tokens per model call. Compaction still reserves a quarter of the
-working-context budget for output, but the response is bounded by the model's own
-output maximum and by the space left in its real context window after the working
-budget, not by that reserve. Thinking tokens count against the same limit, so a
-reasoning model needs room for both. A reply longer than one call continues in the
-next call as described above. Larger limits raise each call's spend reservation;
-unused reservation is released when the call settles.
+32,000 tokens per model call; 32,000 is also the default when neither the request
+nor the catalog names a maximum. The working context is the model's real context
+window from the catalog (200,000 tokens when the catalog does not know the model,
+such as BYOK and subscription models). Compaction runs only as the prompt approaches
+that window and reserves up to a quarter of it for output; the response is bounded
+by the model's own output maximum. Thinking tokens count against the same limit, so
+a reasoning model needs room for both. A reply longer than one call continues in the
+next call as described above. `HARNESS_PREVIEW_CONTEXT_TOKENS` is a Preview-only QA
+hook that shrinks the working context for one test user to exercise compaction.
+
+A settled transcript step is never refused for its size. `harness/runs:writeTranscriptStep`
+stores a shortened copy (`compactTranscriptSnapshot`, at most 240 KiB) so the row
+fits Convex's document limit; the full step is uploaded to file storage first and
+linked by `fullPersistenceStorageId`.
 
 Thinking is not carried into the next call. If a call reaches its limit having
 produced only thinking (the provider-reported reasoning tokens cover all but a few

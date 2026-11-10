@@ -18,7 +18,9 @@ import type {
 } from './ConnectedAgentRepository'
 import { MANAGED_SANDBOX_IDLE_TIMEOUT_MS, managedSandboxRuntimeFromEnv } from './managed-sandbox-runtime'
 import { E2B_COMPUTE_PRICE, meterExecutionUsage, type ExecutionMeterCursor } from './sandbox-execution-accounting'
-import { BOAT_COMPUTE_PRICE, meterBoatUsage, SANDBOX_RUNTIME_FENCE_MS, type BoatMeterCursor } from './sandbox-boat-accounting'
+import {
+  BOAT_COMPUTE_PRICE, COMPUTER_SESSION_MS, meterBoatUsage, SANDBOX_RUNTIME_FENCE_MS, type BoatMeterCursor,
+} from './sandbox-boat-accounting'
 
 const DEFAULT_RESOURCES = { diskGiB: 10, memoryGiB: 4, vcpus: 2 }
 const DEFAULT_METER_LEASE_LIMIT = 100
@@ -557,8 +559,14 @@ export class ManagedAgentSandboxBilling {
 
   private async tickLease(lease: AgentSandboxLease): Promise<ManagedSandboxMeterTick> {
     try {
-      const lifecycleTick = await this.computerLifecycleTick(lease)
-      if (lifecycleTick) return lifecycleTick
+      if (lease.computerId) {
+        const lifecycleTick = await this.computerLifecycleTick(lease)
+        if (lifecycleTick) return lifecycleTick
+        // The Computer is in use (its idle check said so): no session timer stops it. Keep its session rolling
+        // so the provider runtime renewal (bounded by reservedUntil) keeps the machine up.
+        const current = await this.extendComputerSession(lease)
+        return await this.resolveMeterTick(current, await this.meterLease(current))
+      }
       const expiredTick = await this.expiredLeaseTick(lease)
       if (expiredTick) return expiredTick
       return await this.resolveMeterTick(lease, await this.meterLease(lease))
@@ -568,7 +576,6 @@ export class ManagedAgentSandboxBilling {
   }
 
   private async computerLifecycleTick(lease: AgentSandboxLease): Promise<ManagedSandboxMeterTick | undefined> {
-    if (!lease.computerId) return undefined
     const handler = this.dependencies.computerLeaseHandler
     if (!handler) {
       return { leaseId: lease.id, outcome: 'cleanup_failed', reason: 'computer_lifecycle_unavailable' }
@@ -579,16 +586,37 @@ export class ManagedAgentSandboxBilling {
       : result
   }
 
+  /**
+   * A running Computer that is not idle gets its session pushed to a full COMPUTER_SESSION_MS from now once less
+   * than half of it is left (about one write an hour). Idle Computers stop through the idle check instead.
+   */
+  private async extendComputerSession(lease: AgentSandboxLease): Promise<AgentSandboxLease> {
+    const now = this.now()
+    if (lease.status !== 'running' || lease.reservedUntil - now > COMPUTER_SESSION_MS / 2) return lease
+    try {
+      const updated = await this.dependencies.repository.updateSandboxLease({
+        workspaceId: lease.workspaceId, leaseId: lease.id, reservedUntil: now + COMPUTER_SESSION_MS, now,
+      })
+      return updated ?? lease
+    } catch (error) {
+      logger.warn('Computer session renewal failed', {
+        error: error instanceof Error ? error.message : String(error),
+        leaseId: lease.id,
+        workspaceId: lease.workspaceId,
+      })
+      return lease
+    }
+  }
+
+  /** Legacy environment leases (no new ones are created) still end at reservedUntil. */
   private async expiredLeaseTick(lease: AgentSandboxLease): Promise<ManagedSandboxMeterTick | undefined> {
     if (
       lease.status !== 'running'
       || typeof lease.reservedUntil !== 'number'
       || this.now() <= lease.reservedUntil
     ) return undefined
-    const tick = await this.killLease(lease, 'lease_expired')
-    return lease.computerId
-      ? tick
-      : { leaseId: lease.id, outcome: 'killed', reason: 'lease_expired' }
+    await this.killLease(lease, 'lease_expired')
+    return { leaseId: lease.id, outcome: 'killed', reason: 'lease_expired' }
   }
 
   private async resolveMeterTick(

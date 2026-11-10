@@ -14,7 +14,7 @@ import {
 } from '@overlay/agent-runtime/harness-state'
 import { createHarnessAuthorizedTools } from './authorized-tools'
 import {
-  buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessStuckQuestion,
+  buildHarnessInstructions, buildHarnessStepInstructions,
   HARNESS_CONTROL_TOOLS, harnessProgressFingerprint, hasPendingHarnessAnswer,
 } from './context'
 import { buildHarnessCheckpoint } from './continuity'
@@ -188,8 +188,10 @@ async function shouldRecoverModelInvocation(
 
 export const HARNESS_CUT_OFF_CONTINUATION_MESSAGE = 'Your previous message stopped at the output limit. Continue it from the exact character where it stopped, even mid-word or mid-sentence. If it stopped after a complete word, begin with the space or punctuation that comes next. Output only the continuation: no preamble, acknowledgement or restart, and do not repeat anything already written.'
 
+// After this many checkpoints without plan or evidence progress, the next call gets a
+// recovery hint. Nothing pauses or stops a run for lack of progress: the workspace
+// budget is the only automatic limit.
 const STAGNATION_RECOVERY_START = 2
-const STAGNATION_PAUSE_AFTER = 6
 
 type InvocationContinuation =
   | { kind: 'finished'; snapshot: HarnessSnapshot }
@@ -219,21 +221,6 @@ async function finishOrCheckpointInvocation(
     return { kind: 'finished', snapshot: completed }
   }
   const nextStagnantSegments = harnessProgressFingerprint(state) === before ? stagnantSegments + 1 : 0
-  if (nextStagnantSegments >= STAGNATION_PAUSE_AFTER) {
-    const operationId = `stuck:${segment}`
-    await ports.apply(`stuck:${segment}`, {
-      type: 'block',
-      blocker: { kind: 'stuck', question: buildHarnessStuckQuestion(state) },
-      diagnostic: createHarnessDiagnostic({
-        diagnosticId: stableHarnessDiagnosticId(state.runId, operationId, state.revision),
-        code: 'STAGNATION',
-        stage: 'model',
-        operationId,
-        occurredAt: Date.now(),
-      }),
-    })
-    return { kind: 'continue', stagnantSegments: nextStagnantSegments, finalAnswerRequired }
-  }
   await ports.apply(`checkpoint:${segment}`, {
     type: 'checkpoint',
     summary: JSON.stringify(buildHarnessCheckpoint(state)),

@@ -616,14 +616,6 @@ export const reindexFileInternal = internalAction({
       })
       return
     }
-    const indexingReservation = await ctx.runMutation(internal.platform.usage.tryReserveBackgroundWorkInternal, {
-      userId,
-      kind: 'indexing',
-      chunkCount: segments.length,
-      bytes: new TextEncoder().encode(content).byteLength,
-    })
-    if (!indexingReservation.allowed) return
-
     const serverSecret = getServerSecretForBackground()
     if (!serverSecret) return
     const programmaticSubjectId = `knowledge-index:file:${fileId}`
@@ -702,12 +694,6 @@ async function indexSourceTextBilled(
     /** Stable per-source string making the charge idempotent. */
     operationId: string
     /**
-     * Server-secret-authenticated callers (benchmarks, internal tooling) skip
-     * the per-user daily background-work cap — that gate bounds real-account
-     * embedding spend, not synthetic harness users.
-     */
-    trustedInternal?: boolean
-    /**
      * Optional discriminator mixed into the charge's operation id.
      * Purge-then-reindex of identical content would otherwise match the earlier
      * charge and skip before chunks are rewritten.
@@ -723,16 +709,6 @@ async function indexSourceTextBilled(
     })
     return 'skipped'
   }
-  if (!args.trustedInternal) {
-    const indexingReservation = await ctx.runMutation(internal.platform.usage.tryReserveBackgroundWorkInternal, {
-      userId: args.userId,
-      kind: 'indexing',
-      chunkCount: segments.length,
-      bytes: new TextEncoder().encode(args.indexText).byteLength,
-    })
-    if (!indexingReservation.allowed) return 'skipped'
-  }
-
   const serverSecret = getServerSecretForBackground()
   if (!serverSecret) return 'skipped'
   const programmaticSubjectId = `knowledge-index:${args.sourceKind}:${args.sourceId}`
@@ -778,8 +754,8 @@ async function indexSourceTextBilled(
 }
 
 export const reindexMemoryInternal = internalAction({
-  args: { memoryId: v.id('memories'), trustedInternal: v.optional(v.boolean()) },
-  handler: async (ctx, { memoryId, trustedInternal }) => {
+  args: { memoryId: v.id('memories') },
+  handler: async (ctx, { memoryId }) => {
     const meta = await ctx.runQuery(internal.knowledge.knowledge.getMemoryForReindex, { memoryId })
     if (!meta) {
       await ctx.runMutation(internal.knowledge.knowledge.purgeKnowledgeSource, {
@@ -809,7 +785,6 @@ export const reindexMemoryInternal = internalAction({
       eventAt: meta.eventAt,
       sourceCount: meta.sourceCount,
       operationId: 'knowledge.reindex-memory',
-      trustedInternal,
     })
   },
 })
@@ -1044,7 +1019,6 @@ export const indexMessageContent = action({
       // No conversation is known here, so nothing is assumed to be shared.
       visibility: 'owner',
       operationId: 'knowledge.index-message-content',
-      trustedInternal,
       reservationNonce: trustedInternal ? args.reservationNonce : undefined,
     })
     return { indexed: result === 'indexed' }

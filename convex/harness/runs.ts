@@ -6,6 +6,7 @@ import { validateServerSecret } from '../lib/auth'
 import { getReadableRow } from '../lib/resourceScope'
 import { assertNativeThreadWritable } from '../lib/nativeThreadCompatibility'
 import { projectNativePersonalProgress } from '../lib/nativePersonalProgress'
+import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snapshot'
 import { readActivePublicStreams } from '../lib/publicStreamRead'
 import { isHarnessDeliveryConversation, validateNativeHarnessDelivery } from './nativeDelivery'
 import {
@@ -68,7 +69,6 @@ const MAX_HARNESS_DEPTH = 32
 const MAX_OPERATION_JSON_BYTES = 256 * 1024
 const MAX_PLAN_JSON_BYTES = 512 * 1024
 const MAX_WAIT_REQUESTS = 128
-const MAX_TRANSCRIPT_STEP_JSON_BYTES = 256 * 1024
 
 const waitRequestValidator = v.union(
   v.object({
@@ -1702,14 +1702,13 @@ export const writeTranscriptStep = mutation({
       || !args.runId.trim() || args.runId.length > MAX_ID_LENGTH
       || !args.workflowRunId.trim() || args.workflowRunId.length > MAX_ID_LENGTH
       || !sequenceMatch || !Number.isSafeInteger(Number(sequenceMatch[1])) || !Number.isSafeInteger(args.stepNumber) || args.stepNumber < 0
-      || args.persistence.content.length > 160_000 || args.persistence.parts.length > 81
       || args.persistence.parts.some(part => !part || typeof part !== 'object' || part.type === 'reasoning')) {
       throw new Error('Invalid harness transcript step.')
     }
-    const persistenceJson = stableJson(args.persistence as HarnessTranscriptPersistence)
-    if (new TextEncoder().encode(persistenceJson).byteLength > MAX_TRANSCRIPT_STEP_JSON_BYTES) {
-      throw new Error('Harness transcript step exceeds its storage limit.')
-    }
+    // A large step is never refused: the stored row keeps a shortened copy that fits
+    // Convex's document limit, and the full step lives in file storage when uploaded.
+    // Compaction is idempotent, so a replayed write still matches the stored row.
+    const persistenceJson = stableJson(compactTranscriptSnapshot(args.persistence as HarnessTranscriptPersistence))
     const run = await findRun(ctx, args.runId)
     if (!run || run.actorUserId !== args.actorUserId) throw new Error('HARNESS_TRANSCRIPT_ACCESS_DENIED')
     const lineage = await loadLineage(ctx, run, args.actorUserId, args.serverSecret)

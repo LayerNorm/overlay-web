@@ -57,32 +57,6 @@ export function buildHarnessStepInstructions(state: HarnessSnapshot, context: Ha
       : '')
 }
 
-function safeFailedEvidenceSummary(state: HarnessSnapshot): string {
-  const failed = state.evidence
-    .filter(evidence => evidence.kind === 'tool_result' && evidence.verdict === 'failed')
-    .slice(-3)
-    .map(evidence => {
-      const summary = evidence.summary
-        .replace(/\b(?:authorization|bearer|cookie|password|secret|token|api[_ -]?key)\b(?:\s*[:=]\s*|\s+(?:is\s+)?)(?:"[^"]*"|'[^']*'|\S+)/gi, '[redacted]')
-        .replace(/\bbearer\s+\S+/gi, 'Bearer [redacted]')
-        .replace(/\b(?:sk|pk|rk|api)[-_][A-Za-z0-9_-]{10,}\b/gi, '[redacted]')
-        .replace(/\b[A-Za-z0-9+/_=-]{32,}\b/g, '[redacted]')
-        .replace(/https?:\/\/\S+/gi, '[URL]')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, 180)
-      const id = evidence.id.replace(/[^A-Za-z0-9:_-]/g, '').slice(0, 120)
-      const source = evidence.source.replace(/[^A-Za-z0-9_.:-]/g, '').slice(0, 80)
-      return `${id || 'tool result'} (${source || 'tool'}): ${summary || 'failed tool result'}`
-    })
-  return failed.join('; ')
-}
-
-export function buildHarnessStuckQuestion(state: HarnessSnapshot): string {
-  const evidence = safeFailedEvidenceSummary(state)
-  return `I'm stuck on this task and need your help to continue. What should I try next?${evidence ? ` Most recent errors: ${evidence}` : ''}`
-}
-
 export function buildHarnessWorkingContext(state: HarnessSnapshot): string {
   const authoritativeCheckpoint = buildHarnessCheckpoint(state)
   const evidenceById = new Map(state.evidence.map(evidence => [evidence.id, evidence]))

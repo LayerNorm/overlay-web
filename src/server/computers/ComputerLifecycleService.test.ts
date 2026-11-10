@@ -62,6 +62,58 @@ test('idle reconciliation pauses a provisioned Computer while retaining its row 
   assert.equal(fixture.instances[0]?.deletes, 0)
 })
 
+test('a Computer in use past its session window is not stopped by session expiry', async () => {
+  const fixture = lifecycleFixture()
+  const computer = await fixture.service.provision({
+    actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1', size: 'default',
+  })
+  const leaseId = `computer:${computer.id}`
+  const later = now + 2 * 60 * 60_000 + 1
+  fixture.setNow(later)
+  await fixture.repository.update(computer.id, { lastActiveAt: later - 60_000 })
+  const lease = fixture.leaseRows.get(leaseId)!
+  assert.equal(lease.reservedUntil < later, true)
+
+  const result = await fixture.service.handleLease(lease, 'idle_check')
+
+  assert.equal(result.reason, 'computer_not_idle')
+  assert.equal(fixture.leaseRows.get(leaseId)?.status, 'running')
+  assert.equal(fixture.instances[0]?.stops, 0)
+})
+
+test('a Computer with a live run past its session window keeps running', async () => {
+  const fixture = lifecycleFixture()
+  const computer = await fixture.service.provision({
+    actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1', size: 'default',
+  })
+  const leaseId = `computer:${computer.id}`
+  fixture.setNow(now + 10 * 60 * 60_000)
+  ;(fixture.leases as { computerHasActiveRuns?: () => Promise<boolean> }).computerHasActiveRuns = async () => true
+
+  const result = await fixture.service.handleLease(fixture.leaseRows.get(leaseId)!, 'idle_check')
+
+  assert.equal(result.reason, 'computer_has_live_run')
+  assert.equal(fixture.leaseRows.get(leaseId)?.status, 'running')
+  assert.equal(fixture.instances[0]?.stops, 0)
+})
+
+test('an idle Computer past its session window still stops through the idle path', async () => {
+  const fixture = lifecycleFixture()
+  const computer = await fixture.service.provision({
+    actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1', size: 'default',
+  })
+  const leaseId = `computer:${computer.id}`
+  fixture.setNow(now + 2 * 60 * 60_000 + 1)
+
+  const result = await fixture.service.handleLease(fixture.leaseRows.get(leaseId)!, 'idle_check')
+
+  assert.equal(result.outcome, 'killed')
+  assert.equal(result.reason, 'idle_check')
+  assert.equal(fixture.leaseRows.get(leaseId)?.status, 'paused')
+  assert.equal(fixture.instances[0]?.stops, 1)
+  assert.equal(fixture.instances[0]?.deletes, 0)
+})
+
 test('an owner-claim response lost before requestedAt retries only after its provision claim expires', async () => {
   const fixture = lifecycleFixture({ failAfterLeaseCreateOnce: true })
   const args = { actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user' as const, ownerId: 'user-1', size: 'default' as const }

@@ -11,7 +11,7 @@ import { applyHarnessOperation, readHarnessState, type HarnessExecutionReference
 import { readHarnessModelLimits } from './model-preparation'
 import { HarnessYield } from './model-recovery'
 import { waitForHarnessModelRecovery } from './model-recovery'
-import type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
+import { DEFAULT_MAX_OUTPUT_TOKENS, type HarnessModelPurpose, type PreparedHarnessModel } from './model-port-types'
 
 type ModelStep = Parameters<HarnessExecutionPorts['recordModelStep']>[0]
 
@@ -147,7 +147,7 @@ async function invokeSummary(
   modelId: string,
   limits: Awaited<ReturnType<typeof readHarnessModelLimits>>,
 ): Promise<string> {
-  const maxOutputTokens = Math.min(limits.maxOutputTokens ?? 8_192, attempt.targetSummaryTokens + 2_048)
+  const maxOutputTokens = Math.min(limits.maxOutputTokens ?? DEFAULT_MAX_OUTPUT_TOKENS, attempt.targetSummaryTokens + 2_048)
   const instructions = harnessSummaryInstructions(attempt.targetSummaryTokens)
   const prepared = await dependencies.prepare({
     modelId,

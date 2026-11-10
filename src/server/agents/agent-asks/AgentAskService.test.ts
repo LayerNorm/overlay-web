@@ -12,7 +12,7 @@ const agent = (id: string, name: string, extra: Partial<WorkspaceAgentDirectoryI
 
 type Row = Record<string, unknown> & { _id: string; turnId: string }
 
-function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; recorded?: Array<{ conversationId: string; turnId: string }>; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown> } = {}) {
+function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row | null; replyAfterPolls?: number; replyStatus?: 'completed' | 'error' | 'generating'; startFails?: boolean; roomParticipants?: string[]; replyTokens?: number; claimDenied?: 'budget' | 'turn_limit'; callerRun?: Record<string, unknown> } = {}) {
   const agents = options.agents ?? [agent('scout', 'Scout'), agent('planner', 'Planner'), agent('writer', 'Writer')]
   const trigger: Row | null = options.trigger === undefined
     ? { _id: 'm1', turnId: 'human-turn-1', authorKind: 'human', content: 'hi', role: 'user', mode: 'act', contentType: 'text', createdAt: 0 } as Row
@@ -21,7 +21,6 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
   const started: Array<Record<string, unknown>> = []
   const claims: Array<Record<string, unknown>> = []
   const releases: Array<Record<string, unknown>> = []
-  const recordedReplies: Array<Record<string, unknown>> = []
   const personMessages: Array<Record<string, unknown>> = []
   const callerLookups: Array<Record<string, unknown>> = []
   let polls = 0
@@ -44,8 +43,6 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
       },
     },
     claimBudget: async (args) => { claims.push(args); if (options.claimDenied) return { ok: false, reason: options.claimDenied }; return claims.length > MAX_AGENT_ASKS_PER_ROOT ? { ok: false, reason: 'budget' } : { ok: true } },
-    recordReply: async (args) => { recordedReplies.push(args) },
-    listReplies: async () => options.recorded ?? [],
     releaseBudget: async (args) => { releases.push(args) },
     startTurns: async (args) => { if (options.startFails) throw new Error('boom'); started.push(args); return [{ agentId: 'planner', turnId: 'agent_q1_planner' }] },
     sleep: async (ms) => { clock += ms },
@@ -62,7 +59,7 @@ function setup(options: { agents?: WorkspaceAgentDirectoryItem[]; trigger?: Row 
     caller: { agentId: 'scout', conversationId: 'c1', turnId: 'agent_m1_scout' },
     conversationId: 'channel-1', text: 'Update for the room', mentions: [], ...overrides,
   } as never)
-  return { service, ask, post, posted, started, claims, releases, recordedReplies, personMessages, callerLookups }
+  return { service, ask, post, posted, started, claims, releases, personMessages, callerLookups }
 }
 
 test('an agent asks another by name; the question is posted by the asking agent with its lineage and the answer comes back', async () => {
@@ -123,7 +120,7 @@ test('an agent cannot ask itself, an agent already in the chain, or someone the 
 })
 
 test('the chain stops at the hop limit, and a refusal spends nothing', async () => {
-  const deep = setup({ trigger: { _id: 'm1', turnId: 'ask-9', authorKind: 'agent', parts: [agentLineagePart({ rootTurnId: 'r', hop: 3, chain: ['a', 'b', 'c', 'scout'], askedByAgentId: 'c' })] } as Row })
+  const deep = setup({ trigger: { _id: 'm1', turnId: 'ask-9', authorKind: 'agent', parts: [agentLineagePart({ rootTurnId: 'r', hop: 10, chain: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'scout'], askedByAgentId: 'j' })] } as Row })
   await assert.rejects(deep.ask(), (error: AgentAskError) => error.code === 'ask_hop_limit')
   assert.equal(deep.claims.length, 0)
   assert.equal(deep.posted.length, 0)
@@ -174,7 +171,6 @@ test('an agent posts into a conversation it is part of; mentioned agents answer 
   assert.deepEqual(lineage.chain, ['scout', 'planner'])
   assert.deepEqual(room.started[0]!.mentionedPrincipalIds, ['p-planner'])
   assert.equal(room.claims.length, 2, 'one post and one question were taken from the budgets')
-  assert.equal(room.recordedReplies.length, 1)
 
   const plain = setup()
   await plain.post()
@@ -189,17 +185,12 @@ test('posting is refused outside the person\'s reach: a personal chat, an unseen
   assert.equal((await code(setup({ roomParticipants: ['p-planner', 'human-1'] }).post()))?.code, 'not_in_conversation')
   assert.equal((await code(setup({ roomParticipants: ['p-scout', 'human-1'] }).post({ mentions: ['Planner'] })))?.code, 'agent_not_in_conversation')
   assert.equal((await code(setup().post({ mentions: ['scout'] })))?.code, 'ask_self')
-  assert.equal((await code(setup().post({ mentions: ['Planner', 'Writer', 'Scout', 'Extra'] })))?.code, 'too_many_mentions')
+  assert.equal((await code(setup().post({ mentions: Array.from({ length: 21 }, (_, i) => `Agent ${i}`) })))?.code, 'too_many_mentions')
 })
 
-test('a chain that has used its token budget cannot ask again, and a refusal posts nothing', async () => {
-  const spent = setup({ recorded: [{ conversationId: 'room-1', turnId: 'agent_q1_planner' }], replyTokens: 600_000 })
-  await assert.rejects(spent.ask(), (error: AgentAskError) => error.code === 'ask_spend')
-  assert.equal(spent.posted.length, 0)
-  assert.equal(spent.claims.length, 0)
-
-  const fine = setup({ recorded: [{ conversationId: 'room-1', turnId: 'agent_q1_planner' }], replyTokens: 1_000 })
-  assert.equal((await fine.ask()).status, 'completed')
+test('a chain whose replies used many tokens can still ask: the workspace budget is the only spending limit', async () => {
+  const busy = setup({ replyTokens: 5_000_000 })
+  assert.equal((await busy.ask()).status, 'completed')
 })
 
 test('an outside app asks an agent as the person: their own message, a fresh chain, limited per hour and per day', async () => {
