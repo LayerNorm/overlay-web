@@ -25,6 +25,7 @@ import {
 } from 'lucide-react'
 import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { RemoteRunDeadline } from './RemoteRunDeadline'
+import { AgentResponsePending } from './AgentResponsePending'
 import { usePublicTrace } from '../chat/usePublicTrace'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
@@ -741,6 +742,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview, onContro
     blocks: message.blocks, terminalState: message.generationError ? 'error' : 'completed' })
   return (
     <>
+      <AgentResponsePending key={message.id} message={message} />
       {message.askedBy ? (
         <p className="mb-1 text-[11px] text-(--muted)">
           Agent question · step {message.askedBy.hop}

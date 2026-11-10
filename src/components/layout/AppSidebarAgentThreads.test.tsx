@@ -106,7 +106,7 @@ test('single-line titles have accessible live status icons without status subtit
   }
 })
 
-test('threads without activity render text without an empty status icon slot', () => {
+test('threads without activity retain alignment without showing a status icon', () => {
   for (const activity of [undefined, [], [{ conversationId: 'c_plan', status: 'idle' as const }],
     // A reviewed result reads as an ordinary thread.
     [{ conversationId: 'c_plan', status: 'completed' as const }]]) {
@@ -114,7 +114,19 @@ test('threads without activity render text without an empty status icon slot', (
     assert.match(html, /Q4 launch plan/)
     assert.match(html, /agent-thread-tree/)
     assert.doesNotMatch(html, /agent-thread-status/)
+    assert.match(html, /agent-thread-icon/)
   }
+})
+
+test('thread pull requests expose lifecycle icons without stealing the thread action', () => {
+  const html = render({ ...bundle, threads: [{ ...bundle.threads[0]!, pullRequests: [
+    { owner: 'LayerNorm', repo: 'overlay-web', number: 12, title: 'UI', url: 'https://github.com/LayerNorm/overlay-web/pull/12', state: 'draft', observedAt: 1 },
+    { owner: 'LayerNorm', repo: 'overlay-web', number: 13, title: 'Fix', url: 'https://github.com/LayerNorm/overlay-web/pull/13', state: 'merged', observedAt: 1 },
+  ] }] })
+  assert.match(html, /Pull requests: 1 draft, 1 merged/)
+  assert.match(html, /lucide-git-pull-request-draft/)
+  assert.match(html, /lucide-git-merge/)
+  assert.equal(html.match(/aria-label="Archive thread"/g)?.length, 1)
 })
 
 test('agent subtitles retain working and ready counts and preserve the chief fallback', () => {

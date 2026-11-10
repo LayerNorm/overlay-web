@@ -4,6 +4,7 @@ import type { ComponentProps } from 'react'
 import { Archive, Trash2, Workflow } from 'lucide-react'
 import type { WorkspaceAgentBundle, WorkspaceAgentDirectoryItem } from '@overlay/workspace-contracts'
 import { ThreadActivityIndicator } from './sidebar/ThreadActivityIndicator'
+import { ThreadPullRequests } from './sidebar/ThreadPullRequests'
 import { hasThreadActivity, THREAD_ACTIVITY_LABELS, type ThreadActivity } from '@/shared/agents/thread-activity'
 import {
   SidebarMenuAction,
@@ -69,18 +70,21 @@ export function AgentThreadRows({
         const raw = statuses.get(thread.conversationId)
         const status = raw === 'idle' || raw === 'completed' ? undefined : raw
         return (
-          <SidebarMenuSubItem key={thread.conversationId}>
+          <SidebarMenuSubItem key={thread.conversationId} className="flex items-center">
             <ThreadButton
               isActive={active}
               aria-current={active ? 'page' : undefined}
               aria-label={status ? `${thread.title}, ${THREAD_ACTIVITY_LABELS[status]}` : thread.title}
               title={status ? `${thread.title} · ${THREAD_ACTIVITY_LABELS[status]}` : thread.title}
               onClick={() => onOpenThread(agent, thread.conversationId)}
-              className="agent-thread-button gap-[7px] pr-14"
+              className={`agent-thread-button min-w-0 flex-1 gap-[7px] ${thread.pullRequests?.length ? 'pr-1' : 'pr-14'}`}
             >
-              <ThreadActivityIndicator status={status} />
+              <span className="agent-thread-icon"><ThreadActivityIndicator status={status} /></span>
               <span className="flex-1 truncate">{thread.title}</span>
             </ThreadButton>
+            {thread.pullRequests?.length ? <div className="mr-14 shrink-0 md:mr-1 md:group-hover/menu-sub-item:mr-14 md:group-focus-within/menu-sub-item:mr-14">
+              <ThreadPullRequests pullRequests={thread.pullRequests} />
+            </div> : null}
             <SidebarMenuAction
               aria-label="Archive thread"
               title="Archive thread"
@@ -119,7 +123,7 @@ export function AgentThreadRows({
                 else onOpenAutomation(automation.automationId)
               }}
             >
-              <Workflow aria-hidden />
+              <span className="agent-thread-icon"><Workflow size={14} aria-hidden /></span>
               <span className="flex-1 truncate">{automation.name}</span>
               {!automation.enabled ? <span className="text-[10px] text-(--muted-light)">Paused</span> : null}
             </ThreadButton>
