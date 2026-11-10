@@ -72,6 +72,8 @@ Each replay updates only the last two-message exchange using native public-strea
 
 ### Interpretation
 
+Typing samples accept a retained typed prefix when later characters share the same frame. The runner waits for every frame callback and still rejects removed/replaced text, detached editors, inactive streams and missing observations. Exact whole-input equality would discard slow coalesced keystrokes and bias the result. Frame callbacks remain a presentation proxy, not an exact paint timestamp.
+
 DOM visibility and frame callbacks are proxies, not proof of painted pixels. Composer observation includes automation/polling overhead. LCP-at-readiness is not final field LCP. A >34 ms interval is a hitch interval, not a count of dropped frames. Thread switches use the runner clock for both click and observation. Route prefetch may warm code even on a first thread visit, so cold means first application visit to B, not guaranteed cold HTTP/CDN caches.
 
 Live-model typing is exploratory, not a deterministic regression gate. The fixed public-stream workload removes provider variance, but measured runner variance must still precede blocking timing gates. Render ratios describe the combined typing/streaming window; a separate stream-only test is needed to establish unrelated-render causation. Missing streaming observations, failed switches (including the intermediate A switch) and insufficient history invalidate the entire scenario, not just individual samples.

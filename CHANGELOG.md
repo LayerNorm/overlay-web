@@ -6,6 +6,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 - Add an opt-in, Preview-only completed code-block fixture for first-use syntax-highlighting checks, without model execution or changes to existing histories.
 - Load the syntax-highlighting engine only when a supported code block needs it, instead of including it in the initial app JavaScript. Keep code readable while highlighting loads and preserve streamed highlighting state.
+- Performance measurements retain slow keystrokes that share a browser frame during streaming, rather than rejecting them when another character arrives before the frame is observed.
 ||||||| f8ea73ed7
 - Keep the Work composer controls on one row in narrow panels, with compact assignee, schedule and dependency icons, accessible labels, tooltips and count badges.
 
@@ -26,6 +27,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 - Clear a failed or cancelled agent thread's red icon and "failed" count once you open it, the same way a reviewed completion loses its green check. Threads that need your input keep their indicator until answered.
 - Turn on a computer by default when creating an agent in a workspace that has computers, so new agents can use a desktop without an extra step. The toggle still lets you create one without it.
 - Show your first message in a new chat as soon as you press Enter. It used to stay hidden until the server finished creating the conversation.
+- Reuse canonical workspace handles already resolved by the live authorized directory, avoiding a second lookup when opening or navigating that workspace. Aliases and unverified handles still use the membership-checked resolver.
 - Standardize the approved Overlay wordmark and icon across loading, sidebar, email and metadata. The loader fades in the brand, then changes from the tagline to the workspace status with animated eyes. Nested streaming fallbacks keep the brand settled instead of replaying its entrance.
 - Add activity-only sidebar filters for chats, channels, agents and their threads, preserving ordinary rows and using the simple "No activity yet" empty state. Remove the redundant Activity dropdown in favor of the bell.
 - Add a Help menu with hover, touch and keyboard access to Docs and a bug-report dialog. Signed-in users can send a description and up to 5 MB of attachments to GitHub, with a Resend notification to the configured owner.
