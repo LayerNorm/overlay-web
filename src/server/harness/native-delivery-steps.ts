@@ -86,12 +86,12 @@ export async function projectNativeHarnessWait(
   if (result !== 'projected') return result
   try {
     const repository = new ConvexHarnessRepository()
-    if (state.runId !== state.rootRunId) return result
+    if (state.runId !== state.rootRunId || state.parentRunId) return result
     const execution = await repository.getSurfaceExecutionByHarnessRunId(state.rootRunId)
     if (!execution?.placeholderTs || execution.agentRunId !== access.agentRunId
       || execution.assistantMessageId !== access.assistantMessageId
       || execution.workflowRunId !== state.workflowRunId || run.workflowRunId !== execution.workflowRunId) return result
-    const { source, run: sourceRun } = await assertPersistedSurfaceSource(execution, state.workflowRunId)
+    const { run: sourceRun } = await assertPersistedSurfaceSource(execution, state.workflowRunId)
     if (sourceRun.id !== run.id || sourceRun.assistantMessageId !== execution.assistantMessageId) return result
     if ('wait' in projection) {
       const expected = projection.wait.kind === 'input' ? 'waiting_for_input' : 'waiting_for_approval'
@@ -115,7 +115,6 @@ export async function projectNativeHarnessWait(
       channelId: execution.channelId,
       threadTs: execution.threadId || undefined,
       text,
-      agentName: source.agent.name,
       editTs: execution.placeholderTs,
     }).catch((_error) => ({ posted: false }))
   } catch (_error) {

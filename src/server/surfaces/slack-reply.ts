@@ -40,7 +40,6 @@ export async function slackReplyPayload(markdown: string): Promise<{ markdown_te
  * `adapter.webClient` cannot resolve a token, so the token is pulled from the
  * Chat SDK state adapter and scoped via `withBotToken`.
  *
- * `username` gives the agent its own display name (chat:write.customize).
  * Returns the posted/edited message ts, or null when nothing was sent.
  */
 export async function postSlackAgentMessage(args: {
@@ -49,7 +48,6 @@ export async function postSlackAgentMessage(args: {
   channelId: string
   threadTs?: string
   text: string
-  agentName: string
   /** When set, edit this existing message instead of posting a new one. */
   editTs?: string
 }): Promise<{ ts?: string; posted: boolean }> {
@@ -83,7 +81,6 @@ export async function postSlackAgentMessage(args: {
           channel: args.channelId,
           ...(args.threadTs ? { thread_ts: args.threadTs } : {}),
           ...body,
-          username: args.agentName,
           unfurl_links: false,
           unfurl_media: false,
         } as Parameters<typeof args.adapter.webClient.chat.postMessage>[0])

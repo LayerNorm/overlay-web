@@ -51,7 +51,6 @@ oauth_config:
       - users:read.email        # exposes message.author.email → importedAuthorEmail
       # outbound
       - chat:write
-      - chat:write.customize    # post as the agent's own name/avatar (Scout, not "Overlay App")
       - reactions:write
       - im:write                # open DM threads with users
       # agent experience (agent_view)
@@ -91,9 +90,11 @@ settings:
   indicator, native stop button, session titles. New Slack apps can only use
   `agent_view` (legacy `assistant_view` deprecated Aug 2026). Enabled on the
   adapter via `createSlackAdapter({ agentView: true })`.
-- **`chat:write.customize`** — required for per-agent `username`/`icon_url` on
-  `chat.postMessage`; this is how different Overlay agents appear as
-  themselves in one workspace.
+- **Bot identity** — all replies use the installed Overlay bot's name and icon;
+  no per-agent `username`, `icon_url` or `icon_emoji` overrides are sent.
+  `chat:write.customize` is no longer requested. Existing installs do not need
+  to reauthorize for this scope reduction; previously granted tokens may retain
+  it, but Overlay no longer uses it.
 - **`app_uninstalled` / `tokens_revoked`** — handled by the webhook route
   directly (the Chat SDK doesn't dispatch them). `app_uninstalled` marks the
   connection `uninstalled`; a `tokens_revoked` carrying bot tokens marks it

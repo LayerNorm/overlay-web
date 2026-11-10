@@ -131,8 +131,11 @@ async function postNativeSurfaceResultStep(input: {
       || current.workflowRunId !== input.workflowRunId
       || current.agentRunId !== input.execution.agentRunId
       || current.assistantMessageId !== input.execution.assistantMessageId) return { status: 'not_attempted' as const }
-    const { source, run } = await assertPersistedSurfaceSource(current, input.workflowRunId)
+    const { run } = await assertPersistedSurfaceSource(current, input.workflowRunId)
     const state = await repository.get({ actorUserId: current.actorUserId, runId: current.harnessRunId })
+    if (state && (state.runId !== current.harnessRunId || state.rootRunId !== state.runId || state.parentRunId)) {
+      return { status: 'not_attempted' as const }
+    }
     const ownedTerminal = state?.workflowRunId === current.workflowRunId && state?.status === input.status
     const unstartedFailure = input.status === 'failed' && !run.startedAt
       && (!state || (!state.workflowRunId && state.status === 'failed'))
@@ -161,7 +164,6 @@ async function postNativeSurfaceResultStep(input: {
       channelId: current.channelId,
       threadTs: current.threadId || undefined,
       text,
-      agentName: source.agent.name,
       editTs: current.placeholderTs,
     })
     return { status: result.posted ? 'posted' as const : 'failed' as const }

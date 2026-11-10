@@ -2,6 +2,8 @@
 
 ## Chief of Staff harness
 
+- [ ] **Additional Slack audiences** — support DMs to Overlay, private channels and Slack Connect (shared) channels with explicit identity and audience policies. These are intentionally disabled in Phase 4.
+
 - [ ] **Specialist-to-specialist communication** (added 2026-11-09). Today specialists only talk to the Chief through their assignment result (reply, blocker, failure); they cannot message each other. Design a permissioned way for one assignment to consult another (shared parent only, same requester authority, inherited shared-room restrictions, hop limit) without creating a second orchestration path. Depends on the specialist-to-Chief event path landing first.
 
 ## Work recurrence

@@ -127,7 +127,6 @@ async function handleInboundSlackMessage(args: {
     channelId,
     threadTs: threadTs || undefined,
     text: WORKING_PLACEHOLDER,
-    agentName: agent.name,
   })
 
   const input: SurfaceAgentTurnInput = {
@@ -184,7 +183,6 @@ async function handleInboundSlackMessage(args: {
         teamId,
         channelId,
         text: 'Sorry — I could not start a run for that. Please try again.',
-        agentName: agent.name,
         editTs: placeholder.ts,
       }).catch((_error) => undefined)
     }

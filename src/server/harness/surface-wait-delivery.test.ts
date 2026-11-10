@@ -127,7 +127,6 @@ test('root input wait edits the immutable placeholder with safe Overlay-only ins
     teamId: 'team',
     channelId: 'channel',
     threadTs: 'thread',
-    agentName: 'Bound agent display name',
     editTs: 'original-placeholder',
   }))
   const text = mocks.post.mock.calls[0][0].text as string
@@ -155,5 +154,12 @@ test('revoked source and child waits never send a Slack notification', async () 
 test('ordinary native waits without a surface source remain local to Overlay', async () => {
   mocks.surfaceExecution.mockResolvedValueOnce(null)
   expect(await projectNativeHarnessWait(access, { status: 'running' })).toBe('projected')
+  expect(mocks.post).not.toHaveBeenCalled()
+})
+
+test('a child with an inconsistent root identity still cannot project to Slack', async () => {
+  mocks.get.mockResolvedValueOnce({ ...state, parentRunId: 'workspace:parent' })
+  expect(await projectNativeHarnessWait(access, { status: 'running' })).toBe('projected')
+  expect(mocks.assertSource).not.toHaveBeenCalled()
   expect(mocks.post).not.toHaveBeenCalled()
 })

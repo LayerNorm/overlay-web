@@ -223,7 +223,6 @@ test('surface turn directly invokes native workflow under the immutable root own
   expect(mocks.postMessage).toHaveBeenCalledWith(expect.objectContaining({
     editTs: 'original-placeholder',
     text: 'persisted native reply',
-    agentName: 'Current Agent',
   }))
 })
 
@@ -288,6 +287,18 @@ test('revoked source prevents terminal delivery without changing task outcome', 
   const result = await surfaceAgentTurnWorkflow(input)
   expect(result).toEqual({ status: 'completed', deliveryStatus: 'not_attempted' })
   expect(mocks.nativeWorkflow).toHaveBeenCalledOnce()
+  expect(mocks.postMessage).not.toHaveBeenCalled()
+})
+
+test.each([
+  { rootRunId: 'workspace:parent', parentRunId: 'workspace:parent' },
+  { rootRunId: 'workspace:parent' },
+  { parentRunId: 'workspace:parent' },
+])('child terminal result never delivers to Slack: %j', async (lineage) => {
+  mocks.getState.mockImplementation(async () => mocks.stateExists ? { ...state(), ...lineage } : null)
+  await expect(surfaceAgentTurnWorkflow(input)).resolves.toEqual({
+    status: 'completed', deliveryStatus: 'not_attempted',
+  })
   expect(mocks.postMessage).not.toHaveBeenCalled()
 })
 
