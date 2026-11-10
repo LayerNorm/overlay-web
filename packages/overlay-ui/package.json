@@ -30,7 +30,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --test --experimental-strip-types src/*.test.mjs src/**/*.test.mjs && node --import tsx --test src/components/**/*.test.tsx",
+    "test": "node --test --experimental-strip-types src/*.test.mjs src/**/*.test.mjs && node --import tsx --test src/components/**/*.test.tsx src/lib/*.test.tsx",
     "storybook": "storybook dev -p 6006",
     "storybook:build": "storybook build"
   },
