@@ -534,3 +534,15 @@ html[data-desktop="mac"] aside[aria-label="Sidebar"]::before { content: ''; posi
 html[data-desktop] [data-desktop-drag], html[data-desktop] .app-main header { -webkit-app-region: drag; }
 html[data-desktop] :is(button, input, textarea, select, a, [role="button"]) { -webkit-app-region: no-drag; }
 html:has([data-desktop-panel]), html:has([data-desktop-panel]) body, html:has([data-desktop-panel]) [data-app-shell] { background: transparent; }
+
+/* Skip layout and paint for off-screen room messages in long transcripts.
+   Hovered, focused or popover-owning rows stay uncontained so their floating
+   toolbar and anchored pickers are not clipped by paint containment. */
+[data-room-message] {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 6rem;
+}
+
+[data-room-message]:is(:hover, :focus-within, :has([role='dialog'])) {
+  content-visibility: visible;
+}
