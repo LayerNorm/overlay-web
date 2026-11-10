@@ -1,24 +1,10 @@
 import { harnessDiagnosticMessage, type HarnessDiagnostic } from './harness-diagnostic'
-import { isSafeHarnessFundingCents, type HarnessResourceGrantReceipt } from './harness-resource'
 
 export type HarnessStatus = 'running' | 'waiting_for_input' | 'waiting_for_approval' | 'waiting_for_children' | 'waiting_for_resources' | 'waiting_for_authorization' | 'completed' | 'cancelled' | 'failed'
 export type HarnessAuthorizationPause = {
   reason: 'task_deadline_expired'
   deadlineAt: number
   pausedAt: number
-}
-export type HarnessFundingPauseReason =
-  | 'disabled' | 'pending' | 'payment_failed' | 'monthly_limit_reached' | 'missing_payment_method'
-  | 'missing_consent' | 'amount_shortfall' | 'not_paid' | 'authorization_changed' | 'insufficient_budget'
-  | 'task_deadline_expired' | 'unknown_receipt'
-
-export type HarnessFundingPause = {
-  reason: HarnessFundingPauseReason
-  requiredCents: number
-  availableCents: number
-  reservedCents?: number
-  receiptId: string
-  autoTopUpReason?: string
 }
 export type HarnessStepStatus = 'pending' | 'running' | 'blocked' | 'verifying' | 'done' | 'skipped'
 
@@ -112,14 +98,13 @@ export type HarnessPolicy = {
   publicStreamVersion?: 1
   actorUserId: string
   workspaceId?: string
-  resourcePauseVersion?: 1
   executionPolicyVersion?: 2
   spendingMode?: 'workspace' | 'external' | 'none'
   allowedToolIds: string[]
   requiresPlan: boolean
   deadlineAt: number
   taskDeadlineAt?: number
-  /** Bounds Overlay-funded inference, not spending on user-owned provider accounts. */
+  /** Always 0. Kept because stored runs carry it; the workspace budget is the only spending limit. */
   maxCostMicros: number
   maxParallelChildren: number
   maxDepth: number
@@ -167,9 +152,6 @@ export type HarnessSnapshot = {
   policy: HarnessPolicy
   status: HarnessStatus
   revision: number
-  policyRevision?: number
-  resourceRequestToken?: string
-  resourcePause?: HarnessFundingPause
   authorizationPause?: HarnessAuthorizationPause
   progressRevision: number
   planRevision: number
@@ -212,13 +194,6 @@ export class HarnessPlanValidationError extends Error {
   }
 }
 
-export class HarnessBudgetExceededError extends Error {
-  constructor() {
-    super('The authorized spending budget is exhausted.')
-    this.name = 'HarnessBudgetExceededError'
-  }
-}
-
 export class HarnessDeadlineExceededError extends Error {
   constructor(message = 'The authorized run deadline is exhausted.') {
     super(message)
@@ -252,8 +227,7 @@ function validateHarnessSnapshotDeadlines(input: HarnessSnapshotInput, now: numb
 function validateHarnessSnapshotExecutionPolicy(policy: HarnessPolicy): void {
   if ((policy.executionPolicyVersion === 2
       && (!policy.spendingMode || policy.maxCostMicros !== 0
-        || (policy.spendingMode === 'workspace' && !policy.workspaceId)
-        || policy.resourcePauseVersion === 1))
+        || (policy.spendingMode === 'workspace' && !policy.workspaceId)))
     || (policy.executionPolicyVersion !== 2 && policy.spendingMode !== undefined)) {
     throw new Error('Invalid versioned execution policy.')
   }
@@ -277,7 +251,7 @@ export function createHarnessSnapshot(input: HarnessSnapshotInput, now: number):
     ...(input.parentRunId ? { parentRunId: input.parentRunId } : {}), depth,
     goal: input.goal, constraints: [...input.constraints],
     policy: { ...input.policy, allowedToolIds: [...new Set(input.policy.allowedToolIds)].sort() },
-    status: 'running', revision: 0, ...(input.policy.resourcePauseVersion === 1 ? { policyRevision: 0 } : {}),
+    status: 'running', revision: 0,
     executionGeneration: 0,
     progressRevision: 0, planRevision: 0, plan: [], evidence: [], children: [], workingSummary: '',
     continuations: 0, lastContinuationProgressRevision: 0, stalledContinuations: 0,
@@ -679,11 +653,6 @@ function validateHarnessChildAdmission(state: HarnessSnapshot, child: HarnessChi
   const active = state.children.filter(candidate => candidate.status === 'running')
   if (active.length >= state.policy.maxParallelChildren) throw new Error('The child concurrency budget is exhausted.')
   if (child.allowedToolIds.some(id => !state.policy.allowedToolIds.includes(id))) throw new Error('Child capabilities cannot exceed the parent.')
-  if (!Number.isSafeInteger(child.maxCostMicros) || child.maxCostMicros < 0
-    || (state.policy.executionPolicyVersion !== 2
-      && state.usage.costMicros + reservedHarnessCostMicros(state) + child.maxCostMicros > state.policy.maxCostMicros)) {
-    throw new Error('The root spending budget cannot cover this child.')
-  }
   if (child.status !== 'running' || child.evidenceRefs.length || child.costMicros !== 0 || child.accountedUsage !== undefined) throw new Error('A new child must be empty and running.')
 }
 
@@ -693,7 +662,7 @@ export function admitHarnessChild(state: HarnessSnapshot, child: HarnessChild, n
   const next = mutable(state)
   next.children.push({
     ...child,
-    ...(state.policy.executionPolicyVersion === 2 ? { maxCostMicros: 0 } : {}),
+    maxCostMicros: 0,
     allowedToolIds: [...child.allowedToolIds],
     evidenceRefs: [...child.evidenceRefs],
   })
@@ -723,11 +692,6 @@ export function admitHarnessNamedChild(
   if (child.allowedToolIds.some(id => !state.policy.allowedToolIds.includes(id))) {
     throw new Error('Child capabilities cannot exceed the parent.')
   }
-  if (!Number.isSafeInteger(child.maxCostMicros) || child.maxCostMicros < 0
-    || (state.policy.executionPolicyVersion !== 2
-      && state.usage.costMicros + reservedHarnessCostMicros(state) + child.maxCostMicros > state.policy.maxCostMicros)) {
-    throw new Error('The root spending budget cannot cover this child.')
-  }
   if (child.status !== 'running' || child.evidenceRefs.length || child.costMicros !== 0 || child.accountedUsage !== undefined) {
     throw new Error('A new child must be empty and running.')
   }
@@ -743,7 +707,7 @@ export function admitHarnessNamedChild(
     childRunId: child.id,
   })
   next.planRevision++
-  next.children.push({ ...child, allowedToolIds: [...child.allowedToolIds], evidenceRefs: [...child.evidenceRefs] })
+  next.children.push({ ...child, maxCostMicros: 0, allowedToolIds: [...child.allowedToolIds], evidenceRefs: [...child.evidenceRefs] })
   return changed(next, now)
 }
 
@@ -761,22 +725,18 @@ export function harnessCompletionIssues(state: HarnessSnapshot): string[] {
   ]
 }
 
-export function reservedHarnessCostMicros(state: HarnessSnapshot): number {
-  return (state.modelReservation?.maxCostMicros ?? 0)
-    + state.children.filter(child => child.status === 'running').reduce((sum, child) => sum
-      + Math.max(0, child.maxCostMicros - child.costMicros), 0)
-}
-
+// Marks the next model call so a bound dispatch is never sent twice. It holds no money:
+// the call is charged its actual cost afterwards, and maxCostMicros is always 0.
 export function reserveHarnessModel(state: HarnessSnapshot, id: string, maxCostMicros: number, now: number): HarnessSnapshot {
   assertActive(state)
-  if (!id.trim() || id.length > 256 || !Number.isSafeInteger(maxCostMicros) || maxCostMicros < 0) throw new Error('Invalid model reservation.')
+  if (!id.trim() || id.length > 256 || maxCostMicros !== 0) throw new Error('Invalid model reservation.')
   if (state.modelReservation) {
-    if (state.modelReservation.id === id && state.modelReservation.maxCostMicros === maxCostMicros) return state
+    if (state.modelReservation.id === id) return state
     throw new Error('Reconcile the previous model call before reserving another.')
   }
-  assertHarnessRunnable(state, now, maxCostMicros)
+  assertHarnessRunnable(state, now)
   const next = mutable(state)
-  next.modelReservation = { id, maxCostMicros }
+  next.modelReservation = { id, maxCostMicros: 0 }
   return changed(next, now, false)
 }
 
@@ -802,25 +762,20 @@ export function bindHarnessModelDispatch(
   return changed(next, now, false)
 }
 
-export function assertHarnessRunnable(state: HarnessSnapshot, now: number, estimatedNextCostMicros = 0) {
+export function assertHarnessRunnable(state: HarnessSnapshot, now: number) {
   assertActive(state)
   if (state.status !== 'running' || state.blocker) throw new Error('The run is waiting for a blocker to resolve.')
   if (now >= state.policy.deadlineAt) throw new HarnessDeadlineExceededError()
   if (state.policy.taskDeadlineAt !== undefined && now >= state.policy.taskDeadlineAt) {
     throw new HarnessDeadlineExceededError('The authorized task deadline is exhausted.')
   }
-  if (!Number.isSafeInteger(estimatedNextCostMicros) || estimatedNextCostMicros < 0) throw new Error('A nonnegative cost reservation is required.')
-  const reserved = reservedHarnessCostMicros(state)
-  if (state.policy.executionPolicyVersion !== 2
-    && state.usage.costMicros + reserved + estimatedNextCostMicros > state.policy.maxCostMicros) {
-    throw new HarnessBudgetExceededError()
-  }
 }
 
 export function blockHarness(state: HarnessSnapshot, blocker: NonNullable<HarnessSnapshot['blocker']>, now: number): HarnessSnapshot {
   assertActive(state)
-  if (state.status === 'waiting_for_resources' || state.resourceRequestToken) {
-    throw new Error('A resource pause must be consumed before the run can be blocked.')
+  // Legacy funding/resource pauses can no longer be resumed; such a run can only be cancelled.
+  if (state.status === 'waiting_for_resources') {
+    throw new Error('A run waiting for resources cannot be blocked.')
   }
   if (!blocker.question.trim() || blocker.question.length > 2_000) throw new Error('A blocker requires a concise question or explanation.')
   const next = mutable(state)
@@ -854,8 +809,8 @@ export function resumeHarness(state: HarnessSnapshot, now: number): HarnessSnaps
   if (state.status === 'waiting_for_authorization' || state.authorizationPause) {
     throw new Error('Expired authorization cannot be resumed by an input or approval reply.')
   }
-  if (state.status === 'waiting_for_resources' || state.resourceRequestToken) {
-    throw new Error('A resource pause must be consumed before the run can resume.')
+  if (state.status === 'waiting_for_resources') {
+    throw new Error('A run waiting for resources cannot resume.')
   }
   if (!state.blocker && state.status !== 'waiting_for_children') throw new Error('There is no blocker to resolve.')
   const next = mutable(state)
@@ -871,120 +826,12 @@ export function pauseHarnessForAuthorization(state: HarnessSnapshot, now: number
   assertActive(state)
   const deadlineAt = state.policy.taskDeadlineAt
   if (state.policy.executionPolicyVersion !== 2 || deadlineAt === undefined || now < deadlineAt
-    || state.status === 'waiting_for_authorization' || state.resourceRequestToken) {
+    || state.status === 'waiting_for_authorization' || state.status === 'waiting_for_resources') {
     throw new Error('Invalid task-deadline authorization pause.')
   }
   const next = mutable(state)
   next.status = 'waiting_for_authorization'
   next.authorizationPause = { reason: 'task_deadline_expired', deadlineAt, pausedAt: now }
-  return changed(next, now, false)
-}
-
-export function pauseHarnessForFunding(
-  state: HarnessSnapshot,
-  pause: HarnessFundingPause,
-  now: number,
-): HarnessSnapshot {
-  assertActive(state)
-  if (state.policy.executionPolicyVersion !== 2 || state.policy.spendingMode !== 'workspace'
-    || state.status !== 'running' || state.modelReservation || state.resourceRequestToken
-    || state.resourcePause || !pause.receiptId.trim()
-    || !isSafeHarnessFundingCents(pause.requiredCents) || pause.requiredCents <= 0
-    || !isSafeHarnessFundingCents(pause.availableCents)
-    || (pause.reservedCents !== undefined
-      && !isSafeHarnessFundingCents(pause.reservedCents))) {
-    throw new Error('Invalid workspace funding pause.')
-  }
-  const next = mutable(state)
-  next.status = 'waiting_for_resources'
-  next.resourcePause = { ...pause }
-  return changed(next, now, false)
-}
-
-export function resumeHarnessFunding(state: HarnessSnapshot, now: number): HarnessSnapshot {
-  assertActive(state)
-  if (state.policy.executionPolicyVersion !== 2 || state.status !== 'waiting_for_resources'
-    || !state.resourcePause || state.resourceRequestToken) {
-    throw new Error('There is no v2 workspace funding pause to resume.')
-  }
-  const next = mutable(state)
-  next.status = 'running'
-  next.resourcePause = undefined
-  return changed(next, now, false)
-}
-
-export function pauseHarnessForResources(state: HarnessSnapshot, token: string, now: number): HarnessSnapshot {
-  assertActive(state)
-  if (state.policy.resourcePauseVersion !== 1) throw new Error('Resource pauses are not enabled for this run.')
-  if (!token.trim() || token.length > 256) throw new Error('A resource pause token is required.')
-  if (state.resourceRequestToken) throw new Error('A resource pause is already pending.')
-  if (state.status === 'running' && state.blocker !== undefined) {
-    throw new Error('A running harness cannot carry a blocker.')
-  }
-  if (state.status === 'waiting_for_input' && state.blocker?.kind !== 'input' && state.blocker?.kind !== 'stuck') {
-    throw new Error('Only an input wait can be suspended by a resource pause.')
-  }
-  if (state.status === 'waiting_for_approval' && state.blocker?.kind !== 'approval') {
-    throw new Error('Only an approval wait can be suspended by a resource pause.')
-  }
-  if (state.status !== 'running' && state.status !== 'waiting_for_input' && state.status !== 'waiting_for_approval') {
-    throw new Error('Only an active harness can be paused for resources.')
-  }
-  const next = mutable(state)
-  next.status = 'waiting_for_resources'
-  next.resourceRequestToken = token
-  return changed(next, now, false)
-}
-
-export function applyHarnessResourceGrant(
-  state: HarnessSnapshot,
-  receipt: HarnessResourceGrantReceipt,
-  now: number,
-): HarnessSnapshot {
-  assertActive(state)
-  if (state.status !== 'waiting_for_resources' || state.resourceRequestToken !== receipt.token) {
-    throw new Error('The resource grant does not match the pending pause.')
-  }
-  if ((state.policyRevision ?? 0) !== receipt.policyRevisionBefore
-    || receipt.policyRevisionAfter !== receipt.policyRevisionBefore + 1) {
-    throw new Error('The resource grant policy revision is stale.')
-  }
-  if (receipt.grant.kind === 'model_spend') {
-    if (receipt.deadlineAt !== state.policy.deadlineAt || receipt.maxCostMicros <= state.policy.maxCostMicros) {
-      throw new Error('The model-spend grant changed an unrelated policy field.')
-    }
-  } else if (receipt.maxCostMicros !== state.policy.maxCostMicros
-    || receipt.deadlineAt <= state.policy.deadlineAt) {
-    throw new Error('The time grant changed an unrelated policy field.')
-  }
-  const next = mutable(state)
-  next.policy = {
-    ...state.policy,
-    maxCostMicros: receipt.maxCostMicros,
-    deadlineAt: receipt.deadlineAt,
-  }
-  next.policyRevision = receipt.policyRevisionAfter
-  return changed(next, now, false)
-}
-
-export function consumeHarnessResourcePause(
-  state: HarnessSnapshot,
-  input: {
-    token: string
-    previousStatus: Extract<HarnessStatus, 'running' | 'waiting_for_input' | 'waiting_for_approval'>
-    previousBlocker?: { kind: 'input' | 'approval' | 'stuck'; question: string }
-  },
-  now: number,
-): HarnessSnapshot {
-  assertActive(state)
-  if (state.status !== 'waiting_for_resources' || state.resourceRequestToken !== input.token) {
-    throw new Error('The resource pause does not match the run.')
-  }
-  const next = mutable(state)
-  next.status = input.previousStatus
-  if (input.previousBlocker === undefined) delete next.blocker
-  else next.blocker = { ...input.previousBlocker }
-  delete next.resourceRequestToken
   return changed(next, now, false)
 }
 
@@ -1097,7 +944,6 @@ function assertChildSettlementLineage(state: HarnessSnapshot, childState: Harnes
 function assertChildDelegatedAuthority(state: HarnessSnapshot, child: HarnessChild, childState: HarnessSnapshot): void {
   if (childState.depth !== state.depth + 1
     || childState.policy.allowedToolIds.some(id => !child.allowedToolIds.includes(id))
-    || (state.policy.executionPolicyVersion !== 2 && childState.policy.maxCostMicros > child.maxCostMicros)
     || (state.policy.executionPolicyVersion !== 2 && childState.policy.deadlineAt > state.policy.deadlineAt)
     || (childState.policy.taskDeadlineAt !== undefined
       && (state.policy.taskDeadlineAt === undefined || childState.policy.taskDeadlineAt > state.policy.taskDeadlineAt))
@@ -1108,9 +954,6 @@ function assertChildDelegatedAuthority(state: HarnessSnapshot, child: HarnessChi
 function assertChildSettlementComplete(state: HarnessSnapshot, child: HarnessChild, childState: HarnessSnapshot): void {
   if (!['completed', 'failed', 'cancelled'].includes(childState.status)) throw new Error('Child work has not finished.')
   if (childState.modelReservation || childState.children.some(child => child.status === 'running' || child.status === 'cancelled')) throw new Error('Reconcile outstanding child model calls before releasing its budget.')
-  if (state.policy.executionPolicyVersion !== 2 && childState.usage.costMicros > child.maxCostMicros) {
-    throw new Error('Child usage exceeded its authorization; reconcile before continuing.')
-  }
 }
 
 export function settleHarnessChild(state: HarnessSnapshot, childState: HarnessSnapshot, now: number): HarnessSnapshot {

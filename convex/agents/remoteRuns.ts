@@ -56,20 +56,13 @@ export const advanceByServer = mutation({
       ctx.db.query('workspaceMemberships').withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', attempt.workspaceId).eq('principalId', run!.initiatorPrincipalId!)).unique(),
       ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q => q.eq('conversationId', run!.conversationId).eq('principalId', run!.initiatorPrincipalId!)).unique(),
     ])
-    const snapshot = attempt.capabilitySnapshot as Record<string, unknown>
-    const billing = snapshot.billing as { reservationId?: string } | undefined
-    const sandbox = snapshot.sandboxBilling as { reservationId?: string } | undefined
-    const reservations = await Promise.all([billing?.reservationId, sandbox?.reservationId].filter((id): id is string => Boolean(id))
-      .map(id => ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', id)).unique()))
-    const fundingValid = reservations.every(reservation => reservation && ['reserved', 'reconcile_required'].includes(reservation.status))
     const apply = async (fact: Parameters<typeof applyRemoteFact>[2]) => {
       const result = await applyRemoteFact(ctx, run!, fact, args.now)
       if (result?.applied) { state = result.state; run = { ...run!, remoteLifecycle: state } }
     }
     if (!environment || environment.kind === 'overlay_cloud' || environment.revokedAt || !binding?.enabled || membership?.status !== 'active' || participant?.status !== 'active') {
       await apply({ type: 'refuse', cause: 'authorization_revoked' })
-    } else if (!fundingValid) await apply({ type: 'refuse', cause: 'funding_unavailable' })
-    else if (args.wake) await apply({ type: 'wake' })
+    } else if (args.wake) await apply({ type: 'wake' })
     else await apply({ type: 'observe' })
     if (state.phase === 'queued' || state.phase === 'waking') {
       if (!args.wake) {

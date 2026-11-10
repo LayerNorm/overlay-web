@@ -9,21 +9,11 @@ export const HARNESS_CONTROL_TOOLS = [
 ] as const
 
 import type {
-  HarnessFundingPause,
   HarnessCheckpointPurpose, HarnessChild, HarnessEvidence, HarnessPlanInput, HarnessPolicy, HarnessReceipt,
   HarnessSnapshot, HarnessStepStatus,
   HarnessCompaction,
 } from './harness-state'
 import type { HarnessDiagnostic } from './harness-diagnostic'
-import type {
-  HarnessConsumeResourceGrantInput,
-  HarnessGrantResourcesInput,
-  HarnessResourcePauseInput,
-  HarnessResourceRequestRecord,
-  HarnessResourceRequestReference,
-  HarnessResourceConsumeResult,
-  HarnessResourceGrantReceipt,
-} from './harness-resource'
 
 export type HarnessSource = { conversationId: string; noteId?: never } | { noteId: string; conversationId?: never }
 
@@ -34,7 +24,6 @@ export type HarnessAdmission = {
   policy: HarnessPolicy
   source: HarnessSource
   deliveryAgentRunId?: string
-  resourcePauseAuthority?: 'personal_chat_work'
 }
 
 export type HarnessOperation =
@@ -51,8 +40,6 @@ export type HarnessOperation =
   | { type: 'block'; blocker: NonNullable<HarnessSnapshot['blocker']>; diagnostic?: HarnessDiagnostic }
   | { type: 'record_diagnostic'; diagnostic: HarnessDiagnostic }
   | { type: 'resume' }
-  | { type: 'pause_for_funding'; pause: HarnessFundingPause }
-  | { type: 'resume_funding' }
   | { type: 'pause_for_authorization' }
   | { type: 'wait_for_children' }
   | { type: 'admit_child'; child: HarnessChild; goal: string; constraints: string[] }
@@ -139,8 +126,4 @@ export interface HarnessRepository {
   publishWait(input: HarnessWaitReference & { request: HarnessWaitRequest }): Promise<HarnessWait>
   resolveWait(input: HarnessWaitReference & { token: string }): Promise<void>
   listPendingWaits(input: HarnessWaitReference): Promise<HarnessWait[]>
-  pauseForResources(input: HarnessResourcePauseInput): Promise<HarnessResourceRequestRecord>
-  getResourceRequest(input: HarnessResourceRequestReference): Promise<HarnessResourceRequestRecord | null>
-  grantResources(input: HarnessGrantResourcesInput): Promise<HarnessResourceGrantReceipt>
-  consumeResourceGrant(input: HarnessConsumeResourceGrantInput): Promise<HarnessResourceConsumeResult>
 }

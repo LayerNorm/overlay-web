@@ -285,20 +285,6 @@ describe('Convex remote agent room turns', () => {
     expect(duplicate).toEqual(expect.objectContaining({ accepted: true, duplicate: true }))
     const afterDuplicate = await projectedState(convex, started.messageId)
     expect(afterDuplicate.eventCount).toBe(beforeDuplicate.eventCount)
-    const pendingSettlements = await convex.query(queryRef('listPendingSandboxSettlementsByServer'), {
-      serverSecret: secret, limit: 10,
-    }) as Array<{ runId: string; sandboxBilling: { reservationId: string } }>
-    expect(pendingSettlements).toEqual([
-      expect.objectContaining({ runId: 'run-remote-turn', sandboxBilling: expect.objectContaining({
-        reservationId: 'sandbox-reservation-remote-turn',
-      }) }),
-    ])
-    expect(await call('markSandboxSettlementCompleteByServer', {
-      workspaceId, reservationId: 'sandbox-reservation-remote-turn', settledAt: now + 102,
-    })).toBe(true)
-    expect(await convex.query(queryRef('listPendingSandboxSettlementsByServer'), {
-      serverSecret: secret, limit: 10,
-    })).toEqual([])
     expect(await call('applyRemoteEventsByServer', {
       workspaceId, environmentId, sessionId: 'session-remote-turn',
       events: [event(4, 'text_checkpoint', { text: 'must not apply' })], now: now + 102,
@@ -619,10 +605,8 @@ describe('Convex remote agent room turns', () => {
     const call = <T>(operation: string, args: Record<string, unknown>) =>
       convex.mutation(mutationRef(operation), { ...args, serverSecret: secret }) as Promise<T>
     await call('upsertBindingByServer', bindingInput())
-    await seedWorkspaceReservation(convex)
-    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded, {
-      reservationId: 'reservation-remote-turn',
-    }))
+    await seedWorkspaceBilling(convex)
+    const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded))
     await call('applyRemoteEventsByServer', { workspaceId, environmentId, sessionId: 'session-remote-turn',
       events: [event(1, 'session_started', { remoteSessionId: 'resume-session', adapterId: 'acp' })], now: now + 1 })
     const swept = await convex.mutation(mutationRef('sweepRemoteRunsInternal'), {
@@ -632,9 +616,6 @@ describe('Convex remote agent room turns', () => {
     expect(swept.alerts).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'offline_environment', runId: 'run-remote-turn' }),
     ]))
-    expect(await convex.run(async ctx => ctx.db.query('budgetReservations')
-      .withIndex('by_reservationId', q => q.eq('reservationId', 'reservation-remote-turn')).unique()))
-      .toEqual(expect.objectContaining({ status: 'reconcile_required', reconciliationAttempts: 1 }))
     expect((await projectedState(convex, started.messageId)).message?.parts).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'data-remote-agent-status', data: expect.objectContaining({ state: 'recoverable', retryClass: 'host_offline' }) }),
     ]))
@@ -701,7 +682,7 @@ async function seedRoom(convex: ReturnType<typeof convexTest>) {
   })
 }
 
-async function seedWorkspaceReservation(convex: ReturnType<typeof convexTest>) {
+async function seedWorkspaceBilling(convex: ReturnType<typeof convexTest>) {
   await convex.run(async ctx => {
     const billingAccountId = 'billing-account-remote-turn'
     await ctx.db.insert('billingAccounts', {
@@ -712,11 +693,6 @@ async function seedWorkspaceReservation(convex: ReturnType<typeof convexTest>) {
       billingAccountId, mode: 'budgeted', includedMicros: 100_000, institutionalGrantMicros: 0,
       allowanceUsedMicros: 0, topUpPurchasedMicros: 0, topUpBalanceMicros: 0, usedMicros: 0,
       reservedMicros: 10_000, version: 1, createdAt: now, updatedAt: now,
-    })
-    await ctx.db.insert('budgetReservations', {
-      userId: actorUserId, billingAccountId, spendSubjectKind: 'programmatic', spendSubjectId: `agent:${agentId}`,
-      reservationId: 'reservation-remote-turn', status: 'reserved', kind: 'agent', modelId: 'openrouter/free',
-      operationId: 'workspace-agent:remote-turn', reservedCents: 1, createdAt: now, updatedAt: now,
     })
   })
 }
@@ -774,8 +750,8 @@ async function durableFixture(overrides: Record<string, unknown> = {}) {
     const environment = await ctx.db.query('agentEnvironments').withIndex('by_environmentId', q => q.eq('environmentId', environmentId)).unique()
     await ctx.db.patch(environment!._id, { kind: 'vps', status: 'online', lastSeenAt: now, capabilities: { ...environment!.capabilities, remoteLifecycleVersion: 2 } })
   })
-  await seedWorkspaceReservation(convex)
-  const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded, { lifecycleVersion: 2, maxRunTimeMs: 3_600_000, reservationId: 'reservation-remote-turn', ...overrides }))
+  await seedWorkspaceBilling(convex)
+  const started = await call<{ messageId: string }>('startRemoteAgentTurnByServer', startInput(seeded, { lifecycleVersion: 2, maxRunTimeMs: 3_600_000, ...overrides }))
   const events = (items: Array<ReturnType<typeof event>>, at: number) => call('applyRemoteEventsByServer', {
     workspaceId, environmentId, sessionId: 'session-remote-turn', now: at,
     events: items.map(e => ({ ...e, execution: { attemptId: 'session-remote-turn', generation: 1, hostBootId: 'boot-1' } })),
@@ -1151,22 +1127,15 @@ test('hard-deadline supervision persists a stop command while Workflow is unavai
   expect(stop?.type).toBe('cancel')
 })
 
-test('a settled hold or revoked binding cannot be revived by coordination or recovery', async () => {
-  for (const reason of ['funding', 'binding']) {
-    const { convex, lifecycle, started } = await durableFixture()
-    await convex.run(async ctx => {
-      if (reason === 'funding') {
-        const reservation = await ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', 'reservation-remote-turn')).unique()
-        await ctx.db.patch(reservation!._id, { status: 'released' })
-      } else {
-        const binding = await ctx.db.query('agentBindings').withIndex('by_bindingId', q => q.eq('bindingId', 'binding-remote-turn')).unique()
-        await ctx.db.patch(binding!._id, { enabled: false })
-      }
-    })
-    const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
-    await lifecycle('claim', owner); await lifecycle('advance', owner)
-    expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('cancelled')
-  }
+test('a revoked binding cannot be revived by coordination or recovery', async () => {
+  const { convex, lifecycle, started } = await durableFixture()
+  await convex.run(async ctx => {
+    const binding = await ctx.db.query('agentBindings').withIndex('by_bindingId', q => q.eq('bindingId', 'binding-remote-turn')).unique()
+    await ctx.db.patch(binding!._id, { enabled: false })
+  })
+  const owner = { runId: 'run-remote-turn', coordinatorId: 'owner', generation: 1, now }
+  await lifecycle('claim', owner); await lifecycle('advance', owner)
+  expect((await projectedState(convex, started.messageId)).run?.remoteLifecycle?.phase).toBe('cancelled')
 })
 
 test('terminal finalization persists and lost settlement acknowledgement leaves the same idempotent intent', async () => {
@@ -1180,20 +1149,6 @@ test('terminal finalization persists and lost settlement acknowledgement leaves 
   expect(await convex.query(queryRef('pendingRemoteFinalizationsByServer'), { serverSecret: secret })).toEqual(first)
   expect((first as unknown[])).toHaveLength(1)
   await call('sweepRemoteRunsByServer', { now: now + 3, hostOfflineBefore: 0, limit: 100 })
-})
-
-test('stale-hold expiry cannot release potentially consumed credit during a wait or pending stop', async () => {
-  const { convex, call } = await durableFixture()
-  await convex.run(async ctx => {
-    const reservation = await ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', 'reservation-remote-turn')).unique()
-    await ctx.db.patch(reservation!._id, { expiresAt: now + 1, providerWorkStarted: true })
-  })
-  await call('sweepRemoteRunsByServer', { now: now + 3_600_001, hostOfflineBefore: 0, limit: 100 })
-  await convex.mutation(makeFunctionReference<'mutation'>('platform/usage:reconcileExpiredBudgetReservationsByServer'), {
-    serverSecret: secret, now: now + 3_600_002, limit: 10,
-  })
-  const reservation = await convex.run(ctx => ctx.db.query('budgetReservations').withIndex('by_reservationId', q => q.eq('reservationId', 'reservation-remote-turn')).unique())
-  expect(reservation?.status).toBe('reserved')
 })
 
 test('native durable-session reattachment can change receiver boot without accepting stale ACP output', async () => {

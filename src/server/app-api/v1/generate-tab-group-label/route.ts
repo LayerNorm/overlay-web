@@ -7,13 +7,9 @@ import { getLanguageModel } from '@/server/ai/model-runtime'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { calculateLanguageModelTokenCostOrNull } from '@/server/ai/gateway/live-model-pricing'
 import {
-  billableBudgetCentsFromProviderUsd,
-  finalizeProviderBudgetReservation,
+  chargeProviderUsage,
+  ensureProviderBudgetNotLow,
   isPaidPlan,
-  markProviderBudgetReconcile,
-  markProviderBudgetStarted,
-  releaseProviderBudgetReservation,
-  reserveProviderBudget,
 } from '@/server/billing/billing-runtime'
 
 const TAB_GROUP_MODEL = 'openai/gpt-oss-20b'
@@ -59,33 +55,20 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
     }
 
     const userPrompt = `Give a very short Chrome tab group name (at most 3 words, no punctuation) summarizing:\n\n${text.slice(0, 400)}`
-    const estimatedInputTokens = Math.ceil(userPrompt.length / 4) + 80
-    const estimatedOutputTokens = 32
-    const estimatedCostUsd = await calculateLanguageModelTokenCostOrNull(TAB_GROUP_MODEL, estimatedInputTokens, 0, estimatedOutputTokens)
-    if (estimatedCostUsd === null) {
-      return NextResponse.json({ title: fallback })
-    }
-    const reservation = await reserveProviderBudget({
+    const check = await ensureProviderBudgetNotLow({
       userId: auth.userId,
       entitlements,
-      idempotencyKey: context.requestIdempotencyKey,
-      providerCostUsd: estimatedCostUsd,
       kind: 'generation',
       modelId: TAB_GROUP_MODEL,
       operationId: 'chat.generate-tab-group-label',
       programmaticSubjectId,
-      requestFingerprint: context.requestFingerprint,
       workspaceId,
     })
-    if (!reservation.ok) return NextResponse.json({ title: fallback })
+    if (!check.ok) return NextResponse.json({ title: fallback })
 
     let label = ''
     try {
       const model = await getLanguageModel(TAB_GROUP_MODEL, auth.accessToken, auth.userId)
-      await markProviderBudgetStarted({
-        userId: auth.userId,
-        reservationId: reservation.reservationId,
-      })
       const result = await generateObject({
         model,
         schema: tabGroupLabelSchema,
@@ -97,44 +80,23 @@ export async function POST(request: NextRequest, context: AppApiRouteContext) {
       })
       label = result.object.title
       const usage = (result as unknown as { usage?: { inputTokens?: number; outputTokens?: number } }).usage
-      const inputTokens = usage?.inputTokens ?? estimatedInputTokens
-      const outputTokens = usage?.outputTokens ?? estimatedOutputTokens
-      const actualCostUsd = await calculateLanguageModelTokenCostOrNull(TAB_GROUP_MODEL, inputTokens, 0, outputTokens)
-      if (actualCostUsd === null) {
-        await markProviderBudgetReconcile({
-          userId: auth.userId,
-          reservationId: reservation.reservationId,
-          errorMessage: `pricing_missing:${TAB_GROUP_MODEL}`,
-        }).catch((_error) => undefined)
+      const inputTokens = usage?.inputTokens ?? 0
+      const outputTokens = usage?.outputTokens ?? 0
+      const providerCostUsd = await calculateLanguageModelTokenCostOrNull(TAB_GROUP_MODEL, inputTokens, 0, outputTokens)
+      if (providerCostUsd === null) {
+        logger.error('[TabGroupLabel] Missing pricing for completed provider call', { modelId: TAB_GROUP_MODEL })
       } else {
-        const costCents = billableBudgetCentsFromProviderUsd(actualCostUsd)
-        await finalizeProviderBudgetReservation({
+        await chargeProviderUsage({
           userId: auth.userId,
-          reservationId: reservation.reservationId,
-          actualProviderCostUsd: actualCostUsd,
-          events: [{
-            type: 'generation',
-            modelId: TAB_GROUP_MODEL,
-            inputTokens,
-            outputTokens,
-            cachedTokens: 0,
-            cost: costCents,
-            timestamp: Date.now(),
-          }],
-        }).catch(async (err) => {
-          await markProviderBudgetReconcile({
-            userId: auth.userId,
-            reservationId: reservation.reservationId,
-            errorMessage: err instanceof Error ? err.message : 'finalize_failed',
-          }).catch((_error) => undefined)
-        })
+          workspaceId,
+          programmaticSubjectId,
+          operationId: `chat.generate-tab-group-label:${globalThis.crypto.randomUUID()}`,
+          providerCostUsd,
+          usage: { kind: 'generation', modelId: TAB_GROUP_MODEL, inputTokens, outputTokens, cachedTokens: 0 },
+        }).catch((err) => logger.error('[TabGroupLabel] Failed to record usage', err))
       }
-    } catch (err) {
-      await releaseProviderBudgetReservation({
-        userId: auth.userId,
-        reservationId: reservation.reservationId,
-        reason: err instanceof Error ? err.message : 'tab_group_label_failed',
-      }).catch((_error) => undefined)
+    } catch (_err) {
+      // A failed call charges nothing.
       return NextResponse.json({ title: fallback })
     }
 

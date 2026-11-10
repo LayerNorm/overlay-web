@@ -440,7 +440,7 @@ export class ConnectedAgentControlPlaneService {
       throw controlPlaneError(errors[reason][1], errors[reason][0], `remote_run_${reason}`)
     }
     if (result.terminal && this.dependencies.settleUsage &&
-      (result.terminal.reservationId || result.terminal.sandboxBilling?.reservationId)) {
+      (result.terminal.modelUsageBilling === 'overlay' || result.terminal.sandboxBilling)) {
       await this.settleWithAudit(result.terminal)
     }
     await this.audit(`agent_remote_run.${args.action}`, 'user', args.actorUserId, {
@@ -598,7 +598,7 @@ export class ConnectedAgentControlPlaneService {
     })
     if (this.dependencies.settleUsage) {
       await Promise.all(result.settlements
-        .filter((settlement) => settlement.reservationId || settlement.sandboxBilling?.reservationId)
+        .filter((settlement) => settlement.modelUsageBilling === 'overlay' || settlement.sandboxBilling)
         .map((settlement) => this.settleWithAudit(settlement).catch((_error) => undefined)))
     }
     await Promise.all(result.alerts.map((alert) => {
@@ -611,24 +611,6 @@ export class ConnectedAgentControlPlaneService {
       }).catch((_error) => undefined)
     }))
     return result
-  }
-
-  async reconcileSandboxSettlements(limit = 100) {
-    if (!this.dependencies.settleUsage) return { attempted: 0, failed: 0, settled: 0 }
-    const pending = await this.dependencies.repository.listPendingSandboxSettlements({
-      limit: Math.max(1, Math.min(100, Math.floor(limit))),
-    })
-    const outcomes = await Promise.all(pending.map(async (settlement) => {
-      try {
-        await this.settleWithAudit(settlement)
-        return true
-      } catch (_error) {
-        return false
-      }
-    }))
-    const settled = outcomes.filter(Boolean).length
-    const failed = pending.length - settled
-    return { attempted: pending.length, failed, settled }
   }
 
   async issueInitialCredential(args: {
@@ -936,8 +918,6 @@ export class ConnectedAgentControlPlaneService {
         runId: batch.runId,
         remoteSessionId: session.id,
         sandboxProviderReference: result.terminal?.sandboxBilling?.providerReference,
-        reservationId: result.terminal?.reservationId,
-        sandboxReservationId: result.terminal?.sandboxBilling?.reservationId,
         eventCursor: result.acknowledgedSequence,
         eventCount: batch.events.length,
         duplicate: result.duplicate,
@@ -945,7 +925,7 @@ export class ConnectedAgentControlPlaneService {
     )
     await this.flagRejectedProviderAccount(auth, session, batch)
     if (result.terminal && this.dependencies.settleUsage &&
-      (result.terminal.reservationId || result.terminal.sandboxBilling?.reservationId)) {
+      (result.terminal.modelUsageBilling === 'overlay' || result.terminal.sandboxBilling)) {
       await this.settleWithAudit(result.terminal)
     }
     if (
@@ -1073,16 +1053,12 @@ export class ConnectedAgentControlPlaneService {
       await this.audit('agent_remote_run.usage_settled', 'service', undefined, {
         workspaceId: settlement.workspaceId, agentId: settlement.agentId,
         environmentId: settlement.environmentId, runId: settlement.runId,
-        reservationId: settlement.reservationId,
-        sandboxReservationId: settlement.sandboxBilling?.reservationId,
         sandboxProviderReference: settlement.sandboxBilling?.providerReference,
       }, settlement.runId, 'agent_run')
     } catch (error) {
       logger.error('Connected-agent settlement failed', {
         workspaceId: settlement.workspaceId, agentId: settlement.agentId,
         environmentId: settlement.environmentId, runId: settlement.runId,
-        reservationId: settlement.reservationId,
-        sandboxReservationId: settlement.sandboxBilling?.reservationId,
         error,
       })
       await this.dependencies.audit.record({
@@ -1090,8 +1066,6 @@ export class ConnectedAgentControlPlaneService {
         resourceType: 'agent_run', resourceId: settlement.runId,
         metadata: { workspaceId: settlement.workspaceId, agentId: settlement.agentId,
           environmentId: settlement.environmentId, runId: settlement.runId,
-          reservationId: settlement.reservationId,
-          sandboxReservationId: settlement.sandboxBilling?.reservationId,
           sandboxProviderReference: settlement.sandboxBilling?.providerReference },
       }).catch((_error) => undefined)
       throw error

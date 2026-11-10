@@ -308,7 +308,9 @@ async function createMcpTransportAndClient(config: McpServerConfig) {
   return { client, transport, timeoutMs };
 }
 
-const MAX_MCP_TOOL_RESULT_CHARS = 50_000; // Truncate to prevent AI Gateway token limit errors
+// Agent runs store large results as private artifacts the agent can page, so only a
+// runaway result is shortened. This is about 100,000 tokens.
+const MAX_MCP_TOOL_RESULT_CHARS = 400_000;
 
 export interface McpToolCatalogEntry {
   name: string;

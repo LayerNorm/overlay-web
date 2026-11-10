@@ -37,8 +37,9 @@ test('workspace-funded provider boundaries resolve resource and subject payer co
     const source = readFileSync(file, 'utf8')
     assert.match(source, /workspaceId/, `${file} does not pass resource workspace billing context`)
   }
-  assert.match(
-    readFileSync('convex/knowledge/knowledge.ts', 'utf8'),
-    /reserveWorkspaceBudgetByServer/,
-  )
+  // Knowledge embeddings check the workspace budget before the call and charge it directly after.
+  const knowledge = readFileSync('convex/knowledge/knowledge.ts', 'utf8')
+  assert.match(knowledge, /checkProviderBudget/)
+  assert.match(knowledge, /chargeProviderUsageDirect/)
+  assert.doesNotMatch(knowledge, /reserveWorkspaceBudgetByServer|reserveBudgetByServer/)
 })

@@ -10,20 +10,19 @@
 
 export const AGENT_LINEAGE_PART_TYPE = 'data-agent-lineage'
 
-/** An agent may ask an agent that asks an agent: person → A (0) → B (1) → C (2) → D (3). */
-export const MAX_AGENT_HOPS = 3
-/** Questions one person's message may cause across every agent it reaches, so fan-out cannot multiply cost. */
-export const MAX_AGENT_ASKS_PER_ROOT = 12
-/** Questions one turn may ask directly. */
-export const MAX_AGENT_ASKS_PER_TURN = 3
-/** Messages one turn may post into other conversations, and one person's message may cause across a chain. */
-export const MAX_AGENT_POSTS_PER_TURN = 5
-export const MAX_AGENT_POSTS_PER_ROOT = 20
 /**
- * What the asked agents of one chain may use in total (input plus output tokens of their replies). Counts alone do not
- * bound cost, since one question can start a long turn; this stops the next question once the chain has used this much.
+ * How many times a question can be passed on: person → A (0) → B (1) → … Cycles and self-asks are refused
+ * separately; this only stops a chain of distinct agents from running away. Spending is bounded by the workspace
+ * budget, not by these counts.
  */
-export const MAX_CHAIN_TOKENS = 500_000
+export const MAX_AGENT_HOPS = 10
+/** Questions one person's message may cause across every agent it reaches. */
+export const MAX_AGENT_ASKS_PER_ROOT = 200
+/** Questions one turn may ask directly. */
+export const MAX_AGENT_ASKS_PER_TURN = 50
+/** Messages one turn may post into other conversations, and one person's message may cause across a chain. */
+export const MAX_AGENT_POSTS_PER_TURN = 50
+export const MAX_AGENT_POSTS_PER_ROOT = 200
 /** An outside app (ChatGPT, Claude, …) asking an agent for a person: per hour and per day. */
 export const MAX_OUTSIDE_ASKS_PER_HOUR = 30
 export const MAX_OUTSIDE_ASKS_PER_DAY = 100
@@ -100,8 +99,7 @@ export function nextLineage(args: {
   }
 }
 
-export const ASK_REFUSAL_MESSAGE: Record<AskRefusal | 'budget' | 'spend' | 'post_limit' | 'outside_limit', string> = {
-  spend: 'The agents in this chain have already used as much as one request may. Answer with what you have.',
+export const ASK_REFUSAL_MESSAGE: Record<AskRefusal | 'budget' | 'post_limit' | 'outside_limit', string> = {
   post_limit: `You have posted as many messages as one request may (${MAX_AGENT_POSTS_PER_TURN} per turn).`,
   outside_limit: 'Too many questions to agents from outside apps recently. Try again later.',
   self: 'An agent cannot ask itself.',

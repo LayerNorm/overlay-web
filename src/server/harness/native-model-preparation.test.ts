@@ -32,14 +32,14 @@ test.each([undefined, 4])('preserves native execution generation %s through prep
   expect(serialized.native?.access.executionGeneration).toBe(executionGeneration ?? 0)
 })
 
-test('prepares native authority without credentials and quotes the exact ZDR-routed prompt', async () => {
+test('prepares native authority without credentials and routes the exact prompt through ZDR', async () => {
   const prepared = await prepareNativeHarnessModel({ ...input, access: { ...access, accessToken: 'must-not-persist' } as typeof access })
   expect(prepared.model).toMatchObject({ modelId: context.modelId, credentialOwnerId: 'user',
     native: { access, receiptId: 'model:0', memoryEnabled: true, sharedRoom: true, maxOutputTokens: 100, contextWindow: 32_000 } })
   expect(prepared.model).not.toHaveProperty('personal')
   expect(JSON.stringify(prepared)).not.toContain('must-not-persist')
   expect(prepared.options.providerOptions).toEqual({ gateway: { zeroDataRetention: true } })
-  expect(prepared.estimatedCostMicros).toBeGreaterThan(0)
+  expect(prepared).not.toHaveProperty('estimatedCostMicros')
   expect(mocks.refresh.mock.invocationCallOrder[0]).toBeLessThan(mocks.catalog.mock.invocationCallOrder[0])
 })
 

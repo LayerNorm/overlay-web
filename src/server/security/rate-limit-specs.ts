@@ -172,8 +172,9 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'generation:video:workspace', limit: 20, windowMs: TEN_MINUTES },
   ],
   'POST /api/v1/files/ingest-document': [
-    { bucket: 'files/files:ingest-document:ip', limit: 40, windowMs: ONE_HOUR },
-    { bucket: 'files/files:ingest-document:user', limit: 20, windowMs: ONE_HOUR },
+    // Abuse protection only: chat attachments and knowledge uploads both use this route.
+    { bucket: 'files/files:ingest-document:ip', limit: 1_000, windowMs: ONE_HOUR },
+    { bucket: 'files/files:ingest-document:user', limit: 500, windowMs: ONE_HOUR },
   ],
   'POST /api/v1/conversations/act/extension-plan': [
     { bucket: 'extension-plan:ip', limit: 120, windowMs: TEN_MINUTES },

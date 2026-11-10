@@ -6,9 +6,11 @@ import type { LanguageModel } from '@/server/ai/provider-types'
 import { SubscriptionBridgeClient, SubscriptionBridgeError } from './bridge-client'
 import { createSubscriptionService, type SubscriptionService } from './service'
 import { assertSupportedCodexRequest, assertSupportedSubscriptionRequest, subscriptionStatelessRequest } from './request-validation'
+import { withoutUnsupportedSubscriptionFiles } from './unsupported-files-prompt'
 
 const SUBSCRIPTION_RESPONSES_ENDPOINT = 'https://overlay-subscription.invalid/responses'
-const maxRequestBytes = 2_000_000
+// Room for several images; the bridge accepts the same body plus its credential envelope.
+const maxRequestBytes = 32 * 1024 * 1024
 const maxResponseBytes = 8_000_000
 const maxEventBytes = 1_000_000
 const safeUpstreamError = 'Subscription request failed'
@@ -387,6 +389,7 @@ export function createSubscriptionLanguageModel(args: {
         }
         return {
           ...params,
+          prompt: withoutUnsupportedSubscriptionFiles(params.prompt),
           providerOptions: {
             ...params.providerOptions,
             openai: { ...openaiOptions, store: false },

@@ -384,3 +384,29 @@ func TestProVariantsUseExplicitPinnedClientPlanMembership(t *testing.T) {
 		}
 	}
 }
+
+func TestStatelessResponsesAcceptImagesButNotOtherMedia(t *testing.T) {
+	accepted := []string{
+		`{"input":[{"role":"user","content":[{"type":"input_text","text":"What is this?"},{"type":"input_image","image_url":"data:image/png;base64,AQID"}]}]}`,
+		`{"input":[{"type":"input_image","image_url":"https://example.test/a.png"}]}`,
+	}
+	for _, payload := range accepted {
+		if !supportsStatelessResponses(ojson.NewDoc([]byte(payload))) {
+			t.Fatalf("expected accepted: %s", payload)
+		}
+	}
+	rejected := []string{
+		`{"input":[{"role":"user","content":[{"type":"input_file","file_data":"data:application/pdf;base64,AQID"}]}]}`,
+		`{"input":[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"AQID"}}]}]}`,
+		`{"input":[{"type":"image_generation_call"}]}`,
+		`{"tools":[{"type":"web_search"}]}`,
+	}
+	for _, payload := range rejected {
+		if supportsStatelessResponses(ojson.NewDoc([]byte(payload))) {
+			t.Fatalf("expected rejected: %s", payload)
+		}
+	}
+	if maxBodyBytes < 32<<20 {
+		t.Fatalf("bridge body limit %d is below the 32 MiB web request limit", maxBodyBytes)
+	}
+}

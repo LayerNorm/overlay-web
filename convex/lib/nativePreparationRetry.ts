@@ -44,7 +44,7 @@ export async function retryNativePreparation(ctx: MutationCtx, run: Doc<'convers
   const start = startAdapterPayloadSchema.parse(command.payload)
   const adapter = snapshot.data.adapters.find(candidate => candidate.id === start.adapterId && candidate.protocol === 'acp')
   if (!adapter?.recovery?.sessionLoading || !adapter.recovery.fencedSessionRestoration
-    || !await nativeRecoveryIsAuthorized(ctx, run, session, snapshot.data)) return false
+    || !await nativeRecoveryIsAuthorized(ctx, run, session)) return false
   const proof = state.providerStop
   if (!proof || now < proof.observedAt || !await matchesCurrentRecoveryMachine(ctx, {runId: command.runId,
     environmentId: command.environmentId, leaseId: proof.leaseId, providerReference: proof.providerReference})) return false
