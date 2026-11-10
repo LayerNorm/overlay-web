@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Scrolling a DM or channel marks it read once per transcript state instead of sending a read mutation on every scroll event, which re-rendered every loaded message. New messages, a different room, returning to the tab and jumping to latest still mark read.
 - Reuse the room-message time formatter instead of rebuilding locale formatting state for every row render in long DMs and channels. Keep the existing time labels and invalid-date fallback.
 - Performance measurements retain slow keystrokes that share a browser frame during streaming, rather than rejecting them when another character arrives before the frame is observed.
 - Fix a cancelled ChatGPT/Codex sign-in staying in the provider list. Removing a subscription connection failed with "Subscription cleanup is pending" when a sign-in check was still running, so the connection was never deleted. That check now hands its lock back as soon as it sees the removal, and removal waits for it (at most a minute) before deleting the stored sign-in data and the connection. This changes Convex subscription mutations.
