@@ -4,6 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
+- Keep unchanged completed personal-chat messages stable during streamed updates, while refreshing message actions, permissions and live plans when they change.
 - Performance measurements retain slow keystrokes that share a browser frame during streaming, rather than rejecting them when another character arrives before the frame is observed.
 - Let people cancel the ChatGPT/Codex sign-in dialog even when cleaning up the pending sign-in fails. Cancel used to show "Could not cancel this connection. Try again before closing." and keep the dialog open; it now closes at once and removes the pending sign-in in the background (fixes #454).
 - Stop shutting down a computer that is being used just because its two-hour session ran out. A long build, an open terminal session or an agent run on a computer used to be stopped about two hours after the last computer action, even while it was busy. The session now keeps extending while the computer is in use (recent activity, an open action or a live run), and a computer stops on its own only when it is idle or the workspace budget is under 2%. A deadline a person sets on an agent task can now be longer than 7 days (the 30-second minimum stays). Docs no longer describe a "24-hour hard cap" on machines.

@@ -5,6 +5,7 @@ import { ACTIVE_RUN_STATUSES, RunPlanContext } from './chat/run-plan-context'
 import type { UseChatHelpers } from '@/components/providers/ai-chat-client'
 import { type ComponentProps, memo, useContext } from 'react'
 import type { UIMessage } from '@/shared/chat/ai-ui-message'
+import type { AgentRunResource } from '@overlay/api-client'
 import {
   getChatModelDisplayName,
 } from '@/shared/ai/gateway/model-data'
@@ -66,7 +67,6 @@ type TextChatMessageProps = CommonMessageProps & {
   sourcesPanel: { turnId: string } | null
   getResponseForExchange: (exchangeIndex: number) => UIMessage | null
   canonicalTranscript?: boolean
-  canonicalResponses?: readonly UIMessage[]
   canonicalResponse?: UIMessage | null
   hasCanonicalResponse?: boolean
   responseIdentity?: string
@@ -90,12 +90,29 @@ type TextChatMessageProps = CommonMessageProps & {
 
 export type ChatMessageProps = ComponentProps<typeof ChatMediaMessage> | TextChatMessageProps
 
+type PlannedTextChatMessageProps = TextChatMessageProps & { liveRun?: AgentRunResource | null }
+
 export function ChatMessage(props: ChatMessageProps) {
-  if (props.kind === 'text') return <MemoTextChatMessage {...props} />
+  if (props.kind === 'text') return <PlannedTextChatMessage {...props} />
   return <ChatMediaMessage {...props} />
 }
 
 const MemoTextChatMessage = memo(TextChatMessage, areTextChatMessagePropsEqual)
+
+function PlannedTextChatMessage(props: TextChatMessageProps) {
+  const run = useContext(RunPlanContext)
+  return <MemoTextChatMessage {...props} liveRun={run?.turnId === getUserTurnId(props.message) ? run : null} />
+}
+
+const actionProps = [
+  'onJumpToReply', 'onDeleteTurn', 'onReplyToAssistantText', 'onBranch', 'onOpenDraft',
+  'onCreateAutomationDraft', 'onOpenSources', 'onRetry', 'onOpenFilePreview',
+  'onOpenAttachmentPreview', 'onContinue', 'onGeneratedUiChange',
+] as const satisfies readonly (keyof TextChatMessageProps)[]
+
+const presentationProps = [
+  'density', 'actionVisibility', 'showActions', 'showModelLabel', 'maxContentWidth',
+] as const satisfies readonly (keyof ChatTranscriptPresentation)[]
 
 function sameStringArray(a: string[] | undefined, b: string[] | undefined): boolean {
   const al = a?.length ?? 0
@@ -121,7 +138,7 @@ function isSourcesOpenForMessage(message: UIMessage, sourcesPanel: TextChatMessa
   return !!turnId && sourcesPanel?.turnId === turnId
 }
 
-export function areTextChatMessagePropsEqual(prev: TextChatMessageProps, next: TextChatMessageProps): boolean {
+export function areTextChatMessagePropsEqual(prev: PlannedTextChatMessageProps, next: PlannedTextChatMessageProps): boolean {
   if (prev.message !== next.message || prev.exchangeIndex !== next.exchangeIndex) return false
   if (prev.latestExchangeIndex !== next.latestExchangeIndex) return false
   if (prev.isActiveLoading !== next.isActiveLoading) return false
@@ -130,7 +147,11 @@ export function areTextChatMessagePropsEqual(prev: TextChatMessageProps, next: T
   if (prev.hasCanonicalResponse !== next.hasCanonicalResponse) return false
   if (prev.canonicalResponse !== next.canonicalResponse) return false
   if (prev.responseIdentity !== next.responseIdentity) return false
-  if (prev.canonicalResponses !== next.canonicalResponses) return false
+  if (prev.liveRun !== next.liveRun || prev.status !== next.status) return false
+  if (prev.generatedUiConnectorActions !== next.generatedUiConnectorActions) return false
+  if (actionProps.some(key => prev[key] !== next[key])) return false
+  if (presentationProps.some(key => prev.presentation?.[key] !== next.presentation?.[key])) return false
+  if (!next.canonicalTranscript && prev.getResponseForExchange !== next.getResponseForExchange) return false
 
   const exchangeIndex = next.exchangeIndex
   if (exchangeIndex === next.latestExchangeIndex) return false
@@ -346,8 +367,8 @@ function resolveContinueHandler(assistantPlainForReply: string, onContinue: () =
 }
 
 /** The latest run's plan is live; every earlier response keeps the copy on its message. */
-function useExchangePlan(turnId: string | null | undefined, responseMsg: UIMessage | null, loading: boolean) {
-  const run = useContext(RunPlanContext)
+function exchangePlan(turnId: string | null | undefined, responseMsg: UIMessage | null, loading: boolean,
+  run: AgentRunResource | null | undefined) {
   const live = Boolean(turnId && run?.turnId === turnId)
   const stored = (responseMsg as { agentPlan?: readonly RunPlanStep[] } | null)?.agentPlan
   const planPhase: RunPlanPhase = live && run?.status === 'waiting_for_input'
@@ -356,7 +377,7 @@ function useExchangePlan(turnId: string | null | undefined, responseMsg: UIMessa
   return { plan: live && run?.plan?.length ? run.plan : stored, planPhase }
 }
 
-function TextChatMessage(props: TextChatMessageProps) {
+function TextChatMessage(props: PlannedTextChatMessageProps) {
   recordRender('TextChatMessage')
   const { message, exchangeIndex } = props
   const selection = resolveStreamSelection(props)
@@ -378,7 +399,7 @@ function TextChatMessage(props: TextChatMessageProps) {
   const modelLabel = resolveModelLabel(response.responseMsg, selection.selectedModelId)
   const userDisplay = resolveUserDisplayParts(message)
   const responseMessageId = response.responseMessageId
-  const { plan, planPhase } = useExchangePlan(getUserTurnId(message), response.responseMsg, instLoading)
+  const { plan, planPhase } = exchangePlan(getUserTurnId(message), response.responseMsg, instLoading, props.liveRun)
   const trace = usePublicTrace({ messageId: responseMessageId, enabled: !instLoading && planPhase === 'ended',
     blocks: assistantVisualBlocks, terminalState: persistedError ? 'error' : turn.interruptedHere ? 'interrupted' : 'completed' })
 
