@@ -45,6 +45,27 @@ import {
   generatedUiDraftContainsCode,
   normalizeGeneratedUiData,
 } from '@overlay/chat-core/generated-ui'
+import { GENERATIVE_UI_CATALOG_VERSION, validateJsonRenderSpec } from '@overlay/chat-core/generative-ui'
+
+export async function executeRenderUi(_options: OverlayToolsOptions, input: unknown) {
+  const raw = input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : {}
+  const summary = typeof raw.summary === 'string' ? raw.summary.trim() : ''
+  const title = typeof raw.title === 'string' ? raw.title.trim() : undefined
+  const issues: Array<{ path: string; code: string; message: string }> = []
+  if (!summary || summary.length > 1000) issues.push({ path: 'summary', code: 'invalid_summary', message: 'Provide a non-empty summary of at most 1000 characters.' })
+  if ((raw.title !== undefined && typeof raw.title !== 'string') || (title && title.length > 120)) issues.push({ path: 'title', code: 'invalid_title', message: 'Title must be a string of at most 120 characters.' })
+  const validated = validateJsonRenderSpec(raw.spec)
+  if (!validated.ok) issues.push(...validated.issues.map(issue => ({ path: `spec.${issue.path}`, code: 'invalid_spec', message: issue.message })))
+  if (issues.length || !validated.ok) return {
+    success: false as const, code: 'tool_validation_failure', error: 'Invalid generated UI payload.',
+    issues: issues.slice(0, 12), hint: 'Correct the listed fields and retry render_ui with a valid catalog spec. Use ordinary text for short answers and fenced Markdown for code artifacts.',
+  }
+  const generatedUi = {
+    version: GENERATED_UI_VERSION, kind: 'json_render' as const, catalogVersion: GENERATIVE_UI_CATALOG_VERSION,
+    summary, ...(title ? { title } : {}), specJson: JSON.stringify(validated.spec),
+  }
+  return { success: true as const, id: generatedUiId(generatedUi.kind, generatedUi), generatedUi }
+}
 
 export async function executeSearchKnowledge(
   options: OverlayToolsOptions,

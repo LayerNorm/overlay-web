@@ -3,6 +3,22 @@ import { createHarnessSnapshot, recordHarnessEvidence, recordHarnessReceipt, rep
 import { buildHarnessInstructions, buildHarnessStepInstructions, buildHarnessWorkingContext, harnessProgressFingerprint } from './context'
 import { buildHarnessCheckpoint } from './continuity'
 import { HARNESS_EVIDENCE_POLICY } from './continuity-policy'
+import { buildGenerativeUiCatalogPrompt } from '@overlay/chat-core/generative-ui'
+
+test('the catalog is appended once after the stable harness prefix only when render_ui is admitted', () => {
+  const base = buildHarnessInstructions('Surface persona')
+  const catalog = buildGenerativeUiCatalogPrompt()
+  expect(buildHarnessInstructions('Surface persona', ['present_generated_ui'])).toBe(base)
+  const admitted = buildHarnessInstructions('Surface persona', ['render_ui', 'render_ui'])
+  expect(admitted).toBe(`${base}\n\n${catalog}`)
+  expect(admitted.split(catalog)).toHaveLength(2)
+  const state = createHarnessSnapshot({ runId: 'ui', goal: 'Show a table', constraints: [], policy: {
+    actorUserId: 'user', allowedToolIds: ['render_ui'], deadlineAt: 10_000, maxCostMicros: 0, maxParallelChildren: 1, maxDepth: 1,
+  } }, 1_000)
+  const step = buildHarnessStepInstructions(state, { instructions: admitted, continuation: false, truncatedResponse: false })
+  expect(step.startsWith(admitted)).toBe(true)
+  expect(step.indexOf(catalog)).toBeLessThan(step.indexOf('Authoritative working state'))
+})
 
 const make = (requiresPlan = true) => createHarnessSnapshot({
   runId: 'fixture-run', goal: 'Check the requested document', constraints: ['Do not publish it'],

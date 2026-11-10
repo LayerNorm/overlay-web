@@ -4,7 +4,7 @@ This file records user-visible and operational changes that reach `main`. Pull r
 
 ## Unreleased
 
-- Add the versioned, isomorphic generated UI catalog and validation boundary, pinned json-render and chart dependencies, and a serialized `json_render` message contract. Cards now render through a lazy-loaded registry with responsive charts, bound controls and a quiet summary fallback. Tool admission and action persistence remain disabled until the next implementation steps.
+- Add the versioned, isomorphic generated UI catalog and validation boundary, pinned json-render and chart dependencies, and a serialized `json_render` message contract. Cards render through a lazy-loaded registry with responsive charts, bound controls and a quiet summary fallback. Personal, agent and automation turns can use the validated `render_ui` tool with an admission-gated catalog prompt; both generated-UI tools stay withheld from MCP clients. Action persistence remains disabled until the next implementation step.
 
 - Performance measurements retain slow keystrokes that share a browser frame during streaming, rather than rejecting them when another character arrives before the frame is observed.
 ||||||| f8ea73ed7

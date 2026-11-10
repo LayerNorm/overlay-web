@@ -18,7 +18,13 @@ Every surface builds its tools through one pipeline (`prepareActTooling`, `src/s
 | Computer (paid, opt-in) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal` |
 | Agents (editing) | `create_agent`, `update_agent` |
 | Ask other agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`) |
-| Chat only | `present_generated_ui` (renders a draft or connect card in the chat) |
+| Chat only | `present_generated_ui` (typed drafts, connection cards and questionnaires), `render_ui` (validated catalog-based comparisons, dashboards and forms) |
+
+Both generated-UI tools are conversation-local additions in the shared tool
+builder, not capability-group grants or new toggles. Personal, native and automation
+harnesses describe and reconstruct them through the same pipeline. Run policy and
+`authorized-tools` still enforce execution; MCP adapters withhold both tools via
+`GENERATED_UI_TOOL_IDS` from `@overlay/chat-core/generated-ui`.
 
 Not tool ids but granted as capabilities:
 
@@ -73,8 +79,8 @@ purpose, but there is no per-message opt-in yet.
 | --- | --- |
 | **Personal chat** | The same pipeline, narrowed by what you ask: a base set (knowledge, memory, notes read, skills) is always there; writes, files, browser, video, and automations appear when the request calls for them (`exposure-policy.ts`), plus web and connected apps by plan. Free plan: paid tools are stubs. |
 | **Overlay (native) agent** | Its grant (groups it was given, `allowedToolIds`) intersected with deployment, account, and project policy. A grant only narrows. New agents get every group except Computer. |
-| **Claude Code / Codex on a user-owned host** | The same tools through the Overlay MCP server (`/api/agent-mcp`), limited by the agent's grant, minus `computer_*` and `present_generated_ui`. Tools that need approval show an approval card. |
-| **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, computer tools, and `post_message`. |
+| **Claude Code / Codex on a user-owned host** | The same tools through the Overlay MCP server (`/api/agent-mcp`), limited by the agent's grant, minus `computer_*`, `present_generated_ui` and `render_ui`. Tools that need approval show an approval card. |
+| **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, `render_ui`, computer tools, and `post_message`. |
 
 ## Native agent permissions
 

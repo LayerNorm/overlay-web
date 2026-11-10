@@ -5,6 +5,7 @@ import { resolveToolOutcomes, type ResolvedToolOutcome } from './tool-outcomes'
 import { summarizeToolResultForTranscript } from '@/shared/tools/tool-result-summary'
 import {
   GENERATED_UI_DATA_TYPE,
+  GENERATED_UI_TOOL_IDS,
   buildGeneratedUiPart,
   generatedUiDataToPlainText,
   normalizeGeneratedUiData,
@@ -423,7 +424,7 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
     for (const tc of toolCallsForStep(step)) {
       const outcome = toolOutcomes.get(tc.toolCallId)
       const toolOutput = toolOutputForOutcome(outcome)
-      if (tc.toolName === 'present_generated_ui') {
+      if (GENERATED_UI_TOOL_IDS.has(tc.toolName)) {
         const output = toolOutput && typeof toolOutput === 'object'
           ? toolOutput as Record<string, unknown>
           : null
@@ -480,7 +481,7 @@ export function buildAssistantPersistenceFromSteps<TOOLS extends ToolSet>(
       const outcome = toolOutcomes.get(call.toolCallId)
       const toolOutput = toolOutputForOutcome(outcome)
       const existingIndex = renderedToolCallIds.get(call.toolCallId)
-      if (call.toolName === 'present_generated_ui') {
+      if (GENERATED_UI_TOOL_IDS.has(call.toolName)) {
         const output = toolOutput && typeof toolOutput === 'object'
           ? toolOutput as Record<string, unknown>
           : null

@@ -4,6 +4,7 @@ import {
   splitRedactedThinkingSegments,
 } from './agent-assistant-text'
 import {
+  GENERATED_UI_TOOL_IDS,
   buildGeneratedUiPart,
   buildStreamingGeneratedUiPart,
   isGeneratedUiPart,
@@ -53,7 +54,7 @@ export function buildAssistantVisualSequence(
     if (legacy?.type === 'tool-invocation' && legacy.toolInvocation?.toolName) {
       const inv = legacy.toolInvocation
       if (isHarnessControlTool(inv.toolName)) continue
-      if (inv.toolName === 'present_generated_ui') {
+      if (GENERATED_UI_TOOL_IDS.has(inv.toolName!)) {
         const output = inv.toolOutput && typeof inv.toolOutput === 'object'
           ? inv.toolOutput as Record<string, unknown>
           : null
@@ -98,7 +99,7 @@ export function buildAssistantVisualSequence(
       }
       const toolName = getToolName(p)
       if (isHarnessControlTool(toolName)) continue
-      if (toolName === 'present_generated_ui') {
+      if (GENERATED_UI_TOOL_IDS.has(toolName)) {
         const output = part.output && typeof part.output === 'object'
           ? part.output as Record<string, unknown>
           : null

@@ -5,6 +5,7 @@ import test from 'node:test'
 import { HARNESS_WITHHELD_TOOL_IDS } from '@/server/agents/agent-mcp-tools'
 import { AGENT_TOOL_GROUPS } from '@/shared/agents/tool-groups'
 import { MCP_EXTERNAL_WITHHELD_TOOL_IDS, MCP_GROUP_COVERAGE, mcpToolGrantFor } from '@/shared/mcp/access'
+import { GENERATED_UI_TOOL_IDS } from '@overlay/chat-core/generated-ui'
 
 const groupIds = AGENT_TOOL_GROUPS.map((group) => group.id)
 
@@ -42,8 +43,8 @@ test('outside apps: every exposed group reaches the client at Everything, and no
 test('connected agents: the only tools withheld are the computer group and the UI tool that needs Overlay\'s chat', () => {
   const computer = AGENT_TOOL_GROUPS.find((group) => group.id === 'computer')!
   for (const id of computer.toolIds) assert.ok(HARNESS_WITHHELD_TOOL_IDS.has(id), `${id} should be withheld from connected agents`)
-  assert.ok(HARNESS_WITHHELD_TOOL_IDS.has('present_generated_ui'))
-  const otherWithheld = [...HARNESS_WITHHELD_TOOL_IDS].filter((id) => !computer.toolIds.includes(id) && id !== 'present_generated_ui')
+  for (const id of GENERATED_UI_TOOL_IDS) assert.ok(HARNESS_WITHHELD_TOOL_IDS.has(id))
+  const otherWithheld = [...HARNESS_WITHHELD_TOOL_IDS].filter((id) => !computer.toolIds.includes(id) && !GENERATED_UI_TOOL_IDS.has(id))
   assert.deepEqual(otherWithheld, [], 'a new withheld tool needs a reason in MCP_GROUP_COVERAGE')
   for (const [group, entry] of Object.entries(MCP_GROUP_COVERAGE.connectedAgents)) {
     if (group !== 'computer') assert.equal(entry.exposed, true, `${group} should reach connected agents`)
@@ -53,6 +54,6 @@ test('connected agents: the only tools withheld are the computer group and the U
 test('withheld tool ids are real tools in some group, apart from the generated-UI tool', () => {
   const known = new Set(AGENT_TOOL_GROUPS.flatMap((group) => group.toolIds))
   for (const id of MCP_EXTERNAL_WITHHELD_TOOL_IDS) {
-    assert.ok(known.has(id) || id === 'present_generated_ui', `${id} is withheld but belongs to no group`)
+    assert.ok(known.has(id) || GENERATED_UI_TOOL_IDS.has(id), `${id} is withheld but belongs to no group`)
   }
 })

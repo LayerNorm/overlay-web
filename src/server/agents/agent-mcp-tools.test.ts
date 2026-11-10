@@ -15,6 +15,7 @@ test('harness tools drop sandbox-duplicating tools and pass tool context explici
       get_note: { description: 'n', inputSchema: {}, execute: async (input: unknown) => ({ input }) },
       computer_exec: { description: 'c', inputSchema: {}, execute: async () => 'no' },
       present_generated_ui: { description: 'u', inputSchema: {}, execute: async () => 'no' },
+      render_ui: { description: 'u', inputSchema: {}, execute: async () => 'no' },
       search_mcp_tools: {
         description: 's',
         inputSchema: {},

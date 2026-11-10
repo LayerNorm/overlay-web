@@ -10,12 +10,47 @@ import {
   normalizeGeneratedUiData,
 } from '@overlay/chat-core/generated-ui'
 import { buildAssistantVisualSequence } from '@overlay/chat-core'
+import { generatedUiPartFromToolBlock } from '@overlay/chat-core/messages'
 import { collectWebSourcesFromBlocks } from '@overlay/chat-core/sources'
 import {
   buildAssistantPersistenceFromSteps,
   compactAssistantPersistenceForConvex,
   mapAssistantTextForPersistence,
 } from './persist-assistant-turn'
+
+const renderedView = { version: 1, kind: 'json_render', catalogVersion: 1, summary: 'Weekly summary',
+  specJson: JSON.stringify({ root: 'root', elements: { root: { type: 'Text', props: { text: '42 tasks' } } } }) }
+
+test('render_ui persists ordered text, tool, UI, text parts and never turns failures into UI', () => {
+  const call = (id: string, toolName: string, output: unknown) => ({ text: '', toolCalls: [{ toolCallId: id, toolName, input: {} }], toolResults: [{ toolCallId: id, output }] })
+  const result = buildAssistantPersistenceFromSteps([
+    { text: 'Before', toolCalls: [], toolResults: [] }, call('read', 'read_file', { success: true }),
+    call('ui', 'render_ui', { success: true, id: 'view', generatedUi: renderedView }),
+    { text: 'After', toolCalls: [], toolResults: [] },
+  ] as never, '')
+  assert.deepEqual(result.parts.map(part => part.type), ['text', 'tool-invocation', 'data', 'text'])
+  assert.deepEqual(result.parts[2], { type: 'data', dataType: GENERATED_UI_DATA_TYPE, id: 'view', data: renderedView })
+  assert.deepEqual(buildAssistantVisualSequence(result.parts).map(block => block.kind), ['text', 'tool', 'generated-ui', 'text'])
+  const viewOnly = buildAssistantPersistenceFromSteps([call('ui', 'render_ui', { success: true, id: 'view', generatedUi: renderedView })] as never, '')
+  assert.equal(viewOnly.content, 'Weekly summary')
+  const failed = buildAssistantPersistenceFromSteps([call('ui', 'render_ui', { success: false, generatedUi: renderedView })] as never, '')
+  assert.ok(!failed.parts.some(part => part.type === 'data'))
+  assert.ok(!buildAssistantVisualSequence(failed.parts).some(block => block.kind === 'generated-ui'))
+})
+
+test('render_ui recovers from legacy and SDK tool results, never pending or failed specs', () => {
+  const output = { success: true, id: 'view', generatedUi: renderedView }
+  for (const part of [{ type: 'tool-render_ui', toolCallId: 'ui', state: 'output-available', output },
+    { type: 'tool-invocation', toolInvocation: { toolName: 'render_ui', toolCallId: 'ui', state: 'output-available', toolOutput: output } }]) {
+    const blocks = buildAssistantVisualSequence([{ type: 'text', text: 'Before' }, part, { type: 'text', text: 'After' }])
+    assert.deepEqual(blocks.map(block => block.kind), ['text', 'generated-ui', 'text'])
+  }
+  assert.deepEqual(generatedUiPartFromToolBlock({ kind: 'tool', key: 'ui', name: 'render_ui', state: 'output-available', toolOutput: output })?.data, renderedView)
+  assert.equal(generatedUiPartFromToolBlock({ kind: 'tool', key: 'ui', name: 'render_ui', state: 'output-error', toolOutput: { ...output, success: false } }), null)
+  for (const state of ['input-streaming', 'input-available', 'output-error']) {
+    assert.deepEqual(buildAssistantVisualSequence([{ type: 'tool-render_ui', state, input: { summary: 'Pending', spec: {} }, output: { success: false } }]), [])
+  }
+})
 
 test('normalizeGeneratedUiData validates and trims text draft payloads', () => {
   const normalized = normalizeGeneratedUiData({

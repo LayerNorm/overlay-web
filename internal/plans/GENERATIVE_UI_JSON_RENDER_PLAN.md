@@ -153,9 +153,9 @@ Admit `render_ui` wherever `present_generated_ui` is admitted today. Execution s
 - [x] T3. Isomorphic `@overlay/chat-core/generative-ui` catalog, limits, validation, tool-argument prompt helper, and unit tests reusing approved mockup specs.
 - [x] T4. `json_render` in all persisted/public contracts and normalizers. Existing `updateMessageUiPart` preserves fields. No tool or renderer enabled yet.
 - [x] T5. Official shadcn Table/Chart and RadioGroup in `@overlay/ui`; all 26 registry components, lazy memoized `JsonRenderCard`, validated rendering, summary fallback and optional action/state hooks. Real-card harness checked in both themes at desktop and 390px; no action persistence yet.
-- [ ] T6. `render_ui` tool, executor, `GENERATED_UI_TOOL_IDS` in persistence, visual sequence, recovery and MCP withholding; tests for persistence and part ordering (text, tool, UI, text).
-- [ ] T7. Prompt generation in `buildHarnessInstructions`; personal instructions updated.
-- [ ] T8. Admission for personal, native agent and automation surfaces; tests that each surface exposes the tool and outside MCP apps do not.
+- [x] T6. `render_ui`, raw-input validation and shared `GENERATED_UI_TOOL_IDS` for persistence, ordering, recovery, labels and MCP withholding; success/failure tests.
+- [x] T7. Admission-gated catalog prompt appended after the stable harness prefix; personal instructions distinguish prose from structured UI.
+- [x] T8. Same conversation-local builder admission for personal, native agent and automation surfaces; generic authorization unchanged, both generated-UI tools withheld from outside and connected-agent MCP clients.
 - [ ] T9. Actions and persisted state, including thread authorization.
 - [ ] T10. Slack and email summary fallback.
 - [ ] T11. Docs (`internal/develop/tool-catalog.md`) and CHANGELOG `## Unreleased`.

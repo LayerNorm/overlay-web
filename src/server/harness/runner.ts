@@ -326,7 +326,7 @@ export async function runOverlayHarness(input: HarnessExecutionInput, ports: Har
     publicProgress: () => publicProgressActive, uncertain: error => { uncertainToolOutcome ??= error },
   })
   const toolDefinitions = await prepareToolDefinitions(tools)
-  const instructions = buildHarnessInstructions(input.instructions)
+  const instructions = buildHarnessInstructions(input.instructions, acquisition.initial.policy.allowedToolIds.filter(id => Object.hasOwn(input.tools, id)))
   let truncatedResponse = input.continuation?.truncatedResponse ?? false
   let finalAnswerRequired = input.continuation?.finalAnswerRequired ?? false
   let invocation = input.continuation?.invocation ?? 0

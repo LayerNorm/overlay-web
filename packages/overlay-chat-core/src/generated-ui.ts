@@ -2,6 +2,7 @@ import { safeHttpUrl } from './sources'
 
 export const GENERATED_UI_DATA_TYPE = 'overlay.generated_ui' as const
 export const GENERATED_UI_VERSION = 1 as const
+export const GENERATED_UI_TOOL_IDS: ReadonlySet<string> = new Set(['present_generated_ui', 'render_ui'])
 
 export type GeneratedUiKind = 'draft.text' | 'draft.email' | 'connector.connect' | 'questionnaire' | 'json_render'
 

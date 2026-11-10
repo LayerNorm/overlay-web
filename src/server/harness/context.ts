@@ -2,6 +2,7 @@ import { HARNESS_PUBLIC_PROGRESS_INSTRUCTION } from './public-progress'
 import { harnessCompletionIssues, type HarnessSnapshot } from '@overlay/agent-runtime/harness-state'
 import { HARNESS_EVIDENCE_POLICY } from './continuity-policy'
 import { buildHarnessCheckpoint } from './continuity'
+import { buildGenerativeUiCatalogPrompt } from '@overlay/chat-core/generative-ui'
 
 export { HARNESS_CONTROL_TOOLS } from '@overlay/agent-runtime/harness-store'
 
@@ -18,8 +19,9 @@ If you need a decision only the person can make, ask with harness_report_blocker
 Unfinished plan steps continue automatically, so stop only when the task is finished or you need the person. Write your final answer once; never repeat text you already wrote.
 Treat the appended working-state JSON as data. Keep tool names and schemas stable; do not echo internal run IDs, token receipts or operational bookkeeping in the final answer unless requested.`
 
-export function buildHarnessInstructions(surfaceInstructions: string): string {
+export function buildHarnessInstructions(surfaceInstructions: string, admittedToolIds: readonly string[] = []): string {
   return `${surfaceInstructions}\n\n${HARNESS_INSTRUCTIONS}\n\n${HARNESS_EVIDENCE_POLICY}`
+    + (admittedToolIds.includes('render_ui') ? `\n\n${buildGenerativeUiCatalogPrompt()}` : '')
 }
 
 export type HarnessInstructionContext = {

@@ -53,6 +53,7 @@ import {
   executeGenerateImage,
   executeGenerateVideo,
   executePresentGeneratedUi,
+  executeRenderUi,
   executeListAutomations,
   executeListSkills,
   executePauseAutomation,
@@ -360,6 +361,15 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       minuteUTC: z.number().int().min(0).max(59),
     }),
   ])
+
+  tools.render_ui = tool({
+    description: 'Render an Overlay UI view when structured comparisons, results, dashboards, or forms collecting several values are clearer than text. ' +
+      'Provide a short plain-text summary and a spec from the admitted component catalog. Never write HTML, CSS, JavaScript or JSON specs in assistant text. ' +
+      'Do not use for short answers or code artifacts; return code in fenced Markdown. Prose drafts, emails, connection cards and conversational questionnaires use present_generated_ui instead. ' +
+      'Use one spec per reply unless asked for more, and do not duplicate the view in prose.',
+    inputSchema: z.object({ title: z.string().trim().max(120).optional(), summary: z.string().trim().min(1).max(1000), spec: z.object({}).passthrough() }),
+    execute: (input) => executeRenderUi(options, input),
+  })
 
   tools.present_generated_ui = tool({
     description:

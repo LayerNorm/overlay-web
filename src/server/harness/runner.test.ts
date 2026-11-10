@@ -19,6 +19,19 @@ vi.mock('server-only', () => ({}))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
 beforeEach(() => { vi.mocked(getLanguageModel).mockReset() })
 
+test('runner advertises the catalog only for a policy-admitted supplied render_ui tool', async () => {
+  for (const [admitted, supplied] of [[false, true], [true, false], [true, true]]) {
+    const f = fixture(false, admitted ? ['render_ui'] : [])
+    const provider = model(() => 'Done.')
+    await runOverlayHarness({ model: { modelId: 'test' }, instructions: 'Surface persona', messages: [{ role: 'user', content: 'Show a report' }],
+      tools: supplied ? { render_ui: tool({ inputSchema: z.object({}), execute: async () => ({ success: true }) }) } : {},
+    }, f.ports)
+    expect(provider.doStreamCalls.length).toBeGreaterThan(0)
+    const system = JSON.stringify(provider.doStreamCalls[0].prompt.filter(message => message.role === 'system'))
+    expect(system.includes('The render_ui tool takes a spec argument')).toBe(admitted && supplied)
+  }
+})
+
 type Call = { name: string; id: string; input: unknown }
 const call = (name: string, id: string, input: unknown = {}): Call => ({ name, id, input })
 const plan = [{ id: 'work', title: 'Read the records', dependsOn: [] }]

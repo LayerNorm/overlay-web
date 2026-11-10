@@ -34,6 +34,18 @@ const input: NativeHarnessToolsInput = {
   definitions: [{ name: 'read_file', inputSchema: { type: 'object', properties: {} }, needsApproval: false }],
 }
 const options: HarnessToolExecutionOptions = { toolCallId: 'call', messages: [], context: undefined }
+
+test('render_ui on native threads rebuilds the admitted tool and rechecks authorization', async () => {
+  mocks.build.mockResolvedValue({ tools: { render_ui: { execute: mocks.execute } }, toolsContext: {} })
+  const tools = createNativeHarnessTools({ ...input, definitions: [
+    { name: 'render_ui', inputSchema: { type: 'object', properties: {} }, needsApproval: false },
+  ] })
+  expect(tools.render_ui).toBeDefined()
+  await tools.render_ui.execute!({}, options)
+  expect(mocks.refresh).toHaveBeenLastCalledWith(input.access, input.context, 'render_ui')
+  mocks.refresh.mockRejectedValueOnce(new Error('revoked'))
+  await expect(tools.render_ui.execute!({}, options)).rejects.toThrow('revoked')
+})
 const authority = { agent: { id: 'agent', principalId: 'agent-principal', name: 'Research', allowedToolIds: ['files'], permissionMode: 'ask' },
   entitlements: { tools: true }, paid: true, latestUserText: 'Read the source' }
 const tooling = (needsApproval = false) => ({ tools: { read_file: { execute: mocks.execute, needsApproval } }, toolsContext: { read_file: { fresh: true } } })

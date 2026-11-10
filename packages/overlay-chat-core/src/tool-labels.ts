@@ -1,4 +1,5 @@
 import { INTEGRATION_SERVICE_NAMES } from './constants'
+import { GENERATED_UI_TOOL_IDS } from './generated-ui'
 
 export function pickFirstStringFromInput(input: Record<string, unknown> | undefined, keys: string[]): string | null {
   if (!input) return null
@@ -158,6 +159,7 @@ export function getDescriptiveToolLabel(
   toolInput?: Record<string, unknown>,
   phase: ToolLabelPhase = 'running',
 ): string {
+  if (GENERATED_UI_TOOL_IDS.has(toolName)) return 'Showing generated UI'
   // A connected agent (Claude Code, Codex…) names its own actions; show that, not the generic tool name.
   if (toolName === 'remote_action') {
     const title = pickFirstStringFromInput(toolInput, ['title'])

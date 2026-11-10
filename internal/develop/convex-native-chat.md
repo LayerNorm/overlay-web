@@ -14,9 +14,12 @@ updates. Existing persisted cards need no migration.
 
 `@overlay/chat-core/generative-ui` owns the isomorphic v1 catalog, prompt helper,
 and validation boundary. Only HTTPS links/actions and HTTPS or exact workspace
-file-content image URLs are valid. Tool admission and json-render rendering are
-not enabled by the contract alone. `GeneratedUiCard` now lazily loads the validated
-json-render registry. Copy/link actions work locally; send/submit and state-change
+file-content image URLs are valid. `render_ui` now validates raw input before
+returning a serialized generated-UI payload; successful results persist and recover
+through the same ordered part pipeline as typed cards. Both tools are conversation-local
+and withheld from external and connected-agent MCP clients. The catalog prompt is
+appended after the stable harness prefix only when the tool is admitted.
+`GeneratedUiCard` lazily loads the validated json-render registry. Copy/link actions work locally; send/submit and state-change
 callbacks are optional host hooks, with no persistence or thread authorization
 changes yet.
 
