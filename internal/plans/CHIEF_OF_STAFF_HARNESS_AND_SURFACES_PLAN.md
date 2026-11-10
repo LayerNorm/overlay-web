@@ -1,31 +1,55 @@
 # Chief of Staff Harness and Surface Implementation Plan
 
-Status: In progress in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409). Phases 1 to 3 are implemented with local contract tests and partial hosted acceptance. Delegation, explicit acceptance, same-thread revision, Work and navigation regressions passed on isolated preview revision `bc53485e076c0fa713a74252732dd169fc8b30ee`. Hosted recovery and remaining authorization/blocked-state scenarios are not yet accepted. Phases 4 to 6 have not started. See [Progress](#progress). The revised web/Slack mockup is the visual reference.
+Status: In progress in [PR #409](https://github.com/LayerNorm/overlay-web/pull/409). Phases 1–3 are implemented and the native web scenarios below are accepted, with explicit hosted-verification limits. Latest hosted acceptance is at `8095ca45efe3be3faca284179156fa516147e825`; results not retested there are carried forward from `abb2d2b` / `3e2b8e994e71c6fc18f72ae9f360b6abef11615e`, not claimed as exact-head retests. Phases 4–6 have not started. See [Progress](#progress). The revised web/Slack mockup is the visual reference.
 
 ## Progress
 
-Legend: `[x]` done in PR #409, `[~]` partially done, `[ ]` not started.
+Legend: `[x]` implemented in PR #409, `[~]` partially implemented, `[ ]` not started. Implementation checkboxes are not blanket hosted acceptance.
 
 | Phase | State | Summary |
 |---|---|---|
-| 1. Assignment and authorization contracts | Implemented; contract gates tested | Local replay, authorization, result and surface-link tests pass. Hosted same-agent isolation and same-thread revisions pass; restricted-viewer and Slack-origin browser fixtures remain unavailable. |
-| 2. Native Chief orchestration | Implemented; partial hosted acceptance | Concurrent isolated assignments, actual result reads, explicit acceptance, sequential revision and one consolidated answer passed. A completed optional branch was cancelled/excluded with a reason. Native blocked-child handling, active-child cancellation and interrupted-worker recovery still need hosted acceptance. |
-| 3. Web experience | Implemented; partial hosted acceptance | Work projections, parent/backlinks, live insertion, archive/Undo, reload/cross-tab, themes, narrow layouts and keyboard passed. Empty-composer warning is fixed; genuine unsaved notes still warn. Restricted-viewer, Slack-origin and pagination interactions remain untested in the browser. Linked Slack composition stays disabled until Phase 4. |
-| 4. Chief-only Slack | Not started | A Sign in with Slack identity helper exists locally but is uncommitted and unwired. |
+| 1. Assignment and authorization contracts | Implemented; listed web scenarios accepted | Personal discovery, isolated assignments, same-thread revision, restricted-member/revocation and shared-room memory privacy including follow-up passed. Private files/credentials and unauthorized attempt-ID redaction are not separately hosted-verified. |
+| 2. Native Chief orchestration | Implemented; listed web scenarios accepted | Two-specialist delegation, actual reads/acceptance, follow-up/revision, blocked-child wait/resume/accept, active-child parent Stop cancellation, waiting-parent recovery deferral with one launch and Chief read/accept, and recoverable bad-attempt feedback passed. Early pending reads have narration, not authoritative call traces. |
+| 3. Web experience | Implemented; listed web scenarios accepted | Work grouping, 40px rows, keyboard, attempts, no-match, channel links, search, archive/Undo, read markers, light/dark and 390px passed, as did the dirty-note warning. Pagination and Slack-origin browser interactions remain unverified. |
+| 4. Chief-only Slack | Not started | A Sign in with Slack identity helper exists locally but is uncommitted and unwired. Slack-origin acceptance belongs here. |
 | 5. Personal-Chief contributions | Not started | Cross-owner personal-Chief delegation is refused until grants exist. |
 | 6. Connected agents and transports | Not started | External and connected agents are rejected before any assignment is written. |
 
-Hosted evidence: canonical `https://pr-409.preview.getoverlay.io`, deployment `dpl_PPesEr2yquDAAPxdJBDzRc7C2V2v`, revision `bc53485e076c0fa713a74252732dd169fc8b30ee`, isolated backend `content-bobcat-927`. Fresh Chief conversation `sn7bq8bcdawxcn7dsh11h9bm318hsra9` produced two simultaneously Working assignments to the same specialist, accepted their actual results and revised one in its existing thread. Work showed executions separately from zero editable tasks. The optional missing-code branch completed with truthful text, then was explicitly excluded; this is not evidence of native Needs you or cancellation of an executing child. Chief prose called it blocked, while persisted execution correctly remained Completed/Excluded.
+### Hosted acceptance
 
-The first acceptance request was queued behind a historical waiting-for-input run. Read-only inspection confirmed no model admission. Message-specific Stop cancelled only the new queued request; the old blocker remained visible and untouched. Acceptance then used the fresh conversation above, not a bypass of serialization. These results do not establish full Phase 2 or Phase 3 exit gates. The main sync at `13ab234275f283e008fcd4eed804d5ff85b2e1eb` keeps its owner-funded accounting and mainline agent limits; it does not restore pre-call funding holds or removed resource-wait APIs. Assignment dispositions still block finalization while outstanding model receipts or child execution remain. This merged revision has not received exact-head hosted acceptance; revalidate the isolated preview and outstanding gates before calling Phases 1–3 accepted.
+Canonical preview: `https://pr-409.preview.getoverlay.io`, isolated backend `content-bobcat-927`. Latest accepted deployment: `dpl_Bi9N9PY2zp2vMgiLADW2jiHXUMyn`, exact revision `8095ca45efe3be3faca284179156fa516147e825`. Earlier recovery used `dpl_EsENUkVwMmFyM4vg3jWBseRw7atb` at `3e2b8e99`. The hosted QA record across the revisions above accepts:
 
-Post-merge regression at `82ee24ceb107bc1d09f616f497621dd3b38d32b9` verified native sidebar authentication and live insertion, but the Chief failed during a blocking child join. Server logs showed `Native delivery execution changed` in wait renewal: the child-read tool leaves the Harness running while projecting a waiting delivery, which the renewal guard incorrectly rejected. A focused fix permits renewal only with a running child, preserving workflow/identity checks and the stricter model-dispatch guard. Hosted revalidation of that fix is pending; the failed run is not counted as accepted.
+- Personal discovery and two-specialist delegation, actual result reads and one consolidated Chief response.
+- Follow-up and revision in the same assignment thread.
+- A genuinely blocked child: durable parent wait, child resume and result acceptance.
+- Parent Stop while a child is active: cancellation propagates to the executing child.
+- Waiting-parent recovery deferral, followed by exactly one child launch and the Chief's actual read and acceptance.
+- Recoverable malformed/stale attempt-ID feedback followed by a correct retry.
+- Shared-room memory privacy, including follow-up; restricted-member access and revocation.
+- Work UI: assignment group separate from editable tasks, 40px rows, keyboard navigation, attempts, no-match state, channel-parent links, search, archive/Undo, read markers, light/dark and 390px layout.
+- Clean navigation without an empty-composer warning, while genuine dirty notes still warn.
 
-At `463602ced81e93892da1262b71f0cdb3fef6660d`, CI passed (22 passed, 2 skipped) and the isolated exact-head preview was verified. One historical-thread follow-up produced claims without any tool execution, so that attempt failed acceptance. A subsequent clean-thread request (`QA409-CLEAN-463`, parent `sn74zck4vqvh7hz9drhdf5cw5h8htj87`) created a real child (`sn71x2d60s01qzhf18e36vz8s58hvqe8`), read its actual `581 / Calculation Complete` reply, and persisted an accepted disposition. Read-only inspection confirmed both the final reply and acceptance, not just Chief prose. Sidebar insertion was live. No durable child-join evidence or 60-second renewal was established in that request, so the timer branch remains covered only by focused regression tests.
+The latest recovery fixture used parent `workspace:rh7dxm5em6kjwmm12fvbctg7018hyny7`, assignment `assignment_e57eff504874df3117091a507a6e2548f2ad71eab45f834dfc8c9b348f34848f` and tool-call ID `qa-recovery-8095-1`. Three cron cycles left its intent pending, attempts/generation at zero and `nextAttemptAt` unchanged, with no child while the parent waited. After Continue, persisted admission at 17:05:44.035 UTC on November 10, 2026 created child `workspace:rh7f06bpwedybvrjynk2x8mdyx8hy505`. Completed-read evidence at 17:06:23.702 records its actual reply containing `RECOVERY_OK`; resolution evidence at 17:06:38.109 records acceptance of the exact current attempt.
 
-That clean request exposed a projection defect: the Harness milestone was done but delivery/transcript plan snapshots stayed running, which rendered as stopped after completion. Assignment resolution now projects changed milestones into both snapshots, with an acceptance/exclusion regression test. This does not backfill the historical QA record. Post-fix hosted projection checks, Work/navigation regression, and the previously listed restricted-viewer, native blocker/cancellation, Slack-origin and recovery gates remain open. Phases 1 to 3 are implemented, not fully accepted; Phase 4 is still untouched.
+The earlier `3e2b8e99` fixture launched one child but the Chief misinterpreted an early invalid-child rejection and excluded its later completed result. That is not accepted Chief follow-through; it motivated assignment-ID reads, explicit launch-state context and corrective nonfatal child feedback. Earlier failed blocking-join and projection runs likewise remain historical failures, not retrospectively successful tests.
 
-Also done beyond the checklist: shared-room and Slack-origin privacy restrictions carry through every delegated assignment, follow-up and tool call; exact retries reuse the same assignment and are not charged twice.
+### Not hosted-verified / evidence limits
+
+Local unit/contract coverage is not a substitute for these outstanding hosted checks:
+
+- Never-launched assignment under a terminal parent projecting cancelled: unit-tested only.
+- Unauthorized attempt-ID redaction in recoverable feedback: unit-tested only.
+- Early `harness_read_child({ assignmentId })` returning `launch_pending`: unit-tested; hosted narration only. Pre-admission checkpoints at 17:05:03.242 and 17:05:33.761 describe pending reads but are explicitly `unverifiedNarrative`. Pending returns do not record evidence, control-tool inputs/results are omitted from public transcripts, and deployment-log searches found no matching calls. The completed bound read is proven, but its original argument (`assignmentId` versus `childRunId`) is not persisted.
+- Private files and credentials separately from memory: no separate hosted privacy acceptance; authorization tests do not establish that broader claim.
+- Slack-origin threads and web/Slack parity: not hosted-verified, deferred to Phase 4. Existing privacy contracts/tests do not constitute Slack execution acceptance.
+- Pagination interactions: not yet browser-verified.
+
+### Nonblocking observations and retained boundaries
+
+- The recovered specialist (`openai/gpt-4o-mini`) misused `present_generated_ui` with `{ kind: 'draft.text', prompt: 'RECOVERY_OK' }`. Validation correctly returned a nonfatal failure: required `body` missing and `prompt` unrecognized for that variant. It then returned prose containing `RECOVERY_OK` and completed. This is specialist model misuse, not a Chief/recovery failure; the broad multi-variant advertised schema may permit confusion.
+- A manually built Work URL missing `scope=workspace` stayed on the skeleton. Normal navigation worked. This is an unresolved deep-link observation, not a successful loading check or a failure of normal navigation.
+- Mainline owner-funded accounting and agent limits remain intact; no pre-call funding holds or removed resource-wait APIs were restored. Assignment dispositions do not bypass outstanding usage reconciliation or child execution checks.
+- Shared-room and Slack-origin privacy restrictions are implemented through assignments and follow-up tool calls; hosted privacy acceptance above is specifically shared-room memory, not all private resources or Slack-origin execution.
 
 
 ## 1. Outcome
@@ -332,7 +356,7 @@ Each phase should be a reviewable change set. The boundaries below are implement
 - [x] Surface the same execution in Work without duplicate task records. Read-only execution rows subscribe to the assignment records and require Work capability, active membership and both conversation ACLs. Archive state removes the viewer's row without cancelling execution.
 - [x] Add origin/destination labels and artifact permissions. Origin is projected only through authorized ancestry and a non-revoked connection; result/artifact access uses the same assignment boundary.
 - [x] Keep linked-thread composition disabled until the shared admission and delivery path is ready. The notice explicitly says the web mirror is read-only; bidirectional composition belongs to Phase 4.
-- [~] Validate desktop/mobile, themes, keyboard use and restricted viewers. Desktop/400px, light/dark, keyboard, reload/cross-tab and archive/Undo passed on the isolated preview above. Restricted viewers are covered by Convex tests but not yet a separate browser session. Slack-origin and pagination interactions remain untested in the browser.
+- [x] Validate desktop/mobile, themes, keyboard use and restricted viewers. Hosted acceptance includes desktop/390px, light/dark, keyboard, read markers, archive/Undo and restricted-member/revocation scenarios; earlier reload/cross-tab results are retained. Slack-origin and pagination interactions remain untested in the browser; see the scoped acceptance record above.
 - [x] Investigate and fix empty-composer navigation warnings without removing safeguards. Memoized room args and optimistic read-marker callbacks stop repeated writes on unrelated renders. The regression fails against the old implementation; hosted navigation is clean and genuinely unsaved notes still warn.
 
 **Exit gate:** the approved mockup's Working, Needs you and Completed flows are backed by persisted state; reload and cross-tab updates remain correct.
