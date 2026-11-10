@@ -23,11 +23,12 @@ const modelField = {
   textModelsLoading: false,
 }
 
-test('new agents default to every tool except computer, private, no computer', () => {
+test('new agents default to every tool, private, with a computer', () => {
   const draft = initialNewAgentDraft()
   assert.equal(draft.modelId, 'z-ai/glm-5.3-flash')
   assert.equal(draft.visibility, 'creator')
-  assert.equal(draft.computer, false)
+  assert.equal(draft.computer, true)
+  // The computer tool group is added when the agent is created with its computer.
   assert.equal(draft.toolGroups.has('computer'), false)
   assert.equal(draft.toolGroups.has('web_search'), true)
 })
