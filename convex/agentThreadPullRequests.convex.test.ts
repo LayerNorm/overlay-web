@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
+import { compactAssistantPersistenceForConvex } from '../src/shared/chat/persist-assistant-turn'
 
 const modules = import.meta.glob('./**/*.ts')
 const secret = 'agent-thread-pull-request-test-secret'
@@ -186,4 +187,56 @@ test('server-authorized agent tool output appears only in the caller-owned threa
   const forgedMessage = await t.run(ctx => ctx.db.get(forgedMessageId))
   expect((forgedMessage?.parts?.[0] as { toolInvocation?: { state?: string } })?.toolInvocation?.state)
     .toBe('input-available')
+})
+
+test('compacted router results project through normal agent append and finalization writes', async () => {
+  for (const method of ['appendAgentMessageDelta', 'finalizeAgentMessage']) {
+    const { t, as } = await fixture()
+    const agent = { workspaceId: 'ws', agentId: 'shared' }
+    const { conversationId } = await as('alice').mutation(resolveMain, agent) as { conversationId: string }
+    const messageId = await t.run(ctx => ctx.db.insert('conversationMessages', {
+      conversationId: conversationId as never, userId: 'alice', authorKind: 'agent',
+      authorPrincipalId: 'ap-shared', turnId: 'router-turn', role: 'assistant', mode: 'act',
+      content: '', contentType: 'text', status: 'generating', parts: [], createdAt: 2, updatedAt: 2,
+    }))
+    await t.run(async ctx => {
+      const userMessageId = await ctx.db.insert('conversationMessages', {
+        conversationId: conversationId as never, userId: 'alice', role: 'user', mode: 'act', turnId: 'router-turn',
+        content: 'Create a draft PR.', contentType: 'text', status: 'completed', createdAt: 1, updatedAt: 1,
+      })
+      await ctx.db.insert('conversationAgentRuns', {
+        conversationId: conversationId as never, turnId: 'router-turn', userId: 'alice',
+        userMessageId, assistantMessageId: messageId, mode: 'room', runner: 'workflow',
+        executionEngine: 'overlay_harness', status: 'running', agentId: 'shared',
+        agentPrincipalId: 'ap-shared', createdAt: 2, updatedAt: 2,
+      })
+    })
+    const saved = compactAssistantPersistenceForConvex({ content: '', parts: [{
+      type: 'tool-invocation', toolInvocation: {
+        toolCallId: 'router-create', toolName: 'COMPOSIO_MULTI_EXECUTE_TOOL', state: 'output-available',
+        toolInput: { tools: [{ tool_slug: 'GITHUB_CREATE_A_PULL_REQUEST', arguments: {
+          owner: 'DevelopedByDev', repo: 'autoquill_ai', draft: true,
+        } }] },
+        toolOutput: { successful: true, error: null, data: { results: [{
+          tool_slug: 'GITHUB_CREATE_A_PULL_REQUEST', index: 0, response: {
+            successful: true, error: null, data: JSON.stringify({
+              number: 4, html_url: 'https://github.com/DevelopedByDev/autoquill_ai/pull/4',
+              title: 'Draft PR', state: 'open', draft: true, body: 'Long body. '.repeat(800),
+            }),
+          },
+        }] } },
+      },
+    }] })
+    await t.mutation(makeFunctionReference<'mutation'>(`collaboration/directMessages:${method}`), {
+      actorUserId: 'alice', conversationId: conversationId as never, messageId, workspaceId: 'ws',
+      serverSecret: secret, parts: saved.parts,
+      ...(method === 'appendAgentMessageDelta' ? { contentDelta: '' } : { content: 'Created draft PR.' }),
+    })
+    const result = await as('alice').query(bundle, agent) as {
+      threads: Array<{ pullRequests?: Array<{ url: string; state: string }> }>
+    }
+    expect(result.threads[0]?.pullRequests).toMatchObject([{
+      url: 'https://github.com/DevelopedByDev/autoquill_ai/pull/4', state: 'draft',
+    }])
+  }
 })

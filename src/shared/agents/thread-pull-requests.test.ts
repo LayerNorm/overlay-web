@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { reduceThreadPullRequests } from './thread-pull-requests'
+import { compactAssistantPersistenceForConvex } from '../chat/persist-assistant-turn'
 
 function pullRequest(
   number: number,
@@ -89,6 +90,63 @@ test('recognizes Composio PR slugs with object and JSON data envelopes', () => {
         'GITHUB_CREATE_A_PULL_REQUEST', input, { data, successful: true, error: null })], 100), undefined)
     }
   }
+})
+
+test('realistic router PR evidence survives transcript compaction and replay', () => {
+  for (const toolName of ['COMPOSIO_MULTI_EXECUTE_TOOL', 'composio_multi_execute_tool', 'workspace_COMPOSIO_MULTI_EXECUTE_TOOL']) {
+    for (const jsonData of [false, true]) {
+      const pr = pullRequest(4, 'DevelopedByDev', 'autoquill_ai', 'open', {
+        draft: true, body: 'Large PR description. '.repeat(400),
+        head: { repo: { description: 'Repository metadata. '.repeat(400) } },
+      })
+      const part = toolPart('router', toolName, {
+        tools: [
+          { tool_slug: 'GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS', arguments: {
+            owner: 'DevelopedByDev', repo: 'autoquill_ai', content: 'File content. '.repeat(400),
+          } },
+          { tool_slug: 'GITHUB_CREATE_A_PULL_REQUEST', arguments: {
+            owner: 'DevelopedByDev', repo: 'autoquill_ai', draft: true,
+          } },
+        ],
+      }, { successful: true, error: null, data: { results: [
+        { tool_slug: 'GITHUB_CREATE_OR_UPDATE_FILE_CONTENTS', index: 0,
+          response: { successful: true, error: null, data: { commit: { sha: 'abc' } } } },
+        { tool_slug: 'GITHUB_CREATE_A_PULL_REQUEST', index: 1,
+          arguments: { owner: 'DevelopedByDev', repo: 'autoquill_ai', draft: true },
+          response: { successful: true, error: null, data: jsonData ? JSON.stringify(pr) : pr } },
+      ] } })
+      const saved = compactAssistantPersistenceForConvex({ content: '', parts: [part] })
+      const invocation = saved.parts[0]!.toolInvocation as Record<string, unknown>
+      assert.ok(JSON.stringify(invocation.toolOutput).length <= 4_000)
+      assert.ok(JSON.stringify(invocation.toolInput).length <= 4_000)
+      const associations = reduceThreadPullRequests(undefined, [], saved.parts, 100)!
+      assert.equal(associations[0]?.url, 'https://github.com/DevelopedByDev/autoquill_ai/pull/4')
+      assert.equal(associations[0]?.state, 'draft')
+      const replay = compactAssistantPersistenceForConvex(saved)
+      assert.deepEqual(replay, saved)
+      assert.equal(reduceThreadPullRequests(associations, saved.parts, replay.parts, 200), associations)
+    }
+  }
+})
+
+test('PR compaction keeps failure signals and does not turn unrelated or malformed output into evidence', () => {
+  const pr = pullRequest(4, 'acme', 'widgets', 'open', { body: 'Long description. '.repeat(500) })
+  for (const output of [
+    { successful: false, error: 'Denied', data: pr },
+    { successful: true, error: 'Failed', data: pr },
+    { successful: true, data: '' },
+    { successful: true, data: 'https://github.com/acme/widgets/pull/4' },
+    { successful: true, data: '{invalid JSON' },
+    { successful: true, data: { arbitrary: pr } },
+  ]) {
+    const parts = [toolPart('bad', 'GITHUB_CREATE_A_PULL_REQUEST', {}, output)]
+    const saved = compactAssistantPersistenceForConvex({ content: '', parts })
+    assert.equal(reduceThreadPullRequests(undefined, [], saved.parts, 100), undefined)
+  }
+  const unrelated = compactAssistantPersistenceForConvex({ content: '', parts: [
+    toolPart('unrelated', 'read_file', {}, { contents: 'a'.repeat(8_000) }),
+  ] })
+  assert.equal((unrelated.parts[0]?.toolInvocation as { toolOutput: { truncated: boolean } }).toolOutput.truncated, true)
 })
 
 test('read-only tools never create an association but can refresh an existing pull request', () => {
