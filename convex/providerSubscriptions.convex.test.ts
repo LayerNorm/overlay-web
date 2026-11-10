@@ -285,6 +285,24 @@ test('disconnect fences an in-flight poll and retains its vault reference for cl
     })
     expect(state).toMatchObject({ phase: 'disconnected', cleanupRefs: ['vault-pending-state'] })
     expect(state?.generation).toBeGreaterThan(pending.generation)
+    expect(state?.leaseUntil).toBeGreaterThan(now)
+
+    // A different token cannot release the lease.
+    await expect(convex.mutation(mutation('failClosed'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      generation: poll.generation!, revision: poll.revision!, leaseToken: 'someone-else', error: 'x',
+    })).rejects.toThrow()
+
+    // The fenced poll's final fail call hands the lease back so disconnect can finish now.
+    await convex.mutation(mutation('failClosed'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+      generation: poll.generation!, revision: poll.revision!, leaseToken: 'poll-lease', error: 'x',
+    })
+    const released = await convex.query(query('getByServer'), {
+      serverSecret: secret, userId: 'owner-1', connectionId: pending.connectionId,
+    })
+    expect(released).toMatchObject({ phase: 'disconnected', cleanupRefs: ['vault-pending-state'] })
+    expect(released?.leaseUntil).toBeUndefined()
   } finally {
     clock.mockRestore()
   }

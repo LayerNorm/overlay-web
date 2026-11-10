@@ -123,10 +123,16 @@ terminal failures stop the flow. Definite
 credential rejection and uncertain rotation outcomes remain fail-closed.
 Cancelling sign-in always closes the dialog at once. Deleting the pending
 connection runs afterwards as a best effort (a 404 counts as done), and a
-sign-in that finishes starting after Cancel is deleted instead of shown. If
-cleanup fails (for example `disconnect` reports "Subscription cleanup is
-pending" while a device poll is still settling), the pending connection stays
-in the provider list until it is removed there.
+sign-in that finishes starting after Cancel is deleted instead of shown.
+
+`disconnect` fences out any running sign-in check, refresh or discovery but
+keeps its lease token. That operation deletes its own vault write, and its
+final `release*` or `failClosed` call then hands the lease back
+(`releaseDisconnectedLease`) instead of failing as stale. `disconnect` waits for
+that hand-back (bounded by the lease, at most a minute), then deletes every
+cleanup ref, including ones the fenced operation retained, and forgets the
+state. It reports "Subscription cleanup is pending" only if the operation never
+hands the lease back or a vault delete fails; a later delete retries.
 
 Catalog reconciliation removes selections only when a successful catalog
 update proves a selected model is no longer present. Temporary inference
