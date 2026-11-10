@@ -478,6 +478,13 @@ export const get = query({
       return null
     }
     const conversation = await ctx.db.get(conversationId)
+    if (conversation && !conversation.deletedAt && conversation.externalPlatform === 'slack'
+      && conversation.workspaceId && workspaceId === conversation.workspaceId && serverSecret) {
+      try {
+        await requireConversationAccess(ctx, { actorUserId: userId, conversationId, workspaceId, serverSecret })
+        return normalizeConversationDoc(conversation)
+      } catch { return null }
+    }
     return conversation?.userId === userId && !conversation.deletedAt && (workspaceId === undefined || conversation.workspaceId === workspaceId)
       ? normalizeConversationDoc(conversation)
       : null

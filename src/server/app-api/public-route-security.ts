@@ -8,6 +8,9 @@ import 'server-only'
  * replacement controls here.
  */
 export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
+  '/api/v1/surfaces/slack/identity/start': slackIdentityException(['GET']),
+  '/api/v1/surfaces/slack/identity/callback': slackIdentityException(['GET']),
+  '/api/v1/surfaces/slack/identity/unlink': slackIdentityException(['POST']),
   '/api/v1/agent-environments/enroll': agentHostException(['POST'], 'Single-use enrollment code redemption plus device public-key registration.'),
   '/api/v1/agent-environments/[environmentId]/credentials': agentHostException(['POST'], 'One-time challenge and Ed25519 proof-of-possession credential issuance.'),
   '/api/v1/agent-environments/[environmentId]/credentials/refresh': agentHostException(['POST'], 'Signed environment credential rotation.'),
@@ -123,6 +126,21 @@ export const PUBLIC_V1_ROUTE_SECURITY_EXCEPTIONS = {
     },
   },
 } as const
+
+function slackIdentityException(methods: readonly string[]) {
+  return {
+    methods,
+    reason: 'Browser OIDC linking and session-authorized unlinking use standalone responses rather than a JSON BFF.',
+    controls: {
+      authentication: 'Overlay session; callback must match the signed initiating user and verified Slack ID token',
+      authorization: 'active workspace membership and installation for linking; self or current workspace admin for unlinking',
+      rateLimit: 'endpoint IP and user limits before OAuth exchange or mutation',
+      csrf: 'HMAC-bound state and atomic one-use nonce at callback; exact same-origin POST required for unlinking',
+      idempotency: 'nonce is consumed atomically with link/conflict; unlink only revokes a scoped link',
+      audit: 'durable scoped link, nonce consumption, creation/update and revocation timestamps; no user tokens retained',
+    },
+  }
+}
 
 function agentHostException(methods: readonly string[], reason: string) {
   return {

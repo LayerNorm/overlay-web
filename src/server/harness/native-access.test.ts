@@ -5,10 +5,12 @@ import { refreshNativeHarnessAccess, type NativeHarnessAccess, type NativeHarnes
 const mocks = vi.hoisted(() => ({
   state: vi.fn(), room: vi.fn(), workspace: vi.fn(), run: vi.fn(), gate: vi.fn(), subject: vi.fn(),
   surfaceExecution: vi.fn(), bindings: vi.fn(), conversation: vi.fn(),
+  requester: vi.fn(),
   roomRestrictions: vi.fn(),
   capability: vi.fn(), catalog: vi.fn(), models: vi.fn(), byok: vi.fn(),
 }))
 vi.mock('server-only', () => ({}))
+vi.mock('@/server/surfaces/surface-requester', () => ({ resolveSurfaceRequester: mocks.requester }))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class {
   get = mocks.state
   getSurfaceExecutionByHarnessRunId = mocks.surfaceExecution
@@ -146,12 +148,14 @@ beforeEach(() => {
   mocks.catalog.mockResolvedValue({ allowed: true })
   mocks.models.mockResolvedValue({ chat: new Set(['fixture/model', 'openrouter/free']) })
   mocks.surfaceExecution.mockResolvedValue(null)
+  mocks.requester.mockResolvedValue({ userId: 'human', principalId: 'human-principal', linkId: 'link' })
   mocks.roomRestrictions.mockResolvedValue({ inheritedSharedRoom: false })
   mocks.bindings.mockResolvedValue([])
   mocks.conversation.mockResolvedValue(null)
 })
 
 const surfaceExecution = {
+  identityLinkId: 'link', slackUserId: 'U1',
   turnId: 'surface:slack:binding:message',
   workflowRunId: 'workflow',
   actorUserId: 'human',

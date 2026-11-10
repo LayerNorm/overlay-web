@@ -252,6 +252,7 @@ export class ConvexHarnessRepository extends ConvexHarnessAssignments implements
   }
 
   async beginSurfaceTurn(input: {
+    identityLinkId?: string; slackUserId?: string
     turnId: string; workflowRunId: string; actorUserId: string; workspaceId: string; creatorPrincipalId: string
     agentId: string; agentPrincipalId: string; platform: 'slack'; teamId: string; channelId: string
     threadId: string; messageId: string; bindingId: string; connectionId: string; conversationId: string

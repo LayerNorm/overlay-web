@@ -18,6 +18,8 @@ export async function ensureSurfaceConversation(
   const surface = input.surface
   const modelId = input.modelId || DEFAULT_MODEL_ID
   const conversationId = await repositories.surfaces.ensureConversation({
+    identityLinkId: surface.identityLinkId,
+    slackUserId: surface.authorExternalId,
     userId: input.userId,
     workspaceId: input.workspaceId,
     title: surfaceConversationTitle({

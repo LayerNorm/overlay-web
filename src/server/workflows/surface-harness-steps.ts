@@ -12,7 +12,6 @@ import { surfaceHarnessTurnId, type SurfaceHarnessAuthentication } from '@/serve
 import type { SurfaceAgentTurnInput } from './surface-agent-turn'
 import type { SurfaceTurnContext } from '@/server/automations/automation-turn-runner'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
-import { resolveSurfaceRequester } from '@/server/surfaces/surface-requester'
 
 type SurfaceSource = Awaited<ReturnType<ReturnType<typeof getOverlayServerContext>['surfaceService']['resolveInboundBindings']>> extends Array<infer Item>
   ? Item
@@ -24,7 +23,7 @@ function sourceSurfaceContext(
   workflowRunId: string,
 ): { authority: SurfaceHarnessAuthentication; turnInput: SurfaceAgentTurnInput } {
   const inbound = input.surface
-  const requester = resolveSurfaceRequester(source)
+  const requester = { userId: input.userId, principalId: inbound.creatorPrincipalId! }
   const authority: SurfaceHarnessAuthentication = {
     type: 'surface',
     platform: 'slack',
@@ -37,6 +36,8 @@ function sourceSurfaceContext(
     agentId: source.agent.id,
     agentPrincipalId: source.agent.principalId!,
     creatorPrincipalId: requester.principalId,
+    identityLinkId: inbound.identityLinkId,
+    slackUserId: inbound.authorExternalId,
     originWorkflowRunId: workflowRunId,
   }
   const surface: SurfaceTurnContext = {
@@ -83,7 +84,7 @@ export async function admitSurfaceSourceStep(
     actorUserId: input.userId,
     workspaceId: input.workspaceId,
     turnId: input.turnId,
-    surface: input.surface,
+    surface: { ...input.surface, slackUserId: input.surface.authorExternalId },
   })
   return sourceSurfaceContext(input, source, workflowRunId)
 }

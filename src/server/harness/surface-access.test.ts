@@ -2,7 +2,8 @@ import { beforeEach, expect, test, vi } from 'vitest'
 import { assertPersistedSurfaceSource, assertSurfaceAdmissionSource } from './surface-access'
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
 
-const mocks = vi.hoisted(() => ({ bindings: vi.fn(), workspace: vi.fn(), conversation: vi.fn(), run: vi.fn() }))
+const mocks = vi.hoisted(() => ({ bindings: vi.fn(), workspace: vi.fn(), conversation: vi.fn(), run: vi.fn(), requester: vi.fn() }))
+vi.mock('@/server/surfaces/surface-requester', () => ({ resolveSurfaceRequester: mocks.requester }))
 vi.mock('server-only', () => ({}))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
   surfaceService: { resolveInboundBindings: mocks.bindings },
@@ -12,6 +13,7 @@ vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
 vi.mock('@/server/conversations/ActConversationRepository', () => ({ asConversationId: (id: string) => id }))
 
 const execution: SurfaceTurnExecution = {
+  identityLinkId: 'link', slackUserId: 'U1',
   turnId: 'surface:slack:team:channel:message',
   workflowRunId: 'workflow',
   actorUserId: 'user',
@@ -72,6 +74,7 @@ const run = {
 beforeEach(() => {
   vi.resetAllMocks()
   mocks.bindings.mockResolvedValue([source])
+  mocks.requester.mockResolvedValue({ userId: 'user', principalId: 'principal', linkId: 'link' })
   mocks.workspace.mockResolvedValue({ workspace: { id: 'workspace' }, principal: { id: 'principal' } })
   mocks.conversation.mockResolvedValue(conversation)
   mocks.run.mockResolvedValue(run)
@@ -93,6 +96,7 @@ test('fresh source admission validates the active binding, team, workspace, and 
       agentId: execution.agentId,
       agentPrincipalId: execution.agentPrincipalId,
       creatorPrincipalId: execution.creatorPrincipalId,
+      identityLinkId: execution.identityLinkId, slackUserId: execution.slackUserId,
     },
   })).resolves.toEqual(source)
   expect(mocks.bindings).toHaveBeenCalledWith({ platform: 'slack', externalTeamId: 'team', channelId: 'channel' })
@@ -146,4 +150,13 @@ test('persisted Chief turns retain their legacy identity while new turns use the
   const legacy = { ...execution, turnId: 'surface:slack:binding:message' }
   mocks.run.mockResolvedValueOnce({ ...run, turnId: legacy.turnId })
   await expect(assertPersistedSurfaceSource(legacy, 'workflow')).resolves.toMatchObject({ run: { turnId: legacy.turnId } })
+})
+
+test('resume revalidates the frozen linked identity and never switches to a new principal', async () => {
+  mocks.requester.mockResolvedValueOnce(null)
+  await expect(assertPersistedSurfaceSource(execution, 'workflow')).rejects.toThrow('Slack sender authorization')
+  expect(mocks.requester).toHaveBeenCalledWith(expect.objectContaining({ userId: 'user', linkId: 'link', slackUserId: 'U1' }))
+  mocks.requester.mockResolvedValueOnce({ userId: 'replacement', principalId: 'replacement', linkId: 'replacement' })
+  await expect(assertPersistedSurfaceSource(execution, 'workflow')).rejects.toThrow('Slack sender authorization')
+  await expect(assertPersistedSurfaceSource({ ...execution, identityLinkId: undefined }, 'workflow')).rejects.toThrow('identity is required')
 })

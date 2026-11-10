@@ -22,6 +22,35 @@ pointed at your tunnel — do not point the production app at localhost.
 
 ## Manifest
 
+### Sender sign-in
+
+Enable **Sign in with Slack** for this app. Register the OIDC redirect URL
+`https://<this-environment>/api/v1/surfaces/slack/identity/callback` in the app's
+redirect URLs (separately from the installation callback). Use the isolated
+Preview host and a separate development app for testing.
+
+Sender linking is a separate OIDC flow requesting only `scope=openid`; do not
+add it to the bot installation scopes or combine Sign in with Slack scopes with
+ordinary Slack user-token scopes. Overlay uses the app's existing client ID and
+client secret, verifies Slack's signed ID token, team, subject and nonce, and
+does not use email matching. No user access token is retained. The manifest lists
+the OIDC callback; enable the Sign in with Slack settings in the app dashboard.
+
+An Overlay session and current workspace membership are required to link.
+Requests expire after ten minutes and can be consumed only once. A Slack user
+cannot be linked to two Overlay accounts in the same team; linking a different
+Slack user revokes the account's previous team link. Unlink with a same-origin
+`POST /api/v1/surfaces/slack/identity/unlink` containing `workspaceId` and `linkId`;
+only that user or a workspace admin/owner may do so.
+
+Only linked members with active participation in an existing mirrored
+conversation may send follow-ups. Linking does not grant access to an existing
+conversation. New threads enroll their verified initiating member. Revocation,
+lost membership/participation or changing the linked identity stops admission
+and resumed execution; a running turn never adopts a replacement identity.
+Unlinked/unauthorized inbound senders receive only an ephemeral linking prompt
+and must resend after linking. Historical unlinked runs fail closed.
+
 ```yaml
 display_information:
   name: Overlay
@@ -38,7 +67,10 @@ features:
 oauth_config:
   redirect_urls:
     - https://www.getoverlay.io/api/v1/surfaces/slack/callback
+    - https://www.getoverlay.io/api/v1/surfaces/slack/identity/callback
   scopes:
+    user:
+      - openid                  # separate Sign in with Slack flow only
     bot:
       # inbound awareness
       - app_mentions:read

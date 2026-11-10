@@ -34,6 +34,8 @@ async function beginNativeSurfaceTurnStep(input: {
     actorUserId: input.turnInput.userId,
     workspaceId: input.turnInput.workspaceId,
     creatorPrincipalId: input.turnInput.surface.creatorPrincipalId!,
+    identityLinkId: input.turnInput.surface.identityLinkId,
+    slackUserId: input.turnInput.surface.authorExternalId,
     agentId: input.turnInput.surface.agentId,
     agentPrincipalId: input.turnInput.surface.agentPrincipalId!,
     platform: 'slack',

@@ -4,9 +4,11 @@ import { requireServerSecret } from '../lib/auth'
 import { startAgentTurnInTransaction } from '../collaboration/directMessages'
 import { failUnclaimedNativeHarnessInTransaction } from '../harness/runs'
 import { slackSurfaceTurnId } from '@/shared/surfaces/surface-turn-identity'
+import { slackRequester } from './slackIdentity'
 
 export const beginSurfaceTurn = mutation({
   args: {
+    identityLinkId: v.optional(v.string()), slackUserId: v.optional(v.string()),
     serverSecret: v.string(),
     turnId: v.string(),
     workflowRunId: v.string(),
@@ -37,6 +39,12 @@ export const beginSurfaceTurn = mutation({
     if (args.turnId !== slackSurfaceTurnId(args) || !args.workflowRunId) {
       throw new Error('Invalid surface turn identity')
     }
+    const requester = args.slackUserId && args.identityLinkId ? await slackRequester(ctx, {
+      workspaceId: args.workspaceId, connectionId: args.connectionId, teamId: args.teamId,
+      slackUserId: args.slackUserId, channelId: args.channelId, threadId: args.threadId,
+      linkId: args.identityLinkId, userId: args.actorUserId,
+    }) : null
+    if (!requester || requester.principalId !== args.creatorPrincipalId) throw new Error('Slack sender authority changed')
 
     const [connection, binding, agent, creator, conversation] = await Promise.all([
       ctx.db.query('surfaceConnections').withIndex('by_entityId', q => q.eq('id', args.connectionId)).unique(),
@@ -52,12 +60,10 @@ export const beginSurfaceTurn = mutation({
       || binding.agentId !== args.agentId || binding.channelId !== args.channelId
       || !agent || agent.workspaceId !== args.workspaceId || agent.archivedAt
       || agent.harness !== 'overlay' || agent.agentRole !== 'workspace_chief' || agent.principalId !== args.agentPrincipalId
-      || agent.createdByPrincipalId !== args.creatorPrincipalId
       || !creator || creator.type !== 'human' || creator.archivedAt
       || creator.workspaceId !== args.workspaceId || creator.userId !== args.actorUserId
-      || !conversation || conversation.deletedAt || conversation.userId !== args.actorUserId
+      || !conversation || conversation.deletedAt
       || conversation.workspaceId !== args.workspaceId || conversation.conversationType !== 'channel'
-      || conversation.createdByPrincipalId !== args.creatorPrincipalId
       || conversation.externalPlatform !== args.platform
       || conversation.externalChannelId !== args.channelId
       || conversation.externalThreadId !== args.threadId || conversation.surfaceBindingId !== args.bindingId) {
@@ -77,6 +83,7 @@ export const beginSurfaceTurn = mutation({
     }
     if (existing) {
       if (existing.actorUserId !== identity.actorUserId || existing.workspaceId !== identity.workspaceId
+        || existing.identityLinkId !== args.identityLinkId || existing.slackUserId !== args.slackUserId
         || existing.creatorPrincipalId !== identity.creatorPrincipalId || existing.agentId !== identity.agentId
         || existing.agentPrincipalId !== identity.agentPrincipalId || existing.platform !== identity.platform
         || existing.teamId !== identity.teamId || existing.channelId !== identity.channelId
@@ -142,6 +149,7 @@ export const beginSurfaceTurn = mutation({
     }
     const now = Date.now()
     const executionId = await ctx.db.insert('surfaceTurnExecutions', {
+      identityLinkId: args.identityLinkId, slackUserId: args.slackUserId,
       turnId: args.turnId,
       workflowRunId: args.workflowRunId,
       actorUserId: args.actorUserId,

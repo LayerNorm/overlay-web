@@ -4,6 +4,8 @@ export type SurfaceTurnExecution = {
   actorUserId: string
   workspaceId: string
   creatorPrincipalId: string
+  identityLinkId?: string
+  slackUserId?: string
   agentId: string
   agentPrincipalId: string
   platform: 'slack'

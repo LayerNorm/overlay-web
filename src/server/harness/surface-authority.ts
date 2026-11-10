@@ -11,6 +11,8 @@ export type SurfaceHarnessIdentity = {
   agentId: string
   agentPrincipalId?: string
   creatorPrincipalId?: string
+  identityLinkId?: string
+  slackUserId?: string
 }
 
 export type SurfaceHarnessAuthentication = SurfaceHarnessIdentity & {

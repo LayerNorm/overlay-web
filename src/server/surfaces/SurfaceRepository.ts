@@ -26,6 +26,8 @@ export interface SurfaceRepository {
 }
 
 export type SurfaceConversationInput = {
+  identityLinkId?: string
+  slackUserId?: string
   actModelId: string
   askModelIds: string[]
   externalChannelId: string

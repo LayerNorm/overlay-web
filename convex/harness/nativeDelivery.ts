@@ -3,6 +3,7 @@ import { isPersistedSlackTurnIdentity } from '@/shared/surfaces/surface-turn-ide
 import type { QueryCtx } from '../_generated/server'
 import { requireAgentAuthor } from '../collaboration/directMessages'
 import type { HarnessAdmission, HarnessSource } from '../../packages/overlay-agent-runtime/src/harness-store'
+import { slackRequester } from '../surfaces/slackIdentity'
 
 type ReadContext = Pick<QueryCtx, 'db'>
 
@@ -16,6 +17,11 @@ async function assertPreboundSurfaceDelivery(
   const execution = await ctx.db.query('surfaceTurnExecutions')
     .withIndex('by_harnessRunId', q => q.eq('harnessRunId', admission.runId))
     .unique()
+  const requester = execution?.slackUserId && execution.identityLinkId ? await slackRequester(ctx, {
+    workspaceId: execution.workspaceId, connectionId: execution.connectionId, teamId: execution.teamId,
+    slackUserId: execution.slackUserId, channelId: execution.channelId, threadId: execution.threadId,
+    linkId: execution.identityLinkId, userId: execution.actorUserId,
+  }) : null
   const valid = delivery.harnessRunId === admission.runId
     && execution?.harnessRunId === admission.runId
     && execution.agentRunId === delivery._id
@@ -29,7 +35,7 @@ async function assertPreboundSurfaceDelivery(
     && execution.userMessageId === delivery.userMessageId
     && execution.assistantMessageId === delivery.assistantMessageId
     && isPersistedSlackTurnIdentity(execution)
-    && conversation.createdByPrincipalId === execution.creatorPrincipalId
+    && requester?.principalId === execution.creatorPrincipalId
     && conversation.externalPlatform === execution.platform
     && conversation.externalChannelId === execution.channelId
     && conversation.externalThreadId === execution.threadId

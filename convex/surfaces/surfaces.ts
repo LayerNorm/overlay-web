@@ -1,6 +1,7 @@
 import { v } from 'convex/values'
 import { mutation, query } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
+import { slackRequester } from './slackIdentity'
 import { recordConversationEvent } from '../collaboration/events'
 
 // Server-only surface: the BFF reaches these through ConvexSurfaceRepository
@@ -257,6 +258,7 @@ export const listBindingsByConnection = query({
  */
 export const ensureSurfaceConversation = mutation({
   args: {
+    identityLinkId: v.optional(v.string()), slackUserId: v.optional(v.string()),
     serverSecret: v.string(),
     userId: v.string(),
     workspaceId: v.optional(v.string()),
@@ -283,6 +285,14 @@ export const ensureSurfaceConversation = mutation({
     if (!binding || !connection || binding.status !== 'active' || connection.status === 'uninstalled'
       || connection.workspaceId !== args.workspaceId || connection.platform !== args.externalPlatform
       || binding.channelId !== args.externalChannelId) throw new Error('SURFACE_THREAD_SCOPE_DENIED')
+    if (args.identityLinkId || args.slackUserId) {
+      const requester = args.identityLinkId && args.slackUserId ? await slackRequester(ctx, {
+        workspaceId: connection.workspaceId, connectionId: connection.id, teamId: connection.externalTeamId,
+        slackUserId: args.slackUserId, channelId: args.externalChannelId, threadId: args.externalThreadId,
+        linkId: args.identityLinkId, userId: args.userId,
+      }) : null
+      if (!requester || requester.principalId !== args.createdByPrincipalId) throw new Error('SLACK_SENDER_ACCESS_DENIED')
+    }
     const link = await ctx.db.query('surfaceThreadLinks').withIndex('by_external_thread', q =>
       q.eq('platform', connection.platform).eq('connectionId', connection.id).eq('externalTeamId', connection.externalTeamId)
         .eq('channelId', binding.channelId).eq('threadId', args.externalThreadId)).unique()
@@ -303,6 +313,11 @@ export const ensureSurfaceConversation = mutation({
       }
       if (candidates.length > 1) throw new Error('SURFACE_THREAD_LEGACY_AMBIGUOUS')
       live = candidates[0] ?? null
+    }
+    if (live && args.identityLinkId) {
+      const participant = await ctx.db.query('conversationParticipants').withIndex('by_conversationId_principalId', q =>
+        q.eq('conversationId', live!._id).eq('principalId', args.createdByPrincipalId!)).unique()
+      if (participant?.status !== 'active') throw new Error('SLACK_SENDER_ACCESS_DENIED')
     }
     const now = Date.now()
     let conversationId = live?._id

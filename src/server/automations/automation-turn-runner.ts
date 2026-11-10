@@ -107,8 +107,9 @@ export type SurfaceTurnContext = {
   agentAllowedToolIds?: string[]
   agentIsDefault?: boolean
   agentPermissionMode?: 'ask' | 'auto'
-  /** Creator's human principal — owns the surface conversation rows. */
+  /** Linked sender's immutable principal for this turn. */
   creatorPrincipalId?: string
+  identityLinkId?: string
   authorExternalId?: string
   authorName?: string
   authorEmail?: string

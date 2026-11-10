@@ -2,6 +2,15 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { getEndpointRateLimitSpecs } from './rate-limit-specs'
 
+test('Slack identity linking endpoints have IP and session-user limits', () => {
+  for (const [method, action] of [['GET', 'start'], ['GET', 'callback'], ['POST', 'unlink']]) {
+    const limits = getEndpointRateLimitSpecs({ method, pathname: `/api/v1/surfaces/slack/identity/${action}`, userId: 'sender', ip: '127.0.0.1' })
+    assert.equal(limits.length, 2)
+    assert.equal(limits.find(row => row.bucket.endsWith(':ip'))?.key, '127.0.0.1')
+    assert.equal(limits.find(row => row.bucket.endsWith(':user'))?.key, 'sender')
+  }
+})
+
 test('owner-funded routes receive user, organization, risk, IP, and global limits', () => {
   const rules = getEndpointRateLimitSpecs({
     deviceRiskKey: 'risk_1',

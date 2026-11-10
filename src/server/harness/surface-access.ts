@@ -6,6 +6,7 @@ import { asConversationId } from '@/server/conversations/ActConversationReposito
 import { surfaceHarnessTurnId, type SurfaceHarnessIdentity } from './surface-authority'
 import { isPersistedSlackTurnIdentity } from '@/shared/surfaces/surface-turn-identity'
 import type { SurfaceTurnExecution } from '@/shared/agents/surface-turn-execution'
+import { resolveSurfaceRequester } from '@/server/surfaces/surface-requester'
 
 type ServerContext = ReturnType<typeof getOverlayServerContext>
 type SurfaceSource = Awaited<ReturnType<ServerContext['surfaceService']['resolveInboundBindings']>>[number]
@@ -23,9 +24,7 @@ function assertSourceBinding(source: SurfaceSource | undefined, input: {
     || source.binding.connectionId !== expected.connectionId || source.binding.channelId !== expected.channelId
     || source.binding.agentId !== expected.agentId || source.agent.id !== expected.agentId
     || source.agent.harness !== 'overlay' || source.agent.agentRole !== 'workspace_chief' || source.agent.archivedAt || !source.agent.principalId
-    || source.creatorUserId !== input.actorUserId
-    || (expected.agentPrincipalId && source.agent.principalId !== expected.agentPrincipalId)
-    || (expected.creatorPrincipalId && source.creatorPrincipalId !== expected.creatorPrincipalId)) {
+    || (expected.agentPrincipalId && source.agent.principalId !== expected.agentPrincipalId)) {
     throw new FatalError('The surface binding or agent authorization changed.')
   }
 }
@@ -48,8 +47,16 @@ export async function assertSurfaceAdmissionSource(input: {
   })
   const source = candidates.find(candidate => candidate.binding.id === surface.bindingId)
   assertSourceBinding(source, input)
+  if (!surface.slackUserId || !surface.identityLinkId) throw new FatalError('Slack sender identity is required.')
+  const requester = await resolveSurfaceRequester({
+    workspaceId: input.workspaceId, connectionId: surface.connectionId, teamId: surface.teamId,
+    slackUserId: surface.slackUserId, channelId: surface.channelId, threadId: surface.threadId,
+    linkId: surface.identityLinkId, userId: input.actorUserId,
+  })
+  if (!requester || requester.userId !== input.actorUserId || requester.linkId !== surface.identityLinkId
+    || requester.principalId !== surface.creatorPrincipalId) throw new FatalError('Slack sender authorization changed.')
   const workspace = await server.workspaceService.resolveActiveWorkspace(input.actorUserId, input.workspaceId)
-  if (workspace.workspace.id !== input.workspaceId || workspace.principal.id !== source.creatorPrincipalId) {
+  if (workspace.workspace.id !== input.workspaceId || workspace.principal.id !== requester.principalId) {
     throw new FatalError('Surface workspace authority changed.')
   }
   return source
@@ -61,9 +68,8 @@ export function assertSurfaceConversation(input: {
   principalId: string
   surface: SurfaceHarnessIdentity
 }, conversation: Conversation): void {
-  if (!conversation || conversation.userId !== input.actorUserId || conversation.deletedAt != null
+  if (!conversation || conversation.deletedAt != null
     || conversation.workspaceId !== input.workspaceId || conversation.conversationType !== 'channel'
-    || conversation.createdByPrincipalId !== input.principalId
     || conversation.externalPlatform !== input.surface.platform
     || conversation.externalChannelId !== input.surface.channelId
     || conversation.externalThreadId !== input.surface.threadId
@@ -86,13 +92,13 @@ export async function assertPersistedSurfaceSource(
     teamId: execution.teamId, channelId: execution.channelId, threadId: execution.threadId,
     messageId: execution.messageId, agentId: execution.agentId,
     agentPrincipalId: execution.agentPrincipalId, creatorPrincipalId: execution.creatorPrincipalId,
+    identityLinkId: execution.identityLinkId, slackUserId: execution.slackUserId,
   }
   const source = await assertSurfaceAdmissionSource({
     actorUserId: execution.actorUserId, workspaceId: execution.workspaceId,
     turnId: surfaceHarnessTurnId(identity), surface: identity,
   })
-  if (source.agent.principalId !== execution.agentPrincipalId
-    || source.creatorPrincipalId !== execution.creatorPrincipalId) {
+  if (source.agent.principalId !== execution.agentPrincipalId) {
     throw new FatalError('Persisted surface source principals changed.')
   }
   const server = getOverlayServerContext()

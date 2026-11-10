@@ -215,6 +215,18 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
   'GET /api/v1/surfaces/slack/callback': [
     { bucket: 'surfaces/slack:callback:ip', limit: 60, windowMs: TEN_MINUTES },
   ],
+  'GET /api/v1/surfaces/slack/identity/start': [
+    { bucket: 'slack-identity:start:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'slack-identity:start:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  'GET /api/v1/surfaces/slack/identity/callback': [
+    { bucket: 'slack-identity:callback:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'slack-identity:callback:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
+  'POST /api/v1/surfaces/slack/identity/unlink': [
+    { bucket: 'slack-identity:unlink:ip', limit: 60, windowMs: TEN_MINUTES },
+    { bucket: 'slack-identity:unlink:user', limit: 30, windowMs: TEN_MINUTES },
+  ],
 }
 
 type DynamicEndpointRateLimit = {

@@ -125,7 +125,10 @@ For a description of what each route does and its associated implementation file
 
 - `GET /api/v1/surfaces/slack/connect`
 - `GET /api/v1/surfaces/slack/callback`
-- `GET /api/v1/surfaces/connections`
+- `DELETE, GET /api/v1/surfaces/connections`
+- `GET /api/v1/surfaces/slack/identity/start`
+- `GET /api/v1/surfaces/slack/identity/callback`
+- `POST /api/v1/surfaces/slack/identity/unlink`
 - `GET /api/v1/surfaces/connections/[connectionId]/channels`
 - `GET, POST /api/v1/surfaces/bindings`
 - `DELETE /api/v1/surfaces/bindings/[bindingId]`

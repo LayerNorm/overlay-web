@@ -877,7 +877,21 @@ export default defineSchema({
     .index('by_connectionId_channelId', ['connectionId', 'channelId'])
     .index('by_agentId', ['agentId']),
 
+  slackIdentityLinks: defineTable({
+    id: v.string(), teamId: v.string(), slackUserId: v.string(), userId: v.string(),
+    workspaceId: v.string(), connectionId: v.string(), status: v.union(v.literal('active'), v.literal('revoked')),
+    createdAt: v.number(), updatedAt: v.number(), revokedAt: v.optional(v.number()),
+  }).index('by_entityId', ['id']).index('by_slack_identity', ['teamId', 'slackUserId'])
+    .index('by_overlay_identity', ['teamId', 'userId']),
+
+  slackIdentityNonces: defineTable({
+    nonce: v.string(), userId: v.string(), workspaceId: v.string(), connectionId: v.string(), teamId: v.string(),
+    createdAt: v.number(), expiresAt: v.number(), consumedAt: v.optional(v.number()),
+  }).index('by_nonce', ['nonce']),
+
   surfaceTurnExecutions: defineTable({
+    identityLinkId: v.optional(v.string()),
+    slackUserId: v.optional(v.string()),
     turnId: v.string(),
     workflowRunId: v.string(),
     actorUserId: v.string(),

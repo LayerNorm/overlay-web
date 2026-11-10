@@ -39,6 +39,7 @@ test('surface admission claims an authentic native room delivery and projects/re
       invocationPolicy: 'mention', createdByPrincipalId: 'human', createdAt: now, updatedAt: now })
     await ctx.db.insert('surfaceConnections', { id: 'connection', workspaceId: 'ws', platform: 'slack',
       externalTeamId: 'team', status: 'active', installedByUserId: 'user', createdAt: now, updatedAt: now })
+    await ctx.db.insert('slackIdentityLinks', { id: 'link', workspaceId: 'ws', connectionId: 'connection', teamId: 'team', slackUserId: 'U1', userId: 'user', status: 'active', createdAt: now, updatedAt: now })
     await ctx.db.insert('surfaceBindings', { id: 'binding', connectionId: 'connection', agentId: 'agent',
       channelId: 'channel', status: 'active', createdByUserId: 'user', createdAt: now, updatedAt: now })
     const conversationId = await ctx.db.insert('conversations', { userId: 'user', workspaceId: 'ws',
@@ -53,6 +54,7 @@ test('surface admission claims an authentic native room delivery and projects/re
     return { conversationId }
   })
   const begin = {
+    identityLinkId: 'link', slackUserId: 'U1',
     serverSecret: secret, turnId: 'surface:slack:team:channel:message', workflowRunId: 'workflow',
     actorUserId: 'user', workspaceId: 'ws', creatorPrincipalId: 'human', agentId: 'agent',
     agentPrincipalId: 'agent-principal', platform: 'slack' as const, teamId: 'team', channelId: 'channel',

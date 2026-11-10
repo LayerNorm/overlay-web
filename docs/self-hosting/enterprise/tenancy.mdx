@@ -92,6 +92,8 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `mcpServers` | `userId` | Deployment boundary | Add `tenantId`; connector credentials and enabled indexes must be tenant-scoped. |
 | `mcpToolExecutions` | `userId` | Deployment boundary | Add `tenantId`; connector execution audit, authorization, and usage records must be tenant-scoped. |
 | `conversations` | `userId` | Deployment boundary | Add `tenantId`; share tokens need explicit cross-tenant policy. |
+| `slackIdentityLinks` | `userId`, `workspaceId`, `connectionId` | Verified Slack team/user identity; one active link per team/user. Membership and conversation ACLs are checked at admission and resume. | Add `tenantId`; scope identity uniqueness, linking and revocation to the deployment tenant. |
+| `slackIdentityNonces` | `userId`, `workspaceId`, `connectionId` | One-use, expiring OIDC state bound to the initiating session user and active installation. | Add `tenantId`; scope nonce issuance and atomic consumption to the same tenant. |
 | `conversationMessages` | `userId` | Deployment boundary | Add `tenantId`; conversation/message indexes must include tenant context. |
 | `conversationContextSummaries` | `userId` | Deployment boundary | Add `tenantId`; context summary indexes must include tenant context. |
 | `memories` | `userId` | Deployment boundary | Add `tenantId`; memory extraction and search must enforce tenant context. |

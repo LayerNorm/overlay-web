@@ -8,7 +8,6 @@ import type {
   SurfaceInboundThread,
 } from './chat'
 import { getOverlayServerContext } from '@/server/bootstrap'
-import { resolveSurfaceAuthorStatus } from '@/server/surfaces/surface-authors'
 import { logger } from '@/server/observability/logger'
 import { summarizeErrorForLog } from '@/shared/security/safe-log'
 import { stripSlackMentionMarkup } from '@/shared/surfaces/surface-prompts'
@@ -16,6 +15,7 @@ import { routeSurfaceMessage } from '@/shared/surfaces/surface-routing'
 import { slackSurfaceTurnId } from '@/shared/surfaces/surface-turn-identity'
 import { isSlackChannelEnabledAudience } from './slack-directory'
 import { resolveSurfaceRequester } from './surface-requester'
+import { getBaseUrl } from '@/server/web/app-url'
 import {
   surfaceAgentTurnWorkflow,
   type SurfaceAgentTurnInput,
@@ -92,7 +92,21 @@ async function handleInboundSlackMessage(args: {
   }
   const text = route.text
   const { binding, agent, connection } = route.candidate
-  const requester = resolveSurfaceRequester(route.candidate)
+  const requester = await resolveSurfaceRequester({
+    workspaceId: connection.workspaceId, connectionId: connection.id, teamId,
+    slackUserId: message.author.userId, channelId, threadId: threadTs || message.id,
+  })
+  if (!requester) {
+    const url = new URL('/api/v1/surfaces/slack/identity/start', getBaseUrl())
+    url.searchParams.set('workspaceId', connection.workspaceId)
+    url.searchParams.set('connectionId', connection.id)
+    const installation = await adapter.getInstallation(teamId)
+    if (installation?.botToken) await adapter.withBotToken(installation.botToken, async () => {
+      await adapter.webClient.chat.postEphemeral({ channel: channelId, user: message.author.userId,
+        text: `Link your Slack identity to an active Overlay workspace member with access to this conversation: <${url.toString()}|Link to Overlay>. Then send your message again.` })
+    }, { installationId: teamId })
+    return
+  }
   await thread.setState({ surfaceBindingId: binding.id }).catch((error) => {
     logger.warn('[surfaces/slack] thread owner state write failed', {
       threadId: thread.id,
@@ -144,14 +158,11 @@ async function handleInboundSlackMessage(args: {
       agentPermissionMode: resolvedAgentPermissionMode(agent.harness, agent.permissionMode),
       agentIsDefault: agent.isDefault === true,
       creatorPrincipalId: requester.principalId,
+      identityLinkId: requester.linkId,
       authorExternalId: message.author.userId,
       authorName: message.author.fullName || message.author.userName,
       authorEmail: message.author.email,
-      authorStatus: await resolveSurfaceAuthorStatus({
-        context,
-        workspaceId: connection.workspaceId,
-        email: message.author.email,
-      }),
+      authorStatus: 'member',
       placeholderTs: placeholder.ts,
     },
   }
