@@ -471,6 +471,10 @@ each model dispatch, with actual usage charged only by Harness settlement.
 Reconnect checks policy and access without another spending admission, so
 previously admitted output remains readable when the balance is low. Stop
 targets the admitted conversation turn through the existing cancellation path.
+Invalid proposal ranges return a failed tool result with frozen line-count and
+`read_note` guidance, allowing a corrected proposal in the same run. This recovery
+is limited to pure proposal validation; authorization and unexpected tool failures
+still fail closed through the shared Harness.
 Native Harness named-agent asks/posts use H2 shared-root dispatch; the HTTP
 route continues to refuse Harness callers. Delivery owners persist bounded
 tool-invocation snapshots while tools run, and finalization replaces those

@@ -3,6 +3,8 @@ import type { NotebookEdit } from '@overlay/app-core'
 
 const MAX_NOTE_CONTENT_CHARS = 400_000
 
+class NotebookEditValidationError extends Error {}
+
 export function readFrozenNotebook(note: { title: string; content: string }) {
   const lines = note.content.split('\n')
   return {
@@ -28,7 +30,7 @@ export function buildNotebookEditProposal(input: {
     || !Number.isSafeInteger(input.startLine) || !Number.isSafeInteger(input.endLine)
     || (input.startLine as number) < 1 || (input.endLine as number) < (input.startLine as number)
     || (input.endLine as number) > lines.length) {
-    throw new Error('Edit range or content is invalid for the frozen note.')
+    throw new NotebookEditValidationError('Edit range or content is invalid for the frozen note.')
   }
   const startLine = input.startLine as number
   const endLine = input.endLine as number
@@ -39,5 +41,19 @@ export function buildNotebookEditProposal(input: {
     endLine,
     originalLines: lines.slice(startLine - 1, endLine),
     newLines: input.newContent === '' ? [] : input.newContent.split('\n'),
+  }
+}
+
+export function proposeFrozenNotebookEdit(input: Parameters<typeof buildNotebookEditProposal>[0]) {
+  try {
+    const edit = buildNotebookEditProposal(input)
+    return { success: true, editId: edit.id, edit, message: `Edit proposed (lines ${edit.startLine}-${edit.endLine})` }
+  } catch (error) {
+    if (!(error instanceof NotebookEditValidationError)) throw error
+    return {
+      success: false,
+      error: `${error.message} Call read_note for the frozen line numbers, then submit a corrected propose_edit. No edit was proposed.`,
+      lineCount: input.content.split('\n').length,
+    }
   }
 }

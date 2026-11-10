@@ -9,7 +9,7 @@ import { ConvexHarnessRepository } from '@/server/harness/ConvexHarnessRepositor
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { NoteService } from '@/server/notes'
 import { ConvexNoteRepository } from '@/server/notes/ConvexNoteRepository'
-import { buildNotebookEditProposal, readFrozenNotebook } from './notebook-agent-utils'
+import { proposeFrozenNotebookEdit, readFrozenNotebook } from './notebook-agent-utils'
 
 const descriptions = {
   search_knowledge: "Search the user's saved knowledge: indexed files and memories. Uses hybrid semantic + keyword retrieval. Call when you need facts that are not already in the note text.",
@@ -97,7 +97,7 @@ export async function executeNotebookHarnessTool(input: {
     case 'propose_edit': {
       const value = objectInput(input.value)
       const { description, start_line, end_line, new_content } = value
-      const edit = buildNotebookEditProposal({
+      return proposeFrozenNotebookEdit({
         runId: input.runId,
         toolCallId: input.toolCallId,
         content: input.context.notebook.content,
@@ -106,7 +106,6 @@ export async function executeNotebookHarnessTool(input: {
         endLine: end_line,
         newContent: new_content,
       })
-      return { success: true, editId: edit.id, edit, message: `Edit proposed (lines ${edit.startLine}-${edit.endLine})` }
     }
     case 'search_knowledge': {
       const value = objectInput(input.value)

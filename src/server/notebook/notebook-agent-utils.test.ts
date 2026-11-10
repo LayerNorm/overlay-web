@@ -1,7 +1,18 @@
 import { describe, expect, test } from 'vitest'
-import { buildNotebookEditProposal, readFrozenNotebook } from './notebook-agent-utils'
+import { buildNotebookEditProposal, proposeFrozenNotebookEdit, readFrozenNotebook } from './notebook-agent-utils'
 
 describe('Notebook durable tools', () => {
+  test('invalid proposal ranges return actionable feedback and can be corrected against the same snapshot', () => {
+    const input = { runId: 'run', toolCallId: 'invalid', content: 'one\ntwo\nthree',
+      description: 'replace last line', startLine: 5, endLine: 6, newContent: 'updated' }
+    const invalid = proposeFrozenNotebookEdit(input)
+    expect(invalid).toMatchObject({ success: false, lineCount: 3, error: expect.stringContaining('Call read_note') })
+    expect(invalid).not.toHaveProperty('edit')
+    expect(proposeFrozenNotebookEdit({ ...input, toolCallId: 'corrected', startLine: 3, endLine: 3 }))
+      .toMatchObject({ success: true, edit: { originalLines: ['three'], newLines: ['updated'] } })
+    expect(input.content).toBe('one\ntwo\nthree')
+  })
+
   test('read_note returns numbered lines from the frozen snapshot', () => {
     expect(readFrozenNotebook({ title: 'Goals', content: 'one\ntwo' })).toEqual({
       title: 'Goals',

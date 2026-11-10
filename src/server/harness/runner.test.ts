@@ -14,6 +14,7 @@ import type { HarnessToolExecutionOptions } from './tool-approvals'
 import { buildPersonalHarnessDelivery } from './personal-delivery'
 import { harnessModelResponseFailure } from './model-usage'
 import { HarnessWaitRollover } from './waits'
+import { proposeFrozenNotebookEdit, readFrozenNotebook } from '@/server/notebook/notebook-agent-utils'
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
@@ -160,6 +161,36 @@ function cancelAfterFirstCheckpoint(f: ReturnType<typeof fixture>) {
     return apply(`cancel:${operationId}`, { type: 'terminate', status: 'cancelled', reason: 'Cancelled by the person.' })
   }
 }
+
+test('Notebook corrects an invalid edit range without terminating for an uncertain tool outcome', async () => {
+  const f = fixture(false, ['propose_edit', 'read_note'], { executionPolicyVersion: 2 })
+  const note = { title: 'Note', content: 'one\ntwo\nthree' }
+  const tools = {
+    read_note: tool({ inputSchema: z.object({}), execute: async () => readFrozenNotebook(note) }),
+    propose_edit: tool({
+      inputSchema: z.object({ start_line: z.number(), end_line: z.number(), new_content: z.string() }),
+      execute: async (value, options) => proposeFrozenNotebookEdit({
+        runId: 'run', toolCallId: options.toolCallId, content: note.content, description: 'Replace last line',
+        startLine: value.start_line, endLine: value.end_line, newContent: value.new_content,
+      }),
+    }),
+  }
+  const provider = model(index => {
+    if (index === 0) return [call('propose_edit', 'invalid', { start_line: 5, end_line: 6, new_content: 'updated' })]
+    if (index === 1) return [call('read_note', 'read')]
+    if (index === 2) return [call('propose_edit', 'corrected', { start_line: 3, end_line: 3, new_content: 'updated' })]
+    return 'The corrected edit is proposed for review.'
+  })
+  const result = await runOverlayHarness({ ...input, tools }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(provider.doStreamCalls).toHaveLength(4)
+  expect(JSON.stringify(provider.doStreamCalls[1]?.prompt)).toContain('Call read_note')
+  const proposals = result.steps.flatMap(step => step.toolResults).filter(result => result.toolName === 'propose_edit')
+  expect(proposals.map(result => result.output)).toMatchObject([
+    { success: false, lineCount: 3 }, { success: true, edit: { originalLines: ['three'], newLines: ['updated'] } },
+  ])
+  expect(note.content).toBe('one\ntwo\nthree')
+})
 
 test('V2 approval rollover checkpoints pending requests and resumes without replaying the tool', async () => {
   const clock = vi.spyOn(Date, 'now')
