@@ -247,7 +247,12 @@ class FakeCredentials {
   }
 }
 
-function createService(repository: FakeRepository, credentials: FakeCredentials, fetcher: typeof fetch) {
+function createService(
+  repository: FakeRepository,
+  credentials: FakeCredentials,
+  fetcher: typeof fetch,
+  sleep: (ms: number) => Promise<void> = async () => {},
+) {
   credentials.order = repository.order
   const bridge = new SubscriptionBridgeClient(
     'http://subscriptions.internal',
@@ -259,6 +264,7 @@ function createService(repository: FakeRepository, credentials: FakeCredentials,
     credentials as unknown as ByokCredentialStore,
     fetcher,
     bridge,
+    sleep,
   )
 }
 
@@ -535,6 +541,38 @@ for (const operation of ['disconnect', 'revokeAllForUser'] as const) {
     assert.equal(repository.state, null)
   })
 }
+
+test('disconnect waits for an in-flight sign-in check to hand back its lease, then finishes cleanup', async () => {
+  const repository = new FakeRepository()
+  const name = 'poll-candidate'
+  repository.state = {
+    userId: 'owner-1', connectionId: 'connection-1', providerId: 'codex',
+    phase: 'pending', generation: 1, revision: 1, cleanupRefs: ['old-pending-state'],
+    leaseUntil: Date.now() + 60_000,
+    pendingWrites: [{ name, createdAt: Date.now() }],
+  }
+  const credentials = new FakeCredentials()
+  let sleeps = 0
+  const service = createService(repository, credentials, async () => { throw new Error('unused') }, async () => {
+    sleeps += 1
+    // The fenced poll deletes its own write, keeps a ref it could not delete, and hands the lease back.
+    if (sleeps === 2) {
+      repository.state = {
+        ...repository.state,
+        leaseUntil: undefined,
+        pendingWrites: [],
+        cleanupRefs: ['old-pending-state', 'retained-by-poll'],
+      }
+    }
+  })
+
+  await service.disconnect('owner-1', 'connection-1')
+
+  assert.equal(sleeps, 2)
+  assert.deepEqual(credentials.deleted.sort(), ['old-pending-state', 'retained-by-poll'])
+  assert.equal(repository.forgetDisconnectedCalls, 1)
+  assert.equal(repository.state, null)
+})
 
 test('disconnect reconciles all pending writes and does not forget state after a deletion failure', async () => {
   const repository = new FakeRepository()
