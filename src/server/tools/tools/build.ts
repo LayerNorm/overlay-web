@@ -1325,7 +1325,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   }
   if (shouldExposeTool('update_task')) {
     tools.update_task = tool({
-      description: 'Update task fields in Work. Include the revision from get_task to avoid overwriting newer changes.',
+      description: 'Update task fields in Work. Include the latest revision from get_task, update_task or comment_on_task to avoid overwriting newer changes. On a conflict, review the returned current task (or call get_task), then retry with its revision if the intended changes still apply. Never drop the revision to bypass a conflict.',
       inputSchema: z.object({
         taskId: taskIdSchema,
         revision: z.string().optional(),
@@ -1349,7 +1349,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
   }
   if (shouldExposeTool('comment_on_task')) {
     tools.comment_on_task = tool({
-      description: 'Add a comment to a task in Work.',
+      description: 'Add a comment to a task in Work. Comments advance its revision. Review the returned task and use its new revision for subsequent updates; call get_task if no revision is returned. Do not run a comment and an update on the same task in parallel.',
       inputSchema: z.object({ taskId: taskIdSchema, body: z.string().min(1) }).strict(),
       execute: async (input) => { assertToolAllowed('comment_on_task'); return executeCommentOnTask(options, input) },
     })
