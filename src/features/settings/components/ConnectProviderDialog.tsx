@@ -49,11 +49,11 @@ function SubscriptionDialog({ connection, onClose, onConnected, tabs, workspaceI
     open
     title={title}
     className="w-[min(480px,92vw)] max-h-[calc(100dvh-2rem)] overflow-y-auto"
-    onOpenChange={(open) => { if (!open) void flow.close() }}
+    onOpenChange={(open) => { if (!open) flow.close() }}
     footer={<SubscriptionFooter
       flow={flow}
       selected={selected}
-      onClose={() => { void flow.close() }}
+      onClose={flow.close}
       onStart={() => { setCopied(false); void flow.start(providerId) }}
       startDisabled={!workspaceReady}
     />}

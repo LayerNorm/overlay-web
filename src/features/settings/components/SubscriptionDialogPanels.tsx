@@ -44,7 +44,7 @@ export function SubscriptionFooter({
 }) {
   const authorization = flow.login?.authorization
   return <div className="flex justify-end gap-2">
-    <Button variant="ghost" disabled={flow.busy} onClick={onClose}>{flow.connected ? 'Done' : 'Cancel'}</Button>
+    <Button variant="ghost" onClick={onClose}>{flow.connected ? 'Done' : 'Cancel'}</Button>
     {!flow.connected && (!authorization || flow.stopped) ? <Button variant="primary" disabled={startDisabled || flow.busy || !selected?.enabled || !flow.availability?.available} onClick={onStart}>{flow.busy ? <Loader2 size={14} className="animate-spin" /> : null}{flow.stopped ? 'Start again' : 'Continue'}</Button> : null}
   </div>
 }
