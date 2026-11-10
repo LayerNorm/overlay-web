@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module'
-import { act, createElement, type ReactElement } from 'react'
+import { act, createElement, useEffect, type ReactElement } from 'react'
 import { afterEach, expect, test, vi } from 'vitest'
 import { useNotebookAgent } from './editor-state'
 
@@ -46,7 +46,8 @@ async function mount(runAgent: Parameters<typeof useNotebookAgent>[0]['runAgent'
   }
   let agent!: ReturnType<typeof useNotebookAgent>
   function Harness(next: typeof props) {
-    agent = useNotebookAgent(next)
+    const currentAgent = useNotebookAgent(next)
+    useEffect(() => { agent = currentAgent }, [currentAgent])
     return null
   }
   await act(async () => { renderer = create(createElement(Harness, props)) })
@@ -89,5 +90,5 @@ test('late events from a previous note cannot populate the next note after navig
   expect(fixture.agent.agentRunning).toBe(false)
   expect(fixture.agent.agentItems).toEqual([])
   expect(fixture.addDiffProposal).not.toHaveBeenCalled()
-  expect(fixture.props.stopAgent).toHaveBeenCalledWith({ conversationId: 'conversation', turnId: 'turn' })
+  expect(fixture.props.stopAgent).toHaveBeenCalledWith({ conversationId: 'conversation', runId: 'run', turnId: 'turn' })
 })
