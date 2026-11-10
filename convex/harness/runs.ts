@@ -96,12 +96,6 @@ const waitReferenceFields = {
 const policyValidator = v.object({
   actorUserId: v.string(),
   workspaceId: v.optional(v.string()),
-  surface: v.optional(v.object({
-    kind: v.literal('notebook'),
-    noteId: v.string(),
-    turnId: v.string(),
-    requestDigest: v.string(),
-  })),
   executionPolicyVersion: v.optional(v.literal(2)),
   publicProgressVersion: v.optional(v.literal(1)),
   publicStreamVersion: v.optional(v.literal(1)),
@@ -442,13 +436,6 @@ function assertBoundedAdmission(input: HarnessAdmission) {
   if (input.policy.allowedToolIds.length > MAX_TOOL_IDS
     || input.policy.allowedToolIds.some(id => !id.trim() || id.length > MAX_TOOL_ID_LENGTH)) {
     throw new Error('Harness policy tool ids exceed their bounds.')
-  }
-  if (input.policy.surface?.kind === 'notebook'
-    && (!input.policy.surface.noteId.trim() || input.policy.surface.noteId.length > MAX_ID_LENGTH
-      || !input.policy.surface.turnId.trim() || input.policy.surface.turnId.length > MAX_ID_LENGTH
-      || !/^[a-f0-9]{64}$/.test(input.policy.surface.requestDigest)
-      || !input.deliveryAgentRunId || !input.policy.workspaceId || input.policy.publicStreamVersion !== 1)) {
-    throw new Error('Notebook harness admission identity is incomplete.')
   }
   if (!input.policy.actorUserId.trim()
     || (input.policy.workspaceId !== undefined && !input.policy.workspaceId.trim())
@@ -2011,30 +1998,16 @@ export const readPublicStreamState = query({
       : null
     const steps = await ctx.db.query('harnessTranscriptSteps').withIndex('by_runId_sequence', q =>
       q.eq('runId', run.runId).gt('sequence', args.afterSequence ?? -1)).order('asc').take(10)
-    const notebookPolicy = metadata.policy.surface?.kind === 'notebook'
     return {
       status: metadata.status,
       workflowRunId: metadata.workflowRunId ?? null,
       executionGeneration: metadata.executionGeneration ?? 0,
       snapshot,
-      transcriptSteps: await Promise.all(steps.map(async step => {
-        const transcriptStep = {
-          receiptId: step.receiptId,
-          sequence: step.sequence,
-          executionGeneration: step.executionGeneration ?? 0,
-          persistence: parseJson<HarnessTranscriptPersistence>(step.persistenceJson),
-        }
-        if (!notebookPolicy || (!step.fullPersistenceStorageId && !step.fullPersistenceDigest)) {
-          return transcriptStep
-        }
-        if (!step.fullPersistenceStorageId || !step.fullPersistenceDigest) {
-          throw new Error('Full Notebook transcript payload is unavailable.')
-        }
-        return {
-          ...transcriptStep,
-          fullPersistenceUrl: await ctx.storage.getUrl(step.fullPersistenceStorageId),
-          fullPersistenceDigest: step.fullPersistenceDigest,
-        }
+      transcriptSteps: steps.map(step => ({
+        receiptId: step.receiptId,
+        sequence: step.sequence,
+        executionGeneration: step.executionGeneration ?? 0,
+        persistence: parseJson<HarnessTranscriptPersistence>(step.persistenceJson),
       })),
       nextSequence: steps.length === 10 ? steps.at(-1)!.sequence : null,
     }

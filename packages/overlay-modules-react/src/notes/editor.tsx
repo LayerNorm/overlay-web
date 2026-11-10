@@ -12,7 +12,7 @@ import {
   type Ref,
 } from 'react'
 import { OverlayMark } from '@overlay/ui'
-import { EditorContent, useEditorState } from '@tiptap/react'
+import { EditorContent } from '@tiptap/react'
 import {
   Check,
   ChevronDown,
@@ -123,7 +123,6 @@ export interface CanonicalNotebookEditorProps {
   projectName?: string
   repository: NotebookEditorRepository
   runAgent(request: NotebookAgentRequest, signal: AbortSignal): Promise<Response>
-  stopAgent(input: { conversationId: string; turnId: string }): Promise<void>
   models: readonly NotebookEditorModel[]
   initialModelId: string
   onModelChange?(modelId: string): void
@@ -249,13 +248,9 @@ function NotebookAssistantHeader({
   onAgentPanelModeChange?: (mode: 'docked' | 'floating') => void
   onToggleAgentPanel: () => Promise<void>
 }) {
-  const pendingDiffCount = useEditorState({
-    editor,
-    selector: ({ editor: currentEditor }) => currentEditor ? getPendingDiffs(currentEditor).length : 0,
-  }) ?? 0
   return (
     <NotebookAgentHeader
-      pendingDiffCount={pendingDiffCount}
+      pendingDiffCount={editor ? getPendingDiffs(editor).length : 0}
       modelPicker={modelPicker}
       presentation={
         onAgentPanelModeChange
@@ -603,7 +598,6 @@ export function CanonicalNotebookEditor({
   projectName,
   repository,
   runAgent,
-  stopAgent,
   models,
   initialModelId,
   onModelChange,
@@ -695,11 +689,9 @@ export function CanonicalNotebookEditor({
 
   const agent = useNotebookAgent({
     runAgent,
-    stopAgent,
     editor,
     activeNote,
     title,
-    titleRef,
     initialModelId,
     flushSaveRef,
     controlledAgentPanelOpen,

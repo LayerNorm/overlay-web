@@ -239,8 +239,6 @@ test('module feature methods use canonical app endpoints', async () => {
   await client.memory.updateResponse({ memoryId: 'mem_1', content: 'Updated' })
   await client.outputs.deleteResponse({ outputId: 'out_1' })
   await client.notes.notebookAgentResponse({
-    noteId: 'note_1',
-    turnId: 'turn_1',
     noteContent: '',
     noteTitle: 'Untitled',
     message: 'summarize this',

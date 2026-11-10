@@ -56,11 +56,4 @@ export type PersonalChatWorkToolingContext = {
   automationId?: string
   automationRunId?: string
   approvalMode?: 'ask' | 'auto'
-  notebook?: {
-    kind: 'notebook'
-    noteId: string
-    title: string
-    content: string
-    requestDigest: string
-  }
 }

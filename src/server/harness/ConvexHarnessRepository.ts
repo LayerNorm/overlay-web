@@ -151,8 +151,6 @@ export class ConvexHarnessRepository implements HarnessRepository {
       sequence: number
       executionGeneration: number
       persistence: { content: string; parts: Array<Record<string, unknown>> }
-      fullPersistenceUrl?: string | null
-      fullPersistenceDigest?: string
     }>
     nextSequence: number | null
   } | null> {

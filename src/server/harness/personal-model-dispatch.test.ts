@@ -66,24 +66,6 @@ test('a successful auto top-up lets the call proceed', async () => {
   expect(mocks.apply).toHaveBeenCalledOnce()
 })
 
-test('Notebook dispatch rechecks the refreshed 2% budget at each boundary without a spend hold', async () => {
-  const notebookState = { ...state, policy: { ...state.policy, surface: {
-    kind: 'notebook', noteId: 'note', turnId: 'turn', requestDigest: 'digest',
-  } } }
-  mocks.read.mockResolvedValue(notebookState)
-  await authorizePersonalHarnessModelDispatch(reference, options)
-  expect(mocks.apply).toHaveBeenCalledWith(expect.objectContaining({ operation: {
-    type: 'bind_model_dispatch', id: 'model:0', modelId: 'provider/model', billingReservationId: null,
-  } }))
-  mocks.read.mockResolvedValue({ ...notebookState, modelReservation: { id: 'model:1', maxCostMicros: 0 } })
-  mocks.refresh.mockResolvedValue({ entitlements: low })
-  mocks.ensure.mockResolvedValue({ entitlements: low, remainingCents: 199 })
-  await expect(authorizePersonalHarnessModelDispatch({ ...reference,
-    personal: { ...reference.personal!, receiptId: 'model:1' },
-  }, options)).rejects.toThrow('The workspace budget is under 2%.')
-  expect(mocks.apply).toHaveBeenCalledTimes(1)
-})
-
 test('billing disabled and unlimited budgets never stop work', async () => {
   mocks.refresh.mockResolvedValue({ entitlements: { planKind: 'free', budgetTotalCents: 0, budgetRemainingCents: 0 } })
   mocks.capabilities.mockResolvedValue({ billing: false })

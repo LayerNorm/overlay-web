@@ -3,7 +3,6 @@ import { NextRequest } from 'next/server'
 import { DEFAULT_OVERLAY_CAPABILITIES } from '@overlay/app-core/capabilities'
 import type { AppApiRouteContext } from '@/server/app-api/bff-context'
 import { POST } from './route'
-import { actConversationRepository } from '@/server/conversations/http'
 
 vi.mock('server-only', () => ({}))
 
@@ -29,57 +28,12 @@ function request(extra: Record<string, unknown> = {}) {
 function dependencies(result: Record<string, unknown>, callbacks: Array<() => Promise<void>>, cleanup = vi.fn()) {
   return {
     conversations: { cancelAgentRuns: vi.fn().mockResolvedValue(result) },
-    getLatestAgentRun: vi.fn(),
     abortToolLoops: vi.fn().mockReturnValue([]),
     recordMetrics: vi.fn().mockResolvedValue(undefined),
     cancelHarnessWorkflows: cleanup,
     schedule: vi.fn((callback: () => Promise<void>) => { callbacks.push(callback) }) as unknown as typeof import('next/server').after,
   }
 }
-
-test('stop resolves the assistant run by the admitted turn identity', async () => {
-  const callbacks: Array<() => Promise<void>> = []
-  const deps = dependencies({
-    cancelledRunIds: ['agent-run'],
-    cancelledWorkflowRunIds: [],
-    cancelledWorkflows: [],
-    cancelledHarnessRoots: [],
-    stoppedCount: 1,
-  }, callbacks)
-  deps.getLatestAgentRun.mockResolvedValue({ assistantMessageId: 'assistant-message' })
-
-  const response = await POST(request({ turnId: 'notebook-turn' }), context, deps)
-
-  expect(response.status).toBe(200)
-  expect(deps.getLatestAgentRun).toHaveBeenCalledWith({
-    conversationId: 'conversation',
-    turnId: 'notebook-turn',
-    userId: 'owner',
-  })
-  expect(deps.conversations.cancelAgentRuns).toHaveBeenCalledWith(expect.objectContaining({
-    conversationId: 'conversation',
-    messageId: 'assistant-message',
-    userId: 'owner',
-  }))
-})
-
-test('turn lookup preserves the production repository receiver when no lookup is injected', async () => {
-  const deps = dependencies({
-    cancelledRunIds: [], cancelledWorkflows: [], cancelledHarnessRoots: [], stoppedCount: 1,
-  }, [])
-  const lookup = vi.spyOn(actConversationRepository, 'getLatestAgentRun').mockImplementation(async function (this: typeof actConversationRepository) {
-    expect(this).toBe(actConversationRepository)
-    return { assistantMessageId: 'assistant-message' } as Awaited<ReturnType<typeof actConversationRepository.getLatestAgentRun>>
-  })
-  try {
-    const response = await POST(request({ turnId: 'notebook-turn' }), context, { ...deps, getLatestAgentRun: undefined })
-    expect(response.status).toBe(200)
-    expect(lookup).toHaveBeenCalledExactlyOnceWith({ conversationId: 'conversation', turnId: 'notebook-turn', userId: 'owner' })
-    expect(deps.conversations.cancelAgentRuns).toHaveBeenCalledWith(expect.objectContaining({ messageId: 'assistant-message' }))
-  } finally {
-    lookup.mockRestore()
-  }
-})
 
 test('stop schedules cleanup only for mutation-returned roots and keeps its response shape', async () => {
   const callbacks: Array<() => Promise<void>> = []

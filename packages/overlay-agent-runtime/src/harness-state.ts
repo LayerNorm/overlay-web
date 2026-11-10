@@ -101,7 +101,6 @@ export type HarnessPolicy = {
   executionPolicyVersion?: 2
   spendingMode?: 'workspace' | 'external' | 'none'
   allowedToolIds: string[]
-  surface?: { kind: 'notebook'; noteId: string; turnId: string; requestDigest: string }
   requiresPlan: boolean
   deadlineAt: number
   taskDeadlineAt?: number

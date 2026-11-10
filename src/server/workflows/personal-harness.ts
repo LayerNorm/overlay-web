@@ -209,7 +209,6 @@ export async function personalHarnessWorkflow(input: PersonalHarnessWorkflowInpu
     result = await runOverlayHarness({
       instructions: input.instructions, messages: input.messages, settings: input.settings,
       continuation: input.continuation,
-      completionToolNames: input.context.notebook ? ['finish'] : undefined,
       model: { modelId: input.context.effectiveModelId, credentialOwnerId: access.actorUserId, sessionId: access.conversationId },
       tools,
       writable: getWritable<ModelCallStreamPart<ToolSet>>(),

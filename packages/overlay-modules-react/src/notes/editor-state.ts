@@ -42,22 +42,14 @@ import {
   type NotebookNote,
   type NoteDoc,
 } from '@overlay/app-core'
-import { noteMarkdownToEditorBlocks, noteMarkdownToEditorHtml, toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
-import {
-  cancelNotebookRunAfterReconnectExhaustion,
-  followNotebookAgentStream,
-  NOTEBOOK_RECONNECT_EXHAUSTED_MESSAGE,
-  notebookSnapshotMatches,
-  notebookRunMayUpdate,
-  resolveNotebookEditorEdit,
-  type NotebookAgentIdentity,
-} from './notebook-agent-reconnect'
+import { noteMarkdownToEditorHtml, toCanonicalNoteMarkdown } from '@overlay/app-core/note-markdown'
 import type { SlashMenuItem } from './slash-menu'
 import { createSlashMenuItems } from './slash-menu-items'
 import {
   InlineDiffExtension,
   INLINE_DIFF_CSS,
 } from './inline-diff-extension'
+import { noteContentFromEditor } from './editor-content'
 import type {
   NotebookEditorMediaAdapter,
   NotebookEditorMention,
@@ -66,24 +58,6 @@ import type {
 
 type TiptapEditor = ReturnType<typeof useEditor>
 type FlushSaveRef = MutableRefObject<() => Promise<void> | void>
-type NotebookAgentRun = {
-  token: number
-  noteId: string
-  editor: NonNullable<TiptapEditor>
-  controller: AbortController
-  stopAgent: (input: { conversationId: string; turnId: string }) => Promise<void>
-  identity: NotebookAgentIdentity | null
-  request: NotebookAgentRequest | null
-  stopRequested: boolean
-  requestStarted: boolean
-  inFlight: boolean
-  stopReconnectCycles: number
-  disconnectErrorReported: boolean
-  eventIds: Set<string>
-  proposalIds: Set<string>
-  cancelPromise?: Promise<boolean>
-  resume?: () => void
-}
 
 const lowlight = createLowlight(common)
 const NOTEBOOK_INLINE_DIFF_STYLE_ID = 'notebook-inline-diff-styles'
@@ -769,94 +743,21 @@ export function useNoteMutations({
   }
 }
 
-type ReadAgentStreamOptions = {
-  isCurrent: () => boolean
-  appendItem: (item: NotebookAgentUiItem) => void
-  eventIds: Set<string>
-  proposalIds: Set<string>
-  frozenMarkdown: string
-  frozenTitle: string
-  currentTitle: () => string
-  currentMarkdown: () => string
-  onAccepted: () => Promise<void>
-}
-
-type NotebookAgentStreamEvent = NonNullable<ReturnType<typeof parseNotebookAgentStreamLine>>
-
-async function handleAgentStreamEvent(
-  evt: NotebookAgentStreamEvent,
-  run: NotebookAgentRun,
-  options: ReadAgentStreamOptions,
-): Promise<void> {
-  if (evt.type === 'accepted') {
-    const identity = { runId: evt.runId, conversationId: evt.conversationId, turnId: evt.turnId }
-    const current = run.identity
-    if (current && (current.runId !== identity.runId || current.conversationId !== identity.conversationId
-      || current.turnId !== identity.turnId)) {
-      throw new Error('Notebook reconnect returned a different run identity.')
-    }
-    run.identity = { ...identity, ...(evt.cursor ? { cursor: evt.cursor } : current?.cursor ? { cursor: current.cursor } : {}) }
-    await options.onAccepted()
-    return
-  }
-  if ('cursor' in evt && evt.cursor && run.identity) {
-    run.identity = { ...run.identity, cursor: evt.cursor }
-  }
-  if (!options.isCurrent()) return
-  if ('eventId' in evt && evt.eventId) {
-    if (options.eventIds.has(evt.eventId)) return
-    options.eventIds.add(evt.eventId)
-  }
-
-  if (evt.type === 'edit_proposal') {
-    const edit = evt.edit
-    if (edit && !options.proposalIds.has(edit.id)) {
-      options.proposalIds.add(edit.id)
-      const changed = !notebookSnapshotMatches({
-        frozenMarkdown: options.frozenMarkdown,
-        currentMarkdown: options.currentMarkdown(),
-        frozenTitle: options.frozenTitle,
-        currentTitle: options.currentTitle(),
-      })
-      if (changed) {
-        options.appendItem({
-          type: 'error',
-          text: 'The note changed after this run started. Rerun the request before applying its proposal.',
-        })
-      } else {
-        const editorBlocks: string[] = []
-        run.editor.state.doc.forEach(node => editorBlocks.push(node.textContent))
-        const editorEdit = resolveNotebookEditorEdit(edit, noteMarkdownToEditorBlocks(options.frozenMarkdown), editorBlocks)
-        if (editorEdit) run.editor.chain().focus().addDiffProposal(editorEdit).run()
-        else options.appendItem({ type: 'error', text: 'This proposal could not be safely matched to the editor. No changes were applied.' })
-      }
-    }
-    return
-  }
-
-  const item = notebookAgentEventToUiItem(evt)
-  if (item) options.appendItem(item)
-}
-
 async function readAgentStream(
   res: Response,
-  run: NotebookAgentRun,
-  options: ReadAgentStreamOptions,
-): Promise<boolean> {
+  editor: TiptapEditor | null,
+  setAgentItems: React.Dispatch<React.SetStateAction<NotebookAgentUiItem[]>>,
+) {
   const reader = res.body?.getReader()
-  if (!reader) return false
+  if (!reader) {
+    setAgentItems((prev) => [...prev, { type: 'error', text: 'No response body' }])
+    return
+  }
 
   const decoder = new TextDecoder()
   let buffer = ''
-  let terminal = false
   while (true) {
-    let done: boolean
-    let value: Uint8Array | undefined
-    try {
-      ({ done, value } = await reader.read())
-    } catch {
-      return false
-    }
+    const { done, value } = await reader.read()
     if (done) break
     buffer += decoder.decode(value, { stream: true })
     const lines = buffer.split('\n')
@@ -867,31 +768,32 @@ async function readAgentStream(
       const evt = parseNotebookAgentStreamLine(trimmed)
       if (!evt) continue
 
-      if (evt.type === 'done') terminal = true
-      await handleAgentStreamEvent(evt, run, options)
+      if (evt.type === 'edit_proposal') {
+        const edit = evt.edit
+        if (edit) editor?.chain().focus().addDiffProposal(edit).run()
+        continue
+      }
+
+      const item = notebookAgentEventToUiItem(evt)
+      if (item) setAgentItems((prev) => [...prev, item])
     }
   }
-  return terminal
 }
 
 export function useNotebookAgent({
   runAgent,
-  stopAgent,
   editor,
   activeNote,
   title,
-  titleRef,
   initialModelId,
   flushSaveRef,
   controlledAgentPanelOpen,
   onAgentPanelOpenChange,
 }: {
   runAgent: (request: NotebookAgentRequest, signal: AbortSignal) => Promise<Response>
-  stopAgent: (input: { conversationId: string; turnId: string }) => Promise<void>
   editor: TiptapEditor | null
   activeNote: NotebookNote | null
   title: string
-  titleRef: MutableRefObject<string>
   initialModelId: string
   flushSaveRef: FlushSaveRef
   controlledAgentPanelOpen?: boolean
@@ -907,85 +809,16 @@ export function useNotebookAgent({
   const [agentRunning, setAgentRunning] = useState(false)
   const [selectedModelId, setSelectedModelId] = useState(initialModelId)
   const [showModelPicker, setShowModelPicker] = useState(false)
-  const activeNoteId = activeNote?._id
-  const activeNoteIdRef = useRef(activeNoteId)
-  const currentEditorRef = useRef(editor)
-  const activeRunRef = useRef<NotebookAgentRun | null>(null)
-  const runTokenRef = useRef(0)
-  const previousNoteIdRef = useRef(activeNoteId)
+  const notebookAgentAbortRef = useRef<AbortController | null>(null)
   const modelPickerRef = useRef<HTMLDivElement>(null)
-  activeNoteIdRef.current = activeNoteId
-  currentEditorRef.current = editor
+  const activeNoteId = activeNote?._id
 
   useEffect(() => {
-    editor?.commands.clearAllDiffs()
-  }, [editor, title, activeNoteId])
-
-  const isCurrentRun = useCallback((run: NotebookAgentRun) => notebookRunMayUpdate({
-    currentNoteId: activeNoteIdRef.current,
-    runNoteId: run.noteId,
-    currentToken: activeRunRef.current?.token ?? null,
-    runToken: run.token,
-  }) && currentEditorRef.current === run.editor, [])
-
-  const appendRunItem = useCallback((run: NotebookAgentRun, item: NotebookAgentUiItem) => {
-    if (!isCurrentRun(run)) return
-    setAgentItems((prev) => [...prev, item])
-  }, [isCurrentRun])
-
-  const finishRun = useCallback((run: NotebookAgentRun) => {
-    if (activeRunRef.current !== run) return
-    activeRunRef.current = null
+    notebookAgentAbortRef.current?.abort()
+    notebookAgentAbortRef.current = null
     setAgentRunning(false)
-  }, [])
-
-  const cancelAdmittedRun = useCallback((run: NotebookAgentRun): Promise<boolean> => {
-    if (run.cancelPromise) return run.cancelPromise
-    const identity = run.identity
-    if (!identity) return Promise.resolve(false)
-    const cancellation = cancelNotebookRunAfterReconnectExhaustion({
-      run,
-      stopAgent: (value) => run.stopAgent(value),
-      disconnect: () => run.controller.abort(),
-    }).then((stopped) => {
-      if (stopped) {
-        setAgentItems((prev) => isCurrentRun(run)
-          ? prev.filter(item => !('text' in item && item.text === NOTEBOOK_RECONNECT_EXHAUSTED_MESSAGE))
-          : prev)
-      }
-      return stopped
-    }).finally(() => {
-      run.cancelPromise = undefined
-    })
-    run.cancelPromise = cancellation
-    return cancellation
-  }, [isCurrentRun])
-
-  useEffect(() => {
-    if (previousNoteIdRef.current === activeNoteId) return
-    previousNoteIdRef.current = activeNoteId
-    const run = activeRunRef.current
-    if (run && run.noteId !== activeNoteId) {
-      run.stopRequested = true
-      if (!run.requestStarted) run.controller.abort()
-      else if (run.identity) void cancelAdmittedRun(run)
-      activeRunRef.current = null
-    }
     setAgentItems([])
-    setAgentInput('')
-    setAgentRunning(false)
-    setShowModelPicker(false)
-    agentMentionsRef.current = []
-  }, [activeNoteId, cancelAdmittedRun])
-
-  useEffect(() => () => {
-    const run = activeRunRef.current
-    if (!run) return
-    run.stopRequested = true
-    if (!run.requestStarted) run.controller.abort()
-    else if (run.identity) void cancelAdmittedRun(run)
-    finishRun(run)
-  }, [cancelAdmittedRun, finishRun])
+  }, [activeNoteId])
 
   useEffect(() => {
     if (controlledAgentPanelOpen === undefined) return
@@ -1020,195 +853,62 @@ export function useNotebookAgent({
   }, [flushSaveRef, onAgentPanelOpenChange])
 
   const stopNotebookAgent = useCallback(() => {
-    const run = activeRunRef.current
-    if (!run || !isCurrentRun(run)) return
-    run.stopRequested = true
-    if (run.identity) {
-      void cancelAdmittedRun(run).then((stopped) => {
-        if (!isCurrentRun(run)) return
-        if (stopped) finishRun(run)
-        else appendRunItem(run, { type: 'error', text: 'Could not stop the Notebook run. You can try Stop again.' })
-      })
-    } else if (!run.requestStarted) {
-      run.controller.abort()
-      finishRun(run)
-    } else if (!run.inFlight) {
-      run.resume?.()
-    }
-  }, [appendRunItem, cancelAdmittedRun, finishRun, isCurrentRun])
+    notebookAgentAbortRef.current?.abort()
+    notebookAgentAbortRef.current = null
+    setAgentRunning(false)
+  }, [])
 
   const runNotebookAgent = useCallback(async () => {
-    if (!editor || !activeNote) return
-    const previousRun = activeRunRef.current
-    if (previousRun?.noteId === activeNote._id) return
-    if (previousRun) {
-      previousRun.stopRequested = true
-      if (!previousRun.requestStarted) previousRun.controller.abort()
-      else if (previousRun.identity) void cancelAdmittedRun(previousRun)
-      activeRunRef.current = null
-    }
+    if (!editor || !activeNote || agentRunning) return
     const message = agentInput.trim()
     if (!message) return
-    const run: NotebookAgentRun = {
-      token: ++runTokenRef.current,
-      noteId: activeNote._id,
-      editor,
-      controller: new AbortController(),
-      stopAgent,
-      identity: null,
-      request: null,
-      stopRequested: false,
-      requestStarted: false,
-      inFlight: false,
-      stopReconnectCycles: 0,
-      disconnectErrorReported: false,
-      eventIds: new Set(),
-      proposalIds: new Set(),
-    }
-    activeRunRef.current = run
+    const noteContent = noteContentFromEditor(editor)
+    const modelId = selectedModelId
+
+    setAgentItems((prev) => [...prev, { type: 'user', text: message }])
+    const mentionsForRequest = createNotebookAgentMentions(agentMentionsRef.current)
+    setAgentInput('')
+    setAgentMentions([])
+
+    const ac = new AbortController()
+    notebookAgentAbortRef.current = ac
     setAgentRunning(true)
-    try {
-      await flushSaveRef.current()
-    } catch (error) {
-      appendRunItem(run, {
-        type: 'error',
-        text: error instanceof Error ? error.message : 'Could not save the note before starting.',
-      })
-      finishRun(run)
-      return
-    }
-    if (run.controller.signal.aborted || run.stopRequested || !isCurrentRun(run)) {
-      finishRun(run)
-      return
-    }
 
     try {
-      const noteMarkdown = toCanonicalNoteMarkdown(editor.getHTML())
-      const noteTitle = normalizeNotebookTitle(titleRef.current || title)
-      const modelId = selectedModelId
-      const turnId = globalThis.crypto?.randomUUID?.() ?? `notebook-${Date.now()}-${Math.random().toString(36).slice(2)}`
-
-      appendRunItem(run, { type: 'user', text: message })
-      const mentionsForRequest = createNotebookAgentMentions(agentMentionsRef.current)
-      if (isCurrentRun(run)) {
-        setAgentInput('')
-        setAgentMentions([])
-      }
-
-      run.request = {
-        noteId: activeNote._id,
-        turnId,
-        noteContent: noteMarkdown,
-        noteTitle,
+      const res = await runAgent({
+        noteContent,
+        noteTitle: normalizeNotebookTitle(title),
         message,
         modelId,
         mentions: mentionsForRequest.length > 0 ? mentionsForRequest : undefined,
-      }
-      run.requestStarted = true
+      }, ac.signal)
 
-      const observeRun = async (): Promise<void> => {
-        const request = run.request
-        if (run.inFlight || !request || run.controller.signal.aborted) return
-        run.inFlight = true
+      if (!res.ok) {
+        let errText = `Request failed (${res.status})`
         try {
-          const result = await followNotebookAgentStream({
-            request,
-            runAgent,
-            signal: run.controller.signal,
-            getIdentity: () => run.identity,
-            readStream: (res) => readAgentStream(res, run, {
-              isCurrent: () => isCurrentRun(run),
-              appendItem: (item) => appendRunItem(run, item),
-              eventIds: run.eventIds,
-              proposalIds: run.proposalIds,
-              frozenMarkdown: noteMarkdown,
-              frozenTitle: noteTitle,
-              currentTitle: () => titleRef.current,
-              currentMarkdown: () => toCanonicalNoteMarkdown(run.editor.getHTML()),
-              onAccepted: async () => {
-                if (!run.stopRequested || !run.identity) return
-                const stopped = await cancelAdmittedRun(run)
-                if (stopped) finishRun(run)
-                else appendRunItem(run, {
-                  type: 'error',
-                  text: 'Could not stop the Notebook run. You can try Stop again.',
-                })
-              },
-            }),
-          })
-          if (result.status === 'complete' || result.status === 'stopped') {
-            run.identity = null
-            finishRun(run)
-          } else if (result.status === 'request-error') {
-            let errorText = `Request failed (${result.response.status})`
-            try {
-              const body = await result.response.json() as { message?: string; error?: string }
-              errorText = body.message || body.error || errorText
-            } catch {
-              try { errorText = (await result.response.text()) || errorText } catch { /* ignore */ }
-            }
-            appendRunItem(run, { type: 'error', text: errorText })
-            if (run.identity) {
-              run.stopRequested = true
-              if (await cancelAdmittedRun(run)) finishRun(run)
-            } else {
-              finishRun(run)
-            }
-          } else if (result.status === 'exhausted') {
-            run.stopRequested = true
-            const stopped = await cancelAdmittedRun(run)
-            if (stopped) {
-              appendRunItem(run, {
-                type: 'error',
-                text: 'The Notebook stream disconnected repeatedly. This run was stopped.',
-              })
-              finishRun(run)
-            } else {
-              if (!run.disconnectErrorReported) {
-                appendRunItem(run, {
-                  type: 'error',
-                  text: NOTEBOOK_RECONNECT_EXHAUSTED_MESSAGE,
-                })
-                run.disconnectErrorReported = true
-              }
-              if (run.stopReconnectCycles < 2 && !run.identity) {
-                run.stopReconnectCycles += 1
-                setTimeout(() => run.resume?.(), 500 * run.stopReconnectCycles)
-              }
-            }
+          const j = (await res.json()) as { message?: string; error?: string }
+          errText = j.message || j.error || errText
+        } catch {
+          try {
+            errText = (await res.text()) || errText
+          } catch {
+            /* ignore */
           }
-        } catch (error) {
-          if (!run.controller.signal.aborted) {
-            appendRunItem(run, { type: 'error', text: error instanceof Error ? error.message : String(error) })
-            if (!run.identity) finishRun(run)
-          }
-        } finally {
-          run.inFlight = false
         }
+        setAgentItems((prev) => [...prev, { type: 'error', text: errText }])
+        return
       }
 
-      run.resume = () => { void observeRun() }
-      await observeRun()
-    } catch (error) {
-      appendRunItem(run, { type: 'error', text: error instanceof Error ? error.message : String(error) })
-      finishRun(run)
+      await readAgentStream(res, editor, setAgentItems)
+    } catch (e) {
+      if (ac.signal.aborted) return
+      const msg = e instanceof Error ? e.message : String(e)
+      setAgentItems((prev) => [...prev, { type: 'error', text: msg }])
+    } finally {
+      notebookAgentAbortRef.current = null
+      setAgentRunning(false)
     }
-  }, [
-    activeNote,
-    agentInput,
-    appendRunItem,
-    cancelAdmittedRun,
-    editor,
-    finishRun,
-    flushSaveRef,
-    isCurrentRun,
-    runAgent,
-    selectedModelId,
-    setAgentMentions,
-    stopAgent,
-    title,
-    titleRef,
-  ])
+  }, [activeNote, agentInput, agentRunning, editor, runAgent, selectedModelId, setAgentMentions, title])
 
   return {
     agentPanelOpen,

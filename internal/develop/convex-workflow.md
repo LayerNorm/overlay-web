@@ -459,25 +459,6 @@ Native Overlay room turns always dispatch through the native Harness. There is
 no environment-flag fallback to the retired workspace-agent workflow. Remote
 and external turns retain their connected-agent dispatch and never fall back
 to native execution. Unsupported runtime identities fail closed.
-
-The Notebook editor also uses the personal Harness workflow rather than a
-separate model/tool loop. Admission resolves the owned note and personal
-conversation on the server, freezes the note snapshot, and records its note and
-turn identity in the Harness policy. Reconnect requests reuse that AgentRun and
-may advance a public transcript cursor; the Notebook adapter exposes only
-assistant text, its four allowed tool calls, successful edit proposals, and
-terminal state. New turns check the shared workspace budget at admission and
-each model dispatch, with actual usage charged only by Harness settlement.
-Reconnect checks policy and access without another spending admission, so
-previously admitted output remains readable when the balance is low. Stop
-targets the admitted conversation turn through the existing cancellation path.
-Invalid proposal ranges return a failed tool result with frozen line-count and
-`read_note` guidance, allowing a corrected proposal in the same run. This recovery
-is limited to pure proposal validation; authorization and unexpected tool failures
-still fail closed through the shared Harness.
-Notebook UI events check run ownership when received, before queuing React state
-updates, so completion cannot discard already-accepted final text or stale-snapshot
-warnings. Late callbacks from another note remain excluded.
 Native Harness named-agent asks/posts use H2 shared-root dispatch; the HTTP
 route continues to refuse Harness callers. Delivery owners persist bounded
 tool-invocation snapshots while tools run, and finalization replaces those
@@ -622,14 +603,16 @@ An output-token limit continues the partial response instead of completing the
 task. Filtered, errored or otherwise unfinished provider returns cannot be
 reported as successful completion; usage is still settled.
 
-Model dispatch uses a durable `reserve_model` marker with the same ID as its
-eventual usage receipt and `maxCostMicros: 0`. It tracks execution ownership,
-not reserved money. The real workspace balance is checked immediately before
-dispatch, with one automatic top-up attempt if below 2%. Only a matching receipt
-clears the marker; cancellation does not erase usage already incurred. Ambiguous
-provider failures remain unresolved rather than allowing duplicate inference.
-Automatic SDK model retries are disabled. Neither parent nor child runs reserve
-estimated spend or enforce an estimate-based per-run budget.
+Model dispatch holds a durable `reserve_model` authorization with the same ID as
+its eventual usage receipt. Child admission cannot spend that held amount while
+the SDK executes returned tools, before `onStepEnd` supplies usage. Only the
+matching receipt replaces the hold with actual spend; cancellation does not
+erase an unresolved liability. Ambiguous provider failures require reconciliation
+before another call or child-budget release. Automatic SDK model retries are
+disabled so one authorization cannot silently fund multiple uncertain attempts.
+The adapter must reserve an upper bound for the dispatched prompt and output,
+not an average predicted cost. These holds enforce the run budget; billing-account
+reservations and settlement remain separate adapter responsibilities.
 
 `captureHarnessModelUsage` allowlists token counts and routing references before
 usage crosses a durable step boundary. `resolveHarnessModelUsage` resolves Gateway
@@ -638,8 +621,8 @@ ingestion retries the lookup, never inference. Without a generation reference,
 catalog-derived costs are explicitly marked estimates. Unknown pricing requires
 reconciliation. BYOK contributes no Overlay-funded inference cost but records
 external cost as unknown, not zero. Known external cost and unpriced external
-calls roll up separately through child joins. The spending mode distinguishes
-workspace-funded inference from external inference and non-spending work.
+calls roll up separately through child joins. The run's spending authorization
+bounds Overlay-funded inference, not the user's external provider account.
 
 `admitHarnessRequestUsage` consumes the root's request allowance with a stable
 operation ID before inference. Personal runs perform it inside
@@ -654,7 +637,7 @@ and BYOK retain their existing exemptions. Internal model receipts set the
 server-only `countAsRequest: false` while retaining all cost and token accounting.
 Durable accounting binds the workspace explicitly so a tab switch cannot move
 usage to another workspace. `requireRecorded: true` prevents a caller from
-advancing after a failed usage write or unresolved pricing.
+advancing after a failed write or a reservation that still needs reconciliation.
 
 `personal-tools.ts` reconstructs personal Chat tools inside authorized durable
 steps. `personal-access.ts` refreshes workspace membership, principal identity,
@@ -665,11 +648,11 @@ ID while retaining the delivery AgentRun ID. The personal adapter requires
 interactive approval policy and cannot stand in for an agent or automation
 principal. Personal chat, automations and Slack entrypoints use these adapters.
 
-Before provider dispatch, `bind_model_dispatch` associates the model marker
-with its selected model and `billingReservationId: null`. That identity is
-immutable and survives cancellation.
+Before provider dispatch, `bind_model_dispatch` associates the held model call
+with its selected model and billing reservation (explicitly `null` for calls
+without an account hold). That identity is immutable and survives cancellation.
 It is a settlement reference, not evidence that a provider was called or finished.
-Only the matching usage receipt clears the model marker; dispatch binding does not
+Only the matching usage receipt clears the model hold; dispatch binding does not
 release any budget or authorize automatic provider retries.
 
 `settleHarnessModelUsage` orchestrates separate durable receipt-lookup, account
@@ -679,23 +662,23 @@ quote even if the account write succeeds before the harness write fails. Billing
 uses the persisted dispatch binding and original workspace, accepts late usage
 after cancellation, and never counts internal calls as additional requests. BYOK
 writes a token audit with unknown external cost, without an Overlay charge. A
-failed account write leaves the harness marker unresolved. Production entrypoints
+failed account write leaves the harness hold unresolved. Production entrypoints
 use these settlement steps through the Harness workflows.
 
 Personal `HarnessLanguageModel` references can carry an allowlisted dispatch
 reference, without credentials or persisted entitlements. Inside the provider
-step it refreshes access, checks prepared token limits and the real workspace
-balance, then atomically claims dispatch without an account hold. A replayed
-claim cannot redispatch even for free/BYOK calls. Provider failures retain the
-execution marker. Routing fallbacks
+step it refreshes access, checks prepared token limits and a fresh conservative
+catalog forecast, reserves account funds, atomically claims dispatch, and marks
+the account hold started. A replayed claim cannot redispatch even for free/BYOK
+calls. Provider failures retain the hold for reconciliation. Routing fallbacks
 must be selected and authorized during preparation, not hidden in provider
 options. Provider-executed tools and unpriced cache configurations fail closed.
 Text input estimates include byte/protocol overhead; media uses the known model
-context limit. These are context-size estimates, not spending forecasts or provider token measurements.
+context limit. These are spending forecasts, not provider token measurements.
 Personal permission refresh uses `gateModelPolicy`, which checks the current
-subscription and ZDR policy without topping up or requiring another spending
-admission. Each model or billable tool operation checks its current workspace
-budget before use and records actual usage afterwards.
+subscription and ZDR policy without topping up or requiring unreserved funds.
+A model hold must not disable authorized tools while the SDK executes them.
+Each model or billable tool operation still reserves its own spend before use.
 
 `createPersonalHarnessExecutionPorts` connects state ownership, root request
 admission, tool reauthorization, model preparation and usage settlement. Surface
@@ -729,8 +712,8 @@ Harness billing adapters can supply `cachedInputTokens`, `cacheWriteTokens` and
 an exact, server-validated `providerCostUsd` to `recordFinishedUsage`. A receipt
 takes precedence over catalog estimates, including a verified zero-cost receipt.
 Without one, pricing separates uncached input, cache reads, cache writes and
-output. Missing cache-write pricing remains unknown and blocks settlement
-rather than producing a fabricated zero-cost charge. Existing callers keep
+output. Missing cache-write pricing remains unknown and triggers reservation
+reconciliation rather than a fabricated zero-cost charge. Existing callers keep
 their uncached behavior until they supply these fields; BYOK external charges
 must not be inferred from Overlay's zero billing for user-owned credentials.
 

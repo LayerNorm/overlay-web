@@ -384,38 +384,3 @@ export function noteMarkdownToEditorHtml(markdown: string): string {
   clean.children = clean.children.filter((child) => !(child.type === 'text' && !child.value.trim()))
   return toHtml(clean)
 }
-
-function editorBlockText(node: HastNodes, preserveWhitespace = false): string {
-  if (node.type === 'text') return preserveWhitespace ? node.value : node.value.replace(/[ \t\r\n\f]+/g, ' ')
-  if (node.type === 'element' || node.type === 'root') {
-    const preserve = preserveWhitespace || node.type === 'element' && node.tagName === 'pre'
-    const children = node.type === 'element' && ['ul', 'ol'].includes(node.tagName)
-      ? node.children.filter(child => child.type !== 'text' || child.value.trim())
-      : node.children
-    let previousWasBreak = false
-    return children.reduce((text, child) => {
-      if (child.type === 'element' && child.tagName === 'br') {
-        previousWasBreak = true
-        return text.replace(/[ \t\r\n\f]+$/, '')
-      }
-      const childText = editorBlockText(child, preserve)
-      const normalizedText = previousWasBreak ? childText.replace(/^[ \t\r\n\f]+/, '') : childText
-      previousWasBreak = false
-      return text + normalizedText
-    }, '')
-  }
-  return ''
-}
-
-export function noteMarkdownToEditorBlocks(markdown: string): string[] {
-  const html = noteMarkdownToEditorHtml(toCanonicalNoteMarkdown(markdown))
-  if (!html) return []
-  const root = fromHtml(html, { fragment: true })
-  return root.children
-    .filter((child): child is Element => child.type === 'element')
-    .map(child => editorBlockText(child))
-}
-
-export function noteMarkdownToEditorText(markdown: string): string {
-  return noteMarkdownToEditorBlocks(markdown).join('\n')
-}

@@ -34,9 +34,8 @@ beforeEach(() => {
   mocks.bill.mockResolvedValue({ recorded: true, budgetLow: false })
 })
 
-test.each([undefined, { kind: 'notebook' as const, noteId: 'note', turnId: 'turn', requestDigest: 'digest' }])(
-  'charges the actual cost directly before releasing the dispatch marker for surface %j', async (surface) => {
-  mocks.read.mockResolvedValue({ ...state(), policy: { ...state().policy, surface }, status: 'cancelled' })
+test('charges the actual cost directly before releasing the dispatch marker, using original workspace and no extra request', async () => {
+  mocks.read.mockResolvedValue({ ...state(), status: 'cancelled' })
   expect(await settleHarnessModelUsage(input)).toEqual(receipt)
   expect(mocks.resolve).toHaveBeenCalledWith(expect.objectContaining({ requestedModelId: 'provider/requested' }))
   expect(mocks.bill.mock.calls[0][0]).not.toHaveProperty('reservationId')

@@ -3,7 +3,6 @@ import test from 'node:test'
 import {
   editorHtmlToNoteMarkdown,
   isLegacyNoteHtml,
-  noteMarkdownToEditorText,
   noteMarkdownToEditorHtml,
   toCanonicalNoteMarkdown,
 } from './note-markdown'
@@ -81,16 +80,6 @@ test('agent-written Markdown renders for the editor', () => {
   assert.match(html, /data-type="taskList"/)
   assert.match(html, /<h4>deep<\/h4>/)
   assert.match(html, /<pre><code>x\n<\/code><\/pre>/)
-})
-
-test('Markdown snapshot text uses one line per editor block', () => {
-  assert.equal(
-    noteMarkdownToEditorText('## Plan\n\nfirst paragraph\n\n- one\n- two\n\n```txt\ncode\n```'),
-    'Plan\nfirst paragraph\nonetwo\ncode\n',
-  )
-  assert.equal(noteMarkdownToEditorText('first\nsecond'), 'first second')
-  assert.equal(noteMarkdownToEditorText('line one\\\nline two'), 'line oneline two')
-  assert.equal(noteMarkdownToEditorText('# Heading\n\nfirst\nsecond'), 'Heading\nfirst second')
 })
 
 test('raw HTML in a note is sanitized', () => {

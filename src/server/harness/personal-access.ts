@@ -7,8 +7,6 @@ import { isByokModelId } from '@/shared/ai/gateway/byok-model-conversion'
 import { getOverlayServerContext } from '@/server/bootstrap'
 import { assertUserCanUseByokModel } from '@/server/ai/model-runtime'
 import { resolveAuthorizedModelIds } from '@/server/ai/model-policy-authority'
-import { ConvexNoteRepository } from '@/server/notes/ConvexNoteRepository'
-import { NoteService } from '@/server/notes'
 import { asConversationId } from '@/server/conversations/ActConversationRepository'
 import { actEntitlementService } from '@/server/conversations/http'
 import { ConvexHarnessRepository } from './ConvexHarnessRepository'
@@ -114,24 +112,13 @@ async function readCurrentHarnessAuthority(
   return { state, root }
 }
 
-export async function isApiKeyChatWriteAllowed(
-  userId: string,
-  apiKeyId: string,
-  server: ServerContext = getOverlayServerContext(),
-): Promise<boolean> {
-  const key = (await server.appData.repositories.apiKeys.listByUser({ userId }))
-    .find(candidate => candidate.id === apiKeyId)
-  return Boolean(key && key.userId === userId && key.revokedAt == null
-    && key.expiresAt > Date.now() && hasRequiredApiKeyScopes(key.scopes, ['chat:write']))
-}
-
 async function assertApiKeyStillAllowed(access: PersonalHarnessAccess, server: ServerContext): Promise<void> {
   if (access.authentication.type === 'api-key') {
-    if (!(await isApiKeyChatWriteAllowed(
-      access.actorUserId,
-      access.authentication.apiKeyId,
-      server,
-    ))) {
+    const apiKeyId = access.authentication.apiKeyId
+    const key = (await server.appData.repositories.apiKeys.listByUser({ userId: access.actorUserId }))
+      .find(key => key.id === apiKeyId)
+    if (!key || key.userId !== access.actorUserId || key.revokedAt != null
+      || key.expiresAt <= Date.now() || !hasRequiredApiKeyScopes(key.scopes, ['chat:write'])) {
       throw new FatalError('The API key that authorized this run is no longer permitted.')
     }
   } else if (access.authentication.type !== 'session' && access.authentication.type !== 'access-token'
@@ -182,48 +169,14 @@ function assertPersonalCapabilities(
   context: PersonalContext,
   toolName?: string,
 ): void {
-  const notebookLocalTool = context.notebook && ['read_note', 'propose_edit', 'finish'].includes(toolName ?? '')
   if (!authorization.checkResolvedCapability(subject, 'conversations.edit').allowed
-    || (toolName && !notebookLocalTool && !authorization.checkResolvedCapability(subject, 'tools.use').allowed)
+    || (toolName && !authorization.checkResolvedCapability(subject, 'tools.use').allowed)
     || (toolName && ['web_search', 'web_fetch', 'deep_search'].includes(toolName)
       && !authorization.checkResolvedCapability(subject, 'web_search.use').allowed)
     || (toolName && ['search_mcp_tools', 'call_mcp_tool'].includes(toolName)
       && !authorization.checkResolvedCapability(subject, 'mcp.use').allowed)
     || (context.memoryEnabled && !authorization.checkResolvedCapability(subject, 'memory.use').allowed)) {
     throw new FatalError('Personal harness permissions have been revoked.')
-  }
-}
-
-async function assertNotebookNoteStillEditable(
-  server: ServerContext,
-  access: PersonalHarnessAccess,
-  context: PersonalContext,
-  subject: Awaited<ReturnType<ServerContext['authorizationService']['resolveSubject']>>,
-): Promise<void> {
-  const notebook = context.notebook
-  if (!notebook) return
-  const authorization = server.authorizationService
-  if (!authorization.checkResolvedCapability(subject, 'notes.edit').allowed) {
-    throw new FatalError('Notebook note permissions have been revoked.')
-  }
-  const note = await new NoteService({ noteRepository: new ConvexNoteRepository() }).getNote({
-    noteId: notebook.noteId,
-    userId: access.actorUserId,
-    workspaceId: access.workspaceId,
-  })
-  const ownerUserId = await authorization.getResourceOwner({
-    resourceId: notebook.noteId,
-    resourceType: 'note',
-  })
-  if (!note || !ownerUserId || !(await authorization.checkResolvedResourceAccess({
-    action: 'edit',
-    capability: 'notes.edit',
-    ownerUserId,
-    resourceId: notebook.noteId,
-    resourceType: 'note',
-    subject,
-  })).allowed) {
-    throw new FatalError('Notebook note permissions have been revoked.')
   }
 }
 
@@ -311,7 +264,6 @@ function buildExecutionContext(
     accountAllowedToolIds: allowedTools,
     accountAllowedConnectorIds: allowedConnectors,
     integrationToolIds: context.integrationToolIds,
-    ...(context.notebook ? { notebook: context.notebook } : {}),
     ...(access.authentication.type === 'automation'
       ? { automationExecution: true, automationId: access.authentication.automationId,
         automationRunId: access.authentication.automationRunId,
@@ -362,13 +314,6 @@ export async function refreshPersonalHarnessAccess(
   if (options.renewLease && !options.renewalMode) throw new FatalError('Invalid lease renewal mode.')
   const repository = new ConvexHarnessRepository()
   const { state, root } = await readCurrentHarnessAuthority(repository, access, toolName, options.renewalMode)
-  if (context.notebook && (root.policy.surface?.kind !== 'notebook'
-    || root.policy.surface.noteId !== context.notebook.noteId
-    || root.policy.surface.turnId !== context.turnId
-    || root.policy.surface.requestDigest !== context.notebook.requestDigest
-    || !state.policy.allowedToolIds.every(id => ['search_knowledge', 'read_note', 'propose_edit', 'finish'].includes(id)))) {
-    throw new FatalError('Notebook harness source or capabilities changed.')
-  }
   const server = getOverlayServerContext()
   let sourceGrant: Awaited<ReturnType<typeof refreshAutomationHarnessSource>> | undefined
   if (access.authentication.type === 'automation') {
@@ -392,13 +337,8 @@ export async function refreshPersonalHarnessAccess(
   assertDeliveryOwnership(access, state, root, agentRun, options.renewalMode === true)
   const authorization = server.authorizationService
   assertPersonalCapabilities(authorization, subject, context, toolName)
-  await assertNotebookNoteStillEditable(server, access, context, subject)
   await assertModelCatalogAccess(authorization, subject, context.effectiveModelId)
   const grants = await readCurrentModelAndGrants(authorization, subject, access, context)
-  if (context.notebook && toolName === 'search_knowledge'
-    && !grants.accountAllowedToolIds.includes('search_knowledge')) {
-    throw new FatalError('Notebook search permissions have been revoked.')
-  }
   if (sourceGrant) assertAutomationGrantCurrent(state, context, sourceGrant, grants, toolName)
   await assertCurrentModelPolicy(
     context.effectiveModelId,

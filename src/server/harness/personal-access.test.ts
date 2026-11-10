@@ -6,7 +6,7 @@ import { refreshPersonalHarnessAccess, type PersonalHarnessAccess } from './pers
 const mocks = vi.hoisted(() => ({
   state: vi.fn(), keys: vi.fn(), workspace: vi.fn(), conversation: vi.fn(), agentRun: vi.fn(),
   subject: vi.fn(), capability: vi.fn(), model: vi.fn(), filter: vi.fn(), gate: vi.fn(), models: vi.fn(), byok: vi.fn(),
-  automationGrant: vi.fn(), note: vi.fn(), noteOwner: vi.fn(), noteResource: vi.fn(),
+  automationGrant: vi.fn(),
 }))
 vi.mock('server-only', () => ({}))
 vi.mock('./ConvexHarnessRepository', () => ({ ConvexHarnessRepository: class { get = mocks.state } }))
@@ -14,16 +14,13 @@ vi.mock('./automation-access', () => ({ refreshAutomationHarnessSource: mocks.au
 vi.mock('@/server/conversations/http', () => ({ actEntitlementService: { gateModelPolicy: mocks.gate } }))
 vi.mock('@/server/ai/model-policy-authority', () => ({ resolveAuthorizedModelIds: mocks.models }))
 vi.mock('@/server/ai/model-runtime', () => ({ assertUserCanUseByokModel: mocks.byok }))
-vi.mock('@/server/notes', () => ({ NoteService: class { getNote = mocks.note } }))
-vi.mock('@/server/notes/ConvexNoteRepository', () => ({ ConvexNoteRepository: class {} }))
 vi.mock('@/server/bootstrap', () => ({ getOverlayServerContext: () => ({
   appData: { repositories: { apiKeys: { listByUser: mocks.keys }, conversations: {
     getConversationById: mocks.conversation, getLatestAgentRun: mocks.agentRun,
   } } },
   workspaceService: { resolveActiveWorkspace: mocks.workspace },
   authorizationService: { resolveSubject: mocks.subject, checkResolvedCapability: mocks.capability,
-    checkResolvedCatalogResourceAccess: mocks.model, filterCatalogResourceIds: mocks.filter,
-    getResourceOwner: mocks.noteOwner, checkResolvedResourceAccess: mocks.noteResource },
+    checkResolvedCatalogResourceAccess: mocks.model, filterCatalogResourceIds: mocks.filter },
 }) }))
 
 const access: PersonalHarnessAccess = { actorUserId: 'user', workspaceId: 'original-workspace', principalId: 'principal',
@@ -49,9 +46,6 @@ beforeEach(() => {
   mocks.agentRun.mockResolvedValue(agentRun())
   mocks.subject.mockResolvedValue({ userId: 'user' })
   mocks.capability.mockReturnValue({ allowed: true })
-  mocks.note.mockResolvedValue({ _id: 'note', userId: 'owner', workspaceId: 'original-workspace' })
-  mocks.noteOwner.mockResolvedValue('owner')
-  mocks.noteResource.mockResolvedValue({ allowed: true })
   mocks.model.mockResolvedValue({ allowed: true })
   mocks.filter.mockImplementation(async ({ resourceIds }) => resourceIds)
   mocks.gate.mockResolvedValue({ paid: true, runtimeEntitlements: { tier: 'paid' } })
@@ -133,52 +127,6 @@ test('cannot reuse the personal adapter for an automation, another identity or a
     await expect(refreshPersonalHarnessAccess(access, { ...context, ...override })).rejects.toThrow(/identity/)
   }
   expect(mocks.state).not.toHaveBeenCalled()
-})
-
-test('Notebook resumes revalidate note edit access and the current search catalog grant', async () => {
-  const notebookContext: PersonalChatWorkToolingContext = {
-    ...context,
-    memoryEnabled: false,
-    requestedToolIds: ['search_knowledge', 'read_note', 'propose_edit', 'finish'],
-    accountAllowedToolIds: ['search_knowledge', 'read_note', 'propose_edit', 'finish'],
-    notebook: {
-      kind: 'notebook',
-      noteId: 'note',
-      title: 'Notes',
-      content: 'Frozen note',
-      requestDigest: 'digest',
-    },
-  }
-  const notebookState = () => ({
-    ...snapshot(),
-    policy: {
-      ...snapshot().policy,
-      allowedToolIds: ['search_knowledge', 'read_note', 'propose_edit', 'finish'],
-      surface: { kind: 'notebook', noteId: 'note', turnId: 'turn', requestDigest: 'digest' },
-    },
-  })
-
-  mocks.state.mockResolvedValue(notebookState())
-  mocks.noteResource.mockResolvedValueOnce({ allowed: false })
-  await expect(refreshPersonalHarnessAccess(access, notebookContext))
-    .rejects.toThrow(/Notebook note permissions have been revoked/)
-  expect(mocks.note).toHaveBeenCalledWith({
-    noteId: 'note',
-    userId: 'user',
-    workspaceId: 'original-workspace',
-  })
-
-  mocks.state.mockResolvedValue(notebookState())
-  mocks.filter.mockImplementation(async ({ resourceType, resourceIds }) =>
-    resourceType === 'tool' ? resourceIds.filter((id: string) => id !== 'search_knowledge') : resourceIds)
-  await expect(refreshPersonalHarnessAccess(access, notebookContext, 'search_knowledge'))
-    .rejects.toThrow(/Notebook search permissions have been revoked/)
-
-  mocks.state.mockResolvedValue(notebookState())
-  mocks.capability.mockImplementation((_subject, capability) => ({ allowed: capability !== 'tools.use' }))
-  mocks.filter.mockResolvedValue([])
-  await expect(refreshPersonalHarnessAccess(access, notebookContext, 'read_note'))
-    .resolves.toMatchObject({ accountAllowedToolIds: [] })
 })
 
 test('automation resumes reject agent tool revocation and connector revocation after waits', async () => {
