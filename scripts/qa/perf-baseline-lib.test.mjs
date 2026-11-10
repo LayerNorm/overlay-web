@@ -36,6 +36,7 @@ test('scenario selection rejects unknown names', () => {
   assert.deepEqual(parseScenarios('dm-scroll, cold-start'), ['dm-scroll', 'cold-start'])
   assert.throws(() => parseScenarios('cold-start,warp-speed'), /warp-speed/)
   assert.throws(() => parseScenarios(' , '))
+  assert.throws(() => parseScenarios(''))
 })
 
 test('measurement configuration cannot silently run zero or unlimited samples', () => {
@@ -45,11 +46,19 @@ test('measurement configuration cannot silently run zero or unlimited samples', 
 })
 
 test('failed or missing stages invalidate the whole interaction', () => {
-  const sample = { action: 'completed', stages: { contentVisible: { status: 'observed', ms: 15 } } }
+  const sample = { action: 'completed', stages: {
+    localFeedback: { status: 'observed', ms: 5 }, contentVisible: { status: 'observed', ms: 15 },
+  } }
   assert.equal(requireObservedInteraction(sample), sample)
   assert.throws(() => requireObservedInteraction({ ...sample, action: 'failed' }))
+  for (const stages of [undefined, {}, { contentVisible: sample.stages.contentVisible },
+    { localFeedback: sample.stages.localFeedback }]) {
+    assert.throws(() => requireObservedInteraction({ action: 'completed', stages }))
+  }
   for (const status of ['not-observed', 'invalid-precondition', 'unavailable']) {
-    assert.throws(() => requireObservedInteraction({ action: 'completed', stages: { contentVisible: { status, ms: null } } }))
+    assert.throws(() => requireObservedInteraction({ ...sample, stages: {
+      ...sample.stages, contentVisible: { status, ms: null },
+    } }))
   }
 })
 

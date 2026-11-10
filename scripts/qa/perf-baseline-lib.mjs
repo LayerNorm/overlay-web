@@ -55,15 +55,18 @@ export function positiveInteger(value, fallback, max = 100) {
 }
 
 export function requireObservedInteraction(sample) {
-  if (sample.action !== 'completed' || Object.values(sample.stages).some(stage =>
-    stage.status !== 'observed' || !Number.isFinite(stage.ms) || stage.ms < 0)) {
+  const requiredStages = ['localFeedback', 'contentVisible']
+  if (sample?.action !== 'completed' || requiredStages.some(name => {
+    const stage = sample.stages?.[name]
+    return stage?.status !== 'observed' || !Number.isFinite(stage.ms) || stage.ms < 0
+  })) {
     throw new Error('Interaction did not produce all required observations')
   }
   return sample
 }
 
 export function parseScenarios(value) {
-  if (!value) return [...SCENARIOS]
+  if (value === undefined) return [...SCENARIOS]
   const selected = value.split(',').map((item) => item.trim()).filter(Boolean)
   if (!selected.length) throw new Error('At least one scenario is required')
   const unknown = selected.filter((item) => !SCENARIOS.includes(item))
@@ -153,6 +156,7 @@ export function markdownReport(result) {
   for (const [scenario, data] of Object.entries(result.scenarios)) {
     if (data.error) {
       lines.push(`| ${scenario} | error: ${data.error} | | | | |`)
+      if (data.lastStage) lines.push(`| ${scenario} | Last stage: ${data.lastStage}; run: ${data.sampleRun} | | | | |`)
       continue
     }
     for (const [metric, stats] of Object.entries(data.metrics ?? {})) {

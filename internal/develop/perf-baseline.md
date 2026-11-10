@@ -47,7 +47,7 @@ npm run perf:baseline
 
 Optional: `PERF_SCENARIOS=cold-start,thread-switch`, `PERF_RUNS=5` (default), `PERF_THROTTLE=fast-4g-cpu4x` (default, Chrome Fast 4G plus 4x CPU slowdown) or `none`, `PERF_OUT_DIR=.perf`.
 
-Additional options: `PERF_TIMEOUT_MS=30000`, `PERF_DM_LOAD_PAGES=40` (maximum pagination operations), `PERF_DM_MIN_MESSAGES=1000`. Positive integer ranges are validated. An empty scenario list is invalid. Supply `PERF_CHAT_SENTINEL` and an existing chat path for cold-start transcript timing; without it that metric is intentionally unavailable.
+Additional options: `PERF_TIMEOUT_MS=30000`, `PERF_DM_LOAD_PAGES=40` (maximum pagination operations), `PERF_DM_MIN_MESSAGES=1000`, `PERF_STREAM_MIN_EXCHANGES=25` (fixture history required before replay). Positive integer ranges are validated. An empty scenario list is invalid. Every fresh page must obtain a successful native-token response; fixture replay also requires its selected history to be visible before mutation. Supply `PERF_CHAT_SENTINEL` and an existing chat path for cold-start transcript timing; without it that metric is intentionally unavailable.
 
 ### Fixed Preview fixtures, without model calls
 
@@ -85,7 +85,9 @@ npm run analyze        # existing: analyzer build + /app/chat budget check
 npm run perf:bundle    # initial JS for /app/chat, /app/files, /app/agents, /app/notes
 ```
 
-`perf:bundle` reports sizes and fails if expected route measurements are unavailable. Budgets stay in `scripts/ci/bundle-budgets.json`.
+Both scripts read `analyze/entrypoints.json`, emitted from the actual client Webpack compilation. They do not import removed Next.js internal size helpers. Route-only JS excludes the runtime and ancestor layouts; entry JS is the deduplicated union of page, ancestor layouts, `main-app` and `app-pages-internals` JS. Raw sizes come from emitted files and gzip sizes compress each file independently. Async imports, CSS, RSC/HTML payloads and browser/CDN transfer effects are not included. This is a static entrypoint budget, not an observed network-transfer measurement or a count of modules executed during startup.
+
+`perf:bundle` reports sizes and fails if expected route measurements are unavailable. Missing or ambiguous routes, unsupported manifests and missing files fail closed. Both `--dist-dir=value` and `--dist-dir value` are supported. Budgets stay in `scripts/ci/bundle-budgets.json`; thresholds are not silently raised by the compatibility repair. Use the analyzer's import graph to justify splitting and validate the affected first-use UI separately. Turbopack analysis is not a substitute for this app's production Webpack build.
 
 ## React Profiler traces
 
